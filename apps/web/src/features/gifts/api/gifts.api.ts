@@ -10,6 +10,8 @@ import type {
   AddGiftInput,
   AddGiftResult,
   GiftDryRunResult,
+  GiftAttentionEntry,
+  GiftAttentionResult,
   GiftEvaluateInput,
   GiftRule,
   GiftRuleWriteInput,
@@ -33,6 +35,10 @@ export interface GiftsApi {
   /** The dry run: nothing is written. */
   evaluate: (input: GiftEvaluateInput) => Promise<GiftDryRunResult>;
   addGiftToOrder: (internalOrderId: string, input: AddGiftInput) => Promise<AddGiftResult>;
+  /** The order's add-gift firings that did not give their gift. */
+  getGiftAttention: (internalOrderId: string) => Promise<GiftAttentionResult>;
+  /** "Send without the gift": records that a person handled this firing. */
+  skipGiftAttention: (internalOrderId: string, runId: string) => Promise<GiftAttentionEntry>;
 }
 
 export function createGiftsApi(request: ApiRequest): GiftsApi {
@@ -62,5 +68,12 @@ export function createGiftsApi(request: ApiRequest): GiftsApi {
         method: 'POST',
         body: JSON.stringify(input),
       }),
+    getGiftAttention: (internalOrderId) =>
+      request<GiftAttentionResult>(`/orders/${encodeURIComponent(internalOrderId)}/gift-attention`),
+    skipGiftAttention: (internalOrderId, runId) =>
+      request<GiftAttentionEntry>(
+        `/orders/${encodeURIComponent(internalOrderId)}/gift-attention/${encodeURIComponent(runId)}/skip`,
+        { method: 'POST' },
+      ),
   };
 }

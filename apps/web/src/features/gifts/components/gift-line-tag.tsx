@@ -32,8 +32,13 @@ export interface GiftLineTagProps {
   lineKey: string;
   gift: LineGift;
   currency?: string;
-  /** What the gift costs the seller, net, for all units; `null` when not recorded; absent when not read. */
+  /** What the gift costs the seller, net, for all units; `null` when not recorded; read only when `costState` is `ready`. */
   costNet?: number | null;
+  /**
+   * Where the cost read stands. `unavailable` (absent) means this role or
+   * setting does not read costs, which says nothing about whether one is on file.
+   */
+  costState?: 'loading' | 'failed' | 'unavailable' | 'ready';
   /** The connection issuing the sales document, once there is one. */
   documentConnectionId?: string | null;
 }
@@ -43,6 +48,7 @@ export function GiftLineTag({
   gift,
   currency,
   costNet,
+  costState = costNet === undefined ? 'unavailable' : 'ready',
   documentConnectionId = null,
 }: GiftLineTagProps): ReactElement {
   const copy = useMessages('gifts');
@@ -81,10 +87,16 @@ export function GiftLineTag({
             <dt>{copy.order.whoPays}</dt>
             <dd data-testid={`order-gift-cost-${lineKey}`}>
               {interpolate(copy.order.customerPays, { price: formatAmount(0, currency) })}
-              {' · '}
-              {costNet === undefined || costNet === null
-                ? copy.order.costUnknown
-                : interpolate(copy.order.costsYou, { cost: formatAmount(costNet, currency) })}
+              {costState === 'unavailable' ? null : ' · '}
+              {costState === 'loading'
+                ? copy.cost.loading
+                : costState === 'failed'
+                  ? copy.cost.failed
+                  : costState === 'unavailable'
+                    ? null
+                    : costNet === undefined || costNet === null
+                      ? copy.order.costUnknown
+                      : interpolate(copy.order.costsYou, { cost: formatAmount(costNet, currency) })}
             </dd>
           </div>
           <div>

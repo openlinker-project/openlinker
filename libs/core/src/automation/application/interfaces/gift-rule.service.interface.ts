@@ -44,6 +44,15 @@ export interface IGiftRuleService {
   /** `true` when this call wrote the grant, `false` when the pair already had one. */
   recordGrant(grant: Omit<GiftGrant, 'createdAt'>): Promise<boolean>;
 
+  /** Return a cancelled order's gift units to the rules' caps; returns the rows removed. */
+  releaseGrantsForOrder(internalOrderId: string): Promise<number>;
+
+  /** See `GiftRuleLedgerPort.sumPendingUnitsForVariants`. */
+  getPendingGrantUnits(
+    variantIds: readonly string[],
+    excludeOrderId: string | null,
+  ): Promise<Map<string, number>>;
+
   applyStateChange(ruleId: string, change: GiftRuleStateChange): Promise<void>;
 
   /**

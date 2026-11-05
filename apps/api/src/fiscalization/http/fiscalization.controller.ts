@@ -43,6 +43,7 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -66,7 +67,6 @@ import { CONNECTION_PORT_TOKEN, ConnectionPort } from '@openlinker/core/identifi
 import {
   readDeliveryOnDocuments,
   readGiftDocumentSettings,
-  DEFAULT_GIFT_LINE_FORM,
   SALES_DOCUMENT_SETTINGS_SERVICE_TOKEN,
   type ISalesDocumentSettingsService,
   BundleSplitUnknownError,
@@ -173,14 +173,27 @@ export class FiscalizationController {
   }
 
   /**
-   * The gift settings the order-source connection chose (#3930), defaults when
-   * the lookup fails: a failed read must never break registration.
+   * The gift settings the order-source connection chose (#3930). A failed read of
+   * the connection falls back to defaults; a failed read of the saved global
+   * default refuses the registration (retryable) rather than guessing.
    */
   private async resolveGiftSettings(sourceConnectionId: string): Promise<GiftDocumentSettings> {
     const globalForm = await this.salesDocumentSettings
       .getGiftDocumentForm()
       .then((setting) => setting.form)
-      .catch(() => DEFAULT_GIFT_LINE_FORM);
+      .catch((error: unknown) => {
+        // Not defaulted: registering at the code default could print a 0.01 gift
+        // the operator had set to be omitted, and a fiscal registration cannot be
+        // taken back. A retry after the read recovers is the safe answer.
+        this.logger.warn(
+          `The saved gift document form could not be read; the registration is refused so it can be retried: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        throw new ServiceUnavailableException(
+          'The gift document setting could not be read; retry the registration shortly',
+        );
+      });
     try {
       const source = await this.connectionPort.get(sourceConnectionId);
       return readGiftDocumentSettings(source.config, globalForm);

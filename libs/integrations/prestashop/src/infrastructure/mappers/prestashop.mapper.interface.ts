@@ -332,7 +332,8 @@ export interface IPrestashopOrderMapper {
   mapOrder(
     prestashopOrder: PrestashopOrder,
     orderRows: PrestashopOrderRow[],
-    giftCartRules?: readonly PrestashopGiftCartRule[]
+    giftCartRules?: readonly PrestashopGiftCartRule[],
+    minorUnitExponent?: number
   ): MappedPrestashopOrder;
 
   /**

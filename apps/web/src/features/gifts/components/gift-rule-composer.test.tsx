@@ -2,7 +2,7 @@
  * GiftRuleComposer tests (#3940, mockup M31 `promotions/composer-*`, `more-options`,
  * `paused-out-of-stock`, `limit-reached`, `ended`, `edited-open-orders`, `viewer-readonly`)
  */
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, type RenderResult } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
 import type { Connection } from '../../connections';
@@ -31,7 +31,15 @@ const SAVED: GiftRule = {
   updatedAt: '2026-11-01T00:00:00.000Z',
 };
 
-function mount(overrides: Partial<GiftRuleComposerProps> = {}, rule: GiftRule | null = null, canWrite = true): GiftRuleComposerProps {
+let rendered: RenderResult | null = null;
+const rerenderComposer = (props: GiftRuleComposerProps): void => rendered?.rerender(<GiftRuleComposer {...props} />);
+
+function mount(
+  overrides: Partial<GiftRuleComposerProps> = {},
+  rule: GiftRule | null = null,
+  canWrite = true,
+  products: Record<string, unknown> = {},
+): GiftRuleComposerProps {
   const props: GiftRuleComposerProps = {
     initial: rule ? ruleToForm(rule, new Map([['v-set', 'Morning set'], ['v-spoon', 'Spoon']])) : emptyGiftRuleForm('product'),
     rule,
@@ -45,9 +53,13 @@ function mount(overrides: Partial<GiftRuleComposerProps> = {}, rule: GiftRule | 
   };
   const apiClient = createMockApiClient({
     connections: { list: vi.fn().mockResolvedValue([allegro, presta]) },
-    products: { getVariantCosts: vi.fn().mockResolvedValue([]), listRows: vi.fn().mockResolvedValue({ items: [], total: 0 }) },
+    products: {
+      getVariantCosts: vi.fn().mockResolvedValue([]),
+      listRows: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      ...products,
+    },
   } as never);
-  renderWithProviders(<GiftRuleComposer {...props} />, { apiClient });
+  rendered = renderWithProviders(<GiftRuleComposer {...props} />, { apiClient });
   return props;
 }
 
@@ -100,8 +112,56 @@ describe('GiftRuleComposer', () => {
   it('should state what the customer pays and that the cost is unknown when none is recorded', async () => {
     mount({}, SAVED);
 
-    await waitFor(() => expect(screen.getByTestId('gift-composer-who-pays')).toHaveTextContent('Customer pays'));
-    expect(screen.getByTestId('gift-composer-who-pays')).toHaveTextContent('no purchase cost recorded');
+    await waitFor(() =>
+      expect(screen.getByTestId('gift-composer-who-pays')).toHaveTextContent('no purchase cost recorded'),
+    );
+    expect(screen.getByTestId('gift-composer-who-pays')).toHaveTextContent('Customer pays');
+  });
+
+  it('should not claim the cost is unrecorded while the read is pending or after it failed', async () => {
+    mount({}, SAVED, true, { getVariantCosts: vi.fn().mockReturnValue(new Promise(() => undefined)) });
+    expect(screen.getByTestId('gift-composer-who-pays')).toHaveTextContent('checking the purchase cost');
+    expect(screen.getByTestId('gift-composer-who-pays')).not.toHaveTextContent('no purchase cost recorded');
+    cleanup();
+
+    mount({}, SAVED, true, { getVariantCosts: vi.fn().mockRejectedValue(new Error('403')) });
+    await waitFor(() =>
+      expect(screen.getByTestId('gift-composer-who-pays')).toHaveTextContent('could not be read'),
+    );
+    expect(screen.getByTestId('gift-composer-who-pays')).not.toHaveTextContent('no purchase cost recorded');
+  });
+
+  it('should say a cost in another currency is in another currency instead of printing it in the basket currency', async () => {
+    mount({}, SAVED, true, {
+      getVariantCosts: vi.fn().mockResolvedValue([
+        { variantId: 'v-spoon', netUnitCost: '1.50', costCurrency: 'EUR', costUpdatedAt: null, costUpdatedByUserId: null },
+      ]),
+    });
+
+    await waitFor(() => expect(screen.getByTestId('gift-composer-who-pays')).toHaveTextContent('another currency (EUR)'));
+    expect(screen.getByTestId('gift-composer-who-pays')).not.toHaveTextContent('1.50');
+  });
+
+  it('should keep what the operator typed when the parent re-renders with the same starting values', () => {
+    const props = mount({}, SAVED);
+    const input = screen.getByTestId('gift-composer-name');
+    fireEvent.change(input, { target: { value: 'My own name' } });
+    expect(input).toHaveValue('My own name');
+
+    // A failed save re-renders the page; its `initial` is rebuilt with identical content.
+    rerenderComposer({ ...props, initial: { ...props.initial }, rule: { ...SAVED }, saveError: 'boom' });
+
+    expect(screen.getByTestId('gift-composer-name')).toHaveValue('My own name');
+  });
+
+  it('should render a delete action that asks first', () => {
+    const onDelete = vi.fn();
+    mount({ onDelete }, SAVED);
+
+    fireEvent.click(screen.getByTestId('gift-composer-delete'));
+    expect(onDelete).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('gift-composer-delete-confirm-yes'));
+    expect(onDelete).toHaveBeenCalled();
   });
 
   it('should tell the operator a change does not touch orders already placed', () => {

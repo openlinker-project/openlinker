@@ -214,6 +214,43 @@ describe('presentGiftLines', () => {
     expect(result.notes).toContain('technical-cent-no-donor');
   });
 
+  it('should never produce a 0.00 row when the donor would be left with less than a cent per unit', () => {
+    // 3 units at 0.01: giving 1 cent would leave 0.02 over 3 units.
+    const result = presentGiftLines(
+      [line({ name: 'Cheap', quantity: 3, unitPriceGross: 0.01 }), gift()],
+      'technical-cent',
+      false,
+    );
+    expect(result.notes).toContain('technical-cent-no-donor');
+    expect(result.lines.every((l) => Math.round(l.unitPriceGross * 100) >= 1)).toBe(true);
+  });
+
+  it('should try the next donor when the largest cannot spare the cent per unit', () => {
+    const result = presentGiftLines(
+      [
+        line({ name: 'Big', quantity: 5, unitPriceGross: 0.01 }),
+        line({ name: 'Small', quantity: 1, unitPriceGross: 0.1 }),
+        gift(),
+      ],
+      'technical-cent',
+      false,
+    );
+    expect(result.notes).not.toContain('technical-cent-no-donor');
+    expect(result.lines.find((l) => l.name === 'Small')?.unitPriceGross).toBeCloseTo(0.09);
+    expect(total(result.lines)).toBe(15);
+  });
+
+  it('should read an unrecognised per-gift form as the fallback form, not as priced-in', () => {
+    const result = presentGiftLines(
+      [...paidOnly, gift({ giftForm: 'bogus' as unknown as GiftLineForm })],
+      'omit',
+      undefined,
+    );
+    expect(result.appliedForm).toBe('omit');
+    expect(result.lines.map((l) => l.name)).toEqual(['Set']);
+    expect(total(result.lines)).toBe(6499);
+  });
+
   it('should apply each gift its own form on one order', () => {
     const lines = [
       line({ name: 'Set', unitPriceGross: 100 }),

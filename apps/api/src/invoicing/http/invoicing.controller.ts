@@ -415,7 +415,13 @@ export class InvoicingController {
     const globalForm = await this.salesDocumentSettings
       .getGiftDocumentForm()
       .then((setting) => setting.form)
-      .catch(() => DEFAULT_GIFT_LINE_FORM);
+      .catch((error: unknown) => {
+        this.logger.warn(
+          `The saved gift document form could not be read; the code default applies, which may ` +
+            `differ from the operator's setting: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return DEFAULT_GIFT_LINE_FORM;
+      });
     try {
       const source = await this.connectionPort.get(sourceConnectionId);
       return readGiftDocumentSettings(source.config, globalForm);

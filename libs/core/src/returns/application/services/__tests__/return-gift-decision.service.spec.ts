@@ -28,7 +28,7 @@ function build(): {
 describe('ReturnGiftDecisionService', () => {
   it('should record keep without touching any amount', async () => {
     const { service, decisions, returnsService } = build();
-    await service.decide({ returnId: 'r1', giftLineId: 'g1', decision: 'keep', actorUserId: 'u1' });
+    await service.decide({ returnId: 'r1', giftLineId: 'g1', decision: 'keep', actorUserId: 'u1', validGiftLineIds: ['g1'] });
     expect(returnsService.assertAttributedForTrigger).toHaveBeenCalledWith('r1', 'refund');
     expect(decisions.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ decision: 'keep' }),
@@ -39,7 +39,7 @@ describe('ReturnGiftDecisionService', () => {
   it('should refuse a deduction without a positive amount', async () => {
     const { service, decisions } = build();
     await expect(
-      service.decide({ returnId: 'r1', giftLineId: 'g1', decision: 'deduct', actorUserId: null })
+      service.decide({ returnId: 'r1', giftLineId: 'g1', decision: 'deduct', actorUserId: null, validGiftLineIds: ['g1'] })
     ).rejects.toMatchObject({ reason: 'deduction-required' });
     await expect(
       service.decide({
@@ -48,6 +48,7 @@ describe('ReturnGiftDecisionService', () => {
         decision: 'deduct',
         deductionGross: 0,
         actorUserId: null,
+        validGiftLineIds: ['g1'],
       })
     ).rejects.toBeInstanceOf(ReturnGiftDecisionInvalidError);
     expect(decisions.upsert).not.toHaveBeenCalled();
@@ -62,6 +63,7 @@ describe('ReturnGiftDecisionService', () => {
         decision: 'ask_back',
         deductionGross: 5,
         actorUserId: null,
+        validGiftLineIds: ['g1'],
       })
     ).rejects.toMatchObject({ reason: 'deduction-not-allowed' });
   });
@@ -70,8 +72,22 @@ describe('ReturnGiftDecisionService', () => {
     const { service, decisions, returnsService } = build();
     returnsService.assertAttributedForTrigger.mockRejectedValue(new Error('not attributed'));
     await expect(
-      service.decide({ returnId: 'r1', giftLineId: 'g1', decision: 'keep', actorUserId: null })
+      service.decide({ returnId: 'r1', giftLineId: 'g1', decision: 'keep', actorUserId: null, validGiftLineIds: ['g1'] })
     ).rejects.toThrow('not attributed');
+    expect(decisions.upsert).not.toHaveBeenCalled();
+  });
+
+  it('should refuse a decision about a line that is not a gift on the return\'s order', async () => {
+    const { service, decisions } = build();
+    await expect(
+      service.decide({
+        returnId: 'r1',
+        giftLineId: 'other-orders-line',
+        decision: 'keep',
+        actorUserId: null,
+        validGiftLineIds: ['g1'],
+      })
+    ).rejects.toMatchObject({ reason: 'unknown-gift-line' });
     expect(decisions.upsert).not.toHaveBeenCalled();
   });
 

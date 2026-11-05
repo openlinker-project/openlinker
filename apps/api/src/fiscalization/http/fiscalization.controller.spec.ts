@@ -21,6 +21,7 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import {
@@ -348,6 +349,17 @@ describe('FiscalizationController', () => {
       expect(cmd.lines[1].unitPriceGross).toBeCloseTo(0.01);
       const total = cmd.lines.reduce((n, l) => n + Math.round(l.quantity * l.unitPriceGross * 100), 0);
       expect(total).toBe(10000);
+    });
+
+    it('should refuse retryably, registering nothing, when the saved gift form cannot be read', async () => {
+      orders.getOrderRecord.mockResolvedValue(orderRecord());
+      const settings = controller['salesDocumentSettings'] as unknown as { getGiftDocumentForm: jest.Mock };
+      settings.getGiftDocumentForm.mockRejectedValueOnce(new Error('db down'));
+
+      await expect(
+        controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID }),
+      ).rejects.toBeInstanceOf(ServiceUnavailableException);
+      expect(service.requestRegistration).not.toHaveBeenCalled();
     });
 
     it('should still register when the adapter cannot be resolved (#3930)', async () => {

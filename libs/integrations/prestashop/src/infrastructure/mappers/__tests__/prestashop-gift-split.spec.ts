@@ -11,7 +11,7 @@ import { PrestashopOrderMapper } from '../prestashop-order.mapper';
 import { sourceRowIdOfLineId } from '../prestashop-gift-split';
 import type { PrestashopOrder, PrestashopOrderRow } from '../prestashop.mapper.interface';
 
-const RULE = { idCartRule: '7', giftProductId: '20', giftProductAttributeId: '0' };
+const RULE = { idCartRule: '7', giftProductId: '20', giftProductAttributeId: '0', valueTaxIncl: 50 };
 
 function order(overrides: Partial<PrestashopOrder> = {}): PrestashopOrder {
   return {
@@ -132,5 +132,44 @@ describe('PrestashopOrderMapper gift cart-rule split', () => {
   it('should resolve a split line id back to the order row it came from', () => {
     expect(sourceRowIdOfLineId('8~gift:7')).toBe('8');
     expect(sourceRowIdOfLineId('8')).toBe('8');
+  });
+
+  it('should leave the gift merged when the rule credited less than the unit (free shipping, gift was paid)', () => {
+    const rule = { ...RULE, valueTaxIncl: 12.5, freeShipping: true, shippingGross: 12.5 };
+    const mapped = mapper.mapOrder(order({ total_discounts_tax_incl: '12.500000' }), [row()], [rule]);
+
+    expect(mapped.items).toHaveLength(1);
+    expect(mapped.items[0]).toMatchObject({ id: '8', quantity: 2 });
+    expect(mapped.totals.discountTotal).toBe(12.5);
+    expect(mapped.totals.total).toBe(62.5);
+  });
+
+  it('should split when a free-shipping rule credited the gift on top of the shipping', () => {
+    const rule = { ...RULE, valueTaxIncl: 62.5, freeShipping: true, shippingGross: 12.5 };
+    const mapped = mapper.mapOrder(order({ total_discounts_tax_incl: '62.500000' }), [row()], [rule]);
+
+    expect(mapped.items).toHaveLength(2);
+    expect(mapped.totals.discountTotal).toBe(12.5);
+  });
+
+  it('should leave the gift merged when the rule carries no booked value', () => {
+    const rule = { ...RULE, valueTaxIncl: undefined };
+    const mapped = mapper.mapOrder(order(), [row()], [rule]);
+
+    expect(mapped.items).toHaveLength(1);
+    expect(mapped.totals.discountTotal).toBe(50);
+  });
+
+  it('should round the discount in the currency minor unit', () => {
+    const rule = { ...RULE, valueTaxIncl: 500 };
+    const mapped = mapper.mapOrder(
+      order({ total_discounts_tax_incl: '500', total_paid_tax_incl: '625' }),
+      [row({ unit_price_tax_incl: '500', product_price: '500' })],
+      [rule],
+      0
+    );
+
+    expect(mapped.items).toHaveLength(2);
+    expect(mapped.totals.discountTotal).toBe(0);
   });
 });

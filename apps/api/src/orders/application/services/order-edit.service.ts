@@ -102,6 +102,7 @@ import {
   decideRefundCeiling,
   decimalPlaces,
   deliveryMethodEditTargetRef,
+  freezeGiftUnitCost,
   giftEditTargetRef,
   OPERATOR_GIFT_LINE_KEY_PREFIX,
   type OrderAddedLineEdit,
@@ -259,6 +260,19 @@ interface RawOrderLine extends DiscountableLine {
   readonly name: string | null;
 }
 
+/** Two gift-add payloads describe the same request (variant, quantity, form). */
+function sameGiftPayload(
+  existing: Record<string, unknown> | null,
+  requested: Record<string, unknown>
+): boolean {
+  return (
+    existing !== null &&
+    existing['variantId'] === requested['variantId'] &&
+    existing['quantity'] === requested['quantity'] &&
+    existing['documentForm'] === requested['documentForm']
+  );
+}
+
 @Injectable()
 export class OrderEditService implements IOrderEditService {
   private readonly logger = new Logger(OrderEditService.name);
@@ -320,6 +334,13 @@ export class OrderEditService implements IOrderEditService {
           ...(product?.name !== undefined && { name: product.name }),
           gift,
           ...(await this.catalogueTaxRate(variant.productId, variant.id)),
+          // Frozen like a rule gift's: the same helper, so the two writers agree.
+          ...(await freezeGiftUnitCost(
+            this.products,
+            variant.id,
+            record.placedAt ?? record.createdAt,
+            this.logger
+          )),
         };
         return {
           kind: 'order.gift_added',
@@ -797,14 +818,25 @@ export class OrderEditService implements IOrderEditService {
       };
     }
 
-    const { change } = await this.changes.openOrReuse({
+    const openRequest = {
       internalOrderId: input.internalOrderId,
       kind: prepared.kind,
       targetRef: prepared.targetRef,
       payload: prepared.payload,
       requestedBy: input.actorUserId,
       requestedAt: new Date(),
-    });
+    };
+    const { change, opened } = await this.changes.openOrReuse(openRequest);
+    if (!opened && prepared.gift !== undefined && !sameGiftPayload(change.payload, prepared.payload)) {
+      // The gift's line key carries the change id and the overlay keeps the FIRST
+      // entry written under a key: reusing an open change for a DIFFERENT gift
+      // would drop it from the overlay while the follow-up reserved and reported
+      // it. An identical request is a retry of the interrupted one and finishes it.
+      throw new OrderEditRefusedError(
+        'ORDER_EDIT_CONTENDED',
+        'Another gift is still being added to this order. Wait a moment, reload the order and try again.'
+      );
+    }
 
     const stamped = this.stampChange(prepared.patch, change.id);
     const written = await this.orderRecords.applyOrderEdit({

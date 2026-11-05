@@ -90,11 +90,11 @@ export function GiftPromotionsList({
               <tr key={rule.id} data-testid={`gift-rule-row-${rule.id}`}>
                 <td>
                   <span data-testid={`gift-rule-pos-${rule.id}`}>{index + 1}</span>
-                  {canWrite ? (
+                  {(
                     <span className="gift-list__order">
                       <Button
                         tone="secondary"
-                        disabled={moving || index === 0}
+                        disabled={!canWrite || moving || index === 0}
                         aria-label={interpolate(copy.list.upLabel, { name: rule.name })}
                         data-testid={`gift-rule-up-${rule.id}`}
                         onClick={() => {
@@ -106,7 +106,7 @@ export function GiftPromotionsList({
                       </Button>
                       <Button
                         tone="secondary"
-                        disabled={moving || index === rules.length - 1}
+                        disabled={!canWrite || moving || index === rules.length - 1}
                         aria-label={interpolate(copy.list.downLabel, { name: rule.name })}
                         data-testid={`gift-rule-down-${rule.id}`}
                         onClick={() => {
@@ -117,7 +117,7 @@ export function GiftPromotionsList({
                         {copy.list.down}
                       </Button>
                     </span>
-                  ) : null}
+                  )}
                 </td>
                 <td>
                   <Link

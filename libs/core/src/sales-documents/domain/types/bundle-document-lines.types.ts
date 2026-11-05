@@ -31,7 +31,7 @@
  *
  * @module libs/core/src/sales-documents/domain/types
  */
-import type { GiftPresentationLine } from './gift-lines.types';
+import type { GiftDocumentFormChoice, GiftPresentationLine } from './gift-lines.types';
 import { minorUnitExponentFor } from './shipping-tax-split.types';
 
 /** Why a bundle could not be presented without guessing. */
@@ -71,7 +71,7 @@ export interface DocumentBundleComponent {
   quantity: number;
   giftSlot?: boolean;
   /** The gift slot's own form on a document (#3940); absent means "as in settings". */
-  giftDocumentForm?: 'technical-cent' | 'priced-in' | 'show-zero' | 'omit';
+  giftDocumentForm?: GiftDocumentFormChoice;
   /** Standalone gross unit price, the weight the paid price is split by. */
   unitPriceGross?: number | null;
   /** Net unit cost: the fallback weight, and the reference price of a gift. */

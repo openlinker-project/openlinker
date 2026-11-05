@@ -560,6 +560,21 @@ describe('InvoicingController', () => {
       expect(total).toBe(10000);
     });
 
+    it('warn-logs, and still issues, when the saved gift form cannot be read', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      orders.getOrderRecord.mockResolvedValue(orderWithShipping());
+      invoiceService.getInvoice.mockResolvedValue(null);
+      invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord());
+      const settings = controller['salesDocumentSettings'] as unknown as { getGiftDocumentForm: jest.Mock };
+      settings.getGiftDocumentForm.mockRejectedValueOnce(new Error('db down'));
+
+      await controller.issueInvoice(dto);
+
+      expect(invoiceService.issueInvoice).toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('gift document form could not be read'));
+      warnSpy.mockRestore();
+    });
+
     it('still issues when the adapter cannot be resolved for the zero-line declaration (#3930)', async () => {
       orders.getOrderRecord.mockResolvedValue(orderWithShipping());
       invoiceService.getInvoice.mockResolvedValue(null);

@@ -46,7 +46,7 @@ export function GiftDocumentFormField({
       disabled={disabled}
       aria-label={copy.perGift.label}
       data-testid={testId}
-      onChange={(event) => onChange(event.target.value as GiftDocumentFormChoice | '')}
+      onChange={(event) => onChange(event.target.value as GiftDocumentFormChoice)}
     >
       <option value="">{copy.perGift.asInSettings}</option>
       {GiftDocumentFormChoiceValues.map((form) => (

@@ -11,6 +11,8 @@
  * @module apps/web/src/pages/orders
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
+import { useWriteAccess } from '../../shared/auth/use-permission';
+import { useDemoMode } from '../../features/system';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
@@ -173,6 +175,9 @@ export function OrderDetailPage(): ReactElement {
   // does not persist (per-participant outcomes, voided labels, why a correction
   // could not be drafted) and is gone after a reload, by design. Tagged with its
   // order so a navigation never shows it on another.
+  const demoMode = useDemoMode();
+  const canAddGift = useWriteAccess('gifts:write', demoMode).canWrite;
+  const [giftDialogOpen, setGiftDialogOpen] = useState(false);
   const [cancelOutcome, setCancelOutcome] = useState<{
     internalOrderId: string;
     result: CancelOrderResult;
@@ -589,9 +594,15 @@ export function OrderDetailPage(): ReactElement {
           })}
           parcelClosed={
             (order.packedAt !== null && order.packedAt !== undefined) ||
-            order.fulfillmentState === 'dispatched'
+            order.fulfillmentState === 'dispatched' ||
+            (shipmentsQuery.data?.items ?? []).some(
+              (shipment) => shipment.status === 'generated' || shipment.status === 'dispatched',
+            )
           }
           hasSalesDocument={order.salesDocument?.document != null}
+          notReady={order.recordStatus !== 'ready'}
+          open={giftDialogOpen}
+          onOpenChange={setGiftDialogOpen}
         />
         <OrderCancelAction
           // Remount per order so an open dialog never carries over to a cached next order.
@@ -747,6 +758,7 @@ export function OrderDetailPage(): ReactElement {
         shopRejected={
           snapshot.items.some((item) => item.gift != null) && failedDestinations.length > 0
         }
+        onAddGift={canAddGift ? () => setGiftDialogOpen(true) : undefined}
       />
 
       {snapshot.items.length > 0 || snapshot.totals ? (

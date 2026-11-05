@@ -142,6 +142,15 @@ export function OrderLineItemsPanel({
                   lineKey={item.sku ?? item.id}
                   gift={item.gift}
                   currency={currency}
+                  costState={
+                    !costs.enabled
+                      ? 'unavailable'
+                      : costs.status === 'loaded'
+                        ? 'ready'
+                        : costs.status === 'error'
+                          ? 'failed'
+                          : 'loading'
+                  }
                   costNet={
                     costs.enabled && costs.status === 'loaded'
                       ? (costForItem(items, costs, item)?.costOfGoods ?? null)

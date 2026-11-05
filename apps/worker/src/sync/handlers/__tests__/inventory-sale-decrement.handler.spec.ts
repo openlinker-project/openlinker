@@ -127,9 +127,28 @@ describe('InventorySaleDecrementHandler (#3453)', () => {
 
     await handler.execute(job());
 
-    const call = saleDecrements.decrementForWork.mock.calls[0][0] as {
+    const call = (saleDecrements.decrementForWork.mock.calls[0] as unknown[])[0] as {
       lines: { orderLineId: string; movementReason?: string }[];
     };
+    expect(call.lines.find((l) => l.orderLineId === 'line-1')).not.toHaveProperty('movementReason');
+    expect(call.lines.find((l) => l.orderLineId === 'line-2')).toMatchObject({
+      movementReason: 'gift',
+    });
+  });
+
+  it('should tag a bundle gift slot component so its decrement is recorded as a gift, not a sale', async () => {
+    const withSlot = [
+      orderItems[0],
+      { ...orderItems[1], giftSlot: true, parentLineId: 'bundle-1' },
+      orderItems[2],
+    ];
+    orderRecords.getOrderRecord.mockResolvedValue({ ...record, physicalItems: withSlot });
+
+    await handler.execute(job());
+
+    const call = (
+      saleDecrements.decrementForWork.mock.calls as [{ lines: { orderLineId: string; movementReason?: string }[] }][]
+    )[0][0];
     expect(call.lines.find((l) => l.orderLineId === 'line-1')).not.toHaveProperty('movementReason');
     expect(call.lines.find((l) => l.orderLineId === 'line-2')).toMatchObject({
       movementReason: 'gift',

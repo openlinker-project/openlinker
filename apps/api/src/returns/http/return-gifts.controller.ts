@@ -83,7 +83,7 @@ export class ReturnGiftsController {
     @Body() dto: DecideReturnGiftDto,
     @CurrentUser() user: AuthenticatedUser
   ): Promise<ReturnGiftDto> {
-    const { gifts } = await this.loadGifts(returnId);
+    const { gifts, validGiftLineIds } = await this.loadGifts(returnId);
     const gift = gifts.find((candidate) => candidate.giftLineId === giftLineId);
     if (gift === undefined) {
       throw new NotFoundException(`Order of return ${returnId} carries no gift line ${giftLineId}`);
@@ -97,6 +97,7 @@ export class ReturnGiftsController {
           dto.decision === 'deduct' ? (dto.deductionGross ?? gift.standalonePriceGross) : null,
         note: dto.note ?? null,
         actorUserId: user.id,
+        validGiftLineIds,
       });
     } catch (error) {
       if (error instanceof ReturnGiftDecisionInvalidError) {
@@ -110,19 +111,25 @@ export class ReturnGiftsController {
 
   private async loadGifts(
     returnId: string
-  ): Promise<{ gifts: ReturnGiftDto[]; currency: string | null }> {
+  ): Promise<{ gifts: ReturnGiftDto[]; currency: string | null; validGiftLineIds: string[] }> {
     const record = await this.returns.getReturn(returnId);
     if (record === null) {
       throw new NotFoundException(`Return not found: ${returnId}`);
     }
     if (record.internalOrderId === null) {
-      return { gifts: [], currency: null };
+      return { gifts: [], currency: null, validGiftLineIds: [] };
     }
     const order = await this.orderRecords.getOrderRecord(record.internalOrderId);
     if (order === null || order === undefined) {
-      return { gifts: [], currency: null };
+      return { gifts: [], currency: null, validGiftLineIds: [] };
     }
-    const giftItems = order.orderItems.filter((item) => item.gift !== undefined && item.quantity > 0);
+    // A gift is either its own order line or a gift slot inside a set; both are
+    // decided the same way, so both are listed.
+    const giftSlotItems = order.physicalItems.filter((item) => item.giftSlot === true);
+    const giftItems = [
+      ...order.orderItems.filter((item) => item.gift !== undefined),
+      ...giftSlotItems,
+    ].filter((item) => item.quantity > 0);
     const decided = new Map<string, ReturnGiftDecision>(
       (await this.decisions.list(returnId)).map((d) => [d.giftLineId, d])
     );
@@ -149,6 +156,12 @@ export class ReturnGiftsController {
         decidedAt: decision?.decidedAt.toISOString() ?? null,
       };
     });
-    return { gifts, currency: order.currency };
+    // What `returns` may record a decision against: the order's gift lines and the
+    // gift slots of its sets, resolved HERE because `returns` cannot read orders.
+    const validGiftLineIds = [
+      ...order.orderItems.filter((item) => item.gift !== undefined).map((item) => item.id),
+      ...giftSlotItems.map((item) => item.id),
+    ];
+    return { gifts, currency: order.currency, validGiftLineIds };
   }
 }

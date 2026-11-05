@@ -29,6 +29,7 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { BundleProductPicker, type BundleProductChoice } from '../../bundles';
 import { GiftDocumentFormField, type GiftDocumentFormChoice } from '../../gift-documents';
 import { useAddGiftMutation } from '../hooks/use-gift-rules';
+import { giftCostText, readGiftCost } from '../lib/gift-cost';
 import { readAddGiftRefusal } from '../lib/gift-refusal';
 
 export interface AddGiftDialogProps {
@@ -40,6 +41,8 @@ export interface AddGiftDialogProps {
   currency?: string;
   /** The parcel is already packed or shipped: nothing can be added. */
   parcelClosed: boolean;
+  /** The order has not finished importing (its products are not matched yet). */
+  notReady?: boolean;
   /** A sales document already exists for the order. */
   hasSalesDocument: boolean;
 }
@@ -51,6 +54,7 @@ export function AddGiftDialog({
   orderLabel,
   currency,
   parcelClosed,
+  notReady = false,
   hasSalesDocument,
 }: AddGiftDialogProps): ReactElement {
   const copy = useMessages('gifts');
@@ -76,12 +80,18 @@ export function AddGiftDialog({
     queryFn: () => apiClient.products.getVariantCosts(choice?.productId ?? ''),
     enabled: choice !== null,
   });
-  const unitCost = costs.data?.find((c) => c.variantId === choice?.variantId)?.netUnitCost ?? null;
+  const giftCost = readGiftCost({
+    status: costs.status,
+    costs: costs.data,
+    variantId: choice?.variantId,
+    currency,
+  });
   const qty = Number(quantity);
   const validQuantity = Number.isInteger(qty) && qty > 0;
 
   const refusal = mutation.isError ? readAddGiftRefusal(mutation.error) : null;
-  const closed = parcelClosed || refusal?.kind === 'parcel-closed';
+  const unready = notReady || refusal?.kind === 'not-ready';
+  const closed = parcelClosed || refusal?.kind === 'parcel-closed' || unready;
   const canSubmit = !closed && choice !== null && validQuantity && !mutation.isPending;
 
   const submit = (): void => {
@@ -113,7 +123,11 @@ export function AddGiftDialog({
           <DialogTitle>{interpolate(copy.addDialog.title, { order: orderLabel })}</DialogTitle>
           <DialogDescription>{copy.addDialog.description}</DialogDescription>
 
-          {closed ? (
+          {unready ? (
+            <Alert tone="error" title={copy.addDialog.notReadyTitle} data-testid="order-gift-dialog-refused-not-ready">
+              {copy.addDialog.notReadyBody}
+            </Alert>
+          ) : closed ? (
             <Alert tone="error" title={copy.addDialog.closedTitle} data-testid="order-gift-dialog-refused-closed">
               {copy.addDialog.closedBody}
             </Alert>
@@ -184,11 +198,18 @@ export function AddGiftDialog({
               <p data-testid="order-gift-dialog-cost">
                 {interpolate(copy.order.customerPays, { price: formatAmount(0, currency) })}
                 {' · '}
-                {unitCost === null || !validQuantity
-                  ? copy.order.costUnknown
-                  : interpolate(copy.order.costsYou, {
-                      cost: formatAmount(Number(unitCost) * qty, currency),
-                    })}
+                {giftCostText(
+                  giftCost,
+                  copy.cost,
+                  {
+                    known: (unitCost) =>
+                      validQuantity
+                        ? interpolate(copy.order.costsYou, { cost: formatAmount(unitCost * qty, currency) })
+                        : copy.order.costUnknown,
+                    none: copy.order.costUnknown,
+                  },
+                  (template, costCurrency) => interpolate(template, { currency: costCurrency }),
+                )}
               </p>
             ) : null}
           </div>

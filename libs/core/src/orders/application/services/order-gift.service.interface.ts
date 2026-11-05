@@ -40,6 +40,19 @@ export interface ApplyGiftRulesInput {
    * resolved from the live definitions exactly as the freeze will.
    */
   readonly frozenDefinitions?: readonly BundleDefinition[];
+  /**
+   * Whether NEW grants may be written. `true` only while the order is
+   * pre-routing and pre-mirror (a first ingestion, or a re-ingestion before any
+   * destination order or frozen line expansion exists): a gift line added later
+   * would never be picked, decremented or mirrored. The caller decides, because
+   * it holds the prior record.
+   */
+  readonly allowNewGrants: boolean;
+  /**
+   * The order is already known cancelled (consumed early signal, or the record's
+   * `cancelledAt`) while `order.status` may still lag: no gift is given.
+   */
+  readonly cancelled?: boolean;
   /** Only the first ingestion records non-applications; a re-poll would repeat them. */
   readonly isFirstIngestion: boolean;
 }
@@ -75,5 +88,11 @@ export interface IOrderGiftService {
    * ledger row, no pause - and waives the retroactivity floor so an operator can
    * test a rule against any order.
    */
+  /**
+   * Release a cancelled order's gift grants so the units return to the rules'
+   * caps and customer limits. Never throws; idempotent.
+   */
+  releaseGrantsForCancelledOrder(internalOrderId: string): Promise<void>;
+
   previewForOrder(input: GiftPreviewInput): Promise<GiftPreviewResult>;
 }

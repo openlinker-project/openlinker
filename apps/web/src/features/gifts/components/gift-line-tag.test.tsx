@@ -68,4 +68,21 @@ describe('GiftLineTag', () => {
       expect(screen.getByTestId('order-gift-doc-form-LYZ-KAW')).toHaveTextContent('inFakt'),
     );
   });
+
+  it('should not claim the cost is unrecorded while the cost read is pending, failed or not available', async () => {
+    for (const [costState, text] of [
+      ['loading', 'checking the purchase cost'],
+      ['failed', 'could not be read'],
+    ] as const) {
+      mount({ costNet: undefined, costState });
+      fireEvent.click(screen.getByTestId('order-gift-tag-LYZ-KAW'));
+      const cost = await screen.findByTestId('order-gift-cost-LYZ-KAW');
+      expect(cost).toHaveTextContent(text);
+      expect(cost).not.toHaveTextContent('Cost not recorded');
+      cleanup();
+    }
+    mount({ costNet: undefined, costState: 'unavailable' });
+    fireEvent.click(screen.getByTestId('order-gift-tag-LYZ-KAW'));
+    expect(await screen.findByTestId('order-gift-cost-LYZ-KAW')).not.toHaveTextContent('Cost not recorded');
+  });
 });

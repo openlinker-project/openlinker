@@ -18,7 +18,9 @@ import { Link } from 'react-router-dom';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
-import { useSubjectAutomationRunsQuery } from '../../automation';
+import { usePermission } from '../../../shared/auth/use-permission';
+import { useToast } from '../../../shared/ui/toast-provider';
+import { useGiftAttentionQuery, useSkipGiftAttentionMutation } from '../hooks/use-gift-rules';
 import {
   GIFT_ATTENTION_ACTIONABLE,
   readGiftAttention,
@@ -39,9 +41,24 @@ export function OrderGiftAttention({
   onAddGift,
 }: OrderGiftAttentionProps): ReactElement | null {
   const copy = useMessages('gifts');
-  const runs = useSubjectAutomationRunsQuery('order', internalOrderId);
-  const items = readGiftAttention(runs.data?.runs ?? []);
-  if (items.length === 0 && !shopRejected) return null;
+  const runs = useGiftAttentionQuery(internalOrderId);
+  const dismiss = useSkipGiftAttentionMutation(internalOrderId);
+  const { showToast } = useToast();
+  // The gift-only door: whoever may add a gift may also send the order without one.
+  const canDecide = usePermission('gifts:write');
+  const items = readGiftAttention(runs.data?.items ?? []);
+  // A read that failed says nothing about whether a gift is missing: say so
+  // instead of rendering as if there were nothing to report.
+  const readFailed = runs.isError;
+  if (items.length === 0 && !shopRejected && !readFailed) return null;
+
+  const skip = (runId: string): void => {
+    dismiss.mutate(runId, {
+      onSuccess: () => showToast({ tone: 'success', title: copy.attention.decisionSaved, description: '' }),
+      onError: (error) =>
+        showToast({ tone: 'error', title: copy.attention.skipFailed, description: error.message }),
+    });
+  };
 
   const renderItem = (item: GiftAttentionItem): ReactElement => {
     const actionable = GIFT_ATTENTION_ACTIONABLE.includes(item.kind);
@@ -54,13 +71,27 @@ export function OrderGiftAttention({
         data-testid={`order-gift-attention-${item.kind}`}
         action={
           <>
+            {item.kind === 'out-of-stock' && canDecide ? (
+              <Button
+                tone="secondary"
+                disabled={dismiss.isPending}
+                onClick={() => skip(item.runId)}
+                data-testid="order-gift-choice-skip"
+              >
+                {copy.attention.skip}
+              </Button>
+            ) : null}
             {item.kind === 'out-of-stock' && onAddGift ? (
-              <Button tone="secondary" onClick={onAddGift} data-testid="order-gift-attention-add">
+              <Button
+                tone="secondary"
+                onClick={onAddGift}
+                data-testid="order-gift-choice-substitute"
+              >
                 {copy.attention.addAnother}
               </Button>
             ) : null}
             <Link to={`/automations/gifts/${encodeURIComponent(item.ruleId)}`} data-testid="order-gift-open-rule">
-              {copy.attention.openRule}
+              {item.kind === 'out-of-stock' ? copy.attention.seePromotion : copy.attention.openRule}
             </Link>
           </>
         }
@@ -72,6 +103,11 @@ export function OrderGiftAttention({
 
   return (
     <div className="gift-attention" data-testid="order-gift-banner">
+      {readFailed ? (
+        <Alert tone="warning" density="compact" data-testid="order-gift-attention-read-failed">
+          {copy.attention.readFailed}
+        </Alert>
+      ) : null}
       {items.map(renderItem)}
       {shopRejected ? (
         <Alert

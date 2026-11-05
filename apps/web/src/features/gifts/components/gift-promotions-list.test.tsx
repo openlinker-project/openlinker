@@ -106,12 +106,13 @@ describe('GiftPromotionsList', () => {
     expect(screen.getByTestId('gift-rule-down-bag')).toBeDisabled();
   });
 
-  it('should show no order controls to a read-only role', () => {
+  it('should keep the order controls visible but disabled for a read-only role', () => {
     renderWithProviders(
       <GiftPromotionsList rules={RULES} connections={[]} canWrite={false} moving={false} onReorder={vi.fn()} />,
     );
 
-    expect(screen.queryByTestId('gift-rule-up-spoon')).not.toBeInTheDocument();
+    expect(screen.getByTestId('gift-rule-up-spoon')).toBeDisabled();
+    expect(screen.getByTestId('gift-rule-down-spoon')).toBeDisabled();
     expect(screen.getByTestId('gift-rule-link-spoon')).toBeInTheDocument();
   });
 });

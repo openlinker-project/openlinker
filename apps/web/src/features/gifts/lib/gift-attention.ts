@@ -9,7 +9,7 @@
  *
  * @module apps/web/src/features/gifts/lib
  */
-import type { AutomationRun } from '../../automation';
+import type { GiftAttentionEntry } from '../api/gifts.types';
 
 export const GiftAttentionKindValues = [
   'out-of-stock',
@@ -25,6 +25,8 @@ export const GiftAttentionKindValues = [
 export type GiftAttentionKind = (typeof GiftAttentionKindValues)[number];
 
 export interface GiftAttentionItem {
+  /** The firing, so the seller's decision can be recorded against it. */
+  runId: string;
   kind: GiftAttentionKind;
   ruleId: string;
   ruleName: string;
@@ -42,8 +44,6 @@ const REASON_KIND: Record<string, GiftAttentionKind> = {
   'superseded-by-earlier-rule': 'superseded',
 };
 
-const NOT_ADDED = /^No gift added: (.+)\.$/;
-
 /** Kinds that mean the seller may need to act; the rest explain a rule that behaved as set. */
 export const GIFT_ATTENTION_ACTIONABLE: readonly GiftAttentionKind[] = [
   'out-of-stock',
@@ -53,44 +53,26 @@ export const GIFT_ATTENTION_ACTIONABLE: readonly GiftAttentionKind[] = [
   'other',
 ];
 
-function giftStep(run: AutomationRun): AutomationRun['steps'][number] | undefined {
-  return run.steps.find((s) => s.action === 'add-gift');
-}
-
-/** The structured code when the run has one; the sentence is the fallback for older runs. */
-function reasonOf(run: AutomationRun): string | null {
-  const step = giftStep(run);
-  if (step === undefined) return null;
-  if (step.reasonCode != null) return step.reasonCode;
-  const text = step.detail ?? step.report?.message ?? null;
-  return text === null ? null : (NOT_ADDED.exec(text)?.[1] ?? null);
-}
-
 /**
  * The latest firing of each gift rule on this order that did not give its gift.
- * A firing that gave the gift, or one a person already handled, is not listed.
+ * The API already answers one entry per rule; a firing a person handled, or one
+ * whose gift was already in the order, is not listed.
  */
-export function readGiftAttention(runs: readonly AutomationRun[]): GiftAttentionItem[] {
-  const newestFirst = [...runs]
-    .filter((run) => run.trigger === 'order.ingested' && run.steps.some((s) => s.action === 'add-gift'))
-    .sort((a, b) => b.firedAt.localeCompare(a.firedAt));
-  const seen = new Set<string>();
+export function readGiftAttention(entries: readonly GiftAttentionEntry[]): GiftAttentionItem[] {
   const items: GiftAttentionItem[] = [];
-  for (const run of newestFirst) {
-    if (seen.has(run.ruleId)) continue;
-    seen.add(run.ruleId);
-    if (run.outcome === 'done' || run.dismissedAt !== null) continue;
-    if (run.outcome === 'failed') {
-      items.push({ kind: 'failed', ruleId: run.ruleId, ruleName: run.ruleName, firedAt: run.firedAt });
+  for (const entry of entries) {
+    if (entry.dismissed) continue;
+    if (entry.outcome === 'failed') {
+      items.push({ runId: entry.runId, kind: 'failed', ruleId: entry.ruleId, ruleName: entry.ruleName, firedAt: entry.firedAt });
       continue;
     }
-    const reason = reasonOf(run);
-    if (reason === 'gift-already-in-order') continue;
+    if (entry.reasonCode === 'gift-already-in-order') continue;
     items.push({
-      kind: reason === null ? 'other' : (REASON_KIND[reason] ?? 'other'),
-      ruleId: run.ruleId,
-      ruleName: run.ruleName,
-      firedAt: run.firedAt,
+      runId: entry.runId,
+      kind: entry.reasonCode === null ? 'other' : (REASON_KIND[entry.reasonCode] ?? 'other'),
+      ruleId: entry.ruleId,
+      ruleName: entry.ruleName,
+      firedAt: entry.firedAt,
     });
   }
   return items;

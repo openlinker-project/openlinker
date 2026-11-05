@@ -24,13 +24,22 @@
  * the gift; the next re-ingestion retries. An unknown stock number is never read
  * as zero or as plenty - the rule reports `gift-stock-unknown` and adds nothing.
  *
+ * ## When a gift may be added
+ * New grants (and the "granted, line missing" self-heal) run only while the order
+ * is pre-routing and pre-mirror (`allowNewGrants`): once work, a parcel or a
+ * destination order exists, a gift line written now would never be picked,
+ * decremented or mirrored, and its hold would leak. A rule refused at first
+ * ingestion (paused, capped) therefore does not apply on a later re-poll.
+ *
  * ## Known limits
- * - The unit cap is checked then written, not one atomic statement, so two
- *   connections ingesting at the same instant can overshoot it by one batch. The
- *   per-connection ingestion lock covers the common case.
- * - The frozen line expansion (#3607) is taken after this runs on a first
- *   ingestion, so a gift that is itself a bundle expands; a gift added on a LATER
- *   ingestion (a retry) is not covered by a frozen expansion that predates it.
+ * - Two ingestions of different orders are serialised per rule by an advisory
+ *   lock, and units already granted but not yet reserved are subtracted from the
+ *   gift's stock (`getPendingGrantUnits`), so the last unit is not given twice.
+ *   Two different RULES giving the same variant are not serialised against each
+ *   other beyond that pending-units subtraction.
+ * - The frozen line expansion (#3607) is taken after this runs, so a gift that is
+ *   itself a bundle expands on a first ingestion; a window that is closed adds
+ *   nothing, so no gift ever meets a frozen expansion that predates it.
  *
  * @module libs/core/src/orders/application/services
  * @implements {IOrderGiftService}
@@ -74,6 +83,7 @@ import {
 import type { Order } from '../../domain/types/order.types';
 import { buildOrderAutomationFacts } from '../../domain/order-automation-facts-projection';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
+import { freezeGiftUnitCost } from './gift-unit-cost';
 import { previewPhysicalLines } from './order-line-expansion';
 import type {
   ApplyGiftRulesInput,
@@ -82,6 +92,13 @@ import type {
   GiftPreviewResult,
   IOrderGiftService,
 } from './order-gift.service.interface';
+
+/** What a gift line is built from: the rule's action at grant time, or the stored grant on a self-heal. */
+interface GiftLineSource {
+  readonly productId: string;
+  readonly variantId: string;
+  readonly documentForm: string | null;
+}
 
 /** One gift line per rule per order today, so its `lineId` is a fixed ordinal. */
 const GIFT_LINE_ID = '1';
@@ -116,7 +133,11 @@ export class OrderGiftService implements IOrderGiftService {
     let affected: readonly AutomationRule[] = [];
     const now = new Date();
     try {
-      if (order.status === 'cancelled') return { order, outcomes: [] };
+      // A cancelled order is never given a gift (its grant was released), and an
+      // order past routing/mirroring cannot take a new line (see the header).
+      if (order.status === 'cancelled' || input.cancelled === true || !input.allowNewGrants) {
+        return { order, outcomes: [] };
+      }
 
       rules = await this.giftRules.listOrderedRules();
       affected = rules;
@@ -157,7 +178,7 @@ export class OrderGiftService implements IOrderGiftService {
       const planned = await this.giftRules.withRulesLocked(
         candidates.map((rule) => rule.id),
         async () => {
-          const contexts = await this.buildContexts(candidates, input.customerId);
+          const contexts = await this.buildContexts(candidates, input.customerId, order.id);
           const componentProductIds = await this.componentProductIds(
             order.items,
             input.frozenDefinitions ?? null,
@@ -182,10 +203,18 @@ export class OrderGiftService implements IOrderGiftService {
                 internalOrderId: order.id,
                 customerId: input.customerId,
                 quantity: outcome.quantity,
+                productId: action.productId,
+                variantId: action.variantId,
+                documentForm: action.documentForm ?? null,
               });
               lines[olGiftLineKey(rule.id, GIFT_LINE_ID)] = await this.buildAddedLine(
-                rule,
-                action,
+                rule.id,
+                rule.name,
+                {
+                  productId: action.productId,
+                  variantId: action.variantId,
+                  documentForm: action.documentForm ?? null,
+                },
                 outcome.quantity,
                 now,
                 input.occurredAt,
@@ -196,7 +225,19 @@ export class OrderGiftService implements IOrderGiftService {
               const key = olGiftLineKey(rule.id, GIFT_LINE_ID);
               const grant = grantByRule.get(rule.id);
               if (!existingKeys.has(key) && grant !== undefined) {
-                lines[key] = await this.buildAddedLine(rule, action, grant.quantity, now, input.occurredAt);
+                // From the GRANT: the rule's action may have been edited since.
+                lines[key] = await this.buildAddedLine(
+                  rule.id,
+                  rule.name,
+                  {
+                    productId: grant.productId,
+                    variantId: grant.variantId,
+                    documentForm: grant.documentForm,
+                  },
+                  grant.quantity,
+                  now,
+                  input.occurredAt,
+                );
               }
             }
             if (outcome.stateChange !== null) {
@@ -236,6 +277,22 @@ export class OrderGiftService implements IOrderGiftService {
       );
       await this.recordFailure(affected, order, input.sourceConnectionId, now, error as Error);
       return { order, outcomes: [] };
+    }
+  }
+
+  async releaseGrantsForCancelledOrder(internalOrderId: string): Promise<void> {
+    try {
+      const released = await this.giftRules.releaseGrantsForOrder(internalOrderId);
+      if (released > 0) {
+        this.logger.log(
+          `gift_grants_released order=${internalOrderId} count=${released}: the cancelled order's gift units returned to the rules`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Could not release the gift grants of cancelled order ${internalOrderId}: ${(error as Error).message}`,
+        (error as Error).stack,
+      );
     }
   }
 
@@ -301,7 +358,7 @@ export class OrderGiftService implements IOrderGiftService {
     const candidates = rules.filter(
       (rule) => savedIds.has(rule.id) && evaluation.matched.some((m) => m.ruleId === rule.id),
     );
-    const contexts = await this.buildContexts(candidates, record.customerId);
+    const contexts = await this.buildContexts(candidates, record.customerId, record.internalOrderId);
     // A draft has no ledger rows; it plans against an empty ledger and live stock.
     if (draftRule !== undefined && !savedIds.has(draftRule.id)) {
       if (evaluation.matched.some((m) => m.ruleId === draftRule.id)) {
@@ -382,6 +439,7 @@ export class OrderGiftService implements IOrderGiftService {
   private async buildContexts(
     candidates: readonly AutomationRule[],
     customerId: string | null,
+    orderId: string,
   ): Promise<Map<string, GiftRuleContext>> {
     const contexts = new Map<string, GiftRuleContext>();
     if (candidates.length === 0) return contexts;
@@ -389,7 +447,7 @@ export class OrderGiftService implements IOrderGiftService {
       candidates.map((rule) => rule.id),
       customerId,
     );
-    const stock = await this.readStock(candidates);
+    const stock = await this.readStock(candidates, orderId);
     for (const rule of candidates) {
       contexts.set(rule.id, {
         state: ledger.states.get(rule.id) ?? null,
@@ -402,7 +460,7 @@ export class OrderGiftService implements IOrderGiftService {
   }
 
   private async draftContext(rule: AutomationRule, customerId: string | null): Promise<GiftRuleContext> {
-    const stock = await this.readStock([rule]);
+    const stock = await this.readStock([rule], null);
     return {
       state: null,
       unitsGiven: 0,
@@ -412,7 +470,10 @@ export class OrderGiftService implements IOrderGiftService {
   }
 
   /** Stock per rule; `unknown` (never zero) when the availability read could not answer. */
-  private async readStock(rules: readonly AutomationRule[]): Promise<Map<string, GiftStockAnswer>> {
+  private async readStock(
+    rules: readonly AutomationRule[],
+    orderId: string | null,
+  ): Promise<Map<string, GiftStockAnswer>> {
     const answers = new Map<string, GiftStockAnswer>();
     const variantIds = [
       ...new Set(
@@ -428,12 +489,19 @@ export class OrderGiftService implements IOrderGiftService {
         variantIds,
         scope: { kind: 'global' },
       });
+      // Units another order was already granted but has not reserved yet are not
+      // in the availability number; without this two simultaneous orders both see
+      // the last unit.
+      const pending = await this.giftRules.getPendingGrantUnits(variantIds, orderId);
       byVariant = new Map(
         quantities.map((q) => [
           q.productVariantId,
           q.provenance === 'unknown' || q.quantity === null
             ? ({ kind: 'unknown' } as const)
-            : ({ kind: 'known', available: q.quantity } as const),
+            : ({
+                kind: 'known',
+                available: Math.max(0, q.quantity - (pending.get(q.productVariantId) ?? 0)),
+              } as const),
         ]),
       );
     } catch (error) {
@@ -447,58 +515,30 @@ export class OrderGiftService implements IOrderGiftService {
   }
 
   private async buildAddedLine(
-    rule: AutomationRule,
-    action: AutomationGiftAction,
+    ruleId: string,
+    ruleName: string,
+    action: GiftLineSource,
     quantity: number,
     at: Date,
     placedAt: Date,
   ): Promise<OrderAddedLineEdit> {
     const gift: LineGift = {
       source: 'ol-rule',
-      ruleRef: rule.id,
+      ruleRef: ruleId,
       ...(isGiftDocumentForm(action.documentForm) && { documentForm: action.documentForm }),
     };
     return {
-      changeId: rule.id,
+      changeId: ruleId,
       editedAt: at.toISOString(),
       editedBy: null,
       productId: action.productId,
       variantId: action.variantId,
       quantity,
-      name: rule.name,
+      name: ruleName,
       gift,
       ...(await this.catalogueTaxRate(action)),
-      ...(await this.frozenCost(action, placedAt)),
+      ...(await freezeGiftUnitCost(this.products, action.variantId, placedAt, this.logger)),
     };
-  }
-
-  /**
-   * Freezes the gift's purchase cost on the entry (#3939, ADR-080 decision 3): the
-   * variant's net cost is taken only when it was entered no later than the order's
-   * `placedAt` (both floored to the second), so an old order never reads today's
-   * cost. An unknown cost, or a failed read, leaves the entry without one: never 0.
-   */
-  private async frozenCost(
-    action: AutomationGiftAction,
-    placedAt: Date,
-  ): Promise<Pick<OrderAddedLineEdit, 'unitCostNet' | 'unitCostCurrency'>> {
-    try {
-      const [variant] = await this.products.getVariantsByIds([action.variantId]);
-      const second = (date: Date): number => Math.floor(date.getTime() / 1000);
-      if (
-        variant?.netUnitCost != null &&
-        variant.costCurrency != null &&
-        variant.costUpdatedAt != null &&
-        second(variant.costUpdatedAt) <= second(placedAt)
-      ) {
-        return { unitCostNet: variant.netUnitCost, unitCostCurrency: variant.costCurrency };
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Cost for gift variant ${action.variantId} could not be read: ${(error as Error).message}`,
-      );
-    }
-    return {};
   }
 
   /**
@@ -507,7 +547,7 @@ export class OrderGiftService implements IOrderGiftService {
    * catalogue that answers nothing leaves the line rate-less, never guessed.
    */
   private async catalogueTaxRate(
-    action: AutomationGiftAction,
+    action: GiftLineSource,
   ): Promise<Pick<OrderAddedLineEdit, 'taxRate' | 'taxRateCountry' | 'taxSource' | 'taxRateReadAt'>> {
     try {
       const rate = await this.products.getEffectiveTaxRate(action.productId, action.variantId);

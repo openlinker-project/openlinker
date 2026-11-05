@@ -17,6 +17,14 @@ import { channelCells, type ConnectionLabels } from './connection-labels';
 
 const money = (value: number | null): string | null => (value === null ? null : value.toFixed(2));
 
+const GIFT_SOURCE_CELL: Record<GiftCustomerExportRow['entry']['giftSource'], string> = {
+  'ol-rule': 'promotion',
+  channel: 'channel',
+  'cart-rule': 'shop cart rule',
+  operator: 'added by hand',
+  bundle: 'bundle slot',
+};
+
 export function buildGiftCustomerCsv(input: {
   rows: readonly GiftCustomerExportRow[];
   labels: ConnectionLabels;
@@ -39,7 +47,7 @@ export function buildGiftCustomerCsv(input: {
     { header: 'currency', value: (r) => r.entry.currency },
     {
       header: 'source',
-      value: (r) => (r.entry.giftSource === 'operator' ? 'added by hand' : r.entry.giftSource === 'bundle' ? 'bundle' : 'promotion'),
+      value: (r) => GIFT_SOURCE_CELL[r.entry.giftSource],
     },
     { header: 'promotion', value: (r) => r.ruleName },
     { header: 'document', value: (r) => r.entry.documentForm },

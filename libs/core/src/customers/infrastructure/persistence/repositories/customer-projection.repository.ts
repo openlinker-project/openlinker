@@ -15,7 +15,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, type SelectQueryBuilder } from 'typeorm';
+import { In, Repository, type SelectQueryBuilder } from 'typeorm';
 import { CustomerProjectionOrmEntity } from '../entities/customer-projection.orm-entity';
 import { CustomerAddressProjectionOrmEntity } from '../entities/customer-address-projection.orm-entity';
 import { DestinationAddressMappingOrmEntity } from '../entities/destination-address-mapping.orm-entity';
@@ -51,6 +51,14 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
     }
 
     return this.toDomainCustomer(entity);
+  }
+
+  async findByIds(internalCustomerIds: readonly string[]): Promise<CustomerProjection[]> {
+    if (internalCustomerIds.length === 0) return [];
+    const entities = await this.customerRepository.find({
+      where: { internalCustomerId: In([...internalCustomerIds]) },
+    });
+    return entities.map((entity) => this.toDomainCustomer(entity));
   }
 
   /**

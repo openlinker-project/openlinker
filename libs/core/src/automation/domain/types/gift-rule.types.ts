@@ -44,6 +44,14 @@ export interface GiftGrant {
   /** The resolved OpenLinker customer (not the channel buyer id), null when unresolved. */
   readonly customerId: string | null;
   readonly quantity: number;
+  /**
+   * What was given, frozen at grant time: a self-heal rebuilds the line from the
+   * grant and never from the rule's current action, which an operator may have
+   * edited since.
+   */
+  readonly productId: string;
+  readonly variantId: string;
+  readonly documentForm: string | null;
   readonly createdAt: Date;
 }
 

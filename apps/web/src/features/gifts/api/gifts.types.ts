@@ -113,3 +113,20 @@ export interface AddGiftResult {
   changeId: string | null;
   gift?: GiftAddedOutcome;
 }
+
+/** One add-gift firing of an order that did not give its gift (`GET /orders/:id/gift-attention`). */
+export interface GiftAttentionEntry {
+  runId: string;
+  ruleId: string;
+  ruleName: string;
+  outcome: 'failed' | 'not-applied';
+  /** Why no gift was added, as a code; null when none was recorded. */
+  reasonCode: string | null;
+  dismissed: boolean;
+  firedAt: string;
+}
+
+export interface GiftAttentionResult {
+  items: GiftAttentionEntry[];
+  recordingAvailable: boolean;
+}

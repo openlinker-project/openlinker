@@ -25,6 +25,7 @@ import {
   formToWriteInput,
   ruleToForm,
   useGiftRuleQuery,
+  useDeleteGiftRuleMutation,
   useResumeGiftRuleMutation,
   useSaveGiftRuleMutation,
   useVariantNames,
@@ -46,6 +47,7 @@ export function GiftRulePage(): ReactElement {
   const write = useWriteAccess('gifts:write', demoMode);
   const save = useSaveGiftRuleMutation();
   const resume = useResumeGiftRuleMutation();
+  const remove = useDeleteGiftRuleMutation();
 
   const isNew = ruleId === 'new';
   const copyOf = search.get('copyOf');
@@ -85,7 +87,11 @@ export function GiftRulePage(): ReactElement {
 
   const header = {
     eyebrow: copy.list.eyebrow,
-    backTo: { to: '/automations/gifts', label: copy.composer.back },
+    backTo: {
+      to: '/automations/gifts',
+      label: copy.composer.back,
+      'data-testid': 'gift-composer-back',
+    },
   };
 
   if (sourceId !== null && rule.isLoading) {
@@ -120,11 +126,31 @@ export function GiftRulePage(): ReactElement {
         rule={isNew ? null : (rule.data ?? null)}
         canWrite={write.canWrite}
         saving={save.isPending || resume.isPending}
-        saveError={save.isError ? save.error.message : resume.isError ? resume.error.message : null}
+        saveError={
+          save.isError
+            ? save.error.message
+            : resume.isError
+              ? resume.error.message
+              : remove.isError
+                ? `${copy.composer.deleteFailed}: ${remove.error.message}`
+                : null
+        }
         onSave={onSave}
         onResume={(additionalUnits) =>
           resume.mutate({ ruleId, additionalUnits }, { onSuccess: saved })
         }
+        onDelete={
+          write.canWrite && !isNew
+            ? () =>
+                remove.mutate(ruleId, {
+                  onSuccess: () => {
+                    showToast({ tone: 'success', title: copy.composer.deleted, description: '' });
+                    void navigate('/automations/gifts');
+                  },
+                })
+            : undefined
+        }
+        deleting={remove.isPending}
         onCopy={() => void navigate(`/automations/gifts/new?copyOf=${encodeURIComponent(ruleId)}`)}
       />
     </PageLayout>

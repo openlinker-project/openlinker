@@ -16,6 +16,7 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 
 @Index('UQ_automation_gift_grants_rule_order', ['ruleId', 'internalOrderId'], { unique: true })
 @Index('IDX_automation_gift_grants_rule_customer', ['ruleId', 'customerId'])
 @Index('IDX_automation_gift_grants_order', ['internalOrderId'])
+@Index('IDX_automation_gift_grants_variant', ['variantId', 'createdAt'])
 export class AutomationGiftGrantOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -31,6 +32,15 @@ export class AutomationGiftGrantOrmEntity {
 
   @Column({ type: 'int' })
   quantity!: number;
+
+  @Column({ type: 'text' })
+  productId!: string;
+
+  @Column({ type: 'text' })
+  variantId!: string;
+
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  documentForm!: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;

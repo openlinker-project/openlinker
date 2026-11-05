@@ -203,7 +203,11 @@ export function presentGiftLines<T extends GiftPresentationLine>(
   const applied: GiftLineForm[] = [];
 
   for (const entry of giftEntries) {
-    let effective: GiftLineForm = entry.source.giftForm ?? form;
+    // An unrecognised per-gift value must not reach the final branch below, which
+    // prices a gift in: it falls back to the connection/global form instead.
+    let effective: GiftLineForm = isGiftLineForm(entry.source.giftForm)
+      ? entry.source.giftForm
+      : form;
     if (effective === 'show-zero' && acceptsZeroValueLine !== true) {
       effective = 'technical-cent';
       notes.push('show-not-offered');
@@ -222,7 +226,12 @@ export function presentGiftLines<T extends GiftPresentationLine>(
         Number.isInteger(entry.source.quantity) && entry.source.quantity >= 1
           ? entry.source.quantity
           : 0;
-      const donor = need > 0 ? largest(paid.filter((p) => entryTotal(p) > need)) : undefined;
+      // A donor must keep at least one minor unit per unit after giving, or its
+      // own line would become a 0.00 row.
+      const donor =
+        need > 0
+          ? largest(paid.filter((p) => entryTotal(p) - need >= p.source.quantity))
+          : undefined;
       if (donor !== undefined) {
         setEntryTotal(donor, entryTotal(donor) - need);
         entry.lines = [{ ...entry.source, unitPriceGross: fromMinor(1) }];
@@ -300,7 +309,7 @@ function floorZeroValueLines<T extends GiftPresentationLine>(
     result.forEach((candidate, candidateIndex) => {
       if (candidate.isGift === true || rateKey(candidate.taxRate) !== rateKey(line.taxRate)) return;
       const total = candidate.quantity * toMinor(candidate.unitPriceGross);
-      if (total > need && total > donorTotal) {
+      if (total - need >= candidate.quantity && total > donorTotal) {
         donorTotal = total;
         donorIndex = candidateIndex;
       }

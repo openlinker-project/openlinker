@@ -67,7 +67,7 @@ export function GiftReportPage(): ReactElement {
     setSearchParams(next);
   }
 
-  const report = useGiftReportQuery(filters);
+  const report = useGiftReportQuery(filters, { enabled: view === 'gifts' });
 
   const toolbar = (
     <div className="toolbar analytics-toolbar">

@@ -235,6 +235,7 @@
       "fieldLabel": "Gratis na dokumencie w tym kanale",
       "inheritDescription": "Ten kanał stosuje ustawienie z OpenLinker.",
       "inheritLabel": "Jak w OpenLinker ({form})",
+      "inheritLabelUnknown": "Jak w OpenLinkerze (jeszcze nieznane)",
       "loadFailed": "Nie udało się wczytać ustawień gratisów",
       "loadFailedMessage": "Nie udało się wczytać połączenia.",
       "loading": "Wczytywanie ustawień gratisów",
@@ -401,6 +402,8 @@
       "documentTitle": "Dokument sprzedaży jest już wystawiony",
       "documentWarning": "Dokument nie pokaże tego gratisu. Gratis i tak trafi do zamówienia.",
       "notOnPickList": "Gratis jest w zamówieniu, ale ono jest już u pakowaczy: powiedz im o gratisie.",
+      "notReadyBody": "Jego produkty nie są jeszcze dopasowane. Popraw dopasowanie produktów, potem dodaj gratis.",
+      "notReadyTitle": "Zamówienie nie skończyło się importować",
       "onDocument": "Na dokumencie",
       "product": "Produkt na gratis",
       "productPlaceholder": "Wpisz nazwę lub SKU produktu",
@@ -411,7 +414,9 @@
     },
     "attention": {
       "addAnother": "Dodaj inny gratis",
+      "decisionSaved": "Decyzja zapisana",
       "openRule": "Otwórz promocję",
+      "readFailed": "Nie udało się odczytać, dlaczego brakuje gratisu.",
       "reasons": {
         "below-threshold": {
           "body": "Zamówienie nie osiąga tego, czego chce promocja, więc gratisu nie dodano.",
@@ -450,10 +455,13 @@
           "title": "{rule}: zadziałała wyższa promocja"
         }
       },
+      "seePromotion": "Zobacz promocję",
       "shopRejected": {
         "body": "Zamówienie ma pozycję z gratisem, a sklep je odrzucił. Usuń przyczynę w statusie synchronizacji niżej albo zdejmij gratis z zamówienia i ponów.",
         "title": "Sklep nie przyjął zamówienia z gratisem"
-      }
+      },
+      "skip": "Wyślij bez gratisu",
+      "skipFailed": "Nie udało się zapisać decyzji"
     },
     "composer": {
       "back": "Promocje z gratisem",
@@ -467,6 +475,13 @@
       "costPerUnit": "Kosztuje Cię {cost} za sztukę",
       "costUnknown": "Kosztuje Cię: brak kosztu zakupu",
       "currency": "Waluta",
+      "delete": "Usuń",
+      "deleteBody": "Gratisy już dodane do zamówień zostają. Historia tego, co dała, jest zachowana.",
+      "deleteConfirm": "Usuń promocję",
+      "deleteFailed": "Nie udało się usunąć promocji",
+      "deleteKeep": "Zostaw",
+      "deleteTitle": "Usunąć tę promocję?",
+      "deleted": "Promocja usunięta",
       "docForm": "Na dokumencie",
       "doubleGiftWarning": "Sklep z własną regułą gratisu może dać ten sam gratis drugi raz. Zostaw włączone \"Pomiń, jeśli produkt jest już w zamówieniu\".",
       "editNote": "Zmiana działa od teraz. Zamówienia już złożone zostają przy swoim gratisie.",
@@ -535,6 +550,11 @@
       "unitProductHelp": "Wybierz produkt, do którego każdej sztuki dajesz gratis.",
       "when": "Kiedy"
     },
+    "cost": {
+      "failed": "Kosztuje Cię: nie udało się odczytać ceny zakupu",
+      "loading": "Kosztuje Cię: sprawdzam cenę zakupu",
+      "otherCurrency": "Kosztuje Cię: cena zakupu jest zapisana w innej walucie ({currency})"
+    },
     "filter": {
       "check": "Z gratisem",
       "chipLabel": "Gratis",
@@ -581,6 +601,7 @@
       "decidedBy": "Skąd jest",
       "onDocument": "Na dokumencie",
       "readOnly": "Gratis mogą dodawać tylko administratorzy i operatorzy.",
+      "readOnlyNotice": "Możesz wszystko zobaczyć, ale „Dodaj gratis” jest wyłączone.",
       "source": {
         "cartRule": "Dała go reguła koszyka w sklepie. Finansujesz go Ty.",
         "channel": "Kanał sprzedaży oznaczył go jako gratis. Finansujesz go Ty.",

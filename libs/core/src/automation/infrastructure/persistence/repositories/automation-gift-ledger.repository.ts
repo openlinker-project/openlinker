@@ -8,9 +8,11 @@
  *
  * @module libs/core/src/automation/infrastructure/persistence/repositories
  */
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Repository, type EntityManager } from 'typeorm';
 
 import type { GiftRuleLedgerPort } from '../../../domain/ports/gift-rule-ledger.port';
 import {
@@ -24,21 +26,41 @@ import { AutomationGiftRuleStateOrmEntity } from '../entities/automation-gift-ru
 
 @Injectable()
 export class AutomationGiftLedgerRepository implements GiftRuleLedgerPort {
+  /**
+   * The transaction `withRulesLocked` opened, so every ledger read and write made
+   * inside `work` runs on that one connection: the grant and the state change
+   * commit together, and the lock is not held by one connection while a second
+   * one does the writing.
+   */
+  private readonly lockedTransaction = new AsyncLocalStorage<EntityManager>();
+
   constructor(
-    @InjectRepository(AutomationGiftRuleStateOrmEntity)
-    private readonly states: Repository<AutomationGiftRuleStateOrmEntity>,
     @InjectRepository(AutomationGiftGrantOrmEntity)
-    private readonly grants: Repository<AutomationGiftGrantOrmEntity>,
+    private readonly grantsRepo: Repository<AutomationGiftGrantOrmEntity>,
   ) {}
+
+  private get manager(): EntityManager {
+    return this.lockedTransaction.getStore() ?? this.grantsRepo.manager;
+  }
+
+  private get states(): Repository<AutomationGiftRuleStateOrmEntity> {
+    return this.manager.getRepository(AutomationGiftRuleStateOrmEntity);
+  }
+
+  private get grants(): Repository<AutomationGiftGrantOrmEntity> {
+    return this.manager.getRepository(AutomationGiftGrantOrmEntity);
+  }
 
   async withRulesLocked<T>(ruleIds: readonly string[], work: () => Promise<T>): Promise<T> {
     const keys = [...new Set(ruleIds)].sort();
     if (keys.length === 0) return work();
-    return this.grants.manager.transaction(async (manager) => {
+    // A nested call reuses the open transaction (its locks are already held).
+    if (this.lockedTransaction.getStore() !== undefined) return work();
+    return this.grantsRepo.manager.transaction(async (manager) => {
       for (const key of keys) {
         await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`gift_rule:${key}`]);
       }
-      return work();
+      return this.lockedTransaction.run(manager, work);
     });
   }
 
@@ -95,8 +117,41 @@ export class AutomationGiftLedgerRepository implements GiftRuleLedgerPort {
       internalOrderId: row.internalOrderId,
       customerId: row.customerId,
       quantity: row.quantity,
+      productId: row.productId,
+      variantId: row.variantId,
+      documentForm: row.documentForm,
       createdAt: row.createdAt,
     }));
+  }
+
+  async releaseGrantsForOrder(internalOrderId: string): Promise<number> {
+    const result = await this.grants.delete({ internalOrderId });
+    return result.affected ?? 0;
+  }
+
+  async sumPendingUnitsForVariants(
+    variantIds: readonly string[],
+    excludeOrderId: string | null,
+    notOlderThan: Date,
+  ): Promise<Map<string, number>> {
+    if (variantIds.length === 0) return new Map();
+    // "Granted, not yet held": the order has no held reservation row yet, so the
+    // availability read does not subtract its gift. The age bound keeps a grant
+    // whose order never reserved (cancelled mid-ingestion, a source that does not
+    // reserve) from holding stock back for ever.
+    const rows: Array<{ variantId: string; units: string }> = await this.manager.query(
+      `SELECT g."variantId" AS "variantId", COALESCE(SUM(g."quantity"), 0) AS units
+         FROM "automation_gift_grants" g
+        WHERE g."variantId" = ANY($1::text[])
+          AND g."createdAt" > $2
+          AND ($3::text IS NULL OR g."internalOrderId" <> $3)
+          AND NOT EXISTS (
+            SELECT 1 FROM "reservations" r
+             WHERE r."orderRecordId" = g."internalOrderId" AND r."status" = 'held')
+        GROUP BY g."variantId"`,
+      [[...variantIds], notOlderThan, excludeOrderId],
+    );
+    return new Map(rows.map((row) => [row.variantId, Number(row.units)]));
   }
 
   async recordGrant(grant: Omit<GiftGrant, 'createdAt'>): Promise<boolean> {
@@ -108,6 +163,9 @@ export class AutomationGiftLedgerRepository implements GiftRuleLedgerPort {
         internalOrderId: grant.internalOrderId,
         customerId: grant.customerId,
         quantity: grant.quantity,
+        productId: grant.productId,
+        variantId: grant.variantId,
+        documentForm: grant.documentForm,
       })
       .orIgnore()
       .returning('id')

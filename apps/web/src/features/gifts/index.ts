@@ -13,9 +13,12 @@ export { AddGiftDialog } from './components/add-gift-dialog';
 export { OrderAddGiftAction } from './components/order-add-gift-action';
 export { OrderGiftAttention } from './components/order-gift-attention';
 export {
+  useGiftAttentionQuery,
+  useSkipGiftAttentionMutation,
   useGiftRuleQuery,
   useGiftRulesQuery,
   useReorderGiftRulesMutation,
+  useDeleteGiftRuleMutation,
   useResumeGiftRuleMutation,
   useSaveGiftRuleMutation,
 } from './hooks/use-gift-rules';

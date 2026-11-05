@@ -9,6 +9,8 @@
  * @module libs/core/src/orders/domain/types
  */
 
+import type { GiftDocumentForm } from './incoming-order.types';
+
 export interface OrderBundleComponent {
   /** The physical line id: `{lineId}~c:{variantId}`. */
   lineId: string;
@@ -20,7 +22,7 @@ export interface OrderBundleComponent {
   perUnit: number;
   giftSlot?: boolean;
   /** The gift slot's own document form, frozen with the definition (#3940). */
-  giftDocumentForm?: 'technical-cent' | 'priced-in' | 'show-zero' | 'omit';
+  giftDocumentForm?: GiftDocumentForm;
 }
 
 export interface OrderBundleLine {

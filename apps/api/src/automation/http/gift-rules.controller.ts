@@ -105,7 +105,8 @@ export class GiftRulesController {
   }
 
   @Post('evaluate')
-  @Roles('admin', 'operator')
+  // A viewer may run the Test panel: it writes nothing (no gift, ledger row or pause).
+  @Roles('admin', 'operator', 'viewer')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Dry run - which gift rules would apply to that order, and why not',

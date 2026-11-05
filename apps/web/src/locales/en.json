@@ -223,6 +223,7 @@
       "fieldLabel": "Gift on the document in this channel",
       "inheritDescription": "This channel follows the OpenLinker-wide setting.",
       "inheritLabel": "As in OpenLinker ({form})",
+      "inheritLabelUnknown": "As in OpenLinker (not known yet)",
       "loadFailed": "Unable to load the gift settings",
       "loadFailedMessage": "The connection could not be loaded.",
       "loading": "Loading the gift settings",
@@ -389,6 +390,8 @@
       "documentTitle": "A sales document is already issued",
       "documentWarning": "The document will not show this gift. The gift is still added to the order.",
       "notOnPickList": "The gift is on the order, but this order is already with the packers: tell them about the gift.",
+      "notReadyBody": "Its products are not matched yet. Fix the product mapping, then add the gift.",
+      "notReadyTitle": "The order has not finished importing",
       "onDocument": "On the document",
       "product": "Gift product",
       "productPlaceholder": "Type a product name or SKU",
@@ -399,7 +402,9 @@
     },
     "attention": {
       "addAnother": "Add another gift",
+      "decisionSaved": "Decision saved",
       "openRule": "Open the promotion",
+      "readFailed": "The reason a gift is missing could not be read.",
       "reasons": {
         "below-threshold": {
           "body": "The order does not reach what the promotion asks for, so no gift was added.",
@@ -438,10 +443,13 @@
           "title": "{rule}: an earlier promotion applied"
         }
       },
+      "seePromotion": "See the promotion",
       "shopRejected": {
         "body": "The order carries a gift line and the shop refused the order. Fix the cause in the sync status below, or take the gift off the order and retry.",
         "title": "The shop did not accept the order with the gift"
-      }
+      },
+      "skip": "Send without the gift",
+      "skipFailed": "The decision could not be saved"
     },
     "composer": {
       "back": "Gift promotions",
@@ -455,6 +463,13 @@
       "costPerUnit": "Costs you {cost} per unit",
       "costUnknown": "Costs you: no purchase cost recorded",
       "currency": "Currency",
+      "delete": "Delete",
+      "deleteBody": "Gifts already added to orders stay. The history of what it gave is kept.",
+      "deleteConfirm": "Delete promotion",
+      "deleteFailed": "The promotion could not be deleted",
+      "deleteKeep": "Keep it",
+      "deleteTitle": "Delete this promotion?",
+      "deleted": "Promotion deleted",
       "docForm": "On the document",
       "doubleGiftWarning": "A shop with its own gift rule could give the same gift twice. Keep \"Skip if the product is already in the order\" on.",
       "editNote": "A change applies from now on. Orders already placed keep the gift they got.",
@@ -523,6 +538,11 @@
       "unitProductHelp": "Pick the product that gets a gift with every unit.",
       "when": "When"
     },
+    "cost": {
+      "failed": "Costs you: the purchase cost could not be read",
+      "loading": "Costs you: checking the purchase cost",
+      "otherCurrency": "Costs you: the purchase cost is recorded in another currency ({currency})"
+    },
     "filter": {
       "check": "With a gift",
       "chipLabel": "Gift",
@@ -569,6 +589,7 @@
       "decidedBy": "Where it comes from",
       "onDocument": "On the document",
       "readOnly": "Only admins and operators can add a gift.",
+      "readOnlyNotice": "You can see everything, but \"Add gift\" is switched off.",
       "source": {
         "cartRule": "A cart rule of the shop gave it. You pay for it.",
         "channel": "Marked as a gift by the sales channel. You pay for it.",

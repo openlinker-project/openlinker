@@ -25,17 +25,25 @@ export interface OrderAddGiftActionProps {
   terminal: boolean;
   /** The parcel is packed or on its way. */
   parcelClosed: boolean;
+  notReady?: boolean;
   hasSalesDocument: boolean;
+  /** Controlled open state, so the order's attention banner can open the same dialog. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function OrderAddGiftAction({
   terminal,
+  open: controlledOpen,
+  onOpenChange,
   ...dialogProps
 }: OrderAddGiftActionProps): ReactElement | null {
   const copy = useMessages('gifts');
   const demoMode = useDemoMode();
   const write = useWriteAccess('gifts:write', demoMode);
-  const [open, setOpen] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = controlledOpen ?? localOpen;
+  const setOpen = onOpenChange ?? setLocalOpen;
   if (terminal) return null;
 
   return (
@@ -50,6 +58,11 @@ export function OrderAddGiftAction({
           {copy.order.add}
         </Button>
       </ReadOnlyLock>
+      {!write.canWrite ? (
+        <p className="text-muted" role="note" data-testid="order-gift-readonly-notice">
+          {copy.order.readOnlyNotice}
+        </p>
+      ) : null}
       {write.canWrite ? <AddGiftDialog open={open} onOpenChange={setOpen} {...dialogProps} /> : null}
     </>
   );

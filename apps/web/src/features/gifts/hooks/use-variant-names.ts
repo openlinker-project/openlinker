@@ -7,6 +7,7 @@
  *
  * @module apps/web/src/features/gifts/hooks
  */
+import { useMemo } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 
@@ -24,10 +25,15 @@ export function useVariantNames(variantIds: readonly string[]): ReadonlyMap<stri
       staleTime: 5 * 60 * 1000,
     })),
   });
-  const names = new Map<string, string>();
-  unique.forEach((id, index) => {
-    const name = results[index]?.data;
-    if (name !== undefined) names.set(id, name);
-  });
-  return names;
+  // Keyed on CONTENT: `useQueries` hands back a new array every render, and a new
+  // Map each time would make every consumer's memo recompute (and wipe a form).
+  const content = unique.map((id, index) => `${id}\u0000${results[index]?.data ?? ''}`).join('\u0001');
+  return useMemo(() => {
+    const names = new Map<string, string>();
+    unique.forEach((id, index) => {
+      const name = results[index]?.data;
+      if (name !== undefined) names.set(id, name);
+    });
+    return names;
+  }, [content]);
 }

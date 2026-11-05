@@ -44,6 +44,9 @@ export class CreateGiftRules1938700000000 implements MigrationInterface {
         "internalOrderId" text NOT NULL,
         "customerId" text,
         "quantity" integer NOT NULL,
+        "productId" text NOT NULL,
+        "variantId" text NOT NULL,
+        "documentForm" character varying(32),
         "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
         CONSTRAINT "PK_automation_gift_grants" PRIMARY KEY ("id")
       )`
@@ -57,9 +60,13 @@ export class CreateGiftRules1938700000000 implements MigrationInterface {
     await queryRunner.query(
       `CREATE INDEX "IDX_automation_gift_grants_order" ON "automation_gift_grants" ("internalOrderId")`
     );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_automation_gift_grants_variant" ON "automation_gift_grants" ("variantId", "createdAt")`
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_automation_gift_grants_variant"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "IDX_automation_gift_grants_order"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "IDX_automation_gift_grants_rule_customer"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "UQ_automation_gift_grants_rule_order"`);

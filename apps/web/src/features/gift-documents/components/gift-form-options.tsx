@@ -30,6 +30,11 @@ interface GiftFormOptionsProps {
   onChange: (value: GiftFormOptionValue) => void;
   /** The connection level adds "As in OpenLinker (<form>)" and marks it the default. */
   inheritedForm?: GiftDocumentFormChoice;
+  /**
+   * The OpenLinker-wide setting is still loading or could not be read: the
+   * inherit option is offered, but names no form rather than claiming the default.
+   */
+  inheritedUnknown?: boolean;
   /** Whether "Shown at 0.00" can be chosen at all. */
   zeroAvailable: boolean;
   /** Why it cannot, when it cannot. */
@@ -42,13 +47,14 @@ export function GiftFormOptions({
   value,
   onChange,
   inheritedForm,
+  inheritedUnknown = false,
   zeroAvailable,
   zeroReason,
   disabled = false,
 }: GiftFormOptionsProps): ReactElement {
   const copy = useMessages('giftDocuments');
   const labels = useGiftFormLabels();
-  const withInherit = inheritedForm !== undefined;
+  const withInherit = inheritedForm !== undefined || inheritedUnknown;
 
   return (
     <ul
@@ -74,7 +80,9 @@ export function GiftFormOptions({
                 data-testid="doc-gift-set-option-inherit"
               />
               <span className="filter-check__label">
-                {interpolate(copy.connection.inheritLabel, { form: labels.short(inheritedForm) })}
+                {inheritedUnknown || inheritedForm === undefined
+                  ? copy.connection.inheritLabelUnknown
+                  : interpolate(copy.connection.inheritLabel, { form: labels.short(inheritedForm) })}
               </span>
             </label>
             <StatusBadge tone="neutral" data-testid="doc-gift-set-option-default-badge">

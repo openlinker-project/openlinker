@@ -86,9 +86,10 @@ export class GiftReportApiService implements IGiftReportApiService {
     const customerIds = [
       ...new Set(entries.map((entry) => entry.customerId).filter((id): id is string => id !== null)),
     ];
+    const projections = await this.customers.getProjectionsByIds(customerIds);
     const customerNames = new Map<string, string | null>();
     for (const id of customerIds) {
-      const projection = await this.customers.getProjection(id);
+      const projection = projections.get(id);
       const name = [projection?.firstName, projection?.lastName].filter(Boolean).join(' ');
       customerNames.set(id, name === '' ? null : name);
     }

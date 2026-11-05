@@ -26,16 +26,20 @@
  * `export` on the mirror side is ignored (core keeps `roundToMinorUnits` private;
  * the mirror keeps it module-private too, but either is accepted).
  *
- * SCOPE, so the wrong guard is not trusted: this script compares the three
- * function implementations and the four currency-table constants they read.
- * Covering the constants is not optional decoration - the functions are pure
- * lookups over them, so dropping `'JPY'` from one side's zero-decimal set, or
- * changing one side's default exponent, changes the answer while leaving every
- * compared function byte-identical. That was the hole this scope note used to
- * paper over. The `ShippingSplitLine` / `ShippingSplitPart` interfaces are still
- * NOT compared - a field added to one side only is caught by the call sites,
- * which type-check against their own declarations - and nothing here asserts
- * that the panel actually calls the mirror.
+ * SCOPE, so the wrong guard is not trusted: this script compares the six
+ * function implementations (`presentGiftLines`, `reexpressTotal`,
+ * `floorZeroValueLines`, `rateKey`, `isGiftLineForm`, `resolveGiftDocumentForm`)
+ * and the three form-vocabulary constants they read (`GiftDocumentFormChoiceValues`,
+ * `GiftLineFormValues`, `DEFAULT_GIFT_LINE_FORM`). Covering the constants is not
+ * optional decoration - the functions are pure lookups over them, so dropping a
+ * form from one side's list, or changing one side's default, changes the answer
+ * while leaving every compared function byte-identical. The minor-unit exponent
+ * table (`minorUnitExponentFor`) lives in `shipping-tax-split.types.ts` and is
+ * guarded by `check-shipping-tax-split-mirror.mjs`, not here. The
+ * `GiftPresentationLine` / `GiftPresentationResult` interfaces are NOT compared -
+ * a field added to one side only is caught by the call sites, which type-check
+ * against their own declarations - and nothing here asserts that the panel
+ * actually calls the mirror.
  *
  * Both files are parsed TEXTUALLY (no TypeScript import, no transpile) so this
  * stays a zero-dependency `check:invariants` step like its siblings.

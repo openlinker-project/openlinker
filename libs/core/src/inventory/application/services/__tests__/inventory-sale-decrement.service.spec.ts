@@ -283,7 +283,7 @@ describe('InventorySaleDecrementService', () => {
       })
     );
 
-    expect(inventoryService.setInventory.mock.calls[0][2]).toEqual({
+    expect((inventoryService.setInventory.mock.calls[0] as unknown[])[2]).toEqual({
       reason: 'gift',
       sourceKind: 'order',
       sourceRef: 'ol_order_1',

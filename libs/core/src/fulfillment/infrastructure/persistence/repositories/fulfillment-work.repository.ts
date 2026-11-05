@@ -1107,8 +1107,14 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     }
     const terminal = [...TERMINAL_FULFILLMENT_WORK_STATUSES];
     try {
-      // One statement: the guard on the parent and the insert cannot straddle a
-      // parcel close. ON CONFLICT on the line identity makes a retry a no-op.
+      // One statement, and the parent row is LOCKED (FOR SHARE): a plain
+      // INSERT ... SELECT reads its snapshot at statement start and takes no row
+      // lock, so a claimParcelClose that commits while this runs would not be
+      // seen and the line would land on a closed parcel. With the lock the
+      // statement waits for an in-flight close and re-checks parcelClosedAt
+      // against the committed row; a close that starts later waits for this
+      // insert. SHARE (not UPDATE) so two lines added at once do not serialise.
+      // ON CONFLICT on the line identity makes a retry a no-op.
       const rows: unknown = await this.lines.query(
         `INSERT INTO "fulfillment_work_lines"
            ("fulfillmentWorkId", "orderLineId", "productVariantId", "totalQuantity")
@@ -1117,6 +1123,7 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
           WHERE w."id" = $1
             AND w."parcelClosedAt" IS NULL
             AND w."status" NOT IN (${terminal.map((_, i) => `$${i + 5}`).join(', ')})
+            FOR SHARE OF w
          ON CONFLICT ("fulfillmentWorkId", "orderLineId") DO NOTHING
          RETURNING "id"`,
         [workId, line.orderLineId, line.productVariantId, line.totalQuantity, ...terminal]

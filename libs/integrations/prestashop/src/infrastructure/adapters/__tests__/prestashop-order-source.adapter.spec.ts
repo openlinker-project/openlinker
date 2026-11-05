@@ -789,7 +789,7 @@ describe('PrestashopOrderSourceAdapter', () => {
         product_reference: 'GIFT-SKU-1',
       };
 
-      function mockShop(discount: string, appliedRules: Array<{ id_cart_rule: string }>): jest.Mock {
+      function mockShop(discount: string, appliedRules: Array<{ id_cart_rule: string; value?: string }>): jest.Mock {
         const getResource = jest.fn().mockImplementation((resource: string) => {
           if (resource === 'orders') return Promise.resolve(giftOrder(discount));
           if (resource === 'cart_rules') {
@@ -807,7 +807,7 @@ describe('PrestashopOrderSourceAdapter', () => {
       }
 
       it('should split the gift unit into its own 0.00 line and keep the order total', async () => {
-        mockShop('50.000000', [{ id_cart_rule: '1' }]);
+        mockShop('50.000000', [{ id_cart_rule: '1', value: '50.000000' }]);
 
         const incoming = await adapter.getOrder({ externalOrderId: '7' });
 
@@ -822,7 +822,7 @@ describe('PrestashopOrderSourceAdapter', () => {
       });
 
       it('should report the same line ids on a repeated poll', async () => {
-        mockShop('50.000000', [{ id_cart_rule: '1' }]);
+        mockShop('50.000000', [{ id_cart_rule: '1', value: '50.000000' }]);
 
         const first = await adapter.getOrder({ externalOrderId: '7' });
         const second = await adapter.getOrder({ externalOrderId: '7' });
@@ -833,7 +833,7 @@ describe('PrestashopOrderSourceAdapter', () => {
       });
 
       it('should report no amendment when a stored split snapshot is polled again', async () => {
-        mockShop('50.000000', [{ id_cart_rule: '1' }]);
+        mockShop('50.000000', [{ id_cart_rule: '1', value: '50.000000' }]);
 
         const stored = await adapter.getOrder({ externalOrderId: '7' });
         const repolled = await adapter.getOrder({ externalOrderId: '7' });
@@ -845,6 +845,41 @@ describe('PrestashopOrderSourceAdapter', () => {
             { storePii: true }
           )
         ).toEqual([]);
+      });
+
+      it('should keep the split of a rule that can be read when another applied rule was deleted', async () => {
+        const getResource = mockShop('60.000000', [
+          { id_cart_rule: '1', value: '50.000000' },
+          { id_cart_rule: '2', value: '10.000000' },
+        ]);
+        getResource.mockImplementation((resource: string, id?: string) => {
+          if (resource === 'orders') return Promise.resolve(giftOrder('60.000000'));
+          if (resource === 'cart_rules') {
+            return id === '2'
+              ? Promise.reject(new Error('404 gone'))
+              : Promise.resolve({ id: 1, gift_product: 20, gift_product_attribute: 0 });
+          }
+          return Promise.resolve({});
+        });
+
+        const incoming = await adapter.getOrder({ externalOrderId: '7' });
+
+        expect(incoming.items.map((i) => [i.id, i.quantity])).toEqual([
+          ['9', 1],
+          ['9~gift:1', 1],
+        ]);
+        expect((incoming.totals as { discountTotal?: number }).discountTotal).toBe(10);
+        expect(incoming.totals.total).toBe(62.5);
+      });
+
+      it('should leave a gift merged when the rule credited less than the unit', async () => {
+        mockShop('12.500000', [{ id_cart_rule: '1', value: '12.500000' }]);
+
+        const incoming = await adapter.getOrder({ externalOrderId: '7' });
+
+        expect(incoming.items).toHaveLength(1);
+        expect(incoming.items[0].quantity).toBe(2);
+        expect(incoming.totals.total).toBe(62.5);
       });
 
       it('should not read cart rules for an order without a discount', async () => {

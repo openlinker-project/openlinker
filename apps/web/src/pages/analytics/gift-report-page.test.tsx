@@ -78,4 +78,17 @@ describe('GiftReportPage', () => {
       )
     );
   });
+
+  it('should not fetch the gift cost report while another view is open', async () => {
+    const getGiftReport = vi.fn().mockResolvedValue({ groups: [], totals: [] });
+    renderWithProviders(<GiftReportPage />, {
+      apiClient: createMockApiClient({
+        giftReport: { getGiftReport },
+      }),
+      route: '/analytics/gifts?from=2026-10-01&to=2026-10-31&view=movements',
+    });
+
+    expect(await screen.findByTestId('gift-report-move-table')).toBeInTheDocument();
+    expect(getGiftReport).not.toHaveBeenCalled();
+  });
 });

@@ -362,6 +362,37 @@ describe('OrderIngestionService', () => {
       ]);
     });
 
+    it('should allow new gift grants only before the order is frozen, routed or mirrored', async () => {
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+      expect(orderGifts.applyGiftRules).toHaveBeenLastCalledWith(
+        expect.objectContaining({ allowNewGrants: true })
+      );
+
+      // A re-ingestion of an order whose lines were frozen (routing follows the freeze).
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        recordStatus: 'ready',
+        syncStatus: [],
+        lineExpansion: { v: 1, definitions: [] },
+      } as unknown as OrderRecord);
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+      expect(orderGifts.applyGiftRules).toHaveBeenLastCalledWith(
+        expect.objectContaining({ allowNewGrants: false })
+      );
+
+      // ... or one already mirrored to a destination.
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        recordStatus: 'ready',
+        syncStatus: [{ destinationConnectionId: 'dest', status: 'synced' }],
+        lineExpansion: null,
+      } as unknown as OrderRecord);
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+      expect(orderGifts.applyGiftRules).toHaveBeenLastCalledWith(
+        expect.objectContaining({ allowNewGrants: false })
+      );
+    });
+
     it('should stamp the catalogue tax rate on a gift line so a destination that needs one does not refuse the order (#3939)', async () => {
       productsService.getEffectiveTaxRate.mockImplementation((productId: string) =>
         Promise.resolve(

@@ -16,6 +16,8 @@ import { giftsQueryKeys } from '../api/gifts.query-keys';
 import type {
   AddGiftInput,
   AddGiftResult,
+  GiftAttentionEntry,
+  GiftAttentionResult,
   GiftDryRunResult,
   GiftEvaluateInput,
   GiftRule,
@@ -111,6 +113,28 @@ export function useAddGiftMutation(
       if (result.dryRun) return;
       void queryClient.invalidateQueries({ queryKey: ['orders'] });
       void queryClient.invalidateQueries({ queryKey: giftsQueryKeys.all });
+    },
+  });
+}
+
+export function useGiftAttentionQuery(internalOrderId: string): UseQueryResult<GiftAttentionResult> {
+  const apiClient = useApiClient();
+  return useQuery({
+    queryKey: giftsQueryKeys.attention(internalOrderId),
+    queryFn: () => apiClient.gifts.getGiftAttention(internalOrderId),
+    enabled: internalOrderId.length > 0,
+  });
+}
+
+export function useSkipGiftAttentionMutation(
+  internalOrderId: string,
+): UseMutationResult<GiftAttentionEntry, ApiError, string> {
+  const apiClient = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (runId: string) => apiClient.gifts.skipGiftAttention(internalOrderId, runId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: giftsQueryKeys.attention(internalOrderId) });
     },
   });
 }

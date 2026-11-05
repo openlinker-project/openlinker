@@ -9,7 +9,7 @@
  * has to guess which unit was free, so this splits it out and lowers the
  * discount by the same amount: the order total is unchanged by construction.
  *
- * Pure and deterministic. The split line's id is derived from the row id and the
+ * Pure and deterministic. A split needs the rule's own booked value to cover the unit. The split line's id is derived from the row id and the
  * cart rule id, so a re-poll produces identical ids and the amendment diff
  * (which keys lines by id and compares quantity) reports nothing.
  *
@@ -26,6 +26,16 @@ export interface PrestashopGiftCartRule {
   readonly giftProductId: string;
   /** `ps_cart_rule.gift_product_attribute`, `'0'` when the gift has no combination. */
   readonly giftProductAttributeId: string;
+  /**
+   * `order_cart_rules.value`: what the buyer was credited by this rule, tax
+   * included, at order time. Without it the gift cannot be verified as free and
+   * stays merged.
+   */
+  readonly valueTaxIncl?: number;
+  /** `order_cart_rules.free_shipping`: the booked value then also carries the shipping. */
+  readonly freeShipping?: boolean;
+  /** The order's gross shipping, subtracted from the booked value of a free-shipping rule. */
+  readonly shippingGross?: number;
 }
 
 const GIFT_ID_MARKER = '~gift:';
@@ -60,8 +70,10 @@ export interface GiftSplitResult {
 export function splitGiftLines(
   items: readonly OrderItem[],
   rows: readonly PrestashopOrderRow[],
-  rules: readonly PrestashopGiftCartRule[]
+  rules: readonly PrestashopGiftCartRule[],
+  minorUnitExponent = 2
 ): GiftSplitResult {
+  const minorUnit = 1 / 10 ** minorUnitExponent;
   const result: OrderItem[] = [...items];
   let giftValueTaxIncl = 0;
   const used = new Set<number>();
@@ -77,6 +89,15 @@ export function splitGiftLines(
     const base = items[index];
     const unitGross = base.unitPriceGross;
     if (unitGross === undefined || !Number.isFinite(unitGross) || base.quantity < 1) continue;
+    // The gift is free only if THIS rule credited the buyer for the unit: a rule
+    // that booked less (free shipping beside a gift that was paid for) proves
+    // nothing about the line, so it stays merged rather than being clamped.
+    if (rule.valueTaxIncl === undefined || !Number.isFinite(rule.valueTaxIncl)) continue;
+    const credited =
+      rule.freeShipping === true && rule.shippingGross !== undefined
+        ? rule.valueTaxIncl - rule.shippingGross
+        : rule.valueTaxIncl;
+    if (credited < unitGross - minorUnit / 2) continue;
     used.add(index);
 
     const gift: OrderItem = {

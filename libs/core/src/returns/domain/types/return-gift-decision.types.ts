@@ -41,4 +41,10 @@ export interface RecordReturnGiftDecisionInput {
   deductionGross?: number | null;
   note?: string | null;
   actorUserId: string | null;
+  /**
+   * The gift line ids of the return's order (a gift line, or a gift-slot line of a
+   * set). `returns` cannot read orders, so the caller passes them in; a line not in
+   * the list is refused rather than recorded against an unrelated order's line.
+   */
+  validGiftLineIds: readonly string[];
 }

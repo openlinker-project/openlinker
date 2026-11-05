@@ -91,6 +91,9 @@ export function GiftsOnDocumentsPanel({
     );
   }
 
+  // Until the OpenLinker-wide setting has been read, "as in OpenLinker" names no
+  // form: claiming the built-in default would state a setting nobody read.
+  const settingKnown = settingsQuery.data !== undefined;
   const inherited: GiftDocumentFormChoice =
     settingsQuery.data?.giftDocumentForm ?? (DEFAULT_GIFT_LINE_FORM as GiftDocumentFormChoice);
   const effective: GiftDocumentFormChoice = value === 'inherit' ? inherited : value;
@@ -134,7 +137,8 @@ export function GiftsOnDocumentsPanel({
             setNotice(null);
             setDraft(next);
           }}
-          inheritedForm={inherited}
+          inheritedForm={settingKnown ? inherited : undefined}
+          inheritedUnknown={!settingKnown}
           zeroAvailable={zero.available}
           zeroReason={zeroReason}
           disabled={!canEdit}
@@ -164,7 +168,9 @@ export function GiftsOnDocumentsPanel({
           </ReadOnlyLock>
         </div>
       ) : null}
-      <GiftFormPreview form={effective} zeroAccepted={zero.available} />
+      {value === 'inherit' && !settingKnown ? null : (
+        <GiftFormPreview form={effective} zeroAccepted={zero.available} />
+      )}
     </div>
   );
 }

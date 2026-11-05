@@ -50,6 +50,9 @@ export class ReturnGiftDecisionService implements IReturnGiftDecisionService {
     }
     // A decision about a gift needs the order the gift was given on.
     await this.returnsService.assertAttributedForTrigger(input.returnId, 'refund');
+    if (!input.validGiftLineIds.includes(input.giftLineId)) {
+      throw new ReturnGiftDecisionInvalidError('unknown-gift-line');
+    }
     return this.decisions.upsert(input, new Date());
   }
 }

@@ -13,7 +13,7 @@
  *
  * @module apps/web/src/features/gifts/components
  */
-import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { useApiClient } from '../../../app/api/api-client-provider';
@@ -42,6 +42,7 @@ import {
   type GiftRuleFormValues,
   type PickedProduct,
 } from '../lib/gift-rule-form';
+import { giftCostText, readGiftCost } from '../lib/gift-cost';
 import { isSelfPaused } from '../lib/gift-rule-view';
 import { GiftRuleTestPanel } from './gift-rule-test-panel';
 
@@ -54,6 +55,9 @@ export interface GiftRuleComposerProps {
   onSave: (values: GiftRuleFormValues, isActive: boolean, extend?: { to: string }) => void;
   onResume: (additionalUnits: number) => void;
   onCopy: () => void;
+  /** Deletes the saved rule; absent for a role that cannot. */
+  onDelete?: () => void;
+  deleting?: boolean;
   saveError: string | null;
 }
 
@@ -71,6 +75,8 @@ export function GiftRuleComposer({
   onSave,
   onResume,
   onCopy,
+  onDelete,
+  deleting = false,
   saveError,
 }: GiftRuleComposerProps): ReactElement {
   const copy = useMessages('gifts');
@@ -82,12 +88,28 @@ export function GiftRuleComposer({
   const [moreOpen, setMoreOpen] = useState(false);
   const [extendTo, setExtendTo] = useState('');
   const [resumeUnits, setResumeUnits] = useState('50');
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
+  // Reset only when the thing being edited changes (another rule, or the saved
+  // rule's own `updatedAt`), or when the starting values changed under a form the
+  // operator has not touched (product names arriving late). A failed save, a
+  // refetch or a re-render with the same content must never wipe typed values.
   const { reset } = form;
+  const editedKey = `${rule?.id ?? 'new'}|${rule?.updatedAt ?? ''}`;
+  const initialKey = JSON.stringify(initial);
+  const lastEditedKey = useRef(editedKey);
+  const appliedKey = useRef<string | null>(null);
+  const { getValues } = form;
   useEffect(() => {
+    const switched = lastEditedKey.current !== editedKey;
+    lastEditedKey.current = editedKey;
+    // `setValue` does not mark the form dirty here, so touched means "differs from what was applied".
+    const touched = appliedKey.current !== null && JSON.stringify(getValues()) !== appliedKey.current;
+    if (!switched && touched) return;
+    appliedKey.current = initialKey;
     reset(initial);
     setNameTouched(initial.name !== '');
-  }, [initial, reset]);
+  }, [editedKey, initialKey, reset, getValues]);
 
   const channels = useMemo(() => orderSourceChannels(connections.data ?? []), [connections.data]);
   const problems = validateGiftRuleForm(values);
@@ -102,13 +124,17 @@ export function GiftRuleComposer({
     }
   }, [nameTouched, suggested, values.name, form]);
 
-  const giftCost = useQuery({
+  const giftCostQuery = useQuery({
     queryKey: ['gifts', 'variant-cost', values.gift?.productId ?? ''],
     queryFn: () => apiClient.products.getVariantCosts(values.gift?.productId ?? ''),
     enabled: values.gift !== null,
   });
-  const unitCost =
-    giftCost.data?.find((c) => c.variantId === values.gift?.variantId)?.netUnitCost ?? null;
+  const giftCost = readGiftCost({
+    status: giftCostQuery.status,
+    costs: giftCostQuery.data,
+    variantId: values.gift?.variantId,
+    currency: values.currency,
+  });
 
   const state = rule === null ? 'new' : rule.status;
   const ended = rule?.status === 'ended';
@@ -299,11 +325,18 @@ export function GiftRuleComposer({
           <p data-testid="gift-composer-who-pays">
             {interpolate(copy.order.customerPays, { price: formatAmount(0, values.currency) })}
             {' · '}
-            {unitCost === null
-              ? copy.composer.costUnknown
-              : interpolate(copy.composer.costPerUnit, {
-                  cost: formatAmount(Number(unitCost), values.currency),
-                })}
+            {giftCostText(
+              giftCost,
+              copy.cost,
+              {
+                known: (unitCost) =>
+                  interpolate(copy.composer.costPerUnit, {
+                    cost: formatAmount(unitCost, values.currency),
+                  }),
+                none: copy.composer.costUnknown,
+              },
+              (template, currency) => interpolate(template, { currency }),
+            )}
           </p>
         ) : null}
       </fieldset>
@@ -446,7 +479,7 @@ export function GiftRuleComposer({
                   min={1}
                   value={values.maxPerOrder}
                   onChange={(event) => form.setValue('maxPerOrder', event.target.value)}
-                  data-testid="gift-composer-opt-max-per-order"
+                  data-testid="gift-composer-opt-max-order"
                 />
               </>
             ) : null}
@@ -471,6 +504,30 @@ export function GiftRuleComposer({
       {saveError !== null ? (
         <Alert tone="error" data-testid="gift-composer-save-error">
           {saveError}
+        </Alert>
+      ) : null}
+
+      {confirmingDelete && rule !== null && onDelete ? (
+        <Alert
+          tone="warning"
+          title={copy.composer.deleteTitle}
+          data-testid="gift-composer-delete-confirm"
+          action={
+            <>
+              <Button disabled={deleting} onClick={onDelete} data-testid="gift-composer-delete-confirm-yes">
+                {copy.composer.deleteConfirm}
+              </Button>
+              <Button
+                tone="secondary"
+                onClick={() => setConfirmingDelete(false)}
+                data-testid="gift-composer-delete-confirm-no"
+              >
+                {copy.composer.deleteKeep}
+              </Button>
+            </>
+          }
+        >
+          {copy.composer.deleteBody}
         </Alert>
       ) : null}
 
@@ -518,6 +575,16 @@ export function GiftRuleComposer({
           {rule !== null ? (
             <Button tone="secondary" onClick={onCopy} data-testid="gift-composer-copy">
               {copy.composer.copy}
+            </Button>
+          ) : null}
+          {rule !== null && onDelete ? (
+            <Button
+              tone="secondary"
+              disabled={deleting}
+              onClick={() => setConfirmingDelete(true)}
+              data-testid="gift-composer-delete"
+            >
+              {copy.composer.delete}
             </Button>
           ) : null}
         </ReadOnlyLock>

@@ -714,6 +714,8 @@ export {
   discountCorrectionTargetRef,
 } from './domain/types/order-change.types';
 // #3542 — the operator-edit overlay and its pure merge.
+export { freezeGiftUnitCost } from './application/services/gift-unit-cost';
+export type { FrozenGiftCost } from './application/services/gift-unit-cost';
 export {
   readOrderEdits,
   applyOrderEditsToSnapshot,

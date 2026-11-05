@@ -38,6 +38,24 @@ export interface GiftRuleLedgerPort {
    */
   recordGrant(grant: Omit<GiftGrant, 'createdAt'>): Promise<boolean>;
 
+  /**
+   * Delete every grant of a cancelled order so its units return to the rule's cap
+   * and the customer's limit. Returns how many rows were removed; idempotent.
+   */
+  releaseGrantsForOrder(internalOrderId: string): Promise<number>;
+
+  /**
+   * Units granted for these gift variants whose order has not reserved yet (no
+   * held reservation) and whose grant is newer than `notOlderThan`, per variant,
+   * leaving `excludeOrderId` out. The availability read cannot see them, so the
+   * stock check subtracts them or two simultaneous orders both read the last unit.
+   */
+  sumPendingUnitsForVariants(
+    variantIds: readonly string[],
+    excludeOrderId: string | null,
+    notOlderThan: Date,
+  ): Promise<Map<string, number>>;
+
   /** Set (`reason`) or clear (`null`) the pause, creating the state row if needed. */
   setPause(ruleId: string, reason: GiftRulePauseReason | null): Promise<void>;
 

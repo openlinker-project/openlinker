@@ -106,6 +106,19 @@ interface PriorLine {
   sku?: string;
 }
 
+const SPLIT_LINE_MARKER = '~gift:';
+
+/**
+ * The source row a (possibly split) line id derives from. A source may split one
+ * row into several lines (a paid part and a free part); a pure split or merge is
+ * a re-expression of the same row, not an amendment, so both sides are compared
+ * per source row.
+ */
+export function sourceRowIdOfSplitLineId(lineId: string): string {
+  const at = lineId.indexOf(SPLIT_LINE_MARKER);
+  return at === -1 ? lineId : lineId.slice(0, at);
+}
+
 /**
  * Compare a stored snapshot against the incoming order.
  *
@@ -149,11 +162,21 @@ function diffLines(
   const changes: OrderAmendmentChange[] = [];
   const seen = new Set<string>();
 
+  const incomingRows = new Map<string, { quantity: number; sku?: string }>();
   for (const item of incoming.items ?? []) {
     const lineId = item?.id;
     if (typeof lineId !== 'string' || lineId.length === 0) {
       continue;
     }
+    const rowId = sourceRowIdOfSplitLineId(lineId);
+    const existing = incomingRows.get(rowId);
+    incomingRows.set(rowId, {
+      quantity: (existing?.quantity ?? 0) + item.quantity,
+      ...((existing?.sku ?? item.sku) !== undefined && { sku: (existing?.sku ?? item.sku) as string }),
+    });
+  }
+
+  for (const [lineId, item] of incomingRows) {
     seen.add(lineId);
 
     const before = prior.get(lineId);
@@ -212,9 +235,12 @@ function readPriorLines(priorSnapshot: Record<string, unknown>): Map<string, Pri
     if (typeof id !== 'string' || id.length === 0 || typeof quantity !== 'number') {
       continue;
     }
-    lines.set(id, {
-      quantity,
-      ...(typeof sku === 'string' && { sku }),
+    const rowId = sourceRowIdOfSplitLineId(id);
+    const existing = lines.get(rowId);
+    const keptSku = existing?.sku ?? (typeof sku === 'string' ? sku : undefined);
+    lines.set(rowId, {
+      quantity: (existing?.quantity ?? 0) + quantity,
+      ...(keptSku !== undefined && { sku: keptSku }),
     });
   }
   return lines;

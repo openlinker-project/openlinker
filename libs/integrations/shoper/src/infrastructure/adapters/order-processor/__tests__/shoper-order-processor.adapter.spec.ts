@@ -427,6 +427,51 @@ describe('ShoperOrderProcessorAdapter', () => {
         expect(total(lines)).toBe(150);
       });
 
+      it('should take the cent from the highest LINE total, not the highest unit price', async () => {
+        const { adapter, post } = setup();
+        const o = order({
+          items: [
+            { id: 'l1', productId: 'ol_p1', variantId: 'ol_v1', quantity: 1, price: 50, sku: 'SKU1', taxRate: '23' },
+            { id: 'l2', productId: 'ol_p2', variantId: 'ol_v2', quantity: 10, price: 10, sku: 'SKU2', taxRate: '8' },
+            gift(),
+          ],
+          totals: { subtotal: 150, tax: 0, shipping: 0, total: 150, currency: 'PLN', taxTreatment: 'inclusive' },
+        });
+
+        await adapter.createOrder(o);
+
+        const lines = sentLines(post);
+        expect(lines.map((l) => [l.price, l.quantity])).toEqual([
+          [50, 1],
+          [9.99, 1],
+          [10, 9],
+          [0.01, 1],
+        ]);
+        expect(total(lines)).toBe(150);
+      });
+
+      it('should fall back to the next candidate when the largest line cannot keep a cent per unit', async () => {
+        const { adapter, post } = setup();
+        const o = order({
+          items: [
+            { id: 'l1', productId: 'ol_p1', variantId: 'ol_v1', quantity: 5, price: 0.01, sku: 'SKU1', taxRate: '23' },
+            { id: 'l2', productId: 'ol_p2', variantId: 'ol_v2', quantity: 1, price: 0.04, sku: 'SKU2', taxRate: '8' },
+            gift(),
+          ],
+          totals: { subtotal: 0.09, tax: 0, shipping: 0, total: 0.09, currency: 'PLN', taxTreatment: 'inclusive' },
+        });
+
+        await adapter.createOrder(o);
+
+        const lines = sentLines(post);
+        expect(lines.map((l) => [l.price, l.quantity])).toEqual([
+          [0.01, 5],
+          [0.03, 1],
+          [0.01, 1],
+        ]);
+        expect(total(lines)).toBe(0.09);
+      });
+
       it('should refuse before any write when no paid line can give the cent', async () => {
         const { adapter, post } = setup();
 

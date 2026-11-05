@@ -159,6 +159,7 @@ describe('Gift rules at ingestion (integration, #3938)', () => {
       sourceConnectionId: ALLEGRO,
       occurredAt,
       isFirstIngestion: persisted.orderEdits === null,
+      allowNewGrants: true,
     });
   }
 
@@ -318,5 +319,51 @@ describe('Gift rules at ingestion (integration, #3938)', () => {
 
     expect([a.order.items.length, b.order.items.length].sort()).toEqual([1, 2]);
     expect((await gifts.listGiftRules())[0].unitsGiven).toBe(1);
+  });
+
+  it('should not give the last units twice when two orders are ingested before either has reserved', async () => {
+    // v_mug has 2 units: the first order is granted both, the second must see
+    // them as spoken for even though no reservation exists yet.
+    await createRule({ quantity: 2 });
+    const placed = new Date(Date.now() + 60_000);
+    const orderA = { ...channelOrder(placed), id: 'ol_order_stock_a' } as Order;
+    const orderB = { ...channelOrder(placed), id: 'ol_order_stock_b' } as Order;
+
+    const [a, b] = await Promise.all([ingest(orderA, placed), ingest(orderB, placed)]);
+
+    expect([a.order.items.length, b.order.items.length].sort()).toEqual([1, 2]);
+    expect((await gifts.listGiftRules())[0].unitsGiven).toBe(2);
+  });
+
+  it('should return the units to the rule when the order is cancelled', async () => {
+    await createRule({ unitCap: 1 });
+    const placed = new Date(Date.now() + 60_000);
+    await ingest(channelOrder(placed), placed);
+    expect((await gifts.listGiftRules())[0].unitsGiven).toBe(1);
+
+    await orderGifts.releaseGrantsForCancelledOrder(ORDER_ID);
+
+    expect((await gifts.listGiftRules())[0].unitsGiven).toBe(0);
+  });
+
+  it('should add nothing to an order that is past routing, even though the rule could apply now', async () => {
+    await createRule();
+    const placed = new Date(Date.now() + 60_000);
+    const order = channelOrder(placed);
+    const persisted = await persist(order);
+
+    const result = await orderGifts.applyGiftRules({
+      order: applyOrderEditsToOrder(order, persisted.orderEdits),
+      channelOrder: order,
+      edits: persisted.orderEdits,
+      customerId: 'cust-1',
+      sourceConnectionId: ALLEGRO,
+      occurredAt: placed,
+      isFirstIngestion: false,
+      allowNewGrants: false,
+    });
+
+    expect(result.order.items).toHaveLength(1);
+    expect((await gifts.listGiftRules())[0].unitsGiven).toBe(0);
   });
 });

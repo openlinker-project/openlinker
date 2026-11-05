@@ -93,6 +93,7 @@ describe('OrderGiftService', () => {
       }),
       withRulesLocked: jest.fn().mockImplementation((_ids: string[], work: () => Promise<unknown>) => work()),
       recordGrant: jest.fn().mockResolvedValue(true),
+      getPendingGrantUnits: jest.fn().mockResolvedValue(new Map()),
       applyStateChange: jest.fn().mockResolvedValue(undefined),
     };
     availability = {
@@ -133,6 +134,7 @@ describe('OrderGiftService', () => {
       sourceConnectionId: 'c1',
       occurredAt: PLACED,
       isFirstIngestion: true,
+      allowNewGrants: true,
       ...extra,
     });
 
@@ -144,6 +146,9 @@ describe('OrderGiftService', () => {
       internalOrderId: 'ol_order_1',
       customerId: 'cust-1',
       quantity: 1,
+      productId: 'p-gift',
+      variantId: 'v-gift',
+      documentForm: 'technical-cent',
     });
     const call = (orderRecords.applyOrderEdit.mock.calls as [ApplyOrderEditInput][])[0][0];
     expect(call.expectedRev).toBeNull();
@@ -170,7 +175,7 @@ describe('OrderGiftService', () => {
 
     expect(orderRecords.applyOrderEdit).not.toHaveBeenCalled();
     expect(result.outcomes[0]).toMatchObject({ applied: false, reason: 'gift-already-in-order' });
-    expect(recorder.record.mock.calls[0][0].steps[0]).toMatchObject({
+    expect(((recorder.record.mock.calls[0] as unknown[])[0] as { steps: unknown[] }).steps[0]).toMatchObject({
       status: 'nothing-to-do',
       reasonCode: 'gift-already-in-order',
     });
@@ -270,13 +275,74 @@ describe('OrderGiftService', () => {
 
   it('should re-add a missing line from the ledger without counting the grant twice', async () => {
     giftRules.getGrantsForOrder.mockResolvedValue([
-      { ruleId: 'rule-1', internalOrderId: 'ol_order_1', customerId: 'cust-1', quantity: 3, createdAt: PLACED },
+      { ruleId: 'rule-1', internalOrderId: 'ol_order_1', customerId: 'cust-1', quantity: 3, productId: 'p-old', variantId: 'v-old', documentForm: null, createdAt: PLACED },
     ]);
     await apply(makeOrder());
 
     expect(giftRules.recordGrant).not.toHaveBeenCalled();
     const call = (orderRecords.applyOrderEdit.mock.calls as [ApplyOrderEditInput][])[0][0];
-    expect(call.addedLines?.[olGiftLineKey('rule-1', '1')].quantity).toBe(3);
+    expect(call.addedLines?.[olGiftLineKey('rule-1', '1')]).toMatchObject({
+      quantity: 3,
+      // rebuilt from the GRANT, not from the rule's (since edited) action
+      productId: 'p-old',
+      variantId: 'v-old',
+    });
+    expect(call.addedLines?.[olGiftLineKey('rule-1', '1')].gift).not.toHaveProperty('documentForm');
+  });
+
+  it('should add nothing once the order is past routing or mirroring, even when the rule can apply now (a pause cleared)', async () => {
+    const result = await apply(makeOrder(), null as never, { allowNewGrants: false });
+
+    expect(giftRules.recordGrant).not.toHaveBeenCalled();
+    expect(orderRecords.applyOrderEdit).not.toHaveBeenCalled();
+    expect(result.order.items).toHaveLength(1);
+    expect(result.outcomes).toEqual([]);
+  });
+
+  it('should not self-heal a missing line once the window is closed', async () => {
+    giftRules.getGrantsForOrder.mockResolvedValue([
+      { ruleId: 'rule-1', internalOrderId: 'ol_order_1', customerId: 'cust-1', quantity: 1, productId: 'p-gift', variantId: 'v-gift', documentForm: null, createdAt: PLACED },
+    ]);
+    await apply(makeOrder(), null as never, { allowNewGrants: false });
+
+    expect(orderRecords.applyOrderEdit).not.toHaveBeenCalled();
+  });
+
+  it('should subtract units granted to other orders but not yet reserved, so the last unit is given once', async () => {
+    availability.getPromisableQuantities.mockResolvedValue([
+      { productVariantId: 'v-gift', quantity: 1, provenance: 'computed' },
+    ]);
+    giftRules.getPendingGrantUnits.mockResolvedValue(new Map([['v-gift', 1]]));
+
+    const result = await apply(makeOrder());
+
+    expect(giftRules.getPendingGrantUnits).toHaveBeenCalledWith(['v-gift'], 'ol_order_1');
+    expect(giftRules.applyStateChange).toHaveBeenCalledWith('rule-1', {
+      kind: 'pause',
+      reason: 'gift-out-of-stock',
+    });
+    expect(result.order.items).toHaveLength(1);
+  });
+
+  it('should add nothing to an order known cancelled while its status still lags', async () => {
+    const result = await apply(makeOrder('pending'), null as never, { cancelled: true });
+
+    expect(giftRules.listOrderedRules).not.toHaveBeenCalled();
+    expect(result.outcomes).toEqual([]);
+  });
+
+  it('should release the grants of a cancelled order', async () => {
+    giftRules.releaseGrantsForOrder = jest.fn().mockResolvedValue(1);
+
+    await service.releaseGrantsForCancelledOrder('ol_order_1');
+
+    expect(giftRules.releaseGrantsForOrder).toHaveBeenCalledWith('ol_order_1');
+  });
+
+  it('should not throw when releasing the grants fails', async () => {
+    giftRules.releaseGrantsForOrder = jest.fn().mockRejectedValue(new Error('db down'));
+
+    await expect(service.releaseGrantsForCancelledOrder('ol_order_1')).resolves.toBeUndefined();
   });
 
   it('should add nothing to an order placed before the rule was saved', async () => {

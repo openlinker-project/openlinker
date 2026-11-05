@@ -726,6 +726,12 @@ export class OrderIngestionService implements IOrderIngestionService {
       sourceConnectionId: connectionId,
       occurredAt: overlaidOrder.placedAt ?? existing?.createdAt ?? new Date(),
       isFirstIngestion: !existing,
+      // A gift line added after the order was frozen, routed or mirrored would
+      // never be picked, decremented or mirrored (and its hold would leak): new
+      // grants are only for the window before any of that exists.
+      allowNewGrants:
+        !existing || (existing.lineExpansion == null && (existing.syncStatus ?? []).length === 0),
+      cancelled: cancelledFromEarlySignal || incoming.status === 'cancelled',
       ...(existing?.lineExpansion != null && {
         frozenDefinitions: existing.lineExpansion.definitions,
       }),

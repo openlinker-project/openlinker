@@ -69,7 +69,7 @@ describe('GiftPromotionsPage', () => {
     expect(await screen.findByTestId('gift-rule-row-r1')).toBeInTheDocument();
     expect(screen.getAllByTestId('gift-rule-readonly-notice').length).toBeGreaterThan(0);
     expect(screen.queryByTestId('gift-rule-new')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('gift-rule-up-r1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('gift-rule-up-r1')).toBeDisabled();
   });
 
   it('should say so when there are no promotions yet', async () => {

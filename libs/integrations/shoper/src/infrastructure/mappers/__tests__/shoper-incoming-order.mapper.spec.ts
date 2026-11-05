@@ -409,12 +409,22 @@ describe('mapShoperOrderToIncoming gift app lines (#3937)', () => {
     ['another option that merely contains the words', 'Pakowanie na produkt gratisowy: tak'],
     ['a different option', 'Rozmiar: M'],
     ['no option at all', null],
+    ['the option present but unticked', 'Produkt gratisowy: nie'],
+    ['a value that merely contains the word', 'Produkt gratisowy: nie, tak?'],
   ])('should not mark a line with %s', (_name, option) => {
     expect(map([{ ...SHOPER_GIFT_APP_LINE, option }])[0].gift).toBeUndefined();
   });
 
   it('should find the gift option among several chosen options, in any case', () => {
     const [item] = map([{ ...SHOPER_GIFT_APP_LINE, option: 'Rozmiar: M, PRODUKT GRATISOWY: tak' }]);
+
+    expect(item.gift).toEqual({ source: 'channel' });
+  });
+
+  it('should keep a comma inside another option value from hiding the gift option', () => {
+    const [item] = map([
+      { ...SHOPER_GIFT_APP_LINE, option: 'Opis: dluga, z przecinkiem, Produkt gratisowy: Tak' },
+    ]);
 
     expect(item.gift).toEqual({ source: 'channel' });
   });

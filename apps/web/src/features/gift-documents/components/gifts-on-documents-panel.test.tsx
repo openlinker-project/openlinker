@@ -95,6 +95,17 @@ describe('GiftsOnDocumentsPanel', () => {
     expect(screen.getByText(/As in OpenLinker \(0\.01, from the most expensive\)/)).toBeInTheDocument();
   });
 
+  it('should not name the default form while the OpenLinker-wide setting could not be read', async () => {
+    const api = buildApi({});
+    (api.giftDocuments.getSettings as Mock).mockRejectedValue(new Error('403'));
+    renderConnection(api);
+
+    const inherit = await screen.findByTestId('doc-gift-set-option-inherit');
+    expect(inherit).toBeChecked();
+    expect(screen.getByText(/As in OpenLinker \(not known yet\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/As in OpenLinker \(0\.01/)).not.toBeInTheDocument();
+  });
+
   it('should show the receipt total equal to what was paid', async () => {
     renderConnection(buildApi({}));
     expect(await screen.findByTestId('doc-gift-set-preview-sum')).toBeInTheDocument();

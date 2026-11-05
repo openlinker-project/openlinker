@@ -129,6 +129,39 @@ describe('OrderEditService (#3542)', () => {
       });
     });
 
+    it('should freeze the gift cost on the entry like a rule gift does (ADR-080)', async () => {
+      await service.addGift(giftInput);
+
+      expect(orderRecords.applyOrderEdit.mock.calls[0][0].addedLines?.['op-gift:chg-1']).toMatchObject({
+        unitCostNet: '3.5000',
+        unitCostCurrency: 'PLN',
+      });
+    });
+
+    it('should refuse a different gift when an earlier gift change is still open, instead of dropping it silently', async () => {
+      const open = new OrderChange(
+        'chg-open', ORDER_ID, 'order.gift_added', 'edit:gift:ol_order_1', 'requested', { variantId: 'v-other', quantity: 1 },
+        'user-1', new Date(), null, null, null, null, new Date(), new Date()
+      );
+      changes.openOrReuse.mockResolvedValue({ change: open, opened: false } as never);
+
+      expect(await refusal(service.addGift(giftInput))).toBe('ORDER_EDIT_CONTENDED');
+      expect(orderRecords.applyOrderEdit).not.toHaveBeenCalled();
+      expect(reservations.reserveForOrder).not.toHaveBeenCalled();
+    });
+
+    it('should finish an interrupted identical gift request on the reused change', async () => {
+      const open = new OrderChange(
+        'chg-open', ORDER_ID, 'order.gift_added', 'edit:gift:ol_order_1', 'requested', { variantId: 'v-gift', quantity: 2 },
+        'user-1', new Date(), null, null, null, null, new Date(), new Date()
+      );
+      changes.openOrReuse.mockResolvedValue({ change: open, opened: false } as never);
+
+      const result = await service.addGift(giftInput);
+
+      expect(result.gift?.lineKey).toBe('op-gift:chg-open');
+    });
+
     it('should refuse with ORDER_PACKED when the parcel is already closed', async () => {
       fulfillment.assessForEdit.mockResolvedValue(assessment({ anyParcelClosed: true }));
 
@@ -201,7 +234,12 @@ describe('OrderEditService (#3542)', () => {
   let fiscal: jest.Mocked<Pick<IFiscalRegistrationService, 'getByOrderId'>>;
   let fulfillment: jest.Mocked<IFulfillmentOrderEditService>;
   let reservations: jest.Mocked<Pick<IReservationService, 'narrowForOrder' | 'reserveForOrder'>>;
-  let products: { getVariant: jest.Mock; getProduct: jest.Mock; getEffectiveTaxRate: jest.Mock };
+  let products: {
+    getVariant: jest.Mock;
+    getProduct: jest.Mock;
+    getEffectiveTaxRate: jest.Mock;
+    getVariantsByIds: jest.Mock;
+  };
   let reversal: jest.Mocked<Pick<IInventorySaleReversalService, 'reverseLineQuantity'>>;
   let connections: { get: jest.Mock };
   let integrations: { resolveAdapterMetadata: jest.Mock };
@@ -257,6 +295,9 @@ describe('OrderEditService (#3542)', () => {
       getVariant: jest.fn().mockResolvedValue({ id: 'v-gift', productId: 'p-gift', sku: 'GIFT-1' }),
       getProduct: jest.fn().mockResolvedValue({ id: 'p-gift', name: 'Mug' }),
       getEffectiveTaxRate: jest.fn().mockResolvedValue(null),
+      getVariantsByIds: jest.fn().mockResolvedValue([
+        { id: 'v-gift', netUnitCost: '3.5000', costCurrency: 'PLN', costUpdatedAt: new Date('2000-01-01T00:00:00Z') },
+      ]),
     };
     reservations = {
       reserveForOrder: jest.fn().mockImplementation(() => {

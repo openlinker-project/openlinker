@@ -1727,7 +1727,6 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     }
   }
 
-  /** The source connection's neutral `platformType` for the numbering axis (#1694). */
   /**
    * The connection override plus the OpenLinker-wide default (#3941). A failed
    * read of the default falls back to the code default: it must never break an
@@ -1738,13 +1737,15 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       const { form } = await this.salesDocumentSettings.getGiftDocumentForm();
       return readGiftDocumentSettings(config, form);
     } catch (error) {
-      this.logger.debug(
-        `Gift default lookup failed: ${error instanceof Error ? error.message : String(error)}`,
+      this.logger.warn(
+        `Gift default lookup failed; the code default form applies, which may differ from the ` +
+          `operator's saved setting: ${error instanceof Error ? error.message : String(error)}`,
       );
       return readGiftDocumentSettings(config, DEFAULT_GIFT_LINE_FORM);
     }
   }
 
+  /** The source connection's neutral `platformType` for the numbering axis (#1694). */
   private platformTypeOf(sourceConnection: Connection | null): string | undefined {
     const platformType = sourceConnection?.platformType.trim();
     return platformType !== undefined && platformType.length > 0 ? platformType : undefined;

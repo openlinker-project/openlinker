@@ -31,6 +31,9 @@ import type {
   GiftRuleStateChange,
 } from '../../domain/types/gift-rule.types';
 
+/** A grant is "pending" until its order reserves; ingestion does that within seconds, so this only bounds a grant whose order never did. */
+const PENDING_GRANT_WINDOW_MS = 15 * 60 * 1000;
+
 @Injectable()
 export class GiftRuleService implements IGiftRuleService {
   constructor(
@@ -78,6 +81,21 @@ export class GiftRuleService implements IGiftRuleService {
 
   recordGrant(grant: Omit<GiftGrant, 'createdAt'>): Promise<boolean> {
     return this.ledger.recordGrant(grant);
+  }
+
+  releaseGrantsForOrder(internalOrderId: string): Promise<number> {
+    return this.ledger.releaseGrantsForOrder(internalOrderId);
+  }
+
+  getPendingGrantUnits(
+    variantIds: readonly string[],
+    excludeOrderId: string | null,
+  ): Promise<Map<string, number>> {
+    return this.ledger.sumPendingUnitsForVariants(
+      variantIds,
+      excludeOrderId,
+      new Date(Date.now() - PENDING_GRANT_WINDOW_MS),
+    );
   }
 
   async applyStateChange(ruleId: string, change: GiftRuleStateChange): Promise<void> {

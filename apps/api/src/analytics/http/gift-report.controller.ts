@@ -78,8 +78,9 @@ export class GiftReportController {
       '366 days. No yearly threshold is evaluated.',
   })
   async exportCsv(@Query() query: GiftReportQueryDto): Promise<StreamableFile> {
+    // The coded export error must win over the screens' generic window cap.
+    assertExportRange(new Date(query.from), new Date(query.to));
     const { from, to } = parseRange(query);
-    assertExportRange(from, to);
     const rows = await this.reports.getCustomerExportRows({
       from,
       to,

@@ -99,4 +99,24 @@ describe('AddGiftDialog', () => {
 
     expect(await screen.findByTestId('order-gift-dialog-refused-closed')).toBeInTheDocument();
   });
+
+  it.each(['LABEL_ALREADY_BOUGHT'])('should read %s as a closed parcel', async (code) => {
+    const addGiftToOrder = vi.fn().mockRejectedValue(new ApiError('Label bought.', 409, { error: code, message: 'Label bought.' }));
+    open(api({ addGiftToOrder }));
+
+    await pickSpoon();
+    fireEvent.click(screen.getByTestId('order-gift-dialog-submit'));
+
+    expect(await screen.findByTestId('order-gift-dialog-refused-closed')).toBeInTheDocument();
+  });
+
+  it('should refuse an order that has not finished importing before and after the server answers', async () => {
+    const addGiftToOrder = vi.fn().mockRejectedValue(new ApiError('Not ready.', 409, { error: 'ORDER_NOT_READY', message: 'Not ready.' }));
+    open(api({ addGiftToOrder }));
+
+    await pickSpoon();
+    fireEvent.click(screen.getByTestId('order-gift-dialog-submit'));
+
+    expect(await screen.findByTestId('order-gift-dialog-refused-not-ready')).toBeInTheDocument();
+  });
 });

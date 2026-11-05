@@ -176,6 +176,7 @@ describe('Gift stock path, OMS on (#3939)', () => {
       sourceConnectionId: ALLEGRO,
       occurredAt: placed,
       isFirstIngestion: persisted.orderEdits === null,
+      allowNewGrants: true,
     });
 
     const orderRecords = harness.get<IOrderRecordService>(ORDER_RECORD_SERVICE_TOKEN);

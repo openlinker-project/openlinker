@@ -27,10 +27,11 @@ import { AUTOMATION_RETRY_SERVICE_TOKEN } from './application/automation-retry.t
 import { AUTOMATION_DRY_RUN_SERVICE_TOKEN } from './application/automation-dry-run.tokens';
 import { AutomationsController } from './http/automations.controller';
 import { GiftRulesController } from './http/gift-rules.controller';
+import { GiftAttentionController } from './http/gift-attention.controller';
 
 @Module({
   imports: [AutomationModule, OrdersModule],
-  controllers: [AutomationsController, GiftRulesController],
+  controllers: [AutomationsController, GiftRulesController, GiftAttentionController],
   providers: [
     AutomationDryRunService,
     { provide: AUTOMATION_DRY_RUN_SERVICE_TOKEN, useExisting: AutomationDryRunService },

@@ -15,6 +15,7 @@ function build(): {
   const orderRecords = {
     getOrderRecord: jest.fn().mockResolvedValue({
       currency: 'PLN',
+      physicalItems: [{ id: 'bundle~c:slot', giftSlot: true, quantity: 1, name: 'Free mug', sku: 'MUG' }, { id: 'paid' }],
       orderItems: [
         { id: 'paid', productId: 'p0', quantity: 1, price: 100 },
         {
@@ -43,15 +44,16 @@ function build(): {
 }
 
 describe('ReturnGiftsController', () => {
-  it('should list only the gift lines, undecided, with their standalone price', async () => {
+  it('should list the gift lines and bundle gift slots, undecided, with their standalone price', async () => {
     const { controller } = build();
     const result = await controller.list('r1');
-    expect(result.gifts).toHaveLength(1);
+    expect(result.gifts.map((g) => g.giftLineId)).toEqual(['g1', 'bundle~c:slot']);
     expect(result.gifts[0]).toMatchObject({
       giftLineId: 'g1',
       decision: null,
       standalonePriceGross: 19.98,
     });
+    expect(result.gifts[1]).toMatchObject({ giftLineId: 'bundle~c:slot', sku: 'MUG', quantity: 1 });
     expect(result.refundDeductionGross).toBe(0);
   });
 
@@ -69,6 +71,14 @@ describe('ReturnGiftsController', () => {
     expect(decisions.decide).toHaveBeenCalledWith(expect.objectContaining({ deductionGross: null }));
   });
 
+  it('should hand core the order\'s own gift lines and gift slots as the valid ids', async () => {
+    const { controller, decisions } = build();
+    await controller.decide('r1', 'g1', { decision: 'keep' }, USER);
+    expect(decisions.decide).toHaveBeenCalledWith(
+      expect.objectContaining({ validGiftLineIds: ['g1', 'bundle~c:slot'] })
+    );
+  });
+
   it('should answer 404 for a line that is not a gift of the order', async () => {
     const { controller } = build();
     await expect(controller.decide('r1', 'paid', { decision: 'keep' }, USER)).rejects.toBeInstanceOf(
@@ -81,6 +91,14 @@ describe('ReturnGiftsController', () => {
     decisions.decide.mockRejectedValue(new ReturnGiftDecisionInvalidError('deduction-required'));
     await expect(controller.decide('r1', 'g1', { decision: 'deduct' }, USER)).rejects.toBeInstanceOf(
       BadRequestException
+    );
+  });
+
+  it('should record a decision on a bundle gift slot', async () => {
+    const { controller, decisions } = build();
+    await controller.decide('r1', 'bundle~c:slot', { decision: 'keep' }, USER);
+    expect(decisions.decide).toHaveBeenCalledWith(
+      expect.objectContaining({ giftLineId: 'bundle~c:slot', decision: 'keep' })
     );
   });
 });
