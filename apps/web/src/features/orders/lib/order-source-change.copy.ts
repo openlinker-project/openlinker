@@ -20,8 +20,9 @@ export interface SourceChangeEffectCopy {
 }
 
 export const SOURCE_CHANGE_COPY = {
-  title: (channel: string): string => `Changed in ${channel}`,
-  titleFallback: 'Changed in the shop',
+  // The same words as the orders-list filter, so the card and the filter that
+  // finds it read as one thing.
+  title: 'Changed by the shop',
   status: {
     applied: 'Applied',
     decision: 'Needs a decision',
@@ -34,24 +35,29 @@ export const SOURCE_CHANGE_COPY = {
       { mark: 'done', text: 'Stock and reservation follow it' },
     ],
     'box-holds-more': [
-      { mark: 'todo', text: 'The box holds more. The packer is told what to take out' },
-      { mark: 'none', text: 'Stock changes when the box matches' },
+      { mark: 'todo', text: 'The box already holds more' },
+      { mark: 'done', text: 'The packer is told what to take out' },
+      { mark: 'none', text: 'Stock changes once the box matches' },
     ],
     'box-closed': [
       { mark: 'todo', text: 'The box was closed before the change' },
-      { mark: 'none', text: 'Nothing was changed yet' },
+      { mark: 'done', text: 'Packing is on hold' },
+      { mark: 'none', text: 'Stock is unchanged' },
     ],
     'packed-elsewhere': [
       { mark: 'todo', text: 'This order is packed outside OpenLinker' },
+      { mark: 'done', text: 'Packing is on hold' },
       { mark: 'none', text: 'Tell the warehouse, then decide here' },
     ],
     'already-fulfilled': [
       { mark: 'todo', text: 'More units were already reported packed' },
-      { mark: 'none', text: 'Nothing was changed yet' },
+      { mark: 'done', text: 'Packing is on hold' },
+      { mark: 'none', text: 'Stock is unchanged' },
     ],
     'units-added': [
       { mark: 'todo', text: 'OpenLinker does not add items to a box on its own' },
-      { mark: 'none', text: 'The box is on hold' },
+      { mark: 'done', text: 'Packing is on hold' },
+      { mark: 'none', text: 'Stock is unchanged' },
     ],
     shipped: [
       { mark: 'none', text: 'The parcel left with the old quantity' },
@@ -70,6 +76,8 @@ export const SOURCE_CHANGE_COPY = {
     retry: 'Try again',
   },
   lineRemoved: 'removed',
+  lineAdded: 'new',
+  sku: (sku: string): string => `SKU ${sku}`,
   outcome: {
     applied: 'Packing, stock and reservation now match the order.',
     held: 'The box still does not match. It stays on hold.',

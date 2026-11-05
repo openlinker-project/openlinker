@@ -54,22 +54,30 @@ export function BenchSourceChange({
             <span className="bench-source-change__count-value">{entry.units}</span>
           </div>
           <div className="bench-source-change__body">
-            <span className="bench-source-change__title">{line?.name ?? copy.unnamedItem}</span>
-            <span>{copy.takeOutBody(entry.units, line?.binCode ?? null)}</span>
-            <span className="bench-source-change__note">{copy.takeOutNote}</span>
+            <h3 className="bench-source-change__title">{line?.name ?? copy.unnamedItem}</h3>
+            {line?.sku || line?.ean ? (
+              <p className="bench-source-change__ids mono-text">
+                {line.sku ? <span>{copy.skuLabel(line.sku)}</span> : null}
+                {line.ean ? <span>{copy.eanLabel(line.ean)}</span> : null}
+              </p>
+            ) : null}
+            <p className="bench-source-change__text">{copy.takeOutBody(entry.units, line?.binCode ?? null)}</p>
           </div>
-          {onTakenOut === undefined ? null : (
-            <Button
-              tone="primary"
-              className="bench-source-change__action"
-              disabled={pending}
-              onClick={() => {
-                onTakenOut(entry.workLineId);
-              }}
-            >
-              {copy.takenOutAction}
-            </Button>
-          )}
+          <footer className="bench-source-change__foot">
+            {onTakenOut === undefined ? null : (
+              <Button
+                tone="primary"
+                className="bench-source-change__action"
+                disabled={pending}
+                onClick={() => {
+                  onTakenOut(entry.workLineId);
+                }}
+              >
+                {copy.takenOutAction}
+              </Button>
+            )}
+            <span className="bench-source-change__note">{copy.takeOutNote}</span>
+          </footer>
         </section>
       ))}
     </div>

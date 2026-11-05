@@ -178,7 +178,9 @@ export const benchParcelCopy = {
       `The shop lowered this item. Take ${String(units)} out and put ${units === 1 ? 'it' : 'them'} back on ${
         binCode === null ? 'the shelf' : `shelf ${binCode}`
       }.`,
-    takeOutNote: 'Take the extra out first, then confirm. The box goes back to packing on its own.',
+    takeOutNote: 'The box goes back to packing on its own.',
+    skuLabel: (sku: string): string => `SKU ${sku}`,
+    eanLabel: (ean: string): string => `EAN ${ean}`,
     takenOutAction: 'Done, I took it out',
     takenOutFailed: 'That did not go through. Check the box and confirm again.',
     heldBody: 'The shop changed this order. Leave the box as it is - the office decides what goes in it.',

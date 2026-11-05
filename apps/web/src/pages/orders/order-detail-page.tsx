@@ -657,6 +657,7 @@ export function OrderDetailPage(): ReactElement {
         itemNames={Object.fromEntries(snapshot.items.map((item) => [item.id, item.name ?? item.sku ?? item.id]))}
         hasPackingWork={(fulfilmentTasksQuery.data?.total ?? 0) > 0}
         sourceName={cancelSourceName}
+        sourcePlatform={sourcePlatformType}
       />
 
       {failedDestinations.length > 0 ? (

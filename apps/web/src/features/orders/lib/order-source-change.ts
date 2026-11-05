@@ -22,6 +22,8 @@ export type SourceChangeStatus = 'applied' | 'decision' | 'shipped' | 'failed';
 export interface SourceChangeLineView {
   readonly key: string;
   readonly name: string;
+  /** Shown under the name only when it says something the name does not. */
+  readonly sku: string | null;
   readonly from: number;
   readonly to: number;
 }
@@ -97,12 +99,13 @@ function lineChanges(
       change.lineId ??
       '';
     const key = `${change.lineId ?? 'line'}:${String(index)}`;
+    const sku = change.sku !== undefined && change.sku !== name ? change.sku : null;
     if (change.kind === 'line-quantity-changed') {
-      out.push({ key, name, from: change.fromQuantity ?? 0, to: change.toQuantity ?? 0 });
+      out.push({ key, name, sku, from: change.fromQuantity ?? 0, to: change.toQuantity ?? 0 });
     } else if (change.kind === 'line-removed') {
-      out.push({ key, name, from: change.fromQuantity ?? 0, to: 0 });
+      out.push({ key, name, sku, from: change.fromQuantity ?? 0, to: 0 });
     } else if (change.kind === 'line-added') {
-      out.push({ key, name, from: 0, to: change.toQuantity ?? 0 });
+      out.push({ key, name, sku, from: 0, to: change.toQuantity ?? 0 });
     }
   });
   return out;

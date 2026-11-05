@@ -25,6 +25,12 @@ describe('describeSourceChange (#3961)', () => {
     expect(describeSourceChange({ ...base, lastAmendmentChanges: [] })).toBeNull();
   });
 
+  it('should not repeat the SKU under a line that is already named by it', () => {
+    const view = describeSourceChange({ ...base, itemNames: {} });
+
+    expect(view?.lines[0]).toMatchObject({ name: 'MUG-350', sku: null });
+  });
+
   it('should render nothing for an order without packing work', () => {
     expect(describeSourceChange({ ...base, hasPackingWork: false })).toBeNull();
   });
@@ -34,7 +40,9 @@ describe('describeSourceChange (#3961)', () => {
 
     expect(view?.status).toBe('applied');
     expect(view?.actions).toEqual([]);
-    expect(view?.lines).toEqual([{ key: 'li_1:0', name: 'Ceramic mug 350 ml', from: 2, to: 1 }]);
+    expect(view?.lines).toEqual([
+      { key: 'li_1:0', name: 'Ceramic mug 350 ml', sku: 'MUG-350', from: 2, to: 1 },
+    ]);
   });
 
   it('should ask for a decision with check-again first and keep second while the box is held', () => {
