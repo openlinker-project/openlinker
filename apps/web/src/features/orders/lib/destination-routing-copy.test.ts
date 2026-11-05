@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  DESTINATION_ROUTING_ATTENTION_REASONS,
   DESTINATION_ROUTING_ATTENTION_SYNC_HINT,
   DESTINATION_ROUTING_PARTIAL_SYNC_HINT,
   isDestinationRoutingBlockReason,
@@ -41,5 +42,24 @@ describe('resolveDestinationRoutingSyncHint', () => {
     expect(resolveDestinationRoutingSyncHint('routed-destinations-unavailable', false)).toBe(
       DESTINATION_ROUTING_ATTENTION_SYNC_HINT
     );
+  });
+});
+
+// #3959 - a shop with nothing to copy its orders to.
+describe('own-only destination reasons', () => {
+  it('should keep no-destination-configured neutral and uncounted', () => {
+    expect(resolveDestinationRoutingCopy('no-destination-configured')?.tone).toBe('decision');
+    expect(DESTINATION_ROUTING_ATTENTION_REASONS).not.toContain('no-destination-configured');
+  });
+
+  it('should show its own hint, not the attention pointer, when no destination rows exist', () => {
+    expect(resolveDestinationRoutingSyncHint('no-destination-configured', false)).toBe(
+      resolveDestinationRoutingCopy('no-destination-configured')?.hint
+    );
+  });
+
+  it('should count no-active-destination as outstanding work', () => {
+    expect(resolveDestinationRoutingCopy('no-active-destination')?.tone).toBe('attention');
+    expect(DESTINATION_ROUTING_ATTENTION_REASONS).toContain('no-active-destination');
   });
 });
