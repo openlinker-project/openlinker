@@ -9,6 +9,7 @@
  * @module features/oms-onboarding/hooks
  */
 import { useMappingOptions, useRoutingRulesQuery } from '../../mappings';
+import { ApiError } from '../../../shared/api/api-error';
 import { countRoutedMethods, type SourceShippingCoverage } from '../lib/shipping-coverage';
 
 type MappingOptionKeys = NonNullable<Parameters<typeof useMappingOptions>[1]>;
@@ -22,10 +23,14 @@ export function useSourceShippingCoverage(
   activeConnectionIds: ReadonlySet<string>
 ): SourceShippingCoverage {
   const { options, isLoading, errors } = useMappingOptions(sourceConnectionId, DELIVERY_METHOD_KEYS);
-  const cannotList = errors.allegroDeliveryMethods !== undefined;
-  const rules = useRoutingRulesQuery(sourceConnectionId, { enabled: !cannotList });
+  const methodsError = errors.allegroDeliveryMethods;
+  // Only a 501 says the source has no delivery-method list; anything else is a
+  // read that failed and may work on a retry.
+  const cannotList = methodsError instanceof ApiError && methodsError.status === 501;
+  const rules = useRoutingRulesQuery(sourceConnectionId, { enabled: methodsError === undefined });
 
   if (cannotList) return { status: 'cannot-list', withCarrier: 0, total: 0 };
+  if (methodsError !== undefined) return { status: 'load-failed', withCarrier: 0, total: 0 };
   if (isLoading || rules.isLoading) return { status: 'loading', withCarrier: 0, total: 0 };
 
   const methodIds = new Set(options.allegroDeliveryMethods.map((method) => method.value));

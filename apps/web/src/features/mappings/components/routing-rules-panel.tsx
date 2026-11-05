@@ -32,7 +32,7 @@ import {
   type ParcelProfileDraft,
 } from '../lib/parcel-profile';
 import { PARCEL_COPY } from '../lib/parcel-profile.copy';
-import { SHIPPING_ROUTE_COPY, describeShippingRoute } from '../lib/shipping-route.copy';
+import { SHIPPING_ROUTE_COPY } from '../lib/shipping-route.copy';
 import { RoutingSplitBar, type RoutingSplitBucket } from './routing-split-bar';
 import {
   useRoutingRulesQuery,
@@ -59,6 +59,14 @@ interface RoutingRulesPanelProps {
    * tab switch that would discard staged routing edits (#1784 follow-up I3).
    */
   onDirtyChange?: (dirty: boolean) => void;
+  /**
+   * Rendered inside a host that already names the task (the OMS Shipping step,
+   * the routing dialog): drop the panel's own card, title and intro so the
+   * operator reads one heading and one container, not three nested ones.
+   */
+  embedded?: boolean;
+  /** A delivery method to put first and mark, e.g. the one the operator came from. */
+  focusMethodId?: string;
 }
 
 /** Sentinel selection key meaning "no rule" → the default OMP fulfils the method. */
@@ -99,9 +107,16 @@ function parseSelectionKey(
   return { kind, connectionId };
 }
 
+/**
+ * Which half of the choice an option belongs to. The select groups options by
+ * it, so each option can be a short name and still read unambiguously.
+ */
+type RouteGroup = 'shop' | 'label';
+
 interface DivertOption {
   key: string;
   label: string;
+  group: RouteGroup;
 }
 
 export function RoutingRulesPanel({
@@ -111,6 +126,8 @@ export function RoutingRulesPanel({
   deliveryMethodsLoading,
   deliveryMethodsError,
   onDirtyChange,
+  embedded = false,
+  focusMethodId,
 }: RoutingRulesPanelProps): ReactElement {
   const rulesQuery = useRoutingRulesQuery(connectionId);
   const candidatesQuery = useRoutingCandidatesQuery(connectionId);
@@ -182,10 +199,14 @@ export function RoutingRulesPanel({
         .filter((c) => c.processorKind !== 'omp_fulfilled')
         .map((c) => ({
           key: `${c.processorKind}::${c.processorConnectionId}`,
-          label: describeShippingRoute(c.processorKind, connName(c.processorConnectionId)),
+          label:
+            c.processorKind === 'source_brokered'
+              ? SHIPPING_ROUTE_COPY.sourceShipping(sourceLabel)
+              : connName(c.processorConnectionId),
+          group: 'label' as const,
         }))
         .sort((a, b) => a.label.localeCompare(b.label)),
-    [candidates, connName],
+    [candidates, connName, sourceLabel],
   );
 
   // Render a row per delivery method, plus any saved rule whose method the
@@ -196,8 +217,11 @@ export function RoutingRulesPanel({
     for (const methodId of savedKeyByMethod.keys()) {
       if (!known.has(methodId)) orphans.push({ value: methodId, label: methodId });
     }
-    return [...deliveryMethods, ...orphans];
-  }, [deliveryMethods, savedKeyByMethod]);
+    const rows = [...deliveryMethods, ...orphans];
+    if (!focusMethodId) return rows;
+    // The method the operator came from goes first, so they never hunt for it.
+    return [...rows.filter((m) => m.value === focusMethodId), ...rows.filter((m) => m.value !== focusMethodId)];
+  }, [deliveryMethods, savedKeyByMethod, focusMethodId]);
 
   const draftFor = useCallback(
     (methodId: string): ParcelProfileDraft => profileDrafts[methodId] ?? EMPTY_PARCEL_DRAFT,
@@ -263,21 +287,23 @@ export function RoutingRulesPanel({
 
   const optionsForRow = useCallback(
     (currentKey: string): DivertOption[] => {
-      const base: DivertOption[] = [{ key: DEFAULT_KEY, label: defaultLabel }, ...divertOptions];
+      const base: DivertOption[] = [
+        { key: DEFAULT_KEY, label: SHIPPING_ROUTE_COPY.defaultShort(shopName), group: 'shop' },
+        ...divertOptions,
+      ];
       // Keep a saved selection visible even when it is no longer a live candidate
       // (connection disabled, capability lost), so the operator can see + decide.
       if (currentKey !== DEFAULT_KEY && !base.some((o) => o.key === currentKey)) {
         const parsed = parseSelectionKey(currentKey);
         base.push({
           key: currentKey,
-          label: parsed
-            ? SHIPPING_ROUTE_COPY.unavailable(describeShippingRoute(parsed.kind, connName(parsed.connectionId)))
-            : currentKey,
+          label: parsed ? SHIPPING_ROUTE_COPY.unavailable(connName(parsed.connectionId)) : currentKey,
+          group: 'label',
         });
       }
       return base;
     },
-    [defaultLabel, divertOptions, connName],
+    [shopName, divertOptions, connName],
   );
 
   const handleSelect = useCallback((methodId: string, key: string): void => {
@@ -329,9 +355,14 @@ export function RoutingRulesPanel({
           </>
         );
       }
-      return <span title={shortValue(method.value)}>{method.label}</span>;
+      return (
+        <span className="routing-method" title={shortValue(method.value)}>
+          {method.label}
+          {method.value === focusMethodId ? <span className="routing-method__mark">{SHIPPING_ROUTE_COPY.thisOrder}</span> : null}
+        </span>
+      );
     },
-    [duplicateLabels],
+    [duplicateLabels, focusMethodId],
   );
 
   // NOTE (#1784 I8): the per-row divert picker stays a native <select> routed
@@ -351,11 +382,19 @@ export function RoutingRulesPanel({
             handleSelect(method.value, e.target.value);
           }}
         >
-          {optionsForRow(currentKey).map((o) => (
-            <option key={o.key} value={o.key}>
-              {o.label}
-            </option>
-          ))}
+          {(['shop', 'label'] as const).map((group) => {
+            const options = optionsForRow(currentKey).filter((o) => o.group === group);
+            if (options.length === 0) return null;
+            return (
+              <optgroup key={group} label={SHIPPING_ROUTE_COPY.groupLabel[group]}>
+                {options.map((o) => (
+                  <option key={o.key} value={o.key}>
+                    {o.label}
+                  </option>
+                ))}
+              </optgroup>
+            );
+          })}
         </Select>
       );
     },
@@ -369,21 +408,21 @@ export function RoutingRulesPanel({
       const summary = isDraftEmpty(draft) ? null : summarizeParcelProfile(draftToFields(draft));
       return (
         <span className="routing-route-cell__parcel">
-          <span className={summary ? undefined : 'muted-text'}>
-            {summary ?? PARCEL_COPY.noneSet}
-          </span>{' '}
+          <span className="routing-route-cell__parcel-value">
+            {PARCEL_COPY.columnHeader}: {summary ?? PARCEL_COPY.noneSet.toLowerCase()}
+          </span>
           {write.visible && (
             <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
-              <Button
-                tone="secondary"
-                className="button--sm"
+              <button
+                type="button"
+                className="routing-route-cell__parcel-action"
                 disabled={write.demoReadOnly}
                 onClick={() => {
                   setEditingMethod(method);
                 }}
               >
                 {summary ? PARCEL_COPY.editAction : PARCEL_COPY.setAction}
-              </Button>
+              </button>
             </ReadOnlyLock>
           )}
         </span>
@@ -446,20 +485,23 @@ export function RoutingRulesPanel({
     rowMethods.length * ROUTING_ROW_HEIGHT + 8,
   );
 
-  return (
-    <div className="panel panel--dense">
-      <div className="panel__header">
-        <h3 className="section-title">{SHIPPING_ROUTE_COPY.panelTitle}</h3>
-        {isDirty && (
-          <span className="status-badge status-badge--warning" aria-live="polite">
-            Unsaved changes
-          </span>
-        )}
-      </div>
+  const dirtyBadge = isDirty ? (
+    <span className="status-badge status-badge--warning" aria-live="polite">
+      Unsaved changes
+    </span>
+  ) : null;
 
-      <p className="muted-text" style={{ marginBottom: 'var(--space-4)' }}>
-        {SHIPPING_ROUTE_COPY.intro(sourceLabel, shopName)}
-      </p>
+  return (
+    <div className={embedded ? 'routing-panel routing-panel--embedded' : 'panel panel--dense routing-panel'}>
+      {embedded ? null : (
+        <>
+          <div className="panel__header">
+            <h3 className="section-title">{SHIPPING_ROUTE_COPY.panelTitle}</h3>
+            {dirtyBadge}
+          </div>
+          <p className="muted-text routing-panel__intro">{SHIPPING_ROUTE_COPY.intro(sourceLabel, shopName)}</p>
+        </>
+      )}
 
       {divertOptions.length === 0 && (
         <p
@@ -517,14 +559,7 @@ export function RoutingRulesPanel({
         </p>
       )}
 
-      <div
-        style={{
-          marginTop: 'var(--space-4)',
-          display: 'flex',
-          gap: 'var(--space-2)',
-          alignItems: 'center',
-        }}
-      >
+      <div className="routing-panel__actions">
         <Button tone="primary" disabled={!isDirty || replaceMutation.isPending} onClick={handleSave}>
           {replaceMutation.isPending ? 'Saving…' : 'Save routing'}
         </Button>
@@ -533,6 +568,7 @@ export function RoutingRulesPanel({
             Try again
           </Button>
         )}
+        {embedded ? dirtyBadge : null}
       </div>
     </div>
   );

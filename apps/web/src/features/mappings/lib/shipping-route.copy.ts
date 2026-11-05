@@ -23,12 +23,18 @@ export const SHIPPING_ROUTE_COPY = {
   defaultOption: (shopName: string | null): string =>
     shopName ? `${shopName} ships it (default)` : 'Your shop ships it (default)',
   unavailable: (label: string): string => `${label} (connection is off)`,
+  /** The default option's short name inside the "Your shop ships it" group. */
+  defaultShort: (shopName: string | null): string => `${shopName ?? 'Your shop'} (default)`,
+  groupLabel: { shop: 'Your shop ships it', label: 'OpenLinker buys the label' } as const,
+  thisOrder: 'This order',
   sourceShipping: (sourceLabel: string): string => `${sourceLabel} shipping`,
   dialogTitle: (sourceName: string): string => `Who ships ${sourceName} orders`,
-  // The method code is named too: two methods can share a display name (a
-  // shop titles every courier line "Kurier"), and the table rows carry the code.
+  // The order's method is marked "This order" and listed first in the table,
+  // so the sentence only has to say what a change reaches.
   dialogDescription: (sourceName: string, methodLabel: string | null, methodId: string | null = null): string =>
-    `${methodLabel ? `This order uses ${methodLabel}${methodId && methodId !== methodLabel ? ` (code ${methodId})` : ''}. ` : ''}A change here applies to every ${sourceName} order from now on.`,
+    methodLabel || methodId
+      ? `The delivery method this order uses is first and marked. A change applies to every ${sourceName} order from now on.`
+      : `A change applies to every ${sourceName} order from now on.`,
   dialogDone: 'Done',
   discardTitle: 'Close without saving?',
   discardDescription: 'You changed who ships some delivery methods and did not click Save routing.',

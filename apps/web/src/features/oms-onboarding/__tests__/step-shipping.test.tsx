@@ -196,6 +196,22 @@ describe('StepShipping', () => {
     expect(screen.getByTestId(`btn-shipping-source-${ALLEGRO.id}`)).toBeInTheDocument();
   });
 
+  it('should say a failed read failed, and offer a retry, instead of claiming the source has no methods', () => {
+    renderWithProviders(
+      <StepShipping
+        {...baseProps({
+          sources: [ALLEGRO],
+          coverage: { [ALLEGRO.id]: { status: 'load-failed', withCarrier: 0, total: 0 } },
+        })}
+      />
+    );
+
+    const row = screen.getByTestId(`shipping-source-${ALLEGRO.id}`);
+    expect(row).toHaveTextContent(COPY.shippingStep.loadFailed);
+    expect(row).not.toHaveTextContent(COPY.shippingStep.cannotList);
+    expect(screen.getByTestId(`btn-shipping-source-retry-${ALLEGRO.id}`)).toBeInTheDocument();
+  });
+
   it('should show the coverage and its badge for a source', () => {
     renderWithProviders(<StepShipping {...baseProps()} />);
 

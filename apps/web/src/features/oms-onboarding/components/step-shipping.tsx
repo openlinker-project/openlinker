@@ -20,6 +20,7 @@
  * @module features/oms-onboarding/components
  */
 import { useCallback, useState, type ReactElement, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
@@ -137,6 +138,30 @@ function SourceRow({
   readonly onDirtyChange: (sourceId: string, dirty: boolean) => void;
 }): ReactElement {
   const status = coverage?.status ?? 'loading';
+  const queryClient = useQueryClient();
+
+  if (status === 'load-failed') {
+    return (
+      <li className="oms-onboarding__ship-source" data-testid={`shipping-source-${source.id}`} data-coverage="load-failed">
+        <div className="oms-onboarding__ship-source-row">
+          <span className="oms-onboarding__ship-source-text">
+            <span className="oms-onboarding__ship-source-name">{source.name}</span>
+            <span className="oms-onboarding__ship-source-detail">{COPY.shippingStep.loadFailed}</span>
+          </span>
+          <Button
+            type="button"
+            tone="secondary"
+            className="button--sm"
+            data-testid={`btn-shipping-source-retry-${source.id}`}
+            // The mappings feature keys every read of a connection under ['mappings', id].
+            onClick={() => void queryClient.invalidateQueries({ queryKey: ['mappings', source.id] })}
+          >
+            {COPY.shippingStep.retry}
+          </Button>
+        </div>
+      </li>
+    );
+  }
 
   if (status === 'cannot-list') {
     return (
@@ -196,6 +221,7 @@ function SourceRow({
           <FulfillmentRoutingSection
             sourceConnectionId={source.id}
             onDirtyChange={(dirty) => onDirtyChange(source.id, dirty)}
+            embedded
           />
         </div>
       ) : null}

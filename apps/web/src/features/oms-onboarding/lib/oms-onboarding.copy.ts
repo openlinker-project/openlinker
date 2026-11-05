@@ -75,6 +75,8 @@ export const omsOnboardingCopy = {
     coverageUnknown: 'Could not read the routing for this connection right now.',
     cannotList:
       'This connection does not report its delivery methods, so its orders cannot go to a carrier. You buy their labels at the pack bench.',
+    loadFailed: "Could not load this connection's delivery methods. Its routing is unchanged.",
+    retry: 'Try again',
     badge: { todo: 'To do', partly: 'Partly set', all: 'All set', noLabels: 'No labels' },
     expand: (name: string): string => `Choose carriers for ${name}`,
     autoTitle: 'Buy labels automatically',

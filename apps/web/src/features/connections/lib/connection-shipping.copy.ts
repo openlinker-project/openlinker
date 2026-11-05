@@ -15,6 +15,9 @@ export const CONNECTION_SHIPPING_COPY = {
   shipsForIntro: (carrier: string): string =>
     `The delivery methods ${carrier} buys the labels for, per sales channel.`,
   shipsForEmpty: (carrier: string): string => `No delivery method goes to ${carrier} yet.`,
+  // Method names that could not be read are counted, never shown as raw ids.
+  shipsForUnnamed: (count: number): string =>
+    count === 1 ? '1 delivery method (name not loaded)' : `${count} delivery methods (names not loaded)`,
   shipsForNoSources:
     'No sales channel is connected yet. Connect one first, then choose which of its delivery methods this carrier ships.',
   rowChange: 'Change',
@@ -34,6 +37,9 @@ export const CONNECTION_SHIPPING_COPY = {
       ? '1 delivery method is shipped by your shop, the way it was before OpenLinker.'
       : `${rest} delivery methods are shipped by your shop, the way they were before OpenLinker.`,
   shippingAllLabelled: 'Every delivery method gets a label from OpenLinker.',
+  /** The coverage sentence on the source card; the count is the part an operator scans for. */
+  shippingCoverageLead: (labelled: number, total: number): string => `${labelled} of ${total}`,
+  shippingCoverageTail: 'delivery methods get an OpenLinker label',
   shippingChange: 'Change who ships what',
   shippingUnlisted:
     'This sales channel cannot list its delivery methods, so there is nothing to route here.',

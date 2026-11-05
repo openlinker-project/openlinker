@@ -264,7 +264,7 @@ describe('OrderShipmentPanel — empty state', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Choose a carrier' }));
     const dialog = await screen.findByRole('dialog');
     expect(screen.getByText('Who ships Allegro orders')).toBeInTheDocument();
-    expect(dialog).toHaveTextContent(/This order uses Kurier DPD/);
+    expect(dialog).toHaveTextContent(/delivery method this order uses is first and marked/);
   });
 
   it('should suppress the Generate-label CTA and point to Delivery for a disabled-carrier route (#1799)', async () => {

@@ -20,9 +20,12 @@ export const CARRIER_CAPABILITY = 'ShippingProviderManager';
  * - `ready`       - both are known; the counts are true.
  * - `cannot-list` - the source does not report its delivery methods (PrestaShop
  *                   and WooCommerce answer 501), so it cannot be routed at all.
+ * - `load-failed` - the delivery methods could not be read this time (any error
+ *                   other than 501). Never shown as "does not report", which
+ *                   would state a permanent fact the failure does not prove.
  * - `unknown`     - the saved rules could not be read; the counts mean nothing.
  */
-export type SourceCoverageStatus = 'loading' | 'ready' | 'cannot-list' | 'unknown';
+export type SourceCoverageStatus = 'loading' | 'ready' | 'cannot-list' | 'load-failed' | 'unknown';
 
 export interface SourceShippingCoverage {
   readonly status: SourceCoverageStatus;
@@ -110,7 +113,7 @@ export function summariseShippingCoverage(
       settled = false;
       continue;
     }
-    if (entry.status === 'unknown') unknown = true;
+    if (entry.status === 'unknown' || entry.status === 'load-failed') unknown = true;
     if (entry.status !== 'ready') continue;
     withCarrier += entry.withCarrier;
     total += entry.total;

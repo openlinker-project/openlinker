@@ -218,7 +218,11 @@ describe('ConnectionDetailPage - order source "Shipping" card', () => {
 
     expect(await screen.findByRole('heading', { name: 'Shipping' })).toBeInTheDocument();
     expect(
-      await screen.findByText('2 of 3 delivery methods get an OpenLinker label')
+      await screen.findByText(
+        (_content, el) =>
+          el?.classList.contains('source-shipping__coverage') === true &&
+          el.textContent === '2 of 3 delivery methods get an OpenLinker label',
+      )
     ).toBeInTheDocument();
     expect(
       screen.getByText(

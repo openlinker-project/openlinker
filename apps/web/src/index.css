@@ -32934,5 +32934,44 @@ legend.analytics-settings-dialog__label {
 /* #3958 - the routing panel's single "Who ships it" cell: the choice, then the
    default parcel for a method OpenLinker buys a label for. */
 .routing-dialog { width: min(52rem, 94vw); max-width: none; max-height: 90vh; overflow-y: auto; }
-.routing-route-cell { display: grid; gap: var(--space-1); min-width: 0; }
-.routing-route-cell__parcel { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 13px; }
+.routing-route-cell { display: grid; gap: 4px; min-width: 0; }
+/* Wide enough for the longest carrier name, so a choice is never cut mid-word. */
+.routing-route-cell select { min-width: min(100%, 15rem); }
+.routing-route-cell__parcel { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); font-size: 12.5px; color: var(--text-secondary); }
+.routing-route-cell__parcel-action {
+  border: 0; background: none; padding: 0; font: inherit; font-weight: 500; color: var(--text-link);
+  text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
+.routing-route-cell__parcel-action:hover { color: var(--text-primary); }
+.routing-route-cell__parcel-action:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: 2px; }
+.routing-route-cell__parcel-action:disabled { color: var(--text-secondary); cursor: not-allowed; text-decoration: none; }
+.routing-method { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); min-width: 0; }
+/* Marks the method an operator came from (order detail); quiet, sentence case. */
+.routing-method__mark {
+  font-size: 12px; font-weight: 600; line-height: 1.6; padding: 0 8px; border-radius: 9999px;
+  background: var(--accent-primary-soft); color: var(--text-primary); white-space: nowrap;
+}
+.routing-panel__intro { margin: 0 0 var(--space-4); max-width: 72ch; }
+.routing-panel__actions { margin-top: var(--space-4); display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.routing-panel--embedded { display: grid; gap: var(--space-3); min-width: 0; }
+.routing-panel--embedded .routing-panel__actions { margin-top: 0; }
+.routing-split__key--empty { opacity: 0.55; }
+
+/* #3958 - connection pages. One readable sentence for coverage, the bar under
+   it; per-source rows list method names as separate items, never one comma run. */
+.source-shipping { display: grid; gap: var(--space-3); }
+.source-shipping p { margin: 0; }
+.source-shipping__coverage { font-size: 15px; color: var(--text-secondary); }
+.source-shipping__coverage strong { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ships-for { list-style: none; margin: 0; padding: 0; display: grid; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+.ships-for__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3); }
+.ships-for__row + .ships-for__row { border-top: 1px solid var(--border-subtle); }
+.ships-for__text { display: grid; gap: var(--space-2); min-width: 0; }
+.ships-for__source { font-weight: 600; font-size: 14px; color: var(--text-primary); }
+.ships-for__methods { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.ships-for__method {
+  font-size: 12.5px; line-height: 1.5; padding: 2px 10px; border-radius: 9999px;
+  border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-primary);
+}
+.ships-for__method--muted { color: var(--text-secondary); border-style: dashed; }
+@media (max-width: 560px) { .ships-for__row { flex-direction: column; align-items: stretch; } .ships-for__row > .button { align-self: flex-start; } }

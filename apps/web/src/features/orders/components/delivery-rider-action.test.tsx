@@ -37,7 +37,7 @@ describe('DeliveryRiderAction (#1794)', () => {
     await user.click(action);
     const dialog = await screen.findByRole('dialog');
     expect(await screen.findByText('Who ships Main PrestaShop Store orders')).toBeInTheDocument();
-    expect(dialog).toHaveTextContent(/This order uses InPost Paczkomat/);
+    expect(dialog).toHaveTextContent(/delivery method this order uses is first and marked/);
   });
 
   it('should render no Add-mapping action for a role that cannot change routing (#3958)', () => {

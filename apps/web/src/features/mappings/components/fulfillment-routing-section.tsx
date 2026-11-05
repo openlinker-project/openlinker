@@ -30,11 +30,17 @@ export interface FulfillmentRoutingSectionProps {
   /** The order-source connection whose delivery methods are routed (never the master shop). */
   readonly sourceConnectionId: string;
   readonly onDirtyChange?: (dirty: boolean) => void;
+  /** See `RoutingRulesPanel.embedded`. */
+  readonly embedded?: boolean;
+  /** See `RoutingRulesPanel.focusMethodId`. */
+  readonly focusMethodId?: string;
 }
 
 export function FulfillmentRoutingSection({
   sourceConnectionId,
   onDirtyChange,
+  embedded,
+  focusMethodId,
 }: FulfillmentRoutingSectionProps): ReactElement {
   const platforms = usePlatforms();
   const connections = useConnectionsQuery();
@@ -55,6 +61,8 @@ export function FulfillmentRoutingSection({
       deliveryMethodsLoading={isLoading}
       deliveryMethodsError={errors.allegroDeliveryMethods ?? null}
       onDirtyChange={onDirtyChange}
+      embedded={embedded}
+      focusMethodId={focusMethodId}
     />
   );
 }

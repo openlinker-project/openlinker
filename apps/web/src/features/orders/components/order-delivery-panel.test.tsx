@@ -243,7 +243,7 @@ describe('OrderDeliveryPanel', () => {
       await user.click(await screen.findByRole('button', { name: 'Choose a carrier' }));
       const dialog = await screen.findByRole('dialog');
       expect(screen.getByText('Who ships Allegro orders')).toBeInTheDocument();
-      expect(dialog).toHaveTextContent(/This order uses Kurier DPD/);
+      expect(dialog).toHaveTextContent(/delivery method this order uses is first and marked/);
     });
 
     it('should mark a rule to a switched-off carrier as off', () => {

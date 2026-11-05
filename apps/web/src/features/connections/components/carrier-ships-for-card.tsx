@@ -26,14 +26,12 @@ import { useDemoMode } from '../../system';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
-import { KeyValueList } from '../../../shared/ui/key-value-list';
 import type { Connection } from '../api/connections.types';
 import { useConnectionsQuery } from '../hooks/use-connections-query';
 import { CONNECTION_SHIPPING_COPY } from '../lib/connection-shipping.copy';
 import {
   DELIVERY_METHOD_OPTION_KEYS,
   activeOrderSources,
-  deliveryMethodLabel,
   rulesRoutedTo,
 } from './connection-shipping-routes';
 
@@ -53,32 +51,40 @@ function CarrierSourceRow({
   const rulesQuery = useRoutingRulesQuery(source.id);
   const { options } = useMappingOptions(source.id, DELIVERY_METHOD_OPTION_KEYS);
   const routed = rulesRoutedTo(rulesQuery.data, carrier.id);
-  const labels = routed.map((r) =>
-    deliveryMethodLabel(options.allegroDeliveryMethods, r.sourceDeliveryMethodId)
-  );
+  const known = new Map(options.allegroDeliveryMethods.map((m) => [m.value, m.label]));
+  const names = routed.flatMap((r) => (known.has(r.sourceDeliveryMethodId) ? [known.get(r.sourceDeliveryMethodId)!] : []));
+  const unnamed = routed.length - names.length;
 
-  let text: string;
+  let body: ReactElement;
   if (rulesQuery.isLoading) {
-    text = CONNECTION_SHIPPING_COPY.rowLoading;
+    body = <span className="muted-text">{CONNECTION_SHIPPING_COPY.rowLoading}</span>;
   } else if (rulesQuery.error) {
-    text = CONNECTION_SHIPPING_COPY.rowUnavailable;
-  } else if (labels.length > 0) {
-    text = labels.join(', ');
+    body = <span className="muted-text">{CONNECTION_SHIPPING_COPY.rowUnavailable}</span>;
+  } else if (routed.length === 0) {
+    body = <span className="muted-text">{CONNECTION_SHIPPING_COPY.shipsForEmpty(carrier.name)}</span>;
   } else {
-    text = CONNECTION_SHIPPING_COPY.shipsForEmpty(carrier.name);
+    body = (
+      <ul className="ships-for__methods">
+        {names.map((name) => (
+          <li key={name} className="ships-for__method">{name}</li>
+        ))}
+        {unnamed > 0 ? <li className="ships-for__method ships-for__method--muted">{CONNECTION_SHIPPING_COPY.shipsForUnnamed(unnamed)}</li> : null}
+      </ul>
+    );
   }
 
   return (
-    <div className="button-group" data-testid={`ships-for-row-${source.id}`}>
-      <span className={labels.length > 0 ? undefined : 'muted-text'}>{text}</span>
+    <li className="ships-for__row" data-testid={`ships-for-row-${source.id}`}>
+      <div className="ships-for__text">
+        <span className="ships-for__source">{source.name}</span>
+        {body}
+      </div>
       {canChange ? (
         <Button tone="secondary" className="button--sm" onClick={() => onOpen(source)}>
-          {labels.length > 0
-            ? CONNECTION_SHIPPING_COPY.rowChange
-            : CONNECTION_SHIPPING_COPY.rowChoose}
+          {routed.length > 0 ? CONNECTION_SHIPPING_COPY.rowChange : CONNECTION_SHIPPING_COPY.rowChoose}
         </Button>
       ) : null}
-    </div>
+    </li>
   );
 }
 
@@ -110,20 +116,17 @@ export function CarrierShipsForCard({ connection }: CarrierShipsForCardProps): R
       ) : sources.length === 0 ? (
         <p className="muted-text">{CONNECTION_SHIPPING_COPY.shipsForNoSources}</p>
       ) : (
-        <KeyValueList
-          items={sources.map((source) => ({
-            id: source.id,
-            label: source.name,
-            value: (
-              <CarrierSourceRow
-                source={source}
-                carrier={connection}
-                canChange={write.visible}
-                onOpen={setDialogSource}
-              />
-            ),
-          }))}
-        />
+        <ul className="ships-for">
+          {sources.map((source) => (
+            <CarrierSourceRow
+              key={source.id}
+              source={source}
+              carrier={connection}
+              canChange={write.visible}
+              onOpen={setDialogSource}
+            />
+          ))}
+        </ul>
       )}
       {dialogSource ? (
         <RoutingDialog

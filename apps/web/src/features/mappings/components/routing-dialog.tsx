@@ -58,7 +58,14 @@ export function RoutingDialog({
           <DialogDescription id="routing-dialog-desc">
             {SHIPPING_ROUTE_COPY.dialogDescription(sourceName, methodLabel ?? null, methodId ?? null)}
           </DialogDescription>
-          {open ? <FulfillmentRoutingSection sourceConnectionId={sourceConnectionId} onDirtyChange={setDirty} /> : null}
+          {open ? (
+            <FulfillmentRoutingSection
+              sourceConnectionId={sourceConnectionId}
+              onDirtyChange={setDirty}
+              embedded
+              focusMethodId={methodId}
+            />
+          ) : null}
           <DialogFooter>
             <Button tone="secondary" onClick={() => requestOpenChange(false)}>
               {SHIPPING_ROUTE_COPY.dialogDone}

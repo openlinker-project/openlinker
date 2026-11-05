@@ -30,7 +30,6 @@ import { useDemoMode } from '../../system';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { usePlatforms } from '../../../shared/plugins';
 import { Button } from '../../../shared/ui/button';
-import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { Connection } from '../api/connections.types';
 import { useConnectionsQuery } from '../hooks/use-connections-query';
 import { CONNECTION_SHIPPING_COPY } from '../lib/connection-shipping.copy';
@@ -122,7 +121,6 @@ export function OrderSourceShippingCard({
   const sourceLabel = resolvePlatformLabel(platforms, connection);
 
   let body: ReactElement;
-  let badge: ReactElement | null = null;
   if (isLoading || rulesQuery.isLoading) {
     body = <p className="muted-text">{CONNECTION_SHIPPING_COPY.shippingLoading}</p>;
   } else if (rulesQuery.error) {
@@ -132,13 +130,12 @@ export function OrderSourceShippingCard({
   } else {
     const split = buildShippingSplit(methods, rulesQuery.data ?? [], nameById, sourceLabel);
     const rest = methods.length - split.labelled;
-    badge = (
-      <StatusBadge tone={rest === 0 ? 'success' : 'info'} compact>
-        {CONNECTION_SHIPPING_COPY.shippingSummary(split.labelled, methods.length)}
-      </StatusBadge>
-    );
     body = (
       <>
+        <p className="source-shipping__coverage">
+          <strong>{CONNECTION_SHIPPING_COPY.shippingCoverageLead(split.labelled, methods.length)}</strong>{' '}
+          {CONNECTION_SHIPPING_COPY.shippingCoverageTail}
+        </p>
         <RoutingSplitBar buckets={split.buckets} />
         <p className="muted-text">
           {rest > 0
@@ -158,16 +155,14 @@ export function OrderSourceShippingCard({
             {CONNECTION_SHIPPING_COPY.shippingTitle}
           </h3>
         </div>
-        {badge}
-      </div>
-      {body}
-      {write.visible && methods.length > 0 ? (
-        <div className="button-group">
+        {/* The one action sits with the title, where the other connection cards keep theirs. */}
+        {write.visible && methods.length > 0 ? (
           <Button tone="secondary" className="button--sm" onClick={() => setOpen(true)}>
             {CONNECTION_SHIPPING_COPY.shippingChange}
           </Button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
+      <div className="source-shipping">{body}</div>
       <RoutingDialog
         open={open}
         onOpenChange={setOpen}

@@ -116,12 +116,18 @@ describe('RoutingRulesPanel', () => {
       .getAllByRole('option')
       .map((o) => o.textContent ?? '');
     // Default option is data-driven from the omp_fulfilled candidate's connection.
-    expect(optionLabels.some((l) => /My Shop ships it \(default\)/.test(l))).toBe(true);
+    expect(optionLabels.some((l) => /My Shop \(default\)/.test(l))).toBe(true);
+    // Options are short names, grouped by what happens (#3958): the shop's
+    // default on one side, the label OpenLinker buys on the other.
+    const groups = Array.from(select.querySelectorAll('optgroup')).map((g) => g.getAttribute('label'));
+    expect(groups).toEqual(['Your shop ships it', 'OpenLinker buys the label']);
+    const labelGroup = select.querySelectorAll('optgroup')[1];
     // omp_fulfilled is the default - never offered as an explicit divert option.
-    expect(optionLabels.filter((l) => l.includes('ships it'))).toHaveLength(1);
-    // The two non-OMP candidates ARE offered, in operator words (#3958).
-    expect(optionLabels.some((l) => /OpenLinker buys the label through .+ shipping/.test(l))).toBe(true);
-    expect(optionLabels.some((l) => /OpenLinker buys the label from /.test(l))).toBe(true);
+    expect(within(select.querySelectorAll('optgroup')[0] as HTMLElement).getAllByRole('option')).toHaveLength(1);
+    // The two non-OMP candidates ARE offered: the brokered one named after the source.
+    const labelOptions = Array.from(labelGroup.querySelectorAll('option')).map((o) => o.textContent ?? '');
+    expect(labelOptions).toHaveLength(2);
+    expect(labelOptions.some((l) => /Allegro shipping/.test(l))).toBe(true);
   });
 
   it('persists only diverted methods via the replace-all mutation', async () => {
@@ -453,5 +459,21 @@ describe('RoutingRulesPanel layout (#3958)', () => {
     expect(screen.getAllByText('Who ships it').length).toBeGreaterThan(0);
     expect(screen.queryByText('Routed to')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /copy/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('RoutingRulesPanel embedded in a host (#3958)', () => {
+  it('drops its own title and intro when embedded', async () => {
+    renderPanel(buildApiClient(), { embedded: true });
+    await screen.findByRole('combobox', { name: /Fulfillment processor for InPost Paczkomat/i });
+    expect(screen.queryByRole('heading', { name: 'Who ships each delivery method' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Pick who ships each Allegro delivery method/)).not.toBeInTheDocument();
+  });
+
+  it('lists the focused delivery method first and marks it', async () => {
+    renderPanel(buildApiClient(), { focusMethodId: 'm2' });
+    const selects = await screen.findAllByRole('combobox', { name: /Fulfillment processor for/i });
+    expect(selects[0]).toHaveAccessibleName(/Kurier24/);
+    expect(screen.getByText('This order')).toBeInTheDocument();
   });
 });
