@@ -1,0 +1,24 @@
+{
+  "allegroCallbackRoute": {
+    "crumb": "Powrót z Allegro"
+  },
+  "allegroExtraSection": {
+    "delivery": {
+      "diagnostics": "Klucz kursora: <code>{cursorKey}</code> · Typ zadania w tle: <code>{jobType}</code>",
+      "intro": "Etykiety Allegro Delivery (\"Wysyłam z Allegro\") są wystawiane przez API zarządzania przesyłkami Allegro i śledzone automatycznie:",
+      "labelCreation": "<strong>Tworzenie etykiety</strong> jest synchroniczne po stronie OpenLinker - etykietę generuje się w panelu szczegółów zamówienia, a OpenLinker czeka na zakończenie polecenia Allegro przed odpowiedzią.",
+      "pickupPoints": "<strong>Punkty odbioru wybrane przez kupującego</strong> (Allegro One Box, Paczkomat, kurier) są wstępnie wpisywane w formularzu etykiety na podstawie danych zamówienia.",
+      "summary": "<strong>Konfiguracja nie jest potrzebna</strong> - jak działa śledzenie przesyłek",
+      "title": "Allegro Delivery",
+      "trackingNumber": "<strong>Numer przesyłki</strong> pojawia się <em>asynchronicznie</em>. Allegro generuje list przewozowy z opóźnieniem; OpenLinker sprawdza co 15 minut i uzupełnia wiersz, gdy numer się pojawi (bez ręcznego odświeżania)."
+    }
+  },
+  "allegroSetupRoute": {
+    "crumb": "Połącz Allegro"
+  },
+  "plugin": {
+    "setupCard": {
+      "description": "Połącz konto sprzedawcy Allegro. Autoryzacja odbywa się przez OAuth 2.0 - bez ręcznego wklejania tokenu."
+    }
+  }
+}
