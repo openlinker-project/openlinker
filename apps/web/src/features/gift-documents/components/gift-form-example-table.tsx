@@ -21,7 +21,7 @@ import { useGiftFormLabels } from '../lib/use-gift-form-labels';
 export function GiftFormExampleTable(): ReactElement {
   const copy = useMessages('giftDocuments');
   const labels = useGiftFormLabels();
-  const sample = sampleOrderLines(copy.example.book, copy.example.mug);
+  const sample = sampleOrderLines(copy.example.book, copy.example.mugName);
 
   return (
     <div className="gift-example">

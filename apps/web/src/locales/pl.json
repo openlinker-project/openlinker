@@ -267,6 +267,7 @@
       "form": "Forma",
       "intro": "Klient płaci {total} za książkę (cena {book}) i dostaje kubek (cena {mug}).",
       "mug": "Kubek (gratis)",
+      "mugName": "Kubek",
       "noLine": "brak pozycji",
       "title": "Przykład"
     },

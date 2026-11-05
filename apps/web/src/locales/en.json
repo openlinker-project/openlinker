@@ -255,6 +255,7 @@
       "form": "Form",
       "intro": "A customer pays {total} for a book (price {book}) and gets a mug (price {mug}).",
       "mug": "Mug (gift)",
+      "mugName": "Mug",
       "noLine": "no line",
       "title": "Example"
     },

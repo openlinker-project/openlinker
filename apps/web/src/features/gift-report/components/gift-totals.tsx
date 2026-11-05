@@ -10,6 +10,7 @@
  */
 import type { ReactElement } from 'react';
 import { Alert } from '../../../shared/ui/alert';
+import { KpiCard, KpiGrid } from '../../../shared/ui/kpi-card';
 import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import type { GiftReportTotals } from '../api/gift-report.types';
 
@@ -28,20 +29,19 @@ export function GiftTotals({ totals }: GiftTotalsProps): ReactElement {
         const currency = total.currency ?? undefined;
         return (
           <div key={total.currency ?? 'none'} data-testid="gift-report-whopays">
-            <dl className="gift-report-totals__figures">
-              <div>
-                <dt>{copy.summary.paid}</dt>
-                <dd>{format.money(total.paidGross, currency)}</dd>
-              </div>
-              <div>
-                <dt>{copy.summary.cost}</dt>
-                <dd data-testid="gift-report-total-cost">{format.money(total.costNet, currency)}</dd>
-              </div>
-              <div>
-                <dt>{copy.summary.units}</dt>
-                <dd data-testid="gift-report-total-units">{total.units}</dd>
-              </div>
-            </dl>
+            <KpiGrid>
+              <KpiCard density="compact" label={copy.summary.paid} value={format.money(total.paidGross, currency)} />
+              <KpiCard
+                density="compact"
+                label={copy.summary.cost}
+                value={<span data-testid="gift-report-total-cost">{format.money(total.costNet, currency)}</span>}
+              />
+              <KpiCard
+                density="compact"
+                label={copy.summary.units}
+                value={<span data-testid="gift-report-total-units">{total.units}</span>}
+              />
+            </KpiGrid>
             <p>
               {interpolate(copy.summary.sentence, {
                 paid: format.money(total.paidGross, currency),

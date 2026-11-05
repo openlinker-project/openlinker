@@ -32990,3 +32990,9 @@ legend.analytics-settings-dialog__label {
   color: var(--text-muted);
   flex: none;
 }
+
+/* Return gift decisions are sentences ("Zostaje u klienta"), not one-word
+   enum values, so the segmented control's capitalize would Title Case them. */
+.return-gift .segmented-control__option {
+  text-transform: none;
+}

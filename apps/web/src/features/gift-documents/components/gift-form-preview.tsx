@@ -70,7 +70,7 @@ function DocumentLines({
 
 export function GiftFormPreview({ form, zeroAccepted }: GiftFormPreviewProps): ReactElement {
   const copy = useMessages('giftDocuments');
-  const sample = sampleOrderLines(copy.example.book, copy.example.mug);
+  const sample = sampleOrderLines(copy.example.book, copy.example.mugName);
   const receipt = previewGiftForm(sample, form, false);
   const invoice = previewGiftForm(sample, form, zeroAccepted);
   const equalsPaid =
