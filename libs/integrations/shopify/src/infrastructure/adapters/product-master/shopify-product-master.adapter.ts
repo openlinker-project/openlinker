@@ -3,7 +3,7 @@
  *
  * Implements `ProductMasterPort` over the Admin GraphQL API - the READ side:
  * `getProduct`, `getProducts`, `getProductVariants`, `searchProducts`,
- * `listExternalIds` and `getProductCategories`. Every write throws
+ * `listExternalIds`, `getProductCategories` and `getCategories`. Every write throws
  * `ShopifyNotSupportedException` (a silent no-op would read as "done").
  *
  * Ids: methods taking a product id take the INTERNAL one and resolve the
@@ -18,8 +18,15 @@
  * Not implemented, deliberately:
  *   - `ProductTaxRateReader`: no tax rate exists anywhere in the Admin API
  *     (L-T2), so a Shopify master cannot state a catalogue rate.
- *   - `getCategories`: optional on the port; the taxonomy is Shopify's global
- *     one (thousands of nodes), not the shop's own directory.
+ *
+ * Category (case A15): the Standard Product Taxonomy category, one per product,
+ * keyed by the tail of its GID (`hg-11-10-5-5`). `getCategories` returns the
+ * shop's DIRECTORY - the nodes its products sit in plus their ancestors - so
+ * the master's category-mapping page lists what the operator actually sells
+ * instead of the whole global taxonomy (thousands of nodes). Collections are
+ * NOT the master category: a product can sit in many (or none), they are
+ * shop-defined and unordered, so a mapping lookup over them would have no
+ * "most specific" answer. They stay the publish-side category (`CategoryProvisioner`).
  *
  * @module libs/integrations/shopify/src/infrastructure/adapters/product-master
  * @implements {ProductMasterPort}
@@ -40,15 +47,21 @@ import { Logger } from '@openlinker/shared/logging';
 
 import { ShopifyNotSupportedException } from '../../../domain/exceptions/shopify-not-supported.exception';
 import { fromShopifyGid, toShopifyGid } from '../../../domain/policies/shopify-gid.policy';
-import type { ShopifyConnection, ShopifyProduct } from '../../../domain/types/shopify-api.types';
+import type {
+  ShopifyConnection,
+  ShopifyProduct,
+  ShopifyTaxonomyCategory,
+} from '../../../domain/types/shopify-api.types';
 import type { ShopifyGraphqlClient } from '../../http/shopify-graphql-client';
 import {
   mapShopifyProduct,
   mapShopifyVariant,
+  shopifyCategoryDirectory,
   shopifyCategoryPath,
 } from '../../mappers/shopify-product.mapper';
 import { resolveShopifyExternalId } from '../../readers/shopify-external-id';
 import {
+  PRODUCT_CATEGORIES_PAGE_QUERY,
   PRODUCT_IDS_PAGE_QUERY,
   PRODUCTS_BY_IDS_QUERY,
   PRODUCTS_PAGE_QUERY,
@@ -61,6 +74,8 @@ const PRODUCT_PAGE_SIZE = 50;
 const NODES_CHUNK = 100;
 const DEFAULT_WINDOW = PRODUCT_PAGE_SIZE;
 const NUMERIC_ID = /^\d+$/;
+/** 40 x 250 = 10 000 products read for the category directory; past that it is partial and warned. */
+const CATEGORY_SCAN_MAX_PAGES = 40;
 
 export class ShopifyProductMasterAdapter implements ProductMasterPort {
   private readonly logger = new Logger(ShopifyProductMasterAdapter.name);
@@ -172,6 +187,31 @@ export class ShopifyProductMasterAdapter implements ProductMasterPort {
     const externalId = await this.resolveExternalProductId(productId);
     const raw = await this.productReader.read(externalId, productId);
     return shopifyCategoryPath(raw.category);
+  }
+
+  /**
+   * The shop's category directory (flat, `parentId` + `depth`), served live to
+   * the master's category-mapping page. One cheap paged read of every
+   * product's category; a category with no product yet is not listed, which
+   * costs nothing - no product can resolve through it.
+   */
+  async getCategories(): Promise<Category[]> {
+    const categories: Array<ShopifyTaxonomyCategory | null> = [];
+    let after: string | null = null;
+    for (let page = 0; page < CATEGORY_SCAN_MAX_PAGES; page += 1) {
+      const data: { products: ShopifyConnection<{ category: ShopifyTaxonomyCategory | null }> } =
+        await this.client.query(PRODUCT_CATEGORIES_PAGE_QUERY, { first: ID_PAGE_SIZE, after });
+      categories.push(...data.products.nodes.map((p) => p.category));
+      if (data.products.pageInfo?.hasNextPage !== true) {
+        return shopifyCategoryDirectory(categories);
+      }
+      after = data.products.pageInfo.endCursor;
+    }
+    this.logger.warn(
+      `Shopify category directory read stopped after ${CATEGORY_SCAN_MAX_PAGES * ID_PAGE_SIZE} products; ` +
+        `categories only used by later products are missing (connection: ${this.connection.id})`,
+    );
+    return shopifyCategoryDirectory(categories);
   }
 
   // ─── Not supported ─────────────────────────────────────────────────────────

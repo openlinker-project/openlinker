@@ -51,6 +51,17 @@ export const PRODUCT_IDS_PAGE_QUERY = `query OlProductIdsPage($first: Int!, $aft
 }`;
 
 /**
+ * Only the taxonomy category of every product, for the category directory
+ * (`getCategories`). A plain connection read, not a `query:` search.
+ */
+export const PRODUCT_CATEGORIES_PAGE_QUERY = `query OlProductCategoriesPage($first: Int!, $after: String) {
+  products(first: $first, after: $after, sortKey: ID) {
+    nodes { category { id name fullName ancestorIds } }
+    pageInfo { hasNextPage endCursor }
+  }
+}`;
+
+/**
  * A product's variants with their inventory level at ONE location. A variant
  * not stocked there answers `inventoryLevel: null`.
  */

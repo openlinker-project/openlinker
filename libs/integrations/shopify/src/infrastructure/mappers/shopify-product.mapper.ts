@@ -16,6 +16,8 @@
  * Category: the Standard Product Taxonomy category (`product.category`),
  * keyed by the tail of its GID (`aa-1-13-8`); `ancestorIds` are root-first
  * (verified live), and `fullName` names the same path " > "-separated.
+ * `Product.categories` carries the leaf then every ancestor (most specific
+ * first), so a category mapping made at any level of the branch resolves.
  *
  * @module libs/integrations/shopify/src/infrastructure/mappers
  */
@@ -89,6 +91,39 @@ export function shopifyCategoryPath(category: ShopifyTaxonomyCategory | null): C
   }));
 }
 
+/**
+ * The ids a category mapping is looked up by, MOST specific first: the leaf,
+ * then each ancestor up to the root. Category resolution takes the first id
+ * with a mapping, so an operator can map a whole branch ("Drinkware") once and
+ * still override one leaf ("Mugs"). `content-suggestion` reads `[0]`, which
+ * stays the leaf.
+ */
+export function shopifyCategoryLookupIds(path: readonly Category[]): string[] {
+  return [...path].reverse().map((c) => c.id);
+}
+
+/**
+ * The category directory of the shop: every taxonomy node a product sits in,
+ * plus all of its ancestors, deduplicated, root-first per branch. This is what
+ * the operator maps to the marketplace - not the whole Standard Product
+ * Taxonomy, which is thousands of nodes the shop never uses.
+ */
+export function shopifyCategoryDirectory(
+  categories: ReadonlyArray<ShopifyTaxonomyCategory | null>,
+): Category[] {
+  const byId = new Map<string, Category>();
+  for (const category of categories) {
+    for (const node of shopifyCategoryPath(category)) {
+      if (!byId.has(node.id)) {
+        byId.set(node.id, node);
+      }
+    }
+  }
+  return [...byId.values()].sort(
+    (a, b) => (a.depth ?? 0) - (b.depth ?? 0) || a.name.localeCompare(b.name),
+  );
+}
+
 export function mapShopifyProduct(raw: ShopifyProduct, ctx: ShopifyShopContext): Omit<Product, 'id'> {
   const variants = raw.variants.nodes;
   const single = variants.length === 1 ? variants[0] : null;
@@ -104,7 +139,7 @@ export function mapShopifyProduct(raw: ShopifyProduct, ctx: ShopifyShopContext):
     description: nonEmpty(raw.descriptionHtml),
     images: mediaUrls(raw.media.nodes),
     currency: ctx.currencyCode,
-    categories: path.length === 0 ? [] : [path[path.length - 1].id],
+    categories: shopifyCategoryLookupIds(path),
     ...(path.length === 0 ? {} : { categoryBreadcrumb: path.map((c) => ({ id: c.id, name: c.name })) }),
     ...(nonEmpty(raw.vendor) === null ? {} : { features: [{ name: 'Vendor', value: raw.vendor.trim() }] }),
     ...(weight === undefined ? {} : { weight }),
