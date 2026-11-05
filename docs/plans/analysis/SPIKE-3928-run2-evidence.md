@@ -140,3 +140,52 @@
 
 ## F12 follow-up
 - Second reconcile of the in-doubt receipt -> `not-found` (the vendor reports the document failed, again the sandbox printer). The record stays `failed` and cannot be retried (#3960).
+
+## Probe: concurrent productSet with the same handle (for L-S2b)
+- Three concurrent `productSet(synchronous: true, identifier: {handle: "ol-race-probe"}, input: {handle: "ol-race-probe", one variant each})` -> three products, handles `ol-race-probe`, `ol-race-probe-1`, `ol-race-probe-2`, no userErrors. Shopify does not serialise creates by handle; it suffixes. `products(query: tag:...)` right after listed 1 of 3 (index lag). Probe products deleted.
+- A deterministic handle is therefore not a lock for the variant-group race.
+
+## Run 3: the known gaps implemented in the prototype and tested live (2026-11-05)
+
+Prototype branch `local/shopify-prototype` (local only). Each item below was implemented there first, then run against the dev store.
+
+### A15 category mapping Shopify -> Allegro - pass
+- Shopify products carry their Standard Product Taxonomy category. The adapter reports it as the leaf plus its ancestors (`products.categories = ["hg-11-10-5-5","hg-11-10-5","hg-11-10","hg-11","hg"]`, breadcrumb Home & Garden > Kitchen & Dining > Tableware > Drinkware > Mugs), and the mapping source list (`/mappings/options/destination/categories` on the Shopify connection) offers the 19 nodes the shop uses, not the whole taxonomy.
+- Mapping `Mugs (hg-11-10-5-5) -> Allegro 110886 Kubki` saved on the Allegro connection. `POST /listings/connections/<allegro>/categories/resolve` -> `{"allegroCategoryId":"110886","method":"category_mapping"}`; the bulk-wizard batch resolve gives the same for the Mug variant.
+- Mapping only the parent (`Drinkware`) also resolves the Mug, because the ancestors are on the product.
+- Note: a product synced before the change kept the leaf only until it was re-synced.
+
+### C13 delivery and payment methods, both directions - pass
+- Shopify as a SOURCE (`/mappings/options/source/*` on the Shopify connection): delivery methods from the delivery profiles (Standard, Express) plus codes seen on the last orders; gateways (manual, Cash on Delivery (COD), Bank Deposit); neutral statuses.
+- Shopify as a DESTINATION was missing: `/mappings/options/destination/carriers` on the Allegro connection answered `501 ... does not implement DestinationOptionsReader`. Added: the same lists, and `createOrder` now applies the source connection's carrier and payment mappings.
+- Live: mapped `Allegro Paczkomaty InPost -> Standard` and `ONLINE -> Bank Deposit`, recreated the Allegro GIT01D order in Shopify -> #1029: shipping line `title "Standard (GIT01D)", code "Standard"`, transaction `SALE SUCCESS 35.85` on `Bank Deposit`, `displayFinancialStatus PAID`.
+- Note (core naming): the mapping API still names the fields `prestashopCarrierId` / `prestashopPaymentModule`; they hold Shopify method and gateway names here.
+
+### B16 pickup point into Shopify - pass
+- #1029 carries `customAttributes` `Pickup point = GIT01D`, `Pickup point name = Paczkomat GIT01D`, `Pickup point address = Dom Archidiecezjalny`, the note line `Pickup point: GIT01D - Paczkomat GIT01D, Dom Archidiecezjalny`, and the locker id in the shipping line title. Before the change (#1027) none of these existed.
+- Note: a destination retry with OMS sourcing on sends the order into routing (held, `plan-carries-unfulfillable`) and leaves the destination row `pending`; the recreate was done with sourcing off for the test.
+
+### Delta catalogue sync (ModifiedProductLister) - pass
+- First `master.product.syncDelta` stamps the watermark and lists nothing (as designed).
+- Changed only the Mug variant price in Shopify (41.99 -> 43.49), ran the delta again: one `master.product.syncFromSweep` child for that product only, OL variant price 43.49.
+- The variant's `updatedAt` from Shopify was 14 s EARLIER than OL's watermark taken just before the edit (clock difference), so the 15 s lookback the adapter adds is needed, not decorative.
+
+### Publish parameters as metafields - pass
+- Published the 3-size Resin Ring with parameters `Material=Resin`, `Stone=[Pressed flowers, Gold leaf]`, `test_data.binding_mount=Burton EST`. Shopify product: `openlinker.material` single_line_text_field "Resin", `openlinker.stone` list.single_line_text_field `["Pressed flowers","Gold leaf"]`, and the shop's own definition `test_data.binding_mount` "Burton EST". `ShopAttributeReader` lists the shop's writable definitions (`test_data.binding_mount`).
+- Note: images on the internal `http://prestashop` host are not sent (Shopify cannot fetch them); the publish reports it as a warning.
+
+### Variant group race on publish - fail, fixed in the prototype, then pass
+- Run 1: one batch of the 3 Ring sizes, three `shop.product.publish` jobs at the same second. One created the product, the other two FAILED with `HANDLE_NOT_UNIQUE: Handle '...-olc1808c97' already in use`. With `identifier: null` and an explicit handle, Shopify refuses a duplicate handle; the earlier probe (`identifier: {handle}`) got suffixed copies instead. So there were no duplicate products, but two sizes were missing.
+- Fix: a sibling refused on the group handle reads the product holding it and, if it carries the `openlinker.variant_group` marker of the same group, adds its variant there.
+- Run 2 (all 3 sizes at once): one product, 3 variants, stock 3/4/5, every mapping on the same parent. In this run the master reads spread the jobs out (finished at :20, :25, :30), so the race path was not taken.
+- Deterministic check: created the "winner" by hand (group handle + marker, size 18mm), then published only 16mm from OL. Log: `handle ... already held by gid://shopify/Product/15488892436761; adding variant`. Result: one product with 18mm + 16mm, OL mapping for the 16mm and the parent point to that product.
+
+### Refund through Shopify (RefundExecutor, opt-in) - pass
+- Connection config `refundsThroughShopify: true`. `POST /returns/<#1018 return>/refund {amount 60.27, reason withdrawal}` -> `moneyState refunded`, `moneyMoved true`, ceiling check `within 146.61`.
+- Shopify #1018: `REFUND SUCCESS 60.27` on gateway `manual`, order `PARTIALLY_REFUNDED`, refund note `OpenLinker refund [ol:580e4e4db6a6aacc] - withdrawal - ...`. OL `refund_records`: 60.27 PLN, `executedBy refund_executor`, linked to the return.
+- A second confirm answers 409 `ReturnRefundBlockedError` (every line already refunded): no second refund.
+- Without the flag the same call only records an out-of-band refund (earlier runs), so the shop owner chooses who moves the money.
+
+### Other notes from run 3
+- The publish builder reads the price from the master; PrestaShop product 24 reports price 0 in PL (a test-data problem in the PS stack, not Shopify), so the Ring was published with an explicit price.
+- Rebuilding the stack from a shell that had the spike's `.env` loaded replaced the stack's encryption key and every stored credential failed to decrypt (`Unsupported state or unable to authenticate data`). Restarting the containers with only `--env-file stack.env` fixed it. Worth a line in the docker README.

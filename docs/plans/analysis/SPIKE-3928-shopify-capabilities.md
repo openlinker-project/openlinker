@@ -20,13 +20,13 @@ dev store, an Allegro sandbox seller, InPost, inFakt and eparagony sandboxes, an
 | A master | catalogue, variants, EAN, gross prices and stock from Shopify into OL, stock out to Allegro | Works (S1) |
 | B order destination | Allegro order created in Shopify at the marketplace price, stock committed, dispatch + InPost tracking written back | Works (S1) |
 | C order source + returns | Shopify order into PrestaShop to the grosz, return ingested, received and restocked in the master | Works (S2) |
-| D publish target | PrestaShop products published to Shopify (simple + variants), stock pushed back on every change | Works, with a parent race on concurrent sibling publishes (L-S2b) (S2) |
+| D publish target | PrestaShop products published to Shopify (simple + variants), stock pushed back on every change | Works (S2); the parent race (L-S2b) is fixed in the prototype (run 3) |
 | E OpenLinker as warehouse | Shopify order routed to the OL pack bench, master stock lowered, fulfillment + InPost tracking back to Shopify | Works (S3) |
 | Shopify alone | Shopify-own orders get no automatic documents | Blocked by core, not by Shopify (#3959) (S4) |
 
 **Shopify cannot**, and OpenLinker covers it: invoices and receipts (inFakt, KSeF, eparagony), Polish
 labels (InPost, DPD), a tax rate on products (orders do carry one, L-S4a), a locker id on orders
-(L-O6).
+(L-O6; the adapter writes it into order attributes, the note and the shipping-line title, run 3).
 
 **What the production adapter needs** (sized from the prototype):
 
@@ -36,9 +36,14 @@ labels (InPost, DPD), a tax rate on products (orders do carry one, L-S4a), a loc
 2. Sub-capabilities that mattered live: `OrderStatusWriteback` on BOTH the source and the
    destination adapter (L-S3c), `OrderFulfillmentUpdater` with an explicit tracking URL (L-F3),
    `ReturnSourceReader` with the lap feed (L-S2m), `OrderCreateStockEffect`, and
-   `SourceOptionsReader.listDeliveryMethods` so carrier routing rules can be set from the UI (L-S3d).
+   `SourceOptionsReader` and `DestinationOptionsReader` so carrier and payment mappings work in both
+   directions (L-S3d, run 3), `ModifiedProductLister` over product AND variant `updatedAt` with a
+   lookback (L-M2, run 3), metafield parameters + `ShopAttributeReader`, and an opt-in
+   `RefundExecutor` (run 3).
 3. Order dedup on create is OpenLinker's job (`orderCreate` has no idempotency, L-O3/L-O4).
-4. A per-group lock around "resolve or create the parent" for multi-variant publish (L-S2b).
+4. Multi-variant publish without a lock: a deterministic group handle plus a marker metafield, and a
+   sibling refused with `HANDLE_NOT_UNIQUE` joins the product holding the handle (L-S2b, run 3).
+   Category mapping uses the Shopify taxonomy category with its ancestors on the product (run 3).
 5. Webhooks need a public URL; without one everything runs on polling with a 30 s settle window
    for the search index lag (L-M1, L-S2j).
 
