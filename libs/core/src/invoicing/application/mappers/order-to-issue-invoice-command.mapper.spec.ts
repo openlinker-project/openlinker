@@ -1032,8 +1032,8 @@ describe('toIssueInvoiceCommand - gift lines (#3930)', () => {
   const total = (lines: { quantity: number; unitPriceGross: number }[]): number =>
     lines.reduce((sum, line) => sum + Math.round(line.quantity * line.unitPriceGross * 100), 0);
 
-  it('should omit a gift by default and still equal what was paid', () => {
-    const cmd = toIssueInvoiceCommand({ order: giftOrder(), connectionId: 'c' });
+  it('should omit a gift when asked and still equal what was paid', () => {
+    const cmd = toIssueInvoiceCommand({ order: giftOrder(), connectionId: 'c', giftConnectionForm: 'omit' });
     expect(cmd.lines.map((l) => l.name)).toEqual(['Widget']);
     expect(total(cmd.lines)).toBe(10000);
     expect(cmd.lines[0]).not.toHaveProperty('isGift');
@@ -1043,7 +1043,7 @@ describe('toIssueInvoiceCommand - gift lines (#3930)', () => {
     const cmd = toIssueInvoiceCommand({
       order: giftOrder(),
       connectionId: 'c',
-      giftForm: 'show',
+      giftConnectionForm: 'show-zero',
       acceptsZeroValueLine: false,
     });
     expect(cmd.lines).toHaveLength(2);
@@ -1055,10 +1055,35 @@ describe('toIssueInvoiceCommand - gift lines (#3930)', () => {
     const cmd = toIssueInvoiceCommand({
       order: giftOrder(),
       connectionId: 'c',
-      giftForm: 'show',
+      giftConnectionForm: 'show-zero',
       acceptsZeroValueLine: true,
     });
     expect(cmd.lines[1].unitPriceGross).toBe(0);
+    expect(total(cmd.lines)).toBe(10000);
+  });
+
+  it('should default to a technical cent when no setting is saved', () => {
+    const cmd = toIssueInvoiceCommand({ order: giftOrder(), connectionId: 'c' });
+    expect(cmd.lines).toHaveLength(2);
+    expect(cmd.lines[1].unitPriceGross).toBeCloseTo(0.01);
+    expect(total(cmd.lines)).toBe(10000);
+  });
+
+  it('should let the gift own form win over the connection and the default', () => {
+    const base = giftOrder();
+    const order = {
+      ...base,
+      items: base.items.map((item) =>
+        item.gift ? { ...item, gift: { ...item.gift, documentForm: 'omit' as const } } : item,
+      ),
+    };
+    const cmd = toIssueInvoiceCommand({
+      order,
+      connectionId: 'c',
+      giftConnectionForm: 'priced-in',
+      giftGlobalForm: 'show-zero',
+    });
+    expect(cmd.lines).toHaveLength(1);
     expect(total(cmd.lines)).toBe(10000);
   });
 });
@@ -1158,6 +1183,7 @@ describe('toIssueInvoiceCommand - bundle components (#3934)', () => {
       order: bundleOrder(),
       connectionId: 'c',
       bundleDocument,
+      giftConnectionForm: 'omit',
     });
     expect(cmd.lines.map((l) => l.name)).toEqual(['Soap']);
     expect(cmd.lines[0].orderLineId).toBe('set~c:a');
@@ -1169,7 +1195,7 @@ describe('toIssueInvoiceCommand - bundle components (#3934)', () => {
       order: bundleOrder(),
       connectionId: 'c',
       bundleDocument,
-      giftForm: 'show',
+      giftConnectionForm: 'show-zero',
       acceptsZeroValueLine: true,
     });
     expect(cmd.lines.map((l) => [l.name, l.unitPriceGross])).toEqual([
@@ -1183,7 +1209,7 @@ describe('toIssueInvoiceCommand - bundle components (#3934)', () => {
       order: bundleOrder(),
       connectionId: 'c',
       bundleDocument,
-      giftForm: 'priced-in',
+      giftConnectionForm: 'priced-in',
     });
     expect(cmd.lines).toHaveLength(2);
     expect(cmd.lines[1].unitPriceGross).toBeGreaterThan(0);

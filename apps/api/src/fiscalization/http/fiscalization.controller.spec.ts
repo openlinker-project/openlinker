@@ -12,6 +12,7 @@
  *
  * @module apps/api/src/fiscalization/http
  */
+import { SALES_DOCUMENT_SETTINGS_SERVICE_TOKEN } from '@openlinker/core/sales-documents';
 import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import { Test } from '@nestjs/testing';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
@@ -171,6 +172,10 @@ describe('FiscalizationController', () => {
           useValue: { resolveForDocuments: jest.fn().mockResolvedValue(undefined) },
         },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrations },
+        {
+          provide: SALES_DOCUMENT_SETTINGS_SERVICE_TOKEN,
+          useValue: { getGiftDocumentForm: jest.fn().mockResolvedValue({ form: 'technical-cent', source: 'default' }) },
+        },
       ],
     }).compile();
 
@@ -332,7 +337,7 @@ describe('FiscalizationController', () => {
       ]);
       orders.getOrderRecord.mockResolvedValue(giftRecord);
       const connectionPort = controller['connectionPort'] as unknown as { get: jest.Mock };
-      connectionPort.get.mockResolvedValue({ config: { giftOnDocuments: { form: 'show' } } });
+      connectionPort.get.mockResolvedValue({ config: { giftOnDocuments: { form: 'show-zero' } } });
       integrations.getCapabilityAdapter.mockResolvedValue({ acceptsZeroValueLine: () => false });
 
       await controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID });

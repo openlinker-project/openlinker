@@ -27,3 +27,6 @@ export const DOCUMENT_EMAIL_DELIVERY_REPOSITORY_TOKEN = Symbol(
 export const DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN = Symbol('IDocumentEmailDeliveryService');
 /** Told when an order's originating sales document is issued (#3554). Bound by the orders context. */
 export const SALES_DOCUMENT_ISSUED_LISTENER_TOKEN = Symbol('SalesDocumentIssuedListenerPort');
+/** The OpenLinker-wide sales-document settings singleton (#3941). */
+export const SALES_DOCUMENT_SETTING_REPOSITORY_TOKEN = Symbol('SalesDocumentSettingRepositoryPort');
+export const SALES_DOCUMENT_SETTINGS_SERVICE_TOKEN = Symbol('ISalesDocumentSettingsService');

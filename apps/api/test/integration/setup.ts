@@ -255,6 +255,10 @@ const harness = createIntegrationTestHarness({
     // FK, so it never cascades; a row written by one case would otherwise
     // change what every later case resolves as the reporting currency.
     'reporting_currency_setting',
+    // sales_document_settings (#3941) - the singleton OpenLinker-wide gift form on
+    // documents. No FK, so it never cascades; a saved row would change every later
+    // case's resolved default.
+    'sales_document_settings',
     // operational_settings (#2651) — the singleton sweep-budget / deletion-audit
     // row. No FK, so it never cascades; a row written by one case would
     // otherwise change every later case's resolved budgets.

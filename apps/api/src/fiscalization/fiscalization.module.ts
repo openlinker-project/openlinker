@@ -13,12 +13,13 @@ import { FiscalizationModule } from '@openlinker/core/fiscalization';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/integrations';
 import { OrdersModule } from '@openlinker/core/orders';
+import { SalesDocumentsModule } from '@openlinker/core/sales-documents';
 
 import { IntegrationsModule } from '../integrations/integrations.module';
 import { FiscalizationController } from './http/fiscalization.controller';
 
 @Module({
-  imports: [FiscalizationModule, OrdersModule, IdentifierMappingModule, CoreIntegrationsModule, IntegrationsModule],
+  imports: [FiscalizationModule, OrdersModule, SalesDocumentsModule, IdentifierMappingModule, CoreIntegrationsModule, IntegrationsModule],
   controllers: [FiscalizationController],
 })
 export class FiscalizationApiModule {}

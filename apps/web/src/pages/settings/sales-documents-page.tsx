@@ -26,6 +26,7 @@ import { useSession } from '../../shared/auth/use-session';
 import { ErrorState } from '../../shared/ui/feedback-state';
 import { HelpLink } from '../../shared/ui/help-link';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { GiftDocumentsDefaultPanel } from '../../features/gift-documents';
 import { SalesDocumentRuleEnginePanel, SalesDocumentsPanel } from '../../features/sales-documents';
 
 export function SalesDocumentsPage(): ReactElement {
@@ -52,6 +53,7 @@ export function SalesDocumentsPage(): ReactElement {
     >
       <SalesDocumentRuleEnginePanel />
       <SalesDocumentsPanel />
+      <GiftDocumentsDefaultPanel />
     </PageLayout>
   );
 }

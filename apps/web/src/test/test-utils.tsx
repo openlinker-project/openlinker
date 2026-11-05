@@ -1174,6 +1174,20 @@ export function createMockApiClient(
       getCountryFacts: vi.fn().mockResolvedValue({ windowDays: 30, countries: [] }),
       ...overrides.deliveryOnDocuments,
     } as ApiClient['deliveryOnDocuments'],
+    giftDocuments: {
+      getSettings: vi.fn().mockResolvedValue({
+        giftDocumentForm: 'technical-cent',
+        giftDocumentFormSource: 'default',
+        updatedAt: null,
+      }),
+      saveSettings: vi.fn().mockResolvedValue({
+        giftDocumentForm: 'technical-cent',
+        giftDocumentFormSource: 'setting',
+        updatedAt: null,
+      }),
+      getProviders: vi.fn().mockResolvedValue({ providers: [] }),
+      ...overrides.giftDocuments,
+    } as ApiClient['giftDocuments'],
     // #3056. The default is a connection with no sourcing rules — the honest
     // empty ruleset, so a test that renders the table without opting in gets
     // the "no rules yet" branch rather than rows it never declared.

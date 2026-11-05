@@ -34,7 +34,7 @@ import {
   presentGiftLines,
   presentBundleComponents,
   type BundleDocumentPresentation,
-  type DifferentRateGift,
+  resolveGiftDocumentForm,
   type GiftLineForm,
   type ResolvedDeliveryLine,
 } from '@openlinker/core/sales-documents';
@@ -96,15 +96,13 @@ export interface OrderToIssueInvoiceCommandInput {
   buyerIsPublicSectorEntity?: boolean;
   buyerIsTaxGroupMember?: boolean;
   /**
-   * How a gift line is presented (#3930), from the order-source connection's
-   * `config.giftOnDocuments` via `readGiftLineForm`. Absent is `omit`.
+   * The connection's gift-form override (`readGiftConnectionForm`); absent
+   * inherits the OpenLinker-wide default. A gift's own form wins over both
+   * (gifts spec section 8.3).
    */
-  giftForm?: GiftLineForm;
-  /**
-   * How a gift whose rate matches no paid line is carried (decision B), from
-   * `config.giftOnDocuments.differentRateGift`. Absent is `priced-in`.
-   */
-  differentRateGift?: DifferentRateGift;
+  giftConnectionForm?: GiftLineForm;
+  /** The OpenLinker-wide default; absent is `technical-cent`. */
+  giftGlobalForm?: GiftLineForm;
   /**
    * The invoicing provider's `ZeroValueLineSupport` declaration as a plain
    * boolean (`readZeroValueLineSupport`), so this mapper stays pure. `undefined`
@@ -164,11 +162,18 @@ export function toIssueInvoiceCommand(
   // Gift lines are presented BEFORE delivery and discount reconciliation, so
   // the lines that follow see the amounts the document will really carry and the
   // total still equals what the buyer paid (#3930).
-  type WorkingLine = InvoiceLine & { isGift?: boolean; referenceUnitPriceGross?: number };
+  type WorkingLine = InvoiceLine & { isGift?: boolean; giftForm?: GiftLineForm; referenceUnitPriceGross?: number };
   const itemLines = presentBundleComponents<WorkingLine>(
     order.items.map((item) => ({
       ...toInvoiceLine(item, order.id),
       isGift: item.gift !== undefined,
+      ...(item.gift !== undefined && {
+        giftForm: resolveGiftDocumentForm(
+          item.gift.documentForm,
+          input.giftConnectionForm,
+          input.giftGlobalForm,
+        ).form,
+      }),
     })),
     (line) => line.orderLineId,
     input.bundleDocument,
@@ -193,9 +198,9 @@ export function toIssueInvoiceCommand(
   );
   const presentedGifts = presentGiftLines(
     itemLines.lines,
-    input.giftForm ?? 'omit',
+    resolveGiftDocumentForm(undefined, input.giftConnectionForm, input.giftGlobalForm).form,
     input.acceptsZeroValueLine,
-    { currency: order.totals.currency, differentRateGift: input.differentRateGift },
+    { currency: order.totals.currency },
   );
   // Every fallback the helper took is traceable (structured, PII-free).
   for (const note of presentedGifts.notes) {
@@ -220,6 +225,7 @@ export function toIssueInvoiceCommand(
     (presented) => {
       const line: WorkingLine = { ...presented };
       delete line.isGift;
+      delete line.giftForm;
       delete line.referenceUnitPriceGross;
       return line as InvoiceLine;
     },

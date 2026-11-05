@@ -114,6 +114,10 @@ import {
   type DeliveryOnDocumentsApi,
 } from '../../features/delivery-on-documents/api/delivery-on-documents.api';
 import {
+  createGiftDocumentsApi,
+  type GiftDocumentsApi,
+} from '../../features/gift-documents/api/gift-documents.api';
+import {
   createSourcingRulesApi,
   type SourcingRulesApi,
 } from '../../features/oms/api/sourcing-rules.api';
@@ -290,6 +294,7 @@ export interface CoreApiClient {
   salesDocumentList: SalesDocumentListApi;
   salesDocumentRules: SalesDocumentRulesApi;
   deliveryOnDocuments: DeliveryOnDocumentsApi;
+  giftDocuments: GiftDocumentsApi;
   sourcingRules: SourcingRulesApi;
   routingDryRun: RoutingDryRunApi;
   fulfillmentAuthority: FulfillmentAuthorityApi;
@@ -549,6 +554,7 @@ export function createApiClient({
     salesDocumentList: createSalesDocumentListApi(request),
     salesDocumentRules: createSalesDocumentRulesApi(request),
     deliveryOnDocuments: createDeliveryOnDocumentsApi(request),
+    giftDocuments: createGiftDocumentsApi(request),
     sourcingRules: createSourcingRulesApi(request),
     routingDryRun: createRoutingDryRunApi(request),
     automations: createAutomationsApi(request),

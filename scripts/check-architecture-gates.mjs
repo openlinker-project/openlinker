@@ -165,7 +165,7 @@ const KNOWN_CONFIG_KNOBS = new Map([
   ],
   [
     'libs/core/src/sales-documents/domain/types/gift-lines.types.ts',
-    { helper: 'readGiftLineForm', key: 'config.giftOnDocuments' },
+    { helper: 'readGiftConnectionForm', key: 'config.giftOnDocuments' },
   ],
 ]);
 
@@ -418,6 +418,11 @@ const NON_KNOBS = new Map([
 // and the document provider's own declaration (`ZeroValueLineSupport`) narrows
 // which forms are offered. The #1032 question still stands; raised by one so the
 // next knob asks again.
+//
+// #3941 narrows it rather than adding one: the key stays, but it is now an
+// optional per-connection OVERRIDE of the OpenLinker-wide default held in the
+// `sales_document_settings` singleton (absent = inherit), so the threshold is
+// unchanged.
 const KNOB_THRESHOLD = 15;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */

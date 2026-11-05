@@ -144,6 +144,9 @@ import {
   DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN,
   readDeliveryOnDocuments,
   readGiftDocumentSettings,
+  DEFAULT_GIFT_LINE_FORM,
+  SALES_DOCUMENT_SETTINGS_SERVICE_TOKEN,
+  type ISalesDocumentSettingsService,
   BundleSplitUnknownError,
   readZeroValueLineSupport,
   resolveDeliveryLine,
@@ -251,6 +254,8 @@ export class InvoicingController {
     private readonly documentEmailDeliveries: IDocumentEmailDeliveryService,
     @Inject(ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN)
     private readonly orderBundleDocuments: IOrderBundleDocumentService,
+    @Inject(SALES_DOCUMENT_SETTINGS_SERVICE_TOKEN)
+    private readonly salesDocumentSettings: ISalesDocumentSettingsService,
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -407,16 +412,20 @@ export class InvoicingController {
    * the lookup fails: a failed read must never break issuance.
    */
   private async resolveGiftSettings(sourceConnectionId: string): Promise<GiftDocumentSettings> {
+    const globalForm = await this.salesDocumentSettings
+      .getGiftDocumentForm()
+      .then((setting) => setting.form)
+      .catch(() => DEFAULT_GIFT_LINE_FORM);
     try {
       const source = await this.connectionPort.get(sourceConnectionId);
-      return readGiftDocumentSettings(source.config);
+      return readGiftDocumentSettings(source.config, globalForm);
     } catch (error) {
       this.logger.debug(
         `Gift settings lookup failed for connection ${sourceConnectionId}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      return readGiftDocumentSettings(undefined);
+      return readGiftDocumentSettings(undefined, globalForm);
     }
   }
 

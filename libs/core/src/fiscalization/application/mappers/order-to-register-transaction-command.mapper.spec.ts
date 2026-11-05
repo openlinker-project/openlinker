@@ -687,7 +687,12 @@ describe('toRegisterTransactionCommand - gift lines (#3930)', () => {
     lines.reduce((sum, line) => sum + Math.round(line.quantity * line.unitPriceGross * 100), 0);
 
   it('should omit a gift by default and equal what was paid', () => {
-    const cmd = toRegisterTransactionCommand({ order: giftOrder(), connectionId: 'c', idempotencyKey: 'k' });
+    const cmd = toRegisterTransactionCommand({
+      order: giftOrder(),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      giftConnectionForm: 'omit',
+    });
     expect(cmd.lines.map((l) => l.name)).toEqual(['Widget']);
     expect(total(cmd.lines)).toBe(4920);
   });
@@ -697,7 +702,7 @@ describe('toRegisterTransactionCommand - gift lines (#3930)', () => {
       order: giftOrder(),
       connectionId: 'c',
       idempotencyKey: 'k',
-      giftForm: 'show',
+      giftConnectionForm: 'show-zero',
       acceptsZeroValueLine: false,
     });
     expect(cmd.lines).toHaveLength(3);
@@ -710,7 +715,7 @@ describe('toRegisterTransactionCommand - gift lines (#3930)', () => {
       order: giftOrder(),
       connectionId: 'c',
       idempotencyKey: 'k',
-      giftForm: 'show',
+      giftConnectionForm: 'show-zero',
       acceptsZeroValueLine: true,
     });
     expect(cmd.lines.at(-1)?.unitPriceGross).toBeCloseTo(0.01);
@@ -748,6 +753,7 @@ describe('toRegisterTransactionCommand - bundle components (#3934)', () => {
       connectionId: 'c',
       idempotencyKey: 'k',
       bundleDocument: mixedDocument,
+      giftConnectionForm: 'omit',
     });
     expect(cmd.lines.map((l) => [l.name, l.taxRate])).toEqual([
       ['Soap', '23'],
