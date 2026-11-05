@@ -22,7 +22,7 @@ import {
 } from 'react';
 import { NavLink, useLocation, useMatches } from 'react-router-dom';
 import { useSession } from '../shared/auth/use-session';
-import { interpolate, useMessages, useNumberFormat } from '../shared/i18n';
+import { interpolate, useMessages, useNumberFormat, usePlural } from '../shared/i18n';
 import { resolveCrumbFromMatches } from './breadcrumbs';
 import { buildNavGroups, navRoleOf, sessionNeedsOmsRouting } from './nav-registry';
 import { useOmsRoutingState } from '../features/fulfillment-authority';
@@ -277,6 +277,7 @@ export function ShellTopbar({
   const username = session.user?.username;
   const email = session.user?.email ?? null;
   const copy = useMessages('app');
+  const plural = usePlural();
   const crumbs = resolveCrumbFromMatches(useMatches(), copy);
 
   return (
@@ -312,7 +313,7 @@ export function ShellTopbar({
 
       <Button tone="ghost" className="shell-topbar__alerts">
         {copy.shell.alerts} <span aria-hidden="true">0</span>
-        <span className="sr-only">{interpolate(copy.shell.alertsNew, { count: 0 })}</span>
+        <span className="sr-only">{plural(0, copy.shell.alertsNew)}</span>
       </Button>
 
       {username ? <UserChip username={username} email={email} onLogout={onLogout} /> : null}

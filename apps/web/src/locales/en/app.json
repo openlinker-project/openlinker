@@ -90,7 +90,10 @@
   },
   "shell": {
     "alerts": "Alerts",
-    "alertsNew": "({count} new)",
+    "alertsNew": {
+      "one": "({n} new)",
+      "other": "({n} new)"
+    },
     "breadcrumb": "Breadcrumb",
     "closeMenu": "Close menu",
     "loggedOut": "You have been logged out.",

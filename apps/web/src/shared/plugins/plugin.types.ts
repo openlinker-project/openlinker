@@ -47,8 +47,12 @@ import type { StructuredError } from '../types/structured-error.types';
  * that group; an unknown label creates a new group at the end of the sidebar.
  *
  * Soft contract: contributors should prefer matching one of the existing
- * groups ("Operations", "Diagnostics", "Platform"). Tightening to a closed
- * union is a follow-up if group sprawl becomes a problem.
+ * groups. Name a core group by its section key (`'operations'`,
+ * `'diagnostics'`, `'platform'`): the group's label follows the operator's
+ * language, so the key is the spelling that matches in every language. The
+ * English label (`'Operations'`) still matches too, for existing plugins.
+ * Tightening to a closed union is a follow-up if group sprawl becomes a
+ * problem.
  *
  * Note: `countKey` is intentionally omitted — count badges are wired to
  * internal queries via a closed key set (`NavCountKey`), not a plugin

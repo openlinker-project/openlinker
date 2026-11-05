@@ -26,6 +26,15 @@ export interface ResolvedCrumb {
   title: string;
 }
 
+function lookupKey(labels: Readonly<Record<string, string>>, key: string): string {
+  const label = Object.hasOwn(labels, key) ? labels[key] : undefined;
+  if (label !== undefined) return label;
+  if (import.meta.env.DEV && import.meta.env.MODE !== 'test') {
+    console.warn(`Breadcrumb key "${key}" is not in the app namespace; showing it as written.`);
+  }
+  return key;
+}
+
 /**
  * Walk the React Router match chain deepest-first and return the first
  * crumb-shaped `handle`. Falls back to the brand name when nothing in the
@@ -39,9 +48,13 @@ export function resolveCrumbFromMatches(
     const handle = matches[i].handle;
     if (isCrumbHandle(handle)) {
       const { crumb } = handle;
+      // `isCrumbHandle` checks only that the values are strings, so a crumb
+      // that skipped `satisfies RouteCrumbHandle` (or a plugin still writing
+      // the English label) can name a key that does not exist. Show what it
+      // wrote rather than an empty crumb.
       return {
-        group: copy.sections[crumb.group],
-        title: 'page' in crumb ? copy.pages[crumb.page] : crumb.title,
+        group: lookupKey(copy.sections, crumb.group),
+        title: 'page' in crumb ? lookupKey(copy.pages, crumb.page) : crumb.title,
       };
     }
   }
