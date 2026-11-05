@@ -35,6 +35,10 @@
  * handle (exactly one can), else the lowest id among marked candidates. A
  * loser moves its variant onto the winner, deletes its own product and reports
  * the winner as the parent, so every sibling's mapping names one product.
+ * A create whose explicit handle is already taken is REFUSED by Shopify
+ * (HANDLE_NOT_UNIQUE, measured live on the 3-sibling batch) rather than
+ * suffixed; that loser reads the product holding the handle and, when it
+ * carries this group's marker, adds its variant there instead.
  *
  * Stock: the configured location only (`ShopifyShopContextProvider`). A create
  * sets it in the same call; an update sets it with `inventorySetQuantities`
@@ -494,7 +498,23 @@ export class ShopifyProductPublisherAdapter
         },
       ],
     };
-    const product = await this.productSet(input, null, locationGid, files, warnings);
+    let product: PublishedProductNode;
+    try {
+      product = await this.productSet(input, null, locationGid, files, warnings);
+    } catch (error) {
+      // A sibling won the race to the group handle. Shopify REFUSES a duplicate
+      // handle set explicitly (HANDLE_NOT_UNIQUE, measured live), it does not
+      // suffix it - so the loser joins the product holding the handle instead.
+      const owner = isHandleTaken(error) ? await this.groupOwnerOfHandle(handle, group.groupId) : null;
+      if (owner === null) {
+        throw error;
+      }
+      this.logger.warn(
+        `Variant group ${group.groupId}: handle ${handle} already held by ${owner}; adding variant ` +
+          `${cmd.internalVariantId} to it (connection ${this.connection.id})`,
+      );
+      return this.publishGrouped(cmd, { ...group, externalParentProductId: fromShopifyGid(owner) }, locationGid);
+    }
 
     // The product exists from here on.
     const variant = findVariantByOptions(product.variants.nodes, optionValues) ?? product.variants.nodes[0];
@@ -568,6 +588,20 @@ export class ShopifyProductPublisherAdapter
     }
     const byId = [...candidates].sort((a, b) => Number(fromShopifyGid(a.id)) - Number(fromShopifyGid(b.id)));
     return byId[0]?.id ?? null;
+  }
+
+  /** The product holding `handle` when it is marked as this group's, else null. Never throws. */
+  private async groupOwnerOfHandle(handle: string, groupId: string): Promise<string | null> {
+    try {
+      const data = await this.client.query<Record<string, GroupCandidateNode | null>>(groupCandidatesQuery(1), {
+        h0: handle,
+      });
+      const node = Object.values(data)[0] ?? null;
+      return node !== null && node.marker?.value === groupId ? node.id : null;
+    } catch (error) {
+      this.logger.warn(`Variant group ${groupId}: could not read the holder of ${handle}: ${reasonOf(error)}`);
+      return null;
+    }
   }
 
   /**
@@ -1109,4 +1143,12 @@ export class ShopifyProductPublisherAdapter
   private adapterKey(): string {
     return this.connection.adapterKey ?? SHOPIFY_ADAPTER_KEY;
   }
+}
+
+/** Whether a publish failed because the explicit handle is already in use. */
+function isHandleTaken(error: unknown): boolean {
+  return (
+    error instanceof ProductPublishRejectedException &&
+    error.errors.some((e) => e.code === 'HANDLE_NOT_UNIQUE' || /handle .* already in use/i.test(e.message))
+  );
 }
