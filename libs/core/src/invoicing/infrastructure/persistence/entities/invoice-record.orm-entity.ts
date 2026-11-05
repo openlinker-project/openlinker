@@ -42,6 +42,10 @@ import { InvoiceStatus, PaymentStatus, RegulatoryStatus } from '../../../domain/
 })
 // Fiscal-dedup guard — exactly-once issuance on retry (ADR-026). Partial so
 // rows without a key (manual one-off issues) don't collide on NULL.
+@Index('UQ_invoice_records_previous_attempt', ['previousAttemptId'], {
+  unique: true,
+  where: '"previousAttemptId" IS NOT NULL',
+})
 @Index('UQ_invoice_records_connection_idempotency', ['connectionId', 'idempotencyKey'], {
   unique: true,
   where: '"idempotencyKey" IS NOT NULL',
@@ -236,6 +240,17 @@ export class InvoiceRecordOrmEntity {
    */
   @Column({ type: 'text', nullable: true })
   sourceDocumentHash!: string | null;
+
+  /** 0-based attempt at this (connection, order) invoice (#3960). */
+  @Column({ type: 'int', default: 0 })
+  attempt!: number;
+
+  /**
+   * The refused attempt this one follows (#3960). Unique when set, so a refused
+   * invoice has at most one successor.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  previousAttemptId!: string | null;
 
   /**
    * Neutral issuance-time line snapshot (#1297) — `{ buyer, currency, lines }`

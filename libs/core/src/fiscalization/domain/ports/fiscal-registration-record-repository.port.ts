@@ -45,6 +45,14 @@ export interface FiscalRegistrationRecordRepositoryPort {
   ): Promise<FiscalRegistrationRecord | null>;
 
   /**
+   * The newest ATTEMPT one connection holds for one order (#3960): highest
+   * `attempt`, then `createdAt` DESC, `id` DESC. `null` when the connection has
+   * never registered the order. A refused attempt is final, so the latest
+   * attempt is the one a new request has to reason about.
+   */
+  findLatestAttempt(connectionId: string, orderId: string): Promise<FiscalRegistrationRecord | null>;
+
+  /**
    * Every record held by an order, across ALL connections, newest-first
    * (`createdAt` DESC, `id` DESC). Returns `[]` for an order with no records.
    */
@@ -96,11 +104,12 @@ export interface FiscalRegistrationRecordRepositoryPort {
    * guarded UPDATE flips the row to `registering` with a fresh lease ONLY when
    * no live attempt holds it AND a re-attempt is fiscally safe:
    *   - `pending` (no lease by definition), OR
-   *   - a TERMINAL-`rejected` `failed` row (the provider definitely created
-   *     nothing), OR
    *   - `registering` with an EXPIRED lease (a crashed prior attempt).
    *
-   * A `registered` row, an in-doubt/mode-less `failed` row and a live
+   * No `failed` row matches, `rejected` included (#3960): a refused attempt is
+   * final, and a new request starts the next attempt under a new key.
+   *
+   * A `registered` row, a `failed` row and a live
    * `registering` lease NEVER match, so none can be re-claimed and re-sent. The
    * fiscal invariant is enforced HERE, at the persistence boundary, not only in
    * the service - no caller can weaken it.

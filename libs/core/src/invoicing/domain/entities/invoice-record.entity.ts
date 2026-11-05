@@ -183,6 +183,14 @@ export class InvoiceRecord {
      * a reader falls back to hashing `sourceDocument` for those.
      */
     public readonly sourceDocumentHash: string | null = null,
+    /**
+     * 0-based attempt at this (connection, order) invoice (#3960). An operator
+     * retry of a refused invoice creates the next attempt as its own record
+     * under its own key; a job retry stays on the same record.
+     */
+    public readonly attempt: number = 0,
+    /** The refused attempt this one follows, or `null` (#3960). */
+    public readonly previousAttemptId: string | null = null,
   ) {}
 
   /**
