@@ -60,6 +60,7 @@ export const REASON_LABEL: Record<CorrectionReason, string> = {
   count_correction: 'Counted (physical stock check)',
   found: 'Found or received',
   damaged: 'Damaged or lost',
+  gift: 'Gift packed outside OpenLinker',
   other: 'Other',
 };
 

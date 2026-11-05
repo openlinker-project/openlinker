@@ -54,6 +54,7 @@ import {
   type IGiftRuleService,
 } from '@openlinker/core/automation';
 import { AVAILABILITY_SERVICE_TOKEN, type IAvailabilityService } from '@openlinker/core/inventory';
+import { PRODUCTS_SERVICE_TOKEN, taxRateState, type IProductsService } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 
 import { ORDER_RECORD_SERVICE_TOKEN } from '../../orders.tokens';
@@ -95,6 +96,8 @@ export class OrderGiftService implements IOrderGiftService {
     private readonly orderRecords: IOrderRecordService,
     @Inject(AUTOMATION_RUN_RECORDER_TOKEN)
     private readonly recorder: IAutomationRunRecorderService,
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly products: IProductsService,
   ) {}
 
   async applyGiftRules(input: ApplyGiftRulesInput): Promise<ApplyGiftRulesResult> {
@@ -165,11 +168,12 @@ export class OrderGiftService implements IOrderGiftService {
                 customerId: input.customerId,
                 quantity: outcome.quantity,
               });
-              lines[olGiftLineKey(rule.id, GIFT_LINE_ID)] = this.buildAddedLine(
+              lines[olGiftLineKey(rule.id, GIFT_LINE_ID)] = await this.buildAddedLine(
                 rule,
                 action,
                 outcome.quantity,
                 now,
+                input.occurredAt,
               );
             } else if (outcome.alreadyApplied) {
               // Granted earlier; re-add the line only when it is missing (crash
@@ -177,7 +181,7 @@ export class OrderGiftService implements IOrderGiftService {
               const key = olGiftLineKey(rule.id, GIFT_LINE_ID);
               const grant = grantByRule.get(rule.id);
               if (!existingKeys.has(key) && grant !== undefined) {
-                lines[key] = this.buildAddedLine(rule, action, grant.quantity, now);
+                lines[key] = await this.buildAddedLine(rule, action, grant.quantity, now, input.occurredAt);
               }
             }
             if (outcome.stateChange !== null) {
@@ -403,12 +407,13 @@ export class OrderGiftService implements IOrderGiftService {
     return answers;
   }
 
-  private buildAddedLine(
+  private async buildAddedLine(
     rule: AutomationRule,
     action: AutomationGiftAction,
     quantity: number,
     at: Date,
-  ): OrderAddedLineEdit {
+    placedAt: Date,
+  ): Promise<OrderAddedLineEdit> {
     const gift: LineGift = {
       source: 'ol-rule',
       ruleRef: rule.id,
@@ -423,7 +428,64 @@ export class OrderGiftService implements IOrderGiftService {
       quantity,
       name: rule.name,
       gift,
+      ...(await this.catalogueTaxRate(action)),
+      ...(await this.frozenCost(action, placedAt)),
     };
+  }
+
+  /**
+   * Freezes the gift's purchase cost on the entry (#3939, ADR-080 decision 3): the
+   * variant's net cost is taken only when it was entered no later than the order's
+   * `placedAt` (both floored to the second), so an old order never reads today's
+   * cost. An unknown cost, or a failed read, leaves the entry without one: never 0.
+   */
+  private async frozenCost(
+    action: AutomationGiftAction,
+    placedAt: Date,
+  ): Promise<Pick<OrderAddedLineEdit, 'unitCostNet' | 'unitCostCurrency'>> {
+    try {
+      const [variant] = await this.products.getVariantsByIds([action.variantId]);
+      const second = (date: Date): number => Math.floor(date.getTime() / 1000);
+      if (
+        variant?.netUnitCost != null &&
+        variant.costCurrency != null &&
+        variant.costUpdatedAt != null &&
+        second(variant.costUpdatedAt) <= second(placedAt)
+      ) {
+        return { unitCostNet: variant.netUnitCost, unitCostCurrency: variant.costCurrency };
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Cost for gift variant ${action.variantId} could not be read: ${(error as Error).message}`,
+      );
+    }
+    return {};
+  }
+
+  /**
+   * The shop catalogue's rate for the gift (#3939), stamped on the overlay entry so
+   * the destination mirror and the documents read the same rate. Best-effort: a
+   * catalogue that answers nothing leaves the line rate-less, never guessed.
+   */
+  private async catalogueTaxRate(
+    action: AutomationGiftAction,
+  ): Promise<Pick<OrderAddedLineEdit, 'taxRate' | 'taxRateCountry' | 'taxSource' | 'taxRateReadAt'>> {
+    try {
+      const rate = await this.products.getEffectiveTaxRate(action.productId, action.variantId);
+      if (rate && taxRateState(rate) === 'known' && rate.code) {
+        return {
+          taxRate: rate.code,
+          ...(rate.countryIso2 ? { taxRateCountry: rate.countryIso2 } : {}),
+          taxSource: 'shop',
+          ...(rate.readAt ? { taxRateReadAt: rate.readAt.toISOString() } : {}),
+        };
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Tax rate for gift product ${action.productId} could not be read: ${(error as Error).message}`,
+      );
+    }
+    return {};
   }
 
   private async recordRuns(

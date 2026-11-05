@@ -115,6 +115,7 @@ export class InventorySaleDecrementHandler implements SyncJobHandler {
         productVariantId:
           line.productVariantId === item.productId ? null : line.productVariantId,
         quantity,
+        ...(item.gift !== undefined ? { movementReason: 'gift' as const } : {}),
       });
     }
 

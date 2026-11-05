@@ -727,7 +727,10 @@ export class OrderIngestionService implements IOrderIngestionService {
       occurredAt: overlaidOrder.placedAt ?? existing?.createdAt ?? new Date(),
       isFirstIngestion: !existing,
     });
-    const order = gifted.order;
+    // #3939: a gift line is added after the channel's lines were tax-resolved, so it
+    // would reach a destination that needs a rate (WooCommerce, Shoper) with none
+    // and fail the whole order. Resolved here from the shop catalogue like any line.
+    const order = await this.withGiftLineTaxRates(gifted.order);
 
     // #3607 (ADR-083): the physical line list, frozen ONCE before anything
     // reserves, routes or decrements. Every stock site below reads it; the
@@ -2221,6 +2224,26 @@ export class OrderIngestionService implements IOrderIngestionService {
    * child is what reports it.
    */
   /**
+   * Stamps the catalogue tax rate on every gift line that carries none (#3939).
+   * Best-effort and conservative: a line with a rate is untouched, and a catalogue
+   * that answers nothing leaves the line as it was, so the destination reports its
+   * own refusal instead of this guessing a rate.
+   */
+  private async withGiftLineTaxRates(order: Order): Promise<Order> {
+    if (!order.items.some((item) => item.gift !== undefined && item.taxRate === undefined)) {
+      return order;
+    }
+    const items = await Promise.all(
+      order.items.map(async (item) => {
+        if (item.gift === undefined || item.taxRate !== undefined) return item;
+        const tax = await this.resolveLineTaxRate(item.productId, item.variantId, {});
+        return { ...item, ...tax };
+      })
+    );
+    return { ...order, items };
+  }
+
+  /**
    * ONE de-duplicated variant lookup per order (#3588, D27). A variant is a
    * candidate only when it has a cost AND that cost existed when the order was
    * placed (G11-G: `costUpdatedAt <= placedAt`, falling back to the order's
@@ -2263,7 +2286,7 @@ export class OrderIngestionService implements IOrderIngestionService {
   private async resolveLineTaxRate(
     productId: string,
     variantId: string | undefined,
-    item: IncomingOrderItem
+    item: Pick<IncomingOrderItem, 'taxRate' | 'taxRateCountry'>
   ): Promise<{
     taxRate?: string;
     taxRateCountry?: string;

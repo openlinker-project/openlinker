@@ -117,6 +117,25 @@ describe('InventorySaleDecrementHandler (#3453)', () => {
     });
   });
 
+  it('should tag a gift line so its decrement is recorded as a gift (#3939)', async () => {
+    const withGift = [
+      orderItems[0],
+      { ...orderItems[1], gift: { source: 'ol-rule' } },
+      orderItems[2],
+    ];
+    orderRecords.getOrderRecord.mockResolvedValue({ ...record, physicalItems: withGift });
+
+    await handler.execute(job());
+
+    const call = saleDecrements.decrementForWork.mock.calls[0][0] as {
+      lines: { orderLineId: string; movementReason?: string }[];
+    };
+    expect(call.lines.find((l) => l.orderLineId === 'line-1')).not.toHaveProperty('movementReason');
+    expect(call.lines.find((l) => l.orderLineId === 'line-2')).toMatchObject({
+      movementReason: 'gift',
+    });
+  });
+
   it('should clear the order attention state when nothing needs attention', async () => {
     await handler.execute(job());
 

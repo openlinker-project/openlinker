@@ -2,6 +2,7 @@ import { AutomationRule, type AutomationGiftAction } from '@openlinker/core/auto
 
 import {
   olGiftLineKey,
+  applyOrderEditsToOrder,
   readOrderEdits,
   type ApplyOrderEditInput,
 } from '../../../domain/types/order-edits.types';
@@ -58,6 +59,7 @@ describe('OrderGiftService', () => {
   let availability: { getPromisableQuantities: jest.Mock };
   let orderRecords: { applyOrderEdit: jest.Mock };
   let recorder: { record: jest.Mock };
+  let products: { getEffectiveTaxRate: jest.Mock; getVariantsByIds: jest.Mock };
   let service: OrderGiftService;
 
   const written = (key: string) =>
@@ -99,11 +101,20 @@ describe('OrderGiftService', () => {
     };
     orderRecords = { applyOrderEdit: jest.fn().mockResolvedValue(written(olGiftLineKey('rule-1', '1'))) };
     recorder = { record: jest.fn().mockResolvedValue(undefined) };
+    products = {
+      getVariantsByIds: jest.fn().mockResolvedValue([
+        { id: 'v-gift', netUnitCost: '3.5000', costCurrency: 'PLN', costUpdatedAt: new Date('2025-12-01T00:00:00Z') },
+      ]),
+      getEffectiveTaxRate: jest
+        .fn()
+        .mockResolvedValue({ code: '23', countryIso2: 'PL', readAt: new Date('2026-01-01T00:00:00Z') }),
+    };
     service = new OrderGiftService(
       giftRules as never,
       availability as never,
       orderRecords as never,
-      recorder as never
+      recorder as never,
+      products as never
     );
   });
 
@@ -137,6 +148,49 @@ describe('OrderGiftService', () => {
     });
     expect(result.order.items).toHaveLength(2);
     expect(result.order.items[1]).toMatchObject({ price: 0, gift: { source: 'ol-rule' } });
+  });
+
+  it('should stamp the catalogue tax rate on the overlay entry, and read back onto the order item (#3939)', async () => {
+    await apply(makeOrder());
+
+    const call = (orderRecords.applyOrderEdit.mock.calls as [ApplyOrderEditInput][])[0][0];
+    const entry = call.addedLines?.[olGiftLineKey('rule-1', '1')];
+    expect(entry).toMatchObject({ taxRate: '23', taxRateCountry: 'PL', taxSource: 'shop' });
+
+    // The overlay is what documents read: the rate survives the persisted round trip.
+    const edits = readOrderEdits(JSON.parse(JSON.stringify({ v: 1, rev: 1, addedLines: call.addedLines })));
+    const item = applyOrderEditsToOrder(makeOrder(), edits).items.find((i) => i.gift !== undefined);
+    expect(item).toMatchObject({ taxRate: '23', taxRateCountry: 'PL', taxSource: 'shop', price: 0 });
+  });
+
+  it('should freeze the gift cost on the entry when it was recorded before the order was placed (ADR-080)', async () => {
+    await apply(makeOrder());
+
+    const call = (orderRecords.applyOrderEdit.mock.calls as [ApplyOrderEditInput][])[0][0];
+    expect(call.addedLines?.[olGiftLineKey('rule-1', '1')]).toMatchObject({
+      unitCostNet: '3.5000',
+      unitCostCurrency: 'PLN',
+    });
+  });
+
+  it('should freeze no cost when it was entered after the order was placed, and never 0', async () => {
+    products.getVariantsByIds.mockResolvedValue([
+      { id: 'v-gift', netUnitCost: '3.5000', costCurrency: 'PLN', costUpdatedAt: new Date(PLACED.getTime() + 60_000) },
+    ]);
+
+    await apply(makeOrder());
+
+    const call = (orderRecords.applyOrderEdit.mock.calls as [ApplyOrderEditInput][])[0][0];
+    expect(call.addedLines?.[olGiftLineKey('rule-1', '1')]).not.toHaveProperty('unitCostNet');
+  });
+
+  it('should leave the entry without a rate when the catalogue has no answer', async () => {
+    products.getEffectiveTaxRate.mockResolvedValue({ code: null, countryIso2: null, readAt: null });
+
+    await apply(makeOrder());
+
+    const call = (orderRecords.applyOrderEdit.mock.calls as [ApplyOrderEditInput][])[0][0];
+    expect(call.addedLines?.[olGiftLineKey('rule-1', '1')]).not.toHaveProperty('taxRate');
   });
 
   it('should add nothing on a re-ingestion that already carries the gift', async () => {

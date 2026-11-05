@@ -50,6 +50,7 @@ import {
   restateTotalsForDiscount,
   type OrderDiscountEdit,
 } from './order-discount.types';
+import type { TaxRateSource } from '@openlinker/core/products';
 import { readLineGift, type LineGift } from './incoming-order.types';
 import type {
   Address,
@@ -109,6 +110,22 @@ export interface OrderAddedLineEdit extends OrderEditStamp {
   readonly sku?: string;
   readonly name?: string;
   readonly gift: LineGift;
+  /**
+   * The shop catalogue's rate for the gift, stamped when it is granted (#3939) so
+   * every reader of the overlay (destination mirror, documents) carries it. Absent
+   * on entries written before this existed, or when the catalogue had no answer.
+   */
+  readonly taxRate?: string;
+  readonly taxRateCountry?: string;
+  readonly taxSource?: TaxRateSource;
+  readonly taxRateReadAt?: string;
+  /**
+   * The gift's purchase cost frozen at grant time (#3939, ADR-080): a decimal
+   * string, net of VAT, with its currency. Absent means "not recorded" (never 0),
+   * which includes a cost entered after the order was placed.
+   */
+  readonly unitCostNet?: string;
+  readonly unitCostCurrency?: string;
 }
 
 export interface OrderEdits {
@@ -262,6 +279,17 @@ function readAddedLine(key: string, raw: unknown): OrderAddedLineEdit | null {
     ...(typeof raw.sku === 'string' && { sku: raw.sku }),
     ...(typeof raw.name === 'string' && { name: raw.name }),
     gift,
+    ...(typeof raw.taxRate === 'string' && raw.taxRate !== '' && { taxRate: raw.taxRate }),
+    ...(typeof raw.taxRateCountry === 'string' && { taxRateCountry: raw.taxRateCountry }),
+    ...(raw.taxSource === 'shop' || raw.taxSource === 'channel' || raw.taxSource === 'backfill'
+      ? { taxSource: raw.taxSource }
+      : {}),
+    ...(typeof raw.taxRateReadAt === 'string' && { taxRateReadAt: raw.taxRateReadAt }),
+    ...(typeof raw.unitCostNet === 'string' &&
+      typeof raw.unitCostCurrency === 'string' && {
+        unitCostNet: raw.unitCostNet,
+        unitCostCurrency: raw.unitCostCurrency,
+      }),
   };
 }
 
@@ -276,6 +304,10 @@ export function addedLineToOrderItem(key: string, edit: OrderAddedLineEdit): Ord
     ...(edit.sku !== undefined && { sku: edit.sku }),
     ...(edit.name !== undefined && { name: edit.name }),
     gift: edit.gift,
+    ...(edit.taxRate !== undefined && { taxRate: edit.taxRate }),
+    ...(edit.taxRateCountry !== undefined && { taxRateCountry: edit.taxRateCountry }),
+    ...(edit.taxSource !== undefined && { taxSource: edit.taxSource }),
+    ...(edit.taxRateReadAt !== undefined && { taxRateReadAt: edit.taxRateReadAt }),
   };
 }
 

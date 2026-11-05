@@ -362,6 +362,42 @@ describe('OrderIngestionService', () => {
       ]);
     });
 
+    it('should stamp the catalogue tax rate on a gift line so a destination that needs one does not refuse the order (#3939)', async () => {
+      productsService.getEffectiveTaxRate.mockImplementation((productId: string) =>
+        Promise.resolve(
+          productId === 'ol_product_gift'
+            ? { code: '23', countryIso2: 'PL', readAt: new Date('2026-01-01T00:00:00Z') }
+            : { code: null, countryIso2: null, readAt: null }
+        )
+      );
+      orderGifts.applyGiftRules.mockImplementation(({ order }: { order: { items: unknown[] } }) =>
+        Promise.resolve({
+          order: {
+            ...order,
+            items: [
+              ...order.items,
+              {
+                id: 'ol-gift:r1:1',
+                productId: 'ol_product_gift',
+                variantId: 'ol_variant_gift',
+                quantity: 1,
+                price: 0,
+                gift: { source: 'ol-rule', ruleRef: 'r1' },
+              },
+            ],
+          },
+          outcomes: [],
+        })
+      );
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      const sent = orderSyncService.syncOrder.mock.calls[0][0].order.items.find(
+        (item: { id: string }) => item.id === 'ol-gift:r1:1'
+      );
+      expect(sent).toMatchObject({ taxRate: '23', taxSource: 'shop', price: 0 });
+    });
+
     it('should reserve the order lines after persistOrder and before destination dispatch', async () => {
       await service.syncOrderFromSource(connectionId, externalOrderId);
 

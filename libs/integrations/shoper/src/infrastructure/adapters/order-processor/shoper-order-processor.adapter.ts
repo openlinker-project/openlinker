@@ -468,6 +468,7 @@ export class ShoperOrderProcessorAdapter
   private async buildLines(order: OrderCreate): Promise<Array<Omit<ShoperOrderProductCreateRequest, 'order_id'>>> {
     const taxes = await this.taxTable.get();
     const lines: Array<Omit<ShoperOrderProductCreateRequest, 'order_id'>> = [];
+    const giftIndexes: number[] = [];
     for (const item of order.items) {
       const price = resolveGrossUnitPrice(item, order.totals.taxTreatment);
       if (price === null) {
@@ -475,6 +476,10 @@ export class ShoperOrderProcessorAdapter
           `line "${item.sku ?? item.id}" is net-priced and the source reported no gross price; ` +
             'Shoper line prices are gross and OpenLinker does not compute tax',
         );
+      }
+      const isFreeGift = item.gift !== undefined && price === 0;
+      if (price <= 0 && !isFreeGift) {
+        throw this.unbuildable(`line "${item.sku ?? item.id}" has a price of ${price}`);
       }
       if (item.taxRate === undefined) {
         throw this.unbuildable(`line "${item.sku ?? item.id}" has no tax rate`);
@@ -497,8 +502,56 @@ export class ShoperOrderProcessorAdapter
         tax: tax.name,
         tax_value: Number(tax.value),
       });
+      if (isFreeGift) giftIndexes.push(lines.length - 1);
     }
-    return lines;
+    return this.absorbGiftCents(lines, giftIndexes);
+  }
+
+  /**
+   * Shoper refuses a line priced 0 (HTTP 400 "'0' is less than '0'", live, #3939),
+   * so a free gift goes in at 0,01 per unit and the cents are taken from the most
+   * expensive paid line (the BaseLinker practice), so the order total still equals
+   * what the buyer paid. When the cents do not divide over that line's units it is
+   * split in two, so the sum stays exact.
+   */
+  private absorbGiftCents(
+    lines: Array<Omit<ShoperOrderProductCreateRequest, 'order_id'>>,
+    giftIndexes: readonly number[],
+  ): Array<Omit<ShoperOrderProductCreateRequest, 'order_id'>> {
+    if (giftIndexes.length === 0) return lines;
+    const gifts = new Set(giftIndexes);
+    const cents = giftIndexes.reduce((sum, index) => sum + lines[index].quantity, 0);
+    let donor = -1;
+    lines.forEach((line, index) => {
+      if (!gifts.has(index) && (donor === -1 || line.price > lines[donor].price)) donor = index;
+    });
+    if (donor === -1) {
+      throw this.unbuildable('the order has only free lines; Shoper does not accept a 0,00 line');
+    }
+    const source = lines[donor];
+    const unitCents = Math.round(source.price * 100);
+    const base = Math.floor(cents / source.quantity);
+    const remainder = cents % source.quantity;
+    const lowestUnit = unitCents - base - (remainder > 0 ? 1 : 0);
+    if (lowestUnit < 1) {
+      throw this.unbuildable(
+        `the most expensive paid line "${source.name}" is too cheap to give ${cents} cent(s) to the free gift line(s)`,
+      );
+    }
+    const reduced: Array<Omit<ShoperOrderProductCreateRequest, 'order_id'>> = [];
+    lines.forEach((line, index) => {
+      if (gifts.has(index)) {
+        reduced.push({ ...line, price: 0.01 });
+      } else if (index !== donor) {
+        reduced.push(line);
+      } else if (remainder === 0) {
+        reduced.push({ ...line, price: (unitCents - base) / 100 });
+      } else {
+        reduced.push({ ...line, quantity: remainder, price: (unitCents - base - 1) / 100 });
+        reduced.push({ ...line, quantity: line.quantity - remainder, price: (unitCents - base) / 100 });
+      }
+    });
+    return reduced;
   }
 
   private async externalVariantId(item: OrderItem): Promise<string> {
