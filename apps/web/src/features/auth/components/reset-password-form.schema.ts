@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { interpolate } from '../../../shared/i18n';
-import type { AuthValidationCopy } from './login-form.schema';
+import type { AuthValidationCopy } from './auth-form.types';
 
 const PASSWORD_MIN_LENGTH = 8;
 

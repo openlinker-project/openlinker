@@ -3,7 +3,7 @@
 ## 1. Task understanding
 
 **Goal.** Move every operator-visible English string in `pages/auth`, `features/auth`,
-`features/users`, `pages/users` and `features/demo` into `locales/en.json` (namespaces `auth`,
+`features/users`, `pages/users` and `features/demo` into `locales/en/<namespace>.json` (ADR-081 as amended by #3920; namespaces `auth`,
 `users`, `demo`), read it with `useMessages` / `getMessages`, and switch the no-literal-text lint
 on for those folders. English only; Polish lands with batch A (#3886).
 
@@ -35,26 +35,27 @@ whose `app` namespace, `ui.demo` / `ui.apiError` keys and lint scope this builds
 | Namespace | Holds |
 |---|---|
 | `auth` | login, register page shell, forgot / reset / change password, confirm email, the auth form schemas |
-| `users` | users page (tabs, columns, toasts, dialogs, empty / error states), register form, pack-station dialog, role + status labels, create-user conflict copy |
+| `users` | users page (tabs, columns, toasts, dialogs, empty / error states), register form, pack-station dialog, role + status labels, create-user conflict field reader (no copy of its own) |
 | `demo` | consent gate, session-recording bullets, marketing footnote, `events.<eventName>` descriptions |
 
 - **Shared phrases** within a namespace use one key ("Try again", "Back to sign in").
 - **Role / status labels**: `users.roles.<role>`, `users.statuses.<status>` read through one helper
   (`userRoleLabel(role, copy)`), unknown values fall back to the raw value.
 - **Zod schemas**: each `*.schema.ts` exports `create<X>Schema(copy)` taking the namespace slice; the
-  form builds it with `useMemo([copy])`. A module-level schema would freeze the first language.
+  form builds it with `useMemo([copy])`. The copy types live in `auth-form.types.ts` /
+  `users-form.types.ts`, so the schemas do not import one another. A module-level schema would freeze the first language.
 - **Demo events**: the catalog drops `description`; descriptions live in `demo.events.<eventName>`
   (the event name is the key - a stable identifier, the one place keys are not camelCase). `features/demo`
   exports `useDemoEventDescriptions()`; `product-events-section.tsx` uses it instead of `entry.description`.
-- **Plurals / dates**: `usePlural` for the one count, `useFormat` for dates.
+- **Plurals / dates**: no count in this area needs a plural; `useFormat` for dates.
 - **Budgets** in `limits.json` for buttons, tabs and table headers.
 - **Lint**: `no-literal-string` scope += the five folders; `EXPECTED_SCOPE` updated.
 
 ## 4. Steps
 
-1. `en.json`: `auth`, `users`, `demo` namespaces (sorted, no em dash, British spelling); `limits.json`.
+1. `locales/en/{auth,users,demo}.json` (sorted, no em dash, British spelling); `limits.json`.
 2. `features/auth`: forms + schemas (+ ChangePasswordForm); `pages/auth`: page shells.
-3. `features/users`: register form + schema, pack-station dialog + schema, conflict copy, role/status labels.
+3. `features/users`: register form + schema, pack-station dialog + schema, role/status labels (`create-user-conflict.ts` reads the conflicting field only, no copy).
 4. `pages/users/users-page.tsx`: columns, selects, toasts, tabs, dialogs, empty/error states, dates.
 5. `features/demo`: consent gate, bullets, footnote, events -> `demo.events`, `useDemoEventDescriptions`;
    update `features/posthog-settings/components/product-events-section.tsx`.

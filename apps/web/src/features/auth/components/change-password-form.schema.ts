@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { interpolate } from '../../../shared/i18n';
-import type { AuthValidationCopy } from './login-form.schema';
+import type { AuthValidationCopy } from './auth-form.types';
 
 // 8..72 mirrors the backend `ChangePasswordDto` (bcrypt reads at most 72 bytes).
 const PASSWORD_MIN_LENGTH = 8;

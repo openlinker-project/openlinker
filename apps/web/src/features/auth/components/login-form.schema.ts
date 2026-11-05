@@ -1,8 +1,5 @@
 import { z } from 'zod';
-import type { Messages, ResolvedCopy } from '../../../shared/i18n';
-
-/** The `auth.validation` copy, in the language the form renders in. */
-export type AuthValidationCopy = ResolvedCopy<Messages['auth']>['validation'];
+import type { AuthValidationCopy } from './auth-form.types';
 
 /**
  * A factory rather than a module-level schema: the messages are read when the

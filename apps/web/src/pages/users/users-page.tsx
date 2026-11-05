@@ -36,11 +36,7 @@ import { PackStationLabelDialog } from '../../features/users/components/pack-sta
 import { useReactivateUserMutation } from '../../features/users/hooks/use-reactivate-user-mutation';
 import { useDeleteUserMutation } from '../../features/users/hooks/use-delete-user-mutation';
 import type { UserRole, UserStatus, UserSummary } from '../../features/users/api/users.types';
-import {
-  ASSIGNABLE_ROLES,
-  userRoleLabel,
-  userStatusLabel,
-} from '../../features/users/lib/user-labels';
+import { ASSIGNABLE_ROLES, userRoleLabel, userStatusLabel } from '../../features/users';
 import { interpolate, useFormat, useMessages } from '../../shared/i18n';
 
 const STATUS_TONE: Record<UserStatus, StatusBadgeTone> = {

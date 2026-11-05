@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { AuthValidationCopy } from './login-form.schema';
+import type { AuthValidationCopy } from './auth-form.types';
 
 export function createForgotPasswordFormSchema(copy: AuthValidationCopy) {
   return z.object({

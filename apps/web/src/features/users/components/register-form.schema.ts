@@ -1,8 +1,6 @@
 import { z } from 'zod';
-import { interpolate, type Messages, type ResolvedCopy } from '../../../shared/i18n';
-
-/** The `users.validation` copy, in the language the form renders in. */
-export type UsersValidationCopy = ResolvedCopy<Messages['users']>['validation'];
+import { interpolate } from '../../../shared/i18n';
+import type { UsersValidationCopy } from './users-form.types';
 
 const PASSWORD_MIN_LENGTH = 8;
 
