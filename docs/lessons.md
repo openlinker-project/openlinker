@@ -23,6 +23,18 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## Check that every source actually produces the key a design is keyed on
+
+**Context**: #3520 bundles expand per order line, keyed on the line's `variantId`.
+
+**Problem**: simple products from PrestaShop and WooCommerce arrived product-level only (`internalProductId`, no `internalVariantId`), because the resolver never applied the lone-variant precedence master inventory sync already uses (#822). Bundle expansion, gift rules, reservations and the Shoper mirror all silently skipped those lines; only a live E2E run showed it.
+
+**Rule**: when a design keys on a field, verify against each source's real payload that the field is populated. Resolve a product-only ref to its lone variant in the resolver (`withLoneVariant`), once, rather than in each consumer.
+
+**Applies to**: `libs/core/src/orders/application/services/order-item-ref-resolver.service.ts`, anything keyed on a line's variant.
+
+**Source**: #3520, PR #3957
+
 ## Check what an offer is MAPPED to before designing a fix that keys on its variant
 
 **Context**: #3929 held an Allegro multipack (one offer sells 3 units of one product) until the operator defined a bundle "3 x product" (#3607).
