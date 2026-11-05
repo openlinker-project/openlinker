@@ -64,6 +64,9 @@ describe('OrderRecordService — buyer-email triggers (#3554)', () => {
       updateFulfillmentState: jest.fn(),
       findById: jest.fn(),
       claimShippedNotification: jest.fn().mockResolvedValue(true),
+      claimPaymentWriteback: jest.fn().mockResolvedValue(true),
+      recordPaymentWriteback: jest.fn().mockResolvedValue(undefined),
+      markPaymentWritebackHandled: jest.fn().mockResolvedValue(0),
     };
     emit = jest
       .fn()
