@@ -25,6 +25,15 @@ export interface ShopifyConnectionConfig {
    * a confirmed refund is recorded as made out of band, as before.
    */
   readonly refundsThroughShopify?: boolean;
+  /**
+   * Public base URL of OpenLinker (`https://ol.example.com`); webhook install
+   * subscribes the shop to `{base}/webhooks/shopify/{connectionId}`. The same
+   * key Shoper uses. Read only by the webhook provisioner, so the config
+   * parser neither requires nor normalises it.
+   */
+  readonly openlinkerCallbackBaseUrl?: string;
+  /** Written by the webhook provisioner after an install attempt. */
+  readonly webhooksConfigured?: boolean;
 }
 
 /** `ShopifyConnectionConfig` after validation and normalisation. */

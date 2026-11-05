@@ -18,7 +18,9 @@
  * @module libs/core/src/integrations/domain/types
  */
 
-export const CALLER_SUPPLIED_WEBHOOK_SECRET_PLATFORMS = ['infakt'] as const;
+// `shopify` (spike #3928 prototype): Shopify signs every delivery with the app
+// client secret, so its provisioner can only store that value, never rotate one.
+export const CALLER_SUPPLIED_WEBHOOK_SECRET_PLATFORMS = ['infakt', 'shopify'] as const;
 
 export type CallerSuppliedWebhookSecretPlatform =
   (typeof CALLER_SUPPLIED_WEBHOOK_SECRET_PLATFORMS)[number];

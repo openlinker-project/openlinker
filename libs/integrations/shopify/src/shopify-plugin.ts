@@ -22,7 +22,10 @@
  * Refunds: opt-in per connection (`config.refundsThroughShopify: true`), when
  * the `OrderSource` adapter is also a guard-only `RefundExecutor`.
  *
- * Out of scope: webhooks.
+ * Inbound webhooks: the decoder (keyed by platform type, the `:provider` URL
+ * segment) and the translator (keyed by adapter key) are registered here; the
+ * provisioner needs `ConnectionPort` and `IWebhookSecretService`, which
+ * `HostServices` does not carry, so `ShopifyIntegrationModule` registers it.
  *
  * @module libs/integrations/shopify/src
  */
@@ -43,6 +46,8 @@ import { ShopifyAuthFailureClassifierAdapter } from './infrastructure/adapters/s
 import { ShopifyConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/shopify-connection-config-shape-validator.adapter';
 import { ShopifyConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/shopify-connection-credentials-shape-validator.adapter';
 import { ShopifyConnectionTesterAdapter } from './infrastructure/adapters/shopify-connection-tester.adapter';
+import { ShopifyInboundWebhookDecoderAdapter } from './infrastructure/adapters/shopify-inbound-webhook-decoder.adapter';
+import { ShopifyWebhookEventTranslatorAdapter } from './infrastructure/adapters/shopify-webhook-event-translator.adapter';
 import { ShopifyRetryClassifierAdapter } from './infrastructure/adapters/shopify-retry-classifier.adapter';
 import { buildShopifySchedulerTasks } from './infrastructure/scheduler/shopify-scheduler-tasks';
 
@@ -123,6 +128,11 @@ export function createShopifyPlugin(deps: CreateShopifyPluginDeps = {}): Adapter
         new ShopifyAuthFailureClassifierAdapter(),
       );
       host.retryClassifierRegistry.register(SHOPIFY_ADAPTER_KEY, new ShopifyRetryClassifierAdapter());
+      host.inboundWebhookDecoderRegistry.register(
+        shopifyAdapterManifest.platformType,
+        new ShopifyInboundWebhookDecoderAdapter(),
+      );
+      host.webhookEventTranslatorRegistry.register(SHOPIFY_ADAPTER_KEY, new ShopifyWebhookEventTranslatorAdapter());
       for (const task of buildShopifySchedulerTasks()) {
         host.schedulerTaskRegistry.register(task);
       }
