@@ -40,9 +40,18 @@ export class OrderCancellationRefusedError extends Error {
   }
 }
 
+/** What a 404 is about: the order, or a change on it (#3865). */
+export interface OrderCancellationNotFoundTarget {
+  readonly orderId: string;
+  readonly changeId?: string;
+}
+
 /** A 404: no such order, or no such change on this order. */
 export class OrderCancellationNotFoundError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    public readonly target: OrderCancellationNotFoundTarget
+  ) {
     super(message);
     this.name = 'OrderCancellationNotFoundError';
     Error.captureStackTrace(this, this.constructor);

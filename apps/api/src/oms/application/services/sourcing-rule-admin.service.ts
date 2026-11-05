@@ -26,9 +26,11 @@
  *
  * @module apps/api/src/oms/application/services
  */
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { LOCATION_SERVICE_TOKEN, type ILocationService } from '@openlinker/core/inventory';
 import { Logger } from '@openlinker/shared/logging';
+import { codedHttpError } from '../../../common/errors/coded-http.exception';
+import { connectionNotOms } from '../../oms-errors';
 import {
   coerceRoutingRule,
   OMS_PLATFORM_TYPE,
@@ -169,7 +171,9 @@ export class SourcingRuleAdminService implements ISourcingRuleAdminService {
         `Refused sourcing-rule authoring on connection ${connectionId}: platformType is ` +
           `'${connection.platformType}', not '${OMS_PLATFORM_TYPE}'.`
       );
-      throw new BadRequestException(
+      throw connectionNotOms(
+        connectionId,
+        connection.platformType,
         `Connection '${connectionId}' is a '${connection.platformType}' connection. ` +
           `Fulfilment sourcing rules are only evaluated for the OpenLinker OMS connection, ` +
           `so rules authored here would never be read. Enable the OpenLinker OMS and author ` +
@@ -199,14 +203,17 @@ export class SourcingRuleAdminService implements ISourcingRuleAdminService {
     });
 
     if (routable === null) {
-      throw new BadRequestException(
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        wasAlreadyUnrecognised ? 'SOURCING_RULE_NOT_UNDERSTOOD' : 'SOURCING_RULE_INVALID',
         wasAlreadyUnrecognised
           ? `This rule uses a kind/name combination this version of OpenLinker does not ` +
             `understand ('${candidate.kind}' / '${candidate.name}'), so it is not being ` +
             `evaluated and cannot be edited. Delete it and create a replacement.`
           : `'${candidate.name}' is not a valid ${candidate.kind} rule name, or ` +
             `'${candidate.afterAction}' is not a valid after-action. A rule whose kind and ` +
-            `name disagree would be saved and then silently never evaluated.`
+            `name disagree would be saved and then silently never evaluated.`,
+        { kind: candidate.kind, name: candidate.name, afterAction: candidate.afterAction }
       );
     }
 
@@ -216,16 +223,21 @@ export class SourcingRuleAdminService implements ISourcingRuleAdminService {
     const readsPriorityLocations =
       routable.kind === 'sort' && routable.name === PRIORITY_SORT_NAME;
     if (!readsPriorityLocations && candidate.priorityLocationIds.length > 0) {
-      throw new BadRequestException(
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'SOURCING_RULE_PRIORITY_LOCATIONS_UNUSED',
         `priorityLocationIds is only read by the '${PRIORITY_SORT_NAME}' sort. ` +
-          `A '${candidate.name}' rule ignores it, so it must be left empty.`
+          `A '${candidate.name}' rule ignores it, so it must be left empty.`,
+        { name: candidate.name, prioritySortName: PRIORITY_SORT_NAME }
       );
     }
   }
 
   private assertEffectiveWindow(from: Date | null, to: Date | null): void {
     if (from !== null && to !== null && to.getTime() <= from.getTime()) {
-      throw new BadRequestException(
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'SOURCING_RULE_WINDOW_INVALID',
         'effectiveTo must be after effectiveFrom — a rule whose window closes before it opens ' +
           'is never evaluated.'
       );
@@ -248,9 +260,12 @@ export class SourcingRuleAdminService implements ISourcingRuleAdminService {
     const unknown = unique.filter((_, index) => resolved[index] === null);
 
     if (unknown.length > 0) {
-      throw new BadRequestException(
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'SOURCING_RULE_LOCATION_NOT_FOUND',
         `No inventory location exists for: ${unknown.join(', ')}. ` +
-          `A priority sort naming an unknown location ranks nothing for that entry.`
+          `A priority sort naming an unknown location ranks nothing for that entry.`,
+        { locationIds: unknown.join(', ') }
       );
     }
   }

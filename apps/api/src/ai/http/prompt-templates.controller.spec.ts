@@ -126,6 +126,21 @@ describe('PromptTemplatesController', () => {
       );
     });
 
+    it('should name the missing template by code and id, without empty params (#3865)', async () => {
+      service.archive.mockRejectedValue(
+        new PromptTemplateNotFoundException({ templateId: 'tmpl-1' })
+      );
+
+      await expect(controller.archive('tmpl-1', {}, adminUser)).rejects.toMatchObject({
+        response: {
+          statusCode: 404,
+          code: 'PROMPT_TEMPLATE_NOT_FOUND',
+          params: { templateId: 'tmpl-1' },
+        },
+      });
+    });
+
+
     it('should map PromptTemplateStateException to BadRequestException (400) for concurrent-modification', async () => {
       service.archive.mockRejectedValue(
         new PromptTemplateStateException({

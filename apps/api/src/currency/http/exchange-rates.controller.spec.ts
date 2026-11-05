@@ -103,7 +103,13 @@ describe('ExchangeRatesController', () => {
     expect(message).toContain('publishers serve');
     expect(message).not.toContain('Reporting currency');
     expect(message).not.toContain('is not supported');
+    expect(body).toMatchObject({
+      statusCode: 422,
+      code: 'EXCHANGE_RATE_CURRENCY_UNSUPPORTED',
+      params: { currency: 'XXX' },
+    });
   });
+
 
   it('should have no way to reach ICurrencyRateService.getRateFor — the endpoint is a read, never a fetch (#2778 AC)', async () => {
     // The controller's only dependency is `IExchangeRateLookupService`, whose

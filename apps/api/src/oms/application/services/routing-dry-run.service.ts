@@ -23,7 +23,7 @@
  *
  * @module apps/api/src/oms/application/services
  */
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import {
   buildRoutingShipTo,
   FULFILLMENT_ROUTER_RESOLVER_TOKEN,
@@ -39,6 +39,8 @@ import {
   type IOrderRecordService,
 } from '@openlinker/core/orders';
 import { getEnvBoolean } from '@openlinker/shared/config';
+import { codedHttpError } from '../../../common/errors/coded-http.exception';
+import { connectionNotOms } from '../../oms-errors';
 import {
   coerceRoutingRule,
   diffRoutingEvaluations,
@@ -80,9 +82,12 @@ export class RoutingDryRunService implements IRoutingDryRunService {
 
     const router = await this.routers.resolve(connectionId);
     if (router === null) {
-      throw new BadRequestException(
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ROUTING_ROUTER_UNAVAILABLE',
         `OpenLinker has no fulfilment router for connection '${connectionId}', so there is ` +
-          `nothing to test. Check that the connection is the OpenLinker OMS and is active.`
+          `nothing to test. Check that the connection is the OpenLinker OMS and is active.`,
+        { connectionId }
       );
     }
 
@@ -98,8 +103,11 @@ export class RoutingDryRunService implements IRoutingDryRunService {
     }
 
     if (!isDraftRuleEvaluator(router)) {
-      throw new BadRequestException(
-        'This router cannot evaluate an unsaved ruleset, so the draft cannot be compared.'
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ROUTING_DRAFT_UNSUPPORTED',
+        'This router cannot evaluate an unsaved ruleset, so the draft cannot be compared.',
+        { connectionId }
       );
     }
 
@@ -119,7 +127,9 @@ export class RoutingDryRunService implements IRoutingDryRunService {
     // `get` raises ConnectionNotFoundException, which the global filter maps to 404.
     const connection = await this.connections.get(connectionId);
     if (connection.platformType !== OMS_PLATFORM_TYPE) {
-      throw new BadRequestException(
+      throw connectionNotOms(
+        connectionId,
+        connection.platformType,
         `Connection '${connectionId}' is a '${connection.platformType}' connection. ` +
           `Only the OpenLinker OMS connection has a fulfilment router to test.`
       );
@@ -135,10 +145,13 @@ export class RoutingDryRunService implements IRoutingDryRunService {
     const ids = draft.map((candidate) => candidate.id);
     const duplicates = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
     if (duplicates.length > 0) {
-      throw new BadRequestException({
-        message: 'Draft rule ids must be unique.',
-        duplicateRuleIds: duplicates,
-      });
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ROUTING_DRAFT_RULE_IDS_DUPLICATE',
+        'Draft rule ids must be unique.',
+        { ruleIds: duplicates.join(', ') },
+        { duplicateRuleIds: duplicates }
+      );
     }
 
     for (const candidate of draft) {
@@ -151,11 +164,13 @@ export class RoutingDryRunService implements IRoutingDryRunService {
     }
 
     if (invalid.length > 0) {
-      throw new BadRequestException({
-        message:
-          'The draft contains rules the router cannot evaluate, so it could not be saved either.',
-        invalidRuleIds: invalid,
-      });
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ROUTING_DRAFT_RULES_INVALID',
+        'The draft contains rules the router cannot evaluate, so it could not be saved either.',
+        { ruleIds: invalid.join(', ') },
+        { invalidRuleIds: invalid }
+      );
     }
 
     // Same ordering the router applies to saved rules: by position, ties by id.
@@ -193,12 +208,18 @@ export class RoutingDryRunService implements IRoutingDryRunService {
 
     const orderId = subject.orderId;
     if (orderId === undefined) {
-      throw new BadRequestException('Provide either an orderId or a basket.');
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ROUTING_DRY_RUN_SUBJECT_INVALID',
+        'Provide either an orderId or a basket.'
+      );
     }
 
     const record = await this.orderRecords.getOrderRecord(orderId);
     if (record === null) {
-      throw new NotFoundException(`Order '${orderId}' was not found.`);
+      throw codedHttpError(HttpStatus.NOT_FOUND, 'ORDER_NOT_FOUND', `Order '${orderId}' was not found.`, {
+        orderId,
+      });
     }
 
     let projection;
@@ -211,16 +232,22 @@ export class RoutingDryRunService implements IRoutingDryRunService {
       );
     } catch (error) {
       if (error instanceof OrderSnapshotUnavailableError) {
-        throw new BadRequestException(
-          `Order '${orderId}' has not been fully ingested yet, so it cannot be tested.`
+        throw codedHttpError(
+          HttpStatus.BAD_REQUEST,
+          'ROUTING_ORDER_NOT_READY',
+          `Order '${orderId}' has not been fully ingested yet, so it cannot be tested.`,
+          { orderId }
         );
       }
       throw error;
     }
 
     if (projection === null) {
-      throw new BadRequestException(
-        `Order '${orderId}' has no shipping address, so there is nowhere to route it.`
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ROUTING_ORDER_NO_SHIPPING_ADDRESS',
+        `Order '${orderId}' has no shipping address, so there is nowhere to route it.`,
+        { orderId }
       );
     }
 

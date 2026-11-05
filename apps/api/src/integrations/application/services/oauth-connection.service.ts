@@ -17,12 +17,7 @@
  * @module apps/api/src/integrations/application/services
  * @implements {IOAuthConnectionService}
  */
-import {
-  Injectable,
-  BadRequestException,
-  InternalServerErrorException,
-  Inject,
-} from '@nestjs/common';
+import { BadRequestException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import { randomUUID, randomBytes } from 'crypto';
 import { RedisClientType } from 'redis';
@@ -39,6 +34,8 @@ import type {
   OAuthCredentialBlob,
   OAuthAccountIdentity,
 } from '@openlinker/core/integrations';
+import { codedHttpError } from '../../../common/errors/coded-http.exception';
+import { internalServerError } from '../../integrations-errors';
 import { ConnectionService } from './connection.service';
 import type { IOAuthConnectionService } from '../interfaces/oauth-connection.service.interface';
 import type {
@@ -143,13 +140,19 @@ export class OAuthConnectionService implements IOAuthConnectionService {
       });
     } catch (error) {
       if (error instanceof OAuthCodeExchangeException) {
-        throw new BadRequestException(error.message);
+        throw codedHttpError(HttpStatus.BAD_REQUEST, 'OAUTH_CODE_EXCHANGE_REJECTED', error.message, {
+          platformType: stateData.platformType,
+        });
       }
       this.logger.error(
         `Error exchanging code for token (adapterKey: ${stateData.adapterKey}): ${(error as Error).message}`,
         error instanceof Error ? error.stack : undefined
       );
-      throw new InternalServerErrorException('Failed to exchange authorization code for token');
+      throw internalServerError(
+        'OAUTH_CODE_EXCHANGE_FAILED',
+        'Failed to exchange authorization code for token',
+        { platformType: stateData.platformType }
+      );
     }
 
     // 2. Verify the account identity up front (shared by create + re-auth), so
@@ -167,7 +170,11 @@ export class OAuthConnectionService implements IOAuthConnectionService {
         `Failed to verify account identity: ${(error as Error).message}`,
         error instanceof Error ? error.stack : undefined
       );
-      throw new InternalServerErrorException('Failed to verify account identity');
+      throw internalServerError(
+        'OAUTH_ACCOUNT_IDENTITY_FAILED',
+        'Failed to verify account identity',
+        { platformType: stateData.platformType }
+      );
     }
 
     // 3. Re-auth-in-place (#819) when state carries an existing connectionId;
@@ -223,8 +230,10 @@ export class OAuthConnectionService implements IOAuthConnectionService {
     const adapter = this.oauthCompletionRegistry.get(adapterKey);
     if (!adapter) {
       this.logger.error(`No OAuth-completion adapter registered for adapterKey: ${adapterKey}`);
-      throw new InternalServerErrorException(
-        `No OAuth-completion adapter registered for ${adapterKey}`
+      throw internalServerError(
+        'OAUTH_ADAPTER_NOT_REGISTERED',
+        `No OAuth-completion adapter registered for ${adapterKey}`,
+        { adapterKey }
       );
     }
     return adapter;
@@ -252,7 +261,8 @@ export class OAuthConnectionService implements IOAuthConnectionService {
       this.logger.log(`Credentials stored in database: ${credentialRef}`);
     } catch (error) {
       this.logger.error(`Failed to store credentials: ${(error as Error).message}`, error);
-      throw new InternalServerErrorException(
+      throw internalServerError(
+        'CREDENTIALS_STORE_FAILED',
         `Failed to store credentials: ${error instanceof Error ? error.message : String(error)}`
       );
     }
@@ -293,8 +303,15 @@ export class OAuthConnectionService implements IOAuthConnectionService {
 
     const existing = await this.connectionService.get(connectionId);
     if (existing.platformType !== stateData.platformType) {
-      throw new BadRequestException(
-        `Connection ${connectionId} is not a ${stateData.platformType} connection (platformType: ${existing.platformType})`
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'OAUTH_CONNECTION_PLATFORM_MISMATCH',
+        `Connection ${connectionId} is not a ${stateData.platformType} connection (platformType: ${existing.platformType})`,
+        {
+          connectionId,
+          expectedPlatformType: stateData.platformType,
+          platformType: existing.platformType,
+        }
       );
     }
 

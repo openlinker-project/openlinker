@@ -17,7 +17,6 @@
  * @module apps/api/src/oms/http
  */
 import {
-  BadRequestException,
   Body,
   Controller,
   HttpCode,
@@ -29,6 +28,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import {
   ROUTING_DRY_RUN_SERVICE_TOKEN,
   type DryRunSubject,
@@ -70,7 +70,11 @@ export class OmsRoutingDryRunController {
   ): Promise<RoutingDryRunResponseDto> {
     const { orderId, basket } = dto;
     if ((orderId === undefined) === (basket === undefined)) {
-      throw new BadRequestException('Provide exactly one of `orderId` and `basket`.');
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ROUTING_DRY_RUN_SUBJECT_INVALID',
+        'Provide exactly one of `orderId` and `basket`.'
+      );
     }
 
     const subject: DryRunSubject =

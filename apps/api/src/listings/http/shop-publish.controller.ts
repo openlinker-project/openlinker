@@ -17,7 +17,6 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   Post,
   Query,
@@ -44,6 +43,7 @@ import {
 import type { ListingCreationRecord } from '@openlinker/core/listings';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { PublishProductRequestDto } from './dto/publish-product.dto';
 import {
@@ -190,7 +190,12 @@ export class ShopPublishController {
   async getRecord(@Param('recordId') recordId: string): Promise<ListingCreationRecordResponseDto> {
     const record = await this.query.getById(recordId);
     if (!record) {
-      throw new NotFoundException(`Listing creation record not found: ${recordId}`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'LISTING_CREATION_RECORD_NOT_FOUND',
+        `Listing creation record not found: ${recordId}`,
+        { recordId }
+      );
     }
     return this.toRecordDto(record);
   }

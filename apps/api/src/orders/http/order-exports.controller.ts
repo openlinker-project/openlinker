@@ -18,17 +18,7 @@
  *
  * @module apps/api/src/orders/http
  */
-import {
-  Body,
-  Controller,
-  ForbiddenException,
-  Get,
-  Inject,
-  NotFoundException,
-  Param,
-  Post,
-  Res,
-} from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post, Res, HttpStatus } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -47,6 +37,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { CreateOrderExportDto } from './dto/create-order-export.dto';
 import { OrderExportRunResponseDto } from './dto/order-export-run-response.dto';
 import { toOrderRecordFilters, enrichCrossContextFilters } from './orders.controller';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 /** Every `orders.export` job runs under this connection scope — it spans every connection a filter set may admit, so there is no single owning connection (the `analytics.currency.recalculate` precedent, #2745). */
 const CROSS_CONNECTION_JOB_ID = '00000000-0000-0000-0000-000000000000';
@@ -137,10 +128,22 @@ export class OrderExportsController {
   ): Promise<void> {
     const run = await this.loadAuthorized(runId, user);
     if (run.status !== 'ready' || !run.file) {
-      throw new NotFoundException('This export is not ready yet.');
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'ORDER_EXPORT_NOT_READY',
+        'This export is not ready yet.',
+        {
+          runId,
+        }
+      );
     }
     if (run.isExpired()) {
-      throw new NotFoundException('This export has expired. Request a new one.');
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'ORDER_EXPORT_EXPIRED',
+        'This export has expired. Request a new one.',
+        { runId }
+      );
     }
     const buffer = Buffer.from(run.file.contentBase64, 'base64');
     res.setHeader('Content-Type', run.file.contentType);
@@ -152,10 +155,22 @@ export class OrderExportsController {
   private async loadAuthorized(runId: string, user: AuthenticatedUser): Promise<OrderExportRun> {
     const run = await this.exports.getRun(runId);
     if (!run) {
-      throw new NotFoundException(`Export run not found: ${runId}`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'ORDER_EXPORT_NOT_FOUND',
+        `Export run not found: ${runId}`,
+        {
+          runId,
+        }
+      );
     }
     if (run.requestedByUserId !== user.id && user.role !== 'admin') {
-      throw new ForbiddenException('Only the requester or an admin may access this export.');
+      throw codedHttpError(
+        HttpStatus.FORBIDDEN,
+        'ORDER_EXPORT_FORBIDDEN',
+        'Only the requester or an admin may access this export.',
+        { runId }
+      );
     }
     return run;
   }

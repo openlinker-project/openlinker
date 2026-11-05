@@ -46,18 +46,45 @@ export class OrderEditRefusedError extends Error {
   }
 }
 
+/** What a 404 is about: the order, or one of its lines (#3865). */
+export interface OrderEditNotFoundTarget {
+  readonly orderId: string;
+  readonly orderLineId?: string;
+}
+
 /** A 404: no such order, or no such line on it. */
 export class OrderEditNotFoundError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    public readonly target: OrderEditNotFoundTarget
+  ) {
     super(message);
     this.name = 'OrderEditNotFoundError';
     Error.captureStackTrace(this, this.constructor);
   }
 }
 
+/** Why a payload cannot describe an edit, sent as `params.reason` (#3865). */
+export const OrderEditInvalidReasonValues = [
+  'line-repeated',
+  'quantity-invalid',
+  'no-lines',
+  'delivery-method-required',
+  'discount-amount-or-percent',
+  'discount-amount-format',
+  'discount-amount-precision',
+  'discount-percent-range',
+  'currency-missing',
+] as const;
+export type OrderEditInvalidReason = (typeof OrderEditInvalidReasonValues)[number];
+
 /** A 400: the payload cannot describe an edit (a repeated line, a non-integer quantity). */
 export class OrderEditInvalidError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    public readonly reason: OrderEditInvalidReason,
+    public readonly details: Readonly<Record<string, string | number>> = {}
+  ) {
     super(message);
     this.name = 'OrderEditInvalidError';
     Error.captureStackTrace(this, this.constructor);

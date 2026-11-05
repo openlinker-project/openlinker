@@ -132,6 +132,19 @@ describe('CustomersController', () => {
 
       await expect(controller.getCustomer('nonexistent')).rejects.toThrow(NotFoundException);
     });
+
+    it('should send CUSTOMER_NOT_FOUND with the customer id (#3865)', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      const error = (await controller
+        .getCustomer('nonexistent')
+        .catch((e: unknown) => e)) as NotFoundException;
+
+      expect(error.getResponse()).toMatchObject({
+        code: 'CUSTOMER_NOT_FOUND',
+        params: { customerId: 'nonexistent' },
+      });
+    });
   });
 
   describe('the two-stage read (#2944)', () => {

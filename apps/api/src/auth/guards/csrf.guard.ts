@@ -15,11 +15,9 @@
 import type {
   CanActivate,
   ExecutionContext} from '@nestjs/common';
-import {
-  ForbiddenException,
-  Injectable,
-} from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import type { Request } from 'express';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from '../auth.cookies';
 
 @Injectable()
@@ -31,10 +29,10 @@ export class CsrfGuard implements CanActivate {
     const headerValue = Array.isArray(headerRaw) ? headerRaw[0] : headerRaw;
 
     if (typeof cookieValue !== 'string' || !cookieValue || !headerValue) {
-      throw new ForbiddenException('Missing CSRF token');
+      throw codedHttpError(HttpStatus.FORBIDDEN, 'CSRF_TOKEN_MISSING', 'Missing CSRF token');
     }
     if (cookieValue !== headerValue) {
-      throw new ForbiddenException('CSRF token mismatch');
+      throw codedHttpError(HttpStatus.FORBIDDEN, 'CSRF_TOKEN_MISMATCH', 'CSRF token mismatch');
     }
     return true;
   }

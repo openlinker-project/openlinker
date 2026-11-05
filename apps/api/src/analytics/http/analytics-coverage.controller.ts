@@ -36,7 +36,7 @@
  *
  * @module apps/api/src/analytics/http
  */
-import { BadRequestException, Controller, Get, Inject, Query } from '@nestjs/common';
+import { Controller, Get, Inject, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
@@ -68,6 +68,7 @@ import {
   AnalyticsCoverageByConnectionResponseDto,
   CoverageCategoryConnectionRowsDto,
 } from './dto/analytics-coverage-by-connection-response.dto';
+import { analyticsRangeInvalid, analyticsRangeTooWide } from './analytics-errors';
 
 /**
  * Sample size for `sampleOrderIds` — deliberately small. This endpoint's job
@@ -221,13 +222,11 @@ export class AnalyticsCoverageController {
     const from = new Date(query.from);
     const to = new Date(query.to);
     if (to.getTime() <= from.getTime()) {
-      throw new BadRequestException('to must be after from');
+      throw analyticsRangeInvalid();
     }
     const rangeDays = (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000);
     if (rangeDays > MAX_COVERAGE_RANGE_DAYS) {
-      throw new BadRequestException(
-        `Range too wide: ${Math.ceil(rangeDays)} days exceeds the ${MAX_COVERAGE_RANGE_DAYS}-day limit`
-      );
+      throw analyticsRangeTooWide(rangeDays, MAX_COVERAGE_RANGE_DAYS);
     }
     return { from, to };
   }

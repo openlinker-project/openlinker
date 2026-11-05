@@ -13,21 +13,18 @@
  * @module apps/api/src/listings/http
  */
 import {
-  BadRequestException,
   Body,
-  ConflictException,
   Controller,
   Get,
   Headers,
   HttpCode,
+  type HttpException,
   HttpStatus,
   Inject,
   InternalServerErrorException,
-  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -40,21 +37,13 @@ import {
 
 import {
   AdapterCapabilityNotSupportedException,
-  AllVariantsAlreadyListedException,
   BULK_LISTING_RETRY_SERVICE_TOKEN,
   BULK_LISTING_SUBMIT_SERVICE_TOKEN,
   BulkListingBatchNotFoundException,
   BulkRetryMissingSnapshotException,
-  CurrencyMismatchException,
-  DuplicateBatchEanException,
   DuplicateBulkBatchIdempotencyKeyError,
-  EmptyBulkSubmissionException,
-  ExpandedOfferCeilingExceededException,
   IBulkListingRetryService,
   IBulkListingSubmitService,
-  InvalidEanException,
-  InvalidOverrideKeyException,
-  MasterStockNotSyncedException,
   NoFailedChildrenToRetryException,
 } from '@openlinker/core/listings';
 import type {
@@ -66,6 +55,8 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
+import { codedErrorBody, codedHttpError } from '../../common/errors/coded-http.exception';
+import { adapterCapabilityNotSupported, bulkSubmissionRefusal } from './listings-errors';
 import { BulkOfferCreateRequestDto } from './dto/bulk-offer-create.dto';
 import type {
   BulkBatchRecordSummaryDto} from './dto/bulk-offer-create-response.dto';
@@ -177,7 +168,9 @@ export class BulkListingController {
       // Lost the same-key race and the winner gave its key back before it could
       // be read: nothing was created for this request, so a retry is safe.
       if (error instanceof DuplicateBulkBatchIdempotencyKeyError) {
-        throw new ConflictException(
+        throw codedHttpError(
+          HttpStatus.CONFLICT,
+          'BULK_SUBMIT_IDEMPOTENCY_CONTENDED',
           'Another submit with the same idempotency key is still being resolved. Retry the request.'
         );
       }
@@ -186,21 +179,11 @@ export class BulkListingController {
       // (#1933) is deliberately distinct from `EmptyBulkSubmissionException` so the FE
       // can render an honest message instead of "requires at least one productId" after
       // an operator explicitly confirmed the #1837 duplicate-guard modal.
-      if (
-        error instanceof EmptyBulkSubmissionException ||
-        error instanceof AllVariantsAlreadyListedException ||
-        error instanceof MasterStockNotSyncedException ||
-        error instanceof InvalidEanException ||
-        error instanceof DuplicateBatchEanException ||
-        error instanceof CurrencyMismatchException ||
-        error instanceof InvalidOverrideKeyException
-      ) {
-        throw new BadRequestException(error.message);
-      }
-      // Post-#824 fan-out exceeds the hard ceiling → 422 (preserves the status
-      // the previous inline UnprocessableEntityException returned).
-      if (error instanceof ExpandedOfferCeilingExceededException) {
-        throw new UnprocessableEntityException(error.message);
+      // Post-#824 fan-out over the hard ceiling stays a 422 (the status the
+      // previous inline UnprocessableEntityException returned).
+      const refusal = bulkSubmissionRefusal(error);
+      if (refusal !== null) {
+        throw refusal;
       }
       // Remaining domain exceptions are mapped by global filters:
       // `CapabilityNotSupportedException` → 400 (`CapabilityNotSupportedFilter`),
@@ -222,7 +205,7 @@ export class BulkListingController {
   ): Promise<BulkBatchSummaryDto> {
     const summary = await this.bulkSubmit.getBatch(batchId);
     if (!summary) {
-      throw new NotFoundException(`Bulk offer creation batch not found: ${batchId}`);
+      throw bulkOfferBatchNotFound(batchId, `Bulk offer creation batch not found: ${batchId}`);
     }
     return this.toSummaryDto(summary);
   }
@@ -257,20 +240,29 @@ export class BulkListingController {
       };
     } catch (error) {
       if (error instanceof BulkListingBatchNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw bulkOfferBatchNotFound(batchId, error.message);
       }
       if (error instanceof NoFailedChildrenToRetryException) {
-        throw new ConflictException(error.message);
+        throw codedHttpError(HttpStatus.CONFLICT, 'BULK_RETRY_NOTHING_FAILED', error.message, {
+          batchId: error.batchId,
+        });
       }
       if (error instanceof AdapterCapabilityNotSupportedException) {
-        throw new UnprocessableEntityException(error.message);
+        throw adapterCapabilityNotSupported(error, HttpStatus.UNPROCESSABLE_ENTITY);
       }
       if (error instanceof BulkRetryMissingSnapshotException) {
         // Documented invariant violation: every record on a bulk batch
         // carries a `request` snapshot. Map to 500 explicitly with the
         // typed message so the operator sees `recordId` + `batchId` in
         // the response body (Nest's default 500 filter swallows it).
-        throw new InternalServerErrorException(error.message);
+        throw new InternalServerErrorException(
+          codedErrorBody(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            'BULK_RETRY_SNAPSHOT_MISSING',
+            error.message,
+            { recordId: error.recordId, batchId: error.batchId }
+          )
+        );
       }
       throw error;
     }
@@ -301,6 +293,10 @@ export class BulkListingController {
   }
 }
 
+function bulkOfferBatchNotFound(batchId: string, message: string): HttpException {
+  return codedHttpError(HttpStatus.NOT_FOUND, 'BULK_OFFER_BATCH_NOT_FOUND', message, { batchId });
+}
+
 /**
  * Trim the header and treat a blank value as absent, so a client that sends
  * the header empty keeps the keyless behaviour instead of colliding with every
@@ -310,8 +306,20 @@ function normaliseIdempotencyKey(raw: string | undefined): string | undefined {
   const trimmed = raw?.trim();
   if (!trimmed) return undefined;
   if (trimmed.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
-    throw new BadRequestException(
-      `x-idempotency-key must be at most ${MAX_IDEMPOTENCY_KEY_LENGTH} characters`
+    throw codedHttpError(
+      HttpStatus.BAD_REQUEST,
+      'VALIDATION_FAILED',
+      `x-idempotency-key must be at most ${MAX_IDEMPOTENCY_KEY_LENGTH} characters`,
+      undefined,
+      {
+        fields: [
+          {
+            path: 'x-idempotency-key',
+            code: 'maxLength',
+            params: { max: MAX_IDEMPOTENCY_KEY_LENGTH },
+          },
+        ],
+      }
     );
   }
   return trimmed;

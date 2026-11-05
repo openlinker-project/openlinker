@@ -218,6 +218,17 @@ describe('RoutingDryRunService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
+    it('should answer ORDER_NOT_FOUND with the order id (#3865)', async () => {
+      const h = build();
+      h.getOrderRecord.mockResolvedValue(null);
+
+      await expect(
+        h.service.dryRun('conn-oms', { subject: { orderId: 'ol_order_x' } })
+      ).rejects.toMatchObject({
+        response: { code: 'ORDER_NOT_FOUND', params: { orderId: 'ol_order_x' } },
+      });
+    });
+
     it('should reject an order that is not fully ingested', async () => {
       const h = build();
       h.getOrderRecord.mockResolvedValue({ shippingAddressHash: null });

@@ -18,7 +18,6 @@ import {
   Param,
   HttpCode,
   HttpStatus,
-  NotFoundException,
   Inject,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
@@ -31,6 +30,7 @@ import { ListCursorsQueryDto } from './dto/list-cursors-query.dto';
 import { CursorResponseDto } from './dto/cursor-response.dto';
 import { PaginatedCursorsResponseDto } from './dto/paginated-cursors-response.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 @ApiBearerAuth()
 @ApiTags('cursors')
@@ -80,8 +80,11 @@ export class CursorsController {
   ): Promise<CursorResponseDto> {
     const cursor = await this.cursorRepository.findOne(connectionId, cursorKey);
     if (!cursor) {
-      throw new NotFoundException(
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'CURSOR_NOT_FOUND',
         `Cursor not found: ${cursorKey} for connection ${connectionId}`,
+        { cursorKey, connectionId },
       );
     }
     return this.toDto(cursor);

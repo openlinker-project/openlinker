@@ -263,7 +263,9 @@ export class OrderCancellationService implements IOrderCancellationService {
   private async runCancel(input: CancelOrderInput): Promise<CancelOrderResult> {
     const order = await this.orderRecords.getOrderRecord(input.internalOrderId);
     if (!order) {
-      throw new OrderCancellationNotFoundError(`Order not found: ${input.internalOrderId}`);
+      throw new OrderCancellationNotFoundError(`Order not found: ${input.internalOrderId}`, {
+        orderId: input.internalOrderId,
+      });
     }
 
     const shipments = await this.shipmentQuery.getOutboundByOrderId(input.internalOrderId);
@@ -602,7 +604,8 @@ export class OrderCancellationService implements IOrderCancellationService {
     // indistinguishable from an absent one, and neither may be probed.
     if (!change || change.internalOrderId !== input.internalOrderId) {
       throw new OrderCancellationNotFoundError(
-        `Change not found on order ${input.internalOrderId}: ${input.changeId}`
+        `Change not found on order ${input.internalOrderId}: ${input.changeId}`,
+        { orderId: input.internalOrderId, changeId: input.changeId }
       );
     }
 

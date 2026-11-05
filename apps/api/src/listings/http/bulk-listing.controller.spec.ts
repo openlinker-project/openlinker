@@ -260,6 +260,13 @@ describe('BulkListingController', () => {
       // duplicate-guard modal on a real selection must not be told they
       // selected nothing.
       await expect(submitPromise).rejects.toThrow(/already listed/);
+      await expect(submitPromise).rejects.toMatchObject({
+        response: {
+          statusCode: 400,
+          code: 'BULK_VARIANTS_ALREADY_LISTED',
+          params: { skippedCount: 3 },
+        },
+      });
     });
 
     it('propagates other exceptions unchanged (Nest filters map them to the documented codes)', async () => {
@@ -422,6 +429,12 @@ describe('BulkListingController', () => {
         .catch((e: unknown) => e);
       expect(error).toBeInstanceOf(InternalServerErrorException);
       expect((error as Error).message).toContain(recordId);
+      expect((error as InternalServerErrorException).getResponse()).toMatchObject({
+        statusCode: 500,
+        code: 'BULK_RETRY_SNAPSHOT_MISSING',
+        params: { recordId, batchId: BATCH_ID },
+      });
+
     });
   });
 });

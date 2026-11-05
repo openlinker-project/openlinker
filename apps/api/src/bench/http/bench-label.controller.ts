@@ -23,13 +23,11 @@
  */
 import {
   Body,
-  ConflictException,
   Controller,
   Inject,
-  NotFoundException,
   Param,
   Post,
-  UnauthorizedException,
+  HttpStatus,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { FulfillmentWorkNotFoundError } from '@openlinker/core/fulfillment';
@@ -45,6 +43,8 @@ import { BenchLabelShipmentNotFoundError } from '../application/services/bench-l
 import { BenchParcelNotAtThisBenchError } from '../application/services/bench-parcel.service';
 import { BenchReplaceLabelResponseDto } from './dto/bench-documents-response.dto';
 import { ReplaceLabelDto, toReplaceLabelParcel } from './dto/replace-label.dto';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
+import { benchPackerUnidentified, benchParcelNotFound } from './bench-errors';
 
 @ApiBearerAuth()
 @ApiTags('bench')
@@ -78,7 +78,7 @@ export class BenchLabelController {
   ): Promise<BenchReplaceLabelResponseDto> {
     // Records who replaced a paid label; unreachable without a principal (#2890 F1).
     if (!user?.id) {
-      throw new UnauthorizedException('A label replacement must name the packer');
+      throw benchPackerUnidentified('A label replacement must name the packer');
     }
     const parcel = toReplaceLabelParcel(dto);
 
@@ -91,13 +91,19 @@ export class BenchLabelController {
         error instanceof BenchParcelNotAtThisBenchError ||
         error instanceof BenchLabelShipmentNotFoundError
       ) {
-        throw new NotFoundException('No such parcel at this bench');
+        throw benchParcelNotFound();
       }
       throw error;
     }
 
     if (result.outcome === 'refused') {
-      throw new ConflictException({ reason: result.reason, message: result.reason });
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'BENCH_LABEL_REPLACE_REFUSED',
+        result.reason,
+        { reason: result.reason },
+        { reason: result.reason }
+      );
     }
     return {
       outcome: result.outcome,
