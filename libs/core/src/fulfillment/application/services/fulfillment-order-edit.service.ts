@@ -22,11 +22,16 @@ import { Logger } from '@openlinker/shared/logging';
 import { FULFILLMENT_WORK_REPOSITORY_TOKEN } from '../../fulfillment.tokens';
 import { FulfillmentWorkRepositoryPort } from '../../domain/ports/fulfillment-work-repository.port';
 import { isTerminalFulfillmentWorkStatus } from '../../domain/types/fulfillment-supported-actions.types';
+import { requiredUnitsForLine } from '../../domain/types/fulfillment-verification.types';
+import { SOURCE_CHANGE_HOLD_ACTOR } from '../../domain/types/fulfillment-hold.types';
 import type {
+  HoldForSourceChangeInput,
+  HoldForSourceChangeResult,
   IFulfillmentOrderEditService,
   LowerLineQuantityInput,
   LowerLineQuantityResult,
   OrderWorkEditAssessment,
+  ReleaseSourceChangeHoldsResult,
 } from '../interfaces/fulfillment-order-edit.service.interface';
 
 @Injectable()
@@ -48,6 +53,23 @@ export class FulfillmentOrderEditService implements IFulfillmentOrderEditService
           (fulfilledByLine[line.orderLineId] ?? 0) + line.fulfilledQuantity;
       }
     }
+
+    const requiredByLine: Record<string, number> = {};
+    const verifiedByLine: Record<string, number> = {};
+    for (const work of works.filter((candidate) => !isTerminalFulfillmentWorkStatus(candidate.status))) {
+      const orderLineByWorkLine = new Map<string, string>();
+      for (const line of work.lines) {
+        orderLineByWorkLine.set(line.id, line.orderLineId);
+        requiredByLine[line.orderLineId] =
+          (requiredByLine[line.orderLineId] ?? 0) + requiredUnitsForLine(line);
+      }
+      for (const count of await this.works.countParcelVerifications(work.id)) {
+        const orderLineId = orderLineByWorkLine.get(count.workLineId);
+        if (orderLineId === undefined) continue;
+        verifiedByLine[orderLineId] = (verifiedByLine[orderLineId] ?? 0) + count.verifiedQuantity;
+      }
+    }
+
     return {
       unrouted: works.length === 0,
       anyParcelClosed: live.some((work) => work.parcelClosedAt !== null),
@@ -63,7 +85,62 @@ export class FulfillmentOrderEditService implements IFulfillmentOrderEditService
         (work) => work.status === 'in_progress' || work.requestStatus === 'accepted'
       ),
       fulfilledByLine,
+      requiredByLine,
+      verifiedByLine,
     };
+  }
+
+  async holdForSourceChange(input: HoldForSourceChangeInput): Promise<HoldForSourceChangeResult> {
+    const works = (await this.works.findByOrderId(input.orderId)).filter(
+      (work) => !isTerminalFulfillmentWorkStatus(work.status)
+    );
+    if (works.length === 0) return { heldWorkIds: [] };
+
+    const active = await this.works.listActiveHoldsForWorks(works.map((work) => work.id));
+    const heldWorkIds: string[] = [];
+    for (const work of works) {
+      const already = (active.get(work.id) ?? []).some(
+        (hold) => hold.placedByService === SOURCE_CHANGE_HOLD_ACTOR
+      );
+      if (already) continue;
+      await this.works.placeHold({
+        workId: work.id,
+        reason: 'awaiting-amendment',
+        note: input.note,
+        placedByUserId: null,
+        placedByService: SOURCE_CHANGE_HOLD_ACTOR,
+        placedAt: new Date(),
+      });
+      heldWorkIds.push(work.id);
+    }
+    if (heldWorkIds.length > 0) {
+      this.logger.log(
+        `Held ${String(heldWorkIds.length)} work object(s) of order ${input.orderId}: the source changed a line`
+      );
+    }
+    return { heldWorkIds };
+  }
+
+  async releaseSourceChangeHolds(orderId: string): Promise<ReleaseSourceChangeHoldsResult> {
+    const works = await this.works.findByOrderId(orderId);
+    if (works.length === 0) return { releasedHoldIds: [] };
+
+    const active = await this.works.listActiveHoldsForWorks(works.map((work) => work.id));
+    const releasedHoldIds: string[] = [];
+    for (const holds of active.values()) {
+      for (const hold of holds) {
+        if (hold.placedByService !== SOURCE_CHANGE_HOLD_ACTOR) continue;
+        await this.works.releaseHold({
+          holdId: hold.id,
+          workId: hold.fulfillmentWorkId,
+          releasedAt: new Date(),
+          releasedByUserId: null,
+          releaseNote: 'The order and its packing work agree again.',
+        });
+        releasedHoldIds.push(hold.id);
+      }
+    }
+    return { releasedHoldIds };
   }
 
   async lowerLineQuantity(input: LowerLineQuantityInput): Promise<LowerLineQuantityResult> {

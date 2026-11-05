@@ -246,7 +246,8 @@ function harness(options: {
       users,
       notes,
       parcelClosureNotifier,
-      workQuery
+      workQuery,
+      { reconcile: jest.fn().mockResolvedValue({ outcome: 'nothing-to-do', lines: [], cause: null }), accept: jest.fn() } as never,
     ),
     verification,
     orders,
@@ -377,6 +378,7 @@ describe('BenchParcelService (#2418)', () => {
               reason: 'address-invalid' as const,
               note: null,
               placedAt: new Date('2026-09-04T09:00:00Z'),
+              fromSourceChange: false,
             })),
           }),
         });
@@ -661,6 +663,8 @@ describe('BenchParcelService (#2418)', () => {
           'parcelIndex',
           'parcelTotal',
           'refusal',
+          // #3961 - what to take out of a box the shop changed; null otherwise.
+          'sourceChange',
           'totalAmount',
           'version',
           'workId',

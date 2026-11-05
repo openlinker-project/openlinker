@@ -107,6 +107,7 @@ import {
   discountRefundTargetRef,
   effectiveDiscountAmount,
   effectiveLineQuantity,
+  orderEditLockKey,
   evaluateRefundCeiling,
   goodsGrossValue,
   isDecimalAmountText,
@@ -177,10 +178,6 @@ import {
  * gates see it, and the follow-up effects are idempotent, so no longer is needed.
  */
 const ORDER_EDIT_LOCK_TTL_MS = 30_000;
-
-function orderEditLockKey(internalOrderId: string): string {
-  return `order:edit:${internalOrderId}`;
-}
 
 /** A label exists (bought) but the parcel has not left: the address is baked into it. */
 const LABEL_BOUGHT_STATUSES: readonly string[] = [SHIPMENT_STATUS.Generated, SHIPMENT_STATUS.Dispatched];

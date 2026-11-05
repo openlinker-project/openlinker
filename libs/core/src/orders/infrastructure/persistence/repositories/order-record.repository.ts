@@ -571,6 +571,15 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       );
     }
 
+    if (filters.omsAttentionReason !== undefined) {
+      // #3961 - one named attention reason. The reason is BOUND as a jsonpath
+      // variable, never interpolated: it arrives from a query string.
+      qb.andWhere(
+        `jsonb_path_exists(COALESCE(rec."omsAttention", '[]'::jsonb), '$[*] ? (@.reason == $r)', jsonb_build_object('r', CAST(:omsAttentionReason AS text)))`,
+        { omsAttentionReason: filters.omsAttentionReason }
+      );
+    }
+
     if (filters.activeHoldReason) {
       // #2342 — the hold REASON axis, ANDed with the others. It reads the same
       // #2340 projection column the lifecycle `CASE`'s `held` arm tests, which

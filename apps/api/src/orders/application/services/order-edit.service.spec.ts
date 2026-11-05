@@ -58,6 +58,8 @@ const assessment = (overrides: Partial<OrderWorkEditAssessment> = {}): OrderWork
   handedOff: [],
   underway: false,
   fulfilledByLine: {},
+  requiredByLine: {},
+  verifiedByLine: {},
   ...overrides,
 });
 
@@ -158,6 +160,8 @@ describe('OrderEditService (#3542)', () => {
         calls.push('work');
         return Promise.resolve({ outcome: 'applied', cancelledUnits: 2, workIds: ['w1'] });
       }),
+      holdForSourceChange: jest.fn(),
+      releaseSourceChangeHolds: jest.fn(),
     };
     reservations = {
       narrowForOrder: jest.fn().mockImplementation(() => {

@@ -1,0 +1,404 @@
+/**
+ * Order Source Amendment Effects Service (#3961)
+ *
+ * See the interface and `planSourceAmendment`. In short: when the order source
+ * changes a line of a routed order, lower the packing work, the reservation and
+ * the master stock to the new quantity if nobody has packed past it yet;
+ * otherwise hold the box and raise `source-change-unapplied`.
+ *
+ * It reuses the operator-edit machinery (#3542) rather than a second path, and
+ * takes the same per-order lock (`orderEditLockKey`), so an operator edit and a
+ * source change can never narrow the same work concurrently.
+ *
+ * @module libs/core/src/orders/application/services
+ * @implements {IOrderSourceAmendmentEffectsService}
+ */
+import { Inject, Injectable } from '@nestjs/common';
+import {
+  FULFILLMENT_ORDER_EDIT_SERVICE_TOKEN,
+  type IFulfillmentOrderEditService,
+  type OrderWorkEditAssessment,
+} from '@openlinker/core/fulfillment';
+import {
+  CONNECTION_PORT_TOKEN,
+  type ConnectionPort,
+} from '@openlinker/core/identifier-mapping';
+import {
+  INTEGRATIONS_SERVICE_TOKEN,
+  resolveRequiresCredentials,
+  type IIntegrationsService,
+} from '@openlinker/core/integrations';
+import {
+  INVENTORY_SALE_REVERSAL_SERVICE_TOKEN,
+  RESERVATION_SERVICE_TOKEN,
+  type IInventorySaleReversalService,
+  type IReservationService,
+} from '@openlinker/core/inventory';
+import { SYNC_LOCK_TOKEN, type SyncLockPort } from '@openlinker/core/sync';
+import { Logger } from '@openlinker/shared/logging';
+
+import type { OrderRecord } from '../../domain/entities/order-record.entity';
+import { orderEditLockKey } from '../../domain/types/order-edits.types';
+import {
+  planSourceAmendment,
+  sourceChangeAcceptTargetRef,
+  type SourceAmendmentLine,
+  type SourceAmendmentPlan,
+} from '../../domain/types/source-amendment-plan.types';
+import { ORDER_CHANGE_SERVICE_TOKEN, ORDER_RECORD_SERVICE_TOKEN } from '../../orders.tokens';
+import type {
+  AcceptSourceChangeInput,
+  IOrderSourceAmendmentEffectsService,
+  ReconcileSourceAmendmentInput,
+  SourceAmendmentReconcileResult,
+} from '../interfaces/order-source-amendment-effects.service.interface';
+import { IOrderRecordService } from '../interfaces/order-record.service.interface';
+import { IOrderChangeService } from './order-change.service.interface';
+
+/** Long enough for a few work writes and master calls; short enough not to wedge an operator edit. */
+const SOURCE_AMENDMENT_LOCK_TTL_MS = 30_000;
+
+/** Stored on the hold; the bench shows held boxes and the order page names the cause. */
+const SOURCE_CHANGE_HOLD_NOTE = 'The shop changed this order after packing started.';
+
+const PRODUCER = 'source-amendment';
+const ACCEPT_KIND = 'order.source_change_accept';
+
+const NOTHING: SourceAmendmentReconcileResult = { outcome: 'nothing-to-do', lines: [], cause: null };
+
+@Injectable()
+export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendmentEffectsService {
+  private readonly logger = new Logger(OrderSourceAmendmentEffectsService.name);
+
+  constructor(
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orderRecords: IOrderRecordService,
+    @Inject(FULFILLMENT_ORDER_EDIT_SERVICE_TOKEN)
+    private readonly fulfillmentEdit: IFulfillmentOrderEditService,
+    @Inject(RESERVATION_SERVICE_TOKEN)
+    private readonly reservations: IReservationService,
+    @Inject(INVENTORY_SALE_REVERSAL_SERVICE_TOKEN)
+    private readonly saleReversal: IInventorySaleReversalService,
+    @Inject(SYNC_LOCK_TOKEN)
+    private readonly lock: SyncLockPort,
+    @Inject(CONNECTION_PORT_TOKEN)
+    private readonly connections: ConnectionPort,
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrations: IIntegrationsService,
+    @Inject(ORDER_CHANGE_SERVICE_TOKEN)
+    private readonly changes: IOrderChangeService
+  ) {}
+
+  async reconcile(input: ReconcileSourceAmendmentInput): Promise<SourceAmendmentReconcileResult> {
+    return this.withLock(input.internalOrderId, async () => {
+      const loaded = await this.load(input.internalOrderId);
+      if (loaded === null) return NOTHING;
+      return this.act(input.internalOrderId, loaded.record, loaded.plan);
+    });
+  }
+
+  async accept(input: AcceptSourceChangeInput): Promise<SourceAmendmentReconcileResult> {
+    return this.withLock(input.internalOrderId, async () => {
+      const loaded = await this.load(input.internalOrderId);
+      if (loaded === null) return NOTHING;
+      const { record, plan } = loaded;
+      if (plan.kind !== 'hold' && plan.kind !== 'shipped') {
+        // Nothing to accept: the order agrees with its work, or the change can
+        // simply be applied. `act` settles or applies it.
+        return this.act(input.internalOrderId, record, plan);
+      }
+      const opened = await this.changes.openOrReuse({
+        internalOrderId: input.internalOrderId,
+        kind: ACCEPT_KIND,
+        targetRef: sourceChangeAcceptTargetRef(plan.lines),
+        payload: { lines: plan.lines.map((line) => ({ ...line })) },
+        requestedBy: input.actorUserId,
+        requestedAt: new Date(),
+      });
+      await this.changes.confirm(opened.change.id, input.actorUserId);
+      await this.release(input.internalOrderId);
+      this.logger.log(
+        `source_change_accepted order=${input.internalOrderId} lines=${describeLines(plan.lines)}`
+      );
+      return { outcome: 'accepted', lines: plan.lines, cause: null };
+    });
+  }
+
+  /** Every entry point runs under the order's edit lock and never throws. */
+  private async withLock(
+    orderId: string,
+    work: () => Promise<SourceAmendmentReconcileResult>
+  ): Promise<SourceAmendmentReconcileResult> {
+    const key = orderEditLockKey(orderId);
+    let token: Awaited<ReturnType<SyncLockPort['acquire']>>;
+    try {
+      token = await this.lock.acquire(key, SOURCE_AMENDMENT_LOCK_TTL_MS);
+    } catch (error) {
+      this.logger.warn(`source_amendment_lock_failed order=${orderId}: ${describe(error)}`);
+      return { outcome: 'contended', lines: [], cause: null };
+    }
+    if (token === null) {
+      // An operator edit (or a parallel ingestion) holds the order. Its own
+      // follow-ups are idempotent toward the same targets, and the next
+      // ingestion compares state again, so skipping is safe.
+      return { outcome: 'contended', lines: [], cause: null };
+    }
+    try {
+      return await work();
+    } catch (error) {
+      this.logger.error(
+        `source_amendment_reconcile_failed order=${orderId}: ${describe(error)}`,
+        error instanceof Error ? error.stack : undefined
+      );
+      return { outcome: 'failed', lines: [], cause: null };
+    } finally {
+      await this.lock.release(key, token).catch(() => undefined);
+    }
+  }
+
+  /**
+   * Read the record fresh and plan. `null` when there is nothing this service
+   * may compare: no record, a cancelled order (the cancellation path owns it),
+   * an order whose items never resolved, or a snapshot with no readable lines.
+   * The last one matters: `orderItems` answers `[]` for "unreadable", and
+   * reading that as "every line lowered to 0" would empty the box.
+   */
+  private async load(
+    orderId: string
+  ): Promise<{ record: OrderRecord; plan: SourceAmendmentPlan } | null> {
+    const record = await this.orderRecords.getOrderRecord(orderId);
+    if (record === null || record.cancelledAt !== null || record.recordStatus !== 'ready') {
+      return null;
+    }
+    const items = record.orderItems;
+    if (items.length === 0) return null;
+
+    const assessment = await this.fulfillmentEdit.assessForEdit(orderId);
+    const plan = planSourceAmendment({
+      effectiveByLine: effectiveQuantities(items),
+      requiredByLine: assessment.requiredByLine,
+      verifiedByLine: assessment.verifiedByLine,
+      fulfilledByLine: assessment.fulfilledByLine,
+      increasedLineIds: increasedLines(record),
+      unrouted: assessment.unrouted,
+      boxClosed: assessment.anyParcelClosed || record.packedAt !== null,
+      shipped: record.fulfillmentState === 'dispatched' || record.fulfillmentState === 'delivered',
+      outsideHolder: await this.hasOutsideHolder(assessment),
+    });
+    return { record, plan };
+  }
+
+  private async act(
+    orderId: string,
+    record: OrderRecord,
+    plan: SourceAmendmentPlan
+  ): Promise<SourceAmendmentReconcileResult> {
+    switch (plan.kind) {
+      case 'no-work':
+      case 'in-sync':
+        await this.settle(orderId, record);
+        return NOTHING;
+
+      case 'shipped':
+        if (await this.isAccepted(orderId, plan.lines)) return this.accepted(orderId, record, plan.lines);
+        // Nothing can be taken back out of a parcel that left. No hold: there is
+        // no box left to stop.
+        await this.markAttention(orderId, 'shipped');
+        this.logger.warn(
+          `source_change_after_shipping order=${orderId} lines=${describeLines(plan.lines)}`
+        );
+        return { outcome: 'shipped', lines: plan.lines, cause: null };
+
+      case 'hold':
+        if (await this.isAccepted(orderId, plan.lines)) return this.accepted(orderId, record, plan.lines);
+        await this.fulfillmentEdit.holdForSourceChange({ orderId, note: SOURCE_CHANGE_HOLD_NOTE });
+        await this.markAttention(orderId, plan.cause);
+        this.logger.warn(
+          `source_change_held order=${orderId} cause=${plan.cause} lines=${describeLines(plan.lines)}`
+        );
+        return { outcome: 'held', lines: plan.lines, cause: plan.cause };
+
+      case 'apply':
+        return this.apply(orderId, record, plan.lines);
+    }
+  }
+
+  /**
+   * Lower the work, then the reservation, then give back the master stock - the
+   * operator edit's order (#3542). Every step is toward an absolute target, so a
+   * crash part-way is finished by the next ingestion rather than doubled.
+   */
+  private async apply(
+    orderId: string,
+    record: OrderRecord,
+    lines: readonly SourceAmendmentLine[]
+  ): Promise<SourceAmendmentReconcileResult> {
+    let failed = false;
+    for (const line of lines) {
+      try {
+        await this.fulfillmentEdit.lowerLineQuantity({
+          orderId,
+          orderLineId: line.orderLineId,
+          newQuantity: line.to,
+        });
+      } catch (error) {
+        failed = true;
+        this.logger.error(
+          `source_change_work_not_narrowed order=${orderId} line=${line.orderLineId}: ${describe(error)}`
+        );
+      }
+    }
+
+    try {
+      await this.reservations.narrowForOrder({
+        orderRecordId: orderId,
+        lines: lines.map((line) => ({ orderLineId: line.orderLineId, quantity: line.to })),
+      });
+    } catch (error) {
+      // The next ingestion re-reserves from the order and repairs the hold.
+      this.logger.warn(`source_change_reservation_not_narrowed order=${orderId}: ${describe(error)}`);
+    }
+
+    for (const line of lines) {
+      try {
+        const reversed = await this.saleReversal.reverseLineToTarget({
+          internalOrderId: orderId,
+          orderLineId: line.orderLineId,
+          targetUnits: line.to,
+        });
+        if (reversed.status === 'failed') {
+          failed = true;
+          this.logger.error(
+            `source_change_stock_not_given_back order=${orderId} line=${line.orderLineId}: ${reversed.detail ?? 'no detail'}`
+          );
+        }
+      } catch (error) {
+        failed = true;
+        this.logger.error(
+          `source_change_stock_not_given_back order=${orderId} line=${line.orderLineId}: ${describe(error)}`
+        );
+      }
+    }
+
+    if (failed) {
+      // Leave (or raise) the attention entry so the order is visible until a
+      // later ingestion finishes the job.
+      await this.markAttention(orderId, 'apply-failed');
+      return { outcome: 'failed', lines, cause: null };
+    }
+
+    await this.settle(orderId, record);
+    this.logger.log(`source_change_applied order=${orderId} lines=${describeLines(lines)}`);
+    return { outcome: 'applied', lines, cause: null };
+  }
+
+  /** The order and its work agree: drop this producer's entry and its own holds, if any. */
+  private async settle(orderId: string, record: OrderRecord): Promise<void> {
+    const hadEntry = record.omsAttention.some((entry) => entry.producer === PRODUCER);
+    if (!hadEntry) return;
+    await this.release(orderId);
+  }
+
+  private async release(orderId: string): Promise<void> {
+    await this.fulfillmentEdit.releaseSourceChangeHolds(orderId);
+    await this.orderRecords.markOmsAttention(orderId, PRODUCER, { kind: 'none' });
+  }
+
+  /** Whether an operator already accepted exactly this mismatch. */
+  private async isAccepted(orderId: string, lines: readonly SourceAmendmentLine[]): Promise<boolean> {
+    const latest = await this.changes.findLatestByTarget(
+      orderId,
+      sourceChangeAcceptTargetRef(lines),
+      ACCEPT_KIND
+    );
+    return latest !== null && latest.status === 'confirmed';
+  }
+
+  private async accepted(
+    orderId: string,
+    record: OrderRecord,
+    lines: readonly SourceAmendmentLine[]
+  ): Promise<SourceAmendmentReconcileResult> {
+    await this.settle(orderId, record);
+    return { outcome: 'accepted', lines, cause: null };
+  }
+
+  /**
+   * The cause rides in `detail` as a code (core emits no operator English); the
+   * frontend maps it to copy. `shipped` and `apply-failed` are codes outside the
+   * hold-cause union because nothing is held for them.
+   */
+  private async markAttention(orderId: string, detail: string): Promise<void> {
+    await this.orderRecords.markOmsAttention(orderId, PRODUCER, {
+      kind: 'blocked',
+      reason: 'source-change-unapplied',
+      detail,
+    });
+  }
+
+  /**
+   * A holder that answers from OpenLinker's own tables needs no credentials
+   * (`AdapterMetadata.requiresCredentials: false`, ADR-055): narrowing OL's work
+   * row IS that holder's state. Any other holder that has the work would never
+   * see the change, so it counts as outside. An unresolvable holder counts as
+   * outside too: holding is the safe answer when OL cannot show the change would
+   * reach it.
+   */
+  private async hasOutsideHolder(assessment: OrderWorkEditAssessment): Promise<boolean> {
+    for (const work of assessment.handedOff) {
+      if (work.assignedConnectionId === null) continue;
+      if (!(await this.isInProcessHolder(work.assignedConnectionId))) return true;
+    }
+    return false;
+  }
+
+  private async isInProcessHolder(connectionId: string): Promise<boolean> {
+    try {
+      const connection = await this.connections.get(connectionId);
+      const metadata = await this.integrations.resolveAdapterMetadata({
+        platformType: connection.platformType,
+        adapterKey: connection.adapterKey,
+      });
+      return !resolveRequiresCredentials(metadata);
+    } catch (error) {
+      this.logger.warn(
+        `source_change_holder_unresolved connection=${connectionId}: ${describe(error)}`
+      );
+      return false;
+    }
+  }
+}
+
+/**
+ * Effective quantity per line. The overlay drops a line lowered to zero, and a
+ * line the source removed is simply absent; both read as `0` in the planner.
+ */
+function effectiveQuantities(items: OrderRecord['orderItems']): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const item of items) out[item.id] = (out[item.id] ?? 0) + item.quantity;
+  return out;
+}
+
+/** Lines the stored amendment reports as raised or added - the only lines that can be an increase. */
+function increasedLines(record: OrderRecord): Set<string> {
+  const out = new Set<string>();
+  for (const change of record.lastAmendmentChanges ?? []) {
+    if (change.lineId === undefined) continue;
+    if (change.kind === 'line-added') out.add(change.lineId);
+    if (
+      change.kind === 'line-quantity-changed' &&
+      (change.toQuantity ?? 0) > (change.fromQuantity ?? 0)
+    ) {
+      out.add(change.lineId);
+    }
+  }
+  return out;
+}
+
+function describeLines(lines: readonly SourceAmendmentLine[]): string {
+  return lines.map((line) => `${line.orderLineId}:${String(line.from)}->${String(line.to)}`).join(',');
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

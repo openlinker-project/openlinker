@@ -67,6 +67,8 @@ import {
   type UndoCompletionResult,
   type UndoLastVerificationInput,
   type UndoLastVerificationResult,
+  type VoidSurplusOnLineInput,
+  type VoidSurplusOnLineResult,
   type VerifyUnitInput,
   type VerifyUnitResult,
 } from '../../domain/types/fulfillment-verification.types';
@@ -274,6 +276,50 @@ export class FulfillmentVerificationService implements IFulfillmentVerificationS
         workLineId: latest.workLineId,
         state: this.toState(work, counts),
       } as const;
+    });
+  }
+
+  async voidSurplusOnLine(input: VoidSurplusOnLineInput): Promise<VoidSurplusOnLineResult> {
+    if (!Number.isInteger(input.keep) || input.keep < 0) {
+      throw new RangeError(`keep must be a non-negative integer, got ${String(input.keep)}`);
+    }
+    return this.works.runInTransaction(async (transaction) => {
+      // The same row lock every verification takes, so a scan racing this
+      // cannot be counted against a stale total.
+      const work = await this.works.lockWorkForVerification(input.workId, transaction);
+      if (work === null) throw new FulfillmentWorkNotFoundError(input.workId);
+
+      if (work.parcelClosedAt !== null) {
+        const counts = await this.works.countParcelVerifications(input.workId, transaction);
+        return { outcome: 'refused', reason: 'parcel-closed', state: this.toState(work, counts) } as const;
+      }
+
+      const countFor = async (): Promise<number> =>
+        (await this.works.countParcelVerifications(input.workId, transaction)).find(
+          (count) => count.workLineId === input.workLineId
+        )?.verifiedQuantity ?? 0;
+
+      let voided = 0;
+      const voidedAt = new Date();
+      // Bounded by the line's own count: each pass voids one active row or stops.
+      for (let active = await countFor(); active > input.keep; active -= 1) {
+        const latest = await this.works.findLatestActiveVerificationForLine(
+          input.workId,
+          input.workLineId,
+          transaction
+        );
+        if (latest === null) break;
+        const done = await this.works.voidVerificationById(
+          latest.id,
+          { workId: input.workId, voidedByUserId: input.actorUserId, voidedAt },
+          transaction
+        );
+        if (!done) break;
+        voided += 1;
+      }
+
+      const counts = await this.works.countParcelVerifications(input.workId, transaction);
+      return { outcome: 'voided', voided, state: this.toState(work, counts) } as const;
     });
   }
 

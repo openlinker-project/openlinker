@@ -85,6 +85,12 @@ export interface BenchParcel {
    */
   readonly refusal: string | null;
   readonly holdReason: string | null;
+  /**
+   * Set only while the box is held because the shop lowered a line after packing
+   * started (#3961). `takeOut` says, per line, how many units are in the box
+   * beyond what the order now asks for. `null` for every other parcel.
+   */
+  readonly sourceChange: BenchParcelSourceChange | null;
   /** When the last verification shut the box, or `null` while it is open. */
   readonly closedAt: string | null;
   readonly packedByUserId: string | null;
@@ -487,4 +493,9 @@ export interface BenchLabelReplaceResult {
   readonly voidState: BenchLabelVoidState | null;
   /** The configured size bought with when only the weight was corrected; else `null`. */
   readonly keptTemplate: string | null;
+}
+
+/** See `BenchParcel.sourceChange` (#3961). */
+export interface BenchParcelSourceChange {
+  readonly takeOut: ReadonlyArray<{ readonly workLineId: string; readonly units: number }>;
 }

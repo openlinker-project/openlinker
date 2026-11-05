@@ -168,6 +168,24 @@ export const benchParcelCopy = {
   },
 
   /**
+   * #3961 - the shop changed the order after packing started. With units to
+   * take out, the card names exactly that; without (the box was closed, or the
+   * shop added an item), the held alert says the office decides.
+   */
+  sourceChange: {
+    countLabel: 'Take out',
+    takeOutBody: (units: number, binCode: string | null): string =>
+      `The shop lowered this item. Take ${String(units)} out and put ${units === 1 ? 'it' : 'them'} back on ${
+        binCode === null ? 'the shelf' : `shelf ${binCode}`
+      }.`,
+    takeOutNote: 'Take the extra out first, then confirm. The box goes back to packing on its own.',
+    takenOutAction: 'Done, I took it out',
+    takenOutFailed: 'That did not go through. Check the box and confirm again.',
+    heldBody: 'The shop changed this order. Leave the box as it is - the office decides what goes in it.',
+    unnamedItem: 'This item',
+  },
+
+  /**
    * D4/D21 — the interrupt, and ONLY when the box becomes unpackable.
    *
    * It never fires for a buyer's address, a re-priced line or any other change:

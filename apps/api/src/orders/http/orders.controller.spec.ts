@@ -75,6 +75,7 @@ import {
 } from '@openlinker/core/orders';
 import { ORDER_CANCELLATION_SERVICE_TOKEN } from '../application/interfaces/order-cancellation.service.interface';
 import { ORDER_EDIT_SERVICE_TOKEN } from '../application/interfaces/order-edit.service.interface';
+import { ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN } from '@openlinker/core/orders';
 import type { IOrderCancellationService } from '../application/interfaces/order-cancellation.service.interface';
 import {
   CancelCorrectionFailedError,
@@ -87,6 +88,7 @@ import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from '../application/interfac
 
 describe('OrdersController', () => {
   let controller: OrdersController;
+  let sourceAmendment: { reconcile: jest.Mock; accept: jest.Mock };
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
   let orderRecordService: jest.Mocked<IOrderRecordService>;
   let retryService: jest.Mocked<IOrderDestinationRetryService>;
@@ -376,6 +378,10 @@ describe('OrdersController', () => {
           provide: ORDER_EDIT_SERVICE_TOKEN,
           useValue: { getEditsView: jest.fn().mockResolvedValue(null) },
         },
+        {
+          provide: ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
+          useValue: { reconcile: jest.fn(), accept: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -394,6 +400,47 @@ describe('OrdersController', () => {
     fulfillmentWork = module.get(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN);
     orderChanges = module.get(ORDER_CHANGE_SERVICE_TOKEN);
     orderCancellation = module.get(ORDER_CANCELLATION_SERVICE_TOKEN);
+    sourceAmendment = module.get(ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN);
+  });
+
+  describe('source change actions (#3961)', () => {
+    const result = {
+      outcome: 'held' as const,
+      cause: 'box-holds-more' as const,
+      lines: [{ orderLineId: 'li_1', from: 2, to: 1 }],
+    };
+
+    beforeEach(() => {
+      // The shared mock predates any route reading a single record by id.
+      orderRecordService.getOrderRecord = jest.fn();
+    });
+
+    it('should run the same comparison ingestion runs on "Check again"', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as never);
+      sourceAmendment.reconcile.mockResolvedValue(result);
+
+      await expect(controller.recheckSourceChange('ol_order_1')).resolves.toEqual(result);
+      expect(sourceAmendment.reconcile).toHaveBeenCalledWith({ internalOrderId: 'ol_order_1' });
+    });
+
+    it('should accept on behalf of the session user, never a body field', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as never);
+      sourceAmendment.accept.mockResolvedValue({ ...result, outcome: 'accepted', cause: null });
+
+      await controller.acceptSourceChange('ol_order_1', { id: 'user-1' } as never);
+
+      expect(sourceAmendment.accept).toHaveBeenCalledWith({
+        internalOrderId: 'ol_order_1',
+        actorUserId: 'user-1',
+      });
+    });
+
+    it('should answer 404 for an unknown order without touching the order', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+
+      await expect(controller.recheckSourceChange('missing')).rejects.toThrow(NotFoundException);
+      expect(sourceAmendment.reconcile).not.toHaveBeenCalled();
+    });
   });
 
   describe('listOrders', () => {

@@ -40,6 +40,8 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
     expect([...ORDER_FILTER_PARAMS].sort()).toEqual(
       [
         'attention',
+        // #3961 - the "Changed by the shop" filter.
+        'attentionReason',
         'createdFrom',
         'createdTo',
         'due',
@@ -89,6 +91,7 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
       waitingInOpenLinker: 'waiting=true',
       onPackBench: 'packBench=true',
       attention: 'attention=true',
+      attentionReason: 'attentionReason=source-change-unapplied',
       taxRateConflict: 'taxRate=conflict',
       openReturn: 'openReturn=true',
       hasBuyerNote: 'hasBuyerNote=true',

@@ -337,6 +337,22 @@ export interface ParcelVerificationEvent {
   readonly voidedByUserId: string | null;
 }
 
+/**
+ * Void the units of ONE line beyond `keep` (#3961): the packer took the extra
+ * units of an item the shop lowered back out of the box.
+ */
+export interface VoidSurplusOnLineInput {
+  readonly workId: string;
+  readonly workLineId: string;
+  /** Units of the line that stay counted. */
+  readonly keep: number;
+  readonly actorUserId: string | null;
+}
+
+export type VoidSurplusOnLineResult =
+  | { readonly outcome: 'voided'; readonly voided: number; readonly state: ParcelVerificationState }
+  | { readonly outcome: 'refused'; readonly reason: 'parcel-closed'; readonly state: ParcelVerificationState };
+
 /** What `reopenParcel` answers. */
 export type ReopenParcelResult =
   | { readonly outcome: 'reopened'; readonly state: ParcelVerificationState }

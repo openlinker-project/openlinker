@@ -108,6 +108,18 @@ export interface IBenchParcelService {
   getParcel(workId: string): Promise<BenchParcelView>;
 
   /**
+   * "Done, I took it out" for a box held because the shop lowered an item
+   * after packing started (#3961): voids that line's scans beyond what the
+   * order now asks for, then re-checks the order so a matching box is applied
+   * and released. Answers the parcel as it now stands.
+   */
+  confirmSourceChangeTakenOut(input: {
+    readonly workId: string;
+    readonly workLineId: string;
+    readonly actorUserId: string;
+  }): Promise<BenchParcelView>;
+
+  /**
    * The work behind a parcel, scoped exactly as `getParcel` scopes it.
    *
    * Exists so the documents surface asks "may this session see this parcel"

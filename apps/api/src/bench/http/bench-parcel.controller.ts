@@ -80,6 +80,7 @@ import type {
 import { CompleteParcelDto } from './dto/complete-parcel.dto';
 import { ReopenParcelDto } from './dto/reopen-parcel.dto';
 import { VerifyUnitDto } from './dto/verify-unit.dto';
+import { SourceChangeTakenOutDto } from './dto/source-change-taken-out.dto';
 import { toParcelResponseDto } from './dto/bench-parcel.mapper';
 import {
   BenchActivityEntryResponseDto,
@@ -346,6 +347,34 @@ export class BenchParcelController {
   async getActivity(@Param('workId') workId: string): Promise<BenchActivityEntryResponseDto[]> {
     const entries = await this.run(() => this.parcels.listActivity(workId));
     return entries.map((entry) => this.toActivityDto(entry));
+  }
+
+  @Post(':workId/source-change/taken-out')
+  @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: 'Confirm the extra units of a changed item are out of the box',
+    description:
+      'For a box held because the shop lowered an item after packing started (#3961). Voids the ' +
+      'scans of that ONE line beyond what the order now asks for, then re-checks the order: when the ' +
+      'box now matches, the change is applied and the hold released. Answers the parcel as it now ' +
+      'stands; a parcel that is not held for a source change is returned unchanged.',
+  })
+  @ApiResponse({ status: 201, type: BenchParcelResponseDto })
+  @ApiResponse({ status: 401, description: 'The confirmation must name the packer' })
+  @ApiResponse({ status: 404, description: 'No such parcel at this bench' })
+  async confirmSourceChangeTakenOut(
+    @Param('workId') workId: string,
+    @Body() body: SourceChangeTakenOutDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<BenchParcelResponseDto> {
+    if (!user?.id) {
+      throw new UnauthorizedException('The confirmation must name the packer');
+    }
+    return this.toParcelDto(
+      await this.run(() =>
+        this.parcels.confirmSourceChangeTakenOut({ workId, workLineId: body.workLineId, actorUserId: user.id })
+      )
+    );
   }
 
   @Post(':workId/verifications/undo')

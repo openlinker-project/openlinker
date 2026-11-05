@@ -32766,6 +32766,201 @@ legend.analytics-settings-dialog__label {
   font-size: 0.75rem;
 }
 
+/* #3961 - "Changed in {channel}": one card per change from the shop. What
+   changed, what OpenLinker did, what is left. Mockup:
+   docs/plans/mockups/source-quantity-change.html. */
+.order-source-change {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  max-width: 44rem;
+}
+
+.order-source-change--warning {
+  border-color: var(--status-warning-border);
+  background: var(--status-warning-soft);
+}
+
+.order-source-change__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.order-source-change__title {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.order-source-change__when {
+  margin-right: auto;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.order-source-change__lines {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) 0;
+  display: grid;
+  gap: var(--space-1);
+  border-block: 1px solid var(--border-default);
+}
+
+.order-source-change--warning .order-source-change__lines {
+  border-color: var(--status-warning-border);
+}
+
+.order-source-change__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.order-source-change__item {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+}
+
+.order-source-change__nums {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 1.375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.order-source-change__nums s,
+.order-source-change__nums span {
+  font-size: 1rem;
+  color: var(--text-muted);
+}
+
+.order-source-change__nums strong {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.order-source-change__effects {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  font-size: 0.875rem;
+}
+
+.order-source-change__effect {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+}
+
+.order-source-change__effect--none {
+  color: var(--text-secondary);
+}
+
+.order-source-change__mark {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--bg-surface-muted);
+  color: var(--text-muted);
+}
+
+.order-source-change__effect--done .order-source-change__mark {
+  background: var(--status-success-soft);
+  color: var(--status-success-fg);
+  box-shadow: inset 0 0 0 1px var(--status-success-border);
+}
+
+.order-source-change__effect--todo .order-source-change__mark {
+  background: var(--status-warning-strong);
+  color: var(--bg-surface);
+}
+
+.order-source-change__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* #3961 - the bench's one hard signal while a box holds more than the order
+   now asks for: how many to take out, of what, from which shelf. */
+.bench-source-change__stack {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.bench-source-change {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 2px solid var(--status-warning-strong);
+  border-radius: var(--radius-md);
+  background: var(--status-warning-soft);
+}
+
+.bench-source-change__count {
+  display: grid;
+  justify-items: center;
+  min-width: 5.5rem;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--status-warning-strong);
+  color: var(--bg-surface);
+}
+
+.bench-source-change__count-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.bench-source-change__count-value {
+  font-size: 2.5rem;
+  line-height: 1;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.bench-source-change__body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-primary);
+}
+
+.bench-source-change__title {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.bench-source-change__note {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.bench-source-change__action {
+  grid-column: 1 / -1;
+  justify-self: start;
+  min-height: 44px;
+}
+
 .order-edit-totals-note {
   margin: 0;
   font-size: 0.75rem;

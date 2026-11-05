@@ -1047,6 +1047,18 @@ export interface FulfillmentWorkRepositoryPort {
   ): Promise<LatestActiveParcelVerification | null>;
 
   /**
+   * The most recent ACTIVE verification on ONE line of a work (#3961), or
+   * `null`. The line-scoped sibling of {@link findLatestActiveVerification}:
+   * a box the shop lowered must lose a unit of THAT item, whichever line the
+   * packer happened to scan last.
+   */
+  findLatestActiveVerificationForLine(
+    workId: string,
+    workLineId: string,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<LatestActiveParcelVerification | null>;
+
+  /**
    * Void ONE row by id (#3405) — the write half of undo-last-scan.
    *
    * Guarded on `"voidedAt" IS NULL`, the same at-most-once claim idiom every

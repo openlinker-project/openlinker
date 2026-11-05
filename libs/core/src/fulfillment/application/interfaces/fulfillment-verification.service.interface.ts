@@ -42,6 +42,8 @@ import type {
   UndoCompletionResult,
   UndoLastVerificationInput,
   UndoLastVerificationResult,
+  VoidSurplusOnLineInput,
+  VoidSurplusOnLineResult,
   VerifyUnitInput,
   VerifyUnitResult,
 } from '../../domain/types/fulfillment-verification.types';
@@ -95,6 +97,14 @@ export interface IFulfillmentVerificationService {
   voidLastVerification(
     input: UndoLastVerificationInput
   ): Promise<UndoLastVerificationResult>;
+
+  /**
+   * Void the active units of one line beyond `keep` (#3961), newest first, so
+   * a box the shop lowered counts only what the order now asks for. Refuses a
+   * closed parcel for the reason `voidLastVerification` does. Idempotent: a
+   * line already at or below `keep` voids nothing.
+   */
+  voidSurplusOnLine(input: VoidSurplusOnLineInput): Promise<VoidSurplusOnLineResult>;
 
   /**
    * The whole per-unit ledger for one work, newest first (#3411) — a pure

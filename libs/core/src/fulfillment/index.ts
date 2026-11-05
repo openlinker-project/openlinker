@@ -163,6 +163,9 @@ export type {
 
 export type {
   IFulfillmentOrderEditService,
+  HoldForSourceChangeInput,
+  HoldForSourceChangeResult,
+  ReleaseSourceChangeHoldsResult,
   OrderWorkEditAssessment,
   LowerLineQuantityInput,
   LowerLineQuantityResult,
