@@ -7,7 +7,7 @@
  *
  * @module apps/api/src/orders/http/dto
  */
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 import {
   LineStockRestored,
@@ -84,6 +84,7 @@ export class OrderEditHistoryEntryDto {
       'order.line_quantity_change',
       'order.delivery_method_change',
       'order.discount_change',
+      'order.gift_added',
     ],
   })
   kind!: OrderEditHistoryEntry['kind'];
@@ -130,6 +131,21 @@ export class OrderEditsViewDto {
   @ApiProperty({ type: [OrderEditHistoryEntryDto] }) history!: readonly OrderEditHistoryEntryDto[];
 }
 
+export class OrderGiftAddedDto {
+  @ApiProperty({ nullable: true, type: String, description: 'The added line id (`op-gift:{changeId}`); null in a dry run.' })
+  lineKey!: string | null;
+  @ApiProperty({ description: 'A sales document already exists and does not show this gift.' })
+  salesDocumentExists!: boolean;
+  @ApiProperty({ description: 'The gift stock hold was recorded.' })
+  reserved!: boolean;
+  @ApiProperty({
+    description:
+      'The packer is asked to pick the gift. False on an order that was already routed: its packing ' +
+      'work cannot be extended by an edit.',
+  })
+  onPickList!: boolean;
+}
+
 export class OrderEditResponseDto {
   @ApiProperty() dryRun!: boolean;
   @ApiProperty({ nullable: true, type: String, description: 'The saved change; null for a dry run.' })
@@ -144,6 +160,8 @@ export class OrderEditResponseDto {
       'retrying the same edit finishes it.',
   })
   workNarrowingFailures!: OrderEditWorkNarrowingFailureDto[];
+  @ApiPropertyOptional({ type: OrderGiftAddedDto, description: 'Add-gift edits only.' })
+  gift?: OrderGiftAddedDto;
 
   static from(result: OrderEditResult): OrderEditResponseDto {
     return Object.assign(new OrderEditResponseDto(), {
@@ -152,6 +170,7 @@ export class OrderEditResponseDto {
       view: result.view,
       stock: [...result.stock],
       workNarrowingFailures: [...result.workNarrowingFailures],
+      ...(result.gift !== undefined && { gift: result.gift }),
     });
   }
 }

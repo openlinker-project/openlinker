@@ -28,6 +28,7 @@ import {
   type OrderTag,
   type SlaStateValue,
 } from '../api/orders.types';
+import { getMessages } from '../../../shared/i18n';
 import { HOLD_REASON_COPY, isHoldReason, type HoldReason } from './order-hold.types';
 import {
   ORDER_LIFECYCLE_PHASE_META,
@@ -96,6 +97,8 @@ export interface OrderListFilterState {
   openReturn: boolean;
   /** `?hasBuyerNote=true` - only orders whose source reported a note (#3539). */
   hasBuyerNote: boolean;
+  /** `?withGift=true` - only orders carrying a gift line (#3940). */
+  withGift: boolean;
   tag?: string;
   untagged: boolean;
   /** The URL value (updates every keystroke); the query uses a debounced copy. */
@@ -317,6 +320,16 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
     chip: (s) =>
       single('hasBuyerNote', COPY.chipBuyerNote, s.hasBuyerNote ? COPY.chipBuyerNoteValue : null),
   },
+  withGift: {
+    param: 'withGift',
+    group: 'exceptions',
+    analyticsName: 'with_gift',
+    isActive: (s) => s.withGift,
+    chip: (s) => {
+      const copy = getMessages('gifts').filter;
+      return single('withGift', copy.chipLabel, s.withGift ? copy.chipValue : null);
+    },
+  },
   // `tag` and `untagged` are mutually exclusive by convention; removing either
   // chip clears BOTH params in one write so a stale pair can never survive.
   tag: {
@@ -393,6 +406,7 @@ export function parseOrderListFilterState(params: URLSearchParams): OrderListFil
     packed: rawPacked === 'true' ? true : rawPacked === 'false' ? false : undefined,
     openReturn: params.get('openReturn') === 'true',
     hasBuyerNote: params.get('hasBuyerNote') === 'true',
+    withGift: params.get('withGift') === 'true',
     tag: params.get('tag') || undefined,
     untagged: params.get('untagged') === 'true',
     search: params.get('search') ?? '',
@@ -414,6 +428,7 @@ export const ORDER_TOGGLE_FILTER_VALUES = {
   attention: 'true',
   openReturn: 'true',
   hasBuyerNote: 'true',
+  withGift: 'true',
 } as const satisfies Partial<Record<NarrowingOrderFilterKey, string>>;
 
 export type OrderToggleFilterKey = keyof typeof ORDER_TOGGLE_FILTER_VALUES;
@@ -445,6 +460,7 @@ export function toOrderQueryFilters(
     search: derived.search || undefined,
     openReturn: state.openReturn ? true : undefined,
     hasBuyerNote: state.hasBuyerNote ? true : undefined,
+    withGift: state.withGift ? true : undefined,
     tag: state.tag,
     untagged: state.untagged ? true : undefined,
   };

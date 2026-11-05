@@ -305,6 +305,10 @@ function buildQuery(
   if (filters?.hasBuyerNote !== undefined) {
     params.set('hasBuyerNote', String(filters.hasBuyerNote));
   }
+  // #3940: boolean, same `!== undefined` guard as its neighbours.
+  if (filters?.withGift !== undefined) {
+    params.set('withGift', String(filters.withGift));
+  }
   // #3532 — `tag` and `untagged` are mutually exclusive by convention.
   if (filters?.tag) params.set('tag', filters.tag);
   if (filters?.untagged !== undefined) {

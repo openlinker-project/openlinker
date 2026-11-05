@@ -32896,3 +32896,97 @@ legend.analytics-settings-dialog__label {
 @media (max-width: 768px) {
   .gift-preview__docs { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Gifts (#3940) ------------------------------------------------------------ */
+.gift-tag {
+  display: inline-flex;
+  margin-left: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.gift-tag__facts {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  min-width: 16rem;
+}
+.gift-tag__facts dt {
+  font-size: var(--font-size-xs, 0.75rem);
+  color: var(--text-muted);
+}
+.gift-tag__facts dd {
+  margin: 0;
+}
+.gift-list__order {
+  display: inline-flex;
+  gap: var(--space-1);
+  margin-left: var(--space-2);
+}
+.gift-template-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+.gift-template-card {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  text-align: left;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface);
+  cursor: pointer;
+}
+.gift-template-card:hover,
+.gift-template-card:focus-visible {
+  border-color: var(--accent, currentColor);
+}
+.gift-composer {
+  display: grid;
+  gap: var(--space-5);
+  max-width: 48rem;
+}
+.gift-composer__group {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.gift-composer__group > legend {
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+.gift-composer__actions,
+.gift-composer__resume,
+.gift-test__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+.gift-test__verdicts {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.gift-attention {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.gift-dialog__fields {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.orders-gift-mark {
+  margin-left: var(--space-1);
+  color: var(--text-muted);
+  flex: none;
+}

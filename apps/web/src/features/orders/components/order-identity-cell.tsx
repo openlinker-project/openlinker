@@ -51,6 +51,7 @@
  *
  * @module features/orders/components
  */
+import { useMessages } from '../../../shared/i18n';
 import type { ReactElement } from 'react';
 import { EmptyValue } from '../../../shared/ui/empty-value';
 import { EntityLabel, shortenId } from '../../../shared/ui/entity-label';
@@ -100,6 +101,32 @@ export interface OrderIdentityCellProps {
    * belong in the Status group.
    */
   tags?: readonly Pick<OrderTag, 'id' | 'name' | 'color'>[];
+  /**
+   * The order carries a gift line (#3940): a small gift mark beside the product
+   * name, so the filter's result is recognisable without opening the order.
+   */
+  hasGift?: boolean;
+}
+
+function GiftMark({ label, testId }: { label: string; testId: string }): ReactElement {
+  return (
+    <svg
+      className="orders-gift-mark"
+      role="img"
+      aria-label={label}
+      data-testid={testId}
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
+      <title>{label}</title>
+      <rect x="2" y="6" width="12" height="8" rx="1" />
+      <path d="M1.5 4h13v2h-13zM8 4v10M8 4C6 4 4.5 3 5.5 2s2.5 1 2.5 2zM8 4c2 0 3.5-1 2.5-2S8 3 8 4z" />
+    </svg>
+  );
 }
 
 export function OrderIdentityCell({
@@ -111,7 +138,9 @@ export function OrderIdentityCell({
   onNavigate,
   className = '',
   tags,
+  hasGift = false,
 }: OrderIdentityCellProps): ReactElement {
+  const giftCopy = useMessages('gifts');
   if (!orderId) return <EmptyValue />;
 
   // Trim what is RENDERED, not just what is tested: a padded order number would
@@ -175,6 +204,7 @@ export function OrderIdentityCell({
                 +{moreCount}
               </span>
             ) : null}
+            {hasGift ? <GiftMark label={giftCopy.filter.rowIcon} testId={`orders-gift-row-icon-${orderId}`} /> : null}
           </span>
         ) : totalItems > 1 ? (
           /* Deviation 2 (see the file header): a known count with no name to

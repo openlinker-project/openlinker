@@ -388,6 +388,7 @@ export const ORDER_EDIT_HISTORY_TITLES: Record<string, string> = {
   'order.line_quantity_change': 'Item quantities lowered',
   'order.delivery_method_change': 'Delivery method changed',
   'order.discount_change': 'Discount changed',
+  'order.gift_added': 'Gift added',
 };
 
 export function orderEditHistoryTitle(entry: OrderEditHistoryEntry): string {

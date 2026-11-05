@@ -711,6 +711,27 @@ describe('OrdersController', () => {
       );
     });
 
+    it('should map ?withGift= onto the repository, forwarding false as a predicate (#3940)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ withGift: true, limit: 20, offset: 0 });
+      await controller.listOrders({ withGift: false, limit: 20, offset: 0 });
+      await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(repository.findMany).toHaveBeenNthCalledWith(1, expect.objectContaining({ withGift: true }), {
+        limit: 20,
+        offset: 0,
+      });
+      expect(repository.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({ withGift: false }), {
+        limit: 20,
+        offset: 0,
+      });
+      expect(repository.findMany).toHaveBeenNthCalledWith(3, expect.objectContaining({ withGift: undefined }), {
+        limit: 20,
+        offset: 0,
+      });
+    });
+
     it('should pass the dispatch-SLA sort and dueBefore filter through to the repository (#927)', async () => {
       repository.findMany.mockResolvedValue({ items: [], total: 0 });
 

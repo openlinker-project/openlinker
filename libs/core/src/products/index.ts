@@ -40,6 +40,7 @@ export type {
   ComponentLineRef,
   PhysicalLine,
   LineExpansion,
+  BundleGiftDocumentForm,
 } from './domain/types/bundle.types';
 export {
   COMPONENT_LINE_ID_SEPARATOR,
@@ -50,6 +51,8 @@ export {
   componentRefsFor,
   expandBundleLines,
   readLineExpansion,
+  BundleGiftDocumentFormValues,
+  isBundleGiftDocumentForm,
 } from './domain/types/bundle.types';
 export type { BundleDefinitionRepositoryPort } from './domain/ports/bundle-definition-repository.port';
 export type {

@@ -48,6 +48,8 @@ export const PermissionValues = [
   'orders:export',
   // DISPLAY-ONLY (#3520): bundle/multipack write affordances (admin + operator).
   'bundles:write',
+  // DISPLAY-ONLY (#3940): gift promotions and "Add gift" (admin + operator).
+  'gifts:write',
 ] as const;
 
 export type Permission = (typeof PermissionValues)[number];

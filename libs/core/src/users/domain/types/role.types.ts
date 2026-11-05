@@ -129,6 +129,10 @@ export const PermissionValues = [
   // stay identical to the `@Roles('admin', 'operator')` lists on
   // `BundleDefinitionsController` and the multipack-hold confirm route.
   'bundles:write',
+  // DISPLAY-ONLY (#3940): gates the gift promotions and "Add gift" affordances.
+  // The roles holding this MUST stay identical to the `@Roles('admin', 'operator')`
+  // lists on `GiftRulesController` and the order-edit gift route.
+  'gifts:write',
 ] as const;
 
 /**
@@ -172,6 +176,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     // D35: admin and operator only — see `PermissionValues`'s own comment.
     'orders:export',
     'bundles:write',
+    'gifts:write',
   ],
   viewer: [
     'connections:read',

@@ -9,6 +9,23 @@
  * @module libs/core/src/products/domain/types
  */
 
+/**
+ * How a sales document shows a gift slot (#3940, gifts spec 8.3 level 1). The
+ * same four forms the orders context names; restated here because `products`
+ * cannot import `orders` (which imports it). The orders side narrows again.
+ */
+export const BundleGiftDocumentFormValues = [
+  'technical-cent',
+  'priced-in',
+  'show-zero',
+  'omit',
+] as const;
+export type BundleGiftDocumentForm = (typeof BundleGiftDocumentFormValues)[number];
+
+export function isBundleGiftDocumentForm(value: unknown): value is BundleGiftDocumentForm {
+  return typeof value === 'string' && (BundleGiftDocumentFormValues as readonly string[]).includes(value);
+}
+
 /** One component of a bundle: units of a master variant per ONE bundle unit. */
 export interface BundleComponent {
   variantId: string;
@@ -17,6 +34,11 @@ export interface BundleComponent {
   quantity: number;
   /** This component is the free gift of the set (#3934 owns its presentation). */
   giftSlot?: boolean;
+  /**
+   * How a document shows this gift slot. Meaningful only with `giftSlot`;
+   * absent means "as in settings" (#3940).
+   */
+  documentForm?: BundleGiftDocumentForm;
 }
 
 /** The composition of a bundle variant, one immutable row per version. */
@@ -70,6 +92,8 @@ export interface ExpandableLine {
 export type PhysicalLine<T extends ExpandableLine> = T & {
   parentLineId?: string;
   giftSlot?: boolean;
+  /** The gift slot's own document form, carried from the frozen definition (#3940). */
+  giftDocumentForm?: BundleGiftDocumentForm;
 };
 
 /**
@@ -115,6 +139,9 @@ export function expandBundleLines<T extends ExpandableLine>(
               ...existing,
               quantity: existing.quantity + component.quantity,
               giftSlot: existing.giftSlot === true && component.giftSlot === true ? true : undefined,
+              // Two slots that disagree on the form fall back to "as in settings".
+              documentForm:
+                existing.documentForm === component.documentForm ? existing.documentForm : undefined,
             }
       );
     }
@@ -129,6 +156,9 @@ export function expandBundleLines<T extends ExpandableLine>(
       };
       if (component.giftSlot === true) {
         line.giftSlot = true;
+        if (isBundleGiftDocumentForm(component.documentForm)) {
+          line.giftDocumentForm = component.documentForm;
+        }
       }
       physical.push(line);
     }

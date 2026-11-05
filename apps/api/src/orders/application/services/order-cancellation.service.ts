@@ -622,6 +622,7 @@ export class OrderCancellationService implements IOrderCancellationService {
       case 'order.line_quantity_change':
       case 'order.delivery_method_change':
       case 'order.discount_change':
+      case 'order.gift_added':
         throw new OrderCancellationRefusedError(
           'CHANGE_KIND_NOT_CONFIRMABLE',
           `A change of kind ${change.kind} is not confirmed here.`

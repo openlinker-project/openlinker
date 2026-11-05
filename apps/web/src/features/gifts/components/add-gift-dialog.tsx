@@ -1,0 +1,214 @@
+/**
+ * AddGiftDialog (#3940, mockup M31 `order/add-gift*`)
+ *
+ * An operator adds a gift to an order by hand: the product, the quantity and how
+ * the document shows it. Allowed until the parcel is closed; after that the
+ * dialog says so and offers nothing to submit. When a sales document already
+ * exists ONE warning says it will not show the gift, and the add still goes
+ * ahead: the document is the operator's to correct.
+ *
+ * @module apps/web/src/features/gifts/components
+ */
+import { useEffect, useState, type ReactElement } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useApiClient } from '../../../app/api/api-client-provider';
+import { formatAmount } from '../../../shared/format/format-amount';
+import { interpolate, useMessages } from '../../../shared/i18n';
+import { Alert } from '../../../shared/ui/alert';
+import { Button } from '../../../shared/ui/button';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from '../../../shared/ui/dialog';
+import { Input } from '../../../shared/ui/input';
+import { useToast } from '../../../shared/ui/toast-provider';
+import { BundleProductPicker, type BundleProductChoice } from '../../bundles';
+import { GiftDocumentFormField, type GiftDocumentFormChoice } from '../../gift-documents';
+import { useAddGiftMutation } from '../hooks/use-gift-rules';
+import { readAddGiftRefusal } from '../lib/gift-refusal';
+
+export interface AddGiftDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  internalOrderId: string;
+  /** Order number for the title. */
+  orderLabel: string;
+  currency?: string;
+  /** The parcel is already packed or shipped: nothing can be added. */
+  parcelClosed: boolean;
+  /** A sales document already exists for the order. */
+  hasSalesDocument: boolean;
+}
+
+export function AddGiftDialog({
+  open,
+  onOpenChange,
+  internalOrderId,
+  orderLabel,
+  currency,
+  parcelClosed,
+  hasSalesDocument,
+}: AddGiftDialogProps): ReactElement {
+  const copy = useMessages('gifts');
+  const apiClient = useApiClient();
+  const { showToast } = useToast();
+  const mutation = useAddGiftMutation(internalOrderId);
+  const [choice, setChoice] = useState<BundleProductChoice | null>(null);
+  const [quantity, setQuantity] = useState('1');
+  const [form, setForm] = useState<GiftDocumentFormChoice | ''>('');
+
+  const { reset } = mutation;
+  useEffect(() => {
+    if (open) {
+      setChoice(null);
+      setQuantity('1');
+      setForm('');
+      reset();
+    }
+  }, [open, reset]);
+
+  const costs = useQuery({
+    queryKey: ['gifts', 'variant-cost', choice?.productId ?? ''],
+    queryFn: () => apiClient.products.getVariantCosts(choice?.productId ?? ''),
+    enabled: choice !== null,
+  });
+  const unitCost = costs.data?.find((c) => c.variantId === choice?.variantId)?.netUnitCost ?? null;
+  const qty = Number(quantity);
+  const validQuantity = Number.isInteger(qty) && qty > 0;
+
+  const refusal = mutation.isError ? readAddGiftRefusal(mutation.error) : null;
+  const closed = parcelClosed || refusal?.kind === 'parcel-closed';
+  const canSubmit = !closed && choice !== null && validQuantity && !mutation.isPending;
+
+  const submit = (): void => {
+    if (choice === null || !validQuantity) return;
+    mutation.mutate(
+      { variantId: choice.variantId, quantity: qty, ...(form !== '' && { documentForm: form }) },
+      {
+        onSuccess: (result) => {
+          showToast({
+            tone: result.gift?.salesDocumentExists ? 'warning' : 'success',
+            title: copy.addDialog.added,
+            description:
+              result.gift?.onPickList === false
+                ? copy.addDialog.notOnPickList
+                : result.gift?.salesDocumentExists
+                  ? copy.addDialog.documentWarning
+                  : copy.addDialog.addedBody,
+          });
+          onOpenChange(false);
+        },
+      },
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent data-testid="order-gift-dialog">
+        <div>
+          <DialogTitle>{interpolate(copy.addDialog.title, { order: orderLabel })}</DialogTitle>
+          <DialogDescription>{copy.addDialog.description}</DialogDescription>
+
+          {closed ? (
+            <Alert tone="error" title={copy.addDialog.closedTitle} data-testid="order-gift-dialog-refused-closed">
+              {copy.addDialog.closedBody}
+            </Alert>
+          ) : hasSalesDocument ? (
+            <Alert tone="warning" title={copy.addDialog.documentTitle} data-testid="order-gift-dialog-warning-document">
+              {copy.addDialog.documentWarning}
+            </Alert>
+          ) : null}
+
+          {refusal?.kind === 'other' ? (
+            <Alert tone="error" data-testid="order-gift-dialog-error">
+              {refusal.message}
+            </Alert>
+          ) : null}
+
+          <div className="gift-dialog__fields">
+            <div data-testid="order-gift-dialog-product">
+              {choice === null ? (
+                <BundleProductPicker
+                  label={copy.addDialog.product}
+                  placeholder={copy.addDialog.productPlaceholder}
+                  disabled={closed}
+                  onPick={setChoice}
+                  testIdPrefix="order-gift-dialog-search"
+                />
+              ) : (
+                <div className="gift-picked">
+                  <span className="form-field__label">{copy.addDialog.product}</span>
+                  <p>
+                    <strong>{choice.name}</strong>{' '}
+                    <span className="mono-text text-muted">{choice.sku ?? ''}</span>
+                  </p>
+                  <Button tone="secondary" onClick={() => setChoice(null)}>
+                    {copy.addDialog.changeProduct}
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <label className="form-field__label" htmlFor="order-gift-dialog-qty">
+              {copy.addDialog.quantity}
+            </label>
+            <Input
+              id="order-gift-dialog-qty"
+              data-testid="order-gift-dialog-qty"
+              type="number"
+              min={1}
+              value={quantity}
+              disabled={closed}
+              onChange={(event) => setQuantity(event.target.value)}
+            />
+
+            <label className="form-field__label" htmlFor="order-gift-dialog-doc-form">
+              {copy.addDialog.onDocument}
+            </label>
+            <GiftDocumentFormField
+              id="order-gift-dialog-doc-form"
+              data-testid="order-gift-dialog-doc-form"
+              value={form}
+              disabled={closed}
+              onChange={setForm}
+            />
+
+            <p className="text-muted" data-testid="order-gift-dialog-reason">
+              {copy.addDialog.reason}
+            </p>
+            {choice !== null ? (
+              <p data-testid="order-gift-dialog-cost">
+                {interpolate(copy.order.customerPays, { price: formatAmount(0, currency) })}
+                {' · '}
+                {unitCost === null || !validQuantity
+                  ? copy.order.costUnknown
+                  : interpolate(copy.order.costsYou, {
+                      cost: formatAmount(Number(unitCost) * qty, currency),
+                    })}
+              </p>
+            ) : null}
+          </div>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button type="button" tone="secondary" data-testid="order-gift-dialog-cancel">
+              {copy.addDialog.cancel}
+            </Button>
+          </DialogClose>
+          <Button
+            type="button"
+            disabled={!canSubmit}
+            data-testid="order-gift-dialog-submit"
+            onClick={submit}
+          >
+            {copy.addDialog.submit}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

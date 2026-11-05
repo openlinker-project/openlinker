@@ -79,6 +79,7 @@ function toDto(definition: BundleDefinition): BundleDefinitionResponseDto {
       productId: c.productId,
       quantity: c.quantity,
       ...(c.giftSlot === true && { giftSlot: true }),
+      ...(c.giftSlot === true && c.documentForm !== undefined && { documentForm: c.documentForm }),
     })),
   };
 }
@@ -364,6 +365,7 @@ export class BundleDefinitionsController {
         productId: c.productId,
         quantity: c.quantity,
         ...(c.giftSlot === true && { giftSlot: true }),
+        ...(c.giftSlot === true && c.documentForm !== undefined && { documentForm: c.documentForm }),
         summary: summaries.get(c.variantId) ?? emptySummary,
         availableToPromise: atp,
         bundlesSupported: atp === null ? null : Math.floor(atp / c.quantity),

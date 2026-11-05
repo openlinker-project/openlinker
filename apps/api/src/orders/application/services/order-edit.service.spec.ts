@@ -7,6 +7,7 @@
  *
  * @module apps/api/src/orders/application/services
  */
+import type { IProductsService } from '@openlinker/core/products';
 import {
   OrderChange,
   OrderRecord,
@@ -100,6 +101,97 @@ function issuedInvoice(
 }
 
 describe('OrderEditService (#3542)', () => {
+  describe('addGift (#3940)', () => {
+    const giftInput = { ...({ internalOrderId: ORDER_ID, actorUserId: 'user-1', dryRun: false } as const), variantId: 'v-gift', quantity: 2 };
+
+    it('should write an op-gift line keyed on the change id and hold its stock when the order is open', async () => {
+      const result = await service.addGift({ ...giftInput, documentForm: 'priced-in' });
+
+      const written = orderRecords.applyOrderEdit.mock.calls[0][0];
+      expect(Object.keys(written.addedLines ?? {})).toEqual(['op-gift:chg-1']);
+      expect(written.addedLines?.['op-gift:chg-1']).toMatchObject({
+        changeId: 'chg-1',
+        variantId: 'v-gift',
+        quantity: 2,
+        gift: { source: 'operator', documentForm: 'priced-in' },
+      });
+      expect(reservations.reserveForOrder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          atpEffect: 'diagnostic',
+          lines: [expect.objectContaining({ orderLineId: 'op-gift:chg-1', productVariantId: 'v-gift', quantity: 2 })],
+        })
+      );
+      expect(result.gift).toEqual({
+        lineKey: 'op-gift:chg-1',
+        salesDocumentExists: false,
+        reserved: true,
+        onPickList: true,
+      });
+    });
+
+    it('should refuse with ORDER_PACKED when the parcel is already closed', async () => {
+      fulfillment.assessForEdit.mockResolvedValue(assessment({ anyParcelClosed: true }));
+
+      expect(await refusal(service.addGift(giftInput))).toBe('ORDER_PACKED');
+      expect(orderRecords.applyOrderEdit).not.toHaveBeenCalled();
+    });
+
+    it('should add the gift and report the warning when a sales document already exists', async () => {
+      invoices.findBlockingInvoiceForOrder.mockResolvedValue(issuedInvoice() as never);
+
+      const result = await service.addGift(giftInput);
+
+      expect(result.gift?.salesDocumentExists).toBe(true);
+      expect(orderRecords.applyOrderEdit).toHaveBeenCalled();
+    });
+
+    it('should put the gift on the open work when OpenLinker packs the routed order itself', async () => {
+      fulfillment.assessForEdit.mockResolvedValue(assessment({ unrouted: false }));
+
+      const result = await service.addGift(giftInput);
+
+      expect(fulfillment.addLineToOpenWork).toHaveBeenCalledWith(
+        expect.objectContaining({ orderLineId: 'op-gift:chg-1', productVariantId: 'v-gift', quantity: 2 })
+      );
+      const accepts = fulfillment.addLineToOpenWork.mock.calls[0][0].acceptsHolder;
+      integrations.resolveAdapterMetadata.mockResolvedValue({ adapterKey: 'openlinker.oms.v1' });
+      await expect(accepts('holder')).resolves.toBe(true);
+      await expect(accepts(null)).resolves.toBe(false);
+      expect(result.gift?.onPickList).toBe(true);
+    });
+
+    it('should say the gift is not on the pick list when the work is held outside or already closed', async () => {
+      fulfillment.assessForEdit.mockResolvedValue(assessment({ unrouted: false }));
+      fulfillment.addLineToOpenWork.mockResolvedValue({ outcome: 'no-eligible-work', workId: null });
+
+      const result = await service.addGift(giftInput);
+
+      expect(result.gift?.onPickList).toBe(false);
+      expect(reservations.reserveForOrder).toHaveBeenCalledWith(expect.objectContaining({ atpEffect: 'published' }));
+    });
+
+    it('should save nothing on a dry run', async () => {
+      const result = await service.addGift({ ...giftInput, dryRun: true });
+
+      expect(orderRecords.applyOrderEdit).not.toHaveBeenCalled();
+      expect(reservations.reserveForOrder).not.toHaveBeenCalled();
+      expect(result.gift?.lineKey).toBeNull();
+    });
+
+    it('should not fail the edit when holding the stock throws', async () => {
+      reservations.reserveForOrder.mockRejectedValue(new Error('no stock'));
+
+      const result = await service.addGift(giftInput);
+
+      expect(result.gift?.reserved).toBe(false);
+      expect(changes.confirm).toHaveBeenCalled();
+    });
+
+    it('should refuse a zero quantity', async () => {
+      await expect(service.addGift({ ...giftInput, quantity: 0 })).rejects.toThrow(/whole number/);
+    });
+  });
+
   let orderRecords: jest.Mocked<Pick<IOrderRecordService, 'getOrderRecord' | 'applyOrderEdit'>>;
   let changes: jest.Mocked<IOrderChangeService>;
   let shipments: jest.Mocked<Pick<IShipmentQueryService, 'getOutboundByOrderId'>>;
@@ -108,7 +200,8 @@ describe('OrderEditService (#3542)', () => {
   >;
   let fiscal: jest.Mocked<Pick<IFiscalRegistrationService, 'getByOrderId'>>;
   let fulfillment: jest.Mocked<IFulfillmentOrderEditService>;
-  let reservations: jest.Mocked<Pick<IReservationService, 'narrowForOrder'>>;
+  let reservations: jest.Mocked<Pick<IReservationService, 'narrowForOrder' | 'reserveForOrder'>>;
+  let products: { getVariant: jest.Mock; getProduct: jest.Mock; getEffectiveTaxRate: jest.Mock };
   let reversal: jest.Mocked<Pick<IInventorySaleReversalService, 'reverseLineQuantity'>>;
   let connections: { get: jest.Mock };
   let integrations: { resolveAdapterMetadata: jest.Mock };
@@ -154,12 +247,22 @@ describe('OrderEditService (#3542)', () => {
     fiscal = { getByOrderId: jest.fn().mockResolvedValue([]) };
     fulfillment = {
       assessForEdit: jest.fn().mockResolvedValue(assessment()),
+      addLineToOpenWork: jest.fn().mockResolvedValue({ outcome: 'added', workId: 'w1' }),
       lowerLineQuantity: jest.fn().mockImplementation(() => {
         calls.push('work');
         return Promise.resolve({ outcome: 'applied', cancelledUnits: 2, workIds: ['w1'] });
       }),
     };
+    products = {
+      getVariant: jest.fn().mockResolvedValue({ id: 'v-gift', productId: 'p-gift', sku: 'GIFT-1' }),
+      getProduct: jest.fn().mockResolvedValue({ id: 'p-gift', name: 'Mug' }),
+      getEffectiveTaxRate: jest.fn().mockResolvedValue(null),
+    };
     reservations = {
+      reserveForOrder: jest.fn().mockImplementation(() => {
+        calls.push('reserve');
+        return Promise.resolve({ granted: [{}], skipped: [] });
+      }),
       narrowForOrder: jest.fn().mockImplementation(() => {
         calls.push('reservation');
         return Promise.resolve({ narrowed: 1, released: 0, untouched: 0, failed: 0 });
@@ -188,7 +291,8 @@ describe('OrderEditService (#3542)', () => {
       connections as unknown as IConnectionService,
       integrations as unknown as IIntegrationsService,
       lock as unknown as SyncLockPort,
-      refunds as unknown as IOrderRefundService
+      refunds as unknown as IOrderRefundService,
+      products as unknown as IProductsService
     );
   });
 

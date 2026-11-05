@@ -510,6 +510,23 @@ export type {
   IOrderBundleDocumentService,
   GiftSlotCostLine,
 } from './application/services/order-bundle-document.service.interface';
+export type { IGiftReportService } from './application/services/gift-report.service.interface';
+export {
+  summarizeGiftReport,
+  GiftReportSourceFilterValues,
+} from './domain/types/gift-report.types';
+export type {
+  BundleComponentDemandRow,
+  BundleReport,
+  BundleReportRow,
+  GiftCostBasis,
+  GiftReportEntry,
+  GiftReportFilters,
+  GiftReportGroup,
+  GiftReportSourceFilter,
+  GiftReportSummary,
+  GiftReportTotals,
+} from './domain/types/gift-report.types';
 export type {
   IOrderGiftService,
   ApplyGiftRulesInput,
@@ -691,6 +708,7 @@ export {
   addressEditTargetRef,
   lineQuantityEditTargetRef,
   deliveryMethodEditTargetRef,
+  giftEditTargetRef,
   discountEditTargetRef,
   discountRefundTargetRef,
   discountCorrectionTargetRef,

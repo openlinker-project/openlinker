@@ -19,6 +19,8 @@ export interface OrderBundleComponent {
   /** Units of this component in ONE bundle unit. */
   perUnit: number;
   giftSlot?: boolean;
+  /** The gift slot's own document form, frozen with the definition (#3940). */
+  giftDocumentForm?: 'technical-cent' | 'priced-in' | 'show-zero' | 'omit';
 }
 
 export interface OrderBundleLine {

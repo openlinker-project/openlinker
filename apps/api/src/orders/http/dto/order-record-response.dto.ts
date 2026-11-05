@@ -67,6 +67,8 @@ export class OrderBundleComponentDto {
   @ApiProperty({ description: 'Units for the whole line' }) quantity!: number;
   @ApiProperty({ description: 'Units in ONE bundle unit' }) perUnit!: number;
   @ApiPropertyOptional() giftSlot?: boolean;
+  @ApiPropertyOptional({ description: 'The gift slot\'s own document form (#3940); absent means as in settings' })
+  giftDocumentForm?: 'technical-cent' | 'priced-in' | 'show-zero' | 'omit';
 }
 
 export class OrderBundleLineDto {

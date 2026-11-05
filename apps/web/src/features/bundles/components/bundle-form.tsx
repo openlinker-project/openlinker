@@ -22,6 +22,7 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { formatPlural, interpolate, useFormat, useLocale, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
+import { GiftDocumentFormField, GiftDocumentFormChoiceValues, type GiftDocumentFormChoice } from '../../gift-documents';
 import { Button } from '../../../shared/ui/button';
 import {
   DropdownMenu,
@@ -44,6 +45,10 @@ import { toBundleChoice, type BundleProductChoice } from '../lib/bundle-choice';
 import { splitBundlePrice } from '../lib/bundle-price-split';
 import { BundleHistory } from './bundle-history';
 import { BundleProductPicker } from './bundle-product-picker';
+
+function isGiftDocumentFormChoice(value: string): value is GiftDocumentFormChoice {
+  return (GiftDocumentFormChoiceValues as readonly string[]).includes(value);
+}
 
 export interface BundleFormSeedComponent {
   /** The exact variant, when the caller knows it (the multipack hold does). */
@@ -75,6 +80,7 @@ const formSchema = z.object({
         isBundle: z.boolean(),
         quantity: quantitySchema,
         gift: z.boolean(),
+        documentForm: z.string(),
       }),
     )
     .min(1),
@@ -111,6 +117,7 @@ function readErrorCode(error: ApiError | null): { code: string | null; reason: s
 
 export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps): ReactElement {
   const copy = useMessages('bundles');
+  const giftDocumentsCopy = useMessages('giftDocuments');
   const { locale } = useLocale();
   const format = useFormat();
   const apiClient = useApiClient();
@@ -207,12 +214,13 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
           isBundle: false,
           quantity: String(component.quantity),
           gift: component.giftSlot === true,
+          documentForm: component.documentForm ?? '',
         })),
       });
     } else if (seed.data && seedComponent) {
       form.reset({
         components: [
-          { ...seed.data, quantity: String(seedComponent.quantity), gift: false },
+          { ...seed.data, quantity: String(seedComponent.quantity), gift: false, documentForm: '' },
         ],
       });
     }
@@ -261,7 +269,7 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
       return;
     }
     setNestedError(null);
-    components.append({ ...choice, quantity: '1', gift: false });
+    components.append({ ...choice, quantity: '1', gift: false, documentForm: '' });
   };
 
   const pickBundleProduct = (choice: BundleProductChoice): void => {
@@ -316,6 +324,9 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
           variantId: row.variantId,
           quantity: Number(row.quantity),
           ...(row.gift ? { giftSlot: true } : {}),
+          ...(row.gift && isGiftDocumentFormChoice(row.documentForm)
+            ? { documentForm: row.documentForm }
+            : {}),
         })),
       },
       {
@@ -538,6 +549,22 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
                         <StatusBadge tone="success" compact data-testid={`bundle-form-component-gift-${key}`}>
                           {copy.form.gift}
                         </StatusBadge>
+                      ) : null}
+                      {row?.gift ? (
+                        <span className="bundle-component__doc-form" style={{ display: 'block', marginTop: 'var(--space-1)' }}>
+                          <label className="form-field__label" htmlFor={`bf-doc-form-${key}`}>
+                            {giftDocumentsCopy.perGift.label}
+                          </label>
+                          <GiftDocumentFormField
+                            id={`bf-doc-form-${key}`}
+                            data-testid={`bundle-form-component-doc-form-${key}`}
+                            value={isGiftDocumentFormChoice(row.documentForm) ? row.documentForm : ''}
+                            disabled={readOnly}
+                            onChange={(next) =>
+                              form.setValue(`components.${index}.documentForm`, next, { shouldDirty: true })
+                            }
+                          />
+                        </span>
                       ) : null}
                     </span>
                     <Input

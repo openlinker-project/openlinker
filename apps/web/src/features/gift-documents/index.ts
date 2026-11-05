@@ -11,3 +11,12 @@ export { GiftDocumentsDefaultPanel } from './components/gift-documents-default-p
 export { GiftsOnDocumentsPanel } from './components/gifts-on-documents-panel';
 export { useGiftFormLabels, type GiftFormLabels } from './lib/use-gift-form-labels';
 export { resolveGiftDocumentForm, type GiftFormSource, type ResolvedGiftForm } from './lib/gift-lines';
+export { GiftDocumentFormField } from './components/gift-document-form-field';
+export {
+  GiftDocumentFormChoiceValues,
+  isGiftLineForm,
+  type GiftDocumentFormChoice,
+  type GiftLineForm,
+} from './lib/gift-lines';
+export { useGiftDocumentSettingsQuery } from './hooks/use-gift-documents-queries';
+export { readGiftConnectionOverride } from './lib/gift-on-documents-config';

@@ -108,6 +108,8 @@ export const COST_COVERAGE_SERVICE_TOKEN = Symbol('ICostCoverageService');
 export const ORDER_LINE_COST_SERVICE_TOKEN = Symbol('IOrderLineCostService');
 // Bundle components for documents and the gift slot cost read (#3934).
 export const ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN = Symbol('IOrderBundleDocumentService');
+export const ORDER_GIFT_REPORT_READER_TOKEN = Symbol('OrderGiftReportReaderPort');
+export const GIFT_REPORT_SERVICE_TOKEN = Symbol('IGiftReportService');
 // Analytics display-currency conversion read model (#2458, ADR-064).
 export const DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN = Symbol(
   'IDisplayCurrencyConversionService'

@@ -47,10 +47,24 @@ describe('OrderEditsController (#3542)', () => {
       editLines: jest.fn().mockResolvedValue(result),
       editDeliveryMethod: jest.fn().mockResolvedValue(result),
       editDiscount: jest.fn(),
+      addGift: jest.fn().mockResolvedValue(result),
       getEditsView: jest.fn(),
     };
     orderRecords = { getOrderRecord: jest.fn() };
     controller = new OrderEditsController(edits, orderRecords as unknown as IOrderRecordService);
+  });
+
+  it('should add a gift as the signed-in user and pass the document form through', async () => {
+    await controller.addGift('ol_order_1', { variantId: 'v-1', quantity: 2, documentForm: 'show-zero' }, user);
+
+    expect(edits.addGift).toHaveBeenCalledWith({
+      internalOrderId: 'ol_order_1',
+      actorUserId: 'user-1',
+      dryRun: false,
+      variantId: 'v-1',
+      quantity: 2,
+      documentForm: 'show-zero',
+    });
   });
 
   it('should take the actor from the session and pass dryRun through, not into the address', async () => {

@@ -294,6 +294,7 @@ export function toOrderRecordFilters(
     lifecyclePhase: query.phase,
     taxRateConflict: query.taxRateConflict,
     omsAttention: query.attention,
+    withGift: query.withGift,
     activeHoldReason: query.hold,
     packed: query.packed,
     hasBuyerNote: query.hasBuyerNote,
@@ -1917,6 +1918,7 @@ export class OrdersController {
         quantity: component.quantity,
         perUnit: component.perUnit,
         ...(component.giftSlot === true && { giftSlot: true }),
+        ...(component.giftDocumentForm !== undefined && { giftDocumentForm: component.giftDocumentForm }),
       })),
     }));
   }

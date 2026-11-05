@@ -1,0 +1,56 @@
+/**
+ * OrderAddGiftAction (#3940, mockup M31 `order-gift-add`)
+ *
+ * The "Add gift" button for the order detail's action slot, and its dialog. It
+ * is offered for every order that is still open: a parcel that is already closed
+ * is not hidden, because the dialog says so in words where a missing button
+ * would explain nothing. A cancelled or finished order has nothing to add to.
+ * Read-only roles see the button locked, with the reason.
+ *
+ * @module apps/web/src/features/gifts/components
+ */
+import { useState, type ReactElement } from 'react';
+import { useMessages } from '../../../shared/i18n';
+import { Button } from '../../../shared/ui/button';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { useDemoMode } from '../../system';
+import { AddGiftDialog } from './add-gift-dialog';
+
+export interface OrderAddGiftActionProps {
+  internalOrderId: string;
+  orderLabel: string;
+  currency?: string;
+  /** Cancelled, delivered or refunded: nothing to add to. */
+  terminal: boolean;
+  /** The parcel is packed or on its way. */
+  parcelClosed: boolean;
+  hasSalesDocument: boolean;
+}
+
+export function OrderAddGiftAction({
+  terminal,
+  ...dialogProps
+}: OrderAddGiftActionProps): ReactElement | null {
+  const copy = useMessages('gifts');
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('gifts:write', demoMode);
+  const [open, setOpen] = useState(false);
+  if (terminal) return null;
+
+  return (
+    <>
+      <ReadOnlyLock active={!write.canWrite} message={copy.order.readOnly}>
+        <Button
+          tone="secondary"
+          disabled={!write.canWrite}
+          onClick={() => setOpen(true)}
+          data-testid="order-gift-add"
+        >
+          {copy.order.add}
+        </Button>
+      </ReadOnlyLock>
+      {write.canWrite ? <AddGiftDialog open={open} onOpenChange={setOpen} {...dialogProps} /> : null}
+    </>
+  );
+}

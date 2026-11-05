@@ -295,6 +295,18 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   @IsBoolean()
   attention?: boolean;
 
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      '"With a gift" filter (#3940): true keeps only orders that carry a gift line (from the ' +
+      'channel, a cart rule, an OpenLinker gift rule or an operator), false only the rest, ' +
+      'omitted does not filter. ANDed with `health`, not a health bucket.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  withGift?: boolean;
+
   @ApiPropertyOptional({ default: 0, minimum: 0, description: 'Number of items to skip' })
   @IsOptional()
   @Type(() => Number)

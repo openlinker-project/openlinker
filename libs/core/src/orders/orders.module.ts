@@ -59,6 +59,7 @@ import { OrderTestFixtureService } from './application/services/order-test-fixtu
 import { MarginAnalyticsService } from './application/services/margin-analytics.service';
 import { CostCoverageService } from './application/services/cost-coverage.service';
 import { OrderLineCostService } from './application/services/order-line-cost.service';
+import { GiftReportService } from './application/services/gift-report.service';
 import { OrderBundleDocumentService } from './application/services/order-bundle-document.service';
 import { OrderGiftService } from './application/services/order-gift.service';
 import { TaxCoverageDetectionService } from './application/services/tax-coverage-detection.service';
@@ -90,6 +91,8 @@ import {
   COST_COVERAGE_SERVICE_TOKEN,
   ORDER_LINE_COST_SERVICE_TOKEN,
   ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+  GIFT_REPORT_SERVICE_TOKEN,
+  ORDER_GIFT_REPORT_READER_TOKEN,
   ORDER_GIFT_SERVICE_TOKEN,
   ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
   BUYER_EMAIL_DELIVERY_REPOSITORY_TOKEN,
@@ -385,6 +388,12 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       provide: ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
       useExisting: OrderBundleDocumentService,
     },
+    { provide: ORDER_GIFT_REPORT_READER_TOKEN, useExisting: OrderRecordRepository },
+    GiftReportService,
+    {
+      provide: GIFT_REPORT_SERVICE_TOKEN,
+      useExisting: GiftReportService,
+    },
     {
       provide: DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
       useExisting: DisplayCurrencyConversionService,
@@ -476,6 +485,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     COST_COVERAGE_SERVICE_TOKEN,
     ORDER_LINE_COST_SERVICE_TOKEN,
     ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+    // Exported so the `/analytics/gifts*` report reads can inject it (#3943).
+    GIFT_REPORT_SERVICE_TOKEN,
     // Exported so the gift-rule dry run (apps/api) can preview a rule (#3938).
     ORDER_GIFT_SERVICE_TOKEN,
     // Exported so the `/analytics` display-currency read surface (a later

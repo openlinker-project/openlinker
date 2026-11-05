@@ -1,4 +1,47 @@
 {
+  "bundleReturns": {
+    "correction": {
+      "componentCredit": "Do skorygowania za zwrócone składniki: {amount} (zestawów: {units}). Zestaw zostaje jedną pozycją faktury; ilość się nie zmniejsza."
+    },
+    "hint": {
+      "calcKept": "Zostaje u klienta, pełna cena: {amount}",
+      "calcPaid": "Zapłacone za zestaw: {amount}",
+      "calcResult": "Wzór daje zapłacone minus to, co zostaje u klienta, i nigdy mniej niż 0.",
+      "calcTitle": "Jak to policzono",
+      "label": "Według wzoru Allegro: {amount}.",
+      "notApplied": "To tylko podpowiedź. Nic się nie wpisze, dopóki nie klikniesz Użyj.",
+      "unavailable": "Nie da się policzyć wzoru Allegro: składnik, który zostaje u klienta, nie ma własnej ceny.",
+      "use": "Użyj"
+    },
+    "match": {
+      "alreadyResolved": "Ta pozycja była już dopasowana; nic nie zmieniono.",
+      "basisHighestPrice": "Podpowiedź, bo to pozycja z najwyższą ceną. To zgadywanie: sprawdź ją.",
+      "basisPriceMatch": "Podpowiedź, bo cena zgadza się z ceną ze zwrotu.",
+      "body": "Ta sama oferta występuje na zamówieniu {n} razy. Sprawdź, której pozycji dotyczy zwrot, i potwierdź.",
+      "confirm": "Potwierdź pozycję",
+      "confirmed": "Pozycja zamówienia potwierdzona.",
+      "failed": "Nie udało się potwierdzić pozycji.",
+      "noSuggestion": "OpenLinker nie ma podpowiedzi. Wybierz pozycję.",
+      "option": "{price} x {qty}",
+      "selectLabel": "Pozycja zamówienia",
+      "title": "Ta pozycja może być jedną z kilku na zamówieniu"
+    },
+    "picker": {
+      "backInWarehouse": "Wraca do magazynu",
+      "componentLine": "{name} x {n}",
+      "noSplitSkus": "{skus} nie ma ceny ani kosztu, więc OpenLinker nie wie, ile wart jest zwracany element. Dodaj składnikowi cenę lub koszt albo przyjmij cały zestaw.",
+      "noSplitTitle": "Nie da się podzielić ceny zestawu",
+      "noSplitTotal": "Nie wiadomo, ile zapłacono za ten zestaw, więc nie da się go podzielić. Przyjmij cały zestaw.",
+      "noneSelected": "Zaznacz co najmniej jeden składnik.",
+      "partialHint": "Na stan wracają tylko zaznaczone składniki.",
+      "previewFailed": "Nie udało się wczytać składników zestawu, więc nie można go jeszcze przyjąć na stan. Spróbuj ponownie.",
+      "share": "Wart {amount} z ceny zestawu",
+      "staysWithCustomer": "Zostaje u klienta",
+      "title": "Co wraca",
+      "whole": "Cały zestaw",
+      "wholeHint": "Każdy składnik wraca na stan."
+    }
+  },
   "bundles": {
     "bench": {
       "bundleFallbackName": "Zestaw",
@@ -184,6 +227,441 @@
       "left": "{duration} do terminu",
       "overdue": "Po terminie {duration}"
     }
+  },
+  "giftDocuments": {
+    "connection": {
+      "defaultBadge": "Domyślnie",
+      "fieldHelp": "Gratisy z tego kanału używają tej formy, chyba że sam gratis mówi inaczej.",
+      "fieldLabel": "Gratis na dokumencie w tym kanale",
+      "inheritDescription": "Ten kanał stosuje ustawienie z OpenLinker.",
+      "inheritLabel": "Jak w OpenLinker ({form})",
+      "loadFailed": "Nie udało się wczytać ustawień gratisów",
+      "loadFailedMessage": "Nie udało się wczytać połączenia.",
+      "loading": "Wczytywanie ustawień gratisów",
+      "loadingMessage": "Pobieranie tego połączenia.",
+      "notAvailable": "Niedostępne",
+      "readOnlyNotice": "Możesz zobaczyć te ustawienia, ale nie możesz ich zmieniać.",
+      "tab": "Gratisy na dokumentach",
+      "title": "Gratisy na dokumentach",
+      "zeroNoProvider": "Niedostępne: żaden dostawca dokumentów tego kanału nie przyjmuje pozycji 0,00.",
+      "zeroNotOffered": "Niedostępne: {provider} nie przyjmuje pozycji 0,00."
+    },
+    "default": {
+      "bundleInfo": "Zestawy na dokumentach: jedna pozycja, gdy wszystkie elementy mają tę samą stawkę VAT, w przeciwnym razie każdy element w swojej stawce.",
+      "fieldHelp": "To jest domyślne ustawienie dla całego OpenLinker.",
+      "fieldLabel": "Gratis na dokumencie",
+      "levels": "Wygrywa ustawienie najbardziej szczegółowe: sam gratis (reguła gratisu, miejsce na gratis w zestawie, ręczne dodanie), potem kanał sprzedaży, potem to domyślne ustawienie OpenLinker. Przy każdym gratisie widać, skąd pochodzi jego forma: \"z reguły\", \"z ustawień kanału\" lub \"domyślne w OpenLinker\".",
+      "loadFailed": "Nie udało się wczytać ustawień gratisów",
+      "loading": "Wczytywanie ustawień gratisów",
+      "readOnlyNotice": "Możesz zobaczyć te ustawienia, ale nie możesz ich zmieniać.",
+      "save": "Zapisz ustawienia",
+      "saveFailed": "Zmiany nie zostały zapisane",
+      "saved": "Ustawienia zapisane.",
+      "taxNote": "Forma gratisu to decyzja podatkowa. Porozmawiaj z księgowym lub doradcą podatkowym.",
+      "title": "Gratisy i zestawy"
+    },
+    "example": {
+      "book": "Książka",
+      "caption": "Przykład: książka za 100,00 i kubek za 20,00 jako gratis",
+      "form": "Forma",
+      "intro": "Klient płaci {total} za książkę (cena {book}) i dostaje kubek (cena {mug}).",
+      "mug": "Kubek (gratis)",
+      "noLine": "brak pozycji",
+      "title": "Przykład"
+    },
+    "forms": {
+      "omit": {
+        "description": "Gratisu nie ma na dokumencie. Może to zostać uznane za darowiznę, zapytaj księgowego.",
+        "label": "Pominięty",
+        "short": "Pominięty"
+      },
+      "pricedIn": {
+        "description": "Część płatności przechodzi na gratis, proporcjonalnie do cen, każda pozycja w swojej stawce VAT.",
+        "label": "Wliczony proporcjonalnie",
+        "short": "Wliczony proporcjonalnie"
+      },
+      "showZero": {
+        "description": "Gratis jest pozycją 0,00. Dostępne tylko tam, gdzie dostawca dokumentów przyjmuje pozycję zerową.",
+        "label": "Pokazany jako 0,00",
+        "short": "Pokazany jako 0,00"
+      },
+      "technicalCent": {
+        "description": "Gratis jest pozycją 0,01, zdjętą z najdroższej płatnej pozycji. Suma się nie zmienia. Domyślnie, tak jak robi to BaseLinker.",
+        "label": "0,01, zdjęte z najdroższej płatnej pozycji",
+        "short": "0,01, z najdroższej"
+      }
+    },
+    "perGift": {
+      "asInSettings": "Jak w ustawieniach",
+      "label": "Na dokumencie"
+    },
+    "preview": {
+      "equalsPaid": "Suma równa się temu, co zapłacił klient.",
+      "giftSuffix": "(gratis)",
+      "invoiceTitle": "Na fakturze",
+      "receiptTitle": "Na paragonie",
+      "title": "Podgląd dokumentu",
+      "total": "Razem"
+    },
+    "source": {
+      "channel": "z ustawień {name}",
+      "default": "domyślne w OpenLinker",
+      "rule": "z reguły"
+    }
+  },
+  "giftReport": {
+    "bundles": {
+      "alone": "Osobno",
+      "available": "Dostępne",
+      "bundle": "Zestaw",
+      "component": "Składnik",
+      "componentCostMissing": "Brak kosztu składnika",
+      "demandTitle": "Zapotrzebowanie na składniki",
+      "empty": "W tym okresie nie sprzedano żadnego zestawu.",
+      "giftInComposition": "Gratis w składzie",
+      "inBundles": "W zestawach",
+      "margin": "Marża",
+      "note": "Koszt zestawu to suma cen zakupu jego składników. Gratis w składzie liczy się jako koszt.",
+      "revenue": "Przychód netto",
+      "salesTitle": "Sprzedaż zestawów",
+      "sold": "Sprzedano",
+      "unknown": "nieznane"
+    },
+    "description": "Ile gratisów wydałeś, ile Cię kosztowały i jak sprzedają się zestawy. Jeden raport, filtry u góry.",
+    "empty": {
+      "body": "Żadne zamówienie z tego zakresu nie miało gratisu. Zmień okres albo filtry.",
+      "title": "Brak gratisów w tym okresie"
+    },
+    "error": "Nie udało się wczytać raportu gratisów.",
+    "export": {
+      "body": "Każdy wiersz: data, klient, gratis, netto koszt zakupu, dokument. Klient to ten sam kupujący we wszystkich zamówieniach, nawet gdy Allegro podaje za każdym razem inny e-mail. Roczne progi (20 zł i 100 zł) ocenia księgowa, OpenLinker ich nie pilnuje.",
+      "button": "Eksport per klient (CSV)",
+      "download": "Pobierz CSV",
+      "preparing": "Przygotowuję CSV…",
+      "title": "Roczny eksport gratisów dla księgowej"
+    },
+    "eyebrow": "Analityka",
+    "filters": {
+      "allChannels": "Wszystkie kanały",
+      "allSources": "Wszystkie",
+      "channel": "Kanał",
+      "manual": "Dodane ręcznie",
+      "rule": "Z promocji",
+      "source": "Źródło gratisu"
+    },
+    "movements": {
+      "body": "Ruchy magazynowe z powodem Gratis dla tego okresu są w historii magazynu. Składniki zestawów schodzą z magazynu jako zwykła sprzedaż i nie są wymienione osobno.",
+      "open": "Pokaż ruchy gratisów"
+    },
+    "range": {
+      "from": "Od",
+      "to": "Do"
+    },
+    "summary": {
+      "cost": "Kosztuje Cię",
+      "paid": "Klienci zapłacili",
+      "sentence": "Klienci zapłacili {paid} za {units} gratisów. Kosztowały Cię {cost} netto, według ceny zakupu produktu. Za nie płacisz Ty.",
+      "units": "Sztuk",
+      "unknownInSentence": "{n} szt. bez ceny zakupu nie ma w tej kwocie."
+    },
+    "table": {
+      "bundleLabel": "Gratis w zestawie",
+      "channelLabel": "Wysłane przez kanał",
+      "cost": "Kosztuje Cię",
+      "costUnknown": "Koszt nieznany",
+      "deletedRule": "Usunięta promocja",
+      "gift": "Gratis",
+      "manualLabel": "Dodane ręcznie",
+      "orders": "Zamówień",
+      "pieces": "Sztuk",
+      "promotion": "Promocja",
+      "title": "Koszt gratisów według promocji",
+      "withoutPieces": "bez {n} szt."
+    },
+    "title": "Koszt gratisów",
+    "unknown": {
+      "body": "Nie ma ich w koszcie powyżej. Uzupełnij cenę zakupu produktu, a raport przeliczy się sam.",
+      "title": "{n} szt. gratisów bez ceny zakupu"
+    },
+    "views": {
+      "bundles": "Zestawy",
+      "gifts": "Gratisy",
+      "movements": "Ruchy magazynowe"
+    }
+  },
+  "gifts": {
+    "addDialog": {
+      "added": "Gratis dodany",
+      "addedBody": "Gratis jest w zamówieniu, a jego stan zarezerwowany.",
+      "cancel": "Anuluj",
+      "changeProduct": "Zmień",
+      "closedBody": "Gratis można dodać, dopóki paczka nie jest zamknięta. Najpierw cofnij oznaczenie jako spakowane albo dodaj gratis do następnego zamówienia.",
+      "closedTitle": "Paczka jest już zamknięta",
+      "description": "Gratis trafia tylko do tego zamówienia. Stan jest rezerwowany jak przy zwykłej pozycji.",
+      "documentTitle": "Dokument sprzedaży jest już wystawiony",
+      "documentWarning": "Dokument nie pokaże tego gratisu. Gratis i tak trafi do zamówienia.",
+      "notOnPickList": "Gratis jest w zamówieniu, ale ono jest już u pakowaczy: powiedz im o gratisie.",
+      "onDocument": "Na dokumencie",
+      "product": "Produkt na gratis",
+      "productPlaceholder": "Wpisz nazwę lub SKU produktu",
+      "quantity": "Ilość",
+      "reason": "Dodany ręcznie. Na zamówieniu widać go jako gratis od Ciebie.",
+      "submit": "Dodaj gratis",
+      "title": "Dodaj gratis do zamówienia {order}"
+    },
+    "attention": {
+      "addAnother": "Dodaj inny gratis",
+      "openRule": "Otwórz promocję",
+      "reasons": {
+        "below-threshold": {
+          "body": "Zamówienie nie osiąga tego, czego chce promocja, więc gratisu nie dodano.",
+          "title": "{rule}: poniżej progu"
+        },
+        "customer-limit": {
+          "body": "Limit na klienta jest wyczerpany. Klienta rozpoznajemy po tożsamości w OpenLinkerze, nie po koncie kupującego w kanale.",
+          "title": "{rule}: ten klient dostał już gratis"
+        },
+        "customer-unknown": {
+          "body": "Nie dało się sprawdzić limitu na klienta, więc gratisu nie dodano.",
+          "title": "{rule}: klient jest nieznany"
+        },
+        "failed": {
+          "body": "Coś poszło nie tak przy dodawaniu. Możesz dodać gratis ręcznie albo otworzyć promocję i historię uruchomień.",
+          "title": "{rule}: nie udało się dodać gratisu"
+        },
+        "limit-reached": {
+          "body": "Nie dodano gratisu. Otwórz promocję, żeby podnieść limit i ją wznowić.",
+          "title": "{rule}: limit sztuk wyczerpany"
+        },
+        "other": {
+          "body": "Promocja nie dodała gratisu do tego zamówienia. Otwórz ją, żeby zobaczyć szczegóły.",
+          "title": "{rule}: nie dodano gratisu"
+        },
+        "out-of-stock": {
+          "body": "Zamówienie idzie dalej bez gratisu. Możesz dodać inny gratis ręcznie. Promocja wznowi się sama, gdy produkt wróci.",
+          "title": "{rule}: gratisu brak na stanie"
+        },
+        "stock-unknown": {
+          "body": "Gratisu nie dodano, bo nieznana liczba nigdy nie jest traktowana jak zero. Sprawdź stan i w razie potrzeby dodaj gratis ręcznie.",
+          "title": "{rule}: nie znamy stanu gratisu"
+        },
+        "superseded": {
+          "body": "Wyższa promocja, która nie łączy się z innymi, już dała swój gratis, więc ta nie zadziałała.",
+          "title": "{rule}: zadziałała wyższa promocja"
+        }
+      },
+      "shopRejected": {
+        "body": "Zamówienie ma pozycję z gratisem, a sklep je odrzucił. Usuń przyczynę w statusie synchronizacji niżej albo zdejmij gratis z zamówienia i ponów.",
+        "title": "Sklep nie przyjął zamówienia z gratisem"
+      }
+    },
+    "composer": {
+      "back": "Promocje z gratisem",
+      "basketFrom": "Zamówienie od",
+      "basketHelp": "Liczy się kwota, którą zapłacił klient, bez dostawy.",
+      "change": "Zmień",
+      "channels": "Kanały",
+      "channelsHelp": "Gdzie działa promocja. Domyślnie wszystkie kanały.",
+      "copy": "Kopiuj",
+      "copySuffix": "(kopia)",
+      "costPerUnit": "Kosztuje Cię {cost} za sztukę",
+      "costUnknown": "Kosztuje Cię: brak kosztu zakupu",
+      "currency": "Waluta",
+      "docForm": "Na dokumencie",
+      "doubleGiftWarning": "Sklep z własną regułą gratisu może dać ten sam gratis drugi raz. Zostaw włączone \"Pomiń, jeśli produkt jest już w zamówieniu\".",
+      "editNote": "Zmiana działa od teraz. Zamówienia już złożone zostają przy swoim gratisie.",
+      "endedBody": "Nadal możesz ją edytować, skopiować albo przedłużyć nową datą zakończenia.",
+      "endedTitle": "Zakończona {date}",
+      "extend": "Przedłuż i wznów",
+      "extendTo": "Nowa data zakończenia",
+      "from": "Od",
+      "gift": "Gratis",
+      "giftLabel": "Gratis",
+      "limitBody": "Rozdano {given} z {cap} szt. Zamówienia idą dalej bez gratisu. Dodaj sztuki do limitu, żeby wznowić.",
+      "limitTitle": "Wstrzymała się sama: limit sztuk wyczerpany",
+      "loadFailed": "Nie udało się wczytać promocji",
+      "markerNative": "Sklep też zna gratisy",
+      "markerOpenLinker": "Przez OpenLinker",
+      "maxPerOrder": "Maks. na zamówienie",
+      "missing": "Jeszcze potrzeba",
+      "more": "Więcej opcji",
+      "name": "Nazwa",
+      "nameHelp": "Podpowiadamy z ustawień niżej. Możesz ją zmienić.",
+      "nameTemplates": {
+        "basket": "{gift} przy zakupach od {amount}",
+        "product": "{gift} do {product}",
+        "unit": "{gift} do każdej sztuki: {product}"
+      },
+      "newTitle": "Nowa promocja",
+      "noStack": "Nie łącz z innymi promocjami",
+      "pause": "Wstrzymaj",
+      "pausedStockBody": "Zamówienia idą dalej bez gratisu, z uwagą na zamówieniu. Promocja wznowi się sama, gdy produkt wróci na stan.",
+      "pausedStockTitle": "Wstrzymała się sama: gratisu brak na stanie",
+      "perCustomer": "Najwyżej na klienta",
+      "perN": "1 gratis na N sztuk",
+      "period": "Okres",
+      "periodHelp": "Liczy się data złożenia zamówienia. Promocja nie działa wstecz.",
+      "problems": {
+        "basket": "kwoty",
+        "gift": "gratisu",
+        "name": "nazwy",
+        "per-n": "liczby całkowitej dla \"1 gratis na N\"",
+        "period": "daty końca po początku",
+        "quantity": "ilości",
+        "unit-cap": "całkowitego limitu sztuk",
+        "when": "produktu"
+      },
+      "productHelp": "Wybierz produkt lub zestaw.",
+      "productLabel": "Gdy zamówienie zawiera",
+      "productPlaceholder": "Wpisz nazwę lub SKU produktu",
+      "quantity": "Ilość",
+      "resume": "Wznów",
+      "resumeUnits": "Ile sztuk dodać do limitu",
+      "saveChanges": "Zapisz zmiany",
+      "saveDraft": "Zapisz jako szkic",
+      "saved": "Promocja zapisana",
+      "skipPresent": "Pomiń, jeśli produkt jest już w zamówieniu (także jako składnik zestawu)",
+      "summary": {
+        "cap": "limit {n} szt.",
+        "combines": "łączy się z innymi",
+        "noCap": "bez limitu sztuk",
+        "noStack": "nie łączy się z innymi",
+        "pauses": "wstrzymuje się, gdy gratis się skończy"
+      },
+      "title": "Promocja z gratisem",
+      "to": "Do (opcjonalnie)",
+      "turnOn": "Włącz promocję",
+      "unitCap": "Limit sztuk w całej promocji",
+      "unitProductHelp": "Wybierz produkt, do którego każdej sztuki dajesz gratis.",
+      "when": "Kiedy"
+    },
+    "filter": {
+      "check": "Z gratisem",
+      "chipLabel": "Gratis",
+      "chipValue": "Jest",
+      "quick": "Z gratisem",
+      "rowIcon": "Zawiera gratis"
+    },
+    "list": {
+      "allChannels": "Wszystkie kanały",
+      "back": "Automatyzacje",
+      "colGiven": "Rozdane",
+      "colOrder": "Kolejność",
+      "colPromotion": "Promocja",
+      "colState": "Stan",
+      "create": "Utwórz promocję",
+      "description": "OpenLinker dodaje gratis do zamówienia w każdym kanale, także tam, gdzie kanał nie zna gratisów.",
+      "doNotCombine": "Nie łączy się z innymi",
+      "down": "W dół",
+      "downLabel": "Przesuń {name} w dół",
+      "empty": "Nie ma jeszcze promocji z gratisem",
+      "emptyHint": "Utwórz pierwszą, na przykład łyżeczkę do każdego zestawu porannego.",
+      "eyebrow": "Automatyzacje",
+      "fromAmount": "od {amount}",
+      "givenNoCap": "{given} szt.",
+      "givenOfCap": "{given} z {cap} szt.",
+      "loadFailed": "Nie udało się wczytać promocji z gratisem",
+      "loading": "Wczytuję promocje z gratisem",
+      "orderNote": "Promocje sprawdzamy od góry. Jeśli promocja ma włączone \"Nie łącz z innymi\", te pod nią nie działają, gdy ona zadziała.",
+      "readOnly": "Możesz oglądać promocje z gratisem, ale nie możesz ich zmieniać.",
+      "reasonLimit": "Rozdano {given} z {cap} szt.",
+      "reasonStock": "Gratis się skończył. Promocja wznowi się sama po dostawie.",
+      "reorderFailed": "Nie udało się zapisać kolejności. Spróbuj ponownie.",
+      "tableLabel": "Promocje z gratisem w kolejności sprawdzania",
+      "title": "Promocje z gratisem",
+      "until": "do {date}",
+      "up": "W górę",
+      "upLabel": "Przesuń {name} w górę"
+    },
+    "order": {
+      "add": "Dodaj gratis",
+      "costUnknown": "Koszt nieznany",
+      "costsYou": "Kosztuje Cię {cost}",
+      "customerPays": "Klient płaci {price}",
+      "decidedBy": "Skąd jest",
+      "onDocument": "Na dokumencie",
+      "readOnly": "Gratis mogą dodawać tylko administratorzy i operatorzy.",
+      "source": {
+        "cartRule": "Dała go reguła koszyka w sklepie. Finansujesz go Ty.",
+        "channel": "Kanał sprzedaży oznaczył go jako gratis. Finansujesz go Ty.",
+        "operator": "Dodany ręcznie przez operatora. Finansujesz go Ty.",
+        "rule": "Dodała go promocja w OpenLinkerze. Finansujesz go Ty."
+      },
+      "tag": "Gratis",
+      "tagLabel": "Gratis: pokaż, skąd jest",
+      "whoPays": "Kto płaci"
+    },
+    "status": {
+      "active": "Aktywna",
+      "draft": "Szkic",
+      "ended": "Zakończona",
+      "pausedLimit": "Wstrzymana: limit sztuk",
+      "pausedStock": "Wstrzymana: brak gratisu",
+      "scheduled": "Ruszy później"
+    },
+    "template": {
+      "basket": {
+        "example": "np. próbka kawy do zamówień od 150 zł",
+        "title": "Gratis od kwoty zamówienia"
+      },
+      "description": "Wybierz, kiedy klient dostaje gratis. Szczegóły ustawisz w następnym kroku.",
+      "product": {
+        "example": "np. łyżeczka do każdego zestawu porannego",
+        "title": "Gratis do produktu"
+      },
+      "title": "Nowa promocja",
+      "unit": {
+        "example": "np. torba na co drugi kubek",
+        "title": "Gratis do każdej sztuki"
+      }
+    },
+    "test": {
+      "help": "Pokazuje, które promocje dodałyby gratis do tego zamówienia i dlaczego pozostałe nie. Nic się nie zapisuje.",
+      "noneApply": "Nie dodano by żadnego gratisu",
+      "orderLabel": "Zamówienie",
+      "orderNotFound": "Nie ma takiego zamówienia.",
+      "orderPlaceholder": "Id zamówienia (ol_order_...)",
+      "reasons": {
+        "alreadyInOrder": "Gratis jest już w zamówieniu.",
+        "belowThreshold": "W zamówieniu jest za mało sztuk produktu.",
+        "customerLimit": "Ten klient dostał już najwięcej, ile wolno.",
+        "customerUnknown": "Klient jest nieznany, więc nie sprawdzimy limitu na klienta.",
+        "limit": "Limit sztuk jest wyczerpany.",
+        "notMatching": "Zamówienie nie spełnia warunków.",
+        "outOfStock": "Gratisu nie ma na stanie.",
+        "stockUnknown": "Nie znamy stanu gratisu, więc go nie dodano.",
+        "superseded": "Wyższa promocja, która nie łączy się z innymi, już zadziałała."
+      },
+      "run": "Sprawdź",
+      "someApply": "Gratis dodałoby promocji: {count}",
+      "thisPromotion": "Ta promocja",
+      "title": "Sprawdź na zamówieniu",
+      "wouldAdd": "Doda {count} szt."
+    }
+  },
+  "returnGifts": {
+    "body": "OpenLinker nigdy sam nie odlicza gratisu. Zdecyduj, co zrobić z każdym gratisem.",
+    "choice": {
+      "ask_back": "Poproś o zwrot",
+      "deduct": "Odlicz jego wartość",
+      "keep": "Zostaje u klienta"
+    },
+    "decision": "Co zrobić z gratisem",
+    "deductUnknown": "Gratis nie ma ceny w katalogu, więc nie ma czego odliczyć.",
+    "failed": "Nie udało się zapisać decyzji.",
+    "gift": "Gratis",
+    "loadFailed": "Nie udało się wczytać gratisów z tego zamówienia.",
+    "note": {
+      "ask_back": "Spodziewasz się zwrotu gratisu. Przyjmij go na stan jak każdy zwrócony towar.",
+      "deduct": "Odliczysz {amount}, cenę gratisu. Zrób to tylko wtedy, gdy mówią o tym warunki oferty.",
+      "keep": "Klient zatrzymuje gratis. Najczęstszy wybór przy taniej rzeczy."
+    },
+    "qty": "Ilość",
+    "refundHint": "Gratisy do odliczenia od zwrotu: {amount}. To podpowiedź; nic nie jest wpisane, dopóki sam nie zmienisz kwoty zwrotu.",
+    "saved": "Decyzja zapisana.",
+    "title": "Gratisy w tym zamówieniu",
+    "undecided": "Jeszcze nie zdecydowano",
+    "worth": "Cena osobno"
   },
   "ui": {
     "accessDenied": {
@@ -466,126 +944,6 @@
     },
     "wizard": {
       "summary": "Podsumowanie konfiguracji"
-    }
-  },
-  "bundleReturns": {
-    "correction": {
-      "componentCredit": "Do skorygowania za zwrócone składniki: {amount} (zestawów: {units}). Zestaw zostaje jedną pozycją faktury; ilość się nie zmniejsza."
-    },
-    "hint": {
-      "calcKept": "Zostaje u klienta, pełna cena: {amount}",
-      "calcPaid": "Zapłacone za zestaw: {amount}",
-      "calcResult": "Wzór daje zapłacone minus to, co zostaje u klienta, i nigdy mniej niż 0.",
-      "calcTitle": "Jak to policzono",
-      "label": "Według wzoru Allegro: {amount}.",
-      "notApplied": "To tylko podpowiedź. Nic się nie wpisze, dopóki nie klikniesz Użyj.",
-      "unavailable": "Nie da się policzyć wzoru Allegro: składnik, który zostaje u klienta, nie ma własnej ceny.",
-      "use": "Użyj"
-    },
-    "match": {
-      "alreadyResolved": "Ta pozycja była już dopasowana; nic nie zmieniono.",
-      "basisHighestPrice": "Podpowiedź, bo to pozycja z najwyższą ceną. To zgadywanie: sprawdź ją.",
-      "basisPriceMatch": "Podpowiedź, bo cena zgadza się z ceną ze zwrotu.",
-      "body": "Ta sama oferta występuje na zamówieniu {n} razy. Sprawdź, której pozycji dotyczy zwrot, i potwierdź.",
-      "confirm": "Potwierdź pozycję",
-      "confirmed": "Pozycja zamówienia potwierdzona.",
-      "failed": "Nie udało się potwierdzić pozycji.",
-      "noSuggestion": "OpenLinker nie ma podpowiedzi. Wybierz pozycję.",
-      "option": "{price} x {qty}",
-      "selectLabel": "Pozycja zamówienia",
-      "title": "Ta pozycja może być jedną z kilku na zamówieniu"
-    },
-    "picker": {
-      "backInWarehouse": "Wraca do magazynu",
-      "componentLine": "{name} x {n}",
-      "noSplitSkus": "{skus} nie ma ceny ani kosztu, więc OpenLinker nie wie, ile wart jest zwracany element. Dodaj składnikowi cenę lub koszt albo przyjmij cały zestaw.",
-      "noSplitTitle": "Nie da się podzielić ceny zestawu",
-      "noSplitTotal": "Nie wiadomo, ile zapłacono za ten zestaw, więc nie da się go podzielić. Przyjmij cały zestaw.",
-      "noneSelected": "Zaznacz co najmniej jeden składnik.",
-      "partialHint": "Na stan wracają tylko zaznaczone składniki.",
-      "previewFailed": "Nie udało się wczytać składników zestawu, więc nie można go jeszcze przyjąć na stan. Spróbuj ponownie.",
-      "share": "Wart {amount} z ceny zestawu",
-      "staysWithCustomer": "Zostaje u klienta",
-      "title": "Co wraca",
-      "whole": "Cały zestaw",
-      "wholeHint": "Każdy składnik wraca na stan."
-    }
-  },
-  "giftDocuments": {
-    "connection": {
-      "defaultBadge": "Domyślnie",
-      "fieldHelp": "Gratisy z tego kanału używają tej formy, chyba że sam gratis mówi inaczej.",
-      "fieldLabel": "Gratis na dokumencie w tym kanale",
-      "inheritDescription": "Ten kanał stosuje ustawienie z OpenLinker.",
-      "inheritLabel": "Jak w OpenLinker ({form})",
-      "loadFailed": "Nie udało się wczytać ustawień gratisów",
-      "loadFailedMessage": "Nie udało się wczytać połączenia.",
-      "loading": "Wczytywanie ustawień gratisów",
-      "loadingMessage": "Pobieranie tego połączenia.",
-      "notAvailable": "Niedostępne",
-      "readOnlyNotice": "Możesz zobaczyć te ustawienia, ale nie możesz ich zmieniać.",
-      "tab": "Gratisy na dokumentach",
-      "title": "Gratisy na dokumentach",
-      "zeroNoProvider": "Niedostępne: żaden dostawca dokumentów tego kanału nie przyjmuje pozycji 0,00.",
-      "zeroNotOffered": "Niedostępne: {provider} nie przyjmuje pozycji 0,00."
-    },
-    "default": {
-      "bundleInfo": "Zestawy na dokumentach: jedna pozycja, gdy wszystkie elementy mają tę samą stawkę VAT, w przeciwnym razie każdy element w swojej stawce.",
-      "fieldHelp": "To jest domyślne ustawienie dla całego OpenLinker.",
-      "fieldLabel": "Gratis na dokumencie",
-      "levels": "Wygrywa ustawienie najbardziej szczegółowe: sam gratis (reguła gratisu, miejsce na gratis w zestawie, ręczne dodanie), potem kanał sprzedaży, potem to domyślne ustawienie OpenLinker. Przy każdym gratisie widać, skąd pochodzi jego forma: \"z reguły\", \"z ustawień kanału\" lub \"domyślne w OpenLinker\".",
-      "loadFailed": "Nie udało się wczytać ustawień gratisów",
-      "loading": "Wczytywanie ustawień gratisów",
-      "readOnlyNotice": "Możesz zobaczyć te ustawienia, ale nie możesz ich zmieniać.",
-      "save": "Zapisz ustawienia",
-      "saveFailed": "Zmiany nie zostały zapisane",
-      "saved": "Ustawienia zapisane.",
-      "taxNote": "Forma gratisu to decyzja podatkowa. Porozmawiaj z księgowym lub doradcą podatkowym.",
-      "title": "Gratisy i zestawy"
-    },
-    "example": {
-      "book": "Książka",
-      "caption": "Przykład: książka za 100,00 i kubek za 20,00 jako gratis",
-      "form": "Forma",
-      "intro": "Klient płaci {total} za książkę (cena {book}) i dostaje kubek (cena {mug}).",
-      "mug": "Kubek (gratis)",
-      "noLine": "brak pozycji",
-      "title": "Przykład"
-    },
-    "forms": {
-      "omit": {
-        "description": "Gratisu nie ma na dokumencie. Może to zostać uznane za darowiznę, zapytaj księgowego.",
-        "label": "Pominięty",
-        "short": "Pominięty"
-      },
-      "pricedIn": {
-        "description": "Część płatności przechodzi na gratis, proporcjonalnie do cen, każda pozycja w swojej stawce VAT.",
-        "label": "Wliczony proporcjonalnie",
-        "short": "Wliczony proporcjonalnie"
-      },
-      "showZero": {
-        "description": "Gratis jest pozycją 0,00. Dostępne tylko tam, gdzie dostawca dokumentów przyjmuje pozycję zerową.",
-        "label": "Pokazany jako 0,00",
-        "short": "Pokazany jako 0,00"
-      },
-      "technicalCent": {
-        "description": "Gratis jest pozycją 0,01, zdjętą z najdroższej płatnej pozycji. Suma się nie zmienia. Domyślnie, tak jak robi to BaseLinker.",
-        "label": "0,01, zdjęte z najdroższej płatnej pozycji",
-        "short": "0,01, z najdroższej"
-      }
-    },
-    "preview": {
-      "equalsPaid": "Suma równa się temu, co zapłacił klient.",
-      "giftSuffix": "(gratis)",
-      "invoiceTitle": "Na fakturze",
-      "receiptTitle": "Na paragonie",
-      "title": "Podgląd dokumentu",
-      "total": "Razem"
-    },
-    "source": {
-      "channel": "z ustawień {name}",
-      "default": "domyślne w OpenLinker",
-      "rule": "z reguły"
     }
   }
 }

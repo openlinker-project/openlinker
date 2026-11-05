@@ -1,4 +1,47 @@
 {
+  "bundleReturns": {
+    "correction": {
+      "componentCredit": "Credited for returned components: {amount} ({units} set(s)). The set stays one invoice line; the quantity is not reduced."
+    },
+    "hint": {
+      "calcKept": "Stays with the customer, full price: {amount}",
+      "calcPaid": "Paid for the set: {amount}",
+      "calcResult": "The formula gives paid minus what the customer keeps, and never less than 0.",
+      "calcTitle": "How this is calculated",
+      "label": "According to the Allegro formula: {amount}.",
+      "notApplied": "This is a suggestion. Nothing is filled in until you press Use.",
+      "unavailable": "The Allegro formula cannot be calculated: a component the customer keeps has no price of its own.",
+      "use": "Use"
+    },
+    "match": {
+      "alreadyResolved": "This line was already matched; nothing was changed.",
+      "basisHighestPrice": "Suggested because it is the line with the highest price. This is a guess: check it.",
+      "basisPriceMatch": "Suggested because its price matches the price in the return.",
+      "body": "The same offer appears {n} times on the order. Check which line this return is about, then confirm it.",
+      "confirm": "Confirm line",
+      "confirmed": "Order line confirmed.",
+      "failed": "The line could not be confirmed.",
+      "noSuggestion": "OpenLinker has no suggestion. Pick the line.",
+      "option": "{price} x {qty}",
+      "selectLabel": "Order line",
+      "title": "This line could be one of several on the order"
+    },
+    "picker": {
+      "backInWarehouse": "Back in the warehouse",
+      "componentLine": "{name} x {n}",
+      "noSplitSkus": "{skus} has no price and no cost, so OpenLinker cannot say what the returned part is worth. Add a price or a cost to the component, or return the whole bundle.",
+      "noSplitTitle": "The set price cannot be split",
+      "noSplitTotal": "The price paid for this set is not known, so it cannot be split. Return the whole bundle instead.",
+      "noneSelected": "Pick at least one component.",
+      "partialHint": "Only the components you tick go back to stock.",
+      "previewFailed": "The components of this bundle could not be loaded, so it cannot be restocked yet. Try again.",
+      "share": "Worth {amount} of the set price",
+      "staysWithCustomer": "Stays with the customer",
+      "title": "What is coming back",
+      "whole": "Whole bundle",
+      "wholeHint": "Every component goes back to stock."
+    }
+  },
   "bundles": {
     "bench": {
       "bundleFallbackName": "Bundle",
@@ -172,6 +215,441 @@
       "left": "{duration} left",
       "overdue": "Overdue {duration}"
     }
+  },
+  "giftDocuments": {
+    "connection": {
+      "defaultBadge": "Default",
+      "fieldHelp": "Gifts from this channel use this form unless the gift itself says otherwise.",
+      "fieldLabel": "Gift on the document in this channel",
+      "inheritDescription": "This channel follows the OpenLinker-wide setting.",
+      "inheritLabel": "As in OpenLinker ({form})",
+      "loadFailed": "Unable to load the gift settings",
+      "loadFailedMessage": "The connection could not be loaded.",
+      "loading": "Loading the gift settings",
+      "loadingMessage": "Fetching this connection.",
+      "notAvailable": "Not available",
+      "readOnlyNotice": "You can see these settings but not change them.",
+      "tab": "Gifts on documents",
+      "title": "Gifts on documents",
+      "zeroNoProvider": "Not offered: no document provider of this channel is known to accept a 0.00 line.",
+      "zeroNotOffered": "Not offered: {provider} does not accept a 0.00 line."
+    },
+    "default": {
+      "bundleInfo": "Bundles on documents: one line when all items share a VAT rate, otherwise each item at its own rate.",
+      "fieldHelp": "This is the OpenLinker-wide default.",
+      "fieldLabel": "Gift on the document",
+      "levels": "The most specific setting wins: the gift itself (gift rule, gift slot in a bundle, manual add), then the sales channel, then this OpenLinker-wide default. Every gift shows where its form came from: \"from the rule\", \"from the channel settings\" or \"OpenLinker default\".",
+      "loadFailed": "Unable to load the gift settings",
+      "loading": "Loading the gift settings",
+      "readOnlyNotice": "You can see these settings but not change them.",
+      "save": "Save settings",
+      "saveFailed": "Changes not saved",
+      "saved": "Settings saved.",
+      "taxNote": "The form of the gift is a tax decision. Talk to your accountant or tax adviser.",
+      "title": "Gifts and bundles"
+    },
+    "example": {
+      "book": "Book",
+      "caption": "Example: a book for 100.00 and a mug for 20.00 as a gift",
+      "form": "Form",
+      "intro": "A customer pays {total} for a book (price {book}) and gets a mug (price {mug}).",
+      "mug": "Mug (gift)",
+      "noLine": "no line",
+      "title": "Example"
+    },
+    "forms": {
+      "omit": {
+        "description": "The gift is not on the document. It may be treated as a free transfer, ask your accountant.",
+        "label": "Omitted",
+        "short": "Omitted"
+      },
+      "pricedIn": {
+        "description": "Part of the payment moves to the gift, in proportion to prices, each item in its own VAT rate.",
+        "label": "Priced in proportionally",
+        "short": "Priced in proportionally"
+      },
+      "showZero": {
+        "description": "The gift is a 0.00 line. Offered only where the document provider accepts a zero line.",
+        "label": "Shown at 0.00",
+        "short": "Shown at 0.00"
+      },
+      "technicalCent": {
+        "description": "The gift is a 0.01 line, taken off the most expensive paid item. The total does not change. Default, as BaseLinker does it.",
+        "label": "0.01, taken from the most expensive paid item",
+        "short": "0.01, from the most expensive"
+      }
+    },
+    "perGift": {
+      "asInSettings": "As in settings",
+      "label": "On the document"
+    },
+    "preview": {
+      "equalsPaid": "The total equals what the customer paid.",
+      "giftSuffix": "(gift)",
+      "invoiceTitle": "On an invoice",
+      "receiptTitle": "On a receipt",
+      "title": "Document preview",
+      "total": "Total"
+    },
+    "source": {
+      "channel": "from {name} settings",
+      "default": "OpenLinker default",
+      "rule": "from the rule"
+    }
+  },
+  "giftReport": {
+    "bundles": {
+      "alone": "Alone",
+      "available": "Available",
+      "bundle": "Bundle",
+      "component": "Component",
+      "componentCostMissing": "Component cost missing",
+      "demandTitle": "Demand for components",
+      "empty": "No bundle was sold in this period.",
+      "giftInComposition": "Gift in composition",
+      "inBundles": "In bundles",
+      "margin": "Margin",
+      "note": "The cost of a bundle is the sum of the purchase costs of its components. A gift in the composition counts as cost.",
+      "revenue": "Net revenue",
+      "salesTitle": "Bundle sales",
+      "sold": "Sold",
+      "unknown": "unknown"
+    },
+    "description": "How many gifts you gave, what they cost you and how bundles sell. One report, filters on top.",
+    "empty": {
+      "body": "No order in this range carried a gift. Change the period or the filters.",
+      "title": "No gifts in this period"
+    },
+    "error": "The gift report could not be loaded.",
+    "export": {
+      "body": "Each row: date, customer, gift, net purchase cost, document. The customer is the same buyer in all orders, even when Allegro gives a different e-mail each time. The yearly thresholds (20 zł and 100 zł) are judged by your accountant, OpenLinker does not watch them.",
+      "button": "Export per customer (CSV)",
+      "download": "Download CSV",
+      "preparing": "Preparing CSV…",
+      "title": "Yearly gift export for your accountant"
+    },
+    "eyebrow": "Analytics",
+    "filters": {
+      "allChannels": "All channels",
+      "allSources": "All",
+      "channel": "Channel",
+      "manual": "Added by hand",
+      "rule": "From a promotion",
+      "source": "Gift source"
+    },
+    "movements": {
+      "body": "Stock movements with the reason Gift for this period are in the stock history. Bundle components leave stock as ordinary sales and are not listed separately.",
+      "open": "Show gift movements"
+    },
+    "range": {
+      "from": "From",
+      "to": "To"
+    },
+    "summary": {
+      "cost": "Cost you",
+      "paid": "Customers paid",
+      "sentence": "Customers paid {paid} for {units} gifts. They cost you {cost} net, by the purchase cost of the product. You pay for them.",
+      "units": "Pieces",
+      "unknownInSentence": "{n} pcs without a purchase cost are not in this amount."
+    },
+    "table": {
+      "bundleLabel": "Gift in a bundle",
+      "channelLabel": "Sent by the channel",
+      "cost": "Cost you",
+      "costUnknown": "Cost unknown",
+      "deletedRule": "Deleted promotion",
+      "gift": "Gift",
+      "manualLabel": "Added by hand",
+      "orders": "Orders",
+      "pieces": "Pieces",
+      "promotion": "Promotion",
+      "title": "Gift cost by promotion",
+      "withoutPieces": "without {n} pcs"
+    },
+    "title": "Gift cost",
+    "unknown": {
+      "body": "They are not in the cost above. Fill in the purchase cost of the product and the report recalculates by itself.",
+      "title": "{n} pcs of gifts without a purchase cost"
+    },
+    "views": {
+      "bundles": "Bundles",
+      "gifts": "Gifts",
+      "movements": "Stock movements"
+    }
+  },
+  "gifts": {
+    "addDialog": {
+      "added": "Gift added",
+      "addedBody": "The gift is on the order and its stock is held.",
+      "cancel": "Cancel",
+      "changeProduct": "Change",
+      "closedBody": "A gift can be added until the parcel is closed. Mark the order as not packed first, or add the gift to the next order.",
+      "closedTitle": "The parcel is already closed",
+      "description": "The gift is added to this order only. It is held in stock like any other line.",
+      "documentTitle": "A sales document is already issued",
+      "documentWarning": "The document will not show this gift. The gift is still added to the order.",
+      "notOnPickList": "The gift is on the order, but this order is already with the packers: tell them about the gift.",
+      "onDocument": "On the document",
+      "product": "Gift product",
+      "productPlaceholder": "Type a product name or SKU",
+      "quantity": "Quantity",
+      "reason": "Added by hand. It shows on the order as a gift from you.",
+      "submit": "Add gift",
+      "title": "Add a gift to order {order}"
+    },
+    "attention": {
+      "addAnother": "Add another gift",
+      "openRule": "Open the promotion",
+      "reasons": {
+        "below-threshold": {
+          "body": "The order does not reach what the promotion asks for, so no gift was added.",
+          "title": "{rule}: below the threshold"
+        },
+        "customer-limit": {
+          "body": "The per-customer limit is reached. The customer is the one OpenLinker recognises, not the channel buyer id.",
+          "title": "{rule}: this customer already got their gift"
+        },
+        "customer-unknown": {
+          "body": "The per-customer limit could not be checked, so no gift was added.",
+          "title": "{rule}: the customer is not known"
+        },
+        "failed": {
+          "body": "Something went wrong while adding it. You can add the gift by hand, or open the promotion and the run history.",
+          "title": "{rule}: the gift could not be added"
+        },
+        "limit-reached": {
+          "body": "No gift was added. Open the promotion to raise the limit and resume it.",
+          "title": "{rule}: the piece limit is used up"
+        },
+        "other": {
+          "body": "The promotion did not add its gift to this order. Open it for the details.",
+          "title": "{rule}: no gift was added"
+        },
+        "out-of-stock": {
+          "body": "The order goes on without the gift. You can add another gift by hand. The promotion resumes on its own when the product is back.",
+          "title": "{rule}: the gift is out of stock"
+        },
+        "stock-unknown": {
+          "body": "The gift was not added, because an unknown number is never read as zero. Check the stock and add the gift by hand if needed.",
+          "title": "{rule}: the stock of the gift is not known"
+        },
+        "superseded": {
+          "body": "An earlier promotion that does not combine with others already gave its gift, so this one did not.",
+          "title": "{rule}: an earlier promotion applied"
+        }
+      },
+      "shopRejected": {
+        "body": "The order carries a gift line and the shop refused the order. Fix the cause in the sync status below, or take the gift off the order and retry.",
+        "title": "The shop did not accept the order with the gift"
+      }
+    },
+    "composer": {
+      "back": "Gift promotions",
+      "basketFrom": "Order from",
+      "basketHelp": "The amount the customer paid counts, without delivery.",
+      "change": "Change",
+      "channels": "Channels",
+      "channelsHelp": "Where the promotion applies. All channels is the default.",
+      "copy": "Copy",
+      "copySuffix": "(copy)",
+      "costPerUnit": "Costs you {cost} per unit",
+      "costUnknown": "Costs you: no purchase cost recorded",
+      "currency": "Currency",
+      "docForm": "On the document",
+      "doubleGiftWarning": "A shop with its own gift rule could give the same gift twice. Keep \"Skip if the product is already in the order\" on.",
+      "editNote": "A change applies from now on. Orders already placed keep the gift they got.",
+      "endedBody": "You can still edit it, copy it, or extend it with a new end date.",
+      "endedTitle": "Ended {date}",
+      "extend": "Extend and resume",
+      "extendTo": "New end date",
+      "from": "From",
+      "gift": "Gift",
+      "giftLabel": "Gift",
+      "limitBody": "Given {given} of {cap} pcs. Orders go on without the gift. Add pieces to the limit to resume.",
+      "limitTitle": "Paused itself: piece limit reached",
+      "loadFailed": "Unable to load the promotion",
+      "markerNative": "The shop can also give gifts",
+      "markerOpenLinker": "Through OpenLinker",
+      "maxPerOrder": "Most per order",
+      "missing": "Still needed",
+      "more": "More options",
+      "name": "Name",
+      "nameHelp": "Suggested from the settings below. You can change it.",
+      "nameTemplates": {
+        "basket": "{gift} for orders from {amount}",
+        "product": "{gift} with {product}",
+        "unit": "{gift} for every {product}"
+      },
+      "newTitle": "New promotion",
+      "noStack": "Do not combine with other promotions",
+      "pause": "Pause",
+      "pausedStockBody": "Orders go on without the gift, with a note on the order. The promotion resumes on its own when the product is back in stock.",
+      "pausedStockTitle": "Paused itself: the gift is out of stock",
+      "perCustomer": "Most per customer",
+      "perN": "1 gift per N pieces",
+      "period": "Period",
+      "periodHelp": "The day the order was placed counts. A promotion never applies to orders placed before it was saved.",
+      "problems": {
+        "basket": "the amount",
+        "gift": "the gift",
+        "name": "a name",
+        "per-n": "a whole number for \"1 gift per N\"",
+        "period": "an end date after the start",
+        "quantity": "a quantity",
+        "unit-cap": "a whole piece limit",
+        "when": "the product"
+      },
+      "productHelp": "Pick a product or a bundle.",
+      "productLabel": "When the order contains",
+      "productPlaceholder": "Type a product name or SKU",
+      "quantity": "Quantity",
+      "resume": "Resume",
+      "resumeUnits": "Pieces to add to the limit",
+      "saveChanges": "Save changes",
+      "saveDraft": "Save as draft",
+      "saved": "Promotion saved",
+      "skipPresent": "Skip if the product is already in the order (also as a part of a bundle)",
+      "summary": {
+        "cap": "limit {n} pcs",
+        "combines": "combines with others",
+        "noCap": "no piece limit",
+        "noStack": "does not combine with others",
+        "pauses": "pauses when the gift runs out"
+      },
+      "title": "Gift promotion",
+      "to": "To (optional)",
+      "turnOn": "Turn on promotion",
+      "unitCap": "Piece limit for the whole promotion",
+      "unitProductHelp": "Pick the product that gets a gift with every unit.",
+      "when": "When"
+    },
+    "filter": {
+      "check": "With a gift",
+      "chipLabel": "Gift",
+      "chipValue": "Included",
+      "quick": "With a gift",
+      "rowIcon": "Includes a gift"
+    },
+    "list": {
+      "allChannels": "All channels",
+      "back": "Automations",
+      "colGiven": "Given",
+      "colOrder": "Order",
+      "colPromotion": "Promotion",
+      "colState": "State",
+      "create": "Create promotion",
+      "description": "OpenLinker adds the gift to the order in every channel, also where the channel does not know gifts.",
+      "doNotCombine": "Does not combine with others",
+      "down": "Down",
+      "downLabel": "Move {name} down",
+      "empty": "No gift promotions yet",
+      "emptyHint": "Create the first one, for example a spoon with every morning set.",
+      "eyebrow": "Automations",
+      "fromAmount": "from {amount}",
+      "givenNoCap": "{given} pcs",
+      "givenOfCap": "{given} of {cap} pcs",
+      "loadFailed": "Unable to load the gift promotions",
+      "loading": "Loading the gift promotions",
+      "orderNote": "Promotions are checked from the top. If a promotion has \"Do not combine with others\", the ones below it do not fire when it does.",
+      "readOnly": "You can look at the gift promotions but not change them.",
+      "reasonLimit": "Given {given} of {cap} pcs.",
+      "reasonStock": "The gift ran out. It resumes on its own after a delivery.",
+      "reorderFailed": "The order could not be saved. Try again.",
+      "tableLabel": "Gift promotions in the order they are checked",
+      "title": "Gift promotions",
+      "until": "until {date}",
+      "up": "Up",
+      "upLabel": "Move {name} up"
+    },
+    "order": {
+      "add": "Add gift",
+      "costUnknown": "Cost not recorded",
+      "costsYou": "Costs you {cost}",
+      "customerPays": "Customer pays {price}",
+      "decidedBy": "Where it comes from",
+      "onDocument": "On the document",
+      "readOnly": "Only admins and operators can add a gift.",
+      "source": {
+        "cartRule": "A cart rule of the shop gave it. You pay for it.",
+        "channel": "Marked as a gift by the sales channel. You pay for it.",
+        "operator": "Added by hand by an operator. You pay for it.",
+        "rule": "A gift promotion in OpenLinker added it. You pay for it."
+      },
+      "tag": "Gift",
+      "tagLabel": "Gift: show where it comes from",
+      "whoPays": "Who pays"
+    },
+    "status": {
+      "active": "Active",
+      "draft": "Draft",
+      "ended": "Ended",
+      "pausedLimit": "Paused: piece limit",
+      "pausedStock": "Paused: gift out of stock",
+      "scheduled": "Starts later"
+    },
+    "template": {
+      "basket": {
+        "example": "e.g. a coffee sample with orders from 150 zl",
+        "title": "Gift from an order amount"
+      },
+      "description": "Choose when the customer gets a gift. You set the details in the next step.",
+      "product": {
+        "example": "e.g. a spoon with every morning set",
+        "title": "Gift with a product"
+      },
+      "title": "New promotion",
+      "unit": {
+        "example": "e.g. a bag for every second mug",
+        "title": "Gift for every unit"
+      }
+    },
+    "test": {
+      "help": "Shows which promotions would add a gift to that order, and why the others would not. Nothing is saved.",
+      "noneApply": "No gift would be added",
+      "orderLabel": "Order",
+      "orderNotFound": "There is no such order.",
+      "orderPlaceholder": "Order id (ol_order_...)",
+      "reasons": {
+        "alreadyInOrder": "The gift is already in the order.",
+        "belowThreshold": "Not enough units of the product in the order.",
+        "customerLimit": "This customer already got the most allowed.",
+        "customerUnknown": "The customer is not known, so the per-customer limit cannot be checked.",
+        "limit": "The piece limit is used up.",
+        "notMatching": "The conditions are not met by this order.",
+        "outOfStock": "The gift is out of stock.",
+        "stockUnknown": "The stock of the gift is not known, so it was not added.",
+        "superseded": "An earlier promotion that does not combine already applies."
+      },
+      "run": "Test",
+      "someApply": "{count} promotion(s) would add a gift",
+      "thisPromotion": "This promotion",
+      "title": "Test on a sample order",
+      "wouldAdd": "Would add {count} pcs."
+    }
+  },
+  "returnGifts": {
+    "body": "OpenLinker never deducts a gift by itself. Decide what to do with each gift.",
+    "choice": {
+      "ask_back": "Ask for it back",
+      "deduct": "Deduct its value",
+      "keep": "Keep with the customer"
+    },
+    "decision": "What to do with the gift",
+    "deductUnknown": "The gift has no price in the catalogue, so there is nothing to deduct.",
+    "failed": "The decision could not be saved.",
+    "gift": "Gift",
+    "loadFailed": "The gifts of this order could not be loaded.",
+    "note": {
+      "ask_back": "You expect the gift back. Receive it into stock like any returned item.",
+      "deduct": "You will deduct {amount}, the price of the gift. Do it only when the offer terms say so.",
+      "keep": "The customer keeps the gift. The most common choice for a cheap gift."
+    },
+    "qty": "Qty",
+    "refundHint": "Gifts to deduct from the refund: {amount}. This is a suggestion; nothing is filled in until you change the refund yourself.",
+    "saved": "Decision saved.",
+    "title": "Gifts on this order",
+    "undecided": "Not decided yet",
+    "worth": "Price alone"
   },
   "ui": {
     "accessDenied": {
@@ -434,126 +912,6 @@
     },
     "wizard": {
       "summary": "Setup summary"
-    }
-  },
-  "bundleReturns": {
-    "correction": {
-      "componentCredit": "Credited for returned components: {amount} ({units} set(s)). The set stays one invoice line; the quantity is not reduced."
-    },
-    "hint": {
-      "calcKept": "Stays with the customer, full price: {amount}",
-      "calcPaid": "Paid for the set: {amount}",
-      "calcResult": "The formula gives paid minus what the customer keeps, and never less than 0.",
-      "calcTitle": "How this is calculated",
-      "label": "According to the Allegro formula: {amount}.",
-      "notApplied": "This is a suggestion. Nothing is filled in until you press Use.",
-      "unavailable": "The Allegro formula cannot be calculated: a component the customer keeps has no price of its own.",
-      "use": "Use"
-    },
-    "match": {
-      "alreadyResolved": "This line was already matched; nothing was changed.",
-      "basisHighestPrice": "Suggested because it is the line with the highest price. This is a guess: check it.",
-      "basisPriceMatch": "Suggested because its price matches the price in the return.",
-      "body": "The same offer appears {n} times on the order. Check which line this return is about, then confirm it.",
-      "confirm": "Confirm line",
-      "confirmed": "Order line confirmed.",
-      "failed": "The line could not be confirmed.",
-      "noSuggestion": "OpenLinker has no suggestion. Pick the line.",
-      "option": "{price} x {qty}",
-      "selectLabel": "Order line",
-      "title": "This line could be one of several on the order"
-    },
-    "picker": {
-      "backInWarehouse": "Back in the warehouse",
-      "componentLine": "{name} x {n}",
-      "noSplitSkus": "{skus} has no price and no cost, so OpenLinker cannot say what the returned part is worth. Add a price or a cost to the component, or return the whole bundle.",
-      "noSplitTitle": "The set price cannot be split",
-      "noSplitTotal": "The price paid for this set is not known, so it cannot be split. Return the whole bundle instead.",
-      "noneSelected": "Pick at least one component.",
-      "partialHint": "Only the components you tick go back to stock.",
-      "previewFailed": "The components of this bundle could not be loaded, so it cannot be restocked yet. Try again.",
-      "share": "Worth {amount} of the set price",
-      "staysWithCustomer": "Stays with the customer",
-      "title": "What is coming back",
-      "whole": "Whole bundle",
-      "wholeHint": "Every component goes back to stock."
-    }
-  },
-  "giftDocuments": {
-    "connection": {
-      "defaultBadge": "Default",
-      "fieldHelp": "Gifts from this channel use this form unless the gift itself says otherwise.",
-      "fieldLabel": "Gift on the document in this channel",
-      "inheritDescription": "This channel follows the OpenLinker-wide setting.",
-      "inheritLabel": "As in OpenLinker ({form})",
-      "loadFailed": "Unable to load the gift settings",
-      "loadFailedMessage": "The connection could not be loaded.",
-      "loading": "Loading the gift settings",
-      "loadingMessage": "Fetching this connection.",
-      "notAvailable": "Not available",
-      "readOnlyNotice": "You can see these settings but not change them.",
-      "tab": "Gifts on documents",
-      "title": "Gifts on documents",
-      "zeroNoProvider": "Not offered: no document provider of this channel is known to accept a 0.00 line.",
-      "zeroNotOffered": "Not offered: {provider} does not accept a 0.00 line."
-    },
-    "default": {
-      "bundleInfo": "Bundles on documents: one line when all items share a VAT rate, otherwise each item at its own rate.",
-      "fieldHelp": "This is the OpenLinker-wide default.",
-      "fieldLabel": "Gift on the document",
-      "levels": "The most specific setting wins: the gift itself (gift rule, gift slot in a bundle, manual add), then the sales channel, then this OpenLinker-wide default. Every gift shows where its form came from: \"from the rule\", \"from the channel settings\" or \"OpenLinker default\".",
-      "loadFailed": "Unable to load the gift settings",
-      "loading": "Loading the gift settings",
-      "readOnlyNotice": "You can see these settings but not change them.",
-      "save": "Save settings",
-      "saveFailed": "Changes not saved",
-      "saved": "Settings saved.",
-      "taxNote": "The form of the gift is a tax decision. Talk to your accountant or tax adviser.",
-      "title": "Gifts and bundles"
-    },
-    "example": {
-      "book": "Book",
-      "caption": "Example: a book for 100.00 and a mug for 20.00 as a gift",
-      "form": "Form",
-      "intro": "A customer pays {total} for a book (price {book}) and gets a mug (price {mug}).",
-      "mug": "Mug (gift)",
-      "noLine": "no line",
-      "title": "Example"
-    },
-    "forms": {
-      "omit": {
-        "description": "The gift is not on the document. It may be treated as a free transfer, ask your accountant.",
-        "label": "Omitted",
-        "short": "Omitted"
-      },
-      "pricedIn": {
-        "description": "Part of the payment moves to the gift, in proportion to prices, each item in its own VAT rate.",
-        "label": "Priced in proportionally",
-        "short": "Priced in proportionally"
-      },
-      "showZero": {
-        "description": "The gift is a 0.00 line. Offered only where the document provider accepts a zero line.",
-        "label": "Shown at 0.00",
-        "short": "Shown at 0.00"
-      },
-      "technicalCent": {
-        "description": "The gift is a 0.01 line, taken off the most expensive paid item. The total does not change. Default, as BaseLinker does it.",
-        "label": "0.01, taken from the most expensive paid item",
-        "short": "0.01, from the most expensive"
-      }
-    },
-    "preview": {
-      "equalsPaid": "The total equals what the customer paid.",
-      "giftSuffix": "(gift)",
-      "invoiceTitle": "On an invoice",
-      "receiptTitle": "On a receipt",
-      "title": "Document preview",
-      "total": "Total"
-    },
-    "source": {
-      "channel": "from {name} settings",
-      "default": "OpenLinker default",
-      "rule": "from the rule"
     }
   }
 }

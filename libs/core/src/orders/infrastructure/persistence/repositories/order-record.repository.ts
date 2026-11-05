@@ -29,6 +29,7 @@ import type {
   OrderRecordRepositoryPort,
   HeldOrdersFilter,
 } from '../../../domain/ports/order-record-repository.port';
+import type { OrderGiftReportReaderPort } from '../../../domain/ports/order-gift-report-reader.port';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { OrderLineItemDraft } from '../../../domain/order-analytics-projection';
 import { carryForwardLineCosts } from '../../../domain/order-line-cost-snapshot';
@@ -179,7 +180,9 @@ function orderRecordColumnProperties(): readonly string[] {
 const SHIPPED_FULFILLMENT_STATES = ['dispatched', 'delivered'] as const;
 
 @Injectable()
-export class OrderRecordRepository implements OrderRecordRepositoryPort {
+export class OrderRecordRepository
+  implements OrderRecordRepositoryPort, OrderGiftReportReaderPort
+{
   /**
    * The "currency mismatch" predicate (#2464/#2713/#2468 review) — a row
    * that either never got an FX stamp (`reportingCurrency IS NULL`) or was
@@ -232,6 +235,37 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       where: { internalOrderId: In(internalOrderIds) },
     });
     return entities.map((e) => this.toDomain(e));
+  }
+
+  async findForGiftReport(
+    filters: { from: Date; to: Date; sourceConnectionId?: string; scope: 'gifts' | 'bundles' },
+    page: { afterId: string | null; limit: number }
+  ): Promise<OrderRecord[]> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .where(`rec."recordStatus" = 'ready'`)
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere('rec."placedAt" >= :giftFrom', { giftFrom: filters.from })
+      .andWhere('rec."placedAt" < :giftTo', { giftTo: filters.to });
+    if (filters.scope === 'gifts') {
+      qb.andWhere(
+        `(jsonb_path_exists(rec."orderSnapshot", '$.items[*].gift')
+          OR rec."orderEdits" -> 'addedLines' IS NOT NULL
+          OR jsonb_path_exists(rec."lineExpansion", '$.** ? (@.giftSlot == true)'))`
+      );
+    } else {
+      qb.andWhere('rec."lineExpansion" IS NOT NULL');
+    }
+    if (filters.sourceConnectionId !== undefined) {
+      qb.andWhere('rec."sourceConnectionId" = :giftConnection', {
+        giftConnection: filters.sourceConnectionId,
+      });
+    }
+    if (page.afterId !== null) {
+      qb.andWhere('rec."internalOrderId" > :giftAfter', { giftAfter: page.afterId });
+    }
+    const entities = await qb.orderBy('rec."internalOrderId"', 'ASC').limit(page.limit).getMany();
+    return entities.map((entity) => this.toDomain(entity));
   }
 
   /**
@@ -596,6 +630,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         filters.taxRateConflict
           ? OrderRecordRepository.HAS_TAX_RATE_CONFLICT
           : `NOT (${OrderRecordRepository.HAS_TAX_RATE_CONFLICT})`
+      );
+    }
+
+    if (filters.withGift !== undefined) {
+      // #3940 - its own axis, ANDed like `taxRateConflict`: a gifted order is
+      // usually also synced, so folding it into `health` would hide one or the other.
+      qb.andWhere(
+        filters.withGift
+          ? OrderRecordRepository.HAS_GIFT
+          : `NOT (${OrderRecordRepository.HAS_GIFT})`
       );
     }
 
@@ -1950,6 +1994,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * suppresses itself whenever an invoice exists (epic F1).
    */
   private static readonly HAS_TAX_RATE_CONFLICT = `jsonb_path_exists(rec."orderSnapshot", '$.items[*].taxRateChannel')`;
+
+  /**
+   * "Carries a gift" (#3940): a channel/shop line flagged `gift` in the persisted
+   * snapshot, or any overlay-added line (gifts are the only added lines).
+   */
+  private static readonly HAS_GIFT =
+    `(COALESCE(jsonb_path_exists(rec."orderSnapshot", '$.items[*] ? (@.gift != null)'), false) OR ` +
+    // `orderEdits` is NULL on an order nobody edited; a NULL here would make the
+    // negated filter drop that order instead of keeping it.
+    `COALESCE(jsonb_path_exists(rec."orderEdits", '$.addedLines.*'), false))`;
 
   private static readonly IS_SALES_DOCUMENT_BLOCKED =
     OrderRecordRepository.buildSalesDocumentBlockedPredicate();

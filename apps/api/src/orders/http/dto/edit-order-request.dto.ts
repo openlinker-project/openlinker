@@ -14,6 +14,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -26,6 +27,8 @@ import {
   MaxLength,
   ValidateNested,
 } from 'class-validator';
+
+import { GiftDocumentFormValues, type GiftDocumentForm } from '@openlinker/core/orders';
 
 class DryRunDto {
   @ApiPropertyOptional({
@@ -136,4 +139,26 @@ export class EditOrderDiscountRequestDto extends DryRunDto {
   @IsOptional()
   @IsBoolean()
   acknowledgeAboveCeiling?: boolean;
+}
+
+export class AddOrderGiftRequestDto extends DryRunDto {
+  @ApiProperty({ description: 'Internal variant id of the gift.' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  variantId!: string;
+
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  quantity!: number;
+
+  @ApiPropertyOptional({
+    enum: GiftDocumentFormValues,
+    description: 'How a sales document shows this gift. Absent means "as in settings".',
+  })
+  @IsOptional()
+  @IsIn(GiftDocumentFormValues as readonly string[])
+  documentForm?: GiftDocumentForm;
 }

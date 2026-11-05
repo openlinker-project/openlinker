@@ -188,6 +188,10 @@ export function toRegisterTransactionCommand(
       productId: part.component.productId,
       sku: part.component.sku ?? null,
       isGift: part.isGift,
+      // A gift slot's own form is the most specific level (#3940).
+      ...(part.isGift && part.component.giftDocumentForm !== undefined && {
+        giftForm: part.component.giftDocumentForm,
+      }),
       ...(part.referenceUnitPriceGross !== undefined && {
         referenceUnitPriceGross: part.referenceUnitPriceGross,
       }),

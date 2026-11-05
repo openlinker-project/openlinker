@@ -894,6 +894,18 @@ export function createMockApiClient(
       clearCredentials: vi.fn().mockResolvedValue(undefined),
       ...overrides.posthogSettings,
     } as ApiClient['posthogSettings'],
+    gifts: {
+      listRules: vi.fn().mockResolvedValue([]),
+      getRule: vi.fn(),
+      createRule: vi.fn(),
+      replaceRule: vi.fn(),
+      deleteRule: vi.fn().mockResolvedValue(undefined),
+      reorderRules: vi.fn().mockResolvedValue([]),
+      resumeRule: vi.fn(),
+      evaluate: vi.fn(),
+      addGiftToOrder: vi.fn(),
+      ...overrides.gifts,
+    } as ApiClient['gifts'],
     bundles: {
       get: vi.fn(),
       history: vi.fn().mockResolvedValue([]),
@@ -1209,6 +1221,16 @@ export function createMockApiClient(
     // ingestion IS configured — so a test that renders the list without opting
     // in gets the neutral "no returns yet" branch rather than the
     // configuration claim, which no test should assert by accident.
+    giftReport: {
+      getGiftReport: vi.fn().mockResolvedValue({ groups: [], totals: [] }),
+      getGiftBundleReport: vi.fn().mockResolvedValue({ bundles: [], demand: [] }),
+      ...overrides.giftReport,
+    } as ApiClient['giftReport'],
+    returnGifts: {
+      getReturnGifts: vi.fn().mockResolvedValue({ gifts: [], currency: null, refundDeductionGross: 0 }),
+      decideReturnGift: vi.fn(),
+      ...overrides.returnGifts,
+    } as ApiClient['returnGifts'],
     returns: {
       // A plain (non-bundle) line: the preview answers, and nothing blocks the restock.
       getBundleReturnPreview: vi.fn().mockResolvedValue({

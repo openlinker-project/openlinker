@@ -26,6 +26,7 @@ import { useNavigate } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Button } from '../../shared/ui/button';
 import { Alert } from '../../shared/ui/alert';
+import { useMessages } from '../../shared/i18n';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import {
   AUTOMATIONS_PAGE_COPY,
@@ -50,6 +51,7 @@ const SUGGESTED_TRIGGER = 'order.packed';
 
 export function AutomationsPage(): ReactElement {
   const navigate = useNavigate();
+  const giftCopy = useMessages('gifts');
   const vocabularyQuery = useAutomationVocabularyQuery();
   const summaryQuery = useAutomationSummaryQuery();
 
@@ -59,9 +61,18 @@ export function AutomationsPage(): ReactElement {
   );
 
   const header = (
-    <Button tone="secondary" onClick={() => void navigate('/automations/activity')}>
-      {AUTOMATIONS_PAGE_COPY.runLogAction}
-    </Button>
+    <>
+      <Button
+        tone="secondary"
+        onClick={() => void navigate('/automations/gifts')}
+        data-testid="automations-gift-promotions-link"
+      >
+        {giftCopy.list.title}
+      </Button>
+      <Button tone="secondary" onClick={() => void navigate('/automations/activity')}>
+        {AUTOMATIONS_PAGE_COPY.runLogAction}
+      </Button>
+    </>
   );
 
   if (vocabularyQuery.isLoading || summaryQuery.isLoading) {
