@@ -295,6 +295,17 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
             }
         }
 
+        // Re-price the cart under the context set above. The `getProducts()`
+        // call near the top ran before the context carried this cart's customer
+        // and currency, so it priced every line from the catalogue and cached the
+        // result on this very object, which validateOrder then reads, ignoring
+        // pins written since (by the Webservice earlier or by the loop above). A
+        // pin equal to the catalogue price hid this; a 0.00 gift line did not.
+        $cart->getProducts(true);
+        // setDeliveryOption() above built the package list from those same stale
+        // prices and caches it too, so rebuild it as well.
+        $cart->getPackageList(true);
+
         // validateOrder and the code it calls can end the request with die(),
         // which PHP sends as HTML with status 200 - a failure the caller reads
         // as a success (#2601). The buffer opened above is what stops such a

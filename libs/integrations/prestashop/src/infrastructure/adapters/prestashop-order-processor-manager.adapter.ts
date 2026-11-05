@@ -980,7 +980,11 @@ export class PrestashopOrderProcessorManagerAdapter
             reduction: '0',
             reduction_type: 'amount',
             reduction_tax: '0',
-            from: '0000-00-00 00:00:00',
+            // Not the zero date: a strict MySQL stores it as NULL, and
+            // PrestaShop's lookup (`from = zero OR now >= from`) then never
+            // matches the row, so the pin is silently ignored and the line is
+            // priced from the catalogue. Same value as the module's PIN_FROM.
+            from: '2000-01-01 00:00:01',
             to: toExpiry,
           }
         );

@@ -25,6 +25,7 @@ import { PrestashopCurrencyUnknownException } from '../../domain/exceptions/pres
 import { PrestashopParseException } from '../../domain/exceptions/prestashop-parse.exception';
 import { Logger } from '@openlinker/shared/logging';
 import { toPrestashopProductAttributeId } from './prestashop-variant-id';
+import { splitGiftLines, type PrestashopGiftCartRule } from './prestashop-gift-split';
 
 /**
  * Default values for PrestaShop cart creation. Kept at module scope as the
@@ -50,12 +51,13 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
   private readonly logger = new Logger(PrestashopOrderMapper.name);
   mapOrder(
     prestashopOrder: PrestashopOrder,
-    orderRows: PrestashopOrderRow[]
+    orderRows: PrestashopOrderRow[],
+    giftCartRules: readonly PrestashopGiftCartRule[] = []
   ): MappedPrestashopOrder {
-    // Strictly 1:1 and order-preserving: `PrestashopOrderSourceAdapter` re-correlates
-    // `mapped.items[i]` back to `orderRows[i]` positionally to build each product ref.
-    // Filtering or reordering rows here would silently mis-pair every later line.
-    const items: OrderItem[] = orderRows.map((row, index) => {
+    // One item per row, in row order, until the gift split below: the adapter
+    // re-correlates each item to its row by `sourceRowIdOfLineId(item.id)`, so a
+    // split line must keep its source row's id as the prefix of its own.
+    const rowItems: OrderItem[] = orderRows.map((row, index) => {
       // PrestaShop uses "0" or 0 to indicate no variant, treat as undefined
       const variantId =
         row.product_attribute_id &&
@@ -86,6 +88,10 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
           : {}),
       };
     });
+
+    // A gift cart rule arrives merged into its product's line at full price;
+    // split out, the discount drops by the same amount so the total is unchanged.
+    const { items, giftValueTaxIncl } = splitGiftLines(rowItems, orderRows, giftCartRules);
 
     // Map totals. No `currency` (#2277): the order's denomination lives behind a
     // `GET /currencies/{id}` read keyed on `id_currency`, and this mapper does no
@@ -140,7 +146,12 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
       ...(((): { discountTotal?: number } => {
         const discount = this.parseNumber(prestashopOrder.total_discounts_tax_incl);
         return discount !== undefined && Number.isFinite(discount)
-          ? { discountTotal: discount }
+          ? {
+              discountTotal:
+                giftValueTaxIncl === 0
+                  ? discount
+                  : Math.max(0, Math.round((discount - giftValueTaxIncl) * 100) / 100),
+            }
           : {};
       })()),
     };
