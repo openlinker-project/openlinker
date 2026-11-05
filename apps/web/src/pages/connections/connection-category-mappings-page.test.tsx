@@ -138,11 +138,36 @@ describe('ConnectionCategoryMappingsPage', () => {
     });
   });
 
-  it('should name the master platform in the category column', async () => {
+  it('should name the master platform in the category column and show progress for the marketplace', async () => {
     renderPage(apiWith([sampleConnection, ALLEGRO_CONNECTION]));
 
     expect(await screen.findByRole('heading', { name: 'PrestaShop categories' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Allegro store category' })).toBeInTheDocument();
+    expect(await screen.findByText('0 of 1 mapped')).toBeInTheDocument();
+    expect(screen.getByText('Used when you list offers on Allegro store.')).toBeInTheDocument();
+  });
+
+  it('should show only the categories still missing a mapping when "Not mapped" is chosen', async () => {
+    const twoCategories = [
+      ...PS_CATEGORIES,
+      { id: '3', name: 'Women', parentId: '1', depth: 1, active: true },
+    ];
+    const mapped: CategoryMapping = { ...LEGACY_MAPPING, connectionId: ALLEGRO_CONNECTION.id, sourceConnectionId: sampleConnection.id };
+    renderPage(
+      apiWith([sampleConnection, ALLEGRO_CONNECTION], {
+        getPrestashopCategories: vi.fn().mockResolvedValue(twoCategories),
+        getCategoryMappings: vi.fn((connectionId: string) =>
+          Promise.resolve(connectionId === ALLEGRO_CONNECTION.id ? [mapped] : []),
+        ),
+      }),
+    );
+
+    await screen.findByRole('button', { name: /Women/ });
+    fireEvent.click(screen.getByRole('radio', { name: /Not mapped/ }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /Men/ })).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /Women/ })).toBeInTheDocument();
   });
 
   it('shows an empty state when no marketplace connection exists', async () => {

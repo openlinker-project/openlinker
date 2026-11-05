@@ -19,6 +19,7 @@ import { useAllegroCategoriesQuery } from '../hooks/use-allegro-categories';
 import { useCategorySearchQuery, isSearchableCategoryQuery } from '../hooks/use-category-search';
 import { toCategorySearchResultHits, isTaxonomyUnsynced } from '../lib/category-search-hits';
 import { Button, Input } from '../../../shared/ui';
+import { useMessages } from '../../../shared/i18n';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import {
   buildCategoryPath,
@@ -55,6 +56,7 @@ export function AllegroCategorySearch({
   const [parentId, setParentId] = useState<string | undefined>(undefined);
   const [staged, setStaged] = useState<StagedPick | null>(null);
   const [search, setSearch] = useState('');
+  const copy = useMessages('mappings').categoryMappings;
 
   const categoriesQuery = useAllegroCategoriesQuery(marketplaceConnectionId, parentId);
 
@@ -117,31 +119,28 @@ export function AllegroCategorySearch({
     <div className="allegro-category-search">
       {/* Current saved mapping */}
       {currentMapping && !staged && (
-        <div className="allegro-category-search__current">
-          <span className="mono-text">{currentMapping.allegroCategoryName}</span>
-          {currentMapping.allegroCategoryPath && (
-            <span className="allegro-category-search__path">
-              {currentMapping.allegroCategoryPath}
-            </span>
-          )}
-          <Button className="button--ghost button--sm" onClick={onClear} disabled={isSaving}>
-            Clear mapping
+        <div className="allegro-category-search__current" data-testid="category-mapping-current">
+          <span className="allegro-category-search__label">{copy.goesTo}</span>
+          <CategoryPathText path={currentMapping.allegroCategoryPath ?? currentMapping.allegroCategoryName} />
+          <Button tone="ghost" className="button--sm allegro-category-search__clear" onClick={onClear} disabled={isSaving}>
+            {copy.clearMapping}
           </Button>
         </div>
       )}
 
       {/* Staged (unsaved) pick */}
       {staged && (
-        <div className="allegro-category-search__staged">
-          <span className="allegro-category-search__staged-label">Selected:</span>
-          <span className="mono-text">{staged.category.name}</span>
-          {staged.path && <span className="allegro-category-search__path">{staged.path}</span>}
+        <div className="allegro-category-search__staged" data-testid="category-mapping-staged">
+          <span className="allegro-category-search__label">
+            {currentMapping ? copy.changeTo : copy.mapTo}
+          </span>
+          <CategoryPathText path={staged.path || staged.category.name} />
           <span className="allegro-category-search__staged-actions">
-            <Button className="button--primary button--sm" onClick={handleSave} disabled={isSaving}>
-              {isSaving ? 'Saving…' : 'Save mapping'}
+            <Button tone="primary" className="button--sm" onClick={handleSave} disabled={isSaving}>
+              {isSaving ? copy.saving : copy.saveMapping}
             </Button>
-            <Button className="button--ghost button--sm" onClick={handleCancel} disabled={isSaving}>
-              Cancel
+            <Button tone="ghost" className="button--sm" onClick={handleCancel} disabled={isSaving}>
+              {copy.cancel}
             </Button>
           </span>
         </div>
@@ -151,8 +150,8 @@ export function AllegroCategorySearch({
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search all categories..."
-          aria-label="Search all categories"
+          placeholder={copy.searchPlaceholder}
+          aria-label={copy.searchPlaceholder}
           aria-controls="mapping-catpick-search-results"
           disabled={isSaving}
         />
@@ -196,5 +195,28 @@ export function AllegroCategorySearch({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * A category path ("Moda > Obuwie > Sneakersy") as breadcrumb text: the
+ * ancestors quiet, the category itself in full weight, so the eye lands on
+ * where the products actually go.
+ */
+function CategoryPathText({ path }: { path: string }): ReactElement {
+  const parts = path.split(' > ').filter(Boolean);
+  const leaf = parts.pop() ?? path;
+  return (
+    <span className="category-path-text" title={path}>
+      {parts.map((part, index) => (
+        <span key={`${part}-${index}`} className="category-path-text__ancestor">
+          {part}
+          <span className="category-path-text__sep" aria-hidden="true">
+            /
+          </span>
+        </span>
+      ))}
+      <span className="category-path-text__leaf">{leaf}</span>
+    </span>
   );
 }

@@ -1,14 +1,21 @@
 /**
  * CategoryMappingTree
  *
- * Expandable/collapsible tree rendering PrestaShop categories.
- * Each row shows the category name and its mapping status.
+ * The master's category tree, one row per category with the marketplace
+ * category it is mapped to. Opens fully expanded: a catalogue tree is small
+ * enough to read whole, and mapping is a pass over every row, so collapsed
+ * branches only hide work.
+ *
+ * `filter` narrows to matching names (their ancestors stay, so a match is
+ * never shown without its place in the tree) and `unmappedOnly` to the rows
+ * still missing a mapping.
  *
  * @module apps/web/src/features/mappings/components
  */
 
 import { useState, useMemo, type ReactElement } from 'react';
 import { CategoryMappingRow } from './CategoryMappingRow';
+import { useMessages, interpolate } from '../../../shared/i18n';
 import type { CategoryMapping } from '../api/mappings.types';
 
 interface TreeCategory {
@@ -23,10 +30,19 @@ interface CategoryMappingTreeProps {
   mappings: CategoryMapping[];
   selectedCategoryId: string | null;
   onSelect: (categoryId: string) => void;
+  /** Accessible name of the tree, naming the platform it lists. */
+  label: string;
+  filter?: string;
+  unmappedOnly?: boolean;
 }
 
 interface TreeNode extends TreeCategory {
   children: TreeNode[];
+}
+
+interface VisibleNode {
+  node: TreeNode;
+  level: number;
 }
 
 function buildTree(categories: TreeCategory[]): TreeNode[] {
@@ -48,18 +64,8 @@ function buildTree(categories: TreeCategory[]): TreeNode[] {
   return roots;
 }
 
-function flattenVisible(nodes: TreeNode[], expanded: Set<string>): TreeNode[] {
-  const result: TreeNode[] = [];
-  function walk(list: TreeNode[]): void {
-    for (const node of list) {
-      result.push(node);
-      if (node.children.length > 0 && expanded.has(node.id)) {
-        walk(node.children);
-      }
-    }
-  }
-  walk(nodes);
-  return result;
+function normalise(value: string): string {
+  return value.trim().toLocaleLowerCase();
 }
 
 export function CategoryMappingTree({
@@ -67,8 +73,12 @@ export function CategoryMappingTree({
   mappings,
   selectedCategoryId,
   onSelect,
+  label,
+  filter = '',
+  unmappedOnly = false,
 }: CategoryMappingTreeProps): ReactElement {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const copy = useMessages('mappings').categoryMappings;
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const tree = useMemo(() => buildTree(categories), [categories]);
 
@@ -80,10 +90,43 @@ export function CategoryMappingTree({
     return index;
   }, [mappings]);
 
-  const visible = useMemo(() => flattenVisible(tree, expanded), [tree, expanded]);
+  const query = normalise(filter);
+  const isNarrowed = query !== '' || unmappedOnly;
 
-  function toggleExpand(id: string): void {
-    setExpanded((prev) => {
+  const visible = useMemo(() => {
+    const result: VisibleNode[] = [];
+
+    function matches(node: TreeNode): boolean {
+      const nameMatches = query === '' || normalise(node.name).includes(query);
+      const stateMatches = !unmappedOnly || !mappingIndex.has(node.id);
+      return nameMatches && stateMatches;
+    }
+
+    // A node is kept when it matches or any descendant does, so a match always
+    // appears under its own ancestors.
+    function collect(nodes: TreeNode[], level: number, into: VisibleNode[]): boolean {
+      let anyKept = false;
+      for (const node of nodes) {
+        const childRows: VisibleNode[] = [];
+        const childKept = collect(node.children, level + 1, childRows);
+        if (!isNarrowed || matches(node) || childKept) {
+          anyKept = true;
+          into.push({ node, level });
+          // Narrowing always shows the path to a match, whatever was collapsed.
+          if (isNarrowed || !collapsed.has(node.id)) {
+            into.push(...childRows);
+          }
+        }
+      }
+      return anyKept;
+    }
+
+    collect(tree, 0, result);
+    return result;
+  }, [tree, collapsed, query, unmappedOnly, isNarrowed, mappingIndex]);
+
+  function toggle(id: string): void {
+    setCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
@@ -94,30 +137,42 @@ export function CategoryMappingTree({
     });
   }
 
-  // Determine which nodes have children for the expand toggle
-  const hasChildren = useMemo(() => {
-    const parentIds = new Set<string>();
-    for (const cat of categories) {
-      if (cat.parentId) {
-        parentIds.add(cat.parentId);
-      }
-    }
-    return parentIds;
-  }, [categories]);
+  if (visible.length === 0) {
+    return (
+      <p className="category-tree__empty" role="status">
+        {query !== ''
+          ? interpolate(copy.treeNoMatch, { query: filter.trim() })
+          : copy.treeAllMapped}
+      </p>
+    );
+  }
 
   return (
-    <div className="category-tree" role="tree" aria-label="PrestaShop categories">
-      {visible.map((node) => (
-        <div key={node.id} role="treeitem" aria-expanded={hasChildren.has(node.id) ? expanded.has(node.id) : undefined}>
-          <div className="category-tree__row">
-            {hasChildren.has(node.id) ? (
+    <div className="category-tree" role="tree" aria-label={label}>
+      {visible.map(({ node, level }) => {
+        const hasChildren = node.children.length > 0;
+        const isOpen = isNarrowed || !collapsed.has(node.id);
+        return (
+          <div
+            key={node.id}
+            role="treeitem"
+            aria-level={level + 1}
+            aria-selected={selectedCategoryId === node.id}
+            aria-expanded={hasChildren ? isOpen : undefined}
+            className="category-tree__item"
+            style={{ ['--tree-level' as string]: level }}
+          >
+            {hasChildren ? (
               <button
                 type="button"
                 className="category-tree__toggle"
-                onClick={() => { toggleExpand(node.id); }}
-                aria-label={expanded.has(node.id) ? `Collapse ${node.name}` : `Expand ${node.name}`}
+                onClick={() => { toggle(node.id); }}
+                disabled={isNarrowed}
+                aria-label={interpolate(isOpen ? copy.collapse : copy.expand, { name: node.name })}
               >
-                {expanded.has(node.id) ? '▾' : '▸'}
+                <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" className={isOpen ? 'is-open' : undefined}>
+                  <path d="M4 2.5 7.5 6 4 9.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               </button>
             ) : (
               <span className="category-tree__toggle-placeholder" />
@@ -125,14 +180,14 @@ export function CategoryMappingTree({
             <CategoryMappingRow
               id={node.id}
               name={node.name}
-              depth={node.depth}
               mapping={mappingIndex.get(node.id)}
               isSelected={selectedCategoryId === node.id}
+              hasChildren={hasChildren}
               onSelect={onSelect}
             />
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
