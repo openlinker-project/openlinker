@@ -47,6 +47,15 @@
       },
       "recovery": {
         "accountOnly": "Re-run the batch exactly as saved once the account can sell again."
+      },
+      "triage": {
+        "offerCause": {
+          "one": "{n} variant was refused for its offer data",
+          "other": "{n} variants were refused for their offer data"
+        },
+        "offerDetail": "Open them in the wizard with those variants selected, fix the data and submit again.",
+        "retryCause": "Retry without changes",
+        "retryDetail": "Re-runs every failed variant exactly as saved. Use it for errors that may pass on a second try."
       }
     },
     "bulkBlockers": {
