@@ -58,7 +58,8 @@
     "blocked": "Ta zmiana ceny jest zablokowana i nie można jej teraz opublikować.",
     "conflict": "Cena zmieniła się ponownie w trakcie przeglądu - odśwież i sprawdź jeszcze raz.",
     "currencyMismatch": "Nie można opublikować tej ceny - waluta źródła i kanału docelowego się różnią. Sprawdź ustawienia waluty połączenia.",
-    "fallback": "Coś poszło nie tak."
+    "fallback": "Coś poszło nie tak.",
+    "withServerMessage": "Serwer odpowiedział: {message}"
   },
   "editPriceChangeDialog": {
     "ambiguous": "Ta liczba jest niejednoznaczna - użyj kropki lub przecinka dziesiętnego z 2 miejscami po przecinku (np. 399,50).",
