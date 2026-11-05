@@ -14,8 +14,9 @@
  */
 import { useEffect, useMemo, type ReactElement } from 'react';
 
-import { useMessages } from '../../../../shared/i18n';
-import type { BulkOfferConfigSectionProps } from '../../../../shared/plugins';
+import { interpolate, useMessages } from '../../../../shared/i18n';
+import { usePlatforms, type BulkOfferConfigSectionProps } from '../../../../shared/plugins';
+import { resolvePlatformLabel } from '../../../mappings';
 import { ErliDeliveryPriceListField } from './erli-delivery-price-list-field';
 import { ErliDispatchTimeField } from './erli-dispatch-time-field';
 import { ErliProducerField } from './erli-producer-field';
@@ -30,6 +31,7 @@ export function ErliBulkConfigSection({
   form,
 }: BulkOfferConfigSectionProps): ReactElement {
   const note = useMessages('listings').erliBulkConfigSection.note;
+  const platformName = resolvePlatformLabel(usePlatforms(), connection);
   const connectionDefault = useMemo<ErliDispatchTimeParam>(
     () => parseErliConnectionDispatchDefault(connection.config),
     [connection.config],
@@ -66,6 +68,7 @@ export function ErliBulkConfigSection({
       <ErliDispatchTimeField
         value={current}
         connectionDefault={connectionDefault}
+        platformName={platformName}
         onChange={(next) => {
           form.setValue(
             'platformParams',
@@ -76,6 +79,7 @@ export function ErliBulkConfigSection({
       />
       <ErliProducerField
         connectionId={connection.id}
+        platformName={platformName}
         value={producer}
         onChange={(next) => {
           form.setValue(
@@ -87,6 +91,7 @@ export function ErliBulkConfigSection({
       />
       <ErliDeliveryPriceListField
         connectionId={connection.id}
+        platformName={platformName}
         value={deliveryPriceList}
         onChange={(next) => {
           form.setValue(
@@ -97,7 +102,12 @@ export function ErliBulkConfigSection({
         }}
       />
       <p className="erli-config__note">
-        {[note.noPolicies, note.producer, note.currency, note.images].join(' ')}
+        {[
+          interpolate(note.noPolicies, { platform: platformName }),
+          note.producer,
+          note.currency,
+          interpolate(note.images, { platform: platformName }),
+        ].join(' ')}
       </p>
     </div>
   );

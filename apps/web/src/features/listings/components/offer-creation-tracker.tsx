@@ -17,6 +17,8 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
+import { usePlatforms } from '../../../shared/plugins';
+import { resolvePlatformLabel } from '../../mappings';
 import { useOfferCreationStatusQuery } from '../hooks/use-offer-creation-status-query';
 import { TERMINAL_OFFER_CREATION_STATUSES } from '../api/listings.types';
 import { buildAllegroSellerPanelUrl } from '../lib/allegro-seller-panel-url';
@@ -52,14 +54,24 @@ export function OfferCreationTracker({
 }: OfferCreationTrackerProps): ReactElement {
   const copy = useMessages('listings').offerCreationTracker;
   const query = useOfferCreationStatusQuery(connectionId, offerCreationRecordId);
+  // The operator needs to know WHICH channel holds the draft, so the sentence
+  // names it from the plugin registry; with no known platform it falls back
+  // to the generic wording rather than inventing a name.
+  const platforms = usePlatforms();
+  const platform = marketplacePlatformType
+    ? resolvePlatformLabel(platforms, marketplacePlatformType)
+    : undefined;
   // The external id sits in mono inside the sentence, so it is passed as a
   // value and wrapped by the `<id>` tag rather than concatenated.
   const withExternalId = (withId: string, withoutId: string, externalId: string | null): ReactNode =>
     externalId
       ? renderRich(withId, { id: (text) => <span className="mono-text">{text}</span> }, {
           externalId,
+          platform: platform ?? '',
         })
-      : withoutId;
+      : interpolate(withoutId, { platform: platform ?? '' });
+  const draftCopy = platform ? copy.draft.onPlatform : copy.draft.anyPlatform;
+  const reusedCopy = platform ? copy.reused.onPlatform : copy.reused.anyPlatform;
 
   if (query.isLoading) {
     return (
@@ -140,19 +152,19 @@ export function OfferCreationTracker({
 
       {record.status === 'reused' ? (
         <p className="offer-creation-tracker__body">
-          {withExternalId(copy.reused.withId, copy.reused.withoutId, record.externalOfferId)}
+          {withExternalId(reusedCopy.withId, reusedCopy.withoutId, record.externalOfferId)}
         </p>
       ) : null}
 
       {record.status === 'draft' ? (
         <>
           <p className="offer-creation-tracker__body">
-            {withExternalId(copy.draft.withId, copy.draft.withoutId, record.externalOfferId)}
+            {withExternalId(draftCopy.withId, draftCopy.withoutId, record.externalOfferId)}
             {sellerPanelUrl ? (
               <>
                 {' '}
                 <a href={sellerPanelUrl} target="_blank" rel="noopener noreferrer">
-                  {copy.draft.openSellerPanel}
+                  {interpolate(copy.draft.openSellerPanel, { platform: platform ?? '' })}
                 </a>
               </>
             ) : null}
@@ -164,7 +176,7 @@ export function OfferCreationTracker({
             </>
           ) : (
             <p className="offer-creation-tracker__body offer-creation-tracker__body--muted">
-              {copy.draft.noValidationIssues}
+              {interpolate(draftCopy.noValidationIssues, { platform: platform ?? '' })}
             </p>
           )}
         </>

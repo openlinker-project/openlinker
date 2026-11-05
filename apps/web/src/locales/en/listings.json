@@ -43,7 +43,7 @@
     "demoLock": "Read-only demo - recovery actions are disabled.",
     "errorTitle": "Could not load batch",
     "eyebrow": "Operations · Listings",
-    "inProgressAlert": "<strong>Batch in progress.</strong> Polling for updates every 5 seconds.",
+    "inProgressAlert": "<strong>Batch in progress.</strong> Checking for updates every 5 seconds.",
     "loadingMessage": "Fetching bulk batch status…",
     "loadingTitle": "Loading batch",
     "metrics": {
@@ -51,7 +51,7 @@
       "failed": "Failed · {percent}",
       "inProgress": "In progress",
       "noFailures": "No failures",
-      "polling": "Polling every 5 s",
+      "polling": "Checking every 5 s",
       "recoveryAvailable": "Recovery available below",
       "recoveryNeedsWrite": "Recovery needs write access",
       "submitted": "Submitted {when}",
@@ -59,7 +59,7 @@
       "succeededDescription": "Offers live on marketplace",
       "total": "Total"
     },
-    "missingIdMessage": "The route is missing a batch identifier.",
+    "missingIdMessage": "This link is missing the batch number.",
     "missingIdTitle": "Missing batch ID",
     "notFoundMessage": "No batch with id \"{batchId}\" was found.",
     "notFoundTitle": "Batch not found",
@@ -96,14 +96,21 @@
     },
     "summary": {
       "completedIn": "Batch completed in {elapsed}",
-      "counts": "· {created} created · {failed} failed",
-      "endedIn": "Batch ended in {elapsed}"
+      "created": {
+        "one": "{n} created",
+        "other": "{n} created"
+      },
+      "endedIn": "Batch ended in {elapsed}",
+      "failed": {
+        "one": "{n} failed",
+        "other": "{n} failed"
+      }
     },
     "title": "Bulk batch <id>{batchId}</id>",
     "toasts": {
       "retryDispatchedDescription": {
-        "one": "{n} record re-enqueued.",
-        "other": "{n} records re-enqueued."
+        "one": "{n} record queued again.",
+        "other": "{n} records queued again."
       },
       "retryDispatchedTitle": "Retry dispatched",
       "retryFailedTitle": "Retry failed"
@@ -136,6 +143,10 @@
     "selectPlaceholder": "Select…",
     "showOptional": "Show optional fields ({count})"
   },
+  "common": {
+    "serverSaid": "The server said: {message}",
+    "unknownError": "Something went wrong. Please try again."
+  },
   "duplicateGuardModal": {
     "cancel": "Go back",
     "confirmMarketplace": "Publish remaining variants",
@@ -145,8 +156,8 @@
       "other": "<strong>{n}</strong> variants you selected already have an offer on <strong>{destination}</strong>. They will be <strong>skipped, not duplicated</strong> - only variants not yet listed there will be published. Continue?"
     },
     "descriptionShop": {
-      "one": "<strong>{n}</strong> variant you selected already exists on <strong>{destination}</strong>. Publishing <strong>updates the existing product</strong> (upsert) rather than creating a new one. Continue?",
-      "other": "<strong>{n}</strong> variants you selected already exist on <strong>{destination}</strong>. Publishing <strong>updates the existing product</strong> (upsert) rather than creating a new one. Continue?"
+      "one": "<strong>{n}</strong> variant you selected already exists on <strong>{destination}</strong>. Publishing <strong>updates the existing product</strong> rather than creating a new one. Continue?",
+      "other": "<strong>{n}</strong> variants you selected already exist on <strong>{destination}</strong>. Publishing <strong>updates the existing product</strong> rather than creating a new one. Continue?"
     },
     "title": {
       "one": "{n} variant already on {destination}",
@@ -172,7 +183,7 @@
     "suggestionScopeWarning": "Suggestions are sourced from the product's master content. Applying replaces the description on <strong>this offer only</strong> - saving does not update the product master or any other linked offers.",
     "title": "Edit offer",
     "toasts": {
-      "dispatchedDescription": "Changes will appear once the job completes.",
+      "dispatchedDescription": "Changes will appear once the update finishes.",
       "dispatchedTitle": "Update dispatched"
     },
     "updateFailed": "Update failed",
@@ -184,8 +195,8 @@
   "erliBulkConfigSection": {
     "note": {
       "currency": "Prices are sent in PLN.",
-      "images": "Images are pulled from each product (the marketplace requires at least one), and the Resolving step flags any product missing one.",
-      "noPolicies": "This marketplace has no seller or delivery policies, so the dispatch time stands in for the policy step.",
+      "images": "Images are pulled from each product ({platform} requires at least one), and the Resolving step flags any product missing one.",
+      "noPolicies": "{platform} has no seller or delivery policies, so the dispatch time stands in for the policy step.",
       "producer": "The producer applies to every product in this batch (override it per product in the Review step)."
     }
   },
@@ -197,8 +208,8 @@
     "resetToBatchDefault": "Reset to batch default"
   },
   "erliDeliveryPriceListField": {
-    "description": "Fetched from the marketplace. Required for buyers to purchase.",
-    "emptyBody": "No delivery price lists found on this marketplace account - add one there, then refresh.",
+    "description": "Fetched from {platform}. Required for buyers to purchase.",
+    "emptyBody": "No delivery price lists found on your {platform} account - add one there, then refresh.",
     "emptyTitle": "No delivery price lists found",
     "label": "Delivery price list",
     "loadErrorTitle": "Unable to load delivery price lists",
@@ -212,7 +223,7 @@
     "batchDefault": "Batch default",
     "batchDefaultNone": "none",
     "batchDefaultQuoted": "\"{name}\"",
-    "emptyBody": "No delivery price lists found on this marketplace account - add one there, then refresh.",
+    "emptyBody": "No delivery price lists found on your {platform} account - add one there, then refresh.",
     "emptyTitle": "No delivery price lists found",
     "inheriting": "Batch default ({batchDefault}). Change to override this product only.",
     "label": "Delivery price list",
@@ -235,7 +246,7 @@
       "one": "Applied to {n} offer - buyers see \"ships in {dispatch}\".",
       "other": "Applied to all {n} offers - buyers see \"ships in {dispatch}\"."
     },
-    "required": "· required by the marketplace",
+    "required": "· required by {platform}",
     "unitLabel": "Dispatch unit",
     "units": {
       "day": "working days",
@@ -270,8 +281,8 @@
     }
   },
   "erliProducerField": {
-    "description": "Responsible producer shown on the marketplace's product card. Fetched from the marketplace.",
-    "emptyBody": "No producers on this marketplace account - add one there, then reload.",
+    "description": "Responsible producer shown on the {platform} product card. Fetched from {platform}.",
+    "emptyBody": "No producers on your {platform} account - add one there, then reload.",
     "emptyTitle": "No producers found",
     "label": "Producer",
     "loadErrorTitle": "Unable to load producers",
@@ -502,11 +513,18 @@
   "offerCreationTracker": {
     "dismiss": "Dismiss",
     "draft": {
-      "noValidationIssues": "No inline validation issues - publish manually in the marketplace seller panel.",
-      "openSellerPanel": "Open in the marketplace seller panel",
-      "validationIssues": "The marketplace reported validation issues that block publishing:",
-      "withId": "Offer created as a draft on the marketplace · external id <id>{externalId}</id>.",
-      "withoutId": "Offer created as a draft on the marketplace."
+      "anyPlatform": {
+        "noValidationIssues": "No inline validation issues - publish manually in the marketplace seller panel.",
+        "withId": "Offer created as a draft on the marketplace · external id <id>{externalId}</id>.",
+        "withoutId": "Offer created as a draft on the marketplace."
+      },
+      "onPlatform": {
+        "noValidationIssues": "No inline validation issues - publish manually in the {platform} seller panel.",
+        "withId": "Offer created as a draft on {platform} · external id <id>{externalId}</id>.",
+        "withoutId": "Offer created as a draft on {platform}."
+      },
+      "openSellerPanel": "Open in {platform} seller panel",
+      "validationIssues": "The marketplace reported validation issues that block publishing:"
     },
     "failed": "Offer creation failed. Review the errors below and submit a new offer with the corrected values.",
     "label": "Offer creation",
@@ -518,8 +536,14 @@
     "loading": "Loading status…",
     "processing": "Still processing - the status will update automatically.",
     "reused": {
-      "withId": "Offer already existed on the marketplace - reused the existing listing · external id <id>{externalId}</id>.",
-      "withoutId": "Offer already existed on the marketplace - reused the existing listing."
+      "anyPlatform": {
+        "withId": "Offer already existed on the marketplace - reused the existing listing · external id <id>{externalId}</id>.",
+        "withoutId": "Offer already existed on the marketplace - reused the existing listing."
+      },
+      "onPlatform": {
+        "withId": "Offer already existed on {platform} - reused the existing listing · external id <id>{externalId}</id>.",
+        "withoutId": "Offer already existed on {platform} - reused the existing listing."
+      }
     }
   },
   "offerDescriptionEditor": {
@@ -559,7 +583,7 @@
       "page": "{current} / {count}",
       "previous": "Previous",
       "previousAria": "Previous page of products",
-      "range": "{start}–{end} of {total}"
+      "range": "{start}-{end} of {total}"
     },
     "productCount": {
       "one": "{n} product",
@@ -813,7 +837,10 @@
       "independentNote": "Each product publishes independently - one can list at a different price or stock level than the rest of the batch. Out-of-stock variants list with their master stock (0 is honoured).",
       "label": "Products",
       "perProductHint": "- stock & price set per product",
-      "selected": "{n} selected",
+      "selected": {
+        "one": "{n} selected",
+        "other": "{n} selected"
+      },
       "useMasterPrice": "Use master price for all",
       "useMasterStock": "Use master stock for all"
     },

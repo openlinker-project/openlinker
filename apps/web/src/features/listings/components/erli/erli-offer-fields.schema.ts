@@ -18,14 +18,9 @@
  */
 import { z } from 'zod';
 
-import {
-  formatPlural,
-  getLocale,
-  getMessages,
-  type Messages,
-  type ResolvedCopy,
-} from '../../../../shared/i18n';
+import { formatPlural, getLocale, getMessages } from '../../../../shared/i18n';
 import type { Connection } from '../../../connections';
+import type { ErliOfferFieldsValidationCopy } from '../listing-form.types';
 
 /** Erli dispatch (handling) time units — mirrors the BE `ErliDispatchTimeUnit`. */
 export const ErliDispatchUnitValues = ['hour', 'day', 'month'] as const;
@@ -36,11 +31,6 @@ export interface ErliDispatchTimeParam {
   period: number;
   unit: ErliDispatchUnit;
 }
-
-/** The `listings.erliOfferFields.validation` copy, in the language the form renders in. */
-export type ErliOfferFieldsValidationCopy = ResolvedCopy<
-  Messages['listings']
->['erliOfferFields']['validation'];
 
 /**
  * Form slice both Erli surfaces collect. `period` is a string in form state

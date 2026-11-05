@@ -24,6 +24,7 @@ import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-bad
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { ApiError } from '../../../shared/api/api-error';
 import { useListingMarketplaceOfferQuery } from '../hooks/use-listing-marketplace-offer-query';
+import { serverErrorText } from '../lib/server-error-text';
 
 interface ListingMarketplaceOfferSectionProps {
   mappingId: string;
@@ -48,6 +49,7 @@ export function ListingMarketplaceOfferSection({
   mappingId,
 }: ListingMarketplaceOfferSectionProps): ReactElement | null {
   const copy = useMessages('listings').listingMarketplaceOfferSection;
+  const common = useMessages('listings').common;
   const format = useFormat();
   const query = useListingMarketplaceOfferQuery(mappingId, { enabled });
 
@@ -86,7 +88,7 @@ export function ListingMarketplaceOfferSection({
         <h3 className="detail-section__title">{copy.title}</h3>
         <ErrorState
           title={copy.errorTitle}
-          message={query.error.message}
+          message={serverErrorText(common.serverSaid, query.error.message, common.unknownError)}
           action={
             <Button onClick={(): void => { void query.refetch(); }}>
               {copy.retry}

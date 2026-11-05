@@ -23,9 +23,12 @@ import { FormField } from '../../../../shared/ui/form-field';
 import { Input } from '../../../../shared/ui/input';
 import { Select } from '../../../../shared/ui/select';
 import { useDeliveryPriceListsQuery } from '../../hooks/use-delivery-price-lists-query';
+import { serverErrorText } from '../../lib/server-error-text';
 
 interface ErliDeliveryPriceListOverrideFieldProps {
   connectionId: string;
+  /** The marketplace's display name, so copy can say whose account to check. */
+  platformName: string;
   /** Per-row override value; `undefined` means the row inherits the batch default. */
   value: string | undefined;
   /** Batch-wide default from the Config step (may be empty = none). */
@@ -35,11 +38,13 @@ interface ErliDeliveryPriceListOverrideFieldProps {
 
 export function ErliDeliveryPriceListOverrideField({
   connectionId,
+  platformName,
   value,
   batchDefault,
   onChange,
 }: ErliDeliveryPriceListOverrideFieldProps): ReactElement {
   const copy = useMessages('listings').erliDeliveryPriceListOverrideField;
+  const common = useMessages('listings').common;
   const query = useDeliveryPriceListsQuery(connectionId);
   const priceLists = query.data?.deliveryPriceLists ?? [];
 
@@ -75,7 +80,7 @@ export function ErliDeliveryPriceListOverrideField({
           </Button>
         }
       >
-        {query.error instanceof Error ? query.error.message : copy.tryAgain}
+        {serverErrorText(common.serverSaid, query.error instanceof Error ? query.error.message : undefined, copy.tryAgain)}
       </Alert>
     );
   } else if (priceLists.length === 0) {
@@ -94,7 +99,7 @@ export function ErliDeliveryPriceListOverrideField({
           </Button>
         }
       >
-        {copy.emptyBody}
+        {interpolate(copy.emptyBody, { platform: platformName })}
       </Alert>
     );
   } else {

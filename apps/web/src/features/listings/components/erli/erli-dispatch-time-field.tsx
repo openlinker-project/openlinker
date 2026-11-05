@@ -32,6 +32,8 @@ interface ErliDispatchTimeFieldProps {
   onChange: (next: ErliDispatchTimeParam) => void;
   /** Connection default — drives the "connection default" badge + the offer count copy. */
   connectionDefault: ErliDispatchTimeParam;
+  /** The marketplace's display name, so copy can say whose account to check. */
+  platformName: string;
   /** Number of offers this dispatch applies to (bulk) — omit/1 for single. */
   appliesToCount?: number;
   /** Soft error message rendered below the control (host validation). */
@@ -42,6 +44,7 @@ export function ErliDispatchTimeField({
   value,
   onChange,
   connectionDefault,
+  platformName,
   appliesToCount,
   error,
 }: ErliDispatchTimeFieldProps): ReactElement {
@@ -79,7 +82,7 @@ export function ErliDispatchTimeField({
         <span className="erli-dispatch__label" id={`${periodInputId}-label`}>
           {copy.label}{' '}
           <span className="erli-dispatch__req">
-            {copy.required}
+            {interpolate(copy.required, { platform: platformName })}
           </span>
         </span>
         {isFromDefault ? (

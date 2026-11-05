@@ -29,6 +29,7 @@ import {
 } from './edit-offer-fields.schema';
 import { OfferDescriptionEditor } from './offer-description-editor';
 import { SuggestionDialog } from '../../content';
+import { serverErrorText } from '../lib/server-error-text';
 
 interface EditOfferDrawerProps {
   isOpen: boolean;
@@ -41,6 +42,7 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
   const { showToast } = useToast();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const copy = useMessages('listings').editOfferDrawer;
+  const common = useMessages('listings').common;
   const format = useFormat();
   const schema = useMemo(() => createEditOfferFieldsSchema(copy.validation), [copy.validation]);
 
@@ -190,7 +192,7 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
         <div className="drawer__body">
           {mutation.error ? (
             <Alert tone="error" title={copy.updateFailed}>
-              {mutation.error.message}
+              {serverErrorText(common.serverSaid, mutation.error.message, common.unknownError)}
             </Alert>
           ) : null}
 

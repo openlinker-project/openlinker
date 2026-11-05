@@ -2036,6 +2036,7 @@ function BaseScopeForm({
         {(connection.supportedCapabilities?.includes('DeliveryPriceListReader') ?? false) ? (
           <ErliDeliveryPriceListOverrideField
             connectionId={connectionId}
+            platformName={platformName}
             value={typeof platformParams.deliveryPriceList === 'string' ? platformParams.deliveryPriceList : undefined}
             batchDefault={batchDeliveryPriceList}
             onChange={(next) => {

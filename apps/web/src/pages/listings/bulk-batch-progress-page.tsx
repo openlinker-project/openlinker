@@ -48,12 +48,14 @@ import {
   type BulkBatchRecordSummary,
   type BulkBatchStatus,
 } from '../../features/listings/api/bulk-listings.types';
+import { serverErrorText } from '../../features/listings/lib/server-error-text';
 
 type BulkBatchProgressCopy = ResolvedCopy<Messages['listings']>['bulkBatchProgressPage'];
 
 export function BulkBatchProgressPage(): ReactElement {
   const { batchId } = useParams<{ batchId: string }>();
   const copy = useMessages('listings').bulkBatchProgressPage;
+  const common = useMessages('listings').common;
   const format = useFormat();
   const plural = usePlural();
   const query = useBulkBatchQuery(batchId);
@@ -112,10 +114,10 @@ export function BulkBatchProgressPage(): ReactElement {
       showToast({
         tone: 'error',
         title: copy.toasts.retryFailedTitle,
-        description: (error as Error).message,
+        description: serverErrorText(common.serverSaid, (error as Error).message, common.unknownError),
       });
     }
-  }, [batchId, copy.toasts, plural, retryMutation, showToast]);
+  }, [batchId, common, copy.toasts, plural, retryMutation, showToast]);
 
   if (!batchId) {
     return (
@@ -139,7 +141,7 @@ export function BulkBatchProgressPage(): ReactElement {
     return (
       <ErrorState
         title={copy.errorTitle}
-        message={query.error.message}
+        message={serverErrorText(common.serverSaid, query.error.message, common.unknownError)}
         action={
           <Button onClick={() => { void query.refetch(); }}>{copy.retry}</Button>
         }
@@ -326,10 +328,10 @@ export function BulkBatchProgressPage(): ReactElement {
                 { elapsed },
               )}
             </strong>{' '}
-            {interpolate(copy.summary.counts, {
-              created: format.number(batch.succeededCount),
-              failed: format.number(batch.failedCount),
-            })}
+            <span aria-hidden="true">·</span>{' '}
+            {plural(batch.succeededCount, copy.summary.created)}{' '}
+            <span aria-hidden="true">·</span>{' '}
+            {plural(batch.failedCount, copy.summary.failed)}
           </div>
           <div className="bulk-batch__summary-links">
             <Link to="/listings">

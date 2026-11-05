@@ -33,12 +33,11 @@ import {
   getLocale,
   getMessages,
   interpolate,
-  type Messages,
-  type ResolvedCopy,
 } from '../../../shared/i18n';
 
 import type { CategoryParameter } from '../api/listings.types';
 import type { CategoryParameterFormValues } from './category-parameter-form.types';
+import type { ParametersZodSchemaCopy } from './listing-form.types';
 import {
   isFormValueEmpty,
   isParameterVisible,
@@ -47,9 +46,6 @@ import {
 
 const INTEGER_REGEX = /^-?\d+$/;
 const FLOAT_REGEX = /^-?\d+(\.\d+)?$/;
-
-/** The `listings.parametersZodSchema` copy. */
-export type ParametersZodSchemaCopy = ResolvedCopy<Messages['listings']>['parametersZodSchema'];
 
 export function buildParametersZodSchema(
   parameters: CategoryParameter[],

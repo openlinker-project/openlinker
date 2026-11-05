@@ -7,14 +7,12 @@
  */
 import { z } from 'zod';
 
-import { interpolate, type Messages, type ResolvedCopy } from '../../../shared/i18n';
+import { interpolate } from '../../../shared/i18n';
+
+import type { EditOfferFieldsValidationCopy } from './listing-form.types';
 
 /** Longest offer title the destination accepts. */
 export const EDIT_OFFER_TITLE_MAX_LENGTH = 75;
-
-/** The `listings.editOfferDrawer.validation` copy, in the language the form renders in. */
-export type EditOfferFieldsValidationCopy =
-  ResolvedCopy<Messages['listings']>['editOfferDrawer']['validation'];
 
 /**
  * A factory rather than a module-level schema: the messages are read when the

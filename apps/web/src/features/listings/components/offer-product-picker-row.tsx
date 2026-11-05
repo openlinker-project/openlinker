@@ -25,6 +25,7 @@ import {
   variantShortLabel,
 } from '../lib/offer-product-picker-selectors';
 import { OFFER_PICKER_PRODUCT_CAP, type SelectionEntry } from './offer-product-picker.types';
+import { serverErrorText } from '../lib/server-error-text';
 
 interface OfferProductPickerRowProps {
   product: Product;
@@ -50,6 +51,7 @@ export function OfferProductPickerRow({
   onVariantsLoaded,
 }: OfferProductPickerRowProps): ReactElement {
   const copy = useMessages('listings').offerProductPickerRow;
+  const common = useMessages('listings').common;
   const plural = usePlural();
   const detailQuery = useProductQuery(isExpanded ? product.id : '');
   const loadedVariants = useMemo(
@@ -160,7 +162,7 @@ export function OfferProductPickerRow({
                   </Button>
                 }
               >
-                {detailQuery.error.message}
+                {serverErrorText(common.serverSaid, detailQuery.error.message, common.unknownError)}
               </Alert>
             </li>
           ) : loadedVariants.length === 0 ? (

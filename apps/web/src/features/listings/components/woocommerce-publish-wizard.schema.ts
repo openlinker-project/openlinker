@@ -16,17 +16,12 @@
  */
 import { z } from 'zod';
 
-import type { Messages, ResolvedCopy } from '../../../shared/i18n';
+import type { WoocommercePublishWizardValidationCopy } from './listing-form.types';
 
 export const ShopPublishVisibilityValues = ['draft', 'published'] as const;
 
 export const ShopPublishDescriptionToneValues = ['concise', 'detailed'] as const;
 export type ShopPublishDescriptionTone = (typeof ShopPublishDescriptionToneValues)[number];
-
-/** The `listings.woocommercePublishWizard.validation` copy, in the language the form renders in. */
-export type WoocommercePublishWizardValidationCopy = ResolvedCopy<
-  Messages['listings']
->['woocommercePublishWizard']['validation'];
 
 /**
  * A factory rather than a module-level schema: the messages are read when the

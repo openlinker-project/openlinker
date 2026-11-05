@@ -18,7 +18,8 @@
 import { useMemo, type ReactElement } from 'react';
 
 import { useMessages } from '../../../../shared/i18n';
-import type { BulkOfferRowSectionProps } from '../../../../shared/plugins';
+import { usePlatforms, type BulkOfferRowSectionProps } from '../../../../shared/plugins';
+import { resolvePlatformLabel } from '../../../mappings';
 import { ErliDispatchTimeField } from './erli-dispatch-time-field';
 import { ErliProducerField } from './erli-producer-field';
 import {
@@ -33,6 +34,7 @@ export function ErliBulkRowSection({
   onChange,
 }: BulkOfferRowSectionProps): ReactElement {
   const copy = useMessages('listings').erliBulkRowSection;
+  const platformName = resolvePlatformLabel(usePlatforms(), connection);
   const connectionDefault = useMemo<ErliDispatchTimeParam>(
     () => parseErliConnectionDispatchDefault(connection.config),
     [connection.config],
@@ -96,6 +98,7 @@ export function ErliBulkRowSection({
         <ErliDispatchTimeField
           value={current}
           connectionDefault={connectionDefault}
+          platformName={platformName}
           onChange={(next) => { onChange({ ...platformParams, dispatchTime: next }); }}
         />
       ) : null}
@@ -121,6 +124,7 @@ export function ErliBulkRowSection({
         <>
           <ErliProducerField
             connectionId={connection.id}
+            platformName={platformName}
             value={producer}
             onChange={(next) => { onChange({ ...platformParams, producer: next }); }}
           />

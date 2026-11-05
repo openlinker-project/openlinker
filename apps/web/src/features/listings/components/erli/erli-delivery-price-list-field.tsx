@@ -15,16 +15,19 @@
  */
 import type { ReactElement } from 'react';
 
-import { useMessages } from '../../../../shared/i18n';
+import { interpolate, useMessages } from '../../../../shared/i18n';
 import { Alert } from '../../../../shared/ui/alert';
 import { Button } from '../../../../shared/ui/button';
 import { FormField } from '../../../../shared/ui/form-field';
 import { Input } from '../../../../shared/ui/input';
 import { Select } from '../../../../shared/ui/select';
 import { useDeliveryPriceListsQuery } from '../../hooks/use-delivery-price-lists-query';
+import { serverErrorText } from '../../lib/server-error-text';
 
 interface ErliDeliveryPriceListFieldProps {
   connectionId: string;
+  /** The marketplace's display name, so copy can say whose account to check. */
+  platformName: string;
   /** Selected delivery price list name (empty string = none chosen). */
   value: string;
   onChange: (name: string) => void;
@@ -32,10 +35,12 @@ interface ErliDeliveryPriceListFieldProps {
 
 export function ErliDeliveryPriceListField({
   connectionId,
+  platformName,
   value,
   onChange,
 }: ErliDeliveryPriceListFieldProps): ReactElement {
   const copy = useMessages('listings').erliDeliveryPriceListField;
+  const common = useMessages('listings').common;
   const query = useDeliveryPriceListsQuery(connectionId);
   const priceLists = query.data?.deliveryPriceLists ?? [];
 
@@ -65,7 +70,7 @@ export function ErliDeliveryPriceListField({
           </Button>
         }
       >
-        {query.error instanceof Error ? query.error.message : copy.tryAgain}
+        {serverErrorText(common.serverSaid, query.error instanceof Error ? query.error.message : undefined, copy.tryAgain)}
       </Alert>
     );
   } else if (priceLists.length === 0) {
@@ -84,7 +89,7 @@ export function ErliDeliveryPriceListField({
           </Button>
         }
       >
-        {copy.emptyBody}
+        {interpolate(copy.emptyBody, { platform: platformName })}
       </Alert>
     );
   } else {
@@ -104,7 +109,7 @@ export function ErliDeliveryPriceListField({
     <FormField
       label={copy.label}
       name="deliveryPriceList"
-      description={copy.description}
+      description={interpolate(copy.description, { platform: platformName })}
     >
       {control}
     </FormField>
