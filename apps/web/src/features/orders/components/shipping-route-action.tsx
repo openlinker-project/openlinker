@@ -34,6 +34,7 @@ interface ShippingRouteActionProps {
   sourceName?: string | null;
   /** The order's delivery method, named in the dialog so the operator finds its row. */
   methodLabel?: string | null;
+  methodId?: string | null;
   label: string;
   /**
    * `rider` renders the delivery rider banner's own button style, so the
@@ -46,6 +47,7 @@ export function ShippingRouteAction({
   sourceConnectionId,
   sourceName,
   methodLabel,
+  methodId,
   label,
   appearance = 'button',
 }: ShippingRouteActionProps): ReactElement | null {
@@ -92,6 +94,7 @@ export function ShippingRouteAction({
         sourceConnectionId={sourceConnectionId}
         sourceName={resolvedSourceName}
         methodLabel={methodLabel ?? undefined}
+        methodId={methodId ?? undefined}
       />
     </>
   );

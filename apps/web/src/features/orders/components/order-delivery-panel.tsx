@@ -207,6 +207,7 @@ export function OrderDeliveryPanel({
                   sourceConnectionId={sourceConnectionId}
                   sourceName={channelName}
                   methodLabel={methodLabel}
+                  methodId={shipping?.methodId ?? sourceDeliveryMethodId ?? null}
                   label={fromRule ? SHIPPING_ROUTE_ORIGIN_COPY.changeAction : SHIPPING_ROUTE_ORIGIN_COPY.chooseAction}
                 />
               ) : null}

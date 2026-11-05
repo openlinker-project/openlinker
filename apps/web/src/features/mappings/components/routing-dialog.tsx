@@ -27,6 +27,8 @@ export interface RoutingDialogProps {
   readonly sourceName: string;
   /** The delivery method the operator came from, named so they know which row to look at. */
   readonly methodLabel?: string;
+  /** The method's code, named beside the label so a shared display name stays unambiguous. */
+  readonly methodId?: string;
 }
 
 export function RoutingDialog({
@@ -35,6 +37,7 @@ export function RoutingDialog({
   sourceConnectionId,
   sourceName,
   methodLabel,
+  methodId,
 }: RoutingDialogProps): ReactElement {
   const [dirty, setDirty] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
@@ -53,7 +56,7 @@ export function RoutingDialog({
         <DialogContent className="routing-dialog" aria-describedby="routing-dialog-desc">
           <DialogTitle>{SHIPPING_ROUTE_COPY.dialogTitle(sourceName)}</DialogTitle>
           <DialogDescription id="routing-dialog-desc">
-            {SHIPPING_ROUTE_COPY.dialogDescription(sourceName, methodLabel ?? null)}
+            {SHIPPING_ROUTE_COPY.dialogDescription(sourceName, methodLabel ?? null, methodId ?? null)}
           </DialogDescription>
           {open ? <FulfillmentRoutingSection sourceConnectionId={sourceConnectionId} onDirtyChange={setDirty} /> : null}
           <DialogFooter>

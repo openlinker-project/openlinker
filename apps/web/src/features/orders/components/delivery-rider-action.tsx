@@ -50,6 +50,7 @@ export function DeliveryRiderAction({
       <ShippingRouteAction
         sourceConnectionId={sourceConnectionId}
         methodLabel={sourceDeliveryMethodName ?? sourceDeliveryMethodId}
+        methodId={sourceDeliveryMethodId}
         label="Add mapping"
         appearance="rider"
       />

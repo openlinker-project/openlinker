@@ -25,8 +25,10 @@ export const SHIPPING_ROUTE_COPY = {
   unavailable: (label: string): string => `${label} (connection is off)`,
   sourceShipping: (sourceLabel: string): string => `${sourceLabel} shipping`,
   dialogTitle: (sourceName: string): string => `Who ships ${sourceName} orders`,
-  dialogDescription: (sourceName: string, methodLabel: string | null): string =>
-    `${methodLabel ? `This order uses ${methodLabel}. ` : ''}A change here applies to every ${sourceName} order from now on.`,
+  // The method code is named too: two methods can share a display name (a
+  // shop titles every courier line "Kurier"), and the table rows carry the code.
+  dialogDescription: (sourceName: string, methodLabel: string | null, methodId: string | null = null): string =>
+    `${methodLabel ? `This order uses ${methodLabel}${methodId && methodId !== methodLabel ? ` (code ${methodId})` : ''}. ` : ''}A change here applies to every ${sourceName} order from now on.`,
   dialogDone: 'Done',
   discardTitle: 'Close without saving?',
   discardDescription: 'You changed who ships some delivery methods and did not click Save routing.',

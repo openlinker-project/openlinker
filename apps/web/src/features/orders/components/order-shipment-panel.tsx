@@ -361,6 +361,7 @@ export function OrderShipmentPanel({
                 <ShippingRouteAction
                   sourceConnectionId={order.sourceConnectionId}
                   methodLabel={order.sourceDeliveryMethodName ?? order.sourceDeliveryMethodId}
+                  methodId={order.sourceDeliveryMethodId}
                   label={SHIPPING_ROUTE_ORIGIN_COPY.chooseAction}
                 />
               ) : undefined
