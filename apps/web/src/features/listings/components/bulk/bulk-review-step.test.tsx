@@ -284,7 +284,15 @@ describe('BulkReviewStep', () => {
       expect(screen.getByText('Category', { selector: '.bulk-review__head span' })).toBeInTheDocument();
     });
 
-    it('should keep the row ready, since the chip is advisory', () => {
+    it('should show the disagreement on the category, not as a status chip', () => {
+      renderWithProviders(
+        <BulkReviewStep {...baseProps()} rows={[makeRow('p1', [setAside('v1')])]} />,
+      );
+      expect(screen.queryByText('card ≠ mapping')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Compare with your mapping/ })).toBeInTheDocument();
+    });
+
+    it('should keep the row ready, since the disagreement is advisory', () => {
       renderWithProviders(
         <BulkReviewStep {...baseProps()} rows={[makeRow('p1', [setAside('v1')])]} />,
       );
@@ -303,7 +311,7 @@ describe('BulkReviewStep', () => {
         />,
       );
 
-      fireEvent.click(screen.getByRole('button', { name: /card ≠ mapping/ }));
+      fireEvent.click(screen.getByRole('button', { name: /Compare with your mapping/ }));
       expect(await screen.findByRole('dialog')).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: 'Use catalog category' }));
 
@@ -320,8 +328,9 @@ describe('BulkReviewStep', () => {
         />,
       );
 
-      fireEvent.click(screen.getByRole('button', { name: /Expand/ }));
-      fireEvent.click(screen.getByRole('button', { name: /card ≠ mapping/ }));
+      // Collapsed, the product row says a variant disagrees; that line expands it.
+      fireEvent.click(screen.getByRole('button', { name: 'Barcode disagrees on 1 variant' }));
+      fireEvent.click(screen.getByRole('button', { name: /Compare with your mapping/ }));
       expect(await screen.findByRole('dialog')).toBeInTheDocument();
 
       expect(screen.queryByRole('button', { name: 'Use catalog category' })).not.toBeInTheDocument();

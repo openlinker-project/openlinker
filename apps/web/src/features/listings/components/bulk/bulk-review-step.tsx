@@ -96,6 +96,24 @@ interface CategoryColumn {
   onCompareCard: (productId: string, variantId: string) => void;
 }
 
+/** Blockers rendered inside the Category cell rather than as a status chip (#3994). */
+const CATEGORY_CELL_BLOCKERS: ReadonlySet<string> = new Set(['card-category-differs']);
+
+/** The set-aside catalogue product a row's Category cell should flag, if any (#3994). */
+function cardConflict(
+  row: BulkWizardRow,
+  variant: BulkVariantRow,
+  category: CategoryColumn,
+): { card: NonNullable<BulkVariantRow['overriddenCard']>; onCompare: () => void } | null {
+  if (!variant.overriddenCard || !variant.blockers.includes('card-category-differs')) return null;
+  return {
+    card: variant.overriddenCard,
+    onCompare: () => {
+      category.onCompareCard(row.productId, variant.variantId);
+    },
+  };
+}
+
 /**
  * Server-side ceiling shared by the expanded fan-out (`EXPANDED_OFFER_CEILING`,
  * 422) and the `excludedVariantIds` array cap (`@ArrayMaxSize(1000)`, 400).
@@ -781,9 +799,6 @@ function ProductRow({
               onFix={(focusField) => {
                 onEdit(row.variants[0].variantId, focusField);
               }}
-              onCompareCard={() => {
-                category.onCompareCard(row.productId, row.variants[0].variantId);
-              }}
             />
           ) : (
             <>
@@ -801,6 +816,15 @@ function ProductRow({
             connectionId={category.connectionId}
             resolvesAtSubmit={category.resolvesAtSubmit}
             {...(isSimple ? describeVariantCategory(row, row.variants[0]) : describeProductCategory(row))}
+            conflict={isSimple ? cardConflict(row, row.variants[0], category) : null}
+            siblingConflicts={
+              isMulti && !open
+                ? {
+                    count: row.variants.filter((v) => cardConflict(row, v, category) !== null).length,
+                    onReveal: onToggleExpand,
+                  }
+                : null
+            }
           />
         )}
         <div
@@ -932,15 +956,13 @@ function VariantRow({
           alreadyListed={alreadyListed}
           destinationName={destinationName}
           copyContext={blockerCopyContext(row, variant, destinationName, config)}
-          onCompareCard={() => {
-            category.onCompareCard(row.productId, variant.variantId);
-          }}
         />
       </div>
       <ReviewCategoryCell
         connectionId={category.connectionId}
         resolvesAtSubmit={category.resolvesAtSubmit}
         {...describeVariantCategory(row, variant)}
+        conflict={cardConflict(row, variant, category)}
       />
       <div className="bulk-review__c-stock tabular">{stock.value ?? '-'}</div>
       <div className="bulk-review__c-price tabular">
@@ -971,13 +993,10 @@ function VariantChips({
   alreadyListed,
   destinationName,
   copyContext,
-  onCompareCard,
 }: {
   variant: BulkVariantRow;
   chips: Record<string, ChipDescriptor>;
   onFix: (focusField?: OfferBlockerField) => void;
-  /** Opens the card-vs-mapping comparison instead of the editor (#3994). */
-  onCompareCard?: () => void;
   /** Human variant label ("Colour: Red" / "Variant 2") — never the raw ol_variant id. */
   label: string;
   /** Already published on the destination (#1837) - soft warning, not a blocker. */
@@ -997,7 +1016,11 @@ function VariantChips({
       </>
     );
   }
-  if (variant.blockers.length === 0) {
+  // The card-vs-mapping disagreement is shown on the category it is about, in
+  // the Category column (#3994) - repeating it here as a status chip would say
+  // the same thing twice, in the column furthest from the category.
+  const visible = variant.blockers.filter((b) => !CATEGORY_CELL_BLOCKERS.has(b));
+  if (visible.length === 0) {
     return (
       <>
         <Chip descriptor={{ tone: 'success', label: 'ready', fixable: false }} />
@@ -1007,7 +1030,7 @@ function VariantChips({
   }
   return (
     <>
-      {variant.blockers.map((b) => {
+      {visible.map((b) => {
         const descriptor = chips[b] ?? FALLBACK_CHIP;
         // The cause sentence rides on the chip (#2240). One chip per row keeps
         // the identity column at its documented two lines; the explanation is a
@@ -1017,13 +1040,7 @@ function VariantChips({
           <Chip
             key={b}
             descriptor={descriptor}
-            onFix={
-              b === 'card-category-differs' && onCompareCard
-                ? onCompareCard
-                : descriptor.fixable
-                  ? () => onFix(descriptor.field)
-                  : undefined
-            }
+            onFix={descriptor.fixable ? () => onFix(descriptor.field) : undefined}
             fixLabel={`Fix: ${descriptor.label} - ${label}. ${cause.title}`}
             title={cause.title}
           />

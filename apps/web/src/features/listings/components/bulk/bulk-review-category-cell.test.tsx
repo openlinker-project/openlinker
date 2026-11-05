@@ -3,7 +3,7 @@
  * that answer came from.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { createMockApiClient, renderWithProviders } from '../../../../test/test-utils';
 import {
   ReviewCategoryCell,
@@ -115,7 +115,7 @@ describe('ReviewCategoryCell', () => {
 
     expect(await screen.findByText('T-shirty')).toBeInTheDocument();
     expect(screen.getByText('Moda › … › Odzież męska')).toBeInTheDocument();
-    expect(screen.getByText('Your mapping')).toBeInTheDocument();
+    expect(screen.getByText('Mapping')).toBeInTheDocument();
   });
 
   it('should say the path is not synced rather than inventing one', async () => {
@@ -138,5 +138,52 @@ describe('ReviewCategoryCell', () => {
       <ReviewCategoryCell connectionId="c1" categoryId={null} source={null} resolvesAtSubmit />,
     );
     expect(screen.getByText('Resolved at submit')).toBeInTheDocument();
+  });
+});
+
+describe('ReviewCategoryCell conflict', () => {
+  it('should name the catalog category on the line that opens the comparison', async () => {
+    const onCompare = vi.fn();
+    const apiClient = createMockApiClient({
+      mappings: {
+        getCategoryPath: vi.fn((_c: string, id: string) =>
+          Promise.resolve(
+            id === '252023'
+              ? [{ id: '1', name: 'Elektronika' }, { id: '252023', name: 'Powerbanki' }]
+              : [{ id: '2', name: 'Moda' }, { id: '87913', name: 'T-shirty' }],
+          ),
+        ),
+      },
+    });
+    renderWithProviders(
+      <ReviewCategoryCell
+        connectionId="c1"
+        categoryId="87913"
+        source="mapping"
+        resolvesAtSubmit={false}
+        conflict={{ card: { allegroCategoryId: '252023', productCardId: 'card-1' }, onCompare }}
+      />,
+      { apiClient },
+    );
+
+    const button = await screen.findByRole('button', { name: /Barcode matched Powerbanki/ });
+    fireEvent.click(button);
+    expect(onCompare).toHaveBeenCalledTimes(1);
+  });
+
+  it('should point a collapsed product at the variants that disagree', () => {
+    const onReveal = vi.fn();
+    renderWithProviders(
+      <ReviewCategoryCell
+        connectionId="c1"
+        categoryId="87913"
+        source="mapping"
+        resolvesAtSubmit={false}
+        siblingConflicts={{ count: 2, onReveal }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Barcode disagrees on 2 variants' }));
+    expect(onReveal).toHaveBeenCalledTimes(1);
   });
 });
