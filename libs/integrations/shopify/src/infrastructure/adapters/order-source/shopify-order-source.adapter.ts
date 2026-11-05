@@ -33,6 +33,7 @@
  * @implements {SourceOptionsReader}
  */
 import type {
+  ExecuteRefundCommand,
   IncomingOrder,
   MappingOption,
   OrderFeedEventType,
@@ -40,6 +41,8 @@ import type {
   OrderFeedItem,
   OrderFeedOutput,
   OrderSourcePort,
+  RefundExecutionResult,
+  RefundExecutor,
   ReturnDecliner,
   ReturnSourceReader,
   SourceOptionsReader,
@@ -87,6 +90,7 @@ import {
   formatShopifyReturnFeedCursor,
   parseShopifyReturnFeedCursor,
 } from '../../mappers/shopify-return-feed-cursor.mapper';
+import type { ShopifyRefundExecutor } from './shopify-refund-executor';
 import { ShopifyMappingOptionsReader } from '../../readers/shopify-mapping-options.reader';
 import { ORDER_BY_ID_QUERY, ORDER_FEED_QUERY } from '../../readers/shopify-order.queries';
 import {
@@ -376,5 +380,27 @@ export class ShopifyOrderSourceAdapter
     // `orderCreate` stamps `updatedAt` a second or so after `createdAt` (seen
     // on every seeded order), so equality would never hold.
     return Date.parse(row.updatedAt) - Date.parse(row.createdAt) <= 5_000 ? 'created' : 'updated';
+  }
+}
+
+/**
+ * The order source on a connection with `refundsThroughShopify: true`: also a
+ * `RefundExecutor`, so core sends a confirmed refund to Shopify instead of
+ * recording it as made out of band. A separate class rather than a flag, because
+ * core detects the capability by the method's presence (`isRefundExecutor`).
+ */
+export class ShopifyRefundingOrderSourceAdapter extends ShopifyOrderSourceAdapter implements RefundExecutor {
+  constructor(
+    client: ShopifyGraphqlClient,
+    storeDomain: string,
+    connection: Connection,
+    writeback: OrderStatusWriteback,
+    private readonly refunds: ShopifyRefundExecutor,
+  ) {
+    super(client, storeDomain, connection, writeback);
+  }
+
+  executeRefund(command: ExecuteRefundCommand): Promise<RefundExecutionResult> {
+    return this.refunds.executeRefund(command);
   }
 }

@@ -19,6 +19,12 @@ export interface ShopifyConnectionConfig {
    * with a WMS, so stock at any other location is deliberately invisible.
    */
   readonly locationId?: string;
+  /**
+   * Refunds confirmed in OpenLinker are sent to Shopify as `refundCreate`
+   * (money moves on Shopify Payments). Off unless exactly `true`: without it
+   * a confirmed refund is recorded as made out of band, as before.
+   */
+  readonly refundsThroughShopify?: boolean;
 }
 
 /** `ShopifyConnectionConfig` after validation and normalisation. */
@@ -27,4 +33,6 @@ export interface ShopifyResolvedConfig {
   readonly apiVersion: string;
   /** Location GID, or null when the primary location is resolved at runtime. */
   readonly locationGid: string | null;
+  /** `config.refundsThroughShopify === true`. */
+  readonly refundsThroughShopify: boolean;
 }

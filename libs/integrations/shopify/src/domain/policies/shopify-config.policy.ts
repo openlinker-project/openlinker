@@ -65,7 +65,10 @@ export function parseShopifyConfig(raw: Record<string, unknown> | null | undefin
 
   return issues.length > 0
     ? { ok: false, issues }
-    : { ok: true, config: { storeDomain, apiVersion, locationGid } };
+    : {
+        ok: true,
+        config: { storeDomain, apiVersion, locationGid, refundsThroughShopify: config.refundsThroughShopify === true },
+      };
 }
 
 /** The `{handle}` of `{handle}.myshopify.com`, as the admin URL uses it. */

@@ -21,7 +21,11 @@ import type { FetchLike } from '@openlinker/shared/http';
 import { ShopifyOfferManagerAdapter } from '../infrastructure/adapters/offer-manager/shopify-offer-manager.adapter';
 import { ShopifyInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shopify-inventory-master.adapter';
 import { ShopifyOrderProcessorAdapter } from '../infrastructure/adapters/order-processor/shopify-order-processor.adapter';
-import { ShopifyOrderSourceAdapter } from '../infrastructure/adapters/order-source/shopify-order-source.adapter';
+import {
+  ShopifyOrderSourceAdapter,
+  ShopifyRefundingOrderSourceAdapter,
+} from '../infrastructure/adapters/order-source/shopify-order-source.adapter';
+import { ShopifyRefundExecutor } from '../infrastructure/adapters/order-source/shopify-refund-executor';
 import { ShopifyProductMasterAdapter } from '../infrastructure/adapters/product-master/shopify-product-master.adapter';
 import { ShopifyProductPublisherAdapter } from '../infrastructure/adapters/product-publisher/shopify-product-publisher.adapter';
 import { buildShopifyClient, type ShopifyTokenMemo } from '../infrastructure/http/shopify-client.builder';
@@ -66,7 +70,17 @@ export class ShopifyAdapterFactory implements IShopifyAdapterFactory {
         connection,
         cache,
       ),
-      orderSource: new ShopifyOrderSourceAdapter(client, config.storeDomain, connection, orderProcessor),
+      // Refunds through Shopify are opt-in: the method's presence is what makes
+      // core move money instead of recording an out-of-band refund.
+      orderSource: config.refundsThroughShopify
+        ? new ShopifyRefundingOrderSourceAdapter(
+            client,
+            config.storeDomain,
+            connection,
+            orderProcessor,
+            new ShopifyRefundExecutor(client, connection.id),
+          )
+        : new ShopifyOrderSourceAdapter(client, config.storeDomain, connection, orderProcessor),
       orderProcessor,
       productPublisher: new ShopifyProductPublisherAdapter(client, shopContext, connection),
       offerManager: new ShopifyOfferManagerAdapter(client, identifierMapping, shopContext, connection),

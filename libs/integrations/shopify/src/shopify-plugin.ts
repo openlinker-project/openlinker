@@ -19,7 +19,10 @@
  * Every outbound call - the token mint included - goes through
  * `host.http.forConnection` with `SHOPIFY_DEFAULT_RATE_LIMIT`.
  *
- * Out of scope: webhooks, return writes (decline, refund).
+ * Refunds: opt-in per connection (`config.refundsThroughShopify: true`), when
+ * the `OrderSource` adapter is also a guard-only `RefundExecutor`.
+ *
+ * Out of scope: webhooks.
  *
  * @module libs/integrations/shopify/src
  */
