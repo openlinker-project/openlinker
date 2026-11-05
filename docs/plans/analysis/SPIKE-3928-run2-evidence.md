@@ -189,3 +189,29 @@ Prototype branch `local/shopify-prototype` (local only). Each item below was imp
 ### Other notes from run 3
 - The publish builder reads the price from the master; PrestaShop product 24 reports price 0 in PL (a test-data problem in the PS stack, not Shopify), so the Ring was published with an explicit price.
 - Rebuilding the stack from a shell that had the spike's `.env` loaded replaced the stack's encryption key and every stored credential failed to decrypt (`Unsupported state or unable to authenticate data`). Restarting the containers with only `--env-file stack.env` fixed it. Worth a line in the docker README.
+
+## Run 4 (2026-11-05): tunnel, PR retests, faults, webhooks
+
+Stack: branch `3928-shopify-prototype` (prototype + PRs #3964/#3965/#3969 merged locally). Results per case are in the test report (run4: tags); issues #3974-#3991 in milestone "Shopify integration".
+
+- C21 (PR #3964) pass: Shopify-only order -> job ok on the first attempt, reason `no-destination-configured`, receipt registered.
+- F04 (PR #3965) pass: refused receipt -> `outcome new-attempt`, key `:r1`, new document at the vendor; a registered receipt is refused.
+- E07 (PR #3969) pass in the UI: Shipping step, "Yes" writes `autoDispatch`, label ordered by itself on an accepted work (InPost refused: sandbox trucker id); "Stop buying labels" works. G06 still fails: `carrier-refused` is retried (#3987).
+- D06 pass via cloudflared tunnel + path-filtering proxy: Shopify fetched the PS image, gallery READY on cdn.shopify.com.
+- Webhooks (prototype commit e5113db1d): K08 6 subscriptions, old URI removed on change; C10 order in OL ~8.5 s after creation; K09 wrong/missing HMAC -> 401, same webhook id twice -> one job.
+- G07 pass (no network: retried, recovered), G05 pass (`CHANGE_FROM_QUANTITY_STALE`, retryable).
+- B13/G02 part: 2 of 7 orders hit "Too many attempts", stayed `failed`, no automatic retry (#3984); manual retry created both, no duplicates.
+- C12 part: PS order 11 has `payment = ps_wirepayment` but `module = ps_checkpayment` (#3988). C23: PS refuses a name with digits (#3989).
+- A20: Shopify with ProductMaster + ProductPublisher re-imported the published Ring twice; orders resolved to the copy (#3985).
+- F10 pass: DPD sandbox label 0000899580926Q for Shopify order #1045; C24: relay first rejected (fulfillment order at another location), after the fix (5ef7b1093) #1045 FULFILLED with DPD tracking + URL.
+- A16: 1000 products seeded in 196 s; 1000 `products/create` webhooks enqueued, drained at ~64/min; an order during the drain took ~3 min instead of ~8.5 s (#3986). Full sweep: 500 products per run (budget) in 5 batches of 100, ~2 min 50 s.
+
+## Stage 2 (2026-11-05): offers through the OpenLinker UI (Playwright, screenshots under scratchpad ev/ui)
+
+- Category mapping page works only when opened from the master connection (opened with the marketplace id it shows the raw error `Adapter allegro.publicapi.v1 does not support capability: ProductMaster`). Column header says "PRESTASHOP CATEGORIES" although the master is Shopify.
+- BUG: the page saves the mapping under the MASTER connection id (`category_mappings.destination_connection_id` = Shopify), but category resolution looks it up under the MARKETPLACE id (`resolveDestinationCategory(destinationConnectionId=Allegro)`). Mappings made in the UI are never used: Sneakers stayed "NO CATALOG MATCH"; the same mapping written under the Allegro id resolved it at once.
+- BUG: EAN auto-detect beats the operator's category mapping and is not shown. The seed EAN of T-shirt S/L matched an Allegro catalogue card in "Elektronika > Telefony i Akcesoria > Powerbanki" (`method auto_detect`, category 252023); the wizard marked the rows READY and sent category 252023 although T-Shirts was mapped to "T-shirty".
+- Attribute rules (Size -> Rozmiar, Color -> Kolor with Black=czarny/White=biały, fixed Stan/Marka/Materiał) saved fine in the UI, but they do not pre-fill the wizard and do not lift its required-parameter gate (rules run in the worker only), so the operator still types every required parameter.
+- UX: the variant panel shows "NEEDS ATTENTION / needs attention. Resolve this blocker..." twice without naming the blocker or the missing fields (Model, Kod producenta were the missing ones).
+- Per-variant data sent correctly: price 249 / 84.99 / 79.98, stock 6 / 10 (from Shopify), Rozmiar 42/43 and Kolor czarny/biały per variant, EAN per variant, Stan/Marka/Materiał/Model/Kod producenta from the shared base.
+- Allegro sandbox account is blocked for selling (`OfferAccessDeniedException`, `SellerAccountWithSellBlockadeException`). The batch page shows Allegro's Polish text per variant with a "Fix this one" button, although it is an account-level state. A new sandbox seller account is needed to continue.
