@@ -295,6 +295,27 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
             }
         }
 
+        // validateOrder builds its OWN `new Cart($id_cart)` (PaymentModule.php,
+        // PrestaShop 9.0.2), so nothing cached on THIS cart object reaches it.
+        // What it does inherit is the process-wide static price caches, and those
+        // are where the stale catalogue price lives: the `getProducts()` call near
+        // the top ran before the context carried this cart's customer and
+        // currency, and the pins above were written after that read. Flushing
+        // them forces validateOrder's fresh cart to price every line again, from
+        // the pins. A pin equal to the catalogue price hid this; a 0.00 gift line
+        // did not. Guarded because both methods are core API but a shop on an
+        // unexpected build must degrade to the old behaviour, not fatal.
+        if (class_exists('SpecificPrice') && method_exists('SpecificPrice', 'flushCache')) {
+            SpecificPrice::flushCache();
+        }
+        if (method_exists('Product', 'flushPriceCache')) {
+            Product::flushPriceCache();
+        }
+        // Kept for the cart this controller still holds (shipping/package reads
+        // below it), not for validateOrder.
+        $cart->getProducts(true);
+        $cart->getPackageList(true);
+
         // validateOrder and the code it calls can end the request with die(),
         // which PHP sends as HTML with status 200 - a failure the caller reads
         // as a success (#2601). The buffer opened above is what stops such a

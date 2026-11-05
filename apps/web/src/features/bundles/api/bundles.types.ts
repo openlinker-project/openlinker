@@ -7,6 +7,7 @@
  *
  * @module apps/web/src/features/bundles/api
  */
+import type { GiftDocumentFormChoice } from '../../gift-documents';
 
 export interface BundleProductSummary {
   name: string | null;
@@ -21,6 +22,8 @@ export interface BundleComponent {
   productId: string;
   quantity: number;
   giftSlot?: boolean;
+  /** How a document shows the gift slot; absent means as in settings (#3940). */
+  documentForm?: GiftDocumentFormChoice;
 }
 
 export interface BundleDefinition {
@@ -81,6 +84,7 @@ export interface BundleComponentInput {
   variantId: string;
   quantity: number;
   giftSlot?: boolean;
+  documentForm?: GiftDocumentFormChoice;
 }
 
 /** The machine codes the API sends when a definition is refused (409 / 400). */

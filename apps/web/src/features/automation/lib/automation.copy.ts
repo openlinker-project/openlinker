@@ -89,6 +89,12 @@ export const AUTOMATION_TRIGGER_COPY = {
     label: 'An invoice or receipt is issued',
     description: 'Fires once, when the order\'s sales document is issued.',
   },
+  // Gift promotions (#3940) are edited on their own page; the trigger is named
+  // here only so the run log and an order's activity say it in words.
+  'order.ingested': {
+    label: 'An order arrives (gift promotions)',
+    description: 'Gift promotions are checked when OpenLinker takes an order in.',
+  },
 } as const;
 
 export const AUTOMATION_FIRING_MODE_COPY = {
@@ -318,6 +324,7 @@ export const AUTOMATION_ACTION_LABELS: Record<string, string> = {
   'send-email': 'Send an email',
   'place-hold': 'Put the order on hold',
   'release-hold': 'Lift the hold',
+  'add-gift': 'Add a gift',
 };
 
 /**

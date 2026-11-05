@@ -19,6 +19,7 @@ import type {
 
 export type MovementTypeToken =
   | 'sale'
+  | 'gift'
   | 'cancel_restore'
   | 'return_restock'
   | 'manual'
@@ -34,6 +35,7 @@ export interface MovementTypePresentation {
 
 const REASON_PRESENTATION: Record<InventoryMovementReason, MovementTypePresentation> = {
   sale: { token: 'sale', label: 'Sale', chipClass: '' },
+  gift: { token: 'gift', label: 'Gift', chipClass: 'chip--review' },
   cancellation_restore: {
     token: 'cancel_restore',
     label: 'Cancellation restore',
@@ -87,6 +89,7 @@ const OPERATOR_REASON_LABEL: Record<string, string> = {
   count_correction: 'Count correction',
   found: 'Found',
   damaged: 'Damaged',
+  gift: 'Gift',
   other: 'Other',
 };
 
@@ -106,6 +109,7 @@ export function movementNeedsAttention(row: InventoryMovementRow): boolean {
 /** Type filter options on the global page; `reservation` maps to the promised kind. */
 export const MOVEMENT_TYPE_FILTER_VALUES = [
   'sale',
+  'gift',
   'cancellation_restore',
   'return_restock',
   'manual_correction',
@@ -116,6 +120,7 @@ export type MovementTypeFilterValue = (typeof MOVEMENT_TYPE_FILTER_VALUES)[numbe
 
 export const MOVEMENT_TYPE_FILTER_LABEL: Record<MovementTypeFilterValue, string> = {
   sale: 'Sale (OpenLinker order)',
+  gift: 'Gift',
   cancellation_restore: 'Cancellation restore',
   return_restock: 'Return restock',
   manual_correction: 'Manual correction',

@@ -59,6 +59,7 @@ export const AUTOMATION_LEGAL_ACTIONS = {
     'send-email': true,
     'place-hold': false,
     'release-hold': false,
+    'add-gift': false,
   },
   'order.hold.released': {
     'issue-sales-document': true,
@@ -67,6 +68,7 @@ export const AUTOMATION_LEGAL_ACTIONS = {
     'send-email': true,
     'place-hold': false,
     'release-hold': false,
+    'add-gift': false,
   },
   'order.on_hold_for': {
     'issue-sales-document': false,
@@ -75,6 +77,7 @@ export const AUTOMATION_LEGAL_ACTIONS = {
     'send-email': true,
     'place-hold': false,
     'release-hold': true,
+    'add-gift': false,
   },
   'order.dispatch_deadline_near': {
     'issue-sales-document': false,
@@ -83,6 +86,7 @@ export const AUTOMATION_LEGAL_ACTIONS = {
     'send-email': true,
     'place-hold': false,
     'release-hold': false,
+    'add-gift': false,
   },
   'order.packed': {
     'issue-sales-document': true,
@@ -91,6 +95,7 @@ export const AUTOMATION_LEGAL_ACTIONS = {
     'send-email': true,
     'place-hold': false,
     'release-hold': false,
+    'add-gift': false,
   },
   'return.received': {
     'issue-sales-document': false,
@@ -99,6 +104,7 @@ export const AUTOMATION_LEGAL_ACTIONS = {
     'send-email': true,
     'place-hold': false,
     'release-hold': false,
+    'add-gift': false,
   },
   'return.disposed': {
     'issue-sales-document': false,
@@ -107,6 +113,7 @@ export const AUTOMATION_LEGAL_ACTIONS = {
     'send-email': true,
     'place-hold': false,
     'release-hold': false,
+    'add-gift': false,
   },
   'inventory.reservation_shortfall': {
     'issue-sales-document': false,
@@ -115,6 +122,7 @@ export const AUTOMATION_LEGAL_ACTIONS = {
     'send-email': true,
     'place-hold': true,
     'release-hold': false,
+    'add-gift': false,
   },
   // D8 (#3517): a freshly received order may be held for review or announced.
   // Nothing irreversible: routing and auto-issue already run at ingestion.
@@ -125,6 +133,7 @@ export const AUTOMATION_LEGAL_ACTIONS = {
     'send-email': true,
     'place-hold': true,
     'release-hold': false,
+    'add-gift': false,
   },
   // #3554: announcements only. The dispatch and the document already happened,
   // and the dispatch relay to the source runs on its own path.
@@ -135,6 +144,7 @@ export const AUTOMATION_LEGAL_ACTIONS = {
     'send-email': true,
     'place-hold': false,
     'release-hold': false,
+    'add-gift': false,
   },
   'order.document_issued': {
     'issue-sales-document': false,
@@ -143,6 +153,19 @@ export const AUTOMATION_LEGAL_ACTIONS = {
     'send-email': true,
     'place-hold': false,
     'release-hold': false,
+    'add-gift': false,
+  },
+  // #3938: the one trigger a gift rule lives on, and the only one `add-gift` is
+  // legal for. Nothing else is: the evaluation is inline, so a send-email or a hold
+  // beside it would never be reached by a dispatch that does not exist.
+  'order.ingested': {
+    'issue-sales-document': false,
+    'dispatch-shipment': false,
+    'relay-status-to-source': false,
+    'send-email': false,
+    'place-hold': false,
+    'release-hold': false,
+    'add-gift': true,
   },
 } as const satisfies Record<AutomationTrigger, Record<AutomationActionKind, boolean>>;
 
@@ -193,6 +216,13 @@ export const AUTOMATION_LEGAL_CONDITION_FIELDS = {
   'order.received': ['sourceConnection', 'orderCountry', 'orderTotalGross'],
   'order.shipped': ['sourceConnection', 'orderCountry', 'orderTotalGross'],
   'order.document_issued': ['sourceConnection', 'orderCountry', 'orderTotalGross'],
+  'order.ingested': [
+    'sourceConnection',
+    'sourceConnectionIn',
+    'orderCountry',
+    'orderTotalGross',
+    'containsProduct',
+  ],
 } as const satisfies Record<AutomationTrigger, readonly AutomationConditionField[]>;
 
 /** Whether this condition field may be used to scope a rule on this trigger. */

@@ -1138,6 +1138,11 @@ export interface OrderFilters {
    * result set and not just the loaded page.
    */
   hasBuyerNote?: boolean;
+  /**
+   * "With a gift" filter (#3940), `?withGift=`: orders carrying a gift line,
+   * whoever decided it (the channel, a cart rule, a promotion, an operator).
+   */
+  withGift?: boolean;
   /** One tag id (#3532, D34), `?tag=`. Mutually exclusive with `untagged`. */
   tag?: string;
   /** "No tags" filter (#3532), `?untagged=`. Mutually exclusive with `tag`. */

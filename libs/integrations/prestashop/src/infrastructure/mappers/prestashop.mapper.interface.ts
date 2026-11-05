@@ -10,6 +10,7 @@
 import type { Product, ProductVariant } from '@openlinker/core/products';
 import type { Inventory } from '@openlinker/core/inventory';
 import type { Order, OrderCreate, OrderTotals } from '@openlinker/core/orders';
+import type { PrestashopGiftCartRule } from './prestashop-gift-split';
 import type { OptionValueResolver } from '../../domain/types/prestashop-product-option.types';
 
 /**
@@ -323,12 +324,16 @@ export interface IPrestashopOrderMapper {
    *
    * @param prestashopOrder - PrestaShop order data
    * @param orderRows - PrestaShop order rows (line items)
+   * @param giftCartRules - Gift cart rules applied to the order; each one's free
+   *   unit is split out of its line (#3937)
    * @returns OpenLinker Order (without ID or currency - see
    *   {@link MappedPrestashopOrder})
    */
   mapOrder(
     prestashopOrder: PrestashopOrder,
-    orderRows: PrestashopOrderRow[]
+    orderRows: PrestashopOrderRow[],
+    giftCartRules?: readonly PrestashopGiftCartRule[],
+    minorUnitExponent?: number
   ): MappedPrestashopOrder;
 
   /**

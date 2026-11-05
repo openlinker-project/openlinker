@@ -47,6 +47,7 @@ describe('CustomersController', () => {
   beforeEach(async () => {
     const mockRepository: jest.Mocked<CustomerProjectionRepositoryPort> = {
       findById: jest.fn(),
+      findByIds: jest.fn(),
       findByEmailHash: jest.fn(),
       findMany: jest.fn(),
       findManyRows: jest.fn(),

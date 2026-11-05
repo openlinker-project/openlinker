@@ -16,6 +16,7 @@ import {
   BundleDefinitionNotFoundError,
   BundleNestingError,
 } from '../../domain/exceptions/bundle-definition.errors';
+import { isBundleGiftDocumentForm } from '../../domain/types/bundle.types';
 import type {
   BundleComponent,
   BundleDefinition,
@@ -171,12 +172,18 @@ export class BundleDefinitionService implements IBundleDefinitionService {
         };
         if (input.giftSlot === true) {
           component.giftSlot = true;
+          if (isBundleGiftDocumentForm(input.documentForm)) {
+            component.documentForm = input.documentForm;
+          }
         }
         merged.set(input.variantId, component);
       } else {
         existing.quantity += input.quantity;
         if (input.giftSlot !== true) {
           delete existing.giftSlot;
+          delete existing.documentForm;
+        } else if (existing.documentForm !== input.documentForm) {
+          delete existing.documentForm;
         }
       }
     }

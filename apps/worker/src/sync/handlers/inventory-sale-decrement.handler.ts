@@ -115,6 +115,10 @@ export class InventorySaleDecrementHandler implements SyncJobHandler {
         productVariantId:
           line.productVariantId === item.productId ? null : line.productVariantId,
         quantity,
+        // A bundle's gift slot is a gift too: it ships with the set but was not sold.
+        ...(item.gift !== undefined || item.giftSlot === true
+          ? { movementReason: 'gift' as const }
+          : {}),
       });
     }
 

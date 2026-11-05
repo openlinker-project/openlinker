@@ -621,6 +621,44 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
         expect(mockHttpClient.deleteResource).toHaveBeenCalledWith('specific_prices', 'sp_test');
       });
 
+      it('pins one quantity-weighted price for a gift of a product the buyer also paid for', async () => {
+        arrange();
+        (mockTaxRateResolver.resolveProductTaxRate as jest.Mock).mockResolvedValue({
+          kind: 'resolved',
+          rate: 0.23,
+          matchedBy: 'catch-all',
+        });
+
+        await adapter.createOrder(
+          createTestOrder({
+            items: [
+              { id: 'paid', productId: 'internal-product-789', quantity: 1, price: 49.99, sku: 'P' },
+              {
+                id: 'gift',
+                productId: 'internal-product-789',
+                quantity: 1,
+                price: 0,
+                sku: 'P',
+                gift: { source: 'cart-rule', ruleRef: '1' },
+              },
+            ],
+            totals: {
+              subtotal: 49.99,
+              tax: 0,
+              shipping: 5.0,
+              total: 54.99,
+              currency: 'EUR',
+              taxTreatment: 'inclusive',
+            },
+          })
+        );
+
+        const pins = createCalls().filter((c) => c[0] === 'specific_prices');
+        // One cart row, one pin: gross 49.99 over 2 units, so no unit is pinned at 0.
+        expect(pins).toHaveLength(1);
+        expect(pins[0][1].price).toBe((49.99 / 2 / 1.23).toFixed(6));
+      });
+
       // #2597: a module that advertises `line_prices` pins the whole set inside
       // the order-import request, so the two Webservice calls per line go away.
       describe('module-side line pinning (#2597)', () => {

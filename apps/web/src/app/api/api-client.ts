@@ -34,6 +34,8 @@ import {
   createAnalyticsExportApi,
   type AnalyticsExportApi,
 } from '../../features/analytics/api/analytics-export.api';
+import { createGiftReportApi, type GiftReportApi } from '../../features/gift-report/api/gift-report.api';
+import { createReturnGiftsApi, type ReturnGiftsApi } from '../../features/returns/api/return-gifts.api';
 import { createAnalyticsApi, type AnalyticsApi } from '../../features/analytics/api/sales-analytics.api';
 import {
   createAnalyticsCoverageApi,
@@ -114,6 +116,10 @@ import {
   type DeliveryOnDocumentsApi,
 } from '../../features/delivery-on-documents/api/delivery-on-documents.api';
 import {
+  createGiftDocumentsApi,
+  type GiftDocumentsApi,
+} from '../../features/gift-documents/api/gift-documents.api';
+import {
   createSourcingRulesApi,
   type SourcingRulesApi,
 } from '../../features/oms/api/sourcing-rules.api';
@@ -138,6 +144,7 @@ import {
   type PosthogSettingsApi,
 } from '../../features/posthog-settings/api/posthog-settings.api';
 import { createBundlesApi, type BundlesApi } from '../../features/bundles/api/bundles.api';
+import { createGiftsApi, type GiftsApi } from '../../features/gifts/api/gifts.api';
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
 import { createAutomationsApi, type AutomationsApi } from '../../features/automation';
 import { createBuyerEmailsApi, type BuyerEmailsApi } from '../../features/buyer-emails/api/buyer-emails.api';
@@ -257,6 +264,7 @@ export interface CoreApiClient {
     MarginAnalyticsApi &
     AnalyticsExportApi;
   analyticsSettings: AnalyticsSettingsApi;
+  giftReport: GiftReportApi;
   analyticsTrust: AnalyticsTrustApi;
   auth: AuthApi;
   connections: ConnectionsApi;
@@ -280,6 +288,7 @@ export interface CoreApiClient {
   posthogSettings: PosthogSettingsApi;
   products: ProductsApi;
   bundles: BundlesApi;
+  gifts: GiftsApi;
   promptTemplates: PromptTemplatesApi;
   mappings: MappingsApi;
   request: ApiRequest;
@@ -287,9 +296,11 @@ export interface CoreApiClient {
   requestFile: ApiFileRequest;
   requestStream: ApiStreamRequest;
   returns: ReturnsApi;
+  returnGifts: ReturnGiftsApi;
   salesDocumentList: SalesDocumentListApi;
   salesDocumentRules: SalesDocumentRulesApi;
   deliveryOnDocuments: DeliveryOnDocumentsApi;
+  giftDocuments: GiftDocumentsApi;
   sourcingRules: SourcingRulesApi;
   routingDryRun: RoutingDryRunApi;
   fulfillmentAuthority: FulfillmentAuthorityApi;
@@ -519,6 +530,7 @@ export function createApiClient({
       ...createAnalyticsExportApi(requestFile),
     },
     analyticsSettings: createAnalyticsSettingsApi(request),
+    giftReport: createGiftReportApi(request),
     analyticsTrust: createAnalyticsTrustApi(request),
     auth: createAuthApi(request),
     connections: createConnectionsApi(request),
@@ -541,6 +553,7 @@ export function createApiClient({
     posthogSettings: createPosthogSettingsApi(request),
     products: createProductsApi(request),
     bundles: createBundlesApi(request),
+    gifts: createGiftsApi(request),
     promptTemplates: createPromptTemplatesApi(request),
     request,
     requestBlob,
@@ -549,6 +562,7 @@ export function createApiClient({
     salesDocumentList: createSalesDocumentListApi(request),
     salesDocumentRules: createSalesDocumentRulesApi(request),
     deliveryOnDocuments: createDeliveryOnDocumentsApi(request),
+    giftDocuments: createGiftDocumentsApi(request),
     sourcingRules: createSourcingRulesApi(request),
     routingDryRun: createRoutingDryRunApi(request),
     automations: createAutomationsApi(request),
@@ -557,6 +571,7 @@ export function createApiClient({
     fulfillment: createFulfillmentApi(request),
     bench: createBenchApi(request, requestBlob),
     returns: createReturnsApi(request),
+    returnGifts: createReturnGiftsApi(request),
     shipments: createShipmentsApi(request, requestBlob),
     syncJobs: createSyncJobsApi(request),
     streamDeadLetters: createStreamDeadLettersApi(request),

@@ -68,7 +68,12 @@ import {
   PrestashopAuthenticationException,
   PrestashopResourceNotFoundException,
 } from '@openlinker/integrations-prestashop';
+import { minorUnitExponentFor } from '@openlinker/core/sales-documents';
 import { readAllPrestashopResourcePages } from '../http/prestashop-paged-read';
+import {
+  sourceRowIdOfLineId,
+  type PrestashopGiftCartRule,
+} from '../mappers/prestashop-gift-split';
 import type { PrestashopOrderFeedCursor } from '../../domain/types/prestashop-order-feed-cursor.types';
 import {
   formatOrderFeedCursor,
@@ -542,7 +547,22 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     }
 
     const orderRows = await this.fetchOrderRows(externalOrderId);
-    const mapped = this.orderMapper.mapOrder(prestashopOrder, orderRows);
+    const giftCartRules = await this.fetchGiftCartRules(prestashopOrder);
+    // Resolved before mapping because the gift split rounds in the order's own
+    // minor unit; the unresolvable-currency refusal it can raise is the same one
+    // the later position of this read raised, so nothing new can fail here.
+    const currency = await this.orderCurrencyResolver.resolveOrderCurrencyIso({
+      connectionId: this.connection.id,
+      client: this.httpClient,
+      idCurrency: prestashopOrder.id_currency,
+      orderRef: String(prestashopOrder.reference ?? '') || externalOrderId,
+    });
+    const mapped = this.orderMapper.mapOrder(
+      prestashopOrder,
+      orderRows,
+      giftCartRules,
+      minorUnitExponentFor(currency)
+    );
 
     // The mapper cannot answer this (#2607): what `current_state` means is a row
     // on the shop's own state table. An id this shop does not have reads
@@ -567,18 +587,8 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     const paymentStatus = withCashOnDeliveryPaymentStatus(stateStatus, paymentMethod, status);
     const config = this.connection.config as unknown as PrestashopConnectionConfig;
 
-    // Resolved BEFORE the hydration reads below, and awaited rather than raced
-    // alongside them, because this is the one step that can REFUSE the order
-    // (#2277): a shop whose currency is unresolvable should cost one read, not
-    // a full hydration, and a rejected promise held across those awaits would
-    // be an unhandled rejection on every other failure path. The read is cached
-    // per (connection, id_currency), so the added round-trip amortises away.
-    const currency = await this.orderCurrencyResolver.resolveOrderCurrencyIso({
-      connectionId: this.connection.id,
-      client: this.httpClient,
-      idCurrency: prestashopOrder.id_currency,
-      orderRef: mapped.orderNumber || externalOrderId,
-    });
+    // The currency was resolved above, before the gift split, for the same
+    // reason it must precede the hydration reads: it can refuse the order (#2277).
 
     // Started before the pickup-point / address awaits so the extra customer
     // read overlaps them rather than lengthening the hydration chain (#1928).
@@ -603,7 +613,9 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       billingAddress;
 
     const items: IncomingOrderItem[] = mapped.items.map((item, index) => {
-      const row = orderRows[index];
+      // By row id, not position: a split gift line sits beside its source row.
+      const sourceRowId = sourceRowIdOfLineId(item.id);
+      const row = orderRows.find((candidate) => String(candidate.id) === sourceRowId) ?? orderRows[index];
       const externalId =
         row?.product_attribute_id && String(row.product_attribute_id) !== '0'
           ? String(row.product_attribute_id)
@@ -627,6 +639,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
         // the field here would silently un-do the mapper's read - which is
         // exactly how it went missing for as long as it did.
         ...(item.unitPriceGross !== undefined ? { unitPriceGross: item.unitPriceGross } : {}),
+        ...(item.gift !== undefined ? { gift: item.gift } : {}),
       };
     });
 
@@ -912,6 +925,86 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
           `note for order ${String(orderId)} stays unknown so the order still imports: ${(error as Error).message}`
       );
       return undefined;
+    }
+  }
+
+  /**
+   * The cart rules applied to this order that hand out a free product (#3937).
+   *
+   * Skipped without a request when the order reports no discount: a gift rule
+   * always books one, so an ordinary order pays nothing extra for this. Best
+   * effort by design, unlike the order lines: a key without `order_cart_rules`
+   * / `cart_rules` permission only means the gift stays merged into its line
+   * (today's behaviour), and refusing the whole order for that would turn a
+   * missing optional grant into a blocked sale.
+   */
+  private async fetchGiftCartRules(order: PrestashopOrder): Promise<PrestashopGiftCartRule[]> {
+    const discount = Number(order.total_discounts_tax_incl ?? 0);
+    if (!Number.isFinite(discount) || discount <= 0) {
+      return [];
+    }
+    try {
+      const applied = await readAllPrestashopResourcePages<{
+        id_cart_rule?: string | number;
+        value?: string | number;
+        free_shipping?: string | number | boolean;
+      }>(
+        this.httpClient,
+        'order_cart_rules',
+        { custom: { id_order: order.id } },
+        {
+          connectionId: this.connection.id,
+          detail: `id_order=${String(order.id)}`,
+        }
+      );
+      // Order-time facts (what the buyer was actually credited) come from
+      // `order_cart_rules`; only the gift product id has no order-time home and
+      // is read from the live rule, one rule at a time, so a rule deleted after
+      // its campaign costs only its own split instead of every rule's.
+      const byId = new Map<string, { value?: number; freeShipping: boolean }>();
+      for (const row of applied) {
+        const id = String(row.id_cart_rule ?? '');
+        if (id === '' || id === '0' || byId.has(id)) continue;
+        const value = Number(row.value);
+        byId.set(id, {
+          ...(row.value !== undefined && row.value !== '' && Number.isFinite(value) ? { value } : {}),
+          freeShipping: String(row.free_shipping ?? '0') === '1' || row.free_shipping === true,
+        });
+      }
+      const shippingGross = Number(order.total_shipping_tax_incl);
+      const rules: PrestashopGiftCartRule[] = [];
+      for (const [id, booked] of byId) {
+        try {
+          const rule = await this.httpClient.getResource<{
+            gift_product?: string | number;
+            gift_product_attribute?: string | number;
+          }>('cart_rules', id);
+          const giftProduct = String(rule.gift_product ?? '0');
+          if (giftProduct !== '' && giftProduct !== '0') {
+            rules.push({
+              idCartRule: id,
+              giftProductId: giftProduct,
+              giftProductAttributeId: String(rule.gift_product_attribute ?? '0'),
+              ...(booked.value !== undefined ? { valueTaxIncl: booked.value } : {}),
+              freeShipping: booked.freeShipping,
+              ...(Number.isFinite(shippingGross) ? { shippingGross } : {}),
+            });
+          }
+        } catch (error) {
+          this.logger.warn(
+            `Cart rule ${id} of PrestaShop order ${String(order.id)} could not be read on connection ` +
+              `${this.connection.id}; a gift it handed out stays merged into its product line: ` +
+              `${(error as Error).message}`
+          );
+        }
+      }
+      return rules;
+    } catch (error) {
+      this.logger.warn(
+        `Gift cart rules of PrestaShop order ${String(order.id)} could not be read on connection ` +
+          `${this.connection.id}; any gift stays merged into its product line: ${(error as Error).message}`
+      );
+      return [];
     }
   }
 

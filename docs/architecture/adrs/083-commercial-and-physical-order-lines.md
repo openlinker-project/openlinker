@@ -65,10 +65,20 @@ Decision 8 keeps documents at the commercial grain; two product decisions refine
 
 **B. A gift whose rate matches no paid line** is carried according to `config.giftOnDocuments.differentRateGift`: `priced-in` (default, the gift at its own rate with a share of the payment proportional to its standalone price) or `technical-cent` (the gift at 0,01, the cent taken from the largest paid line). Research basis, not legal advice: a gift tied to a purchase is part of the paid sale, and moving value away from a higher-rate item is the direction the authority warns about; industry tools use a 0,01 technical price, fiscal software refuses a 0,00 line, and a receipt cannot carry a negative line. Where a provider does not accept a zero line (a receipt always counts as such) no presented line is left at 0,00.
 
+## Amendment: gift forms on documents (#3936)
+
+Decision 12 keeps the gift presentation in one core helper. Three product decisions define the form it applies. They replace the earlier per-connection `config.giftOnDocuments` (default `omit`) and the separate `differentRateGift` choice.
+
+1. **One choice, four options.** `technical-cent` (default): the gift at 0,01, the cent taken from the most expensive paid line, whatever its rate. `priced-in`: the gift at its own rate with a share of the payment proportional to its standalone price (cost when not sold alone). `show-zero`: 0,00, offered only where the document provider declares `acceptsZeroValueLine()`. `omit`: no gift line, with a warning that it may be treated as a free transfer. `internal-record` stays a separate record of the gift's issue. The totals always equal what the buyer paid. The old `differentRateGift` choice is merged into this one.
+2. **Three levels, most specific wins:** the gift itself (rule, bundle gift slot, manual add), then the connection, then the OpenLinker-wide default `technical-cent`. Each gift shows where its form came from.
+3. **Placement:** the OpenLinker-wide default on Settings > Sales documents; the per-connection override as a "Gifts on documents" tab on Connection > Mappings; per gift a field "On the document" in the rule composer, the bundle gift-slot menu and the manual add-gift dialog.
+
+Research basis, not legal advice: a gift tied to a purchase is part of the paid sale, not a free transfer; a gift left off the documents was treated by a court (WSA Krakow) as a free transfer; fiscal software refuses a 0,00 line; BaseLinker and IdoSell POS use a 0,01 gift price; IdoSell offers 1,00 / 0,00 / merged / not on documents; Sellasist shows the gift at full price with a cancelling discount line or hides it. Amendment B in the section above is superseded by this one. See [product-spec-oms-gifts](../../specs/product-spec-oms-gifts.md).
+
 ## References
 
 - Related ADRs: [ADR-011](./011-domain-entity-behavior.md), [ADR-046](./046-adapter-declared-description-format.md), [ADR-054](./054-fulfillment-work-unit-of-assignment.md), [ADR-061](./061-advisory-reservations-and-availability-authority.md), [ADR-082](./082-delivery-line-on-sales-documents.md)
 - Issue: #3606 (epic #3520)
-- Spec: [product-spec-oms-bundles-and-kits](../../specs/product-spec-oms-bundles-and-kits.md)
+- Spec: [product-spec-oms-bundles-and-kits](../../specs/product-spec-oms-bundles-and-kits.md), [product-spec-oms-gifts](../../specs/product-spec-oms-gifts.md)
 - Design: [ports-v1](../../plans/analysis/spike-bundles-and-gifts/ports-v1.md)
 - Mockup: [m22-bundles-and-kits](../../plans/mockups/oms-mvp/m22-bundles-and-kits.html)

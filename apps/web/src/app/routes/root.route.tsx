@@ -16,6 +16,7 @@ import { isOmsRoutingUiEnabled } from '../../shared/config/oms-routing-ui';
 import { AuthenticatedAppLayout } from '../layouts/authenticated-app-layout';
 import { adaptersRoute } from './adapters.route';
 import { analyticsIndexRoute, analyticsLegacyRedirectRoute } from './analytics.route';
+import { giftReportRoute } from './gift-report.route';
 import { connectionDetailRoute } from './connection-detail.route';
 import { connectionCategoryMappingsRoute } from './connection-category-mappings.route';
 import { connectionMappingsRoute } from './connection-mappings.route';
@@ -70,6 +71,7 @@ export function buildCoreChildren(omsRoutingUiEnabled: boolean): RouteObject[] {
   return [
     analyticsIndexRoute,
     analyticsLegacyRedirectRoute,
+    giftReportRoute,
     insightsRoute,
     ordersRoute,
     productsRoute,

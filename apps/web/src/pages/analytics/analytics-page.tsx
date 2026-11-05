@@ -202,9 +202,18 @@ export function AnalyticsPage(): ReactElement {
       }
       description="Sales across connected channels, with clear data coverage."
       actions={
-        <Button type="button" tone="secondary" onClick={() => setSettingsDialogOpen(true)}>
-          Analytics settings
-        </Button>
+        <>
+          <Link
+            className="button button--secondary"
+            to={`/analytics/gifts?from=${from}&to=${to}`}
+            data-testid="analytics-gift-report-link"
+          >
+            Gift cost
+          </Link>
+          <Button type="button" tone="secondary" onClick={() => setSettingsDialogOpen(true)}>
+            Analytics settings
+          </Button>
+        </>
       }
     >
       <AnalyticsDateRangeToolbar

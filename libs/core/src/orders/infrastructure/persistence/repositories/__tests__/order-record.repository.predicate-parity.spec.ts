@@ -169,6 +169,8 @@ describe('OrderRecordRepository paged/count predicate parity (#2944)', () => {
     ['waitingInOpenLinker=false', { waitingInOpenLinker: false }],
     ['onPackBench=true', { onPackBench: true }],
     ['onPackBench=false', { onPackBench: false }],
+    ['withGift=true', { withGift: true }],
+    ['withGift=false', { withGift: false }],
     [
       'every filter at once',
       {
@@ -194,6 +196,7 @@ describe('OrderRecordRepository paged/count predicate parity (#2944)', () => {
         destinationRoutingBlocked: true,
         waitingInOpenLinker: true,
         onPackBench: true,
+        withGift: true,
       },
     ],
   ];

@@ -25,6 +25,14 @@ export interface ICustomerProjectionService {
   getProjection(internalCustomerId: string): Promise<CustomerProjection | null>;
 
   /**
+   * Batch read of projections by internal id (one IN query per chunk), keyed by
+   * id. An id with no projection is absent from the map.
+   */
+  getProjectionsByIds(
+    internalCustomerIds: readonly string[]
+  ): Promise<ReadonlyMap<string, CustomerProjection>>;
+
+  /**
    * Upsert customer projection
    * Updates lastSeenAt and other fields if projection exists
    */

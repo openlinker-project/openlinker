@@ -7,7 +7,7 @@
  *
  * @module libs/integrations/prestashop/src/infrastructure/adapters/__tests__
  */
-import { checkPaymentFactsConsistency } from '@openlinker/core/orders';
+import { checkPaymentFactsConsistency, diffOrderAmendment } from '@openlinker/core/orders';
 import { PrestashopOrderSourceAdapter } from '../prestashop-order-source.adapter';
 import { DEFAULT_INSTALL_ORDER_STATES } from '../../../__tests__/fixtures/prestashop-order-states.fixture';
 import { createMockHttpClient } from '../../../__tests__/mocks/mock-http-client.factory';
@@ -763,6 +763,149 @@ describe('PrestashopOrderSourceAdapter', () => {
       expect(incoming.placedAt).toBe('2024-01-01 10:00:00');
       expect(incoming.items).toHaveLength(1);
       expect(incoming.items[0].productRef).toEqual({ type: 'product', externalId: '5' });
+    });
+
+    describe('gift cart rules (#3937)', () => {
+      const giftOrder = (discount: string): PrestashopOrder => ({
+        id: '7',
+        reference: 'GIFTPROBE1',
+        id_customer: '3',
+        current_state: '2',
+        total_paid_tax_incl: '62.5',
+        total_paid_tax_excl: '62.5',
+        total_shipping: '12.5',
+        total_shipping_tax_incl: '12.5',
+        total_discounts_tax_incl: discount,
+        date_add: '2026-11-05 00:43:34',
+        date_upd: '2026-11-05 00:43:34',
+      });
+      const mergedRow: PrestashopOrderRow = {
+        id: '9',
+        product_id: '20',
+        product_attribute_id: '0',
+        product_quantity: '2',
+        product_price: '50.000000',
+        unit_price_tax_incl: '50.000000',
+        product_reference: 'GIFT-SKU-1',
+      };
+
+      function mockShop(discount: string, appliedRules: Array<{ id_cart_rule: string; value?: string }>): jest.Mock {
+        const getResource = jest.fn().mockImplementation((resource: string) => {
+          if (resource === 'orders') return Promise.resolve(giftOrder(discount));
+          if (resource === 'cart_rules') {
+            return Promise.resolve({ id: 1, gift_product: 20, gift_product_attribute: 0 });
+          }
+          return Promise.resolve({});
+        });
+        mockHttpClient.getResource = getResource;
+        mockHttpClient.listResources = jest.fn().mockImplementation((resource: string) => {
+          if (resource === 'order_details') return Promise.resolve([mergedRow]);
+          if (resource === 'order_cart_rules') return Promise.resolve(appliedRules);
+          return Promise.resolve([]);
+        });
+        return getResource;
+      }
+
+      it('should split the gift unit into its own 0.00 line and keep the order total', async () => {
+        mockShop('50.000000', [{ id_cart_rule: '1', value: '50.000000' }]);
+
+        const incoming = await adapter.getOrder({ externalOrderId: '7' });
+
+        expect(incoming.items.map((i) => [i.id, i.quantity, i.price, i.gift])).toEqual([
+          ['9', 1, 50, undefined],
+          ['9~gift:1', 1, 0, { source: 'cart-rule', ruleRef: '1' }],
+        ]);
+        // The gift line keeps the product reference of the row it was split from.
+        expect(incoming.items[1].productRef).toEqual({ type: 'product', externalId: '20' });
+        expect((incoming.totals as { discountTotal?: number }).discountTotal).toBe(0);
+        expect(incoming.totals.total).toBe(62.5);
+      });
+
+      it('should report the same line ids on a repeated poll', async () => {
+        mockShop('50.000000', [{ id_cart_rule: '1', value: '50.000000' }]);
+
+        const first = await adapter.getOrder({ externalOrderId: '7' });
+        const second = await adapter.getOrder({ externalOrderId: '7' });
+
+        expect(second.items.map((i) => [i.id, i.quantity])).toEqual(
+          first.items.map((i) => [i.id, i.quantity])
+        );
+      });
+
+      it('should report no amendment when a stored split snapshot is polled again', async () => {
+        mockShop('50.000000', [{ id_cart_rule: '1', value: '50.000000' }]);
+
+        const stored = await adapter.getOrder({ externalOrderId: '7' });
+        const repolled = await adapter.getOrder({ externalOrderId: '7' });
+
+        expect(
+          diffOrderAmendment(
+            { items: stored.items, shippingAddress: stored.shippingAddress },
+            repolled,
+            { storePii: true }
+          )
+        ).toEqual([]);
+      });
+
+      it('should keep the split of a rule that can be read when another applied rule was deleted', async () => {
+        const getResource = mockShop('60.000000', [
+          { id_cart_rule: '1', value: '50.000000' },
+          { id_cart_rule: '2', value: '10.000000' },
+        ]);
+        getResource.mockImplementation((resource: string, id?: string) => {
+          if (resource === 'orders') return Promise.resolve(giftOrder('60.000000'));
+          if (resource === 'cart_rules') {
+            return id === '2'
+              ? Promise.reject(new Error('404 gone'))
+              : Promise.resolve({ id: 1, gift_product: 20, gift_product_attribute: 0 });
+          }
+          return Promise.resolve({});
+        });
+
+        const incoming = await adapter.getOrder({ externalOrderId: '7' });
+
+        expect(incoming.items.map((i) => [i.id, i.quantity])).toEqual([
+          ['9', 1],
+          ['9~gift:1', 1],
+        ]);
+        expect((incoming.totals as { discountTotal?: number }).discountTotal).toBe(10);
+        expect(incoming.totals.total).toBe(62.5);
+      });
+
+      it('should leave a gift merged when the rule credited less than the unit', async () => {
+        mockShop('12.500000', [{ id_cart_rule: '1', value: '12.500000' }]);
+
+        const incoming = await adapter.getOrder({ externalOrderId: '7' });
+
+        expect(incoming.items).toHaveLength(1);
+        expect(incoming.items[0].quantity).toBe(2);
+        expect(incoming.totals.total).toBe(62.5);
+      });
+
+      it('should not read cart rules for an order without a discount', async () => {
+        mockShop('0.000000', []);
+
+        const incoming = await adapter.getOrder({ externalOrderId: '7' });
+
+        const read = (mockHttpClient.listResources as unknown as jest.Mock<unknown, unknown[]>).mock.calls.map((c) => c[0]);
+        expect(read).not.toContain('order_cart_rules');
+        expect(incoming.items).toHaveLength(1);
+      });
+
+      it('should leave the gift merged when the key cannot read cart rules', async () => {
+        mockShop('50.000000', []);
+        mockHttpClient.listResources = jest.fn().mockImplementation((resource: string) => {
+          if (resource === 'order_details') return Promise.resolve([mergedRow]);
+          if (resource === 'order_cart_rules') return Promise.reject(new Error('not allowed'));
+          return Promise.resolve([]);
+        });
+
+        const incoming = await adapter.getOrder({ externalOrderId: '7' });
+
+        expect(incoming.items).toHaveLength(1);
+        expect(incoming.items[0].quantity).toBe(2);
+        expect((incoming.totals as { discountTotal?: number }).discountTotal).toBe(50);
+      });
     });
 
     // [module, state id, expected method, expected status, expect a COD amount]

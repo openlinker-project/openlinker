@@ -11,6 +11,8 @@
  * @module apps/web/src/pages/orders
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
+import { useWriteAccess } from '../../shared/auth/use-permission';
+import { useDemoMode } from '../../features/system';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
@@ -101,6 +103,7 @@ import { OrderCancelResultNotice } from '../../features/orders/components/order-
 import { buildOrderCancelTimelineEvents } from '../../features/orders/components/order-cancel-timeline-events';
 import type { CancelOrderResult } from '../../features/orders/api/order-cancel.types';
 import { OrderEditAction } from '../../features/orders/components/order-edit-action';
+import { OrderAddGiftAction, OrderGiftAttention } from '../../features/gifts';
 import { OrderEditedNotice } from '../../features/orders/components/order-edited-notice';
 import { buildOrderEditTimelineEvents } from '../../features/orders/components/order-edit-timeline-events';
 import type { OrderDiscountResult, OrderEditLineStock } from '../../features/orders/api/order-edit.types';
@@ -172,6 +175,9 @@ export function OrderDetailPage(): ReactElement {
   // does not persist (per-participant outcomes, voided labels, why a correction
   // could not be drafted) and is gone after a reload, by design. Tagged with its
   // order so a navigation never shows it on another.
+  const demoMode = useDemoMode();
+  const canAddGift = useWriteAccess('gifts:write', demoMode).canWrite;
+  const [giftDialogOpen, setGiftDialogOpen] = useState(false);
   const [cancelOutcome, setCancelOutcome] = useState<{
     internalOrderId: string;
     result: CancelOrderResult;
@@ -576,6 +582,28 @@ export function OrderDetailPage(): ReactElement {
           onSaved={handleOrderEdited}
           onGoTo={scrollToRemedy}
         />
+        <OrderAddGiftAction
+          key={`gift:${order.internalOrderId}`}
+          internalOrderId={order.internalOrderId}
+          orderLabel={snapshot.orderNumber ?? order.internalOrderId}
+          currency={snapshot.totals?.currency}
+          terminal={isOrderCancelTerminal({
+            snapshotStatus: snapshot.status,
+            lifecyclePhase: order.lifecyclePhase,
+            fulfillmentState: order.fulfillmentState,
+          })}
+          parcelClosed={
+            (order.packedAt !== null && order.packedAt !== undefined) ||
+            order.fulfillmentState === 'dispatched' ||
+            (shipmentsQuery.data?.items ?? []).some(
+              (shipment) => shipment.status === 'generated' || shipment.status === 'dispatched',
+            )
+          }
+          hasSalesDocument={order.salesDocument?.document != null}
+          notReady={order.recordStatus !== 'ready'}
+          open={giftDialogOpen}
+          onOpenChange={setGiftDialogOpen}
+        />
         <OrderCancelAction
           // Remount per order so an open dialog never carries over to a cached next order.
           key={order.internalOrderId}
@@ -722,6 +750,17 @@ export function OrderDetailPage(): ReactElement {
         hasFulfilmentWork={(fulfilmentTasksQuery.data?.total ?? 0) > 0}
       />
 
+      {/* #3940 - why a gift that should be here is not: the gift rules' own
+          records for this order, plus a shop that refused a gift line. */}
+      <OrderGiftAttention
+        key={`gift-attention:${order.internalOrderId}`}
+        internalOrderId={order.internalOrderId}
+        shopRejected={
+          snapshot.items.some((item) => item.gift != null) && failedDestinations.length > 0
+        }
+        onAddGift={canAddGift ? () => setGiftDialogOpen(true) : undefined}
+      />
+
       {snapshot.items.length > 0 || snapshot.totals ? (
         <section className="detail-section">
           <h3 className="detail-section__title">Pricing &amp; tax</h3>
@@ -732,6 +771,7 @@ export function OrderDetailPage(): ReactElement {
             edits={order.edits}
             channelName={cancelSourceName}
             bundleLines={order.bundleLines}
+            documentConnectionId={order.salesDocument?.document?.identity.connectionId ?? null}
           />
         </section>
       ) : null}

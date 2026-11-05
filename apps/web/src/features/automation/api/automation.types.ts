@@ -16,6 +16,14 @@
  * @module apps/web/src/features/automation/api
  */
 
+/**
+ * The gift promotions trigger and step (#3940). They are automation rules, but
+ * "add a gift" is composed on the gift promotions page, so the generic index,
+ * composer and vocabulary leave them out; the run log still names them.
+ */
+export const GIFT_AUTOMATION_TRIGGER = 'order.ingested';
+export const GIFT_AUTOMATION_ACTION = 'add-gift';
+
 /** The triggers, in the backend's own declaration order. */
 export const AUTOMATION_TRIGGER_VALUES = [
   'order.hold.placed',
@@ -210,6 +218,8 @@ export interface AutomationStepResult {
   /** Where the step dispatched a job — the job detail is where technical failure detail lives. */
   syncJobId: string | null;
   unavailableReason: string | null;
+  /** Why an add-gift step added nothing, as a code (#3945); null on runs that predate it. */
+  reasonCode?: string | null;
 }
 
 /**

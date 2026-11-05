@@ -268,6 +268,28 @@ describe('InventorySaleDecrementService', () => {
     expect(syncLock.release).not.toHaveBeenCalled();
   });
 
+  it('should record the ledger row as gift when the line says it is a gift', async () => {
+    await service.decrementForWork(
+      input({
+        lines: [
+          {
+            orderLineId: 'line-1',
+            productId: 'ol_product_1',
+            productVariantId: 'ol_variant_1',
+            quantity: 1,
+            movementReason: 'gift',
+          },
+        ],
+      })
+    );
+
+    expect((inventoryService.setInventory.mock.calls[0] as unknown[])[2]).toEqual({
+      reason: 'gift',
+      sourceKind: 'order',
+      sourceRef: 'ol_order_1',
+    });
+  });
+
   // OL's location id is not the adapter's: the Subiekt adapter reads it as a magazynId.
   it('should never pass the OL location id to the adapter', async () => {
     await service.decrementForWork(input());

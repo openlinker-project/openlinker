@@ -15,6 +15,7 @@ import {
 } from '../../adapters/order-source/__tests__/shoper-order-source-test-data';
 
 import { SHOPER_BUNDLE_PARENT_LINE } from './shoper-bundle-order.fixture';
+import { SHOPER_GIFT_APP_LINE, SHOPER_PAID_LINE_BESIDE_GIFT } from './shoper-gift-order.fixture';
 
 const status = (type: number, ...labels: string[]): { type: number; labels: string[] } => ({ type, labels });
 
@@ -383,5 +384,48 @@ describe('mapShoperOrderToIncoming bundles (#3932)', () => {
     expect(incoming.items.map((item) => item.sku)).not.toEqual(expect.arrayContaining(componentSkus));
     // 479.88 gross at 23%: the components add nothing.
     expect(incoming.totals.tax).toBe(89.73);
+  });
+});
+
+describe('mapShoperOrderToIncoming gift app lines (#3937)', () => {
+  const map = (lines: Parameters<typeof mapShoperOrderToIncoming>[1]): ReturnType<typeof mapShoperOrderToIncoming>['items'] =>
+    mapShoperOrderToIncoming(buildOrderRow({ order_id: '9', sum: '69.01' }), lines, CTX).items;
+
+  it('should mark the line carrying the gift app option as a channel gift and leave the paid line alone', () => {
+    const items = map([SHOPER_GIFT_APP_LINE, SHOPER_PAID_LINE_BESIDE_GIFT]);
+
+    expect(items[0]).toMatchObject({ id: '24', price: 0.01, gift: { source: 'channel' } });
+    expect(items[1].gift).toBeUndefined();
+  });
+
+  it('should not mark a cheap line without the option, since the price alone proves nothing', () => {
+    const [item] = map([{ ...SHOPER_GIFT_APP_LINE, option: '' }]);
+
+    expect(item.price).toBe(0.01);
+    expect(item.gift).toBeUndefined();
+  });
+
+  it.each([
+    ['another option that merely contains the words', 'Pakowanie na produkt gratisowy: tak'],
+    ['a different option', 'Rozmiar: M'],
+    ['no option at all', null],
+    ['the option present but unticked', 'Produkt gratisowy: nie'],
+    ['a value that merely contains the word', 'Produkt gratisowy: nie, tak?'],
+  ])('should not mark a line with %s', (_name, option) => {
+    expect(map([{ ...SHOPER_GIFT_APP_LINE, option }])[0].gift).toBeUndefined();
+  });
+
+  it('should find the gift option among several chosen options, in any case', () => {
+    const [item] = map([{ ...SHOPER_GIFT_APP_LINE, option: 'Rozmiar: M, PRODUKT GRATISOWY: tak' }]);
+
+    expect(item.gift).toEqual({ source: 'channel' });
+  });
+
+  it('should keep a comma inside another option value from hiding the gift option', () => {
+    const [item] = map([
+      { ...SHOPER_GIFT_APP_LINE, option: 'Opis: dluga, z przecinkiem, Produkt gratisowy: Tak' },
+    ]);
+
+    expect(item.gift).toEqual({ source: 'channel' });
   });
 });

@@ -176,6 +176,21 @@ export interface LineGift {
   source: GiftSource;
   /** Promotion / cart rule id when known; display and analytics only. */
   ruleRef?: string;
+  /**
+   * How a sales document shows THIS gift (#3938, gifts spec section 8.3 level 1).
+   * Absent means "as in settings": the connection, then the OpenLinker default,
+   * decide. Carried only; the three-level resolver lives with the document
+   * mappers.
+   */
+  documentForm?: GiftDocumentForm;
+}
+
+/** The four gift forms on a document (gifts spec section 8.2). */
+export const GiftDocumentFormValues = ['technical-cent', 'priced-in', 'show-zero', 'omit'] as const;
+export type GiftDocumentForm = (typeof GiftDocumentFormValues)[number];
+
+export function isGiftDocumentForm(value: unknown): value is GiftDocumentForm {
+  return typeof value === 'string' && (GiftDocumentFormValues as readonly string[]).includes(value);
 }
 
 /**
@@ -190,6 +205,8 @@ export function readLineGift(value: unknown): LineGift | undefined {
   if (!(GiftSourceValues as readonly unknown[]).includes(raw.source)) return undefined;
   const gift: LineGift = { source: raw.source as GiftSource };
   if (typeof raw.ruleRef === 'string') gift.ruleRef = raw.ruleRef;
+  // An unrecognised form reads as absent ("as in settings"), never as a guess.
+  if (isGiftDocumentForm(raw.documentForm)) gift.documentForm = raw.documentForm;
   return gift;
 }
 

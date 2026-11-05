@@ -20,6 +20,7 @@
  *
  * @module apps/web/src/features/orders/components
  */
+import { useMessages } from '../../../shared/i18n';
 import { useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { ActiveFilterChips, type ActiveFilterChip } from '../../../shared/ui/active-filter-chips';
@@ -162,6 +163,7 @@ export function OrderListFilterBar({
   formatDay,
 }: OrderListFilterBarProps): ReactElement {
   const { state } = filtersApi;
+  const giftCopy = useMessages('gifts');
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const panelId = useId();
   const searchRef = useRef<HTMLInputElement>(null);
@@ -419,6 +421,13 @@ export function OrderListFilterBar({
         checked={state.openReturn}
         onChange={() => {
           filtersApi.toggle('openReturn');
+        }}
+      />
+      <FilterCheck
+        label={giftCopy.filter.check}
+        checked={state.withGift}
+        onChange={() => {
+          filtersApi.toggle('withGift');
         }}
       />
       <FilterCheck
@@ -803,6 +812,15 @@ export function OrderListFilterBar({
           }}
         >
           {COPY.quickOpenReturn}
+        </Chip>
+        <Chip
+          active={state.withGift}
+          data-testid="orders-gift-filter-gift"
+          onClick={() => {
+            filtersApi.toggle('withGift');
+          }}
+        >
+          {giftCopy.filter.quick}
         </Chip>
         <Chip
           active={state.hasBuyerNote}

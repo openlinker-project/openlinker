@@ -169,6 +169,9 @@ export type {
   LowerLineQuantityInput,
   LowerLineQuantityResult,
   LowerLineOutcome,
+  AddLineToWorkInput,
+  AddLineToWorkResult,
+  AddLineToWorkOutcome,
 } from './application/interfaces/fulfillment-order-edit.service.interface';
 
 export { RoutingDecision } from './domain/entities/routing-decision.entity';

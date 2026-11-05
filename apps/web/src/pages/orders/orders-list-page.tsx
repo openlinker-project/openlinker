@@ -489,6 +489,7 @@ export function OrdersListPage(): ReactElement {
           itemCount={parsed.items.length}
           onNavigate={() => captureDemoEvent('demo_order_opened', {})}
           tags={tags}
+          hasGift={parsed.items.some((item) => item.gift != null)}
         />
       );
     },

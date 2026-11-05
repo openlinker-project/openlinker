@@ -31,6 +31,8 @@ interface OrderPricingPanelProps {
   channelName?: string | null;
   /** The bundle lines with their frozen components (#3624). */
   bundleLines?: readonly OrderBundleLine[];
+  /** The connection issuing the sales document, once there is one (#3940). */
+  documentConnectionId?: string | null;
 }
 
 export function OrderPricingPanel({
@@ -40,6 +42,7 @@ export function OrderPricingPanel({
   edits,
   channelName,
   bundleLines,
+  documentConnectionId,
 }: OrderPricingPanelProps): ReactElement {
   const channelQuantities =
     edits && edits.lines.length > 0
@@ -58,6 +61,7 @@ export function OrderPricingPanel({
           internalOrderId={internalOrderId}
           channelQuantities={channelQuantities}
           bundleLines={bundleLines}
+          documentConnectionId={documentConnectionId}
         />
       ) : null}
 

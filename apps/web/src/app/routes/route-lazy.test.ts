@@ -139,8 +139,13 @@ const lazyRoutes = collectLazyRoutes([
  *
  * #3624 adds the bundle form twice (`products/bundles/new` and
  * `products/bundles/:variantId`, one page), from 78 to 80.
+ *
+ * #3940 adds the gift promotions list (`automations/gifts`) and its composer
+ * (`automations/gifts/:ruleId`, `new` included), from 80 to 82.
+ *
+ * #3943 adds the gift cost report (`analytics/gifts`), from 82 to 83.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 80;
+const EXPECTED_LAZY_ROUTE_COUNT = 83;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

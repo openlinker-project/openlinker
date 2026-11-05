@@ -23,6 +23,8 @@ import { FULFILLMENT_WORK_REPOSITORY_TOKEN } from '../../fulfillment.tokens';
 import { FulfillmentWorkRepositoryPort } from '../../domain/ports/fulfillment-work-repository.port';
 import { isTerminalFulfillmentWorkStatus } from '../../domain/types/fulfillment-supported-actions.types';
 import type {
+  AddLineToWorkInput,
+  AddLineToWorkResult,
   IFulfillmentOrderEditService,
   LineComponentRef,
   LineComponentsByLine,
@@ -85,6 +87,25 @@ export class FulfillmentOrderEditService implements IFulfillmentOrderEditService
       ),
       fulfilledByLine,
     };
+  }
+
+  async addLineToOpenWork(input: AddLineToWorkInput): Promise<AddLineToWorkResult> {
+    const works = await this.works.findByOrderId(input.orderId);
+    if (works.length === 0) return { outcome: 'unrouted', workId: null };
+    if (works.some((work) => work.lines.some((line) => line.orderLineId === input.orderLineId))) {
+      return { outcome: 'unchanged', workId: null };
+    }
+    for (const work of works) {
+      if (isTerminalFulfillmentWorkStatus(work.status) || work.parcelClosedAt !== null) continue;
+      if (!(await input.acceptsHolder(work.assignedConnectionId))) continue;
+      const added = await this.works.addLine(work.id, {
+        orderLineId: input.orderLineId,
+        productVariantId: input.productVariantId,
+        totalQuantity: input.quantity,
+      });
+      if (added) return { outcome: 'added', workId: work.id };
+    }
+    return { outcome: 'no-eligible-work', workId: null };
   }
 
   async lowerLineQuantity(input: LowerLineQuantityInput): Promise<LowerLineQuantityResult> {

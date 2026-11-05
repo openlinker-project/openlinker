@@ -539,6 +539,8 @@ export function validateDeliveryOnDocumentsShape(
 export interface DeliverySpreadLine {
   unitPriceGross: number;
   quantity: number;
+  /** A free item: never takes delivery, so its technical cent stays what it is. */
+  isGift?: boolean;
 }
 
 /**
@@ -548,6 +550,8 @@ export interface DeliverySpreadLine {
  * amount. Each line's share is proportional to its gross; a line can only be
  * raised by a whole number of minor units per unit, so what a line's quantity
  * cannot divide is pooled and handed to a quantity-1 line (the largest one).
+ *
+ * Gift lines are left out of the allocation entirely (like `reconcileDiscountRounding`).
  *
  * Returns the per-unit increase for each input line, in major units, or `null`
  * when there is a remainder and no quantity-1 line to take it - the caller then
@@ -563,12 +567,21 @@ export function spreadDeliveryAcrossLines(
   if (!Number.isFinite(shippingMinor) || shippingMinor <= 0) return lines.map(() => 0);
   if (lines.length === 0) return null;
 
-  const grosses = lines.map((line) => Math.max(0, line.unitPriceGross * line.quantity));
+  const grosses = lines.map((line) =>
+    line.isGift === true ? 0 : Math.max(0, line.unitPriceGross * line.quantity),
+  );
   const totalGross = grosses.reduce((sum, gross) => sum + gross, 0);
   if (!(totalGross > 0)) return null;
-  if (lines.some((line) => !Number.isInteger(line.quantity) || line.quantity <= 0)) return null;
+  if (
+    lines.some(
+      (line) => line.isGift !== true && (!Number.isInteger(line.quantity) || line.quantity <= 0),
+    )
+  ) {
+    return null;
+  }
 
   const unitIncreaseMinor = lines.map((line, index) => {
+    if (line.isGift === true) return 0;
     const share = Math.floor((shippingMinor * grosses[index]) / totalGross);
     return Math.floor(share / line.quantity);
   });
@@ -581,7 +594,11 @@ export function spreadDeliveryAcrossLines(
   if (remainder > 0) {
     let target = -1;
     lines.forEach((line, index) => {
-      if (line.quantity === 1 && (target === -1 || grosses[index] > grosses[target])) {
+      if (
+        line.isGift !== true &&
+        line.quantity === 1 &&
+        (target === -1 || grosses[index] > grosses[target])
+      ) {
         target = index;
       }
     });

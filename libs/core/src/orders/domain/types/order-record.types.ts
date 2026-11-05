@@ -415,6 +415,14 @@ export interface OrderRecordFilters {
    */
   omsAttention?: boolean;
   /**
+   * "With a gift" filter (#3940). `true` keeps orders that carry at least one gift
+   * line: one the channel or the shop sent (`gift` on a channel line) or one an
+   * OpenLinker rule or an operator added (`orderEdits.addedLines`, gifts only).
+   * `false` keeps the rest, absent does not filter. A plain jsonb test over the
+   * two columns, ANDed with every other axis; not a health bucket.
+   */
+  withGift?: boolean;
+  /**
    * Restrict to orders whose OPEN hold carries this reason (#2342).
    * `undefined` means "don't filter".
    *

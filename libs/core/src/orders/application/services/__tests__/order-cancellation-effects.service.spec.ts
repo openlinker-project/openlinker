@@ -38,6 +38,7 @@ describe('OrderCancellationEffectsService (#3540)', () => {
   let invoices: { getLatestIssuedInvoiceForOrder: jest.Mock };
   let moduleRef: { get: jest.Mock };
   let voider: { voidLabelsForOrder: jest.Mock };
+  let gifts: { releaseGrantsForCancelledOrder: jest.Mock };
   let service: OrderCancellationEffectsService;
 
   beforeEach(() => {
@@ -53,6 +54,7 @@ describe('OrderCancellationEffectsService (#3540)', () => {
       abandon: jest.fn().mockResolvedValue(true),
     };
     invoices = { getLatestIssuedInvoiceForOrder: jest.fn().mockResolvedValue(null) };
+    gifts = { releaseGrantsForCancelledOrder: jest.fn().mockResolvedValue(undefined) };
     voider = { voidLabelsForOrder: jest.fn().mockResolvedValue([]) };
     moduleRef = { get: jest.fn().mockReturnValue(voider) };
     service = new OrderCancellationEffectsService(
@@ -60,8 +62,15 @@ describe('OrderCancellationEffectsService (#3540)', () => {
       holds as never,
       changes as never,
       invoices as never,
+      gifts as never,
       moduleRef as never
     );
+  });
+
+  it('should release the order gift grants so the cap units return', async () => {
+    await service.applyEffects(input);
+
+    expect(gifts.releaseGrantsForCancelledOrder).toHaveBeenCalledWith(ORDER_ID);
   });
 
   it('should cancel the order work with the cancel instant', async () => {

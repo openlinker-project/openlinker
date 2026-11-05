@@ -11,6 +11,7 @@
 
 export const InventoryMovementReasonValues = [
   'sale',
+  'gift',
   'cancellation_restore',
   'return_restock',
   'manual_correction',

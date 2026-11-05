@@ -34,6 +34,33 @@ const PII_OFF = { storePii: false };
 
 describe('diffOrderAmendment', () => {
   describe('lines', () => {
+    const gift = (id: string, quantity: number) => ({
+      id,
+      productRef: { type: 'product' as const, externalId: 'p1' },
+      quantity,
+      price: 10,
+      sku: 'SKU-1',
+    });
+
+    it('should report no amendment when a stored merged line is re-polled as a split', () => {
+      const prior = { items: [{ id: '9', quantity: 2, sku: 'SKU-1' }] };
+      const incoming = incomingOrder({ items: [gift('9', 1), gift('9~gift:1', 1)] });
+      expect(diffOrderAmendment(prior, incoming, PII_ON)).toEqual([]);
+    });
+
+    it('should report an amendment when a split order changes its paid quantity', () => {
+      const prior = {
+        items: [
+          { id: '9', quantity: 1, sku: 'SKU-1' },
+          { id: '9~gift:1', quantity: 1, sku: 'SKU-1' },
+        ],
+      };
+      const incoming = incomingOrder({ items: [gift('9', 2), gift('9~gift:1', 1)] });
+      expect(diffOrderAmendment(prior, incoming, PII_ON)).toEqual([
+        expect.objectContaining({ kind: 'line-quantity-changed', lineId: '9', fromQuantity: 2, toQuantity: 3 }),
+      ]);
+    });
+
     it('should report nothing when the incoming order matches the stored snapshot', () => {
       const prior = { items: [{ id: 'line-1', quantity: 2, sku: 'SKU-1' }] };
       expect(diffOrderAmendment(prior, incomingOrder(), PII_ON)).toEqual([]);

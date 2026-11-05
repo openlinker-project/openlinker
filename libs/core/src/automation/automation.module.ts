@@ -20,6 +20,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AutomationRuleOrmEntity } from './infrastructure/persistence/entities/automation-rule.orm-entity';
 import { AutomationRunOrmEntity } from './infrastructure/persistence/entities/automation-run.orm-entity';
 import { AutomationTriggerFiringOrmEntity } from './infrastructure/persistence/entities/automation-trigger-firing.orm-entity';
+import { AutomationGiftGrantOrmEntity } from './infrastructure/persistence/entities/automation-gift-grant.orm-entity';
+import { AutomationGiftRuleStateOrmEntity } from './infrastructure/persistence/entities/automation-gift-rule-state.orm-entity';
+import { AutomationGiftLedgerRepository } from './infrastructure/persistence/repositories/automation-gift-ledger.repository';
+import { GiftRuleService } from './application/services/gift-rule.service';
+import { InlineEvaluatedActionExecutorService } from './application/services/executors/inline-evaluated-action-executor.service';
 import { AutomationRuleRepository } from './infrastructure/persistence/repositories/automation-rule.repository';
 import { AutomationRunRepository } from './infrastructure/persistence/repositories/automation-run.repository';
 import { AutomationTriggerFiringRepository } from './infrastructure/persistence/repositories/automation-trigger-firing.repository';
@@ -46,6 +51,8 @@ import {
   AUTOMATION_RUN_REPOSITORY_TOKEN,
   AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN,
   AUTOMATION_TRIGGER_FIRING_REPOSITORY_TOKEN,
+  GIFT_RULE_LEDGER_REPOSITORY_TOKEN,
+  GIFT_RULE_SERVICE_TOKEN,
 } from './automation.tokens';
 
 @Module({
@@ -54,6 +61,8 @@ import {
       AutomationRuleOrmEntity,
       AutomationRunOrmEntity,
       AutomationTriggerFiringOrmEntity,
+      AutomationGiftRuleStateOrmEntity,
+      AutomationGiftGrantOrmEntity,
     ]),
   ],
   providers: [
@@ -76,7 +85,12 @@ import {
     RelayStatusToSourceExecutorService,
     SendEmailExecutorService,
     UnavailableActionExecutorService,
+    InlineEvaluatedActionExecutorService,
     AutomationActionExecutorRegistry,
+    AutomationGiftLedgerRepository,
+    { provide: GIFT_RULE_LEDGER_REPOSITORY_TOKEN, useExisting: AutomationGiftLedgerRepository },
+    GiftRuleService,
+    { provide: GIFT_RULE_SERVICE_TOKEN, useExisting: GiftRuleService },
     // #2385 made persistence the default. `LoggingAutomationRunRecorder` is kept
     // and still provided so a deployment that deliberately wants no run history
     // can bind it — `recordingAvailable` then reports that CHOICE honestly,
@@ -109,6 +123,7 @@ import {
     AUTOMATION_RUN_RECORDER_TOKEN,
     AUTOMATION_RUNS_READ_SERVICE_TOKEN,
     AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN,
+    GIFT_RULE_SERVICE_TOKEN,
     AutomationActionExecutorRegistry,
   ],
 })

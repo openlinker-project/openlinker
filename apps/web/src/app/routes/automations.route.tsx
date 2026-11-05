@@ -30,6 +30,14 @@ const automationTriggerCrumb: RouteCrumbHandle = {
   crumb: { group: 'Operations', title: 'Automation rules' },
 };
 
+const giftPromotionsCrumb: RouteCrumbHandle = {
+  crumb: { group: 'Operations', title: 'Gift promotions' },
+};
+
+const giftPromotionCrumb: RouteCrumbHandle = {
+  crumb: { group: 'Operations', title: 'Gift promotion' },
+};
+
 export const automationsRoute: RouteObject = {
   path: 'automations',
   children: [
@@ -49,6 +57,25 @@ export const automationsRoute: RouteObject = {
           '../../pages/automations/automation-activity-page'
         );
         return { Component: AutomationActivityPage };
+      },
+    },
+    {
+      // Gift promotions are automation rules with one step, edited on their own
+      // pages (#3940). Static segments outrank `:trigger`; kept before it for
+      // the same reason `activity` is.
+      path: 'gifts',
+      handle: giftPromotionsCrumb,
+      lazy: async () => {
+        const { GiftPromotionsPage } = await import('../../pages/gifts/gift-promotions-page');
+        return { Component: GiftPromotionsPage };
+      },
+    },
+    {
+      path: 'gifts/:ruleId',
+      handle: giftPromotionCrumb,
+      lazy: async () => {
+        const { GiftRulePage } = await import('../../pages/gifts/gift-rule-page');
+        return { Component: GiftRulePage };
       },
     },
     {
