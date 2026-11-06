@@ -110,11 +110,24 @@ export function resolveFailureCopy(invoice: InvoiceRecord, t: Translate): string
   if (isConnectionSettingFailureCode(code) && invoice.failureReason) {
     return invoice.failureReason;
   }
-  if (code && code in FAILURE_CODE_FALLBACK) {
-    return t(`invoice.failureCode.${code}`, FAILURE_CODE_FALLBACK[code]);
+  const known = failureCodeCopy(code, t);
+  if (known !== null) {
+    return known;
   }
   return t(
     'invoice.failureCode.unknown',
     'We couldn’t confirm whether this invoice was issued. Check the provider before re-issuing — a blind retry could create a duplicate.',
   );
+}
+
+/**
+ * The fixed operator copy for a known `failureCode`, or `null` for an absent or
+ * unknown one. Shared by the stored record and the issue response (#3863), so a
+ * rejection reads the same in the toast and in the panel.
+ */
+export function failureCodeCopy(code: string | null | undefined, t: Translate): string | null {
+  if (!code || !(code in FAILURE_CODE_FALLBACK)) {
+    return null;
+  }
+  return t(`invoice.failureCode.${code}`, FAILURE_CODE_FALLBACK[code as FailureCode]);
 }

@@ -118,7 +118,7 @@ export function ReleaseOrderHoldDialog({
 
         {mutation.isError ? (
           <Alert tone="error">
-            {describeHoldWriteError(mutation.error, 'Could not release this hold.')}
+            {describeHoldWriteError(mutation.error)}
           </Alert>
         ) : null}
 
