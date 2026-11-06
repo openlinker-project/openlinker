@@ -28,6 +28,7 @@ import { ErrorState, LoadingState } from '../../../../shared/ui/feedback-state';
 import { useShopAttributesQuery } from '../../hooks/use-shop-attributes-query';
 import { useShopAttributeTermsQuery } from '../../hooks/use-shop-attribute-terms-query';
 import type { OfferParameter } from '../../api/listings.types';
+import { useMessages } from '../../../../shared/i18n';
 
 type PickerMode = 'global' | 'custom';
 
@@ -38,25 +39,28 @@ interface ShopAttributePickerProps {
   disabled?: boolean;
 }
 
-const MODE_OPTIONS = [
-  { value: 'global' as const, label: 'Global attribute' },
-  { value: 'custom' as const, label: 'Custom' },
-];
-
 export function ShopAttributePicker({
   connectionId,
   onAdd,
   disabled = false,
 }: ShopAttributePickerProps): ReactElement {
+  const copy = useMessages('listings').shopAttributePicker;
   const [mode, setMode] = useState<PickerMode>('global');
+  const modeOptions = useMemo(
+    () => [
+      { value: 'global' as const, label: copy.modes.global },
+      { value: 'custom' as const, label: copy.modes.custom },
+    ],
+    [copy],
+  );
 
   return (
     <div className="shop-attr-picker">
       <SegmentedControl
-        options={MODE_OPTIONS}
+        options={modeOptions}
         value={mode}
         onChange={setMode}
-        aria-label="Attribute type"
+        aria-label={copy.modes.label}
       />
       {mode === 'global' ? (
         <GlobalAttributePanel connectionId={connectionId} onAdd={onAdd} disabled={disabled} />
@@ -76,6 +80,7 @@ function GlobalAttributePanel({
   onAdd: (parameter: OfferParameter) => void;
   disabled: boolean;
 }): ReactElement {
+  const copy = useMessages('listings').shopAttributePicker;
   const [attributeId, setAttributeId] = useState<string>('');
   const [checkedTermIds, setCheckedTermIds] = useState<Record<string, boolean>>({});
 
@@ -112,21 +117,27 @@ function GlobalAttributePanel({
   }
 
   if (attributesQuery.isLoading) {
-    return <LoadingState liveRegion="off" title="Loading attributes" message="Fetching global attributes..." />;
+    return (
+      <LoadingState
+        liveRegion="off"
+        title={copy.attributes.loading.title}
+        message={copy.attributes.loading.message}
+      />
+    );
   }
   if (attributesQuery.error) {
     return (
       <ErrorState
-        title="Unable to load attributes"
+        title={copy.attributes.error.title}
         message={attributesQuery.error.message}
-        action={<Button onClick={() => void attributesQuery.refetch()}>Retry</Button>}
+        action={<Button onClick={() => void attributesQuery.refetch()}>{copy.retry}</Button>}
       />
     );
   }
   if (attributes.length === 0) {
     return (
       <div className="shop-attr-picker__empty">
-        This shop has no global attributes. Use a custom attribute instead.
+        {copy.attributes.empty}
       </div>
     );
   }
@@ -134,7 +145,7 @@ function GlobalAttributePanel({
   return (
     <div className="shop-attr-picker__panel">
       <label className="shop-attr-picker__label" htmlFor="shop-attr-select">
-        Attribute
+        {copy.attributes.label}
       </label>
       <Select
         id="shop-attr-select"
@@ -142,7 +153,7 @@ function GlobalAttributePanel({
         disabled={disabled}
         onChange={(e) => selectAttribute(e.target.value)}
       >
-        <option value="">Choose an attribute...</option>
+        <option value="">{copy.attributes.placeholder}</option>
         {attributes.map((a) => (
           <option key={a.id} value={a.id}>
             {a.name}
@@ -152,18 +163,22 @@ function GlobalAttributePanel({
 
       {attributeId ? (
         termsQuery.isLoading ? (
-          <LoadingState liveRegion="off" title="Loading terms" message="Fetching terms..." />
+          <LoadingState
+            liveRegion="off"
+            title={copy.terms.loading.title}
+            message={copy.terms.loading.message}
+          />
         ) : termsQuery.error ? (
           <ErrorState
-            title="Unable to load terms"
+            title={copy.terms.error.title}
             message={termsQuery.error.message}
-            action={<Button onClick={() => void termsQuery.refetch()}>Retry</Button>}
+            action={<Button onClick={() => void termsQuery.refetch()}>{copy.retry}</Button>}
           />
         ) : terms.length === 0 ? (
-          <div className="shop-attr-picker__empty">This attribute has no predefined terms.</div>
+          <div className="shop-attr-picker__empty">{copy.terms.empty}</div>
         ) : (
           <fieldset className="shop-attr-picker__terms">
-            <legend className="shop-attr-picker__label">Terms</legend>
+            <legend className="shop-attr-picker__label">{copy.terms.legend}</legend>
             {terms.map((t) => (
               <label key={t.id} className="shop-attr-picker__term">
                 <input
@@ -186,7 +201,7 @@ function GlobalAttributePanel({
           disabled={disabled || chosenTerms.length === 0}
           onClick={add}
         >
-          Add attribute
+          {copy.add}
         </Button>
       </div>
     </div>
@@ -200,6 +215,7 @@ function CustomAttributePanel({
   onAdd: (parameter: OfferParameter) => void;
   disabled: boolean;
 }): ReactElement {
+  const copy = useMessages('listings').shopAttributePicker;
   const [name, setName] = useState('');
   const [valuesText, setValuesText] = useState('');
 
@@ -223,33 +239,32 @@ function CustomAttributePanel({
   return (
     <div className="shop-attr-picker__panel">
       <label className="shop-attr-picker__label" htmlFor="shop-attr-custom-name">
-        Name
+        {copy.custom.nameLabel}
       </label>
       <Input
         id="shop-attr-custom-name"
         value={name}
         disabled={disabled}
-        placeholder="e.g. Material"
+        placeholder={copy.custom.namePlaceholder}
         onChange={(e) => setName(e.target.value)}
       />
       <label className="shop-attr-picker__label" htmlFor="shop-attr-custom-values">
-        Values
+        {copy.custom.valuesLabel}
       </label>
       <Input
         id="shop-attr-custom-values"
         value={valuesText}
         disabled={disabled}
-        placeholder="Comma separated, e.g. Cotton, Wool"
+        placeholder={copy.custom.valuesPlaceholder}
         aria-describedby="shop-attr-custom-values-hint"
         onChange={(e) => setValuesText(e.target.value)}
       />
       <small id="shop-attr-custom-values-hint" className="shop-attr-picker__hint">
-        Free-text custom attribute - not backed by a store taxonomy, so it will not power storefront
-        filtering.
+        {copy.custom.valuesHint}
       </small>
       <div className="shop-attr-picker__foot">
         <Button tone="primary" type="button" disabled={disabled || !canAdd} onClick={add}>
-          Add attribute
+          {copy.add}
         </Button>
       </div>
     </div>

@@ -21,6 +21,8 @@
  * reads `config['invoicing']['triggerModel']` and defaults to `'manual'` when
  * absent/unrecognized. A flat key would be silently ignored → always `'manual'`.
  */
+import { getMessages } from '../../../shared/i18n';
+
 
 export const INVOICE_TRIGGER_MODEL_VALUES = [
   'manual',
@@ -32,12 +34,19 @@ export const INVOICE_TRIGGER_MODEL_VALUES = [
 export type InvoiceTriggerModel = (typeof INVOICE_TRIGGER_MODEL_VALUES)[number];
 
 /**
- * AC-2 trigger dropdown labels. Routed through `t(key, fallback)` at render
- * time; the English fallback lives here.
+ * AC-2 trigger dropdown labels, read from
+ * `connections.invoiceTriggerModel.labels` in the active language each time
+ * an entry is read.
  */
-export const INVOICE_TRIGGER_MODEL_LABELS: Record<InvoiceTriggerModel, string> = {
-  manual: 'Manual',
-  'auto-on-paid': 'Auto on order paid',
-  'auto-on-shipped': 'Auto on order shipped',
-  batched: 'Batched',
-};
+export const INVOICE_TRIGGER_MODEL_LABELS = Object.defineProperties(
+  {} as Record<InvoiceTriggerModel, string>,
+  Object.fromEntries(
+    INVOICE_TRIGGER_MODEL_VALUES.map((value) => [
+      value,
+      {
+        enumerable: true,
+        get: (): string => getMessages('connections').invoiceTriggerModel.labels[value],
+      },
+    ]),
+  ),
+);

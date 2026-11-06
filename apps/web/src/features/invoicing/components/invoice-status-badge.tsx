@@ -2,13 +2,13 @@
  * Invoice Status Badge (#757)
  *
  * Maps `InvoiceStatus` plus the FE-only derived `not-issued` state to a
- * `StatusBadge` tone + a `t()`-labelled word. Mirrors `ShipmentStatusBadge`.
+ * `StatusBadge` tone + a translated word. Mirrors `ShipmentStatusBadge`.
  *
  * @module apps/web/src/features/invoicing/components
  */
 import type { ReactElement } from 'react';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
-import { useTranslation } from '../../../shared/i18n';
+import { useMessages } from '../../../shared/i18n';
 import type { InvoiceStatus } from '../api/invoicing.types';
 
 /** FE display state: the backend statuses plus the invoice-absent state, plus
@@ -27,15 +27,6 @@ const TONE: Record<InvoiceDisplayStatus, StatusBadgeTone> = {
   'in-doubt': 'warning',
 };
 
-const LABEL_FALLBACK: Record<InvoiceDisplayStatus, string> = {
-  'not-issued': 'Not issued',
-  pending: 'Pending',
-  issuing: 'Issuing…',
-  issued: 'Issued',
-  failed: 'Failed',
-  'in-doubt': 'Needs review',
-};
-
 /** Statuses that pulse the leading dot — genuinely in-flight states only
  *  (pending awaiting clearance, issuing holding a live lease). */
 const PULSE: ReadonlySet<InvoiceDisplayStatus> = new Set(['pending', 'issuing']);
@@ -45,10 +36,10 @@ interface InvoiceStatusBadgeProps {
 }
 
 export function InvoiceStatusBadge({ status }: InvoiceStatusBadgeProps): ReactElement {
-  const { t } = useTranslation();
+  const labels = useMessages('invoicing').invoice.status;
   return (
     <StatusBadge tone={TONE[status]} withDot pulse={PULSE.has(status)}>
-      {t(`invoice.status.${status}`, LABEL_FALLBACK[status])}
+      {labels[status]}
     </StatusBadge>
   );
 }

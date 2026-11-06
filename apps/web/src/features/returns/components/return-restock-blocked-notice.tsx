@@ -35,11 +35,7 @@ import { useState, type ReactElement } from 'react';
 
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
-import {
-  RETURN_RESTOCK_ATTESTED_COPY,
-  RETURN_RESTOCK_BLOCKED_COPY,
-  RETURN_RESTOCK_BLOCKED_EXPLAINER,
-} from '../lib/restock-blocked.copy';
+import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import type { ReturnRestockAttestation, ReturnRestockBlock } from '../api/returns.types';
 
 interface ReturnRestockBlockedNoticeProps {
@@ -55,12 +51,6 @@ interface ReturnRestockBlockedNoticeProps {
   onAttest: () => void;
 }
 
-/** `2026-08-27T…` → a date an operator reads, in their own locale. */
-function formatInstant(iso: string): string {
-  const parsed = new Date(iso);
-  return Number.isNaN(parsed.getTime()) ? iso : parsed.toLocaleDateString();
-}
-
 function AttestedRow({
   attestation,
   sessionUserId,
@@ -68,19 +58,20 @@ function AttestedRow({
   attestation: ReturnRestockAttestation;
   sessionUserId: string | null;
 }): ReactElement {
+  const copy = useMessages('returns').restockAttested;
+  const format = useFormat();
   // Never a name and never a raw id: nothing in the tree resolves a user id to
   // a display name, so the honest options are "you" and "another operator".
-  const who =
+  const template =
     attestation.actorUserId !== null && attestation.actorUserId === sessionUserId
-      ? RETURN_RESTOCK_ATTESTED_COPY.byYou
-      : RETURN_RESTOCK_ATTESTED_COPY.byOther;
+      ? copy.byYou
+      : copy.byOther;
 
   return (
     <p className="returns-restock-attested text-muted">
-      {RETURN_RESTOCK_ATTESTED_COPY.prefix} {who} {RETURN_RESTOCK_ATTESTED_COPY.on}{' '}
-      {formatInstant(attestation.occurredAt)}.{' '}
+      {interpolate(template, { date: format.date(attestation.occurredAt) })}{' '}
       {/* The load-bearing half — never dropped, whatever the attribution. */}
-      {RETURN_RESTOCK_ATTESTED_COPY.disclaimer}
+      {copy.disclaimer}
     </p>
   );
 }
@@ -186,28 +177,42 @@ function RestockBlockedAlarm({
   onAttest: () => void;
 }): ReactElement {
   const [explainerOpen, setExplainerOpen] = useState(false);
+  const copy = useMessages('returns').restockBlocked;
+  const explainer = useMessages('returns').restockBlockedExplainer;
 
-  const connectionName = group.connectionName ?? RETURN_RESTOCK_BLOCKED_COPY.bodyUnknownConnection;
-  const sku = group.sku ?? lineSku ?? RETURN_RESTOCK_BLOCKED_COPY.remedyUnknownSku;
-  const { connectionId, quantity } = group;
+  const { connectionId, connectionName, quantity } = group;
+  const sku = group.sku ?? lineSku;
+  const bold = { b: (text: string) => <strong>{text}</strong> };
+
+  const body =
+    connectionName === null
+      ? renderRich(copy.bodyUnknownConnection, bold)
+      : renderRich(copy.body, bold, { connection: connectionName });
+
+  const remedy =
+    connectionName === null
+      ? sku === null
+        ? interpolate(copy.remedyUnknownSkuAndConnection, { quantity })
+        : interpolate(copy.remedyUnknownConnection, { quantity, sku })
+      : sku === null
+        ? interpolate(copy.remedyUnknownSku, { quantity, connection: connectionName })
+        : interpolate(copy.remedy, { quantity, sku, connection: connectionName });
+
+  const explainerBody =
+    connectionName === null
+      ? renderRich(explainer.bodyUnknownConnection, bold)
+      : renderRich(explainer.body, bold, { connection: connectionName });
 
   return (
     <Alert tone="error">
       <p className="returns-restock-blocked__body">
-        <strong>{RETURN_RESTOCK_BLOCKED_COPY.title}</strong>{' '}
-        {RETURN_RESTOCK_BLOCKED_COPY.bodyPrefix} <strong>{connectionName}</strong>{' '}
-        {RETURN_RESTOCK_BLOCKED_COPY.bodySuffix}
+        <strong>{copy.title}</strong> {body}
       </p>
-      <p className="returns-restock-blocked__remedy">
-        {RETURN_RESTOCK_BLOCKED_COPY.remedyPrefix} {quantity}{' '}
-        {RETURN_RESTOCK_BLOCKED_COPY.remedyJoin} {sku}{' '}
-        {RETURN_RESTOCK_BLOCKED_COPY.remedyMiddle} {connectionName}{' '}
-        {RETURN_RESTOCK_BLOCKED_COPY.remedySuffix}
-      </p>
+      <p className="returns-restock-blocked__remedy">{remedy}</p>
 
       <div className="returns-restock-blocked__actions">
         <Button disabled={pending} onClick={onAttest} type="button">
-          {RETURN_RESTOCK_BLOCKED_COPY.attest}
+          {copy.attest}
         </Button>
         {/* Absent, not disabled, when no connection resolved: a link that
             cannot go anywhere is worse than no link. */}
@@ -217,7 +222,9 @@ function RestockBlockedAlarm({
             tone="secondary"
             type="button"
           >
-            {RETURN_RESTOCK_BLOCKED_COPY.openConnection} {connectionName}
+            {connectionName === null
+              ? copy.openUnknownConnection
+              : interpolate(copy.openConnection, { connection: connectionName })}
           </Button>
         ) : null}
         <Button
@@ -226,22 +233,17 @@ function RestockBlockedAlarm({
           tone="secondary"
           type="button"
         >
-          {explainerOpen
-            ? RETURN_RESTOCK_BLOCKED_COPY.whyCollapse
-            : RETURN_RESTOCK_BLOCKED_COPY.why}
+          {explainerOpen ? copy.whyCollapse : copy.why}
         </Button>
       </div>
 
       {explainerOpen ? (
         <div className="returns-restock-blocked__explainer">
           <p>
-            <strong>{RETURN_RESTOCK_BLOCKED_EXPLAINER.heading}</strong>
+            <strong>{explainer.heading}</strong>
           </p>
-          <p>
-            {RETURN_RESTOCK_BLOCKED_EXPLAINER.bodyPrefix} <strong>{connectionName}</strong>{' '}
-            {RETURN_RESTOCK_BLOCKED_EXPLAINER.bodyMiddle}
-          </p>
-          <p>{RETURN_RESTOCK_BLOCKED_EXPLAINER.bodySuffix}</p>
+          <p>{explainerBody}</p>
+          <p>{explainer.reassurance}</p>
         </div>
       ) : null}
     </Alert>

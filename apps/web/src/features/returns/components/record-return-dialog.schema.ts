@@ -30,47 +30,57 @@
  * @module apps/web/src/features/returns/components
  */
 import { z } from 'zod';
+import { interpolate, type getMessages } from '../../../shared/i18n';
 import { RETURN_LINE_REASON_VALUES } from '../api/returns.types';
 
-export const recordReturnDialogSchema = z.object({
-  internalOrderId: z
-    .string()
-    .trim()
-    .min(1, 'Enter an order id, or pick one from the list.'),
-  sourceConnectionId: z
-    .string()
-    .trim()
-    .min(1, 'Select the channel this return came in on.'),
-  sku: z
-    .string()
-    .trim()
-    .min(1, "Enter the item's SKU — OpenLinker needs it to restock later.")
-    .max(255, 'SKU must be at most 255 characters.'),
-  itemName: z
-    .string()
-    .trim()
-    .min(1, 'Enter what came back.')
-    .max(500, 'Item name must be at most 500 characters.'),
-  reason: z
-    .string()
-    .refine(
-      (value) => (RETURN_LINE_REASON_VALUES as readonly string[]).includes(value),
-      'Select a reason.',
-    ),
-  // `@IsInt() @Min(1)` on the backend. `z.coerce` because a native
-  // `<input type="number">` value arrives as a string. `Number('')` is `0`,
-  // not `NaN` — an emptied field is caught by `.min(1)` below, never by
-  // `.int()`. Zod 4 dropped the `invalid_type_error` option `z.number()` took
-  // in v3, which is why a genuinely non-numeric string (`Number('abc')` is
-  // `NaN`) is instead caught by `.int()`'s own message.
-  quantityAdvised: z.coerce
-    .number()
-    .int('Quantity must be a whole number.')
-    .min(1, 'Quantity must be at least 1.'),
-});
+type RecordReturnValidationCopy = ReturnType<
+  typeof getMessages<'returns'>
+>['recordReturnDialog']['validation'];
 
-export type RecordReturnDialogFormValues = z.input<typeof recordReturnDialogSchema>;
-export type RecordReturnDialogFormSubmission = z.output<typeof recordReturnDialogSchema>;
+const SKU_MAX = 255;
+const ITEM_NAME_MAX = 500;
+const QUANTITY_MIN = 1;
+
+/**
+ * Built from the active copy rather than at module level, so the messages
+ * follow the operator's language. Callers memoise it on `copy`.
+ */
+export function createRecordReturnDialogSchema(copy: RecordReturnValidationCopy) {
+  return z.object({
+    internalOrderId: z.string().trim().min(1, copy.orderRequired),
+    sourceConnectionId: z.string().trim().min(1, copy.connectionRequired),
+    sku: z
+      .string()
+      .trim()
+      .min(1, copy.skuRequired)
+      .max(SKU_MAX, interpolate(copy.skuTooLong, { max: SKU_MAX })),
+    itemName: z
+      .string()
+      .trim()
+      .min(1, copy.itemNameRequired)
+      .max(ITEM_NAME_MAX, interpolate(copy.itemNameTooLong, { max: ITEM_NAME_MAX })),
+    reason: z
+      .string()
+      .refine(
+        (value) => (RETURN_LINE_REASON_VALUES as readonly string[]).includes(value),
+        copy.reasonRequired,
+      ),
+    // `@IsInt() @Min(1)` on the backend. `z.coerce` because a native
+    // `<input type="number">` value arrives as a string. `Number('')` is `0`,
+    // not `NaN` - an emptied field is caught by `.min(1)` below, never by
+    // `.int()`. Zod 4 dropped the `invalid_type_error` option `z.number()` took
+    // in v3, which is why a genuinely non-numeric string (`Number('abc')` is
+    // `NaN`) is instead caught by `.int()`'s own message.
+    quantityAdvised: z.coerce
+      .number()
+      .int(copy.quantityWhole)
+      .min(QUANTITY_MIN, interpolate(copy.quantityMin, { min: QUANTITY_MIN })),
+  });
+}
+
+type RecordReturnDialogSchema = ReturnType<typeof createRecordReturnDialogSchema>;
+export type RecordReturnDialogFormValues = z.input<RecordReturnDialogSchema>;
+export type RecordReturnDialogFormSubmission = z.output<RecordReturnDialogSchema>;
 
 export const RECORD_RETURN_DIALOG_DEFAULT_VALUES: RecordReturnDialogFormValues = {
   internalOrderId: '',

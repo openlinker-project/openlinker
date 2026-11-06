@@ -282,7 +282,7 @@ describe('ContentEditor', () => {
 
       // Translated message renders (RESPONSIBLE_PRODUCER_NOT_SPECIFIED is in the
       // translator allowlist).
-      expect(await screen.findByText(/Responsible Producer entry/i)).toBeInTheDocument();
+      expect(await screen.findByText(/Set a responsible producer in the connection's seller defaults/i)).toBeInTheDocument();
       // Field path renders as a copy-button breadcrumb.
       expect(
         screen.getByRole('button', {

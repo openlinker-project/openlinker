@@ -24,25 +24,28 @@
  * @module apps/web/src/features/currency-settings/components
  */
 import { useState, type ReactElement } from 'react';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { useCurrencySettingsQuery } from '../hooks/use-currency-settings-query';
 import { CurrencyCoverageDialog } from './currency-coverage-dialog';
 import { CurrencySettingsDialog } from './currency-settings-dialog';
 import type { ReportingCurrencySource } from '../api/currency-settings.types';
 
-const SOURCE_QUALIFIER: Record<ReportingCurrencySource, string | null> = {
-  setting: null,
-  env: 'from env',
-  default: 'default',
-};
-
-function formatReportingValue(reportingCurrency: string, source: ReportingCurrencySource): string {
-  const qualifier = SOURCE_QUALIFIER[source];
-  return qualifier ? `${reportingCurrency} (${qualifier})` : reportingCurrency;
-}
 
 export function CurrencySettingsTile(): ReactElement {
+  const copy = useMessages('currency-settings').currencySettingsTile;
   const query = useCurrencySettingsQuery();
+
+  const formatReportingValue = (
+    reportingCurrency: string,
+    source: ReportingCurrencySource,
+  ): string => {
+    if (source === 'setting') return reportingCurrency;
+    return interpolate(copy.reportingValue, {
+      currency: reportingCurrency,
+      qualifier: copy.sourceQualifier[source],
+    });
+  };
   const [dialogOpen, setDialogOpen] = useState(false);
   const [coverageOpen, setCoverageOpen] = useState(false);
 
@@ -50,21 +53,21 @@ export function CurrencySettingsTile(): ReactElement {
     <article className="panel panel--dense">
       <div className="panel__header">
         <div>
-          <p className="eyebrow">Platform</p>
-          <h3 className="section-title">Currency</h3>
+          <p className="eyebrow">{copy.eyebrow}</p>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
-        <span className="panel__meta">Admin only</span>
+        <span className="panel__meta">{copy.adminOnly}</span>
       </div>
 
       {query.isLoading ? (
         <p className="muted-text" aria-live="polite">
-          Loading currency settings…
+          {copy.loading}
         </p>
       ) : null}
 
       {query.isError ? (
         <p className="muted-text" role="alert">
-          Could not load currency settings: {query.error.message}
+          {interpolate(copy.loadError, { message: query.error.message })}
         </p>
       ) : null}
 
@@ -72,24 +75,23 @@ export function CurrencySettingsTile(): ReactElement {
         <>
           <dl className="definition-list">
             <div>
-              <dt>Reporting in</dt>
+              <dt>{copy.reportingIn}</dt>
               <dd className="mono-text">
                 {formatReportingValue(query.data.reportingCurrency, query.data.source)}
               </dd>
             </div>
             <div>
-              <dt>Rate source</dt>
-              <dd>{query.data.rateSource ?? 'Not configured'}</dd>
+              <dt>{copy.rateSource}</dt>
+              <dd>{query.data.rateSource ?? copy.notConfigured}</dd>
             </div>
             <div>
-              <dt>Rate date rule</dt>
+              <dt>{copy.rateDateRule}</dt>
               <dd className="mono-text">{query.data.rateDateRule}</dd>
             </div>
           </dl>
 
           <p className="muted-text panel-copy">
-            Every figure on Analytics is reported in this. Invoices are unaffected — they compute
-            their own rate.
+            {copy.body}
           </p>
 
           <div className="currency-settings-tile__actions">
@@ -100,7 +102,7 @@ export function CurrencySettingsTile(): ReactElement {
                 setDialogOpen(true);
               }}
             >
-              Edit
+              {copy.actions.edit}
             </Button>
             <Button
               tone="ghost"
@@ -109,7 +111,7 @@ export function CurrencySettingsTile(): ReactElement {
                 setCoverageOpen(true);
               }}
             >
-              Coverage
+              {copy.actions.coverage}
             </Button>
           </div>
 
