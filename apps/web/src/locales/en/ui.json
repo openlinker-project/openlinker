@@ -11,6 +11,13 @@
     "technicalDetailsWith": "Technical details (not translated): {details}",
     "timedOut": "The request timed out."
   },
+  "attentionSummary": {
+    "filtersOn": {
+      "one": "{n} filter on",
+      "other": "{n} filters on"
+    },
+    "unknownCount": "-"
+  },
   "bulkActionBar": {
     "selected": {
       "one": "selected",
@@ -20,6 +27,10 @@
       "one": "{n} item selected",
       "other": "{n} items selected"
     }
+  },
+  "cappedBadges": {
+    "more": "+{n} more",
+    "moreTitle": "Show everything in the side panel"
   },
   "categorySearch": {
     "errorTitle": "Unable to search categories",
@@ -252,6 +263,16 @@
   },
   "sidePanel": {
     "close": "Close"
+  },
+  "sortMenu": {
+    "button": "Sort: {label}",
+    "buttonReversed": "Sort: {label} (reversed)",
+    "defaultMark": "default"
+  },
+  "statusTabs": {
+    "scrollLeft": "Show earlier tabs",
+    "scrollRight": "Show more tabs",
+    "unknownCount": "-"
   },
   "structuredErrors": {
     "copied": "copied",

@@ -68,7 +68,7 @@ function CopyReference({ value }: { value: string }): ReactElement {
   return (
     <button
       type="button"
-      className="orders-peek__copy"
+      className="peek-panel__copy"
       title={COPY.copyReference}
       onClick={(event) => {
         event.stopPropagation();
@@ -120,15 +120,15 @@ export function OrderPeek({
       open={open}
       onOpenChange={onOpenChange}
       width={560}
-      className="orders-peek"
+      className="peek-panel"
       closeIcon
       closeLabel={COPY.closeDetails}
       title={
         view ? (
-          <span className="orders-peek__ref">
-            <Link className="orders-peek__title-link" to={`/orders/${view.internalOrderId}`}>
+          <span className="peek-panel__ref">
+            <Link className="peek-panel__title-link" to={`/orders/${view.internalOrderId}`}>
               {formatOrderRef(view.reference)}
-              <span className="orders-peek__title-arrow" aria-hidden="true">
+              <span className="peek-panel__title-arrow" aria-hidden="true">
                 ↗
               </span>
             </Link>
@@ -140,7 +140,7 @@ export function OrderPeek({
       }
       meta={
         view ? (
-          <span className="orders-peek__meta">
+          <span className="peek-panel__meta">
             {view.source}
             {view.destination ? <span>→ {view.destination}</span> : null}
             {view.placed ? <span>{view.placed}</span> : null}
@@ -150,14 +150,14 @@ export function OrderPeek({
       headerAside={
         view ? (
           <>
-            {view.total ? <span className="orders-peek__total tabular">{view.total}</span> : null}
+            {view.total ? <span className="peek-panel__total tabular">{view.total}</span> : null}
             {view.payment}
           </>
         ) : null
       }
       description={COPY.description}
       footer={
-        <div className="orders-peek__foot">
+        <div className="peek-panel__foot">
           <span className="text-muted mono tabular">{interpolate(COPY.position, { index: String(position), count: String(count) })}</span>
           <span className="button-group">
             <Button
@@ -185,8 +185,8 @@ export function OrderPeek({
       }
     >
       {view ? (
-        <div className="orders-peek__body" key={view.internalOrderId}>
-          <div className="orders-peek__actions">
+        <div className="peek-panel__body" key={view.internalOrderId}>
+          <div className="peek-panel__actions">
             <Link className="button button--primary button--sm" to={`/orders/${view.internalOrderId}`}>
               {COPY.openOrder}
             </Link>
@@ -206,18 +206,18 @@ export function OrderPeek({
               </Link>
             ) : null}
           </div>
-          <section className="orders-peek__state" aria-label={COPY.stateAria}>
-            <div className="orders-peek__state-row">
+          <section className="peek-panel__state" aria-label={COPY.stateAria}>
+            <div className="peek-panel__state-row">
               <span className="eyebrow">{COPY.status}</span>
-              <div className="orders-peek__state-value">{view.status}</div>
+              <div className="peek-panel__state-value">{view.status}</div>
             </div>
-            <div className="orders-peek__state-row">
+            <div className="peek-panel__state-row">
               <span className="eyebrow">{COPY.shipment}</span>
-              <div className="orders-peek__state-value">{view.shipment}</div>
+              <div className="peek-panel__state-value">{view.shipment}</div>
             </div>
-            <div className="orders-peek__state-row">
+            <div className="peek-panel__state-row">
               <span className="eyebrow">{COPY.money}</span>
-              <div className="orders-peek__state-value">{view.money}</div>
+              <div className="peek-panel__state-value">{view.money}</div>
             </div>
           </section>
           {view.detail}

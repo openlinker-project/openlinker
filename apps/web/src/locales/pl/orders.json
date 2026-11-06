@@ -1220,8 +1220,6 @@
     },
     "reviewDispatchRisk": "Sprawdź ryzyko nadania",
     "scopeItem": "{label} {value}",
-    "scrollTabsLeft": "Pokaż wcześniejsze statusy",
-    "scrollTabsRight": "Pokaż kolejne statusy",
     "search": {
       "label": "Szukaj zamówień",
       "placeholderNoPii": "Szukaj po numerze zamówienia, SKU lub numerze przesyłki…",
@@ -1247,9 +1245,6 @@
       "on_track": "W terminie",
       "overdue": "Po terminie"
     },
-    "sortButton": "Sortuj: {label}",
-    "sortButtonReversed": "Sortuj: {label} (odwrotnie)",
-    "sortDefaultMark": "domyślnie",
     "sortMenuAria": "Sortuj zamówienia",
     "sortOptions": {
       "createdAt": "Ostatnio zsynchronizowane",
@@ -2763,8 +2758,6 @@
     "items": "Pozycje",
     "kicker": "Zamówienie",
     "money": "Płatność",
-    "moreBadges": "+{n} więcej",
-    "moreBadgesTitle": "Pokaż wszystko w panelu bocznym",
     "next": "Następne ↓",
     "openOrder": "Otwórz zamówienie",
     "openProduct": "Otwórz produkt {name}",

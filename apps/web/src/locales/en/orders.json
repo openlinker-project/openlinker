@@ -1150,8 +1150,6 @@
     },
     "reviewDispatchRisk": "Review dispatch risk",
     "scopeItem": "{label} {value}",
-    "scrollTabsLeft": "Show earlier statuses",
-    "scrollTabsRight": "Show more statuses",
     "search": {
       "label": "Search orders",
       "placeholderNoPii": "Search by order number, SKU or tracking number…",
@@ -1173,9 +1171,6 @@
       "on_track": "On track",
       "overdue": "Overdue"
     },
-    "sortButton": "Sort: {label}",
-    "sortButtonReversed": "Sort: {label} (reversed)",
-    "sortDefaultMark": "default",
     "sortMenuAria": "Sort orders",
     "sortOptions": {
       "createdAt": "Recently synced",
@@ -2611,8 +2606,6 @@
     "items": "Items",
     "kicker": "Order",
     "money": "Money",
-    "moreBadges": "+{n} more",
-    "moreBadgesTitle": "Show everything in the side panel",
     "next": "Next ↓",
     "openOrder": "Open order",
     "openProduct": "Open product {name}",

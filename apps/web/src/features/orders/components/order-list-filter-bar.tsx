@@ -25,16 +25,16 @@ import { FilterCheck, FilterChecks } from '../../../shared/ui/filter-check';
 import { FilterField, FilterRange } from '../../../shared/ui/filter-panel';
 import { FilterSection } from '../../../shared/ui/filter-sheet';
 import { Input } from '../../../shared/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '../../../shared/ui/popover';
+import { FilterDropdown, FilterGroup, type FilterOptionDot } from '../../../shared/ui/filter-dropdown';
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { Select } from '../../../shared/ui/select';
 import { SidePanel } from '../../../shared/ui/side-panel';
+import { SortMenu } from '../../../shared/ui/sort-menu';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type {
   OrderHealthSummary,
   OrderLifecyclePhaseSummary,
   OrderSlaSummary,
-  OrderSortDirection,
   OrderSortValue,
   OrderTag,
   SlaStateValue,
@@ -56,7 +56,7 @@ import {
 import { HoldReasonValues, holdReasonLabel } from '../lib/order-hold.types';
 import { ORDER_LIFECYCLE_PHASE_TONE, OrderLifecyclePhaseValues } from '../lib/order-lifecycle-phase';
 import type { OrderLifecyclePhaseValue } from '../lib/order-lifecycle-phase.types';
-import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
+import { useMessages, usePlural } from '../../../shared/i18n';
 import { OrderTagChip } from './order-tag-chip';
 
 /** Sort menu entries, in menu order; `createdAt` is the default. */
@@ -114,7 +114,8 @@ function isTypingTarget(target: EventTarget | null): boolean {
   );
 }
 
-function phaseDotTone(tone: StatusBadgeTone): string {
+function phaseDotTone(tone: StatusBadgeTone): FilterOptionDot {
+  if (tone === 'conflict') return 'warning';
   return tone === 'neutral' || tone === 'review' ? 'neutral' : tone;
 }
 
@@ -153,6 +154,10 @@ export function OrderListFilterBar({
   const COPY = orders.listFilters;
   const paymentCopy = orders.paymentWriteback;
   const plural = usePlural();
+  const sortOptions = useMemo(
+    () => ORDER_SORT_KEYS.map((key) => ({ key, label: COPY.sortOptions[key], dir: DEFAULT_ORDER_SORT_DIR[key] })),
+    [COPY],
+  );
   const panelId = useId();
   const searchRef = useRef<HTMLInputElement>(null);
   const moreRef = useRef<HTMLButtonElement>(null);
@@ -547,9 +552,9 @@ export function OrderListFilterBar({
 
   return (
     <div className="orders-filters">
-      <div className="orders-toolbar">
-        <div className="orders-filterbar__search">
-          <span className="orders-filterbar__search-glyph" aria-hidden="true">
+      <div className="list-toolbar">
+        <div className="list-search">
+          <span className="list-search__glyph" aria-hidden="true">
             ⌕
           </span>
           <Input
@@ -562,11 +567,11 @@ export function OrderListFilterBar({
               filtersApi.setSearch(e.target.value);
             }}
           />
-          <span className="button__shortcut orders-filterbar__kbd" aria-hidden="true">
+          <span className="button__shortcut list-search__kbd" aria-hidden="true">
             /
           </span>
         </div>
-        <div className="orders-fgroup" role="group" aria-label={COPY.filterGroupAria}>
+        <FilterGroup aria-label={COPY.filterGroupAria}>
           <FilterDropdown
             label={COPY.quick.phase}
             anyLabel={COPY.anyPhase}
@@ -609,7 +614,7 @@ export function OrderListFilterBar({
           <button
             ref={moreRef}
             type="button"
-            className={['orders-fgroup__btn', moreCount > 0 ? 'orders-fgroup__btn--on' : '']
+            className={['filter-group__btn', moreCount > 0 ? 'filter-group__btn--on' : '']
               .filter(Boolean)
               .join(' ')}
             data-testid="orders-filter-toggle"
@@ -627,19 +632,22 @@ export function OrderListFilterBar({
               F
             </span>
           </button>
-        </div>
-        <span className="orders-toolbar__spacer" />
-        <span className="text-muted mono tabular orders-filterbar__count" aria-live="polite">
+        </FilterGroup>
+        <span className="list-toolbar__spacer" />
+        <span className="text-muted mono tabular list-results" aria-live="polite">
           {resultCount === null
             ? null
             : plural(resultCount.value, resultCount.atLeast ? COPY.resultsAtLeast : COPY.results)}
         </span>
-        <OrderSortMenu
-          sort={filtersApi.sort}
+        <SortMenu
+          options={sortOptions}
+          value={filtersApi.sort}
           dir={filtersApi.dir}
+          defaultKey={DEFAULT_ORDER_SORT}
           onChange={(key, dir) => {
             filtersApi.setSort(key, dir);
           }}
+          aria-label={COPY.sortMenuAria}
         />
       </div>
 
@@ -656,7 +664,7 @@ export function OrderListFilterBar({
         title={COPY.allFiltersTitle}
         description={COPY.panelHint}
         width={420}
-        className="orders-filters-panel"
+        className="filters-panel"
         closeIcon
         closeLabel={COPY.closeFilters}
         footer={
@@ -680,7 +688,7 @@ export function OrderListFilterBar({
           </>
         }
       >
-        <div className="orders-filter-sections">
+        <div className="filter-sections">
           {sheetSections.map(({ group, title, body }, index) => {
             const s = groupSummary(group);
             return (
@@ -698,123 +706,5 @@ export function OrderListFilterBar({
         </div>
       </SidePanel>
     </div>
-  );
-}
-
-interface DropdownOption<V extends string> {
-  value: V;
-  label: string;
-  count?: number;
-  dot?: string;
-}
-
-/** A pinned single-choice filter: the button names the applied value. */
-function FilterDropdown<V extends string>({
-  label,
-  anyLabel,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  anyLabel: string;
-  value: V | null;
-  options: readonly DropdownOption<V>[];
-  onChange: (next: V | null) => void;
-}): ReactElement {
-  const [open, setOpen] = useState(false);
-  const current = options.find((o) => o.value === value);
-  const all: readonly (DropdownOption<V> | { value: null; label: string; count?: undefined; dot?: undefined })[] =
-    [{ value: null, label: anyLabel }, ...options];
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className={['orders-fgroup__btn', current ? 'orders-fgroup__btn--on' : '']
-            .filter(Boolean)
-            .join(' ')}
-        >
-          {current ? (
-            <>
-              <span className="orders-fgroup__key">{label}</span>
-              <span className="orders-fgroup__val">{current.label}</span>
-            </>
-          ) : (
-            label
-          )}
-          <span className="orders-fgroup__caret" aria-hidden="true">{'⌄'}</span>
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="orders-pop" aria-label={label}>
-        {all.map((o) => (
-          <button
-            key={o.value ?? '__any__'}
-            type="button"
-            className="orders-pop__opt"
-            aria-pressed={value === o.value}
-            onClick={() => {
-              onChange(o.value);
-              setOpen(false);
-            }}
-          >
-            <span className="orders-pop__mark" aria-hidden="true" />
-            {o.dot ? <span className={`orders-pop__dot orders-pop__dot--${o.dot}`} aria-hidden="true" /> : null}
-            {o.label}
-            {o.count === undefined ? null : <span className="orders-pop__meta mono tabular">{o.count}</span>}
-          </button>
-        ))}
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-/** Same sort keys as the column headers, with "Newest first" as the default. */
-function OrderSortMenu({
-  sort,
-  dir,
-  onChange,
-}: {
-  sort: OrderSortValue;
-  dir: OrderSortDirection;
-  onChange: (key: OrderSortValue, dir: OrderSortDirection) => void;
-}): ReactElement {
-  const COPY = useMessages('orders').listFilters;
-  const [open, setOpen] = useState(false);
-  const current = ORDER_SORT_KEYS.find((key) => key === sort) ?? ORDER_SORT_KEYS[0];
-  const reversed = current ? dir !== DEFAULT_ORDER_SORT_DIR[current] : false;
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button tone="ghost" className="button--sm" aria-label={COPY.sortMenuAria}>
-          {interpolate(reversed ? COPY.sortButtonReversed : COPY.sortButton, {
-            label: current ? COPY.sortOptions[current] : '',
-          })}
-          <span className="orders-fgroup__caret" aria-hidden="true">
-            ▼
-          </span>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="orders-pop orders-pop--sort" aria-label={COPY.sortMenuAria}>
-        {ORDER_SORT_KEYS.map((key) => (
-          <button
-            key={key}
-            type="button"
-            className="orders-pop__opt"
-            aria-pressed={key === sort}
-            onClick={() => {
-              onChange(key, DEFAULT_ORDER_SORT_DIR[key]);
-              setOpen(false);
-            }}
-          >
-            <span className="orders-pop__mark" aria-hidden="true" />
-            {COPY.sortOptions[key]}
-            {key === DEFAULT_ORDER_SORT ? (
-              <span className="orders-pop__meta">{COPY.sortDefaultMark}</span>
-            ) : null}
-          </button>
-        ))}
-      </PopoverContent>
-    </Popover>
   );
 }
