@@ -39,17 +39,9 @@ export function isSupportedLocale(value: unknown): value is SupportedLocale {
   return typeof value === 'string' && (LocaleCodeValues as readonly string[]).includes(value);
 }
 
-/**
- * A flat key->string map for the legacy `t(key, fallback)` seam.
- */
-export interface TranslationCatalog {
-  readonly [key: string]: string;
-}
-
 export interface LocaleContextValue {
   readonly locale: SupportedLocale;
   readonly setLocale: (locale: SupportedLocale) => void;
   /** Development-only pseudo-language (`?lang=xx`) is active. */
   readonly pseudo: boolean;
-  readonly t: (key: string, fallback: string) => string;
 }

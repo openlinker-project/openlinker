@@ -38,6 +38,11 @@
  *   9. Warning only: a key whose name appears in no source file, so it is
  *      probably unused. A heuristic - `title` is always "used" - so it reports
  *      and never fails.
+ *  10. Warning only: a key English has and a translation lacks (an empty
+ *      string counts as missing; a plural counts once), core and plugins
+ *      alike (#3891). It never fails: the runtime already shows the English
+ *      text for that key, and English stays the fallback, so a gap is
+ *      something to translate, not a broken build.
  *
  * The scan fails when it finds fewer core namespaces than MIN_CORE_NAMESPACES:
  * a walk that finds nothing must not read as "all clean".
@@ -196,6 +201,21 @@ export function findUnusedKeys({ label, files }, usedWords) {
     if (reported.has(unit) || usedWords.has(readName(key))) continue;
     reported.add(unit);
     warnings.push(`${label} ${unit} looks unused: "${readName(key)}" appears in no source file.`);
+  }
+  return warnings;
+}
+
+/**
+ * One warning per English key a translation lacks, for every language other
+ * than the base. A namespace with no file for a language lacks every key.
+ */
+export function findMissingTranslations({ label, files }) {
+  const warnings = [];
+  for (const language of LANGUAGES) {
+    if (language === BASE) continue;
+    for (const unit of coverageOf(files, language).missing) {
+      warnings.push(`${label} [${language}] ${unit} is not translated; English is shown.`);
+    }
   }
   return warnings;
 }
@@ -409,7 +429,7 @@ function run() {
   for (const namespace of namespaces) {
     const result = checkNamespace(namespace);
     errors.push(...result.errors);
-    warnings.push(...result.warnings, ...findUnusedKeys(namespace, words));
+    warnings.push(...result.warnings, ...findUnusedKeys(namespace, words), ...findMissingTranslations(namespace));
   }
   for (const w of warnings) console.warn(`⚠ ${w}`);
   if (errors.length > 0) {
@@ -496,6 +516,19 @@ function selfCheck() {
   cases += 1;
   const unused = findUnusedKeys({ label: 'fixture', files: { en: { strayKey: { one: 'x', other: 'y' }, usedKey: 'A' } } }, new Set(['usedKey']));
   if (unused.length !== 1 || !unused[0].includes('strayKey')) failures.push(`unused key: expected one warning naming strayKey, got ${JSON.stringify(unused)}`);
+
+  cases += 1;
+  const untranslated = findMissingTranslations({
+    label: 'fixture',
+    files: { en: { a: 'A', b: 'B', c: 'C', n: { one: '{n} x', other: '{n} xs' } }, pl: { a: 'A', b: '', n: { one: 'a', few: 'b', many: 'c', other: 'd' } } },
+  });
+  const expectedUntranslated = ['fixture [pl] b is not translated; English is shown.', 'fixture [pl] c is not translated; English is shown.'];
+  if (JSON.stringify(untranslated) !== JSON.stringify(expectedUntranslated)) {
+    failures.push(`missing translation: expected ${JSON.stringify(expectedUntranslated)}, got ${JSON.stringify(untranslated)}`);
+  }
+  cases += 1;
+  const noPolishFile = findMissingTranslations({ label: 'fixture', files: { en: { a: 'A' } } });
+  if (noPolishFile.length !== 1) failures.push(`missing translation without a Polish file: expected one warning, got ${JSON.stringify(noPolishFile)}`);
 
   cases += 1;
   const sorted = JSON.stringify(sortTree({ b: { d: '1', c: '2' }, a: '3' }));
