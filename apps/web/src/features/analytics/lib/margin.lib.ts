@@ -1,12 +1,16 @@
 /**
- * Margin copy and formatting
+ * Margin helpers
  *
- * The one place the margin panel's wording lives: per gap reason (what is
- * left out and what the operator can do about it) and the ratio formatter.
- * Every string is operator language - no raw reason code is ever rendered.
+ * The margin panel's ratio formatter, gap totals and the per-reason copy
+ * lookup. The wording itself lives in the `analytics` namespace
+ * (`marginCopy.gaps`); every string is operator language - no raw reason code
+ * is ever rendered.
  *
  * @module features/analytics/lib
  */
+import { getMessages } from '../../../shared/i18n';
+import { getLocale } from '../../../shared/i18n/active-locale';
+import { getBcp47Locale } from '../../../shared/i18n/locale';
 import type { MarginGap, MarginGapReason } from '../api/margin-analytics.types';
 
 export interface MarginGapCopy {
@@ -16,28 +20,24 @@ export interface MarginGapCopy {
   action: string;
 }
 
-export const MARGIN_GAP_COPY: Record<MarginGapReason, MarginGapCopy> = {
-  'no-cost': {
-    reason: 'No cost recorded for the variant',
-    action: 'Enter the cost on the product page.',
-  },
-  'cost-entered-after-sale': {
-    reason: 'Ordered before the cost was entered',
-    action: 'Nothing; new orders are covered.',
-  },
-  'no-variant': {
-    reason: 'Order line not matched to a product variant',
-    action: 'Match the order line to a product.',
-  },
-  'currency-mismatch': {
-    reason: 'Cost currency differs from the order currency',
-    action: 'Enter the cost in the currency the order was placed in.',
-  },
-};
+/** The operator wording for one gap reason, read at call time. */
+export function marginGapCopy(reason: MarginGapReason): MarginGapCopy {
+  const gaps = getMessages('analytics').marginCopy.gaps;
+  switch (reason) {
+    case 'no-cost':
+      return gaps.noCost;
+    case 'cost-entered-after-sale':
+      return gaps.costEnteredAfterSale;
+    case 'no-variant':
+      return gaps.noVariant;
+    case 'currency-mismatch':
+      return gaps.currencyMismatch;
+  }
+}
 
 /** 0.4331 -> "43.3%". `null` is the caller's to render as an absent value, never as "0%". */
 export function formatRatio(ratio: number): string {
-  return new Intl.NumberFormat(undefined, {
+  return new Intl.NumberFormat(getBcp47Locale(getLocale()), {
     style: 'percent',
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,

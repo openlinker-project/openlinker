@@ -12,17 +12,19 @@ import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
-import { formatAmount } from '../../../shared/format/format-amount';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { useMarginAnalyticsQuery } from '../hooks/use-margin-analytics-query';
 import { useMarginPanelVisible } from '../hooks/use-margin-panel-visible';
 import { ANALYTICS_MARGIN_ANCHOR_ID } from './margin-panel';
-import { formatRatio } from '../lib/margin-copy';
+import { formatRatio } from '../lib/margin.lib';
 import type { MarginFilters } from '../api/margin-analytics.types';
 
 /** Below this share of net sales with a cost, the banner shows. */
 export const MARGIN_COVERAGE_BANNER_THRESHOLD = 0.98;
 
 export function MarginCoverageBanner({ filters }: { filters: MarginFilters }): ReactElement | null {
+  const copy = useMessages('analytics').marginCoverageBanner;
+  const format = useFormat();
   const visible = useMarginPanelVisible();
   const query = useMarginAnalyticsQuery(filters, 'week');
   const data = query.data;
@@ -42,15 +44,16 @@ export function MarginCoverageBanner({ filters }: { filters: MarginFilters }): R
   const leftOut = headline.netRevenue - headline.coveredNetRevenue;
 
   const parts: string[] = [];
-  if (noCost > 0) parts.push(`some variants have no cost price (${formatAmount(noCost, currency)})`);
+  if (noCost > 0) {
+    parts.push(interpolate(copy.reasons.noCost, { amount: format.money(noCost, currency) }));
+  }
   if (afterSale > 0) {
-    parts.push(
-      `some orders came in before their cost was entered (${formatAmount(afterSale, currency)})`
-    );
+    parts.push(interpolate(copy.reasons.afterSale, { amount: format.money(afterSale, currency) }));
   }
   if (other > 0) {
-    parts.push(`other lines cannot take a cost (${formatAmount(other, currency)})`);
+    parts.push(interpolate(copy.reasons.other, { amount: format.money(other, currency) }));
   }
+  const leftOutAmount = format.money(leftOut, currency);
 
   function goToMargin(): void {
     document.getElementById(ANALYTICS_MARGIN_ANCHOR_ID)?.scrollIntoView?.({ block: 'start' });
@@ -60,7 +63,7 @@ export function MarginCoverageBanner({ filters }: { filters: MarginFilters }): R
     <Alert
       tone="warning"
       data-testid="cost-coverage-banner"
-      title={`Margin covers ${formatRatio(coverage)} of net sales in this range`}
+      title={interpolate(copy.title, { ratio: formatRatio(coverage) })}
       action={
         <>
           <Link
@@ -68,7 +71,7 @@ export function MarginCoverageBanner({ filters }: { filters: MarginFilters }): R
             to="/products/cost-prices"
             data-testid="cost-coverage-banner-open"
           >
-            Add cost prices
+            {copy.addCostPrices}
           </Link>
           <Button
             type="button"
@@ -77,14 +80,17 @@ export function MarginCoverageBanner({ filters }: { filters: MarginFilters }): R
             onClick={goToMargin}
             data-testid="cost-coverage-banner-margin"
           >
-            Go to Margin
+            {copy.goToMargin}
           </Button>
         </>
       }
     >
-      {formatAmount(leftOut, currency)} is left out
-      {parts.length > 0 ? `: ${parts.join(' and ')}` : ''}. Margin and margin % are calculated
-      only from the covered part.
+      {parts.length > 0
+        ? interpolate(copy.leftOutWithReasons, {
+            amount: leftOutAmount,
+            reasons: format.list(parts),
+          })
+        : interpolate(copy.leftOut, { amount: leftOutAmount })}
     </Alert>
   );
 }

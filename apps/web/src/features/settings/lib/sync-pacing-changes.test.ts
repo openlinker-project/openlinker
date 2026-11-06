@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  CADENCE_TIMING_NOTE,
+  cadenceTimingNote,
   diffSyncPacing,
   type SyncPacingValues,
 } from './sync-pacing-changes';
@@ -121,7 +121,7 @@ describe('diffSyncPacing', () => {
       cadenceAppliesAt: 'next-scheduler-start',
     });
 
-    expect(diff.changes[0].timing).toBe(CADENCE_TIMING_NOTE);
+    expect(diff.changes[0].timing).toBe(cadenceTimingNote());
   });
 
   it('should say nothing about timing when the API reported a value it does not know', () => {

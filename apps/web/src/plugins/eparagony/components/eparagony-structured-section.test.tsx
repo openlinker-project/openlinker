@@ -174,14 +174,14 @@ describe('EparagonyStructuredSection', () => {
 
   it('should summarise the fallback slot on the collapsed disclosure, naming what a set slot does', () => {
     renderWithProviders(<Harness />);
-    expect(screen.getByText('Not set — a line with no rate is refused')).toBeInTheDocument();
+    expect(screen.getByText('Not set - a line with no rate is refused')).toBeInTheDocument();
 
     cleanup();
     renderWithProviders(<Harness defaultValues={{ eparagonyDefaultTaxRateCode: 'B' }} />);
     // A bare "Slot B" is indistinguishable at a glance from the safe state; the
     // summary says what having one set actually means.
     expect(
-      screen.getByText('Slot B — used when a line has no rate', {
+      screen.getByText('Slot B - used when a line has no rate', {
         selector: '.inline-disclosure__value',
       }),
     ).toBeInTheDocument();

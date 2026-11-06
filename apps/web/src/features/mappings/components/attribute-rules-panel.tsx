@@ -27,21 +27,9 @@ import {
   useUpsertAttributeRule,
   useDeleteAttributeRule,
 } from '../hooks/use-attribute-rules';
+import { interpolate, usePlural, useMessages, type Messages, type PluralFn } from '../../../shared/i18n';
 
-const KIND_LABELS: Record<AttributeRuleKind, string> = {
-  fixed: 'Fixed value',
-  'copy-remap': 'Copy + value remap',
-  'place-value': 'Place value',
-};
-
-const PLACE_VALUE_LABELS: Record<PlaceValueSource, string> = {
-  name: 'Product name',
-  variant: 'Variant name',
-  manufacturer: 'Manufacturer',
-  ean: 'EAN / barcode',
-  sku: 'SKU',
-  weight: 'Weight',
-};
+type AttributeRulesCopy = Messages['mappings']['attributeRulesPanel'];
 
 /** Parse "36S=36, S=Small" into value-remap pairs (best-effort, MVP). */
 function parseValueRemap(raw: string): AttributeRuleValueRemap[] {
@@ -60,26 +48,33 @@ function parseValueRemap(raw: string): AttributeRuleValueRemap[] {
     .filter((v): v is AttributeRuleValueRemap => v !== null && v.sourceValue !== '');
 }
 
-function summariseRule(rule: AttributeRule): string {
+function summariseRule(rule: AttributeRule, copy: AttributeRulesCopy, plural: PluralFn): string {
   switch (rule.kind) {
     case 'fixed':
-      return `= "${rule.fixedValue ?? ''}"`;
+      return interpolate(copy.summary.fixed, { value: rule.fixedValue ?? '' });
     case 'copy-remap': {
       const count = rule.valueRemap?.length ?? 0;
-      return `copy "${rule.sourceAttributeKey ?? ''}"${count > 0 ? ` (${count} remap${count === 1 ? '' : 's'})` : ''}`;
+      const key = rule.sourceAttributeKey ?? '';
+      return count > 0
+        ? plural(count, copy.summary.copyWithRemaps, { key })
+        : interpolate(copy.summary.copy, { key });
     }
     case 'place-value':
-      return `from ${rule.placeValueSource ? PLACE_VALUE_LABELS[rule.placeValueSource] : '?'}`;
+      return interpolate(copy.summary.placeValue, {
+        source: rule.placeValueSource ? copy.placeValueSources[rule.placeValueSource] : '?',
+      });
   }
 }
 
-function summariseScope(rule: AttributeRule): string {
+function summariseScope(rule: AttributeRule, copy: AttributeRulesCopy['scope']): string {
   const parts: string[] = [];
-  if (rule.destinationCategoryId) parts.push(`category ${rule.destinationCategoryId}`);
-  if (rule.manufacturerMatch) parts.push(`mfr "${rule.manufacturerMatch}"`);
-  if (rule.phraseMatch) parts.push(`name~"${rule.phraseMatch}"`);
-  if (rule.sourceConnectionId) parts.push('source-scoped');
-  return parts.length > 0 ? parts.join(', ') : 'all products';
+  if (rule.destinationCategoryId) {
+    parts.push(interpolate(copy.category, { id: rule.destinationCategoryId }));
+  }
+  if (rule.manufacturerMatch) parts.push(interpolate(copy.manufacturer, { value: rule.manufacturerMatch }));
+  if (rule.phraseMatch) parts.push(interpolate(copy.phrase, { value: rule.phraseMatch }));
+  if (rule.sourceConnectionId) parts.push(copy.sourceScoped);
+  return parts.length > 0 ? parts.join(', ') : copy.allProducts;
 }
 
 interface AttributeRulesPanelProps {
@@ -90,6 +85,8 @@ export function AttributeRulesPanel({ connectionId }: AttributeRulesPanelProps):
   const rulesQuery = useAttributeRulesQuery(connectionId);
   const upsert = useUpsertAttributeRule(connectionId);
   const del = useDeleteAttributeRule(connectionId);
+  const copy = useMessages('mappings').attributeRulesPanel;
+  const plural = usePlural();
 
   const [kind, setKind] = useState<AttributeRuleKind>('fixed');
   const [destinationParameterName, setDestinationParameterName] = useState('');
@@ -117,7 +114,7 @@ export function AttributeRulesPanel({ connectionId }: AttributeRulesPanelProps):
   function handleAdd(): void {
     setFormError(null);
     if (!destinationParameterName.trim()) {
-      setFormError('Destination attribute name is required.');
+      setFormError(copy.errors.destinationRequired);
       return;
     }
     const payload: UpsertAttributeRulePayload = {
@@ -132,7 +129,7 @@ export function AttributeRulesPanel({ connectionId }: AttributeRulesPanelProps):
       payload.fixedValue = fixedValue;
     } else if (kind === 'copy-remap') {
       if (!sourceAttributeKey.trim()) {
-        setFormError('Source attribute key is required for a copy + remap rule.');
+        setFormError(copy.errors.sourceRequired);
         return;
       }
       payload.sourceAttributeKey = sourceAttributeKey.trim();
@@ -145,11 +142,11 @@ export function AttributeRulesPanel({ connectionId }: AttributeRulesPanelProps):
 
   if (rulesQuery.isLoading) {
     return (
-      <LoadingState liveRegion="off" title="Loading attribute rules" message="Fetching configured rules…" />
+      <LoadingState liveRegion="off" title={copy.loading.title} message={copy.loading.message} />
     );
   }
   if (rulesQuery.error) {
-    return <ErrorState title="Unable to load attribute rules" message={rulesQuery.error.message} />;
+    return <ErrorState title={copy.errorTitle} message={rulesQuery.error.message} />;
   }
 
   const rules = rulesQuery.data ?? [];
@@ -158,31 +155,29 @@ export function AttributeRulesPanel({ connectionId }: AttributeRulesPanelProps):
     <div className="panel panel--dense">
       <div className="panel__header">
         <div>
-          <p className="eyebrow">Configuration</p>
-          <h3 className="section-title">Attribute Mapping Rules</h3>
+          <p className="eyebrow">{copy.eyebrow}</p>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
       </div>
 
       <p className="muted-text" style={{ marginBottom: '1rem' }}>
-        Deterministic, operator-authored rules that fill destination attributes across products.
-        Rules apply in priority order (lower first); a later rule wins for the same attribute and
-        rules override the base attribute mapping.
+        {copy.description}
       </p>
 
       {rules.length === 0 ? (
         <p className="muted-text" role="status" aria-live="polite">
-          No rules configured yet. Add one below to auto-fill destination attributes.
+          {copy.empty}
         </p>
       ) : (
-        <table className="data-table" aria-label="Attribute mapping rules">
+        <table className="data-table" aria-label={copy.table.label}>
           <thead>
             <tr>
-              <th>Priority</th>
-              <th>Attribute</th>
-              <th>Kind</th>
-              <th>Fills</th>
-              <th>Scope</th>
-              <th aria-label="Actions" />
+              <th>{copy.table.priority}</th>
+              <th>{copy.table.attribute}</th>
+              <th>{copy.table.kind}</th>
+              <th>{copy.table.fills}</th>
+              <th>{copy.table.scope}</th>
+              <th aria-label={copy.table.actions} />
             </tr>
           </thead>
           <tbody>
@@ -190,19 +185,19 @@ export function AttributeRulesPanel({ connectionId }: AttributeRulesPanelProps):
               <tr key={rule.id}>
                 <td className="tabular">{rule.priority}</td>
                 <td>{rule.destinationParameterName}</td>
-                <td>{KIND_LABELS[rule.kind]}</td>
-                <td>{summariseRule(rule)}</td>
-                <td className="muted-text">{summariseScope(rule)}</td>
+                <td>{copy.kinds[rule.kind]}</td>
+                <td>{summariseRule(rule, copy, plural)}</td>
+                <td className="muted-text">{summariseScope(rule, copy.scope)}</td>
                 <td>
                   <Button
                     tone="ghost"
-                    aria-label={`Remove rule for ${rule.destinationParameterName}`}
+                    aria-label={interpolate(copy.removeLabel, { attribute: rule.destinationParameterName })}
                     disabled={del.isPending}
                     onClick={() => {
                       del.mutate(rule.id);
                     }}
                   >
-                    Remove
+                    {copy.remove}
                   </Button>
                 </td>
               </tr>
@@ -214,9 +209,9 @@ export function AttributeRulesPanel({ connectionId }: AttributeRulesPanelProps):
       {/* Add rule form */}
       <div className="toolbar" style={{ marginTop: '1rem', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <span className="eyebrow">Kind</span>
+          <span className="eyebrow">{copy.form.kind}</span>
           <select
-            aria-label="Rule kind"
+            aria-label={copy.form.kindLabel}
             value={kind}
             onChange={(e) => {
               setKind(e.target.value as AttributeRuleKind);
@@ -224,29 +219,29 @@ export function AttributeRulesPanel({ connectionId }: AttributeRulesPanelProps):
           >
             {AttributeRuleKindValues.map((k) => (
               <option key={k} value={k}>
-                {KIND_LABELS[k]}
+                {copy.kinds[k]}
               </option>
             ))}
           </select>
         </label>
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <span className="eyebrow">Destination attribute</span>
+          <span className="eyebrow">{copy.form.destination}</span>
           <input
-            aria-label="Destination attribute name"
+            aria-label={copy.form.destinationLabel}
             value={destinationParameterName}
             onChange={(e) => {
               setDestinationParameterName(e.target.value);
             }}
-            placeholder="e.g. Marka"
+            placeholder={copy.form.destinationPlaceholder}
           />
         </label>
 
         {kind === 'fixed' && (
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span className="eyebrow">Fixed value</span>
+            <span className="eyebrow">{copy.form.fixedValue}</span>
             <input
-              aria-label="Fixed value"
+              aria-label={copy.form.fixedValue}
               value={fixedValue}
               onChange={(e) => {
                 setFixedValue(e.target.value);
@@ -258,25 +253,25 @@ export function AttributeRulesPanel({ connectionId }: AttributeRulesPanelProps):
         {kind === 'copy-remap' && (
           <>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span className="eyebrow">Source attribute</span>
+              <span className="eyebrow">{copy.form.source}</span>
               <input
-                aria-label="Source attribute key"
+                aria-label={copy.form.sourceLabel}
                 value={sourceAttributeKey}
                 onChange={(e) => {
                   setSourceAttributeKey(e.target.value);
                 }}
-                placeholder="e.g. Size"
+                placeholder={copy.form.sourcePlaceholder}
               />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span className="eyebrow">Value remap (src=dest)</span>
+              <span className="eyebrow">{copy.form.remap}</span>
               <input
-                aria-label="Value remap"
+                aria-label={copy.form.remapLabel}
                 value={valueRemapRaw}
                 onChange={(e) => {
                   setValueRemapRaw(e.target.value);
                 }}
-                placeholder="36S=36, 38S=38"
+                placeholder={copy.form.remapPlaceholder}
               />
             </label>
           </>
@@ -284,9 +279,9 @@ export function AttributeRulesPanel({ connectionId }: AttributeRulesPanelProps):
 
         {kind === 'place-value' && (
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span className="eyebrow">Source metadata</span>
+            <span className="eyebrow">{copy.form.placeValue}</span>
             <select
-              aria-label="Place-value source"
+              aria-label={copy.form.placeValueLabel}
               value={placeValueSource}
               onChange={(e) => {
                 setPlaceValueSource(e.target.value as PlaceValueSource);
@@ -294,7 +289,7 @@ export function AttributeRulesPanel({ connectionId }: AttributeRulesPanelProps):
             >
               {PlaceValueSourceValues.map((s) => (
                 <option key={s} value={s}>
-                  {PLACE_VALUE_LABELS[s]}
+                  {copy.placeValueSources[s]}
                 </option>
               ))}
             </select>
@@ -302,9 +297,9 @@ export function AttributeRulesPanel({ connectionId }: AttributeRulesPanelProps):
         )}
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <span className="eyebrow">Priority</span>
+          <span className="eyebrow">{copy.form.priority}</span>
           <input
-            aria-label="Priority"
+            aria-label={copy.form.priority}
             type="number"
             value={priority}
             onChange={(e) => {
@@ -318,9 +313,9 @@ export function AttributeRulesPanel({ connectionId }: AttributeRulesPanelProps):
       {/* Scope row */}
       <div className="toolbar" style={{ marginTop: '0.5rem', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <span className="eyebrow">Category id (optional)</span>
+          <span className="eyebrow">{copy.form.category}</span>
           <input
-            aria-label="Destination category id scope"
+            aria-label={copy.form.categoryLabel}
             value={destinationCategoryId}
             onChange={(e) => {
               setDestinationCategoryId(e.target.value);
@@ -328,9 +323,9 @@ export function AttributeRulesPanel({ connectionId }: AttributeRulesPanelProps):
           />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <span className="eyebrow">Manufacturer (optional)</span>
+          <span className="eyebrow">{copy.form.manufacturer}</span>
           <input
-            aria-label="Manufacturer scope"
+            aria-label={copy.form.manufacturerLabel}
             value={manufacturerMatch}
             onChange={(e) => {
               setManufacturerMatch(e.target.value);
@@ -338,9 +333,9 @@ export function AttributeRulesPanel({ connectionId }: AttributeRulesPanelProps):
           />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <span className="eyebrow">Name contains (optional)</span>
+          <span className="eyebrow">{copy.form.phrase}</span>
           <input
-            aria-label="Product name phrase scope"
+            aria-label={copy.form.phraseLabel}
             value={phraseMatch}
             onChange={(e) => {
               setPhraseMatch(e.target.value);
@@ -349,7 +344,7 @@ export function AttributeRulesPanel({ connectionId }: AttributeRulesPanelProps):
         </label>
 
         <Button tone="secondary" disabled={upsert.isPending} onClick={handleAdd}>
-          {upsert.isPending ? 'Adding…' : 'Add rule'}
+          {upsert.isPending ? copy.form.adding : copy.form.add}
         </Button>
       </div>
 

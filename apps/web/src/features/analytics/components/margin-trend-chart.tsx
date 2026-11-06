@@ -10,7 +10,10 @@
  */
 import type { ReactElement } from 'react';
 import type { MarginTrendPoint } from '../api/margin-analytics.types';
-import { formatRatio } from '../lib/margin-copy';
+import { getLocale } from '../../../shared/i18n/active-locale';
+import { getBcp47Locale } from '../../../shared/i18n/locale';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
+import { formatRatio } from '../lib/margin.lib';
 
 interface MarginTrendChartProps {
   points: readonly MarginTrendPoint[];
@@ -24,21 +27,32 @@ const LEFT = 40;
 
 function bucketLabel(date: string): string {
   const parsed = new Date(`${date}T00:00:00.000Z`);
-  return parsed.toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  return parsed.toLocaleDateString(getBcp47Locale(getLocale()), {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  });
 }
 
 export function MarginTrendChart({ points, currency }: MarginTrendChartProps): ReactElement | null {
+  const copy = useMessages('analytics').marginTrendChart;
+  const format = useFormat();
   if (points.length === 0) return null;
   const max = Math.max(...points.map((point) => point.grossMargin), 0);
   const slot = (WIDTH - LEFT) / points.length;
   const barWidth = Math.min(56, slot * 0.6);
   const summary = points
-    .map((point) => `${bucketLabel(point.date)}: ${Math.round(point.grossMargin)} ${currency}`)
-    .join(', ');
+    .map((point) =>
+      interpolate(copy.bucket, {
+        date: bucketLabel(point.date),
+        amount: format.number(Math.round(point.grossMargin)),
+        currency,
+      })
+    );
 
   return (
     <div className="analytics-margin__trend" data-testid="margin-trend">
-      <svg viewBox={`0 0 ${WIDTH} 196`} role="img" aria-label={`Gross margin per bucket. ${summary}`}>
+      <svg viewBox={`0 0 ${WIDTH} 196`} role="img" aria-label={interpolate(copy.ariaLabel, { summary: format.list(summary, 'unit') })}>
         <line
           className="analytics-margin__grid"
           x1={LEFT}
@@ -66,7 +80,7 @@ export function MarginTrendChart({ points, currency }: MarginTrendChartProps): R
                 y={y - 6}
                 textAnchor="middle"
               >
-                {point.marginPct === null ? '—' : formatRatio(point.marginPct)}
+                {point.marginPct === null ? copy.noMargin : formatRatio(point.marginPct)}
               </text>
               <text x={x + barWidth / 2} y={168} textAnchor="middle">
                 {bucketLabel(point.date)}

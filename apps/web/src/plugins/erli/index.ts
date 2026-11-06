@@ -22,6 +22,7 @@ import { erliBulkConfigIsComplete, erliOfferValidation } from '../../features/li
 import { publicApiBaseUrl } from '../../shared/config/public-api-base-url';
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
+import { erliMessages, getErliMessages } from './messages';
 import { ErliConnectionActions } from './components/erli-connection-actions';
 import { ErliCredentialsPanel } from './components/erli-credentials-panel';
 import { ErliStructuredSection } from './components/erli-structured-section';
@@ -40,6 +41,7 @@ const ErliBulkRowSectionLazy = lazy(() =>
 
 export const erliPlugin: OpenLinkerPlugin = definePlugin({
   id: 'erli',
+  messages: erliMessages,
   platformType: 'erli',
   build: {
     routes: [erliSetupRoute],
@@ -50,9 +52,15 @@ export const erliPlugin: OpenLinkerPlugin = definePlugin({
     categoryIdSource: 'Allegro',
     setupCard: {
       title: 'Erli',
-      description: 'Connect your Erli seller account with your Shop API key.',
+      // Getters, not values: the card is read at render, so the copy follows
+      // the active language instead of freezing at module load.
+      get description(): string {
+        return getErliMessages().plugin.setupCard.description;
+      },
       to: '/connections/new/erli',
-      badge: 'API key',
+      get badge(): string {
+        return getErliMessages().plugin.setupCard.badge;
+      },
     },
     getCallbackUrlDefault: publicApiBaseUrl,
     StructuredConfigSection: ErliStructuredSection,

@@ -10,20 +10,20 @@
  */
 import type { DatedTimelineEvent } from '../../orders';
 import type { BuyerEmailDelivery } from '../api/buyer-emails.types';
-import { BUYER_EMAILS_COPY, templateLabel } from './buyer-emails.copy';
-
-const COPY = BUYER_EMAILS_COPY.order;
+import { getMessages, interpolate } from '../../../shared/i18n';
+import { templateLabel } from './buyer-email-template-label';
 
 export function mapBuyerEmailsToEvents(
   entries: readonly BuyerEmailDelivery[],
 ): DatedTimelineEvent[] {
+  const COPY = getMessages('buyer-emails').order;
   return entries.map((entry): DatedTimelineEvent => {
     const label = templateLabel(entry.templateKey);
     if (entry.outcome === 'sent') {
       return {
         id: `buyer-email-${entry.id}`,
         timestamp: entry.createdAt,
-        title: `"${label}" email sent to buyer`,
+        title: interpolate(COPY.timeline.sent, { label }),
         tone: 'success',
       };
     }
@@ -31,7 +31,7 @@ export function mapBuyerEmailsToEvents(
       return {
         id: `buyer-email-${entry.id}`,
         timestamp: entry.createdAt,
-        title: `"${label}" email bounced`,
+        title: interpolate(COPY.timeline.bounced, { label }),
         description: COPY.bouncedDetail,
         tone: 'error',
       };
@@ -40,7 +40,7 @@ export function mapBuyerEmailsToEvents(
       return {
         id: `buyer-email-${entry.id}`,
         timestamp: entry.createdAt,
-        title: `"${label}" email being sent`,
+        title: interpolate(COPY.timeline.pending, { label }),
         description: COPY.pendingDetail,
         tone: 'default',
       };
@@ -48,7 +48,7 @@ export function mapBuyerEmailsToEvents(
     return {
       id: `buyer-email-${entry.id}`,
       timestamp: entry.createdAt,
-      title: `"${label}" email not sent`,
+      title: interpolate(COPY.timeline.suppressed, { label }),
       description: entry.suppressionMessage ?? COPY.suppressedFallback,
       tone: 'default',
     };

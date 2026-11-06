@@ -10,7 +10,7 @@
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert } from '../../../shared/ui';
-import { formatDateTime } from '../../../shared/format/format-date';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { selectDegradedConnections } from '../lib/ingestion-trust.lib';
 import type { ConnectionIngestionTrust } from '../api/analytics-trust.types';
 
@@ -21,6 +21,8 @@ interface AnalyticsDegradationBannerProps {
 export function AnalyticsDegradationBanner({
   connections,
 }: AnalyticsDegradationBannerProps): ReactElement | null {
+  const copy = useMessages('analytics').analyticsDegradationBanner;
+  const format = useFormat();
   const degraded = selectDegradedConnections(connections);
 
   if (degraded.length === 0) {
@@ -35,19 +37,22 @@ export function AnalyticsDegradationBanner({
           tone="error"
           title={
             entry.lastPollAt
-              ? `${entry.connectionName} has not been polled since ${formatDateTime(entry.lastPollAt)}`
-              : `${entry.connectionName} has never been polled`
+              ? interpolate(copy.notPolledSince, {
+                  connection: entry.connectionName,
+                  date: format.dateTime(entry.lastPollAt),
+                })
+              : interpolate(copy.neverPolled, { connection: entry.connectionName })
           }
           action={
             <Link
               className="button button--secondary button--sm"
               to={`/cursors?connectionId=${entry.connectionId}`}
             >
-              View sync
+              {copy.viewSync}
             </Link>
           }
         >
-          This is an ingestion gap, not a drop in sales.
+          {copy.body}
         </Alert>
       ))}
     </>
