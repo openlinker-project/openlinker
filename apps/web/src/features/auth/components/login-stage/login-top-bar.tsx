@@ -10,6 +10,7 @@
  * @module features/auth/components/login-stage
  */
 import { useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { ThemeSwitch } from '../../../../shared/ui/theme-switch';
 import { LanguageSwitch } from '../../../../shared/ui/language-switch';
 import type { LoginStageCopy } from '../../lib/login-stage-copy';
 
@@ -99,7 +100,10 @@ export function LoginTopBar({ bar }: LoginTopBarProps): ReactElement {
         ) : (
           <span className="login-topbar__spacer" />
         )}
-        <LanguageSwitch placement="down" />
+        <span className="login-topbar__controls">
+          <ThemeSwitch placement="down" />
+          <LanguageSwitch placement="down" reveal="end" />
+        </span>
       </div>
     </header>
   );

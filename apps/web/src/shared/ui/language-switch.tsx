@@ -120,11 +120,18 @@ function step(from: number, direction: 1 | -1): number {
 export interface LanguageSwitchProps {
   /** `up` in the sidebar footer, `down` in a top corner. */
   placement?: 'up' | 'down';
+  /**
+   * Which way the hover pill grows: `start` (the default) widens leftwards and
+   * suits a right-hand edge; `end` widens rightwards, for a switch with a
+   * neighbour on its left it must not cover (the login top bar's theme switch).
+   */
+  reveal?: 'start' | 'end';
   className?: string;
 }
 
 export function LanguageSwitch({
   placement = 'up',
+  reveal = 'start',
   className,
 }: LanguageSwitchProps): ReactElement | null {
   const localeContext = useOptionalLocale();
@@ -234,7 +241,14 @@ export function LanguageSwitch({
 
   if (localeContext === null) return null;
 
-  const classes = ['language-switch', open ? 'is-open' : '', className].filter(Boolean).join(' ');
+  const classes = [
+    'language-switch',
+    reveal === 'end' ? 'language-switch--reveal-end' : '',
+    open ? 'is-open' : '',
+    className,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <div className={classes} ref={rootRef}>
@@ -413,7 +427,13 @@ export function LanguageSwitch({
                             ref={shrinkToText}
                             className="language-switch__hint"
                             aria-hidden="true"
-                            initial={{ opacity: 0, scale: 0.92, x: '-50%', y: 4, filter: 'blur(4px)' }}
+                            initial={{
+                              opacity: 0,
+                              scale: 0.92,
+                              x: '-50%',
+                              y: 4,
+                              filter: 'blur(4px)',
+                            }}
                             animate={{
                               opacity: 1,
                               scale: 1,

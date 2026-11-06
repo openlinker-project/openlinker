@@ -14,8 +14,11 @@ import type { LoginPageCopyOverrides } from '../../system';
 import { isMessagesLoaded, loadMessages, messagesIn } from '../../../shared/i18n';
 import type { LoginPageLocale } from '../api/login-page-settings.types';
 
-const PREVIEW_W = 1180;
-const PREVIEW_H = 700;
+// Tall enough for the request-access card, the taller of the two screens.
+const DESKTOP_FRAME = { width: 1180, height: 820 };
+// The page's own layout follows the viewport, so on a phone the preview shows
+// the phone layout and is framed like a phone.
+const PHONE_FRAME = { width: 390, height: 920 };
 
 const noopLogin = (): Promise<{ ok: true }> => Promise.resolve({ ok: true });
 
@@ -23,13 +26,20 @@ interface LoginPagePreviewProps {
   locale: LoginPageLocale;
   overrides: LoginPageCopyOverrides;
   canRegister: boolean;
+  /** Which screen is shown; request access falls back to sign in when it is off. */
+  screen: 'login' | 'register';
+  /** `phone` for the narrow-screen modal; `desktop` beside the form. */
+  frame?: 'desktop' | 'phone';
 }
 
 export function LoginPagePreview({
   locale,
   overrides,
   canRegister,
+  screen,
+  frame = 'desktop',
 }: LoginPagePreviewProps): ReactElement {
+  const size = frame === 'phone' ? PHONE_FRAME : DESKTOP_FRAME;
   const boxRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.4);
   const [, setLoaded] = useState(() => isMessagesLoaded(locale));
@@ -38,11 +48,11 @@ export function LoginPagePreview({
     const el = boxRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return undefined;
     const observer = new ResizeObserver(([entry]) => {
-      if (entry) setScale(entry.contentRect.width / PREVIEW_W);
+      if (entry) setScale(entry.contentRect.width / size.width);
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [size.width]);
 
   // The edited language may not be the interface's, so its catalog may not be loaded yet.
   useEffect(() => {
@@ -63,13 +73,13 @@ export function LoginPagePreview({
     <div
       ref={boxRef}
       className="login-preview"
-      style={{ height: PREVIEW_H * scale }}
+      style={{ height: size.height * scale }}
       aria-hidden="true"
       inert
     >
       <div
         className="login-preview__frame"
-        style={{ width: PREVIEW_W, height: PREVIEW_H, transform: `scale(${scale})` }}
+        style={{ width: size.width, height: size.height, transform: `scale(${scale})` }}
       >
         <MotionConfig reducedMotion="always">
           <LoginStage
@@ -79,7 +89,7 @@ export function LoginPagePreview({
             copy={copy}
             ui={messages.ui}
             canRegister={canRegister}
-            tab="login"
+            tab={canRegister ? screen : 'login'}
             onTabChange={() => undefined}
             loginStep="form"
             onLogin={noopLogin}

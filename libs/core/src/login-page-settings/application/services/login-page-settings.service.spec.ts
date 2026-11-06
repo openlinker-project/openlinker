@@ -54,6 +54,23 @@ describe('LoginPageSettingsService', () => {
     );
   });
 
+  it('should sanitize the support line and clear it when the editor sends no text', async () => {
+    await service.updateSettings(
+      {
+        pl: {
+          support:
+            '<p>Pomoc: <a href="https://help.example" onclick="x()">tutaj</a><script>x()</script></p>',
+        },
+        en: { support: '<p></p>' },
+      },
+      'u1'
+    );
+    const saved = repository.saveSettings.mock.calls[0]?.[0];
+    expect(saved?.copy.pl.support).toContain('<a href="https://help.example">tutaj</a>');
+    expect(saved?.copy.pl.support).not.toMatch(/onclick|script/);
+    expect(saved?.copy.en.support).toBeUndefined();
+  });
+
   it('should prefer the stored registration choice over env', async () => {
     env.OL_REGISTRATION_ENABLED = 'true';
     await expect(service.isRegistrationEnabled()).resolves.toBe(true);

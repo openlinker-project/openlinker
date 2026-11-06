@@ -6080,6 +6080,139 @@ a.delivery-rider-banner__button:focus-visible {
   pointer-events: none;
 }
 
+/* ── Theme switch (#4029) ─────────────────────────────────────────
+ * Uses the language switch's classes for the pill, peek and popover, so the
+ * two always read as a pair; this only sizes the icon into the flag's slot.
+ */
+.theme-switch__icon-wrap {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 15px;
+  color: var(--text-secondary);
+}
+
+.language-switch__option[aria-selected='true'] .theme-switch__icon-wrap,
+.language-switch__peek .theme-switch__icon-wrap {
+  color: var(--text-primary);
+}
+
+.theme-switch__icon {
+  display: block;
+  width: 15px;
+  height: 15px;
+}
+
+.language-switch__popover.theme-switch__popover {
+  width: 216px;
+  padding-bottom: 6px;
+}
+
+/* One horizontal switch of icons; the thumb springs to the chosen mode
+ * (motion layoutId). Names stay out of the segments so they never crowd them:
+ * a row opens below with all three names, one under each icon, only while the
+ * switch is pointed at or keyboard-focused. */
+.theme-switch__control {
+  margin: 0 2px;
+}
+
+.theme-switch__segments {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-muted);
+}
+
+.theme-switch__segment,
+.theme-switch__segment:hover,
+.theme-switch__segment:active {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: auto;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--duration-normal) var(--ease-out);
+}
+
+.theme-switch__segment:hover {
+  color: var(--text-primary);
+}
+
+.theme-switch__segment:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.theme-switch__thumb {
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+  background: var(--bg-surface);
+  box-shadow:
+    0 1px 2px rgb(15 18 26 / 0.08),
+    0 0 0 1px var(--border-default);
+}
+
+.theme-switch__segment-icon {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+}
+
+.theme-switch__segment[aria-checked='true'] .theme-switch__segment-icon {
+  color: var(--accent-primary);
+}
+
+.theme-switch__segment .theme-switch__icon {
+  width: 16px;
+  height: 16px;
+}
+
+.theme-switch__caption {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+
+/* Same columns as the segments (3px padding + 1px border), so each name sits
+ * under its own icon. */
+.theme-switch__names {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  padding: 4px 4px 0;
+}
+
+.theme-switch__name {
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--duration-normal) var(--ease-out);
+}
+
+.theme-switch__name[data-state='active'] {
+  color: var(--text-secondary);
+}
+
+.theme-switch__name[data-state='pointed'] {
+  color: var(--text-primary);
+}
+
 /* ── Login stage (#4029) ──────────────────────────────────────────────
  * /login, /register and /consent: a top bar, the demo's blurred app preview
  * behind a brand gradient, the hero and the auth card. Values are 1:1 with the
@@ -6122,9 +6255,9 @@ html:has(.login-stage) {
   inset: 0;
   z-index: -1;
   pointer-events: none;
+  /* The brand light is `.login-glow` above this; the wash only keeps the
+     panel behind it readable. */
   background:
-    radial-gradient(65% 80% at 0% 100%, color-mix(in oklab, var(--accent-primary) 26%, transparent), transparent 62%),
-    radial-gradient(55% 60% at 100% 0%, color-mix(in oklab, var(--accent-primary) 12%, transparent), transparent 60%),
     linear-gradient(
       90deg,
       color-mix(in oklab, var(--bg-canvas) 94%, transparent) 0%,
@@ -6134,10 +6267,99 @@ html:has(.login-stage) {
 }
 
 .login-stage--gradient .login-stage__wash {
-  background:
-    radial-gradient(70% 90% at 0% 100%, color-mix(in oklab, var(--accent-primary) 22%, transparent), transparent 62%),
-    radial-gradient(50% 60% at 100% 0%, color-mix(in oklab, var(--accent-primary) 10%, transparent), transparent 60%),
-    var(--bg-canvas);
+  background: var(--bg-canvas);
+}
+
+/* ── Login glow (#4029) ───────────────────────────────────────────────
+ * Two accent orbs, bottom left and behind the form, that breathe slowly (out of
+ * step: 14s and 18s) and lean a little towards the pointer (login-glow.tsx).
+ * Transform and opacity only, so it stays on the compositor.
+ */
+.login-glow {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Fine grain over the light: soft gradients at low alpha band into rings on
+ * 8-bit screens, and a little noise dithers them away. */
+.login-glow::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.login-glow__lean {
+  position: absolute;
+  will-change: transform;
+}
+
+.login-glow__lean--a {
+  left: -32%;
+  bottom: -46%;
+  width: 92%;
+  height: 120%;
+}
+
+/* Right behind the form card (desktop: the card's column centre). */
+.login-glow__lean--b {
+  right: 3%;
+  top: 14%;
+  width: 44%;
+  height: 76%;
+}
+
+.login-glow__orb {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  /* An eased fall-off: a two-stop gradient at low alpha bands into visible rings. */
+  background: radial-gradient(
+    closest-side,
+    var(--glow) 0%,
+    color-mix(in oklab, var(--glow) 82%, transparent) 16%,
+    color-mix(in oklab, var(--glow) 56%, transparent) 36%,
+    color-mix(in oklab, var(--glow) 30%, transparent) 56%,
+    color-mix(in oklab, var(--glow) 12%, transparent) 74%,
+    color-mix(in oklab, var(--glow) 3%, transparent) 88%,
+    transparent 100%
+  );
+  will-change: transform, opacity;
+  animation: login-glow-breathe 14s ease-in-out infinite alternate;
+}
+
+.login-glow__orb--a {
+  --glow: color-mix(in oklab, var(--accent-primary) 30%, transparent);
+}
+
+.login-glow__orb--b {
+  --glow: color-mix(in oklab, var(--accent-primary) 16%, transparent);
+  animation-duration: 18s;
+  animation-delay: -6s;
+}
+
+.login-stage--gradient .login-glow__orb--a {
+  --glow: color-mix(in oklab, var(--accent-primary) 26%, transparent);
+}
+
+/* A slow breath: barely larger, barely brighter. */
+@keyframes login-glow-breathe {
+  0% { transform: scale(1); opacity: 0.9; }
+  100% { transform: scale(1.05); opacity: 1; }
+}
+
+.login-glow--still .login-glow__orb {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-glow__orb {
+    animation: none;
+  }
 }
 
 .login-stage__inner {
@@ -6167,9 +6389,10 @@ html:has(.login-stage) {
   width: 100%;
 }
 
+/* Fills the preview frame, whatever size it is (desktop page or phone). */
 .login-stage--preview {
-  min-height: 700px;
-  height: 700px;
+  min-height: 100%;
+  height: 100%;
 }
 
 /* Backdrop: the real panel, blurred. */
@@ -6480,7 +6703,7 @@ html:has(.login-stage) {
   box-shadow: var(--shadow-focus);
 }
 
-.login-topbar__links + .language-switch {
+.login-topbar__links + .login-topbar__controls {
   margin-left: 6px;
   padding-left: 12px;
   border-left: 1px solid var(--border-default);
@@ -6494,6 +6717,13 @@ html:has(.login-stage) {
    app's 2rem button height. */
 .login-topbar .language-switch__trigger {
   height: auto;
+}
+
+.login-topbar__controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -6882,6 +7112,23 @@ html:has(.login-stage) {
   border-top: 1px solid var(--border-subtle);
 }
 
+/* An admin's support line arrives as rich text; it keeps the fine print's type. */
+.auth-card__support .rich-text-view {
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+
+.auth-card__support a {
+  color: var(--text-link);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.auth-card__support a:hover {
+  text-decoration: underline;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .auth-card__spinner {
     animation: none;
@@ -6934,12 +7181,12 @@ html:has(.login-stage) {
     display: none;
   }
 
-  .login-topbar__links + .language-switch {
+  .login-topbar__links + .login-topbar__controls {
     border-left: 0;
     padding-left: 0;
   }
 
-  .login-topbar .language-switch {
+  .login-topbar__controls {
     margin-left: auto;
   }
 }
@@ -6952,15 +7199,62 @@ html:has(.login-stage) {
   align-items: start;
 }
 
+/* The preview button exists for narrow screens only, where the preview column is gone. */
+.login-page-editor__preview-open {
+  display: none;
+  justify-self: start;
+}
+
+.login-page-editor__preview-dialog {
+  width: min(360px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+
 @media (max-width: 900px) {
   .buyer-email-editor.login-page-editor {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .login-page-editor > aside {
+    display: none;
+  }
+
+  .login-page-editor__preview-open {
+    display: inline-flex;
   }
 }
 
 .login-page-editor > aside {
   position: sticky;
   top: 68px;
+}
+
+/* The support line is one or two sentences, not a description. */
+.login-page-editor__support .rich-text__surface .ProseMirror {
+  min-height: 4.5rem;
+}
+
+/* The sign-in / request-access form's own fields, set apart from the hero's. */
+.login-page-editor__card {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-muted);
+}
+
+.login-page-editor__card-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Sentence-case labels (the control capitalises every word by default). */
+.login-page-editor__screens .segmented-control__option {
+  text-transform: none;
 }
 
 .login-preview {
@@ -33363,6 +33657,13 @@ legend.analytics-settings-dialog__label {
 
 .language-switch__peek > * {
   flex: none;
+}
+
+/* `reveal="end"`: left edges aligned, so the pill widens rightwards and leaves
+ * a neighbour on the left (the login top bar's theme switch) uncovered. */
+.language-switch--reveal-end .language-switch__peek {
+  right: auto;
+  left: 0;
 }
 
 .language-switch__peek .language-switch__chevron {

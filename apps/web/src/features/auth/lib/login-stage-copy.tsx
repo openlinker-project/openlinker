@@ -11,6 +11,7 @@
  */
 import type { ReactNode } from 'react';
 import { renderRich, type Messages, type ResolvedCopy } from '../../../shared/i18n';
+import { RichTextView } from '../../../shared/ui/rich-text-view';
 import type { LoginPageCopyOverrides } from '../../system';
 
 type LoginMessages = ResolvedCopy<Messages['login']>;
@@ -47,7 +48,7 @@ export interface LoginStageCopy {
     fine: string;
     errorTitle: string;
   } | null;
-  support: string | null;
+  support: ReactNode | null;
 }
 
 const DEMO_LINK_HREFS = {
@@ -57,6 +58,12 @@ const DEMO_LINK_HREFS = {
 } as const;
 
 const bold = (chunk: string): ReactNode => <span className="auth-card__mail">{chunk}</span>;
+
+const docsLink = (chunk: string): ReactNode => (
+  <a href={DEMO_LINK_HREFS.docs} target="_blank" rel="noreferrer">
+    {chunk}
+  </a>
+);
 
 export function buildDemoLoginCopy(messages: LoginMessages, locale: string): LoginStageCopy {
   const demo = messages.demo;
@@ -127,8 +134,8 @@ export function buildProductionLoginCopy(
     highlights: [],
     tabs: { ...prod.tabs },
     register: {
-      title: prod.register.title,
-      lead: prod.register.lead,
+      title: pick(overrides.registerTitle, prod.register.title),
+      lead: pick(overrides.registerSubtitle, prod.register.lead),
       submit: prod.register.submit,
       pending: prod.register.pending,
       sentTitle: prod.register.sentTitle,
@@ -143,6 +150,13 @@ export function buildProductionLoginCopy(
     },
     recorded: null,
     consent: null,
-    support: pick(overrides.support, prod.support),
+    // An admin's support line is rich text from the settings editor (sanitized
+    // again on render); the default links to the docs.
+    support:
+      overrides.support && overrides.support.trim() ? (
+        <RichTextView html={overrides.support} />
+      ) : (
+        renderRich(prod.support, { link: docsLink })
+      ),
   };
 }

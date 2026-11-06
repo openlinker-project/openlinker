@@ -53,6 +53,18 @@ export class LoginPageCopyInputDto {
   @ValidateIf((_, value) => value !== null)
   @IsString()
   support?: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: MAX.registerTitle })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  registerTitle?: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: MAX.registerSubtitle })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  registerSubtitle?: string | null;
 }
 
 export class UpdateLoginPageSettingsDto {

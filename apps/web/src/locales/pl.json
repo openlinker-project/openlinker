@@ -100,13 +100,13 @@
     },
     "production": {
       "headline": {
-        "accent": "Sklep Kasia",
-        "line1": "Panel sprzedaży"
+        "accent": "OpenLinker",
+        "line1": "Zaloguj się do"
       },
       "lead": "Zamówienia, wysyłki i faktury ze wszystkich Twoich kanałów sprzedaży.",
       "login": {
         "failed": "Login albo hasło są nieprawidłowe.",
-        "lead": "Konto zakłada administrator Twojej firmy.",
+        "lead": "W celu zalogowania się wypełnij formularz.",
         "pending": "Loguję...",
         "submit": "Zaloguj się",
         "title": "Zaloguj się"
@@ -120,7 +120,7 @@
         "submit": "Wyślij prośbę",
         "title": "Poproś o dostęp"
       },
-      "support": "Problem z logowaniem? Napisz do it@sklep-kasia.pl",
+      "support": "Masz problem? Sprawdź <link>dokumentację</link>.",
       "tabs": {
         "login": "Zaloguj się",
         "register": "Poproś o dostęp"
@@ -140,7 +140,7 @@
       "registerFailedTitle": "Nie udało się założyć konta",
       "show": "Pokaż",
       "showPw": "Pokaż hasło",
-      "signedInLead": "Otwieramy panel zamówień.",
+      "signedInLead": "Otwieramy panel OpenLinker.",
       "signedInTitle": "Zalogowano",
       "tabsLabel": "Logowanie lub rejestracja",
       "tracking": "Ta wizyta jest zapisywana w statystykach. Nie tworzymy na jej podstawie profilu osoby.",
@@ -188,16 +188,30 @@
         "hint": "Jedno lub dwa zdania o tym, do czego służy panel.",
         "label": "Opis pod nagłówkiem"
       },
+      "registerSubtitle": {
+        "hint": "Np. kto zatwierdza nowe konta.",
+        "label": "Podpis formularza prośby"
+      },
+      "registerTitle": {
+        "hint": "Nad polami prośby o dostęp.",
+        "label": "Tytuł formularza prośby"
+      },
       "support": {
-        "hint": "Pod formularzem. Podaj adres albo telefon, pod którym ktoś odpowie.",
+        "hint": "Pod formularzem logowania. Możesz dodać link do swojej strony pomocy, adres albo telefon.",
         "label": "Pomoc przy logowaniu"
       }
     },
+    "formCardTitle": "Formularz",
     "language": "Język tekstów",
     "loadError": "Nie udało się wczytać ustawień strony logowania.",
     "preview": "Podgląd",
+    "previewClose": "Zamknij",
     "previewHintEn": "Tak zobaczą to osoby logujące się po angielsku.",
     "previewHintPl": "Tak zobaczą to osoby logujące się po polsku.",
+    "previewLogin": "Logowanie",
+    "previewOpen": "Pokaż podgląd",
+    "previewRegister": "Prośba o dostęp",
+    "previewScreen": "Ekran",
     "registrationEnv": "Dopóki tu nie zapiszesz, decyduje zmienna OL_REGISTRATION_ENABLED.",
     "registrationHint": "Osoba bez konta wysyła prośbę. Zatwierdzasz ją w Użytkownikach, na karcie Pending.",
     "registrationLabel": "Prośby o dostęp",
@@ -207,7 +221,8 @@
     "saveError": "Nie udało się zapisać strony logowania.",
     "saved": "Zapisano. Nowe teksty są już na stronie logowania.",
     "saving": "Zapisuję...",
-    "tile": "Nagłówek, opis i pomoc przy logowaniu na stronie logowania.",
+    "screenHint": "Pola i podgląd pokazują wybrany ekran.",
+    "tile": "Nagłówek, teksty formularzy, pomoc przy logowaniu i prośby o dostęp.",
     "title": "Strona logowania",
     "tooLong": "Wpisz najwyżej {max} znaków.",
     "unsaved": "Masz niezapisane zmiany.",
@@ -483,6 +498,7 @@
       "original": "Oryginalny komunikat"
     },
     "theme": {
+      "current": "Motyw: {name}",
       "dark": "Ciemny",
       "label": "Motyw",
       "light": "Jasny",

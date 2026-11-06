@@ -11,7 +11,7 @@ export interface DemoIntegrations {
   posthog?: PosthogDemoIntegration;
 }
 
-/** The six login-page fields an admin may override on a real install (#4028). */
+/** The login-page fields an admin may override on a real install (#4028). */
 export const LoginPageCopyFieldValues = [
   'headline',
   'headlineAccent',
@@ -19,6 +19,8 @@ export const LoginPageCopyFieldValues = [
   'formTitle',
   'formSubtitle',
   'support',
+  'registerTitle',
+  'registerSubtitle',
 ] as const;
 export type LoginPageCopyField = (typeof LoginPageCopyFieldValues)[number];
 

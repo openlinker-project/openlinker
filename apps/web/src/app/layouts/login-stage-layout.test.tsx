@@ -154,9 +154,7 @@ describe('LoginStageLayout', () => {
     });
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 1 })).toHaveAccessibleName(
-      "Acme panel Kate's Shop"
-    );
+    expect(screen.getByRole('heading', { level: 1 })).toHaveAccessibleName('Acme panel OpenLinker');
   });
 
   it('should offer a request for access on a real install with registration on', async () => {

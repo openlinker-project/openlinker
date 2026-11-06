@@ -96,13 +96,13 @@
     },
     "production": {
       "headline": {
-        "accent": "Kate's Shop",
-        "line1": "Sales panel"
+        "accent": "OpenLinker",
+        "line1": "Sign in to"
       },
       "lead": "Orders, shipments and invoices from every channel you sell on.",
       "login": {
         "failed": "The username or password is wrong.",
-        "lead": "Your company's administrator creates your account.",
+        "lead": "Fill in the form to sign in.",
         "pending": "Signing in...",
         "submit": "Sign in",
         "title": "Sign in"
@@ -116,7 +116,7 @@
         "submit": "Send request",
         "title": "Request access"
       },
-      "support": "Trouble signing in? Write to it@kates-shop.com",
+      "support": "Having trouble? Check the <link>documentation</link>.",
       "tabs": {
         "login": "Sign in",
         "register": "Request access"
@@ -136,7 +136,7 @@
       "registerFailedTitle": "Couldn't create the account",
       "show": "Show",
       "showPw": "Show password",
-      "signedInLead": "Opening your orders.",
+      "signedInLead": "Opening OpenLinker.",
       "signedInTitle": "Signed in",
       "tabsLabel": "Sign in or create an account",
       "tracking": "This visit is counted in our statistics. No personal profile is built from it.",
@@ -184,16 +184,30 @@
         "hint": "One or two sentences about what the panel is for.",
         "label": "Text under the headline"
       },
+      "registerSubtitle": {
+        "hint": "For example, who approves new accounts.",
+        "label": "Request form subtitle"
+      },
+      "registerTitle": {
+        "hint": "Above the request-access fields.",
+        "label": "Request form title"
+      },
       "support": {
-        "hint": "Below the form. Give an address or phone number where someone will answer.",
+        "hint": "Below the sign-in form. You can add a link to your help page, an address or a phone number.",
         "label": "Sign-in help"
       }
     },
+    "formCardTitle": "Form",
     "language": "Text language",
     "loadError": "Couldn't load the login page settings.",
     "preview": "Preview",
+    "previewClose": "Close",
     "previewHintEn": "This is what people signing in in English will see.",
     "previewHintPl": "This is what people signing in in Polish will see.",
+    "previewLogin": "Sign in",
+    "previewOpen": "Show preview",
+    "previewRegister": "Request access",
+    "previewScreen": "Screen",
     "registrationEnv": "Until you save here, the OL_REGISTRATION_ENABLED variable decides.",
     "registrationHint": "Someone without an account sends a request. You approve it in Users, on the Pending tab.",
     "registrationLabel": "Requests for access",
@@ -203,7 +217,8 @@
     "saveError": "Couldn't save the login page.",
     "saved": "Saved. The new text is live on the login page.",
     "saving": "Saving...",
-    "tile": "Headline, text and sign-in help on the login page.",
+    "screenHint": "The fields and the preview follow the chosen screen.",
+    "tile": "Headline, form text, sign-in help and requests for access.",
     "title": "Login page",
     "tooLong": "Use at most {max} characters.",
     "unsaved": "You have unsaved changes.",
@@ -459,6 +474,7 @@
       "original": "Original message"
     },
     "theme": {
+      "current": "Theme: {name}",
       "dark": "Dark",
       "label": "Theme",
       "light": "Light",

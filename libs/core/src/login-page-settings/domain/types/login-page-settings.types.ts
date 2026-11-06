@@ -18,6 +18,8 @@ export const LoginPageCopyFieldValues = [
   'formTitle',
   'formSubtitle',
   'support',
+  'registerTitle',
+  'registerSubtitle',
 ] as const;
 export type LoginPageCopyField = (typeof LoginPageCopyFieldValues)[number];
 
@@ -68,7 +70,10 @@ export const LOGIN_PAGE_COPY_MAX_LENGTH: Record<LoginPageCopyField, number> = {
   lead: 280,
   formTitle: 60,
   formSubtitle: 140,
-  support: 200,
+  // Rich text (a link to the operator's own help page), so room for its markup.
+  support: 500,
+  registerTitle: 60,
+  registerSubtitle: 140,
 };
 
 const ENV_FIELD_SEGMENT: Record<LoginPageCopyField, string> = {
@@ -78,6 +83,8 @@ const ENV_FIELD_SEGMENT: Record<LoginPageCopyField, string> = {
   formTitle: 'FORM_TITLE',
   formSubtitle: 'FORM_SUBTITLE',
   support: 'SUPPORT',
+  registerTitle: 'REGISTER_TITLE',
+  registerSubtitle: 'REGISTER_SUBTITLE',
 };
 
 /** `OL_LOGIN_{FIELD}_{LOCALE}`, e.g. `OL_LOGIN_FORM_TITLE_PL`. */

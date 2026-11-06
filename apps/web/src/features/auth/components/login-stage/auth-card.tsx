@@ -440,7 +440,7 @@ export function AuthCard({
           </form>
           <FailureAlert title={ui.loginFailedTitle} message={loginFailed} />
           {copy.support ? (
-            <p className="auth-card__fine auth-card__support">{copy.support}</p>
+            <div className="auth-card__fine auth-card__support">{copy.support}</div>
           ) : null}
         </StackView>
 

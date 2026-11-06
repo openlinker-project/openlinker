@@ -16,6 +16,8 @@ export class LoginPageCopyOverridesDto {
   @ApiPropertyOptional() formTitle?: string;
   @ApiPropertyOptional() formSubtitle?: string;
   @ApiPropertyOptional() support?: string;
+  @ApiPropertyOptional() registerTitle?: string;
+  @ApiPropertyOptional() registerSubtitle?: string;
 }
 
 export class LoginPageCopyDto {

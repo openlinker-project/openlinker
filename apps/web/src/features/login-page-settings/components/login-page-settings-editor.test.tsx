@@ -17,6 +17,8 @@ const defaults = {
   formTitle: field(null, 'default'),
   formSubtitle: field(null, 'default'),
   support: field(null, 'default'),
+  registerTitle: field(null, 'default'),
+  registerSubtitle: field(null, 'default'),
 };
 
 const VIEW: LoginPageSettingsView = {
@@ -32,6 +34,8 @@ const VIEW: LoginPageSettingsView = {
     formTitle: 60,
     formSubtitle: 140,
     support: 200,
+    registerTitle: 60,
+    registerSubtitle: 140,
   },
   updatedAt: null,
   updatedBy: null,
@@ -48,9 +52,12 @@ function renderEditor(): ReturnType<typeof createMockApiClient> {
 describe('LoginPageSettingsEditor', () => {
   afterEach(cleanup);
 
-  it('should show an env value as the placeholder of an empty field', () => {
+  it('should show an env value as the placeholder of an empty field', async () => {
     renderEditor();
-    expect(screen.getByLabelText('Sign-in help')).toHaveAttribute('placeholder', 'it@acme.test');
+    // The support line is a rich-text editor; its placeholder sits on the empty paragraph.
+    await waitFor(() =>
+      expect(document.querySelector('[data-placeholder="it@acme.test"]')).not.toBeNull()
+    );
     expect(screen.getByLabelText('Headline')).toHaveValue('');
   });
 
@@ -97,5 +104,14 @@ describe('LoginPageSettingsEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByText('Use at most 60 characters.')).toBeInTheDocument();
     expect(apiClient.loginPageSettings.update).not.toHaveBeenCalled();
+  });
+
+  it('should list the request-access fields when that screen is chosen', () => {
+    renderEditor();
+    expect(screen.queryByRole('radiogroup', { name: 'Screen' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Show a “Request access” tab on the login page'));
+    fireEvent.click(screen.getByRole('radio', { name: 'Request access' }));
+    expect(screen.getByLabelText('Request form title')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Form title')).not.toBeInTheDocument();
   });
 });

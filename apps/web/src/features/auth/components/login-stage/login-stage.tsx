@@ -15,6 +15,7 @@
 import { motion } from 'motion/react';
 import { useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import { AuthCard, type AuthCardProps } from './auth-card';
+import { LoginGlow } from './login-glow';
 import { LoginHero } from './login-hero';
 import { LOGIN_STAGE_EASE } from './login-stage-motion';
 import { LoginTopBar } from './login-top-bar';
@@ -52,6 +53,7 @@ export function LoginStage({
     <div className={classes}>
       {background ? <div className="login-stage__bg">{background}</div> : null}
       <div className="login-stage__wash" aria-hidden="true" />
+      <LoginGlow />
       <LoginTopBar bar={card.copy.bar} />
       <div className="login-stage__inner">
         <LoginHero copy={card.copy} />

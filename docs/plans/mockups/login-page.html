@@ -1912,8 +1912,6 @@ html[data-density='compact'] .status-badge{
 @keyframes bg-drift { from { transform: scale(1) translate3d(0, 0, 0); } to { transform: scale(1.05) translate3d(-1.5%, -1%, 0); } }
 @media (prefers-reduced-motion: reduce) { .bg-app__drift { animation:none; } }
 .stage__wash { position:absolute; inset:0; z-index:-1; pointer-events:none; background:
-  radial-gradient(65% 80% at 0% 100%, color-mix(in oklab, var(--accent-primary) 26%, transparent), transparent 62%),
-  radial-gradient(55% 60% at 100% 0%, color-mix(in oklab, var(--accent-primary) 12%, transparent), transparent 60%),
   linear-gradient(90deg, color-mix(in oklab, var(--bg-canvas) 94%, transparent) 0%, color-mix(in oklab, var(--bg-canvas) 78%, transparent) 42%, color-mix(in oklab, var(--bg-canvas) 50%, transparent) 100%); }
 .stage__inner { flex:1; width:100%; box-sizing:border-box; max-width:1240px; margin:0 auto; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,440px); gap:72px; align-items:center; padding-block:24px; padding-left:max(32px, env(safe-area-inset-left, 0px)); padding-right:max(32px, env(safe-area-inset-right, 0px)); }
 .hero { display:grid; gap:26px; max-width:620px; align-self:center; }
@@ -1992,6 +1990,7 @@ html[data-density='compact'] .status-badge{
   pointer-events: none;
   transition: opacity var(--duration-fast) var(--ease-out) 80ms;
 }
+.language-switch--reveal-end .language-switch__peek{ right:auto; left:0; }
 .language-switch__peek > *{
   flex: none;
 }
@@ -2214,13 +2213,32 @@ html[data-density='compact'] .status-badge{
 .topbar__links a { color:var(--text-secondary); font-size:.8125rem; font-weight:500; text-decoration:none; padding:5px 9px; border-radius:7px; transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out); }
 .topbar__links a:hover { color:var(--text-primary); background:transparent; }
 .topbar__links a:focus-visible { outline:none; box-shadow:var(--shadow-focus); }
-.topbar__links + .language-switch { margin-left:6px; padding-left:12px; border-left:1px solid var(--border-default); }
+.topbar__links + .topbar__controls { margin-left:6px; padding-left:12px; border-left:1px solid var(--border-default); }
+.topbar__controls { display:inline-flex; align-items:center; gap:8px; flex:none; }
+.theme-switch__icon-wrap { display:inline-grid; place-items:center; width:22px; height:15px; color:var(--text-secondary); }
+.language-switch__option[aria-selected='true'] .theme-switch__icon-wrap, .language-switch__peek .theme-switch__icon-wrap { color:var(--text-primary); }
+.theme-switch__icon { display:block; width:15px; height:15px; }
+.language-switch__popover.theme-switch__popover { width:216px; padding-bottom:6px; }
+.theme-switch__control { margin:0 2px; }
+.theme-switch__segments { position:relative; display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:2px; padding:3px; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--bg-surface-muted); }
+.theme-switch__segment, .theme-switch__segment:hover, .theme-switch__segment:active { position:relative; display:grid; place-items:center; width:auto; height:34px; padding:0; border:0; border-radius:7px; background:transparent; box-shadow:none; color:var(--text-muted); cursor:pointer; transition:color var(--duration-normal) var(--ease-out); }
+.theme-switch__segment:hover { color:var(--text-primary); }
+.theme-switch__segment:focus-visible { outline:none; box-shadow:var(--shadow-focus); }
+.theme-switch__thumb { position:absolute; inset:0; border-radius:7px; background:var(--bg-surface); box-shadow:0 1px 2px rgb(15 18 26 / 0.08), 0 0 0 1px var(--border-default); }
+.theme-switch__segment-icon { position:relative; z-index:1; display:grid; place-items:center; }
+.theme-switch__segment[aria-checked='true'] .theme-switch__segment-icon { color:var(--accent-primary); }
+.theme-switch__segment .theme-switch__icon { width:16px; height:16px; }
+.theme-switch__caption { overflow:hidden; font-size:11px; font-weight:500; line-height:22px; color:var(--text-muted); }
+.theme-switch__names { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:2px; padding:4px 4px 0; }
+.theme-switch__name { overflow:hidden; text-align:center; text-overflow:ellipsis; white-space:nowrap; transition:color var(--duration-normal) var(--ease-out); }
+.theme-switch__name[data-state='active'] { color:var(--text-secondary); }
+.theme-switch__name[data-state='pointed'] { color:var(--text-primary); }
 .topbar__spacer { flex:1; }
 @media (max-width: 960px) {
   .topbar__links a:not(:last-child) { display:none; }
 }
 @media (prefers-reduced-motion: reduce) { .topbar__dot::after { animation:none; } }
-@media (max-width: 600px) { .topbar__links { display:none; } .topbar__links + .language-switch, .topbar__text + .topbar__links + .language-switch { border-left:0; padding-left:0; } .topbar .language-switch { margin-left:auto; } }
+@media (max-width: 600px) { .topbar__links { display:none; } .topbar__links + .topbar__controls { border-left:0; padding-left:0; } .topbar__controls { margin-left:auto; } }
 
 textarea,
 .textarea{
@@ -2440,15 +2458,40 @@ textarea,
 .login-page-editor { grid-template-columns:minmax(0,5fr) minmax(0,6fr); align-items:start; }
 @media (max-width: 900px) { .login-page-editor { grid-template-columns:minmax(0,1fr); } }
 .login-page-editor > aside { position:sticky; top:68px; }
+.login-page-editor__screens .segmented-control__option { text-transform:none; }
+.login-page-editor__preview-open { display:none; justify-self:start; }
+@media (max-width: 900px) { .login-page-editor > aside { display:none; } .login-page-editor__preview-open { display:inline-flex; } }
+.mock-dialog__overlay { position:fixed; inset:0; z-index:60; display:grid; place-items:center; padding:16px; background:rgb(10 12 16 / .45); }
+.mock-dialog { width:min(360px, 100%); max-height:calc(100dvh - 32px); overflow-y:auto; padding:20px; border-radius:var(--radius-xl); background:var(--bg-surface); box-shadow:var(--shadow-overlay); }
+.mock-dialog__title { margin:0 0 12px; font-size:1rem; }
+.mock-dialog__footer { display:flex; justify-content:flex-end; margin-top:12px; }
+.mini-rich { border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--bg-surface); }
+.mini-rich__toolbar { display:flex; gap:2px; padding:4px; border-bottom:1px solid var(--border-subtle); background:var(--bg-surface-muted); border-radius:var(--radius-md) var(--radius-md) 0 0; }
+.mini-rich__tool { width:28px; height:26px; padding:0; border:0; border-radius:6px; background:transparent; color:var(--text-secondary); font:inherit; font-size:12px; cursor:pointer; }
+.mini-rich__tool:hover { background:var(--bg-surface-hover); color:var(--text-primary); }
+.mini-rich__surface { min-height:4.5rem; padding:10px 14px; font-size:.875rem; line-height:1.6; outline:none; }
+.mini-rich__surface:empty::before { content:attr(data-placeholder); color:var(--text-muted); }
+.mini-rich__surface a, .support a { color:var(--text-link); font-weight:600; }
 .login-preview { position:relative; width:100%; min-width:0; overflow:hidden; border-radius:10px; border:1px solid var(--border-default); background:var(--bg-canvas); }
 .admin-view .shell { min-height:calc(100dvh - 72px); }
 body:has([data-bare]) .admin-view .shell { min-height:100dvh; }
 
 .support { margin-top:20px; padding-top:16px; border-top:1px solid var(--border-subtle); font-size:.8125rem; }
-.stage--gradient .stage__wash { background:
-  radial-gradient(70% 90% at 0% 100%, color-mix(in oklab, var(--accent-primary) 22%, transparent), transparent 62%),
-  radial-gradient(50% 60% at 100% 0%, color-mix(in oklab, var(--accent-primary) 10%, transparent), transparent 60%),
-  var(--bg-canvas); }
+.stage--gradient .stage__wash { background:var(--bg-canvas); }
+/* Login glow: 1:1 with apps/web/src/index.css (login-glow.tsx). */
+.login-glow { position:absolute; inset:0; z-index:-1; overflow:hidden; pointer-events:none; }
+.login-glow::after { content:''; position:absolute; inset:0; opacity:.045; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+.login-glow__lean { position:absolute; will-change:transform; }
+.login-glow__lean--a { left:-32%; bottom:-46%; width:92%; height:120%; }
+.login-glow__lean--b { right:3%; top:14%; width:44%; height:76%; }
+.login-glow__orb { width:100%; height:100%; border-radius:50%; will-change:transform, opacity; animation:login-glow-breathe 14s ease-in-out infinite alternate;
+  background:radial-gradient(closest-side, var(--glow) 0%, color-mix(in oklab, var(--glow) 82%, transparent) 16%, color-mix(in oklab, var(--glow) 56%, transparent) 36%, color-mix(in oklab, var(--glow) 30%, transparent) 56%, color-mix(in oklab, var(--glow) 12%, transparent) 74%, color-mix(in oklab, var(--glow) 3%, transparent) 88%, transparent 100%); }
+.login-glow__orb--a { --glow:color-mix(in oklab, var(--accent-primary) 30%, transparent); }
+.login-glow__orb--b { --glow:color-mix(in oklab, var(--accent-primary) 16%, transparent); animation-duration:18s; animation-delay:-6s; }
+.stage--gradient .login-glow__orb--a { --glow:color-mix(in oklab, var(--accent-primary) 26%, transparent); }
+@keyframes login-glow-breathe { 0% { transform:scale(1); opacity:.9; } 100% { transform:scale(1.05); opacity:1; } }
+.login-glow--still .login-glow__orb { animation:none; }
+@media (prefers-reduced-motion: reduce) { .login-glow__orb { animation:none; } }
 /* Mockup-only switcher: not part of the page. */
 .mock-modes { display:flex; align-items:center; gap:4px; flex-wrap:wrap; padding-block:6px; padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); background:oklch(20% 0.012 270); color:oklch(80% 0.01 270); font-size:.75rem; }
 .mock-modes__label { margin-right:8px; text-transform:uppercase; letter-spacing:.08em; font-weight:600; opacity:.7; }
@@ -2496,6 +2539,8 @@ body:has([data-bare]) .admin-view .shell { min-height:100dvh; }
 .redirect > span { display:block; height:100%; background:var(--accent-primary); transform-origin:left; }
 .row-end { display:flex; gap:8px; justify-content:flex-end; margin-top:24px; }
 .fine { margin-top:12px; font-size:.75rem; color:var(--text-muted); }
+.support a { color:var(--text-link); font-weight:600; text-decoration:none; }
+.support a:hover { text-decoration:underline; }
 
 @media (prefers-reduced-motion: reduce) { .spinner { animation:none; } }
 </style>
@@ -2517,6 +2562,36 @@ const motion = M && M.motion ? M.motion : new Proxy({}, { get: (_, tag) => forwa
 const AnimatePresence = M && M.AnimatePresence ? M.AnimatePresence : ({ children }) => children;
 const MotionConfig = M && M.MotionConfig ? M.MotionConfig : ({ children }) => children;
 const useReducedMotion = M && M.useReducedMotion ? M.useReducedMotion : () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ── LoginGlow: 1:1 port of apps/web/src/features/auth/components/login-stage/login-glow.tsx. */
+const GLOW_FOLLOW = { stiffness: 30, damping: 20, mass: 1 };
+const GLOW_ORBS = [
+  { key: 'a', depth: { x: 14, y: 10 } },
+  { key: 'b', depth: { x: -8, y: -6 } },
+];
+function GlowOrb({ name, depth, px, py }) {
+  const x = M.useTransform(px, (v) => v * depth.x);
+  const y = M.useTransform(py, (v) => v * depth.y);
+  return <motion.div className={`login-glow__lean login-glow__lean--${name}`} style={{ x, y }}><div className={`login-glow__orb login-glow__orb--${name}`} /></motion.div>;
+}
+function LoginGlow() {
+  const still = (M.useReducedMotionConfig ? M.useReducedMotionConfig() : false) ?? false;
+  const rawX = M.useMotionValue(0); const rawY = M.useMotionValue(0);
+  const px = M.useSpring(rawX, GLOW_FOLLOW); const py = M.useSpring(rawY, GLOW_FOLLOW);
+  useEffect(() => {
+    if (still || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return undefined;
+    const onMove = (e) => { rawX.set((e.clientX / window.innerWidth) * 2 - 1); rawY.set((e.clientY / window.innerHeight) * 2 - 1); };
+    const onLeave = () => { rawX.set(0); rawY.set(0); };
+    window.addEventListener('pointermove', onMove, { passive: true });
+    document.documentElement.addEventListener('pointerleave', onLeave);
+    return () => { window.removeEventListener('pointermove', onMove); document.documentElement.removeEventListener('pointerleave', onLeave); };
+  }, [still, rawX, rawY]);
+  return (
+    <div className={['login-glow', still ? 'login-glow--still' : ''].filter(Boolean).join(' ')} aria-hidden="true">
+      {GLOW_ORBS.map((o) => <GlowOrb key={o.key} name={o.key} depth={o.depth} px={px} py={py} />)}
+    </div>
+  );
+}
 
 const EASE = [0.22, 1, 0.36, 1];
 const SPRING = { type: 'spring', bounce: 0, visualDuration: 0.3 };
@@ -2984,7 +3059,7 @@ function popoverPosition(trigger, down) {
 const indexOfLang = (code) => Math.max(0, LANGUAGE_OPTIONS.findIndex((o) => o.code === code));
 const stepLang = (from, dir) => (from + dir + LANGUAGE_OPTIONS.length) % LANGUAGE_OPTIONS.length;
 
-function LanguageSwitch({ placement = 'up', className, locale, setLocale }) {
+function LanguageSwitch({ placement = 'up', reveal = 'start', className, locale, setLocale }) {
   const copy = LANG_SWITCH_COPY[locale];
   const [open, setOpen] = useState(false);
   const [betaHint, setBetaHint] = useState(false);
@@ -3037,7 +3112,7 @@ function LanguageSwitch({ placement = 'up', className, locale, setLocale }) {
     else if (event.key === 'Tab') { event.preventDefault(); close(); }
   }
 
-  const classes = ['language-switch', open ? 'is-open' : '', className].filter(Boolean).join(' ');
+  const classes = ['language-switch', reveal === 'end' ? 'language-switch--reveal-end' : '', open ? 'is-open' : '', className].filter(Boolean).join(' ');
   const chevron = (
     <path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
   );
@@ -3142,6 +3217,142 @@ function FitText({ className, children }) {
   );
 }
 
+/* ── ThemeSwitch: 1:1 port of apps/web/src/shared/ui/theme-switch.tsx (same classes as the
+   LanguageSwitch for the pill, peek and popover, so the two read as a pair). Only the wiring
+   differs: the page's theme lives on <html data-theme> instead of the app's ThemeContext. */
+const THEME_COPY = {
+  pl: { label: 'Motyw', current: 'Motyw: {name}', light: 'Jasny', dark: 'Ciemny', system: 'Systemowy' },
+  en: { label: 'Theme', current: 'Theme: {name}', light: 'Light', dark: 'Dark', system: 'System' },
+};
+const THEME_OPTIONS = ['light', 'dark', 'system'];
+const THEME_POPOVER_WIDTH = 216;
+const THUMB_SPRING = { type: 'spring', bounce: 0.18, visualDuration: 0.32 };
+const CAPTION_VARIANTS = { hidden: { opacity: 0, y: 3, filter: 'blur(3px)' }, shown: { opacity: 1, y: 0, filter: 'blur(0px)' } };
+function themePopoverPosition(trigger, down) {
+  const half = THEME_POPOVER_WIDTH / 2;
+  const centre = trigger.left + trigger.width / 2;
+  const left = Math.min(Math.max(centre, GAP + half), window.innerWidth - GAP - half);
+  return down ? { left, top: trigger.bottom + GAP } : { left, bottom: window.innerHeight - trigger.top + GAP };
+}
+function ThemeIcon({ theme }) {
+  return (
+    <svg className="theme-switch__icon" viewBox="0 0 16 16" aria-hidden="true">
+      {theme === 'light' ? (
+        <><circle cx="8" cy="8" r="3" fill="currentColor" /><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></>
+      ) : theme === 'dark' ? (
+        <path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1Z" fill="currentColor" />
+      ) : (
+        <><rect x="1.75" y="2.75" width="12.5" height="8.5" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M5.5 13.75h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></>
+      )}
+    </svg>
+  );
+}
+function ThemeSwitch({ placement = 'down', locale }) {
+  const copy = THEME_COPY[locale];
+  const [theme, setThemeState] = useState(() => document.documentElement.dataset.theme || 'system');
+  const setTheme = (next) => { if (next === 'system') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = next; setThemeState(next); };
+  const [open, setOpen] = useState(false);
+  const down = placement === 'down';
+  const rootRef = useRef(null); const triggerRef = useRef(null); const popoverRef = useRef(null); const segmentRefs = useRef([]);
+  const [position, setPosition] = useState({});
+  const [pointing, setPointing] = useState(null);
+  const [keyboard, setKeyboard] = useState(false);
+  const groupId = useId(); const headId = useId();
+  const activeIndex = Math.max(0, THEME_OPTIONS.indexOf(theme));
+  const activeIndexRef = useRef(activeIndex); activeIndexRef.current = activeIndex;
+  useEffect(() => {
+    if (!open) { setPointing(null); setKeyboard(false); return undefined; }
+    const onPointerDown = (e) => { if (rootRef.current?.contains(e.target) || popoverRef.current?.contains(e.target)) return; setOpen(false); };
+    const place = () => { if (triggerRef.current) setPosition(themePopoverPosition(triggerRef.current.getBoundingClientRect(), down)); };
+    document.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('resize', place); window.addEventListener('scroll', place, true);
+    const frame = requestAnimationFrame(() => segmentRefs.current[activeIndexRef.current]?.focus());
+    return () => { document.removeEventListener('pointerdown', onPointerDown); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); cancelAnimationFrame(frame); };
+  }, [open, down]);
+  const close = () => { setOpen(false); triggerRef.current?.focus(); };
+  const toggle = () => { if (!open && triggerRef.current) setPosition(themePopoverPosition(triggerRef.current.getBoundingClientRect(), down)); setOpen((v) => !v); };
+  const onKeyDown = (e) => {
+    const n = THEME_OPTIONS.length;
+    const move = (to) => { const next = THEME_OPTIONS[(to + n) % n]; setTheme(next); segmentRefs.current[THEME_OPTIONS.indexOf(next)]?.focus(); };
+    if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); close(); }
+    else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); move(activeIndex + 1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); move(activeIndex - 1); }
+  };
+  const revealed = pointing !== null || keyboard;
+  const chevron = <path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />;
+  return (
+    <div className={['language-switch', 'theme-switch', open ? 'is-open' : ''].filter(Boolean).join(' ')} ref={rootRef}>
+      <button ref={triggerRef} type="button" className="language-switch__trigger" aria-haspopup="dialog" aria-expanded={open}
+        aria-controls={open ? groupId : undefined} aria-label={interpolate(copy.current, { name: copy[theme] })} onClick={toggle}>
+        <span className="language-switch__flag-wrap theme-switch__icon-wrap">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span key={theme} className="language-switch__flag-face"
+              initial={{ rotate: -90, scale: 0.6, opacity: 0 }} animate={{ rotate: 0, scale: 1, opacity: 1 }} exit={{ rotate: 90, scale: 0.6, opacity: 0 }}
+              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}>
+              <ThemeIcon theme={theme} />
+            </motion.span>
+          </AnimatePresence>
+        </span>
+        <motion.svg className="language-switch__chevron" viewBox="0 0 10 10" aria-hidden="true" animate={{ rotate: open !== down ? 180 : 0 }} transition={LS_SPRING}>{chevron}</motion.svg>
+      </button>
+      <span className="language-switch__peek" aria-hidden="true" style={{ '--peek-chevron': down ? '180deg' : '0deg' }}>
+        <span className="theme-switch__icon-wrap"><ThemeIcon theme={theme} /></span>
+        <span className="language-switch__reveal"><span className="language-switch__reveal-clip"><span className="language-switch__reveal-name">{copy[theme]}</span></span></span>
+        <svg className="language-switch__chevron" viewBox="0 0 10 10">{chevron}</svg>
+      </span>
+      {ReactDOM.createPortal(
+        <AnimatePresence>
+          {open ? (
+            <motion.div ref={popoverRef} style={position}
+              className={['language-switch__popover', 'theme-switch__popover', down ? 'language-switch__popover--down' : ''].filter(Boolean).join(' ')}
+              initial={{ opacity: 0, scale: 0.92, x: '-50%', y: down ? -6 : 6, filter: 'blur(4px)' }}
+              animate={{ opacity: 1, scale: 1, x: '-50%', y: 0, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, scale: 0.96, x: '-50%', y: down ? -4 : 4, filter: 'blur(2px)', transition: { duration: 0.12 } }}
+              transition={LS_SPRING}>
+              <div className="language-switch__head" id={headId}>{copy.label}</div>
+              <div className="theme-switch__control" onPointerLeave={() => setPointing(null)}
+                onFocus={(e) => setKeyboard(e.target.matches(':focus-visible'))} onBlur={() => setKeyboard(false)}>
+                <div id={groupId} className="theme-switch__segments" role="radiogroup" aria-labelledby={headId} onKeyDown={onKeyDown}>
+                  {THEME_OPTIONS.map((v, index) => {
+                    const selected = v === theme;
+                    return (
+                      <button key={v} ref={(el) => { segmentRefs.current[index] = el; }} type="button" role="radio" aria-checked={selected}
+                        tabIndex={selected ? 0 : -1} aria-label={copy[v]} className="theme-switch__segment"
+                        onPointerEnter={() => setPointing(index)} onClick={() => setTheme(v)}>
+                        {selected ? <motion.span className="theme-switch__thumb" layoutId={`${groupId}-thumb`} transition={THUMB_SPRING} /> : null}
+                        <motion.span className="theme-switch__segment-icon" animate={selected ? { scale: 1, rotate: 0 } : { scale: 0.86, rotate: 0 }}
+                          whileTap={{ scale: 0.8, rotate: v === 'light' ? 45 : -20 }} transition={LS_SPRING}>
+                          <ThemeIcon theme={v} />
+                        </motion.span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <AnimatePresence initial={false}>
+                  {revealed ? (
+                    <motion.div key="caption" className="theme-switch__caption" aria-hidden="true"
+                      initial={{ height: 0 }} animate={{ height: 26 }} exit={{ height: 0 }} transition={LS_SPRING}>
+                      <motion.div className="theme-switch__names" initial="hidden" animate="shown" exit="hidden"
+                        variants={{ shown: { transition: { staggerChildren: 0.035 } }, hidden: { transition: { staggerChildren: 0.02, staggerDirection: -1 } } }}>
+                        {THEME_OPTIONS.map((v, index) => (
+                          <motion.span key={v} className="theme-switch__name"
+                            data-state={index === pointing ? 'pointed' : v === theme ? 'active' : undefined}
+                            variants={CAPTION_VARIANTS} transition={LS_SPRING}>{copy[v]}</motion.span>
+                        ))}
+                      </motion.div>
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
 /* ── Top bar: the one header for every mode. Demo adds what this place is and where to go next;
    a real install shows only the brand and the language. */
 function TopBar({ demo, locale, setLocale }) {
@@ -3161,7 +3372,10 @@ function TopBar({ demo, locale, setLocale }) {
             </nav>
           </>
         ) : <span className="topbar__spacer" />}
-        <LanguageSwitch placement="down" locale={locale} setLocale={setLocale} />
+        <span className="topbar__controls">
+          <ThemeSwitch placement="down" locale={locale} />
+          <LanguageSwitch placement="down" reveal="end" locale={locale} setLocale={setLocale} />
+        </span>
       </div>
     </header>
   );
@@ -3181,7 +3395,7 @@ const UI = {
     username: 'Nazwa użytkownika', usernameOrEmail: 'Nazwa użytkownika lub e-mail', email: 'E-mail', password: 'Hasło',
     confirm: 'Powtórz hasło', min8: 'min. 8 znaków', forgot: 'Nie pamiętasz hasła?', show: 'Pokaż', hide: 'Ukryj',
     showPw: 'Pokaż hasło', hidePw: 'Ukryj hasło', usernamePh: 'np. sklep-kasia', emailPh: 'kasia@twojsklep.pl',
-    loginFailedTitle: 'Nie udało się zalogować', signedInTitle: 'Zalogowano', signedInLead: 'Otwieramy panel zamówień.',
+    loginFailedTitle: 'Nie udało się zalogować', signedInTitle: 'Zalogowano', signedInLead: 'Otwieramy panel OpenLinker.',
     mockBack: 'Makieta: wróć do formularza', tabsLabel: 'Logowanie lub rejestracja', language: 'Język',
     tracking: 'Ta wizyta jest zapisywana w statystykach. Nie tworzymy na jej podstawie profilu osoby.',
     v: {
@@ -3195,7 +3409,7 @@ const UI = {
     username: 'Username', usernameOrEmail: 'Username or email', email: 'Email', password: 'Password',
     confirm: 'Repeat password', min8: 'at least 8 characters', forgot: 'Forgot your password?', show: 'Show', hide: 'Hide',
     showPw: 'Show password', hidePw: 'Hide password', usernamePh: 'e.g. kates-shop', emailPh: 'kate@yourshop.com',
-    loginFailedTitle: "Couldn't sign you in", signedInTitle: 'Signed in', signedInLead: 'Opening your orders.',
+    loginFailedTitle: "Couldn't sign you in", signedInTitle: 'Signed in', signedInLead: 'Opening OpenLinker.',
     mockBack: 'Mockup: back to the form', tabsLabel: 'Sign in or create an account', language: 'Language',
     tracking: 'This visit is counted in our statistics. No personal profile is built from it.',
     v: {
@@ -3254,11 +3468,11 @@ const DEMO_COPY = {
   },
 };
 
-/* Defaults only. "Sklep Kasia" and the support line stand in for what an admin types in. */
+/* Defaults only: an admin can replace the headline, lead, form title and subtitle and the support line. */
 const PRODUCTION_COPY = {
   pl: {
     bar: null,
-    headline: { before: 'Panel sprzedaży', rotating: null, after: 'Sklep Kasia' },
+    headline: { before: 'Zaloguj się do', rotating: null, after: 'OpenLinker' },
     lead: 'Zamówienia, wysyłki i faktury ze wszystkich Twoich kanałów sprzedaży.',
     highlights: [],
     tabs: { register: 'Poproś o dostęp', login: 'Zaloguj się' },
@@ -3266,12 +3480,12 @@ const PRODUCTION_COPY = {
       title: 'Poproś o dostęp', lead: 'Administrator dostanie Twoją prośbę i aktywuje konto.', submit: 'Wyślij prośbę', pending: 'Wysyłam...',
       sentTitle: 'Prośba trafiła do administratora', sentLead: () => 'Gdy aktywuje Twoje konto, zalogujesz się tutaj tym samym loginem i hasłem.', sentAction: 'Wróć do logowania', recording: null,
     },
-    login: { title: 'Zaloguj się', lead: 'Konto zakłada administrator Twojej firmy.', submit: 'Zaloguj się', pending: 'Loguję...', failed: 'Login albo hasło są nieprawidłowe.' },
-    support: 'Problem z logowaniem? Napisz do it@sklep-kasia.pl',
+    login: { title: 'Zaloguj się', lead: 'W celu zalogowania się wypełnij formularz.', submit: 'Zaloguj się', pending: 'Loguję...', failed: 'Login albo hasło są nieprawidłowe.' },
+    support: 'Masz problem? Sprawdź <link>dokumentację</link>.',
   },
   en: {
     bar: null,
-    headline: { before: 'Sales panel', rotating: null, after: "Kate's Shop" },
+    headline: { before: 'Sign in to', rotating: null, after: 'OpenLinker' },
     lead: 'Orders, shipments and invoices from every channel you sell on.',
     highlights: [],
     tabs: { register: 'Request access', login: 'Sign in' },
@@ -3279,8 +3493,8 @@ const PRODUCTION_COPY = {
       title: 'Request access', lead: 'Your administrator gets the request and activates your account.', submit: 'Send request', pending: 'Sending...',
       sentTitle: 'Your request is with your administrator', sentLead: () => 'Once they activate your account, sign in here with the same username and password.', sentAction: 'Back to sign in', recording: null,
     },
-    login: { title: 'Sign in', lead: "Your company's administrator creates your account.", submit: 'Sign in', pending: 'Signing in...', failed: 'The username or password is wrong.' },
-    support: 'Trouble signing in? Write to it@kates-shop.com',
+    login: { title: 'Sign in', lead: 'Fill in the form to sign in.', submit: 'Sign in', pending: 'Signing in...', failed: 'The username or password is wrong.' },
+    support: 'Having trouble? Check the <link>documentation</link>.',
   },
 };
 
@@ -3508,7 +3722,7 @@ function AuthPanel({ preset, copy, showTrackingFootnote = false, onReserve, init
               ) : null}
             </AnimatePresence>
           </div>
-          {copy.support ? <p className="fine support">{copy.support}</p> : null}
+          {copy.support ? <div className="fine support">{supportLine(copy.support)}</div> : null}
         </View>
 
         {preset.demoMode ? (
@@ -3548,9 +3762,9 @@ function AuthPanel({ preset, copy, showTrackingFootnote = false, onReserve, init
    falls back to the default, so a fresh install is never left with a blank login page. */
 
 /* shared/ui/segmented-control.tsx (keyboard handling trimmed for the mockup) */
-function SegmentedControl({ options, value, onChange, ...rest }) {
+function SegmentedControl({ options, value, onChange, className = '', ...rest }) {
   return (
-    <div role="radiogroup" className="segmented-control" {...rest}>
+    <div role="radiogroup" className={['segmented-control', className].filter(Boolean).join(' ')} {...rest}>
       {options.map((o) => (
         <button key={o.value} type="button" role="radio" aria-checked={o.value === value} tabIndex={o.value === value ? 0 : -1}
           className={['segmented-control__option', o.value === value ? 'segmented-control__option--active' : ''].filter(Boolean).join(' ')}
@@ -3581,6 +3795,14 @@ function SettingsField({ label, name, description, children }) {
   );
 }
 
+/* The default support line links `<link>...</link>` to the docs; an admin's own line is plain text. */
+function supportLine(text) {
+  if (/<(p|a|strong|em|br)\b/.test(text)) return <div className="rich-text-view" dangerouslySetInnerHTML={{ __html: text }} />;
+  const m = /^([\s\S]*)<link>([\s\S]*?)<\/link>([\s\S]*)$/.exec(text);
+  if (!m) return text;
+  return <>{m[1]}<a href="https://docs.openlinker.io/" target="_blank" rel="noreferrer">{m[2]}</a>{m[3]}</>;
+}
+
 /* What an admin can override, per language. `read` takes the default from PRODUCTION_COPY. */
 const LOGIN_PAGE_FIELDS = [
   { key: 'headlineTop', read: (c) => c.headline.before },
@@ -3588,8 +3810,14 @@ const LOGIN_PAGE_FIELDS = [
   { key: 'lead', read: (c) => c.lead, multiline: true },
   { key: 'loginTitle', read: (c) => c.login.title },
   { key: 'loginLead', read: (c) => c.login.lead },
-  { key: 'support', read: (c) => c.support },
+  { key: 'support', read: (c) => c.support.replace(/<\/?\w+>/g, ''), rich: true },
+  { key: 'registerTitle', read: (c) => c.register.title },
+  { key: 'registerLead', read: (c) => c.register.lead },
 ];
+const SCREEN_FIELDS = {
+  login: ['headlineTop', 'headlineAccent', 'lead', 'loginTitle', 'loginLead', 'support'],
+  register: ['headlineTop', 'headlineAccent', 'lead', 'registerTitle', 'registerLead'],
+};
 
 function applyLoginOverrides(base, o = {}) {
   const pick = (k, fallback) => (o[k] && o[k].trim() ? o[k] : fallback);
@@ -3598,6 +3826,7 @@ function applyLoginOverrides(base, o = {}) {
     headline: { ...base.headline, before: pick('headlineTop', base.headline.before), after: pick('headlineAccent', base.headline.after) },
     lead: pick('lead', base.lead),
     login: { ...base.login, title: pick('loginTitle', base.login.title), lead: pick('loginLead', base.login.lead) },
+    register: { ...base.register, title: pick('registerTitle', base.register.title), lead: pick('registerLead', base.register.lead) },
     support: pick('support', base.support),
   };
 }
@@ -3615,8 +3844,12 @@ const ADMIN_COPY = {
       lead: ['Opis pod nagłówkiem', 'Jedno lub dwa zdania o tym, do czego służy panel.'],
       loginTitle: ['Tytuł formularza', 'Nad polami logowania.'],
       loginLead: ['Podpis formularza', 'Np. kto zakłada konta w Twojej firmie.'],
-      support: ['Pomoc przy logowaniu', 'Pod formularzem. Podaj adres albo telefon, pod którym ktoś odpowie.'],
+      support: ['Pomoc przy logowaniu', 'Pod formularzem logowania. Możesz dodać link do swojej strony pomocy, adres albo telefon.'],
+      registerTitle: ['Tytuł formularza prośby', 'Nad polami prośby o dostęp.'],
+      registerLead: ['Podpis formularza prośby', 'Np. kto zatwierdza nowe konta.'],
     },
+    screen: 'Ekran', screenHint: 'Pola i podgląd pokazują wybrany ekran strony logowania.', screenLogin: 'Logowanie', screenRegister: 'Prośba o dostęp',
+    previewOpen: 'Pokaż podgląd', previewClose: 'Zamknij', link: 'Dodaj lub edytuj link', linkTarget: 'Adres linku',
     emptyHint: 'Puste pole pokazuje tekst domyślny.',
     save: 'Zapisz', saving: 'Zapisuję...', saved: 'Zapisano. Nowe teksty są już na stronie logowania.', reset: 'Przywróć domyślne', cancel: 'Anuluj',
     preview: 'Podgląd', previewHint: 'Tak zobaczą to osoby logujące się po polsku.', previewHintEn: 'Tak zobaczą to osoby logujące się po angielsku.',
@@ -3634,8 +3867,12 @@ const ADMIN_COPY = {
       lead: ['Text under the headline', 'One or two sentences about what the panel is for.'],
       loginTitle: ['Form title', 'Above the sign-in fields.'],
       loginLead: ['Form subtitle', 'For example, who creates accounts at your company.'],
-      support: ['Sign-in help', 'Below the form. Give an address or phone number where someone will answer.'],
+      support: ['Sign-in help', 'Below the sign-in form. You can add a link to your help page, an address or a phone number.'],
+      registerTitle: ['Request form title', 'Above the request-access fields.'],
+      registerLead: ['Request form subtitle', 'For example, who approves new accounts.'],
     },
+    screen: 'Screen', screenHint: 'The fields and the preview follow the chosen screen of the login page.', screenLogin: 'Sign in', screenRegister: 'Request access',
+    previewOpen: 'Show preview', previewClose: 'Close', link: 'Add or edit link', linkTarget: 'Link address',
     emptyHint: 'An empty field shows the default text.',
     save: 'Save', saving: 'Saving...', saved: 'Saved. The new text is live on the login page.', reset: 'Restore defaults', cancel: 'Cancel',
     preview: 'Preview', previewHint: 'This is what people signing in in Polish will see.', previewHintEn: 'This is what people signing in in English will see.',
@@ -3644,17 +3881,18 @@ const ADMIN_COPY = {
 };
 
 /** Live preview of the real login page, scaled down and inert. */
-function LoginPreview({ copy, lang, canRegister = false }) {
+function LoginPreview({ copy, lang, canRegister = false, screen = 'login', phone = false }) {
   const boxRef = useRef(null);
   const [scale, setScale] = useState(0.4);
-  const W = 1180; const H = 700;
+  // On a phone the page takes its phone layout, so the modal frames it like a phone.
+  const W = phone ? 390 : 1180; const H = phone ? 920 : 820;
   useEffect(() => {
     const el = boxRef.current;
     if (!el) return undefined;
     const ro = new ResizeObserver(([e]) => setScale(e.contentRect.width / W));
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [W]);
   const preset = canRegister ? LOGIN_PRESETS.access : LOGIN_PRESETS.production;
   return (
     <div ref={boxRef} className="login-preview" style={{ height: H * scale }} aria-hidden="true" inert="">
@@ -3663,11 +3901,12 @@ function LoginPreview({ copy, lang, canRegister = false }) {
           <MotionConfig reducedMotion="always">
             <div className="stage stage--gradient" style={{ minHeight: H }}>
               <div className="stage__wash" />
+              <LoginGlow />
               <TopBar demo={null} locale={lang} setLocale={() => {}} />
               <div className="stage__inner">
                 <Hero copy={copy} />
                 <div className="auth-col">
-                  <section className="auth-card"><AuthPanel key={`${lang}:${canRegister}`} preset={preset} copy={copy} /></section>
+                  <section className="auth-card"><AuthPanel key={`${lang}:${canRegister}:${screen}`} preset={preset} copy={copy} initial={{ tab: canRegister ? screen : 'login' }} /></section>
                 </div>
               </div>
             </div>
@@ -3678,12 +3917,35 @@ function LoginPreview({ copy, lang, canRegister = false }) {
   );
 }
 
+/* Stands in for the app's RichTextEditor (Tiptap, ADR-046) on the support line: bold, italic, link. */
+function MiniRichText({ value, onChange, placeholder, linkLabel, linkTarget }) {
+  const ref = useRef(null);
+  useEffect(() => { if (ref.current) ref.current.innerHTML = value; }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const emit = () => { const html = ref.current.innerHTML; onChange(html.replace(/<[^>]*>/g, '').trim() ? html : ''); };
+  const run = (cmd, arg) => { ref.current.focus(); document.execCommand(cmd, false, arg); emit(); };
+  return (
+    <div className="mini-rich">
+      <div className="mini-rich__toolbar">
+        <button type="button" className="mini-rich__tool" aria-label="Bold" onMouseDown={(e) => { e.preventDefault(); run('bold'); }}><b>B</b></button>
+        <button type="button" className="mini-rich__tool" aria-label="Italic" onMouseDown={(e) => { e.preventDefault(); run('italic'); }}><i>I</i></button>
+        <button type="button" className="mini-rich__tool" aria-label={linkLabel} title={linkLabel}
+          onMouseDown={(e) => { e.preventDefault(); const href = window.prompt(linkTarget, 'https://'); if (href) run('createLink', href); }}>↗</button>
+      </div>
+      <div ref={ref} className="mini-rich__surface" contentEditable suppressContentEditableWarning data-placeholder={placeholder}
+        role="textbox" aria-multiline="true" onInput={emit} />
+    </div>
+  );
+}
+
 function LoginPageSettings({ uiLocale, saved, onSave }) {
   const ui = ADMIN_COPY[uiLocale];
   const [lang, setLang] = useState(uiLocale);
   const [draft, setDraft] = useState(saved);
   const [status, setStatus] = useState('idle'); // idle | saving | saved
   const [registration, setRegistration] = useState(false);
+  const [screenChoice, setScreen] = useState('login');
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const screen = registration ? screenChoice : 'login';
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
   const base = PRODUCTION_COPY[lang];
   const values = draft[lang] || {};
@@ -3724,9 +3986,23 @@ function LoginPageSettings({ uiLocale, saved, onSave }) {
             <p className="form-field__description">{ui.emptyHint}</p>
           </div>
 
-          {LOGIN_PAGE_FIELDS.map((f) => {
+          {registration ? (
+            <div className="form-field">
+              <span className="form-field__label">{ui.screen}</span>
+              <SegmentedControl className="login-page-editor__screens" aria-label={ui.screen} value={screen} onChange={setScreen}
+                options={[{ value: 'login', label: ui.screenLogin }, { value: 'register', label: ui.screenRegister }]} />
+              <p className="form-field__description">{ui.screenHint}</p>
+            </div>
+          ) : null}
+
+          <Button type="button" tone="secondary" className="login-page-editor__preview-open" onClick={() => setPreviewOpen(true)}>{ui.previewOpen}</Button>
+
+          {LOGIN_PAGE_FIELDS.filter((f) => SCREEN_FIELDS[screen].includes(f.key)).map((f) => {
             const [label, hint] = ui.fields[f.key];
-            const control = f.multiline
+            const control = f.rich
+              ? <MiniRichText key={lang} value={values[f.key] || ''} placeholder={f.read(base) || ''} linkLabel={ui.link} linkTarget={ui.linkTarget}
+                  onChange={(html) => { setStatus('idle'); setDraft((d) => ({ ...d, [lang]: { ...(d[lang] || {}), [f.key]: html } })); }} />
+              : f.multiline
               ? <Textarea rows={3} value={values[f.key] || ''} onChange={setField(f.key)} placeholder={f.read(base) || ''} lang={lang} />
               : <Input value={values[f.key] || ''} onChange={setField(f.key)} placeholder={f.read(base) || ''} lang={lang} />;
             return <SettingsField key={`${lang}-${f.key}`} name={f.key} label={label} description={hint}>{control}</SettingsField>;
@@ -3745,10 +4021,19 @@ function LoginPageSettings({ uiLocale, saved, onSave }) {
           <section className="panel panel--dense">
             <p className="eyebrow">{ui.preview}</p>
             <p className="muted-text">{lang === 'pl' ? ui.previewHint : ui.previewHintEn}</p>
-            <LoginPreview copy={preview} lang={lang} canRegister={registration} />
+            {previewOpen ? null : <LoginPreview copy={preview} lang={lang} canRegister={registration} screen={screen} />}
           </section>
         </aside>
       </div>
+      {previewOpen ? (
+        <div className="mock-dialog__overlay" onClick={() => setPreviewOpen(false)}>
+          <div className="mock-dialog" role="dialog" aria-modal="true" aria-label={ui.preview} onClick={(e) => e.stopPropagation()}>
+            <h3 className="mock-dialog__title">{ui.preview}</h3>
+            <LoginPreview copy={preview} lang={lang} canRegister={registration} screen={screen} phone />
+            <div className="mock-dialog__footer"><Button type="button" tone="secondary" onClick={() => setPreviewOpen(false)}>{ui.previewClose}</Button></div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -3884,6 +4169,7 @@ function App() {
         <div className={`stage stage--${preset.background}`} key={`${presetKey}:${stateKey}`} style={{ minHeight: BARE ? '100dvh' : 'calc(100dvh - 72px)' }}>
           {preset.background === 'app-preview' ? <div className="stage__bg"><AppPreview /></div> : null}
           <div className="stage__wash" aria-hidden="true" />
+          <LoginGlow />
           <TopBar demo={copy.bar} locale={locale} setLocale={switchLocale} />
           <div className="stage__inner">
             <Hero copy={copy} />

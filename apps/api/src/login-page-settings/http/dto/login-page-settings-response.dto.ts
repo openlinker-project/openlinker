@@ -42,6 +42,12 @@ export class ResolvedLoginPageCopyDto {
 
   @ApiProperty({ type: ResolvedLoginPageFieldDto })
   support!: ResolvedLoginPageFieldDto;
+
+  @ApiProperty({ type: ResolvedLoginPageFieldDto })
+  registerTitle!: ResolvedLoginPageFieldDto;
+
+  @ApiProperty({ type: ResolvedLoginPageFieldDto })
+  registerSubtitle!: ResolvedLoginPageFieldDto;
 }
 
 export class ResolvedLoginPageLocalesDto {
@@ -66,6 +72,8 @@ export class LoginPageMaxLengthDto {
   @ApiProperty() formTitle!: number;
   @ApiProperty() formSubtitle!: number;
   @ApiProperty() support!: number;
+  @ApiProperty() registerTitle!: number;
+  @ApiProperty() registerSubtitle!: number;
 }
 
 export class LoginPageSettingsResponseDto {
@@ -94,6 +102,8 @@ export class LoginPageSettingsResponseDto {
       formTitle: { ...fields.formTitle },
       formSubtitle: { ...fields.formSubtitle },
       support: { ...fields.support },
+      registerTitle: { ...fields.registerTitle },
+      registerSubtitle: { ...fields.registerSubtitle },
     });
     return {
       copy: { pl: copyOf(view.copy.pl), en: copyOf(view.copy.en) },
