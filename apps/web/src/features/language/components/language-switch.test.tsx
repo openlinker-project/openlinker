@@ -1,22 +1,17 @@
 /**
  * LanguageSwitch - unit tests
  *
- * Covers switching, the listed languages, keyboard use and the
- * no-provider fallback.
+ * Covers switching, the listed languages, keyboard use, focus after the
+ * remount a language change causes, and the no-provider fallback.
  *
- * @module shared/ui
+ * @module features/language/components
  */
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MotionConfigContext } from 'motion/react';
-import { useContext, type ReactElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { LocaleKeyed } from '../i18n/locale-keyed';
-import { LocaleProvider } from '../i18n/locale-provider';
-import { LOCALE_STORAGE_KEY } from '../i18n/resolve-locale';
-import { AccessDeniedState } from './feedback-state';
-import { BulkActionBar } from './bulk-action-bar';
+import { LocaleKeyed } from '../../../shared/i18n/locale-keyed';
+import { LocaleProvider } from '../../../shared/i18n/locale-provider';
+import { LOCALE_STORAGE_KEY } from '../../../shared/i18n/resolve-locale';
 import { LanguageSwitch } from './language-switch';
-import { MotionProvider } from './motion-provider';
 
 afterEach(() => {
   cleanup();
@@ -28,7 +23,7 @@ function renderSwitch(): void {
   render(
     <LocaleProvider locale="en">
       <LanguageSwitch />
-    </LocaleProvider>,
+    </LocaleProvider>
   );
 }
 
@@ -42,7 +37,10 @@ describe('LanguageSwitch', () => {
     renderSwitch();
     fireEvent.click(screen.getByRole('button', { name: 'Language: English' }));
     expect(screen.getByRole('option', { name: /Polski/ })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /English/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('option', { name: /English/ })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
     fireEvent.click(screen.getByRole('option', { name: /Polski/ }));
     expect(screen.getByRole('button', { name: 'Język: Polski' })).toBeInTheDocument();
   });
@@ -60,7 +58,7 @@ describe('LanguageSwitch', () => {
     fireEvent.keyDown(list, { key: 'Escape' });
     expect(screen.getByRole('button', { name: 'Language: English' })).toHaveAttribute(
       'aria-expanded',
-      'false',
+      'false'
     );
     fireEvent.click(screen.getByRole('button', { name: 'Language: English' }));
     fireEvent.keyDown(screen.getByRole('listbox'), { key: 'ArrowUp' });
@@ -85,7 +83,7 @@ describe('LanguageSwitch', () => {
     render(
       <LocaleProvider>
         <LanguageSwitch />
-      </LocaleProvider>,
+      </LocaleProvider>
     );
     fireEvent.click(screen.getByRole('button', { name: 'Language: English' }));
     fireEvent.click(screen.getByRole('option', { name: /Polski/ }));
@@ -113,47 +111,6 @@ describe('LanguageSwitch', () => {
     fireEvent.keyDown(list, { key: 'ArrowUp' });
     expect(list).toHaveAttribute('aria-activedescendant', english.id);
   });
-});
-
-describe('MotionProvider', () => {
-  function ReducedMotionProbe(): ReactElement {
-    return <span data-testid="reduced">{useContext(MotionConfigContext).reducedMotion}</span>;
-  }
-
-  it('should make every animation follow the reduced-motion setting', () => {
-    render(
-      <MotionProvider>
-        <ReducedMotionProbe />
-      </MotionProvider>,
-    );
-    expect(screen.getByTestId('reduced')).toHaveTextContent('user');
-  });
-});
-
-describe('shared primitives in Polish', () => {
-  it('should pluralise the bulk selection label when the locale is pl', () => {
-    const { rerender } = render(
-      <LocaleProvider locale="pl">
-        <BulkActionBar count={2} actions={null} />
-      </LocaleProvider>,
-    );
-    expect(screen.getByText('zaznaczone')).toBeInTheDocument();
-    rerender(
-      <LocaleProvider locale="pl">
-        <BulkActionBar count={5} actions={null} />
-      </LocaleProvider>,
-    );
-    expect(screen.getByText('zaznaczonych')).toBeInTheDocument();
-  });
-
-  it('should render the access-denied defaults in Polish when the locale is pl', () => {
-    render(
-      <LocaleProvider locale="pl">
-        <AccessDeniedState />
-      </LocaleProvider>,
-    );
-    expect(screen.getByText('Brak dostępu')).toBeInTheDocument();
-  });
 
   it('should keep keyboard focus on the switch when the language change remounts the tree', async () => {
     render(
@@ -161,7 +118,7 @@ describe('shared primitives in Polish', () => {
         <LocaleKeyed>
           <LanguageSwitch />
         </LocaleKeyed>
-      </LocaleProvider>,
+      </LocaleProvider>
     );
     fireEvent.click(screen.getByRole('button', { name: 'Language: English' }));
     fireEvent.click(screen.getByRole('option', { name: /Polski/ }));

@@ -34,13 +34,120 @@
     }
   },
   "login": {
+    "backdrop": {
+      "ago": {
+        "hours": "{n} godz. temu",
+        "minutes": "{n} min temu",
+        "yesterday": "wczoraj"
+      },
+      "alerts": "Alerty",
+      "analytics": {
+        "aov": "Średnia wartość zamówienia",
+        "aovMetric": "Przychód na zamówienie",
+        "basis": "vs poprzednie 14 dni",
+        "cancelled": "Anulowane",
+        "cancelledMetric": "{share} zamówień",
+        "channel": "Kanał sprzedaży",
+        "description": "Sprzedaż we wszystkich połączonych kanałach, z jasnym pokryciem danych.",
+        "noChange": "Bez zmian",
+        "orders": "Zamówienia",
+        "ordersMetric": "Złożone w okresie",
+        "revenue": "Przychód",
+        "revenueMetric": "Brutto, wszystkie kanały",
+        "settings": "Ustawienia analityki",
+        "share": "Udział",
+        "sku": "SKU",
+        "topProducts": "Najlepsze produkty",
+        "units": "Sztuki",
+        "up": "Wzrost o {value}"
+      },
+      "customers": {
+        "c01": "Marta Wiśniewska",
+        "c02": "Tomasz Wójcik",
+        "c03": "Katarzyna Lis",
+        "c04": "Michał Zieliński",
+        "c05": "Agnieszka Kowalczyk",
+        "c06": "Paweł Kamiński",
+        "c07": "Ewa Szymańska",
+        "c08": "Jan Nowak",
+        "c09": "Anna Lewandowska",
+        "c10": "Piotr Dąbrowski",
+        "c11": "Monika Grabowska",
+        "c12": "Krzysztof Pawlak",
+        "c13": "Joanna Michalska",
+        "c14": "Łukasz Król",
+        "c15": "Magdalena Wieczorek",
+        "c16": "Rafał Jabłoński"
+      },
+      "nav": {
+        "adapters": "Adaptery",
+        "analytics": "Analityka",
+        "connections": "Połączenia",
+        "cursors": "Kursory",
+        "customers": "Klienci",
+        "diagnostics": "Diagnostyka",
+        "insights": "Wnioski",
+        "jobs": "Zadania w tle",
+        "listings": "Oferty",
+        "operations": "Operacje",
+        "orders": "Zamówienia",
+        "platform": "Platforma",
+        "products": "Produkty",
+        "returns": "Zwroty",
+        "salesDocuments": "Dokumenty sprzedaży",
+        "settings": "Ustawienia",
+        "shipments": "Przesyłki",
+        "webhooks": "Webhooki"
+      },
+      "orders": {
+        "channel": "Kanał sprzedaży",
+        "customer": "Klient",
+        "order": "Zamówienie",
+        "shipment": "Przesyłka",
+        "status": "Status",
+        "total": "Razem"
+      },
+      "products": {
+        "p1": "Bluza z wełny merino",
+        "p2": "Buty do biegania Aero",
+        "p3": "Torba płócienna",
+        "p4": "Butelka termiczna 750 ml",
+        "p5": "Koszula lniana",
+        "p6": "Czapka z wełny",
+        "p7": "Skórzany portfel",
+        "p8": "Skarpety bawełniane, 3 pary"
+      },
+      "refresh": "Odśwież",
+      "shipments": {
+        "carrier": "Przewoźnik",
+        "description": "Etykiety nadawcze, numery przesyłek i status doręczenia u każdego przewoźnika.",
+        "order": "Zamówienie",
+        "status": "Status",
+        "tracking": "Numer przesyłki",
+        "updated": "Aktualizacja"
+      },
+      "status": {
+        "cancelled": "Anulowane",
+        "delivered": "Doręczone",
+        "dispatched": "Nadane",
+        "inTransit": "W drodze",
+        "labelReady": "Etykieta gotowa",
+        "new": "Nowe",
+        "notShipped": "Nienadane",
+        "pending": "Oczekuje",
+        "processing": "W realizacji",
+        "shipped": "Wysłane"
+      },
+      "user": "anna",
+      "workspace": "Domyślna organizacja"
+    },
     "bar": {
       "chip": "Demo",
       "docs": "Dokumentacja",
       "github": "GitHub",
       "linksLabel": "Więcej o OpenLinkerze",
       "site": "openlinker.io",
-      "text": "Środowisko demonstracyjne z przykładowymi danymi."
+      "text": "Demo tylko do odczytu, z przykładowymi danymi."
     },
     "demo": {
       "consent": {
@@ -129,7 +236,7 @@
     "ui": {
       "confirm": "Powtórz hasło",
       "email": "E-mail",
-      "emailPh": "kasia@twojsklep.pl",
+      "emailPh": "kontakt@twojsklep.pl",
       "forgot": "Nie pamiętasz hasła?",
       "hide": "Ukryj",
       "hidePw": "Ukryj hasło",
@@ -138,6 +245,8 @@
       "min8": "min. 8 znaków",
       "password": "Hasło",
       "registerFailedTitle": "Nie udało się założyć konta",
+      "registrationOffBody": "Zaloguj się na swoje konto. Nowe konta zakłada administrator.",
+      "registrationOffTitle": "Rejestracja jest wyłączona",
       "show": "Pokaż",
       "showPw": "Pokaż hasło",
       "signedInLead": "Otwieramy panel OpenLinker.",
@@ -146,7 +255,7 @@
       "tracking": "Ta wizyta jest zapisywana w statystykach. Nie tworzymy na jej podstawie profilu osoby.",
       "username": "Nazwa użytkownika",
       "usernameOrEmail": "Nazwa użytkownika lub e-mail",
-      "usernamePh": "np. sklep-kasia",
+      "usernamePh": "np. moj-sklep",
       "v": {
         "confirm": "Powtórz hasło.",
         "email": "Wpisz adres e-mail.",
@@ -502,7 +611,7 @@
       "dark": "Ciemny",
       "label": "Motyw",
       "light": "Jasny",
-      "system": "Systemowy"
+      "system": "Auto"
     },
     "toast": {
       "dismiss": "Zamknij",

@@ -1958,7 +1958,7 @@ html[data-density='compact'] .status-badge{
 .highlights li { display:flex; align-items:center; gap:10px; color:var(--text-secondary); font-size:.9375rem; }
 .tick { flex:none; width:20px; height:20px; border-radius:50%; background:var(--accent-primary-soft); border:1px solid var(--accent-primary-border); position:relative; }
 .tick::after { content:""; position:absolute; left:6px; top:3.5px; width:5px; height:9px; border:solid var(--accent-primary-soft-strong); border-width:0 2px 2px 0; transform:rotate(45deg); }
-.language-switch{
+.peek-button{
   --switch-hue: var(--accent-primary);
   --switch-tint: color-mix(in oklab, var(--switch-hue) 13%, var(--bg-surface));
   --switch-edge: color-mix(in oklab, var(--switch-hue) 55%, var(--border-subtle));
@@ -1968,7 +1968,7 @@ html[data-density='compact'] .status-badge{
   
   flex: none;
 }
-.language-switch__peek{
+.peek-button__peek{
   position: absolute;
   z-index: 2;
   top: 0;
@@ -1990,24 +1990,24 @@ html[data-density='compact'] .status-badge{
   pointer-events: none;
   transition: opacity var(--duration-fast) var(--ease-out) 80ms;
 }
-.language-switch--reveal-end .language-switch__peek{ right:auto; left:0; }
-.language-switch__peek > *{
+.peek-button--reveal-end .peek-button__peek{ right:auto; left:0; }
+.peek-button__peek > *{
   flex: none;
 }
-.language-switch__peek .language-switch__chevron{
+.peek-button__peek .peek-button__chevron{
   margin-left: 6px;
   transform: rotate(var(--peek-chevron, 0deg));
 }
-.language-switch__reveal{
+.peek-button__reveal{
   display: grid;
   grid-template-columns: 0fr;
   transition: grid-template-columns var(--duration-fast) var(--ease-standard);
 }
-.language-switch__reveal-clip{
+.peek-button__reveal-clip{
   min-width: 0;
   overflow: hidden;
 }
-.language-switch__reveal-name{
+.peek-button__reveal-name{
   display: block;
   padding-left: 7px;
   white-space: nowrap;
@@ -2017,33 +2017,33 @@ html[data-density='compact'] .status-badge{
     opacity var(--duration-fast) var(--ease-out),
     transform var(--duration-fast) var(--ease-out);
 }
-.language-switch:not(.is-open):has(.language-switch__trigger:is(:hover, :focus-visible))
-  .language-switch__peek{
+.peek-button:not(.is-open):has(.peek-button__trigger:is(:hover, :focus-visible))
+  .peek-button__peek{
   opacity: 1;
   transition: opacity 80ms var(--ease-out);
 }
-.language-switch:not(.is-open):has(.language-switch__trigger:is(:hover, :focus-visible))
-  .language-switch__reveal{
+.peek-button:not(.is-open):has(.peek-button__trigger:is(:hover, :focus-visible))
+  .peek-button__reveal{
   grid-template-columns: 1fr;
   transition: grid-template-columns var(--duration-slow) var(--ease-out);
 }
-.language-switch:not(.is-open):has(.language-switch__trigger:is(:hover, :focus-visible))
-  .language-switch__reveal-name{
+.peek-button:not(.is-open):has(.peek-button__trigger:is(:hover, :focus-visible))
+  .peek-button__reveal-name{
   opacity: 1;
   transform: none;
   transition:
     opacity var(--duration-normal) var(--ease-out) 60ms,
     transform var(--duration-slow) var(--ease-out) 40ms;
 }
-@media (hover: none){.language-switch__peek{
+@media (hover: none){.peek-button__peek{
     display: none;
   }}
-@media (prefers-reduced-motion: reduce){.language-switch__peek,
-  .language-switch__reveal,
-  .language-switch__reveal-name{
+@media (prefers-reduced-motion: reduce){.peek-button__peek,
+  .peek-button__reveal,
+  .peek-button__reveal-name{
     transition: none !important;
   }}
-.language-switch__trigger{
+.peek-button__trigger{
   font: inherit;
   display: inline-flex;
   align-items: center;
@@ -2058,25 +2058,26 @@ html[data-density='compact'] .status-badge{
   font-weight: 600;
   box-shadow: var(--shadow-xs);
 }
-.language-switch__trigger:hover,
-.language-switch__trigger[aria-expanded='true']{
+.peek-button__trigger:hover,
+.peek-button__trigger[aria-expanded='true']{
   border-color: var(--accent-primary);
 }
-.language-switch__trigger:focus-visible,
-.language-switch__trigger[aria-expanded='true']{
+.peek-button__trigger:focus-visible,
+.peek-button__trigger[aria-expanded='true']{
   outline: none;
   box-shadow: var(--shadow-focus);
 }
-.language-switch__flag-wrap{
-  display: inline-block;
+.peek-button__icon{
+  display: inline-grid;
+  place-items: center;
   perspective: 120px;
   width: 22px;
   height: 15px;
 }
-.language-switch__flag-face{
+.peek-button__icon-face{
   display: block;
 }
-.language-switch__chevron{
+.peek-button__chevron{
   width: 10px;
   height: 10px;
   color: var(--text-muted);
@@ -2089,7 +2090,7 @@ html[data-density='compact'] .status-badge{
   box-shadow: 0 0 0 1px var(--border-default);
   overflow: hidden;
 }
-.language-switch__popover{
+.motion-popover{
   
   position: fixed;
   width: 200px;
@@ -2101,16 +2102,16 @@ html[data-density='compact'] .status-badge{
   box-shadow: var(--shadow-overlay);
   transform-origin: 50% 100%;
 }
-.language-switch__popover--down{
+.motion-popover--down{
   transform-origin: 50% 0;
 }
-.language-switch__head{
+.motion-popover__head{
   padding: 6px 8px 8px;
   font-size: 11.5px;
   color: var(--text-muted);
   font-weight: 500;
 }
-.language-switch__list{
+.option-list{
   list-style: none;
   margin: 0;
   padding: 0;
@@ -2118,7 +2119,7 @@ html[data-density='compact'] .status-badge{
   gap: 2px;
   outline: none;
 }
-.language-switch__option{
+.option-list__option{
   position: relative;
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr) auto;
@@ -2131,10 +2132,10 @@ html[data-density='compact'] .status-badge{
   font-size: 13px;
   color: var(--text-primary);
 }
-.language-switch__option.is-focus{
+.option-list__option.is-focus{
   background: var(--bg-surface-muted);
 }
-.language-switch__selected{
+.option-list__selected{
   position: absolute;
   inset: 0;
   border-radius: var(--radius-md);
@@ -2142,18 +2143,18 @@ html[data-density='compact'] .status-badge{
   box-shadow: inset 0 0 0 1.5px var(--accent-primary);
   pointer-events: none;
 }
-.language-switch__option > :not(.language-switch__selected){
+.option-list__option > :not(.option-list__selected){
   position: relative;
   z-index: 1;
 }
-.language-switch__option[aria-selected='true'] .language-switch__name{
+.option-list__option[aria-selected='true'] .option-list__name{
   font-weight: 600;
 }
-.language-switch__name{
+.option-list__name{
   display: grid;
   line-height: 1.25;
 }
-.language-switch__name small{
+.option-list__name small{
   font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--text-muted);
@@ -2171,7 +2172,7 @@ html[data-density='compact'] .status-badge{
   font-weight: 600;
   line-height: 1.3;
 }
-.language-switch__option > .language-switch__hint{
+.option-list__option > .language-switch__hint{
   position: absolute;
   z-index: 3;
   left: 50%;
@@ -2215,32 +2216,32 @@ html[data-density='compact'] .status-badge{
 .topbar__links a:focus-visible { outline:none; box-shadow:var(--shadow-focus); }
 .topbar__links + .topbar__controls { margin-left:6px; padding-left:12px; border-left:1px solid var(--border-default); }
 .topbar__controls { display:inline-flex; align-items:center; gap:8px; flex:none; }
-.theme-switch__icon-wrap { display:inline-grid; place-items:center; width:22px; height:15px; color:var(--text-secondary); }
-.language-switch__option[aria-selected='true'] .theme-switch__icon-wrap, .language-switch__peek .theme-switch__icon-wrap { color:var(--text-primary); }
-.theme-switch__icon { display:block; width:15px; height:15px; }
-.language-switch__popover.theme-switch__popover { width:216px; padding-bottom:6px; }
-.theme-switch__control { margin:0 2px; }
-.theme-switch__segments { position:relative; display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:2px; padding:3px; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--bg-surface-muted); }
-.theme-switch__segment, .theme-switch__segment:hover, .theme-switch__segment:active { position:relative; display:grid; place-items:center; width:auto; height:34px; padding:0; border:0; border-radius:7px; background:transparent; box-shadow:none; color:var(--text-muted); cursor:pointer; transition:color var(--duration-normal) var(--ease-out); }
-.theme-switch__segment:hover { color:var(--text-primary); }
-.theme-switch__segment:focus-visible { outline:none; box-shadow:var(--shadow-focus); }
-.theme-switch__thumb { position:absolute; inset:0; border-radius:7px; background:var(--bg-surface); box-shadow:0 1px 2px rgb(15 18 26 / 0.08), 0 0 0 1px var(--border-default); }
-.theme-switch__segment-icon { position:relative; z-index:1; display:grid; place-items:center; scale:.86; transition:scale var(--duration-normal) var(--ease-out); }
-.theme-switch__segment[aria-checked='true'] .theme-switch__segment-icon { scale:1; }
-.theme-switch__segment[aria-checked='true'] .theme-switch__segment-icon { color:var(--accent-primary); }
-.theme-switch__segment .theme-switch__icon { width:16px; height:16px; }
-.theme-switch__caption { overflow:hidden; font-size:11px; font-weight:500; line-height:22px; color:var(--text-muted); }
-.theme-switch__names { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:2px; padding:4px 4px 0; }
-.theme-switch__name { overflow:hidden; text-align:center; text-overflow:ellipsis; white-space:nowrap; transition:color var(--duration-normal) var(--ease-out); }
-.theme-switch__name[data-state='active'] { color:var(--text-secondary); }
-.theme-switch__name[data-state='pointed'] { color:var(--text-primary); }
+.theme-switch .peek-button__icon { color:var(--text-secondary); }
+.theme-switch .peek-button__peek .peek-button__icon { color:var(--text-primary); }
+.theme-icon { display:block; width:15px; height:15px; }
+.motion-popover.theme-switch__popover { width:216px; padding-bottom:6px; }
+.segmented-switch { margin:0 2px; }
+.segmented-switch__track { position:relative; display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:2px; padding:3px; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--bg-surface-muted); }
+.segmented-switch__option, .segmented-switch__option:hover, .segmented-switch__option:active { position:relative; display:grid; place-items:center; width:auto; height:34px; padding:0; border:0; border-radius:7px; background:transparent; box-shadow:none; color:var(--text-muted); cursor:pointer; transition:color var(--duration-normal) var(--ease-out); }
+.segmented-switch__option:hover { color:var(--text-primary); }
+.segmented-switch__option:focus-visible { outline:none; box-shadow:var(--shadow-focus); }
+.segmented-switch__thumb { position:absolute; inset:0; border-radius:7px; background:var(--bg-surface); box-shadow:0 1px 2px rgb(15 18 26 / 0.08), 0 0 0 1px var(--border-default); }
+.segmented-switch__icon { position:relative; z-index:1; display:grid; place-items:center; scale:.86; transition:scale var(--duration-normal) var(--ease-out); }
+.segmented-switch__option[aria-checked='true'] .segmented-switch__icon { scale:1; }
+.segmented-switch__option[aria-checked='true'] .segmented-switch__icon { color:var(--accent-primary); }
+.segmented-switch__option .theme-icon { width:16px; height:16px; }
+.segmented-switch__caption { overflow:hidden; font-size:11px; font-weight:500; line-height:22px; color:var(--text-muted); }
+.segmented-switch__names { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:2px; padding:4px 4px 0; }
+.segmented-switch__name { overflow:hidden; text-align:center; text-overflow:ellipsis; white-space:nowrap; transition:color var(--duration-normal) var(--ease-out); }
+.segmented-switch__name[data-state='active'] { color:var(--text-secondary); }
+.segmented-switch__name[data-state='pointed'] { color:var(--text-primary); }
 .topbar__spacer { flex:1; }
 @media (max-width: 960px) {
   .topbar__links a:not(:last-child) { display:none; }
 }
 @media (prefers-reduced-motion: reduce) { .topbar__dot::after { animation:none; } }
-@media (max-width: 600px) { .topbar__links { display:none; } .topbar__links + .topbar__controls { border-left:0; padding-left:0; } .topbar__controls { margin-left:auto; gap:6px; } .topbar__inner { gap:10px; } .topbar .language-switch__trigger .language-switch__chevron { display:none; } .topbar .language-switch__trigger { padding-right:11px; } }
-@media (hover: none) and (pointer: coarse) { .topbar .language-switch__trigger { position:relative; min-width:0; min-height:0; height:40px; gap:8px; padding:0 12px 0 11px; } .topbar .language-switch__trigger::after { content:''; position:absolute; inset:-2px; } .topbar .language-switch__flag-wrap, .topbar .language-flag { width:26px; height:18px; } .topbar .theme-switch__icon { width:18px; height:18px; } .topbar .language-switch__chevron { width:11px; height:11px; } }
+@media (max-width: 600px) { .topbar__links { display:none; } .topbar__links + .topbar__controls { border-left:0; padding-left:0; } .topbar__controls { margin-left:auto; gap:6px; } .topbar__inner { gap:10px; } .topbar .peek-button__trigger .peek-button__chevron { display:none; } .topbar .peek-button__trigger { padding-right:11px; } }
+@media (hover: none) and (pointer: coarse) { .topbar .peek-button__trigger { position:relative; min-width:0; min-height:0; height:40px; gap:8px; padding:0 12px 0 11px; } .topbar .peek-button__trigger::after { content:''; position:absolute; inset:-2px; } .topbar .peek-button__icon, .topbar .language-flag { width:26px; height:18px; } .topbar .theme-icon { width:18px; height:18px; } .topbar .peek-button__chevron { width:11px; height:11px; } }
 
 textarea,
 .textarea{
@@ -2523,6 +2524,7 @@ body:has([data-bare]) .admin-view .shell { min-height:100dvh; }
 .pw { position:relative; }
 .pw .control { padding-right:76px; }
 .pw__toggle { position:absolute; right:5px; top:5px; bottom:5px; height:auto; width:62px; }
+@media (hover: none) and (pointer: coarse) { .pw .pw__toggle { min-width:0; min-height:0; } .pw__toggle::after { content:''; position:absolute; inset:-5px -5px -5px 0; } }
 .submit { width:100%; height:2.75rem; font-size:.9375rem; font-weight:600; }
 .spinner { display:inline-block; width:14px; height:14px; border-radius:50%; border:2px solid currentColor; border-right-color:transparent; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -2758,14 +2760,18 @@ function backdropFrame(w, h) {
   return { width: Math.max(APP_W, Math.ceil(w / scale)), height: Math.max(APP_H, Math.ceil(h / scale)), scale };
 }
 
+// Words, numbers and the currency follow the language (mirrors apps/web login-backdrop.tsx):
+// zloty in Polish, euro in English at a round example rate.
+const BACKDROP_COPY = {"en": {"ago": {"hours": "{n} h ago", "minutes": "{n} min ago", "yesterday": "yesterday"}, "alerts": "Alerts", "analytics": {"aov": "Average order value", "aovMetric": "Revenue per order", "basis": "vs previous 14 days", "cancelled": "Cancelled", "cancelledMetric": "{share} of orders", "channel": "Channel", "description": "Sales across connected channels, with clear data coverage.", "noChange": "No change", "orders": "Orders", "ordersMetric": "Placed in the period", "revenue": "Revenue", "revenueMetric": "Gross, all channels", "settings": "Analytics settings", "share": "Share", "sku": "SKU", "topProducts": "Top products", "units": "Units", "up": "Up {value}"}, "customers": {"c01": "Emma Schmidt", "c02": "Lucas Martin", "c03": "Sofia Rossi", "c04": "Noah Müller", "c05": "Mia Dubois", "c06": "Liam Jansen", "c07": "Chloé Bernard", "c08": "Jonas Weber", "c09": "Elena García", "c10": "Hugo Laurent", "c11": "Lea Fischer", "c12": "Mateo Romano", "c13": "Anna Novak", "c14": "Finn Peters", "c15": "Clara Moreau", "c16": "Leo Bauer"}, "nav": {"adapters": "Adapters", "analytics": "Analytics", "connections": "Connections", "cursors": "Cursors", "customers": "Customers", "diagnostics": "Diagnostics", "insights": "Insights", "jobs": "Jobs & Logs", "listings": "Listings", "operations": "Operations", "orders": "Orders", "platform": "Platform", "products": "Products", "returns": "Returns", "salesDocuments": "Sales documents", "settings": "Settings", "shipments": "Shipments", "webhooks": "Webhooks"}, "orders": {"channel": "Channel", "customer": "Customer", "order": "Order", "shipment": "Shipment", "status": "Status", "total": "Total"}, "products": {"p1": "Merino wool hoodie", "p2": "Running shoes Aero", "p3": "Canvas tote bag", "p4": "Thermo bottle 750 ml", "p5": "Linen shirt", "p6": "Wool beanie", "p7": "Leather wallet", "p8": "Cotton socks, 3 pairs"}, "refresh": "Refresh", "shipments": {"carrier": "Carrier", "description": "Labels, tracking numbers and delivery status for every carrier.", "order": "Order", "status": "Status", "tracking": "Tracking", "updated": "Updated"}, "status": {"cancelled": "Cancelled", "delivered": "Delivered", "dispatched": "Dispatched", "inTransit": "In transit", "labelReady": "Label ready", "new": "New", "notShipped": "Not shipped", "pending": "Pending", "processing": "Processing", "shipped": "Shipped"}, "user": "emma", "workspace": "Default organization", "search": "Search orders, products, connections…"}, "pl": {"ago": {"hours": "{n} godz. temu", "minutes": "{n} min temu", "yesterday": "wczoraj"}, "alerts": "Alerty", "analytics": {"aov": "Średnia wartość zamówienia", "aovMetric": "Przychód na zamówienie", "basis": "vs poprzednie 14 dni", "cancelled": "Anulowane", "cancelledMetric": "{share} zamówień", "channel": "Kanał sprzedaży", "description": "Sprzedaż we wszystkich połączonych kanałach, z jasnym pokryciem danych.", "noChange": "Bez zmian", "orders": "Zamówienia", "ordersMetric": "Złożone w okresie", "revenue": "Przychód", "revenueMetric": "Brutto, wszystkie kanały", "settings": "Ustawienia analityki", "share": "Udział", "sku": "SKU", "topProducts": "Najlepsze produkty", "units": "Sztuki", "up": "Wzrost o {value}"}, "customers": {"c01": "Marta Wiśniewska", "c02": "Tomasz Wójcik", "c03": "Katarzyna Lis", "c04": "Michał Zieliński", "c05": "Agnieszka Kowalczyk", "c06": "Paweł Kamiński", "c07": "Ewa Szymańska", "c08": "Jan Nowak", "c09": "Anna Lewandowska", "c10": "Piotr Dąbrowski", "c11": "Monika Grabowska", "c12": "Krzysztof Pawlak", "c13": "Joanna Michalska", "c14": "Łukasz Król", "c15": "Magdalena Wieczorek", "c16": "Rafał Jabłoński"}, "nav": {"adapters": "Adaptery", "analytics": "Analityka", "connections": "Połączenia", "cursors": "Kursory", "customers": "Klienci", "diagnostics": "Diagnostyka", "insights": "Wnioski", "jobs": "Zadania w tle", "listings": "Oferty", "operations": "Operacje", "orders": "Zamówienia", "platform": "Platforma", "products": "Produkty", "returns": "Zwroty", "salesDocuments": "Dokumenty sprzedaży", "settings": "Ustawienia", "shipments": "Przesyłki", "webhooks": "Webhooki"}, "orders": {"channel": "Kanał sprzedaży", "customer": "Klient", "order": "Zamówienie", "shipment": "Przesyłka", "status": "Status", "total": "Razem"}, "products": {"p1": "Bluza z wełny merino", "p2": "Buty do biegania Aero", "p3": "Torba płócienna", "p4": "Butelka termiczna 750 ml", "p5": "Koszula lniana", "p6": "Czapka z wełny", "p7": "Skórzany portfel", "p8": "Skarpety bawełniane, 3 pary"}, "refresh": "Odśwież", "shipments": {"carrier": "Przewoźnik", "description": "Etykiety nadawcze, numery przesyłek i status doręczenia u każdego przewoźnika.", "order": "Zamówienie", "status": "Status", "tracking": "Numer przesyłki", "updated": "Aktualizacja"}, "status": {"cancelled": "Anulowane", "delivered": "Doręczone", "dispatched": "Nadane", "inTransit": "W drodze", "labelReady": "Etykieta gotowa", "new": "Nowe", "notShipped": "Nienadane", "pending": "Oczekuje", "processing": "W realizacji", "shipped": "Wysłane"}, "user": "anna", "workspace": "Domyślna organizacja", "search": "Szukaj zamówień, produktów, połączeń…"}};
+const PLN_PER_EUR = 4.25;
 const NAV_GROUPS = [
-  { label: 'Operations', items: [
-    ['analytics', 'Analytics'], ['insights', 'Insights'], ['orders', 'Orders', 26], ['products', 'Products'],
-    ['customers', 'Customers', 19], ['listings', 'Listings', 148], ['shipments', 'Shipments'], ['returns', 'Returns'],
-    ['sales-documents', 'Sales documents'],
+  { label: 'operations', items: [
+    ['analytics', 'analytics'], ['insights', 'insights'], ['orders', 'orders', 26], ['products', 'products'],
+    ['customers', 'customers', 19], ['listings', 'listings', 148], ['shipments', 'shipments'], ['returns', 'returns'],
+    ['sales-documents', 'salesDocuments'],
   ] },
-  { label: 'Diagnostics', items: [['jobs', 'Jobs & Logs', 0], ['webhooks', 'Webhooks', 0], ['cursors', 'Cursors']] },
-  { label: 'Platform', items: [['connections', 'Connections', 6], ['adapters', 'Adapters'], ['settings', 'Settings']] },
+  { label: 'diagnostics', items: [['jobs', 'jobs', 0], ['webhooks', 'webhooks', 0], ['cursors', 'cursors']] },
+  { label: 'platform', items: [['connections', 'connections', 6], ['adapters', 'adapters'], ['settings', 'settings']] },
 ];
 
 /* shared/ui/status-badge.tsx */
@@ -2792,7 +2798,7 @@ function Sparkline({ values, tone = 'neutral', width = 72, height = 20 }) {
 }
 
 /* features/analytics/components/analytics-kpi-card.tsx (infotip omitted - it is a button) */
-function AnalyticsKpiCard({ label, value, metric, delta, trend }) {
+function AnalyticsKpiCard({ label, value, metric, delta, trend, basis }) {
   return (
     <div className="kpi-card">
       <div className="kpi-card__label">
@@ -2806,7 +2812,7 @@ function AnalyticsKpiCard({ label, value, metric, delta, trend }) {
           <span className={`kpi-card__delta-value kpi-card__delta-value--${delta.tone}`}>
             <span className="kpi-card__delta-glyph" aria-hidden="true">{delta.glyph}</span> <span>{delta.formatted}</span>
           </span>
-          <span className="kpi-card__delta-basis">vs previous 14 days</span>
+          <span className="kpi-card__delta-basis">{basis}</span>
         </span>
       </div>
     </div>
@@ -2846,124 +2852,144 @@ function DataTable({ columns, rows }) {
   );
 }
 
-const KPIS = [
-  { label: 'Revenue', value: '48 210 zł', metric: 'Gross, all channels', delta: { tone: 'success', glyph: '↑', formatted: '12,4%' }, trend: [31, 34, 33, 38, 41, 39, 44, 47] },
-  { label: 'Orders', value: '312', metric: 'Placed in the period', delta: { tone: 'success', glyph: '↑', formatted: '8,1%' }, trend: [18, 22, 20, 24, 23, 26, 27, 29] },
-  { label: 'Average order value', value: '154,52 zł', metric: 'Revenue per order', delta: { tone: 'success', glyph: '↑', formatted: '3,9%' }, trend: [140, 146, 143, 149, 151, 150, 153, 155] },
-  { label: 'Cancelled', value: '6', metric: '1,9% of orders', delta: { tone: 'neutral', glyph: '→', formatted: '0,0%' }, trend: [2, 1, 2, 1, 1, 2, 1, 1] },
-];
+const KPIS = {
+  revenue: { pln: 48210, delta: 0.124, trend: [31, 34, 33, 38, 41, 39, 44, 47] },
+  orders: { count: 312, delta: 0.081, trend: [18, 22, 20, 24, 23, 26, 27, 29] },
+  aov: { pln: 154.52, delta: 0.039, trend: [140, 146, 143, 149, 151, 150, 153, 155] },
+  cancelled: { count: 6, share: 0.019, trend: [2, 1, 2, 1, 1, 2, 1, 1] },
+};
 
 const CHANNEL_ROWS = [
-  { key: 'a', channel: 'Allegro', orders: 164, revenue: '25 070 zł', share: '52%' },
-  { key: 'p', channel: 'PrestaShop', orders: 71, revenue: '11 090 zł', share: '23%' },
-  { key: 'w', channel: 'WooCommerce', orders: 46, revenue: '7 230 zł', share: '15%' },
-  { key: 'e', channel: 'Erli', orders: 31, revenue: '4 820 zł', share: '10%' },
+  { key: 'a', channel: 'Allegro', orders: 164, pln: 25070, share: 0.52 },
+  { key: 'p', channel: 'PrestaShop', orders: 71, pln: 11090, share: 0.23 },
+  { key: 'w', channel: 'WooCommerce', orders: 46, pln: 7230, share: 0.15 },
+  { key: 'e', channel: 'Erli', orders: 31, pln: 4820, share: 0.1 },
 ];
 
 const PRODUCT_ROWS = [
-  { key: '1', product: 'Merino wool hoodie', sku: 'HD-MER-GRY-M', units: '42', revenue: '8 358 zł' },
-  { key: '2', product: 'Running shoes Aero', sku: 'SH-AER-BLK-42', units: '37', revenue: '7 363 zł' },
-  { key: '3', product: 'Canvas tote bag', sku: 'BG-CNV-NAT', units: '61', revenue: '3 599 zł' },
-  { key: '4', product: 'Thermo bottle 750 ml', sku: 'BT-THR-750', units: '54', revenue: '3 186 zł' },
-  { key: '5', product: 'Linen shirt', sku: 'SR-LIN-WHT-L', units: '23', revenue: '3 197 zł' },
-  { key: '6', product: 'Wool beanie', sku: 'HT-WOL-NVY', units: '48', revenue: '1 872 zł' },
-  { key: '7', product: 'Leather wallet', sku: 'WL-LTH-BRN', units: '19', revenue: '1 691 zł' },
-  { key: '8', product: 'Cotton socks, 3 pairs', sku: 'SK-COT-3P', units: '66', revenue: '1 584 zł' },
+  { key: '1', product: 'p1', sku: 'HD-MER-GRY-M', units: 42, pln: 8358 },
+  { key: '2', product: 'p2', sku: 'SH-AER-BLK-42', units: 37, pln: 7363 },
+  { key: '3', product: 'p3', sku: 'BG-CNV-NAT', units: 61, pln: 3599 },
+  { key: '4', product: 'p4', sku: 'BT-THR-750', units: 54, pln: 3186 },
+  { key: '5', product: 'p5', sku: 'SR-LIN-WHT-L', units: 23, pln: 3197 },
+  { key: '6', product: 'p6', sku: 'HT-WOL-NVY', units: 48, pln: 1872 },
+  { key: '7', product: 'p7', sku: 'WL-LTH-BRN', units: 19, pln: 1691 },
+  { key: '8', product: 'p8', sku: 'SK-COT-3P', units: 66, pln: 1584 },
 ];
 
 const ORDER_ROWS = [
-  { key: '1', id: '#A-4821', when: '2 min ago', customer: 'Marta Wiśniewska', channel: 'Allegro', status: ['New', 'info'], ship: ['Not shipped', 'neutral'], money: '189,00 zł' },
-  { key: '2', id: '#A-4820', when: '18 min ago', customer: 'Tomasz Wójcik', channel: 'Allegro', status: ['Processing', 'review'], ship: ['Label ready', 'info'], money: '249,00 zł' },
-  { key: '3', id: '#W-1187', when: '42 min ago', customer: 'Katarzyna Lis', channel: 'WooCommerce', status: ['Processing', 'review'], ship: ['Dispatched', 'success'], money: '89,90 zł' },
-  { key: '4', id: '#P-3312', when: '1 h ago', customer: 'Michał Zieliński', channel: 'PrestaShop', status: ['Shipped', 'success'], ship: ['In transit', 'success'], money: '412,50 zł' },
-  { key: '5', id: '#E-0954', when: '2 h ago', customer: 'Agnieszka Kowalczyk', channel: 'Erli', status: ['Pending', 'warning'], ship: ['Not shipped', 'neutral'], money: '64,99 zł' },
-  { key: '6', id: '#A-4818', when: '3 h ago', customer: 'Paweł Kamiński', channel: 'Allegro', status: ['Delivered', 'success'], ship: ['Delivered', 'success'], money: '129,00 zł' },
-  { key: '7', id: '#A-4817', when: '4 h ago', customer: 'Ewa Szymańska', channel: 'Allegro', status: ['Delivered', 'success'], ship: ['Delivered', 'success'], money: '79,98 zł' },  { key: '8', id: '#W-1186', when: '5 h ago', customer: 'Jan Nowak', channel: 'WooCommerce', status: ['Shipped', 'success'], ship: ['In transit', 'success'], money: '154,00 zł' },
-  { key: '9', id: '#A-4816', when: '5 h ago', customer: 'Anna Lewandowska', channel: 'Allegro', status: ['Processing', 'review'], ship: ['Label ready', 'info'], money: '219,90 zł' },
-  { key: '10', id: '#P-3311', when: '6 h ago', customer: 'Piotr Dąbrowski', channel: 'PrestaShop', status: ['Delivered', 'success'], ship: ['Delivered', 'success'], money: '98,50 zł' },
-  { key: '11', id: '#E-0953', when: '7 h ago', customer: 'Monika Grabowska', channel: 'Erli', status: ['Shipped', 'success'], ship: ['In transit', 'success'], money: '139,00 zł' },
-  { key: '12', id: '#A-4815', when: '8 h ago', customer: 'Krzysztof Pawlak', channel: 'Allegro', status: ['Delivered', 'success'], ship: ['Delivered', 'success'], money: '59,99 zł' },
-  { key: '13', id: '#A-4814', when: '9 h ago', customer: 'Joanna Michalska', channel: 'Allegro', status: ['Delivered', 'success'], ship: ['Delivered', 'success'], money: '305,00 zł' },
-  { key: '14', id: '#W-1185', when: 'yesterday', customer: 'Łukasz Król', channel: 'WooCommerce', status: ['Delivered', 'success'], ship: ['Delivered', 'success'], money: '74,90 zł' },
-  { key: '15', id: '#P-3310', when: 'yesterday', customer: 'Magdalena Wieczorek', channel: 'PrestaShop', status: ['Cancelled', 'neutral'], ship: ['Not shipped', 'neutral'], money: '49,00 zł' },
-  { key: '16', id: '#A-4813', when: 'yesterday', customer: 'Rafał Jabłoński', channel: 'Allegro', status: ['Delivered', 'success'], ship: ['Delivered', 'success'], money: '189,00 zł' },
-
+  { key: '1', id: '#A-4821', when: ['minutes', 2], customer: 'c01', channel: 'Allegro', status: ['new', 'info'], ship: ['notShipped', 'neutral'], pln: 189 },
+  { key: '2', id: '#A-4820', when: ['minutes', 18], customer: 'c02', channel: 'Allegro', status: ['processing', 'review'], ship: ['labelReady', 'info'], pln: 249 },
+  { key: '3', id: '#W-1187', when: ['minutes', 42], customer: 'c03', channel: 'WooCommerce', status: ['processing', 'review'], ship: ['dispatched', 'success'], pln: 89.9 },
+  { key: '4', id: '#P-3312', when: ['hours', 1], customer: 'c04', channel: 'PrestaShop', status: ['shipped', 'success'], ship: ['inTransit', 'success'], pln: 412.5 },
+  { key: '5', id: '#E-0954', when: ['hours', 2], customer: 'c05', channel: 'Erli', status: ['pending', 'warning'], ship: ['notShipped', 'neutral'], pln: 64.99 },
+  { key: '6', id: '#A-4818', when: ['hours', 3], customer: 'c06', channel: 'Allegro', status: ['delivered', 'success'], ship: ['delivered', 'success'], pln: 129 },
+  { key: '7', id: '#A-4817', when: ['hours', 4], customer: 'c07', channel: 'Allegro', status: ['delivered', 'success'], ship: ['delivered', 'success'], pln: 79.98 },
+  { key: '8', id: '#W-1186', when: ['hours', 5], customer: 'c08', channel: 'WooCommerce', status: ['shipped', 'success'], ship: ['inTransit', 'success'], pln: 154 },
+  { key: '9', id: '#A-4816', when: ['hours', 5], customer: 'c09', channel: 'Allegro', status: ['processing', 'review'], ship: ['labelReady', 'info'], pln: 219.9 },
+  { key: '10', id: '#P-3311', when: ['hours', 6], customer: 'c10', channel: 'PrestaShop', status: ['delivered', 'success'], ship: ['delivered', 'success'], pln: 98.5 },
+  { key: '11', id: '#E-0953', when: ['hours', 7], customer: 'c11', channel: 'Erli', status: ['shipped', 'success'], ship: ['inTransit', 'success'], pln: 139 },
+  { key: '12', id: '#A-4815', when: ['hours', 8], customer: 'c12', channel: 'Allegro', status: ['delivered', 'success'], ship: ['delivered', 'success'], pln: 59.99 },
+  { key: '13', id: '#A-4814', when: ['hours', 9], customer: 'c13', channel: 'Allegro', status: ['delivered', 'success'], ship: ['delivered', 'success'], pln: 305 },
+  { key: '14', id: '#W-1185', when: ['yesterday'], customer: 'c14', channel: 'WooCommerce', status: ['delivered', 'success'], ship: ['delivered', 'success'], pln: 74.9 },
+  { key: '15', id: '#P-3310', when: ['yesterday'], customer: 'c15', channel: 'PrestaShop', status: ['cancelled', 'neutral'], ship: ['notShipped', 'neutral'], pln: 49 },
+  { key: '16', id: '#A-4813', when: ['yesterday'], customer: 'c16', channel: 'Allegro', status: ['delivered', 'success'], ship: ['delivered', 'success'], pln: 189 },
 ];
 
 const SHIPMENT_ROWS = [
-  { key: '1', tracking: '6800 0921 4471 0052 1188 40', order: '#A-4820', carrier: 'InPost Paczkomat', status: ['Label ready', 'info'], updated: '18 min ago' },
-  { key: '2', tracking: '0000 3471 2209 1PL', order: '#W-1187', carrier: 'DPD', status: ['Dispatched', 'success'], updated: '40 min ago' },
-  { key: '3', tracking: '6800 0921 4470 9921 0042 11', order: '#P-3312', carrier: 'InPost Kurier', status: ['In transit', 'success'], updated: '1 h ago' },
-  { key: '4', tracking: '6800 0921 4470 8812 3310 07', order: '#A-4818', carrier: 'InPost Paczkomat', status: ['Delivered', 'success'], updated: '3 h ago' },
-  { key: '5', tracking: '0000 3470 9981 4PL', order: '#A-4817', carrier: 'DPD', status: ['Delivered', 'success'], updated: '4 h ago' },  { key: '6', tracking: '6800 0921 4470 7731 0094 52', order: '#W-1186', carrier: 'InPost Kurier', status: ['In transit', 'success'], updated: '5 h ago' },
-  { key: '7', tracking: '0000 3470 9876 2PL', order: '#A-4816', carrier: 'DPD', status: ['Label ready', 'info'], updated: '5 h ago' },
-  { key: '8', tracking: '6800 0921 4470 6620 1187 33', order: '#P-3311', carrier: 'InPost Paczkomat', status: ['Delivered', 'success'], updated: '6 h ago' },
-  { key: '9', tracking: '6800 0921 4470 5519 2276 18', order: '#E-0953', carrier: 'InPost Paczkomat', status: ['In transit', 'success'], updated: '7 h ago' },
-  { key: '10', tracking: '0000 3470 9654 7PL', order: '#A-4815', carrier: 'DPD', status: ['Delivered', 'success'], updated: '8 h ago' },
-  { key: '11', tracking: '6800 0921 4470 4408 3365 09', order: '#A-4814', carrier: 'InPost Paczkomat', status: ['Delivered', 'success'], updated: '9 h ago' },
-  { key: '12', tracking: '6800 0921 4470 3397 4454 71', order: '#W-1185', carrier: 'InPost Kurier', status: ['Delivered', 'success'], updated: 'yesterday' },
-  { key: '13', tracking: '0000 3470 9432 1PL', order: '#A-4813', carrier: 'DPD', status: ['Delivered', 'success'], updated: 'yesterday' },
-  { key: '14', tracking: '6800 0921 4470 2286 5543 26', order: '#A-4812', carrier: 'InPost Paczkomat', status: ['Delivered', 'success'], updated: 'yesterday' },
-
+  { key: '1', tracking: '6800 0921 4471 0052 1188 40', order: '#A-4820', carrier: 'InPost Paczkomat', status: ['labelReady', 'info'], updated: ['minutes', 18] },
+  { key: '2', tracking: '0000 3471 2209 1PL', order: '#W-1187', carrier: 'DPD', status: ['dispatched', 'success'], updated: ['minutes', 40] },
+  { key: '3', tracking: '6800 0921 4470 9921 0042 11', order: '#P-3312', carrier: 'InPost Kurier', status: ['inTransit', 'success'], updated: ['hours', 1] },
+  { key: '4', tracking: '6800 0921 4470 8812 3310 07', order: '#A-4818', carrier: 'InPost Paczkomat', status: ['delivered', 'success'], updated: ['hours', 3] },
+  { key: '5', tracking: '0000 3470 9981 4PL', order: '#A-4817', carrier: 'DPD', status: ['delivered', 'success'], updated: ['hours', 4] },
+  { key: '6', tracking: '6800 0921 4470 7731 0094 52', order: '#W-1186', carrier: 'InPost Kurier', status: ['inTransit', 'success'], updated: ['hours', 5] },
+  { key: '7', tracking: '0000 3470 9876 2PL', order: '#A-4816', carrier: 'DPD', status: ['labelReady', 'info'], updated: ['hours', 5] },
+  { key: '8', tracking: '6800 0921 4470 6620 1187 33', order: '#P-3311', carrier: 'InPost Paczkomat', status: ['delivered', 'success'], updated: ['hours', 6] },
+  { key: '9', tracking: '6800 0921 4470 5519 2276 18', order: '#E-0953', carrier: 'InPost Paczkomat', status: ['inTransit', 'success'], updated: ['hours', 7] },
+  { key: '10', tracking: '0000 3470 9654 7PL', order: '#A-4815', carrier: 'DPD', status: ['delivered', 'success'], updated: ['hours', 8] },
+  { key: '11', tracking: '6800 0921 4470 4408 3365 09', order: '#A-4814', carrier: 'InPost Paczkomat', status: ['delivered', 'success'], updated: ['hours', 9] },
+  { key: '12', tracking: '6800 0921 4470 3397 4454 71', order: '#W-1185', carrier: 'InPost Kurier', status: ['delivered', 'success'], updated: ['yesterday'] },
+  { key: '13', tracking: '0000 3470 9432 1PL', order: '#A-4813', carrier: 'DPD', status: ['delivered', 'success'], updated: ['yesterday'] },
+  { key: '14', tracking: '6800 0921 4470 2286 5543 26', order: '#A-4812', carrier: 'InPost Paczkomat', status: ['delivered', 'success'], updated: ['yesterday'] },
 ];
 
 const mono = (v) => <span className="mono-text">{v}</span>;
 
-const SCENES = {
-  analytics: {
-    crumb: 'Analytics',
-    render: () => (
-      <PageLayout eyebrow="Operations" title="Analytics" description="Sales across connected channels, with clear data coverage."
-        actions={<span className="button button--secondary">Analytics settings</span>}>
-        <section className="status-strip status-strip--analytics">
-          {KPIS.map((k) => <AnalyticsKpiCard key={k.label} {...k} />)}
-        </section>
-        <DataTable rows={CHANNEL_ROWS} columns={[
-          { id: 'c', header: 'Channel', cell: (r) => r.channel },
-          { id: 'o', header: 'Orders', align: 'right', cell: (r) => mono(r.orders) },
-          { id: 'r', header: 'Revenue', align: 'right', cell: (r) => mono(r.revenue) },
-          { id: 's', header: 'Share', align: 'right', cell: (r) => mono(r.share) },
-        ]} />
-        <DataTable rows={PRODUCT_ROWS} columns={[
-          { id: 'p', header: 'Top products', cell: (r) => r.product },
-          { id: 'k', header: 'SKU', cell: (r) => mono(r.sku) },
-          { id: 'u', header: 'Units', align: 'right', cell: (r) => mono(r.units) },
-          { id: 'r', header: 'Revenue', align: 'right', cell: (r) => mono(r.revenue) },
-        ]} />
-      </PageLayout>
-    ),
-  },
-  orders: {
-    crumb: 'Orders',
-    render: () => (
-      <PageLayout eyebrow="Operations" title="Orders"
-        actions={<span className="button button--ghost button--sm">Refresh<span className="button__shortcut">R</span></span>}>
-        <DataTable rows={ORDER_ROWS} columns={[
-          { id: 'order', header: 'Order', cell: (r) => <span><strong className="mono-text">{r.id}</strong><br /><span className="page-description">{r.when}</span></span> },
-          { id: 'customer', header: 'Customer', cell: (r) => r.customer },
-          { id: 'channel', header: 'Channel', cell: (r) => r.channel },
-          { id: 'status', header: 'Status', cell: (r) => <StatusBadge tone={r.status[1]} withDot>{r.status[0]}</StatusBadge> },
-          { id: 'shipment', header: 'Shipment', cell: (r) => <StatusBadge tone={r.ship[1]}>{r.ship[0]}</StatusBadge> },
-          { id: 'money', header: 'Total', align: 'right', cell: (r) => mono(r.money) },
-        ]} />
-      </PageLayout>
-    ),
-  },
-  shipments: {
-    crumb: 'Shipments',
-    render: () => (
-      <PageLayout eyebrow="Operations" title="Shipments" description="Labels, tracking numbers and delivery status for every carrier.">
-        <DataTable rows={SHIPMENT_ROWS} columns={[
-          { id: 't', header: 'Tracking', cell: (r) => mono(r.tracking) },
-          { id: 'o', header: 'Order', cell: (r) => mono(r.order) },
-          { id: 'c', header: 'Carrier', cell: (r) => r.carrier },
-          { id: 's', header: 'Status', cell: (r) => <StatusBadge tone={r.status[1]} withDot>{r.status[0]}</StatusBadge> },
-          { id: 'u', header: 'Updated', cell: (r) => r.updated },
-        ]} />
-      </PageLayout>
-    ),
-  },
-};
+function buildScenes(lang) {
+  const c = BACKDROP_COPY[lang];
+  const a = c.analytics;
+  const tag = lang === 'pl' ? 'pl-PL' : 'en-GB';
+  const currency = lang === 'pl' ? 'PLN' : 'EUR';
+  const amount = (pln) => (currency === 'PLN' ? pln : pln / PLN_PER_EUR);
+  const money = (pln) => new Intl.NumberFormat(tag, { style: 'currency', currency }).format(Math.round(amount(pln) * 100) / 100);
+  const total = (pln) => new Intl.NumberFormat(tag, { style: 'currency', currency, maximumFractionDigits: 0 }).format(Math.round(amount(pln)));
+  const count = (v) => new Intl.NumberFormat(tag).format(v);
+  const share = (f) => new Intl.NumberFormat(tag, { style: 'percent', maximumFractionDigits: 1 }).format(f);
+  const ago = (w) => (w[0] === 'yesterday' ? c.ago.yesterday : interpolate(c.ago[w[0]], { n: w[1] }));
+  const badge = ([k, tone], withDot = false) => <StatusBadge tone={tone} withDot={withDot}>{c.status[k]}</StatusBadge>;
+  const up = (f) => ({ tone: 'success', glyph: '↑', formatted: share(f) });
+  const kpis = [
+    { label: a.revenue, value: total(KPIS.revenue.pln), metric: a.revenueMetric, delta: up(KPIS.revenue.delta), trend: KPIS.revenue.trend },
+    { label: a.orders, value: count(KPIS.orders.count), metric: a.ordersMetric, delta: up(KPIS.orders.delta), trend: KPIS.orders.trend },
+    { label: a.aov, value: money(KPIS.aov.pln), metric: a.aovMetric, delta: up(KPIS.aov.delta), trend: KPIS.aov.trend },
+    { label: a.cancelled, value: count(KPIS.cancelled.count), metric: interpolate(a.cancelledMetric, { share: share(KPIS.cancelled.share) }), delta: { tone: 'neutral', glyph: '→', formatted: share(0) }, trend: KPIS.cancelled.trend },
+  ];
+  return {
+    analytics: {
+      crumb: c.nav.analytics,
+      render: () => (
+        <PageLayout eyebrow={c.nav.operations} title={c.nav.analytics} description={a.description}
+          actions={<span className="button button--secondary">{a.settings}</span>}>
+          <section className="status-strip status-strip--analytics">
+            {kpis.map((k) => <AnalyticsKpiCard key={k.label} {...k} basis={a.basis} />)}
+          </section>
+          <DataTable rows={CHANNEL_ROWS} columns={[
+            { id: 'c', header: a.channel, cell: (r) => r.channel },
+            { id: 'o', header: a.orders, align: 'right', cell: (r) => mono(count(r.orders)) },
+            { id: 'r', header: a.revenue, align: 'right', cell: (r) => mono(total(r.pln)) },
+            { id: 's', header: a.share, align: 'right', cell: (r) => mono(share(r.share)) },
+          ]} />
+          <DataTable rows={PRODUCT_ROWS} columns={[
+            { id: 'p', header: a.topProducts, cell: (r) => c.products[r.product] },
+            { id: 'k', header: a.sku, cell: (r) => mono(r.sku) },
+            { id: 'u', header: a.units, align: 'right', cell: (r) => mono(count(r.units)) },
+            { id: 'r', header: a.revenue, align: 'right', cell: (r) => mono(total(r.pln)) },
+          ]} />
+        </PageLayout>
+      ),
+    },
+    orders: {
+      crumb: c.nav.orders,
+      render: () => (
+        <PageLayout eyebrow={c.nav.operations} title={c.nav.orders}
+          actions={<span className="button button--ghost button--sm">{c.refresh}<span className="button__shortcut">R</span></span>}>
+          <DataTable rows={ORDER_ROWS} columns={[
+            { id: 'order', header: c.orders.order, cell: (r) => <span><strong className="mono-text">{r.id}</strong><br /><span className="page-description">{ago(r.when)}</span></span> },
+            { id: 'customer', header: c.orders.customer, cell: (r) => c.customers[r.customer] },
+            { id: 'channel', header: c.orders.channel, cell: (r) => r.channel },
+            { id: 'status', header: c.orders.status, cell: (r) => badge(r.status, true) },
+            { id: 'shipment', header: c.orders.shipment, cell: (r) => badge(r.ship) },
+            { id: 'money', header: c.orders.total, align: 'right', cell: (r) => mono(money(r.pln)) },
+          ]} />
+        </PageLayout>
+      ),
+    },
+    shipments: {
+      crumb: c.nav.shipments,
+      render: () => (
+        <PageLayout eyebrow={c.nav.operations} title={c.nav.shipments} description={c.shipments.description}>
+          <DataTable rows={SHIPMENT_ROWS} columns={[
+            { id: 't', header: c.shipments.tracking, cell: (r) => mono(r.tracking) },
+            { id: 'o', header: c.shipments.order, cell: (r) => mono(r.order) },
+            { id: 'c', header: c.shipments.carrier, cell: (r) => r.carrier },
+            { id: 's', header: c.shipments.status, cell: (r) => badge(r.status, true) },
+            { id: 'u', header: c.shipments.updated, cell: (r) => ago(r.updated) },
+          ]} />
+        </PageLayout>
+      ),
+    },
+  };
+}
 const TOUR = ['analytics', 'orders', 'shipments'];
 
 function AppPreview() {
@@ -2971,6 +2997,9 @@ function AppPreview() {
   const boxRef = useRef(null);
   const [frame, setFrame] = useState({ width: APP_W, height: APP_H, scale: 1 });
   const [i, setI] = useState(0);
+  const lang = React.useContext(LocaleCtx);
+  const c = BACKDROP_COPY[lang];
+  const scenes = React.useMemo(() => buildScenes(lang), [lang]);
   useEffect(() => {
     const el = boxRef.current;
     if (!el) return undefined;
@@ -2984,7 +3013,7 @@ function AppPreview() {
     return () => clearInterval(id);
   }, [reduce]);
   const key = TOUR[reduce ? 1 : i];
-  const scene = SCENES[key];
+  const scene = scenes[key];
   return (
     <div className="bg-app" ref={boxRef} aria-hidden="true" inert="">
       <div className="bg-app__frame" style={{ width: frame.width, height: frame.height, transform: `scale(${frame.scale})` }}>
@@ -2999,12 +3028,12 @@ function AppPreview() {
             <nav className="shell-nav">
               {NAV_GROUPS.map((g) => (
                 <section key={g.label} className="shell-nav__group">
-                  <p className="shell-nav__label">{g.label}</p>
+                  <p className="shell-nav__label">{c.nav[g.label]}</p>
                   <ul className="shell-nav__list">
                     {g.items.map(([k, label, count]) => (
                       <li key={k}>
                         <span className={k === key ? 'shell-nav__link shell-nav__link--active bg-app__nav' : 'shell-nav__link bg-app__nav'}>
-                          <span className="shell-nav__link-label">{label}</span>
+                          <span className="shell-nav__link-label">{c.nav[label]}</span>
                           {count !== undefined ? <span className="shell-nav__link-count mono-text">{count}</span> : null}
                         </span>
                       </li>
@@ -3014,14 +3043,14 @@ function AppPreview() {
               ))}
             </nav>
             <div className="shell-workspace">
-              <div className="shell-workspace__header"><strong className="shell-workspace__name">Default organization</strong></div>
-              <div className="shell-workspace__user"><span className="shell-workspace__username">kasia</span></div>
+              <div className="shell-workspace__header"><strong className="shell-workspace__name">{c.workspace}</strong></div>
+              <div className="shell-workspace__user"><span className="shell-workspace__username">{c.user}</span></div>
             </div>
           </div>
           <div className="shell-main">
             <header className="shell-topbar">
               <nav className="shell-crumbs">
-                <span className="shell-crumbs__group">Operations</span>
+                <span className="shell-crumbs__group">{c.nav.operations}</span>
                 <span className="shell-crumbs__sep" aria-hidden="true">/</span>
                 <span className="shell-crumbs__current bg-app__crumb">
                   <AnimatePresence initial={false}>
@@ -3031,12 +3060,12 @@ function AppPreview() {
               </nav>
               <span className="shell-topbar__search">
                 <span className="shell-topbar__search-icon">⌕</span>
-                <span className="shell-topbar__search-placeholder">Search orders, products, connections…</span>
+                <span className="shell-topbar__search-placeholder">{c.search}</span>
                 <kbd className="shell-topbar__search-kbd">⌘K</kbd>
               </span>
               <div className="shell-topbar__spacer" />
-              <span className="button button--ghost shell-topbar__alerts">Alerts <span>0</span></span>
-              <span className="shell-user-chip"><span className="shell-user-chip__avatar">KA</span><span className="shell-user-chip__name">kasia</span></span>
+              <span className="button button--ghost shell-topbar__alerts">{c.alerts} <span>0</span></span>
+              <span className="shell-user-chip"><span className="shell-user-chip__avatar">{c.user.slice(0, 2).toUpperCase()}</span><span className="shell-user-chip__name">{c.user}</span></span>
             </header>
             {/* The real app re-keys .shell-content per route for a quick cut; as a background that
                 reads as a slideshow, so scenes overlap and cross-fade slowly instead. */}
@@ -3158,49 +3187,49 @@ function LanguageSwitch({ placement = 'up', reveal = 'start', className, locale,
     else if (event.key === 'Tab') { event.preventDefault(); close(); }
   }
 
-  const classes = ['language-switch', reveal === 'end' ? 'language-switch--reveal-end' : '', open ? 'is-open' : '', className].filter(Boolean).join(' ');
+  const classes = ['peek-button', 'language-switch', reveal === 'end' ? 'peek-button--reveal-end' : '', open ? 'is-open' : '', className].filter(Boolean).join(' ');
   const chevron = (
     <path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
   );
 
   return (
     <div className={classes} ref={rootRef}>
-      <button ref={triggerRef} type="button" className="language-switch__trigger" aria-haspopup="listbox" aria-expanded={open}
+      <button ref={triggerRef} type="button" className="peek-button__trigger" aria-haspopup="listbox" aria-expanded={open}
         aria-controls={open ? listId : undefined} aria-label={interpolate(copy.current, { name: current.name })} onClick={toggle}>
-        <span className="language-switch__flag-wrap">
+        <span className="peek-button__icon">
           <AnimatePresence mode="wait" initial={false}>
-            <motion.span key={locale} className="language-switch__flag-face"
+            <motion.span key={locale} className="peek-button__icon-face"
               initial={{ rotateY: -90, opacity: 0 }} animate={{ rotateY: 0, opacity: 1 }} exit={{ rotateY: 90, opacity: 0 }}
               transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}>
               <LanguageFlag code={current.code} />
             </motion.span>
           </AnimatePresence>
         </span>
-        <motion.svg className="language-switch__chevron" viewBox="0 0 10 10" aria-hidden="true" animate={{ rotate: open !== down ? 180 : 0 }} transition={LS_SPRING}>
+        <motion.svg className="peek-button__chevron" viewBox="0 0 10 10" aria-hidden="true" animate={{ rotate: open !== down ? 180 : 0 }} transition={LS_SPRING}>
           {chevron}
         </motion.svg>
       </button>
-      <span className="language-switch__peek" aria-hidden="true" style={{ '--peek-chevron': down ? '180deg' : '0deg' }}>
+      <span className="peek-button__peek" aria-hidden="true" style={{ '--peek-chevron': down ? '180deg' : '0deg' }}>
         <LanguageFlag code={current.code} />
-        <span className="language-switch__reveal">
-          <span className="language-switch__reveal-clip">
-            <span className="language-switch__reveal-name" lang={current.code}>{current.name}</span>
+        <span className="peek-button__reveal">
+          <span className="peek-button__reveal-clip">
+            <span className="peek-button__reveal-name" lang={current.code}>{current.name}</span>
           </span>
         </span>
-        <svg className="language-switch__chevron" viewBox="0 0 10 10">{chevron}</svg>
+        <svg className="peek-button__chevron" viewBox="0 0 10 10">{chevron}</svg>
       </span>
       {ReactDOM.createPortal(
         <AnimatePresence>
           {open ? (
             <motion.div ref={popoverRef} style={position}
-              className={['language-switch__popover', down ? 'language-switch__popover--down' : ''].filter(Boolean).join(' ')}
+              className={['motion-popover', down ? 'motion-popover--down' : ''].filter(Boolean).join(' ')}
               initial={{ opacity: 0, scale: 0.92, x: '-50%', y: down ? -6 : 6, filter: 'blur(4px)' }}
               animate={{ opacity: 1, scale: 1, x: '-50%', y: 0, filter: 'blur(0px)' }}
               exit={{ opacity: 0, scale: 0.96, x: '-50%', y: down ? -4 : 4, filter: 'blur(2px)', transition: { duration: 0.12 } }}
               transition={LS_SPRING}>
-              <div className="language-switch__head" id={headId}>{copy.label}</div>
+              <div className="motion-popover__head" id={headId}>{copy.label}</div>
               <span id={betaHintId} className="sr-only">{copy.betaHint}</span>
-              <motion.ul ref={listRef} id={listId} className="language-switch__list" role="listbox" tabIndex={-1}
+              <motion.ul ref={listRef} id={listId} className="option-list" role="listbox" tabIndex={-1}
                 aria-labelledby={headId} aria-activedescendant={`${listId}-${LANGUAGE_OPTIONS[focus].code}`} onKeyDown={onKeyDown}
                 initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.035, delayChildren: 0.04 } } }}>
                 {LANGUAGE_OPTIONS.map((option, index) => {
@@ -3208,12 +3237,12 @@ function LanguageSwitch({ placement = 'up', reveal = 'start', className, locale,
                   return (
                     <motion.li key={option.code} id={`${listId}-${option.code}`} role="option" lang={option.code} aria-selected={selected}
                       aria-describedby={option.beta ? betaHintId : undefined}
-                      className={['language-switch__option', index === focus ? 'is-focus' : ''].filter(Boolean).join(' ')}
+                      className={['option-list__option', index === focus ? 'is-focus' : ''].filter(Boolean).join(' ')}
                       variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0, transition: LS_SPRING } }}
                       onPointerMove={() => setFocus(index)} onClick={() => choose(option)}>
-                      {selected ? <motion.span className="language-switch__selected" layoutId={`${listId}-selected`} transition={LS_SPRING} /> : null}
+                      {selected ? <motion.span className="option-list__selected" layoutId={`${listId}-selected`} transition={LS_SPRING} /> : null}
                       <LanguageFlag code={option.code} />
-                      <span className="language-switch__name">{option.name}<small>{option.code.toUpperCase()}</small></span>
+                      <span className="option-list__name">{option.name}<small>{option.code.toUpperCase()}</small></span>
                       {option.beta ? (
                         <span className="language-switch__beta" onPointerEnter={() => setBetaHint(true)} onPointerLeave={() => setBetaHint(false)}>{copy.beta}</span>
                       ) : null}
@@ -3267,8 +3296,8 @@ function FitText({ className, children }) {
    LanguageSwitch for the pill, peek and popover, so the two read as a pair). Only the wiring
    differs: the page's theme lives on <html data-theme> instead of the app's ThemeContext. */
 const THEME_COPY = {
-  pl: { label: 'Motyw', current: 'Motyw: {name}', light: 'Jasny', dark: 'Ciemny', system: 'Systemowy' },
-  en: { label: 'Theme', current: 'Theme: {name}', light: 'Light', dark: 'Dark', system: 'System' },
+  pl: { label: 'Motyw', current: 'Motyw: {name}', light: 'Jasny', dark: 'Ciemny', system: 'Auto' },
+  en: { label: 'Theme', current: 'Theme: {name}', light: 'Light', dark: 'Dark', system: 'Auto' },
 };
 const THEME_OPTIONS = ['light', 'dark', 'system'];
 const THEME_POPOVER_WIDTH = 216;
@@ -3282,7 +3311,7 @@ function themePopoverPosition(trigger, down) {
 }
 function ThemeIcon({ theme }) {
   return (
-    <svg className="theme-switch__icon" viewBox="0 0 16 16" aria-hidden="true">
+    <svg className="theme-icon" viewBox="0 0 16 16" aria-hidden="true">
       {theme === 'light' ? (
         <><circle cx="8" cy="8" r="3" fill="currentColor" /><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></>
       ) : theme === 'dark' ? (
@@ -3328,47 +3357,47 @@ function ThemeSwitch({ placement = 'down', locale }) {
   const revealed = touch || pointing !== null || keyboard;
   const chevron = <path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />;
   return (
-    <div className={['language-switch', 'theme-switch', open ? 'is-open' : ''].filter(Boolean).join(' ')} ref={rootRef}>
-      <button ref={triggerRef} type="button" className="language-switch__trigger" aria-haspopup="dialog" aria-expanded={open}
+    <div className={['peek-button', 'theme-switch', open ? 'is-open' : ''].filter(Boolean).join(' ')} ref={rootRef}>
+      <button ref={triggerRef} type="button" className="peek-button__trigger" aria-haspopup="dialog" aria-expanded={open}
         aria-controls={open ? groupId : undefined} aria-label={interpolate(copy.current, { name: copy[theme] })} onClick={toggle}>
-        <span className="language-switch__flag-wrap theme-switch__icon-wrap">
+        <span className="peek-button__icon">
           <AnimatePresence mode="wait" initial={false}>
-            <motion.span key={theme} className="language-switch__flag-face"
+            <motion.span key={theme} className="peek-button__icon-face"
               initial={{ rotate: -90, scale: 0.6, opacity: 0 }} animate={{ rotate: 0, scale: 1, opacity: 1 }} exit={{ rotate: 90, scale: 0.6, opacity: 0 }}
               transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}>
               <ThemeIcon theme={theme} />
             </motion.span>
           </AnimatePresence>
         </span>
-        <motion.svg className="language-switch__chevron" viewBox="0 0 10 10" aria-hidden="true" animate={{ rotate: open !== down ? 180 : 0 }} transition={LS_SPRING}>{chevron}</motion.svg>
+        <motion.svg className="peek-button__chevron" viewBox="0 0 10 10" aria-hidden="true" animate={{ rotate: open !== down ? 180 : 0 }} transition={LS_SPRING}>{chevron}</motion.svg>
       </button>
-      <span className="language-switch__peek" aria-hidden="true" style={{ '--peek-chevron': down ? '180deg' : '0deg' }}>
-        <span className="theme-switch__icon-wrap"><ThemeIcon theme={theme} /></span>
-        <span className="language-switch__reveal"><span className="language-switch__reveal-clip"><span className="language-switch__reveal-name">{copy[theme]}</span></span></span>
-        <svg className="language-switch__chevron" viewBox="0 0 10 10">{chevron}</svg>
+      <span className="peek-button__peek" aria-hidden="true" style={{ '--peek-chevron': down ? '180deg' : '0deg' }}>
+        <span className="peek-button__icon"><ThemeIcon theme={theme} /></span>
+        <span className="peek-button__reveal"><span className="peek-button__reveal-clip"><span className="peek-button__reveal-name">{copy[theme]}</span></span></span>
+        <svg className="peek-button__chevron" viewBox="0 0 10 10">{chevron}</svg>
       </span>
       {ReactDOM.createPortal(
         <AnimatePresence>
           {open ? (
             <motion.div ref={popoverRef} style={position}
-              className={['language-switch__popover', 'theme-switch__popover', down ? 'language-switch__popover--down' : ''].filter(Boolean).join(' ')}
+              className={['motion-popover', 'theme-switch__popover', down ? 'motion-popover--down' : ''].filter(Boolean).join(' ')}
               initial={{ opacity: 0, scale: 0.92, x: '-50%', y: down ? -6 : 6, filter: 'blur(4px)' }}
               animate={{ opacity: 1, scale: 1, x: '-50%', y: 0, filter: 'blur(0px)' }}
               exit={{ opacity: 0, scale: 0.96, x: '-50%', y: down ? -4 : 4, filter: 'blur(2px)', transition: { duration: 0.12 } }}
               transition={LS_SPRING}>
-              <div className="language-switch__head" id={headId}>{copy.label}</div>
-              <div className="theme-switch__control" onPointerLeave={() => setPointing(null)}
+              <div className="motion-popover__head" id={headId}>{copy.label}</div>
+              <div className="segmented-switch" onPointerLeave={() => setPointing(null)}
                 onFocus={(e) => setKeyboard(e.target.matches(':focus-visible'))} onBlur={() => setKeyboard(false)}>
-                <motion.div id={groupId} className="theme-switch__segments" role="radiogroup" aria-labelledby={headId} onKeyDown={onKeyDown}
+                <motion.div id={groupId} className="segmented-switch__track" role="radiogroup" aria-labelledby={headId} onKeyDown={onKeyDown}
                   initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.035, delayChildren: 0.04 } } }}>
                   {THEME_OPTIONS.map((v, index) => {
                     const selected = v === theme;
                     return (
                       <motion.button key={v} ref={(el) => { segmentRefs.current[index] = el; }} variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0, transition: LS_SPRING } }} whileTap="tap" type="button" role="radio" aria-checked={selected}
-                        tabIndex={selected ? 0 : -1} aria-label={copy[v]} className="theme-switch__segment"
+                        tabIndex={selected ? 0 : -1} aria-label={copy[v]} className="segmented-switch__option"
                         onPointerEnter={() => setPointing(index)} onClick={() => setTheme(v)}>
-                        {selected ? <motion.span className="theme-switch__thumb" layoutId={`${groupId}-thumb`} transition={THUMB_SPRING} /> : null}
-                        <motion.span className="theme-switch__segment-icon" variants={{ hidden: { scale: 1, rotate: 0 }, show: { scale: 1, rotate: 0 }, tap: { scale: 0.8, rotate: v === 'light' ? 45 : -20 } }} transition={LS_SPRING}>
+                        {selected ? <motion.span className="segmented-switch__thumb" layoutId={`${groupId}-thumb`} transition={THUMB_SPRING} /> : null}
+                        <motion.span className="segmented-switch__icon" variants={{ hidden: { scale: 1, rotate: 0 }, show: { scale: 1, rotate: 0 }, tap: { scale: 0.8, rotate: v === 'light' ? 45 : -20 } }} transition={LS_SPRING}>
                           <ThemeIcon theme={v} />
                         </motion.span>
                       </motion.button>
@@ -3377,12 +3406,12 @@ function ThemeSwitch({ placement = 'down', locale }) {
                 </motion.div>
                 <AnimatePresence initial={false}>
                   {revealed ? (
-                    <motion.div key="caption" className="theme-switch__caption" aria-hidden="true"
+                    <motion.div key="caption" className="segmented-switch__caption" aria-hidden="true"
                       initial={{ height: 0 }} animate={{ height: 26 }} exit={{ height: 0 }} transition={LS_SPRING}>
-                      <motion.div className="theme-switch__names" initial="hidden" animate="shown" exit="hidden"
+                      <motion.div className="segmented-switch__names" initial="hidden" animate="shown" exit="hidden"
                         variants={{ shown: { transition: { staggerChildren: 0.035 } }, hidden: { transition: { staggerChildren: 0.02, staggerDirection: -1 } } }}>
                         {THEME_OPTIONS.map((v, index) => (
-                          <motion.span key={v} className="theme-switch__name"
+                          <motion.span key={v} className="segmented-switch__name"
                             data-state={index === pointing ? 'pointed' : v === theme ? 'active' : undefined}
                             variants={CAPTION_VARIANTS} transition={LS_SPRING}>{copy[v]}</motion.span>
                         ))}
@@ -3441,7 +3470,7 @@ const UI = {
   pl: {
     username: 'Nazwa użytkownika', usernameOrEmail: 'Nazwa użytkownika lub e-mail', email: 'E-mail', password: 'Hasło',
     confirm: 'Powtórz hasło', min8: 'min. 8 znaków', forgot: 'Nie pamiętasz hasła?', show: 'Pokaż', hide: 'Ukryj',
-    showPw: 'Pokaż hasło', hidePw: 'Ukryj hasło', usernamePh: 'np. sklep-kasia', emailPh: 'kasia@twojsklep.pl',
+    showPw: 'Pokaż hasło', hidePw: 'Ukryj hasło', usernamePh: 'np. moj-sklep', emailPh: 'kontakt@twojsklep.pl',
     loginFailedTitle: 'Nie udało się zalogować', signedInTitle: 'Zalogowano', signedInLead: 'Otwieramy panel OpenLinker.',
     mockBack: 'Makieta: wróć do formularza', tabsLabel: 'Logowanie lub rejestracja', language: 'Język',
     tracking: 'Ta wizyta jest zapisywana w statystykach. Nie tworzymy na jej podstawie profilu osoby.',
@@ -3455,7 +3484,7 @@ const UI = {
   en: {
     username: 'Username', usernameOrEmail: 'Username or email', email: 'Email', password: 'Password',
     confirm: 'Repeat password', min8: 'at least 8 characters', forgot: 'Forgot your password?', show: 'Show', hide: 'Hide',
-    showPw: 'Show password', hidePw: 'Hide password', usernamePh: 'e.g. kates-shop', emailPh: 'kate@yourshop.com',
+    showPw: 'Show password', hidePw: 'Hide password', usernamePh: 'e.g. my-store', emailPh: 'contact@yourstore.com',
     loginFailedTitle: "Couldn't sign you in", signedInTitle: 'Signed in', signedInLead: 'Opening OpenLinker.',
     mockBack: 'Mockup: back to the form', tabsLabel: 'Sign in or create an account', language: 'Language',
     tracking: 'This visit is counted in our statistics. No personal profile is built from it.',
@@ -3470,7 +3499,7 @@ const UI = {
 
 const DEMO_COPY = {
   pl: {
-    bar: { chip: 'Demo', text: 'Środowisko demonstracyjne z przykładowymi danymi.', linksLabel: 'Więcej o OpenLinkerze', links: [['openlinker.io', 'https://openlinker.io/pl/'], ['Dokumentacja', 'https://docs.openlinker.io/'], ['GitHub', 'https://github.com/openlinker-project/openlinker']] },
+    bar: { chip: 'Demo', text: 'Demo tylko do odczytu, z przykładowymi danymi.', linksLabel: 'Więcej o OpenLinkerze', links: [['openlinker.io', 'https://openlinker.io/pl/'], ['Dokumentacja', 'https://docs.openlinker.io/'], ['GitHub', 'https://github.com/openlinker-project/openlinker']] },
     headline: { before: ['Zobacz, jak OpenLinker', 'obsługuje zamówienia'], rotating: ['z Allegro.', 'z Erli.', 'z PrestaShopa.', 'z WooCommerce.', 'z Shopera.'], after: null },
     lead: 'Załóż konto i przejrzyj prawdziwy panel z przykładowym sklepem: zamówienia, wysyłki i faktury.',
     highlights: ['Konto demo jest darmowe', 'Na własnym serwerze nie płacisz prowizji od zamówień', 'Cały kod jest na GitHubie, na licencji Apache 2.0'],
@@ -3492,7 +3521,7 @@ const DEMO_COPY = {
     support: null,
   },
   en: {
-    bar: { chip: 'Demo', text: 'A demo environment with sample data.', linksLabel: 'More about OpenLinker', links: [['openlinker.io', 'https://openlinker.io/'], ['Docs', 'https://docs.openlinker.io/'], ['GitHub', 'https://github.com/openlinker-project/openlinker']] },
+    bar: { chip: 'Demo', text: 'A read-only demo with sample data.', linksLabel: 'More about OpenLinker', links: [['openlinker.io', 'https://openlinker.io/'], ['Docs', 'https://docs.openlinker.io/'], ['GitHub', 'https://github.com/openlinker-project/openlinker']] },
     headline: { before: ['See how OpenLinker', 'handles orders'], rotating: ['from Allegro.', 'from Erli.', 'from PrestaShop.', 'from WooCommerce.', 'from Shoper.'], after: null },
     lead: 'Create an account and browse the real panel with a sample shop: orders, shipments and invoices.',
     highlights: ['The demo account is free', 'On your own server you pay no fee per order', 'All the code is on GitHub under the Apache 2.0 licence'],
@@ -3621,11 +3650,32 @@ function validate(mode, v, ui) {
 }
 
 /* Mockup behaviour: login succeeds only with the password "demo1234"; username "zajety" triggers the 409. */
+// Sign-in Tab order: username, password, Sign in, Show, Forgot your password? (mirrors login-focus-order.ts).
+const TABBABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const reachable = (el) => el instanceof HTMLElement && el.tabIndex >= 0 && !el.closest('[inert], [hidden], [aria-hidden="true"]');
+function loginFormTab(event) {
+  if (event.key !== 'Tab' || event.altKey || event.ctrlKey || event.metaKey) return;
+  const form = event.currentTarget;
+  const inputs = form.querySelectorAll('input');
+  const stops = [inputs[0], inputs[1], form.querySelector('button[type="submit"]'), form.querySelector('.pw__toggle'), form.querySelector('.f__aside a')].filter((el) => el && reachable(el));
+  const index = stops.indexOf(event.target);
+  if (index === -1) return;
+  const target = stops[index + (event.shiftKey ? -1 : 1)];
+  if (target) { event.preventDefault(); target.focus(); return; }
+  if (!event.shiftKey) {
+    const all = Array.from(document.querySelectorAll(TABBABLE)).filter(reachable);
+    const after = all.find((el) => !form.contains(el) && (form.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)) ?? all[0];
+    if (after) { event.preventDefault(); after.focus(); }
+  }
+}
+
 function AuthPanel({ preset, copy, showTrackingFootnote = false, onReserve, initial = {} }) {
   const ui = useUi();
   const reduce = useReducedMotion();
   const canRegister = preset.registration !== 'off';
-  const [tab, setTab] = useState(canRegister ? (initial.tab || preset.defaultTab) : 'login');
+  // `?tab=sign-up|sign-in` opens that tab (as in the app), unless the caller pins one (the admin preview).
+  const urlTab = initial.pinTab ? undefined : new Map([['sign-up', 'register'], ['sign-in', 'login']]).get(new URLSearchParams(location.search).get('tab'));
+  const [tab, setTab] = useState(canRegister ? (urlTab || initial.tab || preset.defaultTab) : 'login');
   const [step, setStep] = useState({ register: 'form', login: 'form', ...(initial.step || {}) });
   const [values, setValues] = useState({ username: '', email: '', password: '', confirm: '', ...(initial.values || {}) });
   const [errors, setErrors] = useState({});
@@ -3749,7 +3799,7 @@ function AuthPanel({ preset, copy, showTrackingFootnote = false, onReserve, init
             <h2 className="v-title">{copy.login.title}</h2>
             <p className="v-lead">{copy.login.lead}</p>
           </div>
-          <form className="auth-form" onSubmit={submit('login')} noValidate>
+          <form className="auth-form" onSubmit={submit('login')} onKeyDown={loginFormTab} noValidate>
             <Field id={ids.lu} label={ui.usernameOrEmail} error={errText('username')}>
               <Input value={values.username} onChange={set('username')} autoComplete="username" placeholder={ui.usernamePh} />
             </Field>
@@ -3953,7 +4003,7 @@ function LoginPreview({ copy, lang, canRegister = false, screen = 'login', phone
               <div className="stage__inner">
                 <Hero copy={copy} />
                 <div className="auth-col">
-                  <section className="auth-card"><AuthPanel key={`${lang}:${canRegister}:${screen}`} preset={preset} copy={copy} initial={{ tab: canRegister ? screen : 'login' }} /></section>
+                  <section className="auth-card"><AuthPanel key={`${lang}:${canRegister}:${screen}`} preset={preset} copy={copy} initial={{ tab: canRegister ? screen : 'login', pinTab: true }} /></section>
                 </div>
               </div>
             </div>
@@ -4099,12 +4149,12 @@ function AdminView({ uiLocale, setLocale, saved, onSave }) {
           <nav className="shell-nav" aria-label="Primary">
             {NAV_GROUPS.map((g) => (
               <section key={g.label} className="shell-nav__group">
-                <p className="shell-nav__label">{g.label}</p>
+                <p className="shell-nav__label">{BACKDROP_COPY[uiLocale].nav[g.label]}</p>
                 <ul className="shell-nav__list">
                   {g.items.map(([k, label, count]) => (
                     <li key={k}>
                       <a href="#admin" onClick={(e) => e.preventDefault()} className={k === 'settings' ? 'shell-nav__link shell-nav__link--active' : 'shell-nav__link'} aria-current={k === 'settings' ? 'page' : undefined}>
-                        <span className="shell-nav__link-label">{label}</span>
+                        <span className="shell-nav__link-label">{BACKDROP_COPY[uiLocale].nav[label]}</span>
                         {count !== undefined ? <span className="shell-nav__link-count mono-text">{count}</span> : null}
                       </a>
                     </li>
@@ -4115,7 +4165,7 @@ function AdminView({ uiLocale, setLocale, saved, onSave }) {
           </nav>
           <div className="shell-workspace">
             <div className="shell-workspace__header">
-              <strong className="shell-workspace__name">Default organization</strong>
+              <strong className="shell-workspace__name">{BACKDROP_COPY[uiLocale].workspace}</strong>
               <LanguageSwitch placement="up" locale={uiLocale} setLocale={setLocale} />
             </div>
             <div className="shell-workspace__user"><span className="shell-workspace__username">admin</span></div>
@@ -4130,7 +4180,7 @@ function AdminView({ uiLocale, setLocale, saved, onSave }) {
             </nav>
             <span className="shell-topbar__search">
               <span className="shell-topbar__search-icon" aria-hidden="true">⌕</span>
-              <span className="shell-topbar__search-placeholder">Search orders, products, connections…</span>
+              <span className="shell-topbar__search-placeholder">{BACKDROP_COPY[uiLocale].search}</span>
               <kbd className="shell-topbar__search-kbd" aria-hidden="true">⌘K</kbd>
             </span>
             <div className="shell-topbar__spacer" />
@@ -4152,7 +4202,7 @@ const STATES = {
   'demo-register': { preset: 'demo', initial: { tab: 'register' } },
   'demo-login': { preset: 'demo', initial: { tab: 'login' } },
   'demo-login-failed': { preset: 'demo', initial: { tab: 'login', failed: true, values: { username: 'kasia', password: 'zle-haslo' } } },
-  'demo-register-sent': { preset: 'demo', initial: { tab: 'register', step: { register: 'sent' }, values: { email: 'kasia@twojsklep.pl' } } },
+  'demo-register-sent': { preset: 'demo', initial: { tab: 'register', step: { register: 'sent' }, values: { email: 'kontakt@twojsklep.pl' } } },
   // /consent only: a demo account created before session recording existed. Sign-in never shows it.
   'demo-consent': { preset: 'demo', initial: { tab: 'login', step: { login: 'consent' } } },
   'demo-signed-in': { preset: 'demo', initial: { tab: 'login', step: { login: 'in' } } },

@@ -2,9 +2,9 @@ import { StrictMode } from 'react';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { Link, MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ThemeProvider } from '../theme/theme-provider';
-import { THEME_STORAGE_KEY } from '../theme/theme.types';
-import { ThemeToggle } from './theme-toggle';
+import { ThemeProvider } from '../../../shared/theme/theme-provider';
+import { THEME_STORAGE_KEY } from '../../../shared/theme/theme.types';
+import { ThemePicker } from './theme-picker';
 
 function stubLightPreferred(): { restore: () => void } {
   const spy = vi.spyOn(window, 'matchMedia').mockImplementation(
@@ -18,7 +18,7 @@ function stubLightPreferred(): { restore: () => void } {
         addListener: () => {},
         removeListener: () => {},
         dispatchEvent: () => false,
-      }) as MediaQueryList,
+      }) as MediaQueryList
   );
   return { restore: () => spy.mockRestore() };
 }
@@ -26,8 +26,8 @@ function stubLightPreferred(): { restore: () => void } {
 function renderToggle(): void {
   render(
     <ThemeProvider>
-      <ThemeToggle />
-    </ThemeProvider>,
+      <ThemePicker />
+    </ThemeProvider>
   );
 }
 
@@ -35,7 +35,7 @@ function keyDown(element: HTMLElement, key: string): void {
   element.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
 }
 
-describe('ThemeToggle', () => {
+describe('ThemePicker', () => {
   beforeEach(() => {
     window.localStorage.clear();
     document.documentElement.removeAttribute('data-theme');
@@ -46,14 +46,14 @@ describe('ThemeToggle', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders three radios with System selected by default', () => {
+  it('renders three radios with Auto selected by default', () => {
     const { restore } = stubLightPreferred();
     renderToggle();
 
     const radios = screen.getAllByRole('radio');
     expect(radios).toHaveLength(3);
     const selected = radios.find((r) => r.getAttribute('aria-checked') === 'true');
-    expect(selected?.textContent).toBe('System');
+    expect(selected?.getAttribute('aria-label')).toBe('Auto');
 
     restore();
   });
@@ -92,7 +92,7 @@ describe('ThemeToggle', () => {
     const { restore } = stubLightPreferred();
     renderToggle();
 
-    const system = screen.getByRole('radio', { name: 'System' });
+    const system = screen.getByRole('radio', { name: 'Auto' });
     system.focus();
     act(() => keyDown(system, 'ArrowRight'));
 
@@ -107,7 +107,7 @@ describe('ThemeToggle', () => {
     const { restore } = stubLightPreferred();
     renderToggle();
 
-    const system = screen.getByRole('radio', { name: 'System' });
+    const system = screen.getByRole('radio', { name: 'Auto' });
     system.focus();
     act(() => keyDown(system, 'ArrowLeft'));
 
@@ -122,7 +122,7 @@ describe('ThemeToggle', () => {
     const { restore } = stubLightPreferred();
     renderToggle();
 
-    const system = screen.getByRole('radio', { name: 'System' });
+    const system = screen.getByRole('radio', { name: 'Auto' });
     system.focus();
     act(() => keyDown(system, 'Home'));
     expect(screen.getByRole('radio', { name: 'Light' }).getAttribute('aria-checked')).toBe('true');
@@ -130,7 +130,7 @@ describe('ThemeToggle', () => {
     const light = screen.getByRole('radio', { name: 'Light' });
     light.focus();
     act(() => keyDown(light, 'End'));
-    expect(screen.getByRole('radio', { name: 'System' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('radio', { name: 'Auto' }).getAttribute('aria-checked')).toBe('true');
 
     restore();
   });
@@ -144,13 +144,13 @@ describe('ThemeToggle', () => {
     // dispatching state updates that trigger re-renders → infinite loop.
     //
     // The literal production crash requires the full Radix DropdownMenu
-    // provider tree (where AppShell mounts ThemeToggle), which is too heavy
+    // provider tree (where AppShell mounts ThemePicker), which is too heavy
     // to reconstruct here — even with StrictMode + MemoryRouter + Link the
     // bug doesn't reproduce in jsdom. This test instead exercises the
     // broader path so any future refactor that re-introduces an unstable
     // per-option ref identity has at least one tripwire. The real
     // correctness guarantee comes from the useMemo-built stable callback
-    // array in theme-toggle.tsx itself.
+    // array in segmented-switch.tsx itself.
     const { restore } = stubLightPreferred();
 
     function Harness(): React.ReactElement {
@@ -159,7 +159,7 @@ describe('ThemeToggle', () => {
           <MemoryRouter>
             <ThemeProvider>
               <Link to="/">
-                <ThemeToggle />
+                <ThemePicker />
               </Link>
             </ThemeProvider>
           </MemoryRouter>

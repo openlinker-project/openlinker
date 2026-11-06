@@ -42,6 +42,7 @@ import {
 } from './auth-card.schema';
 import { AuthField, type AuthFieldControlProps } from './auth-field';
 import { LOGIN_STAGE_EASE, LOGIN_STAGE_SPRING } from './login-stage-motion';
+import { handleLoginFormTab } from './login-focus-order';
 import { PasswordInput } from './password-input';
 import { RecordingPopover } from './recording-popover';
 import { StackView, SuccessCheck } from './stack-view';
@@ -414,7 +415,12 @@ export function AuthCard({
             <h2 className="auth-card__title">{copy.login.title}</h2>
             <p className="auth-card__lead">{copy.login.lead}</p>
           </div>
-          <form className="auth-card__form" onSubmit={submitLogin} noValidate>
+          <form
+            className="auth-card__form"
+            onSubmit={submitLogin}
+            onKeyDown={handleLoginFormTab}
+            noValidate
+          >
             <AuthField
               id={ids.lu}
               label={ui.usernameOrEmail}

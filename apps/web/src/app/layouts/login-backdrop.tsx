@@ -8,7 +8,8 @@
  * `CommandPaletteTrigger` and the analytics `AnalyticsKpiCard` - so it follows
  * every change to the app instead of drifting as a screenshot would. The
  * figures are example data, like the demo's own made-up shop, and nothing
- * here calls the API (the visitor is not signed in).
+ * here calls the API (the visitor is not signed in). Words, numbers and the
+ * currency follow the active language: zloty in Polish, euro in English.
  *
  * Lives in `app/` because it imports the app shell. Reduced motion shows one
  * still scene with no drift.
@@ -16,8 +17,10 @@
  * @module app/layouts
  */
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { AnalyticsKpiCard, type AnalyticsKpiDelta } from '../../features/analytics';
+import { interpolate, useFormat, useLocale, useMessages, type Messages } from '../../shared/i18n';
+import type { ResolvedCopy } from '../../shared/i18n/copy.types';
 import { Button } from '../../shared/ui/button';
 import { CommandPaletteTrigger } from '../../shared/ui/command-palette';
 import { DataTable } from '../../shared/ui/data-table';
@@ -54,38 +57,46 @@ export function backdropFrame(boxWidth: number, boxHeight: number): FrameSize {
 }
 const SCENE_EVERY_MS = 6500;
 
-const NAV_GROUPS: NavGroup[] = [
+// Example amounts are in złoty; English shows them in euro at a round example
+// rate, so a Polish visitor sees a Polish shop and an English one a euro shop.
+const PLN_PER_EUR = 4.25;
+
+type BackdropCopy = ResolvedCopy<Messages['login']>['backdrop'];
+type NavKey = keyof BackdropCopy['nav'];
+type StatusKey = keyof BackdropCopy['status'];
+
+const NAV_LAYOUT: Array<{
+  label: NavKey;
+  items: Array<{ label: NavKey; to: string; end?: true; countKey?: keyof NavCounts }>;
+}> = [
   {
-    kind: 'live',
-    label: 'Operations',
+    label: 'operations',
     items: [
-      { label: 'Analytics', to: '/', end: true },
-      { label: 'Insights', to: '/insights' },
-      { label: 'Orders', to: '/orders', countKey: 'orders' },
-      { label: 'Products', to: '/products' },
-      { label: 'Customers', to: '/customers', countKey: 'customers' },
-      { label: 'Listings', to: '/listings', countKey: 'listings' },
-      { label: 'Shipments', to: '/shipments' },
-      { label: 'Returns', to: '/returns' },
-      { label: 'Sales documents', to: '/sales-documents' },
+      { label: 'analytics', to: '/', end: true },
+      { label: 'insights', to: '/insights' },
+      { label: 'orders', to: '/orders', countKey: 'orders' },
+      { label: 'products', to: '/products' },
+      { label: 'customers', to: '/customers', countKey: 'customers' },
+      { label: 'listings', to: '/listings', countKey: 'listings' },
+      { label: 'shipments', to: '/shipments' },
+      { label: 'returns', to: '/returns' },
+      { label: 'salesDocuments', to: '/sales-documents' },
     ],
   },
   {
-    kind: 'live',
-    label: 'Diagnostics',
+    label: 'diagnostics',
     items: [
-      { label: 'Jobs & Logs', to: '/jobs', countKey: 'jobsFailed' },
-      { label: 'Webhooks', to: '/webhooks', countKey: 'webhooksFailed' },
-      { label: 'Cursors', to: '/cursors' },
+      { label: 'jobs', to: '/jobs', countKey: 'jobsFailed' },
+      { label: 'webhooks', to: '/webhooks', countKey: 'webhooksFailed' },
+      { label: 'cursors', to: '/cursors' },
     ],
   },
   {
-    kind: 'live',
-    label: 'Platform',
+    label: 'platform',
     items: [
-      { label: 'Connections', to: '/connections', countKey: 'connections' },
-      { label: 'Adapters', to: '/adapters' },
-      { label: 'Settings', to: '/settings' },
+      { label: 'connections', to: '/connections', countKey: 'connections' },
+      { label: 'adapters', to: '/adapters' },
+      { label: 'settings', to: '/settings' },
     ],
   },
 ];
@@ -99,272 +110,212 @@ const NAV_COUNTS: NavCounts = {
   connections: 6,
 };
 
-interface Kpi {
-  label: string;
-  value: string;
-  metric: string;
-  delta: AnalyticsKpiDelta;
-  trend: number[];
-}
-
-const up = (formatted: string): AnalyticsKpiDelta => ({
-  formatted,
-  tone: 'success',
-  direction: 'up',
-  basisLabel: 'vs previous 14 days',
-  spokenText: `Up ${formatted}`,
-});
-
-const KPIS: Kpi[] = [
-  {
-    label: 'Revenue',
-    value: '48 210 zł',
-    metric: 'Gross, all channels',
-    delta: up('12,4%'),
-    trend: [31, 34, 33, 38, 41, 39, 44, 47],
-  },
-  {
-    label: 'Orders',
-    value: '312',
-    metric: 'Placed in the period',
-    delta: up('8,1%'),
-    trend: [18, 22, 20, 24, 23, 26, 27, 29],
-  },
-  {
-    label: 'Average order value',
-    value: '154,52 zł',
-    metric: 'Revenue per order',
-    delta: up('3,9%'),
-    trend: [140, 146, 143, 149, 151, 150, 153, 155],
-  },
-  {
-    label: 'Cancelled',
-    value: '6',
-    metric: '1,9% of orders',
-    delta: {
-      formatted: '0,0%',
-      tone: 'neutral',
-      direction: 'flat',
-      basisLabel: 'vs previous 14 days',
-      spokenText: 'No change',
-    },
-    trend: [2, 1, 2, 1, 1, 2, 1, 1],
-  },
-];
+const KPIS = {
+  revenue: { pln: 48210, delta: 0.124, trend: [31, 34, 33, 38, 41, 39, 44, 47] },
+  orders: { count: 312, delta: 0.081, trend: [18, 22, 20, 24, 23, 26, 27, 29] },
+  aov: { pln: 154.52, delta: 0.039, trend: [140, 146, 143, 149, 151, 150, 153, 155] },
+  cancelled: { count: 6, share: 0.019, trend: [2, 1, 2, 1, 1, 2, 1, 1] },
+};
 
 const CHANNEL_ROWS = [
-  { key: 'a', channel: 'Allegro', orders: '164', revenue: '25 070 zł', share: '52%' },
-  { key: 'p', channel: 'PrestaShop', orders: '71', revenue: '11 090 zł', share: '23%' },
-  { key: 'w', channel: 'WooCommerce', orders: '46', revenue: '7 230 zł', share: '15%' },
-  { key: 'e', channel: 'Erli', orders: '31', revenue: '4 820 zł', share: '10%' },
+  { key: 'a', channel: 'Allegro', orders: 164, pln: 25070, share: 0.52 },
+  { key: 'p', channel: 'PrestaShop', orders: 71, pln: 11090, share: 0.23 },
+  { key: 'w', channel: 'WooCommerce', orders: 46, pln: 7230, share: 0.15 },
+  { key: 'e', channel: 'Erli', orders: 31, pln: 4820, share: 0.1 },
 ];
 
-const PRODUCT_ROWS = [
-  {
-    key: '1',
-    product: 'Merino wool hoodie',
-    sku: 'HD-MER-GRY-M',
-    units: '42',
-    revenue: '8 358 zł',
-  },
-  {
-    key: '2',
-    product: 'Running shoes Aero',
-    sku: 'SH-AER-BLK-42',
-    units: '37',
-    revenue: '7 363 zł',
-  },
-  { key: '3', product: 'Canvas tote bag', sku: 'BG-CNV-NAT', units: '61', revenue: '3 599 zł' },
-  {
-    key: '4',
-    product: 'Thermo bottle 750 ml',
-    sku: 'BT-THR-750',
-    units: '54',
-    revenue: '3 186 zł',
-  },
-  { key: '5', product: 'Linen shirt', sku: 'SR-LIN-WHT-L', units: '23', revenue: '3 197 zł' },
-  { key: '6', product: 'Wool beanie', sku: 'HT-WOL-NVY', units: '48', revenue: '1 872 zł' },
-  { key: '7', product: 'Leather wallet', sku: 'WL-LTH-BRN', units: '19', revenue: '1 691 zł' },
-  {
-    key: '8',
-    product: 'Cotton socks, 3 pairs',
-    sku: 'SK-COT-3P',
-    units: '66',
-    revenue: '1 584 zł',
-  },
+// `product` indexes `copy.products`.
+const PRODUCT_ROWS: Array<{
+  key: string;
+  product: keyof BackdropCopy['products'];
+  sku: string;
+  units: number;
+  pln: number;
+}> = [
+  { key: '1', product: 'p1', sku: 'HD-MER-GRY-M', units: 42, pln: 8358 },
+  { key: '2', product: 'p2', sku: 'SH-AER-BLK-42', units: 37, pln: 7363 },
+  { key: '3', product: 'p3', sku: 'BG-CNV-NAT', units: 61, pln: 3599 },
+  { key: '4', product: 'p4', sku: 'BT-THR-750', units: 54, pln: 3186 },
+  { key: '5', product: 'p5', sku: 'SR-LIN-WHT-L', units: 23, pln: 3197 },
+  { key: '6', product: 'p6', sku: 'HT-WOL-NVY', units: 48, pln: 1872 },
+  { key: '7', product: 'p7', sku: 'WL-LTH-BRN', units: 19, pln: 1691 },
+  { key: '8', product: 'p8', sku: 'SK-COT-3P', units: 66, pln: 1584 },
 ];
 
-type Badge = [string, StatusBadgeTone];
+/** How long ago: minutes, hours, or yesterday. */
+type Ago = ['minutes' | 'hours', number] | ['yesterday'];
+type Badge = [StatusKey, StatusBadgeTone];
 
+// `customer` indexes `copy.customers`.
 const ORDER_ROWS: Array<{
   key: string;
   id: string;
-  when: string;
-  customer: string;
+  when: Ago;
+  customer: keyof BackdropCopy['customers'];
   channel: string;
   status: Badge;
   ship: Badge;
-  money: string;
+  pln: number;
 }> = [
   {
     key: '1',
     id: '#A-4821',
-    when: '2 min ago',
-    customer: 'Marta Wiśniewska',
+    when: ['minutes', 2],
+    customer: 'c01',
     channel: 'Allegro',
-    status: ['New', 'info'],
-    ship: ['Not shipped', 'neutral'],
-    money: '189,00 zł',
+    status: ['new', 'info'],
+    ship: ['notShipped', 'neutral'],
+    pln: 189,
   },
   {
     key: '2',
     id: '#A-4820',
-    when: '18 min ago',
-    customer: 'Tomasz Wójcik',
+    when: ['minutes', 18],
+    customer: 'c02',
     channel: 'Allegro',
-    status: ['Processing', 'review'],
-    ship: ['Label ready', 'info'],
-    money: '249,00 zł',
+    status: ['processing', 'review'],
+    ship: ['labelReady', 'info'],
+    pln: 249,
   },
   {
     key: '3',
     id: '#W-1187',
-    when: '42 min ago',
-    customer: 'Katarzyna Lis',
+    when: ['minutes', 42],
+    customer: 'c03',
     channel: 'WooCommerce',
-    status: ['Processing', 'review'],
-    ship: ['Dispatched', 'success'],
-    money: '89,90 zł',
+    status: ['processing', 'review'],
+    ship: ['dispatched', 'success'],
+    pln: 89.9,
   },
   {
     key: '4',
     id: '#P-3312',
-    when: '1 h ago',
-    customer: 'Michał Zieliński',
+    when: ['hours', 1],
+    customer: 'c04',
     channel: 'PrestaShop',
-    status: ['Shipped', 'success'],
-    ship: ['In transit', 'success'],
-    money: '412,50 zł',
+    status: ['shipped', 'success'],
+    ship: ['inTransit', 'success'],
+    pln: 412.5,
   },
   {
     key: '5',
     id: '#E-0954',
-    when: '2 h ago',
-    customer: 'Agnieszka Kowalczyk',
+    when: ['hours', 2],
+    customer: 'c05',
     channel: 'Erli',
-    status: ['Pending', 'warning'],
-    ship: ['Not shipped', 'neutral'],
-    money: '64,99 zł',
+    status: ['pending', 'warning'],
+    ship: ['notShipped', 'neutral'],
+    pln: 64.99,
   },
   {
     key: '6',
     id: '#A-4818',
-    when: '3 h ago',
-    customer: 'Paweł Kamiński',
+    when: ['hours', 3],
+    customer: 'c06',
     channel: 'Allegro',
-    status: ['Delivered', 'success'],
-    ship: ['Delivered', 'success'],
-    money: '129,00 zł',
+    status: ['delivered', 'success'],
+    ship: ['delivered', 'success'],
+    pln: 129,
   },
   {
     key: '7',
     id: '#A-4817',
-    when: '4 h ago',
-    customer: 'Ewa Szymańska',
+    when: ['hours', 4],
+    customer: 'c07',
     channel: 'Allegro',
-    status: ['Delivered', 'success'],
-    ship: ['Delivered', 'success'],
-    money: '79,98 zł',
+    status: ['delivered', 'success'],
+    ship: ['delivered', 'success'],
+    pln: 79.98,
   },
   {
     key: '8',
     id: '#W-1186',
-    when: '5 h ago',
-    customer: 'Jan Nowak',
+    when: ['hours', 5],
+    customer: 'c08',
     channel: 'WooCommerce',
-    status: ['Shipped', 'success'],
-    ship: ['In transit', 'success'],
-    money: '154,00 zł',
+    status: ['shipped', 'success'],
+    ship: ['inTransit', 'success'],
+    pln: 154,
   },
   {
     key: '9',
     id: '#A-4816',
-    when: '5 h ago',
-    customer: 'Anna Lewandowska',
+    when: ['hours', 5],
+    customer: 'c09',
     channel: 'Allegro',
-    status: ['Processing', 'review'],
-    ship: ['Label ready', 'info'],
-    money: '219,90 zł',
+    status: ['processing', 'review'],
+    ship: ['labelReady', 'info'],
+    pln: 219.9,
   },
   {
     key: '10',
     id: '#P-3311',
-    when: '6 h ago',
-    customer: 'Piotr Dąbrowski',
+    when: ['hours', 6],
+    customer: 'c10',
     channel: 'PrestaShop',
-    status: ['Delivered', 'success'],
-    ship: ['Delivered', 'success'],
-    money: '98,50 zł',
+    status: ['delivered', 'success'],
+    ship: ['delivered', 'success'],
+    pln: 98.5,
   },
   {
     key: '11',
     id: '#E-0953',
-    when: '7 h ago',
-    customer: 'Monika Grabowska',
+    when: ['hours', 7],
+    customer: 'c11',
     channel: 'Erli',
-    status: ['Shipped', 'success'],
-    ship: ['In transit', 'success'],
-    money: '139,00 zł',
+    status: ['shipped', 'success'],
+    ship: ['inTransit', 'success'],
+    pln: 139,
   },
   {
     key: '12',
     id: '#A-4815',
-    when: '8 h ago',
-    customer: 'Krzysztof Pawlak',
+    when: ['hours', 8],
+    customer: 'c12',
     channel: 'Allegro',
-    status: ['Delivered', 'success'],
-    ship: ['Delivered', 'success'],
-    money: '59,99 zł',
+    status: ['delivered', 'success'],
+    ship: ['delivered', 'success'],
+    pln: 59.99,
   },
   {
     key: '13',
     id: '#A-4814',
-    when: '9 h ago',
-    customer: 'Joanna Michalska',
+    when: ['hours', 9],
+    customer: 'c13',
     channel: 'Allegro',
-    status: ['Delivered', 'success'],
-    ship: ['Delivered', 'success'],
-    money: '305,00 zł',
+    status: ['delivered', 'success'],
+    ship: ['delivered', 'success'],
+    pln: 305,
   },
   {
     key: '14',
     id: '#W-1185',
-    when: 'yesterday',
-    customer: 'Łukasz Król',
+    when: ['yesterday'],
+    customer: 'c14',
     channel: 'WooCommerce',
-    status: ['Delivered', 'success'],
-    ship: ['Delivered', 'success'],
-    money: '74,90 zł',
+    status: ['delivered', 'success'],
+    ship: ['delivered', 'success'],
+    pln: 74.9,
   },
   {
     key: '15',
     id: '#P-3310',
-    when: 'yesterday',
-    customer: 'Magdalena Wieczorek',
+    when: ['yesterday'],
+    customer: 'c15',
     channel: 'PrestaShop',
-    status: ['Cancelled', 'neutral'],
-    ship: ['Not shipped', 'neutral'],
-    money: '49,00 zł',
+    status: ['cancelled', 'neutral'],
+    ship: ['notShipped', 'neutral'],
+    pln: 49,
   },
   {
     key: '16',
     id: '#A-4813',
-    when: 'yesterday',
-    customer: 'Rafał Jabłoński',
+    when: ['yesterday'],
+    customer: 'c16',
     channel: 'Allegro',
-    status: ['Delivered', 'success'],
-    ship: ['Delivered', 'success'],
-    money: '189,00 zł',
+    status: ['delivered', 'success'],
+    ship: ['delivered', 'success'],
+    pln: 189,
   },
 ];
 
@@ -374,124 +325,126 @@ const SHIPMENT_ROWS: Array<{
   order: string;
   carrier: string;
   status: Badge;
-  updated: string;
+  updated: Ago;
 }> = [
   {
     key: '1',
     tracking: '6800 0921 4471 0052 1188 40',
     order: '#A-4820',
     carrier: 'InPost Paczkomat',
-    status: ['Label ready', 'info'],
-    updated: '18 min ago',
+    status: ['labelReady', 'info'],
+    updated: ['minutes', 18],
   },
   {
     key: '2',
     tracking: '0000 3471 2209 1PL',
     order: '#W-1187',
     carrier: 'DPD',
-    status: ['Dispatched', 'success'],
-    updated: '40 min ago',
+    status: ['dispatched', 'success'],
+    updated: ['minutes', 40],
   },
   {
     key: '3',
     tracking: '6800 0921 4470 9921 0042 11',
     order: '#P-3312',
     carrier: 'InPost Kurier',
-    status: ['In transit', 'success'],
-    updated: '1 h ago',
+    status: ['inTransit', 'success'],
+    updated: ['hours', 1],
   },
   {
     key: '4',
     tracking: '6800 0921 4470 8812 3310 07',
     order: '#A-4818',
     carrier: 'InPost Paczkomat',
-    status: ['Delivered', 'success'],
-    updated: '3 h ago',
+    status: ['delivered', 'success'],
+    updated: ['hours', 3],
   },
   {
     key: '5',
     tracking: '0000 3470 9981 4PL',
     order: '#A-4817',
     carrier: 'DPD',
-    status: ['Delivered', 'success'],
-    updated: '4 h ago',
+    status: ['delivered', 'success'],
+    updated: ['hours', 4],
   },
   {
     key: '6',
     tracking: '6800 0921 4470 7731 0094 52',
     order: '#W-1186',
     carrier: 'InPost Kurier',
-    status: ['In transit', 'success'],
-    updated: '5 h ago',
+    status: ['inTransit', 'success'],
+    updated: ['hours', 5],
   },
   {
     key: '7',
     tracking: '0000 3470 9876 2PL',
     order: '#A-4816',
     carrier: 'DPD',
-    status: ['Label ready', 'info'],
-    updated: '5 h ago',
+    status: ['labelReady', 'info'],
+    updated: ['hours', 5],
   },
   {
     key: '8',
     tracking: '6800 0921 4470 6620 1187 33',
     order: '#P-3311',
     carrier: 'InPost Paczkomat',
-    status: ['Delivered', 'success'],
-    updated: '6 h ago',
+    status: ['delivered', 'success'],
+    updated: ['hours', 6],
   },
   {
     key: '9',
     tracking: '6800 0921 4470 5519 2276 18',
     order: '#E-0953',
     carrier: 'InPost Paczkomat',
-    status: ['In transit', 'success'],
-    updated: '7 h ago',
+    status: ['inTransit', 'success'],
+    updated: ['hours', 7],
   },
   {
     key: '10',
     tracking: '0000 3470 9654 7PL',
     order: '#A-4815',
     carrier: 'DPD',
-    status: ['Delivered', 'success'],
-    updated: '8 h ago',
+    status: ['delivered', 'success'],
+    updated: ['hours', 8],
   },
   {
     key: '11',
     tracking: '6800 0921 4470 4408 3365 09',
     order: '#A-4814',
     carrier: 'InPost Paczkomat',
-    status: ['Delivered', 'success'],
-    updated: '9 h ago',
+    status: ['delivered', 'success'],
+    updated: ['hours', 9],
   },
   {
     key: '12',
     tracking: '6800 0921 4470 3397 4454 71',
     order: '#W-1185',
     carrier: 'InPost Kurier',
-    status: ['Delivered', 'success'],
-    updated: 'yesterday',
+    status: ['delivered', 'success'],
+    updated: ['yesterday'],
   },
   {
     key: '13',
     tracking: '0000 3470 9432 1PL',
     order: '#A-4813',
     carrier: 'DPD',
-    status: ['Delivered', 'success'],
-    updated: 'yesterday',
+    status: ['delivered', 'success'],
+    updated: ['yesterday'],
   },
   {
     key: '14',
     tracking: '6800 0921 4470 2286 5543 26',
     order: '#A-4812',
     carrier: 'InPost Paczkomat',
-    status: ['Delivered', 'success'],
-    updated: 'yesterday',
+    status: ['delivered', 'success'],
+    updated: ['yesterday'],
   },
 ];
 
 const mono = (value: string): ReactElement => <span className="mono-text">{value}</span>;
 const noop = (): void => undefined;
+
+type SceneKey = 'analytics' | 'orders' | 'shipments';
 
 interface Scene {
   crumb: string;
@@ -499,140 +452,219 @@ interface Scene {
   render: () => ReactNode;
 }
 
-const SCENES: Record<'analytics' | 'orders' | 'shipments', Scene> = {
-  analytics: {
-    crumb: 'Analytics',
-    to: '/',
-    render: () => (
-      <PageLayout
-        eyebrow="Operations"
-        title="Analytics"
-        description="Sales across connected channels, with clear data coverage."
-        actions={<Button tone="secondary">Analytics settings</Button>}
-      >
-        <section className="status-strip status-strip--analytics">
-          {KPIS.map((kpi) => (
-            <AnalyticsKpiCard
-              key={kpi.label}
-              label={kpi.label}
-              infotipLabel={kpi.label}
-              definitions={[]}
-              value={kpi.value}
-              metric={kpi.metric}
-              delta={kpi.delta}
-              trend={{
-                values: kpi.trend,
-                tone: kpi.delta.tone === 'success' ? 'success' : 'neutral',
-                ariaLabel: kpi.label,
-              }}
+/** The three scenes in the active language, with amounts in its currency. */
+function useScenes(): { scenes: Record<SceneKey, Scene>; nav: NavGroup[]; copy: BackdropCopy } {
+  const copy = useMessages('login').backdrop;
+  const { locale } = useLocale();
+  const format = useFormat();
+  return useMemo(() => {
+    const currency = locale === 'pl' ? 'PLN' : 'EUR';
+    const amount = (pln: number): number => (currency === 'PLN' ? pln : pln / PLN_PER_EUR);
+    const money = (pln: number): string =>
+      format.money(Math.round(amount(pln) * 100) / 100, currency);
+    const total = (pln: number): string =>
+      format.number(Math.round(amount(pln)), {
+        style: 'currency',
+        currency,
+        maximumFractionDigits: 0,
+      });
+    const count = (value: number): string => format.number(value);
+    const share = (fraction: number): string => format.percent(fraction);
+    const ago = (when: Ago): string =>
+      when[0] === 'yesterday' ? copy.ago.yesterday : interpolate(copy.ago[when[0]], { n: when[1] });
+    const badge = ([key, tone]: Badge, withDot = false): ReactElement => (
+      <StatusBadge tone={tone} withDot={withDot}>
+        {copy.status[key]}
+      </StatusBadge>
+    );
+    const up = (fraction: number): AnalyticsKpiDelta => {
+      const formatted = share(fraction);
+      return {
+        formatted,
+        tone: 'success',
+        direction: 'up',
+        basisLabel: copy.analytics.basis,
+        spokenText: interpolate(copy.analytics.up, { value: formatted }),
+      };
+    };
+    const a = copy.analytics;
+    const kpis = [
+      {
+        label: a.revenue,
+        value: total(KPIS.revenue.pln),
+        metric: a.revenueMetric,
+        delta: up(KPIS.revenue.delta),
+        trend: KPIS.revenue.trend,
+      },
+      {
+        label: a.orders,
+        value: count(KPIS.orders.count),
+        metric: a.ordersMetric,
+        delta: up(KPIS.orders.delta),
+        trend: KPIS.orders.trend,
+      },
+      {
+        label: a.aov,
+        value: money(KPIS.aov.pln),
+        metric: a.aovMetric,
+        delta: up(KPIS.aov.delta),
+        trend: KPIS.aov.trend,
+      },
+      {
+        label: a.cancelled,
+        value: count(KPIS.cancelled.count),
+        metric: interpolate(a.cancelledMetric, { share: share(KPIS.cancelled.share) }),
+        delta: {
+          formatted: share(0),
+          tone: 'neutral',
+          direction: 'flat',
+          basisLabel: a.basis,
+          spokenText: a.noChange,
+        } satisfies AnalyticsKpiDelta,
+        trend: KPIS.cancelled.trend,
+      },
+    ];
+    const nav: NavGroup[] = NAV_LAYOUT.map((group) => ({
+      kind: 'live',
+      label: copy.nav[group.label],
+      items: group.items.map((item) => ({ ...item, label: copy.nav[item.label] })),
+    }));
+    const scenes: Record<SceneKey, Scene> = {
+      analytics: {
+        crumb: copy.nav.analytics,
+        to: '/',
+        render: () => (
+          <PageLayout
+            eyebrow={copy.nav.operations}
+            title={copy.nav.analytics}
+            description={a.description}
+            actions={<Button tone="secondary">{a.settings}</Button>}
+          >
+            <section className="status-strip status-strip--analytics">
+              {kpis.map((kpi) => (
+                <AnalyticsKpiCard
+                  key={kpi.label}
+                  label={kpi.label}
+                  infotipLabel={kpi.label}
+                  definitions={[]}
+                  value={kpi.value}
+                  metric={kpi.metric}
+                  delta={kpi.delta}
+                  trend={{
+                    values: kpi.trend,
+                    tone: kpi.delta.tone === 'success' ? 'success' : 'neutral',
+                    ariaLabel: kpi.label,
+                  }}
+                />
+              ))}
+            </section>
+            <DataTable
+              rows={CHANNEL_ROWS}
+              rowKey={(row) => row.key}
+              columns={[
+                { id: 'c', header: a.channel, cell: (row) => row.channel },
+                {
+                  id: 'o',
+                  header: a.orders,
+                  align: 'right',
+                  cell: (row) => mono(count(row.orders)),
+                },
+                { id: 'r', header: a.revenue, align: 'right', cell: (row) => mono(total(row.pln)) },
+                { id: 's', header: a.share, align: 'right', cell: (row) => mono(share(row.share)) },
+              ]}
             />
-          ))}
-        </section>
-        <DataTable
-          rows={CHANNEL_ROWS}
-          rowKey={(row) => row.key}
-          columns={[
-            { id: 'c', header: 'Channel', cell: (row) => row.channel },
-            { id: 'o', header: 'Orders', align: 'right', cell: (row) => mono(row.orders) },
-            { id: 'r', header: 'Revenue', align: 'right', cell: (row) => mono(row.revenue) },
-            { id: 's', header: 'Share', align: 'right', cell: (row) => mono(row.share) },
-          ]}
-        />
-        <DataTable
-          rows={PRODUCT_ROWS}
-          rowKey={(row) => row.key}
-          columns={[
-            { id: 'p', header: 'Top products', cell: (row) => row.product },
-            { id: 'k', header: 'SKU', cell: (row) => mono(row.sku) },
-            { id: 'u', header: 'Units', align: 'right', cell: (row) => mono(row.units) },
-            { id: 'r', header: 'Revenue', align: 'right', cell: (row) => mono(row.revenue) },
-          ]}
-        />
-      </PageLayout>
-    ),
-  },
-  orders: {
-    crumb: 'Orders',
-    to: '/orders',
-    render: () => (
-      <PageLayout
-        eyebrow="Operations"
-        title="Orders"
-        actions={
-          <Button tone="ghost" className="button--sm">
-            Refresh<span className="button__shortcut">R</span>
-          </Button>
-        }
-      >
-        <DataTable
-          rows={ORDER_ROWS}
-          rowKey={(row) => row.key}
-          columns={[
-            {
-              id: 'order',
-              header: 'Order',
-              cell: (row) => (
-                <span>
-                  <strong className="mono-text">{row.id}</strong>
-                  <br />
-                  <span className="page-description">{row.when}</span>
-                </span>
-              ),
-            },
-            { id: 'customer', header: 'Customer', cell: (row) => row.customer },
-            { id: 'channel', header: 'Channel', cell: (row) => row.channel },
-            {
-              id: 'status',
-              header: 'Status',
-              cell: (row) => (
-                <StatusBadge tone={row.status[1]} withDot>
-                  {row.status[0]}
-                </StatusBadge>
-              ),
-            },
-            {
-              id: 'shipment',
-              header: 'Shipment',
-              cell: (row) => <StatusBadge tone={row.ship[1]}>{row.ship[0]}</StatusBadge>,
-            },
-            { id: 'money', header: 'Total', align: 'right', cell: (row) => mono(row.money) },
-          ]}
-        />
-      </PageLayout>
-    ),
-  },
-  shipments: {
-    crumb: 'Shipments',
-    to: '/shipments',
-    render: () => (
-      <PageLayout
-        eyebrow="Operations"
-        title="Shipments"
-        description="Labels, tracking numbers and delivery status for every carrier."
-      >
-        <DataTable
-          rows={SHIPMENT_ROWS}
-          rowKey={(row) => row.key}
-          columns={[
-            { id: 't', header: 'Tracking', cell: (row) => mono(row.tracking) },
-            { id: 'o', header: 'Order', cell: (row) => mono(row.order) },
-            { id: 'c', header: 'Carrier', cell: (row) => row.carrier },
-            {
-              id: 's',
-              header: 'Status',
-              cell: (row) => (
-                <StatusBadge tone={row.status[1]} withDot>
-                  {row.status[0]}
-                </StatusBadge>
-              ),
-            },
-            { id: 'u', header: 'Updated', cell: (row) => row.updated },
-          ]}
-        />
-      </PageLayout>
-    ),
-  },
-};
+            <DataTable
+              rows={PRODUCT_ROWS}
+              rowKey={(row) => row.key}
+              columns={[
+                { id: 'p', header: a.topProducts, cell: (row) => copy.products[row.product] },
+                { id: 'k', header: a.sku, cell: (row) => mono(row.sku) },
+                { id: 'u', header: a.units, align: 'right', cell: (row) => mono(count(row.units)) },
+                { id: 'r', header: a.revenue, align: 'right', cell: (row) => mono(total(row.pln)) },
+              ]}
+            />
+          </PageLayout>
+        ),
+      },
+      orders: {
+        crumb: copy.nav.orders,
+        to: '/orders',
+        render: () => (
+          <PageLayout
+            eyebrow={copy.nav.operations}
+            title={copy.nav.orders}
+            actions={
+              <Button tone="ghost" className="button--sm">
+                {copy.refresh}
+                <span className="button__shortcut">R</span>
+              </Button>
+            }
+          >
+            <DataTable
+              rows={ORDER_ROWS}
+              rowKey={(row) => row.key}
+              columns={[
+                {
+                  id: 'order',
+                  header: copy.orders.order,
+                  cell: (row) => (
+                    <span>
+                      <strong className="mono-text">{row.id}</strong>
+                      <br />
+                      <span className="page-description">{ago(row.when)}</span>
+                    </span>
+                  ),
+                },
+                {
+                  id: 'customer',
+                  header: copy.orders.customer,
+                  cell: (row) => copy.customers[row.customer],
+                },
+                { id: 'channel', header: copy.orders.channel, cell: (row) => row.channel },
+                {
+                  id: 'status',
+                  header: copy.orders.status,
+                  cell: (row) => badge(row.status, true),
+                },
+                { id: 'shipment', header: copy.orders.shipment, cell: (row) => badge(row.ship) },
+                {
+                  id: 'money',
+                  header: copy.orders.total,
+                  align: 'right',
+                  cell: (row) => mono(money(row.pln)),
+                },
+              ]}
+            />
+          </PageLayout>
+        ),
+      },
+      shipments: {
+        crumb: copy.nav.shipments,
+        to: '/shipments',
+        render: () => (
+          <PageLayout
+            eyebrow={copy.nav.operations}
+            title={copy.nav.shipments}
+            description={copy.shipments.description}
+          >
+            <DataTable
+              rows={SHIPMENT_ROWS}
+              rowKey={(row) => row.key}
+              columns={[
+                { id: 't', header: copy.shipments.tracking, cell: (row) => mono(row.tracking) },
+                { id: 'o', header: copy.shipments.order, cell: (row) => mono(row.order) },
+                { id: 'c', header: copy.shipments.carrier, cell: (row) => row.carrier },
+                { id: 's', header: copy.shipments.status, cell: (row) => badge(row.status, true) },
+                { id: 'u', header: copy.shipments.updated, cell: (row) => ago(row.updated) },
+              ]}
+            />
+          </PageLayout>
+        ),
+      },
+    };
+    return { scenes, nav, copy };
+  }, [copy, locale, format]);
+}
 
 const TOUR = ['analytics', 'orders', 'shipments'] as const;
 
@@ -641,6 +673,7 @@ export function LoginBackdrop(): ReactElement {
   const boxRef = useRef<HTMLDivElement>(null);
   const [frame, setFrame] = useState<FrameSize>({ width: APP_W, height: APP_H, scale: 1 });
   const [index, setIndex] = useState(0);
+  const { scenes, nav, copy } = useScenes();
 
   useEffect(() => {
     const el = boxRef.current;
@@ -659,7 +692,7 @@ export function LoginBackdrop(): ReactElement {
   }, [reduce]);
 
   const key = TOUR[reduce ? 1 : index] ?? 'orders';
-  const scene = SCENES[key];
+  const scene = scenes[key];
 
   return (
     <div className="login-backdrop" ref={boxRef} aria-hidden="true" inert>
@@ -678,22 +711,22 @@ export function LoginBackdrop(): ReactElement {
               <SidebarNav
                 ariaLabel="Preview"
                 counts={NAV_COUNTS}
-                groups={NAV_GROUPS}
+                groups={nav}
                 activeTo={scene.to}
               />
               <div className="shell-workspace">
                 <div className="shell-workspace__header">
-                  <strong className="shell-workspace__name">Default organization</strong>
+                  <strong className="shell-workspace__name">{copy.workspace}</strong>
                 </div>
                 <div className="shell-workspace__user">
-                  <span className="shell-workspace__username">kasia</span>
+                  <span className="shell-workspace__username">{copy.user}</span>
                 </div>
               </div>
             </div>
             <div className="shell-main">
               <header className="shell-topbar">
                 <nav className="shell-crumbs">
-                  <span className="shell-crumbs__group">Operations</span>
+                  <span className="shell-crumbs__group">{copy.nav.operations}</span>
                   <span className="shell-crumbs__sep" aria-hidden="true">
                     /
                   </span>
@@ -714,11 +747,13 @@ export function LoginBackdrop(): ReactElement {
                 <CommandPaletteTrigger onClick={noop} tabIndex={-1} />
                 <div className="shell-topbar__spacer" />
                 <Button tone="ghost" className="shell-topbar__alerts" tabIndex={-1}>
-                  Alerts <span>0</span>
+                  {copy.alerts} <span>0</span>
                 </Button>
                 <span className="shell-user-chip">
-                  <span className="shell-user-chip__avatar">KA</span>
-                  <span className="shell-user-chip__name">kasia</span>
+                  <span className="shell-user-chip__avatar">
+                    {copy.user.slice(0, 2).toUpperCase()}
+                  </span>
+                  <span className="shell-user-chip__name">{copy.user}</span>
                 </span>
               </header>
               {/* The real app re-keys .shell-content per route for a quick cut; as a background that

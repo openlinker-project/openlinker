@@ -9,7 +9,8 @@
  * @module app/layouts
  */
 import { cleanup, fireEvent, screen } from '@testing-library/react';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
+import type { ReactElement } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../shared/api/api-error';
 import type { SystemConfig } from '../../features/system';
@@ -21,6 +22,11 @@ import {
 import { LoginStageLayout } from './login-stage-layout';
 
 const DEMO_CONFIG: SystemConfig = { demoMode: true, registrationEnabled: true };
+
+function LocationProbe(): ReactElement {
+  const location = useLocation();
+  return <output data-testid="location">{`${location.pathname}${location.search}`}</output>;
+}
 
 function renderStage(
   config: SystemConfig,
@@ -34,13 +40,16 @@ function renderStage(
     options.apiClient ??
     createMockApiClient({ system: { getConfig: vi.fn().mockResolvedValue(config) } });
   renderWithProviders(
-    <Routes>
-      <Route element={<LoginStageLayout />}>
-        <Route path="/login" />
-        <Route path="/register" />
-      </Route>
-      <Route path="/" element={<p>Dashboard page</p>} />
-    </Routes>,
+    <>
+      <Routes>
+        <Route element={<LoginStageLayout />}>
+          <Route path="/login" />
+          <Route path="/register" />
+        </Route>
+        <Route path="/" element={<p>Dashboard page</p>} />
+      </Routes>
+      <LocationProbe />
+    </>,
     {
       route: options.route ?? '/login',
       apiClient,
@@ -160,6 +169,99 @@ describe('LoginStageLayout', () => {
   it('should offer a request for access on a real install with registration on', async () => {
     renderStage({ demoMode: false, registrationEnabled: true });
     expect(await screen.findByRole('tab', { name: 'Request access' })).toBeInTheDocument();
+  });
+
+  it('should tab from the password to sign in, then Show, then the forgot link', async () => {
+    renderStage(DEMO_CONFIG);
+    await screen.findByRole('heading', { name: 'Sign in to the demo' });
+    const form = visibleView('login-form');
+    const tab = (shiftKey = false): void => {
+      fireEvent.keyDown(document.activeElement as Element, { key: 'Tab', shiftKey });
+    };
+    const username = screen.getByLabelText('Username or email');
+    username.focus();
+    tab();
+    expect(document.activeElement).toBe(
+      form.querySelector('input[autocomplete="current-password"]')
+    );
+    tab();
+    expect(document.activeElement).toBe(form.querySelector('button[type="submit"]'));
+    tab();
+    expect(document.activeElement).toBe(form.querySelector('.password-input__toggle'));
+    tab();
+    expect(document.activeElement).toHaveAttribute('href', '/forgot-password');
+    tab(true);
+    tab(true);
+    expect(document.activeElement).toBe(form.querySelector('button[type="submit"]'));
+    tab(true);
+    expect(document.activeElement).toBe(
+      form.querySelector('input[autocomplete="current-password"]')
+    );
+  });
+
+  describe('?tab= link', () => {
+    it('should open the sign-up tab from ?tab=sign-up on /login', async () => {
+      renderStage(DEMO_CONFIG, { route: '/login?tab=sign-up' });
+      expect(await screen.findByRole('tab', { name: 'Create account' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
+    });
+
+    it('should open the sign-in tab from ?tab=sign-in on /register', async () => {
+      renderStage(DEMO_CONFIG, { route: '/register?tab=sign-in' });
+      expect(await screen.findByRole('tab', { name: 'Sign in' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
+    });
+
+    it('should stay on sign-in when registration is off', async () => {
+      renderStage({ demoMode: false, registrationEnabled: false }, { route: '/login?tab=sign-up' });
+      expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    });
+
+    it('should say registration is off in an info toast for ?tab=sign-up', async () => {
+      renderStage({ demoMode: false, registrationEnabled: false }, { route: '/login?tab=sign-up' });
+      const toast = await screen.findByTestId('registration-off-toast');
+      expect(toast).toHaveTextContent('Registration is turned off');
+      expect(toast).toHaveClass('toast--info');
+    });
+
+    it('should say registration is off in an info toast on /register', async () => {
+      renderStage({ demoMode: false, registrationEnabled: false }, { route: '/register' });
+      expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+      expect(await screen.findByTestId('registration-off-toast')).toBeInTheDocument();
+    });
+
+    it('should show no toast on /login or when registration is on', async () => {
+      renderStage({ demoMode: false, registrationEnabled: false }, { route: '/login' });
+      await screen.findByRole('heading', { name: 'Sign in' });
+      expect(screen.queryByTestId('registration-off-toast')).not.toBeInTheDocument();
+      cleanup();
+      renderStage(DEMO_CONFIG, { route: '/register' });
+      await screen.findByRole('tab', { name: 'Create account' });
+      expect(screen.queryByTestId('registration-off-toast')).not.toBeInTheDocument();
+    });
+
+    it('should ignore an unknown value', async () => {
+      renderStage(DEMO_CONFIG, { route: '/login?tab=constructor' });
+      expect(await screen.findByRole('tab', { name: 'Sign in' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
+    });
+
+    it('should drop the parameter on a tab click and keep the rest', async () => {
+      renderStage(DEMO_CONFIG, { route: '/login?tab=sign-up&next=%2Forders' });
+      fireEvent.click(await screen.findByRole('tab', { name: 'Sign in' }));
+      expect(await screen.findByRole('tab', { name: 'Sign in' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
+      expect(screen.getByTestId('location')).toHaveTextContent('/login?next=%2Forders');
+    });
   });
 
   it('should redirect an already signed-in visitor', async () => {

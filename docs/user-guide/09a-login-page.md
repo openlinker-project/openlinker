@@ -130,6 +130,21 @@ links back to this editor:
 To stop taking requests, untick the box and save. Accounts already approved
 keep working.
 
+### Link straight to a tab
+
+A link can open the login page on the tab you want, for example from an
+email or your intranet:
+
+- `https://<your-openlinker>/login?tab=sign-up` opens **Request access**;
+- `https://<your-openlinker>/login?tab=sign-in` opens **Sign in**.
+
+The paths work the same way: `/register` opens **Request access** and
+`/login` opens **Sign in**.
+
+If requests for access are switched off, `/register` and `?tab=sign-up` show
+the sign-in form with a short note that registration is turned off and an
+administrator creates new accounts.
+
 ---
 
 ## Save, cancel or start over

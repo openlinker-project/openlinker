@@ -29,7 +29,6 @@ import { useOmsRoutingState } from '../features/fulfillment-authority';
 import type { NavGroup } from './nav-registry.types';
 import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
 import { Button } from '../shared/ui/button';
-import { LanguageSwitch } from '../shared/ui/language-switch';
 import { EnvironmentBadge } from '../shared/ui/environment-badge';
 import {
   DropdownMenu,
@@ -39,7 +38,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../shared/ui/dropdown-menu';
-import { ThemeToggle } from '../shared/ui/theme-toggle';
+import { ThemePicker } from '../features/appearance';
+import { LanguageSwitch } from '../features/language';
+import { useMessages } from '../shared/i18n/use-messages';
 import { DensityToggle, useDensity } from '../shared/ui/density-toggle';
 import { useToast } from '../shared/ui/toast-provider';
 import { CommandPaletteProvider, useCommandPalette } from './command-palette-provider';
@@ -81,7 +82,7 @@ export function SidebarNav({
   const renderDisabledItem = (
     label: string,
     reason: string | undefined,
-    locked: boolean,
+    locked: boolean
   ): ReactElement => (
     <li key={label}>
       <span
@@ -169,7 +170,12 @@ interface WorkspaceFooterProps {
   demoMode: boolean;
 }
 
-function WorkspaceFooter({ onLogout, username, location, demoMode }: WorkspaceFooterProps): ReactElement {
+function WorkspaceFooter({
+  onLogout,
+  username,
+  location,
+  demoMode,
+}: WorkspaceFooterProps): ReactElement {
   return (
     <div className="shell-workspace">
       <div className="shell-workspace__header">
@@ -220,10 +226,15 @@ interface UserChipProps {
 }
 
 function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
+  const themeCopy = useMessages('ui').theme;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" className="shell-user-chip" aria-label={`Account menu for ${username}`}>
+        <button
+          type="button"
+          className="shell-user-chip"
+          aria-label={`Account menu for ${username}`}
+        >
           <span className="shell-user-chip__avatar" aria-hidden="true">
             {initialsFrom(username)}
           </span>
@@ -237,8 +248,8 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <div className="shell-user-chip__menu-section">
-          <div className="shell-user-chip__menu-section-label">Theme</div>
-          <ThemeToggle />
+          <div className="shell-user-chip__menu-section-label">{themeCopy.label}</div>
+          <ThemePicker />
         </div>
         <div className="shell-user-chip__menu-section">
           <div className="shell-user-chip__menu-section-label">Density</div>
@@ -378,7 +389,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   const omsRouting = useOmsRoutingState({ enabled: sessionNeedsOmsRouting(permissions, role) });
   const groups = useMemo(
     () => buildNavGroups({ isAdmin, demoMode, permissions, role, omsRouting }),
-    [isAdmin, demoMode, permissions, role, omsRouting],
+    [isAdmin, demoMode, permissions, role, omsRouting]
   );
 
   const closeDrawer = useCallback((): void => {
@@ -422,56 +433,58 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
 
   return (
     <CommandPaletteProvider>
-    <div className="shell">
-      <div className="shell-sidebar">
-        <SidebarBrand />
-        <SidebarNav ariaLabel="Primary" counts={counts} groups={groups} />
-        <WorkspaceFooter
-          username={username}
-          onLogout={username ? handleLogout : undefined}
-          location="sidebar_footer"
-          demoMode={demoMode}
-        />
-      </div>
-
-      <dialog ref={drawerRef} className="shell-drawer" aria-label="Primary navigation (mobile)">
-        <div className="shell-drawer__inner">
-          <div className="shell-drawer__header">
-            <SidebarBrand />
-            <Button
-              tone="ghost"
-              onClick={closeDrawer}
-              aria-label="Close menu"
-              className="shell-drawer__close"
-            >
-              ✕
-            </Button>
-          </div>
-          <SidebarNav
-            ariaLabel="Primary (mobile)"
-            counts={counts}
-            groups={groups}
-            onNavigate={closeDrawer}
-          />
+      <div className="shell">
+        <div className="shell-sidebar">
+          <SidebarBrand />
+          <SidebarNav ariaLabel="Primary" counts={counts} groups={groups} />
           <WorkspaceFooter
             username={username}
             onLogout={username ? handleLogout : undefined}
-            location="mobile_drawer_footer"
+            location="sidebar_footer"
             demoMode={demoMode}
           />
         </div>
-      </dialog>
 
-      <div className="shell-main">
-        <ShellTopbar onOpenMenu={openDrawer} onLogout={handleLogout} />
+        <dialog ref={drawerRef} className="shell-drawer" aria-label="Primary navigation (mobile)">
+          <div className="shell-drawer__inner">
+            <div className="shell-drawer__header">
+              <SidebarBrand />
+              <Button
+                tone="ghost"
+                onClick={closeDrawer}
+                aria-label="Close menu"
+                className="shell-drawer__close"
+              >
+                ✕
+              </Button>
+            </div>
+            <SidebarNav
+              ariaLabel="Primary (mobile)"
+              counts={counts}
+              groups={groups}
+              onNavigate={closeDrawer}
+            />
+            <WorkspaceFooter
+              username={username}
+              onLogout={username ? handleLogout : undefined}
+              location="mobile_drawer_footer"
+              demoMode={demoMode}
+            />
+          </div>
+        </dialog>
 
-        {demoMode && isViewerOnly ? <DemoBanner /> : null}
+        <div className="shell-main">
+          <ShellTopbar onOpenMenu={openDrawer} onLogout={handleLogout} />
 
-        {/* `key={location.pathname}` retriggers the .shell-content
+          {demoMode && isViewerOnly ? <DemoBanner /> : null}
+
+          {/* `key={location.pathname}` retriggers the .shell-content
             cross-fade animation on every route change (#775). */}
-        <main key={location.pathname} className="shell-content">{children}</main>
+          <main key={location.pathname} className="shell-content">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
     </CommandPaletteProvider>
   );
 }

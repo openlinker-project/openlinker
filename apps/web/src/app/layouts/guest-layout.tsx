@@ -4,7 +4,7 @@ import { BENCH_PATH, resolveSessionSurface } from '../../shared/auth/session-sur
 import { useSession } from '../../shared/auth/use-session';
 import { resolveNextPath } from '../../shared/lib/resolve-next-path';
 import { LoadingState } from '../../shared/ui/feedback-state';
-import { LanguageSwitch } from '../../shared/ui/language-switch';
+import { LanguageSwitch } from '../../features/language';
 
 export function GuestLayout(): ReactElement {
   const { isReady, session } = useSession();

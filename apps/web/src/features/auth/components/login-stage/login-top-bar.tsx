@@ -10,8 +10,8 @@
  * @module features/auth/components/login-stage
  */
 import { useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
-import { ThemeSwitch } from '../../../../shared/ui/theme-switch';
-import { LanguageSwitch } from '../../../../shared/ui/language-switch';
+import { ThemeSwitch } from '../../../appearance';
+import { LanguageSwitch } from '../../../language';
 import type { LoginStageCopy } from '../../lib/login-stage-copy';
 
 export function LoginBrandMark({ className }: { className?: string }): ReactElement {
@@ -101,8 +101,8 @@ export function LoginTopBar({ bar }: LoginTopBarProps): ReactElement {
           <span className="login-topbar__spacer" />
         )}
         <span className="login-topbar__controls">
-          <ThemeSwitch placement="down" />
-          <LanguageSwitch placement="down" reveal="end" />
+          <ThemeSwitch placement="down" touchSize />
+          <LanguageSwitch placement="down" reveal="end" touchSize />
         </span>
       </div>
     </header>

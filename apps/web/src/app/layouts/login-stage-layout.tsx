@@ -11,6 +11,11 @@
  * After a successful sign-in the card shows a short "signed in" step before
  * it navigates, so the hand-off reads as one motion rather than a cut.
  *
+ * A link can open a tab directly: `?tab=sign-up` (create account / request
+ * access) or `?tab=sign-in`. The parameter wins over the path and only opens
+ * a tab the page offers (with registration off, sign-in stays). The URL is
+ * left as it is on load; a tab click drops the parameter.
+ *
  * @module app/layouts
  */
 import { MotionConfig, useReducedMotion } from 'motion/react';
@@ -36,9 +41,21 @@ import { useSession } from '../../shared/auth/use-session';
 import { useLocale, useMessages } from '../../shared/i18n';
 import { resolveNextPath } from '../../shared/lib/resolve-next-path';
 import { LoadingState } from '../../shared/ui/feedback-state';
+import { useToast } from '../../shared/ui/toast-provider';
 import { LoginBackdrop } from './login-backdrop';
 
 const MARKETING_CAPTURE_PATHS = ['/login', '/register'];
+
+/** `?tab=` values a link may use to open a tab. */
+const TAB_PARAM: Record<string, AuthTab> = { 'sign-up': 'register', 'sign-in': 'login' };
+
+/** The search string without `tab`, so a later tab click is not contradicted by it. */
+function withoutTabParam(search: string): string {
+  const params = new URLSearchParams(search);
+  params.delete('tab');
+  const rest = params.toString();
+  return rest ? `?${rest}` : '';
+}
 const SIGNED_IN_HOLD_MS = 1800;
 const SIGNED_IN_HOLD_REDUCED_MS = 400;
 
@@ -58,6 +75,7 @@ export function LoginStageScreen({ mode }: LoginStageScreenProps): ReactElement 
   const login = useLogin();
   const register = useRegisterMutation();
   const consent = useUpdateAnalyticsConsentMutation();
+  const { showToast } = useToast();
 
   /** True from a sign-in submitted HERE until the hand-off ends, so the guard does not bounce it. */
   const signingIn = useRef(false);
@@ -67,6 +85,36 @@ export function LoginStageScreen({ mode }: LoginStageScreenProps): ReactElement 
 
   const config = systemConfigQuery.data;
   const demoMode = config?.demoMode ?? false;
+
+  const tabParam = searchParams.get('tab');
+  // Own keys only: `?tab=constructor` must not read Object's prototype.
+  const requestedTab =
+    tabParam !== null && Object.prototype.hasOwnProperty.call(TAB_PARAM, tabParam)
+      ? TAB_PARAM[tabParam]
+      : undefined;
+  const tab: AuthTab =
+    mode === 'consent'
+      ? 'login'
+      : requestedTab ?? (location.pathname === '/register' ? 'register' : 'login');
+
+  // Asked for sign-up (by /register or ?tab=sign-up) where it is turned off: the card shows
+  // sign-in, and an info toast says why, once per visit to that URL.
+  const registrationOffAsked =
+    mode === 'guest' &&
+    tab === 'register' &&
+    systemConfigQuery.isSuccess &&
+    config?.registrationEnabled === false;
+  const toastedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!registrationOffAsked || toastedFor.current === location.key) return;
+    toastedFor.current = location.key;
+    showToast({
+      tone: 'info',
+      title: messages.ui.registrationOffTitle,
+      description: messages.ui.registrationOffBody,
+      testId: 'registration-off-toast',
+    });
+  }, [registrationOffAsked, location.key, showToast, messages.ui]);
 
   useEffect(() => {
     if (mode !== 'guest' || !systemConfigQuery.isSuccess) return;
@@ -178,7 +226,7 @@ export function LoginStageScreen({ mode }: LoginStageScreenProps): ReactElement 
     (tab: AuthTab) => {
       void navigate({
         pathname: tab === 'register' ? '/register' : '/login',
-        search: location.search,
+        search: withoutTabParam(location.search),
       });
     },
     [navigate, location.search]
@@ -206,8 +254,6 @@ export function LoginStageScreen({ mode }: LoginStageScreenProps): ReactElement 
     demoMode || mode === 'consent'
       ? buildDemoLoginCopy(messages, locale)
       : buildProductionLoginCopy(messages, config?.loginPage?.[locale]);
-  const tab: AuthTab =
-    mode === 'consent' || location.pathname !== '/register' ? 'login' : 'register';
 
   return (
     <MotionConfig reducedMotion="user">

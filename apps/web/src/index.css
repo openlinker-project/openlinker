@@ -2960,54 +2960,6 @@ textarea,
 }
 
 
-/* ── Theme toggle ───────────────────────────────────────────────────
- * Three-option radiogroup rendered as a segmented button group. Sits
- * inside the user-chip dropdown in the topbar (Phase 2 wiring).
- */
-.theme-toggle {
-  display: inline-flex;
-  align-items: stretch;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
-  overflow: hidden;
-}
-
-.theme-toggle__option {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 1.75rem;
-  min-width: 3.25rem;
-  padding: 0 0.625rem;
-  border: none;
-  border-radius: 0;
-  border-right: 1px solid var(--border-subtle);
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 0.8125rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out);
-}
-
-.theme-toggle__option:last-child {
-  border-right: none;
-}
-
-.theme-toggle__option:hover {
-  background: var(--bg-surface-muted);
-  color: var(--text-primary);
-}
-
-.theme-toggle__option--active {
-  background: var(--bg-surface-muted);
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
 .alert {
   display: flex;
   align-items: flex-start;
@@ -6080,143 +6032,36 @@ a.delivery-rider-banner__button:focus-visible {
   pointer-events: none;
 }
 
-/* ── Theme switch (#4029) ─────────────────────────────────────────
- * Uses the language switch's classes for the pill, peek and popover, so the
- * two always read as a pair; this only sizes the icon into the flag's slot.
+/* ── Theme controls (#4029, features/appearance) ─────────────────────
+ * The theme icon, and how the theme switch dresses the shared primitives.
  */
-.theme-switch__icon-wrap {
-  display: inline-grid;
-  place-items: center;
-  width: 22px;
-  height: 15px;
-  color: var(--text-secondary);
-}
-
-.language-switch__option[aria-selected='true'] .theme-switch__icon-wrap,
-.language-switch__peek .theme-switch__icon-wrap {
-  color: var(--text-primary);
-}
-
-.theme-switch__icon {
+.theme-icon {
   display: block;
   width: 15px;
   height: 15px;
 }
 
-.language-switch__popover.theme-switch__popover {
-  width: 216px;
-  padding-bottom: 6px;
-}
-
-/* One horizontal switch of icons; the thumb springs to the chosen mode
- * (motion layoutId). Names stay out of the segments so they never crowd them:
- * a row opens below with all three names, one under each icon, only while the
- * switch is pointed at or keyboard-focused. */
-.theme-switch__control {
-  margin: 0 2px;
-}
-
-.theme-switch__segments {
-  position: relative;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  background: var(--bg-surface-muted);
-}
-
-.theme-switch__segment,
-.theme-switch__segment:hover,
-.theme-switch__segment:active {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: auto;
-  height: 34px;
-  padding: 0;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  box-shadow: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: color var(--duration-normal) var(--ease-out);
-}
-
-.theme-switch__segment:hover {
-  color: var(--text-primary);
-}
-
-.theme-switch__segment:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
-
-.theme-switch__thumb {
-  position: absolute;
-  inset: 0;
-  border-radius: 7px;
-  background: var(--bg-surface);
-  box-shadow:
-    0 1px 2px rgb(15 18 26 / 0.08),
-    0 0 0 1px var(--border-default);
-}
-
-.theme-switch__segment-icon {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  scale: 0.86;
-  transition: scale var(--duration-normal) var(--ease-out);
-}
-
-.theme-switch__segment[aria-checked='true'] .theme-switch__segment-icon {
-  scale: 1;
-}
-
-.theme-switch__segment[aria-checked='true'] .theme-switch__segment-icon {
-  color: var(--accent-primary);
-}
-
-.theme-switch__segment .theme-switch__icon {
-  width: 16px;
-  height: 16px;
-}
-
-.theme-switch__caption {
-  overflow: hidden;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 22px;
-  color: var(--text-muted);
-}
-
-/* Same columns as the segments (3px padding + 1px border), so each name sits
- * under its own icon. */
-.theme-switch__names {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 2px;
-  padding: 4px 4px 0;
-}
-
-.theme-switch__name {
-  overflow: hidden;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: color var(--duration-normal) var(--ease-out);
-}
-
-.theme-switch__name[data-state='active'] {
+.theme-switch .peek-button__icon {
   color: var(--text-secondary);
 }
 
-.theme-switch__name[data-state='pointed'] {
+.theme-switch .peek-button__peek .peek-button__icon {
   color: var(--text-primary);
+}
+
+.motion-popover.theme-switch__popover {
+  padding-bottom: 6px;
+}
+
+.theme-switch__popover .segmented-switch {
+  margin: 0 2px;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .peek-button--touch .theme-icon {
+    width: 18px;
+    height: 18px;
+  }
 }
 
 /* ── Login stage (#4029) ──────────────────────────────────────────────
@@ -6729,7 +6574,7 @@ html:has(.login-stage) {
 
 /* The bar is the openlinker.io header, where the switch sits at its own height, not at the
    app's 2rem button height. */
-.login-topbar .language-switch__trigger {
+.login-topbar .peek-button__trigger {
   height: auto;
 }
 
@@ -6960,6 +6805,23 @@ html:has(.login-stage) {
   bottom: 5px;
   height: auto;
   width: 62px;
+}
+
+/* Touch screens: the global 44px button floor made the toggle as tall as the
+ * field and pushed it out below it. It keeps its inset inside the field; an
+ * invisible ring takes the tap target back to the field's full height. */
+@media (hover: none) and (pointer: coarse) {
+  /* Doubled class: the global touch floor (`button, .button`) is declared later. */
+  .password-input .password-input__toggle {
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .password-input__toggle::after {
+    content: '';
+    position: absolute;
+    inset: -5px -5px -5px 0;
+  }
 }
 
 .auth-card__submit {
@@ -7232,48 +7094,12 @@ html:has(.login-stage) {
     gap: 10px;
   }
 
-  .login-topbar .language-switch__trigger .language-switch__chevron {
+  .login-topbar .peek-button__trigger .peek-button__chevron {
     display: none;
   }
 
-  .login-topbar .language-switch__trigger {
+  .login-topbar .peek-button__trigger {
     padding-right: 11px;
-  }
-}
-
-/* Touch screens: the global 44px button floor turned the two pills into
- * lumpy near-circles with tiny icons. A proper 40px capsule with larger icons
- * instead; a 2px invisible ring brings the tap target to 44px. */
-@media (hover: none) and (pointer: coarse) {
-  .login-topbar .language-switch__trigger {
-    position: relative;
-    min-width: 0;
-    min-height: 0;
-    height: 40px;
-    gap: 8px;
-    padding: 0 12px 0 11px;
-  }
-
-  .login-topbar .language-switch__trigger::after {
-    content: '';
-    position: absolute;
-    inset: -2px;
-  }
-
-  .login-topbar .language-switch__flag-wrap,
-  .login-topbar .language-flag {
-    width: 26px;
-    height: 18px;
-  }
-
-  .login-topbar .theme-switch__icon {
-    width: 18px;
-    height: 18px;
-  }
-
-  .login-topbar .language-switch__chevron {
-    width: 11px;
-    height: 11px;
   }
 }
 
@@ -33698,10 +33524,12 @@ legend.analytics-settings-dialog__label {
   flex: 1 1 18rem;
 }
 
-/* Language switch (#3858, ADR-081). Flag pill + popover listing every
-   language with flag, code and native name. Opens upward in the sidebar
-   footer, downward in the signed-out corner. */
-.language-switch {
+/* ── Switch primitives (#4029; first built for the language switch, #3858) ──
+ * PeekButton: a pill that slides out its name on hover. MotionPopover: the
+ * floating panel it opens. OptionList: a pick-one list for that panel.
+ * SegmentedSwitch: a horizontal pick-one switch with a springing thumb.
+ * Composed by features/language and features/appearance. */
+.peek-button {
   --switch-hue: var(--accent-primary);
   --switch-tint: color-mix(in oklab, var(--switch-hue) 13%, var(--bg-surface));
   --switch-edge: color-mix(in oklab, var(--switch-hue) 55%, var(--border-subtle));
@@ -33717,7 +33545,7 @@ legend.analytics-settings-dialog__label {
  * connection chip's reveal, Source column on /products). Out of flow, so the
  * row around the switch never reflows, and growing leftwards keeps it inside
  * the sidebar's clipped right edge and the login page's corner. */
-.language-switch__peek {
+.peek-button__peek {
   position: absolute;
   z-index: 2;
   top: 0;
@@ -33741,34 +33569,34 @@ legend.analytics-settings-dialog__label {
   transition: opacity var(--duration-fast) var(--ease-out) 80ms;
 }
 
-.language-switch__peek > * {
+.peek-button__peek > * {
   flex: none;
 }
 
 /* `reveal="end"`: left edges aligned, so the pill widens rightwards and leaves
  * a neighbour on the left (the login top bar's theme switch) uncovered. */
-.language-switch--reveal-end .language-switch__peek {
+.peek-button--reveal-end .peek-button__peek {
   right: auto;
   left: 0;
 }
 
-.language-switch__peek .language-switch__chevron {
+.peek-button__peek .peek-button__chevron {
   margin-left: 6px;
   transform: rotate(var(--peek-chevron, 0deg));
 }
 
-.language-switch__reveal {
+.peek-button__reveal {
   display: grid;
   grid-template-columns: 0fr;
   transition: grid-template-columns var(--duration-fast) var(--ease-standard);
 }
 
-.language-switch__reveal-clip {
+.peek-button__reveal-clip {
   min-width: 0;
   overflow: hidden;
 }
 
-.language-switch__reveal-name {
+.peek-button__reveal-name {
   display: block;
   padding-left: 7px;
   white-space: nowrap;
@@ -33781,20 +33609,20 @@ legend.analytics-settings-dialog__label {
 
 /* Opening is slower and eased out so the name reads as unrolling; closing (the
  * base rules) is quicker. Not while the list is open: the list names it already. */
-.language-switch:not(.is-open):has(.language-switch__trigger:is(:hover, :focus-visible))
-  .language-switch__peek {
+.peek-button:not(.is-open):has(.peek-button__trigger:is(:hover, :focus-visible))
+  .peek-button__peek {
   opacity: 1;
   transition: opacity 80ms var(--ease-out);
 }
 
-.language-switch:not(.is-open):has(.language-switch__trigger:is(:hover, :focus-visible))
-  .language-switch__reveal {
+.peek-button:not(.is-open):has(.peek-button__trigger:is(:hover, :focus-visible))
+  .peek-button__reveal {
   grid-template-columns: 1fr;
   transition: grid-template-columns var(--duration-slow) var(--ease-out);
 }
 
-.language-switch:not(.is-open):has(.language-switch__trigger:is(:hover, :focus-visible))
-  .language-switch__reveal-name {
+.peek-button:not(.is-open):has(.peek-button__trigger:is(:hover, :focus-visible))
+  .peek-button__reveal-name {
   opacity: 1;
   transform: none;
   transition:
@@ -33805,20 +33633,20 @@ legend.analytics-settings-dialog__label {
 @media (hover: none) {
   /* A tap opens the list straight away; a sticky hover state would leave the
      name showing after the list closes. */
-  .language-switch__peek {
+  .peek-button__peek {
     display: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .language-switch__peek,
-  .language-switch__reveal,
-  .language-switch__reveal-name {
+  .peek-button__peek,
+  .peek-button__reveal,
+  .peek-button__reveal-name {
     transition: none !important;
   }
 }
 
-.language-switch__trigger {
+.peek-button__trigger {
   font: inherit;
   display: inline-flex;
   align-items: center;
@@ -33834,30 +33662,31 @@ legend.analytics-settings-dialog__label {
   box-shadow: var(--shadow-xs);
 }
 
-.language-switch__trigger:hover,
-.language-switch__trigger[aria-expanded='true'] {
+.peek-button__trigger:hover,
+.peek-button__trigger[aria-expanded='true'] {
   border-color: var(--accent-primary);
 }
 
-.language-switch__trigger:focus-visible,
-.language-switch__trigger[aria-expanded='true'] {
+.peek-button__trigger:focus-visible,
+.peek-button__trigger[aria-expanded='true'] {
   outline: none;
   box-shadow: var(--shadow-focus);
 }
 
-.language-switch__flag-wrap {
-  display: inline-block;
+.peek-button__icon {
+  display: inline-grid;
+  place-items: center;
   perspective: 120px;
   width: 22px;
   height: 15px;
 }
 
-.language-switch__flag-face {
+.peek-button__icon-face {
   display: block;
 }
 
 
-.language-switch__chevron {
+.peek-button__chevron {
   width: 10px;
   height: 10px;
   color: var(--text-muted);
@@ -33872,7 +33701,7 @@ legend.analytics-settings-dialog__label {
   overflow: hidden;
 }
 
-.language-switch__popover {
+.motion-popover {
   /* In a portal on <body>, placed by the component next to its trigger and
      centred on it (Motion adds the -50% translate), so a parent's
      overflow: hidden cannot clip it. */
@@ -33887,18 +33716,18 @@ legend.analytics-settings-dialog__label {
   transform-origin: 50% 100%;
 }
 
-.language-switch__popover--down {
+.motion-popover--down {
   transform-origin: 50% 0;
 }
 
-.language-switch__head {
+.motion-popover__head {
   padding: 6px 8px 8px;
   font-size: 11.5px;
   color: var(--text-muted);
   font-weight: 500;
 }
 
-.language-switch__list {
+.option-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -33907,7 +33736,7 @@ legend.analytics-settings-dialog__label {
   outline: none;
 }
 
-.language-switch__option {
+.option-list__option {
   position: relative;
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr) auto;
@@ -33921,7 +33750,12 @@ legend.analytics-settings-dialog__label {
   color: var(--text-primary);
 }
 
-.language-switch__option.is-focus {
+.option-list__icon {
+  display: grid;
+  place-items: center;
+}
+
+.option-list__option.is-focus {
   background: var(--bg-surface-muted);
 }
 
@@ -33929,7 +33763,7 @@ legend.analytics-settings-dialog__label {
 
 /* Positioned behind the row's content and outside the grid flow, so the
    flag and name sit in the same place on every row. */
-.language-switch__selected {
+.option-list__selected {
   position: absolute;
   inset: 0;
   border-radius: var(--radius-md);
@@ -33938,26 +33772,166 @@ legend.analytics-settings-dialog__label {
   pointer-events: none;
 }
 
-.language-switch__option > :not(.language-switch__selected) {
+.option-list__option > :not(.option-list__selected) {
   position: relative;
   z-index: 1;
 }
 
-.language-switch__option[aria-selected='true'] .language-switch__name {
+.option-list__option[aria-selected='true'] .option-list__name {
   font-weight: 600;
 }
 
-.language-switch__name {
+.option-list__name {
   display: grid;
   line-height: 1.25;
 }
 
-.language-switch__name small {
+.option-list__name small {
   font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--text-muted);
 }
 
+
+/* SegmentedSwitch: icons in a track, a raised thumb springing to the chosen
+ * one (motion layoutId). The names sit in a row under the icons, one under
+ * each, so they never crowd the options. */
+.segmented-switch__track {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-muted);
+}
+
+.segmented-switch__option,
+.segmented-switch__option:hover,
+.segmented-switch__option:active {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: auto;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--duration-normal) var(--ease-out);
+}
+
+.segmented-switch__option:hover {
+  color: var(--text-primary);
+}
+
+.segmented-switch__option:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.segmented-switch__thumb {
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+  background: var(--bg-surface);
+  box-shadow:
+    0 1px 2px rgb(15 18 26 / 0.08),
+    0 0 0 1px var(--border-default);
+}
+
+/* The unchosen icons sit a little smaller; `scale` (not `transform`) so it
+ * does not fight the press animation Motion runs on the transform. */
+.segmented-switch__icon {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  scale: 0.86;
+  transition: scale var(--duration-normal) var(--ease-out);
+}
+
+.segmented-switch__option[aria-checked='true'] .segmented-switch__icon {
+  scale: 1;
+  color: var(--accent-primary);
+}
+
+.segmented-switch__icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.segmented-switch__caption {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+
+/* Same columns as the track (3px padding + 1px border), so each name sits
+ * under its own icon. */
+.segmented-switch__names {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 4px 4px 0;
+}
+
+.segmented-switch__name {
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--duration-normal) var(--ease-out);
+}
+
+.segmented-switch__name[data-state='active'] {
+  color: var(--text-secondary);
+}
+
+.segmented-switch__name[data-state='pointed'] {
+  color: var(--text-primary);
+}
+
+/* PeekButton `touchSize`: the global 44px button floor turned the pill into a
+ * lumpy near-circle with a tiny icon. A proper 40px capsule with a larger icon
+ * instead; a 2px invisible ring brings the tap target to 44px. */
+@media (hover: none) and (pointer: coarse) {
+  .peek-button--touch .peek-button__trigger {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    height: 40px;
+    gap: 8px;
+    padding: 0 12px 0 11px;
+  }
+
+  .peek-button--touch .peek-button__trigger::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+  }
+
+  .peek-button--touch .peek-button__icon,
+  .peek-button--touch .language-flag {
+    width: 26px;
+    height: 18px;
+  }
+
+  .peek-button--touch .peek-button__chevron {
+    width: 11px;
+    height: 11px;
+  }
+}
+
+/* ── Language switch (#3858, ADR-081; features/language) ── */
 /* An honest "not finished yet" on a language whose translation still falls
  * back to English in places. In the info hue rather than the accent, so it
  * never reads as the selection. */
@@ -33978,7 +33952,7 @@ legend.analytics-settings-dialog__label {
 /* Hover popover for the Beta badge: the language list's surface and motion,
  * scaled down, centred over the row (Motion adds the -50% translate). Wide
  * enough for the Polish sentence to fit on two lines. */
-.language-switch__option > .language-switch__hint {
+.option-list__option > .language-switch__hint {
   position: absolute;
   z-index: 3;
   left: 50%;

@@ -30,13 +30,120 @@
     }
   },
   "login": {
+    "backdrop": {
+      "ago": {
+        "hours": "{n} h ago",
+        "minutes": "{n} min ago",
+        "yesterday": "yesterday"
+      },
+      "alerts": "Alerts",
+      "analytics": {
+        "aov": "Average order value",
+        "aovMetric": "Revenue per order",
+        "basis": "vs previous 14 days",
+        "cancelled": "Cancelled",
+        "cancelledMetric": "{share} of orders",
+        "channel": "Channel",
+        "description": "Sales across connected channels, with clear data coverage.",
+        "noChange": "No change",
+        "orders": "Orders",
+        "ordersMetric": "Placed in the period",
+        "revenue": "Revenue",
+        "revenueMetric": "Gross, all channels",
+        "settings": "Analytics settings",
+        "share": "Share",
+        "sku": "SKU",
+        "topProducts": "Top products",
+        "units": "Units",
+        "up": "Up {value}"
+      },
+      "customers": {
+        "c01": "Emma Schmidt",
+        "c02": "Lucas Martin",
+        "c03": "Sofia Rossi",
+        "c04": "Noah Müller",
+        "c05": "Mia Dubois",
+        "c06": "Liam Jansen",
+        "c07": "Chloé Bernard",
+        "c08": "Jonas Weber",
+        "c09": "Elena García",
+        "c10": "Hugo Laurent",
+        "c11": "Lea Fischer",
+        "c12": "Mateo Romano",
+        "c13": "Anna Novak",
+        "c14": "Finn Peters",
+        "c15": "Clara Moreau",
+        "c16": "Leo Bauer"
+      },
+      "nav": {
+        "adapters": "Adapters",
+        "analytics": "Analytics",
+        "connections": "Connections",
+        "cursors": "Cursors",
+        "customers": "Customers",
+        "diagnostics": "Diagnostics",
+        "insights": "Insights",
+        "jobs": "Jobs & Logs",
+        "listings": "Listings",
+        "operations": "Operations",
+        "orders": "Orders",
+        "platform": "Platform",
+        "products": "Products",
+        "returns": "Returns",
+        "salesDocuments": "Sales documents",
+        "settings": "Settings",
+        "shipments": "Shipments",
+        "webhooks": "Webhooks"
+      },
+      "orders": {
+        "channel": "Channel",
+        "customer": "Customer",
+        "order": "Order",
+        "shipment": "Shipment",
+        "status": "Status",
+        "total": "Total"
+      },
+      "products": {
+        "p1": "Merino wool hoodie",
+        "p2": "Running shoes Aero",
+        "p3": "Canvas tote bag",
+        "p4": "Thermo bottle 750 ml",
+        "p5": "Linen shirt",
+        "p6": "Wool beanie",
+        "p7": "Leather wallet",
+        "p8": "Cotton socks, 3 pairs"
+      },
+      "refresh": "Refresh",
+      "shipments": {
+        "carrier": "Carrier",
+        "description": "Labels, tracking numbers and delivery status for every carrier.",
+        "order": "Order",
+        "status": "Status",
+        "tracking": "Tracking",
+        "updated": "Updated"
+      },
+      "status": {
+        "cancelled": "Cancelled",
+        "delivered": "Delivered",
+        "dispatched": "Dispatched",
+        "inTransit": "In transit",
+        "labelReady": "Label ready",
+        "new": "New",
+        "notShipped": "Not shipped",
+        "pending": "Pending",
+        "processing": "Processing",
+        "shipped": "Shipped"
+      },
+      "user": "emma",
+      "workspace": "Default organization"
+    },
     "bar": {
       "chip": "Demo",
       "docs": "Docs",
       "github": "GitHub",
       "linksLabel": "More about OpenLinker",
       "site": "openlinker.io",
-      "text": "A demo environment with sample data."
+      "text": "A read-only demo with sample data."
     },
     "demo": {
       "consent": {
@@ -125,7 +232,7 @@
     "ui": {
       "confirm": "Repeat password",
       "email": "Email",
-      "emailPh": "kate@yourshop.com",
+      "emailPh": "contact@yourstore.com",
       "forgot": "Forgot your password?",
       "hide": "Hide",
       "hidePw": "Hide password",
@@ -134,6 +241,8 @@
       "min8": "at least 8 characters",
       "password": "Password",
       "registerFailedTitle": "Couldn't create the account",
+      "registrationOffBody": "Sign in with your account. An administrator creates new accounts.",
+      "registrationOffTitle": "Registration is turned off",
       "show": "Show",
       "showPw": "Show password",
       "signedInLead": "Opening OpenLinker.",
@@ -142,7 +251,7 @@
       "tracking": "This visit is counted in our statistics. No personal profile is built from it.",
       "username": "Username",
       "usernameOrEmail": "Username or email",
-      "usernamePh": "e.g. kates-shop",
+      "usernamePh": "e.g. my-store",
       "v": {
         "confirm": "Repeat your password.",
         "email": "Enter your email address.",
@@ -478,7 +587,7 @@
       "dark": "Dark",
       "label": "Theme",
       "light": "Light",
-      "system": "System"
+      "system": "Auto"
     },
     "toast": {
       "dismiss": "Dismiss",
