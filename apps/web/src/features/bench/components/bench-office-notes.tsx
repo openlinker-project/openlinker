@@ -10,22 +10,23 @@
  */
 import type { ReactElement } from 'react';
 
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import type { BenchPackerNote } from '../api/bench-parcel.types';
 import { describeBenchNoteTime, orderBenchOfficeNotes } from '../lib/bench-office-notes';
-import { benchParcelCopy } from '../lib/bench-parcel.copy';
 
 export interface BenchOfficeNotesProps {
   readonly notes: readonly BenchPackerNote[];
 }
 
 export function BenchOfficeNotes({ notes }: BenchOfficeNotesProps): ReactElement | null {
+  const copy = useMessages('bench').parcel.officeNotes;
   if (notes.length === 0) return null;
 
   return (
     <Alert
       tone="info"
-      title={benchParcelCopy.officeNotes.title(notes.length)}
+      title={interpolate(copy.title, { count: notes.length })}
       className="bench-office-note"
       data-testid="bench-office-notes"
     >

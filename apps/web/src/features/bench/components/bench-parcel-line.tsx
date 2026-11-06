@@ -36,9 +36,17 @@ import type { ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { BenchParcelLine } from '../api/bench-parcel.types';
-import { narrowAttributes } from '../../../shared/lib/variant-attributes';
+import { formatVariantAttributes, narrowAttributes } from '../../../shared/lib/variant-attributes';
 import { benchLineState, type BenchLineState } from '../lib/bench-parcel-presentation';
-import { benchParcelCopy } from '../lib/bench-parcel.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
+import {
+  formatBenchBinCode,
+  formatBenchDimensions,
+  formatBenchLineCodes,
+  formatBenchLineCount,
+  formatBenchStillToScan,
+  formatBenchWeight,
+} from '../lib/bench-line-text';
 import { BenchThumb } from './bench-thumb';
 
 export interface BenchParcelLineRowProps {
@@ -86,11 +94,13 @@ const BADGE_TONE: Readonly<Record<BenchLineState, StatusBadgeTone>> = {
   'not-started': 'neutral',
 };
 
-const BADGE_TEXT: Readonly<Record<BenchLineState, string>> = {
-  verified: benchParcelCopy.lines.badgeVerified,
-  'in-progress': benchParcelCopy.lines.badgeScanning,
-  'not-started': benchParcelCopy.lines.badgeNotScanned,
-};
+function badgeText(
+  state: BenchLineState,
+  lines: { readonly badgeVerified: string; readonly badgeScanning: string; readonly badgeNotScanned: string }
+): string {
+  if (state === 'verified') return lines.badgeVerified;
+  return state === 'in-progress' ? lines.badgeScanning : lines.badgeNotScanned;
+}
 
 export function BenchParcelLineRow({
   line,
@@ -101,10 +111,11 @@ export function BenchParcelLineRow({
   pendingCount = 0,
   unreachable = false,
 }: BenchParcelLineRowProps): ReactElement {
+  const copy = useMessages('bench').parcel;
   const state = benchLineState(line);
   const pending = pendingCount > 0;
   const remaining = Math.max(0, line.requiredQuantity - line.verifiedQuantity);
-  const codes = benchParcelCopy.lines.codes({ ean: line.ean, sku: line.sku });
+  const codes = formatBenchLineCodes({ ean: line.ean, sku: line.sku });
   const visibleAttributes = narrowAttributes(line.attributes, distinguishingAttributes);
 
   return (
@@ -133,21 +144,21 @@ export function BenchParcelLineRow({
           distinguishing attributes under it. */}
       <div className="bench-parcel-line__identity">
         <span className="bench-parcel-line__name">
-          {line.name ?? benchParcelCopy.lines.unnamed}
+          {line.name ?? copy.lines.unnamed}
         </span>
         {visibleAttributes === null ? null : (
           <span className="bench-parcel-line__attributes">
-            {benchParcelCopy.lines.attributesText(visibleAttributes)}
+            {formatVariantAttributes(visibleAttributes)}
           </span>
         )}
         {line.weightGrams === null && line.lengthMm === null ? null : (
           <span className="bench-parcel-line__physical">
             {line.weightGrams === null ? null : (
-              <span>{benchParcelCopy.lines.weightGrams(line.weightGrams)}</span>
+              <span>{formatBenchWeight(line.weightGrams)}</span>
             )}
             {line.lengthMm === null || line.widthMm === null || line.heightMm === null ? null : (
               <span>
-                {benchParcelCopy.lines.dimensionsMm(line.lengthMm, line.widthMm, line.heightMm)}
+                {formatBenchDimensions(line.lengthMm, line.widthMm, line.heightMm)}
               </span>
             )}
           </span>
@@ -162,14 +173,14 @@ export function BenchParcelLineRow({
       <div className="bench-parcel-line__location">
         {line.binCode === null ? null : (
           <span className="bench-parcel-line__bin-code">
-            {benchParcelCopy.lines.binCodeLabel(line.binCode)}
+            {formatBenchBinCode(line.binCode)}
           </span>
         )}
       </div>
 
       <div className="bench-parcel-line__count">
         <span className="bench-parcel-line__count-value">
-          {benchParcelCopy.lines.count(line.verifiedQuantity, line.requiredQuantity)}
+          {formatBenchLineCount(line.verifiedQuantity, line.requiredQuantity)}
         </span>
         {/* Only where it says something the badge to the right does not.
             A not-started row rendered `not scanned yet` here AND
@@ -181,14 +192,14 @@ export function BenchParcelLineRow({
             but `X of Y` for the other two. */}
         {state === 'in-progress' && remaining > 0 ? (
           <span className="bench-parcel-line__count-note">
-            {benchParcelCopy.lines.stillToScan(remaining)}
+            {formatBenchStillToScan(remaining)}
           </span>
         ) : null}
       </div>
 
       <div className="bench-parcel-line__state">
         <StatusBadge tone={BADGE_TONE[state]} withDot={state !== 'not-started'}>
-          {BADGE_TEXT[state]}
+          {badgeText(state, copy.lines)}
         </StatusBadge>
         {/* H2. A SECOND badge beside the state badge, never a fourth value of
             it: the state badge answers "what has the system counted", and a
@@ -198,7 +209,7 @@ export function BenchParcelLineRow({
             assert it from `textContent`. */}
         {pending ? (
           <span className="bench-parcel-line__pending" data-testid="bench-parcel-line-pending">
-            {benchParcelCopy.inFlight.sent}
+            {copy.inFlight.sent}
             {pendingCount > 1 ? ` (${String(pendingCount)})` : ''}
           </span>
         ) : null}
@@ -224,7 +235,7 @@ export function BenchParcelLineRow({
               aria-label={
                 line.name === null
                   ? undefined
-                  : benchParcelCopy.lines.confirmActionFor(line.name)
+                  : interpolate(copy.lines.confirmActionFor, { item: line.name })
               }
               // Deliberately NOT disabled while a gesture is out (#2905
               // review). The mutation observer is shared by every line, so
@@ -238,14 +249,14 @@ export function BenchParcelLineRow({
                 onConfirm(line);
               }}
             >
-              {benchParcelCopy.lines.confirmAction}
+              {copy.lines.confirmAction}
             </Button>
             {/* H1. Shown-and-refused rather than hidden: a control that
                 vanishes reads as a missing feature, and the packer's next move
                 is to hunt for it. Saying why is what stops that. */}
             {unreachable ? (
               <span className="bench-parcel-line__confirm-hint">
-                {benchParcelCopy.unreachable.confirmDisabledHint}
+                {copy.unreachable.confirmDisabledHint}
               </span>
             ) : null}
           </>

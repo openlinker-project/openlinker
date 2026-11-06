@@ -14,7 +14,7 @@ import {
   ATTENTION_UNKNOWN_COPY,
   attentionTitle,
   listAttentionReasonCopy,
-} from './attention-reason.copy';
+} from './attention-reason-text';
 
 describe('attention-reason copy', () => {
   // The table-driven "every union value yields copy" assertion the mirror

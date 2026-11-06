@@ -84,9 +84,7 @@ const RETURNS_SPEC = join('docs', 'specs', 'product-spec-oms-returns-operator-ux
 // file (ADR-081); a JSON owner names a dotted key path as its `declaration`.
 const RESTOCK_COPY = join('apps', 'web', 'src', 'locales', 'en', 'returns.json');
 const DETAIL_COPY = join('apps', 'web', 'src', 'locales', 'en', 'returns.json');
-const ATTENTION_COPY = join(
-  'apps', 'web', 'src', 'features', 'fulfillment-authority', 'lib', 'attention-reason.copy.ts',
-);
+const ATTENTION_COPY = join('apps', 'web', 'src', 'locales', 'en', 'fulfillment-authority.json');
 
 /**
  * The strings a spec explicitly claims ownership of. EVERY pair is live and compared;
@@ -117,9 +115,9 @@ const SPEC_OWNED_COPY = [
   // barrel-to-barrel edge would close a cycle). Held to the SPEC, not only to its
   // code twin, which is what M6 of check-attention-reason-mirror already does.
   { id: 'attention RB-L / title', spec: RETURNS_SPEC, section: '### 5.4 ', kind: 'bold',
-    code: { file: ATTENTION_COPY, declaration: 'ATTENTION_REASON_COPY', path: ['restock-blocked', 'title'] } },
+    code: { file: ATTENTION_COPY, declaration: 'attention.reasons', path: ['restock-blocked', 'title'] } },
   { id: 'attention RB-L / titleFallback', spec: RETURNS_SPEC, section: '### 5.4 ', kind: 'bold',
-    code: { file: ATTENTION_COPY, declaration: 'ATTENTION_REASON_COPY', path: ['restock-blocked', 'titleFallback'] } },
+    code: { file: ATTENTION_COPY, declaration: 'attention.reasons', path: ['restock-blocked', 'titleFallback'] } },
 
   // --- returns spec § 5.5: orphan returns ----------------------------------
   { id: 'orphan / banner title', spec: RETURNS_SPEC, section: '### 5.5 ', kind: 'bold',
@@ -127,9 +125,9 @@ const SPEC_OWNED_COPY = [
   { id: 'orphan / match action', spec: RETURNS_SPEC, section: '### 5.5 ', kind: 'button',
     code: { file: DETAIL_COPY, declaration: 'detail.orphanBanner', path: ['matchAction'] } },
   { id: 'attention OR-P / title', spec: RETURNS_SPEC, section: '### 5.5 ', kind: 'bold',
-    code: { file: ATTENTION_COPY, declaration: 'ATTENTION_REASON_COPY', path: ['return-unmatched', 'title'] } },
+    code: { file: ATTENTION_COPY, declaration: 'attention.reasons', path: ['return-unmatched', 'title'] } },
   { id: 'attention OR-P / titleFallback', spec: RETURNS_SPEC, section: '### 5.5 ', kind: 'bold',
-    code: { file: ATTENTION_COPY, declaration: 'ATTENTION_REASON_COPY', path: ['return-unmatched', 'titleFallback'] } },
+    code: { file: ATTENTION_COPY, declaration: 'attention.reasons', path: ['return-unmatched', 'titleFallback'] } },
 ];
 
 // ---------------------------------------------------------------------------

@@ -31,9 +31,7 @@ import { useAuthenticatedImage } from '../../../shared/hooks/use-authenticated-i
 import { formatVariantAttributes } from '../../../shared/lib/variant-attributes';
 import { OrderLineItemIdentity } from '../../orders';
 import type { FulfillmentTaskLine } from '../api/fulfillment.types';
-import { FULFILLMENT_WORK_DETAIL_COPY } from '../lib/fulfillment-work-detail.copy';
-
-const LINE_COPY = FULFILLMENT_WORK_DETAIL_COPY.lines;
+import { useMessages } from '../../../shared/i18n';
 
 export interface FulfillmentLineIdentityProps {
   line: FulfillmentTaskLine;
@@ -50,6 +48,7 @@ export function FulfillmentLineIdentity({
   attributes,
   thumbnailSize = 'md',
 }: FulfillmentLineIdentityProps): ReactElement {
+  const lineCopy = useMessages('fulfillment').workDetail.lines;
   const apiClient = useApiClient();
   // Memoised, or the hook's effect re-runs on every render and re-fetches the
   // same picture — its dependency list includes the fetcher.
@@ -60,8 +59,8 @@ export function FulfillmentLineIdentity({
   const sku = line.sku ?? null;
   const ean = line.ean ?? null;
   const codes = [
-    sku === null ? null : `${LINE_COPY.skuLabel} ${sku}`,
-    ean === null ? null : `${LINE_COPY.eanLabel} ${ean}`,
+    sku === null ? null : `${lineCopy.skuLabel} ${sku}`,
+    ean === null ? null : `${lineCopy.eanLabel} ${ean}`,
   ].filter((part): part is string => part !== null);
 
   return (

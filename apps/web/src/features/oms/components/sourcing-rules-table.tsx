@@ -47,17 +47,25 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 
+import {
+  interpolate,
+  useFormat,
+  useMessages,
+  type Formatters,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { SourcingRule } from '../api/sourcing-rules.types';
 import { resolveSplitCeiling } from '../lib/sourcing-rule-ceiling';
 import {
-  SOURCING_RULES_TABLE_COPY as COPY,
   sourcingAfterActionHint,
   sourcingAfterActionLabel,
   sourcingRuleKindHint,
+  sourcingRuleKindLabel,
   sourcingRuleNameHint,
   sourcingRuleNameLabel,
-} from '../lib/sourcing-rule.copy';
+} from '../lib/sourcing-rule-labels';
 import { isLiveSourcingRule, resolveSourcingRuleStatus } from '../lib/sourcing-rule-status';
 
 export interface SourcingRulesTableProps {
@@ -87,22 +95,26 @@ export interface SourcingRulesTableProps {
   now?: Date;
 }
 
+type TableCopy = ResolvedCopy<Messages['oms-core']>['sourcingRulesTable'];
+
 /** `from … · to …`, or the honest "Always" when the rule has no bounds. */
-function formatWindow(rule: SourcingRule): string {
-  const parts: string[] = [];
-  if (rule.effectiveFrom !== null) parts.push(`from ${formatDate(rule.effectiveFrom)}`);
-  if (rule.effectiveTo !== null) parts.push(`to ${formatDate(rule.effectiveTo)}`);
-  return parts.length > 0 ? parts.join(' · ') : COPY.alwaysActive;
+function formatWindow(rule: SourcingRule, copy: TableCopy, format: Formatters): string {
+  const from = rule.effectiveFrom === null ? null : formatDate(rule.effectiveFrom, format);
+  const to = rule.effectiveTo === null ? null : formatDate(rule.effectiveTo, format);
+  if (from !== null && to !== null) return interpolate(copy.windowFromTo, { from, to });
+  if (from !== null) return interpolate(copy.windowFrom, { date: from });
+  if (to !== null) return interpolate(copy.windowTo, { date: to });
+  return copy.alwaysActive;
 }
 
 /**
  * A bound the browser cannot parse is shown VERBATIM rather than as "Invalid
- * Date" — the raw value is at least quotable in a support ticket.
+ * Date" - the raw value is at least quotable in a support ticket.
  */
-function formatDate(iso: string): string {
+function formatDate(iso: string, format: Formatters): string {
   const parsed = new Date(iso);
   if (Number.isNaN(parsed.getTime())) return iso;
-  return parsed.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  return format.date(iso);
 }
 
 type MoveDirection = 'up' | 'down' | 'top' | 'bottom';
@@ -149,6 +161,8 @@ export function SourcingRulesTable({
   busy = false,
   now: nowProp,
 }: SourcingRulesTableProps): ReactElement {
+  const copy = useMessages('oms-core').sourcingRulesTable;
+  const format = useFormat();
   /* A default-parameter `new Date()` is a fresh instant on every render, so the
      status and ceiling reads drift against each other while nothing schedules a
      re-render at a window boundary. One instant per mount instead. */
@@ -220,19 +234,19 @@ export function SourcingRulesTable({
             table natively, which is why the `aria-label` is gone rather than
             kept alongside it. */}
         <caption className="sourcing-rules-table__caption">
-          {COPY.caption}
-          <span className="sourcing-rules-table__caption-hint">{COPY.stepHint}</span>
-          <span className="sourcing-rules-table__caption-hint">{COPY.splittingHint}</span>
+          {copy.caption}
+          <span className="sourcing-rules-table__caption-hint">{copy.stepHint}</span>
+          <span className="sourcing-rules-table__caption-hint">{copy.splittingHint}</span>
         </caption>
         <thead>
           <tr>
-            <th style={{ width: '96px' }}>{COPY.stepHeader}</th>
-            <th>{COPY.ruleHeader}</th>
-            <th style={{ width: '140px' }}>{COPY.splittingHeader}</th>
-            <th style={{ width: '150px' }}>{COPY.windowHeader}</th>
-            <th style={{ width: '120px' }}>{COPY.statusHeader}</th>
+            <th style={{ width: '96px' }}>{copy.stepHeader}</th>
+            <th>{copy.ruleHeader}</th>
+            <th style={{ width: '140px' }}>{copy.splittingHeader}</th>
+            <th style={{ width: '150px' }}>{copy.windowHeader}</th>
+            <th style={{ width: '120px' }}>{copy.statusHeader}</th>
             <th style={{ width: '96px' }}>
-              <span className="sr-only">{COPY.actionsHeader}</span>
+              <span className="sr-only">{copy.actionsHeader}</span>
             </th>
           </tr>
         </thead>
@@ -260,21 +274,21 @@ export function SourcingRulesTable({
                     <span
                       className="rule-position__handle"
                       aria-hidden="true"
-                      title={COPY.stepHint}
+                      title={copy.stepHint}
                     >
-                      ⠿
+                      {'⠿'}
                     </span>
                     <span className="rule-position__num">{live ? liveIndex + 1 : '—'}</span>
                     <span className="rule-position__nudge">
                       <MoveButton
-                        label={COPY.moveUp}
+                        label={copy.moveUp}
                         glyph="▲"
                         disabled={busy || !live || liveIndex === 0}
                         onClick={() => move(rule.id, 'up')}
                         register={registerArrow(rule.id, 'up')}
                       />
                       <MoveButton
-                        label={COPY.moveDown}
+                        label={copy.moveDown}
                         glyph="▼"
                         disabled={busy || !live || liveIndex === liveIds.length - 1}
                         onClick={() => move(rule.id, 'down')}
@@ -283,14 +297,14 @@ export function SourcingRulesTable({
                     </span>
                     <span className="rule-position__jump">
                       <MoveButton
-                        label={COPY.moveToTop}
+                        label={copy.moveToTop}
                         glyph="⤒"
                         disabled={busy || !live || liveIndex === 0}
                         onClick={() => move(rule.id, 'top')}
                         register={registerArrow(rule.id, 'top')}
                       />
                       <MoveButton
-                        label={COPY.moveToBottom}
+                        label={copy.moveToBottom}
                         glyph="⤓"
                         disabled={busy || !live || liveIndex === liveIds.length - 1}
                         onClick={() => move(rule.id, 'bottom')}
@@ -302,14 +316,14 @@ export function SourcingRulesTable({
                 <td>
                   <div className="rule-cell__kind">
                     <span className="rule-cell__kind-badge" title={sourcingRuleKindHint(rule.kind) ?? undefined}>
-                      {rule.kind}
+                      {sourcingRuleKindLabel(rule.kind)}
                     </span>
                     <span className="rule-cell__label">{label}</span>
                   </div>
                   {isGoverning ? (
                     <div className="rule-cell__governs">
                       <span className="rule-cell__governs-dot" aria-hidden="true" />
-                      {COPY.governs}
+                      {copy.governs}
                     </div>
                   ) : null}
                   {hint === null ? null : <div className="rule-cell__desc">{hint}</div>}
@@ -322,7 +336,7 @@ export function SourcingRulesTable({
                     {sourcingAfterActionLabel(rule.afterAction)}
                   </span>
                 </td>
-                <td className="mono-text">{formatWindow(rule)}</td>
+                <td className="mono-text">{formatWindow(rule, copy, format)}</td>
                 <td>
                   {status.status === 'active' ? (
                     <span className="rule-state--plain" title={status.hint}>
@@ -336,17 +350,17 @@ export function SourcingRulesTable({
                 </td>
                 <td>
                   <div className="rule-actions">
-                    {renderEdit(rule, onEdit, onEditRefused, busy)}
+                    {renderEdit(rule, onEdit, onEditRefused, busy, copy)}
                     {onDelete === undefined ? null : (
                       <button
                         type="button"
                         className="button button--ghost button--icon button--sm"
-                        title={`Delete ${label}`}
-                        aria-label={`Delete ${label}`}
+                        title={interpolate(copy.deleteRule, { label })}
+                        aria-label={interpolate(copy.deleteRule, { label })}
                         disabled={busy}
                         onClick={() => onDelete(rule)}
                       >
-                        <span aria-hidden="true">🗑</span>
+                        <span aria-hidden="true">{'🗑'}</span>
                       </button>
                     )}
                   </div>
@@ -380,7 +394,8 @@ function renderEdit(
   rule: SourcingRule,
   onEdit: ((rule: SourcingRule) => void) | undefined,
   onEditRefused: ((rule: SourcingRule) => void) | undefined,
-  busy: boolean
+  busy: boolean,
+  copy: TableCopy
 ): ReactNode {
   // Either handler is enough to render something; a caller that wires only the
   // refusal still has an unrecognised row to explain.
@@ -392,7 +407,7 @@ function renderEdit(
 
   const label = sourcingRuleNameLabel(rule.name);
   const inert = refused && onEditRefused === undefined;
-  const title = refused ? (inert ? COPY.editLocked : COPY.editRefusedAction) : `Edit ${label}`;
+  const title = refused ? (inert ? copy.editLocked : copy.editRefusedAction) : interpolate(copy.editRule, { label });
 
   return (
     <button
@@ -403,7 +418,7 @@ function renderEdit(
       disabled={busy || inert}
       onClick={() => (refused ? onEditRefused?.(rule) : onEdit?.(rule))}
     >
-      <span aria-hidden="true">✎</span>
+      <span aria-hidden="true">{'✎'}</span>
     </button>
   );
 }

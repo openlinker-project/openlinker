@@ -517,7 +517,7 @@ describe('WhoDecidesPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Save this arrangement' }));
 
     expect(
-      await screen.findByText('Nothing changes when you save this — your setup already works this way.'),
+      await screen.findByText('Nothing changes when you save this - your setup already works this way.'),
     ).toBeInTheDocument();
     expect(document.querySelectorAll('.who-decides-confirm__line')).toHaveLength(0);
     // An empty diff is a legitimate save, unlike a refusal.
