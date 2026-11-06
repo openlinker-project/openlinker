@@ -179,7 +179,7 @@ describe('SyncJobsPage', () => {
     expect(pagination.limit).toBe(SYNC_JOBS_MAX_LIMIT);
   });
 
-  it('should resolve the connection name via ConnectionEntityLabel in the Connection column', async () => {
+  it('should render the connection as a ConnectionChip linking to the connection (#4016)', async () => {
     const connection = makeConnection();
     const mockApi = createMockApiClient({
       syncJobs: { list: vi.fn().mockResolvedValue(sampleJobs) },
@@ -189,9 +189,133 @@ describe('SyncJobsPage', () => {
       },
     });
 
+    const { container } = renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
+
+    await waitFor(() => {
+      expect(container.querySelector('table .connection-chip')).not.toBeNull();
+    });
+    const chip = container.querySelector('table .connection-chip');
+    expect(chip).toHaveTextContent('Allegro Europe');
+    expect(chip?.closest('a') ?? chip).toHaveAttribute('href', '/connections/conn_allegro_1');
+  });
+
+  it('should label every filter with visible text (#4016)', async () => {
+    const mockApi = createMockApiClient({
+      syncJobs: { list: vi.fn().mockResolvedValue(sampleJobs) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
     renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
 
-    expect(await screen.findByText('Allegro Europe')).toBeInTheDocument();
+    for (const name of ['Status', 'Job type', 'Outcome', 'Connection']) {
+      expect(screen.getByLabelText(name, { selector: 'select' })).toBeInTheDocument();
+    }
+  });
+
+  it('should show the action of a dotted job type first and keep the full value in the DOM (#4016)', async () => {
+    const mockApi = createMockApiClient({
+      syncJobs: { list: vi.fn().mockResolvedValue(sampleJobs) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    const { container } = renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
+
+    await screen.findByText(/1 \/ 3/);
+    const cell = container.querySelector('table .sync-job-type');
+    expect(cell?.querySelector('.sync-job-type__action')).toHaveTextContent('poll');
+    expect(cell?.querySelector('.sync-job-type__scope')).toHaveTextContent('marketplace.orders');
+    expect(cell).toHaveAttribute('title', 'marketplace.orders.poll');
+  });
+
+  it('should reveal the whole last error in place without opening the job (#4016)', async () => {
+    const user = userEvent.setup();
+    const longError = `removed with order ${'x'.repeat(200)} END-OF-ERROR`;
+    // jsdom does no layout, so make the clamped error measure as overflowing:
+    // the toggle is shown only when the text is actually clipped.
+    const isErrorText = (el: HTMLElement): boolean =>
+      el.classList.contains('sync-job-error__text');
+    const scrollSpy = vi
+      .spyOn(HTMLElement.prototype, 'scrollHeight', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return isErrorText(this) ? 120 : 0;
+      });
+    const clientSpy = vi
+      .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return isErrorText(this) ? 36 : 0;
+      });
+    const mockApi = createMockApiClient({
+      syncJobs: {
+        list: vi.fn().mockResolvedValue({
+          ...sampleJobs,
+          items: [{ ...sampleJobs.items[0], status: 'dead', lastError: longError }],
+        }),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
+
+    const toggle = await screen.findByRole('button', { name: 'Show full error' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await user.click(toggle);
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+    expect(screen.getByText(longError)).toHaveClass('sync-job-error__text--open');
+    scrollSpy.mockRestore();
+    clientSpy.mockRestore();
+  });
+
+  it('should not offer the toggle when the error fits (#4016)', async () => {
+    const mockApi = createMockApiClient({
+      syncJobs: {
+        list: vi.fn().mockResolvedValue({
+          ...sampleJobs,
+          items: [{ ...sampleJobs.items[0], status: 'dead', lastError: 'short error' }],
+        }),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
+
+    expect(await screen.findAllByText('short error')).not.toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Show full error' })).not.toBeInTheDocument();
+  });
+
+  it('should collapse the poison entries section to one line when there are none (#4016)', async () => {
+    const mockApi = createMockApiClient({
+      syncJobs: { list: vi.fn().mockResolvedValue(sampleJobs) },
+      streamDeadLetters: {
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+        count: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
+
+    expect(await screen.findByTestId('poison-entries-none')).toHaveTextContent('None recorded');
+    expect(screen.queryByRole('table', { name: 'Poison stream entries' })).not.toBeInTheDocument();
+    expect(screen.queryByText('No poison entries')).not.toBeInTheDocument();
+  });
+
+  it('should disable Previous and Next on a single page (#4016)', async () => {
+    const mockApi = createMockApiClient({
+      syncJobs: { list: vi.fn().mockResolvedValue(sampleJobs) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
+
+    await screen.findByText(/1 \/ 3/);
+    const [previous] = screen.getAllByRole('button', { name: 'Previous' });
+    const [next] = screen.getAllByRole('button', { name: 'Next' });
+    expect(previous).toBeDisabled();
+    expect(next).toBeDisabled();
+    expect(previous).toHaveClass('button--secondary');
   });
 
   // #3507 G03-12: the type filter listed 21 of the core's job types, so an
@@ -209,7 +333,7 @@ describe('SyncJobsPage', () => {
       route: '/sync-jobs?jobType=orders.export',
     });
 
-    const typeFilter = await screen.findByRole('combobox', { name: /filter by job type/i });
+    const typeFilter = await screen.findByRole('combobox', { name: /^job type$/i });
     expect(
       await screen.findByRole('option', { name: 'orders.export' }),
     ).toBeInTheDocument();
@@ -233,7 +357,7 @@ describe('SyncJobsPage', () => {
 
     await screen.findByRole('option', { name: 'Allegro Europe' });
     await user.selectOptions(
-      screen.getByRole('combobox', { name: /filter by connection/i }),
+      screen.getByRole('combobox', { name: /^connection$/i }),
       connection.id,
     );
 

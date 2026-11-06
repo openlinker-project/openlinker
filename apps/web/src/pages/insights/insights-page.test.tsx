@@ -142,9 +142,14 @@ describe('InsightsPage', () => {
     });
     const { container } = renderWithProviders(<InsightsPage />, { apiClient });
 
-    expect(
-      await within(container).findByText('WooCommerce — My WooCommerce Shop')
-    ).toBeInTheDocument();
+    // The connected system leads with its own name; the platform rides on
+    // the ConnectionChip beside it (#4016).
+    await waitFor(() => {
+      expect(container.querySelector('.sys-health__name')).not.toBeNull();
+    });
+    const names = [...container.querySelectorAll('.sys-health__name')].map((n) => n.textContent);
+    expect(names).toContain('My WooCommerce Shop');
+    expect(container.querySelector('.sys-health .connection-chip')).not.toBeNull();
     // Fixed core services still render alongside the connection row.
     expect(within(container).getByText('PostgreSQL')).toBeInTheDocument();
     expect(within(container).getByText('Redis')).toBeInTheDocument();
@@ -178,7 +183,13 @@ describe('InsightsPage', () => {
     });
     renderWithProviders(<InsightsPage />, { apiClient });
 
-    expect(await screen.findByText('Unauthorized (401)')).toBeInTheDocument();
+    const message = await screen.findByText('Unauthorized (401)');
+    // The message sits under the name in the failing row, not beside a badge (#4016).
+    expect(message).toHaveClass('sys-health__message');
+    expect(message.closest('.sys-health__row')).toHaveClass('sys-health__row--error');
+    expect(screen.getByTestId('system-health-summary')).toHaveTextContent(
+      '1 of 5 checks failing.'
+    );
   });
 
   it('reflects the real node set (not a fixed string) in the System health KPI description', async () => {
@@ -600,8 +611,8 @@ describe('InsightsPage', () => {
       const integrationCard = findCardByLabel(container, 'Integration health');
       expect(integrationCard).toHaveClass('kpi-card--warning');
       expect(screen.getByText('1 connection with failing jobs')).toBeInTheDocument();
-      // The roll-up attaches a "N failing jobs" link next to the connection name.
-      const failingJobsLink = screen.getByRole('link', { name: /2 failing jobs/ });
+      // The Failed jobs column links the count to the filtered jobs list (#4016).
+      const failingJobsLink = screen.getByRole('link', { name: /2 failed jobs on Shop B/ });
       expect(failingJobsLink).toHaveAttribute(
         'href',
         '/jobs-logs?status=dead&connectionId=conn_failing'
