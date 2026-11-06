@@ -30,6 +30,7 @@
  * @module apps/web/src/features/currency-settings/components
  */
 import { useEffect, useState, type ReactElement } from 'react';
+import { interpolate, renderRich, useFormat, useMessages, usePlural } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -57,6 +58,9 @@ export function CurrencySettingsDialog({
   view,
   onClose,
 }: CurrencySettingsDialogProps): ReactElement {
+  const copy = useMessages('currency-settings').currencySettingsDialog;
+  const plural = usePlural();
+  const { list: formatList } = useFormat();
   const { showToast } = useToast();
   const mutation = useSetReportingCurrencyMutation();
   const [selected, setSelected] = useState(view.reportingCurrency);
@@ -90,15 +94,17 @@ export function CurrencySettingsDialog({
   // One string, so the region has exactly one announcement per state change
   // rather than two competing ones. Empty when neither warning applies, which is
   // what returns the region to silence after the operator picks a clean currency.
+  const uncoverableCurrencies = selectedCoverage?.uncoverableCurrencies ?? [];
+  const uncoverableList = formatList(uncoverableCurrencies);
   const warningAnnouncement = [
     willSplitHistory
-      ? `Warning: switching to ${selected} splits reporting history. Orders already stamped in ` +
-        `${otherEraStamped.map((entry) => entry.reportingCurrency).join(', ')} keep that stamp.`
+      ? interpolate(copy.announcement.splitHistory, {
+          selected,
+          currencies: formatList(otherEraStamped.map((entry) => entry.reportingCurrency)),
+        })
       : null,
     hasCoverageGap
-      ? `Warning: coverage gap. ` +
-        `${selectedCoverage?.uncoverableCurrencies.join(', ') ?? ''} cannot be converted to ` +
-        `${selected}. Acknowledge before saving.`
+      ? interpolate(copy.announcement.coverageGap, { currencies: uncoverableList, selected })
       : null,
   ]
     .filter(Boolean)
@@ -112,8 +118,8 @@ export function CurrencySettingsDialog({
       });
       showToast({
         tone: 'success',
-        title: 'Reporting currency saved',
-        description: `Analytics now reports in ${selected}.`,
+        title: copy.toast.title,
+        description: interpolate(copy.toast.description, { selected }),
       });
       onClose();
     } catch {
@@ -129,8 +135,8 @@ export function CurrencySettingsDialog({
       }}
     >
       <DialogContent>
-        <DialogTitle>Currency</DialogTitle>
-        <DialogDescription>Read by Analytics · never used on an invoice</DialogDescription>
+        <DialogTitle>{copy.title}</DialogTitle>
+        <DialogDescription>{copy.description}</DialogDescription>
 
         {/*
           PERSISTENTLY MOUNTED, deliberately: this element must already exist when
@@ -142,19 +148,21 @@ export function CurrencySettingsDialog({
         </p>
 
         {mutation.error ? (
-          <Alert tone="error" title="Could not save the reporting currency">
+          <Alert tone="error" title={copy.saveError}>
             {mutation.error.message}
           </Alert>
         ) : null}
 
         {willSplitHistory ? (
-          <Alert tone="warning" title={`Report in ${selected} from now on?`}>
+          <Alert tone="warning" title={interpolate(copy.splitHistory.title, { selected })}>
             {otherEraStamped.map((entry) => (
               <p key={entry.reportingCurrency}>
-                <span className="alert__count">{entry.count}</span> orders already carry a{' '}
-                {entry.reportingCurrency} stamp. Those keep it — stamps are immutable — so this
-                deployment will hold more than one reporting-currency era and no single figure will
-                span them.
+                {renderRich(
+                  plural(entry.count, copy.splitHistory.message, {
+                    currency: entry.reportingCurrency,
+                  }),
+                  { count: (chunk) => <span className="alert__count">{chunk}</span> },
+                )}
               </p>
             ))}
           </Alert>
@@ -167,7 +175,7 @@ export function CurrencySettingsDialog({
           }}
           noValidate
         >
-          <FormField label="Report in" name="reportingCurrency">
+          <FormField label={copy.reportIn} name="reportingCurrency">
             <Select
               value={selected}
               onChange={(event) => {
@@ -184,12 +192,12 @@ export function CurrencySettingsDialog({
           </FormField>
 
           {hasCoverageGap ? (
-            <Alert tone="warning" title="Coverage gap">
+            <Alert tone="warning" title={copy.coverageGap.title}>
               <p>
-                {selectedCoverage?.uncoverableCurrencies.join(', ')} order
-                {selectedCoverage && selectedCoverage.uncoverableCurrencies.length > 1 ? 's' : ''}{' '}
-                cannot be converted to {selected} by the registered rate source. Those orders will
-                record as not convertible rather than blocking this change.
+                {plural(uncoverableCurrencies.length, copy.coverageGap.message, {
+                  currencies: uncoverableList,
+                  selected,
+                })}
               </p>
               <label className="currency-settings-ack">
                 <input
@@ -199,7 +207,7 @@ export function CurrencySettingsDialog({
                     setAcknowledged(event.target.checked);
                   }}
                 />
-                <span>I understand.</span>
+                <span>{copy.coverageGap.acknowledge}</span>
               </label>
             </Alert>
           ) : null}
@@ -207,11 +215,11 @@ export function CurrencySettingsDialog({
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" tone="ghost">
-                Cancel
+                {copy.actions.cancel}
               </Button>
             </DialogClose>
             <Button type="submit" disabled={!canSubmit || mutation.isPending}>
-              {mutation.isPending ? 'Saving…' : 'Save'}
+              {mutation.isPending ? copy.actions.saving : copy.actions.save}
             </Button>
           </DialogFooter>
         </form>

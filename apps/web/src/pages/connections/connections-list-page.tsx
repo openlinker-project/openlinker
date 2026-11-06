@@ -19,6 +19,9 @@ import { OmsAttentionBadges, useOmsAttentionQuery } from '../../features/fulfill
 import { ArchiveConnectionButton } from '../../features/connections/components/archive-connection-button';
 import { RestoreConnectionButton } from '../../features/connections/components/restore-connection-button';
 import { describeConnectionStatus } from '../oms/oms-connection';
+import { useMessages, type Messages, type ResolvedCopy } from '../../shared/i18n';
+
+type PageCopy = ResolvedCopy<Messages['connections']>['connectionsListPage'];
 
 const CONNECTION_STATUSES = ['active', 'disabled', 'error', 'needs_reauth', 'archived'] as const;
 
@@ -82,13 +85,14 @@ function buildColumns(
   // product name an operator recognises - load-bearing now that two products
   // can share a slug prefix (`subiekt-gt` vs `subiekt-nexo`).
   platforms: readonly { platformType: string; displayName: string }[],
-  canWrite: boolean
+  canWrite: boolean,
+  copy: PageCopy
 ): DataTableColumn<Connection>[] {
   const actionColumn: DataTableColumn<Connection>[] = canWrite
     ? [
         {
           id: 'actions',
-          header: <span className="sr-only">Actions</span>,
+          header: <span className="sr-only">{copy.columns.actions}</span>,
           cell: (connection) => <ConnectionRowAction connection={connection} />,
         },
       ]
@@ -96,13 +100,13 @@ function buildColumns(
   return [
   {
     id: 'name',
-    header: 'Connection',
+    header: copy.columns.connection,
     cell: (connection) => (
       <div className="data-table__stack">
         <strong>{connection.name}</strong>
         <span className="muted-text">
           {resolvePlatformLabel(platforms, connection)} ·{' '}
-          {connection.adapterKey ?? 'default adapter'}
+          {connection.adapterKey ?? copy.defaultAdapter}
         </span>
       </div>
     ),
@@ -111,7 +115,7 @@ function buildColumns(
   },
   {
     id: 'identifier',
-    header: 'Identifier',
+    header: copy.columns.identifier,
     cell: (connection) => (
       <span className="mono-text" title={connection.id}>
         {connection.id}
@@ -121,7 +125,7 @@ function buildColumns(
   },
   {
     id: 'status',
-    header: 'Status',
+    header: copy.columns.status,
     cell: (connection) => (
       <span className="data-table__badge-row">
         {renderStatusBadge(connection, false)}
@@ -148,6 +152,8 @@ export function ConnectionsListPage(): ReactElement {
   // action, #1615 precedent) - stays visible AND enabled for a demo viewer;
   // only the form's own final submit gets locked (create-connection-form.tsx).
   const write = useWriteAccess('connections:write', demoMode);
+  const copy = useMessages('connections').connectionsListPage;
+  const common = useMessages('ui').common;
   // #2356 — one read for the whole page, projected per connection. A failed read
   // costs the badges, never the list: the states are supplementary and an
   // operator must not lose their connections because a settings read hiccuped.
@@ -157,8 +163,8 @@ export function ConnectionsListPage(): ReactElement {
     [attention.byConnectionId]
   );
   const columns = useMemo(
-    () => buildColumns(attentionFor, plugins, write.visible),
-    [attentionFor, plugins, write.visible]
+    () => buildColumns(attentionFor, plugins, write.visible, copy),
+    [attentionFor, plugins, write.visible, copy]
   );
 
   const platformType = searchParams.get('platformType') ?? '';
@@ -198,13 +204,13 @@ export function ConnectionsListPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow="Integrations"
-      title="Connections"
-      description="All configured integration connections — filter by platform or status."
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
       actions={
         write.visible ? (
           <Link className="button" to="/connections/new">
-            New connection
+            {copy.newConnection}
           </Link>
         ) : null
       }
@@ -213,23 +219,23 @@ export function ConnectionsListPage(): ReactElement {
       <div className="toolbar">
         <div className="toolbar__group">
           <Select
-            aria-label="Filter by platform"
+            aria-label={copy.filters.platform}
             value={platformType}
             onChange={(e) => { handleFilterChange('platformType', e.target.value); }}
           >
-            <option value="">All platforms</option>
+            <option value="">{copy.filters.allPlatforms}</option>
             {plugins.map((p) => (
               <option key={p.platformType} value={p.platformType}>{p.displayName}</option>
             ))}
           </Select>
           <Select
-            aria-label="Filter by status"
+            aria-label={copy.filters.status}
             value={status}
             onChange={(e) => { handleFilterChange('status', e.target.value); }}
           >
-            <option value="">All statuses</option>
+            <option value="">{copy.filters.allStatuses}</option>
             {CONNECTION_STATUSES.map((s) => (
-              <option key={s} value={s}>{s}</option>
+              <option key={s} value={s}>{copy.statusOptions[s]}</option>
             ))}
           </Select>
         </div>
@@ -238,38 +244,38 @@ export function ConnectionsListPage(): ReactElement {
       {/* Content */}
       {query.isLoading ? (
         <LoadingState
-          title="Loading connections"
-          message="Fetching the latest connection inventory and health summary."
+          title={copy.loading.title}
+          message={copy.loading.message}
         />
       ) : query.error ? (
         <ErrorState
-          title="Unable to load connections"
+          title={copy.error.title}
           message={query.error.message}
           action={
-            <Button onClick={() => { void query.refetch(); }}>Retry</Button>
+            <Button onClick={() => { void query.refetch(); }}>{common.retry}</Button>
           }
         />
       ) : (query.data ?? []).length === 0 ? (
         <EmptyState
-          title="No connections found"
+          title={copy.empty.title}
           message={
             filtersActive
-              ? 'No connections match the current filters.'
-              : 'Create the first connection to start configuring integrations.'
+              ? copy.empty.filtered
+              : copy.empty.unfiltered
           }
           action={
             filtersActive ? (
-              <Button onClick={clearFilters}>Clear filters</Button>
+              <Button onClick={clearFilters}>{copy.empty.clearFilters}</Button>
             ) : write.visible ? (
               <Link className="button button--primary" to="/connections/new">
-                Add the first connection
+                {copy.empty.addFirst}
               </Link>
             ) : null
           }
         />
       ) : (
         <DataTable
-          caption="Configured connections"
+          caption={copy.caption}
           columns={columns}
           rowKey={(connection) => connection.id}
           rows={query.data ?? []}
@@ -279,7 +285,7 @@ export function ConnectionsListPage(): ReactElement {
           cardView={{
             title: (connection) => connection.name,
             subtitle: (connection) =>
-              `${resolvePlatformLabel(plugins, connection)} · ${connection.adapterKey ?? 'default adapter'}`,
+              `${resolvePlatformLabel(plugins, connection)} · ${connection.adapterKey ?? copy.defaultAdapter}`,
             meta: (connection) => (
               <span className="data-table__badge-row">
                 {renderStatusBadge(connection, true)}

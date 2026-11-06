@@ -17,7 +17,7 @@
 import type { ReactElement } from 'react';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { ReturnListItem } from '../api/returns.types';
-import { RETURN_RESTOCK_BLOCKED_COPY } from '../lib/restock-blocked.copy';
+import { useMessages } from '../../../shared/i18n';
 import {
   RETURN_STAGE_LABELS,
   RETURN_STAGE_TONES,
@@ -30,6 +30,7 @@ interface ReturnStageCellProps {
 }
 
 export function ReturnStageCell({ item }: ReturnStageCellProps): ReactElement {
+  const copy = useMessages('returns').restockBlocked;
   const stage = deriveReturnStage(item);
 
   return (
@@ -46,7 +47,7 @@ export function ReturnStageCell({ item }: ReturnStageCellProps): ReactElement {
           module so this badge and the per-line notice cannot drift. */}
       {item.restockBlocked === true ? (
         <StatusBadge tone="error" compact>
-          {RETURN_RESTOCK_BLOCKED_COPY.badge}
+          {copy.badge}
         </StatusBadge>
       ) : null}
       <span className="returns-stage-cell__counters">{returnCounterLine(item.counters)}</span>

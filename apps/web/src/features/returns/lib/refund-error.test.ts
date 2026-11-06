@@ -13,7 +13,9 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../../shared/api/api-error';
 import { describeRefundError, readRefundBlockReason } from './refund-error';
-import { RETURN_REFUND_ERROR_COPY } from './return-money.copy';
+import { getMessages } from '../../../shared/i18n';
+
+const RETURN_REFUND_ERROR_COPY = getMessages('returns').money.refundError;
 
 describe('describeRefundError', () => {
   it('renders the reason-specific sentence for a recognised block reason', () => {

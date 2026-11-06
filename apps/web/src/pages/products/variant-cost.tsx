@@ -14,7 +14,7 @@
  *
  * @module apps/web/src/pages/products
  */
-import { useState, type ReactElement } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -29,11 +29,10 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
+import { interpolate, renderRich, useMessages } from '../../shared/i18n';
 
-const COST_ERROR_COPY =
-  'Enter a cost of 0 or more, with up to 2 decimals. Leave the field empty if you do not know it yet.';
-const DEMO_READ_ONLY_REASON = 'This is a read-only demo, so cost prices cannot be changed.';
-const READ_ONLY_REASON = 'Only an admin can change cost prices.';
+type VariantCostCopy = ReturnType<typeof useMessages<'products'>>['variantCost'];
+
 const FALLBACK_CURRENCIES = ['PLN', 'EUR', 'CZK'] as const;
 
 /** Same slug the photo testids use, so one variant has one slug everywhere. */
@@ -73,6 +72,7 @@ function useVariantCost(variant: ProductVariant): {
 
 /** The "Cost (net)" table / card cell. */
 export function VariantCostCell({ variant }: { variant: ProductVariant }): ReactElement {
+  const copy = useMessages('products').variantCost;
   const { cost, isKnown } = useVariantCost(variant);
   const testId = `variant-cost-cell-${variantSlug(variant)}`;
 
@@ -87,7 +87,7 @@ export function VariantCostCell({ variant }: { variant: ProductVariant }): React
     return (
       <span data-testid={testId}>
         <StatusBadge tone="warning" withDot compact>
-          Not recorded
+          {copy.notRecorded}
         </StatusBadge>
       </span>
     );
@@ -99,16 +99,19 @@ export function VariantCostCell({ variant }: { variant: ProductVariant }): React
   );
 }
 
-const costFormSchema = z.object({
-  amount: z
-    .string()
-    .transform((value) => value.trim().replace(',', '.'))
-    .refine((value) => value === '' || /^\d{1,8}(\.\d{1,2})?$/.test(value), COST_ERROR_COPY),
-  currency: z.string().regex(/^[A-Z]{3}$/),
-});
+function createCostFormSchema(copy: VariantCostCopy) {
+  return z.object({
+    amount: z
+      .string()
+      .transform((value) => value.trim().replace(',', '.'))
+      .refine((value) => value === '' || /^\d{1,8}(\.\d{1,2})?$/.test(value), copy.form.amountError),
+    currency: z.string().regex(/^[A-Z]{3}$/),
+  });
+}
 
-type CostFormInput = z.input<typeof costFormSchema>;
-type CostFormValues = z.output<typeof costFormSchema>;
+type CostFormSchema = ReturnType<typeof createCostFormSchema>;
+type CostFormInput = z.input<CostFormSchema>;
+type CostFormValues = z.output<CostFormSchema>;
 
 function currencyOptions(productCurrency: string | null, current: string | null): string[] {
   return Array.from(
@@ -127,6 +130,8 @@ function VariantCostForm({
   initial: VariantCost | undefined;
   onDone: () => void;
 }): ReactElement {
+  const copy = useMessages('products').variantCost;
+  const costFormSchema = useMemo(() => createCostFormSchema(copy), [copy]);
   const slug = variantSlug(variant);
   const mutation = useSetVariantCostMutation(variant.productId);
   const options = currencyOptions(productCurrency, initial?.costCurrency ?? null);
@@ -162,7 +167,7 @@ function VariantCostForm({
       }}
     >
       <label className="form-field__label" htmlFor={`variant-cost-input-${slug}`}>
-        Cost price, net per unit
+        {copy.form.label}
       </label>
       <div className="variant-cost__row">
         <div className={`field__price-input${amountError ? ' has-error' : ''}`}>
@@ -175,10 +180,10 @@ function VariantCostForm({
             data-testid="variant-cost-input"
             {...form.register('amount')}
           />
-          <span className="field__currency">net</span>
+          <span className="field__currency">{copy.form.netSuffix}</span>
         </div>
         <Select
-          aria-label="Cost currency"
+          aria-label={copy.form.currencyLabel}
           data-testid="variant-cost-currency"
           {...form.register('currency')}
         >
@@ -190,8 +195,7 @@ function VariantCostForm({
         </Select>
       </div>
       <p className="form-field__description" id={`variant-cost-desc-${slug}`}>
-        What you pay for one unit, excluding VAT. Used for margin on orders placed from now on;
-        earlier orders keep no cost.
+        {copy.form.description}
       </p>
       <p
         className="form-field__error"
@@ -200,16 +204,16 @@ function VariantCostForm({
         data-testid="variant-cost-error"
         hidden={!amountError}
       >
-        {amountError ?? COST_ERROR_COPY}
+        {amountError ?? copy.form.amountError}
       </p>
       {mutation.isError ? (
         <p className="form-field__error" role="alert">
-          {mutation.error.message || 'The cost could not be saved.'}
+          {mutation.error.message || copy.form.saveFailed}
         </p>
       ) : null}
       <div className="variant-cost__actions">
         <Button type="submit" className="button--sm" disabled={mutation.isPending} data-testid="variant-cost-save">
-          Save cost
+          {copy.form.save}
         </Button>
         <Button
           type="button"
@@ -218,7 +222,7 @@ function VariantCostForm({
           onClick={onDone}
           data-testid="variant-cost-cancel"
         >
-          Cancel
+          {copy.form.cancel}
         </Button>
       </div>
     </form>
@@ -235,6 +239,7 @@ export function VariantCostSection({
   productCurrency: string | null;
   sourceName?: string | null;
 }): ReactElement {
+  const copy = useMessages('products').variantCost;
   const slug = variantSlug(variant);
   const write = useWriteAccess('products:write', useDemoMode());
   const canEdit = write.canWrite;
@@ -246,7 +251,7 @@ export function VariantCostSection({
 
   let body: ReactElement;
   if (!isKnown) {
-    body = <p className="variant-drawer__meta-muted">Cost is not available right now.</p>;
+    body = <p className="variant-drawer__meta-muted">{copy.section.unavailable}</p>;
   } else if (editing && canEdit) {
     body = (
       <VariantCostForm
@@ -262,11 +267,15 @@ export function VariantCostSection({
         {recorded ? (
           <>
             <div className="variant-cost__value" data-testid={`variant-cost-value-${slug}`}>
-              {formatCost(cost)} <span className="variant-cost__unit">net per unit</span>
+              {renderRich(
+                copy.section.valueWithUnit,
+                { unit: (text) => <span className="variant-cost__unit">{text}</span> },
+                { amount: formatCost(cost) },
+              )}
             </div>
             <div className="variant-cost__provenance" data-testid={`variant-cost-provenance-${slug}`}>
               <StatusBadge tone="info" withDot compact>
-                Entered in OpenLinker
+                {copy.section.enteredInOpenLinker}
               </StatusBadge>
               {cost.costUpdatedAt ? (
                 <span>
@@ -276,13 +285,13 @@ export function VariantCostSection({
             </div>
             <p className="variant-cost__hint">
               {sourceName
-                ? `The ${sourceName} sync never changes or clears this value.`
-                : 'The master sync never changes or clears this value.'}
+                ? interpolate(copy.section.syncNeverChangesNamed, { source: sourceName })
+                : copy.section.syncNeverChanges}
             </p>
           </>
         ) : (
           <p className="variant-cost__missing">
-            No cost recorded. Orders for this variant are left out of margin.
+            {copy.section.missing}
           </p>
         )}
         <div className="variant-cost__actions">
@@ -297,7 +306,7 @@ export function VariantCostSection({
                     onClick={() => setEditing(true)}
                     data-testid={`variant-cost-edit-${slug}`}
                   >
-                    Edit cost
+                    {copy.section.edit}
                   </Button>
                   <Button
                     type="button"
@@ -312,7 +321,7 @@ export function VariantCostSection({
                     }
                     data-testid={`variant-cost-clear-${slug}`}
                   >
-                    Clear cost
+                    {copy.section.clear}
                   </Button>
                 </>
               ) : (
@@ -323,12 +332,12 @@ export function VariantCostSection({
                   onClick={() => setEditing(true)}
                   data-testid={`variant-cost-add-${slug}`}
                 >
-                  Add cost
+                  {copy.section.add}
                 </Button>
               )}
             </>
           ) : (
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_REASON}>
+            <ReadOnlyLock active={write.demoReadOnly} message={copy.section.demoReadOnlyReason}>
               <Button
                 type="button"
                 tone="secondary"
@@ -337,22 +346,22 @@ export function VariantCostSection({
                 aria-describedby={write.demoReadOnly ? undefined : readOnlyReasonId}
                 data-testid={`variant-cost-edit-${slug}`}
               >
-                Edit cost
+                {copy.section.edit}
               </Button>
             </ReadOnlyLock>
           )}
         </div>
         {canEdit && recorded ? (
-          <p className="variant-cost__hint">Clearing a cost affects orders placed from now on only.</p>
+          <p className="variant-cost__hint">{copy.section.clearHint}</p>
         ) : null}
         {clearMutation.isError ? (
           <p className="form-field__error" role="alert">
-            {clearMutation.error.message || 'The cost could not be cleared.'}
+            {clearMutation.error.message || copy.section.clearFailed}
           </p>
         ) : null}
         {!canEdit && !write.demoReadOnly ? (
           <p className="variant-cost__hint" id={readOnlyReasonId} data-testid="variant-cost-readonly-reason">
-            {READ_ONLY_REASON}
+            {copy.section.readOnlyReason}
           </p>
         ) : null}
       </>
@@ -361,7 +370,7 @@ export function VariantCostSection({
 
   return (
     <div className="variant-drawer__cost">
-      <div className="variant-drawer__label">Cost price</div>
+      <div className="variant-drawer__label">{copy.section.title}</div>
       {body}
     </div>
   );

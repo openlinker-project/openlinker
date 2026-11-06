@@ -11,11 +11,12 @@
  * @module apps/web/src/features/returns/api
  */
 import { z } from 'zod/v4';
+import { getMessages } from '../../../shared/i18n';
 import type { ReturnCorrectionProposalResult } from './returns.types';
 
 export class ReturnProposalUnreadableError extends Error {
   constructor() {
-    super('The credit-note proposal could not be read.');
+    super(getMessages('returns').apiErrors.proposalUnreadable);
     this.name = 'ReturnProposalUnreadableError';
   }
 }

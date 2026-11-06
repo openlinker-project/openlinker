@@ -18,31 +18,34 @@
  */
 import { z } from 'zod';
 import type { CreateConnectionInput } from '../api/connections.types';
+import { schemaMessage } from '../lib/schema-message';
+
+const msg = schemaMessage('inpostSetupSchema');
 
 export const INPOST_ADAPTER_KEY = 'inpost.shipx.v1';
 
 const PL_POSTAL = /^\d{2}-\d{3}$/;
 
 export const inpostSetupSchema = z.object({
-  name: z.string().trim().min(1, 'Connection name is required'),
+  name: z.string().trim().min(1, msg('nameRequired')),
   // Credential (ShipX Bearer token) — required, write-only.
-  apiToken: z.string().trim().min(1, 'API token is required'),
+  apiToken: z.string().trim().min(1, msg('apiTokenRequired')),
   // Account config.
   environment: z.enum(['sandbox', 'production']),
-  organizationId: z.string().trim().min(1, 'Organization ID is required'),
+  organizationId: z.string().trim().min(1, msg('organizationIdRequired')),
   // Sender contact (populated on every shipment).
   senderName: z.string().trim().max(200).optional(),
-  senderEmail: z.string().trim().email('Enter a valid email'),
-  senderPhone: z.string().trim().min(1, 'Sender phone is required').max(30),
-  senderStreet: z.string().trim().min(1, 'Street is required').max(200),
-  senderBuildingNumber: z.string().trim().min(1, 'Building number is required').max(50),
-  senderCity: z.string().trim().min(1, 'City is required').max(200),
-  senderPostCode: z.string().trim().regex(PL_POSTAL, 'Postcode must use the PL format NN-NNN'),
+  senderEmail: z.string().trim().email(msg('emailInvalid')),
+  senderPhone: z.string().trim().min(1, msg('phoneRequired')).max(30),
+  senderStreet: z.string().trim().min(1, msg('streetRequired')).max(200),
+  senderBuildingNumber: z.string().trim().min(1, msg('buildingNumberRequired')).max(50),
+  senderCity: z.string().trim().min(1, msg('cityRequired')).max(200),
+  senderPostCode: z.string().trim().regex(PL_POSTAL, msg('postCodeFormat')),
   senderCountryCode: z
     .string()
     .trim()
     .transform((v) => v.toUpperCase())
-    .pipe(z.string().regex(/^[A-Z]{2}$/, 'Country must be an ISO 3166-1 alpha-2 code (e.g. PL)')),
+    .pipe(z.string().regex(/^[A-Z]{2}$/, msg('countryFormat'))),
 });
 
 export type InpostSetupFormValues = z.input<typeof inpostSetupSchema>;

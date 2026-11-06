@@ -10,7 +10,7 @@ import {
   ATTENTION_BADGE_COPY,
   ATTENTION_UNKNOWN_COPY,
   attentionTitle,
-} from '../lib/attention-reason.copy';
+} from '../lib/attention-reason-text';
 
 describe('OmsAttentionBadges', () => {
   it('should render nothing for a row with no inert state', () => {
