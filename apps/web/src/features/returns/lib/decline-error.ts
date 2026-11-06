@@ -1,66 +1,45 @@
 /**
  * Decline error mapping
  *
- * Turns a failed decline into one operator sentence.
+ * Turns a failed decline into one operator sentence, chosen by the error's
+ * stable code (#3863) through `describeApiError` - never by status or by the
+ * message, which is prose the backend is free to reword.
  *
- * **It reads the status code and the error body's own fields — never the
- * message string.** `ReturnsExceptionFilter`'s docblock says exactly that about
- * `ReturnNotAttributedError.trigger`: any structured rendering reads the field,
- * because the field and the sentence would otherwise drift the first time the
- * backend reworded the sentence. The 409 body carries `trigger`; this reads it
- * there.
- *
- * The 400 is the exception, and deliberately so: its message is the ADAPTER's
- * own explanation of why the channel cannot be asked (and, for a bad rejection
- * code, the list of codes it does accept). That is information OpenLinker
- * cannot reconstruct, so it is passed through rather than replaced.
+ * The decline refusals are the exception, and deliberately so: their message
+ * is the ADAPTER's own explanation of why the channel cannot be asked (and,
+ * for a bad rejection code, the list of codes it does accept). That is
+ * information OpenLinker cannot reconstruct, so it follows the translated
+ * sentence verbatim, as a provider's words do.
  *
  * @module apps/web/src/features/returns/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
-import { getMessages, interpolate } from '../../../shared/i18n';
+import { describeApiError } from '../../../shared/api/describe-api-error';
+
+const ADAPTER_WORDED_CODES = new Set(['RETURN_DECLINE_UNSUPPORTED', 'RETURN_DECLINE_INVALID']);
 
 /**
- * The blocked downstream trigger, read from the 409 body.
+ * The blocked downstream trigger of an unmatched return (`params.trigger`).
  *
  * Returns `null` for anything that is not a non-empty string, so a body shape
- * this build predates degrades to the plain conflict sentence rather than
- * rendering `undefined` or `[object Object]` at the operator.
+ * this build predates degrades to the plain sentence rather than rendering
+ * `undefined` or `[object Object]` at the operator.
  */
 export function readBlockedTrigger(error: unknown): string | null {
   if (!(error instanceof ApiError)) return null;
-  const details: unknown = error.details;
-  if (typeof details !== 'object' || details === null || !('trigger' in details)) return null;
-  const trigger: unknown = (details as { trigger: unknown }).trigger;
+  const trigger = error.params.trigger;
   return typeof trigger === 'string' && trigger.length > 0 ? trigger : null;
 }
 
-/** One sentence describing why the decline did not go through. */
 export function describeDeclineError(error: unknown): string {
-  const copy = getMessages('returns').detail.declineError;
-  if (!(error instanceof ApiError)) {
-    return error instanceof Error && error.message.length > 0
-      ? error.message
-      : copy.generic;
+  const sentence = describeApiError(error);
+  if (
+    error instanceof ApiError &&
+    error.code !== undefined &&
+    ADAPTER_WORDED_CODES.has(error.code) &&
+    error.message.length > 0
+  ) {
+    return `${sentence} ${error.message}`;
   }
-
-  if (error.status === 404) {
-    return copy.notFound;
-  }
-
-  if (error.status === 409) {
-    const trigger = readBlockedTrigger(error);
-    return trigger === null
-      ? copy.conflictPrefix
-      : interpolate(copy.conflictWithTrigger, { trigger });
-  }
-
-  if (error.status === 400) {
-    // The adapter's own words — see the module docblock.
-    return error.message.length > 0
-      ? interpolate(copy.unsupportedWithReason, { reason: error.message })
-      : copy.unsupported;
-  }
-
-  return error.message.length > 0 ? error.message : copy.generic;
+  return sentence;
 }

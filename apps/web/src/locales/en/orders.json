@@ -807,10 +807,6 @@
     "total": "Total"
   },
   "holds": {
-    "errors": {
-      "alreadyOnHold": "This order is already on hold. The open hold is being loaded now.",
-      "alreadyReleased": "This hold was already released. The order is being reloaded now."
-    },
     "onHold": "On hold - {reason}",
     "panel": {
       "activeSince": "since <time></time>",
@@ -829,7 +825,6 @@
     "placeDialog": {
       "cancel": "Cancel",
       "description": "OpenLinker stops sending this order to its destination and stops dispatching it until the hold is released.",
-      "errorFallback": "Could not put this order on hold.",
       "noteDescription": "Anything the next person needs to know. Never buyer details.",
       "noteLabel": "Note (optional)",
       "placedToast": "Order put on hold.",
@@ -877,7 +872,6 @@
     "releaseDialog": {
       "cancel": "Cancel",
       "description": "OpenLinker starts sending this order to its destination again.",
-      "errorFallback": "Could not release this hold.",
       "noteDescriptionOptional": "Anything the next person needs to know. Never buyer details.",
       "noteDescriptionPlacerUnknown": "It is not recorded who put this order on hold, so say why it is safe to release.",
       "noteDescriptionRequired": "OpenLinker put this order on hold by itself, so say why it is safe to release.",

@@ -861,10 +861,6 @@
     "total": "Razem"
   },
   "holds": {
-    "errors": {
-      "alreadyOnHold": "To zamówienie jest już wstrzymane. Trwa wczytywanie otwartego wstrzymania.",
-      "alreadyReleased": "To wstrzymanie zostało już zdjęte. Trwa ponowne wczytywanie zamówienia."
-    },
     "onHold": "Wstrzymane - {reason}",
     "panel": {
       "activeSince": "od <time></time>",
@@ -883,7 +879,6 @@
     "placeDialog": {
       "cancel": "Anuluj",
       "description": "OpenLinker przestanie przekazywać to zamówienie do kanału docelowego i nadawać je, dopóki wstrzymanie nie zostanie zdjęte.",
-      "errorFallback": "Nie udało się wstrzymać tego zamówienia.",
       "noteDescription": "Wszystko, co powinna wiedzieć kolejna osoba. Nigdy dane kupującego.",
       "noteLabel": "Notatka (opcjonalnie)",
       "placedToast": "Zamówienie wstrzymane.",
@@ -931,7 +926,6 @@
     "releaseDialog": {
       "cancel": "Anuluj",
       "description": "OpenLinker znów zacznie przekazywać to zamówienie do kanału docelowego.",
-      "errorFallback": "Nie udało się zdjąć tego wstrzymania.",
       "noteDescriptionOptional": "Wszystko, co powinna wiedzieć kolejna osoba. Nigdy dane kupującego.",
       "noteDescriptionPlacerUnknown": "Nie zapisano, kto wstrzymał to zamówienie, więc wyjaśnij, dlaczego można bezpiecznie zdjąć wstrzymanie.",
       "noteDescriptionRequired": "OpenLinker sam wstrzymał to zamówienie, więc wyjaśnij, dlaczego można bezpiecznie zdjąć wstrzymanie.",

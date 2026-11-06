@@ -487,6 +487,8 @@ describe('SalesDocumentPanel - connection missing a setting (#3772)', () => {
   const setupRefusal = (): ApiError =>
     new ApiError(SETUP_REASON, 422, {
       message: SETUP_REASON,
+      code: 'INVOICE_ISSUE_REJECTED',
+      params: { failureCode: 'connection-setup-incomplete' },
       error: 'InvoiceIssueRejected',
       failureCode: 'connection-setup-incomplete',
       failureReason: SETUP_REASON,
@@ -541,6 +543,8 @@ describe('SalesDocumentPanel - connection missing a setting (#3772)', () => {
     const issue = vi.fn().mockRejectedValue(
       new ApiError('The invoicing provider rejected the request.', 422, {
         message: 'The invoicing provider rejected the request.',
+        code: 'INVOICE_ISSUE_REJECTED',
+        params: { failureCode: 'provider-rejected' },
         error: 'InvoiceIssueRejected',
         failureCode: 'provider-rejected',
       }),
@@ -575,6 +579,8 @@ describe('SalesDocumentPanel - provider refused a connection setting', () => {
     const issue = vi.fn().mockRejectedValue(
       new ApiError(TIN_REASON, 422, {
         message: TIN_REASON,
+        code: 'INVOICE_ISSUE_REJECTED',
+        params: { failureCode: 'connection-setting-rejected' },
         error: 'InvoiceIssueRejected',
         failureCode: 'connection-setting-rejected',
         failureReason: TIN_REASON,
