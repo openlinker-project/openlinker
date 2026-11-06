@@ -2748,6 +2748,13 @@ function CheckMark({ active }) {
    The figures are example data, like the demo's own made-up stores. */
 const APP_W = 1280;
 const APP_H = 800;
+/* 1:1 with login-backdrop.tsx: the frame takes the screen's proportions and is never scaled past 1.5x,
+   so a wide monitor shows the panel as it looks on a wide monitor instead of a 2.6x blow-up. */
+const MAX_SCALE = 1.5;
+function backdropFrame(w, h) {
+  const scale = Math.min(Math.max(w / APP_W, h / APP_H), MAX_SCALE);
+  return { width: Math.max(APP_W, Math.ceil(w / scale)), height: Math.max(APP_H, Math.ceil(h / scale)), scale };
+}
 
 const NAV_GROUPS = [
   { label: 'Operations', items: [
@@ -2925,12 +2932,12 @@ const TOUR = ['analytics', 'orders', 'shipments'];
 function AppPreview() {
   const reduce = useReducedMotion();
   const boxRef = useRef(null);
-  const [scale, setScale] = useState(1);
+  const [frame, setFrame] = useState({ width: APP_W, height: APP_H, scale: 1 });
   const [i, setI] = useState(0);
   useEffect(() => {
     const el = boxRef.current;
     if (!el) return undefined;
-    const ro = new ResizeObserver(([e]) => setScale(Math.max(e.contentRect.width / APP_W, e.contentRect.height / APP_H)));
+    const ro = new ResizeObserver(([e]) => setFrame(backdropFrame(e.contentRect.width, e.contentRect.height)));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -2943,7 +2950,7 @@ function AppPreview() {
   const scene = SCENES[key];
   return (
     <div className="bg-app" ref={boxRef} aria-hidden="true" inert="">
-      <div className="bg-app__frame" style={{ width: APP_W, height: APP_H, transform: `scale(${scale})` }}>
+      <div className="bg-app__frame" style={{ width: frame.width, height: frame.height, transform: `scale(${frame.scale})` }}>
        <div className="bg-app__drift">
         <div className="shell">
           <div className="shell-sidebar">

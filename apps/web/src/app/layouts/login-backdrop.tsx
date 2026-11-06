@@ -27,8 +27,31 @@ import { SidebarBrand, SidebarNav } from '../app-shell';
 import type { NavCounts } from '../hooks/use-nav-counts';
 import type { NavGroup } from '../nav-registry.types';
 
+// The smallest panel the backdrop lays out; a larger screen gets a larger
+// panel rather than this one blown up.
 const APP_W = 1280;
 const APP_H = 800;
+// At most this much larger than life. Scaling a fixed 1280x800 frame to fill
+// a 3340x1440 screen made it 2.6x: giant, soft and cropped. Instead the frame
+// takes the screen's own proportions, so a wide monitor shows the panel the
+// way it looks on a wide monitor.
+const MAX_SCALE = 1.5;
+
+interface FrameSize {
+  width: number;
+  height: number;
+  scale: number;
+}
+
+/** Fill `box` with a panel laid out at least APP_W x APP_H, never scaled past MAX_SCALE. */
+export function backdropFrame(boxWidth: number, boxHeight: number): FrameSize {
+  const scale = Math.min(Math.max(boxWidth / APP_W, boxHeight / APP_H), MAX_SCALE);
+  return {
+    width: Math.max(APP_W, Math.ceil(boxWidth / scale)),
+    height: Math.max(APP_H, Math.ceil(boxHeight / scale)),
+    scale,
+  };
+}
 const SCENE_EVERY_MS = 6500;
 
 const NAV_GROUPS: NavGroup[] = [
@@ -409,15 +432,14 @@ const TOUR = ['analytics', 'orders', 'shipments'] as const;
 export function LoginBackdrop(): ReactElement {
   const reduce = useReducedMotion();
   const boxRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
+  const [frame, setFrame] = useState<FrameSize>({ width: APP_W, height: APP_H, scale: 1 });
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
     const el = boxRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return undefined;
     const observer = new ResizeObserver(([entry]) => {
-      if (entry)
-        setScale(Math.max(entry.contentRect.width / APP_W, entry.contentRect.height / APP_H));
+      if (entry) setFrame(backdropFrame(entry.contentRect.width, entry.contentRect.height));
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -436,7 +458,11 @@ export function LoginBackdrop(): ReactElement {
     <div className="login-backdrop" ref={boxRef} aria-hidden="true" inert>
       <div
         className="login-backdrop__frame"
-        style={{ width: APP_W, height: APP_H, transform: `scale(${scale})` }}
+        style={{
+          width: frame.width,
+          height: frame.height,
+          transform: `scale(${frame.scale})`,
+        }}
       >
         <div className="login-backdrop__drift">
           <div className="shell">
