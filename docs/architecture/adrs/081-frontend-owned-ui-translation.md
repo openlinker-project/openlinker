@@ -7,8 +7,9 @@
 ## Context
 
 The admin SPA (`apps/web`) is English only. Operators are mostly Polish, so the
-milestone "Interface language: Polish and English" makes Polish the default and
-keeps English as a choice. The frontend already has a no-op seam
+milestone "Interface language: Polish and English" adds Polish and keeps English
+as a choice; a session opens in the browser's language when the app ships it,
+and in English otherwise (#3890). The frontend already has a no-op seam
 (`apps/web/src/shared/i18n`, #612): `t(key, fallback)` over an empty catalog,
 used in about 520 places. An inventory found about 11,000 rows of user-facing
 text across 553 components, about 1,500 of them already in `*.copy.ts` files
@@ -41,9 +42,12 @@ forms. The API answers errors mostly with English sentences.
    `Intl.PluralRules`, `useFormat` for numbers, money, dates and relative time.
    No plural or date is built by string concatenation.
 3. **No locale in the URL.** The language is resolved as `?lang=` (saved), then
-   `localStorage`, then `VITE_DEFAULT_UI_LOCALE`, then the built-in default. An unset, blank
-   or unsupported variable all resolve to the same default: `en` until #3890
-   makes it `pl`. A later step saves the choice on the user profile.
+   `localStorage`, then the first browser language the app ships (`navigator.languages`,
+   matched on the primary subtag, never stored; #3890), then `VITE_DEFAULT_UI_LOCALE`, then
+   the built-in default `en`. An unset, blank or unsupported variable all resolve to `en`.
+   (An earlier plan made `pl` the built-in default; on 2026-11-06 it was replaced by
+   following the browser, so English stays the last resort.) A later step saves the choice
+   on the user profile.
 4. **The frontend owns every user-facing word.** The backend will gain stable
    error codes and params (an error envelope, #3860 to #3867) but never
    translated text. Until it does, the frontend maps the machine values an
@@ -84,7 +88,7 @@ forms. The API answers errors mostly with English sentences.
 ## Consequences
 
 **Pros:**
-- Copy is plain JSON, which translator tools (Crowdin, Weblate, Lokalise) read as it is, and a missing Polish string becomes a type error once the type is strict (the lock-in step, #3890; until then a missing key falls back to English).
+- Copy is plain JSON, which translator tools (Crowdin, Weblate, Lokalise) read as it is, and a missing Polish string becomes a type error once the type is strict (the lock-in step, #3891; until then a missing key falls back to English).
 - Polish is downloaded only by a session that uses it.
 - Plugins carry their own translations, the same model as Backstage's per-plugin translation refs.
 - No new i18n runtime library (the language switch uses Motion, a general animation library).
