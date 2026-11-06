@@ -36,7 +36,12 @@
  *
  * @module features/listings/components/allegro
  */
-import type { OfferValidationContribution } from '../../../../shared/plugins';
+import { formatPlural, getLocale, getMessages } from '../../../../shared/i18n';
+import type {
+  OfferBlockerCopy,
+  OfferBlockerDescribeContext,
+  OfferValidationContribution,
+} from '../../../../shared/plugins';
 import { isRestrictedCirculationGtin } from '../../lib/gtin-classification';
 import { checkRowParameterRestrictions } from '../../lib/parameter-restrictions';
 import { isAllegroTitleTooLong, isAllegroTitleTooShort } from './allegro-title';
@@ -157,6 +162,37 @@ function joinPlainly(parts: readonly string[]): string {
   return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }
 
+/** The copy for every Allegro blocker sentence (#4003), in the active language. */
+function allegroCopy(): ReturnType<typeof getMessages<'listings'>>['bulkBlockers']['allegro'] {
+  return getMessages('listings').bulkBlockers.allegro;
+}
+
+/** A sentence pair with no list - most Allegro blockers. */
+function plainCopy(entry: { title: string; detail: string }): OfferBlockerCopy {
+  return { title: entry.title, detail: entry.detail };
+}
+
+/**
+ * The missing-product-parameter sentence (#4003). Each of the three states of
+ * `missingParameterNames` gets its own words: a list nobody computed, a list
+ * that could not be loaded, and an actual list must never read alike - an
+ * empty list in particular is only "nothing missing" when it was checked.
+ */
+export function describeNeedsProductParameters(
+  context: OfferBlockerDescribeContext,
+): OfferBlockerCopy {
+  const copy = allegroCopy().needsProductParameters;
+  const names = context.missingParameterNames;
+  if (names === undefined) return { title: copy.notCheckedTitle, detail: copy.notCheckedDetail };
+  if (names === null) return { title: copy.notLoadedTitle, detail: copy.notLoadedDetail };
+  if (names.length === 0) return { title: copy.allFilledTitle, detail: copy.allFilledDetail };
+  return {
+    title: formatPlural(names.length, copy.listTitle, getLocale()),
+    detail: copy.listDetail,
+    items: names,
+  };
+}
+
 export const allegroOfferValidation: OfferValidationContribution = {
   blockers: [
     {
@@ -164,42 +200,49 @@ export const allegroOfferValidation: OfferValidationContribution = {
       field: 'parameters',
       tone: 'warning',
       label: 'add product params',
+      describe: describeNeedsProductParameters,
     },
     {
       id: ALLEGRO_TITLE_TOO_LONG_BLOCKER,
       field: 'title',
       tone: 'error',
       label: 'title too long',
+      describe: () => plainCopy(allegroCopy().titleTooLong),
     },
     {
       id: ALLEGRO_TITLE_TOO_SHORT_BLOCKER,
       field: 'title',
       tone: 'error',
       label: 'title too short',
+      describe: () => plainCopy(allegroCopy().titleTooShort),
     },
     {
       id: ALLEGRO_PARAM_VALUE_INVALID_BLOCKER,
       field: 'parameters',
       tone: 'error',
       label: 'parameter value rejected',
+      describe: () => plainCopy(allegroCopy().paramValueInvalid),
     },
     {
       id: ALLEGRO_NO_PHOTO_BLOCKER,
       field: 'images',
       tone: 'error',
       label: 'no photo',
+      describe: () => plainCopy(allegroCopy().noPhoto),
     },
     {
       id: ALLEGRO_SIBLINGS_WITHOUT_CARD_BLOCKER,
       field: 'ean',
       tone: 'error',
       label: 'siblings share one card',
+      describe: () => plainCopy(allegroCopy().siblingsWithoutCard),
     },
     {
       id: ALLEGRO_EAN_UNVERIFIED_BLOCKER,
       field: 'ean',
       tone: 'warning',
       label: 'EAN not in catalogue',
+      describe: () => plainCopy(allegroCopy().eanUnverified),
       advisory: true,
     },
     {
@@ -207,6 +250,7 @@ export const allegroOfferValidation: OfferValidationContribution = {
       field: 'ean',
       tone: 'warning',
       label: 'in-store barcode',
+      describe: () => plainCopy(allegroCopy().inStoreBarcode),
       advisory: true,
     },
   ],

@@ -20,7 +20,8 @@
  *
  * @module apps/web/src/features/listings/components/bulk
  */
-import { blockerLabel } from './bulk-blockers';
+import { getMessages, interpolate } from '../../../../shared/i18n';
+import { blockerLabel, type ChipDescriptor } from './bulk-blockers';
 
 export interface BlockerCopyContext {
   /** The effective barcode for the row, or null when it has none. */
@@ -31,6 +32,17 @@ export interface BlockerCopyContext {
   variantCount: number;
   /** Batch currency, for the currency-mismatch sentence. */
   batchCurrency: string;
+  /**
+   * The resolved chips (neutral + the destination's own, #4003). A platform
+   * blocker's sentence comes from its descriptor; without this the copy module
+   * only knows the neutral ids.
+   */
+  chips?: Record<string, ChipDescriptor>;
+  /**
+   * Missing required product parameters for the variant, three-state - see
+   * `OfferBlockerDescribeContext.missingParameterNames`.
+   */
+  missingParameterNames?: readonly string[] | null;
 }
 
 export interface BlockerCopy {
@@ -38,6 +50,8 @@ export interface BlockerCopy {
   title: string;
   /** One sentence naming the consequence and/or the action. May be empty. */
   detail: string;
+  /** Values the title refers to, rendered as a list (#4003). */
+  items?: readonly string[];
 }
 
 const quoted = (ean: string | null): string => (ean === null || ean === '' ? 'this barcode' : ean);
@@ -113,10 +127,19 @@ export function describeBlocker(blocker: string, ctx: BlockerCopyContext): Block
         title: 'This product has no variants.',
         detail: 'It cannot be listed until the master catalog reports at least one.',
       };
-    default:
+    default: {
+      const describe = ctx.chips?.[blocker]?.describe;
+      if (describe) {
+        return describe({
+          destinationName: ctx.destinationName,
+          missingParameterNames: ctx.missingParameterNames,
+        });
+      }
+      const copy = getMessages('listings').bulkBlockers;
       return {
-        title: `${blockerLabel(blocker)}.`,
-        detail: 'Resolve this blocker for the variant, or switch the variant off to skip it.',
+        title: interpolate(copy.generic.title, { label: blockerLabel(blocker, ctx.chips) }),
+        detail: copy.generic.detail,
       };
+    }
   }
 }
