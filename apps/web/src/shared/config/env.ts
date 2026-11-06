@@ -12,7 +12,8 @@ const envSchema = z.object({
 export const env = envSchema.parse({
   VITE_API_BASE_URL: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000',
   VITE_APP_ENV: import.meta.env.VITE_APP_ENV ?? 'development',
-  // English until #3890 flips the default to Polish. `||`, not `??`: a blank
-  // build arg or `.env` line arrives as '' and must mean "unset".
+  // Used only when the browser asks for no shipped language (#3890); English is
+  // the last resort. `||`, not `??`: a blank build arg or `.env` line arrives as
+  // '' and must mean "unset".
   VITE_DEFAULT_UI_LOCALE: import.meta.env.VITE_DEFAULT_UI_LOCALE || 'en',
 });
