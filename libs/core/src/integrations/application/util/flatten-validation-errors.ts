@@ -45,8 +45,8 @@ export function flattenValidationErrors(
     const path = parentPath ? `${parentPath}.${err.property}` : err.property;
 
     if (err.constraints) {
-      for (const message of Object.values(err.constraints)) {
-        out.push({ path, message });
+      for (const [code, message] of Object.entries(err.constraints)) {
+        out.push({ path, message, code });
       }
     }
 
