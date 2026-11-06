@@ -14,7 +14,8 @@ export const mappingsQueryKeys = {
   /** Per-(side, kind) option list — one entry per dropdown so panels invalidate independently. */
   option: (connectionId: string, side: MappingSide, kind: MappingOptionListKind) =>
     ['mappings', connectionId, 'options', side, kind] as const,
-  categories: (connectionId: string) => ['mappings', connectionId, 'categories'] as const,
+  categories: (connectionId: string, sourceConnectionId?: string) =>
+    ['mappings', connectionId, 'categories', sourceConnectionId ?? 'all'] as const,
   allegroCategories: (connectionId: string, parentId?: string) =>
     ['mappings', connectionId, 'allegro-categories', parentId ?? 'root'] as const,
   /** Root-to-leaf breadcrumb for a single source (Allegro) category id (#1741). */

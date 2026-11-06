@@ -742,11 +742,14 @@ export interface RoutingRuleInput {
 }
 
 /**
- * PUT /connections/:connectionId/mappings/categories/:sourceCategoryId body —
+ * PUT /connections/:connectionId/mappings/categories/:sourceCategoryId body -
  * the destination (Allegro) category a source (PrestaShop) category maps to.
+ * `:connectionId` is the marketplace the mapping is for.
  * Mirrors the FE `upsertCategoryMapping` payload.
  */
 export interface CategoryMappingInput {
+  /** The master (catalogue) connection that owns the source category (#3993). */
+  sourceConnectionId: string;
   allegroCategoryId: string;
   allegroCategoryName: string;
   allegroCategoryPath?: string;

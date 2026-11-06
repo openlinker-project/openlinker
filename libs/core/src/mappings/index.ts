@@ -25,6 +25,7 @@ export type {
   CarrierMappingInput,
   PaymentMappingInput,
   CategoryMappingInput,
+  CategoryMappingReassignResult,
   OrderStateMappingInput,
   AttributeMappingInput,
 } from './domain/types/mapping.types';

@@ -18,6 +18,7 @@ import { RequestMethod } from '@nestjs/common';
 
 import { ROLES_KEY } from '../../../auth/decorators/roles.decorator';
 import { MappingsController } from '../mappings.controller';
+import { CategoryMapping, type IMappingConfigService } from '@openlinker/core/mappings';
 
 const METHOD_METADATA = 'method';
 
@@ -89,5 +90,55 @@ describe('MappingsController role metadata (#1652 / #1653)', () => {
       .map(([name]) => name);
 
     expect(viewerWrites).toEqual([]);
+  });
+});
+
+describe('MappingsController category mappings (#3993)', () => {
+  const service = {
+    getCategoryMappings: jest.fn().mockResolvedValue([]),
+    upsertCategoryMapping: jest.fn(),
+    deleteCategoryMapping: jest.fn().mockResolvedValue(undefined),
+    reassignCategoryMappings: jest.fn().mockResolvedValue({ moved: 1, keptSourceCategoryIds: ['7'] }),
+  };
+  const controller = new MappingsController(service as unknown as IMappingConfigService);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should save under the route marketplace with the master as source when upserting', async () => {
+    service.upsertCategoryMapping.mockResolvedValue(
+      new CategoryMapping('m1', 'master-1', 'alg-1', '7', '258066', 'Phones', null, 'allegro')
+    );
+
+    const dto = await controller.upsertCategoryMapping('alg-1', '7', {
+      sourceConnectionId: 'master-1',
+      allegroCategoryId: '258066',
+      allegroCategoryName: 'Phones',
+    });
+
+    expect(service.upsertCategoryMapping).toHaveBeenCalledWith('alg-1', {
+      sourceConnectionId: 'master-1',
+      sourceCategoryId: '7',
+      destinationCategoryId: '258066',
+      destinationCategoryName: 'Phones',
+      destinationCategoryPath: undefined,
+    });
+    expect(dto.sourceConnectionId).toBe('master-1');
+  });
+
+  it('should scope listing and deleting to the source connection when one is given', async () => {
+    await controller.getCategoryMappings('alg-1', { sourceConnectionId: 'master-1' });
+    await controller.deleteCategoryMapping('alg-1', '7', { sourceConnectionId: 'master-1' });
+
+    expect(service.getCategoryMappings).toHaveBeenCalledWith('alg-1', 'master-1');
+    expect(service.deleteCategoryMapping).toHaveBeenCalledWith('alg-1', '7', 'master-1');
+  });
+
+  it('should move mappings from the given connection onto the route marketplace when reassigning', async () => {
+    const result = await controller.reassignCategoryMappings('alg-1', { fromConnectionId: 'master-1' });
+
+    expect(service.reassignCategoryMappings).toHaveBeenCalledWith('master-1', 'alg-1');
+    expect(result).toEqual({ moved: 1, keptSourceCategoryIds: ['7'] });
   });
 });

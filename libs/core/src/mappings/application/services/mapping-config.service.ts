@@ -24,6 +24,7 @@ import type {
   CarrierMappingInput,
   PaymentMappingInput,
   CategoryMappingInput,
+  CategoryMappingReassignResult,
   OrderStateMappingInput,
   AttributeMappingInput,
 } from '../../domain/types/mapping.types';
@@ -147,8 +148,11 @@ export class MappingConfigService implements IMappingConfigService {
     return match?.externalStateId ?? null;
   }
 
-  getCategoryMappings(destinationConnectionId: string): Promise<CategoryMapping[]> {
-    return this.categoryRepo.findByDestinationConnection(destinationConnectionId);
+  getCategoryMappings(
+    destinationConnectionId: string,
+    sourceConnectionId?: string
+  ): Promise<CategoryMapping[]> {
+    return this.categoryRepo.findByDestinationConnection(destinationConnectionId, sourceConnectionId);
   }
 
   upsertCategoryMapping(
@@ -158,8 +162,26 @@ export class MappingConfigService implements IMappingConfigService {
     return this.categoryRepo.upsertMapping(destinationConnectionId, input);
   }
 
-  deleteCategoryMapping(destinationConnectionId: string, sourceCategoryId: string): Promise<void> {
-    return this.categoryRepo.deleteMapping(destinationConnectionId, sourceCategoryId);
+  deleteCategoryMapping(
+    destinationConnectionId: string,
+    sourceCategoryId: string,
+    sourceConnectionId?: string
+  ): Promise<void> {
+    return this.categoryRepo.deleteMapping(
+      destinationConnectionId,
+      sourceCategoryId,
+      sourceConnectionId
+    );
+  }
+
+  reassignCategoryMappings(
+    fromDestinationConnectionId: string,
+    toDestinationConnectionId: string
+  ): Promise<CategoryMappingReassignResult> {
+    return this.categoryRepo.reassignDestination(
+      fromDestinationConnectionId,
+      toDestinationConnectionId
+    );
   }
 
   async resolveDestinationCategory(
@@ -171,7 +193,8 @@ export class MappingConfigService implements IMappingConfigService {
     //    connection overrides any borrowed reuse.
     const direct = await this.categoryRepo.findBySourceCategory(
       destinationConnectionId,
-      sourceCategoryId
+      sourceCategoryId,
+      opts?.sourceConnectionId ?? null
     );
     if (direct) {
       return direct.destinationCategoryId;

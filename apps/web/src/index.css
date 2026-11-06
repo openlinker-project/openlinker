@@ -6170,50 +6170,193 @@ a.delivery-rider-banner__button:focus-visible {
   align-items: center;
 }
 
-/* ── Category Mappings Layout ────────────────────────────────────── */
+/* ── Category Mappings (#3993) ───────────────────────────────────
+ * One workspace for one (catalogue, marketplace) pair: the pair strip
+ * names it, the left pane lists the catalogue's categories with where each
+ * one goes, the right pane edits the selected one. Both panes scroll on
+ * their own so the pair and the progress stay in view while mapping.
+ */
 
-.category-mappings-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-
-.category-mappings-toolbar__label {
-  font-weight: 600;
-}
-
-.category-mappings-layout {
+.category-mappings-progress {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.2fr);
-  gap: 1.5rem;
-  align-items: start;
+  justify-items: end;
+  gap: var(--space-2);
+  min-width: 11rem;
 }
 
-.category-mappings-layout__tree,
-.category-mappings-layout__search {
+.category-mappings-progress__text {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.category-mappings-progress__bar {
+  position: relative;
+  width: 100%;
+  height: 0.375rem;
+  border-radius: var(--radius-pill);
+  background: var(--bg-strong);
+  overflow: hidden;
+}
+
+.category-mappings-progress__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--accent-primary);
+  transition: width var(--duration-fast) var(--ease-out);
+}
+
+.category-mapping-pair {
+  margin: var(--space-2) 0 var(--space-4);
+}
+
+.category-mapping-pair .mapping-pair__chip {
+  align-self: flex-start;
+}
+
+.category-mapping-pair .mapping-pair__node--dest .mapping-pair__meta {
+  margin: 0;
+}
+
+.category-mapping-pair .mapping-pair__node--dest .control--select {
+  width: 100%;
+  max-width: 22rem;
+}
+
+.category-mappings-notice {
+  margin-bottom: var(--space-4);
+}
+
+.category-mappings-catalogue-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.category-mappings-workspace {
+  display: grid;
+  grid-template-columns: minmax(17rem, 2fr) minmax(20rem, 3fr);
+  height: clamp(28rem, calc(100vh - 21rem), 52rem);
   border: 1px solid var(--border-default);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   background: var(--bg-surface);
-  padding: 1rem;
-  max-height: 36rem;
+  overflow: hidden;
+}
+
+.category-mappings-workspace__source,
+.category-mappings-workspace__target {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-4);
+}
+
+.category-mappings-workspace__source {
+  gap: var(--space-3);
+  border-right: 1px solid var(--border-subtle);
+  background: var(--bg-surface-elevated);
+}
+
+.category-mappings-workspace__target {
+  gap: var(--space-4);
   overflow-y: auto;
 }
 
-.category-mappings-layout__hint {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  margin: 0 0 0.5rem;
+.category-mappings-workspace__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-inline: calc(var(--space-2) * -1);
+  padding-inline: var(--space-2);
 }
 
-.category-mappings-layout__tree h3,
-.category-mappings-layout__search h3 {
-  margin: 0 0 0.75rem;
-  font-size: 0.875rem;
+.category-mappings-pane-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+}
+
+.category-mappings-pane-head__title {
+  margin: 0;
+  font-size: 0.9375rem;
   font-weight: 600;
+  color: var(--text-primary);
+}
+
+.category-mappings-pane-head--detail {
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.category-mappings-detail {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.category-mappings-detail__path {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.category-mappings-detail__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-wrap: balance;
+}
+
+.category-mappings-guide {
+  display: grid;
+  gap: var(--space-2);
+  align-content: center;
+  justify-items: center;
+  flex: 1;
+  text-align: center;
+}
+
+.category-mappings-guide__title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.category-mappings-guide__body {
+  margin: 0;
+  max-width: 34ch;
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.025em;
+  font-size: 0.875rem;
+}
+
+.category-mappings-legacy-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.category-mappings-legacy-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+}
+
+.category-mappings-legacy-list__source {
+  font-weight: 600;
+}
+
+.category-mappings-legacy-list__arrow {
+  color: var(--text-muted);
 }
 
 /* ── Category Tree ───────────────────────────────────────────────── */
@@ -6221,12 +6364,14 @@ a.delivery-rider-banner__button:focus-visible {
 .category-tree {
   display: flex;
   flex-direction: column;
+  gap: 1px;
 }
 
-.category-tree__row {
+.category-tree__item {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: var(--space-1);
+  padding-left: calc(var(--tree-level, 0) * 1.125rem);
 }
 
 .category-tree__toggle,
@@ -6238,15 +6383,38 @@ a.delivery-rider-banner__button:focus-visible {
   align-items: center;
   justify-content: center;
   border: none;
+  border-radius: var(--radius-xs);
   background: none;
-  cursor: pointer;
-  color: var(--text-secondary);
-  font-size: 0.75rem;
+  color: var(--text-muted);
   padding: 0;
 }
 
-.category-tree__toggle-placeholder {
+.category-tree__toggle {
+  cursor: pointer;
+}
+
+.category-tree__toggle:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-surface-hover);
+}
+
+.category-tree__toggle:disabled {
   cursor: default;
+}
+
+.category-tree__toggle svg {
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.category-tree__toggle svg.is-open {
+  transform: rotate(90deg);
+}
+
+.category-tree__empty {
+  margin: var(--space-4) 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  text-align: center;
 }
 
 /* ── Category Row ────────────────────────────────────────────────── */
@@ -6254,27 +6422,28 @@ a.delivery-rider-banner__button:focus-visible {
 .category-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 0.375rem 0.5rem;
-  border: 1px solid transparent;
+  gap: var(--space-3);
+  flex: 1;
+  min-width: 0;
+  padding: 0.4375rem var(--space-2) 0.4375rem var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
   background: none;
   color: var(--text-primary);
   cursor: pointer;
-  border-radius: 0.375rem;
   text-align: left;
-  font-size: 0.8125rem;
-  transition: background 0.1s;
+  font: inherit;
+  font-size: 0.875rem;
 }
 
 .category-row:hover {
-  background: var(--bg-surface-elevated);
-  border-color: var(--border-default);
+  background: var(--bg-surface-hover);
 }
 
-.category-row--selected {
-  border-color: var(--accent-primary);
+.category-row--selected,
+.category-row--selected:hover {
   background: var(--accent-primary-soft);
+  box-shadow: inset 2px 0 0 var(--accent-primary);
 }
 
 .category-row__name {
@@ -6285,86 +6454,133 @@ a.delivery-rider-banner__button:focus-visible {
   white-space: nowrap;
 }
 
-.category-row__badge {
-  flex-shrink: 0;
-  font-size: 0.6875rem;
-  padding: 0.125rem 0.375rem;
-  border-radius: 0.25rem;
-  max-width: 12rem;
+.category-row__target {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 1;
+  max-width: 55%;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.category-row__badge--mapped {
-  background: var(--status-success-soft);
-  color: var(--status-success);
-  border: 1px solid var(--status-success-border);
-}
-
-.category-row__badge--unmapped {
-  color: var(--text-muted);
-  font-style: italic;
-}
-
-/* ── Allegro Category Search ─────────────────────────────────────── */
-
-.allegro-category-search__current {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  margin-bottom: 0.75rem;
-  background: var(--status-success-soft);
-  border: 1px solid var(--status-success-border);
-  border-radius: 0.375rem;
   font-size: 0.8125rem;
-  flex-wrap: wrap;
-}
-
-.allegro-category-search__path {
   color: var(--text-secondary);
-  font-size: 0.75rem;
 }
 
-/* Whole-tree search input above the browser (#2075). */
-.allegro-category-search__search {
-  margin-bottom: var(--space-2);
+.category-row__target::before {
+  content: '';
+  flex: none;
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: var(--radius-pill);
+  background: var(--status-success);
+}
+
+.category-row__target--empty {
+  color: var(--text-muted);
+}
+
+.category-row__target--empty::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+/* ── Marketplace category picker ─────────────────────────────────── */
+
+.allegro-category-search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+}
+
+.allegro-category-search__current,
+.allegro-category-search__staged {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-muted);
+  font-size: 0.875rem;
 }
 
 .allegro-category-search__staged {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  margin-bottom: 0.75rem;
+  border-color: var(--accent-primary-border);
   background: var(--accent-primary-soft);
-  border: 1px solid var(--accent-primary);
-  border-radius: 0.375rem;
-  font-size: 0.8125rem;
-  flex-wrap: wrap;
 }
 
-.allegro-category-search__staged-label {
+.allegro-category-search__label {
+  flex-basis: 100%;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-secondary);
 }
 
+.allegro-category-search__clear,
 .allegro-category-search__staged-actions {
-  display: flex;
-  gap: 0.5rem;
   margin-left: auto;
 }
 
-/* Browse / selection surface is now the shared `.category-tree-browser`
- * primitive (see `shared/ui/category-tree-browser.tsx`). Classes moved
- * there: `__breadcrumbs`, `__crumb`, `__separator`, `__list`, `__item`,
- * `__item--staged`, `__name`, `__actions`. Wrapper-specific surfaces
- * (current mapping, staged preview) remain here. */
+.allegro-category-search__staged-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.category-path-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.category-path-text__ancestor {
+  color: var(--text-secondary);
+}
+
+.category-path-text__sep {
+  margin-inline: 0.375rem;
+  color: var(--text-muted);
+}
+
+.category-path-text__leaf {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Every browse row carries its own Select. Inside the mapping workspace they
+ * read as quiet outline buttons and take the accent only on the row being
+ * pointed at, so the list is not a column of orange. Scoped here on purpose:
+ * the shared tree browser keeps its own emphasis everywhere else. */
+.category-mappings-workspace .allegro-category-search li .button:not(.button--ghost):not(.button--secondary) {
+  border-color: var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.category-mappings-workspace .allegro-category-search li:hover .button:not(.button--ghost):not(.button--secondary),
+.category-mappings-workspace .allegro-category-search li:focus-within .button:not(.button--ghost):not(.button--secondary) {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+}
 
 @media (max-width: 900px) {
-  .category-mappings-layout {
+  .category-mappings-workspace {
     grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .category-mappings-progress {
+    justify-items: start;
+  }
+
+  .category-mappings-workspace__source {
+    max-height: 26rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-subtle);
   }
 }
 

@@ -16,7 +16,10 @@ export interface PrestashopCategoryFlat {
   depth: number;
 }
 
-export function usePrestashopCategoriesQuery(connectionId: string): UseQueryResult<PrestashopCategoryFlat[]> {
+export function usePrestashopCategoriesQuery(
+  connectionId: string,
+  enabled = true,
+): UseQueryResult<PrestashopCategoryFlat[]> {
   const apiClient = useApiClient();
   return useQuery({
     queryKey: ['prestashop-categories', connectionId],
@@ -31,5 +34,6 @@ export function usePrestashopCategoriesQuery(connectionId: string): UseQueryResu
           depth,
         }));
     },
+    enabled,
   });
 }
