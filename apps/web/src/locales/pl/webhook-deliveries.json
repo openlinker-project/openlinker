@@ -1,0 +1,78 @@
+{
+  "statuses": {
+    "deadlettered": "w kolejce błędów",
+    "failed": "błąd",
+    "job_enqueued": "zadanie w kolejce",
+    "published": "opublikowany",
+    "received": "odebrany",
+    "rejected": "odrzucony"
+  },
+  "webhookDeliveriesPage": {
+    "caption": "Doręczenia webhooków",
+    "columns": {
+      "connection": "Połączenie",
+      "eventType": "Typ zdarzenia",
+      "provider": "Dostawca",
+      "reason": "Przyczyna",
+      "received": "Odebrano",
+      "status": "Status"
+    },
+    "description": "Podgląd przychodzących webhooków - podpis, deduplikacja, publikacja i powiązane zadania w tle.",
+    "empty": {
+      "filtered": "Żadne doręczenie nie pasuje do bieżących filtrów. Spróbuj wyczyścić część filtrów.",
+      "none": "Nie zapisano jeszcze żadnych doręczeń webhooków.",
+      "title": "Nie znaleziono doręczeń"
+    },
+    "errorTitle": "Nie udało się wczytać doręczeń webhooków",
+    "eyebrow": "Diagnostyka",
+    "filters": {
+      "allConnections": "Wszystkie połączenia",
+      "allStatuses": "Wszystkie statusy",
+      "connection": "Filtruj według połączenia",
+      "provider": "Filtruj według dostawcy",
+      "providerPlaceholder": "Dostawca",
+      "status": "Filtruj według statusu"
+    },
+    "pagination": {
+      "next": "Dalej",
+      "previous": "Wstecz",
+      "range": "Wyświetlono {from}-{to} z {total}"
+    },
+    "retry": "Ponów",
+    "title": "Doręczenia webhooków"
+  },
+  "webhookDeliveryDetailPage": {
+    "backTo": "Webhooki",
+    "error": {
+      "notFound": "Nie znaleziono doręczenia",
+      "title": "Nie udało się wczytać doręczenia"
+    },
+    "eyebrow": "Doręczenia webhooków",
+    "fallbackTitle": "Szczegóły doręczenia",
+    "fields": {
+      "connection": "Połączenie",
+      "dedup": "Deduplikacja",
+      "downstreamJob": "Powiązane zadanie w tle",
+      "eventId": "ID zdarzenia",
+      "externalId": "ID zewnętrzne",
+      "no": "nie",
+      "objectType": "Typ obiektu",
+      "provider": "Dostawca",
+      "publishedMessage": "Opublikowana wiadomość",
+      "received": "Odebrano",
+      "signatureValid": "Poprawny podpis",
+      "status": "Status",
+      "yes": "tak"
+    },
+    "loading": {
+      "message": "Pobieranie szczegółów doręczenia…",
+      "title": "Wczytywanie doręczenia"
+    },
+    "panels": {
+      "dlqReason": "Przyczyna w kolejce błędów",
+      "payload": "Dane",
+      "rejectionReason": "Przyczyna odrzucenia"
+    },
+    "retry": "Ponów"
+  }
+}
