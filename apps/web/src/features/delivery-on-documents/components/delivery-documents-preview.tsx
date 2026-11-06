@@ -9,6 +9,7 @@
  * @module apps/web/src/features/delivery-on-documents/components
  */
 import { useState, type ReactElement } from 'react';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Select } from '../../../shared/ui/select';
 import type { DeliveryCountryFact } from '../api/delivery-on-documents.types';
 import {
@@ -31,6 +32,7 @@ export function DocumentsPreview({
   country: string | null;
   fact: DeliveryCountryFact | null;
 }): ReactElement {
+  const copy = useMessages('delivery-on-documents');
   const example = fact?.example ?? null;
   const invoice = settings.invoiceName ?? settings.name;
 
@@ -38,9 +40,9 @@ export function DocumentsPreview({
     return (
       <div className="dd-sample">
         <div className="dd-sample__col">
-          <span className="dd-sample__label">On the receipt</span>
+          <span className="dd-sample__label">{copy.preview.onReceipt}</span>
           {settings.rate === 'spread' ? (
-            <span className="muted-text">No delivery line</span>
+            <span className="muted-text">{copy.common.noLine}</span>
           ) : (
             <span className="dd-sample__line">
               <span className="dd-namecell__line">
@@ -48,27 +50,29 @@ export function DocumentsPreview({
                   ? receiptName(settings, settings.fixedRate)
                   : settings.name}
                 {settings.rate === 'fixed' && settings.fixedRate ? null : (
-                  <span className="dd-ratetag">+ VAT rate</span>
+                  <span className="dd-ratetag">{copy.common.rateTag}</span>
                 )}
               </span>
             </span>
           )}
         </div>
         <div className="dd-sample__col">
-          <span className="dd-sample__label">On the invoice</span>
+          <span className="dd-sample__label">{copy.preview.onInvoice}</span>
           <span className="dd-sample__line">
             {settings.rate === 'spread' ? (
-              <span className="muted-text">No delivery line</span>
+              <span className="muted-text">{copy.common.noLine}</span>
             ) : (
               <span>{invoice}</span>
             )}
           </span>
         </div>
         <p className="dd-hint dd-sample__note">
-          {settings.rate === 'goods' ? 'The rate comes from the products in each order. ' : ''}
-          {country
-            ? `No orders from ${countryName(country)} yet, so there is no example order to show.`
-            : null}
+          {[
+            settings.rate === 'goods' ? copy.preview.rateFromProducts : null,
+            country ? interpolate(copy.preview.noOrders, { country: countryName(country) }) : null,
+          ]
+            .filter(Boolean)
+            .join(' ')}
         </p>
       </div>
     );
@@ -86,7 +90,9 @@ export function DocumentsPreview({
   return (
     <div className="dd-sample">
       <div className="dd-sample__order">
-        <span className="dd-sample__label">Example order from {countryName(fact.country)}</span>
+        <span className="dd-sample__label">
+          {interpolate(copy.preview.exampleFrom, { country: countryName(fact.country) })}
+        </span>
         {example.lines.map((line, index) => (
           <span key={`${line.name}-${index}`} className="dd-sample__line dd-sample__line--muted">
             <span>{line.name}</span>
@@ -97,12 +103,12 @@ export function DocumentsPreview({
           </span>
         ))}
         <span className="dd-sample__line dd-sample__line--muted">
-          <span>Delivery paid by the buyer</span>
+          <span>{copy.preview.deliveryPaid}</span>
           <span>{money(delivery)}</span>
         </span>
       </div>
       <div className="dd-sample__col">
-        <span className="dd-sample__label">On the receipt</span>
+        <span className="dd-sample__label">{copy.preview.onReceipt}</span>
         {parts.length ? (
           parts.map((part) => (
             <span key={part.rate} className="dd-sample__line">
@@ -111,11 +117,11 @@ export function DocumentsPreview({
             </span>
           ))
         ) : (
-          <span className="muted-text">No delivery line. Product prices include it.</span>
+          <span className="muted-text">{copy.preview.includedInPrices}</span>
         )}
       </div>
       <div className="dd-sample__col">
-        <span className="dd-sample__label">On the invoice</span>
+        <span className="dd-sample__label">{copy.preview.onInvoice}</span>
         {parts.length ? (
           parts.map((part) => (
             <span key={part.rate} className="dd-sample__line">
@@ -127,7 +133,7 @@ export function DocumentsPreview({
             </span>
           ))
         ) : (
-          <span className="muted-text">No delivery line. Product prices include it.</span>
+          <span className="muted-text">{copy.preview.includedInPrices}</span>
         )}
       </div>
     </div>
@@ -141,6 +147,7 @@ export function ExampleDocs({
   rules: readonly DeliveryRule[];
   facts: readonly DeliveryCountryFact[];
 }): ReactElement {
+  const copy = useMessages('delivery-on-documents');
   const withExample = facts.filter((f) => f.example !== null);
   const [chosen, setChosen] = useState<string | null>(null);
   const example = chosen ?? withExample[0]?.country ?? null;
@@ -149,17 +156,17 @@ export function ExampleDocs({
     neutralSettings();
   return (
     <details className="dd-example">
-      <summary>See it on an example receipt and invoice</summary>
+      <summary>{copy.preview.exampleSummary}</summary>
       <div className="dd-example__body">
         {example !== null ? (
           <Select
-            aria-label="Example order from"
+            aria-label={copy.common.exampleOrderFrom}
             value={example}
             onChange={(e) => setChosen(e.target.value)}
           >
             {withExample.map((f) => (
               <option key={f.country} value={f.country}>
-                Order from {countryName(f.country)}
+                {interpolate(copy.common.orderFrom, { country: countryName(f.country) })}
               </option>
             ))}
           </Select>

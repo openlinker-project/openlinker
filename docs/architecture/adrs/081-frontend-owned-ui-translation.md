@@ -88,7 +88,7 @@ forms. The API answers errors mostly with English sentences.
 ## Consequences
 
 **Pros:**
-- Copy is plain JSON, which translator tools (Crowdin, Weblate, Lokalise) read as it is, and a missing Polish string becomes a type error once the type is strict (the lock-in step, #3891; until then a missing key falls back to English).
+- Copy is plain JSON, which translator tools (Crowdin, Weblate, Lokalise) read as it is. A Polish file with the wrong shape (a key English lacks, a string where English has a section or the reverse) is a type error, but a missing Polish key is not: the runtime shows the English text for it, and `scripts/check-locales.mjs` lists every gap as a warning that never fails the build (#3891).
 - Polish is downloaded only by a session that uses it.
 - Plugins carry their own translations, the same model as Backstage's per-plugin translation refs.
 - No new i18n runtime library (the language switch uses Motion, a general animation library).
@@ -102,10 +102,11 @@ forms. The API answers errors mostly with English sentences.
 - A plugin's Polish is checked by `scripts/check-locales.mjs`, not by `tsc`.
 
 **Migration path:**
-- `t(key, fallback)` stays as a compatibility shim and gets no new callers; it is
-  removed once the extraction issues have moved its call sites.
-- Extraction runs per feature folder into that feature's namespace; each PR
-  switches the no-literal-text lint rule on for its folders.
+- `t(key, fallback)` was a compatibility shim with no new callers; #3891 removed it
+  with its last call site.
+- Extraction ran per feature folder into that feature's namespace, each PR
+  switching the no-literal-text lint rule on for its folders; since #3891 the
+  rule covers every folder (only the developer-only `/dev/ui` route is excluded).
 
 ## References
 
