@@ -41,7 +41,16 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } f
 import { Button } from '../../../shared/ui/button';
 import { formatAmount } from '../../../shared/format/format-amount';
 import type { PriceChangeItem } from '../api/price-changes.types';
-import { clampToStorablePrecision, parseLocalizedAmount } from '../lib/price-change-copy';
+import { clampToStorablePrecision, parseLocalizedAmount } from '../lib/price-amount';
+import {
+  interpolate,
+  renderRich,
+  useFormat,
+  useMessages,
+  type Formatters,
+} from '../../../shared/i18n';
+
+type EditPriceChangeCopy = ReturnType<typeof useMessages<'price-changes'>>['editPriceChangeDialog'];
 
 interface EditPriceChangeDialogProps {
   item: PriceChangeItem | null;
@@ -57,10 +66,16 @@ interface Feedback {
   message: string;
 }
 
-function feedbackFor(rawValue: string, rulePrice: number, currency: string | null | undefined): Feedback {
+function feedbackFor(
+  rawValue: string,
+  rulePrice: number,
+  currency: string | null | undefined,
+  copy: EditPriceChangeCopy,
+  format: Formatters,
+): Feedback {
   const parsed = parseLocalizedAmount(rawValue);
   if (rawValue.trim() === '') {
-    return { tone: 'error', message: 'Enter a price greater than 0.' };
+    return { tone: 'error', message: copy.enterPrice };
   }
   if (!Number.isFinite(parsed)) {
     // Reached only for a genuinely ambiguous separator (a lone `,` or `.`
@@ -68,20 +83,20 @@ function feedbackFor(rawValue: string, rulePrice: number, currency: string | nul
     // refuses to guess between a thousands grouping and a 3-decimal amount
     // rather than silently publishing whichever it guessed (#3148 second
     // review, still-open BLOCKING finding).
-    return {
-      tone: 'error',
-      message: 'This number is ambiguous — use a decimal point or comma with 2 decimal places (e.g. 399.50).',
-    };
+    return { tone: 'error', message: copy.ambiguous };
   }
   if (parsed <= 0) {
-    return { tone: 'error', message: 'Enter a price greater than 0.' };
+    return { tone: 'error', message: copy.enterPrice };
   }
   const deviation = rulePrice > 0 ? (parsed - rulePrice) / rulePrice : 0;
   if (Math.abs(deviation) > DEVIATION_WARN_THRESHOLD) {
-    const pct = Math.round(deviation * 100);
+    const pct = Math.round(deviation * 100) / 100;
     return {
       tone: 'warn',
-      message: `${pct > 0 ? '+' : ''}${pct}% vs. the rule price (${formatAmount(rulePrice, currency ?? undefined)}) - a large manual deviation.`,
+      message: interpolate(copy.deviation, {
+        pct: format.percent(pct, { maximumFractionDigits: 0, signDisplay: 'exceptZero' }),
+        price: formatAmount(rulePrice, currency ?? undefined),
+      }),
     };
   }
   return { tone: null, message: '' };
@@ -94,6 +109,8 @@ export function EditPriceChangeDialog({
   onConfirm,
 }: EditPriceChangeDialogProps): ReactElement {
   const [rawValue, setRawValue] = useState('');
+  const copy = useMessages('price-changes').editPriceChangeDialog;
+  const format = useFormat();
   const generatedId = useId();
   const inputId = `price-change-edit-input-${generatedId}`;
   const feedbackId = `${inputId}-feedback`;
@@ -103,7 +120,7 @@ export function EditPriceChangeDialog({
   }, [item]);
 
   const feedback = item
-    ? feedbackFor(rawValue, item.computedNewAmount, item.destinationCurrency)
+    ? feedbackFor(rawValue, item.computedNewAmount, item.destinationCurrency, copy, format)
     : { tone: null, message: '' };
   const parsed = clampToStorablePrecision(parseLocalizedAmount(rawValue), item?.destinationCurrency);
   const canConfirm = feedback.tone !== 'error' && !isConfirming;
@@ -111,19 +128,29 @@ export function EditPriceChangeDialog({
   return (
     <Dialog open={item !== null} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogTitle>Enter your own price</DialogTitle>
+        <DialogTitle>{copy.title}</DialogTitle>
         {item ? (
           <>
             <DialogDescription>
-              {item.productName} on {item.destinationLabel}
+              {interpolate(copy.description, {
+                product: item.productName,
+                destination: item.destinationLabel,
+              })}
             </DialogDescription>
             <p className="rule-note">
-              Source ({item.sourceLabel}): <b>{formatAmount(item.sourceOldAmount, item.sourceCurrency)} →{' '}
-              {formatAmount(item.sourceNewAmount, item.sourceCurrency)}</b>.
+              {renderRich(
+                copy.sourceNote,
+                { b: (text) => <b>{text}</b> },
+                {
+                  source: item.sourceLabel,
+                  oldAmount: formatAmount(item.sourceOldAmount, item.sourceCurrency),
+                  newAmount: formatAmount(item.sourceNewAmount, item.sourceCurrency),
+                },
+              )}
             </p>
             <div className="field">
               <label className="form-field__label" htmlFor={inputId}>
-                Price to publish
+                {copy.priceLabel}
               </label>
               <div className={`field__price-input ${feedback.tone === 'error' ? 'has-error' : ''}`}>
                 <span className="field__currency">{item.destinationCurrency}</span>
@@ -145,29 +172,33 @@ export function EditPriceChangeDialog({
                 {feedback.message}
               </div>
               <div className="field__hint">
-                Left alone, the usual rule would set this to{' '}
-                <span className="mono">{formatAmount(item.computedNewAmount, item.destinationCurrency ?? undefined)}</span>.{' '}
+                {renderRich(
+                  copy.hint,
+                  { amount: (text) => <span className="mono">{text}</span> },
+                  {
+                    amount: formatAmount(item.computedNewAmount, item.destinationCurrency ?? undefined),
+                  },
+                )}{' '}
                 <button type="button" onClick={() => setRawValue(String(item.computedNewAmount))}>
-                  Use that price
+                  {copy.useRulePrice}
                 </button>
               </div>
             </div>
             <p className="field__link-row">
-              This only changes this one price. Want every future change from this source to use a
-              different rule?{' '}
-              <Link to={`/connections/${item.destinationConnectionId}/edit`}>
-                Manage this connection&apos;s pricing rules
-              </Link>
-              .
+              {renderRich(copy.linkRow, {
+                link: (text) => (
+                  <Link to={`/connections/${item.destinationConnectionId}/edit`}>{text}</Link>
+                ),
+              })}
             </p>
           </>
         ) : null}
         <DialogFooter>
           <Button tone="secondary" onClick={() => onOpenChange(false)}>
-            Cancel
+            {copy.cancel}
           </Button>
           <Button disabled={!canConfirm} onClick={() => onConfirm(parsed)}>
-            {isConfirming ? 'Publishing…' : 'Publish this price'}
+            {isConfirming ? copy.publishing : copy.publish}
           </Button>
         </DialogFooter>
       </DialogContent>

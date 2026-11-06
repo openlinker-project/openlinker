@@ -11,7 +11,7 @@ import type { RouteCrumbHandle } from '../nav-registry.types';
 
 export const omsOnboardingRoute: RouteObject = {
   path: 'settings/packing',
-  handle: { crumb: { group: 'Platform', title: 'OpenLinker OMS' } } satisfies RouteCrumbHandle,
+  handle: { crumb: { group: 'platform', page: 'omsSetup' } } satisfies RouteCrumbHandle,
   lazy: async () => {
     const { OmsOnboardingPage } = await import('../../pages/oms/oms-onboarding-page');
     return { Component: OmsOnboardingPage };

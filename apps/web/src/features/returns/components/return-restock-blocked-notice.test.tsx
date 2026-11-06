@@ -10,11 +10,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ReturnRestockBlockedNotice } from './return-restock-blocked-notice';
-import {
-  RETURN_RESTOCK_ATTESTED_COPY,
-  RETURN_RESTOCK_BLOCKED_COPY,
-} from '../lib/restock-blocked.copy';
+import { getMessages } from '../../../shared/i18n';
 import type { ReturnRestockAttestation, ReturnRestockBlock } from '../api/returns.types';
+
+const restockBlockedCopy = getMessages('returns').restockBlocked;
+const attestedCopy = getMessages('returns').restockAttested;
 
 function block(overrides: Partial<ReturnRestockBlock> = {}): ReturnRestockBlock {
   return {
@@ -146,7 +146,7 @@ describe('ReturnRestockBlockedNotice (#2381)', () => {
   it('should expand the explainer inline, and collapse it again', () => {
     renderNotice();
 
-    const toggle = screen.getByRole('button', { name: RETURN_RESTOCK_BLOCKED_COPY.why });
+    const toggle = screen.getByRole('button', { name: restockBlockedCopy.why });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
 
     fireEvent.click(toggle);
@@ -162,9 +162,9 @@ describe('ReturnRestockBlockedNotice (#2381)', () => {
     renderNotice({ blocks: [], attestations: [attestation()] });
 
     expect(screen.queryByText('Stock was not added.')).not.toBeInTheDocument();
-    expect(document.body.textContent).toContain(RETURN_RESTOCK_ATTESTED_COPY.byYou);
+    expect(document.body.textContent).toContain('by you');
     // The load-bearing half survives the attribution.
-    expect(document.body.textContent).toContain(RETURN_RESTOCK_ATTESTED_COPY.disclaimer);
+    expect(document.body.textContent).toContain(attestedCopy.disclaimer);
     // And it offers nothing to click: the alarm is answered.
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
@@ -177,7 +177,7 @@ describe('ReturnRestockBlockedNotice (#2381)', () => {
     });
 
     const body = document.body.textContent ?? '';
-    expect(body).toContain(RETURN_RESTOCK_ATTESTED_COPY.byOther);
+    expect(body).toContain('by another operator');
     // Nothing resolves a user id to a display name, so a raw id must never leak
     // into operator copy — it is not an answer to "who" and reads as a defect.
     expect(body).not.toContain('someone-else');
@@ -202,7 +202,7 @@ describe('ReturnRestockBlockedNotice (#2381)', () => {
     renderNotice({ pending: true });
 
     expect(
-      screen.getByRole('button', { name: RETURN_RESTOCK_BLOCKED_COPY.attest }),
+      screen.getByRole('button', { name: restockBlockedCopy.attest }),
     ).toBeDisabled();
   });
 });

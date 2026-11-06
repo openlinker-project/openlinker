@@ -14,6 +14,7 @@
 
 import type { ReactElement } from 'react';
 import { tokens } from '../../../shared/theme/tokens';
+import { useMessages } from '../../../shared/i18n';
 
 export interface RoutingSplitBucket {
   /** Stable bucket key (processor selection key or the default sentinel). */
@@ -46,6 +47,7 @@ interface RoutingSplitBarProps {
 }
 
 export function RoutingSplitBar({ buckets }: RoutingSplitBarProps): ReactElement | null {
+  const copy = useMessages('mappings').routingSplitBar;
   const total = buckets.reduce((sum, bucket) => sum + bucket.count, 0);
   if (total === 0) {
     return null;
@@ -74,7 +76,7 @@ export function RoutingSplitBar({ buckets }: RoutingSplitBarProps): ReactElement
             />
           ))}
       </div>
-      <div className="routing-split__legend" aria-label="Delivery methods per fulfillment processor">
+      <div className="routing-split__legend" aria-label={copy.legendLabel}>
         {coloured.map(({ bucket, color }) => (
           <span key={bucket.key} className="routing-split__key">
             <span className="routing-split__swatch" style={{ background: color }} aria-hidden="true" />

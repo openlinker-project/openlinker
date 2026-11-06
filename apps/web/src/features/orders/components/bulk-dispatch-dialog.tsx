@@ -18,6 +18,14 @@
 import { Fragment, useMemo, useReducer, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
+import {
+  interpolate,
+  useFormat,
+  useMessages,
+  usePlural,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '../../../shared/ui/dialog';
@@ -39,12 +47,14 @@ import {
   buildDispatchItem,
   classifyDispatchEligibility,
   groupBy,
-  DISPATCH_INELIGIBILITY_LABEL,
-  DISPATCH_INELIGIBILITY_HINT,
+  dispatchIneligibilityHint,
+  dispatchIneligibilityLabel,
   type DispatchEligibility,
 } from '../lib/dispatch-input';
 import { mergeParcelWithRoutedPrefill, parcelPrefillForMethod } from '../lib/routed-parcel-profile';
-import { parcelSchema, type ParcelSubmission } from './bulk-dispatch-dialog.schema';
+import { createParcelSchema, type ParcelSubmission } from './bulk-dispatch-dialog.schema';
+
+type BulkDispatchCopy = ResolvedCopy<Messages['orders']>['bulkDispatchDialog'];
 
 interface BulkDispatchDialogProps {
   open: boolean;
@@ -103,6 +113,14 @@ export function BulkDispatchDialog({
   channelLabelFor,
   onComplete,
 }: BulkDispatchDialogProps): ReactElement {
+  const ordersCopy = useMessages('orders');
+  const copy = ordersCopy.bulkDispatchDialog;
+  const plural = usePlural();
+  const format = useFormat();
+  const parcelSchema = useMemo(
+    () => createParcelSchema(ordersCopy.generateLabelForm.validation),
+    [ordersCopy],
+  );
   const { showToast } = useToast();
   const mutation = useBulkGenerateLabelsMutation();
   const protocolDownload = useProtocolDownload();
@@ -174,7 +192,7 @@ export function BulkDispatchDialog({
       const id = entry.order.internalOrderId;
       const parsed = parcelSchema.safeParse(rowParcel(id));
       if (!parsed.success) {
-        errors[id] = parsed.error.issues[0]?.message ?? 'Invalid parcel';
+        errors[id] = parsed.error.issues[0]?.message ?? copy.invalidParcel;
         continue;
       }
       const parcel: ParcelSubmission = parsed.data;
@@ -216,7 +234,7 @@ export function BulkDispatchDialog({
       if (outcome.status === 'fulfilled') {
         merged.push(...outcome.value.results);
       } else {
-        const error = outcome.reason instanceof Error ? outcome.reason.message : 'Dispatch failed';
+        const error = outcome.reason instanceof Error ? outcome.reason.message : copy.dispatchFailed;
         for (const g of groupItems) {
           merged.push({ kind: 'failed', orderId: g.item.orderId, error });
         }
@@ -230,8 +248,14 @@ export function BulkDispatchDialog({
     const failed = merged.filter((r) => r.kind === 'failed').length;
     showToast({
       tone: failed > 0 ? (dispatched > 0 ? 'warning' : 'error') : 'success',
-      title: 'Batch complete',
-      description: `${dispatched} dispatched${failed > 0 ? ` · ${failed} failed` : ''}.`,
+      title: copy.toast.title,
+      description:
+        failed > 0
+          ? interpolate(copy.toast.summaryWithFailed, {
+              dispatched: format.number(dispatched),
+              failed: format.number(failed),
+            })
+          : interpolate(copy.toast.summary, { dispatched: format.number(dispatched) }),
     });
     onComplete();
   }
@@ -248,19 +272,26 @@ export function BulkDispatchDialog({
           />
         ) : (
           <>
-            <DialogTitle>Dispatch {eligible.length === orders.length ? orders.length : `${eligible.length} of ${orders.length}`} orders</DialogTitle>
-            <DialogDescription id="bulk-dispatch-desc">
-              Generate labels for the selected orders — dispatched in per-source batches.
-            </DialogDescription>
+            <DialogTitle>
+              {eligible.length === orders.length
+                ? plural(orders.length, copy.title)
+                : plural(orders.length, copy.titlePartial, {
+                    count: format.number(eligible.length),
+                  })}
+            </DialogTitle>
+            <DialogDescription id="bulk-dispatch-desc">{copy.description}</DialogDescription>
 
             <fieldset disabled={phase === 'submitting'} className="bulk-dispatch__body">
               <ParcelProfile profile={profile} onChange={setProfile} onApplyAll={applyProfileToAll} />
 
               <p className="bulk-dispatch__summary">
-                <strong>{eligible.length} ready</strong>
-                {ineligible.length > 0
-                  ? ` · ${ineligible.length} need attention — fix at source or dispatch individually`
-                  : ''}
+                <strong>{interpolate(copy.ready, { n: format.number(eligible.length) })}</strong>
+                {ineligible.length > 0 ? (
+                  <>
+                    {' · '}
+                    {plural(ineligible.length, copy.needAttention)}
+                  </>
+                ) : null}
               </p>
 
               <div className="bulk-dispatch__rows">
@@ -282,23 +313,23 @@ export function BulkDispatchDialog({
               </div>
 
               {ineligible.length > 0 && eligible.length > 0 ? (
-                <p className="bulk-dispatch__note">Only the {eligible.length} ready orders will be dispatched.</p>
+                <p className="bulk-dispatch__note">{plural(eligible.length, copy.onlyReady)}</p>
               ) : null}
               {eligible.length === 0 ? (
-                <Alert tone="warning">None of the selected orders can be bulk-dispatched. Dispatch them individually from each order.</Alert>
+                <Alert tone="warning">{copy.noneEligible}</Alert>
               ) : null}
             </fieldset>
 
             <DialogFooter>
               <Button tone="ghost" onClick={resetAndClose} disabled={phase === 'submitting'}>
-                Cancel
+                {copy.cancel}
               </Button>
               <Button
                 tone="primary"
                 onClick={() => void handleSubmit()}
                 disabled={eligible.length === 0 || phase === 'submitting'}
               >
-                {phase === 'submitting' ? 'Dispatching…' : `Dispatch ${eligible.length} order${eligible.length === 1 ? '' : 's'}`}
+                {phase === 'submitting' ? copy.dispatching : plural(eligible.length, copy.submit)}
               </Button>
             </DialogFooter>
           </>
@@ -317,26 +348,27 @@ function ParcelProfile({
   onChange: (next: ParcelFields) => void;
   onApplyAll: () => void;
 }): ReactElement {
+  const copy = useMessages('orders').bulkDispatchDialog.profile;
   const set = (field: keyof ParcelFields) => (value: string) => onChange({ ...profile, [field]: value });
   return (
     <div className="bulk-dispatch__profile">
       <div className="bulk-dispatch__profile-fields">
         <div className="bulk-dispatch__field">
-          <span className="bulk-dispatch__field-label">Dimensions (mm)</span>
+          <span className="bulk-dispatch__field-label">{copy.dimensions}</span>
           <div className="bulk-dispatch__dims">
-            <DimInput label="Default length in millimetres" value={profile.length} onChange={set('length')} />
+            <DimInput label={copy.defaultLengthAria} value={profile.length} onChange={set('length')} />
             <span className="bulk-dispatch__times">×</span>
-            <DimInput label="Default width in millimetres" value={profile.width} onChange={set('width')} />
+            <DimInput label={copy.defaultWidthAria} value={profile.width} onChange={set('width')} />
             <span className="bulk-dispatch__times">×</span>
-            <DimInput label="Default height in millimetres" value={profile.height} onChange={set('height')} />
+            <DimInput label={copy.defaultHeightAria} value={profile.height} onChange={set('height')} />
           </div>
         </div>
         <div className="bulk-dispatch__field bulk-dispatch__weight">
-          <span className="bulk-dispatch__field-label">Weight (g)</span>
-          <DimInput label="Default weight in grams" value={profile.weightGrams} onChange={set('weightGrams')} wide />
+          <span className="bulk-dispatch__field-label">{copy.weight}</span>
+          <DimInput label={copy.defaultWeightAria} value={profile.weightGrams} onChange={set('weightGrams')} wide />
         </div>
         <Button tone="secondary" className="button--sm bulk-dispatch__apply" onClick={onApplyAll}>
-          Apply to all rows
+          {copy.applyAll}
         </Button>
       </div>
     </div>
@@ -421,6 +453,7 @@ function EligibleRow({
   error?: string;
   onField: (field: keyof ParcelFields, value: string) => void;
 }): ReactElement {
+  const copy = useMessages('orders').bulkDispatchDialog.row;
   const { order, snapshot, shippingMethod } = entry;
   const ref = order.internalOrderId;
   const buyer = [snapshot.shippingAddress?.firstName, snapshot.shippingAddress?.lastName]
@@ -435,21 +468,21 @@ function EligibleRow({
         {buyer ? <span className="text-muted bulk-dispatch__buyer">{buyer}</span> : null}
       </div>
       <StatusBadge tone={shippingMethod === 'paczkomat' ? 'info' : 'neutral'} compact>
-        {shippingMethod === 'paczkomat' ? 'Paczkomat' : 'Courier'}
+        {shippingMethod === 'paczkomat' ? copy.paczkomat : copy.courier}
       </StatusBadge>
       <div className="bulk-dispatch__parcel-fields">
         <div className="bulk-dispatch__dims">
-          <DimInput label={`Length for ${ref}`} value={parcel.length} onChange={(v) => onField('length', v)} />
+          <DimInput label={interpolate(copy.lengthFor, { ref })} value={parcel.length} onChange={(v) => onField('length', v)} />
           <span className="bulk-dispatch__times">×</span>
-          <DimInput label={`Width for ${ref}`} value={parcel.width} onChange={(v) => onField('width', v)} />
+          <DimInput label={interpolate(copy.widthFor, { ref })} value={parcel.width} onChange={(v) => onField('width', v)} />
           <span className="bulk-dispatch__times">×</span>
-          <DimInput label={`Height for ${ref}`} value={parcel.height} onChange={(v) => onField('height', v)} />
+          <DimInput label={interpolate(copy.heightFor, { ref })} value={parcel.height} onChange={(v) => onField('height', v)} />
         </div>
         <div className="bulk-dispatch__weight">
-          <DimInput label={`Weight for ${ref}`} value={parcel.weightGrams} onChange={(v) => onField('weightGrams', v)} wide />
+          <DimInput label={interpolate(copy.weightFor, { ref })} value={parcel.weightGrams} onChange={(v) => onField('weightGrams', v)} wide />
         </div>
         <StatusBadge tone="success" withDot compact>
-          Ready
+          {copy.ready}
         </StatusBadge>
       </div>
       {error ? <span className="bulk-dispatch__row-error" role="alert">{error}</span> : null}
@@ -464,6 +497,8 @@ function IneligibleRow({
   entry: DispatchEligibility;
   channelLabelFor: (connectionId: string) => string;
 }): ReactElement {
+  const ordersCopy = useMessages('orders');
+  const copy = ordersCopy.bulkDispatchDialog.row;
   const { order, snapshot, reason } = entry;
   const ref = order.internalOrderId;
   const buyer = [snapshot.shippingAddress?.firstName, snapshot.shippingAddress?.lastName]
@@ -478,12 +513,12 @@ function IneligibleRow({
         {buyer ? <span className="text-muted bulk-dispatch__buyer">{buyer}</span> : null}
       </div>
       <StatusBadge tone="warning" withDot compact>
-        {reason ? DISPATCH_INELIGIBILITY_LABEL[reason] : 'Not dispatchable'}
+        {reason ? dispatchIneligibilityLabel(reason, ordersCopy.dispatchInput) : copy.notDispatchable}
       </StatusBadge>
       <span className="bulk-dispatch__row-hint">
-        {reason ? DISPATCH_INELIGIBILITY_HINT[reason] : ''}{' '}
+        {reason ? dispatchIneligibilityHint(reason, ordersCopy.dispatchInput) : ''}{' '}
         <Link className="bulk-dispatch__link" to={`/orders/${ref}`}>
-          dispatch individually ›
+          {copy.dispatchIndividually} <span aria-hidden="true">›</span>
         </Link>
       </span>
     </div>
@@ -495,11 +530,19 @@ const RESULT_TONE: Record<PerOrderDispatchResult['kind'], StatusBadgeTone> = {
   omp_fulfilled: 'info',
   failed: 'error',
 };
-const RESULT_LABEL: Record<PerOrderDispatchResult['kind'], string> = {
-  dispatched: 'Dispatched',
-  omp_fulfilled: 'Fulfilled by store',
-  failed: 'Failed',
-};
+function resultLabel(
+  kind: PerOrderDispatchResult['kind'],
+  copy: BulkDispatchCopy['result']['status'],
+): string {
+  switch (kind) {
+    case 'dispatched':
+      return copy.dispatched;
+    case 'omp_fulfilled':
+      return copy.ompFulfilled;
+    case 'failed':
+      return copy.failed;
+  }
+}
 
 function ResultView({
   results,
@@ -512,6 +555,8 @@ function ResultView({
   onDownloadProtocol: (shipmentIds: string[], carrierLabel: string) => void;
   onClose: () => void;
 }): ReactElement {
+  const copy = useMessages('orders').bulkDispatchDialog.result;
+  const format = useFormat();
   const dispatchedCount = results.filter((r) => r.kind === 'dispatched').length;
   const failed = results.filter((r) => r.kind === 'failed').length;
   const omp = results.filter((r) => r.kind === 'omp_fulfilled').length;
@@ -525,18 +570,29 @@ function ResultView({
       .map((r) => ({ orderId: r.orderId, shipment: r.shipment }));
     return Array.from(groupBy(dr, (d) => d.shipment.connectionId).entries()).map(([connectionId, group]) => ({
       connectionId,
-      carrierLabel: getCarrierDisplayName(group[0]?.shipment.carrier ?? null) ?? 'Carrier',
+      carrierLabel:
+        getCarrierDisplayName(group[0]?.shipment.carrier ?? null) ?? copy.protocolCarrierFallback,
       shipmentIds: group.map((g) => g.shipment.id),
     }));
-  }, [results]);
+  }, [results, copy]);
 
   return (
     <>
-      <DialogTitle>Batch complete</DialogTitle>
+      <DialogTitle>{copy.title}</DialogTitle>
       <DialogDescription id="bulk-dispatch-desc">
-        <strong>{dispatchedCount} dispatched</strong>
-        {omp > 0 ? ` · ${omp} fulfilled by store` : ''}
-        {failed > 0 ? ` · ${failed} failed` : ''}
+        <strong>{interpolate(copy.dispatched, { n: format.number(dispatchedCount) })}</strong>
+        {omp > 0 ? (
+          <>
+            {' · '}
+            {interpolate(copy.fulfilledByStore, { n: format.number(omp) })}
+          </>
+        ) : null}
+        {failed > 0 ? (
+          <>
+            {' · '}
+            {interpolate(copy.failed, { n: format.number(failed) })}
+          </>
+        ) : null}
       </DialogDescription>
 
       <div className="bulk-dispatch__results">
@@ -544,11 +600,11 @@ function ResultView({
           <div key={r.orderId} className="bulk-dispatch__result-row">
             <span className="mono bulk-dispatch__ordid">{r.orderId}</span>
             <StatusBadge tone={RESULT_TONE[r.kind]} withDot compact>
-              {RESULT_LABEL[r.kind]}
+              {resultLabel(r.kind, copy.status)}
             </StatusBadge>
             {r.kind === 'failed' ? <span className="bulk-dispatch__result-detail text-muted">{r.error}</span> : null}
             {r.kind === 'dispatched' ? (
-              <span className="bulk-dispatch__result-detail text-muted">tracking appears within ~5 min</span>
+              <span className="bulk-dispatch__result-detail text-muted">{copy.trackingSoon}</span>
             ) : null}
           </div>
         ))}
@@ -557,7 +613,7 @@ function ResultView({
       <DialogFooter className="bulk-dispatch__result-footer">
         {carrierGroups.length > 0 ? (
           <div className="bulk-dispatch__protocols">
-            <span className="text-muted bulk-dispatch__protocols-label">Handover protocol:</span>
+            <span className="text-muted bulk-dispatch__protocols-label">{copy.protocolLabel}</span>
             {carrierGroups.map((g) => (
               <Button
                 key={g.connectionId}
@@ -566,7 +622,11 @@ function ResultView({
                 disabled={protocolDownloading}
                 onClick={() => onDownloadProtocol(g.shipmentIds, g.carrierLabel)}
               >
-                ⤓ {g.carrierLabel} ({g.shipmentIds.length})
+                <span aria-hidden="true">⤓</span>{' '}
+                {interpolate(copy.protocolButton, {
+                  carrier: g.carrierLabel,
+                  n: format.number(g.shipmentIds.length),
+                })}
               </Button>
             ))}
           </div>
@@ -574,7 +634,7 @@ function ResultView({
           <span />
         )}
         <Button tone="primary" onClick={onClose}>
-          Close
+          {copy.close}
         </Button>
       </DialogFooter>
     </>

@@ -21,8 +21,10 @@ import { useSession } from '../../shared/auth/use-session';
 import { LoadingState } from '../../shared/ui/feedback-state';
 import { resolveNextPath } from '../../shared/lib/resolve-next-path';
 import { LanguageSwitch } from '../../shared/ui/language-switch';
+import { useMessages } from '../../shared/i18n';
 
 export function ConsentLayout(): ReactElement {
+  const copy = useMessages('app');
   const { isReady, session, adapter, refreshSession } = useSession();
   const [searchParams] = useSearchParams();
   const [tokenRefreshed, setTokenRefreshed] = useState(false);
@@ -45,7 +47,7 @@ export function ConsentLayout(): ReactElement {
   if (!isReady) {
     return (
       <div className="guest-layout">
-        <LoadingState title="Loading" message="Checking session state..." />
+        <LoadingState title={copy.loading.loading} message={copy.loading.checkingSession} />
       </div>
     );
   }
@@ -65,8 +67,8 @@ export function ConsentLayout(): ReactElement {
       </div>
       <div className="guest-card">
         <div className="guest-brand">
-          <strong className="guest-brand__title">OpenLinker</strong>
-          <span className="guest-brand__subtitle">Commerce operations platform</span>
+          <strong className="guest-brand__title">{copy.brand.name}</strong>
+          <span className="guest-brand__subtitle">{copy.brand.tagline}</span>
         </div>
         <Outlet />
       </div>

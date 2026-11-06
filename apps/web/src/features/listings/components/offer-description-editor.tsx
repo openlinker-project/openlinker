@@ -14,6 +14,7 @@
  */
 import type { ReactElement } from 'react';
 
+import { useMessages } from '../../../shared/i18n';
 import { RichTextEditor } from '../../../shared/ui';
 import { useDescriptionFormatQuery } from '../hooks/use-description-format-query';
 
@@ -35,6 +36,7 @@ export function OfferDescriptionEditor({
   disabled = false,
   id,
 }: OfferDescriptionEditorProps): ReactElement {
+  const copy = useMessages('listings').offerDescriptionEditor;
   const formatQuery = useDescriptionFormatQuery(connectionId);
   // Narrow while the contract loads, for the same reason the content tab does it:
   // `null` while in flight - the editor renders a disabled placeholder. The
@@ -49,7 +51,7 @@ export function OfferDescriptionEditor({
         value={value}
         onChange={onChange}
         disabled={disabled}
-        aria-label="Offer description"
+        aria-label={copy.ariaLabel}
         // Restored with the migration: the textarea carried both, and without
         // them a screen-reader user gets no invalid state and never hears the
         // error text below, which still renders with this id.

@@ -22,6 +22,8 @@ import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { KsefNumberingAuditTab } from './ksef-numbering-audit-tab';
 import { KsefNumberingSeriesTab } from './ksef-numbering-series-tab';
 import { captureDemoEvent } from '../../../features/demo';
+import { interpolate } from '../../../shared/i18n';
+import { useKsefMessages } from '../messages';
 
 const TAB_VALUES = ['series', 'audit'] as const;
 type TabValue = (typeof TAB_VALUES)[number];
@@ -31,6 +33,7 @@ function isTabValue(value: string | null): value is TabValue {
 }
 
 export function KsefNumberingPage(): ReactElement {
+  const copy = useKsefMessages().ksefNumberingPage;
   const { connectionId = '' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const demoMode = useDemoMode();
@@ -53,21 +56,23 @@ export function KsefNumberingPage(): ReactElement {
     );
   }
 
-  // Skeleton the connection name into the back-link — never flash a placeholder.
-  const backLabel = connectionName ? `Actions · ${connectionName}` : 'Actions';
+  // Skeleton the connection name into the back-link - never flash a placeholder.
+  const backLabel = connectionName
+    ? interpolate(copy.backWithConnection, { connection: connectionName })
+    : copy.back;
   const backTo = { to: `/connections/${connectionId}?tab=actions`, label: backLabel };
 
   return (
     <PageLayout
       backTo={backTo}
-      eyebrow="Invoicing"
-      title="Invoice numbering"
-      description="Numbering series are shared across every connection; this page controls which series each document type on this connection is routed to."
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
     >
       <Tabs value={activeTab} onValueChange={setTab}>
-        <TabsList aria-label="Invoice numbering sections">
-          <TabsTrigger value="series">Series</TabsTrigger>
-          <TabsTrigger value="audit">Number audit</TabsTrigger>
+        <TabsList aria-label={copy.tabsLabel}>
+          <TabsTrigger value="series">{copy.tabs.series}</TabsTrigger>
+          <TabsTrigger value="audit">{copy.tabs.audit}</TabsTrigger>
         </TabsList>
         <TabsContent value="series">
           <KsefNumberingSeriesTab connectionId={connectionId} readOnly={readOnly} />

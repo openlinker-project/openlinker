@@ -24,128 +24,134 @@ import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
+import { interpolate, renderRich, useMessages, type Messages } from '../../../shared/i18n';
 import type { PayloadField, TriggerableJob, TriggerSyncDialogProps } from './trigger-sync-dialog.types';
 
-const ALL_TRIGGERABLE_JOBS: TriggerableJob[] = [
-  {
-    jobType: 'master.product.syncAll',
-    label: 'Sync all products',
-    description: 'Enumerate and sync every product from the source catalog.',
-    payloadFields: [],
-    requiredCapability: 'ProductMaster',
-  },
-  {
-    jobType: 'master.product.syncByExternalId',
-    label: 'Sync product by ID',
-    description: 'Sync a single product using its external platform ID.',
-    payloadFields: [
-      { name: 'externalId', label: 'External ID', required: true },
-      { name: 'objectType', label: 'Object type', required: false, placeholder: 'product' },
-    ],
-    requiredCapability: 'ProductMaster',
-  },
-  {
-    jobType: 'master.inventory.syncAll',
-    label: 'Sync all inventory',
-    description: 'Enumerate and sync inventory levels for every product.',
-    payloadFields: [],
-    requiredCapability: 'InventoryMaster',
-  },
-  {
-    jobType: 'master.inventory.syncByExternalId',
-    label: 'Sync inventory by ID',
-    description: 'Sync inventory for a single item using its external ID.',
-    payloadFields: [
-      { name: 'externalId', label: 'External ID', required: true },
-      { name: 'objectType', label: 'Object type', required: false, placeholder: 'product' },
-    ],
-    requiredCapability: 'InventoryMaster',
-  },
-  {
-    jobType: 'master.variants.autoMatch',
-    label: 'Auto-match variants',
-    description: 'Match product variants to marketplace offers by barcode.',
-    payloadFields: [],
-    requiredCapability: 'ProductMaster',
-  },
-  {
-    jobType: 'marketplace.offers.sync',
-    label: 'Sync marketplace offers',
-    description: 'Pull offer listings from the marketplace.',
-    payloadFields: [
-      {
-        name: 'limit',
-        label: 'Page limit',
-        required: false,
-        type: 'number',
-        defaultValue: '100',
-        placeholder: '100',
-      },
-    ],
-    // OfferEventReader, not coarse OfferManager (#1498): only adapters with an
-    // offer-event journal (Allegro) can sync offers this way. Erli (reconciliation
-    // -first, #1096 skip) and WooCommerce (quantity-only write-back) would no-op.
-    requiredCapability: 'OfferEventReader',
-  },
-  {
-    jobType: 'marketplace.orders.poll',
-    label: 'Poll marketplace orders',
-    description: 'Fetch new orders from the marketplace event stream.',
-    payloadFields: [
-      {
-        name: 'cursorKey',
-        label: 'Cursor key',
-        required: false,
-        defaultValueFactory: ({ platformType }) => `${platformType}.orders.lastEventId`,
-      },
-      {
-        name: 'limit',
-        label: 'Page limit',
-        required: false,
-        type: 'number',
-        defaultValue: '100',
-        placeholder: '100',
-      },
-    ],
-    // OrderSource, not OfferManager (#1498): this is an order-ingestion job —
-    // every order source (Allegro, Erli, WooCommerce, PrestaShop) runs it via
-    // its scheduler, so the manual trigger should match that set.
-    requiredCapability: 'OrderSource',
-  },
-  {
-    jobType: 'inventory.propagateToMarketplaces',
-    label: 'Propagate inventory to marketplaces',
-    description: 'Push current inventory levels to all connected marketplaces.',
-    payloadFields: [
-      {
-        name: 'productId',
-        label: 'Product ID',
-        required: true,
-        placeholder: 'ol_product_…',
-      },
-    ],
-    // Gated to InventoryMaster (the capability whose inventory it propagates) so it
-    // no longer leaks onto invoicing/shipping-only connections (KSeF, InPost). See #1474.
-    requiredCapability: 'InventoryMaster',
-  },
-  {
-    jobType: 'invoicing.regulatoryStatus.reconcile',
-    label: 'Reconcile regulatory status',
-    description: 'Poll the tax authority for clearance status of submitted invoices.',
-    payloadFields: [
-      {
-        name: 'limit',
-        label: 'Max invoices',
-        required: false,
-        type: 'number',
-        defaultValue: '100',
-        placeholder: '100',
-      },
-    ],
-    requiredCapability: 'Invoicing',
-  },
-];
+type TriggerSyncDialogCopy = Messages['sync-jobs']['triggerSyncDialog'];
+
+function buildTriggerableJobs(copy: TriggerSyncDialogCopy): TriggerableJob[] {
+  const { fields, jobs } = copy;
+  return [
+    {
+      jobType: 'master.product.syncAll',
+      label: jobs.syncAllProducts.label,
+      description: jobs.syncAllProducts.description,
+      payloadFields: [],
+      requiredCapability: 'ProductMaster',
+    },
+    {
+      jobType: 'master.product.syncByExternalId',
+      label: jobs.syncProductById.label,
+      description: jobs.syncProductById.description,
+      payloadFields: [
+        { name: 'externalId', label: fields.externalId, required: true },
+        { name: 'objectType', label: fields.objectType, required: false, placeholder: 'product' },
+      ],
+      requiredCapability: 'ProductMaster',
+    },
+    {
+      jobType: 'master.inventory.syncAll',
+      label: jobs.syncAllInventory.label,
+      description: jobs.syncAllInventory.description,
+      payloadFields: [],
+      requiredCapability: 'InventoryMaster',
+    },
+    {
+      jobType: 'master.inventory.syncByExternalId',
+      label: jobs.syncInventoryById.label,
+      description: jobs.syncInventoryById.description,
+      payloadFields: [
+        { name: 'externalId', label: fields.externalId, required: true },
+        { name: 'objectType', label: fields.objectType, required: false, placeholder: 'product' },
+      ],
+      requiredCapability: 'InventoryMaster',
+    },
+    {
+      jobType: 'master.variants.autoMatch',
+      label: jobs.autoMatchVariants.label,
+      description: jobs.autoMatchVariants.description,
+      payloadFields: [],
+      requiredCapability: 'ProductMaster',
+    },
+    {
+      jobType: 'marketplace.offers.sync',
+      label: jobs.syncOffers.label,
+      description: jobs.syncOffers.description,
+      payloadFields: [
+        {
+          name: 'limit',
+          label: fields.pageLimit,
+          required: false,
+          type: 'number',
+          defaultValue: '100',
+          placeholder: '100',
+        },
+      ],
+      // OfferEventReader, not coarse OfferManager (#1498): only adapters with an
+      // offer-event journal (Allegro) can sync offers this way. Erli (reconciliation
+      // -first, #1096 skip) and WooCommerce (quantity-only write-back) would no-op.
+      requiredCapability: 'OfferEventReader',
+    },
+    {
+      jobType: 'marketplace.orders.poll',
+      label: jobs.pollOrders.label,
+      description: jobs.pollOrders.description,
+      payloadFields: [
+        {
+          name: 'cursorKey',
+          label: fields.cursorKey,
+          required: false,
+          defaultValueFactory: ({ platformType }) => `${platformType}.orders.lastEventId`,
+        },
+        {
+          name: 'limit',
+          label: fields.pageLimit,
+          required: false,
+          type: 'number',
+          defaultValue: '100',
+          placeholder: '100',
+        },
+      ],
+      // OrderSource, not OfferManager (#1498): this is an order-ingestion job —
+      // every order source (Allegro, Erli, WooCommerce, PrestaShop) runs it via
+      // its scheduler, so the manual trigger should match that set.
+      requiredCapability: 'OrderSource',
+    },
+    {
+      jobType: 'inventory.propagateToMarketplaces',
+      label: jobs.propagateInventory.label,
+      description: jobs.propagateInventory.description,
+      payloadFields: [
+        {
+          name: 'productId',
+          label: fields.productId,
+          required: true,
+          placeholder: 'ol_product_…',
+        },
+      ],
+      // Gated to InventoryMaster (the capability whose inventory it propagates) so it
+      // no longer leaks onto invoicing/shipping-only connections (KSeF, InPost). See #1474.
+      requiredCapability: 'InventoryMaster',
+    },
+    {
+      jobType: 'invoicing.regulatoryStatus.reconcile',
+      label: jobs.reconcileRegulatoryStatus.label,
+      description: jobs.reconcileRegulatoryStatus.description,
+      payloadFields: [
+        {
+          name: 'limit',
+          label: fields.maxInvoices,
+          required: false,
+          type: 'number',
+          defaultValue: '100',
+          placeholder: '100',
+        },
+      ],
+      requiredCapability: 'Invoicing',
+    },
+  ];
+}
 
 /** Build initial payload values from field defaults. */
 function buildDefaultValues(
@@ -169,14 +175,15 @@ export function TriggerSyncDialog({
   onOpenChange,
   submitDisabled = false,
 }: TriggerSyncDialogProps): ReactElement {
+  const copy = useMessages('sync-jobs').triggerSyncDialog;
   const triggerableJobs = useMemo(
     () =>
-      ALL_TRIGGERABLE_JOBS.filter(
+      buildTriggerableJobs(copy).filter(
         (job) =>
           !job.requiredCapability ||
           connection.supportedCapabilities.includes(job.requiredCapability),
       ),
-    [connection.supportedCapabilities],
+    [connection.supportedCapabilities, copy],
   );
 
   const [selectedJobType, setSelectedJobType] = useState(triggerableJobs[0]?.jobType ?? '');
@@ -221,7 +228,7 @@ export function TriggerSyncDialog({
     const errors: Record<string, string> = {};
     for (const field of selectedJob.payloadFields) {
       if (field.required && !payloadValues[field.name]?.trim()) {
-        errors[field.name] = `${field.label} is required`;
+        errors[field.name] = interpolate(copy.fieldRequired, { field: field.label });
       }
     }
     setFieldErrors(errors);
@@ -250,8 +257,12 @@ export function TriggerSyncDialog({
       onOpenChange(false);
       showToast({
         tone: 'success',
-        title: 'Sync job enqueued',
-        description: `"${selectedJob.label}" started for "${connection.name}". Job ID: ${result.jobId}`,
+        title: copy.toast.title,
+        description: interpolate(copy.toast.description, {
+          job: selectedJob.label,
+          connection: connection.name,
+          jobId: result.jobId,
+        }),
       });
     } catch {
       // Error displayed via enqueueSyncJob.error alert below.
@@ -261,29 +272,33 @@ export function TriggerSyncDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="trigger-sync-dialog">
-        <DialogTitle>Trigger sync</DialogTitle>
+        <DialogTitle>{copy.title}</DialogTitle>
         <DialogDescription>
-          Manually enqueue a sync job for <strong>{connection.name}</strong>.{' '}
+          {renderRich(
+            copy.description,
+            { strong: (chunks) => <strong>{chunks}</strong> },
+            { connection: connection.name },
+          )}{' '}
           <Link to="/jobs-logs" onClick={() => onOpenChange(false)} className="link">
-            View all jobs
+            {copy.viewAllJobs}
           </Link>
         </DialogDescription>
 
         <div className="trigger-sync-dialog__body">
           {enqueueSyncJob.error ? (
-            <Alert tone="error" title="Failed to enqueue job">
+            <Alert tone="error" title={copy.enqueueFailed}>
               {enqueueSyncJob.error.message}
             </Alert>
           ) : null}
 
           {!hasTriggers ? (
             <p className="trigger-sync-dialog__description muted-text" role="status">
-              No sync triggers available for this connection.
+              {copy.noTriggers}
             </p>
           ) : null}
 
           {hasTriggers ? (
-            <FormField label="Job type" name="jobType">
+            <FormField label={copy.jobType} name="jobType">
               <Select
                 value={selectedJobType}
                 onChange={(e) => handleJobTypeChange(e.target.value)}
@@ -305,7 +320,7 @@ export function TriggerSyncDialog({
           {selectedJob?.payloadFields.map((field) => (
             <FormField
               key={field.name}
-              label={field.required ? `${field.label} *` : field.label}
+              label={field.required ? interpolate(copy.requiredField, { field: field.label }) : field.label}
               name={field.name}
               error={fieldErrors[field.name]}
             >
@@ -324,9 +339,9 @@ export function TriggerSyncDialog({
 
         <DialogFooter>
           <Button tone="secondary" onClick={() => onOpenChange(false)} disabled={enqueueSyncJob.isPending}>
-            Cancel
+            {copy.cancel}
           </Button>
-          <ReadOnlyLock active={submitDisabled} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock active={submitDisabled} message={demoReadOnlyActionMessage()}>
             <Button
               tone="primary"
               onClick={() => void handleSubmit()}
@@ -334,7 +349,7 @@ export function TriggerSyncDialog({
                 enqueueSyncJob.isPending || intentKey === null || !hasTriggers || submitDisabled
               }
             >
-              {enqueueSyncJob.isPending ? 'Enqueuing…' : 'Trigger'}
+              {enqueueSyncJob.isPending ? copy.enqueuing : copy.trigger}
             </Button>
           </ReadOnlyLock>
         </DialogFooter>

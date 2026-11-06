@@ -32,7 +32,7 @@ import { automationQueryKeys, type AutomationRule } from '../../automation';
 import { connectionsQueryKeys } from '../../connections';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import type { BuyerEmailTemplate, BuyerEmailTemplateSettings } from '../api/buyer-emails.types';
-import { BUYER_EMAILS_COPY } from '../lib/buyer-emails.copy';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import {
   readBuyerEmailsSettings,
   withBuyerEmailsSettings,
@@ -80,7 +80,9 @@ export function useSaveBuyerEmailTemplateMutation(): UseMutationResult<
         });
       } catch (error) {
         throw new BuyerEmailSaveError(
-          BUYER_EMAILS_COPY.editor.saveSettingsFailed(messageOf(error)),
+          interpolate(getMessages('buyer-emails').editor.saveSettingsFailed, {
+            reason: messageOf(error),
+          }),
           'settings',
         );
       }
@@ -97,7 +99,9 @@ export function useSaveBuyerEmailTemplateMutation(): UseMutationResult<
           );
         } catch (error) {
           throw new BuyerEmailSaveError(
-            BUYER_EMAILS_COPY.editor.saveWordingFailed(messageOf(error)),
+            interpolate(getMessages('buyer-emails').editor.saveWordingFailed, {
+              reason: messageOf(error),
+            }),
             'wording',
           );
         }

@@ -29,11 +29,11 @@ import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { TimeDisplay } from '../../../shared/ui/time-display';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { useDemoMode } from '../../system';
 import { readBuyerNote } from '../api/buyer-note.schema';
 import type { OrderRecord } from '../api/orders.types';
 import { useMarkBuyerNoteReadMutation } from '../hooks/use-mark-buyer-note-read-mutation';
-import { BUYER_NOTE_COPY as COPY } from '../lib/buyer-note.copy';
 import { describeNoteActor } from '../lib/buyer-note-presentation';
 import { copyTextToClipboard } from '../lib/clipboard-write';
 import { BuyerNoteIcon } from './buyer-note-icon';
@@ -70,6 +70,8 @@ export function OrderBuyerNote({
   hasFulfilmentWork = false,
 }: OrderBuyerNoteProps): ReactElement | null {
   const view = readBuyerNote(order);
+  const COPY = useMessages('orders').buyerNote;
+  const format = useFormat();
   const { session } = useSession();
   const demoMode = useDemoMode();
   const write = useWriteAccess('orders:write', demoMode);
@@ -161,7 +163,7 @@ export function OrderBuyerNote({
           </span>
         ) : null}
         <span className="buyer-note__meta" data-testid="order-buyer-note-meta">
-          {COPY.meta(null)}
+          {COPY.meta}
           {placedAt !== null ? (
             <>
               {' · '}
@@ -230,7 +232,9 @@ export function OrderBuyerNote({
               setExpanded((value) => !value);
             }}
           >
-            {expanded ? COPY.showLess : COPY.showAll(countCharacters(view.text))}
+            {expanded ? COPY.showLess : interpolate(COPY.showAll, {
+                  characters: format.number(countCharacters(view.text)),
+                })}
           </Button>
         ) : null}
         {unread ? (
@@ -239,7 +243,7 @@ export function OrderBuyerNote({
           </StatusBadge>
         ) : (
           <StatusBadge tone="success" compact withDot data-testid="order-buyer-note-read-state">
-            {COPY.readBy(readActor)}
+            {readActor === null ? COPY.read : interpolate(COPY.readBy, { who: readActor })}
           </StatusBadge>
         )}
         {view.readAt !== null ? (

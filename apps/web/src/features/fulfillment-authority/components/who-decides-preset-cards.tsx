@@ -21,13 +21,10 @@ import type { AuthorityPreset, AuthorityPresetId } from '../api/who-decides.type
 import {
   PRESET_CARD_COPY,
   PRESET_CARD_ORDER,
-  PRESET_CURRENT_BADGE,
-  PRESET_BEST_IF_LABEL,
-  PRESET_UNAVAILABLE_BADGE,
   PRESET_UNAVAILABLE_REASON_COPY,
-  PRESET_UNAVAILABLE_REASON_FALLBACK,
+  WHO_DECIDES_LABELS,
   WHO_DECIDES_PAGE_COPY,
-} from '../lib/who-decides.copy';
+} from '../lib/who-decides-text';
 
 export interface WhoDecidesPresetCardsProps {
   presets: readonly AuthorityPreset[];
@@ -67,8 +64,8 @@ export function WhoDecidesPresetCards({
           const unavailable = !preset.available;
           const reason = preset.unavailableReason
             ? (PRESET_UNAVAILABLE_REASON_COPY[preset.unavailableReason] ??
-              PRESET_UNAVAILABLE_REASON_FALLBACK)
-            : PRESET_UNAVAILABLE_REASON_FALLBACK;
+              WHO_DECIDES_LABELS.unavailableReasonFallback)
+            : WHO_DECIDES_LABELS.unavailableReasonFallback;
 
           return (
             <label
@@ -96,17 +93,17 @@ export function WhoDecidesPresetCards({
                   <span className="who-decides-preset__title">{copy.title}</span>
                   {unavailable ? (
                     <StatusBadge tone="neutral" compact>
-                      {PRESET_UNAVAILABLE_BADGE}
+                      {WHO_DECIDES_LABELS.unavailable}
                     </StatusBadge>
                   ) : isSelected ? (
                     <StatusBadge tone="info" compact>
-                      {PRESET_CURRENT_BADGE}
+                      {WHO_DECIDES_LABELS.current}
                     </StatusBadge>
                   ) : null}
                 </span>
                 <span className="who-decides-preset__text">{copy.body}</span>
                 <span className="who-decides-preset__best">
-                  {PRESET_BEST_IF_LABEL} {copy.bestIf}
+                  {WHO_DECIDES_LABELS.bestIf} {copy.bestIf}
                 </span>
                 <span className="who-decides-preset__changes">
                   <strong>{copy.changesLabel}</strong> {copy.changes}

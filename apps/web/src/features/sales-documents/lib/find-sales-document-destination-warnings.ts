@@ -49,6 +49,7 @@ import type { Connection, ConnectionStatus } from '../../connections';
 import type { SalesDocumentRule } from '../api/sales-document-rules.types';
 import type { SalesDocumentRow } from '../api/sales-documents.types';
 import { deriveSalesDocumentRows, isActiveRoutable } from './derive-sales-document-rows';
+import { formatPlural, getLocale, getMessages } from '../../../shared/i18n';
 
 type InactiveConnectionStatus = Exclude<ConnectionStatus, 'active'>;
 
@@ -159,42 +160,36 @@ export function findSalesDocumentDestinationWarnings(
   return [...warningsByConnectionId.values()];
 }
 
-/**
- * The heading above a mixed alert, so it must hold for every reason the list can
- * carry — not just the common one. "is not issuing anything" is true of a
- * role-less destination and FALSE of the other two: a `not-active` connection may
- * carry a perfectly good role, and `unknown-connection` says nothing about roles
- * at all, so that wording contradicted the per-warning sentences beneath it
- * (review finding). "cannot route" is the property all three share.
- */
+/** Title for the warnings card: singular for exactly one destination. */
 export function describeSalesDocumentDestinationWarningTitle(count: number): string {
-  return count === 1
-    ? 'One destination cannot route'
-    : `${count} destinations cannot route`;
+  return formatPlural(count, getMessages('sales-documents').destinationWarnings.title, getLocale());
 }
 
-const INACTIVE_STATUS_COPY: Record<InactiveConnectionStatus, { state: string; remedy: string }> = {
-  disabled: { state: 'is disabled', remedy: 'Enable it' },
-  needs_reauth: { state: 'needs reconnecting', remedy: 'Reconnect it' },
-  error: { state: 'is in an error state', remedy: 'Fix the connection' },
-  archived: { state: 'is archived', remedy: 'Restore it' },
-};
+const INACTIVE_STATUS_KEY = {
+  disabled: 'disabled',
+  needs_reauth: 'needsReauth',
+  error: 'error',
+  archived: 'archived',
+} as const satisfies Record<InactiveConnectionStatus, string>;
 
+/**
+ * One sentence per destination: what is wrong with it, how many rules it
+ * strands, and the remedy for its status. A non-active connection gets its own
+ * remedy rather than the role one.
+ */
 export function describeSalesDocumentDestinationWarning(
   warning: SalesDocumentDestinationWarning,
 ): string {
-  const ruleText =
-    warning.affectedRuleCount === 1 ? 'the rule naming it' : `${warning.affectedRuleCount} rules naming it`;
-  const pronoun = warning.affectedRuleCount === 1 ? 'it' : 'them';
-
+  const copy = getMessages('sales-documents').destinationWarnings;
+  const count = warning.affectedRuleCount;
   switch (warning.reason) {
     case 'issues-nothing':
-      return `${warning.connectionName} is set to issue Nothing under Connected providers, so ${ruleText} cannot route. Give it a role, or point ${pronoun} elsewhere.`;
-    case 'not-active': {
-      const { state, remedy } = INACTIVE_STATUS_COPY[warning.status];
-      return `${warning.connectionName} ${state}, so ${ruleText} cannot route — auto-issuance only ever considers active connections. ${remedy}, or point ${pronoun} elsewhere.`;
-    }
+      return formatPlural(count, copy.issuesNothing, getLocale(), { name: warning.connectionName });
+    case 'not-active':
+      return formatPlural(count, copy.notActive[INACTIVE_STATUS_KEY[warning.status]], getLocale(), {
+        name: warning.connectionName,
+      });
     case 'unknown-connection':
-      return `${warning.connectionId} is not in your connections list, so ${ruleText} cannot route. Refresh the page — if it stays, point ${pronoun} at a live provider.`;
+      return formatPlural(count, copy.unknownConnection, getLocale(), { name: warning.connectionId });
   }
 }

@@ -12,7 +12,9 @@ import {
   normaliseReference,
   sectionOf,
 } from './bench-work-presentation';
-import { benchWorkCopy } from './bench-work.copy';
+import { getMessages } from '../../../shared/i18n';
+
+const benchWorkCopy = getMessages('bench').work;
 
 function work(over: Partial<BenchWork> = {}): BenchWork {
   return {

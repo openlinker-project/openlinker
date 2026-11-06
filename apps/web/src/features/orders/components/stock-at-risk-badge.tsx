@@ -26,7 +26,8 @@
  */
 import type { ReactNode } from 'react';
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import { STOCK_AT_RISK_BODY, stockAtRiskBadge } from '../lib/stock-at-risk-copy';
+import { stockAtRiskBadge } from '../lib/stock-at-risk';
+import { useStockAtRiskText } from '../hooks/use-stock-at-risk-text';
 import type { OrderReservationShortfall } from '../api/orders.types';
 
 export interface StockAtRiskBadgeProps {
@@ -55,7 +56,8 @@ export function StockAtRiskBadge({
   layout = 'stack',
   emptyFallback = null,
 }: StockAtRiskBadgeProps): ReactNode {
-  const badge = stockAtRiskBadge(shortfalls);
+  const text = useStockAtRiskText();
+  const badge = stockAtRiskBadge(shortfalls, text);
   if (badge === null) return emptyFallback;
 
   const content = (
@@ -71,7 +73,7 @@ export function StockAtRiskBadge({
       </StatusBadge>
       {/* The BODY only — the label is already rendered above, so repeating the
           whole title here would make assistive tech announce it twice. */}
-      <span className="sr-only">{STOCK_AT_RISK_BODY}</span>
+      <span className="sr-only">{text.copy.body}</span>
     </span>
   );
 

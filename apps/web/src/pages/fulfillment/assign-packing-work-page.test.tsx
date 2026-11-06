@@ -923,7 +923,7 @@ describe('the merged screen — the grouping axis', () => {
     });
 
     expect(
-      await screen.findByText('Drag moves a task between packers — switch to Packer to use it.')
+      await screen.findByText('Drag moves a task between packers - switch to Packer to use it.')
     ).toBeInTheDocument();
   });
 

@@ -17,12 +17,12 @@
  */
 import type { ReactElement } from 'react';
 import { useIsAdmin } from '../../../shared/auth/use-permission';
-import { useTranslation } from '../../../shared/i18n';
+import { useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useInvoiceMarketplaceUploadQuery } from '../hooks/use-invoice-marketplace-upload-query';
 import { useRetryMarketplaceUploadMutation } from '../hooks/use-retry-marketplace-upload-mutation';
-import { resolveMarketplaceUploadCopy } from '../lib/marketplace-upload-copy';
+import { resolveMarketplaceUploadCopy } from '../lib/marketplace-upload-status';
 
 interface InvoiceMarketplaceUploadStatusProps {
   invoiceId: string;
@@ -31,7 +31,7 @@ interface InvoiceMarketplaceUploadStatusProps {
 export function InvoiceMarketplaceUploadStatus({
   invoiceId,
 }: InvoiceMarketplaceUploadStatusProps): ReactElement | null {
-  const { t } = useTranslation();
+  const copy = useMessages('invoicing').invoice.marketplaceUpload;
   const isAdmin = useIsAdmin();
   const query = useInvoiceMarketplaceUploadQuery(invoiceId, true);
   const retry = useRetryMarketplaceUploadMutation();
@@ -39,10 +39,7 @@ export function InvoiceMarketplaceUploadStatus({
   if (query.isError) {
     return (
       <p className="text-muted" role="status" data-testid="marketplace-upload-unreadable">
-        {t(
-          'invoice.marketplaceUpload.unreadable',
-          'Could not read whether the document reached the marketplace.',
-        )}
+        {copy.unreadable}
       </p>
     );
   }
@@ -54,13 +51,13 @@ export function InvoiceMarketplaceUploadStatus({
   return (
     <div className="marketplace-upload" data-testid="marketplace-upload">
       {uploads.map((entry) => {
-        const copy = resolveMarketplaceUploadCopy(entry);
+        const status = resolveMarketplaceUploadCopy(entry);
         return (
           <div key={entry.targetConnectionId} className="marketplace-upload__row">
-            <StatusBadge tone={copy.tone} withDot>
-              {t(`invoice.marketplaceUpload.status.${entry.status}`, copy.label)}
+            <StatusBadge tone={status.tone} withDot>
+              {status.label}
             </StatusBadge>
-            <span className="text-muted">{copy.explanation}</span>
+            <span className="text-muted">{status.explanation}</span>
           </div>
         );
       })}
@@ -72,15 +69,13 @@ export function InvoiceMarketplaceUploadStatus({
             onClick={() => retry.mutate(invoiceId)}
             disabled={retry.isPending}
           >
-            {retry.isPending
-              ? t('invoice.marketplaceUpload.retrying', 'Queuing…')
-              : t('invoice.marketplaceUpload.retry', 'Try again')}
+            {retry.isPending ? copy.retrying : copy.retry}
           </Button>
         </div>
       ) : null}
       {retry.isError ? (
         <p className="text-muted" role="alert">
-          {t('invoice.marketplaceUpload.retryFailed', 'Could not queue another attempt.')}
+          {copy.retryFailed}
         </p>
       ) : null}
     </div>

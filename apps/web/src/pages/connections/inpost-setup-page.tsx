@@ -6,17 +6,22 @@
 import type { ReactElement } from 'react';
 import { InpostSetupForm } from '../../features/connections/components/inpost-setup-form';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { interpolate, useMessages } from '../../shared/i18n';
+import { usePlatform } from '../../shared/plugins';
 
 export function InpostSetupPage(): ReactElement {
+  const copy = useMessages('connections');
+  const page = copy.inpostSetupPage;
+  const platform = usePlatform('inpost')?.displayName ?? page.fallbackPlatform;
   return (
     <PageLayout
-      eyebrow="Integrations"
-      title="Connect InPost"
-      description="Provide your ShipX API token, organization id, and sender address. OpenLinker uses them to create InPost shipments and labels."
+      eyebrow={copy.setup.eyebrow}
+      title={interpolate(page.title, { platform })}
+      description={interpolate(page.description, { platform })}
       summary={
         <div className="toolbar__group">
-          <span className="toolbar-chip">ShipX API</span>
-          <span className="toolbar-chip">Guided setup</span>
+          <span className="toolbar-chip">{page.chip}</span>
+          <span className="toolbar-chip">{copy.setup.guidedSetup}</span>
         </div>
       }
     >

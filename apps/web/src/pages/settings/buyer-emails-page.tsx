@@ -22,18 +22,16 @@ import { AccessGate } from '../../shared/ui/access-gate';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { useToast } from '../../shared/ui/toast-provider';
 import { useConnectionsQuery, type Connection } from '../../features/connections';
+import { useMessages } from '../../shared/i18n';
 import {
-  BUYER_EMAILS_COPY,
-  BUYER_EMAIL_TEMPLATE_COPY,
   channelKindOf,
   readBuyerEmailsSettings,
+  templateCopy,
   templatesFor,
   useBuyerEmailRules,
   useSetBuyerEmailsEnabledMutation,
   type BuyerEmailTemplate,
 } from '../../features/buyer-emails';
-
-const COPY = BUYER_EMAILS_COPY.page;
 
 /** Buyer emails are about orders, so only a connection orders come from is offered. */
 function takesOrders(connection: Connection): boolean {
@@ -48,6 +46,7 @@ function ConnectionSettings({
   /** True only once the rules are read and this template has none; never on a failed read. */
   isRuleMissing: (template: BuyerEmailTemplate) => boolean;
 }): ReactElement {
+  const COPY = useMessages('buyer-emails').page;
   const { showToast } = useToast();
   const update = useSetBuyerEmailsEnabledMutation();
   const switchId = useId();
@@ -110,8 +109,8 @@ function ConnectionSettings({
               return (
                 <tr key={template} data-testid="buyer-email-template-row" data-template={template}>
                   <td>
-                    <strong>{BUYER_EMAIL_TEMPLATE_COPY[template].label}</strong>
-                    <p className="muted-text">{BUYER_EMAIL_TEMPLATE_COPY[template].description}</p>
+                    <strong>{templateCopy(template).label}</strong>
+                    <p className="muted-text">{templateCopy(template).description}</p>
                   </td>
                   <td>
                     {isRuleMissing(template) ? (
@@ -149,6 +148,7 @@ function ConnectionSettings({
 }
 
 export function BuyerEmailsPage(): ReactElement {
+  const COPY = useMessages('buyer-emails').page;
   const [searchParams, setSearchParams] = useSearchParams();
   const connectionsQuery = useConnectionsQuery();
   // A template with no seeded rule never sends, so the list must not call it "On".
@@ -161,8 +161,8 @@ export function BuyerEmailsPage(): ReactElement {
 
   return (
     <PageLayout
-      backTo={{ to: '/settings', label: 'Settings' }}
-      eyebrow="Settings"
+      backTo={{ to: '/settings', label: COPY.settings }}
+      eyebrow={COPY.settings}
       title={COPY.title}
       description={COPY.description}
     >

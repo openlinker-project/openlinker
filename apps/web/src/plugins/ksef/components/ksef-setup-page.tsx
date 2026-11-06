@@ -7,17 +7,19 @@
 import type { ReactElement } from 'react';
 import { KsefSetupForm } from './ksef-setup-form';
 import { PageLayout } from '../../../shared/ui/page-layout';
+import { useKsefMessages } from '../messages';
 
 export function KsefSetupPage(): ReactElement {
+  const copy = useKsefMessages().ksefSetupPage;
   return (
     <PageLayout
-      eyebrow="Integrations"
-      title="Connect KSeF"
-      description="Provide your KSeF environment, seller context, and authentication secret. OpenLinker uses them to clear invoices through the Polish national e-invoicing system."
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
       summary={
         <div className="toolbar__group">
-          <span className="toolbar-chip">e-Invoicing</span>
-          <span className="toolbar-chip">Guided setup</span>
+          <span className="toolbar-chip">{copy.chips.eInvoicing}</span>
+          <span className="toolbar-chip">{copy.chips.guided}</span>
         </div>
       }
     >

@@ -4,20 +4,21 @@
  * Capability-driven classification of the connections a product can be
  * *published* to, spanning both kinds of destination the unified "Publish
  * products" flow surfaces:
- *   - **marketplaces** — connections advertising the `OfferCreator`
+ *   - **marketplaces** - connections advertising the `OfferCreator`
  *     sub-capability (offer creation, e.g. Allegro / Erli), and
- *   - **online shops** — connections that have *enabled* the
+ *   - **online shops** - connections that have *enabled* the
  *     `ProductPublisher` capability (a `ShopProductManagerPort`, ADR-024,
  *     e.g. WooCommerce), which is config-gated and therefore keyed off
  *     `enabledCapabilities`, not `supportedCapabilities`.
  *
- * The kind is resolved purely from capabilities — never from a
- * `platformType` literal — so the grouped destination rail and the entry
+ * The kind is resolved purely from capabilities - never from a
+ * `platformType` literal - so the grouped destination rail and the entry
  * eligibility filters stay marketplace/shop-agnostic and open to future
  * plugins.
  *
  * @module apps/web/src/features/listings/lib
  */
+import type { Messages, ResolvedCopy } from '../../../shared/i18n';
 import type { Connection } from '../../connections';
 
 /** The two destination kinds the unified publish rail groups by. */
@@ -34,17 +35,20 @@ export interface PublishDestination {
   kind: PublishDestinationKind;
 }
 
+type ListingsCopy = ResolvedCopy<Messages['listings']>;
+
 /** Short, capability-driven hint rendered under each destination's name. */
-export const PUBLISH_DESTINATION_KIND_HINT: Record<PublishDestinationKind, string> = {
-  marketplace: 'Offer marketplace',
-  shop: 'Online shop',
-};
+export function publishDestinationKindHint(kind: PublishDestinationKind, copy: ListingsCopy): string {
+  return copy.publishDestinations.kindHint[kind];
+}
 
 /** Group heading for the destination rail, per kind. */
-export const PUBLISH_DESTINATION_GROUP_LABEL: Record<PublishDestinationKind, string> = {
-  marketplace: 'Marketplaces',
-  shop: 'Online shops',
-};
+export function publishDestinationGroupLabel(
+  kind: PublishDestinationKind,
+  copy: ListingsCopy,
+): string {
+  return copy.publishDestinations.groupLabel[kind];
+}
 
 /** Stable rail order: marketplaces first, then shops. */
 export const PUBLISH_DESTINATION_KIND_ORDER: readonly PublishDestinationKind[] = [

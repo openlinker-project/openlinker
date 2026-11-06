@@ -72,14 +72,10 @@ import { Button } from '../../../shared/ui/button';
 import { FormField } from '../../../shared/ui/form-field';
 import { InlineDisclosure } from '../../../shared/ui/inline-disclosure';
 import { Select } from '../../../shared/ui/select';
-import { useTranslation } from '../../../shared/i18n';
+import { interpolate, renderRich } from '../../../shared/i18n';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
 import { useBankAccountsQuery, usePickBankAccount } from '../../../features/connections';
-
-const PAYMENT_METHOD_LABELS: Record<'cash' | 'transfer', string> = {
-  cash: 'Cash',
-  transfer: 'Transfer',
-};
+import { useInfaktMessages } from '../messages';
 
 /**
  * Hosts of the two inFakt API environments, mirroring the BE
@@ -92,11 +88,6 @@ const INFAKT_SANDBOX_API_HOST = 'api.sandbox-infakt.pl';
 const INFAKT_PRODUCTION_API_HOST = 'api.infakt.pl';
 
 type InfaktEnvironmentValue = 'sandbox' | 'production';
-
-const ENVIRONMENT_LABELS: Record<InfaktEnvironmentValue, string> = {
-  sandbox: 'Sandbox',
-  production: 'Production',
-};
 
 /**
  * Which environment a legacy `config.baseUrl` override actually points at, or
@@ -123,12 +114,20 @@ export function InfaktStructuredSection({
   syncStructuredToJson,
   syncInfaktBankAccountToJson,
 }: StructuredConfigSectionProps): ReactElement {
-  const { t } = useTranslation();
+  const copy = useInfaktMessages().infaktStructuredSection;
+  const environmentLabels: Record<InfaktEnvironmentValue, string> = {
+    sandbox: copy.environment.sandbox,
+    production: copy.environment.production,
+  };
+  const paymentMethodLabels: Record<'cash' | 'transfer', string> = {
+    cash: copy.paymentMethod.cash,
+    transfer: copy.paymentMethod.transfer,
+  };
   const paymentMethod = form.watch('infaktPaymentMethod') ?? '';
   const isTransfer = paymentMethod === 'transfer';
   // Mirrors the adapter's own fallback (`config.defaultPaymentMethod ?? 'cash'`)
   // so the collapsed summary always reflects what will actually be sent.
-  const effectiveLabel = PAYMENT_METHOD_LABELS[isTransfer ? 'transfer' : 'cash'];
+  const effectiveLabel = paymentMethodLabels[isTransfer ? 'transfer' : 'cash'];
   const bankAccount = form.watch('infaktBankAccount') ?? null;
   // #2179 review, Important #1 - `baseUrl` is the generic host-structured
   // field (`EditConnectionForm` hydrates it from `connection.config.baseUrl`
@@ -151,9 +150,13 @@ export function InfaktStructuredSection({
   const clearBlocked = environmentAfterClear === null;
   const clearLabel = environmentAfterClear
     ? legacyEnvironment
-      ? `Clear override (keep ${ENVIRONMENT_LABELS[environmentAfterClear]})`
-      : `Clear override (use ${ENVIRONMENT_LABELS[environmentAfterClear]})`
-    : 'Clear override';
+      ? interpolate(copy.legacyOverride.clearKeep, {
+          environment: environmentLabels[environmentAfterClear],
+        })
+      : interpolate(copy.legacyOverride.clearUse, {
+          environment: environmentLabels[environmentAfterClear],
+        })
+    : copy.legacyOverride.clear;
 
   function clearLegacyBaseUrl(): void {
     if (environmentAfterClear === null) return;
@@ -172,7 +175,7 @@ export function InfaktStructuredSection({
   // for the eager-persist / abandon-safety invariant it enforces.
   const { pickAccount, isPending: bankAccountPickPending } = usePickBankAccount({
     connectionId: connection.id,
-    persistErrorHint: 'pick it again or use Save changes.',
+    persistErrorHint: copy.persistErrorHint,
   });
 
   function onBankAccountChange(accountId: string): void {
@@ -195,7 +198,7 @@ export function InfaktStructuredSection({
       {legacyBaseUrl ? (
         <Alert
           tone="warning"
-          title="Legacy Base URL override in effect"
+          title={copy.legacyOverride.title}
           action={
             <Button
               type="button"
@@ -208,24 +211,27 @@ export function InfaktStructuredSection({
             </Button>
           }
         >
-          This connection has a legacy Base URL override (<code>{legacyBaseUrl}</code>) that takes
-          precedence over Environment below - invoices keep going to that host until it's cleared,
-          even after picking a different Environment and saving.
+          {renderRich(
+            copy.legacyOverride.body,
+            { code: (text: string) => <code>{text}</code> },
+            { url: legacyBaseUrl },
+          )}{' '}
           {environmentAfterClear === null
-            ? " That host isn't one of inFakt's two API environments, so clearing it would fall back to Production and start issuing real invoices. Pick an Environment below first."
+            ? copy.legacyOverride.unknownHost
             : legacyEnvironment !== null
-              ? ` Clearing it keeps this connection on ${ENVIRONMENT_LABELS[legacyEnvironment]}, the environment that host already points at.`
-              : ` Clearing it switches this connection to ${ENVIRONMENT_LABELS[environmentAfterClear]}, the Environment picked below.`}
+              ? interpolate(copy.legacyOverride.keeps, {
+                  environment: environmentLabels[legacyEnvironment],
+                })
+              : interpolate(copy.legacyOverride.switches, {
+                  environment: environmentLabels[environmentAfterClear],
+                })}
         </Alert>
       ) : null}
       <FormField
-        label={t('infakt.settings.environment.label', 'Environment')}
+        label={copy.environment.label}
         name="infaktEnvironment"
         error={form.formState.errors.infaktEnvironment?.message}
-        description={t(
-          'infakt.settings.environment.description',
-          'inFakt API environment. Use Sandbox to test before switching to Production. Leaving this not set falls back to Production.',
-        )}
+        description={copy.environment.description}
       >
         <Select
           value={selectedEnvironment}
@@ -233,24 +239,17 @@ export function InfaktStructuredSection({
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.infaktEnvironment)}
         >
-          <option value="">{t('infakt.settings.environment.unset', '— not set —')}</option>
-          <option value="sandbox">
-            {t('infakt.settings.environment.sandbox', ENVIRONMENT_LABELS.sandbox)}
-          </option>
-          <option value="production">
-            {t('infakt.settings.environment.production', ENVIRONMENT_LABELS.production)}
-          </option>
+          <option value="">{copy.environment.unset}</option>
+          <option value="sandbox">{environmentLabels.sandbox}</option>
+          <option value="production">{environmentLabels.production}</option>
         </Select>
       </FormField>
-      <InlineDisclosure label="Payment method for invoice:" value={effectiveLabel}>
+      <InlineDisclosure label={copy.paymentMethod.disclosure} value={effectiveLabel}>
         <FormField
-          label="Default payment method"
+          label={copy.paymentMethod.label}
           name="infaktPaymentMethod"
           error={form.formState.errors.infaktPaymentMethod?.message}
-          description={
-            'Transfer needs a bank account on your inFakt account — without one, inFakt ' +
-            'rejects the invoice. Stay on Cash until you have added one in inFakt.'
-          }
+          description={copy.paymentMethod.description}
         >
           <Select
             value={paymentMethod}
@@ -258,26 +257,23 @@ export function InfaktStructuredSection({
             disabled={!configIsParseable}
             invalid={Boolean(form.formState.errors.infaktPaymentMethod)}
           >
-            <option value="cash">{PAYMENT_METHOD_LABELS.cash}</option>
-            <option value="transfer">{PAYMENT_METHOD_LABELS.transfer}</option>
+            <option value="cash">{paymentMethodLabels.cash}</option>
+            <option value="transfer">{paymentMethodLabels.transfer}</option>
           </Select>
         </FormField>
 
         {isTransfer ? (
           bankAccountsQuery.isLoading ? (
-            <p className="muted-text">Checking inFakt for bank accounts…</p>
+            <p className="muted-text">{copy.bankAccount.checking}</p>
           ) : bankAccountsQuery.isError ? (
-            <p className="muted-text">
-              Couldn't check inFakt for bank accounts — invoices will use whatever was last saved.
-            </p>
+            <p className="muted-text">{copy.bankAccount.checkFailed}</p>
           ) : bankAccountsQuery.data && bankAccountsQuery.data.length > 0 ? (
             <FormField
-              label="Bank account for Transfer invoices"
+              label={copy.bankAccount.label}
               name="infaktBankAccount"
               description={
                 bankAccount && !bankAccountsQuery.data.some((a) => a.id === bankAccount.id)
-                  ? `The saved account (${bankAccount.accountNumber}) no longer exists in inFakt — ` +
-                    'invoices keep stamping the saved snapshot until you pick a current account.'
+                  ? interpolate(copy.bankAccount.stale, { number: bankAccount.accountNumber })
                   : undefined
               }
             >
@@ -287,23 +283,23 @@ export function InfaktStructuredSection({
                 disabled={!configIsParseable || bankAccountPickPending}
               >
                 <option value="" disabled>
-                  Select a bank account…
+                  {copy.bankAccount.placeholder}
                 </option>
                 {bankAccountsQuery.data.map((account) => (
                   <option key={account.id} value={account.id}>
-                    {account.bankName} — {account.accountNumber}
-                    {account.isDefault ? ' (default in inFakt)' : ''}
+                    {interpolate(
+                      account.isDefault ? copy.bankAccount.optionDefault : copy.bankAccount.option,
+                      { bank: account.bankName, number: account.accountNumber },
+                    )}
                   </option>
                 ))}
               </Select>
             </FormField>
           ) : (
             <p className="muted-text">
-              No bank account is configured on this inFakt account, so{' '}
-              <strong>Transfer</strong> isn't viable yet. This connection's saved payment method
-              is still Transfer, so invoices may be rejected by inFakt - switch the payment
-              method to Cash above, or add a bank account in your inFakt settings and reload this
-              page to pick it.
+              {renderRich(copy.bankAccount.none, {
+                strong: (text: string) => <strong>{text}</strong>,
+              })}
             </p>
           )
         ) : null}

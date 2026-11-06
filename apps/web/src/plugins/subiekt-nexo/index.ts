@@ -17,6 +17,7 @@
  */
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
+import { getSubiektNexoMessages, subiektNexoMessages } from './messages';
 import { subiektNexoSetupRoute } from './subiekt-setup.route';
 import { SubiektCredentialsPanel } from './components/subiekt-credentials-panel';
 import { SubiektStructuredSection } from './components/subiekt-structured-section';
@@ -27,6 +28,7 @@ import { subiektConnectionConfig } from './subiekt-connection-config';
 
 export const subiektNexoPlugin: OpenLinkerPlugin = definePlugin({
   id: 'subiekt-nexo',
+  messages: subiektNexoMessages,
   platformType: 'subiekt-nexo',
   build: {
     routes: [subiektNexoSetupRoute],
@@ -34,12 +36,17 @@ export const subiektNexoPlugin: OpenLinkerPlugin = definePlugin({
   platform: {
     displayName: 'Subiekt nexo (Sfera bridge)',
     shortLabel: 'Subiekt nexo',
+    // Getters, not values: the card is read at render, so the copy follows
+    // the active language instead of freezing at module load.
     setupCard: {
       title: 'Subiekt nexo',
-      description:
-        'Issue invoices in Subiekt nexo through the OpenLinker Sfera bridge running on your Windows machine.',
+      get description(): string {
+        return getSubiektNexoMessages().plugin.setupCard.description;
+      },
       to: '/connections/new/subiekt-nexo',
-      badge: 'Sfera bridge',
+      get badge(): string {
+        return getSubiektNexoMessages().plugin.setupCard.badge;
+      },
     },
     capabilityDescriptors: SUBIEKT_CAPABILITY_DESCRIPTORS,
     connectionConfig: subiektConnectionConfig,

@@ -264,7 +264,7 @@ describe('OrdersListPage', () => {
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('Unable to load orders')).toBeInTheDocument();
-    expect(screen.getByText('Network error')).toBeInTheDocument();
+    expect(screen.getByText('The server said: Network error')).toBeInTheDocument();
   });
 
   it('should show empty state with a Manage connections CTA when no orders exist and no filter is active', async () => {
@@ -291,7 +291,7 @@ describe('OrdersListPage', () => {
       route: '/orders?health=needs_attention',
     });
 
-    expect(await screen.findByText('All clear — nothing needs your attention')).toBeInTheDocument();
+    expect(await screen.findByText('All clear - nothing needs your attention')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'View all orders' })).toBeInTheDocument();
   });
 
@@ -2490,7 +2490,7 @@ describe('OrdersListPage — hold surfacing (#2342)', () => {
 
     // Whatever `OrderHoldBadge` renders is what BOTH the desktop cell and the
     // mobile card show — one component, mounted twice.
-    expect(await screen.findByText('On hold — Stock shortfall')).toBeInTheDocument();
+    expect(await screen.findByText('On hold - Stock shortfall')).toBeInTheDocument();
   });
 
   it('should render no hold badge for an order that is not held', async () => {
@@ -2500,7 +2500,7 @@ describe('OrdersListPage — hold surfacing (#2342)', () => {
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     await screen.findAllByText('ALG-882414');
-    expect(screen.queryByText(/^On hold — /)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^On hold - /)).not.toBeInTheDocument();
   });
 
   it('should round-trip ?hold= through the URL and reset the offset', async () => {

@@ -114,6 +114,7 @@ import { Button } from '../../../shared/ui/button';
 import { EmptyValue } from '../../../shared/ui/empty-value';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { formatAmount } from '../../../shared/format/format-amount';
+import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { useNumberFormat } from '../../../shared/i18n/use-number-format';
 import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
 import type { ConnectionIngestionTrust } from '../api/analytics-trust.types';
@@ -147,7 +148,7 @@ import {
 import { AnalyticsKpiCard, type AnalyticsKpiDelta } from './analytics-kpi-card';
 import { GapMark } from './gap-mark';
 import { RecalculatingValue } from './recalculating-value';
-import { deriveCoverageRowCopy } from '../lib/data-coverage.copy';
+import { deriveCoverageRowCopy } from '../lib/data-coverage.lib';
 import type {
   AnalyticsCoverage,
   CoverageCategory,
@@ -155,15 +156,9 @@ import type {
 } from '../api/analytics-coverage.types';
 
 // The metrics spec defines Net Sales as NOV minus the value of returns
-// (docs/specs/metrics-analytics-dashboard.md § Net Sales) — quoted, not
-// paraphrased, per .claude/rules/analytics-metrics.md. NOV itself is now
-// real (net-sales tax-rate epic); this is the ONE remaining, distinct gap.
-const NET_SALES_RETURNS_GAP =
-  'Net Sales additionally subtracts the value of returns, and no return or refund entity exists anywhere in the repo yet — this figure is NOV (net order value), not yet Net Sales.';
-const RETURN_RATE_GAP =
-  'No return entity exists anywhere in the repo — nothing records a return or a refund.';
-const STAMPED_GAP =
-  'Order value is computed only from orders an FX rate has been stamped onto — recently ingested, not-yet-stamped orders are excluded from this figure until the FX stamp sweep reaches them.';
+// (docs/specs/metrics-analytics-dashboard.md § Net Sales). NOV itself is now
+// real (net-sales tax-rate epic); the returns subtraction is the ONE
+// remaining, distinct gap (`analyticsKpiStrip.gaps.netSalesReturns`).
 const RATIO_FORMAT_OPTIONS: Intl.NumberFormatOptions = {
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
@@ -241,6 +236,11 @@ export function AnalyticsKpiStrip({
   netGrossBasis = 'gross',
 }: AnalyticsKpiStripProps): ReactElement {
   const query = useSalesAnalyticsQuery(filters);
+  const analyticsCopy = useMessages('analytics');
+  const copy = analyticsCopy.analyticsKpiStrip;
+  const commonCopy = analyticsCopy.common;
+  const cards = copy.cards;
+  const plural = usePlural();
 
   // Computed and the second query issued UNCONDITIONALLY, before any early
   // return below — a hook call can never follow a conditional return.
@@ -263,9 +263,9 @@ export function AnalyticsKpiStrip({
   if (query.isLoading) {
     return (
       <LoadingState
-        eyebrow="Loading"
-        title="Loading sales figures"
-        message="Fetching revenue, orders and units for the selected range…"
+        eyebrow={copy.loading.eyebrow}
+        title={copy.loading.title}
+        message={copy.loading.message}
       />
     );
   }
@@ -273,9 +273,9 @@ export function AnalyticsKpiStrip({
   if (query.error) {
     return (
       <ErrorState
-        title="Unable to load sales figures"
+        title={copy.error.title}
         message={query.error.message}
-        action={<Button onClick={() => void query.refetch()}>Retry</Button>}
+        action={<Button onClick={() => void query.refetch()}>{copy.error.retry}</Button>}
       />
     );
   }
@@ -284,9 +284,9 @@ export function AnalyticsKpiStrip({
   if (!headline) {
     return (
       <ErrorState
-        title="Unable to load sales figures"
-        message="The server returned no data for this range."
-        action={<Button onClick={() => void query.refetch()}>Retry</Button>}
+        title={copy.error.title}
+        message={copy.error.noData}
+        action={<Button onClick={() => void query.refetch()}>{copy.error.retry}</Button>}
       />
     );
   }
@@ -346,7 +346,7 @@ export function AnalyticsKpiStrip({
   }
   const stampedGapVisible = headline.unconvertedCount > 0;
   const netExcludedVisible = headline.netExcludedCount > 0;
-  const netExcludedNote = `${headline.netExcludedCount} order(s) predate per-line tax rates or carry a line with an unresolvable rate, and are excluded from NOV.`;
+  const netExcludedNote = plural(headline.netExcludedCount, copy.gaps.netExcluded);
 
   // Currency/tax exclusion `GapMark`s (#2480, epic #2452 Phase 8) — a
   // category-specific title + click-to-open only when the coverage
@@ -366,7 +366,7 @@ export function AnalyticsKpiStrip({
   const currencyGapTitle =
     stampedGapVisible && currencyCoverageRow
       ? deriveCoverageRowCopy(currencyCoverageRow).sub
-      : STAMPED_GAP;
+      : copy.gaps.unconverted;
   const onOpenCurrencyGap =
     stampedGapVisible && currencyCoverageRow && onOpenCategory
       ? () => onOpenCategory('currency')
@@ -411,10 +411,10 @@ export function AnalyticsKpiStrip({
     headline.cancelledUnconvertedCount > 0 || headline.cancelledNetExcludedCount > 0;
   const cancelledValueGapTitle = [
     headline.cancelledUnconvertedCount > 0
-      ? `${headline.cancelledUnconvertedCount} cancelled order(s) have no current-era currency stamp and are not reflected in this value.`
+      ? plural(headline.cancelledUnconvertedCount, copy.gaps.cancelledUnconverted)
       : '',
     headline.cancelledNetExcludedCount > 0
-      ? `${headline.cancelledNetExcludedCount} cancelled order(s) carry a line with an unresolvable tax rate and are excluded from this VAT-exclusive value.`
+      ? plural(headline.cancelledNetExcludedCount, copy.gaps.cancelledNetExcluded)
       : '',
   ]
     .filter(Boolean)
@@ -434,14 +434,14 @@ export function AnalyticsKpiStrip({
   function renderNetSalesLabel(): ReactElement | string {
     return netSalesGapVisible ? (
       <>
-        Net sales{' '}
+        {commonCopy.netSales}{' '}
         <GapMark
           title={netSalesGapTitle()}
           onActivate={onOpenNetExcludedGap ?? onOpenCurrencyGap}
         />
       </>
     ) : (
-      'Net sales'
+      commonCopy.netSales
     );
   }
   const netRevenue = headline.netRevenue;
@@ -455,10 +455,10 @@ export function AnalyticsKpiStrip({
   function renderGmvLabel(): ReactElement | string {
     return stampedGapVisible ? (
       <>
-        GMV <GapMark title={currencyGapTitle} onActivate={onOpenCurrencyGap} />
+        {commonCopy.gmv} <GapMark title={currencyGapTitle} onActivate={onOpenCurrencyGap} />
       </>
     ) : (
-      'GMV'
+      commonCopy.gmv
     );
   }
   function renderGmvValue(): ReactElement {
@@ -471,9 +471,9 @@ export function AnalyticsKpiStrip({
           <span className="kpi-card__qualifier-rate">
             {gmvInlineRate
               ? formatAppliedRateLine(gmvInlineRate, rateFormat)
-              : "today's rate(s)"}
+              : copy.todaysRates}
             <AnalyticsInfotip
-              ariaLabel="About this conversion"
+              ariaLabel={copy.aboutConversion}
               definitions={gmvProvenanceDefinitions}
               align="end"
             />
@@ -490,7 +490,6 @@ export function AnalyticsKpiStrip({
     netGrossBasis === 'gross' ? renderNetSalesValue() : renderGmvValue();
 
   const trendDays = rangeDays(filters.from, filters.to);
-  const trendRangeLabel = trendDays === 1 ? 'the selected day' : `the last ${trendDays} days`;
 
   // Period-over-period deltas — `undefined` previousHeadline (not covered by
   // history, still loading, or failed to load) means every `buildDelta`
@@ -498,14 +497,13 @@ export function AnalyticsKpiStrip({
   // `GapMark` with `deltaGapReason`.
   const previousHeadline = previousCovered ? previousQuery.data?.headline : undefined;
   const previousTrendDays = rangeDays(previousRange.from, previousRange.to);
-  const deltaBasisLabel =
-    previousTrendDays === 1 ? 'vs the previous day' : `vs previous ${previousTrendDays} days`;
+  const deltaBasisLabel = plural(previousTrendDays, copy.delta.basis);
   const deltaGapReason = !previousCovered
     ? earliestOrderDate === null
-      ? 'No order history yet — nothing to compare against.'
-      : `Not enough order history to compare a full previous period — data starts ${earliestOrderDate.slice(0, 10)}.`
+      ? copy.delta.noHistory
+      : interpolate(copy.delta.notEnoughHistory, { date: earliestOrderDate.slice(0, 10) })
     : previousQuery.error
-      ? 'Unable to load the previous period for comparison.'
+      ? copy.delta.previousFailed
       : undefined;
 
   // A RATE MOVES IN POINTS, NOT IN PERCENT (design mockup) — "cancellation
@@ -522,14 +520,24 @@ export function AnalyticsKpiStrip({
     const deltaValue = opts.pp ? pointsDelta(current, previous) : percentDelta(current, previous);
     if (deltaValue === null) return null;
     const direction2 = deltaGlyphDirection(deltaValue);
-    const unit = opts.pp ? 'pp' : '%';
-    const spokenAmount = `${deltaFormat.format(Math.abs(deltaValue))} ${opts.pp ? 'percentage points' : 'percent'}`;
+    const value = deltaFormat.format(Math.abs(deltaValue));
+    const spoken = copy.delta.spoken;
+    const spokenTemplate =
+      direction2 === 'flat'
+        ? spoken.flat
+        : direction2 === 'up'
+          ? opts.pp
+            ? spoken.upPoints
+            : spoken.upPercent
+          : opts.pp
+            ? spoken.downPoints
+            : spoken.downPercent;
     return {
-      formatted: `${deltaFormat.format(Math.abs(deltaValue))}${opts.pp ? ' ' : ''}${unit}`,
+      formatted: interpolate(opts.pp ? copy.delta.points : copy.delta.percent, { value }),
       tone: deltaTone(deltaValue, direction),
       direction: direction2,
       basisLabel: deltaBasisLabel,
-      spokenText: `${direction2 === 'flat' ? 'unchanged' : `${direction2 === 'up' ? 'up' : 'down'} ${spokenAmount}`} versus the previous period`,
+      spokenText: interpolate(spokenTemplate, { value }),
     };
   }
 
@@ -571,27 +579,30 @@ export function AnalyticsKpiStrip({
     : null;
   const orderValueDeltaGapReason =
     !orderValueCurrenciesMatch && previousHeadline
-      ? 'The two periods are not stamped in the same reporting currency — a percentage between them would not be a real number.'
+      ? copy.delta.currencyMismatch
       : deltaGapReason;
 
   return (
-    <section className="status-strip status-strip--analytics" aria-label="Key sales figures">
+    <section className="status-strip status-strip--analytics" aria-label={copy.ariaLabel}>
       <AnalyticsKpiCard
-        label="Revenue"
-        infotipLabel="About the Revenue figures"
+        label={cards.revenue.label}
+        infotipLabel={cards.revenue.infotip}
         definitions={[
           {
-            term: 'Net Sales',
-            text: 'The value of product sales after discounts and after customer refunds, excluding VAT. Rendered here as NOV (net order value, before the returns subtraction) — the exact figure is what the metrics spec calls Net Sales once returns are also modeled.',
-            formula: 'Net order value (after discounts, excluding VAT) − Refunded value',
-            caveat: netExcludedVisible ? netExcludedNote : NET_SALES_RETURNS_GAP,
+            term: commonCopy.netSales,
+            text: cards.revenue.netSales.text,
+            formula: cards.revenue.netSales.formula,
+            caveat: netExcludedVisible ? netExcludedNote : copy.gaps.netSalesReturns,
           },
           {
-            term: 'GMV (Gross Merchandise Value)',
-            text: 'The value of non-cancelled, FX-stamped product items in orders placed during the selected period, in the reporting currency.',
+            term: cards.revenue.gmv.term,
+            text: cards.revenue.gmv.text,
             caveat: stampedGapVisible
-              ? `Cancelled orders and cancelled items are excluded. ${headline.unconvertedCount} of ${totalOrders} placed orders have not yet been FX-stamped and are omitted from this figure.`
-              : 'Cancelled orders and cancelled items are excluded. Returned/refunded items remain included.',
+              ? interpolate(cards.revenue.gmv.caveatUnconverted, {
+                  unconverted: numberFormat.format(headline.unconvertedCount),
+                  total: numberFormat.format(totalOrders),
+                })
+              : cards.revenue.gmv.caveat,
           },
         ]}
         metric={revenuePrimaryLabel}
@@ -600,7 +611,7 @@ export function AnalyticsKpiStrip({
         trend={{
           values: revenueTrend,
           tone: trendTone(revenueTrend),
-          ariaLabel: `GMV trend, ${trendRangeLabel}`,
+          ariaLabel: plural(trendDays, copy.trend.gmv),
         }}
         qualifiers={[
           {
@@ -611,64 +622,59 @@ export function AnalyticsKpiStrip({
       />
 
       <AnalyticsKpiCard
-        label="Orders"
-        infotipLabel="About the Orders figures"
+        label={cards.orders.label}
+        infotipLabel={cards.orders.infotip}
         definitions={[
-          {
-            term: 'Orders',
-            text: 'Every non-cancelled order placed during the selected period, across every connected channel.',
-          },
-          {
-            term: 'Avg. daily orders',
-            text: 'Orders divided by the number of days in the selected range.',
-          },
+          { term: cards.orders.ordersTerm, text: cards.orders.ordersText },
+          { term: cards.orders.avgDailyTerm, text: cards.orders.avgDailyText },
         ]}
-        metric="Placed orders"
+        metric={cards.orders.metric}
         value={numberFormat.format(totalOrders)}
         trend={{
           values: orderTrend,
           tone: trendTone(orderTrend),
-          ariaLabel: `Order count trend, ${trendRangeLabel}`,
+          ariaLabel: plural(trendDays, copy.trend.orders),
         }}
-        qualifiers={[{ label: 'Avg. daily', value: ratioFormat.format(avgDaily) }]}
+        qualifiers={[{ label: cards.orders.avgDaily, value: ratioFormat.format(avgDaily) }]}
         delta={ordersDelta}
         deltaGapReason={deltaGapReason}
       />
 
       <AnalyticsKpiCard
-        label="Order value"
-        infotipLabel="About the Order value figures"
+        label={cards.orderValue.label}
+        infotipLabel={cards.orderValue.infotip}
         definitions={[
           {
-            term: 'Average order value (AOV)',
+            term: cards.orderValue.averageTerm,
             text:
               netGrossBasis === 'net'
-                ? 'The VAT-exclusive value of every net-sales-eligible order placed in the period, divided by the number of such orders — a narrower cohort than Number of Orders (see the caveat below).'
-                : 'The gross value of every FX-stamped order placed in the period, divided by the number of FX-stamped orders it was computed from — the same order set as Number of Orders, minus the not-yet-stamped ones.',
+                ? cards.orderValue.averageTextNet
+                : cards.orderValue.averageTextGross,
             caveat:
               netGrossBasis === 'net'
                 ? netExcludedVisible
                   ? netExcludedNote
                   : undefined
                 : stampedGapVisible
-                  ? STAMPED_GAP
+                  ? copy.gaps.unconverted
                   : undefined,
           },
           {
-            term: 'Median order value',
+            term: cards.orderValue.medianTerm,
             text:
               netGrossBasis === 'net'
-                ? 'The middle VAT-exclusive value of every net-sales-eligible order in the range — less skewed by a handful of very large or very small orders than the average.'
-                : 'The middle gross value of every FX-stamped order in the range — less skewed by a handful of very large or very small orders than the average.',
+                ? cards.orderValue.medianTextNet
+                : cards.orderValue.medianTextGross,
           },
         ]}
         metric={
           stampedGapVisible ? (
             <>
-              Average <GapMark title={currencyGapTitle} onActivate={onOpenCurrencyGap} />
+              {cards.orderValue.metric}{' '}
+              <GapMark title={currencyGapTitle} onActivate={onOpenCurrencyGap} />
             </>
           ) : (
-            'Average'
+            cards.orderValue.metric
           )
         }
         headlineUnavailable={currencyRecalculating}
@@ -681,7 +687,7 @@ export function AnalyticsKpiStrip({
         }
         qualifiers={[
           {
-            label: 'Median',
+            label: cards.orderValue.median,
             value: currencyRecalculating ? (
               <RecalculatingValue />
             ) : (
@@ -694,39 +700,33 @@ export function AnalyticsKpiStrip({
       />
 
       <AnalyticsKpiCard
-        label="Units"
-        infotipLabel="About the Units figures"
+        label={cards.units.label}
+        infotipLabel={cards.units.infotip}
         definitions={[
-          {
-            term: 'Units sold',
-            text: 'Total item quantity across every non-cancelled order line in the selected period.',
-          },
-          { term: 'Units per order', text: 'Units sold divided by placed orders.' },
+          { term: cards.units.unitsSoldTerm, text: cards.units.unitsSoldText },
+          { term: cards.units.perOrderTerm, text: cards.units.perOrderText },
         ]}
-        metric="Units sold"
+        metric={cards.units.metric}
         value={numberFormat.format(totalUnitsSold)}
-        qualifiers={[{ label: 'Per order', value: ratioFormat.format(unitsRatio) }]}
+        qualifiers={[{ label: cards.units.perOrder, value: ratioFormat.format(unitsRatio) }]}
         delta={unitsDelta}
         deltaGapReason={deltaGapReason}
       />
 
       <AnalyticsKpiCard
-        label="Cancellations"
-        infotipLabel="About the Cancellations figures"
+        label={cards.cancellations.label}
+        infotipLabel={cards.cancellations.infotip}
         definitions={[
-          {
-            term: 'Cancelled orders',
-            text: 'Orders placed in the selected period that were subsequently cancelled — excluded from every revenue figure on this page.',
-          },
-          {
-            term: 'Cancellation rate',
-            text: 'Cancelled orders divided by all orders placed in the period, including the cancelled ones themselves.',
-          },
+          { term: cards.cancellations.cancelledTerm, text: cards.cancellations.cancelledText },
+          { term: cards.cancellations.rateTerm, text: cards.cancellations.rateText },
         ]}
-        metric="Cancellation rate"
+        metric={cards.cancellations.metric}
         value={pctFormat.format(cancelRate)}
         qualifiers={[
-          { label: 'Cancelled orders', value: numberFormat.format(headline.cancelledCount) },
+          {
+            label: cards.cancellations.cancelledOrders,
+            value: numberFormat.format(headline.cancelledCount),
+          },
           {
             // The one card whose COUNT and VALUE describe different cohorts
             // (#2668 review, SUGGESTION 12). `cancelledCount` is every
@@ -741,10 +741,10 @@ export function AnalyticsKpiStrip({
             // the two really do answer different questions.
             label: cancelledValueGapVisible ? (
               <>
-                Cancelled value <GapMark title={cancelledValueGapTitle} />
+                {cards.cancellations.cancelledValue} <GapMark title={cancelledValueGapTitle} />
               </>
             ) : (
-              'Cancelled value'
+              cards.cancellations.cancelledValue
             ),
             value: currencyRecalculating ? (
               <RecalculatingValue />
@@ -758,22 +758,22 @@ export function AnalyticsKpiStrip({
       />
 
       <AnalyticsKpiCard
-        label="Returns & refunds"
-        infotipLabel="About Returns & refunds"
+        label={cards.returns.label}
+        infotipLabel={cards.returns.infotip}
         definitions={[
           {
-            term: 'Returns & refunds',
-            text: 'No return or refund entity exists anywhere in the orders domain yet — this card has nothing to report.',
-            caveat: RETURN_RATE_GAP,
+            term: cards.returns.term,
+            text: cards.returns.text,
+            caveat: copy.gaps.returnRate,
           },
         ]}
         planned
         metric={
           <>
-            Return rate <GapMark title={RETURN_RATE_GAP} />
+            {cards.returns.metric} <GapMark title={copy.gaps.returnRate} />
           </>
         }
-        value={<EmptyValue label="No return/refund entity exists yet" />}
+        value={<EmptyValue label={cards.returns.empty} />}
       />
     </section>
   );

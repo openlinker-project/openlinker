@@ -17,7 +17,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { TimeDisplay } from '../../../shared/ui/time-display';
-import { getBcp47Locale, useTranslation } from '../../../shared/i18n';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { isSafeHttpUrl } from '../../../shared/lib/is-safe-http-url';
 import {
   parseOrderSnapshot,
@@ -27,7 +27,6 @@ import {
 import { invoiceBadge } from '../lib/order-row';
 import type { OrderRecord } from '../api/orders.types';
 import { OrderRowBuyerNote } from './order-row-buyer-note';
-import { BUYER_NOTE_COPY } from '../lib/buyer-note.copy';
 
 interface OrderRowDetailProps {
   order: OrderRecord;
@@ -94,12 +93,12 @@ export function OrderRowDetail({
   platformByConnection,
 }: OrderRowDetailProps): ReactElement {
   const parsed = parseOrderSnapshot(order.orderSnapshot);
-  const { locale } = useTranslation();
+  const orders = useMessages('orders');
+  const copy = orders.orderRowDetail;
+  const fields = copy.fields;
+  const format = useFormat();
   const currency = parsed.totals?.currency;
-  const formatPrice = (price: number): string =>
-    currency
-      ? new Intl.NumberFormat(getBcp47Locale(locale), { style: 'currency', currency }).format(price)
-      : price.toFixed(2);
+  const formatPrice = (price: number): string => format.money(price, currency);
 
   const sourcePlatform = platformByConnection.get(order.sourceConnectionId);
   const sourceLabel = channelLabel(sourcePlatform);
@@ -114,7 +113,7 @@ export function OrderRowDetail({
           source-marketplace deep link when the adapter supplied one. */}
       <div className="orders-detail__links">
         <Link className="orders-ext-link orders-ext-link--internal" to={`/orders/${order.internalOrderId}`}>
-          Order details <span aria-hidden="true" className="orders-ext-link__arrow">→</span>
+          {copy.orderDetailsLink} <span aria-hidden="true" className="orders-ext-link__arrow">→</span>
         </Link>
         {parsed.sourceExternalUrl && isSafeHttpUrl(parsed.sourceExternalUrl) ? (
           <a
@@ -124,7 +123,9 @@ export function OrderRowDetail({
             target="_blank"
             rel="noopener noreferrer"
           >
-            View on {sourceLabel ?? 'marketplace'}{' '}
+            {sourceLabel
+              ? interpolate(copy.viewOn, { channel: sourceLabel })
+              : copy.viewOnMarketplace}{' '}
             <span aria-hidden="true" className="orders-ext-link__arrow">
               ↗
             </span>
@@ -140,24 +141,24 @@ export function OrderRowDetail({
           most sources simply do not report an absent note. */}
       {order.hasBuyerNote !== true && order.buyerNoteState === 'unknown' ? (
         <div className="orders-detail__field orders-detail__field--wide">
-          <dt className="orders-detail__label">{BUYER_NOTE_COPY.rowFieldLabel}</dt>
+          <dt className="orders-detail__label">{orders.buyerNote.rowFieldLabel}</dt>
           <dd className="orders-detail__value text-muted" data-testid="order-row-buyer-note-unknown">
-            {BUYER_NOTE_COPY.listUnknownHint}
+            {orders.buyerNote.listUnknownHint}
           </dd>
         </div>
       ) : null}
 
-      <Field label="Order reference">
+      <Field label={fields.orderReference}>
         {parsed.orderNumber ? <span className="mono">{parsed.orderNumber}</span> : EMPTY}
       </Field>
-      <Field label="Internal ID">
+      <Field label={fields.internalId}>
         <span className="mono">{order.internalOrderId}</span>
       </Field>
-      <Field label="Placed">
+      <Field label={fields.placed}>
         {parsed.placedAt ? <TimeDisplay iso={parsed.placedAt} format="datetime" /> : EMPTY}
       </Field>
-      <Field label="Destination">{destLabel ?? EMPTY}</Field>
-      <Field label="Ship-by">
+      <Field label={fields.destination}>{destLabel ?? EMPTY}</Field>
+      <Field label={fields.shipBy}>
         {order.dispatchByAt ? (
           <span>
             <TimeDisplay iso={order.dispatchByAt} format="datetime" />
@@ -166,11 +167,11 @@ export function OrderRowDetail({
             {order.dispatchByEstimated ? (
               <span
                 className="text-muted"
-                aria-label="Estimated"
-                title="OpenLinker estimate - not a marketplace-confirmed deadline"
+                aria-label={copy.estimated.ariaLabel}
+                title={copy.estimated.title}
               >
                 {' '}
-                est.
+                {copy.estimated.label}
               </span>
             ) : null}
           </span>
@@ -178,7 +179,7 @@ export function OrderRowDetail({
           EMPTY
         )}
       </Field>
-      <Field label="Invoice">
+      <Field label={fields.invoice}>
         {parsed.invoice ? (
           <span className="orders-detail__invoice">
             <span>{invoiceBadge(parsed.invoice).label}</span>
@@ -193,7 +194,9 @@ export function OrderRowDetail({
 
       <div className="orders-detail__field orders-detail__field--wide">
         <dt className="orders-detail__label">
-          Items{parsed.items.length > 0 ? ` (${parsed.items.length})` : ''}
+          {parsed.items.length > 0
+            ? interpolate(fields.itemsWithCount, { count: format.number(parsed.items.length) })
+            : fields.items}
         </dt>
         <dd className="orders-detail__value">
           {parsed.items.length === 0 ? (
@@ -208,8 +211,8 @@ export function OrderRowDetail({
         </dd>
       </div>
 
-      <Field label="Shipping address">{formatAddress(parsed.shippingAddress)}</Field>
-      <Field label="Billing address">{formatAddress(parsed.billingAddress)}</Field>
+      <Field label={fields.shippingAddress}>{formatAddress(parsed.shippingAddress)}</Field>
+      <Field label={fields.billingAddress}>{formatAddress(parsed.billingAddress)}</Field>
     </dl>
   );
 }

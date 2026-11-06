@@ -53,6 +53,7 @@ export {
   ruleLabelFor,
   ruleSentenceFor,
   roundingLabelFor,
+  steepDeltaTooltip,
+  syncModeLabelFor,
   toRuleSummary,
-  STEEP_DELTA_TOOLTIP,
-} from './lib/price-change-copy';
+} from './lib/price-rule-labels';

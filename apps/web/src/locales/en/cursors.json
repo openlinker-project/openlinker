@@ -1,0 +1,36 @@
+{
+  "cursorsListPage": {
+    "caption": "Connection cursors",
+    "columns": {
+      "connectionId": "Connection ID",
+      "cursorKey": "Cursor Key",
+      "updatedAt": "Last Updated",
+      "value": "Value"
+    },
+    "description": "Sync cursor state per connection - track incremental sync positions.",
+    "empty": {
+      "filtered": "No cursors match the current filter.",
+      "none": "No sync cursors have been created yet. Cursors appear after the first sync job runs.",
+      "title": "No cursors found"
+    },
+    "error": {
+      "retry": "Retry",
+      "title": "Unable to load cursors"
+    },
+    "eyebrow": "Diagnostics",
+    "filter": {
+      "ariaLabel": "Filter by connection ID",
+      "placeholder": "Connection ID..."
+    },
+    "loading": {
+      "message": "Fetching cursor data...",
+      "title": "Loading cursors"
+    },
+    "pagination": {
+      "next": "Next",
+      "previous": "Previous",
+      "range": "Showing {from}-{to} of {total}"
+    },
+    "title": "Cursors"
+  }
+}

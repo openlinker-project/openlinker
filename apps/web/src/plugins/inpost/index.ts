@@ -14,6 +14,7 @@
  */
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
+import { getInpostMessages, inpostMessages } from './messages';
 import { InpostCredentialsPanel } from './components/inpost-credentials-panel';
 import { InpostStructuredSection } from './components/inpost-structured-section';
 import { InpostWebhookRunbook } from './components/inpost-webhook-runbook';
@@ -21,18 +22,24 @@ import { inpostSetupRoute } from './inpost-setup.route';
 
 export const inpostPlugin: OpenLinkerPlugin = definePlugin({
   id: 'inpost',
+  messages: inpostMessages,
   platformType: 'inpost',
   build: {
     routes: [inpostSetupRoute],
   },
   platform: {
     displayName: 'InPost',
+    // Getters, not values: the card is read at render, so the copy follows
+    // the active language instead of freezing at module load.
     setupCard: {
       title: 'InPost',
-      description:
-        'Connect an InPost ShipX courier account. You will need a ShipX API token and your organization id.',
+      get description(): string {
+        return getInpostMessages().plugin.setupCard.description;
+      },
       to: '/connections/new/inpost',
-      badge: 'ShipX API',
+      get badge(): string {
+        return getInpostMessages().plugin.setupCard.badge;
+      },
     },
     StructuredConfigSection: InpostStructuredSection,
     CredentialsPanel: InpostCredentialsPanel,

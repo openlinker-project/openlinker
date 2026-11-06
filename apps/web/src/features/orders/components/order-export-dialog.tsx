@@ -58,12 +58,12 @@ import {
 import {
   ORDER_EXPORT_BUILT_IN_PRESETS,
   ORDER_EXPORT_COLUMN_GROUPS,
-  formatExportCount,
   isOrderExportPiiColumn,
   narrowToExportColumns,
   orderExportFileName,
 } from '../lib/order-export-columns';
-import { ORDER_EXPORT_COPY as COPY } from '../lib/order-export.copy';
+import { interpolate, renderRich, useFormat, useMessages, usePlural } from '../../../shared/i18n';
+import { serverErrorText } from '../lib/server-error-text';
 
 type ExportScope = 'view' | 'selected' | 'range';
 
@@ -122,6 +122,11 @@ export function OrderExportDialog({
   onContinueInBackground,
 }: OrderExportDialogProps): ReactElement {
   const uid = useId();
+  const copy = useMessages('orders').orderExport;
+  const serverSaid = useMessages('orders').common.serverSaid;
+  const fmt = useFormat();
+  const plural = usePlural();
+  const formatExportCount = (value: number): string => fmt.number(value);
   const [format, setFormat] = useState<OrderExportFormatValue>('csv');
   const [scope, setScope] = useState<ExportScope>(initialScope);
   const [selection, setSelection] = useState<OrderExportColumnIdValue[]>([...ORDER_EXPORT_DEFAULT_COLUMNS]);
@@ -173,8 +178,11 @@ export function OrderExportDialog({
   const presetOptions = [
     ...ORDER_EXPORT_BUILT_IN_PRESETS.map((p) => ({
       id: p.id,
-      label: p.id === 'builtin:all' ? p.label : COPY.presetBuiltIn(p.label),
-      plainLabel: p.label,
+      label:
+        p.id === 'builtin:all'
+          ? copy.presets[p.labelKey]
+          : interpolate(copy.presetBuiltIn, { label: copy.presets[p.labelKey] }),
+      plainLabel: copy.presets[p.labelKey],
       columns: p.columns,
     })),
     ...savedPresets.map((p) => ({ ...p, plainLabel: p.label })),
@@ -291,43 +299,45 @@ export function OrderExportDialog({
   }
 
   const countText = (value: number | null): string =>
-    value === null ? COPY.counting : formatExportCount(value);
+    value === null ? copy.counting : formatExportCount(value);
 
   const summaryRows =
     effectiveScope === 'range'
-      ? COPY.summaryRowsUnknown
+      ? copy.summaryRowsUnknown
       : candidateCount === null
-        ? COPY.counting
-        : COPY.summaryRows(formatExportCount(candidateCount));
+        ? copy.counting
+        : plural(candidateCount, copy.summaryRows);
   const submitLabel = requestExport.isPending
-    ? COPY.submitting
+    ? copy.submitting
     : isLarge
-      ? COPY.submitBackground
+      ? copy.submitBackground
       : candidateCount === null
-        ? COPY.submitUnknown
-        : COPY.submitCount(formatExportCount(candidateCount), candidateCount === 1);
+        ? copy.submitUnknown
+        : plural(candidateCount, copy.submitCount);
 
   const fileName = run ? orderExportFileName(run, run.format) : null;
+  const kvColumnsValue = (n: number, preset: string | null): string =>
+    preset ? interpolate(copy.kvColumnsValue, { n: formatExportCount(n), preset }) : formatExportCount(n);
 
   let body: ReactNode;
   if (stage === 'form') {
     body = (
       <>
         <div className="dialog__header">
-          <DialogTitle>{COPY.title}</DialogTitle>
-          <DialogDescription>{COPY.description}</DialogDescription>
+          <DialogTitle>{copy.title}</DialogTitle>
+          <DialogDescription>{copy.description}</DialogDescription>
         </div>
         <div className="export-dialog__body">
           <div className="export-dialog__top">
             <div className="dialog-section">
-              <h3 className="dialog-section__head">{COPY.ordersHead}</h3>
-              <div className="marketplace-picker export-scope" role="radiogroup" aria-label={COPY.ordersGroupLabel}>
+              <h3 className="dialog-section__head">{copy.ordersHead}</h3>
+              <div className="marketplace-picker export-scope" role="radiogroup" aria-label={copy.ordersGroupLabel}>
                 <ScopeOption
                   name={`${uid}-scope`}
                   value="view"
                   picked={effectiveScope === 'view'}
-                  title={COPY.scopeView}
-                  hint={scopeDescription || COPY.scopeViewHintFallback}
+                  title={copy.scopeView}
+                  hint={scopeDescription || copy.scopeViewHintFallback}
                   count={countText(filteredCount)}
                   onPick={setScope}
                 />
@@ -336,11 +346,11 @@ export function OrderExportDialog({
                   value="selected"
                   picked={effectiveScope === 'selected'}
                   disabled={!hasSelection}
-                  title={COPY.scopeSelected}
+                  title={copy.scopeSelected}
                   hint={
                     hasSelection
-                      ? COPY.scopeSelectedHint(formatExportCount(selectedOrders.length), selectedOrders.length === 1)
-                      : COPY.scopeSelectedHintNone
+                      ? plural(selectedOrders.length, copy.scopeSelectedHint)
+                      : copy.scopeSelectedHintNone
                   }
                   count={formatExportCount(selectedOrders.length)}
                   onPick={setScope}
@@ -349,18 +359,18 @@ export function OrderExportDialog({
                   name={`${uid}-scope`}
                   value="range"
                   picked={effectiveScope === 'range'}
-                  title={COPY.scopeRange}
-                  hint={COPY.scopeRangeHint}
+                  title={copy.scopeRange}
+                  hint={copy.scopeRangeHint}
                   count=""
                   onPick={setScope}
                 />
               </div>
               {effectiveScope === 'range' ? (
                 <div className="export-scope__dates">
-                  <FormField label={COPY.placedFrom} name="export-placed-from">
+                  <FormField label={copy.placedFrom} name="export-placed-from">
                     <Input type="date" value={placedFrom} max={placedTo || undefined} onChange={(e) => { setPlacedFrom(e.target.value); }} />
                   </FormField>
-                  <FormField label={COPY.placedTo} name="export-placed-to">
+                  <FormField label={copy.placedTo} name="export-placed-to">
                     <Input type="date" value={placedTo} min={placedFrom || undefined} onChange={(e) => { setPlacedTo(e.target.value); }} />
                   </FormField>
                 </div>
@@ -368,25 +378,25 @@ export function OrderExportDialog({
             </div>
 
             <div className="dialog-section">
-              <h3 className="dialog-section__head">{COPY.fileHead}</h3>
+              <h3 className="dialog-section__head">{copy.fileHead}</h3>
               <div className="export-dialog__stack">
                 <div className="form-field">
-                  <span className="form-field__label" id={`${uid}-format`}>{COPY.format}</span>
+                  <span className="form-field__label" id={`${uid}-format`}>{copy.format}</span>
                   <SegmentedControl<OrderExportFormatValue>
                     aria-labelledby={`${uid}-format`}
                     value={format}
                     onChange={setFormat}
                     options={[
-                      { value: 'csv', label: COPY.formatCsv },
-                      { value: 'xlsx', label: COPY.formatXlsx },
+                      { value: 'csv', label: copy.formatCsv },
+                      { value: 'xlsx', label: copy.formatXlsx },
                     ]}
                   />
                 </div>
                 {format === 'csv' ? (
                   <div className="form-field">
-                    <span className="form-field__label">{COPY.separator}</span>
-                    <p className="export-dialog__fact">{COPY.separatorValue}</p>
-                    <p className="form-field__description">{COPY.separatorHint}</p>
+                    <span className="form-field__label">{copy.separator}</span>
+                    <p className="export-dialog__fact">{copy.separatorValue}</p>
+                    <p className="form-field__description">{copy.separatorHint}</p>
                   </div>
                 ) : null}
               </div>
@@ -395,16 +405,18 @@ export function OrderExportDialog({
 
           <div className="dialog-section">
             <h3 className="dialog-section__head">
-              {COPY.columnsHead}
-              <span className="mono tabular">{COPY.columnsCount(columns.length, ALL_COLUMN_COUNT)}</span>
+              {copy.columnsHead}
+              <span className="mono tabular">{interpolate(copy.columnsCount, { n: columns.length, total: ALL_COLUMN_COUNT })}</span>
             </h3>
             <div className="export-presets">
               <div className="export-presets__select">
-                <FormField label={COPY.preset} name="export-preset">
+                <FormField label={copy.preset} name="export-preset">
                   <Select value={presetId} onChange={(e) => { applyPreset(e.target.value); }}>
                     {presetOptions.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.id === presetId && presetEdited ? COPY.presetEdited(p.plainLabel) : p.label}
+                        {p.id === presetId && presetEdited
+                          ? interpolate(copy.presetEdited, { label: p.plainLabel })
+                          : p.label}
                       </option>
                     ))}
                   </Select>
@@ -412,14 +424,14 @@ export function OrderExportDialog({
               </div>
               {savingPreset ? null : (
                 <Button tone="ghost" className="button--sm" onClick={() => { setSavingPreset(true); }}>
-                  {COPY.saveAsPreset}
+                  {copy.saveAsPreset}
                 </Button>
               )}
               {savingPreset ? (
                 <div className="export-presets__save">
                   <Input
-                    aria-label={COPY.presetName}
-                    placeholder={COPY.presetName}
+                    aria-label={copy.presetName}
+                    placeholder={copy.presetName}
                     value={presetName}
                     autoFocus
                     onChange={(e) => { setPresetName(e.target.value); }}
@@ -433,16 +445,16 @@ export function OrderExportDialog({
                     onClick={savePreset}
                     disabled={!presetName.trim() || columns.length === 0 || createPreset.isPending}
                   >
-                    {COPY.savePreset}
+                    {copy.savePreset}
                   </Button>
                   <Button tone="ghost" className="button--sm" onClick={closeSaveRow}>
-                    {COPY.cancel}
+                    {copy.cancel}
                   </Button>
-                  {createPreset.isError ? <p className="form-field__error export-presets__note">{COPY.savePresetError}</p> : null}
+                  {createPreset.isError ? <p className="form-field__error export-presets__note">{copy.savePresetError}</p> : null}
                 </div>
               ) : null}
               {presetsQuery.isError ? (
-                <p className="form-field__description export-presets__note">{COPY.presetsLoadError}</p>
+                <p className="form-field__description export-presets__note">{copy.presetsLoadError}</p>
               ) : null}
             </div>
 
@@ -452,8 +464,10 @@ export function OrderExportDialog({
                 return (
                   <fieldset key={group.id}>
                     <legend>
-                      <span>{group.label}</span>
-                      <span className="mono tabular">{`${on}/${group.columns.length}`}</span>
+                      <span>{copy.columnGroups[group.id]}</span>
+                      <span className="mono tabular">
+                        {interpolate(copy.groupCount, { on, total: group.columns.length })}
+                      </span>
                     </legend>
                     {group.columns.map((id) => {
                       const locked = !includePii && isOrderExportPiiColumn(id);
@@ -470,49 +484,56 @@ export function OrderExportDialog({
                       );
                     })}
                     {group.id === 'buyer' && !includePii ? (
-                      <p className="export-columns__hint">{COPY.piiDisabledHint}</p>
+                      <p className="export-columns__hint">{copy.piiDisabledHint}</p>
                     ) : null}
                   </fieldset>
                 );
               })}
             </div>
-            {columns.length === 0 ? <p className="form-field__error export-columns__empty">{COPY.noColumns}</p> : null}
+            {columns.length === 0 ? <p className="form-field__error export-columns__empty">{copy.noColumns}</p> : null}
           </div>
 
           <div className="dialog-section">
-            <h3 className="dialog-section__head">{COPY.piiHead}</h3>
+            <h3 className="dialog-section__head">{copy.piiHead}</h3>
             <label className="export-pii">
               <input type="checkbox" checked={includePii} onChange={(e) => { togglePii(e.target.checked); }} />
               <span className="export-pii__text">
-                {COPY.piiToggle}
-                <span className="form-field__description">{COPY.piiToggleHint}</span>
+                {copy.piiToggle}
+                <span className="form-field__description">{copy.piiToggleHint}</span>
               </span>
             </label>
             {willContainPii ? (
-              <Alert tone="warning" title={COPY.piiWarningTitle} data-testid="order-export-pii-warning">
-                {COPY.piiWarningBody}
+              <Alert tone="warning" title={copy.piiWarningTitle} data-testid="order-export-pii-warning">
+                {copy.piiWarningBody}
               </Alert>
             ) : null}
           </div>
 
           {isLarge && candidateCount !== null ? (
-            <Alert tone="info" className="export-dialog__notice" title={COPY.largeTitle}>
-              {COPY.largeBody(formatExportCount(candidateCount), formatExportCount(ORDER_EXPORT_BACKGROUND_THRESHOLD))}
+            <Alert tone="info" className="export-dialog__notice" title={copy.largeTitle}>
+              {interpolate(copy.largeBody, {
+                count: formatExportCount(candidateCount),
+                limit: formatExportCount(ORDER_EXPORT_BACKGROUND_THRESHOLD),
+              })}
             </Alert>
           ) : null}
           {requestExport.isError ? (
             <Alert tone="error" className="export-dialog__notice">
-              {requestExport.error.message || COPY.startFailed}
+              {serverErrorText(serverSaid, requestExport.error.message, copy.startFailed)}
             </Alert>
           ) : null}
 
           <DialogFooter className="dialog__footer--split">
             <span className="text-muted mono tabular export-dialog__summary" data-testid="order-export-summary">
-              {`${summaryRows} · ${COPY.summaryColumns(columns.length)} · ${COPY.summaryFormat(format)}`}
+              {interpolate(copy.summary, {
+                rows: summaryRows,
+                columns: plural(columns.length, copy.summaryColumns),
+                format: format === 'xlsx' ? copy.summaryFormatXlsx : copy.summaryFormatCsv,
+              })}
             </span>
             <div className="dialog__footer-group">
               <Button tone="secondary" onClick={handleClose}>
-                {COPY.cancel}
+                {copy.cancel}
               </Button>
               <Button
                 tone="primary"
@@ -530,26 +551,26 @@ export function OrderExportDialog({
     body = (
       <>
         <div className="dialog__header">
-          <DialogTitle>{COPY.preparingTitle}</DialogTitle>
+          <DialogTitle>{copy.preparingTitle}</DialogTitle>
           <DialogDescription className="mono-text">{fileName}</DialogDescription>
         </div>
         <div className="export-progress" role="status" aria-live="polite">
-          <div className="publish-progress__track export-progress__track" role="progressbar" aria-label={COPY.preparingProgressLabel}>
+          <div className="publish-progress__track export-progress__track" role="progressbar" aria-label={copy.preparingProgressLabel}>
             <div className="publish-progress__fill export-progress__fill" />
           </div>
           <div className="export-progress__row">
             <span className="mono tabular">
-              {submitted?.expectedRows != null ? COPY.preparingRows(formatExportCount(submitted.expectedRows)) : ''}
+              {submitted?.expectedRows != null ? plural(submitted.expectedRows, copy.preparingRows) : ''}
             </span>
-            <span className="text-muted">{COPY.preparingStatus}</span>
+            <span className="text-muted">{copy.preparingStatus}</span>
           </div>
         </div>
         <div className="dialog__body">
-          <p>{COPY.preparingClose}</p>
+          <p>{copy.preparingClose}</p>
         </div>
         <DialogFooter>
           <Button tone="secondary" onClick={handleClose}>
-            {COPY.close}
+            {copy.close}
           </Button>
         </DialogFooter>
       </>
@@ -560,30 +581,30 @@ export function OrderExportDialog({
       <>
         <div className="dialog__header">
           <div className="export-heading-row">
-            <DialogTitle>{COPY.readyTitle}</DialogTitle>
-            <StatusBadge tone="success" compact withDot>{COPY.readyBadge}</StatusBadge>
+            <DialogTitle>{copy.readyTitle}</DialogTitle>
+            <StatusBadge tone="success" compact withDot>{copy.readyBadge}</StatusBadge>
           </div>
           <DialogDescription>
-            {COPY.readyDescription(formatExportCount(rows), rows === 1, submitted?.scope ?? 'view')}
+            {plural(rows, copy.readyDescription[submitted?.scope ?? 'view'])}
           </DialogDescription>
         </div>
         <KeyValueList
           items={[
-            { id: 'file', label: COPY.kvFile, mono: true, value: fileName },
-            { id: 'rows', label: COPY.kvRows, mono: true, value: formatExportCount(rows) },
+            { id: 'file', label: copy.kvFile, mono: true, value: fileName },
+            { id: 'rows', label: copy.kvRows, mono: true, value: formatExportCount(rows) },
             {
               id: 'columns',
-              label: COPY.kvColumns,
-              value: COPY.kvColumnsValue(submitted?.columnCount ?? columns.length, submitted?.presetLabel ?? null),
+              label: copy.kvColumns,
+              value: kvColumnsValue(submitted?.columnCount ?? columns.length, submitted?.presetLabel ?? null),
             },
             {
               id: 'pii',
-              label: COPY.kvPersonalData,
-              value: run.containsPii ? COPY.piiIncluded : COPY.piiNotIncluded,
+              label: copy.kvPersonalData,
+              value: run.containsPii ? copy.piiIncluded : copy.piiNotIncluded,
             },
             {
               id: 'until',
-              label: COPY.kvAvailableUntil,
+              label: copy.kvAvailableUntil,
               mono: true,
               value: <TimeDisplay iso={run.expiresAt} format="datetime" />,
             },
@@ -591,22 +612,22 @@ export function OrderExportDialog({
         />
         <div className="dialog__body">
           <p className="text-muted">
-            {COPY.readyAgainPrefix}
-            <Link to={ORDER_EXPORT_JOBS_PATH}>{COPY.jobsAndLogs}</Link>
-            {COPY.readyAgainSuffix}
+            {renderRich(copy.readyAgain, {
+              link: (text) => <Link to={ORDER_EXPORT_JOBS_PATH}>{text}</Link>,
+            })}
           </p>
-          {download.isError ? <Alert tone="error">{COPY.downloadFailed}</Alert> : null}
+          {download.isError ? <Alert tone="error">{copy.downloadFailed}</Alert> : null}
         </div>
         <DialogFooter>
           <Button tone="secondary" onClick={handleClose}>
-            {COPY.close}
+            {copy.close}
           </Button>
           <Button
             tone="primary"
             onClick={() => { download.mutate({ run }); }}
             disabled={download.isPending}
           >
-            {download.isPending ? COPY.downloading : COPY.download}
+            {download.isPending ? copy.downloading : copy.download}
           </Button>
         </DialogFooter>
       </>
@@ -615,32 +636,32 @@ export function OrderExportDialog({
     body = (
       <>
         <div className="dialog__header">
-          <DialogTitle>{COPY.errorTitle}</DialogTitle>
+          <DialogTitle>{copy.errorTitle}</DialogTitle>
           <DialogDescription className="mono-text">{fileName}</DialogDescription>
         </div>
         <div className="dialog__body">
-          <Alert tone="error" title={COPY.errorAlertTitle}>
-            {run.errorMessage ?? COPY.errorFallback}
+          <Alert tone="error" title={copy.errorAlertTitle}>
+            {run.errorMessage ?? copy.errorFallback}
           </Alert>
           <p className="text-muted">
-            {COPY.errorJobPrefix}
-            <Link to={ORDER_EXPORT_JOBS_PATH}>{COPY.jobsAndLogs}</Link>
-            {COPY.errorJobSuffix}
+            {renderRich(copy.errorJob, {
+              link: (text) => <Link to={ORDER_EXPORT_JOBS_PATH}>{text}</Link>,
+            })}
           </p>
           {requestExport.isError ? (
-            <Alert tone="error">{requestExport.error.message || COPY.startFailed}</Alert>
+            <Alert tone="error">{serverErrorText(serverSaid, requestExport.error.message, copy.startFailed)}</Alert>
           ) : null}
         </div>
         <DialogFooter className="dialog__footer--split">
           <Button tone="ghost" onClick={backToSettings}>
-            {COPY.changeSettings}
+            {copy.changeSettings}
           </Button>
           <div className="dialog__footer-group">
             <Button tone="secondary" onClick={handleClose}>
-              {COPY.close}
+              {copy.close}
             </Button>
             <Button tone="primary" onClick={handleTryAgain} disabled={requestExport.isPending}>
-              {requestExport.isPending ? COPY.submitting : COPY.tryAgain}
+              {requestExport.isPending ? copy.submitting : copy.tryAgain}
             </Button>
           </div>
         </DialogFooter>
