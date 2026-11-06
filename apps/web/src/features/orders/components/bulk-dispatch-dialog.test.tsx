@@ -177,7 +177,7 @@ describe('BulkDispatchDialog', () => {
 
     // Title reflects only the eligible count; the COD reason is visible.
     expect(screen.getByText('Dispatch 1 of 2 orders')).toBeInTheDocument();
-    expect(screen.getByText('COD — enter amount')).toBeInTheDocument();
+    expect(screen.getByText('COD - enter amount')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Dispatch 1 order' })).toBeEnabled();
   });
 

@@ -9,7 +9,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { OrderHoldBadge } from './order-hold-badge';
-import { HOLD_REASON_COPY, HoldReasonValues } from '../lib/order-hold.types';
+import { holdReasonCopy, HoldReasonValues } from '../lib/order-hold.types';
 
 afterEach(cleanup);
 
@@ -23,7 +23,7 @@ describe('OrderHoldBadge (#2342)', () => {
 
     for (const reason of HoldReasonValues) {
       const { unmount } = render(<OrderHoldBadge reason={reason} />);
-      expect(screen.getByText(`On hold — ${HOLD_REASON_COPY[reason].label}`)).toBeInTheDocument();
+      expect(screen.getByText(`On hold - ${holdReasonCopy(reason).label}`)).toBeInTheDocument();
       unmount();
     }
   });
@@ -33,9 +33,9 @@ describe('OrderHoldBadge (#2342)', () => {
     const wrapper = container.querySelector('.order-hold-badge');
     // WHY an order is held is the load-bearing half of this badge, so it is not
     // a hover-only nicety.
-    expect(wrapper).toHaveAttribute('title', HOLD_REASON_COPY['stock-shortfall'].hint);
+    expect(wrapper).toHaveAttribute('title', holdReasonCopy('stock-shortfall').hint);
     expect(container.querySelector('.sr-only')?.textContent).toContain(
-      HOLD_REASON_COPY['stock-shortfall'].hint,
+      holdReasonCopy('stock-shortfall').hint,
     );
   });
 
@@ -56,7 +56,7 @@ describe('OrderHoldBadge (#2342)', () => {
     // only because `deriveOrderLifecyclePhase` keys `held` off the same field,
     // an accident of a sibling derivation rather than a property here.
     render(<OrderHoldBadge reason="reason-from-a-newer-build" />);
-    expect(screen.getByText('On hold — reason-from-a-newer-build')).toBeInTheDocument();
+    expect(screen.getByText('On hold - reason-from-a-newer-build')).toBeInTheDocument();
   });
 
   it('should say it cannot classify an unrecognised reason rather than inventing a hint', () => {

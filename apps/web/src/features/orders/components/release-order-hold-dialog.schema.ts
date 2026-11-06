@@ -18,26 +18,21 @@
  */
 import { z } from 'zod';
 
-import { HOLD_NOTE_MAX_LENGTH } from './place-order-hold-dialog.schema';
-
-export interface ReleaseOrderHoldFormValues {
-  note?: string;
-}
+import type { HoldValidationCopy } from './order-form.types';
+import { HOLD_NOTE_MAX_LENGTH, holdNoteTooLongMessage } from './place-order-hold-dialog.schema';
 
 /**
  * @param noteRequired `true` when the hold was placed by a service, so a user
  *   releasing it must say why. Resolve it from `hold.placedByService !== null`.
+ * @param copy The `orders.holds.validation` copy for the active language.
  */
-export function buildReleaseOrderHoldSchema(noteRequired: boolean) {
-  const note = z
-    .string()
-    .max(HOLD_NOTE_MAX_LENGTH, `Keep the note under ${HOLD_NOTE_MAX_LENGTH} characters`)
-    .optional();
+export function buildReleaseOrderHoldSchema(noteRequired: boolean, copy: HoldValidationCopy) {
+  const note = z.string().max(HOLD_NOTE_MAX_LENGTH, holdNoteTooLongMessage(copy)).optional();
 
   return z.object({
     note: noteRequired
       ? note.refine((value) => (value ?? '').trim().length > 0, {
-          message: 'A note is required to release a hold OpenLinker placed automatically',
+          message: copy.releaseNoteRequired,
         })
       : note,
   });

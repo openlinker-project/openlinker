@@ -39,7 +39,7 @@ import {
 import { FormField } from '../../../shared/ui/form-field';
 import { Select } from '../../../shared/ui/select';
 import { Textarea } from '../../../shared/ui/textarea';
-import { HOLD_REASON_COPY, HoldReasonValues } from '../../orders';
+import { HoldReasonValues, holdReasonLabel } from '../../orders';
 import type { ApplyFulfillmentTaskActionRequest } from '../api/fulfillment.types';
 import { describeFulfillmentActionError } from '../lib/fulfillment-conflict';
 import {
@@ -139,7 +139,7 @@ export function FulfillmentTaskActionDialog({
               <Select {...form.register('reason')}>
                 {HoldReasonValues.map((value) => (
                   <option key={value} value={value}>
-                    {HOLD_REASON_COPY[value].label}
+                    {holdReasonLabel(value)}
                   </option>
                 ))}
               </Select>

@@ -96,7 +96,7 @@ test.describe('sales documents: order-detail panel (#2563 M10)', () => {
 
     // No rejection alert, no duplicate warning, no cross-kind block — this is
     // the plain "everything worked" filled state.
-    await expect(page.getByText('The authority rejected this transmission')).toHaveCount(0);
+    await expect(page.getByText('Clearance rejected this transmission')).toHaveCount(0);
     await expect(page.getByText('more than one connection')).toHaveCount(0);
   });
 
@@ -104,7 +104,7 @@ test.describe('sales documents: order-detail panel (#2563 M10)', () => {
     await gotoOrder(page, SEED_ORDER_IDS.invoiceAuthorityRejected);
     const slot = panel(page).locator('.doc-slot--filled');
     await expect(
-      slot.getByText('The authority rejected this transmission'),
+      slot.getByText('Clearance rejected this transmission'),
     ).toBeVisible();
     await expect(
       slot.getByText(

@@ -19,7 +19,10 @@
  */
 import type { ReactNode } from 'react';
 import { StatusBadge } from '../../../shared/ui/status-badge';
+import { interpolate, useMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import type { OrderOpenReturn } from '../api/orders.types';
+
+type OpenReturnBadgeCopy = ResolvedCopy<Messages['orders']>['openReturnBadge'];
 
 export interface OrderOpenReturnBadgeProps {
   /**
@@ -32,33 +35,35 @@ export interface OrderOpenReturnBadgeProps {
   emptyFallback?: ReactNode;
 }
 
-/** Presentation label for the derived return stage — mirrors returns spec § 3.2 narrative order. */
-const STAGE_LABEL: Record<string, string> = {
-  awaiting_parcel: 'awaiting parcel',
-  partially_received: 'partially received',
-  received_awaiting_disposition: 'awaiting disposition',
-  disposed: 'disposed',
-  not_returned: 'not returned',
-  declined: 'declined',
-};
+/**
+ * Presentation label for the derived return stage (returns spec § 3.2), or the
+ * raw value for a stage this build does not know.
+ */
+function stageLabel(stage: string, copy: OpenReturnBadgeCopy): string {
+  return Object.prototype.hasOwnProperty.call(copy.stages, stage)
+    ? copy.stages[stage as keyof OpenReturnBadgeCopy['stages']]
+    : stage;
+}
 
 export function OrderOpenReturnBadge({
   openReturn,
   layout = 'stack',
   emptyFallback = null,
 }: OrderOpenReturnBadgeProps): ReactNode {
+  const copy = useMessages('orders').openReturnBadge;
   if (!openReturn || openReturn.count === 0) return emptyFallback;
 
-  const stageLabel = STAGE_LABEL[openReturn.stage] ?? openReturn.stage;
-  const label = openReturn.count > 1 ? `Open return ×${openReturn.count}` : 'Open return';
-  const title = `${label} — ${stageLabel}`;
+  const stage = stageLabel(openReturn.stage, copy);
+  const label =
+    openReturn.count > 1 ? interpolate(copy.labelMany, { count: openReturn.count }) : copy.label;
+  const title = interpolate(copy.title, { label, stage });
 
   const content = (
     <span title={title}>
       <StatusBadge tone="neutral" withDot compact>
         {label}
       </StatusBadge>
-      <span className="sr-only">{stageLabel}</span>
+      <span className="sr-only">{stage}</span>
     </span>
   );
 

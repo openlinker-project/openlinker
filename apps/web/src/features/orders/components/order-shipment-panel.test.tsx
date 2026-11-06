@@ -553,7 +553,7 @@ describe('OrderShipmentPanel — action button matrix (§3.4)', () => {
     await screen.findByRole('button', { name: /^Cancel$/i });
     expect(screen.getByRole('button', { name: /^Cancel$/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /Mark dispatched/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /shipments:write permission/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /permission to manage shipments/i })).toBeDisabled();
     // Read-only actions stay available — `generated` + a labelPdfRef.
     expect(screen.getByRole('button', { name: /Download shipping label/i })).toBeEnabled();
   });

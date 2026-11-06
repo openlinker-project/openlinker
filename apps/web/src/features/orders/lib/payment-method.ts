@@ -6,19 +6,27 @@
  * ways. `unknown` and an absent value have no entry on purpose: a surface that
  * has nothing true to say renders nothing rather than "unknown".
  *
+ * The words come from the `orders` namespace, read when called so they follow
+ * the active language.
+ *
  * @module apps/web/src/features/orders/lib
  */
+import { getMessages } from '../../../shared/i18n';
 import type { PaymentMethod, PaymentStatus } from '../api/order-snapshot.schema';
-
-const PAYMENT_METHOD_LABEL: Partial<Record<PaymentMethod, string>> = {
-  online: 'Online payment',
-  bank_transfer: 'Bank transfer',
-  cash_on_delivery: 'Cash on delivery',
-};
 
 /** The label for a method the source positively identified, else `null`. */
 export function paymentMethodLabel(method: PaymentMethod | undefined): string | null {
-  return method === undefined ? null : (PAYMENT_METHOD_LABEL[method] ?? null);
+  const copy = getMessages('orders').paymentMethod;
+  switch (method) {
+    case 'online':
+      return copy.online;
+    case 'bank_transfer':
+      return copy.bankTransfer;
+    case 'cash_on_delivery':
+      return copy.cashOnDelivery;
+    default:
+      return null;
+  }
 }
 
 /**

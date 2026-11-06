@@ -1,18 +1,25 @@
 /**
- * Stock-at-risk copy tests (#2350).
+ * Stock-at-risk text tests (#2350).
  *
  * The builders are the single source AC1 rests on, so their edges are tested
  * here rather than only through the components that render them.
  */
 import { describe, expect, it } from 'vitest';
+import { formatPlural, getMessages } from '../../../shared/i18n';
 import {
-  STOCK_AT_RISK_BODY,
   shortfallItemLabel,
   stockAtRiskBadge,
   stockAtRiskCallout,
   stockAtRiskTitle,
-} from './stock-at-risk-copy';
+} from './stock-at-risk';
+import type { StockAtRiskText } from './stock-at-risk.types';
 import type { OrderReservationShortfall } from '../api/orders.types';
+
+const text: StockAtRiskText = {
+  copy: getMessages('orders').stockAtRisk,
+  plural: (count, forms, params) => formatPlural(count, forms, 'en', params),
+  number: (value) => String(value),
+};
 
 function shortfall(over: Partial<OrderReservationShortfall> = {}): OrderReservationShortfall {
   return {
@@ -47,15 +54,15 @@ describe('shortfallItemLabel', () => {
 
 describe('stockAtRiskTitle', () => {
   it('should return null for an empty list', () => {
-    expect(stockAtRiskTitle([])).toBeNull();
+    expect(stockAtRiskTitle([], text)).toBeNull();
   });
 
   it('should name the item for a single episode', () => {
-    expect(stockAtRiskTitle([shortfall()])).toBe('Short 2 × SKU-1');
+    expect(stockAtRiskTitle([shortfall()], text)).toBe('Short 2 × SKU-1');
   });
 
   it('should summarise for several episodes', () => {
-    expect(stockAtRiskTitle([shortfall(), shortfall({ episodeId: 'ep-2' })])).toBe(
+    expect(stockAtRiskTitle([shortfall(), shortfall({ episodeId: 'ep-2' })], text)).toBe(
       'Short stock on 2 items'
     );
   });
@@ -65,36 +72,45 @@ describe('stockAtRiskBadge', () => {
   it('should return null for an empty or absent list', () => {
     // Absence is indistinguishable from a failed projection, so neither may
     // produce a positive claim.
-    expect(stockAtRiskBadge([])).toBeNull();
-    expect(stockAtRiskBadge(undefined)).toBeNull();
+    expect(stockAtRiskBadge([], text)).toBeNull();
+    expect(stockAtRiskBadge(undefined, text)).toBeNull();
   });
 
   it('should be warning-toned: at risk is not broken', () => {
     // Reserving `error` for real failures is what keeps a red row meaning
     // outstanding work.
-    expect(stockAtRiskBadge([shortfall()])?.tone).toBe('warning');
+    expect(stockAtRiskBadge([shortfall()], text)?.tone).toBe('warning');
   });
 
   it('should carry the body sentence in its title', () => {
-    expect(stockAtRiskBadge([shortfall()])?.title).toContain(STOCK_AT_RISK_BODY);
+    expect(stockAtRiskBadge([shortfall()], text)?.title).toContain(text.copy.body);
   });
 });
 
 describe('stockAtRiskCallout', () => {
   it('should return null for an empty or absent list', () => {
-    expect(stockAtRiskCallout([])).toBeNull();
-    expect(stockAtRiskCallout(undefined)).toBeNull();
+    expect(stockAtRiskCallout([], text)).toBeNull();
+    expect(stockAtRiskCallout(undefined, text)).toBeNull();
   });
 
   it('should share its title with the badge', () => {
     const list = [shortfall()];
 
-    expect(stockAtRiskCallout(list)?.title).toBe(stockAtRiskBadge(list)?.label);
+    expect(stockAtRiskCallout(list, text)?.title).toBe(stockAtRiskBadge(list, text)?.label);
   });
 
   it('should list one line per episode', () => {
     const list = [shortfall(), shortfall({ episodeId: 'ep-2', sku: 'SKU-2' })];
 
-    expect(stockAtRiskCallout(list)?.lines).toHaveLength(2);
+    expect(stockAtRiskCallout(list, text)?.lines).toHaveLength(2);
+  });
+});
+
+describe('stock-at-risk English copy', () => {
+  it('should keep the shortfall sentences operators already read', () => {
+    const list = [shortfall(), shortfall({ episodeId: 'ep-2', sku: 'SKU-2' })];
+
+    expect(stockAtRiskCallout(list, text)?.lines[0]).toBe('SKU-1 - short 2 of 3 across all orders');
+    expect(stockAtRiskTitle([shortfall({ shortQuantity: 1 })], text)).toBe('Short 1 × SKU-1');
   });
 });

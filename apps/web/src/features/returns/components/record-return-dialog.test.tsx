@@ -131,7 +131,7 @@ describe('RecordReturnDialog', () => {
     expect(record).not.toHaveBeenCalled();
   });
 
-  it('should label the reason options with the operator-facing REFUND_REASON_LABELS, not the raw wire value', async () => {
+  it('should label the reason options with the operator-facing reason labels, not the raw wire value', async () => {
     renderDialog();
 
     const option = await screen.findByRole('option', { name: 'Item did not match the listing' });
