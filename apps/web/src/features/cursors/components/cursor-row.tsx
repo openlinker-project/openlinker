@@ -43,7 +43,7 @@ export function CursorRow({ view, showKeys, ago, formatWhen, onOpen }: CursorRow
   return (
     <button
       type="button"
-      className="sync-progress__row"
+      className="card-button-reset sync-progress__row"
       onClick={onOpen}
       aria-label={`${label}, ${health.label}. Show details`}
     >

@@ -97,7 +97,7 @@ export function CursorDetailPanel({
             </StatusBadge>
             <button
               type="button"
-              className="sync-progress__help-link"
+              className="card-button-reset sync-progress__help-link"
               onClick={() => {
                 onExplain(view.health.guideId);
               }}
@@ -122,7 +122,7 @@ export function CursorDetailPanel({
               {d.guideId ? (
                 <button
                   type="button"
-                  className="sync-progress__help-link"
+                  className="card-button-reset sync-progress__help-link"
                   onClick={() => {
                     if (d.guideId) onExplain(d.guideId);
                   }}
@@ -135,6 +135,9 @@ export function CursorDetailPanel({
               {view.progress.main}
               {view.progress.sub ? `. ${view.progress.sub}.` : '.'}
             </p>
+            {view.cursor.family ? (
+              <p className="sync-progress__hint">{SYNC_PROGRESS_COPY.kindLine[view.cursor.family]}</p>
+            ) : null}
           </section>
 
           <section className="sync-progress__detail-section">
@@ -153,7 +156,7 @@ export function CursorDetailPanel({
               {run ? (
                 <>
                   <dt>{S.lastRun}</dt>
-                  <dd>{S.lastRunValue(run.status !== 'dead', ago(run.at))}</dd>
+                  <dd>{S.lastRunValue(run.status, ago(run.at))}</dd>
                 </>
               ) : null}
             </dl>
@@ -175,7 +178,7 @@ export function CursorDetailPanel({
                 <h3>{S.fetchAgain}</h3>
                 <button
                   type="button"
-                  className="sync-progress__help-link"
+                  className="card-button-reset sync-progress__help-link"
                   onClick={() => {
                     onExplain('q-safe');
                   }}

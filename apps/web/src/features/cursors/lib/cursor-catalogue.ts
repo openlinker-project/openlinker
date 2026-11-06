@@ -30,7 +30,12 @@ interface Row {
   label: string;
   cadence: number | null;
   guideId: SyncGuideItemId | null;
-  /** Where the key says which platform owns it. */
+  /**
+   * The key's first segment names the platform whose feed it reads. Only true
+   * for order / offer / return FEEDS: the re-check keys are handler defaults
+   * every connection uses (`allegro.shipmentStatus.scanOffset` on an InPost
+   * connection is normal), so they say nothing about ownership.
+   */
   platformFromKey?: boolean;
   runNow?: (key: string) => CursorDescription['runNow'];
 }
@@ -48,10 +53,13 @@ const ROWS: readonly Row[] = [
   { match: /^[a-z]+\.orders\.[A-Za-z]+Cursor$/, label: L.newOrders, cadence: 10, guideId: 's-orders', platformFromKey: true, runNow: feed('marketplace.orders.poll') },
   { match: /^allegro\.offers\.lastEventId$/, label: L.offerChanges, cadence: 15, guideId: 's-offer-changes', platformFromKey: true, runNow: feed('marketplace.offers.sync') },
   { match: /^allegro\.customerReturns\.lastReturnId$/, label: L.newReturns, cadence: 30, guideId: 's-returns', platformFromKey: true, runNow: feed('marketplace.returns.poll') },
-  { match: /^allegro\.customerReturns\.scanOffset$/, label: L.openReturnsCheck, cadence: 60, guideId: 's-returns-check', platformFromKey: true, runNow: feed('marketplace.returns.statusSync') },
-  { match: /\.offerStatus\.scanOffset$/, label: L.listingStatus, cadence: 60, guideId: 's-listing-status', platformFromKey: true, runNow: feed('marketplace.offer.statusSync') },
-  { match: /\.shipmentStatus\.scanOffset$/, label: L.parcelTracking, cadence: 15, guideId: 's-parcel', platformFromKey: true, runNow: feed('marketplace.shipment.statusSync') },
-  { match: /^prestashop\.fulfillmentStatus\.scanOffset$/, label: L.shopOrderStatus, cadence: 30, guideId: 's-shop-status', platformFromKey: true, runNow: feed('marketplace.fulfillment.statusSync') },
+  { match: /^allegro\.customerReturns\.scanOffset$/, label: L.openReturnsCheck, cadence: 60, guideId: 's-returns-check', runNow: feed('marketplace.returns.statusSync') },
+  { match: /\.offerStatus\.scanOffset$/, label: L.listingStatus, cadence: 60, guideId: 's-listing-status', runNow: feed('marketplace.offer.statusSync') },
+  { match: /\.shipmentStatus\.scanOffset$/, label: L.parcelTracking, cadence: 15, guideId: 's-parcel', runNow: feed('marketplace.shipment.statusSync') },
+  { match: /^[a-z]+\.fulfillmentStatus\.scanOffset$/, label: L.shopOrderStatus, cadence: 30, guideId: 's-shop-status', runNow: feed('marketplace.fulfillment.statusSync') },
+  { match: /^destination\.taxonomy\.frontier/, label: L.categoryTree, cadence: null, guideId: 's-categories' },
+  { match: /^fulfillment\.unsubmitted\.after$/, label: L.unsentTasks, cadence: 60, guideId: 's-system' },
+  { match: /^fulfillment\.reroute\.after$/, label: L.rerouteCheck, cadence: 60, guideId: 's-system' },
   { match: /^sourceFulfillmentStatus\.scanOffset$/, label: L.channelOrderStatus, cadence: 30, guideId: 's-shop-status' },
   { match: /^shop\.productStatus\.scanOffset$/, label: L.shopProductStatus, cadence: 60, guideId: 's-listing-status' },
   { match: /^master\.product\.sweep:/, label: L.productCatalogue, cadence: 20, guideId: 's-catalogue', runNow: sweep('master.product.syncAll') },

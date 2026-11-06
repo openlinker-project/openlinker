@@ -160,7 +160,7 @@ export function SyncGuidePanel({ open, focusId, onOpenChange }: SyncGuidePanelPr
               <section key={s.id} className="sync-guide__section" data-open={isOpen}>
                 <button
                   type="button"
-                  className="sync-guide__section-head"
+                  className="card-button-reset sync-guide__section-head"
                   aria-expanded={isOpen}
                   aria-controls={`sync-guide-section-${s.id}`}
                   onClick={() => {
