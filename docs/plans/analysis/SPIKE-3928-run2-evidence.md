@@ -215,3 +215,79 @@ Stack: branch `3928-shopify-prototype` (prototype + PRs #3964/#3965/#3969 merged
 - UX: the variant panel shows "NEEDS ATTENTION / needs attention. Resolve this blocker..." twice without naming the blocker or the missing fields (Model, Kod producenta were the missing ones).
 - Per-variant data sent correctly: price 249 / 84.99 / 79.98, stock 6 / 10 (from Shopify), Rozmiar 42/43 and Kolor czarny/biały per variant, EAN per variant, Stan/Marka/Materiał/Model/Kod producenta from the shared base.
 - Allegro sandbox account is blocked for selling (`OfferAccessDeniedException`, `SellerAccountWithSellBlockadeException`). The batch page shows Allegro's Polish text per variant with a "Fix this one" button, although it is an account-level state. A new sandbox seller account is needed to continue.
+
+## Stage 2b (2026-11-05): offers on a second Allegro sandbox account
+
+The first sandbox account stayed blocked for selling (A26), so a second one was connected
+(`Allegro Sandbox 2`, seller 111254592). It was blocked too until the user cleared it; the offer
+block lifted before the product-proposal block, so two variants failed once more and passed on retry.
+
+- Category mappings and attribute rules copied to the new connection over the API (the UI page
+  still saves under the master id, #3993). Fulfillment routing set in the UI (Mappings >
+  Fulfillment): Paczkomaty InPost -> InPost, Kurier DPD -> DPD.
+- `stockLocationOverride` = MAIN on Shopify: the inventory sync wrote located rows and staled the
+  pooled ones (#2322 / #3206 repair works on a Shopify master).
+- Wizard: 3 products / 8 variants, per-variant price and stock correct, 8/8 READY after the
+  required parameters. Category search in "Change category" works.
+- **A22 again, with its effect:** the seed T-shirt EANs are a real Allegro catalogue card in
+  "Powerbanki" (252023). After the operator changed the category to T-shirty the rows read READY;
+  Allegro refused: `Kategoria oferty (87913) nie pasuje do kategorii produktu (252023)` and a wrong
+  Marka value. The wizard lets a card-linked variant take another category (A27).
+- **A28:** clearing the EAN in the variant panel shows OVERRIDDEN, but after Save all the master EAN
+  is back and `productCardId` stays in the request. The field help says clearing lists the offer
+  without a catalogue card.
+- **A29:** "Fix and resubmit" reopens the wizard with every edit lost (title, category, parameters).
+- **A30:** a combobox parameter (Materiał dominujący, 201017) is sent as `values` instead of
+  `valuesIds`.
+- **A31 (API only):** `POST /listings/bulk-create` without an explicit price gives every sibling of a
+  multi-variant product the product price (T-shirt L/M/S all 79.98 instead of 84.99 / 79.99 /
+  79.98). The wizard sends a per-variant price, so the UI path is correct.
+- **B20:** connecting an Allegro account with history reads the order journal from the start: 137
+  old orders for offers OpenLinker never listed, each retried 10 times (`Missing mapping`), holding
+  the realtime lane of that connection. Closed by hand to unblock the test.
+- Price change: Shopify price edit -> webhook -> OpenLinker in ~5 s -> price-change episode ->
+  accepted -> Allegro price in under a minute. The episode's "old" amount is the previous master
+  price, not the price on the channel.
+- Stock: one variant 6 -> 5 in Shopify -> the Allegro offer showed 5 in ~35 s.
+- The mug went `POLL_TIMEOUT`, then active through the refresh ladder (#1760).
+- The quick tunnel URL died ("Tunnel not found"); updates sent during the gap were lost, as Shopify
+  keeps delivering to the registered URL. Reinstalling the webhooks on the new URL fixed it.
+
+## Stage 4 (2026-11-05): real purchases on the second account
+
+Allegro events read from the adapter's raw feed log.
+
+| # | Purchase | Result |
+|---|---|---|
+| Z1 | mug, no NIP, paid | Receipt in-doubt after the device stayed PENDING; label failed (`ShipX network error: fetch failed`), job dead with no retry; master stock decrement `in_doubt` from the same network blip, never retried (Shopify 27 vs real 26) |
+| Z2 | 2 mugs, NIP, 97.93 | Rule NIP + < 450 zł -> receipt with NIP (eparagony). Label: locker `GIT01D` does not exist in the InPost sandbox (`target_point does_not_exist`), retried up to 10 times (#3987) |
+| Z3 | 2 pairs of Sneakers, NIP, 508.95 | Invoice inFakt issued, KSeF submitted. Label WAW13HO generated, tracking picked up by the InPost status sync. Parcel closed -> `PUT .../fulfillment` 204 (SENT) + `POST .../shipments` 201 with the InPost number within ~1 s |
+| Z4 | mug + Sneakers + T-shirt S x2 | Receipt; label WAW378M with tracking |
+| Z5 | bought, cancelled before payment | Never appeared in OpenLinker (B22) |
+| Z6 a/b/c (+2) | left unpaid | No document. Routed by the OMS anyway, work accepted, Shopify stock lowered by 5; label refused for missing address (B21) |
+| Z7 | paid, then cancelled | Never appeared in OpenLinker (B22) |
+
+- **Waybill to Allegro:** sent when the parcel is closed (bench or worklist), not when the label is
+  bought; a tracking number arriving while the shipment is still `generated` is not relayed.
+- **B22:** an order bought and cancelled inside one poll window (10 min) is never ingested: the feed
+  keeps the last event per checkout form, only `cancelled` is enqueued, and ingestion records a
+  "cancellation for unknown order" signal. Z7 was paid.
+- **B21:** unpaid orders are routed to the pack bench and lower master stock before payment.
+- Order `fd515df7` holds an accepted work and, at the same time, `fulfillmentBlockReason =
+  routing-already-live-elsewhere` written by a later re-ingestion.
+- **Receipts and the tax rate:** every receipt was refused at first: the lines carried no tax rate
+  (Shopify master states none, L-T2) and the eparagony connection had no `defaultTaxRateCode`.
+  After setting it to `A` (23%) and re-registering (`new-attempt`, #3965) the Bosch receipt
+  registered (210). With `OL_TAX_RATE_STRICT_ENABLED` off the adapter's "empty rate" arm is
+  reachable, which its own comment calls unreachable.
+- Stock master vs Allegro after all purchases: consistent except the mug (Z1 above).
+- A manual InPost status sync started with a copied Allegro payload stored its cursor under
+  `allegro.shipmentStatus.scanOffset` (same shape as #3991).
+
+## VAT rates from a Shopify master (L-T4)
+
+`draftOrderCalculate` computes tax for a variant and an address without creating an order and
+returns `taxLines{rate ratePercentage}`. This is the way to read a rate per product and country.
+The dev store has only a US region, so the probe returned no tax for PL, DE and US-NY; enabling
+Polish VAT and an 8% override is admin-UI only. Collection `VAT 8% - kubki` (with the mug) exists
+for that check.

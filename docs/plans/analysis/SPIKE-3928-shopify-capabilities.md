@@ -25,7 +25,8 @@ dev store, an Allegro sandbox seller, InPost, inFakt and eparagony sandboxes, an
 | Shopify alone | Shopify-own orders get no automatic documents | Blocked by core, not by Shopify (#3959) (S4) |
 
 **Shopify cannot**, and OpenLinker covers it: invoices and receipts (inFakt, KSeF, eparagony), Polish
-labels (InPost, DPD), a tax rate on products (orders do carry one, L-S4a), a locker id on orders
+labels (InPost, DPD), a stored tax rate on products (orders do carry one, L-S4a; a rate per variant
+and country can be computed with `draftOrderCalculate`, L-T4), a locker id on orders
 (L-O6; the adapter writes it into order attributes, the note and the shipping-line title, run 3).
 
 **What the production adapter needs** (sized from the prototype):
@@ -149,7 +150,7 @@ webhooks, retry and auth classification).
 |---|---|---|---|---|
 | `ModifiedProductLister` | A | Native, **with a union** | A stock change bumps `product.updatedAt` (and variant + level); a **variant price edit bumps only `variant.updatedAt`**, not the product. So the rung is `products(updated_at)` UNION `productVariants(updated_at)`, with a lookback longer than the ~10 s `updatedAt` lag. Better than WooCommerce and PrestaShop, which cannot see variant edits at all | **Live** L-M2 |
 | `BulkProductReader` | A | Native | `nodes(ids: [...])` batch read, or `bulkOperationRunQuery` (JSONL, ~3s for 43 objects) | Inherited E-M12 |
-| `ProductTaxRateReader` | A | Not possible | No rate exists anywhere in the Admin API: variants carry only `taxable`, the shop only `taxesIncluded` / `taxShipping`, and no query lists tax rates. Shopify computes tax per region at checkout. A Shopify master therefore cannot state a catalogue rate (ADR-063); options are a per-connection default rate, a product metafield the merchant fills, or reading the rate back from order `taxLines` (role C only) | **Live** L-T2 (schema scan) |
+| `ProductTaxRateReader` | A | Computed, not stored | No rate field exists in the Admin API (L-T2): Shopify works the rate out at sale time from the buyer's region, the store's tax settings and per-collection overrides. `draftOrderCalculate` (one variant, quantity 1, address of the connection's sales country) returns `taxLines` with `rate` / `ratePercentage` without creating an order, so the reader stays country-agnostic (US: state + zip). Tax lines come per order, not per line, so one variant per call; cache per variant + country. Live on the dev store it returns no tax lines because only the US region is set up there; not yet proven with a real 23% / 8% split (L-T4). Fallbacks: per-connection default rate (eparagony `defaultTaxRateCode`), or order `taxLines` for role C | **Live** L-T2, L-T4 (partial) |
 | `BulkInventoryReader` | A | Native | `inventoryItems` / `inventoryLevels` with location filter, or a bulk operation | Desk |
 
 ## 3. Listings sub-capabilities
@@ -315,6 +316,7 @@ What Shopify **does** have to supply for a correct document, to verify live:
 | L-R1 | `returnCreate` on #1005 (status `OPEN`): `order.updatedAt` unchanged after 20 s; `order.returnStatus` became `IN_PROGRESS` | The order feed is blind to returns |
 | L-R2 | `orders(query: "return_status:in_progress")` finds the order (search index, so lagged); `return_status:open` / `return_requested` find nothing. Webhook topics `RETURNS_REQUEST/APPROVE/PROCESS/DECLINE/CLOSE/CANCEL/REOPEN/UPDATE` exist | Return feed = webhook trigger + `return_status` backstop sweep |
 | L-T2 | Schema scan: no tax-rate field on product, variant, shop or any query; only `taxable`, `taxesIncluded`, `taxShipping` | ProductTaxRateReader not possible; see matrix row |
+| L-T4 | `draftOrderCalculate(lineItems:[{variantId, quantity:1}], shippingAddress:{countryCode:PL})` returns `taxLines{rate ratePercentage}` and `totalTaxSet` with no order created. On the dev store it answered 0 / no lines for PL, DE and US-NY: the store has only a US region (deprecated REST `countries.json` lists just `US`, all 0%). The Polish VAT region and an 8% override (collection `VAT 8% - kubki`, created) need the admin UI; no API mutation exists for tax regions or overrides | ProductTaxRateReader is feasible as a computed read; prove the 23/8 split on a store with PL VAT enabled before relying on it |
 | L-T3 | `collectionCreate` + `collectionAddProductsV2` (async job, `done: false`) and the product immediately lists the collection; `product.category` and `productType` are independent of it | Collections are the provisionable "category" for D |
 | L-P1 | Prototype in a real stack (`ol-shopify`, commit `191cc6d42` + fixes): connection test answers `OK - ol-dev-norbert (PLN, prices include tax)` in ~250 ms; the bootstrap catalogue sync brought 22 products with variants, EAN and gross prices (`T-shirt S 79.98`, `Sneakers 249.00`) in one `syncBatch` | ProductMaster works end to end through OL's own sweep; no Shopify-specific core change was needed |
 | L-P2 | The image build failed with `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND` until the root `Dockerfile` copied `libs/integrations/shopify/package.json` (two stages) and its `dist` | Every new integration package needs three `Dockerfile` lines; nothing in `check:invariants` catches the omission |
