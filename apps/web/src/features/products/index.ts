@@ -43,4 +43,3 @@ export {
   useCostSummaryQuery,
   COST_COVERAGE_DAYS,
 } from './hooks/use-cost-coverage-query';
-export { CostCoverageBanner } from './components/cost-coverage-banner';

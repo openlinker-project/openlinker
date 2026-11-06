@@ -49,7 +49,7 @@ export function SortMenu<K extends string>({
       <PopoverTrigger asChild>
         <Button tone="ghost" className="button--sm" aria-label={ariaLabel}>
           {interpolate(reversed ? copy.buttonReversed : copy.button, { label })}
-          <span className="filter-group__caret" aria-hidden="true">
+          <span className="joined-filters__caret" aria-hidden="true">
             {'▼'}
           </span>
         </Button>

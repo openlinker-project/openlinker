@@ -46,19 +46,19 @@ export function FilterDropdown<V extends string>({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className={['filter-group__btn', current ? 'filter-group__btn--on' : '']
+          className={['joined-filters__btn', current ? 'joined-filters__btn--on' : '']
             .filter(Boolean)
             .join(' ')}
         >
           {current ? (
             <>
-              <span className="filter-group__key">{label}</span>
-              <span className="filter-group__val">{current.label}</span>
+              <span className="joined-filters__key">{label}</span>
+              <span className="joined-filters__val">{current.label}</span>
             </>
           ) : (
             label
           )}
-          <span className="filter-group__caret" aria-hidden="true">
+          <span className="joined-filters__caret" aria-hidden="true">
             {'⌄'}
           </span>
         </button>
@@ -89,6 +89,6 @@ export function FilterDropdown<V extends string>({
 /** The joined button group the dropdowns and the "Filters" button sit in. */
 export function FilterGroup({ className = '', ...props }: ComponentPropsWithoutRef<'div'>): ReactElement {
   return (
-    <div role="group" className={['filter-group', className].filter(Boolean).join(' ')} {...props} />
+    <div role="group" className={['joined-filters', className].filter(Boolean).join(' ')} {...props} />
   );
 }
