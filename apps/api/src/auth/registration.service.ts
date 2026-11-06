@@ -28,6 +28,7 @@ import {
   USER_REPOSITORY_TOKEN,
 } from '@openlinker/core/users';
 import type { IRegistrationService } from './registration.service.interface';
+import { isRegistrationEnabled } from './registration-enabled';
 import { DEMO_MODE_SERVICE_TOKEN, type IDemoModeService } from './demo-mode.service.interface';
 import {
   EMAIL_CONFIRMATION_SERVICE_TOKEN,
@@ -59,8 +60,7 @@ export class RegistrationService implements IRegistrationService {
     clientIp?: string,
     analyticsConsent: boolean = false,
   ): Promise<void> {
-    const enabled = this.configService.get<string>('OL_REGISTRATION_ENABLED', 'false');
-    if (enabled.trim().toLowerCase() !== 'true') {
+    if (!isRegistrationEnabled((name) => this.configService.get<string>(name))) {
       throw new RegistrationDisabledException();
     }
 
