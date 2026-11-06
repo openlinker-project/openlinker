@@ -193,7 +193,7 @@
       "register": {
         "lead": "Po rejestracji przyślemy link aktywacyjny na Twój e-mail.",
         "pending": "Zakładam konto...",
-        "recording": "Sesje w demo nagrywamy (bez haseł), żeby wiedzieć, co poprawić. Zakładając konto, zgadzasz się na to.",
+        "recording": "Sesje w demo rejestrujemy (bez haseł), żeby wiedzieć, co poprawić. Zakładając konto, zgadzasz się na to.",
         "sentAction": "Przejdź do logowania",
         "sentLead": "Wysłaliśmy link na <b>{email}</b>. Kliknij go, a potem zaloguj się tutaj.",
         "sentTitle": "Sprawdź skrzynkę",
