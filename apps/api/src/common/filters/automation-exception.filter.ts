@@ -35,6 +35,7 @@
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { Catch, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
+import { withApiErrorCode } from '@openlinker/shared/errors';
 import {
   AutomationIllegalConditionFieldError,
   AutomationIllegalPairError,
@@ -71,12 +72,17 @@ export class AutomationExceptionFilter implements ExceptionFilter {
     const response = host.switchToHttp().getResponse<Response>();
     const statusCode = this.resolveStatus(exception);
 
-    response.status(statusCode).json({
-      statusCode,
-      error: exception.name,
-      message: exception.message,
-      ...this.detailsOf(exception),
-    });
+    response.status(statusCode).json(
+      withApiErrorCode(
+        {
+          statusCode,
+          error: exception.name,
+          message: exception.message,
+          ...this.detailsOf(exception),
+        },
+        statusCode
+      )
+    );
   }
 
   private resolveStatus(exception: AutomationRefusal): number {

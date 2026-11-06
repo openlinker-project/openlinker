@@ -27,6 +27,7 @@ describe('ConnectionExceptionFilter', () => {
     expect(status).toHaveBeenCalledWith(HttpStatus.NOT_FOUND);
     expect(json).toHaveBeenCalledWith({
       statusCode: HttpStatus.NOT_FOUND,
+      code: 'HTTP_404',
       error: 'ConnectionNotFoundException',
       message: expect.stringContaining('conn-1'),
     });
@@ -40,6 +41,7 @@ describe('ConnectionExceptionFilter', () => {
     expect(status).toHaveBeenCalledWith(HttpStatus.CONFLICT);
     expect(json).toHaveBeenCalledWith({
       statusCode: HttpStatus.CONFLICT,
+      code: 'HTTP_409',
       error: 'ConnectionDisabledException',
       message: expect.stringContaining('disabled'),
     });
@@ -57,6 +59,7 @@ describe('ConnectionExceptionFilter', () => {
     expect(status).toHaveBeenCalledWith(HttpStatus.CONFLICT);
     expect(json).toHaveBeenCalledWith({
       statusCode: HttpStatus.CONFLICT,
+      code: 'HTTP_409',
       error: 'ConnectionInUseException',
       message: expect.stringContaining('"Allegro PL"'),
       reason: 'master-catalog-referenced',
