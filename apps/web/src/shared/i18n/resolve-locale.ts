@@ -2,11 +2,13 @@
  * Locale resolution
  *
  * Decides which language the app opens in (ADR-081 decision 3): a `?lang=`
- * override (saved), then the operator's stored choice, then the deployment
- * default `VITE_DEFAULT_UI_LOCALE`, then `FALLBACK_LOCALE` (the same value an
- * unset variable gives). The browser language is
- * deliberately not consulted. Storage access is guarded because private
- * windows and blocked site data make it throw.
+ * override (saved), then the operator's stored choice, then the first language
+ * the browser asks for that the app ships (#3890), then the deployment default
+ * `VITE_DEFAULT_UI_LOCALE`, then `FALLBACK_LOCALE` (the same value an unset
+ * variable gives). The browser's answer is never stored: only the language
+ * switch stores, so an operator who changes their browser language sees it on
+ * the next session. Storage access is guarded because private windows and
+ * blocked site data make it throw.
  *
  * @module shared/i18n
  */
@@ -47,19 +49,57 @@ export function readQueryLocale(search: string): SupportedLocale | null {
   return normalizeLocaleTag(new URLSearchParams(search).get(LOCALE_QUERY_PARAM));
 }
 
+/**
+ * The first browser language the app ships, matched on the primary subtag
+ * (`pl-PL` is `pl`). A language the app does not ship is skipped rather than
+ * taken as an answer, so `['de-DE', 'en-US']` gives `en`.
+ */
+export function readBrowserLocale(languages: readonly string[]): SupportedLocale | null {
+  for (const language of languages) {
+    const locale = normalizeLocaleTag(language);
+    if (locale) return locale;
+  }
+  return null;
+}
+
+/**
+ * The browser's preferred languages, most preferred first: `navigator.languages`,
+ * or `navigator.language` when the list is empty. Empty when there is no
+ * navigator to ask.
+ */
+export function readNavigatorLanguages(): readonly string[] {
+  try {
+    if (typeof navigator === 'undefined') return [];
+    const list: unknown = navigator.languages;
+    if (Array.isArray(list) && list.length > 0) {
+      return list.filter((value): value is string => typeof value === 'string');
+    }
+    return typeof navigator.language === 'string' ? [navigator.language] : [];
+  } catch {
+    return [];
+  }
+}
+
 export interface ResolveLocaleInput {
   readonly search: string;
   readonly stored: SupportedLocale | null;
+  /** The browser's preferred languages, most preferred first. */
+  readonly browserLanguages: readonly string[];
   readonly deploymentDefault: string | undefined;
 }
 
 export function resolveLocale({
   search,
   stored,
+  browserLanguages,
   deploymentDefault,
 }: ResolveLocaleInput): SupportedLocale {
   return (
-    readQueryLocale(search) ?? stored ?? normalizeLocaleTag(deploymentDefault) ?? FALLBACK_LOCALE
+    readQueryLocale(search) ??
+    stored ??
+    readBrowserLocale(browserLanguages) ??
+    normalizeLocaleTag(deploymentDefault) ??
+    FALLBACK_LOCALE
   );
 }
 
@@ -87,7 +127,12 @@ export function resolveInitialLocale(deploymentDefault: string | undefined): Sup
     stripQueryLocale();
     return fromQuery;
   }
-  return resolveLocale({ search: '', stored: readStoredLocale(), deploymentDefault });
+  return resolveLocale({
+    search: '',
+    stored: readStoredLocale(),
+    browserLanguages: readNavigatorLanguages(),
+    deploymentDefault,
+  });
 }
 
 /**
