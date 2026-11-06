@@ -10,11 +10,12 @@
  *
  * @module apps/api/src/bench/http/dto
  */
-import { BadRequestException } from '@nestjs/common';
+import { HttpStatus } from '@nestjs/common';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsInt, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
 
 import type { BenchReplaceLabelParcel } from '../../application/types/bench-label.types';
+import { codedHttpError } from '../../../common/errors/coded-http.exception';
 
 /** Generous carrier ceilings; the carrier's own preflight is the real limit. */
 export const REPLACE_LABEL_MAX_DIMENSION_MM = 3000;
@@ -75,7 +76,9 @@ export function toReplaceLabelParcel(dto: ReplaceLabelDto): BenchReplaceLabelPar
   if (template === undefined && !hasBox && weightGrams !== undefined) {
     return { kind: 'weight', weightGrams };
   }
-  throw new BadRequestException(
+  throw codedHttpError(
+    HttpStatus.BAD_REQUEST,
+    'BENCH_LABEL_PARCEL_AMBIGUOUS',
     'Send exactly one of: { template }, { lengthMm, widthMm, heightMm, weightGrams }, { weightGrams }'
   );
 }

@@ -37,7 +37,7 @@
  *
  * @module apps/api/src/bench/http
  */
-import { Controller, Get, Inject, Post, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Inject, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ROLE_PERMISSIONS } from '@openlinker/core/users';
 
@@ -61,6 +61,7 @@ import {
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
+import { benchPackerUnidentified } from './bench-errors';
 
 @ApiBearerAuth()
 @ApiTags('bench')
@@ -104,7 +105,7 @@ export class BenchWorkController {
     @CurrentUser() user: AuthenticatedUser
   ): Promise<BenchClaimNextResultResponseDto> {
     if (!user?.id) {
-      throw new UnauthorizedException('A claim must name the packer');
+      throw benchPackerUnidentified('A claim must name the packer');
     }
     return this.toClaimNextDto(await this.bench.claimNext(user.id, this.supervises(user)));
   }

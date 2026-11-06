@@ -27,17 +27,16 @@
  * @module apps/api/src/fulfillment/http
  */
 import {
-  BadRequestException,
   ConflictException,
   Controller,
   Get,
   Inject,
-  NotFoundException,
   Param,
   Patch,
   Post,
   Query,
   Body,
+  HttpStatus,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -100,6 +99,7 @@ import {
 import { FulfillmentWorkShipmentResponseDto } from './dto/fulfillment-work-shipment-response.dto';
 import { ListFulfillmentWorksQueryDto } from './dto/list-fulfillment-works-query.dto';
 import { UpdateFulfillmentWorkAssignmentDto } from './dto/update-fulfillment-work-assignment.dto';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 /**
  * The page's human-readable facts, resolved once (#3426).
@@ -377,9 +377,12 @@ export class FulfillmentWorkController {
     // Validated against the SAME constant the read model filters with, so a
     // client can never be offered an action this route would reject.
     if (!isOperatorInvocableAction(action)) {
-      throw new BadRequestException(
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'FULFILLMENT_ACTION_UNSUPPORTED',
         `'${action}' is not an operator-invocable fulfilment action; ` +
-          `invocable: ${OPERATOR_INVOCABLE_ACTIONS.join(', ')}`
+          `invocable: ${OPERATOR_INVOCABLE_ACTIONS.join(', ')}`,
+        { action, supported: OPERATOR_INVOCABLE_ACTIONS.join(', ') }
       );
     }
 
@@ -527,29 +530,75 @@ export class FulfillmentWorkController {
     // Both are 400 — a malformed request, not a state conflict — but they are
     // different facts: an action this surface does not execute, versus an
     // action it does execute called without a field it needs.
-    if (
-      error instanceof UnsupportedFulfillmentWorkActionError ||
-      error instanceof MissingFulfillmentWorkActionFieldError ||
-      error instanceof EmptyFulfillmentWorkAssignmentUpdateError
-    ) {
-      return new BadRequestException(error.message);
+    if (error instanceof UnsupportedFulfillmentWorkActionError) {
+      return codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'FULFILLMENT_ACTION_UNSUPPORTED',
+        error.message,
+        {
+          action: error.action,
+          supported: error.invocableActions.join(', '),
+        }
+      );
     }
-    if (
-      error instanceof FulfillmentWorkNotFoundError ||
-      error instanceof FulfillmentHoldNotFoundError
-    ) {
-      return new NotFoundException(error.message);
+    if (error instanceof MissingFulfillmentWorkActionFieldError) {
+      return codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'FULFILLMENT_ACTION_FIELD_MISSING',
+        error.message,
+        {
+          action: error.action,
+          field: error.field,
+        }
+      );
     }
-    if (
-      error instanceof FulfillmentHoldLimitExceededError ||
-      error instanceof FulfillmentHoldAlreadyReleasedError ||
-      // 409 rather than 400 (ADR-074, #3360): the request is well formed and
-      // the work object exists — its STATE refuses, because a parcel with no
-      // assigned packer has nobody to be exclusive to. Assigning it and
-      // re-sending succeeds, which is what separates this from the 400s above.
-      error instanceof ExclusiveAssignmentRequiresPackerError
-    ) {
-      return new ConflictException(error.message);
+    if (error instanceof EmptyFulfillmentWorkAssignmentUpdateError) {
+      return codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'FULFILLMENT_ASSIGNMENT_UPDATE_EMPTY',
+        error.message,
+        { workId: error.workId }
+      );
+    }
+    if (error instanceof FulfillmentWorkNotFoundError) {
+      return codedHttpError(HttpStatus.NOT_FOUND, 'FULFILLMENT_WORK_NOT_FOUND', error.message, {
+        workId: error.workId,
+      });
+    }
+    if (error instanceof FulfillmentHoldNotFoundError) {
+      return codedHttpError(HttpStatus.NOT_FOUND, 'FULFILLMENT_HOLD_NOT_FOUND', error.message, {
+        holdId: error.holdId,
+      });
+    }
+    if (error instanceof FulfillmentHoldLimitExceededError) {
+      return codedHttpError(HttpStatus.CONFLICT, 'FULFILLMENT_HOLD_LIMIT_REACHED', error.message, {
+        workId: error.workId,
+        activeHolds: error.activeHolds,
+        limit: error.limit,
+      });
+    }
+    if (error instanceof FulfillmentHoldAlreadyReleasedError) {
+      return codedHttpError(
+        HttpStatus.CONFLICT,
+        'FULFILLMENT_HOLD_ALREADY_RELEASED',
+        error.message,
+        {
+          holdId: error.holdId,
+          releasedAt: error.releasedAt.toISOString(),
+        }
+      );
+    }
+    // 409 rather than 400 (ADR-074, #3360): the request is well formed and
+    // the work object exists — its STATE refuses, because a parcel with no
+    // assigned packer has nobody to be exclusive to. Assigning it and
+    // re-sending succeeds, which is what separates this from the 400s above.
+    if (error instanceof ExclusiveAssignmentRequiresPackerError) {
+      return codedHttpError(
+        HttpStatus.CONFLICT,
+        'FULFILLMENT_EXCLUSIVE_NEEDS_PACKER',
+        error.message,
+        { workId: error.workId }
+      );
     }
     return error instanceof Error ? error : new Error(String(error));
   }

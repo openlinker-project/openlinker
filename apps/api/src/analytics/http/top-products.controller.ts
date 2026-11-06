@@ -20,15 +20,7 @@
  * `sales-analytics.controller.ts` for the reasoning shared by every analytics
  * read.
  */
-import {
-  BadRequestException,
-  Controller,
-  Get,
-  Inject,
-  Param,
-  Query,
-  type StreamableFile,
-} from '@nestjs/common';
+import { Controller, Get, Inject, Param, Query, type StreamableFile } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN,
@@ -50,6 +42,7 @@ import {
   type IConnectionService,
 } from '../../integrations/application/interfaces/connection.service.interface';
 import { buildTopProductsCsv, readAllTopProducts } from './top-products-csv';
+import { analyticsRangeInvalid } from './analytics-errors';
 
 @ApiBearerAuth()
 @ApiTags('analytics')
@@ -85,7 +78,7 @@ export class TopProductsController {
     const from = new Date(query.from);
     const to = new Date(query.to);
     if (to.getTime() <= from.getTime()) {
-      throw new BadRequestException('to must be after from');
+      throw analyticsRangeInvalid();
     }
 
     const isCsv = query.format === 'csv';
@@ -155,7 +148,7 @@ export class TopProductsController {
     const from = new Date(query.from);
     const to = new Date(query.to);
     if (to.getTime() <= from.getTime()) {
-      throw new BadRequestException('to must be after from');
+      throw analyticsRangeInvalid();
     }
 
     return this.topProductsService.getTopProductVariantSales(productId, {

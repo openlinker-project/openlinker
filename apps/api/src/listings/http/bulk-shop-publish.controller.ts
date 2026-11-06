@@ -10,14 +10,12 @@
  * @module apps/api/src/listings/http
  */
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -32,6 +30,8 @@ import {
 import type { BulkShopPublishBatchSummary } from '@openlinker/core/listings';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
+import { bulkSubmissionEmpty } from './listings-errors';
 import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
@@ -96,7 +96,7 @@ export class BulkShopPublishController {
       return { batchId, items };
     } catch (error) {
       if (error instanceof EmptyBulkSubmissionException) {
-        throw new BadRequestException(error.message);
+        throw bulkSubmissionEmpty(error);
       }
       throw error;
     }
@@ -114,7 +114,12 @@ export class BulkShopPublishController {
   ): Promise<BulkShopPublishBatchSummaryDto> {
     const summary = await this.bulkSubmit.getBatch(batchId);
     if (!summary) {
-      throw new NotFoundException(`Bulk shop-publish batch not found: ${batchId}`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'BULK_SHOP_PUBLISH_BATCH_NOT_FOUND',
+        `Bulk shop-publish batch not found: ${batchId}`,
+        { batchId }
+      );
     }
     return this.toSummaryDto(summary);
   }

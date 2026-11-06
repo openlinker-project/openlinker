@@ -20,10 +20,10 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  BadRequestException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import {
   type IFulfillmentRoutingService,
   FULFILLMENT_ROUTING_SERVICE_TOKEN,
@@ -108,12 +108,21 @@ export class FulfillmentRoutingController {
    * map to 400; anything else falls through to Nest's default handling.
    */
   private toHttpException(error: unknown): Error {
-    if (
-      error instanceof IncompatibleProcessorException ||
-      error instanceof DuplicateRoutingRuleException ||
-      error instanceof InvalidParcelProfileException
-    ) {
-      return new BadRequestException(error.message);
+    if (error instanceof IncompatibleProcessorException) {
+      return codedHttpError(HttpStatus.BAD_REQUEST, 'ROUTING_PROCESSOR_INCOMPATIBLE', error.message, {
+        processorConnectionId: error.processorConnectionId,
+        processorKind: error.processorKind,
+      });
+    }
+    if (error instanceof DuplicateRoutingRuleException) {
+      return codedHttpError(HttpStatus.BAD_REQUEST, 'ROUTING_RULE_DUPLICATE', error.message, {
+        sourceDeliveryMethodId: error.sourceDeliveryMethodId,
+      });
+    }
+    if (error instanceof InvalidParcelProfileException) {
+      return codedHttpError(HttpStatus.BAD_REQUEST, 'ROUTING_PARCEL_PROFILE_INVALID', error.message, {
+        sourceDeliveryMethodId: error.sourceDeliveryMethodId,
+      });
     }
     return error instanceof Error ? error : new Error(String(error));
   }
