@@ -1,0 +1,37 @@
+{
+  "fiscalReceipt": {
+    "artefact": {
+      "codeAlt": "Scannable code for the receipt",
+      "download": "Download",
+      "internal": "For internal use",
+      "medium": {
+        "code": "Code",
+        "document": "Document",
+        "link": "Link",
+        "markup": "Markup",
+        "text": "Text"
+      },
+      "open": "Open"
+    },
+    "details": {
+      "copied": "Copied",
+      "copyAll": "Copy details",
+      "copyOne": "Copy {label}",
+      "deviceErrorCode": "Printer error code",
+      "documentId": "Provider document ID",
+      "errorCode": "Provider error code"
+    },
+    "failed": {
+      "genericInDoubt": "The connection dropped before we learned the outcome. This sale may already be registered.",
+      "genericRejected": "The provider rejected this sale. Nothing was registered, so it is safe to try again once the cause is fixed."
+    },
+    "status": {
+      "in-doubt": "Unconfirmed",
+      "not-registered": "Not registered",
+      "pending": "Queued",
+      "registered": "Registered",
+      "registering": "Registering",
+      "rejected": "Rejected"
+    }
+  }
+}

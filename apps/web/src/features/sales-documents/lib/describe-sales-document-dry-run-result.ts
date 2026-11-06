@@ -13,37 +13,42 @@
  * @module apps/web/src/features/sales-documents/lib
  */
 import type { SalesDocumentDryRunResult } from '../api/sales-document-rules.types';
-import { SALES_DOCUMENT_UNRESOLVED_REASON_COPY } from './sales-document-reason-copy';
+import { SALES_DOCUMENT_UNRESOLVED_REASON_COPY } from './sales-document-reasons';
+import { getMessages, interpolate } from '../../../shared/i18n';
 
-const DOCUMENT_KIND_LABEL: Record<string, string> = {
-  invoice: 'an invoice',
-  'fiscal-receipt': 'a fiscal receipt',
-};
+function documentKindLabel(documentKind: string | null | undefined): string {
+  const copy = getMessages('sales-documents').dryRun.kind;
+  if (documentKind === null) return copy.destinationDecides;
+  if (documentKind === 'invoice') return copy.invoice;
+  if (documentKind === 'fiscal-receipt') return copy.fiscalReceipt;
+  if (documentKind === undefined) return copy.document;
+  return interpolate(copy.other, { kind: documentKind });
+}
 
 export function describeSalesDocumentDryRunResult(
   result: SalesDocumentDryRunResult,
   connectionName: (connectionId: string) => string | null,
 ): string {
+  const copy = getMessages('sales-documents').dryRun;
   if (result.kind === 'route') {
-    const kind =
-      result.documentKind === null
-        ? 'a document its own destination decides'
-        : (DOCUMENT_KIND_LABEL[result.documentKind ?? ''] ?? `a ${result.documentKind ?? 'document'}`);
-    const where = result.connectionId ? (connectionName(result.connectionId) ?? result.connectionId) : '(unknown)';
+    const kind = documentKindLabel(result.documentKind);
+    const where = result.connectionId
+      ? (connectionName(result.connectionId) ?? result.connectionId)
+      : copy.unknownConnection;
     // Three-valued, never a boolean: `country-default` must never render as
     // "an already-saved rule decided this" - the domain type is explicit
     // that a country default's absent `ruleId` must not imply a rule exists.
-    const via =
+    const template =
       result.decidedBy === 'candidate'
-        ? 'via the rule you are drafting'
+        ? copy.routeCandidate
         : result.decidedBy === 'country-default'
-          ? `via the country default at ${where}`
-          : `via an already-saved rule at ${where}`;
-    return `This order would get ${kind} through ${where} - ${via}.`;
+          ? copy.routeCountryDefault
+          : copy.routeSavedRule;
+    return interpolate(template, { kind, where });
   }
 
   if (result.kind === 'aggregate') {
-    return 'This order would be collected into a periodic batch, not issued a document immediately.';
+    return copy.aggregate;
   }
 
   // 'unresolved' - the backend types `reason` as a bare string (the same
@@ -53,5 +58,5 @@ export function describeSalesDocumentDryRunResult(
   const reasonCopy = result.reason
     ? (SALES_DOCUMENT_UNRESOLVED_REASON_COPY as Record<string, { detail: string }>)[result.reason]
     : undefined;
-  return reasonCopy?.detail ?? 'This order would be held - nothing could decide a document for it.';
+  return reasonCopy?.detail ?? copy.held;
 }
