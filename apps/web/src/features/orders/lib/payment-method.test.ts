@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { paymentMethodChipLabel, paymentMethodLabel } from './payment-method-copy';
+import { paymentMethodChipLabel, paymentMethodLabel } from './payment-method';
 
 describe('paymentMethodLabel', () => {
   it.each([

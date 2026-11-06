@@ -169,7 +169,7 @@ export type SalesDocumentUnresolvedReasonValue =
 // `'routed-to-no-destination'` is a working router making a DECISION and is
 // rendered neutrally; the other three name a destination the router asked for
 // that OpenLinker could not reach. Only those three are counted — see
-// `DESTINATION_ROUTING_ATTENTION_REASONS` in `../lib/destination-routing-copy`.
+// `DESTINATION_ROUTING_ATTENTION_REASONS` in `../lib/destination-routing`.
 export const DestinationRoutingBlockReasonValues = [
   'routed-to-no-destination',
   'routed-destinations-unavailable',
@@ -1385,13 +1385,6 @@ export const ORDER_EXPORT_PII_COLUMNS: readonly OrderExportColumnIdValue[] = [
 export const ORDER_LIST_COLUMN_IDS = ['customer', 'channel', 'status', 'shipment', 'money'] as const;
 export type OrderListColumnIdValue = (typeof ORDER_LIST_COLUMN_IDS)[number];
 
-export const ORDER_LIST_COLUMN_LABELS: Record<OrderListColumnIdValue, string> = {
-  customer: 'Customer',
-  channel: 'Channel',
-  status: 'Status',
-  shipment: 'Shipment',
-  money: 'Money',
-};
 
 /**
  * A personal, named, ordered column set (#3530, D32). `userId: null` marks

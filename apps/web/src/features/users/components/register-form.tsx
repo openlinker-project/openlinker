@@ -9,12 +9,13 @@
  * @module features/users/components
  */
 import type { ReactElement } from 'react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
 import { useRegisterMutation } from '../hooks/use-register-mutation';
-import { registerFormSchema, type RegisterFormValues } from './register-form.schema';
+import { createRegisterFormSchema, type RegisterFormValues } from './register-form.schema';
+import { renderRich, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
@@ -32,6 +33,9 @@ export function RegisterForm({
   showTrackingFootnote = false,
 }: RegisterFormProps): ReactElement {
   const register = useRegisterMutation();
+  const users = useMessages('users');
+  const copy = users.register;
+  const schema = useMemo(() => createRegisterFormSchema(users.validation), [users]);
   const [submitted, setSubmitted] = useState(false);
 
   const form = useForm<RegisterFormValues>({
@@ -41,7 +45,7 @@ export function RegisterForm({
       password: '',
       confirmPassword: '',
     },
-    resolver: zodResolver(registerFormSchema),
+    resolver: zodResolver(schema),
   });
 
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
@@ -53,16 +57,13 @@ export function RegisterForm({
       <div className="guest-page__success">
         {demoMode ? (
           <>
-            <p>
-              Check your email to confirm your account. Click the link we sent you to activate it,
-              then sign in.
-            </p>
-            <Link to="/login">Back to sign in</Link>
+            <p>{copy.demoSubmitted}</p>
+            <Link to="/login">{copy.backToSignIn}</Link>
           </>
         ) : (
           <>
-            <p>Registration submitted. An admin will review your request.</p>
-            <Link to="/login">Back to login</Link>
+            <p>{copy.submitted}</p>
+            <Link to="/login">{copy.backToLogin}</Link>
           </>
         )}
       </div>
@@ -86,14 +87,14 @@ export function RegisterForm({
     <form className="form-card guest-form" onSubmit={(event) => void onSubmit(event)} noValidate>
       {demoMode ? (
         <div className="guest-form__demo-bar">
-          <strong>🔗 OpenLinker Demo</strong>
-          <span>Check your email to confirm and activate your account</span>
+          <strong>🔗 {copy.demoBarTitle}</strong>
+          <span>{copy.demoBar}</span>
         </div>
       ) : null}
 
       {form.formState.submitCount > 0 ? <FormErrorSummary errors={validationMessages} /> : null}
       {register.error ? (
-        <Alert tone="error" title="Registration failed">
+        <Alert tone="error" title={copy.failed}>
           {/*
             The 409 branch used to hardcode 'This email is already
             registered.' It was wrong twice (#3156 review): it told an
@@ -112,65 +113,66 @@ export function RegisterForm({
           <span className="guest-form__demo-callout-icon" aria-hidden="true">
             ⚡
           </span>
-          <div>
-            <strong>Demo mode active</strong> — no approval needed. Your account is set to
-            read-only. We'll email you a confirmation link; click it to activate your account before
-            signing in.
-          </div>
+          <div>{renderRich(copy.demoCallout, { strong: (text) => <strong>{text}</strong> })}</div>
         </div>
       ) : null}
 
-      <FormField label="Username" name="username" error={form.formState.errors.username?.message}>
+      <FormField label={copy.username} name="username" error={form.formState.errors.username?.message}>
         <Input
           {...form.register('username')}
-          placeholder="Choose a username"
+          placeholder={copy.usernamePlaceholder}
           autoComplete="username"
         />
       </FormField>
 
-      <FormField label="Email" name="email" error={form.formState.errors.email?.message}>
+      <FormField label={copy.email} name="email" error={form.formState.errors.email?.message}>
         <Input
           {...form.register('email')}
           type="email"
-          placeholder="your@email.com"
+          placeholder={copy.emailPlaceholder}
           autoComplete="email"
         />
       </FormField>
 
-      <FormField label="Password" name="password" error={form.formState.errors.password?.message}>
+      <FormField label={copy.password} name="password" error={form.formState.errors.password?.message}>
         <Input
           {...form.register('password')}
           type="password"
-          placeholder="At least 8 characters"
+          placeholder={copy.passwordPlaceholder}
           autoComplete="new-password"
         />
       </FormField>
 
       <FormField
-        label="Confirm password"
+        label={copy.confirmPassword}
         name="confirmPassword"
         error={form.formState.errors.confirmPassword?.message}
       >
         <Input
           {...form.register('confirmPassword')}
           type="password"
-          placeholder="Repeat your password"
+          placeholder={copy.confirmPasswordPlaceholder}
           autoComplete="new-password"
         />
       </FormField>
 
       <Button type="submit" tone="primary" disabled={register.isPending}>
-        {register.isPending ? 'Submitting…' : demoMode ? 'Start exploring →' : 'Request access'}
+        {register.isPending ? (
+          copy.submitting
+        ) : demoMode ? (
+          <>
+            {copy.submitDemo} <span aria-hidden="true">→</span>
+          </>
+        ) : (
+          copy.submit
+        )}
       </Button>
 
       {demoMode ? (
         <div className="guest-form__recording-notice">
-          <p>
-            Demo sessions are recorded. By creating an account you accept this. Passwords are never
-            recorded.
-          </p>
+          <p>{copy.recordingNotice}</p>
           <details className="guest-form__disclosure">
-            <summary>What we record</summary>
+            <summary>{copy.whatWeRecord}</summary>
             <div className="guest-form__disclosure-body">
               <SessionRecordingBullets />
             </div>
@@ -179,7 +181,7 @@ export function RegisterForm({
       ) : null}
 
       <p className="guest-form__footer-link">
-        Already have an account? <Link to="/login">Sign in</Link>
+        {renderRich(copy.alreadyHaveAccount, { link: (text) => <Link to="/login">{text}</Link> })}
       </p>
 
       {showTrackingFootnote ? <MarketingTrackingFootnote /> : null}

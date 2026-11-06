@@ -10,12 +10,13 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { OrderSyncStatus } from '../api/orders.types';
-import {
-  DESTINATION_ROUTING_ATTENTION_SYNC_HINT,
-  DESTINATION_ROUTING_PARTIAL_SYNC_HINT,
-  DESTINATION_ROUTING_REASON_COPY,
-} from '../lib/destination-routing-copy';
+import { getMessages } from '../../../shared/i18n';
 import { OrderHealthSummary } from './order-health-summary';
+
+const ROUTING_COPY = getMessages('orders').destinationRouting;
+const DESTINATION_ROUTING_REASON_COPY = ROUTING_COPY.reasons;
+const DESTINATION_ROUTING_ATTENTION_SYNC_HINT = ROUTING_COPY.attentionSyncHint;
+const DESTINATION_ROUTING_PARTIAL_SYNC_HINT = ROUTING_COPY.partialSyncHint;
 
 afterEach(cleanup);
 

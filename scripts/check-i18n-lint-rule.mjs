@@ -51,6 +51,13 @@ if (!override) {
 // so a glob that grows or shrinks by accident fails here instead of passing.
 const EXPECTED_SCOPE = [
   'apps/web/src/app/**/*.tsx',
+  'apps/web/src/features/orders/**/*.tsx',
+  'apps/web/src/pages/orders/**/*.tsx',
+  'apps/web/src/features/auth/**/*.tsx',
+  'apps/web/src/features/demo/**/*.tsx',
+  'apps/web/src/features/users/**/*.tsx',
+  'apps/web/src/pages/auth/**/*.tsx',
+  'apps/web/src/pages/users/**/*.tsx',
   'apps/web/src/shared/auth/**/*.tsx',
   'apps/web/src/shared/i18n/**/*.tsx',
   'apps/web/src/shared/plugins/**/*.tsx',

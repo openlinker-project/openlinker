@@ -12,11 +12,19 @@
  * @module locales
  */
 import app from './app.json';
+import auth from './auth.json';
+import demo from './demo.json';
 import format from './format.json';
+import orders from './orders.json';
 import ui from './ui.json';
+import users from './users.json';
 
 export const en = {
   app,
+  auth,
+  demo,
   format,
+  orders,
   ui,
+  users,
 };

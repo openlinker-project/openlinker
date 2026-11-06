@@ -15,6 +15,7 @@
  */
 import { useState, type ReactElement } from 'react';
 
+import { useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
@@ -34,6 +35,7 @@ export function OrderConfirmRefundAction({
   visible,
   ...dialogProps
 }: OrderConfirmRefundActionProps): ReactElement | null {
+  const copy = useMessages('orders').confirmOrderRefund;
   const demoMode = useDemoMode();
   const write = useWriteAccess('orders:write', demoMode);
   const [open, setOpen] = useState(false);
@@ -51,7 +53,7 @@ export function OrderConfirmRefundAction({
             setOpen(true);
           }}
         >
-          Confirm refund
+          {copy.action}
         </Button>
       </ReadOnlyLock>
       <ConfirmOrderRefundDialog open={open} onOpenChange={setOpen} {...dialogProps} />

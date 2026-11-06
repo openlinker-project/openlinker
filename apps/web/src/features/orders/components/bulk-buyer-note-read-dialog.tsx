@@ -22,15 +22,10 @@ import {
 import type { BulkBuyerNoteReadResult } from '../api/order-bulk-actions.types';
 import type { OrderRecord } from '../api/orders.types';
 import { useBulkMarkBuyerNoteReadMutation } from '../hooks/use-bulk-order-actions';
-import {
-  BULK_ACTIONS_COPY,
-  BULK_NOTE_ROW,
-  splitBuyerNoteCandidates,
-} from '../lib/bulk-order-actions.copy';
+import { useMessages, usePlural } from '../../../shared/i18n';
+import { bulkNoteRow, splitBuyerNoteCandidates } from '../lib/bulk-order-actions';
 import { readServerReason } from '../lib/order-cancel';
 import { BulkResultRows, type BulkResultRow } from './bulk-result-rows';
-
-const COPY = BULK_ACTIONS_COPY.read;
 
 export interface BulkBuyerNoteReadDialogProps {
   open: boolean;
@@ -46,6 +41,9 @@ export function BulkBuyerNoteReadDialog({
   onComplete,
 }: BulkBuyerNoteReadDialogProps): ReactElement {
   const mutation = useBulkMarkBuyerNoteReadMutation();
+  const copy = useMessages('orders').bulkActions;
+  const COPY = copy.read;
+  const plural = usePlural();
   const [result, setResult] = useState<BulkBuyerNoteReadResult | null>(null);
   const [skipped, setSkipped] = useState<BulkResultRow[]>([]);
   const { reset: resetMutation } = mutation;
@@ -64,13 +62,11 @@ export function BulkBuyerNoteReadDialog({
     const skippedRows: BulkResultRow[] = [
       ...split.noNote.map((o) => ({
         orderId: o.internalOrderId,
-        tone: BULK_NOTE_ROW['no-note'].tone,
-        label: BULK_NOTE_ROW['no-note'].label,
+        ...bulkNoteRow('no-note', copy),
       })),
       ...split.alreadyRead.map((o) => ({
         orderId: o.internalOrderId,
-        tone: BULK_NOTE_ROW['already-read'].tone,
-        label: BULK_NOTE_ROW['already-read'].label,
+        ...bulkNoteRow('already-read', copy),
       })),
     ];
     mutation.mutate(
@@ -89,8 +85,7 @@ export function BulkBuyerNoteReadDialog({
     const rows: BulkResultRow[] = [
       ...result.results.map((row) => ({
         orderId: row.orderId,
-        tone: BULK_NOTE_ROW[row.outcome].tone,
-        label: BULK_NOTE_ROW[row.outcome].label,
+        ...bulkNoteRow(row.outcome, copy),
         detail: row.reason ?? null,
       })),
       ...skipped,
@@ -101,9 +96,11 @@ export function BulkBuyerNoteReadDialog({
         <DialogContent className="bulk-dispatch" data-testid="orders-bulk-read-dialog">
           <DialogTitle>{COPY.resultTitle}</DialogTitle>
           <DialogDescription data-testid="orders-bulk-read-summary">
-            <strong>{`${result.marked} marked read`}</strong>
-            {skippedTotal > 0 ? ` · ${skippedTotal} skipped` : ''}
-            {result.failed + result.notFound > 0 ? ` · ${result.failed + result.notFound} failed` : ''}
+            <strong>{plural(result.marked, COPY.markedCount)}</strong>
+            {skippedTotal > 0 ? ` · ${plural(skippedTotal, COPY.skippedCount)}` : ''}
+            {result.failed + result.notFound > 0
+              ? ` · ${plural(result.failed + result.notFound, COPY.failedCount)}`
+              : ''}
           </DialogDescription>
           <BulkResultRows rows={rows} testId="orders-bulk-read-results" />
           <DialogFooter>
@@ -114,7 +111,7 @@ export function BulkBuyerNoteReadDialog({
                 onOpenChange(false);
               }}
             >
-              Close
+              {COPY.close}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -125,7 +122,7 @@ export function BulkBuyerNoteReadDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="order-hold-dialog" data-testid="orders-bulk-read-dialog">
-        <DialogTitle>{COPY.title(orders.length)}</DialogTitle>
+        <DialogTitle>{plural(orders.length, COPY.title)}</DialogTitle>
         <DialogDescription>{COPY.description}</DialogDescription>
         {mutation.isError ? (
           <Alert tone="error" title={COPY.requestError} data-testid="orders-bulk-read-error">
@@ -137,7 +134,11 @@ export function BulkBuyerNoteReadDialog({
             {COPY.nothingToDo}
           </Alert>
         ) : (
-          <p data-testid="orders-bulk-read-plan">{COPY.summary(split.candidates.length, skipCount)}</p>
+          <p data-testid="orders-bulk-read-plan">
+            {skipCount > 0
+              ? plural(split.candidates.length, COPY.summaryWithSkips, { skipped: skipCount })
+              : plural(split.candidates.length, COPY.summary)}
+          </p>
         )}
         <DialogFooter>
           <Button
