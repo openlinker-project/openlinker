@@ -1,10 +1,11 @@
 /**
- * Sales-Document Block Copy (#2100, generalized across kinds #2156/#2160)
+ * Sales-Document Block (#2100, generalized across kinds #2156/#2160)
  *
  * Turns the backend's recorded auto-issue block into operator-facing copy for
- * the unified order-detail sales-document panel. Pure and `t()`-injected — no
- * React, no hooks, no I/O — so every branch is unit-testable directly instead
- * of only through a full component render.
+ * the unified order-detail sales-document panel. Pure - no React, no hooks, no
+ * I/O - so every branch is unit-testable directly instead of only through a
+ * full component render. Each kind has its own whole sentences in the
+ * `invoicing` namespace, read at call time.
  *
  * KIND-AWARE, not kind-SPECIFIC (#2156/#2160): since `AutoIssueTriggerService`
  * resolves across BOTH `'invoice'` and `'fiscal-receipt'` candidates through
@@ -19,6 +20,7 @@
  *
  * @module apps/web/src/features/invoicing/lib
  */
+import { formatPlural, getLocale, getMessages, interpolate } from '../../../shared/i18n';
 import type { OrderRecord } from '../../orders';
 
 /** Which sales-document kind(s) the caller's local candidate pool covers. */
@@ -39,48 +41,16 @@ export interface SalesDocumentBlockCopy {
   offerSetPrimary: boolean;
 }
 
-/** Kind-flavored noun/verb phrases substituted into the shared copy templates. */
-interface KindVocabulary {
-  /** e.g. "invoicing" / "fiscal registration" / "sales-document issuance" */
-  activityNoun: string;
-  /** e.g. "invoice" / "receipt" / "document" */
-  documentNoun: string;
-  /** Plural-subject form — "Several connections can {…}". e.g. "issue invoices" */
-  connectionCapabilityVerbPhrase: string;
-  /** Third-person-singular form — "This connection {…} by hand." e.g. "invoices" */
-  singularVerbsByHandPhrase: string;
-  /** e.g. "issue" / "register" / "issue" */
-  actionVerb: string;
-  /** "Not {…}: …" — e.g. "invoiced" / "registered" / "issued" */
-  pastParticiplePhrase: string;
-}
+/** Which copy subtree each kind reads: one set of whole sentences per kind. */
+const KIND_COPY_KEY = {
+  invoice: 'invoice',
+  'fiscal-receipt': 'fiscalReceipt',
+  mixed: 'mixed',
+} as const satisfies Record<SalesDocumentBlockCopyKind, string>;
 
-const KIND_VOCABULARY: Record<SalesDocumentBlockCopyKind, KindVocabulary> = {
-  invoice: {
-    activityNoun: 'invoicing',
-    documentNoun: 'invoice',
-    connectionCapabilityVerbPhrase: 'issue invoices',
-    singularVerbsByHandPhrase: 'invoices',
-    actionVerb: 'issue',
-    pastParticiplePhrase: 'invoiced',
-  },
-  'fiscal-receipt': {
-    activityNoun: 'fiscal registration',
-    documentNoun: 'receipt',
-    connectionCapabilityVerbPhrase: 'register receipts',
-    singularVerbsByHandPhrase: 'registers receipts',
-    actionVerb: 'register',
-    pastParticiplePhrase: 'registered',
-  },
-  mixed: {
-    activityNoun: 'sales-document issuance',
-    documentNoun: 'document',
-    connectionCapabilityVerbPhrase: 'issue a sales document',
-    singularVerbsByHandPhrase: 'issues sales documents',
-    actionVerb: 'issue',
-    pastParticiplePhrase: 'issued',
-  },
-};
+type KindCopy = ReturnType<
+  typeof getMessages<'invoicing'>
+>['salesDocument']['panel'][(typeof KIND_COPY_KEY)[SalesDocumentBlockCopyKind]];
 
 /**
  * Turn the backend's recorded block into operator-facing copy (#2100, ADR-041
@@ -105,7 +75,8 @@ const KIND_VOCABULARY: Record<SalesDocumentBlockCopyKind, KindVocabulary> = {
 export function resolveSalesDocumentBlockCopy(
   order: OrderRecord,
   derivedAmbiguity: boolean,
-  t: (key: string, fallback: string) => string,
+  /** Kept for callers that still pass a translator; copy is read at call time. */
+  _t?: (key: string, fallback: string) => string,
   kind: SalesDocumentBlockCopyKind = 'invoice',
   /**
    * The rate-less lines, when the reason is `missing-tax-rate` (#2254).
@@ -117,20 +88,14 @@ export function resolveSalesDocumentBlockCopy(
 ): SalesDocumentBlockCopy | null {
   const reason = order.salesDocumentBlockReason ?? null;
   const detail = order.salesDocumentBlockDetail ?? null;
-  const v = KIND_VOCABULARY[kind];
+  const c = getMessages('invoicing').salesDocument.panel[KIND_COPY_KEY[kind]];
 
   if (reason === null) {
     if (!derivedAmbiguity) return null;
     return {
       tone: 'warning',
-      title: t(
-        'salesDocument.panel.noPrimaryTitle',
-        `Automatic ${v.activityNoun} is off for this order.`,
-      ),
-      body: t(
-        'salesDocument.panel.noPrimaryBody',
-        `Several connections can ${v.connectionCapabilityVerbPhrase} and none is marked primary, so OpenLinker issued nothing rather than issuing twice. Pick a connection above to ${v.actionVerb} this one by hand, or set a primary so it happens on its own.`,
-      ),
+      title: c.noPrimaryTitle,
+      body: c.noPrimaryBody,
       detail: null,
       offerSetPrimary: true,
     };
@@ -140,14 +105,8 @@ export function resolveSalesDocumentBlockCopy(
     if (order.salesDocumentUnresolvedReason === 'ambiguous-connection-no-primary') {
       return {
         tone: 'error',
-        title: t(
-          'salesDocument.panel.blockNoPrimaryTitle',
-          `Not ${v.pastParticiplePhrase}: no primary connection.`,
-        ),
-        body: t(
-          'salesDocument.panel.blockNoPrimaryBody',
-          `Several connections can ${v.connectionCapabilityVerbPhrase} and none is set to issue automatically, so OpenLinker issued nothing rather than issuing twice. Set a primary, or pick a connection above and ${v.actionVerb} this one by hand.`,
-        ),
+        title: c.blockNoPrimaryTitle,
+        body: c.blockNoPrimaryBody,
         detail,
         offerSetPrimary: true,
       };
@@ -159,14 +118,8 @@ export function resolveSalesDocumentBlockCopy(
     if (order.salesDocumentUnresolvedReason === 'no-configuration-for-country') {
       return {
         tone: 'error',
-        title: t(
-          'salesDocument.panel.blockNoCountryConfigTitle',
-          `Not ${v.pastParticiplePhrase}: no rules configured for this country.`,
-        ),
-        body: t(
-          'salesDocument.panel.blockNoCountryConfigBody',
-          `Neither this order's own country nor "★ Rest of world" has any sales-document rule or default configured. Set up rules for this country (or a Rest of world default) in Settings → Sales documents routing, or ${v.actionVerb} this one by hand.`,
-        ),
+        title: c.blockNoCountryConfigTitle,
+        body: c.blockNoCountryConfigBody,
         detail,
         offerSetPrimary: false,
       };
@@ -178,14 +131,8 @@ export function resolveSalesDocumentBlockCopy(
     if (order.salesDocumentUnresolvedReason === 'routed-connection-unavailable') {
       return {
         tone: 'error',
-        title: t(
-          'salesDocument.panel.blockRoutedConnectionUnavailableTitle',
-          `Not ${v.pastParticiplePhrase}: the routed connection cannot ${v.actionVerb} it.`,
-        ),
-        body: t(
-          'salesDocument.panel.blockRoutedConnectionUnavailableBody',
-          `Your routing sends this ${v.documentNoun} to a connection that is turned off, has been removed, or can no longer ${v.actionVerb} it, so nothing was ${v.pastParticiplePhrase}. Turn that connection back on, or point the rule at another connection. You can also pick a connection above and ${v.actionVerb} this one by hand.`,
-        ),
+        title: c.blockRoutedConnectionUnavailableTitle,
+        body: c.blockRoutedConnectionUnavailableBody,
         detail,
         offerSetPrimary: false,
       };
@@ -193,28 +140,16 @@ export function resolveSalesDocumentBlockCopy(
     if (order.salesDocumentUnresolvedReason === 'threshold-currency-mismatch') {
       return {
         tone: 'error',
-        title: t(
-          'salesDocument.panel.blockCurrencyMismatchTitle',
-          `Not ${v.pastParticiplePhrase}: the order currency does not match the rule's threshold.`,
-        ),
-        body: t(
-          'salesDocument.panel.blockCurrencyMismatchBody',
-          `A matching rule compares this order's total against an amount defined in a different currency. OpenLinker never converts currencies for a fiscal decision, so nothing was ${v.pastParticiplePhrase} automatically. ${capitalize(v.actionVerb)} this one by hand, or adjust the rule's threshold.`,
-        ),
+        title: c.blockCurrencyMismatchTitle,
+        body: c.blockCurrencyMismatchBody,
         detail,
         offerSetPrimary: false,
       };
     }
     return {
       tone: 'error',
-      title: t(
-        'salesDocument.panel.blockUnroutedTitle',
-        `Not ${v.pastParticiplePhrase}: no route for this ${v.documentNoun}.`,
-      ),
-      body: t(
-        'salesDocument.panel.blockUnroutedBody',
-        `OpenLinker could not decide where to ${v.actionVerb} this ${v.documentNoun}. Pick a connection above to ${v.actionVerb} it by hand.`,
-      ),
+      title: c.blockUnroutedTitle,
+      body: c.blockUnroutedBody,
       detail,
       offerSetPrimary: false,
     };
@@ -226,14 +161,8 @@ export function resolveSalesDocumentBlockCopy(
       // a misconfiguration. The fact is still stated so the panel never looks like
       // it simply forgot.
       tone: 'info',
-      title: t(
-        'salesDocument.panel.blockManualTitle',
-        `This connection ${v.singularVerbsByHandPhrase} by hand.`,
-      ),
-      body: t(
-        'salesDocument.panel.blockManualBody',
-        `Nothing is wrong — no ${v.documentNoun} is issued automatically here. ${capitalize(v.actionVerb)} this one whenever you are ready.`,
-      ),
+      title: c.blockManualTitle,
+      body: c.blockManualBody,
       detail,
       offerSetPrimary: false,
     };
@@ -242,14 +171,8 @@ export function resolveSalesDocumentBlockCopy(
   if (reason === 'trigger-model-batched') {
     return {
       tone: 'warning',
-      title: t(
-        'salesDocument.panel.blockBatchedTitle',
-        `Not ${v.pastParticiplePhrase}: batched ${v.activityNoun} is not available yet.`,
-      ),
-      body: t(
-        'salesDocument.panel.blockBatchedBody',
-        `OpenLinker cannot group this order into a batch, so it issued nothing. ${capitalize(v.actionVerb)} it by hand, or switch the connection to issue on payment.`,
-      ),
+      title: c.blockBatchedTitle,
+      body: c.blockBatchedBody,
       detail,
       offerSetPrimary: false,
     };
@@ -258,21 +181,15 @@ export function resolveSalesDocumentBlockCopy(
   if (reason === 'missing-required-tax-id') {
     return {
       tone: 'error',
-      title: t(
-        'salesDocument.panel.blockTaxIdTitle',
-        `Not ${v.pastParticiplePhrase}: the buyer tax ID is missing.`,
-      ),
-      body: t(
-        'salesDocument.panel.blockTaxIdBody',
-        `This ${v.documentNoun} cannot be issued without the buyer tax ID the destination requires.`,
-      ),
+      title: c.blockTaxIdTitle,
+      body: c.blockTaxIdBody,
       detail,
       offerSetPrimary: false,
     };
   }
 
   if (reason === 'missing-tax-rate') {
-    return resolveMissingTaxRateCopy(rateLines, detail, t, v);
+    return resolveMissingTaxRateCopy(rateLines, detail, c);
   }
 
   if (reason === 'tax-rate-conflict') {
@@ -283,14 +200,8 @@ export function resolveSalesDocumentBlockCopy(
       // Tone stays `conflict` (#2253): a rate disagreement is a source
       // conflict, not a hard failure, and the panel renders the two apart.
       tone: 'conflict',
-      title: t(
-        'salesDocument.panel.blockTaxRateTitle',
-        `Not ${v.pastParticiplePhrase}: the tax rates disagree.`,
-      ),
-      body: t(
-        'salesDocument.panel.blockTaxRateBody',
-        `The channel's tax rate does not match the master catalogue, so OpenLinker did not issue a ${v.documentNoun} it could not vouch for.`,
-      ),
+      title: c.blockTaxRateTitle,
+      body: c.blockTaxRateBody,
       detail,
       offerSetPrimary: false,
     };
@@ -301,18 +212,11 @@ export function resolveSalesDocumentBlockCopy(
   // has no document.
   return {
     tone: 'warning',
-    title: t('salesDocument.panel.blockUnknownTitle', `Not ${v.pastParticiplePhrase}.`),
-    body: t(
-      'salesDocument.panel.blockUnknownBody',
-      `OpenLinker declined to issue a ${v.documentNoun} for this order. ${capitalize(v.actionVerb)} it by hand if it should be.`,
-    ),
+    title: c.blockUnknownTitle,
+    body: c.blockUnknownBody,
     detail,
     offerSetPrimary: false,
   };
-}
-
-function capitalize(word: string): string {
-  return word.length === 0 ? word : `${word[0].toUpperCase()}${word.slice(1)}`;
 }
 
 /**
@@ -375,8 +279,7 @@ export function resolveMissingTaxRateScope(
 function resolveMissingTaxRateCopy(
   lines: RateLessLine[],
   detail: string | null,
-  t: (key: string, fallback: string) => string,
-  v: KindVocabulary,
+  c: KindCopy,
 ): SalesDocumentBlockCopy {
   // Shipping scope (#2260 review): the gate blocked on a missing rate while
   // every product line HAS one, so the subject is the delivery charge, not a
@@ -385,26 +288,22 @@ function resolveMissingTaxRateCopy(
   if (resolveMissingTaxRateScope(lines) === 'shipping') {
     return {
       tone: 'error',
-      title: t(
-        'salesDocument.panel.blockNoRateShippingTitle',
-        `Not ${v.pastParticiplePhrase}: the delivery charge has no tax rate.`,
-      ),
-      body: t(
-        'salesDocument.panel.blockNoRateShippingBody',
-        `Every product line has a rate, but nothing in this order carries an amount the delivery charge could follow. Check the order's lines and delivery charge, or ${v.actionVerb} this one outside OpenLinker.`,
-      ),
+      title: c.blockNoRateShippingTitle,
+      body: c.blockNoRateShippingBody,
       detail,
       offerSetPrimary: false,
     };
   }
 
+  const copy = getMessages('invoicing').invoice.panel;
+  const locale = getLocale();
   const names = lines.map((line) => line.name).filter(Boolean);
   // Count the LINES, never a floor: past the shipping branch there is at least
   // one rate-less line, so the number is always a real one. `names` can still be
   // short of `lines` if a line carried no printable name at all, which is the
   // only case the unnamed-subject wording is reached for - and it is true there.
   const count = lines.length;
-  const list = names.length > 0 ? names.join(', ') : t('invoice.panel.someLines', 'Some lines');
+  const list = names.length > 0 ? names.join(', ') : copy.someLines;
 
   const uncatalogued = lines.filter((line) => !line.inCatalogue);
   if (uncatalogued.length > 0 && uncatalogued.length === lines.length) {
@@ -413,12 +312,9 @@ function resolveMissingTaxRateCopy(
       tone: 'error',
       title:
         uncatalogued.length === 1
-          ? `${t('invoice.panel.blockNoRateUncataloguedTitle', 'Not invoiced:')} ${subject} ${t('invoice.panel.blockNoRateUncataloguedTitleTail', 'is not in your catalogue.')}`
-          : `${t('invoice.panel.blockNoRateUncataloguedTitlePlural', 'Not invoiced:')} ${String(uncatalogued.length)} ${t('invoice.panel.blockNoRateUncataloguedTitlePluralTail', 'items are not in your catalogue.')}`,
-      body: t(
-        'invoice.panel.blockNoRateUncataloguedBody',
-        'The channel reported no rate at purchase, and fixing the offer now will not release this order. Add the item to a shop to release it.',
-      ),
+          ? interpolate(copy.blockNoRateUncataloguedTitle, { subject })
+          : formatPlural(uncatalogued.length, copy.blockNoRateUncataloguedTitlePlural, locale),
+      body: copy.blockNoRateUncataloguedBody,
       detail,
       offerSetPrimary: false,
     };
@@ -426,15 +322,8 @@ function resolveMissingTaxRateCopy(
 
   return {
     tone: 'error',
-    title: `${t('invoice.panel.blockNoRateTitle', 'Not invoiced:')} ${String(count)} ${
-      count === 1
-        ? t('invoice.panel.blockNoRateTitleTail', 'line has no tax rate.')
-        : t('invoice.panel.blockNoRateTitleTailPlural', 'lines have no tax rate.')
-    }`,
-    body: `${list} ${t(
-      'invoice.panel.blockNoRateBody',
-      'have no rate in the shop, and the channel did not report one. Rates arrive with the product sync.',
-    )}`,
+    title: formatPlural(count, copy.blockNoRateTitle, locale),
+    body: interpolate(copy.blockNoRateBody, { list }),
     detail,
     offerSetPrimary: false,
   };

@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import {
   resolveMissingTaxRateScope,
   resolveSalesDocumentBlockCopy,
-} from './sales-document-block-copy';
+} from './sales-document-block';
 import type { OrderRecord } from '../../orders';
 
 /** `t(key, fallback)` behaves like the host's empty catalogue: always the fallback. */
