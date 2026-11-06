@@ -35,6 +35,7 @@
  */
 import { z } from 'zod';
 import type { CreateConnectionInput } from '../../../features/connections';
+import { getEparagonyMessages } from '../messages';
 
 export const EPARAGONY_ADAPTER_KEY = 'eparagony.documents.v3';
 
@@ -67,26 +68,33 @@ const SELLER_ADDRESS_STARTED_FIELDS = [
   'merchantCity',
 ] as const;
 
-export const EPARAGONY_DOCUMENT_CHOICE_REQUIRED_MESSAGE =
-  'Pick at least one: e-receipts, invoices, or both.';
-export const EPARAGONY_MERCHANT_TIN_REQUIRED_MESSAGE =
-  'Tax number (NIP) is required to issue invoices';
-export const EPARAGONY_ADDRESS_PART_REQUIRED_MESSAGE = 'Required.';
+type EparagonySetupSchemaKey = keyof ReturnType<typeof getEparagonyMessages>['eparagonySetupSchema'];
+
+/** The copy for one schema message, read at validation time in the active language. */
+export function eparagonySetupMessage(key: EparagonySetupSchemaKey): string {
+  return getEparagonyMessages().eparagonySetupSchema[key];
+}
+
+/**
+ * Zod `{ error }` parameter read when a value is validated, not when this
+ * module loads, so the schema below still speaks the active language.
+ */
+function msg(key: EparagonySetupSchemaKey): { error: () => string } {
+  return { error: () => eparagonySetupMessage(key) };
+}
 
 const text = z.string().trim();
 
 export const eparagonySetupSchema = z
   .object({
     enabledCapabilities: z.array(z.enum(EparagonyDocumentCapabilityValues)),
-    name: text.min(1, 'Connection name is required'),
-    clientId: text.min(1, 'Client ID is required'),
-    clientSecret: text.min(1, 'Client secret is required'),
+    name: text.min(1, msg('nameRequired')),
+    clientId: text.min(1, msg('clientIdRequired')),
+    clientSecret: text.min(1, msg('clientSecretRequired')),
     integrationId: text
-      .refine((value) => value.length === 0 || value.includes(':'), {
-        message: 'Must be of the form integration:secret, e.g. openlinker:abc123',
-      })
+      .refine((value) => value.length === 0 || value.includes(':'), msg('integrationIdShape'))
       .optional(),
-    posId: text.min(1, 'POS ID is required'),
+    posId: text.min(1, msg('posIdRequired')),
     environment: z.enum(EparagonyEnvironmentValues),
     merchantTIN: text,
     merchantName: text,
@@ -96,9 +104,10 @@ export const eparagonySetupSchema = z
     merchantPostalCode: text,
     merchantCity: text,
     // Mirrors the backend's `ISO_ALPHA2_PATTERN` - a shape check only.
-    merchantCountry: text.refine((value) => value === '' || /^[A-Za-z]{2}$/.test(value), {
-      message: 'Use the two-letter code, e.g. PL.',
-    }),
+    merchantCountry: text.refine(
+      (value) => value === '' || /^[A-Za-z]{2}$/.test(value),
+      msg('countryCode'),
+    ),
     eInvoicingHubEnabled: z.boolean(),
   })
   .superRefine((values, ctx) => {
@@ -106,7 +115,7 @@ export const eparagonySetupSchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['enabledCapabilities'],
-        message: EPARAGONY_DOCUMENT_CHOICE_REQUIRED_MESSAGE,
+        message: eparagonySetupMessage('documentChoiceRequired'),
       });
     }
     // Seller rules apply only to the lane that reads them: a receipts-only
@@ -117,7 +126,7 @@ export const eparagonySetupSchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['merchantTIN'],
-        message: EPARAGONY_MERCHANT_TIN_REQUIRED_MESSAGE,
+        message: eparagonySetupMessage('merchantTinRequired'),
       });
     }
     if (isSellerAddressStarted(values)) {
@@ -126,7 +135,7 @@ export const eparagonySetupSchema = z
           ctx.addIssue({
             code: 'custom',
             path: [field],
-            message: EPARAGONY_ADDRESS_PART_REQUIRED_MESSAGE,
+            message: eparagonySetupMessage('addressPartRequired'),
           });
         }
       }
