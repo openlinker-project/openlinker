@@ -600,8 +600,8 @@ describe('InsightsPage', () => {
       const integrationCard = findCardByLabel(container, 'Integration health');
       expect(integrationCard).toHaveClass('kpi-card--warning');
       expect(screen.getByText('1 connection with failing jobs')).toBeInTheDocument();
-      // The roll-up attaches a "N failing jobs" link next to the connection name.
-      const failingJobsLink = screen.getByRole('link', { name: /2 failing jobs/ });
+      // The Failed jobs column links the count to the filtered jobs list (#4016).
+      const failingJobsLink = screen.getByRole('link', { name: /2 failed jobs on Shop B/ });
       expect(failingJobsLink).toHaveAttribute(
         'href',
         '/jobs-logs?status=dead&connectionId=conn_failing'

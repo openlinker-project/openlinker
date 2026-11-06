@@ -32857,3 +32857,352 @@ legend.analytics-settings-dialog__label {
   min-height: 44px;
   font-weight: 600;
 }
+
+/* ── Insights: Connection health (#4016) ─────────────────────────────────
+   A fixed-layout table, so the platform, status and failed-jobs columns line
+   up from row to row whatever the connection name's length. The platform cell
+   hosts the shared `ConnectionChip`, whose name slide-out overflows to the
+   right on hover - the cell keeps `overflow: visible` so it is not clipped. */
+.conn-health {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.conn-health__summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.conn-health__sentence {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.conn-health__strip {
+  display: flex;
+  gap: 3px;
+  height: 6px;
+}
+
+.conn-health__segment {
+  flex: 1 1 0;
+  min-width: 4px;
+  border-radius: 2px;
+  background: var(--status-success);
+}
+.conn-health__segment--attention { background: var(--status-warning); }
+.conn-health__segment--off { background: var(--border-strong); }
+
+.conn-health__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.conn-health__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.conn-health__legend-item::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-success);
+}
+.conn-health__legend-item--attention::before { background: var(--status-warning); }
+.conn-health__legend-item--off::before { background: var(--border-strong); }
+
+.conn-health__table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.conn-health__col-platform { width: 9.5rem; }
+.conn-health__col-status { width: 7.5rem; }
+.conn-health__col-failed { width: 9.5rem; }
+
+.conn-health__table th {
+  padding: var(--space-2) var(--space-3);
+  border-block: 1px solid var(--border-subtle);
+  background: var(--bg-surface-muted);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.conn-health__table td {
+  height: 3rem;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+
+.conn-health__row:hover td { background: var(--bg-surface-hover); }
+
+.conn-health__table .conn-health__num { text-align: right; }
+
+.conn-health__name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.conn-health__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-success);
+  box-shadow: 0 0 0 3px var(--status-success-soft);
+}
+.conn-health__row--attention .conn-health__dot {
+  background: var(--status-warning);
+  box-shadow: 0 0 0 3px var(--status-warning-soft);
+}
+.conn-health__row--off .conn-health__dot {
+  background: var(--border-strong);
+  box-shadow: none;
+}
+
+.conn-health__name-text {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conn-health__platform { overflow: visible; }
+
+.conn-health__status { color: var(--text-secondary); }
+.conn-health__status--error,
+.conn-health__status--needs_reauth { color: var(--status-error-fg); font-weight: 500; }
+.conn-health__status--disabled,
+.conn-health__status--archived { color: var(--text-muted); }
+
+.conn-health__failed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px var(--space-2);
+  border: 1px solid var(--status-error-border);
+  border-radius: var(--radius-sm);
+  background: var(--status-error-soft);
+  color: var(--status-error-fg);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.conn-health__failed:hover { border-color: var(--status-error); }
+.conn-health__failed:focus-visible { box-shadow: var(--shadow-focus); outline: none; }
+.conn-health__failed svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.conn-health__none { color: var(--text-muted); }
+
+/* Narrow: each row becomes two lines - name over platform, status and count. */
+@media (max-width: 767.98px) {
+  .conn-health__table,
+  .conn-health__table tbody { display: block; }
+  .conn-health__table thead,
+  .conn-health__table colgroup { display: none; }
+  .conn-health__row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .conn-health__table td {
+    height: auto;
+    padding: 0;
+    border: 0;
+  }
+  .conn-health__cell-name { grid-column: 1 / -1; }
+  .conn-health__status { grid-column: 1; }
+  .conn-health__platform { grid-row: 2; grid-column: 1; }
+  .conn-health__row .conn-health__status { grid-row: 3; }
+  .conn-health__row .conn-health__num { grid-row: 2 / 4; grid-column: 2; align-self: center; }
+}
+
+/* ── Diagnostics: Sync jobs (#4016) ──────────────────────────────────────
+   Labelled filters grouped on the left, a two-line job type, a clamped last
+   error with an in-place toggle, and a one-line poison-entries row when there
+   is nothing dead-lettered. */
+.sync-jobs-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-shell);
+}
+
+.sync-jobs-filters__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 11rem;
+  max-width: 14rem;
+  min-width: 0;
+}
+.sync-jobs-filters__field--wide { max-width: 18rem; }
+
+.sync-jobs-filters__field label {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.sync-jobs-filters__field .control { width: 100%; }
+
+/* A filter holding a value is tinted, so the operator can see at a glance
+   which ones are narrowing the list. */
+.sync-jobs-filters .control--active {
+  border-color: var(--accent-primary-border);
+  background-color: color-mix(in oklab, var(--accent-primary) 8%, var(--bg-surface));
+}
+
+@media (max-width: 767.98px) {
+  .sync-jobs-filters__field,
+  .sync-jobs-filters__field--wide {
+    flex-basis: 100%;
+    max-width: none;
+  }
+}
+
+.sync-job-type {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-family: var(--font-mono);
+}
+.sync-job-type__action {
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.sync-job-type__scope {
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  overflow-wrap: anywhere;
+}
+
+.sync-job-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+.sync-job-error__text {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--status-error-fg);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.sync-job-error__text--open {
+  display: block;
+  white-space: pre-wrap;
+  -webkit-line-clamp: unset;
+}
+.sync-job-error__toggle {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.75rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.sync-job-error__toggle:hover { color: var(--text-primary); }
+.sync-job-error__toggle:focus-visible {
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-focus);
+  outline: none;
+}
+
+.poison-entries {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.poison-entries__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.poison-entries__intro {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  max-width: 72ch;
+}
+.poison-entries__title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.poison-entries__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.poison-entries__none {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--status-success-fg);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+.poison-entries__none svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

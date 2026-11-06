@@ -35,6 +35,7 @@ import type {
   SyncJobGroup,
 } from '../../features/sync-jobs/api/sync-jobs.types';
 import { INSIGHTS_HEALTH_INTERVAL_MS, INSIGHTS_JOBS_INTERVAL_MS } from './intervals';
+import { ConnectionHealthList } from './connection-health-list';
 import { Button } from '../../shared/ui/button';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
@@ -171,36 +172,6 @@ function rollUpConnectionHealth(
     }
     return { connection, deadJobCount, rollupTone };
   });
-}
-
-function ConnectionHealthList({ rows }: { rows: RolledUpConnection[] }): ReactElement {
-  if (rows.length === 0) {
-    return (
-      <p className="muted-text">
-        No connections configured. <Link to="/connections/new">Add the first connection.</Link>
-      </p>
-    );
-  }
-  return (
-    <ul className="check-list">
-      {rows.map(({ connection, deadJobCount, rollupTone }) => (
-        <li key={connection.id}>
-          <strong>{connection.name}</strong>
-          <StatusBadge tone={rollupTone} withDot>
-            {connection.status}
-          </StatusBadge>
-          {deadJobCount > 0 ? (
-            <Link
-              className="muted-text"
-              to={`/jobs-logs?status=dead&connectionId=${encodeURIComponent(connection.id)}`}
-            >
-              {deadJobCount} failing job{deadJobCount === 1 ? '' : 's'}
-            </Link>
-          ) : null}
-        </li>
-      ))}
-    </ul>
-  );
 }
 
 export function InsightsPage(): ReactElement {
