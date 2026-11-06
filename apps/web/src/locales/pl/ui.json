@@ -226,6 +226,12 @@
     "showing": "Wyświetlono {start}-{end} z <total></total>",
     "totalFailed": "Nie udało się wczytać pełnej liczby. Pasuje co najmniej tyle."
   },
+  "peekPanel": {
+    "close": "Zamknij szczegóły",
+    "next": "Następne ↓",
+    "position": "{index} z {count}",
+    "previous": "↑ Poprzednie"
+  },
   "rangeNumber": {
     "clampOnBlur": "Po opuszczeniu pola zostanie ustawiona wartość {value}.",
     "outOfRange": "Wpisz liczbę całkowitą od {min} do {max}."

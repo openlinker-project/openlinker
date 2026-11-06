@@ -614,7 +614,7 @@ export function OrderListFilterBar({
           <button
             ref={moreRef}
             type="button"
-            className={['filter-group__btn', moreCount > 0 ? 'filter-group__btn--on' : '']
+            className={['joined-filters__btn', moreCount > 0 ? 'joined-filters__btn--on' : '']
               .filter(Boolean)
               .join(' ')}
             data-testid="orders-filter-toggle"

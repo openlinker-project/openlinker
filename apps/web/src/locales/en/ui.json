@@ -210,6 +210,12 @@
     "showing": "Showing {start}–{end} of <total></total>",
     "totalFailed": "The full count could not be loaded. At least this many match."
   },
+  "peekPanel": {
+    "close": "Close details",
+    "next": "Next ↓",
+    "position": "{index} of {count}",
+    "previous": "↑ Previous"
+  },
   "rangeNumber": {
     "clampOnBlur": "Leaving the field sets it to {value}.",
     "outOfRange": "Enter a whole number from {min} to {max}."

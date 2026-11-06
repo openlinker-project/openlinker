@@ -14453,6 +14453,16 @@ a.kpi-card:focus-visible {
 .attention-item__n--error { color: var(--status-error-fg); }
 .attention-item__n--warning { color: var(--status-warning-fg); }
 .attention-item__age { font-size: 0.625rem; color: var(--text-muted); white-space: nowrap; }
+/* A group that explains rather than filters (#4027, "no cost price"). */
+.attention-note {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: 6px 10px 8px;
+  max-width: 22rem;
+}
+.attention-note p { margin: 0; font-size: 0.8125rem; color: var(--text-secondary); white-space: normal; }
 .attention-pop__foot {
   display: flex;
   justify-content: space-between;
@@ -14473,14 +14483,14 @@ a.kpi-card:focus-visible {
 .list-toolbar .list-search { flex: 0 1 420px; min-width: 200px; }
 .list-toolbar__spacer { flex: 1; }
 .list-toolbar .list-results { margin-left: 0; }
-.filter-group {
+.joined-filters {
   display: inline-flex;
   align-items: stretch;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   background: var(--bg-surface);
 }
-.filter-group__btn {
+.joined-filters__btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -14496,15 +14506,15 @@ a.kpi-card:focus-visible {
   white-space: nowrap;
   transition: background var(--duration-fast) var(--ease-out);
 }
-.filter-group__btn:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); }
-.filter-group__btn:last-child { border-right: none; border-radius: 0 var(--radius-md) var(--radius-md) 0; }
-.filter-group__btn:hover,
-.filter-group__btn[aria-expanded='true'] { background: var(--bg-surface-hover); color: var(--text-primary); }
-.filter-group__btn:focus-visible { outline: none; box-shadow: var(--shadow-focus); position: relative; }
-.filter-group__btn--on { background: var(--accent-primary-soft); color: var(--accent-primary-soft-strong); }
-.filter-group__key { color: var(--text-muted); }
-.filter-group__val { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
-.filter-group__caret { margin-top: -3px; font-size: 0.75rem; opacity: 0.7; }
+.joined-filters__btn:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); }
+.joined-filters__btn:last-child { border-right: none; border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+.joined-filters__btn:hover,
+.joined-filters__btn[aria-expanded='true'] { background: var(--bg-surface-hover); color: var(--text-primary); }
+.joined-filters__btn:focus-visible { outline: none; box-shadow: var(--shadow-focus); position: relative; }
+.joined-filters__btn--on { background: var(--accent-primary-soft); color: var(--accent-primary-soft-strong); }
+.joined-filters__key { color: var(--text-muted); }
+.joined-filters__val { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.joined-filters__caret { margin-top: -3px; font-size: 0.75rem; opacity: 0.7; }
 .button__count {
   display: inline-grid;
   place-items: center;
@@ -14721,6 +14731,9 @@ a.kpi-card:focus-visible {
 /* Order peek */
 .peek-panel__title-link { color: inherit; text-decoration: none; font-family: var(--font-mono); }
 .peek-panel__title-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+/* A product peek (#4027) is titled by name, not by a reference. */
+.product-peek__id { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.product-peek__id .peek-panel__title-link { font-family: var(--font-sans); }
 .peek-panel__title-arrow { margin-left: 4px; font-size: 0.75em; color: var(--text-muted); }
 .peek-panel__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 0.75rem; color: var(--text-muted); }
 .peek-panel__total { font-size: 1.25rem; font-weight: 600; letter-spacing: var(--tracking-tight); white-space: nowrap; }
@@ -14746,7 +14759,7 @@ a.kpi-card:focus-visible {
 
 @media (max-width: 760px) {
   .attention-summary { padding: 6px 0; }
-  .filter-group { width: 100%; overflow-x: auto; }
+  .joined-filters { width: 100%; overflow-x: auto; }
   .list-toolbar .list-search { flex-basis: 100%; }
 }
 .attention-summary { margin-left: auto; }
@@ -24685,25 +24698,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 
 /* ── Products cockpit (#1720) ─────────────────────────────────────── */
-/* KPI tiles double as clickable stock/coverage filters - mirrors the orders
-   `.orders-segment` mechanic (a reset button wraps a MetricCard; the active
-   segment gets the chip-active accent treatment). Kept page-namespaced like
-   the orders section; generalizing the pattern is out of scope for #1720. */
-.products-segments { margin-bottom: var(--space-4); grid-auto-rows: minmax(5.5rem, auto); }
-/* Layout only — see `.card-button-reset`, which this element also carries. */
-.products-segment {
-  border-radius: var(--radius-lg);
-}
-.products-segment > .metric-card { height: 100%; }
-.products-segment:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
-.products-segment--active .metric-card {
-  border-color: var(--accent-primary-border);
-  box-shadow: var(--shadow-focus);
-}
-
 /* Two-line table cells (product identity / source / stock). */
 /* `min-width: 0` + a child cap so the fold's ellipsis can fire: the two prior
    children were bounded in practice (the name has its own ellipsis, the SKU line
@@ -24773,6 +24767,9 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .sortbtn--active { color: var(--text-secondary); }
 .sortbtn__ind { color: var(--text-disabled); font-size: 0.625rem; }
 .sortbtn--active .sortbtn__ind { color: var(--accent-primary); }
+/* Left-aligned stacks (#4027): Product + SKU, Stock. */
+.sortstack--left { align-items: flex-start; }
+.sortstack--left .sortbtn { justify-content: flex-start; min-width: 0; }
 
 /* Per-row "+ Create offers" mini-CTA in the Listings column. */
 /* Re-skinned as a filled mono-caps pill (the mockup's `.row-cta`) instead of
@@ -25026,93 +25023,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   background: var(--bg-shell);
   font-weight: 600;
   color: var(--text-primary);
-}
-
-/* Mobile card disclosure toggle (#1720) - the heavy per-variant detail (its
-   own queries + the wide variant-stock table) stays collapsed by default;
-   only the tapped card mounts it, mirroring the orders card's chevron. */
-.products-card-disclosure {
-  /* Full reset - the global `button, .button {}` base (height, box-shadow,
-     border, background) otherwise survives and reads as a boxed pill
-     instead of plain disclosure text (#1720 review). */
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: auto;
-  padding: 0;
-  border: none;
-  border-radius: 0;
-  background: none;
-  box-shadow: none;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-}
-.products-card-disclosure:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
-.products-card-disclosure__chev { color: var(--accent-primary); }
-.products-card-disclosure[aria-expanded='true'] + .products-row-detail {
-  margin-top: var(--space-3);
-}
-
-/* Narrow-viewport (<1024px) filter collapse: a "Filters" toggle in the
-   toolbar opens a stacked panel with Stock / Listings / Source / Sort
-   groups (the chip rail would otherwise wrap into a tall block above the
-   table, and the hidden sortable columns lose their headers). */
-.products-filter-toggle {
-  display: inline-flex; align-items: center; gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  font-size: 0.8125rem;
-  cursor: pointer;
-}
-.products-filter-toggle:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
-.products-filter-toggle--active {
-  border-color: var(--accent-primary-border);
-  color: var(--text-primary);
-}
-.products-filter-toggle__count {
-  min-width: 1.25rem;
-  padding: 0 var(--space-1);
-  border-radius: var(--radius-pill);
-  background: var(--accent-primary);
-  color: var(--text-inverse);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  text-align: center;
-}
-.products-filter-panel {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  background: var(--bg-surface);
-  margin-bottom: var(--space-3);
-}
-.products-filter-panel__group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  align-items: flex-start;
-}
-.products-filter-panel__label {
-  font-size: 0.6875rem;
-  font-family: var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
 }
 
 /* ── RoutingSplitBar (#1739) ──────────────────────────────────────────
