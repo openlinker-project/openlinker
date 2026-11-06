@@ -302,6 +302,11 @@ module.exports = {
                   '**/bench/components/**',
                   '**/bench/lib/**',
                   '**/bench/types/**',
+                  '**/login-page-settings/api/**',
+                  '**/login-page-settings/hooks/**',
+                  '**/login-page-settings/components/**',
+                  '**/login-page-settings/lib/**',
+                  '**/login-page-settings/types/**',
                   // Added in #1938 review, when `features/demo` reached into
                   // `../../auth/hooks/`. Enumerated in full like every other
                   // slug; note that `pages/auth/*` and `app/api/api-client.ts`
@@ -600,6 +605,11 @@ module.exports = {
                   '**/bench/components/**',
                   '**/bench/lib/**',
                   '**/bench/types/**',
+                  '**/login-page-settings/api/**',
+                  '**/login-page-settings/hooks/**',
+                  '**/login-page-settings/components/**',
+                  '**/login-page-settings/lib/**',
+                  '**/login-page-settings/types/**',
                   // #1938 review — `features/auth` gained a barrel; a new slug
                   // goes into BOTH pattern groups per
                   // docs/frontend-architecture.md § Feature Public Surface,

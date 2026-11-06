@@ -53,9 +53,21 @@ interface SidebarNavProps {
   counts: NavCounts;
   groups: NavGroup[];
   onNavigate?: () => void;
+  /**
+   * Marks the item with this `to` active instead of matching the URL. Only the
+   * login page's background preview (#4029) sets it: it renders this nav on
+   * `/login`, where no item would otherwise be active.
+   */
+  activeTo?: string;
 }
 
-function SidebarNav({ ariaLabel, counts, groups, onNavigate }: SidebarNavProps): ReactElement {
+export function SidebarNav({
+  ariaLabel,
+  counts,
+  groups,
+  onNavigate,
+  activeTo,
+}: SidebarNavProps): ReactElement {
   // i18n seam (#612): nav-item counts follow the active locale instead of
   // being pinned to en-US. `'en'` maps to BCP 47 `'en-GB'` and `'pl'` to
   // `'pl-PL'`, so each language gets its own grouping separators.
@@ -108,7 +120,9 @@ function SidebarNav({ ariaLabel, counts, groups, onNavigate }: SidebarNavProps):
                         end={item.end}
                         onClick={onNavigate}
                         className={({ isActive }) =>
-                          isActive ? 'shell-nav__link shell-nav__link--active' : 'shell-nav__link'
+                          (activeTo === undefined ? isActive : activeTo === item.to)
+                            ? 'shell-nav__link shell-nav__link--active'
+                            : 'shell-nav__link'
                         }
                       >
                         <span className="shell-nav__link-label" title={item.label}>
@@ -131,7 +145,7 @@ function SidebarNav({ ariaLabel, counts, groups, onNavigate }: SidebarNavProps):
   );
 }
 
-function SidebarBrand(): ReactElement {
+export function SidebarBrand(): ReactElement {
   return (
     <div className="shell-brand">
       <img

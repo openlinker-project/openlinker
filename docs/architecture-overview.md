@@ -599,6 +599,13 @@ The system is organized into the following core bounded contexts:
 - **`syncJobRetentionDays` / `syncJobDeadRetentionDays` (#2946, D16)** joined the same generic `OPERATIONAL_SETTING_KEYS` numeric-knob shape this section describes — bounded 30-365 days, no separate advisory ceiling (`recommendedMax === absoluteMax` for both, since D16 gives one hard bound rather than the soft/hard pair every other knob here has), defaults 30 / 90. The consuming sweep and its design are described under § Sync Manager rather than here, to avoid two descriptions of one mechanism drifting.
 
 
+### 25a. Login Page Settings
+
+- **Responsibility**: hold the login-page copy an admin sets for a real install (#4028/#4029): six fields (`headline`, `headlineAccent`, `lead`, `formTitle`, `formSubtitle`, `support`) per language (`pl`, `en`), in the singleton `login_page_settings` row (the `operational_settings` shape). A **leaf** context: it imports no sibling.
+- **Resolution is row -> env -> default, and the API never holds default copy.** `OL_LOGIN_{FIELD}_{PL|EN}` is the env rung; "default" means the API returns nothing and the frontend shows its own `login.production` catalog text, so there is one source of default wording. `GET /login-page-settings` (admin) reports each field with its rung; `PUT` trims, clears on an empty value and refuses an over-length one (400 naming the field). `GET /system/config` carries only the overrides as `loginPage`, and **omits it in demo mode**, whose copy is fixed in the `login.demo` catalog.
+- **`registrationEnabled` on `GET /system/config` reads `OL_REGISTRATION_ENABLED` through the same `isRegistrationEnabled` helper `RegistrationService` uses**, so the page never offers a sign-up the API would refuse.
+- **Frontend**: `/login` and `/register` share one pathless layout route (`LoginStageLayout`), so a tab switch changes the URL without remounting the card. `/consent` renders the same screen. The card stacks every view and reserves the tallest one's height, so the page height never changes. The approved design is `docs/plans/mockups/login-page.html`; each `data-state` there is a state the app renders.
+
 ### 26. Fulfillment
 
 *See [ADR-054](./architecture/adrs/054-fulfillment-work-unit-of-assignment.md) for `FulfillmentWork` as the unit of assignment and [ADR-053](./architecture/adrs/053-fulfillment-authority-vocabulary-leaf.md) for the leaf posture.*

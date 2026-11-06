@@ -1284,6 +1284,16 @@ export function createMockApiClient(
       getConfig: vi.fn().mockResolvedValue({ demoMode: false }),
       ...overrides.system,
     } as ApiClient['system'],
+    loginPageSettings: {
+      get: vi.fn().mockResolvedValue({
+        copy: { pl: {}, en: {} },
+        maxLength: { headline: 60, headlineAccent: 60, lead: 280, formTitle: 60, formSubtitle: 140, support: 200 },
+        updatedAt: null,
+        updatedBy: null,
+      }),
+      update: vi.fn().mockResolvedValue(undefined),
+      ...overrides.loginPageSettings,
+    } as ApiClient['loginPageSettings'],
   };
 
   // Fold plugin mock defaults, layering caller overrides per namespace. Caller

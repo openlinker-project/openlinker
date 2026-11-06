@@ -414,7 +414,10 @@
  * Status tones keep the same semantic names but shift to dark-friendly
  * tints so soft backgrounds don't wash out on dark surfaces.
  */
-html[data-theme='dark'] {
+/* `.login-topbar--demo` (#4029) carries the dark tokens in either theme: it is the
+   openlinker.io header, which is dark on the light page too. */
+html[data-theme='dark'],
+.login-topbar--demo {
   color-scheme: dark;
 
   /* Primary button hover — accent-driven (#775). */
@@ -6078,6 +6081,891 @@ a.delivery-rider-banner__button:focus-visible {
 .read-only-lock > :disabled,
 .read-only-lock > [aria-disabled='true'] {
   pointer-events: none;
+}
+
+/* ── Login stage (#4029) ──────────────────────────────────────────────
+ * /login, /register and /consent: a top bar, the demo's blurred app preview
+ * behind a brand gradient, the hero and the auth card. Values are 1:1 with the
+ * approved mockup (docs/plans/mockups/login-page.html).
+ */
+:root {
+  --login-brand-word: oklch(60% 0.19 48);
+  --login-backdrop-opacity: 0.85;
+}
+
+html[data-theme='dark'] {
+  --login-brand-word: oklch(78% 0.15 55);
+  --login-backdrop-opacity: 0.6;
+}
+
+html:has(.login-stage) {
+  scrollbar-gutter: stable;
+}
+
+.login-stage {
+  position: relative;
+  isolation: isolate;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  background: var(--bg-canvas);
+}
+
+.login-stage__bg {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+}
+
+.login-stage__wash {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(65% 80% at 0% 100%, color-mix(in oklab, var(--accent-primary) 26%, transparent), transparent 62%),
+    radial-gradient(55% 60% at 100% 0%, color-mix(in oklab, var(--accent-primary) 12%, transparent), transparent 60%),
+    linear-gradient(
+      90deg,
+      color-mix(in oklab, var(--bg-canvas) 94%, transparent) 0%,
+      color-mix(in oklab, var(--bg-canvas) 78%, transparent) 42%,
+      color-mix(in oklab, var(--bg-canvas) 50%, transparent) 100%
+    );
+}
+
+.login-stage--gradient .login-stage__wash {
+  background:
+    radial-gradient(70% 90% at 0% 100%, color-mix(in oklab, var(--accent-primary) 22%, transparent), transparent 62%),
+    radial-gradient(50% 60% at 100% 0%, color-mix(in oklab, var(--accent-primary) 10%, transparent), transparent 60%),
+    var(--bg-canvas);
+}
+
+.login-stage__inner {
+  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
+  max-width: 1240px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 440px);
+  gap: 72px;
+  align-items: center;
+  padding-block: 24px;
+  padding-left: max(32px, env(safe-area-inset-left, 0px));
+  padding-right: max(32px, env(safe-area-inset-right, 0px));
+}
+
+.login-stage__auth-col {
+  align-self: center;
+  display: flex;
+  align-items: center;
+}
+
+.login-stage__auth-col > .auth-card {
+  width: 100%;
+}
+
+.login-stage--preview {
+  min-height: 700px;
+  height: 700px;
+}
+
+/* Backdrop: the real panel, blurred. */
+.login-backdrop {
+  position: absolute;
+  inset: -30px;
+  overflow: hidden;
+  filter: blur(4px) saturate(0.9);
+  opacity: var(--login-backdrop-opacity);
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.login-backdrop__frame {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: left top;
+}
+
+.login-backdrop .shell {
+  min-height: 0;
+  height: 100%;
+}
+
+.login-backdrop .shell-content {
+  overflow: hidden;
+}
+
+.login-backdrop .shell-nav__link {
+  transition:
+    background-color 1.2s ease,
+    color 1.2s ease,
+    box-shadow 1.2s ease;
+}
+
+.login-backdrop__scenes {
+  position: relative;
+  animation: none;
+}
+
+.login-backdrop__scene {
+  position: absolute;
+  inset: 0;
+  padding: inherit;
+  will-change: opacity, transform;
+}
+
+.login-backdrop__crumb {
+  position: relative;
+  display: inline-grid;
+}
+
+.login-backdrop__crumb > span {
+  grid-area: 1 / 1;
+}
+
+.login-backdrop__drift {
+  width: 100%;
+  height: 100%;
+  animation: login-backdrop-drift 28s ease-in-out infinite alternate;
+  transform-origin: 60% 40%;
+}
+
+@keyframes login-backdrop-drift {
+  from {
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+  to {
+    transform: scale(1.05) translate3d(-1.5%, -1%, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-backdrop__drift {
+    animation: none;
+  }
+}
+
+/* Hero */
+.login-hero {
+  display: grid;
+  gap: 26px;
+  max-width: 620px;
+  align-self: center;
+}
+
+.login-hero__title {
+  margin: 0;
+  font-size: clamp(2.2rem, 3.6vw, 3.1rem);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.login-hero__line {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 0.06em;
+  white-space: nowrap;
+}
+
+.login-hero__line > span {
+  display: block;
+}
+
+.login-hero__slot {
+  position: relative;
+  display: block;
+  height: 1.1em;
+  overflow: hidden;
+  color: var(--login-brand-word);
+}
+
+.login-hero__word {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+}
+
+.login-hero__accent {
+  display: block;
+  color: var(--login-brand-word);
+}
+
+.login-hero__lead {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  max-width: 42ch;
+  text-wrap: pretty;
+}
+
+.login-hero__highlights {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.login-hero__highlights li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+}
+
+.login-hero__tick {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-primary-soft);
+  border: 1px solid var(--accent-primary-border);
+  position: relative;
+}
+
+.login-hero__tick::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 3.5px;
+  width: 5px;
+  height: 9px;
+  border: solid var(--accent-primary-soft-strong);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* Top bar: the same header as openlinker.io (canvas-dark at 95% + blur, subtle-dark border). */
+.login-topbar {
+  position: relative;
+  z-index: 3;
+  color: var(--text-primary);
+}
+
+.login-topbar__inner {
+  box-sizing: border-box;
+  max-width: 1240px;
+  margin: 0 auto;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-left: max(32px, env(safe-area-inset-left, 0px));
+  padding-right: max(32px, env(safe-area-inset-right, 0px));
+}
+
+.login-topbar__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 600;
+  font-size: 1.125rem;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+}
+
+.login-topbar__brand > svg {
+  display: block;
+  width: 32px;
+  height: 32px;
+}
+
+.login-topbar--demo {
+  background: oklch(14% 0.005 270 / 0.95);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border-bottom: 1px solid oklch(24% 0.01 270);
+}
+
+.login-topbar--plain {
+  background: transparent;
+}
+
+.login-topbar__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent-primary-soft-strong);
+  background: color-mix(in oklab, var(--accent-primary) 14%, transparent);
+  border: 1px solid color-mix(in oklab, var(--accent-primary) 40%, transparent);
+}
+
+.login-topbar__dot {
+  position: relative;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+}
+
+.login-topbar__dot::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid var(--accent-primary);
+  animation: login-topbar-pulse 2.4s ease-out infinite;
+}
+
+@keyframes login-topbar-pulse {
+  from {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+.login-topbar__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.login-topbar__text > span {
+  display: inline-block;
+  white-space: nowrap;
+  transition: opacity var(--duration-normal) var(--ease-out);
+}
+
+.login-topbar__text[data-fits='false'] > span {
+  visibility: hidden;
+  opacity: 0;
+}
+
+.login-topbar__links {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.login-topbar__links a {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-decoration: none;
+  padding: 5px 9px;
+  border-radius: 7px;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.login-topbar__links a:hover {
+  color: var(--text-primary);
+  background: transparent;
+}
+
+.login-topbar__links a:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.login-topbar__links + .language-switch {
+  margin-left: 6px;
+  padding-left: 12px;
+  border-left: 1px solid oklch(100% 0 0 / 0.1);
+}
+
+.login-topbar__spacer {
+  flex: 1;
+}
+
+/* The bar is the openlinker.io header, where the switch sits at its own height, not at the
+   app's 2rem button height. */
+.login-topbar .language-switch__trigger {
+  height: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-topbar__dot::after {
+    animation: none;
+  }
+}
+
+/* Auth card */
+.auth-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 16px;
+  padding: 24px 28px 26px;
+  box-shadow:
+    0 1px 2px rgb(15 18 26 / 0.06),
+    0 28px 64px -16px rgb(15 18 26 / 0.28);
+}
+
+.auth-card__tabs {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 22px;
+}
+
+.auth-card__tab {
+  position: relative;
+  height: 40px;
+  border: 0;
+  background: transparent;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--duration-normal) var(--ease-out);
+}
+
+/* The tab is a bare <button>: undo the app's global button look (the mockup has none). */
+.auth-card__tab,
+.auth-card__tab:hover,
+.auth-card__tab:active {
+  display: block;
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  letter-spacing: normal;
+}
+
+.auth-card__tab:hover {
+  color: var(--text-secondary);
+}
+
+.auth-card__tab[aria-selected='true'] {
+  color: var(--text-primary);
+}
+
+.auth-card__tab[aria-disabled='true'] {
+  cursor: default;
+}
+
+.auth-card__tab:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.auth-card__tab-pill {
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+  background: var(--bg-surface);
+  box-shadow:
+    0 1px 2px rgb(15 18 26 / 0.08),
+    0 0 0 1px var(--border-default);
+}
+
+.auth-card__tab > span:last-child {
+  position: relative;
+}
+
+/* Views stack on top of each other; the stack animates to the ACTIVE view's height while the
+   column reserves the tallest one, so the page never moves. */
+.auth-card__stack {
+  position: relative;
+  overflow: clip;
+  overflow-clip-margin: 8px;
+}
+
+.auth-card__stack > .auth-card__view {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  min-width: 0;
+}
+
+.auth-card__view[aria-hidden='true'] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.auth-card__head {
+  margin-bottom: 18px;
+}
+
+.auth-card__title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--text-primary);
+}
+
+.auth-card__lead {
+  margin: 6px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.auth-card__lead--spaced {
+  margin-bottom: 16px;
+}
+
+.auth-card__mail {
+  font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.auth-card__form {
+  display: grid;
+}
+
+.auth-card__form .control {
+  height: 2.5rem;
+  font-size: 0.875rem;
+}
+
+.auth-field {
+  display: grid;
+}
+
+.auth-field__labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: var(--space-2);
+}
+
+.auth-field__labels a {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.auth-field__labels a:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.auth-field__hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.auth-field__error {
+  min-height: 22px;
+  padding-top: 4px;
+}
+
+.auth-field__error p {
+  margin: 0;
+  color: var(--status-error-strong);
+  font-size: 0.75rem;
+}
+
+.password-input {
+  position: relative;
+}
+
+.password-input .control {
+  padding-right: 76px;
+}
+
+.password-input__toggle {
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  bottom: 5px;
+  height: auto;
+  width: 62px;
+}
+
+.auth-card__submit {
+  width: 100%;
+  height: 2.75rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.auth-card__spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: auth-card-spin 0.7s linear infinite;
+}
+
+@keyframes auth-card-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.auth-card__alert-slot {
+  margin-top: 16px;
+}
+
+.auth-card__alert-slot--collapsed:empty {
+  margin-top: 0;
+}
+
+.auth-card__note {
+  position: relative;
+  margin: 14px 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.auth-card__linkish,
+.auth-card__linkish:hover,
+.auth-card__linkish:active {
+  display: inline;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  padding: 0;
+  white-space: normal;
+  letter-spacing: normal;
+  vertical-align: baseline;
+  color: var(--text-primary);
+}
+
+.auth-card__linkish {
+  font: inherit;
+  color: var(--text-primary);
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+}
+
+.auth-card__linkish:hover {
+  text-decoration-color: var(--text-primary);
+}
+
+.auth-card__linkish:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: 3px;
+}
+
+.auth-card__popover {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 4;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 14px 16px;
+  transform-origin: bottom left;
+}
+
+.auth-card__popover strong {
+  display: block;
+  font-size: 0.8125rem;
+  margin-bottom: 6px;
+}
+
+.auth-card__popover ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.auth-card__check {
+  width: 48px;
+  height: 48px;
+  display: block;
+  margin-bottom: 20px;
+}
+
+.auth-card__redirect {
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg-surface-muted);
+  overflow: hidden;
+  margin-top: 20px;
+}
+
+.auth-card__redirect > span {
+  display: block;
+  height: 100%;
+  background: var(--accent-primary);
+  transform-origin: left;
+}
+
+.auth-card__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+.auth-card__actions--start {
+  justify-content: flex-start;
+}
+
+.auth-card__bullets {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+/* The card's alerts are tighter than a page alert: one short sentence under a form. */
+.auth-card .alert__content {
+  gap: 2px;
+  font-size: 0.8125rem;
+}
+
+.auth-card .alert__title {
+  font-weight: 600;
+}
+
+.auth-card .alert__description {
+  color: var(--text-primary);
+}
+
+.auth-card__consent-error {
+  margin-top: 16px;
+}
+
+.auth-card__fine {
+  margin: 12px 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.auth-card__support {
+  margin-top: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-card__spinner {
+    animation: none;
+  }
+}
+
+@media (max-width: 960px) {
+  .login-stage__inner {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+    padding-block: 28px 48px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+
+  .login-stage__bg {
+    display: none;
+  }
+
+  .login-hero__title {
+    font-size: clamp(2rem, 8vw, 2.6rem);
+  }
+
+  .login-hero__lead {
+    font-size: 1rem;
+  }
+
+  .auth-card {
+    padding: 22px 18px 24px;
+  }
+
+  .login-topbar__inner {
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+
+  .login-topbar__links a:not(:last-child) {
+    display: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .login-topbar__links {
+    display: none;
+  }
+
+  .login-topbar__links + .language-switch {
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .login-topbar .language-switch {
+    margin-left: auto;
+  }
+}
+
+/* Settings > Login page: a wider preview than the 2:1 buyer-email layout, which fits a message,
+   not a page. */
+/* Doubled class: `.buyer-email-editor` is declared later in this file and would win a tie. */
+.buyer-email-editor.login-page-editor {
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .buyer-email-editor.login-page-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.login-page-editor > aside {
+  position: sticky;
+  top: 68px;
+}
+
+.login-preview {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-canvas);
+}
+
+.login-preview__frame {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: left top;
 }
 
 /* ── InPost webhook runbook (#1473) ── */

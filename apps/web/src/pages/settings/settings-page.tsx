@@ -13,6 +13,7 @@ import { SyncPacingTile } from '../../features/settings';
 import { InventoryLocationsTile } from '../../features/inventory';
 import { OrderTagsSettingsTile } from '../../features/orders/components/order-tags-settings-tile';
 import { BuyerEmailsTile } from '../../features/buyer-emails';
+import { LoginPageSettingsTile } from '../../features/login-page-settings';
 import { PageLayout } from '../../shared/ui/page-layout';
 
 export function SettingsPage(): ReactElement {
@@ -133,6 +134,9 @@ export function SettingsPage(): ReactElement {
         {/* ── Order tags (admin-only, #3532/#3533, D34) ─────────────── */}
         {isAdmin ? <OrderTagsSettingsTile /> : null}
         {isAdmin ? <BuyerEmailsTile /> : null}
+
+        {/* ── Login page (admin-only, #4029) ──────────────────────── */}
+        {isAdmin ? <LoginPageSettingsTile /> : null}
 
         {/* Deliberately NOT admin-gated — see `InventoryLocationsTile`'s docblock. */}
         {omsRoutingUi ? <InventoryLocationsTile /> : null}

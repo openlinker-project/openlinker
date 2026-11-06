@@ -33,6 +33,183 @@
       "overdue": "Po terminie {duration}"
     }
   },
+  "login": {
+    "bar": {
+      "chip": "Demo",
+      "docs": "Dokumentacja",
+      "github": "GitHub",
+      "linksLabel": "Więcej o OpenLinkerze",
+      "site": "openlinker.io",
+      "text": "Demo działa na wymyślonym sklepie, więc niczego tu nie zepsujesz."
+    },
+    "demo": {
+      "consent": {
+        "accept": "Zgadzam się",
+        "decline": "Wyloguj",
+        "errorTitle": "Nie udało się zapisać",
+        "fine": "Nagrywanie startuje po kliknięciu „Zgadzam się”.",
+        "lead": "Nagrywamy, co klikasz w demo, żeby wiedzieć, co poprawić. Haseł nie nagrywamy. Bez Twojej zgody demo się nie otworzy.",
+        "pending": "Zapisuję...",
+        "title": "Zgoda na nagrywanie sesji"
+      },
+      "headline": {
+        "line1": "Zobacz, jak OpenLinker",
+        "line2": "obsługuje zamówienia",
+        "rotate": {
+          "w1": "z Allegro.",
+          "w2": "z Erli.",
+          "w3": "z PrestaShopa.",
+          "w4": "z WooCommerce.",
+          "w5": "z Shopera."
+        }
+      },
+      "highlights": {
+        "h1": "Konto demo jest darmowe",
+        "h2": "Na własnym serwerze nie płacisz prowizji od zamówień",
+        "h3": "Cały kod jest na GitHubie, na licencji Apache 2.0"
+      },
+      "lead": "Załóż konto i przejrzyj prawdziwy panel z przykładowym sklepem: zamówienia, wysyłki i faktury.",
+      "login": {
+        "failed": "Nieprawidłowy login lub hasło. Jeśli konto jest nowe, najpierw kliknij link w mailu.",
+        "lead": "Użyj loginu lub e-maila i hasła z rejestracji.",
+        "pending": "Loguję...",
+        "submit": "Zaloguj się",
+        "title": "Zaloguj się do demo"
+      },
+      "recorded": {
+        "label": "Co nagrywamy",
+        "r1": "Strony, które otwierasz, i przyciski, które klikasz",
+        "r2": "Tekst, który wpisujesz, poza hasłami",
+        "r3": "Przeglądarkę, rozmiar ekranu i przybliżoną lokalizację z adresu IP",
+        "r4": "Same przykładowe dane, bo sklep, zamówienia i faktury w demo są wymyślone"
+      },
+      "register": {
+        "lead": "Po rejestracji przyślemy link aktywacyjny na Twój e-mail.",
+        "pending": "Zakładam konto...",
+        "recording": "Sesje w demo nagrywamy (bez haseł), żeby wiedzieć, co poprawić. Zakładając konto, zgadzasz się na to.",
+        "sentAction": "Przejdź do logowania",
+        "sentLead": "Wysłaliśmy link na <b>{email}</b>. Kliknij go, a potem zaloguj się tutaj.",
+        "sentTitle": "Sprawdź skrzynkę",
+        "submit": "Załóż konto demo",
+        "title": "Darmowe konto demo"
+      },
+      "tabs": {
+        "login": "Zaloguj się",
+        "register": "Załóż konto"
+      }
+    },
+    "production": {
+      "headline": {
+        "accent": "Sklep Kasia",
+        "line1": "Panel sprzedaży"
+      },
+      "lead": "Zamówienia, wysyłki i faktury ze wszystkich Twoich kanałów sprzedaży.",
+      "login": {
+        "failed": "Login albo hasło są nieprawidłowe.",
+        "lead": "Konto zakłada administrator Twojej firmy.",
+        "pending": "Loguję...",
+        "submit": "Zaloguj się",
+        "title": "Zaloguj się"
+      },
+      "register": {
+        "lead": "Administrator dostanie Twoją prośbę i aktywuje konto.",
+        "pending": "Wysyłam...",
+        "sentAction": "Wróć do logowania",
+        "sentLead": "Napiszemy do Ciebie, gdy administrator ją zatwierdzi.",
+        "sentTitle": "Prośba wysłana",
+        "submit": "Wyślij prośbę",
+        "title": "Poproś o dostęp"
+      },
+      "support": "Problem z logowaniem? Napisz do it@sklep-kasia.pl",
+      "tabs": {
+        "login": "Zaloguj się",
+        "register": "Poproś o dostęp"
+      }
+    },
+    "ui": {
+      "confirm": "Powtórz hasło",
+      "email": "E-mail",
+      "emailPh": "kasia@twojsklep.pl",
+      "forgot": "Nie pamiętasz hasła?",
+      "hide": "Ukryj",
+      "hidePw": "Ukryj hasło",
+      "loading": "Sprawdzam sesję...",
+      "loginFailedTitle": "Nie udało się zalogować",
+      "min8": "min. 8 znaków",
+      "password": "Hasło",
+      "registerFailedTitle": "Nie udało się założyć konta",
+      "show": "Pokaż",
+      "showPw": "Pokaż hasło",
+      "signedInLead": "Otwieramy panel zamówień.",
+      "signedInTitle": "Zalogowano",
+      "tabsLabel": "Logowanie lub rejestracja",
+      "tracking": "Ta wizyta jest zapisywana w statystykach. Nie tworzymy na jej podstawie profilu osoby.",
+      "username": "Nazwa użytkownika",
+      "usernameOrEmail": "Nazwa użytkownika lub e-mail",
+      "usernamePh": "np. sklep-kasia",
+      "v": {
+        "confirm": "Powtórz hasło.",
+        "email": "Wpisz adres e-mail.",
+        "emailBad": "Ten adres e-mail wygląda na niepełny.",
+        "mismatch": "Hasła się różnią.",
+        "password": "Wpisz hasło.",
+        "password8": "Hasło musi mieć co najmniej 8 znaków.",
+        "taken": "Ta nazwa użytkownika albo ten e-mail są już zajęte.",
+        "usernameLogin": "Wpisz nazwę użytkownika albo e-mail.",
+        "usernameRegister": "Wybierz nazwę użytkownika."
+      },
+      "yourAddress": "Twój adres"
+    }
+  },
+  "loginPageSettings": {
+    "back": "Ustawienia",
+    "cancel": "Anuluj",
+    "description": "To widzi każdy, zanim się zaloguje. Teksty ustawiasz osobno dla każdego języka.",
+    "emptyHint": "Puste pole pokazuje tekst domyślny.",
+    "eyebrow": "Ustawienia",
+    "fields": {
+      "formSubtitle": {
+        "hint": "Np. kto zakłada konta w Twojej firmie.",
+        "label": "Podpis formularza"
+      },
+      "formTitle": {
+        "hint": "Nad polami logowania.",
+        "label": "Tytuł formularza"
+      },
+      "headline": {
+        "hint": "Pierwsza linia, np. nazwa panelu.",
+        "label": "Nagłówek"
+      },
+      "headlineAccent": {
+        "hint": "Druga linia w kolorze marki, np. nazwa firmy.",
+        "label": "Wyróżnienie w nagłówku"
+      },
+      "lead": {
+        "hint": "Jedno lub dwa zdania o tym, do czego służy panel.",
+        "label": "Opis pod nagłówkiem"
+      },
+      "support": {
+        "hint": "Pod formularzem. Podaj adres albo telefon, pod którym ktoś odpowie.",
+        "label": "Pomoc przy logowaniu"
+      }
+    },
+    "language": "Język tekstów",
+    "loadError": "Nie udało się wczytać ustawień strony logowania.",
+    "modeOff": "Rejestracja jest wyłączona, więc strona pokazuje tylko logowanie. Włączysz ją zmienną OL_REGISTRATION_ENABLED.",
+    "modeOn": "Rejestracja jest włączona, więc strona pozwala też poprosić o dostęp. Wyłączysz ją zmienną OL_REGISTRATION_ENABLED.",
+    "preview": "Podgląd",
+    "previewHintEn": "Tak zobaczą to osoby logujące się po angielsku.",
+    "previewHintPl": "Tak zobaczą to osoby logujące się po polsku.",
+    "reset": "Przywróć domyślne",
+    "save": "Zapisz",
+    "saveError": "Nie udało się zapisać strony logowania.",
+    "saved": "Zapisano. Nowe teksty są już na stronie logowania.",
+    "saving": "Zapisuję...",
+    "tile": "Nagłówek, opis i pomoc przy logowaniu na stronie logowania.",
+    "title": "Strona logowania",
+    "tooLong": "Wpisz najwyżej {max} znaków.",
+    "unsaved": "Masz niezapisane zmiany."
+  },
   "ui": {
     "accessDenied": {
       "eyebrow": "Brak dostępu",

@@ -29,6 +29,183 @@
       "overdue": "Overdue {duration}"
     }
   },
+  "login": {
+    "bar": {
+      "chip": "Demo",
+      "docs": "Docs",
+      "github": "GitHub",
+      "linksLabel": "More about OpenLinker",
+      "site": "openlinker.io",
+      "text": "Demo runs on a made-up shop, so you can't break anything."
+    },
+    "demo": {
+      "consent": {
+        "accept": "I agree",
+        "decline": "Sign out",
+        "errorTitle": "Couldn't save that",
+        "fine": "Recording starts when you click “I agree”.",
+        "lead": "We record what you click in the demo to learn what to fix. We never record passwords. The demo won't open without your OK.",
+        "pending": "Saving...",
+        "title": "Session recording"
+      },
+      "headline": {
+        "line1": "See how OpenLinker",
+        "line2": "handles orders",
+        "rotate": {
+          "w1": "from Allegro.",
+          "w2": "from Erli.",
+          "w3": "from PrestaShop.",
+          "w4": "from WooCommerce.",
+          "w5": "from Shoper."
+        }
+      },
+      "highlights": {
+        "h1": "The demo account is free",
+        "h2": "On your own server you pay no fee per order",
+        "h3": "All the code is on GitHub under the Apache 2.0 licence"
+      },
+      "lead": "Create an account and browse the real panel with a sample shop: orders, shipments and invoices.",
+      "login": {
+        "failed": "Wrong username or password. If the account is new, click the link in your email first.",
+        "lead": "Use the username or email and the password you signed up with.",
+        "pending": "Signing in...",
+        "submit": "Sign in",
+        "title": "Sign in to the demo"
+      },
+      "recorded": {
+        "label": "What we record",
+        "r1": "The pages you open and the buttons you click",
+        "r2": "What you type, except passwords",
+        "r3": "Your browser, screen size and rough location from your IP address",
+        "r4": "Sample data only, because the shop, orders and invoices in the demo are made up"
+      },
+      "register": {
+        "lead": "After you sign up, we'll email you an activation link.",
+        "pending": "Creating your account...",
+        "recording": "We record demo sessions (never passwords) to learn what to fix. Creating an account means you're OK with that.",
+        "sentAction": "Go to sign in",
+        "sentLead": "We sent a link to <b>{email}</b>. Click it, then sign in here.",
+        "sentTitle": "Check your inbox",
+        "submit": "Create demo account",
+        "title": "Free demo account"
+      },
+      "tabs": {
+        "login": "Sign in",
+        "register": "Create account"
+      }
+    },
+    "production": {
+      "headline": {
+        "accent": "Kate's Shop",
+        "line1": "Sales panel"
+      },
+      "lead": "Orders, shipments and invoices from every channel you sell on.",
+      "login": {
+        "failed": "The username or password is wrong.",
+        "lead": "Your company's administrator creates your account.",
+        "pending": "Signing in...",
+        "submit": "Sign in",
+        "title": "Sign in"
+      },
+      "register": {
+        "lead": "Your administrator gets the request and activates your account.",
+        "pending": "Sending...",
+        "sentAction": "Back to sign in",
+        "sentLead": "We'll email you once your administrator approves it.",
+        "sentTitle": "Request sent",
+        "submit": "Send request",
+        "title": "Request access"
+      },
+      "support": "Trouble signing in? Write to it@kates-shop.com",
+      "tabs": {
+        "login": "Sign in",
+        "register": "Request access"
+      }
+    },
+    "ui": {
+      "confirm": "Repeat password",
+      "email": "Email",
+      "emailPh": "kate@yourshop.com",
+      "forgot": "Forgot your password?",
+      "hide": "Hide",
+      "hidePw": "Hide password",
+      "loading": "Checking your session...",
+      "loginFailedTitle": "Couldn't sign you in",
+      "min8": "at least 8 characters",
+      "password": "Password",
+      "registerFailedTitle": "Couldn't create the account",
+      "show": "Show",
+      "showPw": "Show password",
+      "signedInLead": "Opening your orders.",
+      "signedInTitle": "Signed in",
+      "tabsLabel": "Sign in or create an account",
+      "tracking": "This visit is counted in our statistics. No personal profile is built from it.",
+      "username": "Username",
+      "usernameOrEmail": "Username or email",
+      "usernamePh": "e.g. kates-shop",
+      "v": {
+        "confirm": "Repeat your password.",
+        "email": "Enter your email address.",
+        "emailBad": "This email address looks incomplete.",
+        "mismatch": "The passwords don't match.",
+        "password": "Enter your password.",
+        "password8": "Use at least 8 characters.",
+        "taken": "That username or email is already taken.",
+        "usernameLogin": "Enter your username or email.",
+        "usernameRegister": "Choose a username."
+      },
+      "yourAddress": "your address"
+    }
+  },
+  "loginPageSettings": {
+    "back": "Settings",
+    "cancel": "Cancel",
+    "description": "Everyone sees this before they sign in. Each language has its own text.",
+    "emptyHint": "An empty field shows the default text.",
+    "eyebrow": "Settings",
+    "fields": {
+      "formSubtitle": {
+        "hint": "For example, who creates accounts at your company.",
+        "label": "Form subtitle"
+      },
+      "formTitle": {
+        "hint": "Above the sign-in fields.",
+        "label": "Form title"
+      },
+      "headline": {
+        "hint": "The first line, for example the name of the panel.",
+        "label": "Headline"
+      },
+      "headlineAccent": {
+        "hint": "The second line in the brand colour, for example your company name.",
+        "label": "Headline highlight"
+      },
+      "lead": {
+        "hint": "One or two sentences about what the panel is for.",
+        "label": "Text under the headline"
+      },
+      "support": {
+        "hint": "Below the form. Give an address or phone number where someone will answer.",
+        "label": "Sign-in help"
+      }
+    },
+    "language": "Text language",
+    "loadError": "Couldn't load the login page settings.",
+    "modeOff": "Registration is off, so the page shows sign-in only. Turn it on with the OL_REGISTRATION_ENABLED variable.",
+    "modeOn": "Registration is on, so the page also offers a request for access. Turn it off with the OL_REGISTRATION_ENABLED variable.",
+    "preview": "Preview",
+    "previewHintEn": "This is what people signing in in English will see.",
+    "previewHintPl": "This is what people signing in in Polish will see.",
+    "reset": "Restore defaults",
+    "save": "Save",
+    "saveError": "Couldn't save the login page.",
+    "saved": "Saved. The new text is live on the login page.",
+    "saving": "Saving...",
+    "tile": "Headline, text and sign-in help on the login page.",
+    "title": "Login page",
+    "tooLong": "Use at most {max} characters.",
+    "unsaved": "You have unsaved changes."
+  },
   "ui": {
     "accessDenied": {
       "eyebrow": "No access",

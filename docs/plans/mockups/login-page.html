@@ -1,0 +1,3893 @@
+<title>Logowanie do demo OpenLinker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap">
+<style>
+/* Layout: sticky variant switcher on top, one full-width stage below that renders the chosen login variant.
+   Tokens below are copied 1:1 from apps/web/src/index.css (#775 warm-neutral + signal-orange). */
+:root {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff;
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-on-primary: oklch(18% 0.012 50);
+  --text-link: oklch(50% 0.14 250);
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-active: oklch(56% 0.20 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-soft-strong: oklch(40% 0.16 50);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+  --button-primary-bg-hover: oklch(62% 0.19 50);
+  --status-success: oklch(54% 0.14 150);
+  --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150);
+  --status-success-strong: oklch(36% 0.12 150);
+  --status-error: oklch(58% 0.20 25);
+  --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25);
+  --status-error-strong: oklch(42% 0.16 25);
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08);
+  --shadow-lg: 0 6px 12px rgb(15 18 26 / 0.06), 0 16px 32px rgb(15 18 26 / 0.10);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
+  --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem;
+  --space-5: 1.5rem; --space-6: 2rem; --space-7: 3rem; --space-8: 4rem;
+  --radius-xs: 4px; --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px; --radius-xl: 14px; --radius-pill: 9999px;
+  --duration-fast: 120ms; --duration-normal: 180ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --tracking-tight: -0.012em;
+  --brand-orange: #ee8c3c;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270); --bg-surface: oklch(19% 0.007 270);
+    --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+    --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+    --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270); --text-muted: oklch(60% 0.012 270);
+    --text-on-primary: oklch(16% 0.012 50); --text-link: oklch(76% 0.14 245);
+    --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50); --accent-primary-active: oklch(84% 0.16 50);
+    --accent-primary-soft: oklch(24% 0.06 50); --accent-primary-soft-strong: oklch(86% 0.14 60); --accent-primary-border: oklch(40% 0.14 55);
+    --accent-ring: oklch(72% 0.18 50 / 0.40); --button-primary-bg-hover: oklch(78% 0.18 50);
+    --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(38% 0.10 150); --status-success-strong: oklch(86% 0.12 150);
+    --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-strong: oklch(86% 0.14 25);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / .4); --shadow-md: 0 2px 4px rgb(0 0 0 / .4), 0 6px 16px rgb(0 0 0 / .4);
+    --shadow-lg: 0 6px 12px rgb(0 0 0 / .45), 0 16px 32px rgb(0 0 0 / .45); --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / .06);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"], .theme-ink {
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270); --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270); --text-muted: oklch(60% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); --text-link: oklch(76% 0.14 245);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50); --accent-primary-active: oklch(84% 0.16 50);
+  --accent-primary-soft: oklch(24% 0.06 50); --accent-primary-soft-strong: oklch(86% 0.14 60); --accent-primary-border: oklch(40% 0.14 55);
+  --accent-ring: oklch(72% 0.18 50 / 0.40); --button-primary-bg-hover: oklch(78% 0.18 50);
+  --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(38% 0.10 150); --status-success-strong: oklch(86% 0.12 150);
+  --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-strong: oklch(86% 0.14 25);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / .4); --shadow-md: 0 2px 4px rgb(0 0 0 / .4), 0 6px 16px rgb(0 0 0 / .4);
+  --shadow-lg: 0 6px 12px rgb(0 0 0 / .45), 0 16px 32px rgb(0 0 0 / .45); --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / .06);
+  color-scheme: dark;
+}
+:root[data-theme="light"] { color-scheme: light; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg-canvas); color: var(--text-primary); font-family: var(--font-sans); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+h1, h2, p { margin: 0; }
+a { color: var(--text-link); }
+
+/* ── Real app components (index.css, verbatim where it matters) ───────── */
+.button { display:inline-flex; align-items:center; justify-content:center; gap:var(--space-2); border:1px solid var(--accent-primary-border); border-radius:var(--radius-md); padding:0 var(--space-4); height:2rem; background:var(--accent-primary); color:var(--text-on-primary); font-family:inherit; font-size:.8125rem; font-weight:500; cursor:pointer; text-decoration:none; user-select:none; white-space:nowrap; box-shadow:var(--shadow-xs), var(--shadow-inset-top); transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out); }
+.button:hover { background:var(--button-primary-bg-hover); border-color:var(--button-primary-bg-hover); }
+.button:active { background:var(--accent-primary-active); border-color:var(--accent-primary-active); }
+.button:focus-visible, .control:focus-visible { outline:none; box-shadow:var(--shadow-focus); }
+.button--secondary { border-color:var(--border-default); background:var(--bg-surface); color:var(--text-primary); }
+.button--secondary:hover { background:var(--bg-surface-muted); border-color:var(--border-strong); color:var(--text-primary); }
+.button--ghost { border-color:transparent; background:transparent; color:var(--text-secondary); box-shadow:none; }
+.button--ghost:hover { background:var(--bg-surface-muted); border-color:transparent; color:var(--text-primary); }
+.button:disabled { cursor:not-allowed; opacity:.55; box-shadow:none; }
+.button--sm { height:1.75rem; padding:0 var(--space-3); font-size:.75rem; }
+.button--lg { height:2.375rem; padding:0 var(--space-5); font-size:.875rem; }
+.control { width:100%; height:2rem; border:1px solid var(--border-default); border-radius:var(--radius-md); padding:0 var(--space-3); background:var(--bg-surface); color:var(--text-primary); font-family:inherit; font-size:.8125rem; line-height:1.5; box-shadow:var(--shadow-xs); appearance:none; transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out); }
+.control:hover:not(:disabled) { border-color:var(--border-strong); }
+.control::placeholder { color: var(--text-muted); }
+.control--invalid { border-color:var(--status-error); }
+.control--invalid:focus-visible { box-shadow:0 0 0 3px color-mix(in oklab, var(--status-error) 30%, transparent); }
+.form-field { display:grid; gap:var(--space-2); }
+.form-field__label { color:var(--text-primary); font-size:.8125rem; font-weight:500; }
+.form-field__description { color:var(--text-muted); font-size:.75rem; }
+.form-field__error { margin:0; color:var(--status-error-strong); font-size:.75rem; }
+.alert { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; border:1px solid var(--border-default); border-radius:var(--radius-lg); padding:.875rem 1rem .875rem 1.125rem; background:var(--bg-surface); }
+.alert--success { border-color:var(--status-success-border); background:var(--status-success-soft); box-shadow: inset 3px 0 0 var(--status-success); }
+.alert--error { border-color:var(--status-error-border); background:var(--status-error-soft); box-shadow: inset 3px 0 0 var(--status-error); }
+.alert__content { display:grid; gap:2px; font-size:.8125rem; }
+.alert__title { font-weight:600; }
+
+
+/* ── Page frame ─────────────────────────────────────────────────────── */
+html { scrollbar-gutter: stable; }
+.gutter { padding-left:max(24px, env(safe-area-inset-left, 0px)); padding-right:max(24px, env(safe-area-inset-right, 0px)); }
+
+/* Demo strip: the one place that says "this is the demo". Full width, quiet, always visible. */
+.demo-strip { position:relative; z-index:2; background:var(--accent-primary); padding-block:9px; font-size:.8125rem; color:var(--text-on-primary); }
+.demo-strip__inner { max-width:1360px; margin:0 auto; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.demo-chip { display:inline-flex; align-items:center; gap:6px; height:22px; padding:0 9px; border-radius:var(--radius-pill); background:oklch(20% 0.012 270); color:#f3a35c; font-size:.75rem; font-weight:700; letter-spacing:.02em; }
+.demo-chip__dot { width:6px; height:6px; border-radius:50%; background:#f3a35c; box-shadow:0 0 0 3px rgb(243 163 92 / .25); }
+.demo-strip span { font-weight:500; }
+.demo-strip a { margin-left:auto; color:var(--text-on-primary); font-weight:600; text-decoration:underline; text-underline-offset:3px; text-decoration-color:rgb(0 0 0 / .35); }
+.demo-strip a:hover { text-decoration-color:currentColor; }
+
+/* ── apps/web index.css: tokens + the components the background preview uses (verbatim) ── */
+:root{
+  
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', monospace;
+
+  
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-muted: oklch(96% 0.005 80);
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --bg-strong: oklch(93% 0.006 80);
+
+  
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+  --border-focus: oklch(68% 0.18 50);
+
+  
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-disabled: oklch(70% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50); 
+  --text-inverse: oklch(96% 0.005 80);
+  --text-link: oklch(50% 0.14 250);
+
+  
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-active: oklch(56% 0.20 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-soft-strong: oklch(40% 0.16 50);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-focus: oklch(68% 0.18 50);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+
+  
+  --status-success: oklch(54% 0.14 150);
+  --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150);
+  --status-success-fg: oklch(36% 0.12 150);
+  --status-success-strong: oklch(36% 0.12 150);
+
+  
+  --status-warning: oklch(72% 0.16 85);
+  --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85);
+  --status-warning-fg: oklch(42% 0.12 80);
+  --status-warning-strong: oklch(42% 0.12 80);
+
+  
+  --status-error: oklch(58% 0.20 25);
+  --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25);
+  --status-error-fg: oklch(42% 0.16 25);
+  --status-error-strong: oklch(42% 0.16 25);
+
+  
+  --status-info: oklch(56% 0.14 245);
+  --status-info-soft: oklch(96% 0.03 245);
+  --status-info-border: oklch(85% 0.08 245);
+  --status-info-fg: oklch(40% 0.12 245);
+  --status-info-strong: oklch(40% 0.12 245);
+
+  
+  --viz-cat-1: oklch(75% 0.13 85);
+  --viz-cat-2: oklch(60% 0.15 20);
+  --viz-cat-3: oklch(58% 0.12 245);
+  --viz-cat-4: oklch(60% 0.13 150);
+  --viz-cat-muted: oklch(82% 0.008 80);
+
+  
+  --channel-allegro: oklch(70% 0.18 35);
+  --channel-prestashop: oklch(60% 0.18 250);
+  --channel-erli: oklch(66% 0.17 320);
+  --channel-woocommerce: oklch(64% 0.16 150);
+  --channel-amazon: oklch(72% 0.16 75);
+  --channel-shopify: oklch(64% 0.16 150);
+
+  
+  --status-review: oklch(58% 0.16 290);
+  --status-review-soft: oklch(96% 0.04 290);
+  --status-review-border: oklch(85% 0.08 290);
+  --status-review-fg: oklch(42% 0.14 290);
+  --status-review-strong: oklch(42% 0.14 290);
+
+  
+  --status-conflict: oklch(64% 0.16 45);
+  --status-conflict-soft: oklch(96% 0.05 45);
+  --status-conflict-border: oklch(85% 0.10 45);
+  --status-conflict-strong: oklch(40% 0.14 45);
+
+  
+  --status-disabled: oklch(55% 0.008 80);
+  --status-disabled-soft: oklch(95% 0.005 80);
+  --status-disabled-border: oklch(85% 0.008 80);
+  --status-disabled-fg: oklch(38% 0.010 80);
+  --status-disabled-strong: oklch(38% 0.010 80);
+
+  
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
+  --shadow-soft-hover: 0 2px 4px rgb(15 18 26 / 0.04), 0 12px 28px rgb(15 18 26 / 0.10);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+  --overlay-scrim: rgb(15 18 26 / 0.55);
+
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+  --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08);
+  --shadow-lg: 0 6px 12px rgb(15 18 26 / 0.06), 0 16px 32px rgb(15 18 26 / 0.10);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
+
+  
+  --button-primary-bg-hover: oklch(62% 0.19 50);
+
+  
+  
+  --shell-topbar-height: 52px;
+  --demo-banner-height: 48px;
+
+  --space-1: 0.25rem; 
+  --space-2: 0.5rem; 
+  --space-3: 0.75rem; 
+  --space-4: 1rem; 
+  --space-5: 1.5rem; 
+  --space-6: 2rem; 
+  --space-7: 3rem; 
+  --space-8: 4rem; 
+
+  
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-pill: 9999px;
+
+  
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --duration-slow: 280ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  
+  --tracking-tight: -0.012em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-caps: 0.08em;
+
+  color-scheme: light;
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--text-primary);
+  background: var(--bg-canvas);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  color-scheme: dark;
+
+  
+  --button-primary-bg-hover: oklch(78% 0.18 50);
+
+  
+  --bg-canvas: oklch(14% 0.005 270);
+  --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-muted: oklch(24% 0.009 270);
+  --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270);
+  --bg-strong: oklch(28% 0.010 270);
+
+  
+  --border-subtle: oklch(24% 0.010 270);
+  --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270);
+  --border-focus: oklch(72% 0.18 50);
+
+  
+  --text-primary: oklch(96% 0.006 270);
+  --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270);
+  --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); 
+  --text-inverse: oklch(20% 0.012 80);
+  --text-link: oklch(76% 0.14 245);
+
+  
+  --accent-primary: oklch(72% 0.18 50);
+  --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50);
+  --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-soft-strong: oklch(86% 0.14 60);
+  --accent-primary-border: oklch(40% 0.14 55);
+  --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
+
+  
+  --status-success: oklch(68% 0.16 150);
+  --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150);
+  --status-success-fg: oklch(86% 0.14 150);
+  --status-success-strong: oklch(86% 0.14 150);
+
+  
+  --status-warning: oklch(78% 0.16 85);
+  --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85);
+  --status-warning-fg: oklch(88% 0.14 85);
+  --status-warning-strong: oklch(88% 0.14 85);
+
+  
+  --status-error: oklch(70% 0.18 25);
+  --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25);
+  --status-error-fg: oklch(86% 0.14 25);
+  --status-error-strong: oklch(86% 0.14 25);
+
+  
+  --status-info: oklch(72% 0.14 245);
+  --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245);
+  --status-info-fg: oklch(86% 0.12 245);
+  --status-info-strong: oklch(86% 0.12 245);
+
+  
+  --viz-cat-1: oklch(70% 0.12 85);
+  --viz-cat-2: oklch(62% 0.14 20);
+  --viz-cat-3: oklch(62% 0.11 245);
+  --viz-cat-4: oklch(62% 0.12 150);
+  --viz-cat-muted: oklch(42% 0.008 80);
+
+  
+  --status-review: oklch(74% 0.14 290);
+  --status-review-soft: oklch(28% 0.06 290);
+  --status-review-border: oklch(38% 0.10 290);
+  --status-review-fg: oklch(88% 0.12 290);
+  --status-review-strong: oklch(88% 0.12 290);
+
+  
+  --status-conflict: oklch(72% 0.16 45);
+  --status-conflict-soft: oklch(28% 0.08 45);
+  --status-conflict-border: oklch(40% 0.12 45);
+  --status-conflict-strong: oklch(88% 0.14 45);
+
+  
+  --status-disabled: oklch(65% 0.010 270);
+  --status-disabled-soft: oklch(24% 0.010 270);
+  --status-disabled-border: oklch(34% 0.012 270);
+  --status-disabled-fg: oklch(82% 0.010 270);
+  --status-disabled-strong: oklch(82% 0.010 270);
+
+  
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+  --shadow-soft-hover: 0 2px 4px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+}}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+
+  
+  --button-primary-bg-hover: oklch(78% 0.18 50);
+
+  
+  --bg-canvas: oklch(14% 0.005 270);
+  --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-muted: oklch(24% 0.009 270);
+  --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270);
+  --bg-strong: oklch(28% 0.010 270);
+
+  
+  --border-subtle: oklch(24% 0.010 270);
+  --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270);
+  --border-focus: oklch(72% 0.18 50);
+
+  
+  --text-primary: oklch(96% 0.006 270);
+  --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270);
+  --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); 
+  --text-inverse: oklch(20% 0.012 80);
+  --text-link: oklch(76% 0.14 245);
+
+  
+  --accent-primary: oklch(72% 0.18 50);
+  --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50);
+  --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-soft-strong: oklch(86% 0.14 60);
+  --accent-primary-border: oklch(40% 0.14 55);
+  --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
+
+  
+  --status-success: oklch(68% 0.16 150);
+  --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150);
+  --status-success-fg: oklch(86% 0.14 150);
+  --status-success-strong: oklch(86% 0.14 150);
+
+  
+  --status-warning: oklch(78% 0.16 85);
+  --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85);
+  --status-warning-fg: oklch(88% 0.14 85);
+  --status-warning-strong: oklch(88% 0.14 85);
+
+  
+  --status-error: oklch(70% 0.18 25);
+  --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25);
+  --status-error-fg: oklch(86% 0.14 25);
+  --status-error-strong: oklch(86% 0.14 25);
+
+  
+  --status-info: oklch(72% 0.14 245);
+  --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245);
+  --status-info-fg: oklch(86% 0.12 245);
+  --status-info-strong: oklch(86% 0.12 245);
+
+  
+  --viz-cat-1: oklch(70% 0.12 85);
+  --viz-cat-2: oklch(62% 0.14 20);
+  --viz-cat-3: oklch(62% 0.11 245);
+  --viz-cat-4: oklch(62% 0.12 150);
+  --viz-cat-muted: oklch(42% 0.008 80);
+
+  
+  --status-review: oklch(74% 0.14 290);
+  --status-review-soft: oklch(28% 0.06 290);
+  --status-review-border: oklch(38% 0.10 290);
+  --status-review-fg: oklch(88% 0.12 290);
+  --status-review-strong: oklch(88% 0.12 290);
+
+  
+  --status-conflict: oklch(72% 0.16 45);
+  --status-conflict-soft: oklch(28% 0.08 45);
+  --status-conflict-border: oklch(40% 0.12 45);
+  --status-conflict-strong: oklch(88% 0.14 45);
+
+  
+  --status-disabled: oklch(65% 0.010 270);
+  --status-disabled-soft: oklch(24% 0.010 270);
+  --status-disabled-border: oklch(34% 0.012 270);
+  --status-disabled-fg: oklch(82% 0.010 270);
+  --status-disabled-strong: oklch(82% 0.010 270);
+
+  
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+  --shadow-soft-hover: 0 2px 4px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+}
+.card-button-reset > .metric-card{
+  height: 100%;
+}
+.button__shortcut{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.125rem;
+  padding: 1px 5px;
+  margin-left: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  line-height: 1;
+  letter-spacing: var(--tracking-wide);
+  border-radius: var(--radius-xs);
+  background: rgb(255 255 255 / 0.20);
+  color: inherit;
+  opacity: 0.85;
+}
+.button--secondary .button__shortcut,
+.button--ghost .button__shortcut{
+  background: var(--bg-surface-muted);
+  color: var(--text-muted);
+}
+.sr-only{
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.shell{
+  min-height: 100vh;
+  background: var(--bg-canvas);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  grid-template-areas: 'main';
+}
+.shell-sidebar{
+  display: none;
+}
+@media (min-width: 1024px){.shell{
+    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-areas: 'sidebar main';
+  }
+.shell-sidebar{
+    grid-area: sidebar;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-shell);
+    border-right: 1px solid var(--border-subtle);
+    padding: 12px 0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow: hidden;
+  }}
+.shell-brand{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 16px 16px;
+}
+.shell-brand__mark{
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: block;
+  object-fit: cover;
+}
+.shell-brand__name{
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+.shell-nav{
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 12px;
+  scrollbar-width: thin;
+}
+.shell-nav__group{
+  margin-bottom: 16px;
+}
+.shell-nav__label{
+  margin: 0 0 4px;
+  padding: 0 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.shell-nav__list{
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 1px;
+}
+.shell-nav__link{
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition:
+    background 120ms,
+    color 120ms;
+}
+.shell-nav__link:hover{
+  background: var(--bg-surface-muted);
+  color: var(--text-primary);
+}
+.shell-nav__link--active{
+  background: var(--bg-surface-muted);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent-primary);
+}
+.shell-nav__link--disabled{
+  color: var(--text-disabled);
+  cursor: default;
+  opacity: 0.55;
+  font-weight: 400;
+}
+.shell-nav__link--disabled:hover{
+  background: transparent;
+  color: var(--text-disabled);
+}
+.shell-nav__link-label{
+  flex: 1;
+  min-width: 0;
+}
+.shell-nav__link-count{
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding-left: 0.5rem;
+  letter-spacing: -0.01em;
+}
+.shell-nav__link--active .shell-nav__link-count{
+  color: var(--text-primary);
+}
+.shell-nav__link-lock{
+  padding-left: 0.5rem;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-muted);
+}
+.shell-workspace{
+  padding: 12px 16px 0;
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 8px;
+  display: grid;
+  gap: 10px;
+}
+.shell-workspace__header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.shell-workspace__name{
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+.shell-workspace__user{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.shell-workspace__username{
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.shell-workspace__logout{
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid transparent;
+}
+.shell-workspace__logout:hover{
+  background: var(--bg-surface-hover);
+}
+.shell-workspace__github-link{
+  font-size: 12px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.shell-workspace__github-link:hover{
+  text-decoration: underline;
+}
+.shell-main{
+  grid-area: main;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.shell-topbar{
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--shell-topbar-height);
+  padding: 0 16px;
+  background: var(--bg-shell);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.shell-crumbs{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  min-width: 0;
+}
+.shell-crumbs__group{
+  white-space: nowrap;
+}
+.shell-crumbs__sep{
+  color: var(--border-strong);
+  font-size: 12px;
+  line-height: 1;
+}
+.shell-crumbs__current{
+  color: var(--text-primary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.shell-topbar__spacer{
+  flex: 1;
+}
+.shell-topbar__alerts{
+  padding: 6px 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+.shell-topbar__alerts:hover{
+  background: var(--bg-surface-muted);
+  color: var(--text-primary);
+}
+.shell-topbar__search{
+  display: none;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  min-width: 280px;
+  max-width: 420px;
+  flex: 1;
+  padding: 0 10px 0 32px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: text;
+  position: relative;
+  text-align: left;
+}
+@media (min-width: 1024px){.shell-topbar__search{
+    display: inline-flex;
+  }}
+.shell-topbar__search:hover{
+  border-color: var(--border-strong);
+  background: var(--bg-surface);
+}
+.shell-topbar__search:focus-visible{
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+.shell-topbar__search-icon{
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.shell-topbar__search-placeholder{
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+.shell-topbar__search-kbd{
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border: 1px solid var(--border-default);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  background: var(--bg-surface-muted);
+  line-height: 1;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+}
+.shell-user-chip{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px 3px 3px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  height: 32px;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.shell-user-chip:hover{
+  background: var(--bg-surface-muted);
+}
+.shell-user-chip:focus-visible{
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+.shell-user-chip__avatar{
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-primary), var(--status-review));
+  color: var(--text-inverse);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+.shell-user-chip__name{
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+@media (max-width: 767px){.shell-user-chip__name{
+    display: none;
+  }}
+.shell-content{
+  flex: 1;
+  padding: 20px 16px 32px;
+  overflow-x: hidden;
+  
+  animation: shell-content-enter 180ms var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce){.shell-content{ animation: none; }}
+@media (min-width: 768px){.shell-content{
+    padding: 20px 24px 40px;
+  }}
+@media (min-width: 1024px){.shell-content{
+    padding: 20px 32px 48px;
+  }}
+.section-title,
+.page-title,
+.state-card__title{
+  margin: 0;
+  color: var(--text-primary);
+}
+.page-description,
+.panel-copy,
+.muted-text{
+  margin: 0;
+  color: var(--text-secondary);
+}
+.price-changes-queue .data-table__row.is-resolved{
+  background: var(--bg-surface-muted);
+  opacity: 0.6;
+}
+.price-changes-queue .data-table__row.is-grouped:not(.is-group-start) td{
+  border-top: 0;
+}
+.price-changes-queue .data-table__row.is-grouped td:first-child{
+  box-shadow: inset 3px 0 0 var(--accent-primary-border);
+}
+.price-changes-queue .data-table__row.is-flagged{
+  background: color-mix(in oklab, var(--status-warning-soft) 55%, transparent);
+}
+.connection-list,
+.activity-list,
+.check-list,
+.page-section,
+.page-header,
+.workspace-grid,
+.status-strip,
+.form-card,
+.definition-list,
+.field{
+  display: grid;
+  gap: 0.75rem;
+}
+.page-section{
+  grid-template-columns: minmax(0, 1fr);
+}
+.page-header{
+  gap: 0.45rem;
+}
+.page-header--split{
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+.page-header__content,
+.page-header__actions,
+.state-card,
+.state-card__header,
+.state-card__actions{
+  display: grid;
+  gap: 0.75rem;
+}
+.page-header__actions{
+  justify-items: end;
+}
+.eyebrow{
+  margin: 0;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-primary-hover);
+}
+.status-strip{
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.status-badge{
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--status-disabled-border);
+  border-radius: var(--radius-sm);
+  background: var(--status-disabled-soft);
+  color: var(--status-disabled-fg);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.status-badge--compact{
+  padding: 1px var(--space-2);
+  font-size: 0.625rem;
+}
+.status-badge__dot{
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 999px;
+  background: currentColor;
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+.status-badge--success{
+  border-color: var(--status-success-border);
+  background: var(--status-success-soft);
+  color: var(--status-success-fg);
+}
+.status-badge--warning{
+  border-color: var(--status-warning-border);
+  background: var(--status-warning-soft);
+  color: var(--status-warning-fg);
+}
+.status-badge--error{
+  border-color: var(--status-error-border);
+  background: var(--status-error-soft);
+  color: var(--status-error-fg);
+}
+.status-badge--review{
+  border-color: var(--status-review-border);
+  background: var(--status-review-soft);
+  color: var(--status-review-fg);
+}
+.status-badge--conflict{
+  border-color: var(--status-conflict-border);
+  background: var(--status-conflict-soft);
+  color: var(--status-conflict-strong);
+}
+.status-badge--info{
+  border-color: var(--status-info-border);
+  background: var(--status-info-soft);
+  color: var(--status-info-fg);
+}
+.status-badge--neutral{
+  border-color: var(--status-disabled-border);
+  background: var(--status-disabled-soft);
+  color: var(--status-disabled-fg);
+}
+.status-badge--solid{
+  background: var(--text-primary);
+  color: var(--text-inverse);
+  border-color: var(--text-primary);
+}
+.status-badge--pulse .status-badge__dot{
+  position: relative;
+  animation: status-badge-pulse 1.6s var(--ease-out) infinite;
+}
+@media (prefers-reduced-motion: reduce){.status-badge--pulse .status-badge__dot{
+    animation: none;
+  }}
+.status-badge.delivery-outcome-chip--dashed{
+  border-style: dashed;
+}
+.status-badge.delivery-outcome-chip--switchable{
+  border-left: 2px solid var(--accent-primary);
+  padding-left: 6px;
+}
+.mono-text,
+.mono{
+  font-family: var(--font-mono);
+  letter-spacing: -0.01em;
+  
+  overflow-wrap: anywhere;
+}
+.tabular{
+  font-variant-numeric: tabular-nums;
+}
+.data-table td .mono-text{
+  display: inline-block;
+  max-width: 20ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.data-table{
+  width: auto;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+.data-table__container{
+  overflow-x: auto;
+  
+  position: relative;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+}
+.data-table__container:focus-visible{
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.data-table .data-table__cell--right{
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.data-table__empty-cell{
+  padding: var(--space-5) var(--space-3);
+  color: var(--text-muted);
+}
+.data-table__stack{
+  display: grid;
+  gap: 2px;
+}
+.data-table__radio{
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+.data-table__action{
+  color: var(--accent-primary);
+  font-weight: 500;
+}
+.data-table__action:hover{
+  color: var(--accent-primary-hover);
+}
+.data-table th,
+.data-table td{
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  text-align: left;
+  vertical-align: middle;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.data-table thead th{
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-top: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  background: var(--bg-shell);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  user-select: none;
+}
+.data-table tbody td{
+  color: var(--text-primary);
+}
+.data-table tbody tr:last-child td{
+  border-bottom: 0;
+}
+.data-table__sticky-col{
+  position: sticky;
+  z-index: 2;
+  background: var(--bg-surface);
+}
+.data-table thead th.data-table__sticky-col{
+  
+  z-index: 3;
+  background: var(--bg-shell);
+}
+.data-table__row--linked:hover .data-table__sticky-col,
+.data-table__row--expandable:hover .data-table__sticky-col{
+  background: color-mix(in oklab, var(--bg-shell) 60%, var(--bg-surface));
+}
+.data-table__row--expanded .data-table__sticky-col{
+  background: color-mix(in oklab, var(--bg-shell) 45%, var(--bg-surface));
+}
+.data-table__sticky-col--last{
+  box-shadow: none;
+}
+.data-table--sticky-scrolled .data-table__sticky-col--last{
+  box-shadow:
+    inset -1px 0 0 color-mix(in oklab, var(--accent-primary) 42%, transparent),
+    6px 0 12px -6px color-mix(in oklab, var(--accent-primary) 22%, transparent);
+}
+@media (prefers-reduced-motion: no-preference){.data-table__sticky-col--last{
+    transition: box-shadow var(--duration-normal) var(--ease-out);
+  }}
+.data-table__row--linked{
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.data-table__row--linked:hover{
+  background: color-mix(in oklab, var(--bg-shell) 60%, transparent);
+}
+.data-table__row--linked:hover .data-table__row-link{
+  color: var(--accent-primary);
+}
+.data-table__row-link{
+  color: var(--text-primary);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+.data-table__row-link:focus-visible{
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-xs);
+}
+.data-table__row-link--block{
+  display: inline-flex;
+  width: 100%;
+}
+.data-table__header--sortable{
+  cursor: pointer;
+}
+.data-table__header-button{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.data-table__header-button:hover{
+  color: var(--text-primary);
+}
+.data-table__header-button:focus-visible{
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-xs);
+}
+.data-table__sort-indicator{
+  display: inline-block;
+  min-width: 0.625rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  line-height: 1;
+  opacity: 0.4;
+  transition: opacity var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.data-table__header-button:hover .data-table__sort-indicator{
+  opacity: 0.75;
+  color: var(--text-secondary);
+}
+.data-table__header--sortable[aria-sort='ascending'] .data-table__sort-indicator,
+.data-table__header--sortable[aria-sort='descending'] .data-table__sort-indicator{
+  color: var(--accent-primary);
+  opacity: 1;
+}
+.data-table__cell--hide-below-480,
+.data-table__cell--hide-below-768,
+.data-table__cell--hide-below-1024{
+  
+}
+@media (max-width: 479.98px){.data-table__cell--hide-below-480{
+    display: none;
+  }}
+@media (max-width: 767.98px){.data-table__cell--hide-below-768{
+    display: none;
+  }}
+@media (max-width: 1023.98px){.data-table__cell--hide-below-1024{
+    display: none;
+  }}
+.data-table__badge-row{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.data-table__expand-cell{
+  width: 2.25rem;
+  padding-left: var(--space-2) !important;
+  padding-right: 0 !important;
+  text-align: center;
+}
+.data-table__expand-toggle{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+.data-table__expand-toggle:hover{
+  color: var(--text-primary);
+  background: color-mix(in oklab, var(--bg-shell) 70%, transparent);
+}
+.data-table__expand-toggle:focus-visible{
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.data-table__expand-icon{
+  font-size: 0.75rem;
+  line-height: 1;
+}
+.data-table__row--expandable{
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.data-table__row--expandable:hover{
+  background: color-mix(in oklab, var(--bg-shell) 60%, transparent);
+}
+.data-table__row--expanded{
+  background: color-mix(in oklab, var(--bg-shell) 45%, transparent);
+}
+.data-table__detail-row > .data-table__detail-cell{
+  padding: 0;
+  background: var(--bg-shell);
+  border-top: 0;
+}
+.data-table__detail{
+  
+  position: sticky;
+  left: 0;
+  width: var(--dt-visible-width, 100%);
+  box-sizing: border-box;
+  padding: var(--space-4) var(--space-4) var(--space-4) 2.75rem;
+}
+.data-table-skeleton{
+  display: block;
+}
+.data-table-skeleton__table{
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.data-table-skeleton__table th,
+.data-table-skeleton__table td{
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-subtle);
+  text-align: left;
+  vertical-align: middle;
+  line-height: 1.35;
+}
+.data-table-skeleton__table thead th{
+  border-top: none;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+}
+.data-table-skeleton__row{
+  min-height: 36px;
+}
+.data-table-skeleton__row--action td{
+  padding-bottom: 20px;
+}
+.data-table-skeleton__stack{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.data-table-skeleton__bar--meta{
+  width: 60%;
+}
+.data-table-skeleton__bar--action{
+  height: 24px;
+  width: 30%;
+  border-radius: var(--radius-sm);
+}
+.data-table-skeleton__bar,
+.sales-document-market-row .skeleton-bar,
+.sales-document-market-section__summary-skeleton{
+  display: block;
+  height: 10px;
+  width: 100%;
+  border-radius: 4px;
+  background-color: var(--bg-surface-muted);
+  background-image: linear-gradient(
+    90deg,
+    var(--bg-surface-muted) 0%,
+    var(--bg-surface-hover) 50%,
+    var(--bg-surface-muted) 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: data-table-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.data-table-skeleton__bar--header{
+  height: 8px;
+  width: 60%;
+}
+.data-table-skeleton__bar--title{
+  height: 12px;
+  width: 70%;
+  margin-bottom: 8px;
+}
+.data-table-skeleton__bar--subtitle{
+  height: 10px;
+  width: 45%;
+}
+.data-table-skeleton__cards{
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.data-table-skeleton__card{
+  padding: 14px 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-surface);
+}
+@media (prefers-reduced-motion: reduce){.data-table-skeleton__bar,
+  .sales-document-market-row .skeleton-bar,
+  .sales-document-market-section__summary-skeleton{
+    animation: none;
+    background-image: none;
+  }}
+.rule-composer-section__header .eyebrow{
+  margin: 0;
+}
+@media (max-width: 900px){.workspace-grid--primary,
+  .page-header--split,
+  .timeline-list li{
+    grid-template-columns: 1fr;
+  }
+.page-header__actions{
+    justify-items: start;
+  }}
+@media (hover: none) and (pointer: coarse){.status-pill,
+  .status-badge,
+  .context-chip,
+  .toolbar-chip{
+    min-height: 28px; 
+  }}
+.page-title .entity-label__name{
+  font-weight: inherit;
+}
+.metric-card{
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+  text-decoration: none;
+  color: inherit;
+  height: 100%;
+  min-height: 5.5rem;
+}
+.metric-card__label{
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.metric-card__icon{
+  display: inline-flex;
+  align-items: center;
+  color: var(--status-warning-strong);
+}
+.metric-card--error .metric-card__icon{
+  color: var(--status-error-strong);
+}
+.metric-card__value{
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  line-height: 1.05;
+}
+.metric-card__trend{
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.metric-card__description{
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.metric-card--interactive{
+  transition:
+    transform 120ms,
+    box-shadow 120ms,
+    border-color 120ms;
+}
+.metric-card--interactive:hover{
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-soft-hover);
+}
+.metric-card--interactive:focus-visible{
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+.metric-card--success{
+  background: var(--status-success-soft);
+  border-color: var(--status-success-border);
+}
+.metric-card--success .metric-card__value{
+  color: var(--status-success-strong);
+}
+.metric-card--warning{
+  background: var(--status-warning-soft);
+  border-color: var(--status-warning-border);
+}
+.metric-card--warning .metric-card__value{
+  color: var(--status-warning-strong);
+}
+.metric-card--error{
+  background: var(--status-error-soft);
+  border-color: var(--status-error-border);
+}
+.metric-card--error .metric-card__value{
+  color: var(--status-error-strong);
+}
+.metric-card--info{
+  background: var(--status-info-soft);
+  border-color: var(--status-info-border);
+}
+.metric-card--info .metric-card__value{
+  color: var(--status-info-strong);
+}
+.kpi-card{
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  text-decoration: none;
+  box-shadow: var(--shadow-xs);
+  height: 100%;
+  min-height: 7rem;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+a.kpi-card:hover{
+  border-color: var(--border-default);
+  box-shadow: var(--shadow-sm);
+}
+a.kpi-card:focus-visible{
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.kpi-card__label{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.kpi-card__label-text{
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+.kpi-card__icon{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+}
+.kpi-card__value{
+  font-size: 2rem;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  color: var(--text-primary);
+}
+.kpi-card__value-suffix{
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: var(--tracking-normal);
+}
+.kpi-card__description{
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+.kpi-card--error{
+  background: var(--status-error-soft);
+  border-color: var(--status-error-border);
+}
+.kpi-card--error .kpi-card__label-text,
+.kpi-card--error .kpi-card__value,
+.kpi-card--error .kpi-card__description{
+  color: var(--status-error-strong);
+}
+.kpi-card--warning{
+  background: var(--status-warning-soft);
+  border-color: var(--status-warning-border);
+}
+.kpi-card--warning .kpi-card__label-text,
+.kpi-card--warning .kpi-card__value,
+.kpi-card--warning .kpi-card__description{
+  color: var(--status-warning-strong);
+}
+.kpi-card--success{
+  background: var(--status-success-soft);
+  border-color: var(--status-success-border);
+}
+.kpi-card--success .kpi-card__label-text,
+.kpi-card--success .kpi-card__value,
+.kpi-card--success .kpi-card__description{
+  color: var(--status-success-strong);
+}
+.status-strip.status-strip--analytics{
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 768px){.status-strip.status-strip--analytics{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }}
+@media (min-width: 1024px){.status-strip.status-strip--analytics{
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }}
+.status-strip--analytics .kpi-card{
+  min-height: 9.5rem;
+}
+.kpi-card__headline{
+  display: grid;
+  gap: var(--space-2);
+}
+.kpi-card__metric{
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--text-secondary);
+}
+.kpi-card__delta{
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+.kpi-card__delta-glyph{
+  font-size: 0.8125rem;
+  line-height: 1;
+}
+.kpi-card__delta-basis{
+  color: var(--text-muted);
+}
+.kpi-card__delta-value--success{
+  color: var(--status-success);
+}
+.kpi-card__delta-value--error{
+  color: var(--status-error);
+}
+.kpi-card__delta-value--neutral{
+  color: var(--text-muted);
+}
+.kpi-card__qualifiers{
+  display: flex;
+  flex-direction: column;
+  margin-top: auto;
+}
+.kpi-card__qualifier{
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+.kpi-card__qualifier + .kpi-card__qualifier{
+  margin-top: var(--space-3);
+}
+.kpi-card__qualifier-label{
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  min-width: 0;
+}
+.kpi-card__qualifier-value{
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+}
+.kpi-card__qualifier-rate{
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.status-strip--analytics .kpi-card--planned{
+  border-style: dashed;
+  border-color: var(--border-strong);
+  background: var(--bg-shell);
+}
+.kpi-card--planned .kpi-card__value,
+.kpi-card--planned .kpi-card__qualifier-value{
+  color: var(--text-secondary);
+}
+.kpi-card--planned-half .kpi-card__value{
+  color: var(--text-muted);
+}
+.kpi-card__planned-tag{
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border-strong);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.sparkline__line{
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+.sparkline__area{
+  fill: currentColor;
+  opacity: 0.12;
+}
+.sparkline--neutral{
+  color: var(--text-muted);
+}
+.sparkline--success{
+  color: var(--status-success);
+}
+.sparkline--warning{
+  color: var(--status-warning);
+}
+.sparkline--error{
+  color: var(--status-error);
+}
+.data-table__footnote{
+  margin: var(--space-2) 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.status-strip{
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 768px){.status-strip{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }}
+@media (min-width: 1024px){.status-strip{
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }}
+.orders-segment > .metric-card{ height: 100%; }
+.orders-segment--active .metric-card{
+  border-color: var(--accent-primary-border);
+  box-shadow: var(--shadow-focus);
+}
+.kpi-card{ position: relative; }
+.kpi-card::before{
+  content: '';
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--accent-primary) 60%, transparent), transparent);
+  opacity: 0.4;
+  pointer-events: none;
+}
+.data-table tbody tr:hover .copyable-id__copy,
+.copyable-id:hover .copyable-id__copy,
+.copyable-id:focus-within .copyable-id__copy{
+  opacity: 1;
+  transform: translateX(0);
+}
+@media (max-width: 1279px){.shipments-table .data-table__sticky-col .order-cell__body{
+    max-width: 11rem;
+  }}
+.data-table__row--expandable .data-table__expand-cell{
+  vertical-align: top;
+}
+html[data-density='compact'] .data-table th,
+html[data-density='compact'] .data-table td{
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+html[data-density='compact'] .data-table thead th{
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+  font-size: 0.625rem;
+}
+html[data-density='compact'] .status-badge{
+  padding: 1px var(--space-2);
+  font-size: 0.625rem;
+}
+.listings-panel .listings-subtable td.mono-text{
+  display: table-cell;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+.products-segment > .metric-card{ height: 100%; }
+.products-segment--active .metric-card{
+  border-color: var(--accent-primary-border);
+  box-shadow: var(--shadow-focus);
+}
+.variant-matrix__total-cell .tabular:first-child{ font-weight: 600; color: var(--text-primary); }
+@media (max-width: 640px){.data-table--stackable,
+  .data-table--stackable tbody{
+    display: block;
+    width: 100%;
+  }
+.data-table--stackable thead{
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+.data-table--stackable tbody{
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+.data-table--stackable tr{
+    display: block;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--bg-surface);
+    padding: var(--space-3) var(--space-4);
+  }
+.data-table--stackable td{
+    display: block;
+    border: none;
+    padding: 0;
+    height: auto;
+  }
+.data-table--stackable td[data-label]{
+    margin-top: var(--space-3);
+  }
+.data-table--stackable td[data-label]::before{
+    content: attr(data-label);
+    display: block;
+    margin-bottom: var(--space-1);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+.data-table--stackable td:first-child{
+    margin-top: 0;
+    font-weight: 600;
+  }
+.data-table--stackable td:first-child[data-label]::before{
+    content: none;
+  }
+.data-table--stackable td.data-table__cell--actions{
+    margin-top: var(--space-3);
+  }
+.data-table--stackable select,
+  .data-table--stackable .control{
+    width: 100%;
+    max-width: none;
+  }}
+.orphan-returns-worklist__row .mono-text{
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.assign-packing-work-metrics .metric-card{
+  min-width: 160px;
+}
+.bench-work-row__top .status-badge{
+  flex-shrink: 0;
+}
+
+/* ── Stage: the blurred live app behind, a brand gradient over it, the copy and the card on top ── */
+.stage { position:relative; isolation:isolate; overflow:hidden; display:flex; flex-direction:column; min-height:calc(100dvh - 77px); background:var(--bg-canvas); }
+.stage__bg { position:absolute; inset:0; z-index:-2; }
+.bg-app { position:absolute; inset:-30px; overflow:hidden; filter:blur(4px) saturate(.9); opacity:var(--bg-app-opacity); pointer-events:none; user-select:none; -webkit-user-select:none; }
+.bg-app__frame { position:absolute; left:0; top:0; transform-origin:left top; }
+.bg-app .shell { min-height:0; height:100%; }
+.bg-app .shell-content { overflow:hidden; }
+.bg-app__scenes { position:relative; animation:none; }
+.bg-app__scene { position:absolute; inset:0; padding:inherit; will-change:opacity, transform; }
+.bg-app__crumb { position:relative; display:inline-grid; }
+.bg-app__crumb > span { grid-area:1 / 1; }
+.bg-app__nav { transition: background-color 1.2s ease, color 1.2s ease, box-shadow 1.2s ease; }
+.bg-app__drift { width:100%; height:100%; animation: bg-drift 28s ease-in-out infinite alternate; transform-origin:60% 40%; }
+@keyframes bg-drift { from { transform: scale(1) translate3d(0, 0, 0); } to { transform: scale(1.05) translate3d(-1.5%, -1%, 0); } }
+@media (prefers-reduced-motion: reduce) { .bg-app__drift { animation:none; } }
+.stage__wash { position:absolute; inset:0; z-index:-1; pointer-events:none; background:
+  radial-gradient(65% 80% at 0% 100%, color-mix(in oklab, var(--accent-primary) 26%, transparent), transparent 62%),
+  radial-gradient(55% 60% at 100% 0%, color-mix(in oklab, var(--accent-primary) 12%, transparent), transparent 60%),
+  linear-gradient(90deg, color-mix(in oklab, var(--bg-canvas) 94%, transparent) 0%, color-mix(in oklab, var(--bg-canvas) 78%, transparent) 42%, color-mix(in oklab, var(--bg-canvas) 50%, transparent) 100%); }
+.stage__inner { flex:1; width:100%; box-sizing:border-box; max-width:1240px; margin:0 auto; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,440px); gap:72px; align-items:center; padding-block:24px; padding-left:max(32px, env(safe-area-inset-left, 0px)); padding-right:max(32px, env(safe-area-inset-right, 0px)); }
+.hero { display:grid; gap:26px; max-width:620px; align-self:center; }
+.brand { display:inline-flex; align-items:center; gap:10px; font-weight:600; font-size:1.0625rem; letter-spacing:var(--tracking-tight); color:var(--text-primary); }
+.brand__tile { width:32px; height:32px; border-radius:8px; background:oklch(20% 0.012 270); display:grid; place-items:center; box-shadow: inset 0 0 0 1px oklch(100% 0 0 / .06); }
+.h1 { font-size:clamp(2.2rem, 3.6vw, 3.1rem); line-height:1.08; letter-spacing:-0.035em; font-weight:600; }
+.h1__line { display:block; overflow:hidden; padding-bottom:.06em; white-space:nowrap; }
+.h1__line > span { display:block; }
+.h1__slot { position:relative; display:block; height:1.1em; overflow:hidden; color:var(--brand-word); }
+:root { --brand-word: oklch(60% 0.19 48); --bg-app-opacity: .85; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --brand-word: oklch(78% 0.15 55); --bg-app-opacity: .6; } }
+:root[data-theme="dark"] { --brand-word: oklch(78% 0.15 55); --bg-app-opacity: .6; }
+.h1__word { position:absolute; left:0; top:0; white-space:nowrap; }
+.lead { color:var(--text-secondary); font-size:1.0625rem; line-height:1.55; max-width:42ch; text-wrap:pretty; }
+.auth-card { background:var(--bg-surface); border:1px solid var(--border-default); border-radius:16px; padding:24px 28px 26px; box-shadow: 0 1px 2px rgb(15 18 26 / .06), 0 28px 64px -16px rgb(15 18 26 / .28); }
+@media (max-width: 960px) {
+  .stage__inner { grid-template-columns:minmax(0,1fr); gap:28px; padding-block:28px 48px; padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); }
+  .stage__bg { display:none; }
+  .h1 { font-size:clamp(2rem, 8vw, 2.6rem); }
+  .lead { font-size:1rem; }
+  .auth-card { padding:22px 18px 24px; }
+  .demo-strip a { margin-left:0; }
+}
+/* ── Right: auth panel ──────────────────────────────────────────────── */
+.tabs { position:relative; display:grid; grid-template-columns:1fr 1fr; padding:4px; border-radius:10px; background:var(--bg-surface-muted); border:1px solid var(--border-subtle); margin-bottom:22px; }
+.tab { position:relative; height:40px; border:0; background:transparent; border-radius:7px; font:inherit; font-size:.875rem; font-weight:600; color:var(--text-muted); cursor:pointer; transition: color var(--duration-normal) var(--ease-out); }
+.tab:hover { color:var(--text-secondary); }
+.tab[aria-selected="true"] { color:var(--text-primary); }
+.tab:focus-visible { outline:none; box-shadow:var(--shadow-focus); }
+.tab__pill { position:absolute; inset:0; border-radius:7px; background:var(--bg-surface); box-shadow:0 1px 2px rgb(15 18 26 / .08), 0 0 0 1px var(--border-default); }
+.tab > span:last-child { position:relative; }
+
+/* Every view sits in the same grid cell: the cell is always as tall as the tallest view,
+   so switching tabs, showing errors or finishing a step never changes the page height. */
+/* Views are stacked on top of each other; the stack animates to the ACTIVE view's height, so the
+   card shrinks for login. The column reserves the tallest view's height, so the page never moves. */
+.stack { position:relative; overflow:clip; overflow-clip-margin:8px; }
+.stack > .view { position:absolute; top:0; left:0; right:0; min-width:0; }
+.auth-col { align-self:center; display:flex; align-items:center; }
+.auth-col > .auth-card { width:100%; }
+.h1__plain { display:block; color:var(--brand-word); }
+.highlights { list-style:none; margin:0; padding:0; display:grid; gap:10px; }
+.highlights li { display:flex; align-items:center; gap:10px; color:var(--text-secondary); font-size:.9375rem; }
+.tick { flex:none; width:20px; height:20px; border-radius:50%; background:var(--accent-primary-soft); border:1px solid var(--accent-primary-border); position:relative; }
+.tick::after { content:""; position:absolute; left:6px; top:3.5px; width:5px; height:9px; border:solid var(--accent-primary-soft-strong); border-width:0 2px 2px 0; transform:rotate(45deg); }
+.language-switch{
+  --switch-hue: var(--accent-primary);
+  --switch-tint: color-mix(in oklab, var(--switch-hue) 13%, var(--bg-surface));
+  --switch-edge: color-mix(in oklab, var(--switch-hue) 55%, var(--border-subtle));
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  
+  flex: none;
+}
+.language-switch__peek{
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  
+  width: max-content;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 8px 5px 6px;
+  border: 1px solid var(--switch-edge);
+  border-radius: var(--radius-pill);
+  background: var(--switch-tint);
+  box-shadow: 0 4px 12px -6px color-mix(in oklab, var(--switch-hue) 45%, transparent);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) var(--ease-out) 80ms;
+}
+.language-switch__peek > *{
+  flex: none;
+}
+.language-switch__peek .language-switch__chevron{
+  margin-left: 6px;
+  transform: rotate(var(--peek-chevron, 0deg));
+}
+.language-switch__reveal{
+  display: grid;
+  grid-template-columns: 0fr;
+  transition: grid-template-columns var(--duration-fast) var(--ease-standard);
+}
+.language-switch__reveal-clip{
+  min-width: 0;
+  overflow: hidden;
+}
+.language-switch__reveal-name{
+  display: block;
+  padding-left: 7px;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(-6px);
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+.language-switch:not(.is-open):has(.language-switch__trigger:is(:hover, :focus-visible))
+  .language-switch__peek{
+  opacity: 1;
+  transition: opacity 80ms var(--ease-out);
+}
+.language-switch:not(.is-open):has(.language-switch__trigger:is(:hover, :focus-visible))
+  .language-switch__reveal{
+  grid-template-columns: 1fr;
+  transition: grid-template-columns var(--duration-slow) var(--ease-out);
+}
+.language-switch:not(.is-open):has(.language-switch__trigger:is(:hover, :focus-visible))
+  .language-switch__reveal-name{
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--duration-normal) var(--ease-out) 60ms,
+    transform var(--duration-slow) var(--ease-out) 40ms;
+}
+@media (hover: none){.language-switch__peek{
+    display: none;
+  }}
+@media (prefers-reduced-motion: reduce){.language-switch__peek,
+  .language-switch__reveal,
+  .language-switch__reveal-name{
+    transition: none !important;
+  }}
+.language-switch__trigger{
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 6px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: var(--shadow-xs);
+}
+.language-switch__trigger:hover,
+.language-switch__trigger[aria-expanded='true']{
+  border-color: var(--accent-primary);
+}
+.language-switch__trigger:focus-visible,
+.language-switch__trigger[aria-expanded='true']{
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.language-switch__flag-wrap{
+  display: inline-block;
+  perspective: 120px;
+  width: 22px;
+  height: 15px;
+}
+.language-switch__flag-face{
+  display: block;
+}
+.language-switch__chevron{
+  width: 10px;
+  height: 10px;
+  color: var(--text-muted);
+}
+.language-flag{
+  display: block;
+  width: 22px;
+  height: 15px;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px var(--border-default);
+  overflow: hidden;
+}
+.language-switch__popover{
+  
+  position: fixed;
+  width: 200px;
+  z-index: 40;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: 6px;
+  box-shadow: var(--shadow-overlay);
+  transform-origin: 50% 100%;
+}
+.language-switch__popover--down{
+  transform-origin: 50% 0;
+}
+.language-switch__head{
+  padding: 6px 8px 8px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.language-switch__list{
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  outline: none;
+}
+.language-switch__option{
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  height: 44px;
+  padding: 0 8px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.language-switch__option.is-focus{
+  background: var(--bg-surface-muted);
+}
+.language-switch__selected{
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+  background: var(--accent-primary-soft);
+  box-shadow: inset 0 0 0 1.5px var(--accent-primary);
+  pointer-events: none;
+}
+.language-switch__option > :not(.language-switch__selected){
+  position: relative;
+  z-index: 1;
+}
+.language-switch__option[aria-selected='true'] .language-switch__name{
+  font-weight: 600;
+}
+.language-switch__name{
+  display: grid;
+  line-height: 1.25;
+}
+.language-switch__name small{
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+.language-switch__beta{
+  position: relative;
+  justify-self: end;
+  cursor: help;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--status-info-border);
+  background: var(--status-info-soft);
+  color: var(--status-info);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.language-switch__option > .language-switch__hint{
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  
+  width: 212px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-md);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  white-space: normal;
+  text-align: center;
+  text-wrap: balance;
+  transform-origin: 50% 100%;
+  pointer-events: none;
+}
+/* ── Top bar (new): brand + demo notice + links + the real LanguageSwitch ── */
+.topbar { position:relative; z-index:3; color:var(--text-primary); }
+.topbar__inner { box-sizing:border-box; max-width:1240px; margin:0 auto; min-height:64px; display:flex; align-items:center; gap:14px; padding-left:max(32px, env(safe-area-inset-left, 0px)); padding-right:max(32px, env(safe-area-inset-right, 0px)); }
+@media (max-width: 960px) { .topbar__inner { padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); } }
+.topbar .brand { font-size:1.125rem; font-weight:600; letter-spacing:-0.025em; gap:12px; }
+.topbar .brand > svg { display:block; width:32px; height:32px; }
+/* Same header as openlinker.io: canvas-dark at 95% with a blur, subtle-dark bottom border. */
+.topbar--demo { background:oklch(14% 0.005 270 / .95); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); border-bottom:1px solid oklch(24% 0.010 270); }
+.topbar--plain { background:transparent; }
+.topbar__chip { display:inline-flex; align-items:center; gap:7px; height:24px; padding:0 10px; border-radius:999px; font-size:.75rem; font-weight:600; letter-spacing:.02em; color:var(--accent-primary-soft-strong); background:color-mix(in oklab, var(--accent-primary) 14%, transparent); border:1px solid color-mix(in oklab, var(--accent-primary) 40%, transparent); }
+.topbar__dot { position:relative; width:6px; height:6px; border-radius:50%; background:var(--accent-primary); }
+.topbar__dot::after { content:""; position:absolute; inset:-3px; border-radius:50%; border:1px solid var(--accent-primary); animation: topbar-pulse 2.4s ease-out infinite; }
+@keyframes topbar-pulse { from { transform:scale(.6); opacity:.9; } to { transform:scale(1.8); opacity:0; } }
+.topbar__text { flex:1; min-width:0; overflow:hidden; color:var(--text-secondary); font-size:.8125rem; }
+.topbar__text > span { display:inline-block; white-space:nowrap; transition: opacity var(--duration-normal) var(--ease-out); }
+.topbar__text[data-fits="false"] > span { visibility:hidden; opacity:0; }
+.topbar__links { margin-left:auto; display:flex; align-items:center; gap:4px; }
+.topbar__links a { color:var(--text-secondary); font-size:.8125rem; font-weight:500; text-decoration:none; padding:5px 9px; border-radius:7px; transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out); }
+.topbar__links a:hover { color:var(--text-primary); background:transparent; }
+.topbar__links a:focus-visible { outline:none; box-shadow:var(--shadow-focus); }
+.topbar__links + .language-switch { margin-left:6px; padding-left:12px; border-left:1px solid oklch(100% 0 0 / .1); }
+.topbar__spacer { flex:1; }
+@media (max-width: 960px) {
+  .topbar__links a:not(:last-child) { display:none; }
+}
+@media (prefers-reduced-motion: reduce) { .topbar__dot::after { animation:none; } }
+@media (max-width: 600px) { .topbar__links { display:none; } .topbar__links + .language-switch, .topbar__text + .topbar__links + .language-switch { border-left:0; padding-left:0; } .topbar .language-switch { margin-left:auto; } }
+
+textarea,
+.textarea{
+  height: auto;
+  min-height: 5rem;
+  padding: var(--space-2) var(--space-3);
+  resize: vertical;
+  line-height: 1.45;
+}
+.page-description,
+.panel-copy,
+.muted-text{
+  margin: 0;
+  color: var(--text-secondary);
+}
+.panel,
+.list-card,
+.form-card,
+.empty-state{
+  border: 1px solid var(--border-default);
+  border-radius: 0.5rem;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-soft);
+}
+.list-card__header,
+.connection-list__item,
+.form-actions,
+.panel__header,
+.toolbar,
+.toolbar__group,
+.connection-list__meta{
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.context-chip,
+.toolbar-chip,
+.panel__meta,
+.session-badge{
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  background: var(--bg-surface-elevated);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+.filter-field .segmented-control{ display: flex; width: 100%; }
+.filter-field .segmented-control__option{ flex: 1 1 0; padding: 0 6px; font-size: 0.75rem; white-space: nowrap; }
+.filter-section .segmented-control__option{ min-height: 44px; }
+.back-link{
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  justify-self: start;
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 0.25rem 0;
+  transition: color 120ms ease;
+}
+.back-link:hover{
+  color: var(--text-primary);
+}
+.back-link:focus-visible{
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+.back-link__glyph{
+  font-size: 0.9em;
+  line-height: 1;
+}
+.panel,
+.list-card,
+.form-card,
+.empty-state,
+.state-card{
+  padding: 1rem;
+}
+.panel--dense{
+  gap: 1rem;
+}
+.panel__header{
+  justify-content: space-between;
+  
+  margin-bottom: var(--space-3);
+}
+.alert--compact{
+  gap: var(--space-3);
+  padding: 0.8125rem 0.9375rem;
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+.alert--compact .alert__content{
+  gap: 0.1875rem;
+}
+.alert--compact .alert__title{
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.alert--compact .alert__description{
+  font-size: 0.8125rem;
+}
+.alert--compact.alert--warning .alert__title{
+  color: var(--status-warning-fg);
+}
+.alert--compact.alert--error .alert__title{
+  color: var(--status-error-fg);
+}
+.alert--compact.alert--info .alert__title{
+  color: var(--status-info-fg);
+}
+.segmented-control{
+  display: inline-flex;
+  align-self: flex-start;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+.segmented-control__option{
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  position: relative;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-right: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  text-transform: capitalize;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+.segmented-control__option:first-child{
+  border-top-left-radius: var(--radius-md);
+  border-bottom-left-radius: var(--radius-md);
+}
+.segmented-control__option:last-child{
+  border-right: none;
+  border-top-right-radius: var(--radius-md);
+  border-bottom-right-radius: var(--radius-md);
+}
+.segmented-control__option:hover{
+  background: var(--bg-surface-hover);
+}
+.segmented-control__option--active{
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+  font-weight: 600;
+}
+.segmented-control__option--active:hover{
+  background: var(--accent-primary-hover);
+}
+.segmented-control__option:focus-visible{
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  z-index: 1;
+}
+.segmented-control__hint{
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  opacity: 0.7;
+}
+.document-email__locale .segmented-control__option{
+  padding: var(--space-1) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: none;
+}
+.sales-document-panel__correction .panel-copy{
+  margin: var(--space-2) 0;
+}
+.return-custody-form .segmented-control__option{
+  min-height: 44px;
+  min-width: 44px;
+}
+.segmented-control__option--disabled{
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pacing-card__header .panel__meta{
+  flex: none;
+  font-size: 0.75rem;
+}
+.export-dialog .form-field > .segmented-control{ justify-self: start; }
+.dd-panel > .panel__header{ margin-bottom: 0; }
+.dd-sample__line .muted-text{ font-size: 12px; }
+.buyer-email-editor{
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+}
+@media (max-width: 900px){.buyer-email-editor{
+    grid-template-columns: minmax(0, 1fr);
+  }}
+.buyer-email-editor__form{
+  display: grid;
+  gap: var(--space-4);
+}
+.buyer-email-editor__variables{
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.buyer-email-editor__preview{
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+.buyer-email-editor__actions{
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+/* ── Login page editor (new): wider preview than the 2:1 buyer-email layout, which fits a message, not a page ── */
+.login-page-editor { grid-template-columns:minmax(0,5fr) minmax(0,6fr); align-items:start; }
+@media (max-width: 900px) { .login-page-editor { grid-template-columns:minmax(0,1fr); } }
+.login-page-editor > aside { position:sticky; top:68px; }
+.login-preview { position:relative; width:100%; min-width:0; overflow:hidden; border-radius:10px; border:1px solid var(--border-default); background:var(--bg-canvas); }
+.admin-view .shell { min-height:calc(100dvh - 72px); }
+body:has([data-bare]) .admin-view .shell { min-height:100dvh; }
+
+.support { margin-top:20px; padding-top:16px; border-top:1px solid var(--border-subtle); font-size:.8125rem; }
+.stage--gradient .stage__wash { background:
+  radial-gradient(70% 90% at 0% 100%, color-mix(in oklab, var(--accent-primary) 22%, transparent), transparent 62%),
+  radial-gradient(50% 60% at 100% 0%, color-mix(in oklab, var(--accent-primary) 10%, transparent), transparent 60%),
+  var(--bg-canvas); }
+/* Mockup-only switcher: not part of the page. */
+.mock-modes { display:flex; align-items:center; gap:4px; flex-wrap:wrap; padding-block:6px; padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); background:oklch(20% 0.012 270); color:oklch(80% 0.01 270); font-size:.75rem; }
+.mock-modes__label { margin-right:8px; text-transform:uppercase; letter-spacing:.08em; font-weight:600; opacity:.7; }
+.mock-modes__btn { border:0; border-radius:6px; height:24px; padding:0 10px; background:transparent; color:inherit; font:inherit; font-weight:500; cursor:pointer; }
+.mock-modes__btn:hover { background:oklch(28% 0.012 270); }
+.mock-modes__btn[aria-selected="true"] { background:oklch(32% 0.014 270); color:#fff; }
+.mock-modes__btn:focus-visible { outline:none; box-shadow:var(--shadow-focus); }
+.view[aria-hidden="true"] { visibility:hidden; pointer-events:none; }
+
+.sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+.v-title { font-size:1.5rem; font-weight:600; letter-spacing:-0.02em; line-height:1.2; }
+.v-lead { color:var(--text-secondary); font-size:.875rem; margin-top:6px; }
+.v-head { margin-bottom:18px; }
+.auth-form { display:grid; }
+.auth-form .control { height:2.5rem; font-size:.875rem; }
+.f { display:grid; }
+.f__labels { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:var(--space-2); }
+.f__labels a { font-size:.8125rem; color:var(--text-secondary); text-decoration:none; }
+.f__labels a:hover { color:var(--text-primary); text-decoration:underline; }
+.f__hint { font-size:.75rem; color:var(--text-muted); }
+.f__err { min-height:22px; padding-top:4px; }
+.f__err p { margin:0; color:var(--status-error-strong); font-size:.75rem; }
+.pw { position:relative; }
+.pw .control { padding-right:76px; }
+.pw__toggle { position:absolute; right:5px; top:5px; bottom:5px; height:auto; width:62px; }
+.submit { width:100%; height:2.75rem; font-size:.9375rem; font-weight:600; }
+.spinner { display:inline-block; width:14px; height:14px; border-radius:50%; border:2px solid currentColor; border-right-color:transparent; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.alert-slot { min-height:0; }
+.v-note { margin-top:14px; font-size:.8125rem; color:var(--text-secondary); position:relative; }
+.linkish { border:0; background:none; padding:0; font:inherit; color:var(--text-primary); font-weight:500; cursor:pointer; text-decoration:underline; text-decoration-color:var(--border-strong); text-underline-offset:3px; }
+.linkish:hover { text-decoration-color:var(--text-primary); }
+.linkish:focus-visible { outline:none; box-shadow:var(--shadow-focus); border-radius:3px; }
+.pop { position:absolute; left:0; right:0; bottom:calc(100% + 8px); z-index:4; background:var(--bg-surface); border:1px solid var(--border-default); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg); padding:14px 16px; transform-origin:bottom left; }
+.pop strong { display:block; font-size:.8125rem; margin-bottom:6px; }
+.pop ul { margin:0; padding-left:18px; display:grid; gap:4px; color:var(--text-secondary); font-size:.8125rem; }
+.done__icon { width:44px; height:44px; border-radius:12px; background:var(--accent-primary-soft); border:1px solid var(--accent-primary-border); display:grid; place-items:center; margin-bottom:20px; }
+.done__mail { font-weight:600; color:var(--text-primary); word-break:break-all; }
+.check { width:48px; height:48px; display:block; margin-bottom:20px; }
+.redirect { width:100%; height:3px; border-radius:2px; background:var(--bg-surface-muted); overflow:hidden; margin-top:20px; }
+.redirect > span { display:block; height:100%; background:var(--accent-primary); transform-origin:left; }
+.row-end { display:flex; gap:8px; justify-content:flex-end; margin-top:24px; }
+.fine { margin-top:12px; font-size:.75rem; color:var(--text-muted); }
+
+@media (prefers-reduced-motion: reduce) { .spinner { animation:none; } }
+</style>
+
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/framer-motion@11.18.2/dist/framer-motion.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useLayoutEffect, useRef, useId, forwardRef } = React;
+
+/* In apps/web: import { motion, AnimatePresence, MotionConfig, useReducedMotion } from 'motion/react'.
+   The artifact can only load the framer-motion UMD build; the API is the same. */
+const M = window.Motion;
+const motion = M && M.motion ? M.motion : new Proxy({}, { get: (_, tag) => forwardRef(({ initial, animate, exit, transition, whileTap, layout, layoutId, ...rest }, ref) => React.createElement(tag, { ref, ...rest })) });
+const AnimatePresence = M && M.AnimatePresence ? M.AnimatePresence : ({ children }) => children;
+const MotionConfig = M && M.MotionConfig ? M.MotionConfig : ({ children }) => children;
+const useReducedMotion = M && M.useReducedMotion ? M.useReducedMotion : () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const EASE = [0.22, 1, 0.36, 1];
+const SPRING = { type: 'spring', bounce: 0, visualDuration: 0.3 };
+
+/* ════════════════════════════════════════════════════════════════════
+   REAL COMPONENTS - copies of apps/web/src/shared/ui/*.tsx
+   ════════════════════════════════════════════════════════════════════ */
+const Button = forwardRef(function Button({ className = '', tone = 'primary', type = 'button', ...props }, ref) {
+  const classes = ['button', `button--${tone}`, className].filter(Boolean).join(' ');
+  return <button ref={ref} type={type} className={classes} {...props} />;
+});
+
+const Input = forwardRef(function Input({ className = '', invalid = false, ...props }, ref) {
+  const classes = ['control', invalid ? 'control--invalid' : '', className].filter(Boolean).join(' ');
+  return <input ref={ref} className={classes} {...props} />;
+});
+
+function Alert({ children, title, tone = 'info' }) {
+  return (
+    <div className={`alert alert--${tone}`} role={tone === 'error' ? 'alert' : 'status'}>
+      <div className="alert__content">
+        {title ? <strong className="alert__title">{title}</strong> : null}
+        <div className="alert__description">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   NEW COMPONENTS (JSX, ready to port into features/auth)
+   ════════════════════════════════════════════════════════════════════ */
+
+/** Brand lockup - the mark on the dark tile, exactly as the app sidebar shows it. */
+function Brand() {
+  return (
+    <span className="brand">
+      <span className="brand__tile">
+        <svg width="22" height="22" viewBox="0 0 500 500" aria-hidden="true">
+          <g transform="translate(250 250) rotate(-30)"><rect x="-72" y="-160" width="144" height="320" rx="72" fill="none" stroke="#ee8c3c" strokeWidth="46" /></g>
+          <rect x="105" y="230" width="290" height="40" rx="20" fill="#ee8c3c" />
+        </svg>
+      </span>
+      OpenLinker
+    </span>
+  );
+}
+
+/** Field: label row, control, and an error row whose height is always reserved. */
+function Field({ id, label, aside, error, children }) {
+  const errorId = `${id}-error`;
+  return (
+    <div className="f">
+      <div className="f__labels">
+        <label htmlFor={id} className="form-field__label">{label}</label>
+        {aside}
+      </div>
+      {React.cloneElement(children, { id, invalid: Boolean(error), 'aria-invalid': Boolean(error), 'aria-describedby': error ? errorId : undefined })}
+      <div className="f__err">
+        <AnimatePresence initial={false}>
+          {error ? (
+            <motion.p key={error} id={errorId} initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>{error}</motion.p>
+          ) : null}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+function PasswordInput(props) {
+  const ui = useUi();
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="pw">
+      <Input {...props} type={visible ? 'text' : 'password'} />
+      <Button tone="ghost" className="button--sm pw__toggle" onClick={() => setVisible((v) => !v)} aria-label={visible ? ui.hidePw : ui.showPw}>
+        {visible ? ui.hide : ui.show}
+      </Button>
+    </div>
+  );
+}
+
+const RECORDED = [
+  'Strony, które otwierasz, i przyciski, które klikasz',
+  'Tekst, który wpisujesz, oprócz haseł',
+  'Przeglądarkę, rozmiar ekranu i przybliżoną lokalizację z adresu IP',
+  'Nic prawdziwego. Każdy sklep, zamówienie i faktura w demo jest zmyślona.',
+];
+
+/** "What we record" opens as a popover above the text, so it never pushes the layout. */
+function RecordingPopover({ label, items }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const popId = useId();
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [open]);
+  return (
+    <span ref={ref}>
+      <button type="button" className="linkish" aria-expanded={open} aria-controls={popId} onClick={() => setOpen((o) => !o)}>{label}</button>
+      <AnimatePresence>
+        {open ? (
+          <motion.div id={popId} className="pop" role="dialog" aria-label={label}
+            initial={{ opacity: 0, scale: 0.97, y: 4 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.98 }}
+            transition={{ duration: 0.18, ease: EASE }}>
+            <strong>{label}</strong>
+            <ul>{items.map((r) => <li key={r}>{r}</li>)}</ul>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </span>
+  );
+}
+
+/** One view of the stack. Inactive views stay mounted (they hold the height) but are hidden and inert. */
+function View({ active, nodeRef, children }) {
+  return (
+    <motion.div ref={nodeRef} className="view" aria-hidden={!active} inert={active ? undefined : ''}
+      initial={false}
+      animate={{ opacity: active ? 1 : 0, y: active ? 0 : 6 }}
+      transition={{ duration: active ? 0.26 : 0.14, ease: EASE, delay: active ? 0.06 : 0 }}>
+      {children}
+    </motion.div>
+  );
+}
+
+/** Success check: the circle settles in, then the tick draws itself. Replays whenever its view activates. */
+function CheckMark({ active }) {
+  const reduce = useReducedMotion();
+  return (
+    <motion.svg className="check" viewBox="0 0 48 48" aria-hidden="true"
+      initial={false} animate={active && !reduce ? { scale: [0.6, 1], opacity: [0, 1] } : { scale: 1, opacity: 1 }} transition={SPRING}>
+      <circle cx="24" cy="24" r="23" fill="var(--status-success-soft)" stroke="var(--status-success-border)" />
+      <motion.path d="M15 24.5l6 6 12-13" fill="none" stroke="var(--status-success-strong)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+        initial={false} animate={{ pathLength: active || reduce ? 1 : 0 }} transition={{ duration: 0.45, ease: EASE, delay: active ? 0.25 : 0 }} />
+    </motion.svg>
+  );
+}
+
+/* ── App preview: the real panel, as a blurred background ─────────────────────────────
+   Every element below is a 1:1 copy of an apps/web component, with the SAME class names, so it
+   is styled by the SAME index.css rules (copied verbatim into this page):
+     AppShell, SidebarBrand, SidebarNav, WorkspaceFooter, CommandPaletteTrigger  -> app/app-shell.tsx, shared/ui/command-palette.tsx
+     PageLayout -> shared/ui/page-layout.tsx      StatusBadge -> shared/ui/status-badge.tsx
+     AnalyticsKpiCard -> features/analytics/components/analytics-kpi-card.tsx   Sparkline -> shared/ui/sparkline.tsx
+     DataTable markup -> shared/ui/data-table.tsx
+   In apps/web the preview IMPORTS those components instead, so it follows every change.
+   The figures are example data, like the demo's own made-up stores. */
+const APP_W = 1280;
+const APP_H = 800;
+
+const NAV_GROUPS = [
+  { label: 'Operations', items: [
+    ['analytics', 'Analytics'], ['insights', 'Insights'], ['orders', 'Orders', 26], ['products', 'Products'],
+    ['customers', 'Customers', 19], ['listings', 'Listings', 148], ['shipments', 'Shipments'], ['returns', 'Returns'],
+    ['sales-documents', 'Sales documents'],
+  ] },
+  { label: 'Diagnostics', items: [['jobs', 'Jobs & Logs', 0], ['webhooks', 'Webhooks', 0], ['cursors', 'Cursors']] },
+  { label: 'Platform', items: [['connections', 'Connections', 6], ['adapters', 'Adapters'], ['settings', 'Settings']] },
+];
+
+/* shared/ui/status-badge.tsx */
+function StatusBadge({ children, tone = 'neutral', withDot = false, compact = false }) {
+  const classes = ['status-badge', `status-badge--${tone}`, compact ? 'status-badge--compact' : ''].filter(Boolean).join(' ');
+  return (
+    <span className={classes}>
+      {withDot ? <span className="status-badge__dot" aria-hidden="true" /> : null}
+      <span>{children}</span>
+    </span>
+  );
+}
+
+/* shared/ui/sparkline.tsx */
+function Sparkline({ values, tone = 'neutral', width = 72, height = 20 }) {
+  const min = Math.min(...values); const max = Math.max(...values); const range = max - min || 1;
+  const stepX = width / (values.length - 1);
+  const d = values.map((v, i) => `${i === 0 ? 'M' : 'L'}${(i * stepX).toFixed(2)},${(height - ((v - min) / range) * height).toFixed(2)}`).join(' ');
+  return (
+    <svg className={`sparkline sparkline--${tone} kpi-card__sparkline`} width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
+      <path d={d} className="sparkline__line" fill="none" />
+    </svg>
+  );
+}
+
+/* features/analytics/components/analytics-kpi-card.tsx (infotip omitted - it is a button) */
+function AnalyticsKpiCard({ label, value, metric, delta, trend }) {
+  return (
+    <div className="kpi-card">
+      <div className="kpi-card__label">
+        <span className="kpi-card__label-text">{label}</span>
+        <Sparkline values={trend} tone={delta.tone === 'success' ? 'success' : 'neutral'} />
+      </div>
+      <div className="kpi-card__headline">
+        <div className="kpi-card__value"><span>{value}</span></div>
+        <div className="kpi-card__metric">{metric}</div>
+        <span className="kpi-card__delta">
+          <span className={`kpi-card__delta-value kpi-card__delta-value--${delta.tone}`}>
+            <span className="kpi-card__delta-glyph" aria-hidden="true">{delta.glyph}</span> <span>{delta.formatted}</span>
+          </span>
+          <span className="kpi-card__delta-basis">vs previous 14 days</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* shared/ui/page-layout.tsx */
+function PageLayout({ eyebrow, title, description, actions, children }) {
+  return (
+    <section className="page-section">
+      <div className={actions ? 'page-header page-header--split' : 'page-header'}>
+        <div className="page-header__content">
+          {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
+          <h2 className="page-title">{title}</h2>
+          {description ? <p className="page-description">{description}</p> : null}
+        </div>
+        {actions ? <div className="page-header__actions">{actions}</div> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/* shared/ui/data-table.tsx - static markup of the rendered table */
+function DataTable({ columns, rows }) {
+  return (
+    <div className="data-table__container">
+      <table className="data-table">
+        <thead><tr>{columns.map((c) => <th key={c.id} scope="col" className={c.align ? `data-table__cell--${c.align}` : undefined}>{c.header}</th>)}</tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.key}>{columns.map((c) => <td key={c.id} className={c.align ? `data-table__cell--${c.align}` : undefined}>{c.cell(r)}</td>)}</tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const KPIS = [
+  { label: 'Revenue', value: '48 210 zł', metric: 'Gross, all channels', delta: { tone: 'success', glyph: '↑', formatted: '12,4%' }, trend: [31, 34, 33, 38, 41, 39, 44, 47] },
+  { label: 'Orders', value: '312', metric: 'Placed in the period', delta: { tone: 'success', glyph: '↑', formatted: '8,1%' }, trend: [18, 22, 20, 24, 23, 26, 27, 29] },
+  { label: 'Average order value', value: '154,52 zł', metric: 'Revenue per order', delta: { tone: 'success', glyph: '↑', formatted: '3,9%' }, trend: [140, 146, 143, 149, 151, 150, 153, 155] },
+  { label: 'Cancelled', value: '6', metric: '1,9% of orders', delta: { tone: 'neutral', glyph: '→', formatted: '0,0%' }, trend: [2, 1, 2, 1, 1, 2, 1, 1] },
+];
+
+const CHANNEL_ROWS = [
+  { key: 'a', channel: 'Allegro', orders: 164, revenue: '25 070 zł', share: '52%' },
+  { key: 'p', channel: 'PrestaShop', orders: 71, revenue: '11 090 zł', share: '23%' },
+  { key: 'w', channel: 'WooCommerce', orders: 46, revenue: '7 230 zł', share: '15%' },
+  { key: 'e', channel: 'Erli', orders: 31, revenue: '4 820 zł', share: '10%' },
+];
+
+const ORDER_ROWS = [
+  { key: '1', id: '#A-4821', when: '2 min ago', customer: 'Marta Wiśniewska', channel: 'Allegro', status: ['New', 'info'], ship: ['Not shipped', 'neutral'], money: '189,00 zł' },
+  { key: '2', id: '#A-4820', when: '18 min ago', customer: 'Tomasz Wójcik', channel: 'Allegro', status: ['Processing', 'review'], ship: ['Label ready', 'info'], money: '249,00 zł' },
+  { key: '3', id: '#W-1187', when: '42 min ago', customer: 'Katarzyna Lis', channel: 'WooCommerce', status: ['Processing', 'review'], ship: ['Dispatched', 'success'], money: '89,90 zł' },
+  { key: '4', id: '#P-3312', when: '1 h ago', customer: 'Michał Zieliński', channel: 'PrestaShop', status: ['Shipped', 'success'], ship: ['In transit', 'success'], money: '412,50 zł' },
+  { key: '5', id: '#E-0954', when: '2 h ago', customer: 'Agnieszka Kowalczyk', channel: 'Erli', status: ['Pending', 'warning'], ship: ['Not shipped', 'neutral'], money: '64,99 zł' },
+  { key: '6', id: '#A-4818', when: '3 h ago', customer: 'Paweł Kamiński', channel: 'Allegro', status: ['Delivered', 'success'], ship: ['Delivered', 'success'], money: '129,00 zł' },
+  { key: '7', id: '#A-4817', when: '4 h ago', customer: 'Ewa Szymańska', channel: 'Allegro', status: ['Delivered', 'success'], ship: ['Delivered', 'success'], money: '79,98 zł' },
+];
+
+const SHIPMENT_ROWS = [
+  { key: '1', tracking: '6800 0921 4471 0052 1188 40', order: '#A-4820', carrier: 'InPost Paczkomat', status: ['Label ready', 'info'], updated: '18 min ago' },
+  { key: '2', tracking: '0000 3471 2209 1PL', order: '#W-1187', carrier: 'DPD', status: ['Dispatched', 'success'], updated: '40 min ago' },
+  { key: '3', tracking: '6800 0921 4470 9921 0042 11', order: '#P-3312', carrier: 'InPost Kurier', status: ['In transit', 'success'], updated: '1 h ago' },
+  { key: '4', tracking: '6800 0921 4470 8812 3310 07', order: '#A-4818', carrier: 'InPost Paczkomat', status: ['Delivered', 'success'], updated: '3 h ago' },
+  { key: '5', tracking: '0000 3470 9981 4PL', order: '#A-4817', carrier: 'DPD', status: ['Delivered', 'success'], updated: '4 h ago' },
+];
+
+const mono = (v) => <span className="mono-text">{v}</span>;
+
+const SCENES = {
+  analytics: {
+    crumb: 'Analytics',
+    render: () => (
+      <PageLayout eyebrow="Operations" title="Analytics" description="Sales across connected channels, with clear data coverage."
+        actions={<span className="button button--secondary">Analytics settings</span>}>
+        <section className="status-strip status-strip--analytics">
+          {KPIS.map((k) => <AnalyticsKpiCard key={k.label} {...k} />)}
+        </section>
+        <DataTable rows={CHANNEL_ROWS} columns={[
+          { id: 'c', header: 'Channel', cell: (r) => r.channel },
+          { id: 'o', header: 'Orders', align: 'right', cell: (r) => mono(r.orders) },
+          { id: 'r', header: 'Revenue', align: 'right', cell: (r) => mono(r.revenue) },
+          { id: 's', header: 'Share', align: 'right', cell: (r) => mono(r.share) },
+        ]} />
+      </PageLayout>
+    ),
+  },
+  orders: {
+    crumb: 'Orders',
+    render: () => (
+      <PageLayout eyebrow="Operations" title="Orders"
+        actions={<span className="button button--ghost button--sm">Refresh<span className="button__shortcut">R</span></span>}>
+        <DataTable rows={ORDER_ROWS} columns={[
+          { id: 'order', header: 'Order', cell: (r) => <span><strong className="mono-text">{r.id}</strong><br /><span className="page-description">{r.when}</span></span> },
+          { id: 'customer', header: 'Customer', cell: (r) => r.customer },
+          { id: 'channel', header: 'Channel', cell: (r) => r.channel },
+          { id: 'status', header: 'Status', cell: (r) => <StatusBadge tone={r.status[1]} withDot>{r.status[0]}</StatusBadge> },
+          { id: 'shipment', header: 'Shipment', cell: (r) => <StatusBadge tone={r.ship[1]}>{r.ship[0]}</StatusBadge> },
+          { id: 'money', header: 'Total', align: 'right', cell: (r) => mono(r.money) },
+        ]} />
+      </PageLayout>
+    ),
+  },
+  shipments: {
+    crumb: 'Shipments',
+    render: () => (
+      <PageLayout eyebrow="Operations" title="Shipments" description="Labels, tracking numbers and delivery status for every carrier.">
+        <DataTable rows={SHIPMENT_ROWS} columns={[
+          { id: 't', header: 'Tracking', cell: (r) => mono(r.tracking) },
+          { id: 'o', header: 'Order', cell: (r) => mono(r.order) },
+          { id: 'c', header: 'Carrier', cell: (r) => r.carrier },
+          { id: 's', header: 'Status', cell: (r) => <StatusBadge tone={r.status[1]} withDot>{r.status[0]}</StatusBadge> },
+          { id: 'u', header: 'Updated', cell: (r) => r.updated },
+        ]} />
+      </PageLayout>
+    ),
+  },
+};
+const TOUR = ['analytics', 'orders', 'shipments'];
+
+function AppPreview() {
+  const reduce = useReducedMotion();
+  const boxRef = useRef(null);
+  const [scale, setScale] = useState(1);
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return undefined;
+    const ro = new ResizeObserver(([e]) => setScale(Math.max(e.contentRect.width / APP_W, e.contentRect.height / APP_H)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  useEffect(() => {
+    if (reduce) return undefined;
+    const id = setInterval(() => setI((n) => (n + 1) % TOUR.length), 6500);
+    return () => clearInterval(id);
+  }, [reduce]);
+  const key = TOUR[reduce ? 1 : i];
+  const scene = SCENES[key];
+  return (
+    <div className="bg-app" ref={boxRef} aria-hidden="true" inert="">
+      <div className="bg-app__frame" style={{ width: APP_W, height: APP_H, transform: `scale(${scale})` }}>
+       <div className="bg-app__drift">
+        <div className="shell">
+          <div className="shell-sidebar">
+            <div className="shell-brand">
+              <svg className="shell-brand__mark" width="26" height="26" viewBox="0 0 500 500"><g transform="translate(250 250) rotate(-30)"><rect x="-72" y="-160" width="144" height="320" rx="72" fill="none" stroke="#ee8c3c" strokeWidth="42" /></g><rect x="105" y="232" width="290" height="36" rx="18" fill="#ee8c3c" /></svg>
+              <span className="shell-brand__name">OpenLinker</span>
+              <StatusBadge tone="review" compact>Demo</StatusBadge>
+            </div>
+            <nav className="shell-nav">
+              {NAV_GROUPS.map((g) => (
+                <section key={g.label} className="shell-nav__group">
+                  <p className="shell-nav__label">{g.label}</p>
+                  <ul className="shell-nav__list">
+                    {g.items.map(([k, label, count]) => (
+                      <li key={k}>
+                        <span className={k === key ? 'shell-nav__link shell-nav__link--active bg-app__nav' : 'shell-nav__link bg-app__nav'}>
+                          <span className="shell-nav__link-label">{label}</span>
+                          {count !== undefined ? <span className="shell-nav__link-count mono-text">{count}</span> : null}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+            </nav>
+            <div className="shell-workspace">
+              <div className="shell-workspace__header"><strong className="shell-workspace__name">Default organization</strong></div>
+              <div className="shell-workspace__user"><span className="shell-workspace__username">kasia</span></div>
+            </div>
+          </div>
+          <div className="shell-main">
+            <header className="shell-topbar">
+              <nav className="shell-crumbs">
+                <span className="shell-crumbs__group">Operations</span>
+                <span className="shell-crumbs__sep" aria-hidden="true">/</span>
+                <span className="shell-crumbs__current bg-app__crumb">
+                  <AnimatePresence initial={false}>
+                    <motion.span key={scene.crumb} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1 }}>{scene.crumb}</motion.span>
+                  </AnimatePresence>
+                </span>
+              </nav>
+              <span className="shell-topbar__search">
+                <span className="shell-topbar__search-icon">⌕</span>
+                <span className="shell-topbar__search-placeholder">Search orders, products, connections…</span>
+                <kbd className="shell-topbar__search-kbd">⌘K</kbd>
+              </span>
+              <div className="shell-topbar__spacer" />
+              <span className="button button--ghost shell-topbar__alerts">Alerts <span>0</span></span>
+              <span className="shell-user-chip"><span className="shell-user-chip__avatar">KA</span><span className="shell-user-chip__name">kasia</span></span>
+            </header>
+            {/* The real app re-keys .shell-content per route for a quick cut; as a background that
+                reads as a slideshow, so scenes overlap and cross-fade slowly instead. */}
+            <main className="shell-content bg-app__scenes">
+              <AnimatePresence initial={false}>
+                <motion.div key={key} className="bg-app__scene"
+                  initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 1.4, ease: [0.45, 0, 0.25, 1] }}>
+                  {scene.render()}
+                </motion.div>
+              </AnimatePresence>
+            </main>
+          </div>
+        </div>
+       </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Story column ─────────────────────────────────────────────────────── */
+/* ── LanguageSwitch + LanguageFlag: 1:1 port of origin/main apps/web/src/shared/ui/language-switch.tsx
+   and language-flag.tsx (ADR-081). Same markup, classes and motion; its CSS is copied verbatim from
+   main's index.css. Only the wiring differs: useMessages('ui').languageSwitch -> LANG_SWITCH_COPY,
+   useOptionalLocale() -> this page's LocaleCtx. In apps/web the page imports the real one. */
+const LANG_SWITCH_COPY = {
+  en: { beta: 'Beta', betaHint: 'Some content may not be translated yet.', current: 'Language: {name}', label: 'Language' },
+  pl: { beta: 'Beta', betaHint: 'Część zawartości może być jeszcze nieprzetłumaczona.', current: 'Język: {name}', label: 'Język' },
+};
+const interpolate = (s, vars) => s.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '');
+
+function LanguageFlag({ code }) {
+  switch (code) {
+    case 'pl':
+      return (
+        <svg className="language-flag" viewBox="0 0 16 10" aria-hidden="true">
+          <rect width="16" height="5" fill="#fff" />
+          <rect y="5" width="16" height="5" fill="#dc143c" />
+        </svg>
+      );
+    default:
+      return (
+        <svg className="language-flag" viewBox="0 0 60 40" aria-hidden="true">
+          <rect width="60" height="40" fill="#012169" />
+          <path d="M0 0L60 40M60 0L0 40" stroke="#fff" strokeWidth="8" />
+          <path d="M0 0L60 40M60 0L0 40" stroke="#c8102e" strokeWidth="3" />
+          <path d="M30 0V40M0 20H60" stroke="#fff" strokeWidth="12" />
+          <path d="M30 0V40M0 20H60" stroke="#c8102e" strokeWidth="7" />
+        </svg>
+      );
+  }
+}
+
+const LANGUAGE_DETAILS = { pl: { name: 'Polski', beta: true }, en: { name: 'English' } };
+const LANGUAGE_OPTIONS = ['pl', 'en'].map((code) => ({ code, ...LANGUAGE_DETAILS[code] }));
+const LS_SPRING = { type: 'spring', stiffness: 520, damping: 34, mass: 0.7 };
+const POPOVER_WIDTH = 200;
+const GAP = 8;
+
+function popoverPosition(trigger, down) {
+  const half = POPOVER_WIDTH / 2;
+  const centre = trigger.left + trigger.width / 2;
+  const left = Math.min(Math.max(centre, GAP + half), window.innerWidth - GAP - half);
+  return down ? { left, top: trigger.bottom + GAP } : { left, bottom: window.innerHeight - trigger.top + GAP };
+}
+const indexOfLang = (code) => Math.max(0, LANGUAGE_OPTIONS.findIndex((o) => o.code === code));
+const stepLang = (from, dir) => (from + dir + LANGUAGE_OPTIONS.length) % LANGUAGE_OPTIONS.length;
+
+function LanguageSwitch({ placement = 'up', className, locale, setLocale }) {
+  const copy = LANG_SWITCH_COPY[locale];
+  const [open, setOpen] = useState(false);
+  const [betaHint, setBetaHint] = useState(false);
+  const betaHintId = useId();
+  const down = placement === 'down';
+  const [focus, setFocus] = useState(0);
+  const rootRef = useRef(null);
+  const listRef = useRef(null);
+  const triggerRef = useRef(null);
+  const popoverRef = useRef(null);
+  const [position, setPosition] = useState({});
+  const listId = useId();
+  const headId = useId();
+  const current = LANGUAGE_OPTIONS.find((o) => o.code === locale) ?? LANGUAGE_OPTIONS[0];
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointerDown = (event) => {
+      const target = event.target;
+      if (rootRef.current?.contains(target) || popoverRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const place = () => { if (triggerRef.current) setPosition(popoverPosition(triggerRef.current.getBoundingClientRect(), down)); };
+    document.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    const frame = requestAnimationFrame(() => listRef.current?.focus());
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+      cancelAnimationFrame(frame);
+    };
+  }, [open, down]);
+
+  function close() { setOpen(false); triggerRef.current?.focus(); }
+  function choose(option) { setLocale(option.code); close(); }
+  function toggle() {
+    if (!open) {
+      setFocus(indexOfLang(locale));
+      if (triggerRef.current) setPosition(popoverPosition(triggerRef.current.getBoundingClientRect(), down));
+    }
+    setOpen((v) => !v);
+  }
+  function onKeyDown(event) {
+    if (event.key === 'Escape') { event.preventDefault(); close(); }
+    else if (event.key === 'ArrowDown') { event.preventDefault(); setFocus((i) => stepLang(i, 1)); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); setFocus((i) => stepLang(i, -1)); }
+    else if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); choose(LANGUAGE_OPTIONS[focus]); }
+    else if (event.key === 'Tab') { event.preventDefault(); close(); }
+  }
+
+  const classes = ['language-switch', open ? 'is-open' : '', className].filter(Boolean).join(' ');
+  const chevron = (
+    <path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+  );
+
+  return (
+    <div className={classes} ref={rootRef}>
+      <button ref={triggerRef} type="button" className="language-switch__trigger" aria-haspopup="listbox" aria-expanded={open}
+        aria-controls={open ? listId : undefined} aria-label={interpolate(copy.current, { name: current.name })} onClick={toggle}>
+        <span className="language-switch__flag-wrap">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span key={locale} className="language-switch__flag-face"
+              initial={{ rotateY: -90, opacity: 0 }} animate={{ rotateY: 0, opacity: 1 }} exit={{ rotateY: 90, opacity: 0 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}>
+              <LanguageFlag code={current.code} />
+            </motion.span>
+          </AnimatePresence>
+        </span>
+        <motion.svg className="language-switch__chevron" viewBox="0 0 10 10" aria-hidden="true" animate={{ rotate: open !== down ? 180 : 0 }} transition={LS_SPRING}>
+          {chevron}
+        </motion.svg>
+      </button>
+      <span className="language-switch__peek" aria-hidden="true" style={{ '--peek-chevron': down ? '180deg' : '0deg' }}>
+        <LanguageFlag code={current.code} />
+        <span className="language-switch__reveal">
+          <span className="language-switch__reveal-clip">
+            <span className="language-switch__reveal-name" lang={current.code}>{current.name}</span>
+          </span>
+        </span>
+        <svg className="language-switch__chevron" viewBox="0 0 10 10">{chevron}</svg>
+      </span>
+      {ReactDOM.createPortal(
+        <AnimatePresence>
+          {open ? (
+            <motion.div ref={popoverRef} style={position}
+              className={['language-switch__popover', down ? 'language-switch__popover--down' : ''].filter(Boolean).join(' ')}
+              initial={{ opacity: 0, scale: 0.92, x: '-50%', y: down ? -6 : 6, filter: 'blur(4px)' }}
+              animate={{ opacity: 1, scale: 1, x: '-50%', y: 0, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, scale: 0.96, x: '-50%', y: down ? -4 : 4, filter: 'blur(2px)', transition: { duration: 0.12 } }}
+              transition={LS_SPRING}>
+              <div className="language-switch__head" id={headId}>{copy.label}</div>
+              <span id={betaHintId} className="sr-only">{copy.betaHint}</span>
+              <motion.ul ref={listRef} id={listId} className="language-switch__list" role="listbox" tabIndex={-1}
+                aria-labelledby={headId} aria-activedescendant={`${listId}-${LANGUAGE_OPTIONS[focus].code}`} onKeyDown={onKeyDown}
+                initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.035, delayChildren: 0.04 } } }}>
+                {LANGUAGE_OPTIONS.map((option, index) => {
+                  const selected = option.code === locale;
+                  return (
+                    <motion.li key={option.code} id={`${listId}-${option.code}`} role="option" lang={option.code} aria-selected={selected}
+                      aria-describedby={option.beta ? betaHintId : undefined}
+                      className={['language-switch__option', index === focus ? 'is-focus' : ''].filter(Boolean).join(' ')}
+                      variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0, transition: LS_SPRING } }}
+                      onPointerMove={() => setFocus(index)} onClick={() => choose(option)}>
+                      {selected ? <motion.span className="language-switch__selected" layoutId={`${listId}-selected`} transition={LS_SPRING} /> : null}
+                      <LanguageFlag code={option.code} />
+                      <span className="language-switch__name">{option.name}<small>{option.code.toUpperCase()}</small></span>
+                      {option.beta ? (
+                        <span className="language-switch__beta" onPointerEnter={() => setBetaHint(true)} onPointerLeave={() => setBetaHint(false)}>{copy.beta}</span>
+                      ) : null}
+                      <AnimatePresence>
+                        {option.beta && betaHint ? (
+                          <motion.span className="language-switch__hint" aria-hidden="true"
+                            initial={{ opacity: 0, scale: 0.92, x: '-50%', y: 4, filter: 'blur(4px)' }}
+                            animate={{ opacity: 1, scale: 1, x: '-50%', y: 0, filter: 'blur(0px)', transition: { ...LS_SPRING, delay: 0.12 } }}
+                            exit={{ opacity: 0, scale: 0.96, x: '-50%', y: 2, filter: 'blur(2px)', transition: { duration: 0.12 } }}>
+                            {copy.betaHint}
+                          </motion.span>
+                        ) : null}
+                      </AnimatePresence>
+                    </motion.li>
+                  );
+                })}
+              </motion.ul>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
+/** Shows the sentence only when all of it fits; a cut-off sentence reads worse than none. */
+function FitText({ className, children }) {
+  const boxRef = useRef(null);
+  const textRef = useRef(null);
+  const [fits, setFits] = useState(true);
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    const text = textRef.current;
+    if (!box || !text) return undefined;
+    const check = () => setFits(text.offsetWidth <= box.clientWidth);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(box);
+    ro.observe(text);
+    return () => ro.disconnect();
+  }, [children]);
+  return (
+    <span ref={boxRef} className={className} data-fits={fits ? 'true' : 'false'} aria-hidden={fits ? undefined : true}>
+      <span ref={textRef}>{children}</span>
+    </span>
+  );
+}
+
+/* ── Top bar: the one header for every mode. Demo adds what this place is and where to go next;
+   a real install shows only the brand and the language. */
+function TopBar({ demo, locale, setLocale }) {
+  return (
+    <header className={`topbar ${demo ? 'topbar--demo theme-ink' : 'topbar--plain'}`}>
+      <div className="topbar__inner">
+        <span className="brand">
+          <svg viewBox="0 0 500 500" aria-hidden="true"><g transform="translate(250 250) rotate(-30)"><rect x="-72" y="-160" width="144" height="320" rx="72" fill="none" stroke="#ee8c3c" strokeWidth="42" /></g><rect x="105" y="232" width="290" height="36" rx="18" fill="#ee8c3c" /></svg>
+          OpenLinker
+        </span>
+        {demo ? (
+          <>
+            <span className="topbar__chip"><span className="topbar__dot" aria-hidden="true" />{demo.chip}</span>
+            <FitText className="topbar__text">{demo.text}</FitText>
+            <nav className="topbar__links" aria-label={demo.linksLabel}>
+              {demo.links.map(([label, href]) => <a key={href} href={href} target="_blank" rel="noreferrer">{label}</a>)}
+            </nav>
+          </>
+        ) : <span className="topbar__spacer" />}
+        <LanguageSwitch placement="down" locale={locale} setLocale={setLocale} />
+      </div>
+    </header>
+  );
+}
+
+/* ── Copy ───────────────────────────────────────────────────────────────────────────────
+   Two sources, by design:
+     DEMO_COPY        fixed, shipped in the code (in apps/web: the login.demo.* catalog keys). The demo
+                      page is a separate component chosen by OL_DEMO_MODE, and nobody edits it at runtime.
+     PRODUCTION_COPY  the DEFAULTS for a real install. Every field is editable per language in the admin
+                      panel (Settings -> Login page); an unset field falls back to these.
+   UI strings (field labels, validation) are shared and also per language. */
+const CHANNELS = ['Allegro', 'Erli', 'PrestaShop', 'WooCommerce', 'Shoper'];
+
+const UI = {
+  pl: {
+    username: 'Nazwa użytkownika', usernameOrEmail: 'Nazwa użytkownika lub e-mail', email: 'E-mail', password: 'Hasło',
+    confirm: 'Powtórz hasło', min8: 'min. 8 znaków', forgot: 'Nie pamiętasz hasła?', show: 'Pokaż', hide: 'Ukryj',
+    showPw: 'Pokaż hasło', hidePw: 'Ukryj hasło', usernamePh: 'np. sklep-kasia', emailPh: 'kasia@twojsklep.pl',
+    loginFailedTitle: 'Nie udało się zalogować', signedInTitle: 'Zalogowano', signedInLead: 'Otwieramy panel zamówień.',
+    mockBack: 'Makieta: wróć do formularza', tabsLabel: 'Logowanie lub rejestracja', language: 'Język',
+    tracking: 'Ta wizyta jest zapisywana w statystykach. Nie tworzymy na jej podstawie profilu osoby.',
+    v: {
+      usernameLogin: 'Wpisz nazwę użytkownika albo e-mail.', usernameRegister: 'Wybierz nazwę użytkownika.',
+      email: 'Wpisz adres e-mail.', emailBad: 'Ten adres e-mail wygląda na niepełny.', password: 'Wpisz hasło.',
+      password8: 'Hasło musi mieć co najmniej 8 znaków.', confirm: 'Powtórz hasło.', mismatch: 'Hasła się różnią.',
+      taken: 'Ta nazwa użytkownika albo ten e-mail są już zajęte.',
+    },
+  },
+  en: {
+    username: 'Username', usernameOrEmail: 'Username or email', email: 'Email', password: 'Password',
+    confirm: 'Repeat password', min8: 'at least 8 characters', forgot: 'Forgot your password?', show: 'Show', hide: 'Hide',
+    showPw: 'Show password', hidePw: 'Hide password', usernamePh: 'e.g. kates-shop', emailPh: 'kate@yourshop.com',
+    loginFailedTitle: "Couldn't sign you in", signedInTitle: 'Signed in', signedInLead: 'Opening your orders.',
+    mockBack: 'Mockup: back to the form', tabsLabel: 'Sign in or create an account', language: 'Language',
+    tracking: 'This visit is counted in our statistics. No personal profile is built from it.',
+    v: {
+      usernameLogin: 'Enter your username or email.', usernameRegister: 'Choose a username.',
+      email: 'Enter your email address.', emailBad: 'This email address looks incomplete.', password: 'Enter your password.',
+      password8: 'Use at least 8 characters.', confirm: 'Repeat your password.', mismatch: "The passwords don't match.",
+      taken: 'That username or email is already taken.',
+    },
+  },
+};
+
+const DEMO_COPY = {
+  pl: {
+    bar: { chip: 'Demo', text: 'Demo działa na wymyślonym sklepie, więc niczego tu nie zepsujesz.', linksLabel: 'Więcej o OpenLinkerze', links: [['openlinker.io', 'https://openlinker.io/pl/'], ['Dokumentacja', 'https://docs.openlinker.io/'], ['GitHub', 'https://github.com/openlinker-project/openlinker']] },
+    headline: { before: ['Zobacz, jak OpenLinker', 'obsługuje zamówienia'], rotating: ['z Allegro.', 'z Erli.', 'z PrestaShopa.', 'z WooCommerce.', 'z Shopera.'], after: null },
+    lead: 'Załóż konto i przejrzyj prawdziwy panel z przykładowym sklepem: zamówienia, wysyłki i faktury.',
+    highlights: ['Konto demo jest darmowe', 'Na własnym serwerze nie płacisz prowizji od zamówień', 'Cały kod jest na GitHubie, na licencji Apache 2.0'],
+    tabs: { register: 'Załóż konto', login: 'Zaloguj się' },
+    register: {
+      title: 'Darmowe konto demo', lead: 'Po rejestracji przyślemy link aktywacyjny na Twój e-mail.',
+      submit: 'Załóż konto demo', pending: 'Zakładam konto...',
+      sentTitle: 'Sprawdź skrzynkę', sentLead: (email) => <>Wysłaliśmy link na <span className="done__mail">{email || 'Twój adres'}</span>. Kliknij go, a potem zaloguj się tutaj.</>,
+      sentAction: 'Przejdź do logowania',
+      recording: 'Sesje w demo nagrywamy (bez haseł), żeby wiedzieć, co poprawić. Zakładając konto, zgadzasz się na to.',
+    },
+    login: {
+      title: 'Zaloguj się do demo', lead: 'Użyj loginu lub e-maila i hasła z rejestracji.', submit: 'Zaloguj się', pending: 'Loguję...',
+      failed: 'Nieprawidłowy login lub hasło. Jeśli konto jest nowe, najpierw kliknij link w mailu.',
+    },
+    recordedLabel: 'Co nagrywamy',
+    recorded: ['Strony, które otwierasz, i przyciski, które klikasz', 'Tekst, który wpisujesz, poza hasłami', 'Przeglądarkę, rozmiar ekranu i przybliżoną lokalizację z adresu IP', 'Same przykładowe dane, bo sklep, zamówienia i faktury w demo są wymyślone'],
+    consent: { title: 'Zgoda na nagrywanie sesji', lead: 'Nagrywamy, co klikasz w demo, żeby wiedzieć, co poprawić. Haseł nie nagrywamy. Bez Twojej zgody demo się nie otworzy.', decline: 'Wyloguj', accept: 'Zgadzam się', fine: 'Nagrywanie startuje po kliknięciu „Zgadzam się”.' },
+    support: null,
+  },
+  en: {
+    bar: { chip: 'Demo', text: "Demo runs on a made-up shop, so you can't break anything.", linksLabel: 'More about OpenLinker', links: [['openlinker.io', 'https://openlinker.io/'], ['Docs', 'https://docs.openlinker.io/'], ['GitHub', 'https://github.com/openlinker-project/openlinker']] },
+    headline: { before: ['See how OpenLinker', 'handles orders'], rotating: ['from Allegro.', 'from Erli.', 'from PrestaShop.', 'from WooCommerce.', 'from Shoper.'], after: null },
+    lead: 'Create an account and browse the real panel with a sample shop: orders, shipments and invoices.',
+    highlights: ['The demo account is free', 'On your own server you pay no fee per order', 'All the code is on GitHub under the Apache 2.0 licence'],
+    tabs: { register: 'Create account', login: 'Sign in' },
+    register: {
+      title: 'Free demo account', lead: "After you sign up, we'll email you an activation link.",
+      submit: 'Create demo account', pending: 'Creating your account...',
+      sentTitle: 'Check your inbox', sentLead: (email) => <>We sent a link to <span className="done__mail">{email || 'your address'}</span>. Click it, then sign in here.</>,
+      sentAction: 'Go to sign in',
+      recording: "We record demo sessions (never passwords) to learn what to fix. Creating an account means you're OK with that.",
+    },
+    login: {
+      title: 'Sign in to the demo', lead: 'Use the username or email and the password you signed up with.', submit: 'Sign in', pending: 'Signing in...',
+      failed: 'Wrong username or password. If the account is new, click the link in your email first.',
+    },
+    recordedLabel: 'What we record',
+    recorded: ['The pages you open and the buttons you click', 'What you type, except passwords', 'Your browser, screen size and rough location from your IP address', 'Sample data only, because the shop, orders and invoices in the demo are made up'],
+    consent: { title: 'Session recording', lead: "We record what you click in the demo to learn what to fix. We never record passwords. The demo won't open without your OK.", decline: 'Sign out', accept: 'I agree', fine: 'Recording starts when you click “I agree”.' },
+    support: null,
+  },
+};
+
+/* Defaults only. "Sklep Kasia" and the support line stand in for what an admin types in. */
+const PRODUCTION_COPY = {
+  pl: {
+    bar: null,
+    headline: { before: 'Panel sprzedaży', rotating: null, after: 'Sklep Kasia' },
+    lead: 'Zamówienia, wysyłki i faktury ze wszystkich Twoich kanałów sprzedaży.',
+    highlights: [],
+    tabs: { register: 'Poproś o dostęp', login: 'Zaloguj się' },
+    register: {
+      title: 'Poproś o dostęp', lead: 'Administrator dostanie Twoją prośbę i aktywuje konto.', submit: 'Wyślij prośbę', pending: 'Wysyłam...',
+      sentTitle: 'Prośba wysłana', sentLead: () => 'Napiszemy do Ciebie, gdy administrator ją zatwierdzi.', sentAction: 'Wróć do logowania', recording: null,
+    },
+    login: { title: 'Zaloguj się', lead: 'Konto zakłada administrator Twojej firmy.', submit: 'Zaloguj się', pending: 'Loguję...', failed: 'Login albo hasło są nieprawidłowe.' },
+    support: 'Problem z logowaniem? Napisz do it@sklep-kasia.pl',
+  },
+  en: {
+    bar: null,
+    headline: { before: 'Sales panel', rotating: null, after: "Kate's Shop" },
+    lead: 'Orders, shipments and invoices from every channel you sell on.',
+    highlights: [],
+    tabs: { register: 'Request access', login: 'Sign in' },
+    register: {
+      title: 'Request access', lead: 'Your administrator gets the request and activates your account.', submit: 'Send request', pending: 'Sending...',
+      sentTitle: 'Request sent', sentLead: () => "We'll email you once your administrator approves it.", sentAction: 'Back to sign in', recording: null,
+    },
+    login: { title: 'Sign in', lead: "Your company's administrator creates your account.", submit: 'Sign in', pending: 'Signing in...', failed: 'The username or password is wrong.' },
+    support: 'Trouble signing in? Write to it@kates-shop.com',
+  },
+};
+
+const LOGIN_PRESETS = {
+  demo: { label: 'Demo', demoMode: true, registration: 'open', defaultTab: 'register', background: 'app-preview', copy: DEMO_COPY },
+  production: { label: 'Produkcja', demoMode: false, registration: 'off', defaultTab: 'login', background: 'gradient', copy: PRODUCTION_COPY },
+  access: { label: 'Produkcja z prośbą o dostęp', demoMode: false, registration: 'approval', defaultTab: 'login', background: 'gradient', copy: PRODUCTION_COPY },
+};
+
+const LocaleCtx = React.createContext('pl');
+const useUi = () => UI[React.useContext(LocaleCtx)];
+
+function readLocale() {
+  try { const s = localStorage.getItem('ol-login-locale'); if (s === 'pl' || s === 'en') return s; } catch (e) { /* storage blocked */ }
+  return (navigator.language || 'pl').toLowerCase().startsWith('pl') ? 'pl' : 'en';
+}
+
+function RotatingChannel({ words }) {
+  const reduce = useReducedMotion();
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (reduce) return undefined;
+    const id = setInterval(() => setI((n) => (n + 1) % words.length), 2600);
+    return () => clearInterval(id);
+  }, [reduce, words]);
+  return (
+    <span className="h1__slot">
+      <AnimatePresence initial={false}>
+        <motion.span key={words[i]} className="h1__word"
+          initial={{ y: '100%' }} animate={{ y: '0%' }} exit={{ y: '-100%' }}
+          transition={{ duration: 0.6, ease: EASE }}>
+          {words[i]}
+        </motion.span>
+      </AnimatePresence>
+    </span>
+  );
+}
+
+function Hero({ copy }) {
+  const reduce = useReducedMotion();
+  const line = (n) => (reduce ? {} : { initial: { y: '105%' }, animate: { y: '0%' }, transition: { duration: 0.85, ease: EASE, delay: 0.08 + n * 0.08 } });
+  const fade = (d) => (reduce ? {} : { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.6, ease: EASE, delay: d } });
+  const { before, rotating, after } = copy.headline;
+  const spoken = `${[].concat(before).join(' ')} ${rotating ? rotating[0] : after}`;
+  return (
+    <section className="hero">
+      <h1 className="h1" aria-label={spoken}>
+        {[].concat(before).map((b, i) => (
+          <span key={b} className="h1__line" aria-hidden="true"><motion.span {...line(i)}>{b}</motion.span></span>
+        ))}
+        <span className="h1__line" aria-hidden="true">
+          <motion.span {...line([].concat(before).length)}>{rotating ? <RotatingChannel words={rotating} /> : <span className="h1__plain">{after}</span>}</motion.span>
+        </span>
+        {rotating && after ? <span className="h1__line" aria-hidden="true"><motion.span {...line(2)}>{after}</motion.span></span> : null}
+      </h1>
+      <motion.p className="lead" {...fade(0.35)}>{copy.lead}</motion.p>
+      {copy.highlights.length ? (
+        <ul className="highlights">
+          {copy.highlights.map((h, i) => <motion.li key={h} {...fade(0.45 + i * 0.07)}><span className="tick" aria-hidden="true" />{h}</motion.li>)}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
+function validate(mode, v, ui) {
+  const e = {};
+  if (!v.username.trim()) e.username = mode === 'login' ? ui.v.usernameLogin : ui.v.usernameRegister;
+  if (mode === 'register') {
+    if (!v.email.trim()) e.email = ui.v.email;
+    else if (!/^\S+@\S+\.\S+$/.test(v.email)) e.email = ui.v.emailBad;
+  }
+  if (!v.password) e.password = ui.v.password;
+  else if (mode === 'register' && v.password.length < 8) e.password = ui.v.password8;
+  if (mode === 'register' && v.confirm !== v.password) e.confirm = v.confirm ? ui.v.mismatch : ui.v.confirm;
+  return e;
+}
+
+/* Mockup behaviour: login succeeds only with the password "demo1234"; username "zajety" triggers the 409. */
+function AuthPanel({ preset, copy, showTrackingFootnote = false, onReserve, initial = {} }) {
+  const ui = useUi();
+  const reduce = useReducedMotion();
+  const canRegister = preset.registration !== 'off';
+  const [tab, setTab] = useState(canRegister ? (initial.tab || preset.defaultTab) : 'login');
+  const [step, setStep] = useState({ register: 'form', login: 'form', ...(initial.step || {}) });
+  const [values, setValues] = useState({ username: '', email: '', password: '', confirm: '', ...(initial.values || {}) });
+  const [errors, setErrors] = useState({});
+  const [pending, setPending] = useState(false);
+  const [loginFailed, setLoginFailed] = useState(Boolean(initial.failed));
+  const ids = { u: useId(), e: useId(), p: useId(), c: useId(), lu: useId(), lp: useId() };
+
+  const set = (key) => (event) => {
+    setValues((v) => ({ ...v, [key]: event.target.value }));
+    if (errors[key]) setErrors((e) => ({ ...e, [key]: undefined }));
+    if (loginFailed) setLoginFailed(false);
+  };
+  const go = (next) => { setTab(next); setErrors({}); setLoginFailed(false); setPending(false); };
+  /* Errors are stored as keys, not sentences, so switching language re-renders them in the new one. */
+  const errText = (k) => (errors[k] ? (ui.v[errors[k]] || errors[k]) : undefined);
+
+  const submit = (mode) => (event) => {
+    event.preventDefault();
+    const found = validate(mode, values, ui);
+    const keyed = Object.fromEntries(Object.entries(found).map(([k, msg]) => [k, Object.keys(ui.v).find((x) => ui.v[x] === msg)]));
+    setErrors(keyed);
+    setLoginFailed(false);
+    if (Object.keys(found).length) return;
+    setPending(true);
+    setTimeout(() => {
+      setPending(false);
+      if (mode === 'login') {
+        if (values.password !== 'demo1234') setLoginFailed(true);
+        else setStep((s) => ({ ...s, login: preset.demoMode ? 'consent' : 'in' }));
+      } else if (values.username.trim().toLowerCase() === 'zajety') {
+        setErrors({ username: 'taken', email: 'taken' });
+      } else {
+        setStep((s) => ({ ...s, register: 'sent' }));
+      }
+    }, 1000);
+  };
+
+  const active = `${tab}:${step[tab]}`;
+  const VIEW_KEYS = ['register:form', 'register:sent', 'login:form', 'login:consent', 'login:in'];
+  const viewRefs = useRef({});
+  const stackRef = useRef(null);
+  const rootRef = useRef(null);
+  const [heights, setHeights] = useState({});
+  useLayoutEffect(() => {
+    const measure = () => {
+      const next = {};
+      for (const k of VIEW_KEYS) { const el = viewRefs.current[k]; if (el) next[k] = el.offsetHeight; }
+      setHeights((prev) => (VIEW_KEYS.every((k) => prev[k] === next[k]) ? prev : next));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    for (const k of VIEW_KEYS) if (viewRefs.current[k]) ro.observe(viewRefs.current[k]);
+    return () => ro.disconnect();
+  }, []);
+  const tallest = Math.max(0, ...Object.values(heights));
+  useLayoutEffect(() => {
+    const card = rootRef.current && rootRef.current.parentElement;
+    if (!card || !stackRef.current || !tallest || !onReserve) return;
+    onReserve(card.offsetHeight - stackRef.current.offsetHeight + tallest);
+  }, [tallest, showTrackingFootnote]);
+  const bindView = (k) => (el) => { viewRefs.current[k] = el; };
+  const submitLabel = (idle, busy) => (pending ? <><span className="spinner" aria-hidden="true" />{busy}</> : idle);
+
+  return (
+    <div className="panel__inner" ref={rootRef}>
+      {canRegister ? (
+        <div className="tabs" role="tablist" aria-label={ui.tabsLabel}>
+          {['register', 'login'].map((key) => (
+            <button key={key} role="tab" type="button" className="tab" aria-selected={tab === key} onClick={() => go(key)}>
+              {tab === key ? <motion.span layoutId="tab-pill" className="tab__pill" transition={SPRING} /> : null}
+              <span>{copy.tabs[key]}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <motion.div className="stack" ref={stackRef} initial={false}
+        animate={{ height: heights[active] ?? 'auto' }} transition={{ type: 'spring', bounce: 0, visualDuration: 0.4 }}>
+        {canRegister ? (
+          <>
+            <View active={active === 'register:form'} nodeRef={bindView('register:form')}>
+              <div className="v-head">
+                <h2 className="v-title">{copy.register.title}</h2>
+                <p className="v-lead">{copy.register.lead}</p>
+              </div>
+              <form className="auth-form" onSubmit={submit('register')} noValidate>
+                <Field id={ids.u} label={ui.username} error={errText('username')}>
+                  <Input value={values.username} onChange={set('username')} autoComplete="username" placeholder={ui.usernamePh} />
+                </Field>
+                <Field id={ids.e} label={ui.email} error={errText('email')}>
+                  <Input type="email" value={values.email} onChange={set('email')} autoComplete="email" placeholder={ui.emailPh} />
+                </Field>
+                <Field id={ids.p} label={ui.password} aside={<span className="f__hint">{ui.min8}</span>} error={errText('password')}>
+                  <PasswordInput value={values.password} onChange={set('password')} autoComplete="new-password" />
+                </Field>
+                <Field id={ids.c} label={ui.confirm} error={errText('confirm')}>
+                  <PasswordInput value={values.confirm} onChange={set('confirm')} autoComplete="new-password" />
+                </Field>
+                <motion.div whileTap={reduce ? undefined : { scale: 0.985 }} transition={SPRING}>
+                  <Button type="submit" className="submit" disabled={pending}>{submitLabel(copy.register.submit, copy.register.pending)}</Button>
+                </motion.div>
+              </form>
+              {copy.register.recording ? (
+                <p className="v-note">{copy.register.recording} <RecordingPopover label={copy.recordedLabel} items={copy.recorded} /></p>
+              ) : null}
+            </View>
+
+            <View active={active === 'register:sent'} nodeRef={bindView('register:sent')}>
+              <CheckMark active={active === 'register:sent'} />
+              <h2 className="v-title">{copy.register.sentTitle}</h2>
+              <p className="v-lead">{copy.register.sentLead(values.email)}</p>
+              <div className="row-end" style={{ justifyContent: 'flex-start' }}>
+                <Button tone="secondary" onClick={() => go('login')}>{copy.register.sentAction}</Button>
+              </div>
+            </View>
+          </>
+        ) : null}
+
+        <View active={active === 'login:form'} nodeRef={bindView('login:form')}>
+          <div className="v-head">
+            <h2 className="v-title">{copy.login.title}</h2>
+            <p className="v-lead">{copy.login.lead}</p>
+          </div>
+          <form className="auth-form" onSubmit={submit('login')} noValidate>
+            <Field id={ids.lu} label={ui.usernameOrEmail} error={errText('username')}>
+              <Input value={values.username} onChange={set('username')} autoComplete="username" placeholder={ui.usernamePh} />
+            </Field>
+            <Field id={ids.lp} label={ui.password} aside={<a href="#forgot" onClick={(e) => e.preventDefault()}>{ui.forgot}</a>} error={errText('password')}>
+              <PasswordInput value={values.password} onChange={set('password')} autoComplete="current-password" />
+            </Field>
+            <motion.div whileTap={reduce ? undefined : { scale: 0.985 }} transition={SPRING}>
+              <Button type="submit" className="submit" disabled={pending}>{submitLabel(copy.login.submit, copy.login.pending)}</Button>
+            </motion.div>
+          </form>
+          <div style={{ marginTop: 16 }}>
+            <AnimatePresence initial={false}>
+              {loginFailed ? (
+                <motion.div key="fail" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2, ease: EASE }}>
+                  <Alert tone="error" title={ui.loginFailedTitle}>{copy.login.failed}</Alert>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+          </div>
+          {copy.support ? <p className="fine support">{copy.support}</p> : null}
+        </View>
+
+        {preset.demoMode ? (
+          <View active={active === 'login:consent'} nodeRef={bindView('login:consent')}>
+            <h2 className="v-title">{copy.consent.title}</h2>
+            <p className="v-lead" style={{ marginBottom: 16 }}>{copy.consent.lead}</p>
+            <ul className="bullets" style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6, color: 'var(--text-secondary)', fontSize: '.875rem' }}>
+              {copy.recorded.map((r) => <li key={r}>{r}</li>)}
+            </ul>
+            <div className="row-end">
+              <Button tone="ghost" onClick={() => setStep((s) => ({ ...s, login: 'form' }))}>{copy.consent.decline}</Button>
+              <Button onClick={() => setStep((s) => ({ ...s, login: 'in' }))}>{copy.consent.accept}</Button>
+            </div>
+            <p className="fine">{copy.consent.fine}</p>
+          </View>
+        ) : null}
+
+        <View active={active === 'login:in'} nodeRef={bindView('login:in')}>
+          <CheckMark active={active === 'login:in'} />
+          <h2 className="v-title">{ui.signedInTitle}</h2>
+          <p className="v-lead">{ui.signedInLead}</p>
+          <div className="redirect" aria-hidden="true">
+            <motion.span initial={false} animate={{ scaleX: active === 'login:in' ? 1 : 0 }} transition={{ duration: active === 'login:in' ? 1.8 : 0, ease: [0.4, 0, 0.2, 1] }} />
+          </div>
+        </View>
+      </motion.div>
+
+      {showTrackingFootnote ? <p className="fine">{ui.tracking}</p> : null}
+    </div>
+  );
+}
+
+/* ── Settings -> Login page (admin) ───────────────────────────────────────────────────────
+   Built like main's buyer-email-editor-page.tsx (#3555): PageLayout with a back link, the form in a
+   `panel panel--dense`, a live preview beside it, FormField/Input/Textarea/Alert/SegmentedControl/Button
+   from shared/ui. Only PRODUCTION copy is editable; the demo's copy ships in code. An empty field
+   falls back to the default, so a fresh install is never left with a blank login page. */
+
+/* shared/ui/segmented-control.tsx (keyboard handling trimmed for the mockup) */
+function SegmentedControl({ options, value, onChange, ...rest }) {
+  return (
+    <div role="radiogroup" className="segmented-control" {...rest}>
+      {options.map((o) => (
+        <button key={o.value} type="button" role="radio" aria-checked={o.value === value} tabIndex={o.value === value ? 0 : -1}
+          className={['segmented-control__option', o.value === value ? 'segmented-control__option--active' : ''].filter(Boolean).join(' ')}
+          onClick={() => onChange(o.value)}>
+          <span className="segmented-control__label">{o.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* shared/ui/textarea.tsx */
+const Textarea = forwardRef(function Textarea({ className = '', invalid = false, ...props }, ref) {
+  const classes = ['control', invalid ? 'control--invalid' : '', className].filter(Boolean).join(' ');
+  return <textarea ref={ref} className={classes} {...props} />;
+});
+
+/* shared/ui/form-field.tsx, with the optional description row */
+function SettingsField({ label, name, description, children }) {
+  const id = `${name}-${useId()}`;
+  const descId = description ? `${id}-description` : undefined;
+  return (
+    <div className="form-field">
+      <label htmlFor={id} className="form-field__label">{label}</label>
+      {React.cloneElement(children, { id, 'aria-describedby': descId })}
+      {description ? <p id={descId} className="form-field__description">{description}</p> : null}
+    </div>
+  );
+}
+
+/* What an admin can override, per language. `read` takes the default from PRODUCTION_COPY. */
+const LOGIN_PAGE_FIELDS = [
+  { key: 'headlineTop', read: (c) => c.headline.before },
+  { key: 'headlineAccent', read: (c) => c.headline.after },
+  { key: 'lead', read: (c) => c.lead, multiline: true },
+  { key: 'loginTitle', read: (c) => c.login.title },
+  { key: 'loginLead', read: (c) => c.login.lead },
+  { key: 'support', read: (c) => c.support },
+];
+
+function applyLoginOverrides(base, o = {}) {
+  const pick = (k, fallback) => (o[k] && o[k].trim() ? o[k] : fallback);
+  return {
+    ...base,
+    headline: { ...base.headline, before: pick('headlineTop', base.headline.before), after: pick('headlineAccent', base.headline.after) },
+    lead: pick('lead', base.lead),
+    login: { ...base.login, title: pick('loginTitle', base.login.title), lead: pick('loginLead', base.login.lead) },
+    support: pick('support', base.support),
+  };
+}
+
+const ADMIN_COPY = {
+  pl: {
+    group: 'Platforma', settings: 'Ustawienia', back: 'Ustawienia', title: 'Strona logowania',
+    description: 'To widzi każdy, zanim się zaloguje. Teksty ustawiasz osobno dla każdego języka.',
+    mode: 'Rejestracja jest wyłączona, więc strona pokazuje tylko logowanie. Włączysz ją zmienną OL_REGISTRATION_ENABLED.',
+    language: 'Język tekstów',
+    fields: {
+      headlineTop: ['Nagłówek', 'Pierwsza linia, np. nazwa panelu.'],
+      headlineAccent: ['Wyróżnienie w nagłówku', 'Druga linia w kolorze marki, np. nazwa firmy.'],
+      lead: ['Opis pod nagłówkiem', 'Jedno lub dwa zdania o tym, do czego służy panel.'],
+      loginTitle: ['Tytuł formularza', 'Nad polami logowania.'],
+      loginLead: ['Podpis formularza', 'Np. kto zakłada konta w Twojej firmie.'],
+      support: ['Pomoc przy logowaniu', 'Pod formularzem. Podaj adres albo telefon, pod którym ktoś odpowie.'],
+    },
+    emptyHint: 'Puste pole pokazuje tekst domyślny.',
+    save: 'Zapisz', saving: 'Zapisuję...', saved: 'Zapisano. Nowe teksty są już na stronie logowania.', reset: 'Przywróć domyślne', cancel: 'Anuluj',
+    preview: 'Podgląd', previewHint: 'Tak zobaczą to osoby logujące się po polsku.', previewHintEn: 'Tak zobaczą to osoby logujące się po angielsku.',
+    unsaved: 'Masz niezapisane zmiany.',
+  },
+  en: {
+    group: 'Platform', settings: 'Settings', back: 'Settings', title: 'Login page',
+    description: 'Everyone sees this before they sign in. Each language has its own text.',
+    mode: 'Registration is off, so the page shows sign-in only. Turn it on with the OL_REGISTRATION_ENABLED variable.',
+    language: 'Text language',
+    fields: {
+      headlineTop: ['Headline', 'The first line, for example the name of the panel.'],
+      headlineAccent: ['Headline highlight', 'The second line in the brand colour, for example your company name.'],
+      lead: ['Text under the headline', 'One or two sentences about what the panel is for.'],
+      loginTitle: ['Form title', 'Above the sign-in fields.'],
+      loginLead: ['Form subtitle', 'For example, who creates accounts at your company.'],
+      support: ['Sign-in help', 'Below the form. Give an address or phone number where someone will answer.'],
+    },
+    emptyHint: 'An empty field shows the default text.',
+    save: 'Save', saving: 'Saving...', saved: 'Saved. The new text is live on the login page.', reset: 'Restore defaults', cancel: 'Cancel',
+    preview: 'Preview', previewHint: 'This is what people signing in in Polish will see.', previewHintEn: 'This is what people signing in in English will see.',
+    unsaved: 'You have unsaved changes.',
+  },
+};
+
+/** Live preview of the real login page, scaled down and inert. */
+function LoginPreview({ copy, lang }) {
+  const boxRef = useRef(null);
+  const [scale, setScale] = useState(0.4);
+  const W = 1180; const H = 700;
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return undefined;
+    const ro = new ResizeObserver(([e]) => setScale(e.contentRect.width / W));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const preset = LOGIN_PRESETS.production;
+  return (
+    <div ref={boxRef} className="login-preview" style={{ height: H * scale }} aria-hidden="true" inert="">
+      <div style={{ position: 'absolute', left: 0, top: 0, width: W, height: H, transform: `scale(${scale})`, transformOrigin: 'left top' }}>
+        <LocaleCtx.Provider value={lang}>
+          <MotionConfig reducedMotion="always">
+            <div className="stage stage--gradient" style={{ minHeight: H }}>
+              <div className="stage__wash" />
+              <TopBar demo={null} locale={lang} setLocale={() => {}} />
+              <div className="stage__inner">
+                <Hero copy={copy} />
+                <div className="auth-col">
+                  <section className="auth-card"><AuthPanel key={lang} preset={preset} copy={copy} /></section>
+                </div>
+              </div>
+            </div>
+          </MotionConfig>
+        </LocaleCtx.Provider>
+      </div>
+    </div>
+  );
+}
+
+function LoginPageSettings({ uiLocale, saved, onSave }) {
+  const ui = ADMIN_COPY[uiLocale];
+  const [lang, setLang] = useState(uiLocale);
+  const [draft, setDraft] = useState(saved);
+  const [status, setStatus] = useState('idle'); // idle | saving | saved
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+  const base = PRODUCTION_COPY[lang];
+  const values = draft[lang] || {};
+  const setField = (k) => (e) => { setStatus('idle'); setDraft((d) => ({ ...d, [lang]: { ...(d[lang] || {}), [k]: e.target.value } })); };
+  const save = (e) => {
+    e.preventDefault();
+    setStatus('saving');
+    setTimeout(() => { onSave(draft); setStatus('saved'); }, 700);
+  };
+  const preview = applyLoginOverrides(base, values);
+
+  return (
+    <section className="page-section">
+      <div className="page-header">
+        <div className="page-header__content">
+          <a className="back-link" href="#admin" onClick={(e) => e.preventDefault()}>
+            <span className="back-link__glyph" aria-hidden="true">←</span>
+            <span className="back-link__label">{ui.back}</span>
+          </a>
+          <p className="eyebrow">{ui.settings}</p>
+          <h2 className="page-title">{ui.title}</h2>
+          <p className="page-description">{ui.description}</p>
+        </div>
+      </div>
+
+      <div className="buyer-email-editor login-page-editor">
+        <form className="buyer-email-editor__form panel panel--dense" onSubmit={save} noValidate>
+          <Alert tone="info">{ui.mode}</Alert>
+
+          <div className="form-field">
+            <span className="form-field__label">{ui.language}</span>
+            <SegmentedControl aria-label={ui.language} value={lang} onChange={setLang}
+              options={[{ value: 'pl', label: 'Polski' }, { value: 'en', label: 'English' }]} />
+            <p className="form-field__description">{ui.emptyHint}</p>
+          </div>
+
+          {LOGIN_PAGE_FIELDS.map((f) => {
+            const [label, hint] = ui.fields[f.key];
+            const control = f.multiline
+              ? <Textarea rows={3} value={values[f.key] || ''} onChange={setField(f.key)} placeholder={f.read(base) || ''} lang={lang} />
+              : <Input value={values[f.key] || ''} onChange={setField(f.key)} placeholder={f.read(base) || ''} lang={lang} />;
+            return <SettingsField key={`${lang}-${f.key}`} name={f.key} label={label} description={hint}>{control}</SettingsField>;
+          })}
+
+          <div className="buyer-email-editor__actions">
+            <Button type="submit" disabled={!dirty || status === 'saving'}>{status === 'saving' ? ui.saving : ui.save}</Button>
+            <Button type="button" tone="secondary" onClick={() => { setStatus('idle'); setDraft((d) => ({ ...d, [lang]: {} })); }}>{ui.reset}</Button>
+            <Button type="button" tone="ghost" disabled={!dirty} onClick={() => { setStatus('idle'); setDraft(saved); }}>{ui.cancel}</Button>
+          </div>
+          {status === 'saved' && !dirty ? <Alert tone="success">{ui.saved}</Alert> : null}
+          {dirty ? <p className="muted-text">{ui.unsaved}</p> : null}
+        </form>
+
+        <aside className="buyer-email-editor__form">
+          <section className="panel panel--dense">
+            <p className="eyebrow">{ui.preview}</p>
+            <p className="muted-text">{lang === 'pl' ? ui.previewHint : ui.previewHintEn}</p>
+            <LoginPreview copy={preview} lang={lang} />
+          </section>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+/* The app around it: the same AppShell markup the background preview uses, live this time. */
+function AdminView({ uiLocale, setLocale, saved, onSave }) {
+  const ui = ADMIN_COPY[uiLocale];
+  return (
+    <div className="admin-view">
+      <div className="shell">
+        <div className="shell-sidebar">
+          <div className="shell-brand">
+            <svg className="shell-brand__mark" width="26" height="26" viewBox="0 0 500 500" aria-hidden="true"><g transform="translate(250 250) rotate(-30)"><rect x="-72" y="-160" width="144" height="320" rx="72" fill="none" stroke="#ee8c3c" strokeWidth="42" /></g><rect x="105" y="232" width="290" height="36" rx="18" fill="#ee8c3c" /></svg>
+            <span className="shell-brand__name">OpenLinker</span>
+          </div>
+          <nav className="shell-nav" aria-label="Primary">
+            {NAV_GROUPS.map((g) => (
+              <section key={g.label} className="shell-nav__group">
+                <p className="shell-nav__label">{g.label}</p>
+                <ul className="shell-nav__list">
+                  {g.items.map(([k, label, count]) => (
+                    <li key={k}>
+                      <a href="#admin" onClick={(e) => e.preventDefault()} className={k === 'settings' ? 'shell-nav__link shell-nav__link--active' : 'shell-nav__link'} aria-current={k === 'settings' ? 'page' : undefined}>
+                        <span className="shell-nav__link-label">{label}</span>
+                        {count !== undefined ? <span className="shell-nav__link-count mono-text">{count}</span> : null}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </nav>
+          <div className="shell-workspace">
+            <div className="shell-workspace__header">
+              <strong className="shell-workspace__name">Default organization</strong>
+              <LanguageSwitch placement="up" locale={uiLocale} setLocale={setLocale} />
+            </div>
+            <div className="shell-workspace__user"><span className="shell-workspace__username">admin</span></div>
+          </div>
+        </div>
+        <div className="shell-main">
+          <header className="shell-topbar">
+            <nav aria-label="Breadcrumb" className="shell-crumbs">
+              <span className="shell-crumbs__group">{ui.group}</span>
+              <span className="shell-crumbs__sep" aria-hidden="true">/</span>
+              <span className="shell-crumbs__current">{ui.title}</span>
+            </nav>
+            <span className="shell-topbar__search">
+              <span className="shell-topbar__search-icon" aria-hidden="true">⌕</span>
+              <span className="shell-topbar__search-placeholder">Search orders, products, connections…</span>
+              <kbd className="shell-topbar__search-kbd" aria-hidden="true">⌘K</kbd>
+            </span>
+            <div className="shell-topbar__spacer" />
+            <span className="shell-user-chip"><span className="shell-user-chip__avatar">AD</span><span className="shell-user-chip__name">admin</span></span>
+          </header>
+          <main className="shell-content">
+            <LoginPageSettings uiLocale={uiLocale} saved={saved} onSave={onSave} />
+          </main>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Page ─────────────────────────────────────────────────────────────── */
+/* Every state the implementation must match, by name (docs/frontend-architecture.md § UX Mockups).
+   ?state=<name> opens it; add &bare=1 to hide the switchers (that is how parity screenshots are taken). */
+const STATES = {
+  'demo-register': { preset: 'demo', initial: { tab: 'register' } },
+  'demo-login': { preset: 'demo', initial: { tab: 'login' } },
+  'demo-login-failed': { preset: 'demo', initial: { tab: 'login', failed: true, values: { username: 'kasia', password: 'zle-haslo' } } },
+  'demo-register-sent': { preset: 'demo', initial: { tab: 'register', step: { register: 'sent' }, values: { email: 'kasia@twojsklep.pl' } } },
+  'demo-consent': { preset: 'demo', initial: { tab: 'login', step: { login: 'consent' } } },
+  'demo-signed-in': { preset: 'demo', initial: { tab: 'login', step: { login: 'in' } } },
+  'production-login': { preset: 'production', initial: {} },
+  'access-register': { preset: 'access', initial: { tab: 'register' } },
+  'access-sent': { preset: 'access', initial: { tab: 'register', step: { register: 'sent' } } },
+  'admin-login-page-editor': { preset: 'admin', initial: {} },
+};
+const QUERY = new URLSearchParams(location.search);
+const BARE = QUERY.get('bare') === '1';
+function readState() { const s = QUERY.get('state'); return s && STATES[s] ? s : null; }
+const PRESET_HASH = { demo: 'demo', produkcja: 'production', dostep: 'access', admin: 'admin' };
+const HASH_OF = { demo: 'demo', production: 'produkcja', access: 'dostep', admin: 'admin' };
+function readPreset() {
+  const st = readState();
+  if (st) return STATES[st].preset;
+  const h = (location.hash || '').replace('#', '');
+  return PRESET_HASH[h] || 'demo';
+}
+
+function App() {
+  const [presetKey, setPresetKey] = useState(readPreset);
+  const [stateKey, setStateKey] = useState(readState);
+  const initial = stateKey ? STATES[stateKey].initial : {};
+  const pickState = (k) => { setStateKey(k); setPresetKey(STATES[k].preset); setReserve(0); try { history.replaceState(null, '', `?state=${k}`); } catch (e) { /* ignore */ } };
+  const [locale, setLocale] = useState(readLocale);
+  const [reserve, setReserve] = useState(0);
+  const [overrides, setOverrides] = useState({ pl: {}, en: {} });
+  useEffect(() => {
+    const onHash = () => setPresetKey(readPreset());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  useEffect(() => { document.documentElement.lang = locale; try { localStorage.setItem('ol-login-locale', locale); } catch (e) { /* storage blocked */ } }, [locale]);
+  const pick = (k) => { setStateKey(null); setPresetKey(k); setReserve(0); try { history.replaceState(null, '', `#${HASH_OF[k]}`); } catch (e) { location.hash = HASH_OF[k]; } };
+  const switchLocale = (l) => setLocale(l);
+  const isAdmin = presetKey === 'admin';
+  const preset = LOGIN_PRESETS[isAdmin ? 'production' : presetKey];
+  const copy = preset.demoMode ? preset.copy[locale] : applyLoginOverrides(preset.copy[locale], overrides[locale]);
+  const modes = [...Object.entries(LOGIN_PRESETS).map(([k, p]) => [k, p.label]), ['admin', 'Panel admina: ustawienia']];
+  const campaign = /utm_/.test(location.search) || location.hash === '#kampania';
+  return (
+    <LocaleCtx.Provider value={locale}>
+      <MotionConfig reducedMotion="user">
+        {BARE ? null : <>
+        <div className="mock-modes" role="tablist" aria-label="Podgląd trybu strony (makieta)">
+          <span className="mock-modes__label">Podgląd trybu</span>
+          {modes.map(([k, label]) => (
+            <button key={k} role="tab" type="button" aria-selected={presetKey === k} className="mock-modes__btn" onClick={() => pick(k)}>{label}</button>
+          ))}
+        </div>
+        <div className="mock-modes" role="tablist" aria-label="Stany (data-state)">
+          <span className="mock-modes__label">Stan</span>
+          {Object.keys(STATES).map((k) => (
+            <button key={k} role="tab" type="button" aria-selected={stateKey === k} className="mock-modes__btn" onClick={() => pickState(k)}>{k}</button>
+          ))}
+        </div>
+        </>}
+        <div data-state={stateKey || undefined} data-bare={BARE ? "" : undefined}>
+        {isAdmin ? <AdminView uiLocale={locale} setLocale={switchLocale} saved={overrides} onSave={setOverrides} /> : (
+        <div className={`stage stage--${preset.background}`} key={`${presetKey}:${stateKey}`} style={{ minHeight: BARE ? '100dvh' : 'calc(100dvh - 72px)' }}>
+          {preset.background === 'app-preview' ? <div className="stage__bg"><AppPreview /></div> : null}
+          <div className="stage__wash" aria-hidden="true" />
+          <TopBar demo={copy.bar} locale={locale} setLocale={switchLocale} />
+          <div className="stage__inner">
+            <Hero copy={copy} />
+            <div className="auth-col" style={{ minHeight: reserve || undefined }}>
+              <motion.section className="auth-card" aria-label={copy.login.title}
+                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: EASE, delay: 0.2 }}>
+                <AuthPanel preset={preset} copy={copy} showTrackingFootnote={campaign} onReserve={setReserve} initial={initial} />
+              </motion.section>
+            </div>
+          </div>
+        </div>
+        )}
+        </div>
+      </MotionConfig>
+    </LocaleCtx.Provider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
