@@ -15,6 +15,7 @@ import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { useShoperMessages } from '../messages';
 import { useConfigureWebhooksMutation } from '../../../features/connections';
 import type { Connection } from '../../../features/connections';
 
@@ -29,6 +30,7 @@ export function ShoperConnectionActions({
 }: ShoperConnectionActionsProps): ReactElement {
   const configureWebhooks = useConfigureWebhooksMutation();
   const { showToast } = useToast();
+  const copy = useShoperMessages().shoperConnectionActions;
 
   const webhooksConfigured =
     typeof connection.config === 'object' &&
@@ -46,21 +48,20 @@ export function ShoperConnectionActions({
       if (result.webhooksConfigured) {
         showToast({
           tone: 'success',
-          title: 'Webhooks configured',
-          description:
-            'Shoper will now notify OpenLinker when an order or a product is created or changes.',
+          title: copy.toast.configured.title,
+          description: copy.toast.configured.description,
         });
       } else {
         showToast({
           tone: 'error',
-          title: 'Webhook registration failed',
-          description: result.warning ?? 'Shoper did not accept the webhook registration.',
+          title: copy.toast.failed.title,
+          description: result.warning ?? copy.toast.failed.notAccepted,
         });
       }
     } catch (error) {
       showToast({
         tone: 'error',
-        title: 'Webhook registration failed',
+        title: copy.toast.failed.title,
         description: (error as Error).message,
       });
     }
@@ -69,12 +70,10 @@ export function ShoperConnectionActions({
   return (
     <div className="action-list__item">
       <div>
-        <strong>Configure webhooks</strong>
+        <strong>{copy.title}</strong>
         <p className="muted-text">
-          Registers a webhook in Shoper so new and changed orders and products reach OpenLinker
-          right away. Needs the OL callback URL and the Order source or Product master
-          capability; run it again after enabling one of them.
-          {webhooksConfigured ? ' Currently configured ✓' : ''}
+          {copy.description}
+          {webhooksConfigured ? ` ${copy.currentlyConfigured}` : ''}
         </p>
       </div>
       <ReadOnlyLock active={readOnly} message={demoReadOnlyActionMessage()}>
@@ -84,10 +83,10 @@ export function ShoperConnectionActions({
           onClick={() => void handleConfigureWebhooks()}
         >
           {configureWebhooks.isPending
-            ? 'Configuring...'
+            ? copy.configuring
             : webhooksConfigured
-              ? 'Re-configure webhooks'
-              : 'Configure webhooks'}
+              ? copy.reconfigure
+              : copy.configure}
         </Button>
       </ReadOnlyLock>
     </div>

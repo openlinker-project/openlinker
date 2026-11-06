@@ -17,22 +17,30 @@
  */
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
+import { dpdMessages, getDpdMessages } from './messages';
 import { DpdCredentialsPanel } from './components/dpd-credentials-panel';
 import { dpdSetupRoute } from './dpd-setup.route';
 
 export const dpdPlugin: OpenLinkerPlugin = definePlugin({
   id: 'dpd',
+  messages: dpdMessages,
   platformType: 'dpd',
   build: {
     routes: [dpdSetupRoute],
   },
   platform: {
     displayName: 'DPD Polska',
+    // Getters, not values: the card is read at render, so the copy follows
+    // the active language instead of freezing at module load.
     setupCard: {
       title: 'DPD Polska',
-      description: 'Connect a DPD Polska courier account via the DPDServices REST API.',
+      get description(): string {
+        return getDpdMessages().plugin.setupCard.description;
+      },
       to: '/connections/new/dpd',
-      badge: 'DPDServices REST',
+      get badge(): string {
+        return getDpdMessages().plugin.setupCard.badge;
+      },
     },
     CredentialsPanel: DpdCredentialsPanel,
   },
