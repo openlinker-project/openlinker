@@ -62,10 +62,10 @@ export function ConsentLayout(): ReactElement {
 
   return (
     <div className="guest-layout">
-      <div className="guest-layout__language">
-        <LanguageSwitch placement="down" />
-      </div>
       <div className="guest-card">
+        <div className="guest-card__language">
+          <LanguageSwitch placement="down" />
+        </div>
         <div className="guest-brand">
           <strong className="guest-brand__title">{copy.brand.name}</strong>
           <span className="guest-brand__subtitle">{copy.brand.tagline}</span>

@@ -8,7 +8,8 @@
  * Sidebar nav items carry count badges fed by `useNavCounts` (fanning out
  * existing list queries). The topbar hosts breadcrumbs, a live ⌘K command
  * palette trigger (CommandPaletteTrigger → CommandPaletteProvider, #333),
- * an alerts trigger, and a user chip dropdown with the theme toggle.
+ * an alerts trigger, and a user chip dropdown with the theme, density and
+ * language controls.
  *
  * @module shared/ui
  */
@@ -29,7 +30,7 @@ import { useOmsRoutingState } from '../features/fulfillment-authority';
 import type { NavGroup } from './nav-registry.types';
 import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
 import { Button } from '../shared/ui/button';
-import { LanguageSwitch } from '../shared/ui/language-switch';
+import { LanguageToggle, restoreFocusAfterLanguageChange } from '../shared/ui/language-switch';
 import { EnvironmentBadge } from '../shared/ui/environment-badge';
 import {
   DropdownMenu,
@@ -162,7 +163,6 @@ function WorkspaceFooter({ onLogout, username, location, demoMode }: WorkspaceFo
     <div className="shell-workspace">
       <div className="shell-workspace__header">
         <strong className="shell-workspace__name">{copy.shell.organization}</strong>
-        <LanguageSwitch placement="up" />
       </div>
       {demoMode ? (
         <a
@@ -209,10 +209,20 @@ interface UserChipProps {
 
 function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
   const copy = useMessages('app').userMenu;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  // A language picked in this menu remounts the app; focus comes back here.
+  useEffect(() => {
+    restoreFocusAfterLanguageChange(triggerRef.current);
+  }, []);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" className="shell-user-chip" aria-label={interpolate(copy.accountMenu, { username })}>
+        <button
+          ref={triggerRef}
+          type="button"
+          className="shell-user-chip"
+          aria-label={interpolate(copy.accountMenu, { username })}
+        >
           <span className="shell-user-chip__avatar" aria-hidden="true">
             {initialsFrom(username)}
           </span>
@@ -232,6 +242,10 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
         <div className="shell-user-chip__menu-section">
           <div className="shell-user-chip__menu-section-label">{copy.density}</div>
           <DensityToggle />
+        </div>
+        <div className="shell-user-chip__menu-section">
+          <div className="shell-user-chip__menu-section-label">{copy.language}</div>
+          <LanguageToggle />
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onLogout}>{copy.signOut}</DropdownMenuItem>
