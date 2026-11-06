@@ -14,16 +14,24 @@ import { LOGIN_STAGE_EASE, LOGIN_STAGE_SPRING } from './login-stage-motion';
 
 interface StackViewProps {
   active: boolean;
+  /** A finished step: centred, since there is nothing to read left to right. */
+  centered?: boolean;
   nodeRef: Ref<HTMLDivElement>;
   name: string;
   children: ReactNode;
 }
 
-export function StackView({ active, nodeRef, name, children }: StackViewProps): ReactElement {
+export function StackView({
+  active,
+  centered = false,
+  nodeRef,
+  name,
+  children,
+}: StackViewProps): ReactElement {
   return (
     <motion.div
       ref={nodeRef}
-      className="auth-card__view"
+      className={centered ? 'auth-card__view auth-card__view--center' : 'auth-card__view'}
       data-view={name}
       aria-hidden={!active}
       inert={!active}

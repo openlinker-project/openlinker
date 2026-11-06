@@ -30,10 +30,19 @@ export type LoginPageCopySource = (typeof LoginPageCopySourceValues)[number];
 export type LoginPageCopy = Partial<Record<LoginPageCopyField, string>>;
 export type LoginPageCopyByLocale = Record<LoginPageLocale, LoginPageCopy>;
 
-/** `null` or an empty string clears a stored override back to env/default. */
+/**
+ * `null` or an empty string clears a stored copy override back to env/default;
+ * `registrationEnabled: null` hands the decision back to `OL_REGISTRATION_ENABLED`.
+ */
 export type LoginPageSettingsInput = Partial<
   Record<LoginPageLocale, Partial<Record<LoginPageCopyField, string | null>>>
->;
+> & { registrationEnabled?: boolean | null };
+
+export interface ResolvedRegistration {
+  /** True when the login page offers sign-up (demo) or a request for access. */
+  value: boolean;
+  source: LoginPageCopySource;
+}
 
 export interface ResolvedLoginPageField {
   value: string | null;
@@ -47,6 +56,7 @@ export type ResolvedLoginPageCopy = Record<
 
 export interface LoginPageSettingsView {
   copy: ResolvedLoginPageCopy;
+  registration: ResolvedRegistration;
   maxLength: Record<LoginPageCopyField, number>;
   updatedAt: Date | null;
   updatedBy: string | null;
@@ -108,10 +118,11 @@ export function applyLoginPageCopyInput(
 ): LoginPageCopyByLocale {
   const next: LoginPageCopyByLocale = { pl: { ...current.pl }, en: { ...current.en } };
   for (const [locale, fields] of Object.entries(input)) {
+    if (locale === 'registrationEnabled') continue;
     if (!(LoginPageLocaleValues as readonly string[]).includes(locale)) {
       throw new InvalidLoginPageSettingError(locale, `Unknown language "${locale}".`);
     }
-    if (fields === undefined || fields === null) continue;
+    if (fields === undefined || fields === null || typeof fields !== 'object') continue;
     const target = next[locale as LoginPageLocale];
     for (const [field, value] of Object.entries(fields)) {
       const path = `${locale}.${field}`;
@@ -133,6 +144,19 @@ export function applyLoginPageCopyInput(
     }
   }
   return next;
+}
+
+export const REGISTRATION_ENABLED_ENV_VAR = 'OL_REGISTRATION_ENABLED';
+
+/** Registration: the admin's choice, then `OL_REGISTRATION_ENABLED`, then off. */
+export function resolveRegistration(
+  stored: boolean | null,
+  readEnv: (name: string) => string | undefined
+): ResolvedRegistration {
+  if (stored !== null) return { value: stored, source: 'setting' };
+  const env = readEnv(REGISTRATION_ENABLED_ENV_VAR)?.trim().toLowerCase();
+  if (env) return { value: env === 'true', source: 'env' };
+  return { value: false, source: 'default' };
 }
 
 /** Resolves every field and language: row, then env, then default (no value). */

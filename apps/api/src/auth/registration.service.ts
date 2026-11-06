@@ -27,8 +27,11 @@ import {
   UserRepositoryPort,
   USER_REPOSITORY_TOKEN,
 } from '@openlinker/core/users';
+import {
+  LOGIN_PAGE_SETTINGS_SERVICE_TOKEN,
+  type ILoginPageSettingsService,
+} from '@openlinker/core/login-page-settings';
 import type { IRegistrationService } from './registration.service.interface';
-import { isRegistrationEnabled } from './registration-enabled';
 import { DEMO_MODE_SERVICE_TOKEN, type IDemoModeService } from './demo-mode.service.interface';
 import {
   EMAIL_CONFIRMATION_SERVICE_TOKEN,
@@ -51,6 +54,10 @@ export class RegistrationService implements IRegistrationService {
     private readonly cache: CachePort,
     @Inject(EMAIL_CONFIRMATION_SERVICE_TOKEN)
     private readonly emailConfirmationService: IEmailConfirmationService,
+    // #4028 - an admin may switch registration on or off in Settings > Login page;
+    // OL_REGISTRATION_ENABLED is the fallback when they have not.
+    @Inject(LOGIN_PAGE_SETTINGS_SERVICE_TOKEN)
+    private readonly loginPageSettings: ILoginPageSettingsService,
   ) {}
 
   async register(
@@ -60,7 +67,7 @@ export class RegistrationService implements IRegistrationService {
     clientIp?: string,
     analyticsConsent: boolean = false,
   ): Promise<void> {
-    if (!isRegistrationEnabled((name) => this.configService.get<string>(name))) {
+    if (!(await this.loginPageSettings.isRegistrationEnabled())) {
       throw new RegistrationDisabledException();
     }
 

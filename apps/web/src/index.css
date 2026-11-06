@@ -414,10 +414,7 @@
  * Status tones keep the same semantic names but shift to dark-friendly
  * tints so soft backgrounds don't wash out on dark surfaces.
  */
-/* `.login-topbar--demo` (#4029) carries the dark tokens in either theme: it is the
-   openlinker.io header, which is dark on the light page too. */
-html[data-theme='dark'],
-.login-topbar--demo {
+html[data-theme='dark'] {
   color-scheme: dark;
 
   /* Primary button hover — accent-driven (#775). */
@@ -6162,6 +6159,8 @@ html:has(.login-stage) {
   align-self: center;
   display: flex;
   align-items: center;
+  /* The tallest view's height, so switching views never moves the page (desktop only). */
+  min-height: var(--login-auth-reserve, auto);
 }
 
 .login-stage__auth-col > .auth-card {
@@ -6346,7 +6345,7 @@ html:has(.login-stage) {
   transform: rotate(45deg);
 }
 
-/* Top bar: the same header as openlinker.io (canvas-dark at 95% + blur, subtle-dark border). */
+/* Top bar: transparent over the stage, so it follows the theme; only borders and text carry it. */
 .login-topbar {
   position: relative;
   z-index: 3;
@@ -6382,10 +6381,8 @@ html:has(.login-stage) {
 }
 
 .login-topbar--demo {
-  background: oklch(14% 0.005 270 / 0.95);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  border-bottom: 1px solid oklch(24% 0.01 270);
+  background: transparent;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .login-topbar--plain {
@@ -6486,7 +6483,7 @@ html:has(.login-stage) {
 .login-topbar__links + .language-switch {
   margin-left: 6px;
   padding-left: 12px;
-  border-left: 1px solid oklch(100% 0 0 / 0.1);
+  border-left: 1px solid var(--border-default);
 }
 
 .login-topbar__spacer {
@@ -6810,6 +6807,19 @@ html:has(.login-stage) {
   margin-bottom: 20px;
 }
 
+/* A finished step (sent, signed in) is centred: there is nothing to scan left to right. */
+.auth-card__view--center {
+  text-align: center;
+}
+
+.auth-card__view--center .auth-card__check {
+  margin-inline: auto;
+}
+
+.auth-card__view--center .auth-card__actions {
+  justify-content: center;
+}
+
 .auth-card__redirect {
   width: 100%;
   height: 3px;
@@ -6831,10 +6841,6 @@ html:has(.login-stage) {
   gap: 8px;
   justify-content: flex-end;
   margin-top: 24px;
-}
-
-.auth-card__actions--start {
-  justify-content: flex-start;
 }
 
 .auth-card__bullets {
@@ -6893,6 +6899,12 @@ html:has(.login-stage) {
 
   .login-stage__bg {
     display: none;
+  }
+
+  /* On a phone the card sits right under the hero; what follows it moves instead. */
+  .login-stage__auth-col {
+    min-height: 0;
+    align-self: start;
   }
 
   .login-hero__title {

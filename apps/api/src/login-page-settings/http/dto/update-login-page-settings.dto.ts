@@ -12,7 +12,7 @@
  */
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsOptional, IsString, ValidateIf, ValidateNested } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, ValidateIf, ValidateNested } from 'class-validator';
 import { LOGIN_PAGE_COPY_MAX_LENGTH } from '@openlinker/core/login-page-settings';
 
 const MAX = LOGIN_PAGE_COPY_MAX_LENGTH;
@@ -67,4 +67,15 @@ export class UpdateLoginPageSettingsDto {
   @ValidateNested()
   @Type(() => LoginPageCopyInputDto)
   en?: LoginPageCopyInputDto;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    nullable: true,
+    description:
+      'Offer a request for access on the login page and accept one. `null` hands the decision back to OL_REGISTRATION_ENABLED.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsBoolean()
+  registrationEnabled?: boolean | null;
 }

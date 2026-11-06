@@ -68,7 +68,10 @@ export class LoginPageSettingsController {
   ): Promise<void> {
     res.setHeader('Cache-Control', 'no-store');
     try {
-      await this.settings.updateSettings({ pl: dto.pl, en: dto.en }, user?.id ?? null);
+      await this.settings.updateSettings(
+        { pl: dto.pl, en: dto.en, registrationEnabled: dto.registrationEnabled },
+        user?.id ?? null
+      );
     } catch (error) {
       if (error instanceof InvalidLoginPageSettingError) {
         throw new BadRequestException(error.message);

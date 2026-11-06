@@ -33,14 +33,15 @@ export class LoginPageSettingsRepository implements LoginPageSettingsRepositoryP
     return row ? this.toDomain(row) : null;
   }
 
-  async saveCopy(
-    copy: LoginPageCopyByLocale,
+  async saveSettings(
+    settings: { copy: LoginPageCopyByLocale; registrationEnabled: boolean | null },
     updatedBy: string | null
   ): Promise<LoginPageSettings> {
     await this.ormRepository.upsert(
       {
         id: LOGIN_PAGE_SETTINGS_SINGLETON_ID,
-        copy,
+        copy: settings.copy,
+        registrationEnabled: settings.registrationEnabled,
         updatedBy,
         // `@UpdateDateColumn` auto-touches on `.save()` only, not on upsert.
         updatedAt: new Date(),
@@ -54,6 +55,11 @@ export class LoginPageSettingsRepository implements LoginPageSettingsRepositoryP
   }
 
   private toDomain(row: LoginPageSettingsOrmEntity): LoginPageSettings {
-    return new LoginPageSettings(readLoginPageCopy(row.copy), row.updatedAt, row.updatedBy);
+    return new LoginPageSettings(
+      readLoginPageCopy(row.copy),
+      row.registrationEnabled,
+      row.updatedAt,
+      row.updatedBy
+    );
   }
 }

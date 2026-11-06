@@ -1952,7 +1952,8 @@ html[data-density='compact'] .status-badge{
    card shrinks for login. The column reserves the tallest view's height, so the page never moves. */
 .stack { position:relative; overflow:clip; overflow-clip-margin:8px; }
 .stack > .view { position:absolute; top:0; left:0; right:0; min-width:0; }
-.auth-col { align-self:center; display:flex; align-items:center; }
+.auth-col { align-self:center; display:flex; align-items:center; min-height:var(--auth-reserve, auto); }
+@media (max-width: 960px) { .auth-col { min-height:0; align-self:start; } }
 .auth-col > .auth-card { width:100%; }
 .h1__plain { display:block; color:var(--brand-word); }
 .highlights { list-style:none; margin:0; padding:0; display:grid; gap:10px; }
@@ -2200,7 +2201,7 @@ html[data-density='compact'] .status-badge{
 .topbar .brand { font-size:1.125rem; font-weight:600; letter-spacing:-0.025em; gap:12px; }
 .topbar .brand > svg { display:block; width:32px; height:32px; }
 /* Same header as openlinker.io: canvas-dark at 95% with a blur, subtle-dark bottom border. */
-.topbar--demo { background:oklch(14% 0.005 270 / .95); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); border-bottom:1px solid oklch(24% 0.010 270); }
+.topbar--demo { background:transparent; border-bottom:1px solid var(--border-subtle); }
 .topbar--plain { background:transparent; }
 .topbar__chip { display:inline-flex; align-items:center; gap:7px; height:24px; padding:0 10px; border-radius:999px; font-size:.75rem; font-weight:600; letter-spacing:.02em; color:var(--accent-primary-soft-strong); background:color-mix(in oklab, var(--accent-primary) 14%, transparent); border:1px solid color-mix(in oklab, var(--accent-primary) 40%, transparent); }
 .topbar__dot { position:relative; width:6px; height:6px; border-radius:50%; background:var(--accent-primary); }
@@ -2213,7 +2214,7 @@ html[data-density='compact'] .status-badge{
 .topbar__links a { color:var(--text-secondary); font-size:.8125rem; font-weight:500; text-decoration:none; padding:5px 9px; border-radius:7px; transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out); }
 .topbar__links a:hover { color:var(--text-primary); background:transparent; }
 .topbar__links a:focus-visible { outline:none; box-shadow:var(--shadow-focus); }
-.topbar__links + .language-switch { margin-left:6px; padding-left:12px; border-left:1px solid oklch(100% 0 0 / .1); }
+.topbar__links + .language-switch { margin-left:6px; padding-left:12px; border-left:1px solid var(--border-default); }
 .topbar__spacer { flex:1; }
 @media (max-width: 960px) {
   .topbar__links a:not(:last-child) { display:none; }
@@ -2487,6 +2488,10 @@ body:has([data-bare]) .admin-view .shell { min-height:100dvh; }
 .done__icon { width:44px; height:44px; border-radius:12px; background:var(--accent-primary-soft); border:1px solid var(--accent-primary-border); display:grid; place-items:center; margin-bottom:20px; }
 .done__mail { font-weight:600; color:var(--text-primary); word-break:break-all; }
 .check { width:48px; height:48px; display:block; margin-bottom:20px; }
+.buyer-emails-switch { display:inline-flex; align-items:center; gap:var(--space-2); min-height:44px; font-weight:600; }
+.view--center { text-align:center; }
+.view--center .check { margin-inline:auto; }
+.view--center .row-end { justify-content:center !important; }
 .redirect { width:100%; height:3px; border-radius:2px; background:var(--bg-surface-muted); overflow:hidden; margin-top:20px; }
 .redirect > span { display:block; height:100%; background:var(--accent-primary); transform-origin:left; }
 .row-end { display:flex; gap:8px; justify-content:flex-end; margin-top:24px; }
@@ -2631,9 +2636,9 @@ function RecordingPopover({ label, items }) {
 }
 
 /** One view of the stack. Inactive views stay mounted (they hold the height) but are hidden and inert. */
-function View({ active, nodeRef, children }) {
+function View({ active, nodeRef, children, centered = false }) {
   return (
-    <motion.div ref={nodeRef} className="view" aria-hidden={!active} inert={active ? undefined : ''}
+    <motion.div ref={nodeRef} className={centered ? 'view view--center' : 'view'} aria-hidden={!active} inert={active ? undefined : ''}
       initial={false}
       animate={{ opacity: active ? 1 : 0, y: active ? 0 : 6 }}
       transition={{ duration: active ? 0.26 : 0.14, ease: EASE, delay: active ? 0.06 : 0 }}>
@@ -3141,7 +3146,7 @@ function FitText({ className, children }) {
    a real install shows only the brand and the language. */
 function TopBar({ demo, locale, setLocale }) {
   return (
-    <header className={`topbar ${demo ? 'topbar--demo theme-ink' : 'topbar--plain'}`}>
+    <header className={`topbar ${demo ? 'topbar--demo' : 'topbar--plain'}`}>
       <div className="topbar__inner">
         <span className="brand">
           <svg viewBox="0 0 500 500" aria-hidden="true"><g transform="translate(250 250) rotate(-30)"><rect x="-72" y="-160" width="144" height="320" rx="72" fill="none" stroke="#ee8c3c" strokeWidth="42" /></g><rect x="105" y="232" width="290" height="36" rx="18" fill="#ee8c3c" /></svg>
@@ -3204,7 +3209,7 @@ const UI = {
 
 const DEMO_COPY = {
   pl: {
-    bar: { chip: 'Demo', text: 'Demo działa na wymyślonym sklepie, więc niczego tu nie zepsujesz.', linksLabel: 'Więcej o OpenLinkerze', links: [['openlinker.io', 'https://openlinker.io/pl/'], ['Dokumentacja', 'https://docs.openlinker.io/'], ['GitHub', 'https://github.com/openlinker-project/openlinker']] },
+    bar: { chip: 'Demo', text: 'Środowisko demonstracyjne z przykładowymi danymi.', linksLabel: 'Więcej o OpenLinkerze', links: [['openlinker.io', 'https://openlinker.io/pl/'], ['Dokumentacja', 'https://docs.openlinker.io/'], ['GitHub', 'https://github.com/openlinker-project/openlinker']] },
     headline: { before: ['Zobacz, jak OpenLinker', 'obsługuje zamówienia'], rotating: ['z Allegro.', 'z Erli.', 'z PrestaShopa.', 'z WooCommerce.', 'z Shopera.'], after: null },
     lead: 'Załóż konto i przejrzyj prawdziwy panel z przykładowym sklepem: zamówienia, wysyłki i faktury.',
     highlights: ['Konto demo jest darmowe', 'Na własnym serwerze nie płacisz prowizji od zamówień', 'Cały kod jest na GitHubie, na licencji Apache 2.0'],
@@ -3218,7 +3223,7 @@ const DEMO_COPY = {
     },
     login: {
       title: 'Zaloguj się do demo', lead: 'Użyj loginu lub e-maila i hasła z rejestracji.', submit: 'Zaloguj się', pending: 'Loguję...',
-      failed: 'Nieprawidłowy login lub hasło. Jeśli konto jest nowe, najpierw kliknij link w mailu.',
+      failed: 'Nieprawidłowy login lub hasło. Upewnij się, że konto zostało aktywowane.',
     },
     recordedLabel: 'Co nagrywamy',
     recorded: ['Strony, które otwierasz, i przyciski, które klikasz', 'Tekst, który wpisujesz, poza hasłami', 'Przeglądarkę, rozmiar ekranu i przybliżoną lokalizację z adresu IP', 'Same przykładowe dane, bo sklep, zamówienia i faktury w demo są wymyślone'],
@@ -3226,7 +3231,7 @@ const DEMO_COPY = {
     support: null,
   },
   en: {
-    bar: { chip: 'Demo', text: "Demo runs on a made-up shop, so you can't break anything.", linksLabel: 'More about OpenLinker', links: [['openlinker.io', 'https://openlinker.io/'], ['Docs', 'https://docs.openlinker.io/'], ['GitHub', 'https://github.com/openlinker-project/openlinker']] },
+    bar: { chip: 'Demo', text: 'A demo environment with sample data.', linksLabel: 'More about OpenLinker', links: [['openlinker.io', 'https://openlinker.io/'], ['Docs', 'https://docs.openlinker.io/'], ['GitHub', 'https://github.com/openlinker-project/openlinker']] },
     headline: { before: ['See how OpenLinker', 'handles orders'], rotating: ['from Allegro.', 'from Erli.', 'from PrestaShop.', 'from WooCommerce.', 'from Shoper.'], after: null },
     lead: 'Create an account and browse the real panel with a sample shop: orders, shipments and invoices.',
     highlights: ['The demo account is free', 'On your own server you pay no fee per order', 'All the code is on GitHub under the Apache 2.0 licence'],
@@ -3240,7 +3245,7 @@ const DEMO_COPY = {
     },
     login: {
       title: 'Sign in to the demo', lead: 'Use the username or email and the password you signed up with.', submit: 'Sign in', pending: 'Signing in...',
-      failed: 'Wrong username or password. If the account is new, click the link in your email first.',
+      failed: 'Wrong username or password. Make sure your account has been activated.',
     },
     recordedLabel: 'What we record',
     recorded: ['The pages you open and the buttons you click', 'What you type, except passwords', 'Your browser, screen size and rough location from your IP address', 'Sample data only, because the shop, orders and invoices in the demo are made up'],
@@ -3259,7 +3264,7 @@ const PRODUCTION_COPY = {
     tabs: { register: 'Poproś o dostęp', login: 'Zaloguj się' },
     register: {
       title: 'Poproś o dostęp', lead: 'Administrator dostanie Twoją prośbę i aktywuje konto.', submit: 'Wyślij prośbę', pending: 'Wysyłam...',
-      sentTitle: 'Prośba wysłana', sentLead: () => 'Napiszemy do Ciebie, gdy administrator ją zatwierdzi.', sentAction: 'Wróć do logowania', recording: null,
+      sentTitle: 'Prośba trafiła do administratora', sentLead: () => 'Gdy aktywuje Twoje konto, zalogujesz się tutaj tym samym loginem i hasłem.', sentAction: 'Wróć do logowania', recording: null,
     },
     login: { title: 'Zaloguj się', lead: 'Konto zakłada administrator Twojej firmy.', submit: 'Zaloguj się', pending: 'Loguję...', failed: 'Login albo hasło są nieprawidłowe.' },
     support: 'Problem z logowaniem? Napisz do it@sklep-kasia.pl',
@@ -3272,7 +3277,7 @@ const PRODUCTION_COPY = {
     tabs: { register: 'Request access', login: 'Sign in' },
     register: {
       title: 'Request access', lead: 'Your administrator gets the request and activates your account.', submit: 'Send request', pending: 'Sending...',
-      sentTitle: 'Request sent', sentLead: () => "We'll email you once your administrator approves it.", sentAction: 'Back to sign in', recording: null,
+      sentTitle: 'Your request is with your administrator', sentLead: () => 'Once they activate your account, sign in here with the same username and password.', sentAction: 'Back to sign in', recording: null,
     },
     login: { title: 'Sign in', lead: "Your company's administrator creates your account.", submit: 'Sign in', pending: 'Signing in...', failed: 'The username or password is wrong.' },
     support: 'Trouble signing in? Write to it@kates-shop.com',
@@ -3388,7 +3393,7 @@ function AuthPanel({ preset, copy, showTrackingFootnote = false, onReserve, init
       setPending(false);
       if (mode === 'login') {
         if (values.password !== 'demo1234') setLoginFailed(true);
-        else setStep((s) => ({ ...s, login: preset.demoMode ? 'consent' : 'in' }));
+        else setStep((s) => ({ ...s, login: 'in' }));
       } else if (values.username.trim().toLowerCase() === 'zajety') {
         setErrors({ username: 'taken', email: 'taken' });
       } else {
@@ -3467,7 +3472,7 @@ function AuthPanel({ preset, copy, showTrackingFootnote = false, onReserve, init
               ) : null}
             </View>
 
-            <View active={active === 'register:sent'} nodeRef={bindView('register:sent')}>
+            <View centered active={active === 'register:sent'} nodeRef={bindView('register:sent')}>
               <CheckMark active={active === 'register:sent'} />
               <h2 className="v-title">{copy.register.sentTitle}</h2>
               <p className="v-lead">{copy.register.sentLead(values.email)}</p>
@@ -3521,7 +3526,7 @@ function AuthPanel({ preset, copy, showTrackingFootnote = false, onReserve, init
           </View>
         ) : null}
 
-        <View active={active === 'login:in'} nodeRef={bindView('login:in')}>
+        <View centered active={active === 'login:in'} nodeRef={bindView('login:in')}>
           <CheckMark active={active === 'login:in'} />
           <h2 className="v-title">{ui.signedInTitle}</h2>
           <p className="v-lead">{ui.signedInLead}</p>
@@ -3601,7 +3606,8 @@ const ADMIN_COPY = {
   pl: {
     group: 'Platforma', settings: 'Ustawienia', back: 'Ustawienia', title: 'Strona logowania',
     description: 'To widzi każdy, zanim się zaloguje. Teksty ustawiasz osobno dla każdego języka.',
-    mode: 'Rejestracja jest wyłączona, więc strona pokazuje tylko logowanie. Włączysz ją zmienną OL_REGISTRATION_ENABLED.',
+    registrationLabel: 'Prośby o dostęp', registrationToggle: 'Pokazuj na stronie logowania kartę „Poproś o dostęp”',
+    registrationHint: 'Osoba bez konta wysyła prośbę. Zatwierdzasz ją w Użytkownikach, na karcie Pending.',
     language: 'Język tekstów',
     fields: {
       headlineTop: ['Nagłówek', 'Pierwsza linia, np. nazwa panelu.'],
@@ -3619,7 +3625,8 @@ const ADMIN_COPY = {
   en: {
     group: 'Platform', settings: 'Settings', back: 'Settings', title: 'Login page',
     description: 'Everyone sees this before they sign in. Each language has its own text.',
-    mode: 'Registration is off, so the page shows sign-in only. Turn it on with the OL_REGISTRATION_ENABLED variable.',
+    registrationLabel: 'Requests for access', registrationToggle: 'Show a “Request access” tab on the login page',
+    registrationHint: 'Someone without an account sends a request. You approve it in Users, on the Pending tab.',
     language: 'Text language',
     fields: {
       headlineTop: ['Headline', 'The first line, for example the name of the panel.'],
@@ -3637,7 +3644,7 @@ const ADMIN_COPY = {
 };
 
 /** Live preview of the real login page, scaled down and inert. */
-function LoginPreview({ copy, lang }) {
+function LoginPreview({ copy, lang, canRegister = false }) {
   const boxRef = useRef(null);
   const [scale, setScale] = useState(0.4);
   const W = 1180; const H = 700;
@@ -3648,7 +3655,7 @@ function LoginPreview({ copy, lang }) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const preset = LOGIN_PRESETS.production;
+  const preset = canRegister ? LOGIN_PRESETS.access : LOGIN_PRESETS.production;
   return (
     <div ref={boxRef} className="login-preview" style={{ height: H * scale }} aria-hidden="true" inert="">
       <div style={{ position: 'absolute', left: 0, top: 0, width: W, height: H, transform: `scale(${scale})`, transformOrigin: 'left top' }}>
@@ -3660,7 +3667,7 @@ function LoginPreview({ copy, lang }) {
               <div className="stage__inner">
                 <Hero copy={copy} />
                 <div className="auth-col">
-                  <section className="auth-card"><AuthPanel key={lang} preset={preset} copy={copy} /></section>
+                  <section className="auth-card"><AuthPanel key={`${lang}:${canRegister}`} preset={preset} copy={copy} /></section>
                 </div>
               </div>
             </div>
@@ -3676,6 +3683,7 @@ function LoginPageSettings({ uiLocale, saved, onSave }) {
   const [lang, setLang] = useState(uiLocale);
   const [draft, setDraft] = useState(saved);
   const [status, setStatus] = useState('idle'); // idle | saving | saved
+  const [registration, setRegistration] = useState(false);
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
   const base = PRODUCTION_COPY[lang];
   const values = draft[lang] || {};
@@ -3703,7 +3711,11 @@ function LoginPageSettings({ uiLocale, saved, onSave }) {
 
       <div className="buyer-email-editor login-page-editor">
         <form className="buyer-email-editor__form panel panel--dense" onSubmit={save} noValidate>
-          <Alert tone="info">{ui.mode}</Alert>
+          <div className="form-field">
+            <span className="form-field__label">{ui.registrationLabel}</span>
+            <label className="buyer-emails-switch"><input type="checkbox" checked={registration} onChange={(e) => { setStatus('idle'); setRegistration(e.target.checked); }} /><span>{ui.registrationToggle}</span></label>
+            <p className="form-field__description">{ui.registrationHint}</p>
+          </div>
 
           <div className="form-field">
             <span className="form-field__label">{ui.language}</span>
@@ -3733,7 +3745,7 @@ function LoginPageSettings({ uiLocale, saved, onSave }) {
           <section className="panel panel--dense">
             <p className="eyebrow">{ui.preview}</p>
             <p className="muted-text">{lang === 'pl' ? ui.previewHint : ui.previewHintEn}</p>
-            <LoginPreview copy={preview} lang={lang} />
+            <LoginPreview copy={preview} lang={lang} canRegister={registration} />
           </section>
         </aside>
       </div>
@@ -3809,6 +3821,7 @@ const STATES = {
   'demo-login': { preset: 'demo', initial: { tab: 'login' } },
   'demo-login-failed': { preset: 'demo', initial: { tab: 'login', failed: true, values: { username: 'kasia', password: 'zle-haslo' } } },
   'demo-register-sent': { preset: 'demo', initial: { tab: 'register', step: { register: 'sent' }, values: { email: 'kasia@twojsklep.pl' } } },
+  // /consent only: a demo account created before session recording existed. Sign-in never shows it.
   'demo-consent': { preset: 'demo', initial: { tab: 'login', step: { login: 'consent' } } },
   'demo-signed-in': { preset: 'demo', initial: { tab: 'login', step: { login: 'in' } } },
   'production-login': { preset: 'production', initial: {} },
@@ -3874,7 +3887,7 @@ function App() {
           <TopBar demo={copy.bar} locale={locale} setLocale={switchLocale} />
           <div className="stage__inner">
             <Hero copy={copy} />
-            <div className="auth-col" style={{ minHeight: reserve || undefined }}>
+            <div className="auth-col" style={reserve ? { '--auth-reserve': `${reserve}px` } : undefined}>
               <motion.section className="auth-card" aria-label={copy.login.title}
                 initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: EASE, delay: 0.2 }}>
                 <AuthPanel preset={preset} copy={copy} showTrackingFootnote={campaign} onReserve={setReserve} initial={initial} />

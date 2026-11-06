@@ -12,7 +12,6 @@ import {
   LoginPageSettingsEditor,
   useLoginPageSettingsQuery,
 } from '../../features/login-page-settings';
-import { useSystemConfigQuery } from '../../features/system';
 import { useActiveLocale, useMessages } from '../../shared/i18n';
 import { AccessGate } from '../../shared/ui/access-gate';
 import { Button } from '../../shared/ui/button';
@@ -23,9 +22,8 @@ function LoginPageSettingsContent(): ReactElement {
   const copy = useMessages('loginPageSettings');
   const locale = useActiveLocale();
   const query = useLoginPageSettingsQuery();
-  const config = useSystemConfigQuery();
 
-  if (query.isLoading || config.isLoading) {
+  if (query.isLoading) {
     return <LoadingState liveRegion="off" title={copy.title} message={copy.saving} />;
   }
   if (query.isError || !query.data) {
@@ -38,11 +36,7 @@ function LoginPageSettingsContent(): ReactElement {
     );
   }
   return (
-    <LoginPageSettingsEditor
-      view={query.data}
-      registrationEnabled={config.data?.registrationEnabled ?? false}
-      initialLocale={locale === 'pl' ? 'pl' : 'en'}
-    />
+    <LoginPageSettingsEditor view={query.data} initialLocale={locale === 'pl' ? 'pl' : 'en'} />
   );
 }
 

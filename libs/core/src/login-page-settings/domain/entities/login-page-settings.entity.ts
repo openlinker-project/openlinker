@@ -14,6 +14,8 @@ export const LOGIN_PAGE_SETTINGS_SINGLETON_ID = 'singleton';
 export class LoginPageSettings {
   constructor(
     public readonly copy: LoginPageCopyByLocale,
+    /** `null` = not set here; `OL_REGISTRATION_ENABLED` decides. */
+    public readonly registrationEnabled: boolean | null,
     public readonly updatedAt: Date,
     public readonly updatedBy: string | null
   ) {}

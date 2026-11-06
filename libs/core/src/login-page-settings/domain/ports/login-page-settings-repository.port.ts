@@ -11,6 +11,9 @@ import type { LoginPageCopyByLocale } from '../types/login-page-settings.types';
 export interface LoginPageSettingsRepositoryPort {
   findSettings(): Promise<LoginPageSettings | null>;
 
-  /** Replaces the stored copy as a whole; the service merges before calling. */
-  saveCopy(copy: LoginPageCopyByLocale, updatedBy: string | null): Promise<LoginPageSettings>;
+  /** Replaces the stored copy and registration choice; the service merges before calling. */
+  saveSettings(
+    settings: { copy: LoginPageCopyByLocale; registrationEnabled: boolean | null },
+    updatedBy: string | null
+  ): Promise<LoginPageSettings>;
 }

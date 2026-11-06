@@ -8,9 +8,8 @@
  * with the consent step already active (`ConsentLayout` keeps its own guard).
  *
  * It owns the session and the mutations; `LoginStage` stays presentational.
- * After a successful sign-in the card shows the consent step (a demo account
- * that has not accepted recording yet) and then a short "signed in" step
- * before it navigates, so the hand-off reads as one motion rather than a cut.
+ * After a successful sign-in the card shows a short "signed in" step before
+ * it navigates, so the hand-off reads as one motion rather than a cut.
  *
  * @module app/layouts
  */
@@ -89,8 +88,7 @@ export function LoginStageScreen({ mode }: LoginStageScreenProps): ReactElement 
       ? BENCH_PATH
       : resolveNextPath(searchParams.get('next'));
 
-  // A sign-in from this screen lands here once the session refreshes: a demo
-  // account still owes the recording consent, everyone else is signed in.
+  // A sign-in from this screen lands here once the session refreshes.
   useEffect(() => {
     if (
       mode !== 'guest' ||
@@ -99,9 +97,10 @@ export function LoginStageScreen({ mode }: LoginStageScreenProps): ReactElement 
       loginStep !== 'form'
     )
       return;
-    const owesConsent = demoMode && session.user?.analyticsConsent !== true;
-    setLoginStep(owesConsent ? 'consent' : 'in');
-  }, [mode, session.status, session.user?.analyticsConsent, demoMode, loginStep]);
+    // Recording is accepted at sign-up (#1938), so signing in is never a consent step. An
+    // account created before recording existed is sent to /consent by the app layout.
+    setLoginStep('in');
+  }, [mode, session.status, loginStep]);
 
   useEffect(() => {
     if (loginStep !== 'in') return undefined;

@@ -16,10 +16,16 @@ describe('LoginPageSettingsService', () => {
   beforeEach(() => {
     repository = {
       findSettings: jest.fn().mockResolvedValue(null),
-      saveCopy: jest
+      saveSettings: jest
         .fn()
-        .mockImplementation((copy, by) =>
-          Promise.resolve(new LoginPageSettings(copy, new Date(), by))
+        .mockImplementation(
+          (
+            settings: Parameters<LoginPageSettingsRepositoryPort['saveSettings']>[0],
+            by: string | null
+          ) =>
+            Promise.resolve(
+              new LoginPageSettings(settings.copy, settings.registrationEnabled, new Date(), by)
+            )
         ),
     };
     env = {};
@@ -36,11 +42,35 @@ describe('LoginPageSettingsService', () => {
 
   it('should merge a write onto the stored row when saving', async () => {
     repository.findSettings.mockResolvedValue(
-      new LoginPageSettings({ pl: { headline: 'Panel' }, en: {} }, new Date(), 'u1')
+      new LoginPageSettings({ pl: { headline: 'Panel' }, en: {} }, null, new Date(), 'u1')
     );
     await service.updateSettings({ en: { headline: 'Sales panel' } }, 'u2');
-    expect(repository.saveCopy).toHaveBeenCalledWith(
-      { pl: { headline: 'Panel' }, en: { headline: 'Sales panel' } },
+    expect(repository.saveSettings).toHaveBeenCalledWith(
+      {
+        copy: { pl: { headline: 'Panel' }, en: { headline: 'Sales panel' } },
+        registrationEnabled: null,
+      },
+      'u2'
+    );
+  });
+
+  it('should prefer the stored registration choice over env', async () => {
+    env.OL_REGISTRATION_ENABLED = 'true';
+    await expect(service.isRegistrationEnabled()).resolves.toBe(true);
+    repository.findSettings.mockResolvedValue(
+      new LoginPageSettings({ pl: {}, en: {} }, false, new Date(), 'u1')
+    );
+    await expect(service.isRegistrationEnabled()).resolves.toBe(false);
+    expect((await service.resolve()).registration).toEqual({ value: false, source: 'setting' });
+  });
+
+  it('should keep the stored registration choice when a write leaves it out', async () => {
+    repository.findSettings.mockResolvedValue(
+      new LoginPageSettings({ pl: {}, en: {} }, true, new Date(), 'u1')
+    );
+    await service.updateSettings({ pl: { headline: 'x' } }, 'u2');
+    expect(repository.saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ registrationEnabled: true }),
       'u2'
     );
   });

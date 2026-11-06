@@ -100,6 +100,32 @@ describe('Login Page Settings Integration', () => {
     expect(cleared.body.copy.pl.headline.value).toBe('Panel sprzedaży');
   });
 
+  it('should switch registration on and off from the settings, over the env default', async () => {
+    const http = harness.getHttp();
+    const token = await loginAsAdmin(http, harness.getDataSource());
+
+    await http
+      .put('/v1/login-page-settings')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ registrationEnabled: true })
+      .expect(204);
+    const on = await http.get('/v1/system/config').expect(200);
+    expect(on.body.registrationEnabled).toBe(true);
+    const settings = await http
+      .get('/v1/login-page-settings')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(settings.body.registration).toEqual({ value: true, source: 'setting' });
+
+    await http
+      .put('/v1/login-page-settings')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ registrationEnabled: false })
+      .expect(204);
+    const off = await http.get('/v1/system/config').expect(200);
+    expect(off.body.registrationEnabled).toBe(false);
+  });
+
   it('should answer 400 naming the field when a value is too long', async () => {
     const http = harness.getHttp();
     const token = await loginAsAdmin(http, harness.getDataSource());

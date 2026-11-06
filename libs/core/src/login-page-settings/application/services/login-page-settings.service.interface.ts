@@ -18,6 +18,9 @@ export interface ILoginPageSettingsService {
   /** Only the overrides (row or env) per language, for the public system config. */
   resolvePublicCopy(): Promise<LoginPageCopyByLocale>;
 
+  /** Whether the login page offers sign-up / a request for access, and the API accepts one. */
+  isRegistrationEnabled(): Promise<boolean>;
+
   /** @throws InvalidLoginPageSettingError on an unknown field or an over-length value */
   updateSettings(input: LoginPageSettingsInput, updatedBy: string | null): Promise<void>;
 }

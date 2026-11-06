@@ -21,7 +21,6 @@ import {
   DEMO_MODE_SERVICE_TOKEN,
   type IDemoModeService,
 } from '../auth/demo-mode.service.interface';
-import { isRegistrationEnabled } from '../auth/registration-enabled';
 import type { ISystemService } from './system.service.interface';
 import type { SystemConfigDto } from './dto/system-config.dto';
 
@@ -44,7 +43,7 @@ export class SystemService implements ISystemService {
     // default, without the latter's unrelated throw on an unset
     // `OL_PII_HASH_SALT`, which would take this PUBLIC startup read down with it.
     const storesPersonalData = getEnvBoolean('OL_STORE_PII', true);
-    const registrationEnabled = isRegistrationEnabled((name) => process.env[name]);
+    const registrationEnabled = await this.loginPageSettingsService.isRegistrationEnabled();
     if (!demoMode) {
       // #4028 - a real install's login copy is admin-editable; the demo's is
       // fixed in the frontend, so the demo carries no `loginPage` at all.

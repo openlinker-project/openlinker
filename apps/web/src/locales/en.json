@@ -36,7 +36,7 @@
       "github": "GitHub",
       "linksLabel": "More about OpenLinker",
       "site": "openlinker.io",
-      "text": "Demo runs on a made-up shop, so you can't break anything."
+      "text": "A demo environment with sample data."
     },
     "demo": {
       "consent": {
@@ -66,7 +66,7 @@
       },
       "lead": "Create an account and browse the real panel with a sample shop: orders, shipments and invoices.",
       "login": {
-        "failed": "Wrong username or password. If the account is new, click the link in your email first.",
+        "failed": "Wrong username or password. Make sure your account has been activated.",
         "lead": "Use the username or email and the password you signed up with.",
         "pending": "Signing in...",
         "submit": "Sign in",
@@ -111,8 +111,8 @@
         "lead": "Your administrator gets the request and activates your account.",
         "pending": "Sending...",
         "sentAction": "Back to sign in",
-        "sentLead": "We'll email you once your administrator approves it.",
-        "sentTitle": "Request sent",
+        "sentLead": "Once they activate your account, sign in here with the same username and password.",
+        "sentTitle": "Your request is with your administrator",
         "submit": "Send request",
         "title": "Request access"
       },
@@ -191,11 +191,13 @@
     },
     "language": "Text language",
     "loadError": "Couldn't load the login page settings.",
-    "modeOff": "Registration is off, so the page shows sign-in only. Turn it on with the OL_REGISTRATION_ENABLED variable.",
-    "modeOn": "Registration is on, so the page also offers a request for access. Turn it off with the OL_REGISTRATION_ENABLED variable.",
     "preview": "Preview",
     "previewHintEn": "This is what people signing in in English will see.",
     "previewHintPl": "This is what people signing in in Polish will see.",
+    "registrationEnv": "Until you save here, the OL_REGISTRATION_ENABLED variable decides.",
+    "registrationHint": "Someone without an account sends a request. You approve it in Users, on the Pending tab.",
+    "registrationLabel": "Requests for access",
+    "registrationToggle": "Show a “Request access” tab on the login page",
     "reset": "Restore defaults",
     "save": "Save",
     "saveError": "Couldn't save the login page.",
@@ -204,7 +206,9 @@
     "tile": "Headline, text and sign-in help on the login page.",
     "title": "Login page",
     "tooLong": "Use at most {max} characters.",
-    "unsaved": "You have unsaved changes."
+    "unsaved": "You have unsaved changes.",
+    "usersOff": "Requests for access are off, so the login page does not take them. <link>Login page settings</link>",
+    "usersOn": "Requests for access are on, so new ones land on the Pending tab. <link>Login page settings</link>"
   },
   "ui": {
     "accessDenied": {

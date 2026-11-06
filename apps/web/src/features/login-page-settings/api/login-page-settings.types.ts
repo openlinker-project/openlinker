@@ -23,6 +23,8 @@ export type ResolvedLoginPageCopy = Record<LoginPageCopyField, ResolvedLoginPage
 
 export interface LoginPageSettingsView {
   copy: Record<LoginPageLocale, ResolvedLoginPageCopy>;
+  /** Whether the login page offers a request for access, and who decided it. */
+  registration: { value: boolean; source: LoginPageCopySource };
   maxLength: Record<LoginPageCopyField, number>;
   updatedAt: string | null;
   updatedBy: string | null;
@@ -31,4 +33,4 @@ export interface LoginPageSettingsView {
 /** An empty string or `null` clears a field back to env and then the default. */
 export type UpdateLoginPageSettingsInput = Partial<
   Record<LoginPageLocale, Partial<Record<LoginPageCopyField, string | null>>>
->;
+> & { registrationEnabled?: boolean | null };

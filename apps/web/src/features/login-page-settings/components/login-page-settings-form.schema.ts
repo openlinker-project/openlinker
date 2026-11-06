@@ -16,7 +16,9 @@ import type {
 } from '../api/login-page-settings.types';
 
 export type LoginPageDraft = Record<LoginPageCopyField, string>;
-export type LoginPageSettingsFormValues = Record<LoginPageLocale, LoginPageDraft>;
+export type LoginPageSettingsFormValues = Record<LoginPageLocale, LoginPageDraft> & {
+  registrationEnabled: boolean;
+};
 
 /** Sentinel replaced by the caller with the field's own maximum. */
 export const TOO_LONG = 'tooLong';
@@ -32,10 +34,11 @@ export function loginPageSettingsSchema(
       ])
     ) as Record<LoginPageCopyField, z.ZodString>
   );
-  return z.object({ pl: draft, en: draft }) as unknown as z.ZodType<
-    LoginPageSettingsFormValues,
-    LoginPageSettingsFormValues
-  >;
+  return z.object({
+    pl: draft,
+    en: draft,
+    registrationEnabled: z.boolean(),
+  }) as unknown as z.ZodType<LoginPageSettingsFormValues, LoginPageSettingsFormValues>;
 }
 
 const emptyDraft = (): LoginPageDraft =>
@@ -55,13 +58,20 @@ export function toFormValues(view: LoginPageSettingsView): LoginPageSettingsForm
     }
     return draft;
   };
-  return { pl: read('pl'), en: read('en') };
+  return { pl: read('pl'), en: read('en'), registrationEnabled: view.registration.value };
 }
 
-/** Sends every field: an empty one clears the stored value. */
-export function toUpdateInput(values: LoginPageSettingsFormValues): UpdateLoginPageSettingsInput {
+/**
+ * Sends every copy field (an empty one clears the stored value). The registration choice is
+ * sent only when the admin changed it, so saving copy never freezes the env default in place.
+ */
+export function toUpdateInput(
+  values: LoginPageSettingsFormValues,
+  registrationChanged: boolean
+): UpdateLoginPageSettingsInput {
   return {
     pl: { ...values.pl },
     en: { ...values.en },
+    ...(registrationChanged ? { registrationEnabled: values.registrationEnabled } : {}),
   };
 }

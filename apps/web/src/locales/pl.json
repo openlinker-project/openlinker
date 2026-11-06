@@ -40,7 +40,7 @@
       "github": "GitHub",
       "linksLabel": "Więcej o OpenLinkerze",
       "site": "openlinker.io",
-      "text": "Demo działa na wymyślonym sklepie, więc niczego tu nie zepsujesz."
+      "text": "Środowisko demonstracyjne z przykładowymi danymi."
     },
     "demo": {
       "consent": {
@@ -70,7 +70,7 @@
       },
       "lead": "Załóż konto i przejrzyj prawdziwy panel z przykładowym sklepem: zamówienia, wysyłki i faktury.",
       "login": {
-        "failed": "Nieprawidłowy login lub hasło. Jeśli konto jest nowe, najpierw kliknij link w mailu.",
+        "failed": "Nieprawidłowy login lub hasło. Upewnij się, że konto zostało aktywowane.",
         "lead": "Użyj loginu lub e-maila i hasła z rejestracji.",
         "pending": "Loguję...",
         "submit": "Zaloguj się",
@@ -115,8 +115,8 @@
         "lead": "Administrator dostanie Twoją prośbę i aktywuje konto.",
         "pending": "Wysyłam...",
         "sentAction": "Wróć do logowania",
-        "sentLead": "Napiszemy do Ciebie, gdy administrator ją zatwierdzi.",
-        "sentTitle": "Prośba wysłana",
+        "sentLead": "Gdy aktywuje Twoje konto, zalogujesz się tutaj tym samym loginem i hasłem.",
+        "sentTitle": "Prośba trafiła do administratora",
         "submit": "Wyślij prośbę",
         "title": "Poproś o dostęp"
       },
@@ -195,11 +195,13 @@
     },
     "language": "Język tekstów",
     "loadError": "Nie udało się wczytać ustawień strony logowania.",
-    "modeOff": "Rejestracja jest wyłączona, więc strona pokazuje tylko logowanie. Włączysz ją zmienną OL_REGISTRATION_ENABLED.",
-    "modeOn": "Rejestracja jest włączona, więc strona pozwala też poprosić o dostęp. Wyłączysz ją zmienną OL_REGISTRATION_ENABLED.",
     "preview": "Podgląd",
     "previewHintEn": "Tak zobaczą to osoby logujące się po angielsku.",
     "previewHintPl": "Tak zobaczą to osoby logujące się po polsku.",
+    "registrationEnv": "Dopóki tu nie zapiszesz, decyduje zmienna OL_REGISTRATION_ENABLED.",
+    "registrationHint": "Osoba bez konta wysyła prośbę. Zatwierdzasz ją w Użytkownikach, na karcie Pending.",
+    "registrationLabel": "Prośby o dostęp",
+    "registrationToggle": "Pokazuj na stronie logowania kartę „Poproś o dostęp”",
     "reset": "Przywróć domyślne",
     "save": "Zapisz",
     "saveError": "Nie udało się zapisać strony logowania.",
@@ -208,7 +210,9 @@
     "tile": "Nagłówek, opis i pomoc przy logowaniu na stronie logowania.",
     "title": "Strona logowania",
     "tooLong": "Wpisz najwyżej {max} znaków.",
-    "unsaved": "Masz niezapisane zmiany."
+    "unsaved": "Masz niezapisane zmiany.",
+    "usersOff": "Prośby o dostęp są wyłączone, więc strona logowania ich nie przyjmuje. <link>Ustawienia strony logowania</link>",
+    "usersOn": "Prośby o dostęp są włączone, więc nowe trafiają na kartę Pending. <link>Ustawienia strony logowania</link>"
   },
   "ui": {
     "accessDenied": {

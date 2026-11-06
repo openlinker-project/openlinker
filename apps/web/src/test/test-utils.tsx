@@ -1287,6 +1287,7 @@ export function createMockApiClient(
     loginPageSettings: {
       get: vi.fn().mockResolvedValue({
         copy: { pl: {}, en: {} },
+        registration: { value: false, source: 'default' },
         maxLength: { headline: 60, headlineAccent: 60, lead: 280, formTitle: 60, formSubtitle: 140, support: 200 },
         updatedAt: null,
         updatedBy: null,

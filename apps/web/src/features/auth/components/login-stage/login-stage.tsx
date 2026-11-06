@@ -13,7 +13,7 @@
  * @module features/auth/components/login-stage
  */
 import { motion } from 'motion/react';
-import { useState, type ReactElement, type ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import { AuthCard, type AuthCardProps } from './auth-card';
 import { LoginHero } from './login-hero';
 import { LOGIN_STAGE_EASE } from './login-stage-motion';
@@ -55,7 +55,12 @@ export function LoginStage({
       <LoginTopBar bar={card.copy.bar} />
       <div className="login-stage__inner">
         <LoginHero copy={card.copy} />
-        <div className="login-stage__auth-col" style={{ minHeight: reserve || undefined }}>
+        <div
+          className="login-stage__auth-col"
+          style={
+            reserve ? ({ '--login-auth-reserve': `${reserve}px` } as CSSProperties) : undefined
+          }
+        >
           <motion.section className="auth-card" aria-label={card.copy.login.title} {...entrance}>
             <AuthCard {...card} onReserve={setReserve} />
           </motion.section>

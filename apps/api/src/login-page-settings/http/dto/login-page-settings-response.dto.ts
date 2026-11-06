@@ -52,6 +52,13 @@ export class ResolvedLoginPageLocalesDto {
   en!: ResolvedLoginPageCopyDto;
 }
 
+export class ResolvedRegistrationDto {
+  @ApiProperty() value!: boolean;
+
+  @ApiProperty({ enum: LoginPageCopySourceValues })
+  source!: LoginPageCopySource;
+}
+
 export class LoginPageMaxLengthDto {
   @ApiProperty() headline!: number;
   @ApiProperty() headlineAccent!: number;
@@ -64,6 +71,9 @@ export class LoginPageMaxLengthDto {
 export class LoginPageSettingsResponseDto {
   @ApiProperty({ type: ResolvedLoginPageLocalesDto })
   copy!: ResolvedLoginPageLocalesDto;
+
+  @ApiProperty({ type: ResolvedRegistrationDto })
+  registration!: ResolvedRegistrationDto;
 
   @ApiProperty({ type: LoginPageMaxLengthDto })
   maxLength!: LoginPageMaxLengthDto;
@@ -87,6 +97,7 @@ export class LoginPageSettingsResponseDto {
     });
     return {
       copy: { pl: copyOf(view.copy.pl), en: copyOf(view.copy.en) },
+      registration: { ...view.registration },
       maxLength: { ...view.maxLength },
       updatedAt: view.updatedAt ? view.updatedAt.toISOString() : null,
       updatedBy: view.updatedBy,

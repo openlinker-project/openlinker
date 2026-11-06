@@ -24,6 +24,7 @@ const VIEW: LoginPageSettingsView = {
     pl: { ...defaults, headline: field('Panel Acme', 'setting') },
     en: { ...defaults, support: field('it@acme.test', 'env') },
   },
+  registration: { value: false, source: 'env' },
   maxLength: {
     headline: 60,
     headlineAccent: 60,
@@ -38,12 +39,9 @@ const VIEW: LoginPageSettingsView = {
 
 function renderEditor(): ReturnType<typeof createMockApiClient> {
   const apiClient = createMockApiClient();
-  renderWithProviders(
-    <LoginPageSettingsEditor view={VIEW} registrationEnabled={false} initialLocale="en" />,
-    {
-      apiClient,
-    }
-  );
+  renderWithProviders(<LoginPageSettingsEditor view={VIEW} initialLocale="en" />, {
+    apiClient,
+  });
   return apiClient;
 }
 
@@ -80,6 +78,17 @@ describe('LoginPageSettingsEditor', () => {
     const input = vi.mocked(apiClient.loginPageSettings.update).mock.calls[0]?.[0];
     expect(input?.pl?.headline).toBe('');
     expect(input?.en?.support).toBe('');
+    expect(input).not.toHaveProperty('registrationEnabled');
+  });
+
+  it('should send the registration choice once the admin changes it', async () => {
+    const apiClient = renderEditor();
+    fireEvent.click(screen.getByLabelText('Show a “Request access” tab on the login page'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(apiClient.loginPageSettings.update).toHaveBeenCalledTimes(1));
+    expect(
+      vi.mocked(apiClient.loginPageSettings.update).mock.calls[0]?.[0]?.registrationEnabled
+    ).toBe(true);
   });
 
   it('should refuse a value over the field limit', async () => {

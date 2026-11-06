@@ -108,7 +108,7 @@ describe('LoginStageLayout', () => {
     fireEvent.submit(visibleView('login-form').querySelector('form') as HTMLFormElement);
     expect(
       await screen.findByText(
-        'Wrong username or password. If the account is new, click the link in your email first.'
+        'Wrong username or password. Make sure your account has been activated.'
       )
     ).toBeInTheDocument();
     expect(visibleView('login-form')).toHaveAttribute('aria-hidden', 'false');

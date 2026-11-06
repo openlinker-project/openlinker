@@ -42,6 +42,7 @@ describe('SystemService', () => {
     };
     const loginPageSettingsService: Partial<ILoginPageSettingsService> = {
       resolvePublicCopy: () => Promise.resolve(loginPage),
+      isRegistrationEnabled: () => Promise.resolve(process.env.OL_REGISTRATION_ENABLED === 'true'),
     };
     return new SystemService(
       demoModeService,

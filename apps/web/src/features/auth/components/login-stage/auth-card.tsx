@@ -383,13 +383,14 @@ export function AuthCard({
 
             <StackView
               name="register-sent"
+              centered
               active={active === 'register:sent'}
               nodeRef={bindView('register:sent')}
             >
               <SuccessCheck active={active === 'register:sent'} />
               <h2 className="auth-card__title">{copy.register.sentTitle}</h2>
               <p className="auth-card__lead">{copy.register.sentLead(values.email ?? '')}</p>
-              <div className="auth-card__actions auth-card__actions--start">
+              <div className="auth-card__actions">
                 <Button
                   tone="secondary"
                   onClick={() => {
@@ -475,7 +476,12 @@ export function AuthCard({
           </StackView>
         ) : null}
 
-        <StackView name="login-in" active={active === 'login:in'} nodeRef={bindView('login:in')}>
+        <StackView
+          name="login-in"
+          centered
+          active={active === 'login:in'}
+          nodeRef={bindView('login:in')}
+        >
           <SuccessCheck active={active === 'login:in'} />
           <h2 className="auth-card__title">{ui.signedInTitle}</h2>
           <p className="auth-card__lead">{ui.signedInLead}</p>

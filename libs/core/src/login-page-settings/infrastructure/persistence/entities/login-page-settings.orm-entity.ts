@@ -15,6 +15,9 @@ export class LoginPageSettingsOrmEntity {
   @Column({ type: 'jsonb', name: 'copy', default: () => "'{}'" })
   copy!: unknown;
 
+  @Column({ type: 'boolean', name: 'registration_enabled', nullable: true })
+  registrationEnabled!: boolean | null;
+
   @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
   updatedAt!: Date;
 

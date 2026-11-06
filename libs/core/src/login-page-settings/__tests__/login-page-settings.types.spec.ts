@@ -14,6 +14,7 @@ import {
   emptyLoginPageCopy,
   loginPageEnvVarName,
   readLoginPageCopy,
+  resolveRegistration,
   resolveLoginPageCopy,
   toPublicLoginPageCopy,
   type LoginPageSettingsInput,
@@ -103,6 +104,18 @@ describe('login page settings rules', () => {
         readLoginPageCopy({ pl: { headline: 'Ok', footer: 'x', lead: 3 }, de: { headline: 'x' } })
       ).toEqual({ pl: { headline: 'Ok' }, en: {} });
       expect(readLoginPageCopy(null)).toEqual({ pl: {}, en: {} });
+    });
+  });
+
+  describe('resolveRegistration', () => {
+    it('should resolve the stored choice, then env, then off', () => {
+      expect(resolveRegistration(true, () => 'false')).toEqual({ value: true, source: 'setting' });
+      expect(resolveRegistration(null, () => ' TRUE ')).toEqual({ value: true, source: 'env' });
+      expect(resolveRegistration(null, () => 'no')).toEqual({ value: false, source: 'env' });
+      expect(resolveRegistration(null, () => undefined)).toEqual({
+        value: false,
+        source: 'default',
+      });
     });
   });
 

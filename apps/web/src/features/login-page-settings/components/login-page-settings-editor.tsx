@@ -14,7 +14,7 @@
  * @module features/login-page-settings/components
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMemo, useState, type ReactElement } from 'react';
+import { useId, useMemo, useState, type ReactElement } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { interpolate, messagesIn, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
@@ -72,13 +72,11 @@ function fallbackFor(
 
 interface LoginPageSettingsEditorProps {
   view: LoginPageSettingsView;
-  registrationEnabled: boolean;
   initialLocale: LoginPageLocale;
 }
 
 export function LoginPageSettingsEditor({
   view,
-  registrationEnabled,
   initialLocale,
 }: LoginPageSettingsEditorProps): ReactElement {
   const copy = useMessages('loginPageSettings');
@@ -93,6 +91,7 @@ export function LoginPageSettingsEditor({
   });
   const values = useWatch({ control: form.control });
   const dirty = form.formState.isDirty;
+  const registrationId = useId();
 
   const draft = values[locale] ?? {};
   const overrides: LoginPageCopyOverrides = {};
@@ -106,7 +105,9 @@ export function LoginPageSettingsEditor({
   const onSubmit = form.handleSubmit(async (submitted) => {
     setJustSaved(false);
     try {
-      await mutation.mutateAsync(toUpdateInput(submitted));
+      await mutation.mutateAsync(
+        toUpdateInput(submitted, Boolean(form.formState.dirtyFields.registrationEnabled))
+      );
       form.reset(submitted);
       setJustSaved(true);
     } catch {
@@ -128,9 +129,17 @@ export function LoginPageSettingsEditor({
         onSubmit={(e) => void onSubmit(e)}
         noValidate
       >
-        <Alert tone="info" density="compact">
-          {registrationEnabled ? copy.modeOn : copy.modeOff}
-        </Alert>
+        <div className="form-field">
+          <span className="form-field__label">{copy.registrationLabel}</span>
+          <label className="buyer-emails-switch" htmlFor={registrationId}>
+            <input id={registrationId} type="checkbox" {...form.register('registrationEnabled')} />
+            <span>{copy.registrationToggle}</span>
+          </label>
+          <p className="form-field__description">
+            {copy.registrationHint}
+            {view.registration.source === 'env' ? ` ${copy.registrationEnv}` : ''}
+          </p>
+        </div>
 
         <div className="form-field">
           <span className="form-field__label">{copy.language}</span>
@@ -217,7 +226,7 @@ export function LoginPageSettingsEditor({
           <LoginPagePreview
             locale={locale}
             overrides={overrides}
-            canRegister={registrationEnabled}
+            canRegister={values.registrationEnabled ?? false}
           />
         </section>
       </aside>

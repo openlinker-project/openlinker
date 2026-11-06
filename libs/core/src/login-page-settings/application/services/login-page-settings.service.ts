@@ -14,6 +14,7 @@ import {
   LOGIN_PAGE_COPY_MAX_LENGTH,
   applyLoginPageCopyInput,
   emptyLoginPageCopy,
+  resolveRegistration,
   resolveLoginPageCopy,
   toPublicLoginPageCopy,
   type LoginPageCopyByLocale,
@@ -37,6 +38,9 @@ export class LoginPageSettingsService implements ILoginPageSettingsService {
       copy: resolveLoginPageCopy(row?.copy ?? emptyLoginPageCopy(), (name) =>
         this.config.get<string>(name)
       ),
+      registration: resolveRegistration(row?.registrationEnabled ?? null, (name) =>
+        this.config.get<string>(name)
+      ),
       maxLength: { ...LOGIN_PAGE_COPY_MAX_LENGTH },
       updatedAt: row?.updatedAt ?? null,
       updatedBy: row?.updatedBy ?? null,
@@ -47,9 +51,20 @@ export class LoginPageSettingsService implements ILoginPageSettingsService {
     return toPublicLoginPageCopy((await this.resolve()).copy);
   }
 
+  async isRegistrationEnabled(): Promise<boolean> {
+    const row = await this.repository.findSettings();
+    return resolveRegistration(row?.registrationEnabled ?? null, (name) =>
+      this.config.get<string>(name)
+    ).value;
+  }
+
   async updateSettings(input: LoginPageSettingsInput, updatedBy: string | null): Promise<void> {
     const row = await this.repository.findSettings();
-    const next = applyLoginPageCopyInput(row?.copy ?? emptyLoginPageCopy(), input);
-    await this.repository.saveCopy(next, updatedBy);
+    const copy = applyLoginPageCopyInput(row?.copy ?? emptyLoginPageCopy(), input);
+    const registrationEnabled =
+      input.registrationEnabled === undefined
+        ? row?.registrationEnabled ?? null
+        : input.registrationEnabled;
+    await this.repository.saveSettings({ copy, registrationEnabled }, updatedBy);
   }
 }
