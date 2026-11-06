@@ -4542,7 +4542,8 @@ a.delivery-rider-banner__button:focus-visible {
 
 .data-table__cell--hide-below-480,
 .data-table__cell--hide-below-768,
-.data-table__cell--hide-below-1024 {
+.data-table__cell--hide-below-1024,
+.data-table__cell--hide-below-1280 {
   /* Visibility toggled below */
 }
 
@@ -4560,6 +4561,14 @@ a.delivery-rider-banner__button:focus-visible {
 
 @media (max-width: 1023.98px) {
   .data-table__cell--hide-below-1024 {
+    display: none;
+  }
+}
+
+/* For a secondary column on a wide table: between 1024 and 1280 the sidebar
+   leaves ~720-980px of content, too little for seven columns (#4016). */
+@media (max-width: 1279.98px) {
+  .data-table__cell--hide-below-1280 {
     display: none;
   }
 }
@@ -32864,6 +32873,7 @@ legend.analytics-settings-dialog__label {
    hosts the shared `ConnectionChip`, whose name slide-out overflows to the
    right on hover - the cell keeps `overflow: visible` so it is not clipped. */
 .conn-health {
+  container: conn-health / inline-size;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -32943,6 +32953,8 @@ legend.analytics-settings-dialog__label {
   font-weight: 500;
   text-align: left;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .conn-health__table td {
@@ -32952,7 +32964,11 @@ legend.analytics-settings-dialog__label {
   vertical-align: middle;
 }
 
-.conn-health__row:hover td { background: var(--bg-surface-hover); }
+/* Hover only where there is a pointer: on touch a tap left the tinted
+   cells behind as stripes. */
+@media (hover: hover) {
+  .conn-health__row:hover td { background: var(--bg-surface-hover); }
+}
 
 .conn-health__table .conn-health__num { text-align: right; }
 
@@ -33024,29 +33040,76 @@ legend.analytics-settings-dialog__label {
 
 .conn-health__none { color: var(--text-muted); }
 
-/* Narrow: each row becomes two lines - name over platform, status and count. */
-@media (max-width: 767.98px) {
+/* Narrow PANEL, not narrow window: on the Insights grid this panel is half
+   the page, so a viewport query left the four fixed columns squeezing the
+   name column to nothing at mid widths. Below ~620px of panel each row
+   becomes two lines - name and failed jobs, then platform and status. */
+@container conn-health (max-width: 620px) {
   .conn-health__table,
   .conn-health__table tbody { display: block; }
   .conn-health__table thead,
   .conn-health__table colgroup { display: none; }
+
   .conn-health__row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    /* Failed jobs sits beside the name, never beside the chip: on touch the
+       chip shows the connection name statically and can grow to the full
+       width, so line two gets the whole row to itself. */
+    grid-template-columns: minmax(0, max-content) minmax(0, 1fr) auto;
+    grid-template-areas:
+      'name   name   failed'
+      'plat   status status';
+    align-items: center;
     gap: var(--space-2) var(--space-3);
-    padding: var(--space-3) 0;
+    padding: var(--space-3) var(--space-2);
     border-bottom: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
   }
-  .conn-health__table td {
+
+  .conn-health__table .conn-health__row td {
     height: auto;
     padding: 0;
     border: 0;
+    background: none;
   }
-  .conn-health__cell-name { grid-column: 1 / -1; }
-  .conn-health__status { grid-column: 1; }
-  .conn-health__platform { grid-row: 2; grid-column: 1; }
-  .conn-health__row .conn-health__status { grid-row: 3; }
-  .conn-health__row .conn-health__num { grid-row: 2 / 4; grid-column: 2; align-self: center; }
+
+  /* One tinted row instead of four tinted cells. */
+  @media (hover: hover) {
+    .conn-health__row:hover { background: var(--bg-surface-hover); }
+  }
+
+  .conn-health__cell-name { grid-area: name; min-width: 0; }
+  /* Indent under the name text, past the status dot and its gap. */
+  .conn-health__table .conn-health__row .conn-health__platform {
+    grid-area: plat;
+    min-width: 0;
+    padding-left: 20px;
+  }
+  .conn-health__status {
+    grid-area: status;
+    overflow: hidden;
+    font-size: 0.75rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .conn-health__row .conn-health__num { grid-area: failed; justify-self: end; }
+
+  .conn-health__row--healthy .conn-health__none,
+  .conn-health__row--off .conn-health__none { display: none; }
+}
+/* On touch the chip shows the connection name statically (no hover to
+   reveal it). Here the name already leads the row, so the chip would repeat
+   it and crowd the status out. It is hidden visually only: it stays the
+   link's accessible name. */
+@media (hover: none) {
+  .conn-health .connection-chip__reveal {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 
 /* ── Diagnostics: Sync jobs (#4016) ──────────────────────────────────────
@@ -33097,11 +33160,22 @@ legend.analytics-settings-dialog__label {
   }
 }
 
+/* Floors so a mid-width window scrolls the table sideways instead of
+   squeezing the job type and the error into a few characters. */
+.sync-jobs-table th { white-space: nowrap; }
+.sync-job-type__action { white-space: nowrap; }
+
+@media (max-width: 1279.98px) {
+  .sync-jobs-table th,
+  .sync-jobs-table td {
+    padding-inline: var(--space-3);
+  }
+}
+
 .sync-job-type {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  min-width: 0;
   font-family: var(--font-mono);
 }
 .sync-job-type__action {
@@ -33116,11 +33190,11 @@ legend.analytics-settings-dialog__label {
 }
 
 .sync-job-error {
+  min-width: 8.5rem;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
-  min-width: 0;
 }
 .sync-job-error__text {
   display: -webkit-box;

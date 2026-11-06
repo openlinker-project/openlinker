@@ -230,6 +230,20 @@ describe('SyncJobsPage', () => {
   it('should reveal the whole last error in place without opening the job (#4016)', async () => {
     const user = userEvent.setup();
     const longError = `removed with order ${'x'.repeat(200)} END-OF-ERROR`;
+    // jsdom does no layout, so make the clamped error measure as overflowing:
+    // the toggle is shown only when the text is actually clipped.
+    const isErrorText = (el: HTMLElement): boolean =>
+      el.classList.contains('sync-job-error__text');
+    const scrollSpy = vi
+      .spyOn(HTMLElement.prototype, 'scrollHeight', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return isErrorText(this) ? 120 : 0;
+      });
+    const clientSpy = vi
+      .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return isErrorText(this) ? 36 : 0;
+      });
     const mockApi = createMockApiClient({
       syncJobs: {
         list: vi.fn().mockResolvedValue({
@@ -250,6 +264,25 @@ describe('SyncJobsPage', () => {
       'true'
     );
     expect(screen.getByText(longError)).toHaveClass('sync-job-error__text--open');
+    scrollSpy.mockRestore();
+    clientSpy.mockRestore();
+  });
+
+  it('should not offer the toggle when the error fits (#4016)', async () => {
+    const mockApi = createMockApiClient({
+      syncJobs: {
+        list: vi.fn().mockResolvedValue({
+          ...sampleJobs,
+          items: [{ ...sampleJobs.items[0], status: 'dead', lastError: 'short error' }],
+        }),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
+
+    expect(await screen.findAllByText('short error')).not.toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Show full error' })).not.toBeInTheDocument();
   });
 
   it('should collapse the poison entries section to one line when there are none (#4016)', async () => {

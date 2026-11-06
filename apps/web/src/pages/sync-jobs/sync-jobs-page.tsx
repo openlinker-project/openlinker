@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -16,7 +16,6 @@ import { useStreamDeadLettersQuery } from '../../features/sync-jobs/hooks/use-st
 import { useStreamDeadLettersCountQuery } from '../../features/sync-jobs/hooks/use-stream-dead-letters-count-query';
 import {
   ConnectionChip,
-  ConnectionEntityLabel,
   readConnectionEnvironment,
   useConnectionsQuery,
   type Connection,
@@ -73,23 +72,44 @@ function JobTypeCell({ jobType }: { jobType: string }): ReactElement {
   );
 }
 
-// Long enough to need the toggle; shorter errors render whole.
-const ERROR_PREVIEW_CHARS = 140;
-
 /**
  * Last error, clamped to two lines with an in-place toggle for the rest. The
  * toggle is a real button, which `DataTable` already excludes from the row's
  * navigate-on-click, so expanding an error does not open the job.
+ *
+ * Whether the toggle is needed is MEASURED, not guessed from the length: the
+ * clamp depends on the column's width, so a fixed character threshold left
+ * a clipped error with no way to read it on a narrower window.
  */
 function LastErrorCell({ error }: { error: string }): ReactElement {
   const [open, setOpen] = useState(false);
-  const long = error.length > ERROR_PREVIEW_CHARS || error.includes('\n');
+  const [clipped, setClipped] = useState(false);
+  const textRef = useRef<HTMLSpanElement>(null);
+
+  useLayoutEffect(() => {
+    const el = textRef.current;
+    if (!el || open) return undefined;
+    const measure = (): void => {
+      setClipped(el.scrollHeight > el.clientHeight + 1);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+    };
+  }, [error, open]);
+
   return (
     <span className="sync-job-error">
-      <span className={`sync-job-error__text${open ? ' sync-job-error__text--open' : ''}`}>
+      <span
+        ref={textRef}
+        className={`sync-job-error__text${open ? ' sync-job-error__text--open' : ''}`}
+      >
         {error}
       </span>
-      {long ? (
+      {open || clipped ? (
         <button
           type="button"
           className="sync-job-error__toggle"
@@ -105,10 +125,42 @@ function LastErrorCell({ error }: { error: string }): ReactElement {
   );
 }
 
+/**
+ * The job's connection as the shared `ConnectionChip` (#3670), the chip the
+ * Orders and Products lists render. Fed from the page's one batched
+ * connections read rather than a fetch per row, and used by both the table
+ * cell and the mobile card so the two cannot drift apart.
+ */
+function JobConnectionChip({
+  connectionId,
+  connectionById,
+  connectionsLoading,
+  platforms,
+}: {
+  connectionId: string;
+  connectionById: ReadonlyMap<string, Connection>;
+  connectionsLoading: boolean;
+  platforms: readonly Platform[];
+}): ReactElement {
+  const connection = connectionById.get(connectionId);
+  const platformType = connection?.platformType ?? null;
+  return (
+    <ConnectionChip
+      connectionId={connectionId}
+      name={connection?.name ?? null}
+      loading={connectionsLoading}
+      channel={{
+        platformType,
+        label: platformType ? resolvePlatformLabel(platforms, platformType) : null,
+        shortLabel: platformType ? resolvePlatformShortLabel(platforms, platformType) : null,
+        environment: readConnectionEnvironment(connection?.config),
+      }}
+    />
+  );
+}
+
 function buildColumns(
-  connectionById: ReadonlyMap<string, Connection>,
-  connectionsLoading: boolean,
-  platforms: readonly Platform[]
+  renderConnection: (connectionId: string) => ReactElement
 ): DataTableColumn<SyncJob>[] {
   return [
     {
@@ -134,25 +186,7 @@ function buildColumns(
     {
       id: 'connectionId',
       header: 'Connection',
-      cell: (job) => {
-        // Same chip the Orders and Products lists render (#3670), fed from the
-        // page's one batched connections read rather than a fetch per row.
-        const connection = connectionById.get(job.connectionId);
-        const platformType = connection?.platformType ?? null;
-        return (
-          <ConnectionChip
-            connectionId={job.connectionId}
-            name={connection?.name ?? null}
-            loading={connectionsLoading}
-            channel={{
-              platformType,
-              label: platformType ? resolvePlatformLabel(platforms, platformType) : null,
-              shortLabel: platformType ? resolvePlatformShortLabel(platforms, platformType) : null,
-              environment: readConnectionEnvironment(connection?.config),
-            }}
-          />
-        );
-      },
+      cell: (job) => renderConnection(job.connectionId),
       hideBelow: 1024,
     },
     {
@@ -194,7 +228,8 @@ function buildColumns(
       },
       accessor: (job) => job.lastAttemptDurationMs ?? -1,
       sortable: true,
-      hideBelow: 768,
+      // The first column to go on a mid-width window: the detail page has it.
+      hideBelow: 1280,
     },
     {
       id: 'lastError',
@@ -395,10 +430,19 @@ export function SyncJobsPage(): ReactElement {
     () => new Map(connections.map((c) => [c.id, c] as const)),
     [connections]
   );
-  const columns = useMemo(
-    () => buildColumns(connectionById, connectionsQuery.isLoading, platforms),
-    [connectionById, connectionsQuery.isLoading, platforms]
+  const connectionsLoading = connectionsQuery.isLoading;
+  const renderConnection = useCallback(
+    (id: string): ReactElement => (
+      <JobConnectionChip
+        connectionId={id}
+        connectionById={connectionById}
+        connectionsLoading={connectionsLoading}
+        platforms={platforms}
+      />
+    ),
+    [connectionById, connectionsLoading, platforms]
   );
+  const columns = useMemo(() => buildColumns(renderConnection), [renderConnection]);
 
   function setFilter(key: string, value: string): void {
     setSearchParams((prev) => {
@@ -569,6 +613,7 @@ export function SyncJobsPage(): ReactElement {
               expanded error. A page is capped at 100 rows (#4016). */}
           <DataTable
             caption="Sync jobs"
+            className="sync-jobs-table"
             columns={columns}
             rows={query.data?.items ?? []}
             rowKey={(job) => job.id}
@@ -577,13 +622,7 @@ export function SyncJobsPage(): ReactElement {
             onSortChange={setSort}
             cardView={{
               title: (job) => job.jobType,
-              subtitle: (job) => (
-                <ConnectionEntityLabel
-                  connectionId={job.connectionId}
-                  linkToDetail={false}
-                  showId={false}
-                />
-              ),
+              subtitle: (job) => renderConnection(job.connectionId),
               meta: (job) => (
                 <SyncJobStatusBadge
                   status={job.status}
