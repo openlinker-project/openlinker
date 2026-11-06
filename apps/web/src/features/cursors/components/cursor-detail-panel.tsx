@@ -17,7 +17,7 @@ import { CopyableId } from '../../../shared/ui/copyable-id';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useEnqueueSyncJobMutation } from '../../sync-jobs';
 import { describeCursor } from '../lib/cursor-catalogue';
-import { SYNC_PROGRESS_COPY } from '../lib/sync-progress.copy';
+import type { SyncProgressCopy } from '../lib/sync-progress-copy';
 import type { CursorRowView } from './cursor-row';
 import { RewindPanel } from './rewind-panel';
 
@@ -37,6 +37,7 @@ interface CursorDetailPanelProps {
   ago: (iso: string) => string;
   formatWhen: (iso: string) => string;
   onExplain: (guideId: string) => void;
+  copy: SyncProgressCopy;
 }
 
 export function CursorDetailPanel({
@@ -48,8 +49,9 @@ export function CursorDetailPanel({
   ago,
   formatWhen,
   onExplain,
+  copy,
 }: CursorDetailPanelProps): ReactElement {
-  const S = SYNC_PROGRESS_COPY.sheet;
+  const S = copy.sheet;
   const enqueue = useEnqueueSyncJobMutation();
   const { showToast } = useToast();
   const d = view ? describeCursor(view.cursor.cursorKey) : null;
@@ -136,7 +138,7 @@ export function CursorDetailPanel({
               {view.progress.sub ? `. ${view.progress.sub}.` : '.'}
             </p>
             {view.cursor.family ? (
-              <p className="sync-progress__hint">{SYNC_PROGRESS_COPY.kindLine[view.cursor.family]}</p>
+              <p className="sync-progress__hint">{copy.kindLine[view.cursor.family]}</p>
             ) : null}
           </section>
 
@@ -187,7 +189,7 @@ export function CursorDetailPanel({
                 </button>
               </div>
               {view.cursor.rewind ? (
-                <RewindPanel connectionId={connection.id} cursor={view.cursor} canAct={canAct} />
+                <RewindPanel connectionId={connection.id} cursor={view.cursor} canAct={canAct} copy={copy} />
               ) : (
                 <p className="sync-progress__hint">{S.feedCannotRewind}</p>
               )}

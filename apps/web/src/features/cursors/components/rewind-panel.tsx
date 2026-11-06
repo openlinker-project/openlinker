@@ -13,19 +13,20 @@ import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { CursorOverviewItem } from '../api/cursors.types';
 import { useRewindCursorMutation } from '../hooks/use-rewind-cursor-mutation';
-import { SYNC_PROGRESS_COPY } from '../lib/sync-progress.copy';
+import type { SyncProgressCopy } from '../lib/sync-progress-copy';
 
 interface RewindPanelProps {
   connectionId: string;
   cursor: CursorOverviewItem;
   canAct: boolean;
+  copy: SyncProgressCopy;
 }
 
-export function RewindPanel({ connectionId, cursor, canAct }: RewindPanelProps): ReactElement | null {
+export function RewindPanel({ connectionId, cursor, canAct, copy }: RewindPanelProps): ReactElement | null {
   const [confirming, setConfirming] = useState(false);
   const mutation = useRewindCursorMutation();
   const { showToast } = useToast();
-  const R = SYNC_PROGRESS_COPY.rewind;
+  const R = copy.rewind;
   if (!cursor.rewind) return null;
 
   const isPass = cursor.rewind === 'restart-pass';

@@ -1,36 +1,394 @@
 {
-  "cursorsListPage": {
-    "caption": "Connection cursors",
-    "columns": {
-      "connectionId": "Connection ID",
-      "cursorKey": "Cursor Key",
-      "updatedAt": "Last Updated",
-      "value": "Value"
+  "syncGuide": {
+    "canStartOver": "Can start over",
+    "description": "Explains every status, progress line, sync and action on the Sync progress page.",
+    "footer": "Press ? anywhere on this page to open the guide, Esc to close it.",
+    "found": "{n} found",
+    "intro1": " is how far a sync got last time. The next run starts from there, so nothing is read twice and nothing is skipped.",
+    "intro2": "Each row is one sync for one connection. Health tells you whether it keeps to its schedule. Progress tells you where it is.",
+    "introBookmark": "A sync bookmark",
+    "items": {
+      "a-fetch": {
+        "name": "Fetch again",
+        "text": "Puts a catalogue pass or a re-check back at the start, so the next run reads everything again. Order feeds cannot be moved back: their position is kept in the platform’s own format.",
+        "todo": "Starting a pass over is blocked while a run is in progress."
+      },
+      "a-history": {
+        "name": "View run history",
+        "text": "Opens the list of runs for this connection, with the error of every failed run."
+      },
+      "a-keys": {
+        "name": "Show technical keys",
+        "text": "Shows the internal name of each bookmark under its label. Useful when talking to support or reading logs. The raw value is always in Technical details inside each row."
+      },
+      "a-run": {
+        "name": "Run now",
+        "text": "Queues this sync to run straight away instead of waiting for its schedule. It continues from the bookmark, so nothing is read twice."
+      },
+      "h-failing": {
+        "how": "The latest run for this sync failed.",
+        "name": "Failing",
+        "text": "The last run ended with an error. The bookmark stays where it was, so nothing is skipped. It continues once the error is fixed.",
+        "todo": "Read the error in the details. An expired token is fixed by reconnecting the account on the connection page."
+      },
+      "h-late": {
+        "how": "Not moved or run successfully for 2× to 6× its normal interval.",
+        "name": "Late",
+        "text": "The sync is behind its schedule but still within reach. Often a busy queue or a slow shop.",
+        "todo": "Wait one more interval. If it stays late, open the run history."
+      },
+      "h-misplaced": {
+        "how": "The bookmark name names one platform, the connection is another.",
+        "name": "Wrong connection",
+        "text": "This bookmark belongs to a different platform than the connection it sits on. A sync was run against the wrong connection, so its progress is not trustworthy.",
+        "todo": "Report it to whoever maintains your installation. Do not start it over on this connection."
+      },
+      "h-ok": {
+        "how": "Moved, or ran successfully, within 2× its normal interval.",
+        "name": "On time",
+        "text": "The sync ran recently enough for its schedule. Nothing to do."
+      },
+      "h-plain": {
+        "name": "OK",
+        "text": "A bookmark with no schedule of its own, such as the stock write order. It is never late."
+      },
+      "h-pushes": {
+        "name": "Pushes changes",
+        "text": "The connection sends every change to OpenLinker the moment it happens, so there is no bookmark to keep. An empty list here is normal.",
+        "todo": "If changes stop arriving, check the webhook on the connection page."
+      },
+      "h-stuck": {
+        "how": "Not moved or run successfully for more than 6× its normal interval.",
+        "name": "Not moving",
+        "text": "The sync has not run for a long time. Orders or stock from this source may be missing in OpenLinker.",
+        "todo": "Open the run history to see why. Check the connection is enabled and its scheduled task is on. Then use Run now."
+      },
+      "k-completion-stamp": {
+        "name": "Remembers when a pass finished",
+        "text": "Shown inside the catalogue row as “Last pass done”, not as a row of its own."
+      },
+      "k-event-bookmark": {
+        "name": "Reads new events from a feed",
+        "text": "When the raw value is empty: nothing has been read yet. The next run starts from the beginning of the feed or from the connection start date."
+      },
+      "k-rolling-offset": {
+        "name": "Re-checks known items, one page per run",
+        "text": "When the raw value is empty: not run yet, or it just wrapped around. The next run starts at the first item."
+      },
+      "k-sweep-cycle": {
+        "name": "Goes through the whole catalogue over several runs",
+        "text": "When the raw value is empty: the last pass finished. This is the normal resting state between passes."
+      },
+      "k-write-order": {
+        "name": "Keeps older stock numbers from overwriting newer ones",
+        "text": "When the raw value is empty: no stock written to this listing yet."
+      },
+      "p-checked": {
+        "name": "Checked up to item N",
+        "text": "A re-check that walks through items OpenLinker already knows, one page per run, and starts again from the top when it reaches the end."
+      },
+      "p-finished": {
+        "name": "Finished, waiting for next pass",
+        "text": "The last pass went through the whole catalogue. The bookmark is cleared on purpose and the raw value is empty. This is the normal resting state, not an error."
+      },
+      "p-inprogress": {
+        "name": "In progress: N items done",
+        "text": "A long pass through the catalogue is part way through. Big catalogues take several runs, so one pass can span hours. It continues on the next run on its own."
+      },
+      "p-notstarted": {
+        "name": "Not started yet",
+        "text": "This sync has never read anything. Normal for a new connection, or for a feature switched on recently. If it stays like this, look at its health badge."
+      },
+      "p-readupto": {
+        "name": "Read up to (time)",
+        "text": "Everything the platform reported before this moment is already in OpenLinker. The next run asks only for what came after."
+      },
+      "p-stock": {
+        "name": "Stock sent to N listings",
+        "text": "One entry per listing, recording the newest stock number sent there. An older number arriving late is refused, so a slow job can never put old stock back on a listing."
+      },
+      "q-alert": {
+        "name": "Will I be told when a sync stops?",
+        "text": "Not yet. Today the “needs a look” box on this page is the signal. Check it after an outage or when orders seem to be missing."
+      },
+      "q-empty": {
+        "name": "Why is a value empty?",
+        "text": "For a catalogue pass, empty means the pass finished. That is the normal state between passes. For any other sync it means nothing has been read yet."
+      },
+      "q-late-ok": {
+        "name": "Nothing moved, so why is it On time?",
+        "text": "A run that finds nothing new leaves the bookmark where it is. The sync still ran on schedule, so its last successful run counts."
+      },
+      "q-nobookmarks": {
+        "name": "Why does a connection have no bookmarks?",
+        "text": "Connections that push changes to OpenLinker as they happen need no bookmark. Their list is empty by design."
+      },
+      "q-safe": {
+        "name": "Is Fetch again safe?",
+        "text": "Yes. Starting a re-check over only reads. Starting a catalogue pass over re-reads every product, which adds load on the shop for a few runs, and writes nothing twice."
+      },
+      "q-unknown": {
+        "name": "What is an unrecognised bookmark?",
+        "text": "A bookmark this version of OpenLinker has no description for, usually from a plugin. It works normally; the page just cannot explain it."
+      },
+      "s-catalogue": {
+        "name": "Product catalogue",
+        "text": "Reads every product from your master catalogue, a batch per run, so names, prices and variants stay current."
+      },
+      "s-categories": {
+        "name": "Category tree",
+        "text": "Copies a marketplace or shop category tree into OpenLinker so pickers and search work without asking the platform. It runs in the background and has no fixed schedule to be late against."
+      },
+      "s-changed-orders": {
+        "name": "Changed orders (backup check)",
+        "text": "The shop normally sends orders by webhook. This check reads every order changed after the time shown, to catch anything a webhook missed."
+      },
+      "s-deleted": {
+        "name": "Deleted products check",
+        "text": "Looks for products deleted in your catalogue, so their listings stop selling."
+      },
+      "s-listing-status": {
+        "name": "Listing status check",
+        "text": "Re-reads whether each listing is active, ended or blocked on the marketplace, one page per run."
+      },
+      "s-offer-changes": {
+        "name": "Offer changes",
+        "text": "Reads changes to your Allegro offers, such as an offer ended or edited on Allegro, so OpenLinker shows the same state."
+      },
+      "s-orders": {
+        "name": "New orders",
+        "text": "Reads new and changed orders from the marketplace feed and creates them in OpenLinker."
+      },
+      "s-parcel": {
+        "name": "Parcel tracking check",
+        "text": "Re-reads the tracking status of parcels on the way, one page per run."
+      },
+      "s-returns": {
+        "name": "New returns",
+        "text": "Reads returns buyers open on Allegro. Off by default, because the Allegro returns feed is still in beta."
+      },
+      "s-returns-check": {
+        "name": "Open returns check",
+        "text": "Re-reads returns that are still open, one page per run, to pick up status changes."
+      },
+      "s-shop-status": {
+        "name": "Shop order status check",
+        "text": "Re-reads the order status in the shop so a shipment marked there shows up in OpenLinker."
+      },
+      "s-stock": {
+        "name": "Stock levels",
+        "text": "Reads stock for every product from your master catalogue, a batch per run. Changes go on to your marketplaces."
+      },
+      "s-system": {
+        "name": "System checks",
+        "text": "Checks that run across all connections, such as automation deadlines and stock shortfalls. They are listed under System."
+      }
     },
-    "description": "Sync cursor state per connection - track incremental sync positions.",
-    "empty": {
-      "filtered": "No cursors match the current filter.",
-      "none": "No sync cursors have been created yet. Cursors appear after the first sync job runs.",
-      "title": "No cursors found"
+    "nothingFound": "Nothing in the guide matches “{q}”.",
+    "runsEvery": "Runs every {n} min",
+    "searchLabel": "Search the guide",
+    "searchPlaceholder": "Search the guide: empty, late, token…",
+    "sections": {
+      "actions": {
+        "summary": "What each button does",
+        "title": "Actions"
+      },
+      "faq": {
+        "summary": "6 answers",
+        "title": "Common questions"
+      },
+      "health": {
+        "summary": "What the badges mean",
+        "title": "Health"
+      },
+      "kinds": {
+        "summary": "5 kinds",
+        "title": "Kinds of bookmark"
+      },
+      "progress": {
+        "summary": "How to read the middle column",
+        "title": "Progress"
+      },
+      "syncs": {
+        "summary": "13 syncs",
+        "title": "Every sync on this page"
+      }
     },
-    "error": {
-      "retry": "Retry",
-      "title": "Unable to load cursors"
-    },
+    "shownWhen": "Shown when: {how}",
+    "title": "How to read sync progress",
+    "whatToDo": "What to do:"
+  },
+  "syncProgress": {
+    "allConnections": "All connections",
+    "allGood": "All syncs are on time.",
+    "clearFilters": "Clear filters",
+    "colHealth": "Health",
+    "colLastMoved": "Last moved",
+    "colProgress": "Progress",
+    "colSync": "Sync",
+    "connection": "Connection",
+    "description": "Every sync remembers how far it got, so the next run continues from there. Check here that orders, stock and listings are still being fetched on time.",
+    "details": "Details",
+    "emptyMessage": "Bookmarks appear after the first sync runs on a connection.",
+    "emptyTitle": "No syncs yet",
+    "errorTitle": "Unable to load sync progress",
     "eyebrow": "Diagnostics",
-    "filter": {
-      "ariaLabel": "Filter by connection ID",
-      "placeholder": "Connection ID..."
+    "filterAll": "All",
+    "filterOk": "On time",
+    "filterProblem": "Needs a look",
+    "health": "Health",
+    "healthFilterLabel": "Filter by health",
+    "healthLabel": {
+      "failing": "Failing",
+      "late": "Late",
+      "misplaced": "Wrong connection",
+      "ok": "On time",
+      "plain": "OK",
+      "stuck": "Not moving"
     },
-    "loading": {
-      "message": "Fetching cursor data...",
-      "title": "Loading cursors"
+    "healthWhy": {
+      "failing": "Last run failed: {error}",
+      "failingNoError": "Last run failed. Open the run history for the error.",
+      "late": "Last ran {ago}, expected every {every} min.",
+      "misplaced": "This bookmark belongs to {keyPlatform} but sits on a {connPlatform} connection. A sync wrote it under the wrong connection.",
+      "stuck": "Has not run since {when}. It normally runs every {every} min."
     },
-    "pagination": {
-      "next": "Next",
-      "previous": "Previous",
-      "range": "Showing {from}-{to} of {total}"
+    "howToRead": "How to read this",
+    "kindLine": {
+      "completion-stamp": "Remembers when a pass finished.",
+      "event-bookmark": "Reads new events from a feed.",
+      "rolling-offset": "Re-checks known items, one page per run.",
+      "sweep-cycle": "Goes through the whole catalogue over several runs.",
+      "write-order": "Keeps older stock numbers from overwriting newer ones."
     },
-    "title": "Cursors"
+    "labels": {
+      "automationDeadlines": "Automation deadlines",
+      "categoryTree": "Category tree",
+      "changedOrders": "Changed orders (backup check)",
+      "changedProducts": "Changed products",
+      "channelOrderStatus": "Channel order status check",
+      "deletedProducts": "Deleted products check",
+      "listingStatus": "Listing status check",
+      "newOrders": "New orders",
+      "newReturns": "New returns",
+      "offerChanges": "Offer changes",
+      "openReturnsCheck": "Open returns check",
+      "orphanReturns": "Unmatched returns check",
+      "parcelTracking": "Parcel tracking check",
+      "productCatalogue": "Product catalogue",
+      "rerouteCheck": "Fulfilment re-routing check",
+      "shopOrderStatus": "Shop order status check",
+      "shopProductStatus": "Shop product status check",
+      "shortfallClose": "Stock shortfall recovery",
+      "shortfallDetect": "Stock shortfall check",
+      "stockLevels": "Stock levels",
+      "stockWriteOrder": "Stock write order",
+      "unrecognised": "Unrecognised bookmark",
+      "unsentTasks": "Unaccepted fulfilment tasks check"
+    },
+    "lastRunFailed": "Last run failed {ago}",
+    "lastRunOk": "Last run ok {ago}",
+    "lastRunQueued": "Queued",
+    "lastRunRunning": "Running now",
+    "needsLookExplain": "What do these badges mean?",
+    "needsLookTitle": {
+      "one": "{n} sync needs a look",
+      "other": "{n} syncs need a look"
+    },
+    "noMatch": "No syncs match these filters.",
+    "openConnection": "Open connection",
+    "progress": {
+      "checkedUpTo": "Checked up to item {n}",
+      "notStarted": "Not started yet",
+      "passContinues": "Continues on the next run",
+      "passDoneAgo": "Last pass done {ago}",
+      "passFinished": "Finished, waiting for next pass",
+      "passInProgress": {
+        "one": "In progress: {n} item done",
+        "other": "In progress: {n} items done"
+      },
+      "passNextOnSchedule": "Next pass starts on schedule",
+      "readUpTo": "Read up to {when}",
+      "stamped": "Finished {when}",
+      "startsOver": "Starts over at the end",
+      "stockSent": "Newest stock sent {ago}",
+      "waitingFirstRun": "Waiting for the first run"
+    },
+    "pushesNote": "{name} sends changes to OpenLinker as they happen, so it keeps no bookmarks. That is normal.",
+    "retry": "Retry",
+    "rewind": {
+      "cancel": "Cancel",
+      "confirm": "Start over",
+      "consequenceCheck": "The next run re-checks from the first item. Nothing is written to the platform.",
+      "consequencePass": "The current pass is dropped and the next run starts from item 1. Every product is read again, which adds load on the shop for several runs.",
+      "done": "Done. The next run starts over.",
+      "failed": "Could not start over: {message}",
+      "passFinished": "The last pass already finished. Use Run now to start the next one early.",
+      "restartCheck": "Start the check over",
+      "restartCheckHint": "The next run starts again from the first item.",
+      "restartPass": "Start the pass over",
+      "restartPassHint": "Drops the current pass. The next run reads the whole catalogue from item 1.",
+      "review": "Review"
+    },
+    "roles": {
+      "carrier": "Carrier",
+      "marketplace": "Marketplace",
+      "masterCatalogue": "Master catalogue",
+      "shop": "Shop"
+    },
+    "search": "Search",
+    "searchPlaceholder": "Orders, stock, an offer id…",
+    "sheet": {
+      "aboutThisSync": "About this sync",
+      "connectionId": "Connection id",
+      "description": "Details of one sync bookmark: where it is, its runs, and what you can do.",
+      "emptyString": "empty string",
+      "everyMinutes": "{n} min",
+      "feedCannotRewind": "Order feeds keep their position in the platform’s own format, so they cannot be moved back from here. Use Run now to fetch anything new.",
+      "fetchAgain": "Fetch again",
+      "firstSeen": "First seen",
+      "isItSafe": "Is it safe?",
+      "itemsDone": "Items done",
+      "key": "Key",
+      "lastMoved": "Last moved",
+      "lastRun": "Last run",
+      "lastRunValue": {
+        "dead": "Failed {ago}",
+        "queued": "Queued {ago}",
+        "running": "Running since {ago}",
+        "succeeded": "Succeeded {ago}"
+      },
+      "passId": "Pass id",
+      "rawValue": "Raw value",
+      "runFailed": "Could not queue the sync: {message}",
+      "runNow": "Run now",
+      "runQueued": "Sync queued. It runs in the next few seconds.",
+      "runs": "Runs",
+      "runsEvery": "Runs every",
+      "technical": "Technical details",
+      "viewHistory": "View run history",
+      "whatDoesThisMean": "What does this mean?",
+      "whereItIs": "Where it is"
+    },
+    "showAllProblems": "Show all {n}",
+    "showFewerProblems": "Show fewer",
+    "showKeys": "Show technical keys",
+    "systemName": "System",
+    "systemRole": "Runs across all connections",
+    "title": "Sync progress",
+    "truncated": "Showing the first 1,000 bookmarks. Pick a connection to see the rest.",
+    "verdictNeedLook": {
+      "one": "{n} needs a look",
+      "other": "{n} need a look"
+    },
+    "verdictOnTime": "On time",
+    "verdictPushes": "Pushes changes",
+    "why": "Why?",
+    "writeMarks": {
+      "one": "Stock sent to {n} listing",
+      "other": "Stock sent to {n} listings"
+    },
+    "writeMarksMore": "Showing {shown} of {total}. Search an offer id to find one.",
+    "writeMarksRange": "newest {newest}, oldest {oldest}"
   }
 }

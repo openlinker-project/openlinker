@@ -14,7 +14,7 @@
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { CursorOverviewItem } from '../api/cursors.types';
 import { describeCursor } from './cursor-catalogue';
-import { SYNC_PROGRESS_COPY } from './sync-progress.copy';
+import type { SyncProgressCopy } from './sync-progress-copy';
 
 export const CursorHealthValues = ['ok', 'plain', 'late', 'stuck', 'failing', 'misplaced'] as const;
 export type CursorHealthId = (typeof CursorHealthValues)[number];
@@ -32,8 +32,6 @@ export const LATE_AFTER_INTERVALS = 2;
 /** Not moved for more than this many intervals reads Not moving. */
 export const STUCK_AFTER_INTERVALS = 6;
 
-const C = SYNC_PROGRESS_COPY;
-
 export function isProblem(health: CursorHealth): boolean {
   return health.id === 'late' || health.id === 'stuck' || health.id === 'failing' || health.id === 'misplaced';
 }
@@ -43,6 +41,8 @@ export function readCursorHealth(
   connectionPlatform: string | null,
   now: number,
   ago: (iso: string) => string,
+  formatWhen: (iso: string) => string,
+  C: SyncProgressCopy,
 ): CursorHealth {
   const d = describeCursor(cursor.cursorKey);
   // `subiekt` owns both `subiekt-gt` and `subiekt-nexo`: compare the family, not the exact type.
@@ -70,7 +70,7 @@ export function readCursorHealth(
   const lastSeen = latestOf(cursor.updatedAt, cursor.lastRun && (cursor.lastRun.status === 'succeeded' || cursor.lastRun.status === 'running') ? cursor.lastRun.at : null);
   const minutes = (now - Date.parse(lastSeen)) / 60_000;
   if (minutes > d.cadenceMinutes * STUCK_AFTER_INTERVALS) {
-    return { id: 'stuck', label: C.healthLabel.stuck, tone: 'warning', why: C.healthWhy.stuck(ago(lastSeen), d.cadenceMinutes), guideId: 'h-stuck' };
+    return { id: 'stuck', label: C.healthLabel.stuck, tone: 'warning', why: C.healthWhy.stuck(formatWhen(lastSeen), d.cadenceMinutes), guideId: 'h-stuck' };
   }
   if (minutes > d.cadenceMinutes * LATE_AFTER_INTERVALS) {
     return { id: 'late', label: C.healthLabel.late, tone: 'warning', why: C.healthWhy.late(ago(lastSeen), d.cadenceMinutes), guideId: 'h-late' };
@@ -96,6 +96,7 @@ export function readCursorProgress(
   passDoneAt: string | null,
   ago: (iso: string) => string,
   formatWhen: (iso: string) => string,
+  C: SyncProgressCopy,
 ): CursorProgress {
   const P = C.progress;
   const v = cursor.value;

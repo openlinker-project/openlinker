@@ -27,15 +27,14 @@ import { SYSTEM_CONNECTION_ID, useConnectionsQuery, type Connection } from '../.
 import { ConnectionDot } from '../../features/orders';
 import { useCursorOverviewQuery } from '../../features/cursors/hooks/use-cursor-overview-query';
 import type { CursorOverviewConnection, CursorOverviewItem } from '../../features/cursors/api/cursors.types';
-import { describeCursor, sweepKeyForCompletionStamp } from '../../features/cursors/lib/cursor-catalogue';
+import { cursorLabel, sweepKeyForCompletionStamp } from '../../features/cursors/lib/cursor-catalogue';
 import { isProblem, readCursorHealth, readCursorProgress } from '../../features/cursors/lib/read-cursor-health';
-import { SYNC_PROGRESS_COPY } from '../../features/cursors/lib/sync-progress.copy';
+import { useSyncProgressCopy, type SyncProgressCopy } from '../../features/cursors/lib/sync-progress-copy';
 import { CursorRow, type CursorRowView } from '../../features/cursors/components/cursor-row';
 import { WriteMarksBundle } from '../../features/cursors/components/write-marks-bundle';
 import { CursorDetailPanel, type CursorDetailConnection } from '../../features/cursors/components/cursor-detail-panel';
 import { SyncGuidePanel } from '../../features/cursors/components/sync-guide-panel';
 
-const C = SYNC_PROGRESS_COPY;
 const HEALTH_FILTERS = ['all', 'problem', 'ok'] as const;
 /** The needs-a-look box stays a summary; the full set is one click away. */
 const PROBLEMS_SHOWN = 5;
@@ -57,17 +56,18 @@ function readHealthFilter(value: string | null): HealthFilter {
   return (HEALTH_FILTERS as readonly string[]).includes(value ?? '') ? (value as HealthFilter) : 'all';
 }
 
-function roleOf(connection: Connection | undefined): string | null {
+function roleOf(connection: Connection | undefined, C: SyncProgressCopy): string | null {
   if (!connection) return null;
   const caps = connection.enabledCapabilities;
-  if (caps.includes('ProductMaster')) return 'Master catalogue';
-  if (caps.includes('OfferManager')) return 'Marketplace';
-  if (caps.includes('ShippingProviderManager')) return 'Carrier';
-  if (caps.includes('OrderSource')) return 'Shop';
+  if (caps.includes('ProductMaster')) return C.roles.masterCatalogue;
+  if (caps.includes('OfferManager')) return C.roles.marketplace;
+  if (caps.includes('ShippingProviderManager')) return C.roles.carrier;
+  if (caps.includes('OrderSource')) return C.roles.shop;
   return null;
 }
 
 export function CursorsListPage(): ReactElement {
+  const C = useSyncProgressCopy();
   const [searchParams, setSearchParams] = useSearchParams();
   const connectionFilter = searchParams.get('connectionId') ?? 'all';
   const health = readHealthFilter(searchParams.get('health'));
@@ -137,9 +137,9 @@ export function CursorsListPage(): ReactElement {
       }
       const toView = (item: CursorOverviewItem): CursorRowView => ({
         cursor: item,
-        label: describeCursor(item.cursorKey).label,
-        health: readCursorHealth(item, platform, now, ago),
-        progress: readCursorProgress(item, stamps.get(item.cursorKey) ?? null, ago, formatWhen),
+        label: cursorLabel(item.cursorKey, C),
+        health: readCursorHealth(item, platform, now, ago, formatWhen, C),
+        progress: readCursorProgress(item, stamps.get(item.cursorKey) ?? null, ago, formatWhen, C),
       });
       const allRows = g.cursors.filter((c) => c.family !== 'completion-stamp').map(toView);
       out.push({
@@ -150,7 +150,7 @@ export function CursorsListPage(): ReactElement {
           platformType: platform,
           isSystem,
         },
-        role: isSystem ? C.systemRole : roleOf(conn),
+        role: isSystem ? C.systemRole : roleOf(conn, C),
         allRows,
         rows: allRows,
         writeMarks: g.writeMarks,
@@ -163,7 +163,7 @@ export function CursorsListPage(): ReactElement {
       out.push({
         id: conn.id,
         connection: { id: conn.id, name: conn.name, platformType: conn.platformType, isSystem: false },
-        role: roleOf(conn),
+        role: roleOf(conn, C),
         allRows: [],
         rows: [],
         writeMarks: null,
@@ -171,17 +171,17 @@ export function CursorsListPage(): ReactElement {
       });
     }
     return out;
-  }, [overview.data, connections.data, now, ago, formatWhen]);
+  }, [overview.data, connections.data, now, ago, formatWhen, C]);
 
   const toViewFor = useCallback(
     (group: GroupView) =>
       (item: CursorOverviewItem): CursorRowView => ({
         cursor: item,
-        label: describeCursor(item.cursorKey).label,
-        health: readCursorHealth(item, group.connection.platformType, now, ago),
-        progress: readCursorProgress(item, null, ago, formatWhen),
+        label: cursorLabel(item.cursorKey, C),
+        health: readCursorHealth(item, group.connection.platformType, now, ago, formatWhen, C),
+        progress: readCursorProgress(item, null, ago, formatWhen, C),
       }),
-    [now, ago, formatWhen],
+    [now, ago, formatWhen, C],
   );
 
   const matchesSearch = (row: CursorRowView): boolean =>
@@ -461,6 +461,7 @@ export function CursorsListPage(): ReactElement {
                         showKeys={showKeys}
                         ago={ago}
                         formatWhen={formatWhen}
+        copy={C}
                         onOpen={() => {
                           setSelected({ view: row, groupId: g.id });
                         }}
@@ -476,6 +477,7 @@ export function CursorsListPage(): ReactElement {
                     showKeys={showKeys}
                     ago={ago}
                     formatWhen={formatWhen}
+        copy={C}
                     toView={toViewFor(g)}
                     onOpen={(view) => {
                       setSelected({ view, groupId: g.id });
@@ -499,6 +501,7 @@ export function CursorsListPage(): ReactElement {
         canAct={canAct}
         ago={ago}
         formatWhen={formatWhen}
+        copy={C}
         onExplain={explain}
       />
       <SyncGuidePanel

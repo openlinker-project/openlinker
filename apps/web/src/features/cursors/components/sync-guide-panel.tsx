@@ -10,11 +10,14 @@
  *
  * @module apps/web/src/features/cursors/components
  */
-import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { SidePanel } from '../../../shared/ui/side-panel';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { Input } from '../../../shared/ui/input';
-import { SYNC_GUIDE, SYNC_GUIDE_CHROME, type SyncGuideItem } from '../lib/sync-guide.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
+import { buildSyncGuide, type SyncGuideItem } from '../lib/sync-guide';
+
+type GuideChrome = ReturnType<typeof useMessages<'cursors'>>['syncGuide'];
 
 /** Matches the panel's slide-in, so the scroll lands after the panel is in place. */
 const SCROLL_AFTER_MS = 280;
@@ -42,7 +45,7 @@ function matches(item: SyncGuideItem, q: string): boolean {
   return [item.name, item.text, item.key, item.todo, item.how].filter(Boolean).join(' ').toLowerCase().includes(q);
 }
 
-function GuideItem({ item, q, focused }: { item: SyncGuideItem; q: string; focused: boolean }): ReactElement {
+function GuideItem({ item, q, focused, G }: { item: SyncGuideItem; q: string; focused: boolean; G: GuideChrome }): ReactElement {
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!focused) return undefined;
@@ -54,20 +57,19 @@ function GuideItem({ item, q, focused }: { item: SyncGuideItem; q: string; focus
       window.clearTimeout(t);
     };
   }, [focused]);
-  const G = SYNC_GUIDE_CHROME;
   return (
     <article className="sync-guide__item" id={`sync-guide-${item.id}`} ref={ref} data-focus={focused}>
       <div className="sync-guide__item-top">
         {item.badge ? (
-          <StatusBadge tone={item.badge.tone} withDot={item.badge.tone !== 'success'}>
-            {item.badge.label}
+          <StatusBadge tone={item.badge} withDot={item.badge !== 'success'}>
+            {item.name}
           </StatusBadge>
         ) : (
           <span className="sync-guide__item-name">{highlight(item.name, q)}</span>
         )}
       </div>
       <p>{highlight(item.text, q)}</p>
-      {item.how ? <div className="sync-guide__meta">{G.shownWhen(item.how)}</div> : null}
+      {item.how ? <div className="sync-guide__meta">{interpolate(G.shownWhen, { how: item.how })}</div> : null}
       {item.todo ? (
         <div className="sync-guide__todo">
           <b>{G.whatToDo}</b> {item.todo}
@@ -75,7 +77,7 @@ function GuideItem({ item, q, focused }: { item: SyncGuideItem; q: string; focus
       ) : null}
       {item.everyMinutes || item.canStartOver ? (
         <div className="sync-guide__meta">
-          {item.everyMinutes ? <span>{G.runsEvery(item.everyMinutes)}</span> : null}
+          {item.everyMinutes ? <span>{interpolate(G.runsEvery, { n: item.everyMinutes })}</span> : null}
           {item.canStartOver ? <span>{G.canStartOver}</span> : null}
         </div>
       ) : null}
@@ -89,11 +91,13 @@ export function SyncGuidePanel({ open, focusId, onOpenChange }: SyncGuidePanelPr
   const [openSections, setOpenSections] = useState<ReadonlySet<string>>(new Set(['health']));
   const searchRef = useRef<HTMLInputElement>(null);
   const query = q.trim().toLowerCase();
+  const G = useMessages('cursors').syncGuide;
+  const guide = useMemo(() => buildSyncGuide(G), [G]);
 
   useEffect(() => {
     if (!open) return undefined;
     if (focusId) {
-      const section = SYNC_GUIDE.find((s) => s.items.some((i) => i.id === focusId));
+      const section = guide.find((s) => s.items.some((i) => i.id === focusId));
       if (section) setOpenSections((prev) => new Set(prev).add(section.id));
       setQ('');
       return undefined;
@@ -102,9 +106,9 @@ export function SyncGuidePanel({ open, focusId, onOpenChange }: SyncGuidePanelPr
     return () => {
       window.clearTimeout(t);
     };
-  }, [open, focusId]);
+  }, [open, focusId, guide]);
 
-  const sections = SYNC_GUIDE.map((s) => ({ ...s, shown: query ? s.items.filter((i) => matches(i, query)) : s.items })).filter(
+  const sections = guide.map((s) => ({ ...s, shown: query ? s.items.filter((i) => matches(i, query)) : s.items })).filter(
     (s) => s.shown.length > 0,
   );
   const toggle = (id: string): void => {
@@ -115,8 +119,6 @@ export function SyncGuidePanel({ open, focusId, onOpenChange }: SyncGuidePanelPr
       return next;
     });
   };
-  const G = SYNC_GUIDE_CHROME;
-
   return (
     <SidePanel
       open={open}
@@ -152,7 +154,7 @@ export function SyncGuidePanel({ open, focusId, onOpenChange }: SyncGuidePanelPr
           </div>
         ) : null}
         {sections.length === 0 ? (
-          <p className="sync-guide__empty">{G.nothingFound(q)}</p>
+          <p className="sync-guide__empty">{interpolate(G.nothingFound, { q })}</p>
         ) : (
           sections.map((s) => {
             const isOpen = Boolean(query) || openSections.has(s.id);
@@ -171,13 +173,13 @@ export function SyncGuidePanel({ open, focusId, onOpenChange }: SyncGuidePanelPr
                     ›
                   </span>
                   <span className="sync-guide__section-title">{s.title}</span>
-                  <span className="sync-guide__section-sum">{query ? G.found(s.shown.length) : s.summary}</span>
+                  <span className="sync-guide__section-sum">{query ? interpolate(G.found, { n: s.shown.length }) : s.summary}</span>
                 </button>
                 <div className="sync-guide__section-body" id={`sync-guide-section-${s.id}`}>
                   <div className="sync-guide__section-inner">
                     <div className="sync-guide__list">
                       {s.shown.map((i) => (
-                        <GuideItem key={i.id} item={i} q={query} focused={open && focusId === i.id} />
+                        <GuideItem key={i.id} item={i} q={query} focused={open && focusId === i.id} G={G} />
                       ))}
                     </div>
                   </div>
