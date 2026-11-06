@@ -82,6 +82,7 @@ import type { DescriptionFormat, StatusBadgeTone } from '../../../../shared/ui';
 import { useDescriptionFormatQuery } from '../../hooks/use-description-format-query';
 import { useFormat } from '../../../../shared/i18n';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
+import { Link } from 'react-router-dom';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../../shared/config/demo-mode';
@@ -128,7 +129,12 @@ import {
   isEanParameterName,
   prefillFromVariantAttributes,
 } from '../auto-prefill-parameters';
-import type { CategoryParameter, OfferParameter } from '../../api/listings.types';
+import type {
+  CategoryParameter,
+  OfferParameter,
+  ProjectedParameterOrigin,
+} from '../../api/listings.types';
+import { describeOrigin, type ProjectionSummary } from '../../lib/attribute-projection-summary';
 import type { CategoryParameterFormValues, FormParameterValue } from '../category-parameter-form.types';
 import {
   makeBulkEditModalSchema,
@@ -238,6 +244,11 @@ function resolveBasePrice(
 }
 
 interface BulkEditModalProps {
+  /**
+   * What the connection's attribute rules fill, per variant id (#3995). The
+   * editor shows those values where nothing the operator set replaces them.
+   */
+  projectionSummaries?: ReadonlyMap<string, ProjectionSummary>;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   row: BulkWizardRow;
@@ -335,6 +346,7 @@ export function BulkEditModal({
   canBrowseShopCategories = false,
   canPickShopAttributes = false,
   demoReadOnly = false,
+  projectionSummaries,
 }: BulkEditModalProps): ReactElement | null {
   const [dirty, setDirty] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
@@ -408,6 +420,7 @@ export function BulkEditModal({
             />
           ) : (
             <BulkEditModalForm
+              projectionSummaries={projectionSummaries}
               focusField={focusField}
               row={row}
               connection={connection}
@@ -561,6 +574,7 @@ function initVariantEdit(variant: BulkVariantRow): VariantEdit {
 type ScopeStatusKind = 'base' | 'ok' | 'attn' | 'off';
 
 interface BulkEditModalFormProps {
+  projectionSummaries?: ReadonlyMap<string, ProjectionSummary>;
   row: BulkWizardRow;
   connection: Connection;
   canBrowseCategories: boolean;
@@ -590,6 +604,7 @@ function BulkEditModalForm({
   focusVariantId,
   focusField,
   demoReadOnly,
+  projectionSummaries,
   onDirtyChange,
   onRequestClose,
   onSave,
@@ -608,6 +623,15 @@ function BulkEditModalForm({
   const platform = usePlatform(connection.platformType);
   const platforms = usePlatforms();
   const platformName = resolvePlatformLabel(platforms, connection);
+
+  // What the attribute rules fill, said on the shared form (#3995). A simple
+  // product's shared form IS its only variant; on a multi-variant product the
+  // rules fill per variant, so the hint only says whether a blank field is
+  // covered for all of them.
+  const baseRuleHints = useMemo(
+    () => buildBaseRuleHints(row, projectionSummaries, platformName),
+    [row, projectionSummaries, platformName],
+  );
   const platformSection = platform?.bulkOfferRowSection;
   const isMultiVariant = row.variants.length > 1;
   const masterImages = useMemo(
@@ -1348,6 +1372,7 @@ function BulkEditModalForm({
             />
           ) : null}
           <BaseScopeForm
+            ruleHints={baseRuleHints}
             readOnly={demoReadOnly}
             descriptionFormat={descriptionFormat}
             mode={isMultiVariant ? 'base' : 'simple'}
@@ -1403,6 +1428,12 @@ function BulkEditModalForm({
                   />
                   {scope === v.variantId ? (
                     <VariantScopeForm
+                      projection={projectionSummaries?.get(v.variantId) ?? null}
+                      marketplaceName={platformName}
+                      cardLinked={
+                        v.resolvedProductCardId !== null ||
+                        Boolean(variantEdits[v.variantId]?.productCardId)
+                      }
                       readOnly={demoReadOnly}
                       descriptionFormat={descriptionFormat}
                       variant={v}
@@ -1572,8 +1603,18 @@ function AccordionHead({
 
 // ── Provenance badge ─────────────────────────────────────────────────────────
 
-type Provenance = 'inherit' | 'master' | 'override' | 'distinct' | 'policy' | 'defaults';
+type Provenance =
+  | 'inherit'
+  | 'master'
+  | 'override'
+  | 'distinct'
+  | 'policy'
+  | 'defaults'
+  | 'rule'
+  | 'rejected';
 const PROV_LABEL: Record<Provenance, string> = {
+  rule: 'from rule',
+  rejected: 'rule value rejected',
   inherit: 'inherited',
   master: 'from master',
   override: 'overridden',
@@ -1586,9 +1627,154 @@ function ProvBadge({ kind }: { kind: Provenance }): ReactElement {
   return <span className={`bulk-editor__prov bulk-editor__prov--${kind}`}>{PROV_LABEL[kind]}</span>;
 }
 
+interface BaseRuleHints {
+  /** One sentence for the whole section, naming what the rules fill. */
+  note: string | null;
+  /** Per-field lines, only where a field is an exception. */
+  fields: Record<string, string>;
+}
+
+/**
+ * What the shared form says about the attribute rules (#3995). One sentence
+ * names the parameters the rules fill when left empty; a field gets its own
+ * line only when it is an exception - a value the destination rejects, partial
+ * coverage on a multi-variant product, or, on a simple product, the concrete
+ * value a blank field will receive. A card-linked variant's product-section
+ * values come from the card, so its rule values are left out.
+ */
+function buildBaseRuleHints(
+  row: BulkWizardRow,
+  summaries: ReadonlyMap<string, ProjectionSummary> | undefined,
+  destinationName: string,
+): BaseRuleHints | undefined {
+  if (!summaries) return undefined;
+  const perParam = new Map<string, ProjectedParameterOrigin[]>();
+  let consulted = 0;
+  for (const variant of row.variants) {
+    if (!variant.included) continue;
+    const summary = summaries.get(variant.variantId);
+    if (!summary) continue;
+    consulted += 1;
+    const cardLinked = variant.resolvedProductCardId !== null;
+    for (const origin of summary.byParameterId.values()) {
+      if (origin.source !== 'rule' || (cardLinked && origin.section === 'product')) continue;
+      perParam.set(origin.parameterId, [...(perParam.get(origin.parameterId) ?? []), origin]);
+    }
+  }
+  if (perParam.size === 0) return undefined;
+  const fields: Record<string, string> = {};
+  const covered: string[] = [];
+  for (const [parameterId, origins] of perParam) {
+    const rejected = origins.filter((o) => o.outcome === 'rejected');
+    if (rejected.length > 0) {
+      fields[parameterId] =
+        consulted === 1
+          ? `${destinationName} does not accept "${rejected[0].rawValue}" from your rules. Pick a value.`
+          : `${destinationName} does not accept the rule value for ${rejected.length} of ${consulted} variants.`;
+      continue;
+    }
+    covered.push(origins[0].parameterName);
+    if (consulted === 1) fields[parameterId] = `Rule value: ${origins[0].rawValue}`;
+    else if (origins.length < consulted) fields[parameterId] = `Rules fill this for ${origins.length} of ${consulted} variants.`;
+  }
+  const note =
+    covered.length === 0
+      ? null
+      : consulted === 1
+        ? `Left empty, ${joinNames(covered)} ${covered.length === 1 ? 'is' : 'are'} filled by your attribute rules.`
+        : `Left empty, ${joinNames(covered)} ${covered.length === 1 ? 'is' : 'are'} filled by your attribute rules for each variant.`;
+  return { note, fields };
+}
+
+function joinNames(names: readonly string[]): string {
+  if (names.length <= 1) return names.join('');
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/**
+ * One line at the top of a variant's parameters saying how many come from the
+ * attribute rules (#3995), with the way to change them.
+ */
+function RulesContextLine({
+  connectionId,
+  filled,
+  total,
+}: {
+  connectionId: string;
+  filled: number;
+  total: number;
+}): ReactElement | null {
+  if (filled === 0) return null;
+  return (
+    <p className="bulk-editor__rules-line">
+      <span className="bulk-editor__rules-dot" aria-hidden="true" />
+      {filled === total ? 'All' : `${filled} of ${total}`} parameters come from your attribute rules.{' '}
+      <Link to={`/connections/${connectionId}/mappings?tab=attribute-rules`}>Manage rules</Link>
+    </p>
+  );
+}
+
+/**
+ * The `from rule` provenance badge (#3995). Says where the value comes from on
+ * hover or focus - the rule's kind and source - so the field itself carries no
+ * explanatory prose.
+ */
+function RuleProvBadge({ origin }: { origin: ProjectedParameterOrigin }): ReactElement {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="bulk-editor__prov bulk-editor__prov--rule" tabIndex={0}>
+          {PROV_LABEL.rule}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="start">
+        {describeOrigin(origin)}: <b>{origin.rawValue}</b>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
+ * A line under a category parameter, only where the attribute rule's value is
+ * NOT simply what gets sent (#3995): a value the destination rejects, or a
+ * rule value something the operator set replaces. The ordinary case - the
+ * rule fills it - is the badge alone.
+ */
+function RuleHint({
+  origin,
+  overridden,
+  baseSet,
+  destinationName,
+}: {
+  origin: ProjectedParameterOrigin | undefined;
+  overridden: boolean;
+  baseSet: boolean;
+  destinationName: string;
+}): ReactElement | null {
+  if (!origin) return null;
+  if (origin.outcome === 'rejected') {
+    if (overridden || baseSet) return null;
+    return (
+      <p className="bulk-editor__rule-hint bulk-editor__rule-hint--warn" role="note">
+        {destinationName} does not accept &ldquo;{origin.rawValue}&rdquo; from your rules. Pick a value.
+      </p>
+    );
+  }
+  if (overridden || baseSet) {
+    return (
+      <p className="bulk-editor__rule-hint">
+        Replaces the rule value &ldquo;{origin.rawValue}&rdquo;
+      </p>
+    );
+  }
+  return null;
+}
+
 // ── Base / simple scope form (the only RHF form) ─────────────────────────────
 
 interface BaseScopeFormProps {
+  /** What the attribute rules fill when a field is left empty (#3995). */
+  ruleHints?: BaseRuleHints;
   /**
    * Demo read-only. Passed explicitly rather than relying on the wrapping
    * `fieldset[disabled]`, which does not reach a `contenteditable` (#2200).
@@ -1687,6 +1873,7 @@ function BaseScopeForm({
   onEanAcknowledgedForChange,
   onReady,
   onValuesChange,
+  ruleHints,
 }: BaseScopeFormProps): ReactElement {
   const effectiveImages = baseImageUrls ?? masterImages;
   const imagesOverridden = baseImageUrls !== undefined;
@@ -2030,6 +2217,7 @@ function BaseScopeForm({
             watchedCategoryId={watchedCategoryId}
             parametersQuery={categoryParametersQuery}
             categoryParameters={categoryParameters}
+            ruleHints={ruleHints}
           />
         ) : null}
 
@@ -2141,12 +2329,14 @@ interface BaseParameterSectionProps {
   watchedCategoryId: string | undefined;
   parametersQuery: ReturnType<typeof useCategoryParametersQuery>;
   categoryParameters: CategoryParameter[];
+  ruleHints?: BaseRuleHints;
 }
 
 function BaseParameterSection({
   watchedCategoryId,
   parametersQuery,
   categoryParameters,
+  ruleHints,
 }: BaseParameterSectionProps): ReactElement | null {
   if (!watchedCategoryId) return null;
   if (parametersQuery.isLoading) {
@@ -2169,7 +2359,17 @@ function BaseParameterSection({
       <div className="bulk-editor__slot-tag">
         <span className="eyebrow">Category parameters</span>
       </div>
-      <CategoryParametersStep parameters={categoryParameters} formNamespace="parameters" />
+      {ruleHints?.note ? (
+        <p className="bulk-editor__rules-line">
+          <span className="bulk-editor__rules-dot" aria-hidden="true" />
+          {ruleHints.note}
+        </p>
+      ) : null}
+      <CategoryParametersStep
+        parameters={categoryParameters}
+        formNamespace="parameters"
+        extraHints={ruleHints?.fields}
+      />
     </div>
   );
 }
@@ -2177,6 +2377,19 @@ function BaseParameterSection({
 // ── Variant scope form (controlled off the edit model) ───────────────────────
 
 interface VariantScopeFormProps {
+  /**
+   * What the connection's attribute rules fill for this variant (#3995). Shown
+   * on a parameter only while nothing the operator set replaces it - the same
+   * precedence the publish applies.
+   */
+  projection: ProjectionSummary | null;
+  /** The marketplace's own name (e.g. "Allegro"), for sentences about its list of values. */
+  marketplaceName: string;
+  /**
+   * Linked to a catalogue card: product-section values come from the card and
+   * rule values for them are not sent, so they are not shown as rule-filled.
+   */
+  cardLinked: boolean;
   /**
    * Demo read-only. Passed explicitly rather than relying on the wrapping
    * `fieldset[disabled]`, which does not reach a `contenteditable` (#2200).
@@ -2285,6 +2498,9 @@ function VariantScopeForm({
   variantCount,
   destinationName,
   batchCurrency,
+  projection,
+  cardLinked,
+  marketplaceName,
 }: VariantScopeFormProps): ReactElement {
   const label = distinguishingLabel(variant, index);
   const master = masterBarcodeOf(variant);
@@ -2399,6 +2615,16 @@ function VariantScopeForm({
   const requiredParams = visibleParams.filter((p) => p.required);
   const optionalParams = visibleParams.filter((p) => !p.required);
 
+  // The attribute rule's answer for a parameter (#3995), unless the variant is
+  // card-linked and the parameter comes from the card - then the rule's value
+  // is not sent and claiming it would be false.
+  const ruleOriginFor = (param: CategoryParameter): ProjectedParameterOrigin | undefined => {
+    const origin = projection?.byParameterId.get(param.id);
+    if (!origin || origin.source !== 'rule') return undefined;
+    if (cardLinked && origin.section === 'product') return undefined;
+    return origin;
+  };
+
   // The type-appropriate editable control for a param (dictionary select /
   // combobox, number, or text). `opts.splitBadge` / `opts.onReset` customise the
   // provenance chip + reset for an unlocked base-only grouping param (#1741).
@@ -2413,7 +2639,25 @@ function VariantScopeForm({
     const filled = autoFilledParams?.[param.id];
     const stillPrefilled =
       filled !== undefined && JSON.stringify(edit.params[param.id]) === JSON.stringify(filled);
-    if (!stillPrefilled) return control;
+    const ruleHint = stillPrefilled ? null : (
+      <RuleHint
+        origin={ruleOriginFor(param)}
+        overridden={edit.params[param.id] !== undefined}
+        baseSet={baseParamDisplay(param, baseValues) !== ''}
+        destinationName={marketplaceName}
+      />
+    );
+    if (!stillPrefilled) {
+      // One grid cell: the hint belongs to its field, not to the next column.
+      return ruleHint ? (
+        <div key={param.id} className="bulk-editor__vparam">
+          {control}
+          {ruleHint}
+        </div>
+      ) : (
+        control
+      );
+    }
     return (
       <Fragment key={param.id}>
         {control}
@@ -2431,9 +2675,20 @@ function VariantScopeForm({
     const override = edit.params[param.id];
     const overridden = override !== undefined;
     const ariaLabel = `${param.name} for ${label}`;
-    const baseDisplay = baseParamDisplay(param, baseValues);
+    const baseOwn = baseParamDisplay(param, baseValues);
+    // Nothing the operator set covers this parameter, so the publish sends the
+    // rule's value (#3995) - show it as what this variant inherits.
+    const origin = ruleOriginFor(param);
+    const ruleSupplies = !overridden && baseOwn === '' && origin?.outcome === 'accepted';
+    const ruleRejected = !overridden && baseOwn === '' && origin?.outcome === 'rejected';
+    const baseDisplay = ruleSupplies && origin ? origin.rawValue : baseOwn;
+    const inheritLabel = ruleSupplies && origin ? `From rule (${origin.rawValue})` : undefined;
     const provNode = opts?.splitBadge ? (
       <span className="bulk-editor__prov bulk-editor__prov--split">splits listing</span>
+    ) : ruleSupplies && origin ? (
+      <RuleProvBadge origin={origin} />
+    ) : ruleRejected ? (
+      <ProvBadge kind="rejected" />
     ) : undefined;
     const onReset = opts?.onReset;
 
@@ -2451,6 +2706,7 @@ function VariantScopeForm({
             overridden={overridden}
             value={override}
             baseDisplay={baseDisplay}
+            inheritLabel={inheritLabel}
             ariaLabel={ariaLabel}
             provNode={provNode}
             onReset={onReset}
@@ -2466,6 +2722,7 @@ function VariantScopeForm({
           value={typeof override === 'string' ? override : undefined}
           options={(param.dictionary ?? []).map((e) => ({ id: e.id, label: e.value }))}
           baseDisplay={baseDisplay}
+          inheritLabel={inheritLabel}
           ariaLabel={ariaLabel}
           provNode={provNode}
           onReset={onReset}
@@ -2572,20 +2829,34 @@ function VariantScopeForm({
     }
 
     // State 1 - inherited: read-only base value + a quiet "override" affordance.
+    // With nothing on base, the publish sends the rule's value (#3995).
+    const lockedOrigin = baseLabel === '' ? ruleOriginFor(param) : undefined;
+    const lockedRuleValue = lockedOrigin?.outcome === 'accepted' ? lockedOrigin.rawValue : '';
     return (
       <div className="bulk-editor__field" key={param.id}>
         <label>
-          {param.name} <ProvBadge kind="inherit" />
+          {param.name}{' '}
+          {lockedRuleValue && lockedOrigin ? (
+            <RuleProvBadge origin={lockedOrigin} />
+          ) : (
+            <ProvBadge kind={lockedOrigin ? 'rejected' : 'inherit'} />
+          )}
         </label>
         <Input
           className="bulk-editor__input bulk-editor__input--inherited"
-          value={baseLabel || 'Not set on base'}
+          value={baseLabel || lockedRuleValue || 'Not set on base'}
           readOnly
           aria-readonly="true"
         />
         <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
           Shared across all variants - grouping-determining, edit on base.
         </div>
+        <RuleHint
+          origin={lockedOrigin}
+          overridden={false}
+          baseSet={false}
+          destinationName={marketplaceName}
+        />
         <button
           type="button"
           className="bulk-editor__override-link"
@@ -3035,6 +3306,14 @@ function VariantScopeForm({
               ? "Resolved from this variant's own category."
               : 'Everything inherits from base. Override only the parameters that differ for this variant.'}
           </div>
+          <RulesContextLine
+            connectionId={connection.id}
+            filled={visibleParams.filter((p) => {
+              const o = ruleOriginFor(p);
+              return o?.outcome === 'accepted' && edit.params[p.id] === undefined && baseParamDisplay(p, baseValues) === '';
+            }).length}
+            total={visibleParams.length}
+          />
           {requiredParams.length > 0 ? (
             <div className="bulk-editor__vparams-grid">{requiredParams.map(renderVariantParam)}</div>
           ) : null}
@@ -3157,6 +3436,7 @@ function InheritableSelectField({
   value,
   options,
   baseDisplay,
+  inheritLabel,
   ariaLabel,
   provNode,
   onReset,
@@ -3167,6 +3447,8 @@ function InheritableSelectField({
   value: string | undefined;
   options: { id: string; label: string }[];
   baseDisplay: string;
+  /** Replaces the "Inherit from base" sentinel text, e.g. when a rule supplies the value (#3995). */
+  inheritLabel?: string;
   ariaLabel: string;
   provNode?: ReactNode;
   onReset?: () => void;
@@ -3192,7 +3474,9 @@ function InheritableSelectField({
         aria-label={ariaLabel}
         onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
       >
-        <option value="">{baseDisplay ? `Inherit from base (${baseDisplay})` : 'Inherit from base'}</option>
+        <option value="">
+          {inheritLabel ?? (baseDisplay ? `Inherit from base (${baseDisplay})` : 'Inherit from base')}
+        </option>
         {options.map((o) => (
           <option key={o.id} value={o.id}>
             {o.label}
@@ -3215,6 +3499,7 @@ function InheritableComboboxField({
   overridden,
   value,
   baseDisplay,
+  inheritLabel,
   ariaLabel,
   provNode,
   onReset,
@@ -3225,6 +3510,8 @@ function InheritableComboboxField({
   overridden: boolean;
   value: FormParameterValue;
   baseDisplay: string;
+  /** Replaces the inherit placeholder, e.g. when a rule supplies the value (#3995). */
+  inheritLabel?: string;
   ariaLabel: string;
   provNode?: ReactNode;
   onReset?: () => void;
@@ -3248,7 +3535,10 @@ function InheritableComboboxField({
         allowCustomValues={parameter.restrictions.customValuesEnabled}
         value={toComboboxValue(parameter, value)}
         onChange={(next: ComboboxValue | null) => onChange(fromComboboxValue(parameter, next))}
-        placeholder={baseDisplay ? `Inherit from base (${baseDisplay})` : 'Pick a value or inherit from base'}
+        placeholder={
+          inheritLabel ??
+          (baseDisplay ? `Inherit from base (${baseDisplay})` : 'Pick a value or inherit from base')
+        }
         invalid={false}
       />
     </div>

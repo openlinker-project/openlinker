@@ -41,7 +41,7 @@ describe('OfferBuilderService', () => {
   const emptyProjection: AttributeProjectionResult = {
     parameters: [],
     unmappedSourceKeys: [],
-    unresolvedRequired: [], restrictionIssues: [],
+    unresolvedRequired: [], restrictionIssues: [], origins: [],
   };
 
   const VARIANT_ID = 'ol_variant_123';
@@ -826,7 +826,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [{ id: '224017', valuesIds: ['11954'], section: 'product' }],
         unmappedSourceKeys: [],
-        unresolvedRequired: [], restrictionIssues: [],
+        unresolvedRequired: [], restrictionIssues: [], origins: [],
       });
 
       const result = await service.buildCreateOfferCommand({
@@ -863,7 +863,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],
         unmappedSourceKeys: [],
-        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [],
+        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [], origins: [],
       });
 
       const error = await service
@@ -893,7 +893,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],
         unmappedSourceKeys: [],
-        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [],
+        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [], origins: [],
       });
 
       const result = await service.buildCreateOfferCommand({
@@ -917,7 +917,7 @@ describe('OfferBuilderService', () => {
           { id: 'cond-1', name: 'Stan', section: 'offer' },
           { id: 'qty-1', name: 'Liczba sztuk w ofercie', section: 'offer' },
         ],
-        restrictionIssues: [],
+        restrictionIssues: [], origins: [],
       });
 
       const error = await service
@@ -941,7 +941,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],
         unmappedSourceKeys: [],
-        unresolvedRequired: [{ id: 'brand-1', name: 'Marka', section: 'product' }], restrictionIssues: [],
+        unresolvedRequired: [{ id: 'brand-1', name: 'Marka', section: 'product' }], restrictionIssues: [], origins: [],
       });
 
       const result = await service.buildCreateOfferCommand({
@@ -960,7 +960,7 @@ describe('OfferBuilderService', () => {
           { id: 'brand-1', valuesIds: ['canon'], section: 'product' },
         ],
         unmappedSourceKeys: [],
-        unresolvedRequired: [], restrictionIssues: [],
+        unresolvedRequired: [], restrictionIssues: [], origins: [],
       });
 
       const result = await service.buildCreateOfferCommand({
@@ -986,7 +986,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],
         unmappedSourceKeys: [],
-        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [],
+        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [], origins: [],
       });
 
       const result = await service.buildCreateOfferCommand({
@@ -1003,7 +1003,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],
         unmappedSourceKeys: [],
-        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [],
+        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [], origins: [],
       });
 
       // No overrides.parameters → fallback reads platformParams.{parameters,productParameters}.
@@ -1033,7 +1033,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],
         unmappedSourceKeys: ['Material', 'Pattern'],
-        unresolvedRequired: [], restrictionIssues: [],
+        unresolvedRequired: [], restrictionIssues: [], origins: [],
       });
 
       const result = await service.buildCreateOfferCommand({

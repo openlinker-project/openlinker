@@ -29,6 +29,7 @@ import { OfferMappingSyncService } from './application/services/offer-mapping-sy
 import { OfferMappingsService } from './application/services/offer-mappings.service';
 import { CategoryResolutionService } from './application/services/category-resolution.service';
 import { AttributeProjectionService } from './application/services/attribute-projection.service';
+import { AttributeProjectionPreviewService } from './application/services/attribute-projection-preview.service';
 import { OfferMappingRepository } from './infrastructure/persistence/repositories/offer-mapping.repository';
 import { ShopProductMappingRepository } from './infrastructure/persistence/repositories/shop-product-mapping.repository';
 import { PublishedVariantsService } from './application/services/published-variants.service';
@@ -99,6 +100,7 @@ import {
   BULK_LISTING_PROGRESS_SERVICE_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   ATTRIBUTE_PROJECTION_SERVICE_TOKEN,
+  ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN,
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
@@ -229,6 +231,7 @@ export {
     OfferMappingsService,
     CategoryResolutionService,
     AttributeProjectionService,
+    AttributeProjectionPreviewService,
     OfferMappingRepository,
     OfferCreationRecordRepository,
     BulkListingBatchRepository,
@@ -352,6 +355,10 @@ export {
     {
       provide: ATTRIBUTE_PROJECTION_SERVICE_TOKEN,
       useExisting: AttributeProjectionService,
+    },
+    {
+      provide: ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN,
+      useExisting: AttributeProjectionPreviewService,
     },
     {
       provide: OFFER_BUILDER_SERVICE_TOKEN,
@@ -504,6 +511,8 @@ export {
     // needed it until the MCP `project_attributes` tool (#1488), which made the
     // omission a boot failure rather than a latent gap.
     ATTRIBUTE_PROJECTION_SERVICE_TOKEN,
+    // #3995 - the offer wizard's per-variant rule preview.
+    ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN,
     OFFER_BUILDER_SERVICE_TOKEN,
     OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
     OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
