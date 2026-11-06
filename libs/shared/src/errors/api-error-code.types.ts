@@ -143,6 +143,14 @@ export const ApiErrorCodeValues = [
   'DOCUMENT_NUMBER_DUPLICATE',
 
   // ── Orders (#3865) ──
+  /** Too many test emails from this user; wait before sending another. */
+  'BUYER_EMAIL_TEST_RATE_LIMITED',
+  /** The test email address is not a single valid address. */
+  'BUYER_EMAIL_TEST_ADDRESS_INVALID',
+  /** This connection may not send that buyer email template. params: `templateKey`. */
+  'BUYER_EMAIL_TEMPLATE_NOT_ALLOWED',
+  /** The test email could not be sent; try again later. */
+  'BUYER_EMAIL_TEST_SEND_FAILED',
   /** `?phase=` and `?cancelled=` can never both hold. params: `phase`, `cancelled`. */
   'ORDER_FILTERS_CONTRADICTORY',
   /** The order has no sync status for this destination. params: `orderId`, `connectionId`. */
