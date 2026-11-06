@@ -95,14 +95,14 @@ describe('buildNavGroups', () => {
       expect(items).toContain('Duplicate stock positions');
       expect(items).toContain('Jobs & Logs');
       expect(items).toContain('Webhooks');
-      expect(items).toContain('Cursors');
+      expect(items).toContain('Sync progress');
     });
 
     it('never drops the sibling items for a non-admin', () => {
       const items = diagnosticsItems(false);
       expect(items).toContain('Jobs & Logs');
       expect(items).toContain('Webhooks');
-      expect(items).toContain('Cursors');
+      expect(items).toContain('Sync progress');
     });
   });
 

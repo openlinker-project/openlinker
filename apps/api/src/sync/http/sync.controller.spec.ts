@@ -67,6 +67,7 @@ describe('SyncController', () => {
     heartbeat: jest.fn(),
     requeueWithoutPenalty: jest.fn(),
     findLastSucceededByConnectionAndJobType: jest.fn(),
+    findLatestByConnectionsAndJobTypes: jest.fn(),
     getConnectionBacklogStats: jest.fn(),
   };
 

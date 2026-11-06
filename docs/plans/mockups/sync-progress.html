@@ -1,0 +1,1079 @@
+<title>Sync Cursors Redesign</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: app shell canvas, one page-section, grouped list by connection, right-side detail sheet.
+   Tokens copied 1:1 from apps/web/src/index.css (light :root + html[data-theme=dark]). */
+:root {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --bg-canvas: oklch(99% 0.003 80); --bg-shell: oklch(97.5% 0.004 80); --bg-surface: #ffffff;
+  --bg-surface-muted: oklch(96% 0.005 80); --bg-surface-hover: oklch(93% 0.006 80);
+  --border-subtle: oklch(93.5% 0.006 80); --border-default: oklch(88% 0.008 80); --border-strong: oklch(78% 0.010 80);
+  --text-primary: oklch(20% 0.012 80); --text-secondary: oklch(38% 0.010 80); --text-muted: oklch(52% 0.008 80);
+  --text-on-primary: oklch(18% 0.012 50); --text-link: oklch(50% 0.14 250);
+  --accent-primary: oklch(68% 0.18 50); --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-soft: oklch(96% 0.04 60); --accent-primary-border: oklch(85% 0.10 55);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+  --status-success: oklch(54% 0.14 150); --status-success-soft: oklch(96% 0.04 150); --status-success-border: oklch(85% 0.08 150); --status-success-strong: oklch(36% 0.12 150);
+  --status-warning: oklch(72% 0.16 85); --status-warning-soft: oklch(96% 0.05 85); --status-warning-border: oklch(85% 0.10 85); --status-warning-strong: oklch(42% 0.12 80);
+  --status-info: oklch(56% 0.14 245); --status-info-soft: oklch(96% 0.03 245); --status-info-border: oklch(85% 0.08 245); --status-info-strong: oklch(40% 0.12 245);
+  --status-disabled-soft: oklch(95% 0.005 80); --status-disabled-border: oklch(85% 0.008 80); --status-disabled-strong: oklch(38% 0.010 80);
+  --channel-allegro: oklch(70% 0.18 35); --channel-prestashop: oklch(60% 0.18 250); --channel-erli: oklch(66% 0.17 320); --channel-inpost: oklch(75% 0.15 90); --channel-shopify: oklch(64% 0.16 150); --channel-woocommerce: oklch(58% 0.15 300);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+  --overlay-scrim: rgb(15 18 26 / 0.45);
+  --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem; --space-5: 1.5rem; --space-6: 2rem;
+  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px;
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270); --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270); --text-muted: oklch(60% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); --text-link: oklch(76% 0.14 245);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50); --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-strong: oklch(86% 0.14 150);
+  --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-strong: oklch(88% 0.14 85);
+  --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-strong: oklch(86% 0.12 245);
+  --status-disabled-soft: oklch(24% 0.009 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-strong: oklch(78% 0.010 270);
+  --overlay-scrim: rgb(0 0 0 / 0.6); color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270); --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270); --text-muted: oklch(60% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); --text-link: oklch(76% 0.14 245);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50); --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-strong: oklch(86% 0.14 150);
+  --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-strong: oklch(88% 0.14 85);
+  --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-strong: oklch(86% 0.12 245);
+  --status-disabled-soft: oklch(24% 0.009 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-strong: oklch(78% 0.010 270);
+  --overlay-scrim: rgb(0 0 0 / 0.6); color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg-canvas); color: var(--text-primary); font-family: var(--font-sans); font-size: 14px; line-height: 1.5; }
+.shell { max-width: 1180px; margin: 0 auto; padding-block: var(--space-6) var(--space-8, 4rem);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.mono-text { font-family: var(--font-mono); font-size: .78rem; }
+:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); border-radius: var(--radius-sm); }
+
+/* PageLayout */
+.page-section { display: grid; gap: var(--space-5); }
+.page-header { display: flex; flex-wrap: wrap; gap: var(--space-4); justify-content: space-between; align-items: flex-start; }
+.page-header__content { display: grid; gap: var(--space-2); max-width: 64ch; min-width: 0; }
+.eyebrow { margin: 0; font-size: .76rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-primary-hover); }
+.page-title { margin: 0; font-size: 1.6rem; font-weight: 600; letter-spacing: -.01em; text-wrap: balance; }
+.page-description { margin: 0; color: var(--text-secondary); }
+.page-header__actions { display: flex; gap: var(--space-2); }
+
+/* Button / Input */
+.button { display: inline-flex; align-items: center; gap: var(--space-2); height: 2rem; padding: 0 var(--space-4);
+  border: 1px solid var(--accent-primary-border); border-radius: var(--radius-md); background: var(--accent-primary);
+  color: var(--text-on-primary); font: 500 .8125rem var(--font-sans); cursor: pointer; transition: transform .12s var(--ease-out), background .15s; }
+.button:hover { background: var(--accent-primary-hover); }
+.button:active { transform: translateY(1px) scale(.98); }
+.button--secondary { background: var(--bg-surface); color: var(--text-primary); border-color: var(--border-default); }
+.button--secondary:hover { background: var(--bg-surface-hover); }
+.button--ghost { background: transparent; border-color: transparent; color: var(--text-secondary); padding: 0 var(--space-2); }
+.button--ghost:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.input { height: 2rem; padding: 0 var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  background: var(--bg-surface); color: var(--text-primary); font: .8125rem var(--font-sans); min-width: 0; }
+.input::placeholder { color: var(--text-muted); }
+.field { display: grid; gap: var(--space-1); }
+.field__label { font-size: .75rem; font-weight: 500; color: var(--text-secondary); }
+
+/* StatusBadge */
+.status-badge { display: inline-flex; align-items: center; gap: var(--space-2); padding: 2px var(--space-2);
+  border: 1px solid var(--status-disabled-border); border-radius: var(--radius-sm); background: var(--status-disabled-soft);
+  color: var(--status-disabled-strong); font: 500 .6875rem/1.5 var(--font-mono); letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.status-badge__dot { width: .375rem; height: .375rem; border-radius: 999px; background: currentColor; opacity: .75; }
+.status-badge--success { background: var(--status-success-soft); border-color: var(--status-success-border); color: var(--status-success-strong); }
+.status-badge--warning { background: var(--status-warning-soft); border-color: var(--status-warning-border); color: var(--status-warning-strong); }
+.status-badge--info { background: var(--status-info-soft); border-color: var(--status-info-border); color: var(--status-info-strong); }
+
+/* SegmentedControl */
+.segmented { display: inline-flex; border: 1px solid var(--border-default); border-radius: var(--radius-md); }
+.segmented__option { display: inline-flex; align-items: center; gap: var(--space-1); padding: var(--space-2) var(--space-3); border: 0; border-right: 1px solid var(--border-default);
+  background: var(--bg-surface); color: var(--text-secondary); font: .8125rem var(--font-sans); cursor: pointer; }
+.segmented__option:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); }
+.segmented__option:last-child { border-right: 0; border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+.segmented__option[aria-pressed="true"] { background: var(--accent-primary); color: var(--text-on-primary); font-weight: 600; }
+.segmented__option[aria-pressed="true"] .segmented__count { color: inherit; }
+.segmented__count { font-family: var(--font-mono); font-size: .72rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* Explainer (NEW: CursorExplainer) */
+.explainer { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1px; background: var(--border-subtle);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); overflow: hidden; }
+.explainer__item { background: var(--bg-surface); padding: var(--space-4); display: grid; gap: var(--space-2); align-content: start; }
+.explainer__item h3 { margin: 0; font-size: .875rem; font-weight: 600; display: flex; align-items: center; gap: var(--space-2); }
+.explainer__item p { margin: 0; color: var(--text-secondary); font-size: .8125rem; }
+.explainer__glyph { font-family: var(--font-mono); font-size: .72rem; color: var(--text-muted); }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: end; }
+.toolbar .grow { flex: 1 1 220px; min-width: 0; }
+
+/* Grouped list (DataTable with groups) */
+.group { border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); overflow: hidden; }
+.group__head { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; justify-content: space-between;
+  padding: var(--space-3) var(--space-4); background: var(--bg-shell); border-bottom: 1px solid var(--border-subtle); }
+.entity { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; font-weight: 600; }
+.entity__dot { width: .5rem; height: .5rem; border-radius: 999px; flex: none; }
+.conn-dot { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; flex: none; }
+.conn-dot text { fill: #fff; font: 700 9px var(--font-mono); }
+.entity__meta { font-weight: 400; color: var(--text-muted); font-size: .8125rem; }
+.link { color: var(--text-link); text-decoration: none; font-size: .8125rem; background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
+.link:hover { text-decoration: underline; }
+
+.cols, .row { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.6fr) 8.5rem 7.5rem 1.25rem; gap: var(--space-4); align-items: center; }
+.cols { padding: var(--space-2) var(--space-4); font-size: .72rem; color: var(--text-muted); font-weight: 500; border-bottom: 1px solid var(--border-subtle); }
+.row { width: 100%; text-align: left; padding: var(--space-3) var(--space-4); border: 0; border-top: 1px solid var(--border-subtle);
+  background: transparent; color: inherit; font: inherit; cursor: pointer; transition: background .15s; }
+.row:first-of-type { border-top: 0; }
+.row:hover { background: var(--bg-surface-hover); }
+.row:hover .row__chev { transform: translateX(2px); color: var(--text-primary); }
+.row__what { display: grid; gap: 2px; min-width: 0; }
+.row__label { font-weight: 500; }
+.row__key { font-family: var(--font-mono); font-size: .72rem; color: var(--text-muted); overflow-wrap: anywhere; }
+.row__pos { min-width: 0; display: grid; gap: 2px; }
+.row__pos-main { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.row__pos-sub { font-size: .75rem; color: var(--text-muted); }
+.row__time { font-size: .8125rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.row__chev { color: var(--text-muted); transition: transform .2s var(--ease-out), color .15s; font-size: 1rem; }
+.empty-value { color: var(--text-muted); }
+
+.bundle { border-top: 1px solid var(--border-subtle); }
+.bundle__toggle { width: 100%; border: 0; background: var(--bg-surface-muted); padding: var(--space-3) var(--space-4); display: flex;
+  gap: var(--space-3); align-items: center; cursor: pointer; color: var(--text-secondary); font: .8125rem var(--font-sans); text-align: left; }
+.bundle__toggle:hover { color: var(--text-primary); }
+.bundle__caret { transition: transform .25s var(--ease-out); display: inline-block; }
+.bundle[data-open="true"] .bundle__caret { transform: rotate(90deg); }
+.bundle__body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .3s var(--ease-out); }
+.bundle[data-open="true"] .bundle__body { grid-template-rows: 1fr; }
+.bundle__inner { overflow: hidden; }
+
+.list { display: grid; gap: var(--space-4); }
+.sample-note { font-size: .75rem; color: var(--text-muted); }
+
+/* Sheet (NEW: CursorDetailSheet, built on the app Dialog) */
+.scrim { position: fixed; inset: 0; background: var(--overlay-scrim); opacity: 0; transition: opacity .25s; z-index: 40; }
+.scrim[data-open="true"] { opacity: 1; }
+.sheet { position: fixed; top: 0; right: 0; bottom: 0; width: min(480px, 100vw); background: var(--bg-surface); z-index: 41;
+  box-shadow: var(--shadow-overlay); border-left: 1px solid var(--border-default); transform: translateX(104%);
+  transition: transform .38s var(--ease-out); display: grid; grid-template-rows: auto 1fr;
+  padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-inset-right, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.sheet[data-open="true"] { transform: none; }
+.sheet__head { padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--border-subtle); display: grid; gap: var(--space-2); }
+.sheet__top { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
+.sheet__title { margin: 0; font-size: 1.125rem; font-weight: 600; text-wrap: balance; }
+.sheet__body { overflow-y: auto; padding: var(--space-5); display: grid; gap: var(--space-5); align-content: start; }
+.sheet section { display: grid; gap: var(--space-2); }
+.sheet h3 { margin: 0; font-size: .8125rem; font-weight: 600; color: var(--text-secondary); }
+.sheet p { margin: 0; color: var(--text-secondary); font-size: .875rem; }
+.kv { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr); gap: var(--space-2) var(--space-3); margin: 0; font-size: .8125rem; }
+.kv dt { color: var(--text-muted); }
+.kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.copy { display: flex; gap: var(--space-2); align-items: flex-start; padding: var(--space-2) var(--space-3); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md); background: var(--bg-surface-muted); }
+.copy code { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: .78rem; overflow-wrap: anywhere; }
+.copy button { flex: none; }
+.callout { padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); border: 1px solid var(--status-info-border); background: var(--status-info-soft); color: var(--status-info-strong); font-size: .8125rem; }
+.callout--warning { border-color: var(--status-warning-border); background: var(--status-warning-soft); color: var(--status-warning-strong); }
+.steps { margin: 0; padding-left: 1.1rem; color: var(--text-secondary); font-size: .8125rem; display: grid; gap: var(--space-1); }
+.sheet__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+.toast { position: fixed; left: 50%; bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 12px); opacity: 0;
+  background: var(--text-primary); color: var(--bg-surface); padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); font-size: .8125rem;
+  transition: opacity .2s, transform .25s var(--ease-out); z-index: 60; pointer-events: none; max-width: calc(100vw - 32px); }
+.toast[data-show="true"] { opacity: 1; transform: translate(-50%, 0); }
+
+/* v2 additions */
+.status-badge--error { background: oklch(96% 0.04 25); border-color: oklch(85% 0.10 25); color: oklch(42% 0.16 25); }
+:root[data-theme="dark"] .status-badge--error { background: oklch(28% 0.10 25); border-color: oklch(40% 0.14 25); color: oklch(86% 0.14 25); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .status-badge--error { background: oklch(28% 0.10 25); border-color: oklch(40% 0.14 25); color: oklch(86% 0.14 25); } }
+.attention { border: 1px solid var(--status-warning-border); background: var(--status-warning-soft); border-radius: var(--radius-lg); padding: var(--space-4); display: grid; gap: var(--space-3); }
+.attention__title { margin: 0; font-size: .9375rem; font-weight: 600; color: var(--status-warning-strong); }
+.attention__list { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-2); }
+.attention__item { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); align-items: baseline; font-size: .8125rem; color: var(--text-primary); }
+.attention__item strong { font-weight: 600; }
+.allgood { border: 1px solid var(--status-success-border); background: var(--status-success-soft); color: var(--status-success-strong); border-radius: var(--radius-lg); padding: var(--space-3) var(--space-4); font-size: .875rem; }
+.verdict { display: inline-flex; gap: var(--space-2); align-items: center; font-size: .8125rem; color: var(--text-secondary); flex-wrap: wrap; }
+.group__actions { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; }
+.switch { display: inline-flex; align-items: center; gap: var(--space-2); font-size: .8125rem; color: var(--text-secondary); cursor: pointer; height: 2rem; }
+.switch input { width: 1rem; height: 1rem; accent-color: var(--accent-primary); }
+.row__job { font-size: .75rem; color: var(--text-muted); }
+.row__job--fail { color: oklch(52% 0.18 25); }
+.note-row { padding: var(--space-4); color: var(--text-secondary); font-size: .8125rem; display: grid; gap: var(--space-1); }
+.field-error { font-size: .75rem; color: oklch(50% 0.18 25); }
+.choice { display: grid; gap: var(--space-2); }
+.choice label { display: flex; gap: var(--space-2); align-items: flex-start; padding: var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); cursor: pointer; font-size: .8125rem; }
+.choice label:has(input:checked) { border-color: var(--accent-primary-border); background: var(--accent-primary-soft); }
+.choice small { display: block; color: var(--text-muted); }
+.choice-card { display: grid; gap: 2px; padding: var(--space-3); border: 1px solid var(--accent-primary-border); border-radius: var(--radius-md); background: var(--accent-primary-soft); font-size: .8125rem; }
+.choice-card span { font-weight: 500; }
+.choice-card small { color: var(--text-muted); font-size: .75rem; }
+.consequence { padding: var(--space-3); border-radius: var(--radius-md); background: var(--bg-surface-muted); font-size: .8125rem; color: var(--text-secondary); border: 1px dashed var(--border-strong); }
+.rewind { display: grid; gap: var(--space-3); animation: rise .28s var(--ease-out); }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+.tech { display: grid; gap: var(--space-2); }
+.tech summary { cursor: pointer; font-size: .8125rem; font-weight: 600; color: var(--text-secondary); }
+/* SidePanel (shared/ui/side-panel.tsx): floating right drawer on desktop, vaul-style bottom sheet <= 640px */
+.sheet, .guide { background: var(--bg-surface-elevated, var(--bg-surface)); }
+@media (min-width: 641px) {
+  .sheet, .guide { top: 8px; right: 8px; bottom: 8px; border: 1px solid var(--border-default); border-radius: 14px; overflow: hidden; transform: translateX(calc(100% + 16px)); }
+  .scrim, .guide-scrim { backdrop-filter: blur(3px) saturate(.85); -webkit-backdrop-filter: blur(3px) saturate(.85); }
+}
+.sheet__head, .guide__head { padding: var(--space-4) var(--space-5); }
+.sheet__kicker { font-size: .8125rem; color: var(--text-secondary); }
+.guide__top h2 { font-size: 1.125rem; }
+.panel__handle { display: none; }
+@media (max-width: 640px) {
+  .sheet, .guide { top: auto; left: 0; right: 0; bottom: 0; width: 100%; max-height: calc(100dvh - 44px - env(safe-area-inset-top, 0px));
+    border-left: 0; border-top: 1px solid var(--border-default); border-radius: 18px 18px 0 0; transform: translateY(104%); padding-top: 0; padding-right: 0;
+    transition: transform .48s cubic-bezier(.32,.72,0,1); }
+  .sheet[data-open="true"], .guide[data-open="true"] { transform: translateY(var(--drag, 0px)); }
+  .sheet[data-dragging="true"], .guide[data-dragging="true"] { transition: none; }
+  .panel__handle { display: flex; justify-content: center; padding: 10px 0 4px; touch-action: none; cursor: grab; }
+  .panel__handle span { width: 40px; height: 5px; border-radius: 999px; background: var(--border-strong); }
+  .sheet__head, .guide__head { touch-action: none; padding-top: var(--space-2); }
+}
+.skeleton { height: 3.25rem; border-top: 1px solid var(--border-subtle); background: linear-gradient(90deg, var(--bg-surface) 0%, var(--bg-surface-muted) 50%, var(--bg-surface) 100%); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+/* Guide drawer (NEW: features/cursors/components/SyncGuideDrawer.tsx) - same drawer + accordion shape as the orders "All filters" drawer */
+.guide-scrim { position: fixed; inset: 0; background: var(--overlay-scrim); z-index: 50; opacity: 0; transition: opacity .25s; pointer-events: none; }
+.guide-scrim[data-open="true"] { opacity: 1; pointer-events: auto; }
+.guide { position: fixed; top: 0; right: 0; bottom: 0; width: min(460px, 100vw); z-index: 51; background: var(--bg-surface); border-left: 1px solid var(--border-default);
+  box-shadow: var(--shadow-overlay); display: flex; flex-direction: column; transform: translateX(104%); transition: transform .38s var(--ease-out);
+  padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); padding-right: env(safe-area-inset-right, 0px); }
+.guide[data-open="true"] { transform: none; }
+.guide__head { display: grid; gap: var(--space-3); padding: var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+.guide__top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.guide__top h2 { margin: 0; font-size: 1rem; font-weight: 600; }
+.guide__body { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
+.guide__foot { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle); font-size: .75rem; color: var(--text-muted); }
+.kbd { font-family: var(--font-mono); font-size: .6875rem; border: 1px solid var(--border-default); border-radius: 4px; padding: 0 5px; color: var(--text-muted); background: var(--bg-surface-muted); }
+.gsec { border-bottom: 1px solid var(--border-subtle); }
+.gsec__head { width: 100%; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border: 0; background: none; cursor: pointer; text-align: left; color: var(--text-primary); font: inherit; }
+.gsec__head:hover { background: var(--bg-surface-hover); }
+.gsec__title { font-weight: 600; font-size: .875rem; }
+.gsec__sum { margin-left: auto; font-size: .75rem; color: var(--text-muted); }
+.gsec__chev { color: var(--text-muted); transition: transform .25s var(--ease-out); }
+.gsec__head[aria-expanded="true"] .gsec__chev { transform: rotate(90deg); }
+.gsec__body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .3s var(--ease-out); }
+.gsec[data-open="true"] .gsec__body { grid-template-rows: 1fr; }
+.gsec__inner { overflow: hidden; }
+.gsec__list { display: grid; gap: var(--space-1); padding: 0 var(--space-3) var(--space-4); }
+.gitem { display: grid; gap: var(--space-1); padding: var(--space-3); border-radius: var(--radius-md); scroll-margin-top: var(--space-4); }
+.gitem[data-focus="true"] { animation: flash 1.6s var(--ease-out); }
+@keyframes flash { 0%, 35% { background: var(--accent-primary-soft); box-shadow: inset 0 0 0 1px var(--accent-primary-border); } 100% { background: transparent; box-shadow: none; } }
+.gitem__top { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.gitem__name { font-weight: 600; font-size: .8125rem; }
+.gitem p { margin: 0; font-size: .8125rem; color: var(--text-secondary); }
+.gitem__do { font-size: .8125rem; color: var(--text-primary); }
+.gitem__do b { font-weight: 600; }
+.gitem__meta { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); font-size: .75rem; color: var(--text-muted); }
+.gitem__key { font-family: var(--font-mono); font-size: .72rem; color: var(--text-muted); overflow-wrap: anywhere; }
+.gintro { padding: var(--space-4); display: grid; gap: var(--space-2); font-size: .8125rem; color: var(--text-secondary); border-bottom: 1px solid var(--border-subtle); }
+.gintro p { margin: 0; }
+.gintro strong { color: var(--text-primary); font-weight: 600; }
+.gempty { padding: var(--space-6) var(--space-4); text-align: center; color: var(--text-secondary); font-size: .8125rem; }
+mark { background: var(--accent-primary-soft); color: inherit; border-radius: 2px; padding: 0 1px; }
+.help-link { border: 0; background: none; padding: 0; color: var(--text-link); font: inherit; font-size: .75rem; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.cols__btn { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.cols__btn:hover { color: var(--text-primary); }
+.qmark { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 999px; border: 1px solid currentColor; font-size: 9px; font-weight: 600; line-height: 1; }
+
+@media (max-width: 767px) {
+  .cols { display: none; }
+  .row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "what chev" "pos pos" "state time"; row-gap: var(--space-2); }
+  .row__what { grid-area: what; } .row__pos { grid-area: pos; } .row__state { grid-area: state; } .row__time { grid-area: time; justify-self: end; } .row__chev { grid-area: chev; }
+  .kv { grid-template-columns: 1fr; gap: 2px; } .kv dd { margin-bottom: var(--space-2); }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; animation-iteration-count: 1 !important; } }
+</style>
+
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script type="text/babel" data-presets="react">
+const { useState, useMemo, useEffect, useRef } = React;
+
+/* =====================================================================
+ * shared/ui ports - same names + props as apps/web/src/shared/ui/*.
+ * In the real code these are imports, not copies.
+ * ===================================================================== */
+function PageLayout({ eyebrow, title, description, actions, children }) {
+  return (
+    <section className="page-section">
+      <div className="page-header">
+        <div className="page-header__content">
+          {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
+          <h2 className="page-title">{title}</h2>
+          {description ? <p className="page-description">{description}</p> : null}
+        </div>
+        {actions ? <div className="page-header__actions">{actions}</div> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+function StatusBadge({ tone = 'neutral', withDot = false, children }) {
+  return (
+    <span className={`status-badge status-badge--${tone}`}>
+      {withDot ? <span className="status-badge__dot" aria-hidden="true" /> : null}
+      <span>{children}</span>
+    </span>
+  );
+}
+function Button({ variant = 'primary', ...props }) {
+  const cls = variant === 'primary' ? 'button' : `button button--${variant}`;
+  return <button type="button" className={cls} {...props} />;
+}
+function SegmentedControl({ label, options, value, onChange }) {
+  return (
+    <div className="segmented" role="group" aria-label={label}>
+      {options.map((o) => (
+        <button key={o.value} type="button" className="segmented__option" aria-pressed={value === o.value} onClick={() => onChange(o.value)}>
+          {o.label}{o.count != null ? <span className="segmented__count">{o.count}</span> : null}
+        </button>
+      ))}
+    </div>
+  );
+}
+function stableHue(seed) { let h = 0; for (const c of seed) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
+/* Port of features/orders/components/connection-dot.tsx */
+function ConnectionDot({ name, platform }) {
+  const generic = !platform;
+  const initial = generic ? 'S' : ((name.match(/[a-z0-9]/i) || [name[0]])[0]).toUpperCase();
+  return (
+    <span className="conn-dot" style={{ background: generic ? 'var(--text-muted)' : `hsl(${stableHue(platform)} 55% 45%)` }} aria-hidden="true">
+      <svg viewBox="0 0 14 14" width="14" height="14"><text x="7" y="7" textAnchor="middle" dominantBaseline="central">{initial}</text></svg>
+    </span>
+  );
+}
+function EntityLabel({ name, platform, meta }) {
+  return (
+    <span className="entity">
+      <ConnectionDot name={name} platform={platform} />
+      <span>{name}</span>
+      {meta ? <span className="entity__meta">{meta}</span> : null}
+    </span>
+  );
+}
+function CopyableId({ value, label, onCopied }) {
+  async function copy() {
+    try { await navigator.clipboard.writeText(value); onCopied(`${label} copied`); }
+    catch { onCopied('Copy blocked here. Select the text instead.'); }
+  }
+  return (
+    <div className="copy">
+      <code>{value === '' ? <span className="empty-value">empty string</span> : value}</code>
+      {value !== '' ? <Button variant="ghost" onClick={copy} aria-label={`Copy ${label}`}>Copy</Button> : null}
+    </div>
+  );
+}
+function ConfirmDialog({ title, body, confirmLabel, onConfirm, onCancel }) {
+  return (
+    <div className="rewind" data-state="fetch-again-confirm" role="group" aria-label={title}>
+      <div className="consequence">{body}</div>
+      <div className="sheet__actions">
+        <Button onClick={onConfirm}>{confirmLabel}</Button>
+        <Button variant="secondary" onClick={onCancel}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
+/* =====================================================================
+ * NEW: features/cursors/lib/cursor-catalogue.ts
+ * What each cursor key MEANS, in operator words. Mirrors the writers in
+ * libs/core + apps/worker (masterSweepCursorKey, *_CURSOR_KEY constants).
+ * `platform` = which adapter may legitimately write the key (#3991 check).
+ * `rewind` = which named target a safe re-fetch may move it to.
+ * ===================================================================== */
+const CURSOR_KINDS = {
+  'event-bookmark': {
+    name: 'Reads new events from a feed',
+    whenEmpty: 'Nothing has been read yet. The next run starts from the beginning of the feed or from the connection start date.',
+  },
+  'date-watermark': {
+    name: 'Reads everything changed after a date',
+    whenEmpty: 'Nothing has been read yet. The next run starts from the connection start date.',
+  },
+  'rolling-offset': {
+    name: 'Re-checks known items, one page per run',
+    whenEmpty: 'Not run yet, or it just wrapped around. The next run starts at the first item.',
+  },
+  'sweep-cycle': {
+    name: 'Goes through the whole catalogue over several runs',
+    whenEmpty: 'The last pass finished. This is the normal resting state between passes.',
+  },
+  'write-order': {
+    name: 'Keeps older stock numbers from overwriting newer ones',
+    whenEmpty: 'No stock written to this listing yet.',
+  },
+};
+
+const CATALOGUE = [
+  { match: /^allegro\.orders\.lastEventId$/, kind: 'event-bookmark', label: 'New orders', platform: 'allegro', cadence: 5, unit: 'orders' },
+  { match: /^allegro\.offers\.lastEventId$/, kind: 'event-bookmark', label: 'Offer changes', platform: 'allegro', cadence: 15 },
+  { match: /^allegro\.customerReturns\.lastReturnId$/, kind: 'event-bookmark', label: 'New returns', platform: 'allegro', cadence: 30 },
+  { match: /^erli\.orders\.inboxCursor$/, kind: 'event-bookmark', label: 'New orders', platform: 'erli', cadence: 5, unit: 'orders' },
+  { match: /^prestashop\.orders\.dateUpd$/, kind: 'date-watermark', label: 'Changed orders (backup check)', platform: 'prestashop', cadence: 10, },
+  { match: /\.offerStatus\.scanOffset$/, kind: 'rolling-offset', label: 'Listing status check', cadence: 60, rewind: 'restart-check' },
+  { match: /\.shipmentStatus\.scanOffset$/, kind: 'rolling-offset', label: 'Parcel tracking check', cadence: 15, rewind: 'restart-check' },
+  { match: /^prestashop\.fulfillmentStatus\.scanOffset$/, kind: 'rolling-offset', label: 'Shop order status check', cadence: 30, rewind: 'restart-check' },
+  { match: /^automation\.deadlineSweep\.scanOffset$/, kind: 'rolling-offset', label: 'Automation deadlines', cadence: 15, rewind: 'restart-check' },
+  { match: /^master\.product\.sweep:/, kind: 'sweep-cycle', label: 'Product catalogue', cadence: 20, rewind: 'restart', stamp: 'master.product.completedAt' },
+  { match: /^master\.inventory\.sweep:/, kind: 'sweep-cycle', label: 'Stock levels', cadence: 15, rewind: 'restart', stamp: 'master.inventory.completedAt' },
+  { match: /^master\.product-reconcile\.sweep:/, kind: 'sweep-cycle', label: 'Deleted products check', cadence: 60, rewind: 'restart', stamp: 'master.product-reconcile.completedAt' },
+  { match: /\.completedAt:connection:/, kind: 'stamp', label: 'Pass finished at', hidden: true },
+  { match: /^inventory\.offerQuantity\.observedAt:offer:/, kind: 'write-order', label: 'Stock write order' },
+];
+
+function describeCursor(key) {
+  return CATALOGUE.find((c) => c.match.test(key)) ?? { kind: null, label: 'Unrecognised bookmark', cadence: null };
+}
+
+/* NEW: features/cursors/lib/read-cursor-health.ts
+   Health is judged on TIME against the expected cadence, never on the value. */
+const NOW = new Date('2026-11-06T10:00:00Z');
+const minutesSince = (iso) => (NOW - new Date(iso)) / 60000;
+
+function readHealth(cursor, conn) {
+  const d = describeCursor(cursor.cursorKey);
+  if (d.platform && d.platform !== conn.platform) return { id: 'misplaced', label: 'Wrong connection', tone: 'error', why: `This bookmark belongs to ${d.platform} but sits on a ${conn.platform} connection. A sync wrote it under the wrong connection.` };
+  if (cursor.lastJob?.status === 'failed') return { id: 'failing', label: 'Failing', tone: 'error', why: `Last run failed: ${cursor.lastJob.error}` };
+  if (!d.cadence) return { id: 'ok', label: 'OK', tone: 'neutral' };
+  const m = minutesSince(cursor.updatedAt);
+  if (cursor.value === '' && d.kind === 'sweep-cycle') return { id: 'ok', label: 'On time', tone: 'success' };
+  if (m > d.cadence * 6) return { id: 'stuck', label: 'Not moving', tone: 'warning', why: `Has not run for ${ago(cursor.updatedAt).replace(/ ago$/, '')}. It normally runs every ${d.cadence} min.` };
+  if (m > d.cadence * 2) return { id: 'late', label: 'Late', tone: 'warning', why: `Last ran ${ago(cursor.updatedAt)}, expected every ${d.cadence} min.` };
+  return { id: 'ok', label: 'On time', tone: 'success' };
+}
+
+/* Progress sentence, operator words first; the raw value lives in the sheet. */
+function readProgress(cursor, stamps) {
+  const d = describeCursor(cursor.cursorKey);
+  const v = cursor.value;
+  if (d.kind === 'sweep-cycle') {
+    if (v === '') {
+      const done = stamps[d.stamp];
+      return { main: 'Finished, waiting for next pass', sub: done ? `Last pass done ${ago(done)}` : 'Next pass starts on schedule', empty: true };
+    }
+    const [cycleId, offset] = v.split(':');
+    return { main: `In progress: ${Number(offset).toLocaleString('en')} items done`, sub: 'Continues on the next run', parsed: { cycleId, offset } };
+  }
+  if (v === '') return { main: 'Not started yet', sub: d.kind ? 'Waiting for the first run' : null, empty: true };
+  if (d.kind === 'rolling-offset') return { main: `Checked up to item ${Number(v).toLocaleString('en')}`, sub: 'Starts over at the end' };
+  if (d.kind === 'date-watermark') return { main: `Read up to ${fmt(cursor.updatedAt)}`, sub: null };
+  if (d.kind === 'write-order') return { main: `Newest stock sent ${ago(v)}`, sub: null };
+  return { main: `Read up to ${fmt(cursor.updatedAt)}`, sub: null };
+}
+
+function fmt(iso) { return new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' }); }
+function ago(iso) {
+  const m = Math.round(minutesSince(iso));
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+/* =====================================================================
+ * Example data (shape = CursorResponseDto + connection from GET /connections
+ * + latest sync job per cursor from GET /jobs, joined client-side).
+ * ===================================================================== */
+const CONNECTIONS = {
+  ps: { name: 'PrestaShop Main', platform: 'prestashop', role: 'Master catalogue', id: 'a1f3c2d0-6c7e-4b0a-9f21-3e8d5b7c1a90' },
+  al: { name: 'Allegro - Sklep Kulus', platform: 'allegro', role: 'Marketplace', id: 'b7e2a914-0d3f-4c55-8a62-1f9e0c4d2b37' },
+  er: { name: 'Erli', platform: 'erli', role: 'Marketplace', id: 'c93d1e05-7a2b-4f8e-b641-5d0a9c3e8f12' },
+  sh: { name: 'Shopify Dev', platform: 'shopify', role: 'Shop', id: 'e5a0d7c3-2b8e-4f19-9d64-7c1f8e0a3b52' },
+  wc: { name: 'WooCommerce Outlet', platform: 'woocommerce', role: 'Shop', id: 'f6b1e8d4-3c9f-4a2a-8e75-8d2a9f1b4c63', transport: 'webhook' },
+  ip: { name: 'InPost', platform: 'inpost', role: 'Carrier', id: 'd4c8b6a2-1e9f-4a37-8c05-6b2e7d0f9a41' },
+  sy: { name: 'System', platform: null, role: 'Runs across all connections', id: '00000000-0000-0000-0000-000000000000', system: true },
+};
+const GROUP_ORDER = ['ps', 'al', 'er', 'sh', 'ip', 'sy', 'wc'];
+const ok = (at, found) => ({ status: 'succeeded', at, found });
+
+const CURSORS = [
+  { conn: 'ps', cursorKey: 'master.product.sweep:connection:a1f3c2d0', value: '7f3a91c2-4e0b-4d6a-a8f1-2c9e5b0d7a33:1200', updatedAt: '2026-11-06T09:52:00Z', createdAt: '2026-08-02T10:00:00Z', lastJob: ok('2026-11-06T09:52:00Z') },
+  { conn: 'ps', cursorKey: 'master.inventory.sweep:connection:a1f3c2d0', value: '', updatedAt: '2026-11-06T09:47:00Z', createdAt: '2026-08-02T10:00:00Z', lastJob: ok('2026-11-06T09:47:00Z') },
+  { conn: 'ps', cursorKey: 'master.inventory.completedAt:connection:a1f3c2d0', value: '2026-11-06T09:47:00Z', updatedAt: '2026-11-06T09:47:00Z', createdAt: '2026-08-02T10:00:00Z' },
+  { conn: 'ps', cursorKey: 'master.product-reconcile.sweep:connection:a1f3c2d0', value: '', updatedAt: '2026-11-06T09:00:00Z', createdAt: '2026-09-01T10:00:00Z', lastJob: ok('2026-11-06T09:00:41Z') },
+  { conn: 'ps', cursorKey: 'master.product-reconcile.completedAt:connection:a1f3c2d0', value: '2026-11-06T09:00:41Z', updatedAt: '2026-11-06T09:00:41Z', createdAt: '2026-09-01T10:00:00Z' },
+  { conn: 'ps', cursorKey: 'prestashop.orders.dateUpd', value: '2026-11-06T09:41:12Z', updatedAt: '2026-11-06T09:50:00Z', createdAt: '2026-08-02T10:00:00Z', lastJob: ok('2026-11-06T09:50:00Z', 2) },
+  { conn: 'ps', cursorKey: 'prestashop.fulfillmentStatus.scanOffset', value: '340', updatedAt: '2026-11-06T09:30:00Z', createdAt: '2026-08-02T10:00:00Z', lastJob: ok('2026-11-06T09:30:00Z') },
+  { conn: 'al', cursorKey: 'allegro.orders.lastEventId', value: '2198437710533118', updatedAt: '2026-11-06T09:58:00Z', createdAt: '2026-08-03T10:00:00Z', lastJob: ok('2026-11-06T09:58:00Z', 3) },
+  { conn: 'al', cursorKey: 'allegro.offers.lastEventId', value: '2198437702219987', updatedAt: '2026-11-06T09:15:00Z', createdAt: '2026-08-03T10:00:00Z', lastJob: ok('2026-11-06T09:15:00Z', 0) },
+  { conn: 'al', cursorKey: 'allegro.offerStatus.scanOffset', value: '600', updatedAt: '2026-11-06T09:00:00Z', createdAt: '2026-08-03T10:00:00Z', lastJob: ok('2026-11-06T09:00:00Z') },
+  { conn: 'al', cursorKey: 'allegro.customerReturns.lastReturnId', value: '', updatedAt: '2026-10-21T08:00:00Z', createdAt: '2026-10-21T08:00:00Z', lastJob: { status: 'failed', at: '2026-11-06T09:30:00Z', error: '401 Unauthorized - the Allegro token expired. Reconnect the account.' } },
+  ...['41208833', '41208834', '41209120', '41210057', '41210311', '41211904'].map((id, i) => ({
+    conn: 'al', cursorKey: `inventory.offerQuantity.observedAt:offer:${id}`,
+    value: `2026-11-06T0${8 + (i % 2)}:${String(10 + i * 7).padStart(2, '0')}:00Z`, updatedAt: `2026-11-06T0${8 + (i % 2)}:${String(10 + i * 7).padStart(2, '0')}:02Z`, createdAt: '2026-09-10T10:00:00Z',
+  })),
+  { conn: 'er', cursorKey: 'erli.orders.inboxCursor', value: 'evt_01JC7Y3N8QK2', updatedAt: '2026-11-06T09:57:00Z', createdAt: '2026-08-20T10:00:00Z', lastJob: ok('2026-11-06T09:57:00Z', 1) },
+  { conn: 'er', cursorKey: 'erli.offerStatus.scanOffset', value: '120', updatedAt: '2026-11-06T09:00:00Z', createdAt: '2026-08-20T10:00:00Z', lastJob: ok('2026-11-06T09:00:00Z') },
+  { conn: 'sh', cursorKey: 'allegro.orders.lastEventId', value: '2198430000000001', updatedAt: '2026-11-05T14:02:00Z', createdAt: '2026-11-05T14:02:00Z', lastJob: ok('2026-11-05T14:02:00Z', 0) },
+  { conn: 'sy', cursorKey: 'automation.deadlineSweep.scanOffset', value: '0', updatedAt: '2026-11-06T09:55:00Z', createdAt: '2026-08-25T10:00:00Z', lastJob: ok('2026-11-06T09:55:00Z') },
+  { conn: 'ip', cursorKey: 'inpost.shipmentStatus.scanOffset', value: '40', updatedAt: '2026-11-06T09:45:00Z', createdAt: '2026-08-25T10:00:00Z', lastJob: ok('2026-11-06T09:45:00Z') },
+];
+
+/* =====================================================================
+ * NEW: features/cursors/components/CursorRow.tsx
+ * ===================================================================== */
+function CursorRow({ cursor, conn, stamps, showKeys, onOpen }) {
+  const d = describeCursor(cursor.cursorKey);
+  const h = readHealth(cursor, conn);
+  const p = readProgress(cursor, stamps);
+  const job = cursor.lastJob;
+  return (
+    <button type="button" className="row" onClick={() => onOpen(cursor)} aria-label={`${d.label}, ${h.label}. Show details`}>
+      <span className="row__what">
+        <span className="row__label">{d.label}</span>
+        {showKeys ? <span className="row__key">{cursor.cursorKey}</span> : null}
+        {job ? <span className={job.status === 'failed' ? 'row__job row__job--fail' : 'row__job'}>
+          {job.status === 'failed' ? `Last run failed ${ago(job.at)}` : `Last run ok ${ago(job.at)}`}
+        </span> : null}
+      </span>
+      <span className="row__pos">
+        <span className={p.empty ? 'row__pos-main empty-value' : 'row__pos-main'}>{p.main}</span>
+        {p.sub ? <span className="row__pos-sub">{p.sub}</span> : null}
+      </span>
+      <span className="row__state"><StatusBadge tone={h.tone} withDot={h.id !== 'ok'}>{h.label}</StatusBadge></span>
+      <span className="row__time" title={fmt(cursor.updatedAt)}>{ago(cursor.updatedAt)}</span>
+      <span className="row__chev" aria-hidden="true">›</span>
+    </button>
+  );
+}
+
+/* Per-listing marks: aggregated; rows only when the operator searches. */
+function WriteOrderBundle({ cursors, conn, stamps, showKeys, onOpen, searching }) {
+  const [open, setOpen] = useState(false);
+  const sorted = [...cursors].sort((a, b) => (a.value < b.value ? -1 : 1));
+  const isOpen = open || searching;
+  return (
+    <div className="bundle" data-open={isOpen}>
+      <button type="button" className="bundle__toggle" aria-expanded={isOpen} onClick={() => setOpen(!open)}>
+        <span className="bundle__caret" aria-hidden="true">›</span>
+        <span>Stock sent to {cursors.length} listings</span>
+        <span style={{ marginLeft: 'auto' }}>newest {ago(sorted.at(-1).value)}, oldest {ago(sorted[0].value)}</span>
+      </button>
+      <div className="bundle__body"><div className="bundle__inner">
+        {sorted.map((c) => <CursorRow key={c.cursorKey} cursor={c} conn={conn} stamps={stamps} showKeys={showKeys} onOpen={onOpen} />)}
+      </div></div>
+    </div>
+  );
+}
+
+/* NEW: features/cursors/components/RewindPanel.tsx
+   Named targets only. No free-text value editing. Refused while a pass runs. */
+function RewindPanel({ cursor, notify }) {
+  const d = describeCursor(cursor.cursorKey);
+  const [confirming, setConfirming] = useState(false);
+  if (d.rewind === 'restart' && cursor.value === '') return <p>The last pass already finished. Use Run now to start the next one early.</p>;
+  const isPass = d.rewind === 'restart';
+  return (
+    <div className="rewind">
+      <div className="choice-card">
+        <span>{isPass ? 'Start the pass over' : 'Start the check over'}</span>
+        <small>{isPass ? 'Drops the current pass. The next run reads the whole catalogue from item 1.' : 'The next run starts again from the first item.'}</small>
+      </div>
+      {confirming ? (
+        <ConfirmDialog title="Confirm" confirmLabel="Start over"
+          body={isPass ? 'The current pass is dropped and the next run starts from item 1. Every product is read again, which adds load on the shop for several runs.' : 'The next run re-checks from the first item. Nothing is written to the platform.'}
+          onCancel={() => setConfirming(false)} onConfirm={() => { notify('Done. The next run starts over.'); setConfirming(false); }} />
+      ) : (
+        <div className="sheet__actions"><Button variant="secondary" onClick={() => setConfirming(true)}>Review</Button></div>
+      )}
+    </div>
+  );
+}
+
+/* NEW: features/cursors/components/CursorDetailSheet.tsx */
+/* vaul-style drag-to-dismiss (mockup stand-in for SidePanel's motion drag): past 30% of the height, or a flick, closes. */
+function useSheetDrag(onClose) {
+  const ref = useRef(null);
+  const start = useRef(null);
+  const onPointerDown = (e) => {
+    if (!matchMedia('(max-width: 640px)').matches || e.target.closest('button, a, input')) return;
+    start.current = { y: e.clientY, t: performance.now() };
+    ref.current.dataset.dragging = 'true';
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e) => { if (!start.current) return; const dy = e.clientY - start.current.y; ref.current.style.setProperty('--drag', `${dy > 0 ? dy : dy * 0.06}px`); };
+  const onPointerUp = (e) => {
+    if (!start.current) return;
+    const dy = e.clientY - start.current.y; const v = dy / Math.max(1, performance.now() - start.current.t) * 1000;
+    start.current = null; ref.current.dataset.dragging = 'false'; ref.current.style.setProperty('--drag', '0px');
+    if (dy > ref.current.offsetHeight * 0.3 || v > 450) onClose();
+  };
+  return { ref, handlers: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel: onPointerUp } };
+}
+
+function CursorDetailSheet({ cursor, onClose, notify, stamps, onExplain }) {
+  const closeRef = useRef(null);
+  const [shown, setShown] = useState(cursor);
+  const [rewinding, setRewinding] = useState(false);
+  useEffect(() => { if (cursor) { setShown(cursor); setRewinding(false); } }, [cursor]);
+  useEffect(() => {
+    if (!cursor) return undefined;
+    closeRef.current?.focus();
+    const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('.guide[data-open="true"]')) onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [cursor, onClose]);
+  const c = shown;
+  const open = Boolean(cursor);
+  const drag = useSheetDrag(onClose);
+  const conn = c ? CONNECTIONS[c.conn] : null;
+  const d = c ? describeCursor(c.cursorKey) : null;
+  const kind = d?.kind ? CURSOR_KINDS[d.kind] : null;
+  const h = c ? readHealth(c, conn) : null;
+  const p = c ? readProgress(c, stamps[c.conn]) : null;
+
+  return (
+    <>
+      <div className="scrim" data-open={open} onClick={onClose} style={{ pointerEvents: open ? 'auto' : 'none' }} />
+      <aside className="sheet" data-state="detail-panel" ref={drag.ref} data-open={open} role="dialog" aria-modal="true" aria-labelledby="sheet-title" aria-hidden={!open}>
+        {c ? (
+          <>
+            <div className="panel__handle" {...drag.handlers} aria-hidden="true"><span /></div>
+            <div className="sheet__head" {...drag.handlers}>
+              <div className="sheet__top">
+                <span className="sheet__kicker">{conn.name}</span>
+                <button type="button" className="button button--ghost" onClick={onClose} ref={closeRef} aria-label="Close details">Close</button>
+              </div>
+              <h2 className="sheet__title" id="sheet-title">{d.label}</h2>
+              <div className="gitem__top"><StatusBadge tone={h.tone} withDot={h.id !== 'ok'}>{h.label}</StatusBadge><button type="button" className="help-link" onClick={() => onExplain(HEALTH_GUIDE_ID[h.id] ?? 'h-plain')}>What does this mean?</button></div>
+            </div>
+            <div className="sheet__body">
+              {h.why ? <div className={h.tone === 'error' ? 'callout callout--warning' : 'callout callout--warning'}>{h.why}</div> : null}
+              <section>
+                <div className="gitem__top" style={{ justifyContent: 'space-between' }}><h3>Where it is</h3>{SYNC_GUIDE_ID[d.label] ? <button type="button" className="help-link" onClick={() => onExplain(SYNC_GUIDE_ID[d.label])}>About this sync</button> : null}</div>
+                <p style={{ color: 'var(--text-primary)' }}>{p.main}{p.sub ? `. ${p.sub}.` : '.'}</p>
+                {kind ? <p>{kind.name}.</p> : null}
+              </section>
+              <section>
+                <h3>Runs</h3>
+                <dl className="kv">
+                  <dt>Last moved</dt><dd>{fmt(c.updatedAt)} ({ago(c.updatedAt)})</dd>
+                  {d.cadence ? (<><dt>Runs every</dt><dd>{d.cadence} min</dd></>) : null}
+                  {c.lastJob ? (<><dt>Last run</dt><dd>{c.lastJob.status === 'failed' ? `Failed ${ago(c.lastJob.at)}` : `Succeeded ${ago(c.lastJob.at)}`}</dd></>) : null}
+                </dl>
+                <div className="sheet__actions">
+                  <Button onClick={() => notify('Sync queued. It runs in the next few seconds.')}>Run now</Button>
+                  <Button variant="secondary" onClick={() => notify(`Opens /jobs?connectionId=${conn.id.slice(0, 8)}…`)}>View run history</Button>
+                  {h.id === 'misplaced' || h.id === 'failing' ? <Button variant="secondary" onClick={() => notify(`Opens /connections/${conn.id.slice(0, 8)}…`)}>Open connection</Button> : null}
+                </div>
+              </section>
+              {d.rewind || d.kind === 'event-bookmark' || d.kind === 'date-watermark' ? (
+                <section>
+                  <div className="gitem__top" style={{ justifyContent: 'space-between' }}><h3>Fetch again</h3><button type="button" className="help-link" onClick={() => onExplain('q-safe')}>Is it safe?</button></div>
+                  {d.rewind ? <RewindPanel cursor={c} notify={notify} />
+                    : <p>Order feeds keep their position in the platform’s own format, so they cannot be moved back from here. Use Run now to fetch anything new.</p>}
+                </section>
+              ) : null}
+              <details className="tech">
+                <summary>Technical details</summary>
+                <dl className="kv">
+                  {p.parsed ? (<><dt>Pass id</dt><dd className="mono-text">{p.parsed.cycleId}</dd><dt>Items done</dt><dd>{p.parsed.offset}</dd></>) : null}
+                  <dt>First seen</dt><dd>{fmt(c.createdAt)}</dd>
+                  <dt>Connection id</dt><dd className="mono-text">{conn.id}</dd>
+                </dl>
+                <h3>Raw value</h3>
+                <CopyableId value={c.value} label="Value" onCopied={notify} />
+                <h3>Key</h3>
+                <CopyableId value={c.cursorKey} label="Key" onCopied={notify} />
+              </details>
+            </div>
+          </>
+        ) : null}
+      </aside>
+    </>
+  );
+}
+
+/* =====================================================================
+ * NEW: features/cursors/lib/sync-guide.copy.ts
+ * Every explainable thing on the page, in one table. The page and the guide
+ * read the SAME ids (health ids, kind ids, sync ids), so a badge can deep-link
+ * to its own explanation.
+ * ===================================================================== */
+/* Generated verbatim from apps/web/src/features/cursors/lib/sync-guide.copy.ts */
+const SYNC_GUIDE_CHROME = {
+  title: 'How to read sync progress',
+  description: 'Explains every status, progress line, sync and action on the Sync progress page.',
+  searchLabel: 'Search the guide',
+  searchPlaceholder: 'Search the guide: empty, late, token…',
+  introBookmark: 'A sync bookmark',
+  intro1: ' is how far a sync got last time. The next run starts from there, so nothing is read twice and nothing is skipped.',
+  intro2: 'Each row is one sync for one connection. Health tells you whether it keeps to its schedule. Progress tells you where it is.',
+  shownWhen: (how) => `Shown when: ${how}`,
+  whatToDo: 'What to do:',
+  runsEvery: (n) => `Runs every ${n} min`,
+  canStartOver: 'Can start over',
+  found: (n) => `${n} found`,
+  nothingFound: (q) => `Nothing in the guide matches “${q}”.`,
+  footer: 'Press ? anywhere on this page to open the guide, Esc to close it.',
+};
+
+const SYNC_GUIDE = [
+  {
+    id: 'health',
+    title: 'Health',
+    summary: 'What the badges mean',
+    items: [
+      { id: 'h-ok', name: 'On time', badge: { tone: 'success', label: 'On time' }, text: 'The sync ran recently enough for its schedule. Nothing to do.', how: 'Moved, or ran successfully, within 2× its normal interval.' },
+      { id: 'h-late', name: 'Late', badge: { tone: 'warning', label: 'Late' }, text: 'The sync is behind its schedule but still within reach. Often a busy queue or a slow shop.', how: 'Not moved or run successfully for 2× to 6× its normal interval.', todo: 'Wait one more interval. If it stays late, open the run history.' },
+      { id: 'h-stuck', name: 'Not moving', badge: { tone: 'warning', label: 'Not moving' }, text: 'The sync has not run for a long time. Orders or stock from this source may be missing in OpenLinker.', how: 'Not moved or run successfully for more than 6× its normal interval.', todo: 'Open the run history to see why. Check the connection is enabled and its scheduled task is on. Then use Run now.' },
+      { id: 'h-failing', name: 'Failing', badge: { tone: 'error', label: 'Failing' }, text: 'The last run ended with an error. The bookmark stays where it was, so nothing is skipped. It continues once the error is fixed.', how: 'The latest run for this sync failed.', todo: 'Read the error in the details. An expired token is fixed by reconnecting the account on the connection page.' },
+      { id: 'h-misplaced', name: 'Wrong connection', badge: { tone: 'error', label: 'Wrong connection' }, text: 'This bookmark belongs to a different platform than the connection it sits on. A sync was run against the wrong connection, so its progress is not trustworthy.', how: 'The bookmark name names one platform, the connection is another.', todo: 'Report it to whoever maintains your installation. Do not start it over on this connection.' },
+      { id: 'h-pushes', name: 'Pushes changes', badge: { tone: 'neutral', label: 'Pushes changes' }, text: 'The connection sends every change to OpenLinker the moment it happens, so there is no bookmark to keep. An empty list here is normal.', todo: 'If changes stop arriving, check the webhook on the connection page.' },
+      { id: 'h-plain', name: 'OK', badge: { tone: 'neutral', label: 'OK' }, text: 'A bookmark with no schedule of its own, such as the stock write order. It is never late.' },
+    ],
+  },
+  {
+    id: 'progress',
+    title: 'Progress',
+    summary: 'How to read the middle column',
+    items: [
+      { id: 'p-readupto', name: 'Read up to (time)', text: 'Everything the platform reported before this moment is already in OpenLinker. The next run asks only for what came after.' },
+      { id: 'p-inprogress', name: 'In progress: N items done', text: 'A long pass through the catalogue is part way through. Big catalogues take several runs, so one pass can span hours. It continues on the next run on its own.' },
+      { id: 'p-finished', name: 'Finished, waiting for next pass', text: 'The last pass went through the whole catalogue. The bookmark is cleared on purpose and the raw value is empty. This is the normal resting state, not an error.' },
+      { id: 'p-notstarted', name: 'Not started yet', text: 'This sync has never read anything. Normal for a new connection, or for a feature switched on recently. If it stays like this, look at its health badge.' },
+      { id: 'p-checked', name: 'Checked up to item N', text: 'A re-check that walks through items OpenLinker already knows, one page per run, and starts again from the top when it reaches the end.' },
+      { id: 'p-stock', name: 'Stock sent to N listings', text: 'One entry per listing, recording the newest stock number sent there. An older number arriving late is refused, so a slow job can never put old stock back on a listing.' },
+    ],
+  },
+  {
+    id: 'kinds',
+    title: 'Kinds of bookmark',
+    summary: '5 kinds',
+    items: [
+      { id: 'k-event-bookmark', name: 'Reads new events from a feed', text: 'When the raw value is empty: nothing has been read yet. The next run starts from the beginning of the feed or from the connection start date.' },
+      { id: 'k-rolling-offset', name: 'Re-checks known items, one page per run', text: 'When the raw value is empty: not run yet, or it just wrapped around. The next run starts at the first item.' },
+      { id: 'k-sweep-cycle', name: 'Goes through the whole catalogue over several runs', text: 'When the raw value is empty: the last pass finished. This is the normal resting state between passes.' },
+      { id: 'k-completion-stamp', name: 'Remembers when a pass finished', text: 'Shown inside the catalogue row as “Last pass done”, not as a row of its own.' },
+      { id: 'k-write-order', name: 'Keeps older stock numbers from overwriting newer ones', text: 'When the raw value is empty: no stock written to this listing yet.' },
+    ],
+  },
+  {
+    id: 'syncs',
+    title: 'Every sync on this page',
+    summary: '13 syncs',
+    items: [
+      { id: 's-orders', name: 'New orders', key: 'allegro.orders.lastEventId, erli.orders.inboxCursor', everyMinutes: 5, text: 'Reads new and changed orders from the marketplace feed and creates them in OpenLinker.' },
+      { id: 's-changed-orders', name: 'Changed orders (backup check)', key: 'prestashop.orders.dateUpd', everyMinutes: 10, text: 'The shop normally sends orders by webhook. This check reads every order changed after the time shown, to catch anything a webhook missed.' },
+      { id: 's-offer-changes', name: 'Offer changes', key: 'allegro.offers.lastEventId', everyMinutes: 15, text: 'Reads changes to your Allegro offers, such as an offer ended or edited on Allegro, so OpenLinker shows the same state.' },
+      { id: 's-returns', name: 'New returns', key: 'allegro.customerReturns.lastReturnId', everyMinutes: 30, text: 'Reads returns buyers open on Allegro. Off by default, because the Allegro returns feed is still in beta.' },
+      { id: 's-returns-check', name: 'Open returns check', key: 'allegro.customerReturns.scanOffset', everyMinutes: 60, canStartOver: true, text: 'Re-reads returns that are still open, one page per run, to pick up status changes.' },
+      { id: 's-listing-status', name: 'Listing status check', key: '*.offerStatus.scanOffset', everyMinutes: 60, canStartOver: true, text: 'Re-reads whether each listing is active, ended or blocked on the marketplace, one page per run.' },
+      { id: 's-parcel', name: 'Parcel tracking check', key: '*.shipmentStatus.scanOffset', everyMinutes: 15, canStartOver: true, text: 'Re-reads the tracking status of parcels on the way, one page per run.' },
+      { id: 's-shop-status', name: 'Shop order status check', key: 'prestashop.fulfillmentStatus.scanOffset', everyMinutes: 30, canStartOver: true, text: 'Re-reads the order status in the shop so a shipment marked there shows up in OpenLinker.' },
+      { id: 's-catalogue', name: 'Product catalogue', key: 'master.product.sweep:connection:…', everyMinutes: 20, canStartOver: true, text: 'Reads every product from your master catalogue, a batch per run, so names, prices and variants stay current.' },
+      { id: 's-stock', name: 'Stock levels', key: 'master.inventory.sweep:connection:…', everyMinutes: 15, canStartOver: true, text: 'Reads stock for every product from your master catalogue, a batch per run. Changes go on to your marketplaces.' },
+      { id: 's-deleted', name: 'Deleted products check', key: 'master.product-reconcile.sweep:connection:…', everyMinutes: 60, canStartOver: true, text: 'Looks for products deleted in your catalogue, so their listings stop selling.' },
+      { id: 's-categories', name: 'Category tree', key: 'destination.taxonomy.frontier:\u2026', text: 'Copies a marketplace or shop category tree into OpenLinker so pickers and search work without asking the platform. It runs in the background and has no fixed schedule to be late against.' },
+      { id: 's-system', name: 'System checks', key: 'automation.deadlineSweep.scanOffset, inventory.reservationShortfall.*', text: 'Checks that run across all connections, such as automation deadlines and stock shortfalls. They are listed under System.' },
+    ],
+  },
+  {
+    id: 'actions',
+    title: 'Actions',
+    summary: 'What each button does',
+    items: [
+      { id: 'a-run', name: 'Run now', text: 'Queues this sync to run straight away instead of waiting for its schedule. It continues from the bookmark, so nothing is read twice.' },
+      { id: 'a-fetch', name: 'Fetch again', text: 'Puts a catalogue pass or a re-check back at the start, so the next run reads everything again. Order feeds cannot be moved back: their position is kept in the platform’s own format.', todo: 'Starting a pass over is blocked while a run is in progress.' },
+      { id: 'a-history', name: 'View run history', text: 'Opens the list of runs for this connection, with the error of every failed run.' },
+      { id: 'a-keys', name: 'Show technical keys', text: 'Shows the internal name of each bookmark under its label. Useful when talking to support or reading logs. The raw value is always in Technical details inside each row.' },
+    ],
+  },
+  {
+    id: 'faq',
+    title: 'Common questions',
+    summary: '6 answers',
+    items: [
+      { id: 'q-empty', name: 'Why is a value empty?', text: 'For a catalogue pass, empty means the pass finished. That is the normal state between passes. For any other sync it means nothing has been read yet.' },
+      { id: 'q-nobookmarks', name: 'Why does a connection have no bookmarks?', text: 'Connections that push changes to OpenLinker as they happen need no bookmark. Their list is empty by design.' },
+      { id: 'q-late-ok', name: 'Nothing moved, so why is it On time?', text: 'A run that finds nothing new leaves the bookmark where it is. The sync still ran on schedule, so its last successful run counts.' },
+      { id: 'q-safe', name: 'Is Fetch again safe?', text: 'Yes. Starting a re-check over only reads. Starting a catalogue pass over re-reads every product, which adds load on the shop for a few runs, and writes nothing twice.' },
+      { id: 'q-alert', name: 'Will I be told when a sync stops?', text: 'Not yet. Today the “needs a look” box on this page is the signal. Check it after an outage or when orders seem to be missing.' },
+      { id: 'q-unknown', name: 'What is an unrecognised bookmark?', text: 'A bookmark this version of OpenLinker has no description for, usually from a plugin. It works normally; the page just cannot explain it.' },
+    ],
+  },
+];
+
+
+const GUIDE = SYNC_GUIDE.map((sec) => ({ ...sec, sum: sec.summary, items: sec.items.map((i) => ({ ...i, badge: i.badge ? [i.badge.tone, i.badge.label] : undefined, every: i.everyMinutes, fetch: i.canStartOver })) }));
+
+function highlight(text, q) {
+  if (!q) return text;
+  const i = text.toLowerCase().indexOf(q);
+  if (i < 0) return text;
+  return <>{text.slice(0, i)}<mark>{text.slice(i, i + q.length)}</mark>{text.slice(i + q.length)}</>;
+}
+
+function GuideItem({ item, q, focused }) {
+  const ref = useRef(null);
+  useEffect(() => { if (focused) ref.current?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); }, [focused]);
+  return (
+    <article className="gitem" id={item.id} ref={ref} data-focus={focused}>
+      <div className="gitem__top">
+        {item.badge ? <StatusBadge tone={item.badge[0]} withDot={item.badge[0] !== 'success'}>{item.badge[1]}</StatusBadge> : <span className="gitem__name">{highlight(item.name, q)}</span>}
+      </div>
+      <p>{highlight(item.text, q)}</p>
+      {item.how ? <div className="gitem__meta"><span>Shown when: {item.how}</span></div> : null}
+      {item.todo ? <div className="gitem__do"><b>What to do:</b> {item.todo}</div> : null}
+      {item.key || item.every ? (
+        <div className="gitem__meta">
+          {item.every ? <span>Runs every {item.every} min</span> : null}
+          {item.fetch ? <span>Can start over</span> : null}
+        </div>
+      ) : null}
+      {item.key ? <div className="gitem__key">{highlight(item.key, q)}</div> : null}
+    </article>
+  );
+}
+
+function SyncGuideDrawer({ open, focusId, onClose }) {
+  const [q, setQ] = useState('');
+  const [openSecs, setOpenSecs] = useState(new Set(['health']));
+  const searchRef = useRef(null);
+  const query = q.trim().toLowerCase();
+
+  useEffect(() => {
+    if (!open) return;
+    if (focusId) {
+      const sec = GUIDE.find((s) => s.items.some((i) => i.id === focusId));
+      if (sec) setOpenSecs((prev) => new Set(prev).add(sec.id));
+      setQ('');
+    } else {
+      setTimeout(() => searchRef.current?.focus(), 60);
+    }
+  }, [open, focusId]);
+
+  const hit = (i) => [i.name, i.text, i.key, i.todo, i.how].filter(Boolean).join(' ').toLowerCase().includes(query);
+  const sections = GUIDE.map((s) => ({ ...s, shown: query ? s.items.filter(hit) : s.items })).filter((s) => s.shown.length);
+  const drag = useSheetDrag(onClose);
+  const toggle = (id) => setOpenSecs((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  return (
+    <>
+      <div className="guide-scrim" data-open={open} onClick={onClose} />
+      <aside className="guide" data-state="guide-panel" ref={drag.ref} data-open={open} role="dialog" aria-modal="true" aria-labelledby="guide-title" aria-hidden={!open}>
+        <div className="panel__handle" {...drag.handlers} aria-hidden="true"><span /></div>
+        <div className="guide__head" {...drag.handlers}>
+          <div className="guide__top">
+            <span className="sheet__kicker" />
+            <button type="button" className="button button--ghost" onClick={onClose} aria-label="Close guide">Close</button>
+          </div>
+          <h2 id="guide-title" className="sheet__title">How to read sync progress</h2>
+          <input ref={searchRef} className="input" id="guide-q" type="search" placeholder="Search the guide: empty, late, token…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search the guide" />
+        </div>
+        <div className="guide__body">
+          {!query ? (
+            <div className="gintro">
+              <p><strong>A sync bookmark</strong> is how far a sync got last time. The next run starts from there, so nothing is read twice and nothing is skipped.</p>
+              <p>Each row is one sync for one connection. Health tells you whether it keeps to its schedule. Progress tells you where it is.</p>
+            </div>
+          ) : null}
+          {sections.length === 0 ? <div className="gempty">Nothing in the guide matches “{q}”.</div> : sections.map((s) => {
+            const isOpen = Boolean(query) || openSecs.has(s.id);
+            return (
+              <section key={s.id} className="gsec" data-open={isOpen}>
+                <button type="button" className="gsec__head" aria-expanded={isOpen} aria-controls={`gs-${s.id}`} onClick={() => toggle(s.id)}>
+                  <span className="gsec__chev" aria-hidden="true">›</span>
+                  <span className="gsec__title">{s.title}</span>
+                  <span className="gsec__sum">{query ? `${s.shown.length} found` : s.sum}</span>
+                </button>
+                <div className="gsec__body" id={`gs-${s.id}`}><div className="gsec__inner"><div className="gsec__list">
+                  {s.shown.map((i) => <GuideItem key={i.id} item={i} q={query} focused={open && focusId === i.id} />)}
+                </div></div></div>
+              </section>
+            );
+          })}
+        </div>
+        <div className="guide__foot">Press ? anywhere on this page to open the guide, Esc to close it.</div>
+      </aside>
+    </>
+  );
+}
+
+const HEALTH_GUIDE_ID = { ok: 'h-ok', late: 'h-late', stuck: 'h-stuck', failing: 'h-failing', misplaced: 'h-misplaced' };
+const SYNC_GUIDE_ID = {
+  'Automation deadlines': 's-system',
+  'New orders': 's-orders', 'Offer changes': 's-offer-changes', 'New returns': 's-returns', 'Changed orders (backup check)': 's-changed-orders',
+  'Listing status check': 's-listing-status', 'Parcel tracking check': 's-parcel', 'Shop order status check': 's-shop-status',
+  'Product catalogue': 's-catalogue', 'Stock levels': 's-stock', 'Deleted products check': 's-deleted', 'Stock write order': 'p-stock',
+};
+
+/* =====================================================================
+ * pages/cursors/cursors-list-page.tsx (v2)
+ * ===================================================================== */
+const HEALTH_FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'problem', label: 'Needs a look' },
+  { value: 'ok', label: 'On time' },
+];
+const isProblem = (h) => ['misplaced', 'failing', 'stuck', 'late'].includes(h.id);
+
+function CursorsListPage() {
+  const [connFilter, setConnFilter] = useState('all');
+  const [health, setHealth] = useState('all');
+  const [search, setSearch] = useState('');
+  const [showKeys, setShowKeys] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState('');
+  const [guide, setGuide] = useState({ open: false, focus: null });
+  const explain = (id) => setGuide({ open: true, focus: id });
+  const timer = useRef(0);
+  useEffect(() => { const t = setTimeout(() => setLoading(false), 650); return () => clearTimeout(t); }, []);
+  useEffect(() => {
+    const onKey = (e) => {
+      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName ?? '');
+      if (e.key === '?' && !typing) { e.preventDefault(); setGuide({ open: true, focus: null }); }
+      if (e.key === 'Escape') setGuide((g) => (g.open ? { open: false, focus: null } : g));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  function notify(msg) { setToast(msg); clearTimeout(timer.current); timer.current = setTimeout(() => setToast(''), 2400); }
+
+  const stamps = useMemo(() => {
+    const s = {};
+    CURSORS.forEach((c) => { const m = c.cursorKey.match(/^(.+\.completedAt):/); if (m) { (s[c.conn] ??= {})[m[1]] = c.value; } });
+    return s;
+  }, []);
+
+  const rows = useMemo(() => CURSORS
+    .filter((c) => !describeCursor(c.cursorKey).hidden)
+    .map((c) => ({ ...c, health: readHealth(c, CONNECTIONS[c.conn]) })), []);
+
+  const problems = rows.filter((r) => isProblem(r.health) && describeCursor(r.cursorKey).kind !== 'write-order');
+
+  const q = search.trim().toLowerCase();
+  const visible = rows.filter((r) => {
+    if (connFilter !== 'all' && r.conn !== connFilter) return false;
+    if (health === 'problem' && !isProblem(r.health)) return false;
+    if (health === 'ok' && isProblem(r.health)) return false;
+    if (!q) return true;
+    return r.cursorKey.toLowerCase().includes(q) || describeCursor(r.cursorKey).label.toLowerCase().includes(q);
+  });
+
+  const connIds = GROUP_ORDER.filter((id) => connFilter === 'all' || id === connFilter);
+  const groups = connIds
+    .map((id) => ({ id, rows: visible.filter((r) => r.conn === id), all: rows.filter((r) => r.conn === id) }))
+    .filter((g) => g.rows.length || (!q && health === 'all' && g.all.length === 0))
+    .sort((a, b) => b.rows.filter((r) => isProblem(r.health)).length - a.rows.filter((r) => isProblem(r.health)).length);
+
+  const countable = rows.filter((r) => describeCursor(r.cursorKey).kind !== 'write-order');
+  const counts = { all: countable.length, problem: countable.filter((r) => isProblem(r.health)).length, ok: countable.filter((r) => !isProblem(r.health)).length };
+
+  return (
+    <div className="shell">
+      <PageLayout
+        eyebrow="Diagnostics"
+        title="Sync progress"
+        description="Every sync remembers how far it got, so the next run continues from there. Check here that orders, stock and listings are still being fetched on time."
+        actions={<><label className="switch"><input type="checkbox" id="keys" checked={showKeys} onChange={(e) => setShowKeys(e.target.checked)} />Show technical keys</label><Button variant="secondary" onClick={() => setGuide({ open: true, focus: null })} aria-keyshortcuts="?"><span className="qmark" aria-hidden="true">?</span>How to read this<span className="kbd" aria-hidden="true">?</span></Button></>}
+      >
+        {loading ? null : problems.length ? (
+          <div className="attention" data-state="needs-a-look" role="region" aria-label="Needs a look">
+            <div className="gitem__top" style={{ justifyContent: 'space-between' }}><p className="attention__title">{problems.length} {problems.length === 1 ? 'sync needs' : 'syncs need'} a look</p><button type="button" className="help-link" onClick={() => explain('h-late')}>What do these badges mean?</button></div>
+            <ul className="attention__list">
+              {problems.map((r) => (
+                <li key={r.conn + r.cursorKey} className="attention__item">
+                  <StatusBadge tone={r.health.tone} withDot>{r.health.label}</StatusBadge>
+                  <strong>{CONNECTIONS[r.conn].name}: {describeCursor(r.cursorKey).label}.</strong>
+                  <span>{r.health.why}</span>
+                  <button type="button" className="link" onClick={() => setSelected(r)}>Details</button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : <div className="allgood" data-state="all-on-time">All syncs are on time.</div>}
+
+        <div className="toolbar">
+          <label className="field">
+            <span className="field__label">Connection</span>
+            <select className="input" id="conn" value={connFilter} onChange={(e) => setConnFilter(e.target.value)}>
+              <option value="all">All connections</option>
+              {Object.entries(CONNECTIONS).map(([id, c]) => <option key={id} value={id}>{c.name}</option>)}
+            </select>
+          </label>
+          <label className="field grow">
+            <span className="field__label">Search</span>
+            <input className="input" id="q" type="search" placeholder="Orders, stock, an offer id…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </label>
+          <div className="field">
+            <span className="field__label">Health</span>
+            <SegmentedControl label="Filter by health" options={HEALTH_FILTERS.map((f) => ({ ...f, count: counts[f.value] }))} value={health} onChange={setHealth} />
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="group" data-state="loading" aria-busy="true" aria-label="Loading sync progress">
+            <div className="group__head"><span className="entity__meta">Loading…</span></div>
+            {[0, 1, 2, 3].map((i) => <div key={i} className="skeleton" />)}
+          </div>
+        ) : groups.length === 0 ? (
+          <div className="group note-row" data-state="no-match" style={{ textAlign: 'center' }}>
+            No syncs match these filters. <span><button type="button" className="link" onClick={() => { setHealth('all'); setSearch(''); setConnFilter('all'); }}>Clear filters</button></span>
+          </div>
+        ) : (
+          <div className="list">
+            {groups.map(({ id, rows: gRows, all }) => {
+              const conn = CONNECTIONS[id];
+              const marks = gRows.filter((r) => describeCursor(r.cursorKey).kind === 'write-order');
+              const main = gRows.filter((r) => describeCursor(r.cursorKey).kind !== 'write-order');
+              const bad = all.filter((r) => isProblem(r.health)).length;
+              return (
+                <section key={id} className="group" aria-label={conn.name}>
+                  <header className="group__head">
+                    <EntityLabel name={conn.name} platform={conn.platform} meta={conn.role} />
+                    <div className="group__actions">
+                      <span className="verdict">
+                        {all.length === 0 ? <StatusBadge tone="neutral">Pushes changes</StatusBadge>
+                          : bad ? <StatusBadge tone="warning" withDot>{bad} need a look</StatusBadge>
+                          : <StatusBadge tone="success">On time</StatusBadge>}
+                      </span>
+                      {conn.system ? null : <button type="button" className="link" onClick={() => notify(`Opens /connections/${conn.id.slice(0, 8)}…`)}>Open connection</button>}
+                    </div>
+                  </header>
+                  {all.length === 0 ? (
+                    <div className="note-row">
+                      <span>{conn.name} sends changes to OpenLinker as they happen, so it keeps no bookmarks. That is normal. <button type="button" className="help-link" onClick={() => explain('h-pushes')}>Why?</button></span>
+                    </div>
+                  ) : null}
+                  {main.length ? (
+                    <>
+                      <div className="cols"><button type="button" className="cols__btn" onClick={() => explain('s-orders')}>Sync <span className="qmark" aria-hidden="true">?</span></button><button type="button" className="cols__btn" onClick={() => explain('p-readupto')}>Progress <span className="qmark" aria-hidden="true">?</span></button><button type="button" className="cols__btn" onClick={() => explain('h-ok')}>Health <span className="qmark" aria-hidden="true">?</span></button><span>Last moved</span><span /></div>
+                      {main.map((c) => <CursorRow key={c.cursorKey} cursor={c} conn={conn} stamps={stamps[id] ?? {}} showKeys={showKeys} onOpen={setSelected} />)}
+                    </>
+                  ) : null}
+                  {marks.length ? <WriteOrderBundle cursors={marks} conn={conn} stamps={stamps[id] ?? {}} showKeys={showKeys} onOpen={setSelected} searching={Boolean(q)} /> : null}
+                </section>
+              );
+            })}
+          </div>
+        )}
+        <p className="sample-note">Example data. Times are relative to 6 Nov 2026, 11:00.</p>
+      </PageLayout>
+
+      <CursorDetailSheet cursor={selected} onClose={() => setSelected(null)} notify={notify} stamps={stamps} onExplain={explain} />
+      <SyncGuideDrawer open={guide.open} focusId={guide.focus} onClose={() => setGuide({ open: false, focus: null })} />
+      <div className="toast" role="status" aria-live="polite" data-show={Boolean(toast)}>{toast}</div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<CursorsListPage />);
+</script>

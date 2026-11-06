@@ -22,6 +22,7 @@ import type {
   ConnectionCursor,
   ConnectionCursorFilters,
   ConnectionCursorPagination,
+  ConnectionCursorPrefixSummary,
   PaginatedConnectionCursors,
 } from '../types/connection-cursor.types';
 
@@ -110,4 +111,12 @@ export interface ConnectionCursorRepositoryPort {
    * @param connectionId - Connection UUID
    */
   findMostRecentUpdate(connectionId: string): Promise<Date | null>;
+
+  /**
+   * Per-connection count and value range of every cursor whose key starts
+   * with `keyPrefix` (#4023). One grouped read, never a page of rows.
+   *
+   * @param keyPrefix - Literal key prefix (no pattern characters interpreted)
+   */
+  summarizeByKeyPrefix(keyPrefix: string): Promise<ConnectionCursorPrefixSummary[]>;
 }

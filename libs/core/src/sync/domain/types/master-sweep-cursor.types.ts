@@ -61,6 +61,16 @@ export function masterSweepCursorKey(kind: MasterSweepKind, connectionId: string
 }
 
 /**
+ * `master:{kind}:sweep:{connectionId}` - the per-connection run lock a sweep
+ * holds for one RUN (#2218). Lives here beside the cursor builders so the
+ * worker (holder) and the cursor-rewind service (#4023, which must refuse to
+ * reset a pass mid-run) render one key, not two copies of a template string.
+ */
+export function masterSweepLockKey(kind: MasterSweepKind, connectionId: string): string {
+  return `master:${kind}:sweep:${connectionId}`;
+}
+
+/**
  * `master.{kind}.completedAt:connection:{connectionId}` — ISO-8601 timestamp
  * of the most recent COMPLETED cycle (#2258). Deliberately a separate key
  * from the sweep cursor: the cursor is unconditionally cleared to `''` on

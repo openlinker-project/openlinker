@@ -1,15 +1,23 @@
 /**
- * Cursors API Client
+ * Cursors API
  *
- * Thin API module for the cursors feature. Provides typed methods for
- * listing connection cursors with optional filters and pagination.
+ * Thin transport module for the cursors endpoints.
  *
  * @module apps/web/src/features/cursors/api
  */
-import type { CursorFilters, CursorPagination, PaginatedCursors } from './cursors.types';
+import type {
+  CursorFilters,
+  CursorOverview,
+  CursorPagination,
+  PaginatedCursors,
+  RewindCursorInput,
+  RewindCursorResult,
+} from './cursors.types';
 
 export interface CursorsApi {
   list: (filters?: CursorFilters, pagination?: CursorPagination) => Promise<PaginatedCursors>;
+  overview: () => Promise<CursorOverview>;
+  rewind: (input: RewindCursorInput) => Promise<RewindCursorResult>;
 }
 
 interface ApiRequest {
@@ -19,6 +27,7 @@ interface ApiRequest {
 function buildQuery(filters?: CursorFilters, pagination?: CursorPagination): string {
   const params = new URLSearchParams();
   if (filters?.connectionId) params.set('connectionId', filters.connectionId);
+  if (filters?.keyPrefix) params.set('keyPrefix', filters.keyPrefix);
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
   const qs = params.toString();
@@ -29,6 +38,15 @@ export function createCursorsApi(request: ApiRequest): CursorsApi {
   return {
     list(filters, pagination): Promise<PaginatedCursors> {
       return request<PaginatedCursors>(`/cursors${buildQuery(filters, pagination)}`);
+    },
+    overview(): Promise<CursorOverview> {
+      return request<CursorOverview>('/cursors/overview');
+    },
+    rewind({ connectionId, cursorKey, target }): Promise<RewindCursorResult> {
+      return request<RewindCursorResult>(`/cursors/${encodeURIComponent(connectionId)}/rewind`, {
+        method: 'POST',
+        body: JSON.stringify({ cursorKey, target }),
+      });
     },
   };
 }

@@ -468,6 +468,24 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
     return entities.map((e) => this.toDomain(e));
   }
 
+  async findLatestByConnectionsAndJobTypes(
+    connectionIds: readonly string[],
+    jobTypes: readonly JobType[]
+  ): Promise<SyncJob[]> {
+    if (connectionIds.length === 0 || jobTypes.length === 0) return [];
+    const entities = await this.repository
+      .createQueryBuilder('j')
+      .distinctOn(['j.connectionId', 'j.jobType'])
+      .where('j.connectionId IN (:...connectionIds)', { connectionIds: [...connectionIds] })
+      .andWhere('j.jobType IN (:...jobTypes)', { jobTypes: [...jobTypes] })
+      .orderBy('j.connectionId', 'ASC')
+      .addOrderBy('j.jobType', 'ASC')
+      .addOrderBy('j.updatedAt', 'DESC')
+      .addOrderBy('j.id', 'DESC')
+      .getMany();
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   async findLastSucceededByConnectionAndJobType(
     connectionId: string,
     jobType: JobType
