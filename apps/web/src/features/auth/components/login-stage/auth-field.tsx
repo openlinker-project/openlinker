@@ -5,6 +5,10 @@
  * or the forgot-password link), the control, and an error row whose height is
  * ALWAYS reserved, so an error appearing never moves anything below it (#4029).
  *
+ * The aside comes AFTER the control in the DOM and the grid puts it back on
+ * the label row: Tab then reaches the password before "Forgot your
+ * password?", while it still reads beside the label.
+ *
  * @module features/auth/components/login-stage
  */
 import { AnimatePresence, motion } from 'motion/react';
@@ -35,13 +39,11 @@ export function AuthField({ id, label, aside, error, children }: AuthFieldProps)
   });
   return (
     <div className="auth-field">
-      <div className="auth-field__labels">
-        <label htmlFor={id} className="form-field__label">
-          {label}
-        </label>
-        {aside}
-      </div>
-      {control}
+      <label htmlFor={id} className="form-field__label auth-field__label">
+        {label}
+      </label>
+      <div className="auth-field__control">{control}</div>
+      {aside ? <div className="auth-field__aside">{aside}</div> : null}
       <div className="auth-field__error">
         <AnimatePresence initial={false}>
           {error ? (

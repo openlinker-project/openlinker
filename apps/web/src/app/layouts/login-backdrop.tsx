@@ -159,6 +159,41 @@ const CHANNEL_ROWS = [
   { key: 'e', channel: 'Erli', orders: '31', revenue: '4 820 zł', share: '10%' },
 ];
 
+const PRODUCT_ROWS = [
+  {
+    key: '1',
+    product: 'Merino wool hoodie',
+    sku: 'HD-MER-GRY-M',
+    units: '42',
+    revenue: '8 358 zł',
+  },
+  {
+    key: '2',
+    product: 'Running shoes Aero',
+    sku: 'SH-AER-BLK-42',
+    units: '37',
+    revenue: '7 363 zł',
+  },
+  { key: '3', product: 'Canvas tote bag', sku: 'BG-CNV-NAT', units: '61', revenue: '3 599 zł' },
+  {
+    key: '4',
+    product: 'Thermo bottle 750 ml',
+    sku: 'BT-THR-750',
+    units: '54',
+    revenue: '3 186 zł',
+  },
+  { key: '5', product: 'Linen shirt', sku: 'SR-LIN-WHT-L', units: '23', revenue: '3 197 zł' },
+  { key: '6', product: 'Wool beanie', sku: 'HT-WOL-NVY', units: '48', revenue: '1 872 zł' },
+  { key: '7', product: 'Leather wallet', sku: 'WL-LTH-BRN', units: '19', revenue: '1 691 zł' },
+  {
+    key: '8',
+    product: 'Cotton socks, 3 pairs',
+    sku: 'SK-COT-3P',
+    units: '66',
+    revenue: '1 584 zł',
+  },
+];
+
 type Badge = [string, StatusBadgeTone];
 
 const ORDER_ROWS: Array<{
@@ -241,6 +276,96 @@ const ORDER_ROWS: Array<{
     ship: ['Delivered', 'success'],
     money: '79,98 zł',
   },
+  {
+    key: '8',
+    id: '#W-1186',
+    when: '5 h ago',
+    customer: 'Jan Nowak',
+    channel: 'WooCommerce',
+    status: ['Shipped', 'success'],
+    ship: ['In transit', 'success'],
+    money: '154,00 zł',
+  },
+  {
+    key: '9',
+    id: '#A-4816',
+    when: '5 h ago',
+    customer: 'Anna Lewandowska',
+    channel: 'Allegro',
+    status: ['Processing', 'review'],
+    ship: ['Label ready', 'info'],
+    money: '219,90 zł',
+  },
+  {
+    key: '10',
+    id: '#P-3311',
+    when: '6 h ago',
+    customer: 'Piotr Dąbrowski',
+    channel: 'PrestaShop',
+    status: ['Delivered', 'success'],
+    ship: ['Delivered', 'success'],
+    money: '98,50 zł',
+  },
+  {
+    key: '11',
+    id: '#E-0953',
+    when: '7 h ago',
+    customer: 'Monika Grabowska',
+    channel: 'Erli',
+    status: ['Shipped', 'success'],
+    ship: ['In transit', 'success'],
+    money: '139,00 zł',
+  },
+  {
+    key: '12',
+    id: '#A-4815',
+    when: '8 h ago',
+    customer: 'Krzysztof Pawlak',
+    channel: 'Allegro',
+    status: ['Delivered', 'success'],
+    ship: ['Delivered', 'success'],
+    money: '59,99 zł',
+  },
+  {
+    key: '13',
+    id: '#A-4814',
+    when: '9 h ago',
+    customer: 'Joanna Michalska',
+    channel: 'Allegro',
+    status: ['Delivered', 'success'],
+    ship: ['Delivered', 'success'],
+    money: '305,00 zł',
+  },
+  {
+    key: '14',
+    id: '#W-1185',
+    when: 'yesterday',
+    customer: 'Łukasz Król',
+    channel: 'WooCommerce',
+    status: ['Delivered', 'success'],
+    ship: ['Delivered', 'success'],
+    money: '74,90 zł',
+  },
+  {
+    key: '15',
+    id: '#P-3310',
+    when: 'yesterday',
+    customer: 'Magdalena Wieczorek',
+    channel: 'PrestaShop',
+    status: ['Cancelled', 'neutral'],
+    ship: ['Not shipped', 'neutral'],
+    money: '49,00 zł',
+  },
+  {
+    key: '16',
+    id: '#A-4813',
+    when: 'yesterday',
+    customer: 'Rafał Jabłoński',
+    channel: 'Allegro',
+    status: ['Delivered', 'success'],
+    ship: ['Delivered', 'success'],
+    money: '189,00 zł',
+  },
 ];
 
 const SHIPMENT_ROWS: Array<{
@@ -291,6 +416,78 @@ const SHIPMENT_ROWS: Array<{
     status: ['Delivered', 'success'],
     updated: '4 h ago',
   },
+  {
+    key: '6',
+    tracking: '6800 0921 4470 7731 0094 52',
+    order: '#W-1186',
+    carrier: 'InPost Kurier',
+    status: ['In transit', 'success'],
+    updated: '5 h ago',
+  },
+  {
+    key: '7',
+    tracking: '0000 3470 9876 2PL',
+    order: '#A-4816',
+    carrier: 'DPD',
+    status: ['Label ready', 'info'],
+    updated: '5 h ago',
+  },
+  {
+    key: '8',
+    tracking: '6800 0921 4470 6620 1187 33',
+    order: '#P-3311',
+    carrier: 'InPost Paczkomat',
+    status: ['Delivered', 'success'],
+    updated: '6 h ago',
+  },
+  {
+    key: '9',
+    tracking: '6800 0921 4470 5519 2276 18',
+    order: '#E-0953',
+    carrier: 'InPost Paczkomat',
+    status: ['In transit', 'success'],
+    updated: '7 h ago',
+  },
+  {
+    key: '10',
+    tracking: '0000 3470 9654 7PL',
+    order: '#A-4815',
+    carrier: 'DPD',
+    status: ['Delivered', 'success'],
+    updated: '8 h ago',
+  },
+  {
+    key: '11',
+    tracking: '6800 0921 4470 4408 3365 09',
+    order: '#A-4814',
+    carrier: 'InPost Paczkomat',
+    status: ['Delivered', 'success'],
+    updated: '9 h ago',
+  },
+  {
+    key: '12',
+    tracking: '6800 0921 4470 3397 4454 71',
+    order: '#W-1185',
+    carrier: 'InPost Kurier',
+    status: ['Delivered', 'success'],
+    updated: 'yesterday',
+  },
+  {
+    key: '13',
+    tracking: '0000 3470 9432 1PL',
+    order: '#A-4813',
+    carrier: 'DPD',
+    status: ['Delivered', 'success'],
+    updated: 'yesterday',
+  },
+  {
+    key: '14',
+    tracking: '6800 0921 4470 2286 5543 26',
+    order: '#A-4812',
+    carrier: 'InPost Paczkomat',
+    status: ['Delivered', 'success'],
+    updated: 'yesterday',
+  },
 ];
 
 const mono = (value: string): ReactElement => <span className="mono-text">{value}</span>;
@@ -339,6 +536,16 @@ const SCENES: Record<'analytics' | 'orders' | 'shipments', Scene> = {
             { id: 'o', header: 'Orders', align: 'right', cell: (row) => mono(row.orders) },
             { id: 'r', header: 'Revenue', align: 'right', cell: (row) => mono(row.revenue) },
             { id: 's', header: 'Share', align: 'right', cell: (row) => mono(row.share) },
+          ]}
+        />
+        <DataTable
+          rows={PRODUCT_ROWS}
+          rowKey={(row) => row.key}
+          columns={[
+            { id: 'p', header: 'Top products', cell: (row) => row.product },
+            { id: 'k', header: 'SKU', cell: (row) => mono(row.sku) },
+            { id: 'u', header: 'Units', align: 'right', cell: (row) => mono(row.units) },
+            { id: 'r', header: 'Revenue', align: 'right', cell: (row) => mono(row.revenue) },
           ]}
         />
       </PageLayout>

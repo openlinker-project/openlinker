@@ -6879,25 +6879,46 @@ html:has(.login-stage) {
   font-size: 0.875rem;
 }
 
+/* The aside follows the control in the DOM (Tab order) and sits on the label row. */
 .auth-field {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'label aside'
+    'control control'
+    'error error';
+  column-gap: 12px;
 }
 
-.auth-field__labels {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
+.auth-field__label {
+  grid-area: label;
+  align-self: end;
   margin-bottom: var(--space-2);
 }
 
-.auth-field__labels a {
+.auth-field__control {
+  grid-area: control;
+  min-width: 0;
+}
+
+.auth-field__aside {
+  grid-area: aside;
+  align-self: end;
+  margin-bottom: var(--space-2);
+  line-height: 1.5;
+}
+
+.auth-field__error {
+  grid-area: error;
+}
+
+.auth-field__aside a {
   font-size: 0.8125rem;
   color: var(--text-secondary);
   text-decoration: none;
 }
 
-.auth-field__labels a:hover {
+.auth-field__aside a:hover {
   color: var(--text-primary);
   text-decoration: underline;
 }

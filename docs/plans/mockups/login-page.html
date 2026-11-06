@@ -2509,10 +2509,13 @@ body:has([data-bare]) .admin-view .shell { min-height:100dvh; }
 .v-head { margin-bottom:18px; }
 .auth-form { display:grid; }
 .auth-form .control { height:2.5rem; font-size:.875rem; }
-.f { display:grid; }
-.f__labels { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:var(--space-2); }
-.f__labels a { font-size:.8125rem; color:var(--text-secondary); text-decoration:none; }
-.f__labels a:hover { color:var(--text-primary); text-decoration:underline; }
+.f { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:'label aside' 'control control' 'error error'; column-gap:12px; }
+.f__label { grid-area:label; align-self:end; margin-bottom:var(--space-2); }
+.f__control { grid-area:control; min-width:0; }
+.f__aside { grid-area:aside; align-self:end; margin-bottom:var(--space-2); line-height:1.5; }
+.f__err { grid-area:error; }
+.f__aside a { font-size:.8125rem; color:var(--text-secondary); text-decoration:none; }
+.f__aside a:hover { color:var(--text-primary); text-decoration:underline; }
 .f__hint { font-size:.75rem; color:var(--text-muted); }
 .f__err { min-height:22px; padding-top:4px; }
 .f__err p { margin:0; color:var(--status-error-strong); font-size:.75rem; }
@@ -2646,11 +2649,9 @@ function Field({ id, label, aside, error, children }) {
   const errorId = `${id}-error`;
   return (
     <div className="f">
-      <div className="f__labels">
-        <label htmlFor={id} className="form-field__label">{label}</label>
-        {aside}
-      </div>
-      {React.cloneElement(children, { id, invalid: Boolean(error), 'aria-invalid': Boolean(error), 'aria-describedby': error ? errorId : undefined })}
+      <label htmlFor={id} className="form-field__label f__label">{label}</label>
+      <div className="f__control">{React.cloneElement(children, { id, invalid: Boolean(error), 'aria-invalid': Boolean(error), 'aria-describedby': error ? errorId : undefined })}</div>
+      {aside ? <div className="f__aside">{aside}</div> : null}
       <div className="f__err">
         <AnimatePresence initial={false}>
           {error ? (
@@ -2858,6 +2859,17 @@ const CHANNEL_ROWS = [
   { key: 'e', channel: 'Erli', orders: 31, revenue: '4 820 zł', share: '10%' },
 ];
 
+const PRODUCT_ROWS = [
+  { key: '1', product: 'Merino wool hoodie', sku: 'HD-MER-GRY-M', units: '42', revenue: '8 358 zł' },
+  { key: '2', product: 'Running shoes Aero', sku: 'SH-AER-BLK-42', units: '37', revenue: '7 363 zł' },
+  { key: '3', product: 'Canvas tote bag', sku: 'BG-CNV-NAT', units: '61', revenue: '3 599 zł' },
+  { key: '4', product: 'Thermo bottle 750 ml', sku: 'BT-THR-750', units: '54', revenue: '3 186 zł' },
+  { key: '5', product: 'Linen shirt', sku: 'SR-LIN-WHT-L', units: '23', revenue: '3 197 zł' },
+  { key: '6', product: 'Wool beanie', sku: 'HT-WOL-NVY', units: '48', revenue: '1 872 zł' },
+  { key: '7', product: 'Leather wallet', sku: 'WL-LTH-BRN', units: '19', revenue: '1 691 zł' },
+  { key: '8', product: 'Cotton socks, 3 pairs', sku: 'SK-COT-3P', units: '66', revenue: '1 584 zł' },
+];
+
 const ORDER_ROWS = [
   { key: '1', id: '#A-4821', when: '2 min ago', customer: 'Marta Wiśniewska', channel: 'Allegro', status: ['New', 'info'], ship: ['Not shipped', 'neutral'], money: '189,00 zł' },
   { key: '2', id: '#A-4820', when: '18 min ago', customer: 'Tomasz Wójcik', channel: 'Allegro', status: ['Processing', 'review'], ship: ['Label ready', 'info'], money: '249,00 zł' },
@@ -2865,7 +2877,16 @@ const ORDER_ROWS = [
   { key: '4', id: '#P-3312', when: '1 h ago', customer: 'Michał Zieliński', channel: 'PrestaShop', status: ['Shipped', 'success'], ship: ['In transit', 'success'], money: '412,50 zł' },
   { key: '5', id: '#E-0954', when: '2 h ago', customer: 'Agnieszka Kowalczyk', channel: 'Erli', status: ['Pending', 'warning'], ship: ['Not shipped', 'neutral'], money: '64,99 zł' },
   { key: '6', id: '#A-4818', when: '3 h ago', customer: 'Paweł Kamiński', channel: 'Allegro', status: ['Delivered', 'success'], ship: ['Delivered', 'success'], money: '129,00 zł' },
-  { key: '7', id: '#A-4817', when: '4 h ago', customer: 'Ewa Szymańska', channel: 'Allegro', status: ['Delivered', 'success'], ship: ['Delivered', 'success'], money: '79,98 zł' },
+  { key: '7', id: '#A-4817', when: '4 h ago', customer: 'Ewa Szymańska', channel: 'Allegro', status: ['Delivered', 'success'], ship: ['Delivered', 'success'], money: '79,98 zł' },  { key: '8', id: '#W-1186', when: '5 h ago', customer: 'Jan Nowak', channel: 'WooCommerce', status: ['Shipped', 'success'], ship: ['In transit', 'success'], money: '154,00 zł' },
+  { key: '9', id: '#A-4816', when: '5 h ago', customer: 'Anna Lewandowska', channel: 'Allegro', status: ['Processing', 'review'], ship: ['Label ready', 'info'], money: '219,90 zł' },
+  { key: '10', id: '#P-3311', when: '6 h ago', customer: 'Piotr Dąbrowski', channel: 'PrestaShop', status: ['Delivered', 'success'], ship: ['Delivered', 'success'], money: '98,50 zł' },
+  { key: '11', id: '#E-0953', when: '7 h ago', customer: 'Monika Grabowska', channel: 'Erli', status: ['Shipped', 'success'], ship: ['In transit', 'success'], money: '139,00 zł' },
+  { key: '12', id: '#A-4815', when: '8 h ago', customer: 'Krzysztof Pawlak', channel: 'Allegro', status: ['Delivered', 'success'], ship: ['Delivered', 'success'], money: '59,99 zł' },
+  { key: '13', id: '#A-4814', when: '9 h ago', customer: 'Joanna Michalska', channel: 'Allegro', status: ['Delivered', 'success'], ship: ['Delivered', 'success'], money: '305,00 zł' },
+  { key: '14', id: '#W-1185', when: 'yesterday', customer: 'Łukasz Król', channel: 'WooCommerce', status: ['Delivered', 'success'], ship: ['Delivered', 'success'], money: '74,90 zł' },
+  { key: '15', id: '#P-3310', when: 'yesterday', customer: 'Magdalena Wieczorek', channel: 'PrestaShop', status: ['Cancelled', 'neutral'], ship: ['Not shipped', 'neutral'], money: '49,00 zł' },
+  { key: '16', id: '#A-4813', when: 'yesterday', customer: 'Rafał Jabłoński', channel: 'Allegro', status: ['Delivered', 'success'], ship: ['Delivered', 'success'], money: '189,00 zł' },
+
 ];
 
 const SHIPMENT_ROWS = [
@@ -2873,7 +2894,16 @@ const SHIPMENT_ROWS = [
   { key: '2', tracking: '0000 3471 2209 1PL', order: '#W-1187', carrier: 'DPD', status: ['Dispatched', 'success'], updated: '40 min ago' },
   { key: '3', tracking: '6800 0921 4470 9921 0042 11', order: '#P-3312', carrier: 'InPost Kurier', status: ['In transit', 'success'], updated: '1 h ago' },
   { key: '4', tracking: '6800 0921 4470 8812 3310 07', order: '#A-4818', carrier: 'InPost Paczkomat', status: ['Delivered', 'success'], updated: '3 h ago' },
-  { key: '5', tracking: '0000 3470 9981 4PL', order: '#A-4817', carrier: 'DPD', status: ['Delivered', 'success'], updated: '4 h ago' },
+  { key: '5', tracking: '0000 3470 9981 4PL', order: '#A-4817', carrier: 'DPD', status: ['Delivered', 'success'], updated: '4 h ago' },  { key: '6', tracking: '6800 0921 4470 7731 0094 52', order: '#W-1186', carrier: 'InPost Kurier', status: ['In transit', 'success'], updated: '5 h ago' },
+  { key: '7', tracking: '0000 3470 9876 2PL', order: '#A-4816', carrier: 'DPD', status: ['Label ready', 'info'], updated: '5 h ago' },
+  { key: '8', tracking: '6800 0921 4470 6620 1187 33', order: '#P-3311', carrier: 'InPost Paczkomat', status: ['Delivered', 'success'], updated: '6 h ago' },
+  { key: '9', tracking: '6800 0921 4470 5519 2276 18', order: '#E-0953', carrier: 'InPost Paczkomat', status: ['In transit', 'success'], updated: '7 h ago' },
+  { key: '10', tracking: '0000 3470 9654 7PL', order: '#A-4815', carrier: 'DPD', status: ['Delivered', 'success'], updated: '8 h ago' },
+  { key: '11', tracking: '6800 0921 4470 4408 3365 09', order: '#A-4814', carrier: 'InPost Paczkomat', status: ['Delivered', 'success'], updated: '9 h ago' },
+  { key: '12', tracking: '6800 0921 4470 3397 4454 71', order: '#W-1185', carrier: 'InPost Kurier', status: ['Delivered', 'success'], updated: 'yesterday' },
+  { key: '13', tracking: '0000 3470 9432 1PL', order: '#A-4813', carrier: 'DPD', status: ['Delivered', 'success'], updated: 'yesterday' },
+  { key: '14', tracking: '6800 0921 4470 2286 5543 26', order: '#A-4812', carrier: 'InPost Paczkomat', status: ['Delivered', 'success'], updated: 'yesterday' },
+
 ];
 
 const mono = (v) => <span className="mono-text">{v}</span>;
@@ -2892,6 +2922,12 @@ const SCENES = {
           { id: 'o', header: 'Orders', align: 'right', cell: (r) => mono(r.orders) },
           { id: 'r', header: 'Revenue', align: 'right', cell: (r) => mono(r.revenue) },
           { id: 's', header: 'Share', align: 'right', cell: (r) => mono(r.share) },
+        ]} />
+        <DataTable rows={PRODUCT_ROWS} columns={[
+          { id: 'p', header: 'Top products', cell: (r) => r.product },
+          { id: 'k', header: 'SKU', cell: (r) => mono(r.sku) },
+          { id: 'u', header: 'Units', align: 'right', cell: (r) => mono(r.units) },
+          { id: 'r', header: 'Revenue', align: 'right', cell: (r) => mono(r.revenue) },
         ]} />
       </PageLayout>
     ),
@@ -3326,15 +3362,14 @@ function ThemeSwitch({ placement = 'down', locale }) {
                   {THEME_OPTIONS.map((v, index) => {
                     const selected = v === theme;
                     return (
-                      <button key={v} ref={(el) => { segmentRefs.current[index] = el; }} type="button" role="radio" aria-checked={selected}
+                      <motion.button key={v} ref={(el) => { segmentRefs.current[index] = el; }} animate={selected ? 'on' : 'off'} whileTap="tap" type="button" role="radio" aria-checked={selected}
                         tabIndex={selected ? 0 : -1} aria-label={copy[v]} className="theme-switch__segment"
                         onPointerEnter={() => setPointing(index)} onClick={() => setTheme(v)}>
                         {selected ? <motion.span className="theme-switch__thumb" layoutId={`${groupId}-thumb`} transition={THUMB_SPRING} /> : null}
-                        <motion.span className="theme-switch__segment-icon" animate={selected ? { scale: 1, rotate: 0 } : { scale: 0.86, rotate: 0 }}
-                          whileTap={{ scale: 0.8, rotate: v === 'light' ? 45 : -20 }} transition={LS_SPRING}>
+                        <motion.span className="theme-switch__segment-icon" variants={{ on: { scale: 1, rotate: 0 }, off: { scale: 0.86, rotate: 0 }, tap: { scale: 0.8, rotate: v === 'light' ? 45 : -20 } }} transition={LS_SPRING}>
                           <ThemeIcon theme={v} />
                         </motion.span>
-                      </button>
+                      </motion.button>
                     );
                   })}
                 </div>
@@ -3687,7 +3722,7 @@ function AuthPanel({ preset, copy, showTrackingFootnote = false, onReserve, init
                 <Field id={ids.c} label={ui.confirm} error={errText('confirm')}>
                   <PasswordInput value={values.confirm} onChange={set('confirm')} autoComplete="new-password" />
                 </Field>
-                <motion.div whileTap={reduce ? undefined : { scale: 0.985 }} transition={SPRING}>
+                <motion.div whileTap={reduce ? undefined : { scale: 0.985 }} transition={SPRING} tabIndex={-1}>
                   <Button type="submit" className="submit" disabled={pending}>{submitLabel(copy.register.submit, copy.register.pending)}</Button>
                 </motion.div>
               </form>
@@ -3719,7 +3754,7 @@ function AuthPanel({ preset, copy, showTrackingFootnote = false, onReserve, init
             <Field id={ids.lp} label={ui.password} aside={<a href="#forgot" onClick={(e) => e.preventDefault()}>{ui.forgot}</a>} error={errText('password')}>
               <PasswordInput value={values.password} onChange={set('password')} autoComplete="current-password" />
             </Field>
-            <motion.div whileTap={reduce ? undefined : { scale: 0.985 }} transition={SPRING}>
+            <motion.div whileTap={reduce ? undefined : { scale: 0.985 }} transition={SPRING} tabIndex={-1}>
               <Button type="submit" className="submit" disabled={pending}>{submitLabel(copy.login.submit, copy.login.pending)}</Button>
             </motion.div>
           </form>

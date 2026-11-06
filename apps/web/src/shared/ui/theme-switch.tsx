@@ -307,11 +307,16 @@ export function ThemeSwitch({
                   {OPTIONS.map((value, index) => {
                     const selected = value === theme;
                     return (
-                      <button
+                      // The press animation lives on the button and reaches the icon as
+                      // the `tap` variant: `whileTap` on the icon itself would make Motion
+                      // give that span tabIndex=0, a stray tab stop inside the radio.
+                      <motion.button
                         key={value}
                         ref={(el) => {
                           segmentRefs.current[index] = el;
                         }}
+                        animate={selected ? 'on' : 'off'}
+                        whileTap="tap"
                         type="button"
                         role="radio"
                         aria-checked={selected}
@@ -330,13 +335,16 @@ export function ThemeSwitch({
                         ) : null}
                         <motion.span
                           className="theme-switch__segment-icon"
-                          animate={selected ? { scale: 1, rotate: 0 } : { scale: 0.86, rotate: 0 }}
-                          whileTap={{ scale: 0.8, rotate: value === 'light' ? 45 : -20 }}
+                          variants={{
+                            on: { scale: 1, rotate: 0 },
+                            off: { scale: 0.86, rotate: 0 },
+                            tap: { scale: 0.8, rotate: value === 'light' ? 45 : -20 },
+                          }}
                           transition={SPRING}
                         >
                           <ThemeIcon theme={value} />
                         </motion.span>
-                      </button>
+                      </motion.button>
                     );
                   })}
                 </div>

@@ -366,7 +366,7 @@ export function AuthCard({
                 >
                   {(fp) => passwordInput('confirm', 'new-password', fp)}
                 </AuthField>
-                <motion.div whileTap={tap} transition={LOGIN_STAGE_SPRING}>
+                <motion.div whileTap={tap} transition={LOGIN_STAGE_SPRING} tabIndex={-1}>
                   <Button type="submit" className="auth-card__submit" disabled={pending}>
                     {submitLabel(copy.register.submit, copy.register.pending)}
                   </Button>
@@ -432,7 +432,7 @@ export function AuthCard({
             >
               {(fp) => passwordInput('password', 'current-password', fp)}
             </AuthField>
-            <motion.div whileTap={tap} transition={LOGIN_STAGE_SPRING}>
+            <motion.div whileTap={tap} transition={LOGIN_STAGE_SPRING} tabIndex={-1}>
               <Button type="submit" className="auth-card__submit" disabled={pending}>
                 {submitLabel(copy.login.submit, copy.login.pending)}
               </Button>
