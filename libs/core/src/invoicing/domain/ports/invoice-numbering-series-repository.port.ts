@@ -114,4 +114,26 @@ export interface InvoiceNumberingSeriesRepositoryPort {
     /** Provider max document-number length; over-length renders throw (#11). Absent = no limit. */
     maxDocumentNumberLength?: number;
   }): Promise<AllocatedNumber>;
+
+  /**
+   * Move a refused invoice's number onto the attempt that follows it (#3960).
+   *
+   * A refused attempt already holds the number it was allocated, and the
+   * provider created nothing under it. Allocating a fresh number for the next
+   * attempt would leave that one as a gap in the sequence, which the gap audit
+   * reports and which numbering rules forbid. So the next attempt TAKES the
+   * number instead: one transaction locks the predecessor, clears its number,
+   * then writes it onto the successor (two statements, in that order, because
+   * the unique number indexes check each row immediately).
+   *
+   * Moves nothing and returns `null` unless the predecessor is a refused
+   * (`failed` + `rejected`) record numbered from `seriesId` and the successor
+   * has no number yet. The caller then allocates a fresh number, and the old
+   * one stays an audited gap - correct when the routing chose another series.
+   */
+  inheritNumber(input: {
+    fromRecordId: string;
+    toRecordId: string;
+    seriesId: string;
+  }): Promise<AllocatedNumber | null>;
 }

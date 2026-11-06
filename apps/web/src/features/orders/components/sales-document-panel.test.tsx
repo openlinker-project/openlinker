@@ -100,6 +100,8 @@ function makeFiscalRecord(over: Partial<FiscalRegistrationRecord> = {}): FiscalR
     orderId: ORDER_ID,
     providerType: 'eparagony',
     idempotencyKey: `fiscal:${FISCAL_CONN_ID}:${ORDER_ID}`,
+    attempt: 0,
+    previousAttemptId: null,
     status: 'registered',
     providerReference: 'ep_1',
     documentReference: '1/2026/08/14',
@@ -1419,7 +1421,56 @@ describe('SalesDocumentPanel - provider failure details (#3843)', () => {
     expect(screen.getByText('83')).toBeInTheDocument();
     expect(screen.getByText('16')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Copy details' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Register receipt' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Register again' })).toBeInTheDocument();
+    // #3960 - says what the button does before it is pressed.
+    expect(screen.getByTestId('fiscal-register-again-hint')).toHaveTextContent(/as attempt 2\./);
+  });
+
+  it('announces the new attempt rather than "Registered." after asking again (#3960)', async () => {
+    const register = vi.fn().mockResolvedValue({
+      orderId: ORDER_ID,
+      connectionId: FISCAL_CONN_ID,
+      idempotencyKey: `fiscal:${FISCAL_CONN_ID}:${ORDER_ID}:r1`,
+      jobId: 'job_2',
+      outcome: 'new-attempt',
+      attempt: 1,
+      previousAttemptId: rejected.id,
+      redrivenFromDead: false,
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([rejected]), register },
+      }),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Register again' }));
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Attempt 2 requested.'));
+    expect(screen.getByRole('status')).not.toHaveTextContent('Registered.');
+  });
+
+  it('keeps a refused attempt on record under the attempt that followed it (#3960)', async () => {
+    const registered = makeFiscalRecord({
+      id: 'fr_2',
+      attempt: 1,
+      previousAttemptId: rejected.id,
+      idempotencyKey: `fiscal:${FISCAL_CONN_ID}:${ORDER_ID}:r1`,
+    });
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([registered, rejected]) },
+      }),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const earlier = await screen.findByTestId('fiscal-earlier-attempts');
+    expect(earlier).toHaveTextContent('Earlier attempts');
+    expect(earlier).toHaveTextContent('Attempt 1');
+    expect(earlier).toHaveTextContent('Refused');
   });
 
   it('gives a viewer the short sentence with no identifiers and no register action', async () => {
@@ -1437,6 +1488,6 @@ describe('SalesDocumentPanel - provider failure details (#3843)', () => {
     expect(await screen.findByText(/A user with order write access can see the details/)).toBeInTheDocument();
     expect(screen.queryByTestId('fiscal-failure-details')).toBeNull();
     expect(screen.queryByText('83')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Register receipt' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Register again' })).toBeNull();
   });
 });
