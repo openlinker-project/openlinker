@@ -153,7 +153,11 @@ export const ORDER_EDIT_REFUSAL_COPY: Record<OrderEditErrorCode, OrderEditRefusa
   LABEL_ALREADY_BOUGHT: {
     title: 'A shipping label is already bought',
     fallbackReason: 'The label carries the current address and method.',
-    steps: ['Cancel the shipment. This voids its label with the carrier.', 'Edit the order.'],
+    steps: [
+      'Cancel the shipment. This voids its label with the carrier.',
+      'Edit the order.',
+      "If the carrier will not cancel it (the parcel is already confirmed), cancel the parcel in the carrier's panel and contact support to change the order.",
+    ],
     locks: ['address', 'delivery'],
     remedy: { target: 'shipment', label: 'Go to shipment' },
   },

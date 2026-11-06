@@ -33,6 +33,26 @@
       "overdue": "Po terminie {duration}"
     }
   },
+  "shipments": {
+    "cancelError": {
+      "carrierRefused": {
+        "message": "Przewoźnik nie pozwala już anulować tej przesyłki, zwykle dlatego, że paczka została potwierdzona. Anuluj paczkę w panelu przewoźnika albo skontaktuj się z pomocą techniczną.",
+        "title": "Przewoźnik nie anulował tej przesyłki"
+      },
+      "failed": {
+        "message": "Anulowanie mogło nie dotrzeć do przewoźnika. Sprawdź status przesyłki, zanim spróbujesz ponownie.",
+        "title": "Nie udało się anulować przesyłki"
+      },
+      "noLongerActive": {
+        "message": "Przesyłka jest już zakończona albo anulowana. Zamknij to okno, aby zobaczyć jej aktualny status.",
+        "title": "Tej przesyłki nie można już anulować"
+      },
+      "notSupported": {
+        "message": "OpenLinker nie może anulować przesyłek tego przewoźnika. Anuluj paczkę w panelu przewoźnika.",
+        "title": "Ten przewoźnik nie obsługuje anulowania"
+      }
+    }
+  },
   "ui": {
     "accessDenied": {
       "eyebrow": "Brak dostępu",
