@@ -116,7 +116,11 @@ function isParamValue(value: unknown): value is string | number | boolean {
 /** Keeps only scalar entries: anything else is not a param the copy can use. */
 function readParams(value: unknown): ApiErrorParams {
   if (!isRecord(value)) return {};
-  return Object.fromEntries(Object.entries(value).filter(([, entry]) => isParamValue(entry)));
+  const params: Record<string, string | number | boolean> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (isParamValue(entry)) params[key] = entry;
+  }
+  return params;
 }
 
 function readFields(value: unknown): readonly ApiErrorField[] {
