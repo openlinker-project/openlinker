@@ -59,7 +59,14 @@ function JobTypeCell({ jobType }: { jobType: string }): ReactElement {
       </span>
       {scope ? (
         <span className="sync-job-type__scope" aria-hidden="true">
-          {scope}
+          {/* Break only after a dot, never inside a segment. */}
+          {scope.split('.').map((segment, i) => (
+            <span key={i}>
+              {i > 0 ? '.' : ''}
+              {i > 0 ? <wbr /> : null}
+              {segment}
+            </span>
+          ))}
         </span>
       ) : null}
     </span>

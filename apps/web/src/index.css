@@ -32930,9 +32930,9 @@ legend.analytics-settings-dialog__label {
   font-size: 0.8125rem;
 }
 
-.conn-health__col-platform { width: 9.5rem; }
+.conn-health__col-platform { width: 11.5rem; }
 .conn-health__col-status { width: 7.5rem; }
-.conn-health__col-failed { width: 9.5rem; }
+.conn-health__col-failed { width: 9rem; }
 
 .conn-health__table th {
   padding: var(--space-2) var(--space-3);
@@ -33113,7 +33113,6 @@ legend.analytics-settings-dialog__label {
 .sync-job-type__scope {
   color: var(--text-muted);
   font-size: 0.6875rem;
-  overflow-wrap: anywhere;
 }
 
 .sync-job-error {
