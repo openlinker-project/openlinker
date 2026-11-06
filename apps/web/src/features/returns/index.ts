@@ -128,7 +128,6 @@ export { ReturnLinesTable } from './components/return-lines-table';
 export { ReturnOrphanBanner } from './components/return-orphan-banner';
 export {
   RETURN_DECLINE_COPY,
-  RETURN_DECLINE_ERROR_COPY,
   RETURN_DECLINE_OUTCOME_COPY,
   RETURN_DETAIL_COPY,
   RETURN_DETAIL_HEADER_COPY,

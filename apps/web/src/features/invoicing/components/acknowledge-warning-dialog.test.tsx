@@ -2,12 +2,15 @@ import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ReactElement } from 'react';
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import { renderWithProviders } from '../../../test/test-utils';
 import { useWarningAcknowledgement } from './acknowledge-warning-dialog';
 
 afterEach(() => cleanup());
 
 const refusal = new ApiError('cancelled', 409, {
+  code: 'ORDER_CANCELLED',
+  params: { warningCode: 'order-cancelled' },
   error: 'OrderNotIssuable',
   warningCode: 'order-cancelled',
 });
@@ -34,14 +37,14 @@ function Harness({
 }
 
 describe('useWarningAcknowledgement', () => {
-  it('should open a dialog with the server sentence and resubmit with the code on confirm', async () => {
+  it('should open a dialog with the sentence for the code and resubmit with the code on confirm', async () => {
     const resubmit = vi.fn();
     const onOffered = vi.fn();
     renderWithProviders(<Harness resubmit={resubmit} onOffered={onOffered} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'fail' }));
     expect(onOffered).toHaveBeenLastCalledWith(true);
-    expect(await screen.findByText('cancelled')).toBeTruthy();
+    expect(await screen.findByText(getMessages('errors').codes.ORDER_CANCELLED)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Continue anyway' }));
     await waitFor(() => expect(resubmit).toHaveBeenCalledWith(['order-cancelled']));

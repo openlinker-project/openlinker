@@ -7,6 +7,7 @@ import {
   createMockApiClient,
   renderWithProviders,
 } from '../../test/test-utils';
+import { getMessages } from '../../shared/i18n';
 import { ApiError } from '../../shared/api/api-error';
 import {
   MATCH_RETURN_DIALOG_COPY,
@@ -382,7 +383,12 @@ describe('ReturnDetailPage', () => {
       const user = userEvent.setup();
       const declineFn = vi
         .fn()
-        .mockRejectedValue(new ApiError('not attributed', 409, { trigger: 'decline' }));
+        .mockRejectedValue(
+          new ApiError('not attributed', 409, {
+            code: 'RETURN_NOT_ATTRIBUTED',
+            params: { trigger: 'decline' },
+          })
+        );
 
       setup({ declineFn });
 
@@ -391,7 +397,7 @@ describe('ReturnDetailPage', () => {
       await user.click(screen.getByRole('button', { name: 'Send decline' }));
 
       await waitFor(() => {
-        expect(screen.getByText(/Blocked action: decline/)).toBeInTheDocument();
+        expect(screen.getByText(getMessages('errors').codes.RETURN_NOT_ATTRIBUTED)).toBeInTheDocument();
       });
       // The dialog stays open so the operator keeps the code they typed.
       expect(screen.getByLabelText('Channel rejection code')).toBeInTheDocument();

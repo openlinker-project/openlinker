@@ -113,7 +113,7 @@ export function PlaceOrderHoldDialog({
 
         {mutation.isError ? (
           <Alert tone="error">
-            {describeHoldWriteError(mutation.error, 'Could not put this order on hold.')}
+            {describeHoldWriteError(mutation.error)}
           </Alert>
         ) : null}
 

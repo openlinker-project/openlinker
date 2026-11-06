@@ -195,22 +195,6 @@ export const RETURN_DECLINE_OUTCOME_COPY = {
   },
 } as const;
 
-/**
- * What went wrong, by HTTP status.
- *
- * Read from the status code and, for the orphan conflict, from the error body's
- * own `trigger` field — never by parsing the message, which would drift the
- * first time the backend reworded it.
- */
-export const RETURN_DECLINE_ERROR_COPY = {
-  notFound: 'This return no longer exists. Reload the page to see the current list.',
-  /** The button is disabled for a known orphan, so this is the stale-page race. */
-  conflictPrefix: 'This return is not matched to an order, so it cannot be declined.',
-  conflictTriggerPrefix: 'Blocked action:',
-  unsupported: 'The channel cannot be asked to decline this return.',
-  generic: 'The decline could not be sent.',
-} as const;
-
 /** A line this build could not read. Reported, never quietly dropped. */
 export function describeUnreadableLines(count: number): string {
   return count === 1
