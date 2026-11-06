@@ -21,6 +21,7 @@ import { usePlatforms } from '../../../shared/plugins';
 import type { Connection } from '../../connections';
 import type { MappingPairing } from '../hooks/use-mapping-pairing.types';
 import { resolvePlatformLabel } from '../lib/platform-label';
+import { interpolate, renderRich, usePlural, useMessages } from '../../../shared/i18n';
 
 /** Id of the pick-source select, so the page can focus it from the empty state (#1784 I5). */
 export const MAPPING_SOURCE_PICKER_ID = 'mapping-pairing-source-select';
@@ -67,6 +68,8 @@ function LockGlyph(): ReactElement {
 export function MappingPairingBar({ pairing, onPickSource }: MappingPairingBarProps): ReactElement | null {
   const platforms = usePlatforms();
   const [selectedSourceId, setSelectedSourceId] = useState('');
+  const copy = useMessages('mappings').mappingPairingBar;
+  const plural = usePlural();
 
   function labelFor(connection: Connection): string {
     return resolvePlatformLabel(platforms, connection);
@@ -98,7 +101,7 @@ export function MappingPairingBar({ pairing, onPickSource }: MappingPairingBarPr
   function destNode(connection: Connection): ReactElement {
     return (
       <div className="mapping-pair__node mapping-pair__node--dest">
-        <span className="mapping-pair__role">Destination</span>
+        <span className="mapping-pair__role">{copy.destination}</span>
         {chip(connection, 'dest')}
       </div>
     );
@@ -110,27 +113,30 @@ export function MappingPairingBar({ pairing, onPickSource }: MappingPairingBarPr
 
   if (pairing.status === 'pick-source') {
     return (
-      <div className="mapping-pair" role="group" aria-label="Connection pairing">
+      <div className="mapping-pair" role="group" aria-label={copy.groupLabel}>
         <div className="mapping-pair__row">
           <div className="mapping-pair__node">
-            <span className="mapping-pair__role">Source</span>
+            <span className="mapping-pair__role">{copy.source}</span>
             <div className="mapping-pair__picker">
               <Select
                 id={MAPPING_SOURCE_PICKER_ID}
-                aria-label="Choose marketplace to configure"
+                aria-label={copy.pickLabel}
                 value={selectedSourceId}
                 onChange={(e) => {
                   setSelectedSourceId(e.target.value);
                 }}
               >
                 <option value="" disabled>
-                  Choose a marketplace…
+                  {copy.pickPlaceholder}
                 </option>
                 {pairing.candidates.map((c) => {
                   const isDisabled = c.status !== 'active';
                   return (
                     <option key={c.id} value={c.id}>
-                      {c.name} ({labelFor(c)}){isDisabled ? ' - disabled' : ''}
+                      {interpolate(isDisabled ? copy.candidateDisabled : copy.candidate, {
+                        name: c.name,
+                        platform: labelFor(c),
+                      })}
                     </option>
                   );
                 })}
@@ -142,7 +148,7 @@ export function MappingPairingBar({ pairing, onPickSource }: MappingPairingBarPr
                   if (selectedSourceId) onPickSource?.(selectedSourceId);
                 }}
               >
-                Configure
+                {copy.configure}
               </Button>
             </div>
           </div>
@@ -150,8 +156,7 @@ export function MappingPairingBar({ pairing, onPickSource }: MappingPairingBarPr
           {destNode(pairing.master)}
         </div>
         <p className="mapping-pair__meta">
-          {pairing.candidates.length} marketplaces are paired with {pairing.master.name}. Pick one and
-          select Configure.
+          {plural(pairing.candidates.length, copy.pickMeta, { master: pairing.master.name })}
         </p>
       </div>
     );
@@ -159,16 +164,16 @@ export function MappingPairingBar({ pairing, onPickSource }: MappingPairingBarPr
 
   if (pairing.status === 'no-source') {
     return (
-      <div className="mapping-pair" role="group" aria-label="Connection pairing">
+      <div className="mapping-pair" role="group" aria-label={copy.groupLabel}>
         <div className="mapping-pair__row">
           <div className="mapping-pair__node">
-            <span className="mapping-pair__role">Source</span>
-            <span className="mapping-pair__chip mapping-pair__chip--empty">No marketplace paired</span>
+            <span className="mapping-pair__role">{copy.source}</span>
+            <span className="mapping-pair__chip mapping-pair__chip--empty">{copy.noSource}</span>
           </div>
           {connector()}
           {destNode(pairing.master)}
         </div>
-        <p className="mapping-pair__meta">Pairing is set on the marketplace connection.</p>
+        <p className="mapping-pair__meta">{copy.noSourceMeta}</p>
       </div>
     );
   }
@@ -178,10 +183,10 @@ export function MappingPairingBar({ pairing, onPickSource }: MappingPairingBarPr
   const destination = pairing.destination;
 
   return (
-    <div className="mapping-pair" role="group" aria-label="Connection pairing">
+    <div className="mapping-pair" role="group" aria-label={copy.groupLabel}>
       <div className="mapping-pair__row">
         <div className="mapping-pair__node">
-          <span className="mapping-pair__role">Source</span>
+          <span className="mapping-pair__role">{copy.source}</span>
           {chip(source, 'source')}
         </div>
         {connector()}
@@ -189,21 +194,22 @@ export function MappingPairingBar({ pairing, onPickSource }: MappingPairingBarPr
           destNode(destination)
         ) : (
           <div className="mapping-pair__node mapping-pair__node--dest">
-            <span className="mapping-pair__role">Destination</span>
-            <span className="mapping-pair__chip mapping-pair__chip--empty">Not linked</span>
+            <span className="mapping-pair__role">{copy.destination}</span>
+            <span className="mapping-pair__chip mapping-pair__chip--empty">{copy.notLinked}</span>
           </div>
         )}
       </div>
       {pairing.status === 'ready' ? (
         <p className="mapping-pair__meta">
           <LockGlyph />
-          Determined by connection pairing.{' '}
-          <Link to={`/connections/${source.id}/edit`}>Change pairing</Link>
+          {renderRich(copy.readyMeta, {
+            link: (chunk) => <Link to={`/connections/${source.id}/edit`}>{chunk}</Link>,
+          })}
         </p>
       ) : (
         <p className="mapping-pair__meta">
           <LockGlyph />
-          Pairing is set on the connection.
+          {copy.unsupportedMeta}
         </p>
       )}
     </div>

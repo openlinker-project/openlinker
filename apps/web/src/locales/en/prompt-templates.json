@@ -1,0 +1,222 @@
+{
+  "archivePromptTemplateDialog": {
+    "archive": "Archive",
+    "archivePublished": "Archive published v{version}",
+    "archivePublishedForce": "Archive published v{version} (force)",
+    "archiveVersion": "Archive v{version}",
+    "archivedToastTitle": "Archived v{version}",
+    "archiving": "Archiving…",
+    "dangerBody": "Active suggestions for this <code>(key, channel)</code> will fail until a replacement is published.",
+    "dangerHeading": "Only published version",
+    "description": "The row will be hidden from the Active list but kept in history for audit and revert.",
+    "forceLabel": "Confirm: this is the only published version",
+    "metadata": {
+      "channel": "Channel",
+      "key": "Key",
+      "state": "State",
+      "updated": "Updated",
+      "version": "Version"
+    },
+    "movedDescription": "{key} ({channel}) moved to Archived.",
+    "stillActiveDescription": "Published v{published} is still active for {key} ({channel}).",
+    "titleGeneric": "Archive template"
+  },
+  "common": {
+    "adminRequiredMessage": "This page manages prompts that ship to the model and requires an admin session.",
+    "adminRequiredTitle": "Admin role required",
+    "cancel": "Cancel",
+    "eyebrow": "Settings",
+    "master": "master",
+    "masterGeneric": "Master (generic)",
+    "retry": "Retry",
+    "states": {
+      "archived": "archived",
+      "draft": "draft",
+      "published": "published"
+    },
+    "unknownError": "Unknown error",
+    "versionTag": "v{version}"
+  },
+  "newPromptTemplateDialog": {
+    "create": "Create draft",
+    "createdToastDescription": "{key} v{version}",
+    "createdToastTitle": "Draft created",
+    "creating": "Creating…",
+    "description": "Create a draft template for a new <code>(key, channel)</code> pair. Use the editor on the next page to refine the prompts and publish.",
+    "fields": {
+      "channel": {
+        "description": "Master = generic fallback for any platform. Channel-specific overrides win when published.",
+        "label": "Channel"
+      },
+      "key": {
+        "description": "Stable identifier the suggestion service looks up. Lowercase, dot- or dash-separated. Cannot change after publish.",
+        "label": "Key",
+        "placeholder": "offer.description.suggest"
+      },
+      "systemPrompt": {
+        "description": "Sent as the model's system message. Use {{dotted.path}} placeholders for variables.",
+        "label": "System prompt",
+        "placeholder": "You are an assistant that writes marketplace product descriptions…"
+      },
+      "userPromptTemplate": {
+        "description": "Sent as the user message. Use {{dotted.path}} placeholders for variables.",
+        "label": "User prompt template",
+        "placeholder": "Write a description for {{product.name}} ({{product.category}})…"
+      },
+      "variablesJson": {
+        "description": "JSON array of declared variables. Use [] for none. Example: [{\"name\":\"product.name\",\"type\":\"string\",\"required\":true}]",
+        "label": "Variables (JSON)",
+        "placeholder": "[]"
+      }
+    },
+    "jsonStatus": {
+      "invalid": "✗ {message}",
+      "invalidSyntax": "invalid JSON syntax",
+      "notArray": "must be a JSON array",
+      "valid": {
+        "one": "✓ valid JSON · {n} variable",
+        "other": "✓ valid JSON · {n} variables"
+      }
+    },
+    "title": "New prompt template"
+  },
+  "newPromptTemplateSchema": {
+    "channelInvalid": "Pick the master template or a registered platform",
+    "invalidJson": "Invalid JSON: {error}",
+    "invalidVariables": "Invalid variables: {path}{message}",
+    "keyPattern": "Use lowercase letters, digits, dots, and dashes only (e.g. \"offer.description.suggest\")",
+    "keyRequired": "Key is required",
+    "notArray": "Variables must be a JSON array (use [] for none).",
+    "parseError": "parse error",
+    "systemPromptRequired": "System prompt is required",
+    "systemPromptTooLong": "System prompt must be {max} characters or fewer",
+    "tooManyVariables": "At most {max} variables allowed",
+    "userPromptRequired": "User prompt is required",
+    "userPromptTooLong": "User prompt must be {max} characters or fewer",
+    "variableNameRequired": "Variable name is required"
+  },
+  "promptTemplateDetailPage": {
+    "actions": {
+      "creating": "Creating…",
+      "discardDraft": "Discard draft",
+      "newDraftFromVersion": "New draft from this version",
+      "publish": "Publish v{version}",
+      "saveDraft": "Save draft",
+      "saving": "Saving…"
+    },
+    "discardConfirm": {
+      "confirm": "Discard",
+      "description": "All changes in this draft will be lost. This cannot be undone.",
+      "discarding": "Discarding…",
+      "title": "Discard draft v{version}?"
+    },
+    "errorTitle": "Unable to load prompt template",
+    "errors": {
+      "invalidJson": "Invalid JSON",
+      "missingRequired": "Missing required value for `{name}`.",
+      "renderFailed": "Render failed",
+      "sampleNotObject": "Sample values must be a JSON object."
+    },
+    "history": {
+      "empty": "No version history.",
+      "loading": "Loading versions…",
+      "open": "Open",
+      "revert": "Revert"
+    },
+    "historyEyebrow": "History",
+    "historyTitle": "Version history",
+    "loadingMessage": "Fetching template data…",
+    "loadingTitle": "Loading prompt template",
+    "metadata": {
+      "created": "Created",
+      "createdBy": "{time} · {user}",
+      "key": "Key",
+      "published": "Published",
+      "updated": "Updated"
+    },
+    "notFoundMessage": "The template may have been deleted.",
+    "notFoundTitle": "Template not found",
+    "pageDescription": "{channel} · v{version} · {state}",
+    "preview": {
+      "fillDemo": "Fill with demo",
+      "invalidJson": "Invalid JSON: {error}",
+      "sampleValues": "Sample values",
+      "size": {
+        "one": "{n} char · ≈{tokens} tok",
+        "other": "{n} chars · ≈{tokens} tok"
+      },
+      "systemPrompt": "System prompt",
+      "unavailable": "Preview unavailable.",
+      "undeclared": "Undeclared placeholders render verbatim:",
+      "userPrompt": "User prompt"
+    },
+    "publishConfirm": {
+      "confirm": "Publish v{version}",
+      "description": "Current published version will be archived. The new prompt takes effect on the next suggestion request.",
+      "publishing": "Publishing…",
+      "title": "Publish v{version}?"
+    },
+    "tabs": {
+      "preview": "Preview",
+      "system": "System prompt",
+      "user": "User prompt",
+      "variables": "Variables ({n})"
+    },
+    "title": "Prompt template",
+    "toasts": {
+      "created": "Draft v{version} created",
+      "discarded": "Draft discarded",
+      "published": "Published v{version}",
+      "reverted": "Draft v{draft} created from v{version}",
+      "saved": "Draft saved"
+    },
+    "variablesEditor": {
+      "add": "+ Add variable",
+      "descriptionPlaceholder": "Optional description",
+      "empty": "No declared variables.",
+      "namePlaceholder": "product.name",
+      "remove": "Remove",
+      "required": "required",
+      "types": {
+        "array": "array",
+        "number": "number",
+        "object": "object",
+        "string": "string"
+      }
+    }
+  },
+  "promptTemplatesListPage": {
+    "adminOnly": "Admin-only access.",
+    "archive": "Archive",
+    "archivedTag": "archived",
+    "cardDraft": "draft v{version}",
+    "cardPublished": "published v{version}",
+    "columns": {
+      "channel": "Channel",
+      "draft": "Draft",
+      "key": "Key",
+      "published": "Published",
+      "rowActions": "Row actions",
+      "updated": "Updated"
+    },
+    "description": "Author, version, and publish the prompts the AI suggestion flow sends to the model.",
+    "emptyMessage": "The suggestion flow uses these prompts. The first versions are usually added when OpenLinker is installed.",
+    "emptyTitle": "No prompt templates yet",
+    "errorTitle": "Unable to load prompt templates",
+    "filters": {
+      "all": "All",
+      "channelDescription": "Filter by target channel",
+      "channelLabel": "Channel",
+      "statusActive": "Active",
+      "statusAll": "All",
+      "statusArchived": "Archived",
+      "statusDescription": "Hide fully-archived rows by default",
+      "statusLabel": "Status"
+    },
+    "loadingMessage": "Fetching templates…",
+    "loadingTitle": "Loading prompt templates",
+    "neverPublished": "never published",
+    "newTemplate": "New template",
+    "title": "Prompt templates"
+  }
+}
