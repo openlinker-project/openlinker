@@ -2238,7 +2238,7 @@ html[data-density='compact'] .status-badge{
   .topbar__links a:not(:last-child) { display:none; }
 }
 @media (prefers-reduced-motion: reduce) { .topbar__dot::after { animation:none; } }
-@media (max-width: 600px) { .topbar__links { display:none; } .topbar__links + .topbar__controls { border-left:0; padding-left:0; } .topbar__controls { margin-left:auto; } }
+@media (max-width: 600px) { .topbar__links { display:none; } .topbar__links + .topbar__controls { border-left:0; padding-left:0; } .topbar__controls { margin-left:auto; gap:6px; } .topbar__inner { gap:10px; } .topbar .language-switch__trigger .language-switch__chevron { display:none; } }
 
 textarea,
 .textarea{
@@ -2491,6 +2491,7 @@ body:has([data-bare]) .admin-view .shell { min-height:100dvh; }
 .stage--gradient .login-glow__orb--a { --glow:color-mix(in oklab, var(--accent-primary) 26%, transparent); }
 @keyframes login-glow-breathe { 0% { transform:scale(1); opacity:.9; } 100% { transform:scale(1.05); opacity:1; } }
 .login-glow--still .login-glow__orb { animation:none; }
+@media (max-width: 960px) { .login-glow__lean--b { display:none; } }
 @media (prefers-reduced-motion: reduce) { .login-glow__orb { animation:none; } }
 /* Mockup-only switcher: not part of the page. */
 .mock-modes { display:flex; align-items:center; gap:4px; flex-wrap:wrap; padding-block:6px; padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); background:oklch(20% 0.012 270); color:oklch(80% 0.01 270); font-size:.75rem; }

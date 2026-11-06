@@ -6352,6 +6352,14 @@ html:has(.login-stage) {
   100% { transform: scale(1.05); opacity: 1; }
 }
 
+/* On a phone the card sits under the hero, so a light behind it only muddies
+ * the page: one glow, bottom left. */
+@media (max-width: 960px) {
+  .login-glow__lean--b {
+    display: none;
+  }
+}
+
 .login-glow--still .login-glow__orb {
   animation: none;
 }
@@ -7188,6 +7196,17 @@ html:has(.login-stage) {
 
   .login-topbar__controls {
     margin-left: auto;
+    gap: 6px;
+  }
+
+  /* Brand, the demo chip and two switches have to fit a phone's width: the
+     switches drop their chevrons (a tap opens them all the same). */
+  .login-topbar__inner {
+    gap: 10px;
+  }
+
+  .login-topbar .language-switch__trigger .language-switch__chevron {
+    display: none;
   }
 }
 
