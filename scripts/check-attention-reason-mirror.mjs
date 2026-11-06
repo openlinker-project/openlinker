@@ -124,19 +124,20 @@ const FE_BADGE_COPY = 'ATTENTION_BADGE_COPY';
  */
 const CROSS_FEATURE_TITLES = [
   {
+    // Returns spec § 5.5 owns this string. Since #3874 the returns copy lives in
+    // the `returns` namespace of the core locale file (ADR-081), so the pair
+    // names a JSON key path instead of a TypeScript declaration.
     reason: 'return-unmatched',
-    file: join('apps', 'web', 'src', 'features', 'returns', 'lib', 'return-detail.copy.ts'),
-    declaration: 'RETURN_ORPHAN_BANNER_COPY',
+    file: join('apps', 'web', 'src', 'locales', 'en', 'returns.json'),
+    declaration: 'detail.orphanBanner',
     field: 'title',
   },
   {
-    // Returns spec § 5.4 owns this string, and #2381 moved it out of
-    // `returns-list.copy.ts` into its own module on #2357's behalf. The pair
-    // used to name the old file AND an old constant spelling, so it resolved to
-    // nothing and passed vacuously (#2673).
+    // Returns spec § 5.4 owns this string (#2381 gave it a module of its own;
+    // #3874 moved it into `returns.restockBlocked` of the core locale file).
     reason: 'restock-blocked',
-    file: join('apps', 'web', 'src', 'features', 'returns', 'lib', 'restock-blocked.copy.ts'),
-    declaration: 'RETURN_RESTOCK_BLOCKED_COPY',
+    file: join('apps', 'web', 'src', 'locales', 'en', 'returns.json'),
+    declaration: 'restockBlocked',
     field: 'title',
   },
 ];
@@ -344,6 +345,25 @@ export function parseDescriptorEntries(content, name) {
       counted: booleanField(segment, 'counted'),
     })),
   };
+}
+
+/**
+ * Read `field` of the object at the dotted `keyPath` of a JSON locale file, or
+ * null when the file does not parse or the path does not resolve to a string -
+ * the same "unreadable" answer `readEntryField` gives for a TypeScript owner.
+ */
+export function readJsonField(content, keyPath, field) {
+  let node;
+  try {
+    node = JSON.parse(content);
+  } catch {
+    return null;
+  }
+  for (const key of [...keyPath.split('.'), field]) {
+    if (node === null || typeof node !== 'object' || !Object.hasOwn(node, key)) return null;
+    node = node[key];
+  }
+  return typeof node === 'string' ? node : null;
 }
 
 /**
@@ -601,7 +621,9 @@ async function main() {
     const abs = join(repoRoot, pair.file);
     const fileExists = await stat(abs).then((st) => st.isFile(), () => false);
     const theirs = fileExists
-      ? readEntryField((await readIfPresent(abs)) ?? '', pair.declaration, pair.field, pair.field)
+      ? pair.file.endsWith('.json')
+        ? readJsonField((await readIfPresent(abs)) ?? '', pair.declaration, pair.field)
+        : readEntryField((await readIfPresent(abs)) ?? '', pair.declaration, pair.field, pair.field)
       : null;
 
     switch (classifyCrossFeatureTitle({ ours, fileExists, theirs })) {

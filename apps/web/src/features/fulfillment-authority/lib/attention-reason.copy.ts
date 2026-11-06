@@ -127,7 +127,7 @@ export const ATTENTION_REASON_COPY = {
     body: 'Two systems are set up to decide, so OpenLinker is doing neither. Returns are still being recorded, but nothing is being restocked or scrapped automatically.',
     action: 'Open the connections named below and leave one of them deciding.',
   },
-  // Byte-identical to `RETURN_RESTOCK_BLOCKED_COPY.title` in features/returns —
+  // Byte-identical to `returns.restockBlocked.title` in locales/en/returns.json —
   // asserted by MIRROR 6. The returns spec § 5.4 is the canonical owner and
   // renders the line with a trailing period, so the period is here too (#2673:
   // it was absent while the mirror pair was inert, which is the drift that
@@ -142,7 +142,7 @@ export const ATTENTION_REASON_COPY = {
     body: 'The system that owns this stock refused to put the returned goods back. Nothing was added, and nothing was lost.',
     action: 'Open the return to see which system refused and what it said.',
   },
-  // Byte-identical to `RETURN_ORPHAN_BANNER_COPY.title` in features/returns —
+  // Byte-identical to `returns.detail.orphanBanner.title` in locales/en/returns.json —
   // asserted by MIRROR 6. The returns spec § 5.5 renders this line with a
   // trailing period, so both code sides carry one (#2673).
   //

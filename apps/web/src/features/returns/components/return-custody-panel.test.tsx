@@ -24,10 +24,11 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
-import { RETURN_DISPOSE_COPY } from '../lib/return-custody.copy';
-import { RETURN_LINES_COPY } from '../lib/return-detail.copy';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import { ReturnCustodyPanel } from './return-custody-panel';
 import type { ReturnDetail, ReturnLine, ReturnRestockBlock } from '../api/returns.types';
+
+const disposeCopy = getMessages('returns').custody.dispose;
 
 const RETURN_ID = 'ol_return_1';
 const LINE_ID = 'ol_line_1';
@@ -132,7 +133,7 @@ async function expandLine(): Promise<void> {
   const user = userEvent.setup();
   await user.click(
     screen.getByRole('button', {
-      name: `${RETURN_LINES_COPY.expandLine} Wireless Mouse`,
+      name: interpolate(getMessages('returns').detail.lines.expandLine, { name: 'Wireless Mouse' }),
     }),
   );
 }
@@ -145,14 +146,14 @@ describe('ReturnCustodyPanel — restock block gates Restock, not Dispose (#3466
     // The form stays: scrap makes no master write and the server accepts it on
     // a blocked line, so hiding the form would be stricter than the gate.
     expect(
-      screen.getByRole('spinbutton', { name: RETURN_DISPOSE_COPY.quantityLabel }),
+      screen.getByRole('spinbutton', { name: disposeCopy.quantityLabel }),
     ).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /restock/i })).toBeDisabled();
     expect(screen.getByRole('radio', { name: /scrap/i })).not.toBeDisabled();
-    expect(screen.getByText(RETURN_DISPOSE_COPY.awaitingAttestation)).toBeInTheDocument();
+    expect(screen.getByText(disposeCopy.awaitingAttestation)).toBeInTheDocument();
     // The generic "already dealt with" sentence would be a false claim about a
     // write that was REFUSED, not confirmed — it must never render here.
-    expect(screen.queryByText(RETURN_DISPOSE_COPY.nothingToDispose)).not.toBeInTheDocument();
+    expect(screen.queryByText(disposeCopy.nothingToDispose)).not.toBeInTheDocument();
   });
 
   it('should render the Dispose form with Restock available when the line has no block', async () => {
@@ -161,9 +162,9 @@ describe('ReturnCustodyPanel — restock block gates Restock, not Dispose (#3466
 
     // A single outstanding line with no receive left to do opens straight on
     // the dispose form (no mode switch needed).
-    expect(screen.getByRole('spinbutton', { name: RETURN_DISPOSE_COPY.quantityLabel })).toBeInTheDocument();
+    expect(screen.getByRole('spinbutton', { name: disposeCopy.quantityLabel })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /restock/i })).not.toBeDisabled();
-    expect(screen.queryByText(RETURN_DISPOSE_COPY.awaitingAttestation)).not.toBeInTheDocument();
+    expect(screen.queryByText(disposeCopy.awaitingAttestation)).not.toBeInTheDocument();
   });
 
   it('should ignore a block recorded against a DIFFERENT line', async () => {
@@ -175,7 +176,7 @@ describe('ReturnCustodyPanel — restock block gates Restock, not Dispose (#3466
     await expandLine();
 
     expect(screen.getByRole('radio', { name: /restock/i })).not.toBeDisabled();
-    expect(screen.queryByText(RETURN_DISPOSE_COPY.awaitingAttestation)).not.toBeInTheDocument();
+    expect(screen.queryByText(disposeCopy.awaitingAttestation)).not.toBeInTheDocument();
   });
 
   it('should re-enable Restock once the block clears', async () => {
@@ -196,7 +197,7 @@ describe('ReturnCustodyPanel — restock block gates Restock, not Dispose (#3466
     );
 
     expect(screen.getByRole('radio', { name: /restock/i })).not.toBeDisabled();
-    expect(screen.queryByText(RETURN_DISPOSE_COPY.awaitingAttestation)).not.toBeInTheDocument();
+    expect(screen.queryByText(disposeCopy.awaitingAttestation)).not.toBeInTheDocument();
   });
 });
 
@@ -222,11 +223,11 @@ describe('ReturnCustodyPanel — backend guard reaches the operator as a sentenc
     await expandLine();
     // The default quantity (everything outstanding) is already a valid
     // submission — nothing about this test needs a different amount.
-    await user.click(screen.getByRole('button', { name: RETURN_DISPOSE_COPY.submit }));
+    await user.click(screen.getByRole('button', { name: disposeCopy.submit }));
 
     expect(
       await screen.findByText(
-        'This line already has a stock write waiting on you — mark it handled before restocking more.',
+        'This line already has a stock write waiting on you - mark it handled before restocking more.',
       ),
     ).toBeInTheDocument();
   });
