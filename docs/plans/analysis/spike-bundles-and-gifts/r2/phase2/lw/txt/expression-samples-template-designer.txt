@@ -1,0 +1,58 @@
+=== expression-samples-template-designer | Expression Samples: Template Designer
+ 
+ Expression Samples: Template Designer 
+ Expression Samples: Template Designer
+ Expressions come in different forms depending on where they are being used in T emplate Designer . The 4 main uses for expressions in Template Designer are:
+ Printing conditions
+ Visibility conditions for image elements
+ Conditional syles
+ Element expressions
+ Whilst these broadly have the same syntax, the variable structure changes, depending on the application. This document will give examples of different forms of expression and where they may be useful.
+ Uses of parentheses and braces
+ In most circumstances, variable names such as ShippingVendor should be enclosed by square brackets [] and braces {} . For example,  [{ShippingVendor}] . In some circumstances, such as printing conditions the braces are not required but recommended.
+ Conditional expressions
+ There are several types of conditional expressions: 
+ Printing conditions
+ Visibility conditions
+ Conditional styles
+ These types of expressions are limited in their scope as they require something that can be evaluated as true or false. Therefore they cannot accept any expression that returns a value.
+ It should be noted that in image visibility conditions and conditional styles, both brackets and braces are required around variables. Otherwise, the condition will not evaluate correctly.
+ Conditional styles example
+ Packing lists are often customized so that when the quantity of an item is more than 1, it is highlighted to ensure that the correct amount is sent. This feature is built into the default packing template. To alter this to a higher value:
+ Open the Packing List template from Settings > Template Designer and double-click on the table.
+ Open the Sub-table tab.
+Find the Quantity row.
+Double-click the icon in the Style column.
+Click on the  Add Conditional Style button and add a condition. In our example, it is the following:  [{nQty}]>1  
+ Click Ok .
+ Click on the button in the Font column to access the font customization.
+ Click the Back Color box to select an appropriate background color.
+ Click the Text Color box to select an appropriate text color.
+The OK column is an indication of whether the syntax is correct for the condition.
+ The bin  icon will delete the condition when clicked.
+ Click Ok to save the condition.
+ Element expressions
+ There are a few ways that expressions can be used in elements. For instance, custom columns can be added to tables in invoices so extra information can be displayed based on the order information.
+ Expected delivery date
+ If you send PDF invoices to customers when their item is despatched, you may want to add an expected delivery date to the invoice. In a label element, paste the following:
+ EVAL{BEGIN}ParseDateTime[dateadd[now[],"b",2],"m.dd.yyyy","dd/mm/yy"]{END}
+ There are two key parts to this expression. The first is dateadd , which in this case is the current date, now[] , plus an additional 2 business days. The "b" indicates business days (assumed to be Monday to Friday). Other options include "y", "m" or "d" for years, months or days respectively.
+ The other part of this expression is ParseDateTime . The default output of dateadd is m.dd.yyyy. Using ParseDateTime with the dateadd function specified as the first parameter allows you to change the date from its default to another format, in this case, "dd/mm/yyyy".
+ This would be most useful if invoices were generated based on the shipping service being used. The expression can then be altered to match the expected delivery time for that type of shipping service.
+ Please note that the expression above will produce a date 2 days from when it was last generated, so care needs to be taken when re-printing invoices with this information.
+ Channel specific messages
+ There are several ways of producing channel-specific messages. The following expression, pasted into a label element, will produce a thank you message on the template:
+ EVAL{BEGIN}
+concat["Thank you for purchasing from our ", lcase[[{Source}]], " store"]
+{END}
+ The above text will produce "Thank you for purchasing from our < Channel > store". Whilst this is fine for marketplaces like Amazon and eBay, it would look out of place for solutions that are built around your own website. In cases like this the following alteration can be made:
+ EVAL{BEGIN}
+IIF[contains[[{Source}],"MAGENTO", "AMAZON", "SHOPIFY"],"Thank you for visiting our website",concat["Thank you for visiting our ", lcase[[{Source}]], " store"]]
+{END}
+ This expression works slightly differently from the previous one. The IIF statement will either print "Thank you for visiting our website" or "Thank you for visiting our < Channel > store". It first checks whether the Source of the order came from a list, which can be expanded if needed, to include other cart-type integrations.
+ The above expression uses a string function, concat , to stitch the 3 parts of the sentence together. This is done because we need the string to change depending on what channel the order came from. Please note that the concat function will not put spaces between the strings being concatenated, so these have to be included manually. The final function is lcase . This makes the source name lowercase. This could be changed to pcase , proper case, which would capitalize the first letter of the source name if desired.
+ Evaluating received data
+ The data received from a channel varies. Whilst it is possible to have invoices that cater to the dataset that is sent by the channel, it is often not convenient to have invoices based on the sales channel. If you wish to have the customer's phone number on the invoice, the following expression could be used to make sure that if no number is given that the invoice specifies this, rather than leaving a blank space:
+ Tel: EVAL{BEGIN}IIF[IsNullOrEmpty[[{BuyerPhoneNumber}]], "Not Available", [{BuyerPhoneNumber}]] {END}
+ The expression checks the phone number field using the IsNullOrEmpty function. This will return "Not Available" if the order doesn't contain a phone number, or the actual phone number if it did.
+ 

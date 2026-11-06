@@ -1,0 +1,101 @@
+=== tables | Template Designer: Table Elements
+ 
+ Template Designer: Table Elements 
+ Template Elements: Tables
+ Tables are among the most complex elements due to the amount of data they can store and the customization that can be applied to each column. Table elements are named according to predefined functions, such as Order Notes or Inventory Manifests . For example, when editing a Warehouse Transfer template, there are 6 available elements, 4 of which are tables. Regardless of the intended function, the Edit Table pop-up window remains the same when editing a table.
+ Adding item Extended Properties (EPs) 
+ The Add Extended Property option allows you to display additional item information stored in item extended properties (EPs) directly in table elements within your templates. This feature is available when editing order item tables in both Invoice templates and Picklist templates in the Template Designer . 
+ EPs store additional information about items, such as color, size, material, compatibility, or other custom attributes. By adding these properties as table columns to your invoices or picklists, you can include this information directly on printed documents, making these documents more informative and easier to use during order processing. 
+ The  Add Extended Property button is available in the Edit Table window next to the  Add Custom Column option. When selected, it allows you to add a column that automatically pulls values from an existing item EP.
+ For how to add item EPs to Invoice tables , see this guide . 
+For how to add item EPs to  Picklist tables , see this guide . 
+ Adding custom columns
+ Tables in Linnworks are predefined with content relevant to the table type. However, it is possible to add custom content to tables. This can be done by clicking the   Add Custom Column button.
+ The main difference between default columns and custom columns is that the Name field can be customized. This can be static text, a variable, or a formula. These work in the same way as labels and variables . Double-clicking the Name column in the edit table element opens the simplified version of the Edit Label pop-up window.
+ See this guide or the dedicated expressions documentation  for more information on using formulas.
+ Custom columns can be deleted by clicking a delete    icon in the final column.
+ How to set up columns
+ The Columns tab defines the table layout based on column headers.
+ First Column:  Clicking the arrow will move the selected column up the list, re-ordering the columns.
+ Second Column:  Clicking the arrow will move the selected column down the list, re-ordering the columns.
+ V isible :  Enabling this checkbox setting will include the column in the table. Disabling the checkbox will hide the column.
+ Header Title:  The column name. It does not have to reflect a Linnworks tag. You can add any title you want.
+ Name:  This is the latest entry for the relevant Linnworks tag. For instance, Stock Level will return the latest stock level for every SKU in the list.
+ Width:  This sets the width for the column on the table.
+ Format:  Several format statements can be applied to table entries:
+ NX: Where X is a number. Sets the value to X number of decimal places.
+ CX:  Where X is a number. Sets the value as a currency with the specified number of decimal places.
+ Where X is not specified, it will set a cultural default for the currency being used. For example, USD will format with two (2) decimal places and use a comma to delimit quantities of 1000. E.g., 10500.01 will format to $10,500.01. Whereas the delimiters are opposite (for example, in Germany), 10500.01 would be written as €10.500,01.
+ Alignment:  This is text alignment for that column which can be set to one of nine options: 3 vertical alignments and 3 horizontal alignments.
+ To change the alignment, click the square graphic for the appropriate column.
+ The dark grey square indicates the current text alignment, which will move to the next alignment when clicked.
+ Borders:  This column sets the border properties for the column. Simply click Left , Righ , Top , Bottom to set a border. Clicking any option a second time will remove the border.
+ Style:  This allows conditional formatting to be placed on cells in the table. Double-clicking the relevant row will open a new window. For more information on conditional styles, please see the section below .
+ Sort:  This column allows to sort items. For example, ordering an invoice by the quantity of each SKU bought:
+ Red arrow : Sort columns in ascending order.
+ Green arrow : Sort columns in descending order.
+ Blank : No sorting based on this column.
+ Final Column:  This column will show a  delete    icon when the row was created as an additional custom column. Click the icon to delete the row.
+ NB! Pre-defined rows cannot be deleted, but can be hidden by disabling the Visible setting.
+ Conditional styles in tables
+ Conditional Style allows formatting cells in a table to alter their format based on logical expressions applied to variables. To open the Conditional Style pop-up window, click on the white rectangle icon in the Style column of the Edit Table screen.
+ Barcode
+ Clicking the   Barcode button allows selecting the barcode type to use and display in the table for the Barcode Number row. 
+ A quick step-by-step guide:
+ In the template, double-click the table to open the  Edit Table  screen.
+ Find the  Barcode Number  row and click the  white rectangle  icon in the  Style  column.
+ Click the  Barcode  button and select the required barcode type:
+Code 39
+Code 39 Extended
+Code 128
+EAN-8
+EAN-13
+EAN-128 / GSI-128
+UPC-A
+UPC-E
+ Selecting  No Barcode  will disable the  Barcode  button and display no barcodes in the table. Only barcode numbers will be displayed.
+ Add conditional style
+ The   Add Conditional Style allows adding conditional styling to cells.
+ To show how conditional styles work, see the example below. In this example, we will highlight SKUs that have a quantity of more than 1. This could be useful for picklists where an order contains several of the same items.
+ To add a new condition to the relevant column, click    Add Conditional Style 
+ To open the condition editor, click the edit   icon for the Condition field:
+ Add a condition, in this example:  [{nQty}]>1
+ Click   Ok 
+ Click the A button in the font column to access font customization.
+ Click the  Back Color  box to select an appropriate background color.
+ Click the T ext Color  box to select an appropriate text color.
+ The  OK  column indicates whether the syntax is correct for the condition.
+ The  delete     icon will delete the condition when clicked.
+ Click   Ok  to save the condition.
+ Info! Conditional formatting will be applied to the sample data which may not meet the requirements of the entered conditions. Sample data varies depending on what template type is being edited.
+ Table settings
+ The Settings tab contains the general settings for the table. These settings apply to the main table except where a conditional style has been applied.
+ Show Headers : This option allows you to turn off column headers if needed.
+ Header Height : This is the header height in inches.
+ Header Color : Clicking this will open the color picker for the header row background color.
+ Row Height : This is the height of non-header table rows in inches.
+ Header Font : Clicking this button opens the font customization window for the header text.
+ Content Font : Clicking this button opens the font customization for the main table data rows.
+ Header Font Color : Clicking this will open the color picker for the header row text color.
+ Next Page Text : This is the text displayed when the table is more than one page.
+ Table Borders : This border is in addition to the border options for cells on the Columns tab. The border is drawn the same size as the bounding box on the template.
+ O ne Row per page : This page enables one row to be displayed per page.
+ Sub-table
+ Not all tables will have a sub-table available. Sub-tables are commonly used for packing lists . In this case, the order details are held in the main table, and the sub-table contains the order items. The Sub-table tab, if available, comes with a predefined table. The settings will not be editable until the Show Sub Table checkbox is ticked.
+ Show Sub Table:  This option will either add a sub-table or hide a sub-table depending on whether the setting is enabled or disabled.
+ Sub Table Name:  This is the name of the sub-table. This field is not adjustable.
+ Show Header:  This option hides the header normally displayed under the main header.
+ Row Height:  This is the row height for the data in the sub-table.
+ The sub-table configurations at the bottom of the sub-table window function the same as the main columns settings in the Columns tab except for the final column. There are no custom columns in a sub-table, so there is no delete option. Disable the Visible setting for the required rows to delete rows from the sub-table. 
+ Table summary
+ The Summary tab allows customizing details that are displayed at the bottom of the table.
+ The settings are the following:
+ First Column:  Clicking the up arrow moves the row further up the summary.
+ Second Column:  Clicking the down arrow moves the down further down the summary.
+ Title:  The title can be customized. There is no need to have names linked to Linnworks variables. Double-click the column to edit it.
+ Title Font:  Clicking this button will open the font customization window for the title field.
+ Value:  This content is based on variables that are used elsewhere in the template designer, and the text is right-aligned. This can be edited by double-clicking the field.
+ Value Font:  Clicking this button will open the font customization window for the Value field.
+ Final Column:  This column displays a delete    icon that can be used to delete the row from the summary table.
+ Add Variable:  Use this field to add variables to the summary of the table. Select the variable and click   Add .
+ 

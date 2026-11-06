@@ -16,6 +16,12 @@ export const returnsQueryKeys = {
   // #2383 — keyed by ORDER, not by return: one order spans many returns.
   orderEvents: (internalOrderId: string) =>
     ['returns', 'order-events', internalOrderId] as const,
+  // #3933 - the bundle price preview and the order-line suggestion, per LINE.
+  bundlePreview: (returnId: string, lineId: string, selection: string) =>
+    ['returns', 'bundle-preview', returnId, lineId, selection] as const,
+  bundleRefundHint: (returnId: string) => ['returns', 'bundle-refund-hint', returnId] as const,
+  orderLineSuggestion: (returnId: string, lineId: string) =>
+    ['returns', 'order-line-suggestion', returnId, lineId] as const,
   // #2646 — keyed by RETURN. A distinct namespace from `orderEvents`: the two
   // reads answer different questions and an orphan has no order key at all.
   returnEvents: (returnId: string) => ['returns', 'return-events', returnId] as const,

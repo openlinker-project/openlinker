@@ -170,6 +170,7 @@ export {
 export type { RestockOutcome } from './domain/domain-services/restock-outcome.domain-service';
 export {
   resolveReturnLineOrderLine,
+  suggestReturnLineOrderLine,
   ReturnOrderLineMatchAxisValues,
   ReturnOrderLineUnresolvedReasonValues,
 } from './domain/domain-services/return-order-line-resolution.domain-service';
@@ -178,11 +179,25 @@ export type {
   ResolvableReturnLine,
   ReturnOrderLineMatchAxis,
   ReturnOrderLineResolution,
+  ReturnOrderLineSuggestion,
   ReturnOrderLineUnresolvedReason,
 } from './domain/domain-services/return-order-line-resolution.domain-service';
+export {
+  splitBundleAmount,
+  keptAtStandaloneRefundHint,
+  BundleSplitRefusalReasonValues,
+} from './domain/domain-services/bundle-return-split.domain-service';
+export type {
+  SplitComponent,
+  BundleSplitResult,
+  BundleSplitShare,
+} from './domain/domain-services/bundle-return-split.domain-service';
+export { summarizeComponentCredits } from './domain/domain-services/return-correction-matching.domain-service';
 export { ReturnLineNotFoundError } from './domain/exceptions/return-line-not-found.error';
 export { ReturnRestockAttestationInvalidError } from './domain/exceptions/return-restock-attestation-invalid.error';
 export { ReturnCustodyContendedError } from './domain/exceptions/return-custody-contended.error';
+export { ReturnBundleRefusedError } from './domain/exceptions/return-bundle-refused.error';
+export type { ReturnBundleRefusalReason } from './domain/exceptions/return-bundle-refused.error';
 export { ReturnRestockAlreadyBlockedError } from './domain/exceptions/return-restock-already-blocked.error';
 export {
   returnCustodyLockKey,
@@ -193,6 +208,9 @@ export type {
   IReturnCustodyService,
   ReceiveLineInput,
   ReceiveLineResult,
+  BundleReturnInput,
+  BundleReturnPreview,
+  ReturnedBundleComponents,
   DisposeLineInput,
   DisposeLineResult,
   AttestStockResult,
@@ -304,6 +322,7 @@ export {
 } from './domain/types/return-correction-proposal.types';
 export type {
   ReturnCorrectionCandidate,
+  ReturnCorrectionComponentCredit,
   ReturnCorrectionLineStatus,
   ReturnCorrectionNoMatchReason,
   ReturnCorrectionProposal,

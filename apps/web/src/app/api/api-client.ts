@@ -137,6 +137,7 @@ import {
   createPosthogSettingsApi,
   type PosthogSettingsApi,
 } from '../../features/posthog-settings/api/posthog-settings.api';
+import { createBundlesApi, type BundlesApi } from '../../features/bundles/api/bundles.api';
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
 import { createAutomationsApi, type AutomationsApi } from '../../features/automation';
 import { createBuyerEmailsApi, type BuyerEmailsApi } from '../../features/buyer-emails/api/buyer-emails.api';
@@ -278,6 +279,7 @@ export interface CoreApiClient {
   orders: OrdersApi;
   posthogSettings: PosthogSettingsApi;
   products: ProductsApi;
+  bundles: BundlesApi;
   promptTemplates: PromptTemplatesApi;
   mappings: MappingsApi;
   request: ApiRequest;
@@ -538,6 +540,7 @@ export function createApiClient({
     orders: createOrdersApi(request, requestBlob),
     posthogSettings: createPosthogSettingsApi(request),
     products: createProductsApi(request),
+    bundles: createBundlesApi(request),
     promptTemplates: createPromptTemplatesApi(request),
     request,
     requestBlob,

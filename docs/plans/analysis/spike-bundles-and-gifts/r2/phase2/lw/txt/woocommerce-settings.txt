@@ -1,0 +1,52 @@
+=== woocommerce-settings | WooCommerce: Configure channel settings
+ 
+ WooCommerce: Configure channel settings 
+WooCommerce: How to Configure 
+ Linnworks integration has multiple settings that allow detailed control of how Linnworks interacts with WooCommerce. This guide will help you to configure your WooCommerce to make sure Linnworks is doing what is required. 
+  Note:  Your WooCommerce site will need to be a minimum of 5.8 to integrate with Linnworks successfully. 
+ Once the channel is added click on the pen    icon in the channel integration screen for the required WooCommerce integration. 
+ Available for the configuration settings 
+ Inventory 
+ Enabled: Tick this option to allow communication between Linnworks and WooCommerce. Without this ticked, no information will be sent or received from WooCommerce. Once enabled, Linnworks will start downloading all unshipped orders. More detailed criteria for the orders download is below: 
+Linnworks will download orders from WooCommerce if those are in  processing or pending statuses.
+An order will be marked as paid in Linnworks when the WooCommerce status is processing and the payment method is paid in the information provided by WooCommerce.
+A pending order will be downloaded but marked as unpaid in Linnworks. It will receive an update from the channel with further order syncs if and when the status changes to processing .
+An order that is in status processing  but for example a credit card transaction for the order failed, will be downloaded as unpaid .
+ Site URL: The root URL for your WordPress site.
+ Consumer Key: The Consumer API Key used by Linnworks to connect to your WooCommece plugin.
+ API Main Endpoint: The location that the WooCommerce API code is stored on your WordPress site.
+ Test : Clicking this button will check that Linnworks can successfully communicate with Woocommerce
+ Reauthorise :  This button will trigger to reauthorize your tokens if it is required.
+ Order 
+ Despatch notes : After processing orders in Linnworks, a dispatch notification will be submitted to the channel. When the option is disabled, no despatch information will be submitted to WooCommerce. 
+ Note! Only if the Woocommerce version is 3.0 or higher we will send the tracking number and vendor via the meta_data field using the new API 2.0.
+ Use Shipment Tracking extension: Enable this setting if you have the   Shipment Tracking extension set up on your WooCommerce account and you want to submit tracking information from Linnworks via this extension. To use this extension, you need to have: 
+WooCommerce 3.5.x or later
+WordPress 4.4 or later.  
+ Important ! You need to have vendors specified in Linnworks exactly (case-insensitive) to match with the channel's otherwise, no tracking link will be sent. Alternatively, you can define vendors on the extension itself as they are named in your Linnworks account.
+ Use WooCommerce tax settings:  Uses the tax setting from WooCommerce rather than the rate set on Linnworks. If they are the same setting (eg: 20% on WooCommerce and 20% on Linnworks) the Linnworks calculation will override WooCommerce (rounding may differ slightly).
+ Download unpaid orders: i f enabled Linnworks will download unpaid orders from WooCommerce. 
+ Order sync date [UTC]:  This shows the date and time when Linnworks last synchronized with the channel.
+ Inventory 
+ Update Inventory : Allow Linnworks to submit changes in stock levels to WooCommerce. Linnworks supports multiple stock locations for additional warehouses/fulfillment centers/suppliers. Ensure you set which Linnworks locations are used when submitting changes in stock levels to your channel via the  Location Mapping  screen accessed from the main  Channel Integration  screen.
+ Max Listed:   This specifies the maximum level that will be sent to the channel.  
+ For more details go to the  Max Listed  guide.
+ Stock Percentage:  This will send a percentage of the currently available stock level to the sales channel. For more details go to the  Stock Percentage  guide.
+ End When:   This enables you to force the listing to end when the stock level gets to the specified amount as opposed to the default value of zero.  
+ For more details go to the  End When  guide.
+ Inventory - Price Change 
+ Price Change : Price Change is designed to speed up the process of updating the sales channel once a Linnworks stock item has had its listing price updated and saved. To find out more go to the  Price Change  guide.
+ Listings 
+ Auto-link by SKU:  If enabled, Linnworks will automatically link unmatched channel SKUs to matching Linnworks SKUs during  order download  or the  mapping sync  (runs ~every 12 hours). Once linked,  inventory sync  is triggered. You can check  this guide  for full details on how this feature works.
+ Listing Download in Progress : This tick box will tick itself if a Listing Update has begun.
+ Listing Download start time : This will show the date and time of when the update has begun.
+ Last listing download completion time: This will show the date and time of when the last manual update was run.
+ Listing Download estimated completion: This will give you an estimate of when the manual scan will be complete – the time can vary depending on server speeds and the number of listings.
+ Download Listings: Click on this button to force Linnworks to request an update from the channel for your active listings.
+ Linnworks.net is designed to update the listings on the mapping page regularly. However, if for any reason it has not then the Download Listings button allows you to force Linnworks to schedule an update.
+ Next steps 
+ Location Mapping 
+ Inventory Mapping 
+ Payment Mapping 
+ Shipping Mapping 
+ 

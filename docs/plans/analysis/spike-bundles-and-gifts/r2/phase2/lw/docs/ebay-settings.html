@@ -1,0 +1,372 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/ebay-settings"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>eBay: Configure channel settings</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='eBay: Configure channel settings';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+
+<h1 id="h1_1561499939" data-has-heading-anchor="true">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>
+
+eBay: How to Configure
+<a href="/articles/documentation/ebay-settings/a/h1_1561499939" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/ebay-settings/a/h1_1561499939&#39;,this);"></a></h1>
+<p style="text-align: justify;">
+  <span>Linnworks integration has multiple settings that allow detailed control of how Linnworks interacts with eBay. This guide will help you to configure your eBay to make sure Linnworks is doing what is required.</span>
+</p>
+<p style="text-align: justify;">
+  <span>Once the channel is added, click on the <i>pen&nbsp;<span class="fa fa-pencil">&nbsp;</span></i>icon in the channel integration screen for the required eBay integration.</span>
+</p>
+<p style="text-align: justify;">
+  <span><img src="/resources/Storage/documentation/Screenshots/Channels/eBay/eBayChannelSettings.png" alt="eBay Channel Settings" class="leftAlone" style="" loading="lazy"/></span>
+</p>
+<h3 id="h4_739406941" style="" data-has-heading-anchor="true">
+  <b>&nbsp;Available for the configuration settings</b>
+<a href="/articles/documentation/ebay-settings/a/h4_739406941" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/ebay-settings/a/h4_739406941&#39;,this);"></a></h3>
+<h4 style="" id="h4_767759945" data-has-heading-anchor="true">
+  Account
+<a href="/articles/documentation/ebay-settings/a/h4_767759945" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/ebay-settings/a/h4_767759945&#39;,this);"></a></h4>
+<p>
+  See below for the description of the configurable option in the <i>Account</i> section.
+</p>
+<ul>
+  <li style="text-align: justify;">
+    <strong>Enabled:</strong>&nbsp;Tick this option to allow communication between Linnworks and eBay. Without this ticked, no information will be sent or received from&nbsp;eBay.
+  </li>
+  <li style="text-align: justify;">
+    <strong>eBay User ID:</strong> Your eBay Account name.
+  </li>
+  <li style="text-align: justify;">
+    <strong>eBay Site:</strong> The eBay site that is integrated. For example, the UK, Germany, France, United States.
+  </li>
+  <li style="text-align: justify;">
+    <span style="font-weight: normal;"><span class="btn-old-gray">Test</span>:</span> Use this button to confirm the supplied credentials work correctly, allowing communication between eBay and Linnworks for both tokens.
+  </li>
+  <li style="text-align: justify;">
+    <strong><span style="font-weight: normal;"><span class="btn-old-gray">Reauthorize</span>:&nbsp;</span></strong>This&nbsp;<span>button will trigger to reauthorize your tokens if required.</span>
+  </li>
+</ul>
+<p class="alert-success">
+  <span style="font-weight: normal;"><b><span class="fa fa-pen-square icon-background-blue"></span> Note:</b></span> If the eBay tokens expire, clicking <span class="btn-old-gray">Test</span> will confirm the integration is not working and relaunch the eBay Integration Wizard.
+</p>
+<h4 style="" id="h4__2065947783" data-has-heading-anchor="true">
+  Inventory Sync
+<a href="/articles/documentation/ebay-settings/a/h4__2065947783" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/ebay-settings/a/h4__2065947783&#39;,this);"></a></h4>
+<p>
+  See below for the description of the configurable option in the <i>Inventory Sync</i> section.
+  <br/>
+</p>
+<ul>
+  <li style="text-align: justify;">
+    <b>Multi-location:&nbsp;</b>Shows if this eBay integration uses multi-location inventory.&nbsp;
+  </li>
+  
+  <li style="text-align: justify;">
+    <b>Limit quantity update to specified location:&nbsp;</b>Restricts the listing to the merchant location key (Channel Location ID) set on the eBay offer.&nbsp;
+  </li>
+  
+  <li style="text-align: justify;">
+    <strong>End Listings:</strong>&nbsp;This allows Linnworks to end your eBay listings if you have run out of stock.
+  </li>
+  <li style="text-align: justify;">
+    <strong>Relist Listings:</strong> This allows Linnworks to relist your listings when the stock returns.
+    <ul>
+      <li style="text-align: justify;">
+        &nbsp;<span style="font-weight: normal;"><b>Note!</b></span> If a <a rel="noopener" href="/articles/documentation/product-details-listing-descriptions/a/Price" target="_blank" onclick="return n(&#39;!documentation/product-details-listing-descriptions/a/Price&#39;,this);">subsource-specific listing price</a> exists on the listings' linked stock item, this price will be used for the new listing and not the original price of the ended listing.
+      </li>
+      
+        <li style="text-align: justify;">
+          <b>Note!</b> It is a good practice to <a href="/articles/documentation/ebay-strike-off-cancel-pending-relist" onclick="return n(&#39;!documentation/ebay-strike-off-cancel-pending-relist&#39;,this);">strike off</a> the SKUs you do not wish to relist anymore. The <a href="/articles/documentation/channels-inventory-mapping" onclick="return n(&#39;!documentation/channels-inventory-mapping&#39;,this);">Channel Mapping</a> screen receives information directly from the channel about what listings to display. The information displayed here will, however, only be appended. There is no way for the system to know which SKUs to no longer display if they have been changed or removed. When later syncs with the channel are performed, records that were present earlier will still display and may relist the unwanted listing, which <b>can cause over-selling</b>. The <a href="/articles/documentation/ebay-strike-off-cancel-pending-relist" onclick="return n(&#39;!documentation/ebay-strike-off-cancel-pending-relist&#39;,this);">Strike Off</a> feature prevents this by removing unwanted listings from further syncs with the channel, ensuring they are not relisted. 
+        </li>
+      </ul>
+  </li>
+  <li style="text-align: justify;">
+    <strong>Do not end auctions:</strong> If enabled, it allows Linnworks to keep auctions live even if you have run&nbsp;out of stock.
+  </li>
+  <li style="text-align: justify;">
+    <strong>Do not relist auctions:</strong> If enabled, it allows Linnworks not to relist auctions, even if you have stock in your system.
+  </li>
+  <li style="text-align: justify;">
+    <strong>Out-of-Stock enabled:</strong>&nbsp;Works with the <i>out-of-stock</i> feature on your eBay account to keep listings live even when they have run out of stock.
+  </li>
+  <li style="text-align: justify;">
+    <strong>Limit Update to a specific site:</strong> If enabled, Linnworks will only update your stock levels to a specific eBay site. This works great if you sell internationally via a 3rd party software such as <a href="/articles/documentation/ebay-settings/a/h4_72998046" onclick="return n(&#39;!documentation/ebay-settings/a/h4_72998046&#39;,this);">WebInterpret</a> and do not manage your international sites via Linnworks.
+  </li>
+  <li style="text-align: justify;">
+    <strong>Site to update:</strong> This is related to the option above, specify the eBay site you would like stock updates on.
+  </li>
+  <li style="text-align: justify;">
+    <strong>Download full listings:&nbsp;</strong>&nbsp;<span>Download in the background information about your listings such as SKU, title, extended properties, images to allow you to create your items instantly via the&nbsp;<i><a rel="noopener" href="/articles/documentation/extract-inventory" target="_blank" onclick="return n(&#39;!documentation/extract-inventory&#39;,this);">Extract Inventory</a></i>&nbsp;tool.</span>
+  </li>
+</ul>
+<h4 style="" id="h4__784112042" data-has-heading-anchor="true">
+  Order
+<a href="/articles/documentation/ebay-settings/a/h4__784112042" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/ebay-settings/a/h4__784112042&#39;,this);"></a></h4>
+<p>
+  See below for the description of the configurable option in the <i>Order </i>section.
+  <br/>
+</p>
+<ul>
+  <li>
+    <strong>Despatch Notes:</strong> After processing an order in Linnworks, a dispatch notification, tracking number (if available), and the selected shipping vendor will be submitted to the channel. When the option is disabled, no dispatch information will be submitted to eBay. See below what are the requirements for this setting to work:
+    <ul>
+      <li style="text-align: justify;">
+        Tracking numbers must be longer than five characters otherwise, they will not be submitted.
+      </li>
+      <li style="text-align: justify;">
+        If either the <a href="/articles/documentation/shipping-postal-services" onclick="return n(&#39;!documentation/shipping-postal-services&#39;,this);">Linnworks Postal Service</a> or the <a href="/articles/documentation/shipping-postal-services" onclick="return n(&#39;!documentation/shipping-postal-services&#39;,this);">Linnworks Vendor Name</a> is the&nbsp;<i>default</i>, the tracking number will not be submitted.
+      </li>
+      <li style="text-align: justify;">
+        Where an eBay-supported shipping carrier is found, based on the Linnworks Vendor Name of the selected postal service, this is submitted to eBay with the despatch note.
+      </li>
+      <li style="text-align: justify;">
+        Where an eBay-supported shipping carrier is not found, the <a href="/articles/documentation/shipping-postal-services" target="_blank" onclick="return n(&#39;!documentation/shipping-postal-services&#39;,this);">Linnworks Postal Service</a> is submitted to eBay with the despatch note.
+      </li>
+      <li style="text-align: justify;">
+        eBay-supported shipping carriers depend on the eBay site Id. Due to the nature of the list being controlled by eBay, it is impossible to provide a list of supported shipping carriers in this guide.
+      </li>
+    </ul>
+  </li>
+  <li style="text-align: justify;">
+    <strong>Order Sync Date:</strong> This shows the date and time when Linnworks last synchronized with the channel.
+  </li>
+  <li>
+    <strong>Cancellation notes:</strong> If enabled,<strong>&nbsp;</strong>Linnworks will send order cancellation notes and refund amount to your sales channel once the order is partially or fully canceled. When canceling an eBay order from Linnworks, you would need to specify a reason. <strong>Note!&nbsp;</strong><span>Cancellation reasons may impact a seller's rating. Check more info <a rel="noopener" href="https://developer.ebay.com/devzone/post-order/types/CancelReasonEnum.html" target="_blank">here</a>.</span>
+  </li>
+  <li style="text-align: justify;">
+    <strong>Refund notes</strong>: Details from&nbsp;refunds created on Linnworks will be submitted to eBay when this option is enabled. Refunds are issued on an item level and partial refunds are supported.
+  </li>
+  <li>
+    <strong>Return notes:</strong>&nbsp;If enabled, Linnworks will send order return notes to your sales channel once the order is partially or fully returned.&nbsp;<i>Managed Returns</i> works with buyer-initiated returns on eBay if the return is downloaded and booked in Linnworks. Once the <i>Return</i> is actioned in Linnworks, a note is sent to eBay to confirm the return receipt and trigger a refund. Once enabled, the additional options will be available under the <span class="btn-gray">Managed Returns</span> button at the bottom.&nbsp;
+  </li>
+</ul>
+<ul>
+  <li>
+    <strong>Allow automated cancellations:&nbsp;</strong>If enabled, Linnworks will automatically cancel the orders in the system once they are canceled on eBay. Once the order is canceled the extended property with a cancellation ID will be added to the order.&nbsp;
+    <ul>
+      <li>
+        If the order is marked as shipped, Linnworks will return an error. Only open orders are available for cancellation.&nbsp;
+      </li>
+      <li>
+        If the order was paid for using PayPal and/or you are enrolled in the&nbsp;<a rel="noopener" href="https://pages.ebay.com/seller-center/service-and-payments/managed-payments-on-ebay.html" target="_blank" style="box-sizing: border-box; background: 0px 0px; transition: all 250ms ease-in-out 0s;">eBay Managed Payments</a>&nbsp;program, an actioned refund is created in Linnworks for reporting purposes. Otherwise, a booked RMA is automatically created and needs to be actioned manually.
+      </li>
+    </ul>
+  </li>
+  <li style="text-align: justify;">
+    <strong>Use Sales Record Number as order Channel Reference:</strong>&nbsp;If ticked, Linnworks will download orders with a 6-digit channel reference number. Please check more details <a href="https://help.linnworks.com/support/solutions/articles/7000051115-ebay-new-extended-reference-change" target="_top">here</a>.
+  </li>
+  <li style="text-align: justify;">
+    <strong>Use Channel Tax for USA/Canada site transactions:</strong>&nbsp;If enabled,&nbsp;<span>Linnworks will use tax values calculated by the eBay site during order download.&nbsp;This setting only applies to those who sell on eBay USA or Canada.</span>
+  </li>
+  <li style="text-align: justify;">
+    <strong>Use Channel Tax for Australia site transactions:</strong>&nbsp;If enabled,&nbsp;Linnworks will use tax values calculated by the eBay site during order download.&nbsp;<span>This&nbsp;setting only applies to those who sell on eBay Australia.</span>
+  </li>
+  <li style="text-align: justify;">
+    <strong>Use Channel Tax for UK site transactions:</strong>&nbsp;If enabled,&nbsp;Linnworks will use tax values calculated by the eBay site during order download.&nbsp;<span>This&nbsp;setting only applies to those who sell on eBay UK.</span> 
+    <br/>
+    <div class="alert-success">
+      <strong><span class="fa fa-pen-square icon-background-blue"></span> Note:</strong>&nbsp;The setting will be enabled to all by default and starts applying to orders starting from January 1st, 2021.
+    </div>
+  </li>
+  <li style="text-align: justify;">
+    <strong>Use Channel Tax for EU site transactions</strong>: If enabled, Linnworks will use tax values calculated by the eBay site during order download. This setting only applies to those who sell on eBay EU sites.
+    <br/>
+    <div class="alert-success">
+      <strong><span class="fa fa-pen-square icon-background-blue"></span> Note:</strong> The setting&nbsp;will be enabled by default for any user that has <em>Use Channel Tax for UK site Transactions</em> enabled.
+    </div>
+  </li>
+  <li style="text-align: justify;">
+    <span><strong>Handle By Time:</strong>&nbsp;Default handling time. This setting indicates the latest date/time (displayed in the <em>Open Orders</em> screen) that the seller should ship the order to ensure that the package arrives at the buyer within the estimated delivery window. The setting will be applied in the case&nbsp;when order data from the channel doesn't contain information about the despatch time.</span>
+  </li>
+  <li style="text-align: justify;">
+    Settings under the <span class="btn-gray"><font color="#000000">Managed Returns</font></span> button (available only if <i>Return notes</i> option is enabled): 
+    <ul>
+      <li>
+        <span style="font-weight: normal;"><b>Enabled:</b></span>&nbsp;Check the box to enable/disable eBay customer returns&nbsp;
+      </li>
+      
+      <li>
+        <span style="font-weight: normal;"><b>Provide RMA Reference:</b></span> Tick if you would like Linnworks to return an RMA reference when Managed Return Info is downloaded from eBay and an RMA created in Linnworks.
+      </li>
+      <li>
+        <span style="font-weight: normal;"><b>RMA Reference:</b></span> Select a type of reference to be returned
+        <ul>
+          <li>
+            Order ID
+          </li>
+          <li>
+            Reference
+          </li>
+          <li>
+            External Reference
+          </li>
+          <li>
+            Generated - new randomly generated reference.
+          </li>
+        </ul>
+      </li>
+      <li>
+        <span style="font-weight: normal;"><b>Provide alternative shipping address:</b></span> If you would like to have a different return address that is specified on eBay, specify it here.
+      </li>
+      <li>
+        <span style="font-weight: normal;"><b>Book refund once item returned on eBay:</b></span> Once the item is declared returned on eBay, this option will automatically book a refund.
+      </li>
+    </ul>
+  </li>
+</ul>
+<p style="margin-left: 120px;">
+  Linnworks will send a confirmation of return receipt without any details to eBay if <i>RMA Reference</i> and <i>alternative shipping address</i> are <span style="font-weight: normal;"><b>not enabled</b></span>.
+</p>
+<h4 id="h4__1716404515" data-has-heading-anchor="true">
+  eBay Fulfillment
+<a href="/articles/documentation/ebay-settings/a/h4__1716404515" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/ebay-settings/a/h4__1716404515&#39;,this);"></a></h4>
+<p>
+  See below for the description of the configurable option in the <i>eBay Fulfillment&nbsp;</i>section.
+</p>
+<ul>
+  <li>
+    <span style="text-align: left;"><b>Enabled:</b> Tick to move eBay fulfillment orders to a fulfillment location.&nbsp;</span>
+  </li>
+  <li>
+    <span style="text-align: left;"></span><b>Fulfilment Location:&nbsp;</b>Choose the location for eBay fulfillment orders. Inventory at this location is managed by the <a href="https://mf-seller-static-hk.orangeconnex.com/static/website/document/UK/20240314/1710386075946/2024%20Linnworks%20Seller%20Manual_V2.0.pdf" target="_blank">Orange Connex App</a>.&nbsp;
+  </li>
+  <li>
+    <strong>Ignore eBay fulfilled orders</strong>: If enabled, orders that are fully fulfilled by eBay will not be downloaded into Linnworks. If disabled, orders that are fully fulfilled by eBay will be downloaded into Linnworks. These orders will be <em>parked</em>, <em>locked</em>, and <em>marked</em> with the&nbsp;EBAY FULFILLMENT identifier. As soon as these orders are shipped by eBay, in Linnworks they will be automatically processed. <strong>Important!</strong>&nbsp;Your eBay account must be&nbsp;authorized with the latest APIs in order to automatically process such orders.
+  </li>
+</ul>
+<div class="alert-success">
+  <strong><span class="fa fa-pen-square icon-background-blue"></span> Note:</strong>&nbsp;The<em> Ignore eBay fulfilled orders</em> setting <strong>is enabled</strong> for all users by default.
+</div>
+<ul>
+</ul>
+<h4 style="" id="h4_51037994" data-has-heading-anchor="true">
+  Inventory
+<a href="/articles/documentation/ebay-settings/a/h4_51037994" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/ebay-settings/a/h4_51037994&#39;,this);"></a></h4>
+<p>
+  See below for the description of the configurable option in the <i>Inventory</i> section.
+  <br/>
+</p>
+<ul>
+  <li style="text-align: justify;">
+    <strong>Update Inventory:</strong>&nbsp;Allow Linnworks to submit changes in stock levels to eBay.&nbsp;Linnworks supports multiple stock locations for additional warehouses/fulfillment&nbsp;centers/suppliers. Ensure you set which Linnworks locations are used when submitting changes in stock levels to your channel via the&nbsp;<a href="/articles/documentation/channels-location-mapping" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);">Location Mapping</a>&nbsp;screen accessed from the main&nbsp;<a href="/articles/documentation/channel-integration-screen" onclick="return n(&#39;!documentation/channel-integration-screen&#39;,this);">Channel Integration</a>&nbsp;screen.
+  </li>
+  <li style="text-align: justify;">
+    <strong>Max Listed:</strong><span>&nbsp;</span><span>This specifies the maximum level that will be sent to the channel.&nbsp;</span>
+    For more details go to the&nbsp;<i><a href="/articles/documentation/channels-inventory-updates/a/max-listed" onclick="return n(&#39;!documentation/channels-inventory-updates/a/max-listed&#39;,this);">Max Listed</a></i>&nbsp;guide.
+  </li>
+  <li style="text-align: justify;">
+    <strong>Stock Percentage:</strong>&nbsp;This will send a percentage of the currently available stock level to the sales channel. For more details go to the&nbsp;<i><a href="/articles/documentation/channels-inventory-updates/a/stock-percentage" onclick="return n(&#39;!documentation/channels-inventory-updates/a/stock-percentage&#39;,this);">Stock Percentage</a></i>&nbsp;guide.
+  </li>
+  <li style="text-align: justify;">
+    <strong>End When:</strong><span>&nbsp;</span><span>This enables you to force the listing to end when the stock level gets to the specified amount as opposed to the default value of zero.&nbsp;</span>
+    For more details go to the&nbsp;<i><a href="/articles/documentation/channels-inventory-updates/a/end-when" onclick="return n(&#39;!documentation/channels-inventory-updates/a/end-when&#39;,this);">End When</a></i>&nbsp;guide.
+  </li>
+</ul>
+<h4 style="" id="h4__733860040" data-has-heading-anchor="true">
+  Inventory - Price Change
+<a href="/articles/documentation/ebay-settings/a/h4__733860040" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/ebay-settings/a/h4__733860040&#39;,this);"></a></h4>
+<p>
+  See below for the description of the configurable option in the <i>Inventory - Price Change</i> section.
+  <br/>
+</p>
+<ul>
+  <li style="text-align: justify;">
+    <strong>Price Change:</strong>&nbsp;Price Change is designed to speed up the process of updating the sales channel once a Linnworks stock item has had its listing price updated and saved. To find out more go to the&nbsp;<i><a class="ss-broken" href="/articles/documentation/channels-price-change" onclick="return n(&#39;!documentation/channels-price-change&#39;,this);">Price Change</a></i>&nbsp;page.
+  </li>
+</ul>
+<h4 style="" id="h4__1184546515" data-has-heading-anchor="true">
+  Listings
+<a href="/articles/documentation/ebay-settings/a/h4__1184546515" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/ebay-settings/a/h4__1184546515&#39;,this);"></a></h4>
+<p>
+  See below for the description of the configurable option in the <i>Listings </i>section.
+</p>
+<ul>
+  <li style="text-align: justify;">
+    <b>Auto Link by SKU:&nbsp;</b>Tick this box to let Linnworks automatically match SKUs when downloading listings and orders.&nbsp;
+  </li>
+  
+  <li style="text-align: justify;">
+    <strong>Listing Download in Progress:</strong> This tick box will tick itself if a Listing Update has begun.
+  </li>
+  <li style="text-align: justify;">
+    <strong>Listing Download start time</strong>: This will show the date and time of when the update has begun.
+  </li>
+  <li style="text-align: justify;">
+    <strong>Last listing download completion time:</strong> This will show the date and time of when the last manual update was run.
+  </li>
+  <li style="text-align: justify;">
+    <strong>Listing Download estimated completion:</strong> This will give you an estimate of when the manual scan will be complete – the time can vary depending on server speeds and the number of listings.
+  </li>
+  <li style="text-align: justify;">
+    <strong>Download Listings:</strong> Click this button to force Linnworks to request an update from the channel for your active listings.
+  </li>
+</ul>
+<p style="text-align: justify;">
+  Linnworks is designed to update the listings on the mapping page regularly. However, if for any reason it has not, then the <span style="font-weight: normal;" class="btn-gray">Download Listings</span> button here allows you to force Linnworks to schedule an update.&nbsp;
+</p>
+<h4 style="text-align: justify;" id="h4_72998046" data-has-heading-anchor="true">
+  eBay channel integration and WebInterpret
+<a href="/articles/documentation/ebay-settings/a/h4_72998046" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/ebay-settings/a/h4_72998046&#39;,this);"></a></h4>
+<p>
+  If you use <a href="https://support.webinterpret.com/hc/en-us" target="_blank">WebInterpret</a> for your eBay sites (managed outside of Linnworks), there are important considerations to keep in mind when integrating your eBay marketplace with Linnworks:&nbsp;&nbsp;
+</p>
+<ul>
+  <li>
+    WebInterpret manages the pricing of international listings, so sellers should not attempt to adjust these prices through Linnworks or other methods. 
+  </li>
+  <li>
+    WebInterpret listings will end when stock runs out. To avoid this, ensure your WebInterpret listings always have sufficient stock.&nbsp;
+  </li>
+  <li>
+    WebInterpret updates the stock levels of your international listings based on your UK listing. To prevent this, configure your settings to sync stock only to a specific site (the&nbsp;<b><i>Limit Update to a Specific Site</i></b> setting ). For more details, <a href="/articles/documentation/ebay-settings/a/h4__2065947783" onclick="return n(&#39;!documentation/ebay-settings/a/h4__2065947783&#39;,this);">see here</a>.
+    <ul>
+      <li>
+        <b>Note:</b> WebInterpret also adjusts UK listings when international listings have a sale, which can result in a double stock decrement on your UK listings.&nbsp;
+      </li>
+    </ul>
+  </li>
+  <li>
+    If you encounter incorrect translations or are dissatisfied with them, please contact the WebInterpret support team using <a href="https://support.webinterpret.com/hc/en-us" target="_blank">the following link</a>.&nbsp;
+  </li>
+</ul>
+<h4 style="text-align: justify;" id="h4_15828802" data-has-heading-anchor="true">
+  Next steps:
+<a href="/articles/documentation/ebay-settings/a/h4_15828802" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/ebay-settings/a/h4_15828802&#39;,this);"></a></h4>
+<ul>
+  <li>
+    <a href="/articles/documentation/channels-location-mapping" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);">Location Mapping</a>
+  </li>
+  <li>
+    <a href="/articles/documentation/channels-inventory-mapping" onclick="return n(&#39;!documentation/channels-inventory-mapping&#39;,this);">Inventory Mapping</a><a href="/articles/documentation/channels-location-mapping" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);"></a>
+    <br/>
+  </li>
+</ul>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>
+
+<script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

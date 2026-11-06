@@ -1,0 +1,50 @@
+=== template-designer-elements | Template Designer: Elements
+ 
+ Template Designer: Elements 
+ Template Designer: Elements
+ Most elements in Linnworks templates fall into one of three types:
+ Images 
+ Labels and variables 
+ Tables 
+ Specific template types may contain other elements like integrated shipping labels or PPI stamps. Elements specific to different template types are detailed in the relevant template documentation:
+ Amazon VCS 
+ Consignments 
+ FBA labels 
+ FBA shipment 
+ FBA shipping plan 
+ Invoice 
+ Packing list 
+ Picklist 
+ Purchase order 
+ Shipping label 
+ Stock item label 
+ Warehouse transfer 
+ Table elements are named according to their function on the document and have a preconfigured layout. When editing an element, the standard  Edit Table  pop-up window opens when double-clicking the element.
+ Working with elements
+ Adding an element 
+ Select and click an element to use from the Available Elements section.
+ Drag and drop the element to the needed position on the template.
+ Moving an element 
+ Click the element. A yellow bounding box will appear around it.
+ Move the element either by:
+ Drag and drop.
+ Use the  left arrow, up arrow, down arrow, and right arrow keys to set an exact position.
+ Deleting an element 
+ Click the element. A yellow bounding box will appear around the selected element.
+ The element can be deleted either by:
+ Clicking Delete on the keyboard.
+ Right-click and select Delete item in the pop-up menu.
+ Editing an element 
+ Double-click the element.
+ Details on element customization are available per element below.
+ Other actions 
+ Additionally, you can right-click any element and do the following actions:
+   Copy : This will paste a new copy of the element on the page.
+   Bring to Front : Elements can be placed on top of one another. This will bring the element to the top when other elements are overlapping this one.
+   Send to Back : Elements can be placed on top of one another. This will send the element to the back if this element overlaps another.
+   Delete Item : This will remove the element from the page.
+ Note! Choosing an action from the menu will apply the action to the element that was right-clicked and not the element with the yellow bounding box.
+  Video tutorial
+ If you prefer a visual explanation,  this  video tutorial walks you through the Template Designer   feature   step by step. It can help clarify all the templates for various documents, such as invoices, and how to set them up for use in Linnworks. 
+ Video - Template Designer: available templates and how to set them up for use in Linnworks  
+ 

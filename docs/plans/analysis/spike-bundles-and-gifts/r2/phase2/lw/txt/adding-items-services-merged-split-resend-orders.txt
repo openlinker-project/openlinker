@@ -1,0 +1,49 @@
+=== adding-items-services-merged-split-resend-orders | Adding Items &amp; Services: Merged, Split &amp; Resend Orders
+ 
+ Adding Items & Services: Merged, Split & Resend Orders 
+Add Items & Services: Split, Merged, Resend Rules
+ This guide explains additional conditions – Is Merged , Order Has Been Split , Order Created By Split , and  Status = Resend – that you can use with the Add Items to Orders and Add Services to Orders actions in the Rules Engine . These conditions give you more control over when rules run, especially for merged , split , or resend orders.
+ This guide explains specific use cases for Add Items and Add Services actions, and why you might use the Is Merged , Order  Has Been Split , Order Created By Split , and Status = Resend conditions with them. However, these conditions are not limited to these actions – you can also apply them to other Rules Engine actions .
+ For basic information about these actions, see Rules Engine Actions: Add Items & Services .
+ How the Is Merged, Has Been Split & Created By Split conditions work
+ The three new conditions – Is Merged , Order Has Been Split , and Order Created By Split – function in a similar way to the existing Has Composites condition: 
+ Pick a condition.
+ Choose Equals or Does Not Equal .
+ Select True or False .
+  Note: Having Equals / Does Not Equal may seem redundant with True / False , but this is the framework that the Rules Engine currently supports.
+ Is Merged
+ Definition:  True when an order is the result of merging two or more orders.
+ Example: 
+ ORDER A + ORDER B → merged into ORDER C
+ ORDER C: Is Merged = True
+ ORDER A & ORDER B: processed already, rules do not run on them
+ Use case: Control rules for merged orders, e.g., decide whether to add items or services only to newly merged orders.
+ Order Has Been Split
+ Definition: True for an order that has been split into one or more child orders.
+ Example:  
+ ORDER D has two items → split into ORDER D (remaining) and ORDER E (child)
+ ORDER D: Has Been Split = True
+ ORDER E: Created By Split = True
+ Use case:  Prevent or control actions on parent orders after a split. 
+ Order Created by Split
+ Definition:  True for an order that was created as a result of a split. 
+ Example:   
+ORDER D split → ORDER E created
+ORDER E: Created By Split = True
+ Use case:  If a merged order is later split, the Is Merged condition remains true for both parent and child orders, while Has Been Split and Created By Split are set appropriately.
+ Why using these conditions is important 
+ The conditions above give you control over when Add Items or Add Services actions should run, particularly in complex order workflows. Without them, you risk adding the same item or service multiple times by mistake. 
+ Example scenarios 
+ Resends 
+Imagine ORDER A gets a free gift item added by a rule. Later, a resend is created (ORDER B). If you do not filter out resends, ORDER B will also get the same free gift — even though it is just a replacement.
+ Merged orders 
+Suppose ORDER C and ORDER D are merged into ORDER E. If your rule adds a service charge, ORDER E could end up with two service charges (one for each original order), unless you limit the rule to run only on non-merged orders.
+ Split orders 
+ORDER F contains two items and triggers a rule that adds a warranty service. If ORDER F is split into ORDER F and ORDER G, the rules engine runs on both. Without filtering, you may end up adding the warranty twice — once to the parent and once to the child.
+ By applying conditions like Is Merged = False or Status != Resend , you can prevent these duplicates and keep your workflows predictable. 
+ 💡 Tip: Consider combining multiple conditions in your rules (e.g., Is Merged = False AND Status != Resend ) to handle complex order workflows safely.
+ Related guides: 
+ Adding Automation Rules in the Rules Engine 
+ Rules Engine: Conditions and Comparators 
+ Rules Engine: Actions 
+ 

@@ -1,0 +1,4 @@
+# Round 4 method: primary sources only
+Work from scratch. Do NOT read anything under docs/plans/analysis/ except briefs/ and the use-case catalogue path you are given, and do not read docs/plans/spike-bundles-and-gifts.md.
+Use ONLY primary sources: official API specs (OpenAPI/swagger files you download), platform source code (GitHub repos of PrestaShop, WooCommerce, WordPress.org plugin SVN/GitHub, official SDKs), official help centers, official changelogs, statutes and official tax-authority rulings. NO blogs, NO vendor marketing of third parties, NO forums (except an official moderator answer, labelled as such).
+For EVERY claim give: source URL (or repo path + commit/tag) and a verbatim quote of 1-3 lines (or the field definition). If no primary source exists, say "no primary source" and rate Unknown.

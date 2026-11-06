@@ -1,0 +1,442 @@
+##### Jak dodać opcje ukrycia produktu w trybie zbierania i pakowania? | https://sellasist.pl/pomoc/jak-dodac-opcje-ukrycia-produktu-w-trybie-zbierania-i-pakowania/ | modified 2024-10-25
+W Sellasist WMS wprowadziliśmy nową funkcjonalność, która umożliwia wykluczenie określonych produktów z procesu zbierania i pakowania. 
+Funkcja ta jest szczególnie użyteczna dla produktów, które nie mają fizycznej formy, jak rabaty, produkty cyfrowe czy usługi dodatkowe, a które mogą być tratowane jako „produkt” w systemie Sellasist. 
+Opcja ukrywania gratisowych produktów w trybie zbierania, a ich ujawniania dopiero w trybie pakowania, pozwala na bardziej precyzyjne i bezbłędne kompletowanie zamówień. Pracownicy zbierają zamówienia bez konieczności zajmowania się gratisami, które są dodawane później, co zapewnia, że każda przesyłka zawiera obiecane dodatki. To rozwiązanie optymalizuje zarządzanie magazynem, redukując jednocześnie ryzyko pomyłek. 
+Dla Sellasist WMS dodano dwie opcje w karcie produktu, które pozwalają na lepszą kontrolę nad procesami logistycznymi: 
+- Nie pokazuj w trybie zbierania – Ta opcja pozwala na ukrycie produktu w trybie zbierania. Jest to szczególnie przydatne, gdy zamówiony produkt taki jak rabat czy usługa, nie wymaga fizycznego zbierania.
+- Nie pokazuj w trybie pakowania – Dzięki tej opcji, produkt może być wykluczony z procesu pakowania. Umożliwia to eliminację produktów, które nie są fizycznie pakowane z listy pakowania. 
+ #### 
+ Jak dodać opcje ukrycia produktu w trybie zbierania i pakowania? 
+ Te opcje możesz zaznaczyć podczas dodawania nowego produktu lub edytowania istniejącego w panelu administracyjnym Sellasist. 
+1. W panelu administracyjnym przejdź do Asortyment -> Produkty. 
+2. Kliknij Dodaj produkt lub edytuj istniejący. 
+3. W karcie produktu w zakładce Informacje podstawowe, w sekcji Magazyn znajdź opcje: 
+[IMG:]
+4. Zaznacz opcje i kliknij Zapisz. 
+ #### 
+ Korzyści 
+- Efektywność: Usunięcie produktów z listy zbierania i pakowania w Sellasist WMS.
+- Redukcja błędów: Eliminacja możliwości błędów, które mogły wynikać z próby fizycznego zbierania czy pakowania produktów
+- Lepsze środowisko pracy: Bardziej przejrzyste i lepiej zorganizowane środowisko pracy dla pracowników magazynowych.
+ #### 
+ Inne przykładowe zastosowanie: 
+ Funkcjonalność ukrywania produktów w trybach zbierania i pakowania w Sellasist WMS może być wykorzystywana również dla: 
+- Ukrywania gratisowych produktów w trybie zbierania i dodawania ich w trybie pakowania
+Opcja ukrywania produktów w trybie zbierania, a następnie ich dodawanie w trybie pakowania, jest szczególnie przydatna dla firm, które chcą dołączać gratisowe produkty do zamówień klientów. Dzięki tej funkcji produkty gratisowe są niewidoczne dla pracowników podczas procesu zbierania. Gratisy są dodawane dopiero w trybie pakowania, co gwarantuje, że każde zamówienie otrzyma odpowiednie gratisowe produkty. 
+Dzięki temu, pracownicy zajmujący się zbieraniem zamówień skupiają się wyłącznie na zamówionych produktach, bez konieczności sprawdzania, czy należy dodać gratis. Cały proces pakowania jest bardziej efektywny i mniej podatny na błędy.
+Gratisowe produkty są dodawane w trybie pakowania, co pozwala na dokładne przemyślenie, które gratisy pasują do konkretnego zamówienia. To także minimalizuje ryzyko pomyłek, gdyż pracownicy mogą skupić się wyłącznie na jednej czynności – pakowaniu i dodawaniu gratisów.
+Dzięki tej opcji magazyn może lepiej kontrolować ilość gratisowych produktów, ponieważ są one widoczne jedynie w trybie pakowania. Ułatwia to monitorowanie ich stanu magazynowego.
+Przykład: 
+Firma X sprzedaje produkty kosmetyczne online i jako część promocji, do każdego zamówienia powyżej 100 zł dołącza gratisową próbkę nowego kremu. Dzięki opcji ukrywania produktu w trybie zbierania, pracownicy zbierający zamówienia nie widzą próbek na swoich listach. Próbki te są dodawane dopiero w trybie pakowania przez pracownika, który dokładnie sprawdza, czy każde kwalifikujące się zamówienie zawiera odpowiedni gratis. Dzięki temu klient zawsze otrzymuje obiecany produkt gratisowy.
+- Kuponów i kodów promocyjnych
+Kupony, Rabaty lub kody promocyjne, które mogą być traktowane jako produkty w systemie Sellasist, mogą zostać wyłączone z procesów zbierania i pakowania. To zapobiega zmieszaniu w magazynie i skupia wysiłki pracowników na fizycznych produktach. 
+- Usług gwarancyjnych i ubezpieczeń
+W przypadku, gdy klientom oferowane są dodatkowe usługi, takie jak przedłużone gwarancje czy opcje ubezpieczenia, które są sprzedawane jako „produkt” w systemie Sellasist, te również mogą być ukryte w procesach magazynowych. Tego typu „produkty” nie są fizycznie zbierane ani pakowane, więc ich wyłączenie zapewni jasność w procesach magazynowych.
+- Produktów wirtualnych i subskrypcji
+W przypadku sprzedaży subskrypcji lub dostępu do treści cyfrowych (np. kursu online, multimedia, oprogramowanie dostępne na zasadzie subskrypcji), funkcja niewidoczności tych produktów w trybach zbierania i pakowania umożliwia łatwe wykluczenie tych „produktów” z fizycznych procesów logistycznych.
+Przykład: 
+1. W panelu Sellasist tworzę produkt niematerialny „Rabat” , gdzie Cena sprzedaży brutto to: „-50 zł” 
+2. W zakładce Informacje podstawowe, w sekcji Magazyn zaznaczam opcje: nie pokazuj w trybie zbierania oraz Nie pokazuj w trybie pakowania.
+[IMG:]
+3. Klikam Zapisz.
+4. Przykładowe zamówienia z Rabatem: 
+W karcie zamówienia Widnieją 2 pozycje w zamówieniu tj. „Kurtka damska jesienna” oraz „Rabat”. 
+[IMG:]
+[IMG:]
+- Widok zamówienia nr 360 w Sellasist WMS w Trybie pakowania: 
+Dla pracownika magazynu wyświetla się do spakowania tylko kurtka, produkt „Rabat” jest tu niewidoczny zarówno dla Trybu zbierania jak i Trybu pakowania.  
+[IMG:]
+[IMG:]
+ #### 
+ Pamiętaj! 
+ Dla Sellasist WMS funkcjonalność ukrywania produktów niematerialnych w procesach zbierania i pakowania ma kluczowe znaczenie, zwłaszcza w przypadku zamówień zawierających zarówno produkty fizyczne, jak i niematerialne (czyli tzw. zamówienia mixy). 
+W przypadku, gdy zamówienie składa się wyłącznie z produktów niematerialnych, zalecamy odpowiednią konfigurację statusów zamówienia, a następnie ustawienie odpowiednich akcji automatycznych. Przykładowo takie zamówienia mogłyby trafiać do statusu zamówienia np. „Do wysyłki cyfrowej” czy „Aktywacja usługi/ subskrypcji”. 
+Akcje automatyczne w Sellasist umożliwiają dalsze dostosowanie procesów do specyfiki danego zamówienia. Poprzez automatyzację działań, takich jak aktualizacja statusów zamówień czy wysyłka e-maili z kodami dostępu, można znacząco poprawić szybkość i dokładność obsługi zamówień. 
+ #### 
+ Powiązane artykuły 
+ Akcje dla zamówień: Lista warunków i efektów dla automatyzacji – omówienie wraz z zastosowaniem
+Akcje dla asortymentu: Lista warunków i efektów dla automatyzacji – omówienie wraz z zastosowaniem
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Jak skonfigurować widok Trybu Pakowania? | https://sellasist.pl/pomoc/jak-skonfigurowac-widok-trybu-pakowania/ | modified 2026-10-13
+Wprowadziliśmy nową funkcjonalność umożliwiającą indywidualną konfigurację interfejsu użytkownika w Trybie Pakowania. Dzięki tej funkcji każdy magazyn może dostosować wygląd i funkcjonalność panelu do swoich specyficznych potrzeb, co  zwiększy efektywność pracy oraz zapewni lepszą organizację procesu pakowania.
+ #### 
+ Korzyści z nowej funkcji: 
+- Większa efektywność: Dzięki możliwości dostosowania wyglądu panelu do własnych potrzeb, pracownicy magazynu mogą pakować produkty szybciej i sprawniej. Dzięki temu cały proces pakowania przebiega bardziej płynnie.
+- Lepsza organizacja pracy: Możliwość zmiany ustawień wyświetlania różnych elementów na ekranie pozwala na lepsze zorganizowanie stanowiska pracy. Dzięki temu pracownicy mogą popełniać mniej błędów oraz szybciej wykonywać swoje zadania.
+- Większa kontrola nad procesem pakowania: Wyświetlanie informacji o stanie magazynowym czy innych szczegółowych informacje o produktach tj. EAN, Symbol na etapie pakowania zmniejsza ryzyko pomyłek i ułatwia zarządzanie stanami magazynowymi.
+ #### 
+ Jak skonfigurować widok Trybu pakowania? 
+ 1. Zaloguj się do panelu administracyjnego.
+2. Z zakładki Magazyn -> Sellasist WMS.
+3. Przejdź do karty Tryb pakowania.
+[IMG:]
+Ustawienia widoku są zorganizowane w dwie główne kategorie:
+- WIDOK TRYBU PAKOWANIA
+Ta sekcja pozwala na konfigurację ustawień widoku dla konkretnego zamówienia. Dzięki temu, możesz dostosować informacje wyświetlane na ekranie w zależności od potrzeb danego etapu procesu pakowania.
+- WIDOK TRYBU PAKOWANIA — LISTA ZAMÓWIEŃ
+Ta sekcja ustawień dotyczy konfiguracji ogólnego widoku listy wszystkich zamówień widocznej po wejściu w Tryb Pakowania. To umożliwia łatwe zarządzanie i przeglądanie wielu zamówień jednocześnie, co jest kluczowe dla efektywnego zarządzania przepływem pracy w magazynie.
+*Jest to niezwykle przydatne w niektórych magazynach, np. tych o małej powierzchni wygodniej jest zbierać produkty z poziomu Trybu pakowania i tu po wejściu w widok listy widać jakie rzeczy należy wziąć z regału i spakować.
+Możliwości konfiguracji:
+WIDOK TRYBU PAKOWANIA
+Wybierz układ:
+[IMG:]
+- Pełna szerokość strony: Pozwala na maksymalne wykorzystanie dostępnego miejsca na ekranie.
+[IMG:]
+- Z sidebarem: Umożliwia łatwy dostęp do opcji i narzędzi po lewej stronie ekranu
+[IMG:]
+Wygląd komentarzy klienta:
+[IMG:]
+- Standardowy: Komentarze są wyświetlane w formie zwykłego tekstu bez wyróżnionego tła.
+[IMG:]
+- Wyróżniony: Komentarze są wyróżnione na czerwonym tle. W ten sposób są bardziej widoczne, co pomaga w ich szybkim zlokalizowaniu i przeczytaniu.
+[IMG:]
+Pamiętaj! Aby zmienić kolor czcionki komentarza (Magazyn->Sellassist WMS -> Ustawienia wspólne -> Kolor notatki). W ten sposób zmienisz zarówno ustawienie komentarza od klienta oraz notatki własnej.
+ #### 
+ Widok dokumentu sprzedaży: 
+ [IMG:]
+- Uproszczony: Skupia się na najważniejszych informacjach, czyli widoku rodzaju dokumentu sprzedaży (paragon/faktura), idealny do szybkich przeglądów.
+[IMG:]
+- Szczegółowy: Zawiera pełne informacje o każdym elemencie dokumentu sprzedaży, wraz z numerem dokumentu oraz danymi nabywcy.
+[IMG:][IMG:]
+Dodatkowa lista produktów spakowanych – Umożliwia śledzenie, które produkty zostały już zapakowane, co pomaga w koordynacji prac.
+[IMG:]
+ #### 
+ Wygląd produktów na liście do spakowania: 
+ [IMG:]
+- Kafelki: Wizualnie atrakcyjny i intuicyjny sposób prezentacji produktów. Duże zdjęcia pomagają w łatwej identyfikacji towaru.
+[IMG:]
+- Lista: Klasyczne, proste przedstawienie produktów, które pozwala na szybkie przeglądanie.
+[IMG:]
+Zdjęcie produktu na liście do spakowania: Ułatwia identyfikację produktów, szczególnie w przypadku podobnych artykułów.
+[IMG:]
+[IMG:]
+wersja bez zdjęć:
+[IMG:]
+ #### 
+ Umiejscowienie informacji o lokalizacji na produkcie: 
+ [IMG:]
+- Prawy górny róg: Informacje są łatwo dostępne na pierwszy rzut oka, w prawym górnym rogu.
+[IMG:]
+- W szczegółach produktu: Lokalizacja jest ukryta w szczegółach produktu, co czyni interfejs bardziej uporządkowanym.
+[IMG:]
+ #### 
+ *Pamiętaj! 
+ Aby lokalizacja produktów wyświetlała się prawidłowo, należy w Magazyn ->Sellasist WMS -> Sellasist WMS -ustawienia -> sekcja Tryb pakowania zaznaczyć checkbox „Wyświetlaj lokalizację produktów„.
+ #### 
+ Położenie przycisków aktywatorów automatyzacji: 
+ [IMG:]
+- Standardowe: Przyciski umieszczone są w standardowej lokalizacji, na górze ekranu.
+[IMG:]
+- Przypięte na dole ekranu: Aktywatory umieszczone są na dole ekranu. Przyciski są zawsze widoczne, niezależnie od przewijania strony.
+[IMG:]
+Przesuwaj spakowane produkty na koniec listy: Ułatwia organizację przez utrzymywanie niezapakowanych produktów na początku listy.
+[IMG:]
+Wyświetlaj stan magazynowy w produktach: Zaznaczenie opcji spowoduje wyświetlanie się stanu magazynowego produktu.
+[IMG:]
+Wyświetlaj EAN w produktach 
+Wyświetlaj symbol w produktach
+Wyświetlaj numer katalogowy w produktach
+Wyświetlaj sygnaturę w produktach 
+Wyświetlaj cenę w produktach
+Wyświetlaj informacje o produkcie z zestawu
+Te opcje zapewniają kompleksowe informacje o każdym produkcie, co jest istotne przy weryfikacji i pakowaniu produktów.
+[IMG:]
+[IMG:]
+Ograniczaj długość tytułu w produktach – Długie nazwy produktów mogą czasem utrudniać pracę. Dzięki tej opcji unikniesz takiego problemu.
+ #### 
+ Logotypy przewoźników: 
+W trybie pakowania możesz rozróżniać przewoźników po konkretnych logotypach czy innych, dowolnie wybranych grafikach.
+Uwaga: Logotypy będą widoczne tylko dla nowych zamówień — tych, które wpłynęły po zapisaniu logotypu.
+1. Przejdź do Administracja → Metody dostawy → Grupy kurierów.
+2. Utwórz nową grupę kurierów lub otwórz edycję istniejącej grupy.
+Zobacz także: Więcej na temat edycji grupy kurierów znajdziesz w tym artykule, w sekcji Grupy kurierów.
+3. Zmień zdjęcie grupy kurierskiej i zapisz zmiany.
+[IMG:]
+ #### 
+ WIDOK TRYBU PAKOWANIA — LISTA ZAMÓWIEŃ 
+[IMG:]
+Wybierz układ listy zamówień w trybie pakowanie: 
+- rozbudowany pionowy
+[IMG:]
+- rozbudowany poziomy
+[IMG:]
+- standardowy 
+[IMG:]
+Wyświetlaj zdjęcie produktu na liście zamówień
+Wyświetlaj symbol produktu na liście zamówień
+Wyświetlaj EAN produktu na liście zamówień
+Wyświetlaj numer katalogowy na liście zamówień
+Te opcje zapewniają kompleksowe informacje o każdym produkcie, co jest istotne przy weryfikacji i pakowaniu produktów. Zaznacz, które parametry mają się wyświetlać na liście zamówień.
+Ograniczaj długość tytułu w produktach na liście zamówień – Długie nazwy produktów mogą czasem utrudniać pracę. Dzięki tej opcji unikniesz takiego problemu.
+Wprowadzenie funkcji konfigurowania widoku trybu pakowania do panelu Sellasist WMS jest bardzo ważne dla każdego magazynu, który chce pracować szybciej i bardziej efektywnie. Dzięki możliwości konfiguracji widoku trybu pakowania, pracownicy magazynu mają dostęp do funkcji, które ułatwiają im codzienną pracę, pozwalając im zaoszczędzić czas i zmniejszyć ryzyko błędów.
+Zobacz także: Jak zmienić język w Sellasist WMS?
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Jak utworzyć zestaw produktów podczas importu w Sellasist? | https://sellasist.pl/pomoc/jak-utworzyc-zestaw-produktow-podczas-importu-w-sellasist/ | modified 2024-11-04
+Tworzenie zestawów produktów w Sellasist za pomocą importu to proces, który można przeprowadzić w kilku prostych krokach.
+W celu poprawnego utworzenia zestawów podczas importu produktów do Sellasist, należy odpowiednio przygotować plik z danymi. W kolumnie „Zestaw” należy określić, czy dany produkt jest zestawem czy pojedynczym produktem. 
+ #### 
+ Jak skonfigurować zestawy podczas importu produktów? 
+ Krok 1: Przygotowanie pliku do importu.
+1. Format: Upewnij się, że plik jest w jednym z akceptowanych formatów (CSV, XLS, XLSX).
+2. Rozmiar: Plik nie może przekraczać 100 MB. 
+3. Kodowanie: Plik powinien być zapisany w formacie UTF-8.
+4. Struktura pliku: Plik powinien zawierać kolumnę „Zestaw”. 
+W kolumnie tej, należy określić, czy dany produkt jest zestawem czy pojedynczym produktem:
+- Wartość 1: Oznacza, że produkt zostanie zaimportowany jako zestaw. Sellasist automatycznie rozpozna ten produkt jako zestaw i odpowiednio dostosuje jego ustawienia.
+- Wartość 0: Oznacza, że produkt zostanie zaimportowany jako pojedynczy produkt, niebędący zestawem. W ten sposób produkt będzie traktowany jako niezależny, a jeśli wcześniej był zestawem, zostanie zaktualizowany do stanu pojedynczego produktu.   
+ #### 
+ Pamiętaj! 
+ Podczas importu Sellasist zwróci uwagę na wartość w kolumnie „Zestaw„, by odpowiednio sklasyfikować produkty. Wartość „1” zamienia produkt na zestaw, natomiast „0” zamienia zestaw na produkt. 
+Uwaga! Szczegółowa pomoc dotycząca ustawień importuJak zaimportować produkty z pliku do Sellasist za pomocą nowego importera plików?
+ #### 
+ Krok 2: Import pliku 
+ 1. Zaloguj się do Panelu Administracyjnego i przejdź do zakładki Asortyment. 
+2. Wybierz opcję Import produktów i kliknij Wykonaj nowy import. 
+3. Wgraj plik: Przeciągnij swój plik na pole „Kliknij lub upuść plik tutaj” lub kliknij to pole, aby wybrać plik z komputera. 
+ #### 
+ Krok 3: Określenie separatora 
+ Jeśli korzystasz z pliku CSV, upewnij się, że ustawiłeś odpowiedni separator kolumn. W Sellasist domyślnie używany jest przecinek „,„, ale możesz zmienić separator, jeśli jest inny.  
+ #### 
+ Krok 4: Podstawowe ustawienia 
+ 1. Sprawdź poprawność pliku: Upewnij się, że plik został poprawnie wgrany. 
+2. Kliknij Zapisz i przejdź dalej. 
+ #### 
+ Krok 5: Powiązanie elementów 
+ 1. Przypisz kolumny: Dopasuj kolumny z pliku do odpowiednich pól w Sellasist. 
+- Pamiętaj! Kolumna „Zestaw” musi być powiązana z odpowiednim polem w Sellasist, aby system mógł rozpoznać produkty i zestawy. 
+[IMG:]
+2. Kliknij Zapisz i przejdź dalej. 
+ #### 
+ Krok 6: Ustawienia szczegółów importu 
+ 1. Unikalny element: Wybierz element (np. EAN, numer katalogowy), który będzie identyfikatorem produktu lub zestawu. 
+2. Określ działania dla unikalnych elementów. 
+- Warianty produktów: Określ, jak system ma postępować w przypadku wariantów produktów. 
+- Waga: Wybierz jednostkę wagi produktów. 
+- Separator zdjęć: Określ separator używany do rozdzielania zdjęć.
+3. Kliknij Zapisz i przejdź dalej. 
+ #### 
+ Krok 7: Wykonanie importu 
+ 1. Kliknij Rozpocznij, aby rozpocząć proces importu. 
+2. Po zakończeniu importu pobierz raport z wynikami.
+ #### 
+ Powiązane artykuły 
+ Jak zaimportować produkty z pliku do Sellasist za pomocą nowego importera plików?
+Jak wykonać import powiązań produktów z zestawami?
+Zestawy Produktów w Panelu Sellingo i Sellasist
+Zestawy dynamiczne
+ZESTAW DYNAMICZNY – warunek automatyzacji dla zamówień
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Jak wykonać import powiązań produktów z zestawami? | https://sellasist.pl/pomoc/jak-wykonac-import-powiazan-produktow-z-zestawami-2/ | modified 2024-11-04
+Import powiązań produktów z zestawami w Sellasist umożliwia łatwe dodawanie zestawów produktów do Twojego asortymentu. Proces ten opiera się na podobnym mechanizmie do importu produktów, z kilkoma specyficznymi różnicami dotyczącymi mapowania kolumn i szczegółów importu.
+Główna różnica polega na tym, że musisz przyporządkować różne rodzaje informacji w pliku, który importujesz, takie jak: które produkty są w zestawie i ich szczegóły.
+Uwaga! Poniżej opisany importer służy jedynie do powiązania istniejących produktów z istniejącymi zestawami.
+Jeżeli chcesz zaimportować produkty lub zestawy użyj importera produktów.
+1. Zaloguj się do Panelu Administracyjnego Sellasist. 
+2. Przejdź do Asortyment -> Zestawy. 
+3. Przejdź do sekcji Import powiązań produktów z zestawami. 
+Znajdziesz tutaj przykładowe pliki importu, które pomogą Ci przygotować własny dokument do importu.
+4. Wgranie Pliku: Kliknij Wykonaj nowy import.
+Upewnij się, że format pliku jest zgodny z wymaganiami systemu.
+[IMG:]
+3. Załaduj plik. 
+Dozwolony format pliku to: CSV, XLS, XLSX.
+Maksymalny rozmiar pliku : 100MB.
+[IMG:]
+4. Kliknij Prześlij plik. 
+[IMG:]
+5. Sprawdź Ustawienia podstawowe: 
+Nazwa wgranego pliku – sprawdź nazwę wgranego pliku/
+Format wgranego pliku – sprawdź format wgranego pliku.
+Liczba pozycji – sprawdź liczbę wszystkich pozycji znaleziona w pliku. 
+Pierwsza pozycja zawiera nagłówki – określ, czy Twój plik zawiera nagłówki kolumn. To ułatwi mapowanie danych.
+[IMG:]
+6.  Kliknij Zapisz i przejdź dalej.
+7. Powiązanie elementów: W procesie integracji danych z pliku do systemu Sellasist, kluczowe jest precyzyjne powiązanie odpowiednich elementów.
+Np. Jednym z takich elementów jest EAN zestawu wymieniony w wgrywanym pliku. Aby zapewnić prawidłową synchronizację, konieczne jest dopasowanie tej kolumny z odpowiednim parametrem w Sellasist.
+ #### 
+ Przykładowy plik: 
+ [IMG:]
+Wybierz i dopasuj odpowiednie parametry z „Parametr w Sellasist” do „Kolumna z pliku„. 
+[IMG:]
+*dopasuj odpowiednie parametry z Sellasist do odpowiednich kolumn z wgrywanego pliku, jeżeli nie chcesz importować jakiejś kolumny wybierz –-Nie importuj tej kolumny/pola–
+[IMG:]
+8. Kliknij Zapisz i przejdź dalej. 
+9. Ustawienia szczegółów: 
+Unikalny element zestawów (wymagane): Identyfikator pozwalający na rozróżnienie poszczególnych zestawów. System importera identyfikuje i dopasowuje zestawy produktów w bazie danych, wykorzystując unikalny numer np. EAN jako element rozpoznawczy. 
+Unikalny element produktów (wymagane): Podobnie jak w przypadku zestawów, każdy produkt w zestawie musi mieć swój unikalny identyfikator np. EAN, który pomaga w rozróżnianiu poszczególnych produktów.
+Zestaw nie zawiera produktów –  W przypadku gdy zestaw nie zawiera podanego produktu, importer nie dokona dopasowania i nie połączy produktu z tym zestawem Wybierz z listy: Importuj pozycję/pomiń pozycję.
+Zestaw zawiera produkt – Jeśli zestaw zawiera już podany produkt, importer rozpozna to dopasowanie i kontynuuje proces aktualizacji produktu w tym zestawie. Wybierz z listy: Aktualizuj pozycję/pomiń pozycję.
+Uwaga! Aktualizacja produktów składowych zestawów zmienia ceny i stany magazynowe zestawów! Należy mieć to na uwadze w przypadku włączonych integracji z zewnętrznymi systemami z włączoną synchronizacją cen lub stanów magazynowych
+[IMG:]
+ #### 
+ Pamiętaj! 
+ Do powiązania oprócz EAN oprócz tego można użyć również Symboli, Numerów katalogowych oraz ID produktów/zestawów do powiązania. Aby to zrobić należy po wgraniu pliku wybrać kolumny z np. Symbolem, a następnie w kolejnym kroku pojawi się możliwość wyboru Symbolu jako elementu unikalnego.
+[IMG:]
+[IMG:]
+10. Kliknij Zapisz i przejdź dalej.
+11. Kliknij Rozpocznij.
+[IMG:]
+12. Po zakończeniu importu będziesz mógł pobrać raport z wynikami. KliknijPobierz raport. Raport zostanie pobrany na Twój komputer.
+ #### 
+ Statusy po wykonaniu importu: 
+ Po zakończeniu procesu importowania, system Sellasist pokaże Ci statusy, które informują o wynikach importu. 
+[IMG:]Zaimportowane poprawnie
+[IMG:]Pominięte: Pozycje, które zostały pominięte podczas importu.
+[IMG:]Zaimportowane pozycje z nieznacznymi uwagami. 
+Po przejrzeniu statusów, jeśli zauważysz jakieś błędy, możesz poprawić swój plik i spróbować zaimportować go ponownie. Pamiętaj, aby zawsze sprawdzać wyniki importu, aby upewnić się, że wszystkie produkty zostały dodane poprawnie.
+ #### 
+ Lista historii importów 
+ Po imporcie, możesz łatwo śledzić historię wszystkich przeprowadzonych importów. Aby to zrobić postępuj zgodnie z poniższymi krokami:
+1. Z zakładki Asortyment -> Zestawy przejdź do Import powiązań produktów z zestawami.
+2. Zobaczysz tu Listę historii importów. 
+[IMG:]
+- Historia importów przechowywana jest przez okres 90 dni.
+- Ważne! Każdy administrator widzi jedynie importy, które sam przeprowadził.
+- Lista jest prezentowana w formie tabeli z następującymi kolumnami
+Data wykonania importu – data, kiedy dokładnie odbył się  import.
+Nazwa wgranego pliku – nazwa pliku, który został zaimportowany.
+Ilość elementów pliku – ile produktów/elementów zawierał plik.
+Przetworzonych elementów z pliku – ile z tych produktów zostało pomyślnie zaimportowanych 
+Akcje – tutaj masz dwie opcje:
+–Skopiuj ustawienia – pozwala na skopiowanie ustawień z archiwalnego importu do nowego importu produktów.
+–Pokaż szczegóły – umożliwia przeglądanie szczegółów danego importu, w tym pobieranie raportów. Pamiętaj jednak, że w tym miejscu nie możesz dokonywać żadnych edycji. 
+POWIĄZANE ARTYKUŁY: 
+Jak zaimportować produkty z pliku do Sellasist za pomocą nowego importera plików?
+Jak utworzyć zestaw produktów podczas importu w Sellasist?
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Obsługa zestawów w pliku XML B2B | https://sellasist.pl/pomoc/obsluga-zestawow-w-pliku-xml-b2b/ | modified 2024-11-04
+#### 
+ Obsługa zestawów w pliku XML B2B 
+ W celu ulepszenia naszego systemu, wprowadziliśmy nowe elementy w pliku XML B2B, które umożliwiają efektywne zarządzanie zestawami produktów. 
+W pliku XML dla produktów, które są zestawami, wprowadziliśmy dodatkowy znacznik . Ten znacznik zawiera informację o zestawach.
+ #### 
+ Struktura pliku XML dla zestawów: 
+ Nowy element : 
+W  
+znajdują się informacje o składnikach zestawu, w tym: 
+- product_id – ID produktu w zestawie
+- price – Cena produktu w zestawie 
+- quantity – Ilość sztuk danego produktu w zestawie
+W elemencie product dodaliśmy atrybut as_set, który przyjmuje wartość 1, aby oznaczyć, że dany produkt jest zestawem.
+Te zmiany pozwalają na bardziej szczegółowe zarządzanie zestawami produktów w systemie B2B, ułatwiając integrację. 
+[IMG:]
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### ZESTAW DYNAMICZNY – warunek automatyzacji dla zamówień | https://sellasist.pl/pomoc/zestaw-dynamiczny-warunek-automatyzacji-dla-zamowien-2/ | modified 2024-10-24
+Przeczytaj więcej o zestawach: Zestawy dynamiczne
+Jeżeli klient złoży zamówienie, składające się z zestawu dynamicznego możesz ustawić tak warunki, aby zostały one przypisane do np. odpowiedniego statusu zamówienia np. status „Zamówienie zawiera zestaw dynamiczny”, dla takiego statusu utworzysz następnie w prosty sposób Powiadomienie „Wybierz wariant” zawierające link do strony z wyborem odpowiedniego produktu.
+ #### 
+ Jak skonfigurować warunek Zestaw dynamiczny w akcjach automatycznych dla zamówień? 
+ 1. W pierwszej kolejności warto utworzyć nowy status zamówienia o nazwie np. „Zamówienia z zestawem dynamicznym„. Pozwoli Ci to w prosty sposób wyfiltrować zamówienia, które zawierają zestaw dynamiczny i będziesz mógł łatwiej monitorować i zarządzać takimi zamówieniami.
+2. Przejdź do Administracja -> Statusy zamówień i dla grupy Nowe utwórz status zamówienia np. „Zamówienia z zestawem dynamicznym„.
+Więcej: Czym są Statusy Zamówień?
+[IMG:]
+3. Następnie stwórz akcję automatyczną, która będzie segregować nowe zamówienia i wyłapywać zamówienia, które zawierają Zestawy dynamiczne.
+4. W zakładce Administracja -> Automatyzacja i przejdź do sekcji Akcje dla zamówień.
+5. Na górze strony znajdziesz karty: Dziennik zdarzeń, Akcje dla asortymentu, Akcje dla zamówień.
+W Dzienniku zdarzeń znajdziesz wszystkie wykonane akcje.
+Możesz tu przeglądać raporty z ostatniego miesiąca i ręcznie uruchamiać akcje.
+Przejdź do sekcji Akcje dla zamówień i kliknij Dodaj akcję automatyczną.
+[IMG:]
+6. Uzupełnij nazwę akcji
+ #### 
+ Uwaga! 
+ Jeżeli chcesz dodać nową akcję w Sellasist możesz wybrać między automatycznym uruchamianiem akcji po spełnieniu określonych warunków lub ręcznym aktywowaniem ich za pomocą przycisków (więcej o przyciskach: TUTAJ).
+Możesz również użyć obu sposobów uruchamiania akcji jednocześnie. Dzięki temu będziesz miał np. możliwość ponownego wykonania akcji, gdy automatyczna próba zakończy się niepowodzeniem.
+[IMG:]
+Dla uruchamiania samoczynnego:
+7. Ustaw opóźnienie jej wykonania w minutach.
+Opóźnienie określa czas, przez jaki wszystkie warunki muszą być spełnione, by akcja została wykonana. Dzięki temu można, np. sprawić, by produkty z zerowym stanem magazynowym zostały wyłączone dopiero wtedy, gdy ten stan utrzymuje się przez 5 dni. Jeżeli użyjesz opóźnienia nie może być ono niższe niż 1 minuta.
+Ustaw tryb działania akcji.
+Masz do wyboru: tryb ciągły lub wybrane dni i godziny.
+Wybrane dni i godziny: w tym trybie akcje będą wykonywane tylko w wybranych dniach i godzinach. Zdarzenia, które miałyby się wykonać poza nimi będą wstrzymywane i realizowane dopiero w wybranym czasie. Jeśli nie podasz godzin działania, akcja będzie mogła być wykonywana całą dobę.
+Dzięki odpowiedniej konfiguracji możesz sprawić, by np. zamówienia trafiały do realizacji tylko w godzinach pracy Twojego magazynu.
+[IMG:]
+8. Kliknij Dodaj warunek. Wybierz z listy Zestaw dynamiczny i kliknij Dodaj warunek.
+[IMG:]
+9. Uzupełnij kryteria warunku:
+Data złożenia – Możesz wybrać datę złożenia zamówienia, aby zastosować warunek do zamówień złożonych w określonym okresie.
+Pamiętaj! Data jest ustawiana na czas tworzenia danej nowej akcji, tak aby nowa akcja była skierowana dla nowo wpływających zamówień. Jeżeli ustawisz datę wstecz, system sprawdzi wszystkie zamówienia z tego okresu i zastosuje do nich wybrany efekt akcji, co może być problematyczne dla zamówień już zrealizowanych.
+Zestaw dynamiczny: wybierz znajduje się w warunku
+[IMG:]
+*Możesz tu również dodać jeszcze jeden warunek „Źródło zamówienia”. Dzięki temu możesz wyfiltrować sobie poszczególne zamówienia zawierające zestaw dynamiczny według preferowanych źródeł, z którego pochodzą Twoje zamówienia.
+Więcej na temat warunku dla zamówień „Źródło zamówienia” – ŹRÓDŁO ZAMÓWIENIA – warunek automatyzacji dla zamówień
+10. Następnie kliknij Dodaj efekt „Zmień status” i wybierz nowo utworzony status „Zamówienia z zestawem dynamicznym”
+[IMG:]
+11. Kliknij Zapisz.
+Dodatkowo, dla twojej wygody oraz oszczędności Twojego czasu masz możliwość tworzenia kopii utworzonych już wcześniej akcji.
+Aby utworzyć kopię danej akcji przejdź do Administracja -> Automatyzacja -> edycja wybranej akcji automatycznej, którą chcesz skopiować. Klikając Zapisz jako nowy – utworzysz jej kopię. 
+POWIĄZANE ARTYKUŁY: 
+Zestawy dynamiczne
+WARIANT PRODUKT W ZESTAWIE DYNAMICZNYM – warunek automatyzacji dla zamówień
+Czym jest Automatyzacja? Jak działa Automatyzacja?
+Jak ustawić Automatyzację? 
+Akcje dla asortymentu: Lista warunków i efektów dla automatyzacji – omówienie wraz z zastosowaniem
+POLE DODATKOWE PRODUKTU – warunek automatyzacji akcji dla zamówień
+ZMODYFIKUJ POLE DODATKOWE – efekt w automatyzacji dla zamówień
+DANE PRODUKTU – warunek akcji automatycznej dla zamówień
+DANE KLIENTA – warunek akcji automatycznej dla zamówień
+WARTOŚĆ ZAMÓWIENIA – warunek automatyzacji dla zamówień
+LICZBA POZYCJI W ZAMÓWIENIU – warunek akcji automatycznej dla zamówień
+DANE ADRESOWE WYSYŁKI – warunek automatyzacji dla zamówień
+METODA PŁATNOŚCI – warunek automatyzacji dla zamówień
+ZMIEŃ STAWKĘ VAT w zależności od kraju wysyłki – efekt w automatyzacji dla zamówień
+DANE ADRESOWE DOKUMENTU SPRZEDAŻY – warunek automatyzacji dla zamówień
+LOKALIZACJA MAGAZYNOWA – warunek automatyzacji dla zamówień
+WYMIARY OPAKOWANIA PRODUKTU – warunek automatyzacji dla zamówień
+POLA DANYCH W ZAMÓWIONYCH PRODUKTACH – warunek akcji automatycznej dla zamówień
+POLA DODATKOWE – warunek automatyzacji akcji dla asortymentu
+SPRAWDŹ PRODUKT – warunek automatyzacji dla asortymentu
+BLISKI TERMIN WAŻNOŚCI – warunek automatyzacji dla asortymentu
+PRZETERMINOWANY – warunek automatyzacji dla asortymentu
+WMS STAN MAGAZYNOWY NA PÓŁCE – warunek automatyzacji dla asortymentu
+LOKALIZACJA MAGAZYNOWA – warunek automatyzacji dla produktów
+LOKALIZACJA – warunek automatyzacji dla asortymentu
+STAN MAGAZYNOWY – warunek automatyzacji dla asortymentu i zamówień
+ID PRODUKTU – warunek automatyzacji dla asortymentu
+DOKUMENT SPRZEDAŻY W DODATKOWYM POLU – warunek automatyzacji dla zamówień
+ALARM MAGAZYNOWY– warunek automatyzacji dla asortymentu
+USŁUGI DODATKOWE W ALLEGRO – warunek automatyzacji dla zamówień
+WYSTAW DOKUMENT SPRZEDAŻY – efekt automatyzacji dla zamówień
+KATEGORIA GŁÓWNA – warunek automatyzacji dla asortymentu
+ZMIEŃ KATEGORIĘ DODATKOWĄ – efekt automatyzacji dla asortymentu
+WYŚLIJ POWIADOMIENIE TYPU FAKTURA LUB PARAGON – efekt automatyzacji dla zamówień
+LOKALIZACJA – warunek automatyzacji dla zamówień
+Przyciski w Automatyzacji – Aktywatory
+CENA SPRZEDAŻY OFERT ZEWNĘTRZNYCH – warunek automatyzacji dla asortymentu
+DOSTĘPNY OD – warunek automatyzacji dla asortymentu
+SZABLON WYSYŁKI – warunek automatyzacji dla asortymentu
+UZUPEŁNIONE SZCZEGÓŁY – warunek automatyzacji dla asortymentu
+ŁĄCZNY STAN U DOSTAWCÓW – warunek automatyzacji dla asortymentu
+DATA ZŁOŻENIA – warunek akcji automatycznej dla zamówień
+DOKUMENT- warunek akcji automatycznej dla zamówień
+STATUS DOKUMENTU SPRZEDAŻY – warunek akcji automatycznej dla zamówień
+LICZBA PACZEK (WEDŁUG ALLEGRO) – warunek akcji automatycznej dla zamówień
+LIST PRZEWOZOWY- warunek akcji automatycznej dla zamówień
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### WARIANT/PRODUKT W ZESTAWIE DYNAMICZNYM – warunek automatyzacji dla zamówień | https://sellasist.pl/pomoc/wariantprodukt-w-zestawie-dynamicznym-warunek-automatyzacji-dla-zamowien/ | modified 2024-02-13
+ERR The read operation timed out
+

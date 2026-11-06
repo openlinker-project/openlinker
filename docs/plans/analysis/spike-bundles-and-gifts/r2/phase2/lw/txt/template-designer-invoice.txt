@@ -1,0 +1,94 @@
+=== template-designer-invoice | Template Designer: Invoice
+ 
+ Template Designer: Invoice 
+Template Type: Invoice Template
+ Linnworks allows you to customize invoice templates in the Template Designer screen. The invoice template can include a range of information as well as multiple invoice layouts can be configured. Invoice layouts other than Default can have Printing Conditions added to them to automate the selection of design where a seller uses different brands on different selling channels, etc.
+ Customized invoices can be either attached to emails or printed to send with an order. There are a number of template elements that are unique to invoices, which are described below.
+ Template settings 
+ In addition to the standard Template Settings , invoice templates include the Label on new page option. This allows you to print the invoice and shipping label separately, rather than using the integrated Shipping label format in the invoice template.  
+ Enabling the Label on new page option allows you to print: 
+ The invoice on one page
+ The shipping label on a separate page 
+ This enhancement addresses a common request for separate invoice and label printing, while still supporting the existing integrated workflow.
+ For example, if you split an order into two packages and print the invoices, Linnworks generates the following sequence when the  Label on new page  setting is enabled: 
+ Invoice for box 1 
+ Shipping label for box 1 
+ Invoice for box 2 
+ Shipping label for box 2 
+ This setup ensures that each invoice is paired with its shipping label, making handling and shipping more efficient.
+ Label on New Page & Integrated Shipping Labels
+ When the  Label on new page  setting is disabled , you can use the integrated Shipping label element inside the invoice template, as before. In this case, the label is embedded directly within the invoice layout.
+ Important: These options are mutually exclusive - you can use either the Label on new page option or the integrated Shipping label element, but not both at the same time.
+ What happens in the interface:
+ If Label on new page is enabled :
+ The Shipping label element will be greyed out.
+ If the Shipping label element is already added to the template :
+ The Label on new page option will be greyed out.
+ This ensures clarity and prevents conflicting configurations while giving you flexibility in how you prefer printing invoices and labels.
+ Available elements
+ All templates can contain images , labels, and variables . In addition to these, the following pre-defined table elements are available for use in invoice templates:
+ Order Items 
+ Order Notes 
+ These can be customized by double-clicking the element on the template. Further information on customizing table elements can be found here . In addition to these tables, there are two more elements that are specific to invoices:
+ PPI Stamps
+ Integrated Shipping Labels 
+ PPI Stamps
+ PPI stamps are stamps designed to be peeled off and fixed to the shipping label on the front of the package. The PPI stamps available in Linnworks are primarily Royal Mail services. Most couriers Linnworks has direct integration with, including Royal Mail, now offer shipping labels to be printed directly via the Print Shipping Label  option when order is right-clicked in Open Orders or via the Integrated Shipping Label  described in the section below.
+ Using PPI Stamps
+ PPI Stamps can be added to the template by the normal drag and drop method. To further adjust the element follow the steps below:
+ Double-click the element to open the config window that is shown above:
+ Account Number:  This is the account number you have with your courier.
+ Default PPI Stamp:  This is the default PPI stamp that will be displayed on the template.
+ Add:  click the Add  button to add stamps that can be used in place of the default stamp, if the Linnworks Postal Service Method on the order matches one of the additional services, the appropriate PPI stamp will be displayed, otherwise, the default PPI stamp is displayed.
+ The bottom section of the Edit Label window is a preview of the stamp, it will also show if the stamp will be cropped if the bounding box is too small.
+ Once you are happy with the config, click     Ok 
+ The bounding box should be altered such that the stamp is not cropped.
+ For assistance with editing elements, please see this guide .
+ Click   Save on the template.
+ Note!  For Royal Mail services, only stamps ending in RM should be used. Other stamps are an older style and don't include the 'Delivered by Royal Mail' section.
+ Integrated Shipping Labels
+ Integrated Shipping Labels are designed to work with self-paper that contains a self-adhesive area designed to be peeled off and attached to the front of the parcel. They can be added to a template in the same way as other elements.
+ Using Integrated Shipping Labels
+ Confirm the position of the label on your paper.
+   NB! Integrated Shipping Labels in Linnworks are 6x4 . 
+ Place the element in the correct position on the page:
+ The element can be made portrait by double-clicking the element and unchecking the Landscape option, then clicki ng   Ok 
+ When changing the element orientation, the bounding box will have to be altered appropriately or the label will be cropped.
+ Print an invoice using the template with the integrated label:
+ If the shipping service is using a courier that supports integrated labels, the request will be sent to the courier and the label details will be returned.
+ This will also add the tracking number to the order.
+ This may increase the time taken to print the invoice but this behavior is expected.
+ Click   Save   on the template.
+ Extended Properties (EPs)
+ It is possible to have  Item Extended Properties and Order Extended Properties  printed on the invoice template.
+ Important!  An extended property must exist on an inventory item/order prior to being displayed and printed on the invoice template. 
+ How to add item EPs
+ Item extended properties hold additional information about a product (for example, size, color, material, etc.) that you may want to display on the invoice. For further guidelines on how to do that see below.
+ NB!  This functionality is not supported in the Desktop application. If you add extended properties to the invoice template in Linnworks.net and then print this invoice from Desktop, extended properties will not  appear on the invoice.   
+ To add item extended properties:
+ Double-click the Order Items table to open the Edit Table Screen.
+ Click the   Add Extended Property button to add the required extended property to the template.
+ Select Property Type from the drop-down menu. Property types include:
+ Attribute 
+ Channel
+ Compatibility
+ Condition
+ Fulfillment SKU
+ Other
+ Shipping 
+ Stock Item Label 
+ Select Property Name . This is the name of the unique property that you used when this extended property was created.
+ Click   Ok 
+ Once selected, a new column will be added to the table with both the header and the name being displayed as the extended property name . When printed, the extended property cell will show the extended property value . This only works on the main table, not the sub-table.
+ How to add order EPs
+ Order extended properties store any additional information that is not saved in the  Order Information  section of the order and the  Template Designer  tool allows you to display these EPs on the invoice template.
+ To add order EPs to the invoice template:
+ Go to Settings > Template Designer > Invoice Templates .
+ Search for the required invoice template and click the  Edit  button.
+ Drag & drop the  Labels and Variables  element from the left-side menu into the template.
+ Double-click the element to open the  Edit Label  pop-up. 
+ Click the   Extended Property  button at the top right-hand corner of the pop-up.
+ Select  Property Type  and  Property Name  and then click    Ok 
+ Click    Ok    in the pop-up and then    Save  the template to apply changes.
+ Now, when printing an invoice for an order with an extended property, that property will be printed as well.
+ 

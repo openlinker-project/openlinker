@@ -30,6 +30,17 @@
 /** One line of one box. */
 export interface BenchParcelLine {
   readonly workLineId: string;
+  /**
+   * The bundle this line is a component of (#3624). Components of one bundle
+   * share `lineId`. Absent or `null` for an ordinary line, and absent from an
+   * API that predates bundles.
+   */
+  readonly bundle?: {
+    readonly lineId: string;
+    readonly name: string | null;
+    /** The free gift of the set (#3934). Absent from an API that predates it. */
+    readonly giftSlot?: boolean;
+  } | null;
   readonly productVariantId: string;
   /** `null` when the variant is not in the catalogue — the codes are shown instead. */
   readonly name: string | null;

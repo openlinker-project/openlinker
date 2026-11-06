@@ -160,6 +160,39 @@ export interface IncomingOrder {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Who decided a line is a gift (bundles/gifts epics, ports-v1 "Type additions").
+ * Closed so analytics can group by it; `channel` means the marketplace itself
+ * flagged the line, not that OpenLinker inferred it.
+ */
+export const GiftSourceValues = ['channel', 'cart-rule', 'ol-rule', 'operator'] as const;
+export type GiftSource = (typeof GiftSourceValues)[number];
+
+/**
+ * Marks an order line as a gift. Presence is the whole claim; absence means an
+ * ordinary line.
+ */
+export interface LineGift {
+  source: GiftSource;
+  /** Promotion / cart rule id when known; display and analytics only. */
+  ruleRef?: string;
+}
+
+/**
+ * Narrows an untyped value (a persisted snapshot, a plugin payload) into a
+ * {@link LineGift}. Returns `undefined` rather than guessing for any shape or
+ * source this build does not recognise, so an unknown value reads as "ordinary
+ * line" instead of a fabricated gift.
+ */
+export function readLineGift(value: unknown): LineGift | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const raw = value as Record<string, unknown>;
+  if (!(GiftSourceValues as readonly unknown[]).includes(raw.source)) return undefined;
+  const gift: LineGift = { source: raw.source as GiftSource };
+  if (typeof raw.ruleRef === 'string') gift.ruleRef = raw.ruleRef;
+  return gift;
+}
+
 export interface IncomingOrderItem {
   /**
    * Item identifier (adapter-provided).
@@ -220,6 +253,16 @@ export interface IncomingOrderItem {
 
   /** ISO 3166-1 alpha-2 the channel resolved its rate against. Provenance only. */
   taxRateCountry?: string;
+
+  /** Present when the line is a gift. Absent means an ordinary line. */
+  gift?: LineGift;
+
+  /**
+   * Units of the mapped variant per sold unit (e.g. an Allegro multipack).
+   * Absent means 1. A value above 1 on a variant with no bundle definition
+   * holds the order, since reserving or shipping one unit would under-deliver.
+   */
+  packQuantity?: number;
 }
 
 /**

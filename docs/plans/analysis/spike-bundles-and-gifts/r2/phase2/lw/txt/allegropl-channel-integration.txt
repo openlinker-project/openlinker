@@ -1,0 +1,32 @@
+=== allegropl-channel-integration | Allegro.pl channel integration
+ 
+ Allegro.pl channel integration 
+Allegro.pl Channel Integration
+ The  Allegro  channel integration allows you to connect the Allegro marketplace with your Linnworks account to manage orders and inventory from one place. The integration lets you download new orders and then process them in Linnworks, which will automatically dispatch them on the channel. You can also update listings with stock levels and prices.
+  Allegro channel integration is a 3 rd party integration  (Terms & Conditions)   - additional information and technical support are provided by the developer eBusinessGuru  directly. Additional costs may apply.
+ Supported features
+ Inventory Updates 
+ Linnworks can automatically send changes in stock levels to the channel.
+ Order Download 
+ Channel orders can be automatically downloaded into Linnworks.
+ Inventory Mapping 
+ Channel listings can be linked to Linnworks inventory items for stock level and price updates.
+ Location Mapping 
+ Orders can be downloaded to and inventory updates sent from specific locations.
+ Order Dispatch 
+ Orders on the channel can be marked as shipped and provided with the tracking number and shipping service name via Linnworks.
+ Price Change 
+ Prices on channel listings can be automatically updated via Linnworks.
+ Shipping Mapping 
+ Channel shipping methods can be linked to Linnworks postal services for the orders in Linnworks to display the services based on the channel selection.
+ Adding the integration
+ Detailed installation and configuration instructions are provided in the Developer's user guide.  Contact the developer directly for additional information, further assistance, and technical support.
+ Below are the steps for initiating the integration installation in Linnworks:
+ In Linnworks.net, go to Settings > Channel Integrations and click the  Add new   button.
+ Search for the Allegro integration and click  Install application .
+ Follow further instructions  from the developer.
+ Next steps:
+ Location Mapping 
+ Inventory Mapping 
+ Shipping Mapping 
+ 

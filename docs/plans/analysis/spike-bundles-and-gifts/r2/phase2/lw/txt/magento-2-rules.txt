@@ -1,0 +1,30 @@
+=== magento-2-rules | Magento 2: Rules &amp; Guidelines
+ 
+ Magento 2: Rules & Guidelines 
+ Magento 2: Rules & Guidelines
+ This page provides information on specifics and guidelines to keep in mind when working with the Magento 2 integration in Linnworks.
+ Changes in credentials or API endpoint 
+ If the main settings such as consumer key or API endpoint change, it is possible to reset the channel integration by clicking the Test button in the channel settings and following the re-integration wizard in the Add New guide.
+ Inventory Management Module (MSI) 
+ For Magento 2 versions 2.3.0 and later,   the Inventory Management module (also referred to as MSI) may cause some stock level issues between the two systems.
+ We recommend disabling MSI on the Magento 2 server when using Linnworks. Here you can find guidance on how to do it.
+ Alternatively, a potential solution for disabling only the problematic aspects of MSI to use Magento MSI and Linnworks simultaneously is offered here . Note that this solution is suggested by a 3rd party and Linnworks cannot confirm whether is a viable option.
+ Please contact your Magento developer to discuss and assist with implementing either of the options.
+ Inventory Mapping
+ NB! Due to some API limitations on the Magento side, we recommend not to use forward slashes  (/) and percentage signs  (%) in your Channel SKUs on Magento 2. Magento 2 API is not capable of parsing SKUs with / correctly and stock level and price updates will fail. Please see here for further details.
+ It is possible to re-create an SKU on Magento 2 that had previously been deleted and is now associated with a new Reference Id on Magento 2. Consequently, the Reference Id field is available in the column chooser menu in the Channel Mapping   screen   for use in linking Magento 2 SKUs correctly to Linnworks inventory items.
+ When the Channel Mapping   screen is refreshed, Linnworks checks both the SKU and Reference Id and compares them to those that are already downloaded on the screen. To avoid duplicates, those Reference Ids and SKUs that are already in the system will not be downloaded again. 
+ It is important to organize your SKU and Reference Id indexing so that the scenario where the Product SKU of the item will match other items Reference Id is not possible, otherwise, you will have missing SKUs in the Inventory Mapping screen. 
+ The API call used to update   Channel Mapping for Magento   will not tell Linnworks about items that do not have a stock level value assigned on the channel backend. In cases where on the backend you visually see a value of 0, but the actual recorded value is NULL, the SKU would not appear in Linnworks. To rectify this, it is suggested to add a quantity value for the SKUs on Magento 2 backend. After the item is linked to a Linnworks SKU, the Linnworks stock levels will be sent to the SKU to update and overwrite it whether needed.
+ Listing images 
+ Update Images option available via My Inventory > right-click on channel column > Revise Selected can be used to check and add missing item image roles on Magento 2 listings. The missing role will be added to the first image of the item.
+ Order Dispatch 
+ The status of the orders will be only marked as shipped if the Magento version you are using is 2.1.3 or higher. If the vendor used on the order does not match a list of supported couriers on Magento 2, Custom is displayed instead.
+ Payment Mapping
+ In order for Linnworks to download payment methods from Magento 2, an active order must appear on Magento 2 with that method. It may be necessary to create dummy orders with the appropriate methods to download them into Linnworks.
+ Shipping Mapping
+ In order for Linnworks to download shipping methods from Magento 2, an active order must appear on Magento 2 with that method. It may be necessary to create dummy orders with the appropriate methods to download them into Linnworks.
+ Next steps: 
+ Add New 
+ Configure 
+ 

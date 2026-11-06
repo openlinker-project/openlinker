@@ -1,0 +1,16 @@
+=== open-orders-settings | Order Settings
+ 
+ Order Settings 
+ Open Orders: Settings 
+ Linnworks offers  Order Management Settings  which help to optimize your order management workflow based on your needs. This includes error prevention checks to ensure orders cannot be processed until certain conditions are fulfilled. 
+ Important!  Keep in mind that some order settings are user-specific, meaning that each user that can log into your account needs to set them up for their own user account.  Error prevention  settings apply for all users but are ignored when the B atch Process  method is used. 
+ Order Management Settings  are available under  Settings > General Settings > Order Management . See  here  for full details on all available setting options. 
+  Video tutorial 
+ If you prefer a visual explanation, this video tutorial walks you through the Order Management settings and how to prevent errors step by step. It can help clarify the different settings and answer any additional questions. 
+ Video - Order Management (error prevention) 
+ NB! For the documentation on the earlier version of the Open Order s screen, see here:
+ Order book settings 
+ Open orders 
+ Order processing 
+ Dispatch Console 
+ 

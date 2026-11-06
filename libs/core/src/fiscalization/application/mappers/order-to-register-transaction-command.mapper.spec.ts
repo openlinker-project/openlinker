@@ -674,3 +674,133 @@ describe('toRegisterTransactionCommand', () => {
     });
   });
 });
+
+describe('toRegisterTransactionCommand - gift lines (#3930)', () => {
+  const giftOrder = (): Order =>
+    order({
+      items: [
+        { id: 'i1', productId: 'p1', quantity: 2, price: 24.6, name: 'Widget', taxRate: '23' },
+        { id: 'i2', productId: 'p2', quantity: 1, price: 0, name: 'Spoon', taxRate: '23', gift: { source: 'channel' } },
+      ],
+    } as Partial<Order>);
+  const total = (lines: { quantity: number; unitPriceGross: number }[]): number =>
+    lines.reduce((sum, line) => sum + Math.round(line.quantity * line.unitPriceGross * 100), 0);
+
+  it('should omit a gift by default and equal what was paid', () => {
+    const cmd = toRegisterTransactionCommand({ order: giftOrder(), connectionId: 'c', idempotencyKey: 'k' });
+    expect(cmd.lines.map((l) => l.name)).toEqual(['Widget']);
+    expect(total(cmd.lines)).toBe(4920);
+  });
+
+  it('should take 0.01 from a same-rate paid line when the provider refuses zero', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: giftOrder(),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      giftForm: 'show',
+      acceptsZeroValueLine: false,
+    });
+    expect(cmd.lines).toHaveLength(3);
+    expect(cmd.lines.at(-1)?.unitPriceGross).toBeCloseTo(0.01);
+    expect(total(cmd.lines)).toBe(4920);
+  });
+
+  it('should still floor the gift at 0.01 when the provider declares it accepts zero (a receipt always refuses zero)', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: giftOrder(),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      giftForm: 'show',
+      acceptsZeroValueLine: true,
+    });
+    expect(cmd.lines.at(-1)?.unitPriceGross).toBeCloseTo(0.01);
+    expect(total(cmd.lines)).toBe(4920);
+  });
+});
+
+describe('toRegisterTransactionCommand - bundle components (#3934)', () => {
+  const bundleOrder = (): Order =>
+    order({
+      items: [{ id: 'set', productId: 'ps', quantity: 1, price: 49.2, name: 'Set', taxRate: '23' }],
+    } as Partial<Order>);
+  const mixedDocument = {
+    byLineId: {
+      set: [
+        { lineId: 'set~c:a', variantId: 'a', productId: 'pa', name: 'Soap', sku: 'S-1', quantity: 1, unitPriceGross: 30, taxRate: '23' },
+        { lineId: 'set~c:b', variantId: 'b', productId: 'pb', name: 'Towel', quantity: 1, unitPriceGross: 20, taxRate: '8' },
+        { lineId: 'set~c:g', variantId: 'g', productId: 'pg', name: 'Candle', quantity: 1, giftSlot: true, unitPriceGross: 9, taxRate: '8' },
+      ],
+    },
+  };
+  const total = (lines: { quantity: number; unitPriceGross: number }[]): number =>
+    lines.reduce((sum, line) => sum + Math.round(line.quantity * line.unitPriceGross * 100), 0);
+  const perRate = (lines: { quantity: number; unitPriceGross: number; taxRate: string }[]) => {
+    const out: Record<string, number> = {};
+    for (const l of lines) {
+      out[l.taxRate] = (out[l.taxRate] ?? 0) + Math.round(l.quantity * l.unitPriceGross * 100);
+    }
+    return out;
+  };
+
+  it('should register a mixed-rate set as its components, each at its own rate, total equal to what was paid', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: bundleOrder(),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      bundleDocument: mixedDocument,
+    });
+    expect(cmd.lines.map((l) => [l.name, l.taxRate])).toEqual([
+      ['Soap', '23'],
+      ['Towel', '8'],
+    ]);
+    expect(cmd.lines[0].sku).toBe('S-1');
+    expect(total(cmd.lines)).toBe(4920);
+    // 30:20 of 49.20 split proportionally, per-rate sums add back to the payment.
+    expect(perRate(cmd.lines)).toEqual({ '23': 2952, '8': 1968 });
+  });
+
+  it('should never repeat one name at two rates, even when a component has no name', () => {
+    const unnamed = {
+      byLineId: {
+        set: mixedDocument.byLineId.set.map((c) => ({ ...c, name: null, sku: null })),
+      },
+    };
+    const cmd = toRegisterTransactionCommand({
+      order: bundleOrder(),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      bundleDocument: unnamed,
+    });
+    const ratesByName = new Map<string, Set<string>>();
+    for (const l of cmd.lines) {
+      ratesByName.set(l.name, (ratesByName.get(l.name) ?? new Set()).add(l.taxRate));
+    }
+    expect([...ratesByName.values()].every((rates) => rates.size === 1)).toBe(true);
+    expect(cmd.lines.map((l) => l.name)).not.toContain('Set');
+  });
+
+  it('should keep one line when every component has the set rate', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: bundleOrder(),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      bundleDocument: {
+        byLineId: { set: mixedDocument.byLineId.set.map((c) => ({ ...c, taxRate: '23' })) },
+      },
+    });
+    expect(cmd.lines.map((l) => l.name)).toEqual(['Set']);
+  });
+
+  it('should refuse a set it cannot split without guessing', () => {
+    expect(() =>
+      toRegisterTransactionCommand({
+        order: bundleOrder(),
+        connectionId: 'c',
+        idempotencyKey: 'k',
+        bundleDocument: {
+          byLineId: { set: mixedDocument.byLineId.set.map((c) => ({ ...c, taxRate: null })) },
+        },
+      }),
+    ).toThrow('no known tax rate');
+  });
+});

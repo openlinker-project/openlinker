@@ -1,0 +1,498 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/amazon-settings"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Amazon: Configure channel settings</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Amazon: Configure channel settings';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><h1 id="h1_1025114100" data-has-heading-anchor="true">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+  
+  
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>
+
+Amazon: How to Configure
+<a href="/articles/documentation/amazon-settings/a/h1_1025114100" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-settings/a/h1_1025114100&#39;,this);"></a></h1>
+<p style="text-align: justify;">
+  <span>Linnworks integration has multiple settings that allow precise control of how Linnworks interacts with Amazon. This guide will help you configure your Amazon to ensure Linnworks is doing what is required.</span>
+</p>
+<p style="text-align: justify;">
+  <span>Once the channel is added, click the <i>pen&nbsp;<span class="fa fa-pencil">&nbsp;</span></i>icon in the channel integration screen for the required Amazon integration.</span>
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/Amazon_EditChannelDetails.png" alt="Amazon Edit Channel Details" class="leftAlone" loading="lazy"/>
+</p>
+<h3 id="h4_739406941" style="text-align: justify;" data-has-heading-anchor="true">
+  <b>Available for the configuration settings</b>
+<a href="/articles/documentation/amazon-settings/a/h4_739406941" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-settings/a/h4_739406941&#39;,this);"></a></h3>
+<h4 style="" id="h4_767759945" data-has-heading-anchor="true">
+  Account
+<a href="/articles/documentation/amazon-settings/a/h4_767759945" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-settings/a/h4_767759945&#39;,this);"></a></h4>
+<p>
+  
+</p>
+
+  <ul>
+    <li style="text-align: justify;">
+      <b>Enabled:</b>&nbsp;Tick this option to allow communication between Linnworks and Amazon. No information will be sent to or received from Amazon without this ticked.
+    </li>
+    <li style="text-align: justify;">
+      <b>Seller ID:</b>&nbsp;This is your Amazon Seller ID on the Amazon MWS page.
+    </li>
+    <li style="text-align: justify;">
+      <b>Marketplace:</b>&nbsp;Your country-specific Amazon Marketplace for orders.
+    </li>
+    <li style="text-align: justify;">
+      <b>Test:</b>&nbsp;Click&nbsp;to confirm the supplied credentials work correctly, allowing communication between Amazon and Linnworks.&nbsp;
+    </li>
+  </ul>
+  <h4 style="" id="h4__86252090" data-has-heading-anchor="true">
+    VAT/Tax Calculation Services
+  <a href="/articles/documentation/amazon-settings/a/h4__86252090" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-settings/a/h4__86252090&#39;,this);"></a></h4>
+  <p>
+    
+  </p>
+  <ul>
+    <li style="text-align: justify;">
+      <b>Enabled:</b><span> Enable this checkbox to tell us you are using Amazon's VAT Calculation Service.</span>
+    </li>
+    
+    <li style="text-align: justify;">
+      <b>Use Channel Tax:</b><span> Toggled by the above setting. When ticked, Linnworks will use tax values calculated by Amazon during order download. This only applies to sellers enrolled in Amazon's&nbsp;<a href="https://services.amazon.co.uk/services/vat-services-on-amazon/faq.html" target="_top">VAT Calculation Service</a>.&nbsp;</span>
+    </li>
+    <li style="text-align: justify;">
+      <b>VCS Self-Invoice Upload:</b> Yo<span>u must be enrolled in VCS self-invoicing. Enable invoice &amp; credit notes to be automatically uploaded to Amazon for VAT calculation service.</span>
+    </li>
+    <li style="text-align: justify;">
+      <b>VCS Invoice Upload (EU) Activation Date:</b> L<span>et us know the activation date you have set for self-invoicing. We will begin to upload invoices from this date.</span>
+    </li>
+    <li style="text-align: justify;">
+      <b>VCS Self-Invoice Template:&nbsp;</b>Firs<span>t, you must set up Amazon VCS (VAT Calculation Service) template(s) in Linnworks <i><a href="/articles/documentation/template-designer-amazon-vcs" onclick="return n(&#39;!documentation/template-designer-amazon-vcs&#39;,this);">Template Designer</a></i>. All the templates will be available for selection in the drop-down menu. The template you will select will be used for uploads to this site.</span>
+    </li>
+    <li style="text-align: justify;">
+      <b>Invoice Document Upload (EU):</b><span><strong>&nbsp;</strong>This setting depends on whether you use VCS. If you are using VCS/TCS, Amazon generates invoices, or the <i>Self-Invoice Upload</i> must be enabled above.</span>
+      
+        <ul>
+          <li style="text-align: justify;">
+            <span><b>Note:&nbsp;</b>Amazon supports creating and uploading invoices when a seller is enrolled in VCS and the order was placed on one of the following marketplaces: IE, ES, UK, FR, BE, NL, DE, IT.&nbsp;</span>
+          </li>
+        </ul>
+      </li>
+      <li style="text-align: justify;">
+        <b>Ignore Facilitator Tax:</b>&nbsp;This setting will ignore marketplace facilitator taxes when calculating order totals and will not use VCS.
+      </li>
+    </ul>
+    <h4 style="" id="h4__784112042" data-has-heading-anchor="true">
+      Order
+    <a href="/articles/documentation/amazon-settings/a/h4__784112042" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-settings/a/h4__784112042&#39;,this);"></a></h4>
+    <ul>
+      <li style="text-align: justify;">
+        <b>Dispatch notes:</b> After processing the order in Linnworks, a dispatch notification, tracking number (if available), and the selected Shipping Vendor will be submitted to the channel. When the option is disabled, no dispatch information will be forwarded to Amazon. Dispatch information&nbsp;is stored in the&nbsp;<i><a href="/articles/documentation/processed-order-audit-trail" onclick="return n(&#39;!documentation/processed-order-audit-trail&#39;,this);">Audit Trail</a></i>. For Amazon, the following information may be shown:         
+        <ul>
+          <li>
+            <b>No Dispatch required:</b>&nbsp;This is shown if dispatch notes are disabled.           
+  </li>
+  <li>
+    <b>Order Dispatch Submitted:</b>&nbsp;Added to the audit trail when a dispatch note is sent.           
+  </li>
+  <li>
+    <b>Order Successfully Dispatched:</b>&nbsp;Added when Amazon has confirmed the dispatch request was accepted.           
+  </li>
+  <li>
+    <b>Order Dispatch Failed:</b>&nbsp;This is shown as the reason for the failure of a dispatch note to send. Linnworks will attempt to resend the despatch note in the next 24 hours.           
+  </li>
+  <li>
+    <b>Dispatch Rejected:</b>&nbsp;This can be added if the channel has been deleted or disabled.
+  </li>
+  </ul>
+      </li>
+      <li style="text-align: justify;">
+        <b>Order Cancellations: </b>Enable<span> cancellations to be actioned on Amazon.</span>
+      </li>
+      <li style="text-align: justify;">
+        <b>Order Refunds:</b>&nbsp;If enabled,&nbsp;a refund actioned in Linnworks will create a new refund and process it on Amazon.
+        <ul>
+          <li style="text-align: justify;">
+            <span>Linnworks will make up to 5 attempts to submit a refund request to Amazon. This information will once again be stored in the&nbsp;<i><a href="/articles/documentation/processed-order-audit-trail" onclick="return n(&#39;!documentation/processed-order-audit-trail&#39;,this);">Audit Trail</a></i>&nbsp;of the order.</span>
+          </li>
+          <li style="text-align: justify;">
+            When a whole order is refunded, the Amazon order is canceled, and the refund is created and processed on Amazon.
+          </li>
+          <li style="text-align: justify;">
+            If the order has been partially refunded, the item is canceled, and the customer is reimbursed for the canceled items only.
+          </li>
+        </ul>
+      </li>
+      <li style="text-align: justify;">
+        <b>Not Disclosed Default Email:&nbsp;</b><span>Amazon does not disclose customers' email addresses and will often hide proxy email addresses. If an email address is available, Linnworks will use it, but this may involve a delay of up to 1 hour on a new order. If the email address is not specified, the email field will contain the text 'NOT DISCLOSED BY AMAZON.' If you enter an alternate email address here to replace that text, errors will not be caused if using Linnworks' <i><a href="/articles/documentation/emails" onclick="return n(&#39;!documentation/emails&#39;,this);">Email Notification</a></i> functionality.</span>
+      </li>
+      <li style="text-align: justify;">
+        <b>Amazon custom - Use the latest version available: </b>Enable this setting to use the latest data feed version for more detailed and customized information. This may include additional order item details, where available.
+        <br/>
+        <table class="CHTable" cellspacing="0" cellpadding="0" style="width: 100%; border-collapse: collapse; border-width: 0px;">
+          <thead>
+            <tr style="height: 34px;">
+              <th style="width: 365px;" scope="col">
+                Previous
+                <br/>
+              </th>
+              <th style="width: 347px;" scope="col">
+                New
+                <br/>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="height: 34px;">
+              <td style="width: 365px;">
+                <div>
+                  s1a1_name, Name
+                </div>
+                <div>
+                  s1a1_label, Add Name
+                </div>
+                <div>
+                  s1a1_text, Mr Jones
+                </div>
+                <div>
+                  s1a1_dimensions_width, 178
+                </div>
+                <div>
+                  s1a1_dimensions_height, 44
+                </div>
+                <div>
+                  s1a1_position_x, 130
+                </div>
+                <div>
+                  s1a1_position_y, 209
+                </div>
+                <div>
+                  s1a1_fontFamily, Arial
+                </div>
+                <div>
+                  s1a1_fill, #000
+                </div>
+              </td>
+              <td style="width: 347px;">
+                <div>
+                  Name_Add Name, Mr Jones
+                </div>
+                <div>
+                  Name_Width, 178
+                </div>
+                <div>
+                  Name_Height, 44
+                </div>
+                <div>
+                  Name_X, 130
+                </div>
+                <div>
+                  Name_Y, 209
+                </div>
+                <div>
+                  Font Name, Arial
+                </div>
+                <div>
+                  Font Colour, #000
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </li>
+      <li>
+        <b>Auto approve buyer cancellation requests:&nbsp;</b>When enabled, this setting automatically cancels orders in both Linnworks and Amazon when the buyer submits a cancellation request. The order will be marked as "Buyer Canceled" on Amazon, and Linnworks will update the status accordingly.&nbsp; 
+      </li>
+    </ul>
+    <p class="alert-warning">
+      <span class="fa fa-info-circle icon-background-yellow"></span>&nbsp;<b>&nbsp;Note:</b>&nbsp;Amazon does not allow sellers to reject buyer-requested cancellations if the setting is enabled. Orders will be automatically canceled in Linnworks. If the setting is disabled, Linnworks will park the canceled order and add a note indicating that action is required in Amazon.
+    </p>
+    <ul>
+      <li>
+        <b>Order sync date [UTC]:&nbsp;</b><span>The date and time of the most recently updated order that was amended in Linnworks during the last channel synchronization.</span>
+      </li>
+  <li>
+    <b>Order Received UTC offset:</b> 
+    <span>Changes the <i>Order Received Date</i> logged against the Linnworks order by the value provided in hours.&nbsp;</span>
+  </li>
+    </ul>
+    <h4 style="" id="h4_51037994" data-has-heading-anchor="true">
+      Inventory
+    <a href="/articles/documentation/amazon-settings/a/h4_51037994" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-settings/a/h4_51037994&#39;,this);"></a></h4>
+    <p>
+      
+    </p>
+    <ul>
+      <li style="text-align: justify;">
+        <b>Multi-location: </b>This identifies if this Amazon integration uses&nbsp;multi-location inventory. A detailed guide about this feature is available <a href="/articles/documentation/amazon-multi-locations" onclick="return n(&#39;!documentation/amazon-multi-locations&#39;,this);">here</a>.
+      </li>
+      
+      <li style="text-align: justify;">
+        <b>Update inventory:</b> Allow Linnworks to submit changes in stock levels to Amazon.&nbsp;Linnworks supports multiple stock locations for additional warehouses/fulfillment centers/suppliers. Ensure you set which Linnworks locations are used when submitting changes in stock levels to Amazon via the&nbsp;<a href="/articles/documentation/channels-location-mapping" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);">Location Mapping</a>&nbsp;screen accessed from the main&nbsp;<a href="/articles/documentation/channel-integration-screen" onclick="return n(&#39;!documentation/channel-integration-screen&#39;,this);">Channel Integration</a>&nbsp;screen.
+      </li>
+    </ul>
+    <div class="alert-warning" style="text-align: justify;">
+      <span style="font-weight: normal;"><b><span class="fa fa-info-circle icon-background-yellow"></span>&nbsp;Note:</b></span>&nbsp;Quantity is a global value in relationship with an SKU, so changes to stock levels are reflected in all marketplaces where the SKU is active. If multiple inventory feeds are processed for the same SKU in different marketplaces, the quantity of the last uploaded inventory feed from the seller reflects the global inventory level. Setting the item inventory level to 0 effectively sets the item quantity to 0 in all marketplaces and makes the item non-buyable. All listing information is still maintained in the system. More details are&nbsp;<a href="https://docs.developer.amazonservices.com/en_UK/feeds/Feeds_EU_Global_Seller.html" target="_top">here</a>.
+    </div>
+    <ul>
+      <li>
+        <b>Max Listed:&nbsp;</b><span>This specifies the maximum level sent to the channel.&nbsp;</span>
+        For more details, go to the&nbsp;<i><a href="/articles/documentation/channels-inventory-updates/a/max-listed" onclick="return n(&#39;!documentation/channels-inventory-updates/a/max-listed&#39;,this);">Max Listed</a></i>&nbsp;guide.
+      </li>
+      <li style="text-align: justify;">
+        <b>Stock Percentage:</b>&nbsp;This will send a percentage of the currently available stock level to the sales channel. For more details, go to the&nbsp;<i><a href="/articles/documentation/channels-inventory-updates/a/stock-percentage" onclick="return n(&#39;!documentation/channels-inventory-updates/a/stock-percentage&#39;,this);">Stock Percentage</a></i>&nbsp;guide.
+      </li>
+      <li>
+        <b>End When:</b><span>&nbsp;</span><span>This enables you to force the listing to end when the stock level gets to the specified amount instead of the default value of zero.&nbsp;</span>
+        For more details, go to the&nbsp;<i><a href="/articles/documentation/channels-inventory-updates/a/end-when" onclick="return n(&#39;!documentation/channels-inventory-updates/a/end-when&#39;,this);">End When</a></i>&nbsp;guide.
+      </li>
+      <li style="text-align: justify;">
+        <b>Default Latency: </b>
+        <span>This setting allows you to set latency (</span>Amazon definition:&nbsp;<i><font color="#993300">The number of days between the order date and the ship date - a whole number between 1 and 30</font></i>) for&nbsp;all items on this channel linked to Linnworks inventory items.
+        <ul>
+          <li style="text-align: justify;">
+            <span>When latency exceeds 0, the shipping time (days) for all linked listings on the channel will be updated to reflect this delay.</span>
+          </li>
+          <li style="text-align: justify;">
+            <span>If Latency is set for the channel (value is above 0), but you are also using the&nbsp;<em>Product-Based Latency&nbsp;</em>setting, the product-based value will take priority over the channel default value.</span>
+          </li>
+          <li style="text-align: justify;">
+            <span>If latency is not set for the channel (value is 0) and you are not using the&nbsp;<em>Product-Based Latency&nbsp;</em>setting, no value will be submitted by Linnworks. The default value defined on Amazon will be used to update the listing.</span>
+          </li>
+          <li style="text-align: justify;">
+            Latency values are submitted to Amazon during inventory level update syncs.
+          </li>
+        </ul>
+      </li>
+      <li style="text-align: justify;">
+        <b>Product-Based Latency:</b><b> </b>T<span>his setting allows you to set latency (See <em>Default Latency</em>) for each product individually as an Extended Property.</span>
+        <br/>
+        <ul>
+          <li style="text-align: justify;">
+            <span>If product-based latency is not added as an EP for an item, Linnworks will look at the <em>Default Latency&nbsp;</em>value. If the default value is above 0, the default value is submitted to Amazon. If the default value is not set (value is 0), Linnworks submits no value, and the default value defined on Amazon will be used to update the listing.</span>
+          </li>
+          <li style="text-align: justify;">
+            <span>Refer to the&nbsp;<a href="https://help.linnworks.com/support/solutions/articles/7000064616-amazon-product-based-latency" target="_top">How to work with Amazon Product Based Latency</a><i>&nbsp;</i>guide for more details.</span>
+          </li>
+          <li>
+            Latency values are submitted to Amazon during inventory level update syncs.
+          </li>
+        </ul>
+      </li>
+      <li style="text-align: justify;">
+        <b>Inventory Sync Date:</b> Date of the last inventory update.&nbsp;
+      </li>
+      <li style="text-align: justify;">
+        <span class="btn-gray">Enable Multi-location</span><b>:</b> If your Amazon US integration does not use multi-locations, use this button to enable this functionality. A complete guide is <a href="/articles/documentation/amazon-multi-locations" onclick="return n(&#39;!documentation/amazon-multi-locations&#39;,this);">here</a>.
+      </li>
+    </ul>
+    <h4 style="" id="h4__325606619" data-has-heading-anchor="true">
+      FBA
+    <a href="/articles/documentation/amazon-settings/a/h4__325606619" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-settings/a/h4__325606619&#39;,this);"></a></h4>
+    <ul>
+      <li>
+        <b>Enabled:</b>&nbsp;Tick this option to enable Amazon FBA.&nbsp;
+      </li>
+      <li>
+        <b>Inventory Sync Enabled:</b>&nbsp;Track changes made by Amazon to inventory in FBA (update the Linnworks location). Disable the <i>FBA Inventory Sync Enabled</i> setting for every channel except for the channel that controls the primary FBA location where all your orders will be fulfilled from.&nbsp;
+      </li>
+      <li>
+        <b>Download Refunds:</b> Enable this setting to download refund data from Amazon and track how many FBA refunds you get on stock items.&nbsp;&nbsp;
+      </li>
+      <li>
+        <b>Download Returns:</b> Enable this setting to&nbsp;download returns data from Amazon and track how many FBA returns you get on stock items.  &nbsp;
+      </li>
+      <li>
+        <b>Use Detailed FBA Availability Level:</b>&nbsp;This option enables Linnworks to use a more detailed FBA report from Amazon to update the stock availability in Linnworks. <b>Note:</b> The setting is available only for North American marketplaces (US, CA, MX).&nbsp;
+      </li>
+      <li>
+        <b>Fulfillment Location:</b>&nbsp;The name of the auto-generated Linnworks location for managing FBA orders and inventory.
+        <ul>
+          <li style="width: 636.292px;">
+            <span>Review the&nbsp;<a href="/articles/documentation/amazon-fba" onclick="return n(&#39;!documentation/amazon-fba&#39;,this);">following documentation</a>&nbsp;for a more detailed explanation of these settings, including a complete guide on using FBA in Linnworks.</span>
+  </li>
+  </ul>
+  </li>
+  <li>
+    <b>Ignore "Non-Amazon" Sales Channel Orders:</b>&nbsp;If enabled, orders with a "Non-Amazon" sales channel (<a href="https://sellercentral.amazon.co.uk/help/hub/reference/G200280650" target="_blank">FBA Removal Orders</a>)&nbsp;<b>will not</b> be downloaded into Linnworks. <a href="/articles/documentation/amazon-fba-orders/a/h4_1443813319" onclick="return n(&#39;!documentation/amazon-fba-orders/a/h4_1443813319&#39;,this);">See here</a> for a full explanation of this setting.
+  </li>
+    </ul>
+    <h4 style="" id="h4__1891690388" data-has-heading-anchor="true">
+      MCF
+    <a href="/articles/documentation/amazon-settings/a/h4__1891690388" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-settings/a/h4__1891690388&#39;,this);"></a></h4>
+    <ul>
+      <li>
+        <b>Send Declared Value:</b>&nbsp;This option will instruct Linnworks to send the total value of the order to Amazon when an order for a non-FBA listing is exported. This value will be sent using the currency in which the order was placed.&nbsp;
+      </li>
+      <li>
+        <b>Convert Currency:</b>&nbsp;This option will change the currency of the declared value from its original currency to the currency that FBA is expecting. Linnworks simply swaps the currency code and does not change the value per exchange rate.&nbsp;
+      </li>
+      <li>
+        <b>Send Composite Parent Items to Amazon:</b>&nbsp;&nbsp;For&nbsp;MCF orders&nbsp;only.&nbsp;When enabled, Linnworks will send the&nbsp;<a href="/articles/documentation/inventory-composite-items" onclick="return n(&#39;!documentation/inventory-composite-items&#39;,this);">composite parent item</a>&nbsp;to Amazon. If the setting is disabled, composite child items will be sent to Amazon. By default, this setting is disabled.&nbsp;
+      </li>
+      <li>
+        <b>Send Notification Email:</b>&nbsp;For MCF orders only. If enabled, Amazon will email the buyer an email notification about the shipment.
+      </li>
+      <li>
+        <b>Blank Box:</b>&nbsp;Once enabled, the location for&nbsp;<a href="/articles/documentation/mcf-blank-box" onclick="return n(&#39;!documentation/mcf-blank-box&#39;,this);">Blank Box</a>&nbsp;orders and inventory will become available in the&nbsp;<i><a href="/articles/documentation/my-inventory-screen/a/h5__2078125162" onclick="return n(&#39;!documentation/my-inventory-screen/a/h5__2078125162&#39;,this);">My Inventory</a></i>&nbsp;and&nbsp;<i><a href="/articles/documentation/open-orders-screen/a/OpenOrders_locations" onclick="return n(&#39;!documentation/open-orders-screen/a/OpenOrders_locations&#39;,this);">Open Orders</a></i>&nbsp;screens. For more information on that is Blank Box, see this&nbsp;<a href="/articles/documentation/mcf-blank-box" onclick="return n(&#39;!documentation/mcf-blank-box&#39;,this);">guide</a>.&nbsp;
+        <ul>
+          <li class="alert-warning" style="border-color: #ffcc99;">
+            <b><span class="fa fa-pen-square icon-background-yellow"></span>&nbsp;Note:</b>&nbsp;Blank Box enablement via API is currently only available in the <b>US</b>, <b>Canada </b>and <b>UK</b>. EU sellers should contact Amazon to enable the Blank Box feature.&nbsp;
+            <br/>
+          </li>
+        </ul>
+      </li>
+      <li>
+        <b>BlankBox Location:</b>&nbsp;The name of the auto-generated Linnworks location for managing Blank Box orders. For more information on what&nbsp;<i>Blank Box</i>&nbsp;is, see this&nbsp;<a href="/articles/documentation/mcf-blank-box" onclick="return n(&#39;!documentation/mcf-blank-box&#39;,this);">guide</a>.&nbsp;
+      </li>
+      <li>
+        <b>Block Amazon Logistics:</b>&nbsp;This setting is only available when Blank Box is enabled (even if you do not plan to use the Blank Box feature). When enabled, any non-Amazon order with the&nbsp;BLOCK_AMZL extended property sent to an Amazon FBA location will tell Amazon not to use Amazon Logistics to fulfill this order. Note that a 5% charge from Amazon applies to orders blocking Amazon Logistics. The extended property to an order can be added manually or automatically using the&nbsp;<i><a href="/articles/documentation/rules-engine" onclick="return n(&#39;!documentation/rules-engine&#39;,this);">Rules Engine</a></i>.&nbsp;&nbsp;
+        <ul>
+          <li>
+            <div>
+              <i>The extended property details</i>:
+            </div>
+            <ul>
+              <li>
+                <b>Property Name:</b> BLOCK_AMZL
+              </li>
+              <li>
+                <b>Property Value:</b> True
+              </li>
+              <li>
+                <b>Property Type:</b> Boolean (but can be called anything)
+              </li>
+            </ul>
+          </li>
+          <li>
+            <b>Note:</b>&nbsp;This feature is currently only available for Amazon US integrations.
+          </li>
+        </ul>
+      </li>
+    </ul>
+    <h4 style="" id="h4__1680179937" data-has-heading-anchor="true">Amazon Smart Connect
+    <a href="/articles/documentation/amazon-settings/a/h4__1680179937" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-settings/a/h4__1680179937&#39;,this);"></a></h4>
+    <p>
+      Amazon Smart Connect allows you to download orders, print shipping labels, and manage inventory for <b>Amazon Seller Flex</b> and <b>Amazon Easy Ship</b> from a single location in Linnworks.</p>
+    <p>In this section, you will learn how to set up Amazon Seller Flex for your Linnworks account and how Amazon Easy Ship orders are handled. Shipping labels for both programs are printed using the <a href="/articles/documentation/amazon-smart-connect" target="_blank" onclick="return n(&#39;!documentation/amazon-smart-connect&#39;,this);">Amazon Smart Connect shipping integration</a>.&nbsp;</p>
+    <p>Depending on whether <i><b>Multi-location</b></i> has been enabled in this section or not yet, you will see slightly different settings <b>for Seller Flex</b>. <b>Note:</b> Easy Ship can be used <u>without the multi-location feature enabled</u>; it is required for Sellex Flex only.&nbsp;&nbsp;</p>
+    <p>
+      <u>Before enabling Multi-location</u>, you will see the following setting:
+    </p>
+    <ul>
+      <li><strong>Easy Ship enabled:</strong>&nbsp;Enabling Easy Ship here allows you to produce labels in Linnworks for EasyShip orders via the <a href="/articles/documentation/amazon-smart-connect" onclick="return n(&#39;!documentation/amazon-smart-connect&#39;,this);">shipping integration</a>. The&nbsp;Easy Ship shipping integration (specifically, Amazon Smart Connect) must be configured in your Linnworks account. For complete instructions, see <a href="/articles/documentation/amazon-smart-connect" onclick="return n(&#39;!documentation/amazon-smart-connect&#39;,this);">here</a>.</li>
+      <li>
+        <span class="btn-gray">Enable Multi-Location</span>: This button initiates the process, allowing you to enable Amazon Seller Flex order download and inventory sync in Linnworks (explained below). For additional configuration that must be completed after clicking this button, refer to&nbsp;<a href="https://help.linnworks.com/support/solutions/articles/7000095475-amazon-easy-ship-configuration-in-linnworks" target="_blank">this guide</a>.&nbsp;</li>
+    </ul>
+<div class="alert-warning" style="border-color: #ffcc99;"><b><span class="fa fa-info-circle icon-background-yellow"></span>&nbsp;Important:</b><ul class="regular-list"><li>If the <span class="btn-gray">Enable Multi-location</span> button <b>is not visible</b> under SmartConnect, contact the Linnworks Support Team to enable access by <a href="/articles/documentation/raise-support-ticket/a/h4__1809456333" onclick="return n(&#39;!documentation/raise-support-ticket/a/h4__1809456333&#39;,this);">opening a ticket</a>.</li><li><b>A complete step-by-step guide on setting up Amazon Seller Flex in Linnworks is available on the <a href="https://help.linnworks.com/support/solutions/articles/7000095498" target="_blank">following link</a></b>.</li></ul></div>
+<br/><u>After enabling Multi-location</u>, you will see additional settings:<ul><li><span style="box-sizing:border-box;margin:0;padding:0;text-align:left"><strong>Seller Flex enabled:</strong>&nbsp;Ticking the checkbox for this setting, along with&nbsp;<em><strong>Inventory Sync Enabled&nbsp;</strong></em>(below), enables&nbsp;Seller Flex in Linnworks. Completing the Seller Flex configuration in Linnworks involves additional steps, which are detailed in <a href="https://help.linnworks.com/support/solutions/articles/7000095498" target="_blank">this guide</a>.&nbsp;</span></li>
+    <li>
+      <b>Inventory Sync enabled:</b>&nbsp;Ticking the checkbox for this setting, along with&nbsp;<em><strong>Seller Flex enabled</strong></em>&nbsp;(above),&nbsp;enables Seller Flex in Linnworks. Completing the Seller Flex configuration in Linnworks involves additional steps, which are detailed in <a href="https://help.linnworks.com/support/solutions/articles/7000095498" target="_blank">this guide</a>.&nbsp;</li>
+  </ul>
+  <h4 style="" id="h4__1184546515" data-has-heading-anchor="true">
+    Listings
+  <a href="/articles/documentation/amazon-settings/a/h4__1184546515" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-settings/a/h4__1184546515&#39;,this);"></a></h4>
+  <p>
+    
+  </p>
+  <ul>
+    <li style="width: 747px;">
+      <b>Auto-link by SKU:&nbsp;</b>If enabled, Linnworks will automatically link unmatched channel SKUs to matching Linnworks SKUs during&nbsp;<u>order download</u>&nbsp;or the&nbsp;<u>mapping sync</u>&nbsp;(runs ~every 12 hours). Once linked,&nbsp;<a href="/articles/documentation/channels-inventory-updates" onclick="return n(&#39;!documentation/channels-inventory-updates&#39;,this);">inventory sync</a>&nbsp;is triggered. You can check&nbsp;<a href="/articles/documentation/channels-inventory-mapping/a/h4_1759825364" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4_1759825364&#39;,this);">this guide</a>&nbsp;for full details on how this feature works.&nbsp;
+    </li>
+    <li>
+      <span style="font-weight: normal;"><b>Download full listings</b></span><b>:</b>&nbsp;Important for the&nbsp;<em><a href="/articles/documentation/extract-inventory" onclick="return n(&#39;!documentation/extract-inventory&#39;,this);">Extract Inventory</a></em>&nbsp;tool. Allows downloading complete information for the listings, including descriptions.&nbsp;
+    </li>
+    <li style="text-align: justify;">
+      <b>Listings download in progress:</b> This tick box will tick itself if a Listing Update has begun.
+    </li>
+    <li style="text-align: justify;">
+      <b>Listing download start time:</b> This will show the date and time the update has started.
+    </li>
+    <li style="text-align: justify;">
+      <b>Last listing download completion time:</b> The&nbsp;last listing download was completed (launched via the <i>Download Listings</i> button).
+    </li>
+    <li style="text-align: justify;">
+      <b>Listing download estimated completion:</b> 
+      <span>The estimated time the currently running listing download will finish.</span>
+    </li>
+    <li style="text-align: justify;">
+      <b>Download Listings:</b><span>&nbsp;C</span>lick this button to force Linnworks to request an update for your active listings from the channel.
+    </li>
+  </ul>
+  <h4 id="h4__733860040" data-has-heading-anchor="true">
+    Inventory - Price Change
+  <a href="/articles/documentation/amazon-settings/a/h4__733860040" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-settings/a/h4__733860040&#39;,this);"></a></h4>
+  <p>
+    
+  </p>
+  <ul>
+    <li style="width: 729px;">
+      <b>Price Change:</b>&nbsp;This setting is designed to speed up updating the sales channel once a Linnworks stock item has had its listing price updated and saved.&nbsp;For more details, go to the&nbsp;<i><a href="/articles/documentation/channels-inventory-updates" onclick="return n(&#39;!documentation/channels-inventory-updates&#39;,this);">Price Change</a></i>&nbsp;guide.
+    </li>
+  </ul>
+  <h4 style="" id="h4__2052422404" data-has-heading-anchor="true">
+    Report
+  <a href="/articles/documentation/amazon-settings/a/h4__2052422404" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-settings/a/h4__2052422404&#39;,this);"></a></h4>
+  <p>
+    
+  </p>
+  <ul>
+    <li>
+      <b>Report Status:</b>&nbsp;Click the <em>Report Status</em> button to view the current status of reports requested from Amazon. The view will display the report type, the last time it was requested, and the current status. The statuses are:
+      <ul>
+        <li style="text-align: justify;">
+          <b>Submitted:</b>&nbsp;Linnworks has submitted a request for a report.
+        </li>
+        <li style="text-align: justify;">
+          <b>Available:</b><span>&nbsp;T</span>he report is available from Amazon, and Linnworks will download it soon.
+        </li>
+        <li>
+          <b>Processed:</b>&nbsp;Linnworks has downloaded and processed the report.&nbsp;
+        </li>
+      </ul>
+    </li>
+  </ul>
+  <h4 id="h4_15828802" data-has-heading-anchor="true">
+    Next steps:
+  <a href="/articles/documentation/amazon-settings/a/h4_15828802" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-settings/a/h4_15828802&#39;,this);"></a></h4>
+  <ul>
+    <li>
+      <a href="/articles/documentation/channels-location-mapping" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);">Location Mapping</a>
+    </li>
+    <li>
+      <a href="/articles/documentation/channels-location-mapping" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);"></a><a href="/articles/documentation/channels-inventory-mapping" onclick="return n(&#39;!documentation/channels-inventory-mapping&#39;,this);">Inventory Mapping</a>
+    </li>
+    
+    <li>
+      <a href="/articles/documentation/channels-inventory-mapping" onclick="return n(&#39;!documentation/channels-inventory-mapping&#39;,this);"></a><a href="/articles/documentation/channels-payment-mapping" onclick="return n(&#39;!documentation/channels-payment-mapping&#39;,this);">Payment Mapping</a>
+    </li>
+    
+    <li>
+      <a href="/articles/documentation/channels-payment-mapping" onclick="return n(&#39;!documentation/channels-payment-mapping&#39;,this);"></a><a href="/articles/documentation/channels-shipping-mapping" onclick="return n(&#39;!documentation/channels-shipping-mapping&#39;,this);">Shipping Mapping</a>
+    </li>
+    
+    <li>
+      <a href="/articles/documentation/channels-shipping-mapping" onclick="return n(&#39;!documentation/channels-shipping-mapping&#39;,this);"></a><a href="/articles/documentation/listing-creation-steps" onclick="return n(&#39;!documentation/listing-creation-steps&#39;,this);">Listing creation steps</a>
+    </li>
+  </ul><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

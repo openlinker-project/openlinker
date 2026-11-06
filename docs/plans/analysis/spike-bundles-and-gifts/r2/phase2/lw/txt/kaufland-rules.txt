@@ -1,0 +1,34 @@
+=== kaufland-rules | Kaufland: Rules &amp; Guidelines
+ 
+ Kaufland: Rules & Guidelines 
+ Kaufland: Rules & Guidelines
+ When Kaufland is integrated with Linnworks, orders will be downloaded from this channel and saved in the Open Orders screen. However, there are some differences in behavior compared to other channel integrations that should be taken into account. 
+ SKUs on Kaufland listings
+ Orders downloaded from Kaufland require an SKU for Linnworks to correctly assign order items. However, Kaufland does not call the product identifier an SKU. Instead, there are 2 identifiers:
+ id_offer: This is an optional value that can be set to a value of your choice.
+ id_item: This is an internal Kaufland ID, normally controlled by Kaufland.
+ Linnworks will initially search for an  id_offer , display this in the mapping screen and use it for linking listings to Linnworks inventory items. If an  id_offer does not exist, the id_item will be displayed and can be used for mapping. 
+ If a mapping is created using an  id_item and subsequently an id_offer is added to the listing, the mapping will be lost and you will need to remap the listing. 
+ The id_offer can be set on the listing in two possible ways.
+ Through the Kaufland website when initially creating a new listing:
+ Login to the Kaufland seller portal.
+ Select Meine Angebot > Angebote manuell verwalten.
+Select Neuen Artikel anbieten.
+Search for an item. For example, enter Duracell in the textbox labeled Titel oder Namen eingeben and click Suchen.
+Click on the A nbieten button for the item you are interested in.
+Ensure you ender your SKU in the text box labeled Ihre SKU.
+ Through a CSV import to Kaufland to either create new listings or update existing listings:
+ Details on working with Kaufland listing files are  here .
+ Kaufland listings that do not contain an SKU in the id_offer field will be downloaded into Linnworks using the id_item value assigned by Kaufland. If the listing has been manually mapped in the Inventory Mapping screen using the id_item , the order items will be linked as normal.
+ Selling items with multiple conditions
+ On Kaufland, it is possible to sell the same item with multiple item qualities. For example, 3 separate listings for the same model camera as new, A grade, and B grade stock. If an id_offer is not specified, the inventory mapping will show the id_item suffixed with the condition of the item specified on the listing. If an id_offer is specified on the listing, the mapping screen will display that without any item condition information.
+ On the following screenshot, the batteries have been listed 3 times. In the SKU column, the top two listings do not have an id_offer and so are displayed with the id_item and item condition. One has been listed as new and the other as used - very good. The last listing has been given an id_offer of testtest and so could be automatically mapped to a Linnworks SKU of testtest . The other two listings will have to be mapped manually. 
+ Tax inclusive
+ All Kaufland items are tax inclusive at the point of sale as the channel does not provide tax information with the order. A zero item tax rate will be assumed and Linnworks will back calculate tax based on either Stock Item Tax or Country Tax settings defined in Linnworks.
+ Orders for multiple items
+ If a buyer purchases multiple items through Kaufland, these are provided to Linnworks as individual orders. Therefore a Kaufland order in Linnworks will always contain a single item with a quantity of one.
+ Please note you can make use of the Linnworks Order Merge functionality to combine orders from the same buyer into a single Linnworks order for dispatching purposes.
+ Next steps: 
+ Add New 
+ Configure 
+ 

@@ -18,7 +18,10 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN } from '@openlinker/core/orders';
+import {
+  ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+  ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
+} from '@openlinker/core/orders';
 import { DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN } from '@openlinker/core/sales-documents';
 import {
   INVOICE_SERVICE_TOKEN,
@@ -360,6 +363,10 @@ describe('InvoicingController', () => {
           useValue: { enqueueUpload: jest.fn().mockResolvedValue('enqueued'), getStatus: jest.fn().mockResolvedValue([]) },
         },
         { provide: ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN, useValue: documentEmails },
+        {
+          provide: ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+          useValue: { resolveForDocuments: jest.fn().mockResolvedValue(undefined) },
+        },
         { provide: DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN, useValue: documentEmailDeliveries },
       ],
     }).compile();
@@ -505,6 +512,54 @@ describe('InvoicingController', () => {
       await controller.issueInvoice(dto);
       expect(connectionPort.get).toHaveBeenCalledWith('conn_1');
       expect(lastLineName()).toBe('Koszt wysyłki');
+    });
+
+    it('takes 0.01 from a paid line for a gift when the order-source connection chose show and the adapter refuses zero (#3930)', async () => {
+      const record = makeOrderRecord({
+        id: 'ol_order_1',
+        status: 'processing',
+        billingAddress: {
+          firstName: 'Jan',
+          lastName: 'Kowalski',
+          address1: 'ul. Testowa 1',
+          city: 'Poznań',
+          postalCode: '61-001',
+          country: 'PL',
+        },
+        createdAt: '2026-06-20T08:00:00.000Z',
+        updatedAt: '2026-06-21T09:30:00.000Z',
+        items: [
+          { id: 'li_1', productId: 'p_1', quantity: 1, price: 100, name: 'Widget' },
+          { id: 'g1', productId: 'p_g', quantity: 1, price: 0, name: 'Gift', gift: { source: 'channel' } },
+        ],
+        totals: { subtotal: 100, tax: 0, shipping: 0, total: 100, currency: 'PLN', taxTreatment: 'inclusive' },
+      });
+      orders.getOrderRecord.mockResolvedValue(record);
+      invoiceService.getInvoice.mockResolvedValue(null);
+      invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord());
+      connectionPort.get.mockResolvedValue({
+        id: 'any',
+        config: { giftOnDocuments: { form: 'show' } },
+      } as unknown as Connection);
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        acceptsZeroValueLine: () => false,
+      } as never);
+      await controller.issueInvoice(dto);
+      expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith('conn_1', 'Invoicing');
+      const cmd = invoiceService.issueInvoice.mock.calls[0][0];
+      expect(cmd.lines).toHaveLength(2);
+      expect(cmd.lines[1].unitPriceGross).toBeCloseTo(0.01);
+      const total = cmd.lines.reduce((n, l) => n + Math.round(l.quantity * l.unitPriceGross * 100), 0);
+      expect(total).toBe(10000);
+    });
+
+    it('still issues when the adapter cannot be resolved for the zero-line declaration (#3930)', async () => {
+      orders.getOrderRecord.mockResolvedValue(orderWithShipping());
+      invoiceService.getInvoice.mockResolvedValue(null);
+      invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord());
+      integrations.getCapabilityAdapter.mockRejectedValue(new Error('no adapter'));
+      await controller.issueInvoice(dto);
+      expect(invoiceService.issueInvoice).toHaveBeenCalled();
     });
 
     it('falls back to the neutral default shipping label when none is configured', async () => {

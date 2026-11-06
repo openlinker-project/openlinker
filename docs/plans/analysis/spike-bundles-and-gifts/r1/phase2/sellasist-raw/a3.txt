@@ -1,0 +1,198 @@
+##### Dodaj produkt — Efekt akcji automatycznej dla zamówień | https://sellasist.pl/pomoc/dodaj-produkt-efekt-automatyzacji-dla-zamowien/ | modified 2026-02-11
+Efekt Dodaj produkt pozwala automatycznie tworzyć dodatkowe pozycje w zamówieniu, jeśli spełnione zostaną wybrane warunki. Dzięki temu nie musisz ręcznie edytować każdego zamówienia — Sellasist zrobi to za Ciebie w ramach automatyzacji.
+Efekt sprawdzi się w sytuacjach, gdy chcesz spójnie i powtarzalnie rozszerzać zamówienia o dodatkowe produkty — np. dodawać gratisy zależnie od wartości koszyka, czy automatycznie dołączać próbki do konkretnych produktów zgodnie z zasadami przyjętymi w Twoim sklepie.
+ #### 
+ Konfiguracja Tworzenie akcji automatycznej 
+ 1. Przejdź do Administracja → Automatyzacja → Akcje dla zamówień i kliknij przycisk z ikoną plusa.
+[IMG:]
+2. Wpisz nazwę akcji i uzupełnij podstawowe ustawienia.
+Zobacz także: Grupy akcji automatycznych; Aktywatory akcji automatycznych.
+[IMG:]
+ #### 
+ Podstawowe dodawanie produktów 
+ Na potrzeby przykładu przyjmijmy, że w ramach obowiązującej promocji chcemy dodawać gratisowy szalik do każdego zamówienia o wartości minimalnej 1000 PLN.
+1. Kliknij przycisk Dodaj warunek i z rozwijanej listy wybierz zdarzenie, które ma uruchomić akcję automatyczną (w tym przykładzie: Wartość zamówienia ⇒ Większa lub równa 1000 PLN).
+[IMG:]
+[IMG:]
+2. Kliknij przycisk Dodaj efekt i z rozwijanej listy wybierz Dodaj produkt.
+[IMG:]
+[IMG:]
+3. Na liście efektów pojawi się nowa pozycja — konfigurator automatycznego dodawania produktu. Kliknij przycisk Dodaj produkt.
+[IMG:]
+4. Na ekranie zobaczysz listę produktów. Wybierz produkt, który chcesz dodać do zamówienia.
+[IMG:]
+5. W tabeli produktów zobaczysz nową pozycję. Skonfiguruj ją według własnych potrzeb.
+[IMG:]
+- Id: ID produktu z listy produktów w Sellasist.
+- Nazwa: Nazwa produktu z listy produktów w Sellasist.
+- Cena sprzedaży brutto:
+ – Zaznacz checkbox, jeśli chcesz ustawić cenę specjalną produktu. Niezaznaczenie checkboxa spowoduje pobranie ceny głównej produktu.
+- Ilość: Liczba produktów dołączonych do zamówienia.
+- Wybierz wariant: Jeśli produkt posiada warianty, możesz wybrać konkretny wariant produktu dołączany do zamówienia.
+Wskazówka: W ramach efektu możesz dodać wiele produktów do jednego zamówienia i każde skonfigurować osobno.
+6. Opcjonalnie: Na dokumencie sprzedaży możesz także uwzględnić pozycję rabatującą, która automatycznie obniży wartość wcześniej dodanych produktów o 100% ich ustalonej ceny. Aby to zrobić, zaznacz checkbox Dodaj pozycję rabatującą.
+Po zaznaczeniu tej opcji pojawią się 3 okna: Nazwa, Symbol i EAN — ich uzupełnienie jest opcjonalne.
+[IMG:]
+- Nazwa: Zmień domyślną nazwę pozycji rabatującej (nazwa domyślna: Rabat)
+- Symbol i EAN: Pola powiązane z automatyzacją. Wpisz dowolną wartość, aby móc automatycznie procesować kolejne etapy realizacji danego zamówienia (np. tworząc kolejną akcję automatyczną: Jeśli pole Symbol produktu zawiera dany ciąg znaków, wyślij e-mail z konkretnym powiadomieniem)
+Uwaga: Aby pozycja rabatująca była widoczna na dokumencie sprzedaży, dany produkt musi mieć odznaczony checkbox Ukryj na dokumentach sprzedaży (patrz: punkt 5).
+Po skonfigurowaniu akcji automatycznej zapisz wszystkie zmiany.
+System automatycznie doda pozycję Rabat, której wartość zrównoważy cenę dodanych produktów (np. Szalik o wartości 119 PLN dodany jako gratis → Rabat wyniesie: -119 PLN). W przypadku dodania kilku produktów, całkowity rabat zostanie zsumowany w jednej pozycji.
+Wskazówka: Jeśli dodawane produkty mają różne stawki VAT, system utworzy osobne pozycje rabatujące dla każdej stawki i zsumuje konkretne produkty w odpowiednich stawkach.
+[IMG:]
+[IMG:]
+ #### 
+ Proporcjonalne dodawanie produktów 
+ Na potrzeby przykładu przyjmijmy, że w ramach marketingu chcemy dodawać próbkę kosmetyków do każdego zamówionego swetra.
+ #### 
+ Tworzenie dodatkowego pola produktu 
+ Stwórz pole dodatkowe produktu, z którego będzie korzystała automatyzacja i nazwij je według własnych potrzeb, np. Próbka.
+1. Przejdź do Produkty → Dodatkowe pola i kliknij przycisk z ikoną plusa.
+[IMG:]
+2. Wypełnij formularz tworzenia nowego pola dodatkowego i zapisz zmiany.
+[IMG:]
+Uwaga: Nazwa pola dodatkowego złożona z wielu członów nie może zawierać spacji.
+Błędna nazwa: Produkt promocyjny
+Poprawna nazwa: ProduktPromocyjny
+Zobacz także: Więcej na temat dodatkowych pól produktów dowiesz się z tej instrukcji.
+3. Przejdź do Asortyment → Produkty → Wybrany produkt i w zakładce Informacje podstawowe znajdź sekcję Dodatkowe pola.
+[IMG:]
+4. W nowo utworzonym polu wpisz frazę, po wykryciu której system doda wybrany produkt do zamówienia, po czym kliknij przycisk Zapisz.
+[IMG:]
+Działanie powtórz dla każdego produktu, do którego chcesz dołączać próbkę lub inny dodatek.
+ #### 
+ Ignorowanie stanu magazynowego dodawanego produktu 
+ Opcja Ignoruj stan magazynowy dodawanego produktu pozwala dodać produkt do zamówienia bez względu na jego aktualny stan magazynowy. Funkcja sprawdzi się m.in. w przypadku produktów sprowadzanych na zamówienie (gdy brak towaru na magazynie nie powinien blokować akcji automatycznych), a także przy obsłudze produktów wirtualnych lub usług, dla których stan magazynowy nie ma zastosowania.
+[IMG:]
+ #### 
+ Tworzenie akcji automatycznej 
+ Przejdź do tworzenia nowej akcji automatycznej dla zamówień — podobnie jak w poprzednim przykładzie.
+1. Kliknij przycisk Dodaj warunek i z rozwijanej listy wybierz zdarzenie, które ma uruchomić akcję automatyczną (w tym przykładzie: Status zamówienia ⇒ Nowe).
+[IMG:]
+[IMG:]
+2. Kliknij przycisk Dodaj efekt i z rozwijanej listy wybierz Dodaj produkt.
+[IMG:]
+[IMG:]
+3. Na liście efektów pojawi się nowa pozycja — konfigurator automatycznego dodawania produktu. Kliknij przycisk Dodaj produkt.
+[IMG:]
+4. Na ekranie zobaczysz listę produktów. Wybierz produkt, który chcesz dodawać do zamówień.
+[IMG:]
+5. W tabeli produktów zobaczysz nową pozycję. Skonfiguruj ją według własnych potrzeb — podobnie jak w poprzednim przykładzie.
+[IMG:]
+Wskazówka: Pole w kolumnie Ilość możesz pominąć. Po włączeniu opcji proporcjonalnego dodawania produktów do zamówienia (patrz: następny punkt) zostanie ono wyłączone, a właściwa liczba produktów będzie dodawana automatycznie.
+6. Zaznacz checkbox Ustawiaj ilość produktów gratisowych proporcjonalnie do ilości produktu w zamówieniu. Następnie z rozwijanej listy wybierz wcześniej utworzone pole dodatkowe i wprowadź wartość, której system ma szukać w ramach tej akcji.
+[IMG:]
+Po skonfigurowaniu akcji automatycznej zapisz wszystkie zmiany.
+System automatycznie doda próbkę do każdego produktu, który we wskazanym polu dodatkowym posiada wymaganą frazę (w tym przykładzie: doda próbkę kremu do każdego zamówionego swetra, nie uwzględniając przy tym jakichkolwiek innych produktów).
+[IMG:]
+ #### 
+ Powiązane artykuły 
+ Czym jest Automatyzacja? Jak działa Automatyzacja?
+Jak ustawić Automatyzację? 
+Akcje dla asortymentu: Lista warunków i efektów dla automatyzacji – omówienie wraz z zastosowaniem
+POLE DODATKOWE PRODUKTU – warunek automatyzacji akcji dla zamówień
+ZMODYFIKUJ POLE DODATKOWE – efekt w automatyzacji dla zamówień
+KOMENTARZ DO ZAMÓWIENIA – warunek automatyzacji dla zamówień
+DANE KLIENTA – warunek akcji automatycznej dla zamówień
+LICZBA POZYCJI W ZAMÓWIENIU – warunek akcji automatycznej dla zamówień
+DANE ADRESOWE WYSYŁKI – warunek automatyzacji dla zamówień
+METODA PŁATNOŚCI – warunek automatyzacji dla zamówień
+ZMIEŃ STAWKĘ VAT w zależności od kraju wysyłki – efekt w automatyzacji dla zamówień
+DANE ADRESOWE DOKUMENTU SPRZEDAŻY – warunek automatyzacji dla zamówień
+LOKALIZACJA MAGAZYNOWA – warunek automatyzacji dla zamówień
+WYMIARY OPAKOWANIA PRODUKTU – warunek automatyzacji dla zamówień
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Jak sprzedawać w wielopaku? Czym są produkty zależne? | https://sellasist.pl/pomoc/jak-sprzedawac-w-wielopaku-czym-sa-produkty-zalezne/ | modified 2024-11-04
+Jeśli sprzedajesz produkty szybkozbywalne, które są kupowane w większych ilościach, możesz wystawić je jako wielopak, dzięki czemu oszczędzisz czas i nie poniesiesz dodatkowych kosztów. W wielosztukach sprzedaje się zwykle tanie produkty, które klienci kupują w dużych ilościach. Wybrana liczba sztuk określonego towaru będzie sprzedawana jako oddzielny produkt zależny, tzw. wielosztuki. Produkty zależne nie dysponują własnym stanem magazynowym, a modyfikują stan produktu głównego o podaną liczbę sztuk. Wielopak, jako oddzielny produkt podlega pełnej edycji, włącznie z ustawianiem cen i rabatów.
+ #### 
+ Od czego zacząć? 
+ Produkty zależne są obecnie dostępne w ramach funkcji eksperymentalnych. Możesz je włączyć w Administracja ⇨ Funkcje eksperymentalne. Musisz mieć uprawnienia, aby widzieć tą funkcję. Uprawnienia nadasz w edycji administratora. -> Czym są funkcje eksperymentalne?
+Produkty zależne to kopie, które nie mają własnego stanu magazynowego, a operacje na nich modyfikują stan produktu głównego. Utwórz więc wybraną liczbę kopii produktu za pomocą akcji masowej na liście produktów. -> Jak skopiować produkt?
+Po utworzeniu kopii musisz przypisać je do produktu głównego. 
+ #### 
+ Jak przypisać kopie? 
+1. W zakładce Asortyment -> Produkty. 
+2. Klikając ikonę ołówka edytuj produkt, który wcześniej skopiowałeś. Chodzi o produkt główny, nie kopię.
+[IMG:]
+3. Przejdź do zakładki Warianty i opcje.
+4. Kliknij Powiąż produkt.
+[IMG:]
+5. Wyszukaj i wybierz kopię produktu.
+[IMG:]
+6. Wpisz liczbę sztuk i zapisz zmiany.
+[IMG:]
+ #### 
+ Powiązane artykuły 
+ Zobacz więcej o funkcjach eksperymentalnych
+Czym są funkcje eksperymentalne?
+ Zobacz jak skopiujesz produkt
+Jak skopiować produkt?
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Jak stworzyć zestawy promocyjne Allegro? | https://sellasist.pl/pomoc/jak-stworzyc-zestawy-promocyjne-allegro/ | modified 2025-03-18
+Aby stworzyć zestaw promocyjny na Allegro musisz mieć minimum dwie aktywne oferty na Allegro. Tylko wtedy w panelu Sellasist przycisk na liście ofert z możliwością wystawienia zestawów promocyjnych będzie aktywny. Zestaw promocyjny może się składać z dwóch lub większej ilości ofert.
+Zestawy promocyjne stworzysz w swoim panelu administracyjnym,
+w karcie Oferty => Allegro => Lista ofert.
+1. Zdecyduj, która oferta będzie główną, a następnie kliknij przy niej w przycisk akcji Utwórz zestaw promocyjny.
+[IMG:]
+2. Z tabeli pozostałych
+ofert wybierz oferty, które mają znaleźć się w zestawie. Możesz to
+zrobić klikając w strzałkę, przenosząc w ten sposób oferty do zestawu.
+[IMG:]
+3. Podaj wartość zniżki dla stworzonego zestawu promocyjnego.
+4. Kliknij Zapisz.
+Możesz importować, usuwać zestawy oraz edytować wartość rabatu. Co więcej, podczas tworzenia nowego zestawu, masz możliwość wskazania, w których ofertach będzie on wyświetlany. Przejdź do zakładki Oferty – Allegro – Zestawy promocyjne.
+[IMG:]
+Więcej na temat zestawów promocyjnych, znajdziesz na stronie Allegro.
+Zestawy promocyjne znajdziesz w karcie Oferty => Allegro => Zestawy promocyjne.
+[IMG:]
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Jak w Sellasist skonfigurować program rabatowy według wartości koszyka? | https://sellasist.pl/pomoc/jak-w-sellasist-skonfigurowac-program-rabatowy-wedlug-wartosci-koszyka/ | modified 2024-10-25
+Program rabatowy według wartości koszyka to program rabatowy, który umożliwia przyznanie rabatu procentowego na podstawie tego, jaka jest wartość koszyka danego klienta. Po osiągnięciu danej sumy wartości przedmiotów w koszyku otrzymuje on rabat na ten koszyk.
+Program jest dostępny dla zalogowanych i niezalogowanych klientów.
+Program punktowy znajdziesz w Asortyment ⇨ Programy lojalnościowe.
+Zobacz więcej o programach lojalnościowych -> Jak skonfigurować programy lojalnościowe w Sellasist?
+1. Przejdź do Asortyment -> Programy lojalnościowe.
+2. Kliknij Program rabatowy wg wartości koszyka.
+[IMG:]
+3. Skonfiguruj opcje.
+Czy program ma być włączony? – Zaznacz, aby włączyć program.
+Czy rabat ma łączyć się z promocjami na produkty i rabatami? – zaznaczenie tej pozycji oznacza, że naliczany jest rabat wynikający z programu rabatowego oraz uznawana jest również promocja na dany produkt, kod rabatowy lub rabat klienta. W przypadku gdy pozycja ta nie została zaznaczona, a produkty znajdujące się w koszyku objęte są promocją lub wykorzystywany jest rabat klienta, lub kod rabatowy, to wybierana jest najkorzystniejsza dla kupującego zniżka.
+Przykład : Opcja ‘Czy rabat ma łączyć się z promocjami na produkty i rabatami?’ jest zaznaczona. Ustawiono wartości: 500 dla minimalnej wartości koszyka oraz 10 dla procentowej wartości zniżki. W koszyku znajduje się produkt, którego wartość oryginalna wynosi 600 PLN, natomiast w promocji wartość wynosi 450 PLN, czyli klient otrzyma 10% rabatu z Programu rabatowego wg wartości koszyka. W takiej sytuacji zostanie uwzględniona zarówno wartość promocji, jak i 10% rabatu od wartości promocyjnej. Czyli klient zapłaci za ten produkt 405 PLN. W przypadku gdy nie jest zaznaczona ta opcja, wybierana jest najkorzystniejsza zniżka.
+Czy rabat ma łączyć się z innymi rabatami z programów lojalnościowych? – zaznaczenie tej pozycji oznacza, że naliczany jest rabat wynikający z programu rabatowego wg wartości koszyka oraz rabaty wynikające z innych programów lojalnościowych. W przypadku gdy pozycja ta nie została zaznaczona, wybierany jest program lojalnościowy, który jest najkorzystniejszy dla kupującego.
+ Przykład 
+: Włączony jest ‘Program rabatowy wg wartości sumy zamówień’ oraz ‘Program rabatowy wg wartości koszyka’, oba mają włączoną tę opcję. Ustawiono wartości: 500 dla minimalnej wartości koszyka oraz 10 dla procentowej wartości zniżki. Wartość koszyka klienta wynosi 600 PLN, czyli otrzyma on 10% rabatu z Programu rabatowego wg wartości koszyka. Wartość sumy zamówień klienta wynosi 2000 PLN i dodatkowo spełnia wymagania, aby przyznać mu 5% z programu rabatowego wg wartości sumy zamówień. W takiej sytuacji klient otrzyma rabat o wysokości 10% oraz 5%. Czyli za koszyk warty 600 PLN zapłaci 513 PLN.
+SKLEPY SELLINGO
+ Tutaj możesz zaznaczyć, w którym sklepie ma być aktywny program. Program może być aktywny na jednym, wielu bądź
+wszystkich zintegrowanych z Sellasist sklepach Sellingo, ale ustawienia
+programu są jednakowe dla wszystkich sklepów.  
+[IMG:]
+4. Ustaw rabaty, dodając wiersze, a następnie zapisz zmiany.
+RABATY
+Minimalna wartość koszyka – minimalna wartość koszyka, od której będzie naliczany rabat dla danej wartości zniżki.
+Wartość zniżki (%) – procentowa wartość rabatu
+Przykład: Wartość koszyka klienta wynosi 1940 PLN, dlatego zostanie przyznany mu rabat w wysokości 5%, jeśli suma wartości koszyka klienta wyniosłaby 5000 PLN lub więcej otrzymałby rabat 10%.
+Pozycje w tabeli nie muszą być wpisywane w kolejności rosnącej, po kliknięciu przycisku ‘ZAPISZ’ automatycznie zostaną one posegregowane w kolejności rosnącej po minimalnej kwocie. Procentowa wartość rabatu dla większej minimalnej wartości koszyka nie może być mniejsza od procentowej wartości rabatu dla mniejszej wartości minimalnej koszyka.
+Przykład: Dodano wiersz z minimalną wartością koszyka 1000 oraz wartością rabatu w procentach wynoszącą 10. Aby dodać wiersz z większą minimalną wartością koszyka np. 2000, trzeba ustawić wartość rabatu wynoszącą przynajmniej 11 %. W przypadku podania wartości mniejszej niż 11 zostanie zwrócony komunikat o niepoprawnej wartości.
+[IMG:]
+POWIĄZANE ARTYKUŁY:
+ Zobacz więcej o programach lojalnościowych
+Jak skonfigurować programy lojalnościowe w Sellasist?
+ Zobacz jak skonfigurujesz program punktowy
+ Zobacz jak skonfigurujesz rabat wg sumy zamówień
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+

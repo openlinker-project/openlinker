@@ -59,13 +59,14 @@ import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-a
 import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.exception';
 import { isBridgeUrlSafe } from '../http/subiekt-url-safety';
 import { SUBIEKT_BRIDGE_TIMEOUT_MS } from '../../bridge/subiekt-bridge-timeout';
+import type { ZeroValueLineSupport } from '@openlinker/core/sales-documents';
 
 /** Provider identifier stamped onto the neutral result (mirrors `SUBIEKT_PROVIDER_TYPE`). */
 export const SUBIEKT_FISCAL_PROVIDER_TYPE = 'subiekt-gt';
 
 
 
-export class SubiektFiscalizationAdapter implements FiscalizationPort {
+export class SubiektFiscalizationAdapter implements FiscalizationPort, ZeroValueLineSupport {
   constructor(
     private readonly bridgeBaseUrl: string,
     private readonly config: SubiektFiscalizationConnectionConfig,
@@ -82,6 +83,14 @@ export class SubiektFiscalizationAdapter implements FiscalizationPort {
         bridgeBaseUrl,
       );
     }
+  }
+
+  /**
+   * The provider does not accept a 0,00 line; a gift shown on its documents takes 0,01 from a paid line of the same rate instead.
+   * Read by the document mappers through `readZeroValueLineSupport` (#3930).
+   */
+  acceptsZeroValueLine(): boolean {
+    return false;
   }
 
   /**

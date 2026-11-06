@@ -1,0 +1,25 @@
+=== process-orders-re | Process Orders RE Macro
+ 
+ Process Orders RE Macro 
+ Process Orders RE 
+ The Process Orders RE application contains a macro that runs as an action within the Rules Engine , allowing you to process orders in large batches. This guide provides a step-by-step explanation of how to install and set up this macro in Linnworks.
+ Start using the macro
+ There are three steps you need to complete to start using the macro:
+ Install the application.
+ Go to Apps > Application Store > Process Orders RE > click   Install and follow the on-screen instructions until the installation is complete.
+ Configure the macro.
+ Configure the rule in the Rules Engine screen.
+ Configure the macro 
+ Once the Process Orders RE  app is installed: 
+ Go to Apps > Macro Configuration and click  Add new configuration .
+Select the  Process Orders RE  macro and click  Create configuration .
+In the Macro Configuration  screen, specify the below details and click Save :
+ Configuration name ( required ) : The name of the configuration. This field is required; without it, the system will not allowed to save the configuration.
+ Batch size: The number of orders to be processed at once. The default value is 100. 
+ Save the configuration and enable the macro to continue with the Rules Engine configuration.
+ Configure the rule in the Rules Engine
+ Go to Orders > Rules Engine to create a new rule and set a condition for it. Using our documentation on Rules Engine , check all possible conditions and select the one or a combination that is relevant to you.
+ For the action, select Execute a macro  as an Action Type and select the macro's name in the Action Value field. Save the rule and make sure to enable it. 
+ The  macro's configuration is now completed. You can now run this rule in  Open Orders  to process orders in bulk. 
+ The rule will use this macro to process orders and  move them to the Processed Orders screen.  
+ 

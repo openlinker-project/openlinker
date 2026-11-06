@@ -14,7 +14,7 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 import { usePermission } from '../../../shared/auth/use-permission';
 import { useTrackMargin } from '../../analytics';
 import { ordersQueryKeys } from '../api/orders.query-keys';
-import type { OrderLineCost } from '../api/orders.types';
+import type { OrderGiftSlotCost, OrderLineCost } from '../api/orders.types';
 
 export interface OrderLineCostsState {
   /** Whether the cost columns render at all. */
@@ -23,6 +23,8 @@ export interface OrderLineCostsState {
   status: 'loading' | 'error' | 'loaded';
   currency: string | null;
   lines: OrderLineCost[];
+  /** What each gift slot of a bundle costs you (#3934); empty until loaded. */
+  giftSlots: OrderGiftSlotCost[];
 }
 
 export function useOrderLineCosts(internalOrderId: string | undefined): OrderLineCostsState {
@@ -42,5 +44,6 @@ export function useOrderLineCosts(internalOrderId: string | undefined): OrderLin
     status: query.isError ? 'error' : query.data ? 'loaded' : 'loading',
     currency: query.data?.currency ?? null,
     lines: query.data?.lines ?? [],
+    giftSlots: query.data?.giftSlots ?? [],
   };
 }

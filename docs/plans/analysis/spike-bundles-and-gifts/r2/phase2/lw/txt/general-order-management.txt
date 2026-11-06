@@ -1,0 +1,76 @@
+=== general-order-management | General Settings: Order Management
+ 
+ General Settings: Order Management 
+ Order Management 
+ The  Order Management tab contains settings related to order management grouped by type. Here, you can define basic rules for how the system works with your orders.
+ General 
+ Date format: Date formats can be displayed in either UK or US formats. Select the date format you prefer for your order dates in the Open Orders or Processed Orders screens:
+ UK Format = dd/mm/yyyy
+ US Format = mm/dd/yyyy
+ Complete and process button: Enabling this setting makes the  Complete and Process button available on the screen when creating new orders. When a user creates a new order, this button lets the user process the order as soon as it is created.
+  Note:  This setting only applies to the previous version of the Open Orders screen.
+ Tax for direct orders are inclusive of the item price:  If enabled, it tells Linnworks that when calculating VAT for an item in an order, the price specified already includes VAT at the specified rate. The setting is disabled by default. 
+ Example:  An item has a price specified as £10.00. 
+ With this setting  disabled  and a Tax Rate specified as 20%, the item is £10.00 excluding tax and £12.00 including Tax.
+With this setting enabled ,  the item is £10.00, including tax, and £8.33 excluding tax. 
+ Clear selection after search:  When searching for orders in the new Open Orders screen, all previously selected orders will be deselected. With the setting disabled, orders will stay selected.
+ Localize currencies: Enable if you would like the system to show local currencies in all received orders.  Not recommended for accounting purposes.
+ Order merge and split
+ The settings related to open orders merging and splitting can be set up in this section:
+ Automatically merge orders: Enable this setting to automatically merge orders that meet certain criteria. This process will automatically look for and merge open orders every 15 minutes. 
+  Info:  It is possible to block specific orders from merging using the Rules Engine action - Block orders from merging . Click   here  for more information.
+ Restrict order splitting: Enable this setting to restrict users from splitting orders placed in a different month. When enabled, only orders placed in the same month can be split. 
+  Note:  Processes that automatically split orders in the system (for example, partially refunding or canceling an order on Walmart ) will not be stopped by this setting.
+ Merge order identifiers :  If enabled, Linnworks will keep all order identifiers for the original orders. 
+ Merge order extended properties :  If enabled, Linnworks will keep all the extended properties for the original orders. 
+ Pre-processing checks 
+ Several settings can help you avoid errors when working with open orders, depending on your workflow. Check the list of options below and see if any apply to your processes. Users can only process orders that meet the enabled checks .
+Order is paid
+All items are linked
+All items are scanned 
+Scanning composite parent will scan all child items
+ Prompt scanning on process order screen 
+ Allow SKU scanning as alternative 
+ Allow product identifier scanning as alternative 
+Stock is sufficient
+Invoice has been printed
+Pick list has been printed
+Shipping label has been printed
+Sound feedback when order is scanned (see more below)
+ Sound feedback when order is scanned  
+ The  Sound feedback when order is scanned setting applies to processing orders via the Dispatch Console  (for now, the Batch Process By Order ID tab only). 
+ When this setting is enabled, the system will play a distinct sound when an order is processed and a different sound if there is an error. This audio feedback helps improve efficiency by alerting users immediately, reducing the need for constant visual monitoring, and minimizing processing errors. 
+ This setting will later apply to all tabs on the Dispatch Console screen. 
+ Order processing 
+ Barcode processing: Use this field to enter a barcode that will be scanned instead of clicking the Process button in the Process Order screen 
+ Space bar processing: If enabled, hitting the space bar in the  Process Order  screen will process the order. Please be careful with this setting; it will process the order immediately.
+ Processing batch size: Select the batch size of orders to be processed. Linnworks will split the processing of large amounts of orders into batches to reduce the risk of timeouts. If timeouts still occur, please consider lowering the number of orders in the batch using the drop-down menu.
+ Print label when processing: I f enabled, clicking  Process Orders  will automatically print a shipping label once the  Process Order  screen opens. Linnworks will print the label based on the postal service assigned to the order. The label will not be printed if the order’s shipping service is set as default. 
+ Print invoice when processing: I f enabled, clicking  Process Orders  will automatically print an invoice once the  Process Order  screen opens. Linnworks will pick an invoice template based on the printing conditions that are configured for the invoices. 
+ Ask for order weight (single package orders only): If enabled, clicking Process Orders will automatically open a screen where you will be required to input order weight to continue.
+ Dispatch console 
+ Search using tracking number: If enabled, you can process an order in the  Dispatch Console  screen by scanning the order tracking number that was provided at the time of printing the shipping label. When using the  Batch Process by Order ID  option in the  Dispatch Console , Linnworks will find the order with the scanned tracking number and automatically process it.
+ Dispatch console default tab: Select the default tab here, which will open automatically when using  Dispatch Console .
+ Hide unpaid orders when scanning barcode: If enabled, then in the  By Item Barcode  tab in  Dispatch Console , orders marked as unpaid will not be returned by the system.
+ Returns and refunds 
+ Inherit all extended properties from original order on resend order : Enable this if y ou would like to copy all the order extended properties from the original order to the resend order. 
+ Folders 
+ Here, you can create new folders or delete the existing ones. Click the  + New folder  button to create a new folder and to delete the existing one. All the folders created will be available in the Open Orders screen > right-click menu: 
+ Folder settings 
+ One folder maximum per order:  If enabled, orders can only be placed into one folder. If the order is already placed in any folder, assigning it to a new folder will automatically remove it from the original folder.
+ Disable copying folders to split orders:  If enabled, new orders created due to the split will not be assigned to any folder. It is disabled by default, meaning split orders will inherit folder(s) assigned to the parent order.
+ Identifiers 
+ Custom identifiers for open orders can be used in the  Rules Engine  module as both, a condition that will check the current identifier on an order, and an action to assign this identifier to an order.
+  Note:  Identifiers created here can only be used in the new   Open Orders  screen. 
+ There are some default identifiers that are already pre-configured in the system.
+ To add your custom identifiers, click + New identifier  and give them a  Name ,  Tag,  and upload an image so that it is easy to identify them. Click  Save . The new identifiers will be available for all users on your account.
+ To assign an identifier manually, go to the new  Open Orders  screen >  Actions  (or right-click the order) >  Organize  >  Identifier  >  Assign Identifier  > select the required identifier. It will be displayed in the  General Info  column.
+ You can assign more than one identifier to an order.
+ Payment methods
+ In this section, manage payment methods you accept - PayPal, Stripe, Bank Transfer, etc.
+ To add a new payment method, click the  + New payment method  button, enter the name, and click Save. Use    to edit the payment method, to mark as the default method, and remove it. 
+  Note: The user-selected default payment method only applies to direct orders. Downloaded channel orders use payment mapping or display " Default"  if no mapping options are available or applicable.
+  Video tutorial
+ If you prefer a visual explanation,  this  video tutorial will walk you through Linnworks's General Settings   step by step. It  can help clarify how to configure your Linnworks account and answer any additional questions.
+ Video - General Settings: Order Management 
+ 

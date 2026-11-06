@@ -1822,6 +1822,11 @@ describe('OrderRecordRepository', () => {
         if (column === 'orderEdits') {
           continue;
         }
+        // `lineExpansion` (#3607) is kept for the same reason: the frozen
+        // component list must reach `physicalItems` on the returned record.
+        if (column === 'lineExpansion') {
+          continue;
+        }
         expect({ column, value: projected[column] }).toEqual({
           column,
           value: EMPTY_DEFAULTS[column] ?? null,

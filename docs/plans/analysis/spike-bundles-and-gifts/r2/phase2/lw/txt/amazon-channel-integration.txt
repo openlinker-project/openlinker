@@ -1,0 +1,114 @@
+=== amazon-channel-integration | Amazon channel integration
+ 
+ Amazon channel integration 
+Amazon Channel Integration
+ Amazon integration allows you to connect to your Amazon seller account via API. The integration also supports working with FBA orders and inventory.
+ [+] List of Supported Amazon Marketplaces.
+ [-]
+ Click to hide the list
+ Australia
+ com.au
+ sellercentral.amazon.com.au 
+ Belgium
+ com.be
+ sellercentral.amazon.com.be 
+ Brazil
+ com.br
+ sellercentral.amazon.com.br 
+ Canada
+ ca
+ sellercentral.amazon.ca 
+ France
+ fr
+ sellercentral.amazon.fr 
+ Germany
+ de
+ sellercentral.amazon.de 
+ India
+ in
+ sellercentral.amazon.in 
+ Ireland
+ ie
+ sellercentral.amazon.ie 
+ Italy
+ it
+ sellercentral.amazon.it 
+ Japan
+ jp
+ sellercentral.amazon.co.jp 
+ Netherlands
+ nl
+ sellercentral.amazon.nl 
+ Mexico
+ mx
+ sellercentral.amazon.com.mx 
+ Poland
+ pl
+ sellercentral.amazon.pl 
+ Saudi Arabia
+ sa
+ sellercentral.amazon.sa 
+ Singapore
+ sg
+ sellercentral.amazon.sg 
+ South Africa
+ za
+ sellercentral.amazon.co.za 
+ Spain
+ es
+ sellercentral.amazon.es 
+ Sweden
+ se
+ sellercentral.amazon.se 
+ Turkey
+ com.tr
+ sellercentral.amazon.com.tr 
+ UAE
+ ae
+ sellercentral.amazon.ae 
+ UK
+ co.uk
+ sellercentral.amazon.co.uk 
+ USA
+ com
+ sellercentral.amazon.com 
+  Note: Amazon Brazil, Japan, Singapore, Turkey, UAE, and Saudi Arabia sites do not currently support listing functionality, and therefore, listing creation via Linnworks is not possible for these marketplaces.
+  Amazon channel integration is a Linnworks Direct  integration - developed, maintained, and supported by Linnworks.
+ Supported features
+ Inventory Updates 
+ Linnworks can automatically send changes in stock levels to the channel.
+ Order Download 
+ Channel orders can be automatically downloaded into Linnworks.
+  To ensure order reports that Linnworks requests from Amazon return all relevant columns, enable the  Tax Collection Model and Tax Responsible Party  columns in Seller Central > Order Reports > Add or remove order report columns .  
+ Channel Tax 
+ The channel provides tax information and settings displayed on orders in Linnworks during order download.
+ Inventory Mapping 
+ Channel listings can be linked to Linnworks inventory items for stock level and price updates.
+ Listing Creation 
+ New listings on the channel can be created via Linnworks. A complete guide on the Amazon listing tool is here .
+ Amazon also supports re-creating existing listings in Linnworks via the Extract Inventory tool. 
+ Location Mapping 
+ Orders can be downloaded, and inventory updates sent from specific locations. 
+ Amazon FBA locations can be set up to work with FBA orders and inventory. See more here. 
+ The Amazon channel integration (US only) in Linnworks supports Multi-Location Inventory, for which location mapping must be set up in a particular way. See more here .
+ Order Cancellation 
+ Orders can be canceled on the channel via Linnworks.
+ Order Dispatch 
+ Orders on the channel can be marked as shipped and provided with the tracking number and shipping service name via Linnworks.
+ Order Refunds 
+ Orders can be refunded on the channel via Linnworks
+ Payment Mapping 
+ Channel payment methods can be linked to Linnworks payment methods for the orders in Linnworks to display methods based on the channel selection.
+ Price Change 
+ Prices on channel listings can be automatically updated via Linnworks.
+ Shipping Mapping 
+ Channel shipping methods can be linked to Linnworks postal services for the orders in Linnworks to display the services based on the channel selection.
+ Next steps:
+ Add New 
+ Settings 
+ Additional information:
+ Fulfillment by Amazon 
+ Amazon B2B orders 
+ Amazon Prime orders 
+ Amazon Listing Tool 
+ 

@@ -255,4 +255,81 @@ describe('OrderProvisioningResumeService (#2341)', () => {
       status: 'failed',
     });
   });
+
+  describe('resumeMultipackHeldOrders (#3624)', () => {
+    const held = (id: string, reason: string | null): OrderRecord =>
+      ({
+        internalOrderId: id,
+        sourceConnectionId: SOURCE_CONNECTION,
+        sourceEventId: `evt-${id}`,
+        mappingFailureReason: reason,
+        syncStatus: [],
+      }) as unknown as OrderRecord;
+
+    const SCOPE = { variantId: 'v-set' };
+    const repoWith = (find: jest.Mock): void => {
+      (orderRecordRepository as unknown as { findHeldByReasonCode: jest.Mock }).findHeldByReasonCode = find;
+    };
+
+    it('should re-drive the orders the SQL read selected, scoped to the variant offers and the reason code', async () => {
+      const multipack = held(
+        'ol_order_m',
+        'multipack without a bundle [multipack-without-bundle]: line sells 3 units'
+      );
+      const find = jest.fn().mockResolvedValue([multipack]);
+      repoWith(find);
+      orderRecordRepository.findById.mockResolvedValue(multipack);
+
+      const result = await service.resumeMultipackHeldOrders({ ...SCOPE, packQuantity: 3 });
+
+      expect(result).toEqual({ held: 1, enqueued: 1, notResumed: 0, truncated: false, scanFailed: false });
+      expect(find).toHaveBeenCalledWith(
+        {
+          reasonCode: 'multipack-without-bundle',
+          offerRefs: [{ connectionId: SOURCE_CONNECTION, externalId: 'EXT-1' }],
+          packQuantity: 3,
+        },
+        { afterId: null, limit: 100 }
+      );
+    });
+
+    it('should page by keyset so re-driven orders cannot make the scan skip rows (#3520)', async () => {
+      const page1 = Array.from({ length: 100 }, (_, i) => held(`ol_order_${String(1000 + i)}`, 'x'));
+      const page2 = [held('ol_order_2000', 'x')];
+      const find: jest.Mock<Promise<OrderRecord[]>, [unknown, { afterId: string | null; limit: number }]> = jest
+        .fn()
+        .mockResolvedValueOnce(page1)
+        .mockResolvedValueOnce(page2);
+      repoWith(find);
+      orderRecordRepository.findById.mockResolvedValue(null);
+
+      const result = await service.resumeMultipackHeldOrders(SCOPE);
+
+      expect(result.held).toBe(101);
+      expect(find.mock.calls[1][1]).toEqual({ afterId: 'ol_order_1099', limit: 100 });
+      expect(result.truncated).toBe(false);
+    });
+
+    it('should report truncation when the page budget is exhausted instead of returning a short result silently (#3520)', async () => {
+      const full = Array.from({ length: 100 }, (_, i) => held(`ol_order_${String(i)}`, 'x'));
+      repoWith(jest.fn().mockResolvedValue(full));
+      orderRecordRepository.findById.mockResolvedValue(null);
+
+      const result = await service.resumeMultipackHeldOrders(SCOPE);
+
+      expect(result.truncated).toBe(true);
+      expect(result.held).toBe(5000);
+    });
+
+    it('should report a scan failure as a result and never throw', async () => {
+      repoWith(jest.fn().mockRejectedValue(new Error('db down')));
+      await expect(service.resumeMultipackHeldOrders(SCOPE)).resolves.toEqual({
+        held: 0,
+        enqueued: 0,
+        notResumed: 0,
+        truncated: false,
+        scanFailed: true,
+      });
+    });
+  });
 });

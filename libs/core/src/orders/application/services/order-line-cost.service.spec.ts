@@ -6,6 +6,7 @@ import { OrderLineItem } from '../../domain/entities/order-line-item.entity';
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { OrderLineItemRepositoryPort } from '../../domain/ports/order-line-item-repository.port';
 import type { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
+import type { IOrderBundleDocumentService } from './order-bundle-document.service.interface';
 import { OrderLineCostService } from './order-line-cost.service';
 
 const line = (
@@ -59,7 +60,20 @@ function build(
         variantsWithCost.map((id) => ({ id, netUnitCost: '5.0000' }) as unknown as ProductVariant)
       ),
   } as unknown as IProductsService;
-  return new OrderLineCostService(orders, items, products);
+  const bundleDocuments = {
+    getGiftSlotCosts: jest.fn().mockResolvedValue([
+      {
+        lineId: 'x',
+        componentLineId: 'x~c:g',
+        variantId: 'g',
+        quantity: 1,
+        unitCostNet: '3.9000',
+        costCurrency: 'PLN',
+        totalCostNet: 3.9,
+      },
+    ]),
+  } as unknown as IOrderBundleDocumentService;
+  return new OrderLineCostService(orders, items, products, bundleDocuments);
 }
 
 describe('OrderLineCostService', () => {
@@ -68,7 +82,13 @@ describe('OrderLineCostService', () => {
   });
 
   it('should return no lines when the order has no line rows', async () => {
-    expect(await build([]).getLineCosts('ord-1')).toEqual({ currency: 'PLN', lines: [] });
+    expect(await build([]).getLineCosts('ord-1')).toEqual({
+      currency: 'PLN',
+      lines: [],
+      giftSlots: [
+        { lineId: 'x', componentLineId: 'x~c:g', variantId: 'g', quantity: 1, totalCostNet: 3.9 },
+      ],
+    });
   });
 
   it('should compute cost of goods and margin from the net amount when recorded in the order currency', async () => {

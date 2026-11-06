@@ -174,10 +174,14 @@ import {
   SalesDocumentUncountedUnresolvedReasonValues,
   isTaxRateEnforced,
   readDeliveryOnDocuments,
+  readGiftDocumentSettings,
+  BundleSplitUnknownError,
+  type BundleDocumentPresentation,
+  readZeroValueLineSupport,
   resolveDeliveryLine,
   shippingSplitInputs,
 } from '@openlinker/core/sales-documents';
-import type { ResolvedDeliveryLine } from '@openlinker/core/sales-documents';
+import type { GiftDocumentSettings, ResolvedDeliveryLine } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
 import {
   describeMissingTaxRate,
@@ -286,6 +290,7 @@ const PII_SAFE_ERROR_NAMES: ReadonlySet<string> = new Set([
   'InvalidFiscalLineError',
   'UnsupportedFiscalPriceTreatmentError',
   'BatchedTriggerNotImplementedError',
+  'BundleSplitUnknownError',
 ]);
 
 @Injectable()
@@ -479,6 +484,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceEventId?: string,
     taxRateEra?: string | null,
     buyerTaxId?: string | null,
+    bundleDocument?: BundleDocumentPresentation,
   ): Promise<SalesDocumentBlockOutcome> {
     // D8: only ACTIVE connections receive issuance jobs. The scheduler's
     // `status: 'active'` filter already excludes disabled/error/needs_reauth
@@ -589,6 +595,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           sourceEventId,
           taxRateEra,
           buyerTaxId,
+          bundleDocument,
         );
     }
   }
@@ -877,6 +884,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceEventId?: string,
     taxRateEra?: string | null,
     buyerTaxId?: string | null,
+    bundleDocument?: BundleDocumentPresentation,
   ): Promise<SalesDocumentBlockOutcome> {
     const connection = connections.find((candidate) => candidate.id === decision.connectionId);
     if (
@@ -911,6 +919,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         taxRateEra,
         decision.ruleId,
         buyerTaxId,
+        bundleDocument,
       );
     }
     if (decision.documentKind === 'fiscal-receipt') {
@@ -923,6 +932,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         taxRateEra,
         decision.ruleId,
         buyerTaxId,
+        bundleDocument,
       );
     }
 
@@ -963,8 +973,11 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     taxRateEra?: string | null,
     matchedRuleId?: string,
     buyerTaxId?: string | null,
+    bundleDocument?: BundleDocumentPresentation,
   ): Promise<SalesDocumentBlockOutcome> {
-    const supported = await this.connectionSupportsInvoiceDocumentType(connection.id);
+    const { supported, acceptsZeroValueLine } = await this.connectionSupportsInvoiceDocumentType(
+      connection.id,
+    );
     if (!supported) {
       this.logger.error(
         `Auto-issue skipped: connection ${connection.id} is routed for 'invoice' but its adapter ` +
@@ -1071,6 +1084,9 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         taxRateEra,
         buyerTaxId,
         deliveryLine,
+        readGiftDocumentSettings(sourceConnection?.config),
+        acceptsZeroValueLine,
+        bundleDocument,
       );
 
       await this.syncJobs.schedule({
@@ -1096,6 +1112,13 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         // change that until the feature ships or the operator picks another model.
         return await this.reportBlock(
           { reason: BLOCK_REASON_BY_TRIGGER_MODEL.batched },
+          order.id,
+          matchedRuleId,
+        );
+      }
+      if (error instanceof BundleSplitUnknownError) {
+        return await this.reportBlock(
+          { reason: 'bundle-split-unknown', detail: describeLineTotalMismatch(error) },
           order.id,
           matchedRuleId,
         );
@@ -1148,6 +1171,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     taxRateEra?: string | null,
     matchedRuleId?: string,
     buyerTaxId?: string | null,
+    bundleDocument?: BundleDocumentPresentation,
   ): Promise<SalesDocumentBlockOutcome> {
     try {
       // Reused verbatim from `config.invoicing.triggerModel` — see the
@@ -1221,6 +1245,9 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         taxRateEra,
         buyerTaxId,
         deliveryLine,
+        readGiftDocumentSettings(sourceConnection?.config),
+        await this.readFiscalZeroValueLineSupport(connection.id),
+        bundleDocument,
       );
 
       await this.syncJobs.schedule({
@@ -1238,6 +1265,13 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       if (error instanceof BatchedTriggerNotImplementedError) {
         return await this.reportBlock(
           { reason: BLOCK_REASON_BY_TRIGGER_MODEL.batched },
+          order.id,
+          matchedRuleId,
+        );
+      }
+      if (error instanceof BundleSplitUnknownError) {
+        return await this.reportBlock(
+          { reason: 'bundle-split-unknown', detail: describeLineTotalMismatch(error) },
           order.id,
           matchedRuleId,
         );
@@ -1262,19 +1296,48 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   }
 
   /**
+   * The Fiscalization adapter's zero-value line declaration (#3930), so a
+   * receipt is composed the way the manual route composes it. A resolution
+   * failure is logged and answers `undefined`; it never blocks the receipt.
+   */
+  private async readFiscalZeroValueLineSupport(connectionId: string): Promise<boolean | undefined> {
+    try {
+      return readZeroValueLineSupport(
+        await this.integrations.getCapabilityAdapter<unknown>(
+          connectionId,
+          FISCALIZATION_CAPABILITY,
+        ),
+      );
+    } catch (error) {
+      const name = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Could not resolve connection ${connectionId}'s Fiscalization adapter for its zero-value ` +
+          `line declaration (error=${name}); a gift is composed as if undeclared.`,
+      );
+      return undefined;
+    }
+  }
+
+  /**
    * Decision-7 deeper check for the `'invoice'` kind: resolve the connection's
    * `InvoicingPort` adapter and ask its value-level
    * `getSupportedDocumentTypes()` whether `'invoice'` is among them. Fails
    * CLOSED (returns `false`) on any adapter-resolution error — a connection
    * this gate cannot even resolve is not one it should dispatch to.
    */
-  private async connectionSupportsInvoiceDocumentType(connectionId: string): Promise<boolean> {
+  private async connectionSupportsInvoiceDocumentType(
+    connectionId: string,
+  ): Promise<{ supported: boolean; acceptsZeroValueLine?: boolean }> {
     try {
       const adapter = await this.integrations.getCapabilityAdapter<InvoicingPort>(
         connectionId,
         INVOICING_CAPABILITY,
       );
-      return adapter.getSupportedDocumentTypes().includes('invoice');
+      // The zero-line declaration rides on the adapter already in hand (#3930).
+      return {
+        supported: adapter.getSupportedDocumentTypes().includes('invoice'),
+        acceptsZeroValueLine: readZeroValueLineSupport(adapter),
+      };
     } catch (error) {
       const name = error instanceof Error ? error.name : 'UnknownError';
       this.logger.warn(
@@ -1282,7 +1345,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           `support (error=${name}); skipping this issuance rather than risk dispatching to an ` +
           `unresolvable adapter.`,
       );
-      return false;
+      return { supported: false };
     }
   }
 
@@ -1447,6 +1510,9 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     taxRateEra?: string | null,
     buyerTaxId?: string | null,
     deliveryLine?: ResolvedDeliveryLine,
+    giftSettings?: GiftDocumentSettings,
+    acceptsZeroValueLine?: boolean,
+    bundleDocument?: BundleDocumentPresentation,
   ): InvoicingIssuePayloadV1 {
     // The mapper owns the neutral Order->command rules and may surface
     // InvalidBuyerProfileError / UnsupportedPriceTreatmentError (both PII-clean).
@@ -1483,6 +1549,9 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       idempotencyKey,
       shippingLineName,
       deliveryLine,
+      ...giftSettings,
+      acceptsZeroValueLine,
+      bundleDocument,
       taxRateEra,
       buyerTaxId: buyerTaxNumber.length > 0 ? { value: buyerTaxNumber } : null,
     });
@@ -1575,6 +1644,9 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     taxRateEra?: string | null,
     buyerTaxId?: string | null,
     deliveryLine?: ResolvedDeliveryLine,
+    giftSettings?: GiftDocumentSettings,
+    acceptsZeroValueLine?: boolean,
+    bundleDocument?: BundleDocumentPresentation,
   ): FiscalizationRegisterPayloadV1 {
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- lazy require needed to break a CommonJS barrel-load cycle with `@openlinker/core/fiscalization` (see the doc comment above)
     const fiscalization = require('@openlinker/core/fiscalization') as {
@@ -1588,6 +1660,9 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       idempotencyKey,
       shippingLineName: this.readShippingLineName(connection),
       deliveryLine,
+      ...giftSettings,
+      acceptsZeroValueLine,
+      bundleDocument,
       taxRateEra,
       // #3187, ADR-073 decision 1 — the persisted three-state column; the
       // mapper decodes it and stamps the command only when there is a real

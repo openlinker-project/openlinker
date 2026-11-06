@@ -1,0 +1,45 @@
+=== rma-refunds | Refunds
+ 
+ Refunds 
+Processed Orders: Refunds
+ Refunds in Linnworks allow users to record partial or full amounts paid by a buyer for a specified (processed) order returned to the buyer. This ensures that reporting is accurate and records for later reference and other purposes such as taxation.
+ Important:  Refunding an order in Linnworks does not automatically refund that order on the channel. Check here for a list of channels that support refunds via Linnworks. For other channels, refunds need to be created externally for Linnworks.
+ Creating a refund 
+ To issue a full or partial refund for an order through Linnworks, follow the steps below:
+ Go to Orders > Processed Orders and search for the order for which you need to issue a refund. 
+ Right-click the order and 
+ select Action > Refunds .  
+ Full refund: To refund the entire order, click the  Full refund button. Then, continue with the next steps, starting from step 5.
+ Partial refund: To issue a partial refund for a specific item(s), click the  Add button in the corresponding item's row. Then, continue with the next steps, starting from step 6.  
+ After clicking  Full refund , a pop-up window will appear where you can specify the following details:
+ Internal reason category: This drop-down menu lets you select a refund reason, such as "damaged in transit," "incorrect fit," or "unusable item." The list is customizable, so you can create reasons that make sense for your business. To edit it, click the edit icon to open the Edit Categories pop-up window.
+ Add new: To add a new refund reason category, enter the reason name in the field at the top of the pop-up and click  Add new .
+ Delete: To delete a reason category, click the delete icon next to it.
+ Internal reason ( additional notes ): This field can be used to specify any additional details. 
+ After clicking  Add in the item's row to create a partial refund, you must specify  the amount to be refunded,  because this is a partial refund, and the internal reason category (as explained above). 
+You can always edit the refund details before booking or actioning the refund ( see below  for the difference between the two).
+You can use the  Additional refund button if you need to add a refund that is not tied to a specific item or if you want to refund more than the buyer has paid. This will add a new line item that you can treat as a refundable item, and there is no limit to the amount you can refund on this row.
+Now you can book or action the refund. See the explanation below for the difference between the two.
+  Note:  You cannot refund more than what the buyer paid for a single item. If you need to refund an amount that exceeds the buyer’s payment, you can use the  Additional refund button to process the extra refund.  
+ Refund reasons - Helpful tip 
+ When you begin tagging your refunds with reasons, you can  use the  Order Item Return, Resend, Refund —Details  report from the  Query Data  to analyze why items are being refunded and take appropriate action  if necessary.
+ Note that the refund reasons you specify via the Internal Reason Category drop-down (see step 5 above), as the name suggests, are internal and not visible to your buyers when issuing the refund.
+ Book or Action refunds
+ Booking a refund
+ Select this option if you are not ready to pay the refund yet.
+ Booking a refund will add a refund to the order but not activate it. You will have a record of it in Orders > Returns & Refunds > Actionable Refunds . There, you can find your refund by one of the parameters ( Refund Header ID , Order ID , Refund reference , Order reference , Order tracking number , SKU , Customer info ) and:    
+ View refund details
+ Edit refund details
+ Delete the refund
+ Action the refund
+ Once a refund is actioned, it will move from the Actionable Refunds tab to the History tab. 
+ Actioning a refund
+ Select this option if you are ready to pay the refund straight away.
+ Actioning a refund will add the refund to the order and mark it as actioned. A record of the refund will be found in the  History tab. 
+  Video tutorials 
+ If you prefer a visual explanation, this video tutorial walks you through the Refund Reasons    feature . It can help clarify how the feature  works and answer any additional questions.
+ Video 1 - How to tag refunds in Linnworks with the reason why the item(s) was refunded 
+ Video 2 - Refunds, Returns, Resends, and Exchanges  
+ See more:
+ Channels - Order Refunds 
+ 

@@ -78,6 +78,7 @@ import {
   toLocateResult,
   toRegisterTransactionResult,
 } from './eparagony-document.mapper';
+import type { ZeroValueLineSupport } from '@openlinker/core/sales-documents';
 
 /**
  * Default ceiling on the status poll. THIS LANE'S OWN BUDGET - a device needs
@@ -101,7 +102,7 @@ if (MAX_STATUS_POLL_TIMEOUT_MS >= EPARAGONY_REGISTER_DEADLINE_MS) {
 }
 
 export class EparagonyFiscalizationAdapter
-  implements FiscalizationPort, FiscalRegistrationLocator, ReceiptLineNameBudget
+  implements FiscalizationPort, FiscalRegistrationLocator, ReceiptLineNameBudget, ZeroValueLineSupport
 {
   constructor(
     private readonly connectionId: string,
@@ -112,6 +113,14 @@ export class EparagonyFiscalizationAdapter
 
   getReceiptLineNameMaxLength(): number {
     return EPARAGONY_RECEIPT_LINE_NAME_MAX_LENGTH;
+  }
+
+  /**
+   * The provider does not accept a 0,00 line; a gift shown on its documents takes 0,01 from a paid line of the same rate instead.
+   * Read by the document mappers through `readZeroValueLineSupport` (#3930).
+   */
+  acceptsZeroValueLine(): boolean {
+    return false;
   }
 
   async registerTransaction(

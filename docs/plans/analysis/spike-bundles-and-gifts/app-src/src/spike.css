@@ -1,0 +1,81 @@
+/* Spike page layout only. Everything else is the app's own index.css. */
+body { background: var(--bg-canvas); color: var(--text-primary); }
+.spike-shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-block: var(--space-4) var(--space-7);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.spike-shell .tabs__list { overflow-x: auto; }
+.spike-shell .page-section { display: flex; flex-direction: column; gap: var(--space-4); }
+.spike-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-3); }
+.spike-scroll { overflow-x: auto; max-width: 100%; }
+.spike-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.spike-id { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
+.spike-note { display: block; font-size: 0.75rem; color: var(--text-muted); font-weight: 400; margin-top: 2px; }
+.spike-matrix th.spike-matrix__case { text-align: left; font-weight: 500; min-width: 260px; max-width: 360px; white-space: normal; }
+.spike-matrix__case > span:nth-child(2) { display: block; }
+.spike-matrix td { white-space: nowrap; }
+.spike-channels td, .spike-channels th { vertical-align: top; white-space: normal; min-width: 160px; }
+.spike-findings { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-4); }
+.spike-finding { display: grid; grid-template-columns: 2rem minmax(0, 1fr); gap: var(--space-3); }
+.spike-finding__n { font-family: var(--font-mono); font-size: 1.25rem; font-weight: 600; color: var(--accent-primary); line-height: 1.4; }
+.spike-finding__title { margin: 0 0 var(--space-1); font-size: 1rem; font-weight: 600; display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.spike-finding__body p { margin: 0; max-width: 72ch; color: var(--text-secondary, var(--text-primary)); line-height: 1.55; }
+.spike-pains { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-3); }
+.spike-pains li { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; line-height: 1.5; }
+.spike-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--space-5); }
+.spike-scope { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--space-5); }
+.spike-scope section, .spike-two > div { min-width: 0; }
+.spike-h4 { margin: 0 0 var(--space-2); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.spike-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.spike-list li { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); gap: var(--space-2); line-height: 1.5; }
+.spike-footnote { margin: 0; font-size: 0.8125rem; color: var(--text-muted); max-width: 80ch; }
+@media (max-width: 480px) {
+  .spike-list li { grid-template-columns: 1fr; gap: 0; }
+}
+/* ── v2: run comparison, definitions, channel mapper ── */
+.spike-tab--ux { color: var(--text-muted); }
+.spike-tab--ux:first-of-type, .tabs__list .spike-tab--ux:nth-child(7) { margin-left: var(--space-3); }
+.spike-cell--moved { background: color-mix(in oklch, var(--status-warning) 10%, transparent); }
+.spike-was { display: block; margin-top: 2px; font-size: 0.6875rem; color: var(--text-muted); white-space: nowrap; }
+.spike-def th, .spike-def td { vertical-align: top; white-space: normal; min-width: 140px; line-height: 1.5; }
+.spike-def code { font-size: 0.8125rem; word-break: break-word; }
+.spike-note-cell { font-size: 0.75rem; color: var(--text-muted); white-space: normal; }
+
+.mapper { display: flex; flex-direction: column; gap: var(--space-4); }
+.mapper__scenario { margin: 0; max-width: 78ch; line-height: 1.55; color: var(--text-secondary); }
+.mapper__switch { max-width: 100%; overflow-x: auto; flex-wrap: nowrap; }
+.mapper__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 0.9fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+@media (max-width: 1023px) { .mapper__grid { grid-template-columns: minmax(0, 1fr); } }
+.mapper__col { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.mapper__col--model {
+  padding: var(--space-3);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-lg);
+  background: var(--accent-primary-soft);
+}
+.mapper__h { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 0.9375rem; font-weight: 600; }
+.mapper__step {
+  display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem;
+  border-radius: var(--radius-pill); background: var(--accent-primary); color: var(--text-on-primary);
+  font-size: 0.75rem; font-weight: 600;
+}
+.mapper__sub { margin: 0; font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); }
+.mapper__wire {
+  margin: 0; padding: var(--space-3); overflow-x: auto; max-width: 100%;
+  font-family: var(--font-mono); font-size: 0.75rem; line-height: 1.6;
+  background: var(--bg-surface-muted); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+  color: var(--text-primary);
+}
+.mapper__wire--warn { color: var(--status-warning-fg, var(--text-primary)); font-weight: 600; }
+.mapper__wire--muted { color: var(--text-muted); font-style: italic; }
+.mapper__bullets { margin: 0; padding-left: 1.1rem; display: grid; gap: var(--space-1); line-height: 1.5; }
+.mapper__table th[scope='row'] { font-weight: 500; white-space: normal; min-width: 150px; }
+.mapper__row--child th[scope='row'] { padding-left: var(--space-5); }

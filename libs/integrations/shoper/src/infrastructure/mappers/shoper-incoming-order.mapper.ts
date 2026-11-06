@@ -285,6 +285,14 @@ function lineRef(line: ShoperOrderLineRow): IncomingOrderItemRef {
     : { type: 'sku', externalId: code };
 }
 
+/**
+ * One bundle (zestaw) is ONE line for core: the parent row, priced for the whole
+ * set. Its `children` (components, priced 0.00) are deliberately not mapped:
+ * OpenLinker expands a bundle from its own definition (ADR-083), so also sending
+ * the shop's component lines would reserve and ship every component twice. The
+ * neutral item type has no slot for "skipped" display lines, so they are dropped
+ * here rather than invented a field for.
+ */
 function mapLine(line: ShoperOrderLineRow): IncomingOrderItem {
   const gross = num(line.price) ?? 0;
   const taxRate = mapShoperTaxName(line.tax);

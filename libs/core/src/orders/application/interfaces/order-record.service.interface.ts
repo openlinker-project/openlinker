@@ -7,6 +7,7 @@
  *
  * @module libs/core/src/orders/application/interfaces
  */
+import type { LineExpansion } from '@openlinker/core/products';
 import type { LineCostCandidate } from '../../domain/order-line-cost-snapshot';
 import type { ApplyOrderEditInput } from '../../domain/types/order-edits.types';
 import type { Order } from '../../domain/types/order.types';
@@ -469,6 +470,14 @@ export interface IOrderRecordService {
    * such order, not `ready`, or a stale `expectedRev`).
    */
   applyOrderEdit(input: ApplyOrderEditInput): Promise<OrderRecord | null>;
+
+  /** Freeze the bundle expansion once at ingestion (#3607); see the repository port. */
+  freezeLineExpansion(internalOrderId: string, expansion: LineExpansion): Promise<LineExpansion>;
+
+  /** Open orders per frozen version of one bundle (#3624); see the repository port. */
+  countOpenOrdersByBundleVersion(
+    bundleVariantId: string
+  ): Promise<{ version: number; count: number }[]>;
 
   /**
    * Record that the source amended this order after it was already ingested

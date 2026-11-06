@@ -38,6 +38,7 @@ import { RETURN_MONEY_COPY, RETURN_REFUND_CEILING_COPY } from '../lib/return-mon
 import { RETURN_RECEIVE_COPY } from '../lib/return-custody.copy';
 import { describeRefundError, readRefundCeilingExceeded } from '../lib/refund-error';
 import type { RefundCeilingExceededDetails } from '../lib/refund-error';
+import { BundleRefundHint } from './bundle-refund-hint';
 import { useConfirmReturnRefundMutation } from '../hooks/use-return-custody-mutations';
 import type { ReturnDetail } from '../api/returns.types';
 
@@ -89,6 +90,13 @@ export function ReturnMoneyPanel({ detail, writeAccess }: ReturnMoneyPanelProps)
           {open ? (
             <RefundConfirmationForm
               currency={detail.orderCurrency}
+              renderAmountSuggestion={(apply) => (
+                <BundleRefundHint
+                  currency={detail.orderCurrency}
+                  onUse={apply}
+                  returnId={detail.id}
+                />
+              )}
               error={error}
               onCancel={() => {
                 setOpen(false);

@@ -97,6 +97,9 @@ import { useCostSummaryQuery } from '../../features/products/hooks/use-cost-cove
 import { useTrackMargin } from '../../features/analytics';
 import { ListingsCoveragePills } from './listings-coverage-pills';
 import { ProductRowDetail } from './product-row-detail';
+import { BundleComposition } from '../../features/bundles';
+import { interpolate, useMessages } from '../../shared/i18n';
+import { SegmentedControl } from '../../shared/ui/segmented-control';
 import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
 import { bucketCount, captureDemoEvent } from '../../features/demo';
 import {
@@ -230,6 +233,11 @@ export function ProductsListPage(): ReactElement {
   // the master (a "phantom" row, #1689). Default off so an install's
   // existing view is unchanged until the operator asks for it.
   const hideFullyStale = searchParams.get('hideStale') === '1';
+  // #3624 - the "Bundles" view of the same list, URL-synced like every filter here.
+  const bundlesOnly = searchParams.get('bundles') === 'true';
+  const bundleCopy = useMessages('bundles');
+  const bundleWrite = useWriteAccess('bundles:write', useDemoMode());
+  const [openCompositions, setOpenCompositions] = useState<ReadonlySet<string>>(new Set());
   const rawSort = searchParams.get('sort');
   const sortField = isSortField(rawSort) ? rawSort : DEFAULT_SORT;
   const rawDir = searchParams.get('dir');
@@ -374,6 +382,7 @@ export function ProductsListPage(): ReactElement {
     unlistedOn,
     connectionId: sourceConnectionId,
     hideFullyStale: hideFullyStale || undefined,
+    bundles: bundlesOnly || undefined,
   };
   const sort: ProductListSort = { field: sortField, dir: sortDir };
   const pagination = { limit: PAGE_SIZE, offset };
@@ -545,7 +554,7 @@ export function ProductsListPage(): ReactElement {
   );
 
   const anyFilterActive = Boolean(
-    debouncedSearch || stock || unlistedOnParam || sourceConnectionId || hideFullyStale,
+    debouncedSearch || stock || unlistedOnParam || sourceConnectionId || hideFullyStale || bundlesOnly,
   );
   // Count badge on the narrow-viewport "Filters" toggle - non-default filter
   // axes only (search stays visible outside the panel).
@@ -553,7 +562,8 @@ export function ProductsListPage(): ReactElement {
     (stock ? 1 : 0) +
     (unlistedOnParam ? 1 : 0) +
     (sourceConnectionId ? 1 : 0) +
-    (hideFullyStale ? 1 : 0);
+    (hideFullyStale ? 1 : 0) +
+    (bundlesOnly ? 1 : 0);
 
   const clearFilters = useCallback((): void => {
     setSearchInput('');
@@ -564,6 +574,7 @@ export function ProductsListPage(): ReactElement {
       next.delete('unlistedOn');
       next.delete('connectionId');
       next.delete('hideStale');
+      next.delete('bundles');
       next.delete('offset');
       return next;
     });
@@ -737,13 +748,27 @@ export function ProductsListPage(): ReactElement {
       const atpStatus = deriveAtpStatus(product.availableToPromise);
       return (
         <span className="products-cell-stack" data-testid={`stock-list-cell-${product.sku ?? product.id}`}>
-          {product.availableToPromise === null ? (
+          {product.availableToPromise === null && product.bundle ? (
+            <StatusBadge
+              tone="warning"
+              withDot
+              compact
+              data-testid={`bundle-list-reason-badge-${product.sku ?? product.id}`}
+            >
+              {bundleCopy.list.availabilityUnknown}
+            </StatusBadge>
+          ) : product.availableToPromise === null ? (
             <span className="av-unknown" title="OpenLinker doesn't know. Not zero.">
               Not known
             </span>
           ) : (
             <span>
-              <span className="products-stock-value mono tabular">{product.availableToPromise}</span>{' '}
+              <span
+                className="products-stock-value mono tabular"
+                data-testid={product.bundle ? `bundle-list-available-${product.sku ?? product.id}` : undefined}
+              >
+                {product.availableToPromise}
+              </span>{' '}
               <span className="text-muted" style={{ fontSize: '0.75rem' }}>
                 to sell
               </span>
@@ -758,6 +783,20 @@ export function ProductsListPage(): ReactElement {
               {STOCK_STATUS_LABEL[atpStatus]}
             </StatusBadge>
           )}
+          {product.availableToPromise === null && product.bundle ? (
+            <span
+              className="text-muted products-cell-sub"
+              data-testid={`bundle-list-reason-${product.sku ?? product.id}`}
+            >
+              {product.bundle.unknownComponent !== null
+                ? interpolate(bundleCopy.list.unknownReason, {
+                    name: product.name,
+                    component:
+                      product.bundle.unknownComponent.name ?? product.bundle.unknownComponent.sku ?? '',
+                  })
+                : interpolate(bundleCopy.list.unknownReasonGeneric, { name: product.name })}
+            </span>
+          ) : null}
           {product.totalAvailable !== undefined ? (
             <span className="text-muted products-cell-sub tabular">master {product.totalAvailable}</span>
           ) : null}
@@ -781,7 +820,7 @@ export function ProductsListPage(): ReactElement {
         ) : null}
       </span>
     );
-  }, []);
+  }, [bundleCopy]);
 
   const renderCoveragePills = useCallback(
     (product: Product): ReactNode => (
@@ -848,6 +887,11 @@ export function ProductsListPage(): ReactElement {
                   >
                     {product.name}
                   </Link>
+                  {product.bundle ? (
+                    <StatusBadge tone="info" compact>
+                      {bundleCopy.list.bundleMark}
+                    </StatusBadge>
+                  ) : null}
                   {(product.variantCount ?? 0) > 1 ? (
                     <StatusBadge tone="neutral" compact>
                       {product.variantCount} variants
@@ -874,6 +918,65 @@ export function ProductsListPage(): ReactElement {
                     </span>
                   </span>
                 ) : null}
+                {/* #3624 - bundle row furniture. The row testid sits on this cell
+                    because the table row already carries the stock-list one. */}
+                <span
+                  className="products-cell-sub"
+                  data-testid={`bundle-list-row-${product.sku ?? product.id}`}
+                >
+                  {product.bundle ? (
+                    <>
+                      <span data-testid={`bundle-list-limiting-${product.sku ?? product.id}`}>
+                        {product.bundle.limitedBy !== null
+                          ? interpolate(bundleCopy.list.limitedBy, {
+                              name: product.bundle.limitedBy.name ?? product.bundle.limitedBy.sku ?? '',
+                            })
+                          : null}
+                      </span>{' '}
+                      <button
+                        type="button"
+                        className="mk-link"
+                        data-testid={`bundle-list-show-composition-${product.sku ?? product.id}`}
+                        aria-expanded={openCompositions.has(product.id)}
+                        onClick={() => {
+                          setOpenCompositions((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(product.id)) next.delete(product.id);
+                            else next.add(product.id);
+                            return next;
+                          });
+                        }}
+                      >
+                        {openCompositions.has(product.id)
+                          ? bundleCopy.list.hideComposition
+                          : bundleCopy.list.showComposition}
+                      </button>
+                      {openCompositions.has(product.id) ? (
+                        <BundleComposition
+                          variantId={product.bundle.variantId}
+                          testId={`bundle-list-composition-${product.sku ?? product.id}`}
+                        />
+                      ) : null}
+                    </>
+                  ) : (
+                    <Link
+                      className="mk-link"
+                      data-testid={`bundle-list-make-bundle-${product.sku ?? product.id}`}
+                      aria-disabled={!bundleWrite.canWrite}
+                      title={bundleWrite.canWrite ? undefined : bundleCopy.form.viewOnlyReason}
+                      to={
+                        bundleWrite.canWrite
+                          ? `/products/bundles/new?componentProduct=${encodeURIComponent(product.id)}`
+                          : '#'
+                      }
+                      onClick={(event) => {
+                        if (!bundleWrite.canWrite) event.preventDefault();
+                      }}
+                    >
+                      {bundleCopy.list.makeBundle}
+                    </Link>
+                  )}
+                </span>
                 {/* The Source column is `hideBelow: 1024`, so below that width the
                     product's origin would vanish. It folds here instead (#2094):
                     a product's source connection is this identity column's own
@@ -997,6 +1100,9 @@ export function ProductsListPage(): ReactElement {
       hasListingGap,
       hasShopDestination,
       handleCreateOffersForProduct,
+      bundleCopy,
+      bundleWrite.canWrite,
+      openCompositions,
     ],
   );
 
@@ -1017,13 +1123,35 @@ export function ProductsListPage(): ReactElement {
       title="Products"
       description="Catalog cockpit — search, stock health, and per-channel listings coverage. Select up to 100 products to bulk-create offers."
       actions={
-        <Link
-          className="button button--secondary"
-          to="/products/cost-prices"
-          data-testid="products-open-cost-prices"
-        >
-          Cost prices
-        </Link>
+        <>
+          {bundleWrite.canWrite ? (
+            <Link
+              className="button button--primary"
+              to="/products/bundles/new"
+              data-testid="bundle-list-new-bundle"
+            >
+              {bundleCopy.list.newBundle}
+            </Link>
+          ) : (
+            <span
+              className="button button--primary"
+              role="button"
+              aria-disabled="true"
+              tabIndex={0}
+              title={bundleCopy.form.viewOnlyReason}
+              data-testid="bundle-list-new-bundle"
+            >
+              {bundleCopy.list.newBundle}
+            </span>
+          )}
+          <Link
+            className="button button--secondary"
+            to="/products/cost-prices"
+            data-testid="products-open-cost-prices"
+          >
+            Cost prices
+          </Link>
+        </>
       }
     >
       {/* KPI tiles double as filters (orders-segments mechanic). */}
@@ -1126,6 +1254,27 @@ export function ProductsListPage(): ReactElement {
           </button>
         ) : null}
       </div>
+
+      {/* #3624 - one list for products and bundles. The filter narrows to bundles;
+          a bundle shows its availability like any product, or says it is unknown. */}
+      <div className="ds-row" style={{ gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+        <SegmentedControl
+          aria-label={bundleCopy.list.filterLabel}
+          value={bundlesOnly ? 'bundles' : 'all'}
+          onChange={(value) => {
+            setFilterParam('bundles', value === 'bundles' ? 'true' : '');
+          }}
+          options={[
+            { value: 'all', label: bundleCopy.list.filterAll, 'data-testid': 'bundle-list-filter-all' },
+            { value: 'bundles', label: bundleCopy.list.filterBundles, 'data-testid': 'bundle-list-filter-bundles' },
+          ]}
+        />
+      </div>
+      {!bundleWrite.canWrite ? (
+        <Alert tone="info" title={bundleCopy.list.readonlyTitle} data-testid="bundle-list-readonly-notice">
+          {bundleCopy.list.readonlyNotice}
+        </Alert>
+      ) : null}
 
       {/* #3588 - missing cost prices. Warning, per-session dismissal, gated on trackMargin. */}
       {trackMargin ? <CostCoverageBanner /> : null}

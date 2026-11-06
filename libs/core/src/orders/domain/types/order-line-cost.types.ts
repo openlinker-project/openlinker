@@ -30,7 +30,25 @@ export interface OrderLineCostView {
   netEligible: boolean;
 }
 
+/**
+ * What one gift slot of a bundle line costs the seller (#3934). Kept beside, not
+ * inside, the line costs: a gift slot is a COMPONENT of a line the buyer paid
+ * for as one, so it has no line row of its own and no revenue to take a margin
+ * from. It reads the variant's cost now, since the frozen expansion carries none.
+ */
+export interface OrderGiftSlotCostView {
+  /** The commercial (bundle) line id. */
+  lineId: string;
+  /** The physical component line id, `{lineId}~c:{variantId}`. */
+  componentLineId: string;
+  variantId: string;
+  quantity: number;
+  /** `unitCostNet * quantity` in the order currency; `null` when no cost in that currency is recorded. */
+  totalCostNet: number | null;
+}
+
 export interface OrderLineCostsResult {
   currency: string | null;
   lines: OrderLineCostView[];
+  giftSlots: OrderGiftSlotCostView[];
 }

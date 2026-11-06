@@ -12,7 +12,7 @@
  *
  * @module apps/api/src/returns/dto
  */
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ReturnCorrectionLineStatusValues,
   ReturnCorrectionNoMatchReasonValues,
@@ -91,6 +91,20 @@ export class ReturnCorrectionProposalLineDto {
       'never grounds for OpenLinker to pick one.',
   })
   candidatesPriceOrRateDiffer!: boolean;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Set when part of this line came back as individual bundle components (#3933). The set ' +
+      'stays ONE invoice line, so that part is credited as an amount on the line rather than as ' +
+      'fewer units: the sum of the returned components\' shares of the set price, computed at ' +
+      'return time.',
+  })
+  componentCredit?: {
+    units: number;
+    amountGross: number;
+    variantIds: string[];
+  } | null;
 }
 
 export class ReturnCorrectionProposalBodyDto {

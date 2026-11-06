@@ -1,0 +1,20 @@
+=== rma-returns | Returns
+ 
+ Returns 
+Processed Orders: Returns
+ Linnworks enables you to handle returns when your buyers want to return an item they purchased. In case of a return, you can  scrap (dispose of) the returned item or return it to stock for resale.
+ Step 1: Find your order 
+ Open the Processed Orders screen and search for an order you need to proceed with a return for.  Right-click the order and select Action > Returns, Exchanges & Resends. 
+ Select an item you want to return and click   Add RMA . 
+ Step 2: Configure a return
+ The top part of the RMAs screen details the item for which you are booking a return. The bottom half of the screen is split into three tabs:  Return , Exchange , and Resend . 
+ Select the Return  tab to add a new return.
+ Configure the return by adding the information into the following fields:
+ R eturn to: Select the location/warehouse for the return.
+ Return quantity: The quantity of the item being returned.
+ Scrap quantity: The quantity of the item that will be scrapped instead of returning to stock.
+ Reason: The reason the item was returned.
+ Reason category: Custom category for the return. These categories can be managed by clicking the wrench     icon next to the Reason category field.  These categories are shared between returns, exchanges, and resends. 
+ Refund: Specify the amount to be refunded. Please note that the system automatically includes the order's Total Cost for a default refund. If you are issuing a partial refund, manually adjust the value accordingly.
+ Once the fields are filled in, click  Add Return > Action or Book your return. For more information on what is the difference between   Book and   Action buttons see here .
+ 

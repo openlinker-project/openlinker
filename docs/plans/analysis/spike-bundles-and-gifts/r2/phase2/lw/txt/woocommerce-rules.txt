@@ -1,0 +1,49 @@
+=== woocommerce-rules | WooCommerce: Rules &amp; Guidelines
+ 
+ WooCommerce: Rules & Guidelines 
+ WooCommerce: Rules & Guidelines
+ This page explains some rules and concepts that are relevant to working with WooCommerce via Linnworks.
+  Note:  Your WooCommerce site will need to be a minimum of 5.8 to integrate with Linnworks successfully. 
+ Inventory mapping
+ In order for all items from WooCommerce to appear in the Inventory Mapping  screen in Linnworks, there is a list of criteria that the item must meet.
+ Simple single items: 
+ The product must have an SKU.
+ The product type must be set to Simple and not Grouped .
+ The Downloadable and Virtual product attributes must both be set to False .
+ The product visibility setting must be ​ Public .
+ The product must be published publicly.
+ Variation items: 
+ At least one variation child item must be present in the variation group.
+ Both Parent and Child products must have SKUs.
+ The Parent SKU must not match any of the Child SKUs.
+ The Parent item product type on Woocommerce must be set to Variable .
+ Parent and Child products Downloadable and Virtual product attributes must both be set to False .
+ Parent and Child products product visibility setting must be Public .
+ Parent and Child products must be published publicly.
+ Inventory sync 
+ For the inventory sync between WooCommerce and Linnworks to work, you need to meet two main requirements.
+ Enable stock management at the system level 
+ The Manage Stock option must be enabled on the Woocommerce backend for stock-level updates to work. 
+ Go to   WooCommerce > Settings .
+ Click the Products tab and then the Inventory link.
+ Check the   Manage Stock   option to   enable   stock updates for all products.
+ Enable stock management at the product level 
+ It is also important for successful inventory sync to enable stock management at the product level. To ensure it is enabled: 
+Find the product that does not receive stock-level updates from Linnworks.
+Go to Edit Product screen > Product Data > Inventory . 
+Ensure the Enable stock management at product level checkbox is checked.
+If the checkbox is unchecked, Linnworks will not be sending stock-level updates, and Ignore Sync will be enabled for that item.
+ IOSS and EORI numbers
+ Linnworks is able to automatically download IOSS and EORI numbers from WooCommerce with the rest of the order data and save them on Linnworks orders as order extended properties . The values need to be provided by WooCommerce under metadata fields called  SenderIOSSNumber and  SenderEORINumber . For assistance on how to set this up on WooCommerce, contact WooCommerce directly.
+ The values are then saved as order extended properties called MARKETPLACE_IOSS and MARKETPLACE_EORI respectively, which can be mapped to the needed properties in the Shipping Integrations screen.
+ Order status
+ Linnworks will download orders from WooCommerce if they are in status processing  or pending . 
+ An order will be marked as p aid  in Linnworks only if the WooCommerce status is p rocessing  and the payment method is paid  in the information provided by WooCommerce.
+ A p ending  order will be downloaded but marked as u npaid  in Linnworks only if the Download Unpaid Orders  setting is enabled. It will receive an update from the channel with further order syncs if and when the status changes to p rocessing .
+ An order that is in status p rocessing  but e.g., a credit card transaction for the order has failed, will be considered as u npaid  and downloaded only if  Download Unpaid orders  setting is enabled.
+ Service item titles
+ When a WooCommerce order is downloaded into Linnworks containing a service item, but the title is not provided, the item will be saved with the title UNKNOWN. 
+ Next steps 
+ Add New 
+ Configure 
+ 

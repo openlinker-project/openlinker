@@ -56,7 +56,7 @@ import {
 } from '@openlinker/core/invoicing';
 import type { IssuedDocumentLineAmounts } from '@openlinker/core/invoicing';
 import { MissingTaxRateException, findMissingTaxRate } from '@openlinker/core/invoicing';
-import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
+import { isTaxRateEnforced, type ZeroValueLineSupport } from '@openlinker/core/sales-documents';
 import type { IInfaktHttpClient } from '../http/infakt-http-client.interface';
 import { InfaktApiError } from '../../domain/exceptions/infakt-api.error';
 import type {
@@ -486,7 +486,8 @@ export class InfaktInvoicingAdapter
     RegulatoryDocumentReader,
     BankAccountsReader,
     BankAccountDefaultSetter,
-    InvoiceEmailSender
+    InvoiceEmailSender,
+    ZeroValueLineSupport
 {
   /**
    * Payment method sent on every issued invoice/correction (#1303) — a
@@ -526,6 +527,14 @@ export class InfaktInvoicingAdapter
     this.paymentMethod = config.defaultPaymentMethod ?? 'cash';
     this.bankAccount = config.bankAccount;
     this.saleType = config.defaultSaleType;
+  }
+
+  /**
+   * The provider accepts a line priced 0,00, so a gift can be shown as one.
+   * Read by the document mappers through `readZeroValueLineSupport` (#3930).
+   */
+  acceptsZeroValueLine(): boolean {
+    return true;
   }
 
   /**

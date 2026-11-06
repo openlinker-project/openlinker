@@ -1,0 +1,38 @@
+=== import-composites | Import: Stock Item Compositions
+ 
+ Import: Stock Item Compositions 
+ Import Type: Stock Item Compositions
+ The Stock Item Compositions  import allows you to update or set the Linnworks SKUs that make up a composite item . 
+ Composite items are virtual items that can be created in Linnworks. Rather than being a physical product, they are a collection of multiple SKUs. This could either be as a multipack of the same SKU or a bundle consisting of multiple different SKUs.
+ NB!   All SKUs, including the parent SKU, need to exist in Linnworks before importing the composition. 
+ To proceed with the import: 
+ Prepare a CSV file with the required details .
+ Go to Settings > Import Data. 
+In the top right-hand corner, click Import Now .
+Configure the import following the steps described here . 
+ Click the Run Now button to start a one-time import . Click Save to start a scheduled import .
+ Available columns 
+ Refer to the table below to find the descriptions of the columns to be included in the CSV file for this import. 
+ Legend
+ Key
+ Description
+ This field is a compulsory requirement for import. The data must exist as a column in the CSV and be mapped to the named field.
+ This field relies on dependent data, which is a compulsory requirement for the import. If this field is included in the import, then the dependent fields must also be mapped.
+ When the field is included in the import, the additional named field(s) are not permitted to be mapped and included. The inclusion of both fields in the same import will prevent the import from executing.
+ Columns
+ Key
+ Column
+ Description
+ Dependent fields
+ Parent SKU
+ The SKU / Item number for the Linnworks inventory item that is the composite parent item.
+ Child SKU
+ The SKU / Item number for the Linnworks inventory item that is to be included as a child of the composite.
+ Quantity
+ How many of this child item is included in the composite.
+ Example files
+ . .csv 
+ Empty template 
+ . .csv 
+ Sample with data 
+ 

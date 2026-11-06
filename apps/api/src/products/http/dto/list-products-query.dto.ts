@@ -107,6 +107,16 @@ export class ListProductsQueryDto extends PaginatedReadQueryDto {
   @IsBoolean()
   hideFullyStale?: boolean;
 
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Show only bundles (#3624): products with a variant that has a current bundle definition.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  bundles?: boolean;
+
   @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100, description: 'Page size' })
   @IsOptional()
   @Type(() => Number)

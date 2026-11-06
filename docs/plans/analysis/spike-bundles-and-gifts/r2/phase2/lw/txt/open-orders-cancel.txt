@@ -1,0 +1,38 @@
+=== open-orders-cancel | Cancel Open Orders
+ 
+ Cancel Open Orders 
+ Open Orders: How to Cancel
+ Canceling an order in Linnworks changes the status of the order to CANCELLED and moves it from Open Orders  to the  Processed Orders screen. 
+ To cancel an order in Linnworks:
+ The order must be open. 
+ The order cannot be parked .
+ The order cannot be locked .
+ Once you cancel the order, any stock that has been reserved for the order will become available for purchase again. The same logic applies for orders containing batched items - any reserved stock becomes available in the corresponding batch.
+ Canceling an order
+ Take the steps below when you need to cancel an open order(s):
+ Go to Orders > Open Orders. 
+ Select the order(s).
+ Click Actions. Alternatively, right-click the order(s).
+ Select Other actions > Cancel the order. 
+ Confirm the cancellation by clicking Yes in the warning pop-up.
+ Tick  Send a cancellation note to the channel  if you want Linnworks to cancel the order on the channel.
+ Note! This option is available for orders downloaded from the channels which support order cancellations .
+ Add an internal note if required. For example, it can be a reason for the cancellation.
+ Click Save .
+ The system will now offer you to create a full refund as part of the cancellation.
+ Click Yes  to proceed and create the refund.
+ The refund booking is added to the  Actionable Refunds tab from where you can view, action, or delete it.
+ If you are canceling several orders in bulk the steps above need to be completed for each selected order separately.
+ Important! 
+ Canceling an order in Linnworks does not automatically cancel the order on the channel it was created on. This needs to be done externally to Linnworks. Exceptions are channels that support order cancellations :
+ Amazon 
+ Back Market 
+ BigCommerce 
+ eBay 
+ EKM 
+ Magento 2 
+ Shopify 
+ Walmart 
+ For the cancellation note to be sent to the channel, the Order Cancellations setting needs to be enabled in Settings > Channel Integrations > Edit Channel > Order. 
+ Note:  For the documentation on the earlier version of the Open Order s screen, see here .
+ 

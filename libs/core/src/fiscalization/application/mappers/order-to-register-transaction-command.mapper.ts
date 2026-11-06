@@ -32,6 +32,11 @@ import {
   quantityScaledReconciliationEpsilon,
   type ResolvedDeliveryLine,
   reconcileDiscountRounding,
+  presentGiftLines,
+  presentBundleComponents,
+  type BundleDocumentPresentation,
+  type DifferentRateGift,
+  type GiftLineForm,
 } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -91,6 +96,24 @@ export interface OrderToRegisterTransactionCommandInput {
    * command, which is correct either way: nothing to send.
    */
   buyerTaxId?: string | null;
+  /**
+   * How a gift line is presented (#3930), from the order-source connection's
+   * `config.giftOnDocuments` via `readGiftLineForm`. Absent is `omit`.
+   */
+  giftForm?: GiftLineForm;
+  /**
+   * How a gift whose rate matches no paid line is carried (decision B), from
+   * `config.giftOnDocuments.differentRateGift`. Absent is `priced-in`.
+   */
+  differentRateGift?: DifferentRateGift;
+  /**
+   * Ignored: a receipt is always composed as if the register refuses a
+   * zero-value line (ADR-082 decision 7), whatever the provider declares.
+   * Kept so existing callers still compile.
+   */
+  acceptsZeroValueLine?: boolean;
+  /** Components of bundle lines, presented by the automatic rate rule (#3934). */
+  bundleDocument?: BundleDocumentPresentation;
 }
 
 /**
@@ -126,12 +149,74 @@ export function toRegisterTransactionCommand(
     throw new UnsupportedFiscalPriceTreatmentError(refusal);
   }
 
-  const productLines = order.items.map((item) => toFiscalLine(item, order.id));
+  // Presented before delivery and discount reconciliation (#3930), so the
+  // receipt total still equals what the buyer paid. The provider refusing a
+  // zero line is the reason this runs here and not in an
+  // adapter: the amount has to move between lines of the same rate.
+  type WorkingLine = FiscalTransactionLine & {
+    isGift?: boolean;
+    itemId?: string;
+    referenceUnitPriceGross?: number;
+  };
+  const itemLines = presentBundleComponents<WorkingLine>(
+    order.items.map((item) => ({
+      ...toFiscalLine(item, order.id),
+      isGift: item.gift !== undefined,
+      // The receipt line carries no order line id; the item id is what the
+      // bundle presentation keys on.
+      itemId: item.id,
+    })),
+    (line) => line.itemId,
+    input.bundleDocument,
+    (parent, part) => ({
+      ...parent,
+      // A component keeps its own name at its own rate: the register binds one
+      // name to one rate, so the set's name must never be repeated.
+      name:
+        part.component.name?.trim() ||
+        part.component.sku?.trim() ||
+        `${parent.name} / ${part.component.variantId}`,
+      quantity: part.quantity,
+      unitPriceGross: part.unitPriceGross,
+      taxRate: part.taxRate,
+      productId: part.component.productId,
+      sku: part.component.sku ?? null,
+      isGift: part.isGift,
+      ...(part.referenceUnitPriceGross !== undefined && {
+        referenceUnitPriceGross: part.referenceUnitPriceGross,
+      }),
+    }),
+    { currency: order.totals.currency },
+  );
+  // A receipt always refuses zero (`false`, never the provider's declaration).
+  const presentedGifts = presentGiftLines(itemLines.lines, input.giftForm ?? 'omit', false, {
+    currency: order.totals.currency,
+    differentRateGift: input.differentRateGift,
+  });
+  for (const note of presentedGifts.notes) {
+    logger.warn(`Order ${order.id}: gift presentation note ${note}`);
+  }
+  if (presentedGifts.internalRecordLines.length > 0) {
+    logger.log(
+      `Order ${order.id}: ${presentedGifts.internalRecordLines.length} gift line(s) kept off the receipt (internal record)`,
+    );
+  }
+  // The gift marker stays through rounding reconciliation (a gap must never
+  // land on a free item) and is stripped afterwards.
+  const productLines: WorkingLine[] = presentedGifts.lines;
 
   const lines = applyDelivery(productLines, order, deliveryLine);
 
   // E-45: a discounted multi-unit line must not drift a minor unit from the total.
-  const reconciledLines = reconcileDiscountRounding(lines, order.items.length, order.totals);
+  const reconciledLines = reconcileDiscountRounding(lines, productLines.length, order.totals).map(
+    (presented) => {
+      const line: WorkingLine = { ...presented };
+      delete line.isGift;
+      delete line.itemId;
+      delete line.referenceUnitPriceGross;
+      return line as FiscalTransactionLine;
+    },
+  );
 
   assertLinesSumToTotal(reconciledLines, order.totals, order.id);
 

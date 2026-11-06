@@ -29,6 +29,7 @@ import type { Product, ProductVariant } from '../../features/products/api/produc
 import type { InventoryItem } from '../../features/inventory/api/inventory.types';
 import type { Connection } from '../../features/connections';
 import { usePlatforms } from '../../shared/plugins';
+import { ProductUsedInBundles } from '../../features/bundles';
 import { findPlatformDisplayName } from '../../features/mappings';
 
 export interface ProductRowDetailProps {
@@ -115,6 +116,8 @@ export function ProductRowDetail({
           </div>
         )}
       </div>
+      {/* #3624 - the bundles this product is a component of. */}
+      <ProductUsedInBundles variantIds={variants.map((variant) => variant.id)} />
       <div className="products-detail-publication-status">
         <div className="products-detail-field__label">Live marketplace status</div>
         <OfferPublicationStatusPanel productId={product.id} />

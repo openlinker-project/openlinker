@@ -1,0 +1,20 @@
+=== print-by-order-view | Print By Order View
+ 
+ Print By Order View 
+ Print By Order View
+ Use this app to print shipping labels and invoices for all the orders in a specific Open Order view via the virtual printer.  
+ Note! Open Order Views 
+ are available for printing from  the old   Open Orders screen only. 
+ Installing the Print By Order View application
+ Go to Apps > All Applications . 
+ Find PrintByOrderView  and click Install .
+ Once installed, the application is now accessible from the Apps tab.
+ Configuring Print By Order View
+ Select the following parameters to be able to print labels and invoices:  
+ Invoice Template : Select one of the available Invoice Templates that you would like to use.
+ Location : Select the location from which the orders should be retrieved.
+ View : Select which view should be used when filtering the orders to print.
+ Printer : Select which Virtual Printer to use when printing labels and invoices. For a printer to be selectable, it must be ONLINE.
+ At the bottom left-hand side of the screen, you can see the number of orders that will be printed. The value will automatically update if the settings change. You can force it to update using the manual refresh icon ( ).
+ Click the refresh icon ( ) on the right-hand side of the Printers text to manually reload the list of printers.
+ 

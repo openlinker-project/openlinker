@@ -87,6 +87,7 @@ import {
   ReturnCustodyContendedError,
   ReturnCustodyTransitionError,
   ReturnDeclineInvalidRequestError,
+  ReturnBundleRefusedError,
   ReturnDeclineUnsupportedError,
   ReturnLineNotFoundError,
   ReturnMatchRefusedError,
@@ -115,7 +116,8 @@ type ReturnRefusal =
   | ReturnRecordRefusedError
   | ReturnRefundBlockedError
   | ReturnRefundContendedError
-  | ReturnRefundObservationInvalidError;
+  | ReturnRefundObservationInvalidError
+  | ReturnBundleRefusedError;
 
 @Catch(
   ReturnNotFoundError,
@@ -132,7 +134,8 @@ type ReturnRefusal =
   ReturnRecordRefusedError,
   ReturnRefundBlockedError,
   ReturnRefundContendedError,
-  ReturnRefundObservationInvalidError
+  ReturnRefundObservationInvalidError,
+  ReturnBundleRefusedError
 )
 export class ReturnsExceptionFilter implements ExceptionFilter {
   catch(exception: ReturnRefusal, host: ArgumentsHost): void {
@@ -181,6 +184,12 @@ export class ReturnsExceptionFilter implements ExceptionFilter {
         : HttpStatus.CONFLICT;
     }
 
+    // #3933: a missing price is the catalogue's state (409); a bad selection is
+    // the operator's payload (400).
+    if (exception instanceof ReturnBundleRefusedError) {
+      return exception.reason === 'bad-selection' ? HttpStatus.BAD_REQUEST : HttpStatus.CONFLICT;
+    }
+
     // E-14: the payload is well formed, but the ORDER's state (an OpenLinker edit
     // removed the line) refuses it - the one record-refusal reason that is a
     // state conflict rather than a payload fault.
@@ -217,6 +226,7 @@ export class ReturnsExceptionFilter implements ExceptionFilter {
       exception instanceof ReturnMatchRefusedError ||
       exception instanceof ReturnRecordRefusedError ||
       exception instanceof ReturnRefundBlockedError ||
+      exception instanceof ReturnBundleRefusedError ||
       exception instanceof ReturnRestockAlreadyBlockedError
     ) {
       return exception.reason;

@@ -31,6 +31,11 @@ import {
   spreadDeliveryAcrossLines,
   reconcileDiscountRounding,
   splitShippingAcrossRates,
+  presentGiftLines,
+  presentBundleComponents,
+  type BundleDocumentPresentation,
+  type DifferentRateGift,
+  type GiftLineForm,
   type ResolvedDeliveryLine,
 } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
@@ -90,6 +95,28 @@ export interface OrderToIssueInvoiceCommandInput {
    */
   buyerIsPublicSectorEntity?: boolean;
   buyerIsTaxGroupMember?: boolean;
+  /**
+   * How a gift line is presented (#3930), from the order-source connection's
+   * `config.giftOnDocuments` via `readGiftLineForm`. Absent is `omit`.
+   */
+  giftForm?: GiftLineForm;
+  /**
+   * How a gift whose rate matches no paid line is carried (decision B), from
+   * `config.giftOnDocuments.differentRateGift`. Absent is `priced-in`.
+   */
+  differentRateGift?: DifferentRateGift;
+  /**
+   * The invoicing provider's `ZeroValueLineSupport` declaration as a plain
+   * boolean (`readZeroValueLineSupport`), so this mapper stays pure. `undefined`
+   * = the provider declares nothing, and `show` is not offered.
+   */
+  acceptsZeroValueLine?: boolean;
+  /**
+   * The bundle lines' components (#3934), resolved by the caller from the
+   * order's frozen expansion. Whether a set is one line or its components is
+   * decided from the component rates; absent keeps every set as one line.
+   */
+  bundleDocument?: BundleDocumentPresentation;
 }
 
 /**
@@ -134,7 +161,54 @@ export function toIssueInvoiceCommand(
     isPublicSectorEntity: buyerIsPublicSectorEntity,
     isTaxGroupMember: buyerIsTaxGroupMember,
   });
-  const productLines = order.items.map((item) => toInvoiceLine(item, order.id));
+  // Gift lines are presented BEFORE delivery and discount reconciliation, so
+  // the lines that follow see the amounts the document will really carry and the
+  // total still equals what the buyer paid (#3930).
+  type WorkingLine = InvoiceLine & { isGift?: boolean; referenceUnitPriceGross?: number };
+  const itemLines = presentBundleComponents<WorkingLine>(
+    order.items.map((item) => ({
+      ...toInvoiceLine(item, order.id),
+      isGift: item.gift !== undefined,
+    })),
+    (line) => line.orderLineId,
+    input.bundleDocument,
+    (parent, part) => ({
+      ...parent,
+      // A component keeps its own name: falling back to the set's name would
+      // repeat one name at two rates.
+      name: part.component.name?.trim() || part.component.sku?.trim() || `${parent.name} / ${part.component.variantId}`,
+      quantity: part.quantity,
+      unitPriceGross: part.unitPriceGross,
+      taxRate: part.taxRate,
+      productId: part.component.productId,
+      variantId: part.component.variantId,
+      orderLineId: part.component.lineId,
+      bundleSetQuantity: parent.quantity,
+      isGift: part.isGift,
+      ...(part.referenceUnitPriceGross !== undefined && {
+        referenceUnitPriceGross: part.referenceUnitPriceGross,
+      }),
+    }),
+    { currency: order.totals.currency },
+  );
+  const presentedGifts = presentGiftLines(
+    itemLines.lines,
+    input.giftForm ?? 'omit',
+    input.acceptsZeroValueLine,
+    { currency: order.totals.currency, differentRateGift: input.differentRateGift },
+  );
+  // Every fallback the helper took is traceable (structured, PII-free).
+  for (const note of presentedGifts.notes) {
+    logger.warn(`Order ${order.id}: gift presentation note ${note}`);
+  }
+  if (presentedGifts.internalRecordLines.length > 0) {
+    logger.log(
+      `Order ${order.id}: ${presentedGifts.internalRecordLines.length} gift line(s) kept off the invoice (internal record)`,
+    );
+  }
+  // The gift marker stays through delivery and rounding reconciliation, so a
+  // rounding gap can never land on a free item; it is stripped afterwards.
+  const productLines: WorkingLine[] = presentedGifts.lines;
 
   // Buyer-paid shipping is part of the invoice total (invoice gross must equal
   // order total, #1517). Emit it as a normal gross line so the provider adapter
@@ -142,7 +216,14 @@ export function toIssueInvoiceCommand(
   // names a tax rate. Skipped when shipping is 0 (no phantom line).
   const lines = applyDelivery(productLines, order, deliveryLine);
 
-  const reconciledLines = reconcileDiscountRounding(lines, order.items.length, order.totals);
+  const reconciledLines = reconcileDiscountRounding(lines, productLines.length, order.totals).map(
+    (presented) => {
+      const line: WorkingLine = { ...presented };
+      delete line.isGift;
+      delete line.referenceUnitPriceGross;
+      return line as InvoiceLine;
+    },
+  );
 
   assertLinesSumToTotal(reconciledLines, order.totals, order.id);
 

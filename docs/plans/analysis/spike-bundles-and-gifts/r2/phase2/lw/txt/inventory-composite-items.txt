@@ -1,0 +1,52 @@
+=== inventory-composite-items | Composite items
+ 
+ Composite items 
+ Inventory: Composite Items 
+ A composite item in Linnworks represents a set of several individual items that are sold together in a combined package. It can be a set of different items or a pack of the same.
+ The composite item consists of a parent SKU - a "virtual item" that represents a group of individual items and single child items that create the group. For example, a Table Set would be a parent SKU consisting of 5 child items - 1 table and 4 chairs. In Linnworks, this Composite Item will look like this:
+ The advantage of creating these items in Linnworks is that Linnworks will calculate the number of available units based on the availability of the child SKUs. Composite items can be listed to sales channels the same way as usual SKUs. When an order is received for a composite item, Linnworks will display the composite and their individual child items. Child SKUs can be listed on the channel independently or as a part of the composite item.
+ Guidelines and prerequisites for composite item creation 
+ The creation of Composite Items is simple, but there are several rules to keep in mind:
+All SKUs to be added to a composite SKU must already exist in Linnworks before the creation of the composite SKU (this goes for both the parent SKU and child SKUs).
+Composites cannot contain another composite.
+A composite cannot contain itself.
+The parent SKU must always be set to Not Tracked to calculate its stock based on the available stock of the child SKUs.
+ Examples of composites 
+ Good examples: 
+Front Car Mat Set
+Front Mat Left (x1)
+Front Mat Right (x1)
+Rear Car Mat Set
+Rear Mat Left (x1)
+Rear Mat Right (x1)
+Full Car Mat Set
+Front Mat Left (x1)
+Front Mat Right (x1)
+Rear Mat Left (x1)
+Rear Mat Right (x1)
+ Bad example (not supported): 
+A Composite containing composites
+Full Car Mat Set
+Front Car Mat Set (x1)
+Rear Car Mat Set (x1)
+A Composite of itself
+Front Car Mat (Left)
+Front Car Mat Left (x1)
+ How Linnworks uses composite SKUs 
+ Item weight 
+ Linnworks calculates composite items' weight using the following formula: 
+Linnworks uses a Parent SKU weight if it's set (<0).
+If a Parent SKU weight is not set, Linnworks will use the combined weight of the child SKUs.
+Linnworks never sums or doubles parent and child SKUs, because it would cause an error in the order total.
+ Retail price 
+ Linnworks will not calculate the retail price based on child SKUs. Please set the price for the parent manually in the edit product details window or use a  Channel Specific Listing Price . This enables you to set retail prices that offer a discount over ordering all the items separately.
+ Composites in My Inventory 
+ Any composite parent that is either set to Not Tracked or the minimum level is set as '-1' will not display any stock in the In Open Order column. Items making up the composite will display the correct number of orders in the In Open Order column.
+ Orders containing composite SKUs 
+ If an order contains a composite SKU, it will list both the composite SKU and the child items of the composite. In addition to this, the child items will have a sold value of zero. As the retail price is not necessarily the sum of the retail prices for the child SKUs. With this being the case, Linnworks cannot estimate what ratio to split the composite retail price.
+ Hovering over an order in Open Orders where there is a composite, the Level and Available level will be equal and In Open Orders  column will not display any orders (similar to how this appears in My Inventory ), as the stock is only tracked for the child items making up the composite. 
+ Printing composite item values on shipping labels 
+ In the previous section, we mentioned that the sold value of composite children will always be 0, but there is one exception to this: when shipping labels are printed, the child item info is provided on them, as these are the actual physical items being shipped. In this case, the value of the composite is split equally between the child items. It is not possible to supply the default retail price for the child items, as the sum of these may not reflect the price paid by the buyer.
+ Processing orders that require scanning 
+ In the General Settings > Order Settings menu, there is an option to require scanning for each item before processing. With this ticked, orders containing composites will require the child items to be scanned before the order is processed. If a child item does not contain a barcode, then no scan will be required for that item and the order can be processed by scanning all other items in the order.
+ 

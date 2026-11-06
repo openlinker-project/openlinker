@@ -1,0 +1,110 @@
+=== ebay-channel-integration | eBay channel integration
+ 
+ eBay channel integration 
+eBay Channel Integration
+ eBay integration allows you to connect to your eBay  seller account via API.
+ [+] List of supported eBay Marketplaces.
+ [-]
+ Click to hide the list
+ Australia 
+ AU 
+ ebay.com.au 
+ Austria 
+ AT 
+ ebay.at 
+ Belgium_Dutch 
+ BENL 
+ ebay.be 
+ Belgium_French 
+ BEFR 
+ ebay.be 
+ Canada 
+ CA 
+ ebay.ca 
+ CanadaFrench 
+ CAFR 
+ ebay.ca 
+ eBayMotors 
+ Part of US site 
+ France 
+ FR 
+ ebay.fr 
+ Germany 
+ DE 
+ ebay.de 
+ HongKong 
+ HK 
+ ebay.com.hk 
+ India 
+ IN 
+ ebay.in 
+ Ireland 
+ IE 
+ ebay.ie 
+ Italy 
+ IT 
+ ebay.it 
+ Malaysia 
+ MY 
+ ebay.com.my 
+ Netherlands 
+ NL 
+ ebay.nl 
+ Philippines 
+ PH 
+ ebay.ph 
+ Poland 
+ PL 
+ ebay.pl 
+ Singapore 
+ SG 
+ ebay.com.sg 
+ Spain 
+ SP 
+ ebay.sp 
+ Switzerland 
+ CH 
+ ebay.ch 
+ UK 
+ UK 
+ ebay.co.uk 
+ USA 
+ US 
+ ebay.com 
+  eBay channel integration is a Linnworks Direct  integration - developed, maintained and supported by Linnworks.
+ Supported features
+ Inventory Updates 
+ Linnworks can automatically send changes in stock levels to the channel.
+ Order Download 
+ Channel orders can be automatically downloaded into Linnworks.
+ Channel Tax 
+ Tax information and settings displayed on orders in Linnworks are provided by the channel during order download.
+ Inventory Mapping 
+ Channel listings can be linked to Linnworks inventory items for stock level and price updates.
+ Additionally, eBay integration enables striking off listings and canceling pending relists. See more here. 
+ Listing Creation 
+ New listings on the channel can be created via Linnworks. A full guide on the eBay listing tool is here .
+ eBay also supports re-creating existing listings in Linnworks via the Extract Inventory tool. 
+ Location Mapping 
+ Orders can be downloaded and inventory updates sent from specific locations.
+ Order Cancellation 
+ Orders can be canceled on the channel via Linnworks.
+ Order Despatch 
+ Orders on the channel can be marked as shipped and provided with the tracking number and shipping service name via Linnworks.
+ Order Refunds 
+ Orders can be refunded on the channel via Linnworks.
+ Payment Mapping 
+ Channel payment methods can be linked to Linnworks payment methods for the orders in Linnworks to display methods based on the selection on the channel.
+ Price Change 
+ Prices on channel listings can be automatically updated via Linnworks.
+ Shipping Mapping 
+ Channel shipping methods can be linked to Linnworks postal services for the orders in Linnworks to display the services based on the selection on the channel.
+ Next steps:
+ Add New 
+ Settings 
+ Additional information:
+ eBay Fulfillment 
+ eBay strike-off & cancel pending relist 
+ eBay Global Shipping Programme 
+ eBay Click & Collect 
+ 

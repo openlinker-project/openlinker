@@ -1,0 +1,35 @@
+=== prestashop-channel-integration | PrestaShop channel integration
+ 
+ PrestaShop channel integration 
+PrestaShop Channel Integration
+ PrestaShop integration for Linnworks allows you to manage your orders, inventory, and price updates alongside your other sales channels in Linnworks. 
+  PrestaShop channel integration is a 3 rd party integration  (Terms & Conditions)   - additional information and technical support are provided by the developer eBusinessGuru  directly. Additional costs may apply.
+ Supported features
+ Inventory Updates 
+ Linnworks can automatically send changes in stock levels to the channel.
+ Order Download 
+ Channel orders can be automatically downloaded into Linnworks.
+ Inventory Mapping 
+ Channel listings can be linked to Linnworks inventory items for stock level and price updates.
+ Location Mapping 
+ Orders can be downloaded to and inventory updates sent from specific locations.
+ Order Despatch 
+ Orders on the channel can be marked as shipped and provided with the tracking number and shipping service name via Linnworks.
+ Payment Mapping 
+ Channel payment methods can be linked to Linnworks payment methods for the orders in Linnworks to display methods based on the selection on the channel.
+ Price Change 
+ Prices on channel listings can be automatically updated via Linnworks.
+ Shipping Mapping 
+ Channel shipping methods can be linked to Linnworks postal services for the orders in Linnworks to display the services based on the selection on the channel.
+ Adding the integration
+ Detailed installation and configuration instructions are provided in the Developer's user guide .​ For additional information, further assistance and technical support, please contact the developer directly.
+ Below are the steps for initiating the integration installation in Linnworks:
+ In Linnworks.net, go to Settings > Channel Integrations and click the  Add new   button.
+ Search for the PrestaShop integration and click  Install application .
+ Follow  further instructions  from the developer.
+ Next steps:
+ Location Mapping 
+ Inventory Mapping 
+ Payment Mapping 
+ Shipping Mapping 
+ 

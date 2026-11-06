@@ -1,11 +1,19 @@
 import { cleanup, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { OrderLineCostsState } from '../hooks/use-order-line-costs';
 import { OrderLineItemsPanel } from './order-line-items-panel';
 import { renderWithProviders } from '../../../test/test-utils';
 import type {
   ParsedOrderItem,
   ParsedOrderTotals,
 } from '../api/order-snapshot.schema';
+
+const costState: { current: OrderLineCostsState } = {
+  current: { enabled: false, status: 'loading', currency: null, lines: [], giftSlots: [] },
+};
+vi.mock('../hooks/use-order-line-costs', () => ({
+  useOrderLineCosts: (): OrderLineCostsState => costState.current,
+}));
 
 const items: ParsedOrderItem[] = [
   {
@@ -102,5 +110,112 @@ describe('OrderLineItemsPanel', () => {
     expect(screen.getByText(/estimated from catalogue/)).toBeInTheDocument();
     expect(screen.queryByText(/from the shop/)).not.toBeInTheDocument();
     expect(screen.queryByText(/from the channel/)).not.toBeInTheDocument();
+  });
+
+  describe('bundle lines (#3624)', () => {
+    const bundleLine: ParsedOrderItem = {
+      id: 'L1',
+      productId: 'p-set',
+      quantity: 1,
+      price: 64.99,
+      sku: 'ZES-PORANNY',
+      name: 'Zestaw poranny',
+    };
+    const bundleLines = [
+      {
+        lineId: 'L1',
+        bundleVariantId: 'v-set',
+        version: 1,
+        olderComposition: false,
+        components: [
+          { lineId: 'L1~c:mug', variantId: 'mug', productId: 'p-mug', name: 'Kubek', sku: 'KUB-350-BI', quantity: 1, perUnit: 1 },
+          { lineId: 'L1~c:coffee', variantId: 'coffee', productId: 'p-coffee', name: 'Kawa', sku: 'KAW-250-ETI', quantity: 1, perUnit: 1 },
+        ],
+      },
+    ];
+
+    it('should list the components under the bundle line, priced inside the bundle', () => {
+      renderWithProviders(
+        <OrderLineItemsPanel items={[bundleLine]} totals={totals} bundleLines={bundleLines} />,
+      );
+      expect(screen.getByTestId('order-bundle-lines')).toBeInTheDocument();
+      const rows = screen.getAllByRole('row');
+      // Header + bundle line + two components.
+      expect(rows).toHaveLength(4);
+      expect(screen.getByTestId('order-bundle-line-ZES-PORANNY')).toHaveTextContent('Bundle');
+      expect(screen.getByTestId('order-bundle-line-KUB-350-BI')).toHaveTextContent('in the bundle price');
+      expect(screen.queryByTestId('order-bundle-old-composition-note')).toBeNull();
+    });
+
+    describe('gift slot (#3934)', () => {
+      const withGift = [
+        {
+          ...bundleLines[0],
+          components: [
+            ...bundleLines[0].components,
+            {
+              lineId: 'L1~c:spoon',
+              variantId: 'spoon',
+              productId: 'p-spoon',
+              name: 'Lyzeczka',
+              sku: 'LYZ-KAW',
+              quantity: 1,
+              perUnit: 1,
+              giftSlot: true,
+            },
+          ],
+        },
+      ];
+
+      it('should show the gift once, at 0.00, without a cost for a session that may not read costs', () => {
+        costState.current = { enabled: false, status: 'loading', currency: null, lines: [], giftSlots: [] };
+        renderWithProviders(
+          <OrderLineItemsPanel items={[bundleLine]} totals={totals} bundleLines={withGift} />,
+        );
+        expect(screen.getAllByTestId('order-bundle-gift-mark-LYZ-KAW')).toHaveLength(1);
+        const note = screen.getByTestId('order-bundle-gift-cost-LYZ-KAW');
+        expect(note).toHaveTextContent('Customer pays');
+        expect(note).not.toHaveTextContent('Costs you');
+        expect(screen.getByTestId('order-bundle-line-KUB-350-BI')).not.toHaveTextContent('Gift');
+      });
+
+      it('should add what the gift costs you once the cost is known', () => {
+        costState.current = {
+          enabled: true,
+          status: 'loaded',
+          currency: 'PLN',
+          lines: [],
+          giftSlots: [
+            { lineId: 'L1', componentLineId: 'L1~c:spoon', variantId: 'spoon', quantity: 1, totalCostNet: 3.9 },
+          ],
+        };
+        renderWithProviders(
+          <OrderLineItemsPanel items={[bundleLine]} totals={totals} bundleLines={withGift} />,
+        );
+        expect(screen.getByTestId('order-bundle-gift-cost-LYZ-KAW')).toHaveTextContent(
+          /Customer pays.*Costs you/,
+        );
+        costState.current = { enabled: false, status: 'loading', currency: null, lines: [], giftSlots: [] };
+      });
+    });
+
+    it('should say, in one sentence, that the order keeps the older composition', () => {
+      renderWithProviders(
+        <OrderLineItemsPanel
+          items={[bundleLine]}
+          totals={totals}
+          bundleLines={[{ ...bundleLines[0], olderComposition: true }]}
+        />,
+      );
+      expect(screen.getByTestId('order-bundle-old-composition-note')).toHaveTextContent(
+        'composition from before the bundle was changed',
+      );
+    });
+
+    it('should render an order without a bundle exactly as before', () => {
+      renderWithProviders(<OrderLineItemsPanel items={items} totals={totals} bundleLines={[]} />);
+      expect(screen.queryByTestId('order-bundle-lines')).toBeNull();
+      expect(screen.getAllByRole('row')).toHaveLength(3);
+    });
   });
 });
