@@ -32892,22 +32892,23 @@ legend.analytics-settings-dialog__label {
   color: var(--text-secondary);
 }
 
-.conn-health__strip {
+.health-strip {
   display: flex;
   gap: 3px;
   height: 6px;
 }
 
-.conn-health__segment {
+.health-strip__segment {
   flex: 1 1 0;
   min-width: 4px;
   border-radius: 2px;
   background: var(--status-success);
 }
-.conn-health__segment--attention { background: var(--status-warning); }
-.conn-health__segment--off { background: var(--border-strong); }
+.health-strip__segment--attention { background: var(--status-warning); }
+.health-strip__segment--off { background: var(--border-strong); }
+.health-strip__segment--error { background: var(--status-error); }
 
-.conn-health__legend {
+.health-legend {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-4);
@@ -32918,20 +32919,21 @@ legend.analytics-settings-dialog__label {
   color: var(--text-muted);
 }
 
-.conn-health__legend-item {
+.health-legend__item {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
-.conn-health__legend-item::before {
+.health-legend__item::before {
   content: '';
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: var(--status-success);
 }
-.conn-health__legend-item--attention::before { background: var(--status-warning); }
-.conn-health__legend-item--off::before { background: var(--border-strong); }
+.health-legend__item--attention::before { background: var(--status-warning); }
+.health-legend__item--off::before { background: var(--border-strong); }
+.health-legend__item--error::before { background: var(--status-error); }
 
 .conn-health__table {
   width: 100%;
@@ -33102,7 +33104,8 @@ legend.analytics-settings-dialog__label {
    it and crowd the status out. It is hidden visually only: it stays the
    link's accessible name. */
 @media (hover: none) {
-  .conn-health .connection-chip__reveal {
+  .conn-health .connection-chip__reveal,
+  .sys-health .connection-chip__reveal {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -33279,3 +33282,119 @@ legend.analytics-settings-dialog__label {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+/* ── Insights: System health (#4016) ─────────────────────────────────────
+   Same visual language as Connection health: a summary sentence and strip,
+   then rows of dot, name and a status word on the right. A failure message
+   sits under the name and wraps instead of being squeezed beside a badge. */
+.sys-health__head {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.sys-health__checked {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.sys-health {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.sys-health__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sys-health__group-title {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-block: 1px solid var(--border-subtle);
+  background: var(--bg-surface-muted);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.sys-health__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sys-health__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.sys-health__row:last-child { border-bottom: 0; }
+
+@media (hover: hover) {
+  .sys-health__row:hover { background: var(--bg-surface-hover); }
+}
+
+.sys-health__dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--status-success);
+  box-shadow: 0 0 0 3px var(--status-success-soft);
+}
+.sys-health__row--warning .sys-health__dot {
+  background: var(--status-warning);
+  box-shadow: 0 0 0 3px var(--status-warning-soft);
+}
+.sys-health__row--error .sys-health__dot {
+  background: var(--status-error);
+  box-shadow: 0 0 0 3px var(--status-error-soft);
+}
+
+.sys-health__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sys-health__name-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.sys-health__name {
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.sys-health__message {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.sys-health__row--error .sys-health__message { color: var(--status-error-fg); }
+
+.sys-health__status {
+  color: var(--status-success-fg);
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+  line-height: 20px;
+}
+.sys-health__row--warning .sys-health__status { color: var(--status-warning-fg); }
+.sys-health__row--error .sys-health__status { color: var(--status-error-fg); }

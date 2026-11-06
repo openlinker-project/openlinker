@@ -54,29 +54,27 @@ export function ConnectionHealthList({
         <p className="conn-health__sentence" data-testid="connection-health-summary">
           {describeConnectionHealth(summary)}
         </p>
-        <div className="conn-health__strip" role="img" aria-label={legend.join(', ')}>
+        <div className="health-strip" role="img" aria-label={legend.join(', ')}>
           {sorted.map((row) => (
             <span
               key={row.connection.id}
-              className={`conn-health__segment conn-health__segment--${bucketOf(row)}`}
+              className={`health-strip__segment health-strip__segment--${bucketOf(row)}`}
             />
           ))}
         </div>
-        <ul className="conn-health__legend" aria-hidden="true">
+        <ul className="health-legend" aria-hidden="true">
           {summary.attention > 0 ? (
-            <li className="conn-health__legend-item conn-health__legend-item--attention">
+            <li className="health-legend__item health-legend__item--attention">
               {summary.attention} need attention
             </li>
           ) : null}
           {summary.healthy > 0 ? (
-            <li className="conn-health__legend-item conn-health__legend-item--healthy">
+            <li className="health-legend__item health-legend__item--healthy">
               {summary.healthy} healthy
             </li>
           ) : null}
           {summary.off > 0 ? (
-            <li className="conn-health__legend-item conn-health__legend-item--off">
-              {summary.off} disabled
-            </li>
+            <li className="health-legend__item health-legend__item--off">{summary.off} disabled</li>
           ) : null}
         </ul>
       </div>

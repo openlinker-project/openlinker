@@ -21,7 +21,6 @@ import { formatAmount } from '../../shared/format/format-amount';
 import { resolvePlatformLabel } from '../../features/mappings';
 import type {
   DevStackHealth,
-  ServiceHealth,
   ServiceStatus,
   OverallStatus,
 } from '../../features/health/api/health.types';
@@ -36,6 +35,7 @@ import type {
 } from '../../features/sync-jobs/api/sync-jobs.types';
 import { INSIGHTS_HEALTH_INTERVAL_MS, INSIGHTS_JOBS_INTERVAL_MS } from './intervals';
 import { ConnectionHealthList } from './connection-health-list';
+import { SystemHealthList } from './system-health-list';
 import { Button } from '../../shared/ui/button';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
@@ -88,16 +88,6 @@ function renderHealthValue(
   if (isLoading) return '—';
   if (hasError) return 'Unreachable';
   return toHealthLabel(status);
-}
-
-function ServiceHealthRow({ name, health }: { name: string; health: ServiceHealth }): ReactElement {
-  return (
-    <li>
-      <strong>{name}</strong>
-      <StatusBadge tone={mapHealthTone(health.status, false)}>{health.status}</StatusBadge>
-      {health.message ? <span className="muted-text">{health.message}</span> : null}
-    </li>
-  );
 }
 
 /**
@@ -201,6 +191,10 @@ export function InsightsPage(): ReactElement {
   const [pendingGroupKey, setPendingGroupKey] = useState<string | null>(null);
 
   const connections = connectionsQuery.data ?? [];
+  const connectionById = useMemo(
+    () => new Map(connections.map((c) => [c.id, c] as const)),
+    [connections]
+  );
   const failedGroups = useMemo<SyncJobGroup[]>(
     () => deadGroupsQuery.data?.groups ?? [],
     [deadGroupsQuery.data]
@@ -212,7 +206,6 @@ export function InsightsPage(): ReactElement {
   );
 
   const platforms = usePlatforms();
-  const infraConnections = healthQuery.data?.connections ?? [];
   const infraNodeLabels = useMemo(
     () => buildInfraNodeLabels(healthQuery.data, platforms),
     [healthQuery.data, platforms]
@@ -619,9 +612,14 @@ export function InsightsPage(): ReactElement {
               <h3 className="section-title">System health</h3>
             </div>
             {healthQuery.data && (
-              <StatusBadge tone={mapHealthTone(healthQuery.data.status, false)}>
-                {healthQuery.data.status}
-              </StatusBadge>
+              <span className="sys-health__head">
+                <StatusBadge tone={mapHealthTone(healthQuery.data.status, false)} withDot>
+                  {toHealthLabel(healthQuery.data.status)}
+                </StatusBadge>
+                <span className="sys-health__checked">
+                  Checked <TimeDisplay iso={healthQuery.data.timestamp} format="relative" />
+                </span>
+              </span>
             )}
           </div>
 
@@ -640,25 +638,7 @@ export function InsightsPage(): ReactElement {
             />
           )}
           {healthQuery.data && (
-            <ul className="check-list">
-              <ServiceHealthRow name="PostgreSQL" health={healthQuery.data.services.postgres} />
-              <ServiceHealthRow name="Redis" health={healthQuery.data.services.redis} />
-              <ServiceHealthRow name="PrestaShop" health={healthQuery.data.services.prestashop} />
-              {healthQuery.data.services.worker && (
-                <ServiceHealthRow name="Worker" health={healthQuery.data.services.worker} />
-              )}
-              {infraConnections.map((connection) => (
-                <ServiceHealthRow
-                  key={connection.connectionId}
-                  name={
-                    connection.name
-                      ? `${resolvePlatformLabel(platforms, connection.platformType)} — ${connection.name}`
-                      : resolvePlatformLabel(platforms, connection.platformType)
-                  }
-                  health={{ status: connection.status, message: connection.message }}
-                />
-              ))}
-            </ul>
+            <SystemHealthList data={healthQuery.data} connectionById={connectionById} />
           )}
         </article>
       </div>
