@@ -29,6 +29,26 @@
       "overdue": "Overdue {duration}"
     }
   },
+  "shipments": {
+    "cancelError": {
+      "carrierRefused": {
+        "message": "The carrier no longer allows this shipment to be cancelled, usually because the parcel is already confirmed. Cancel the parcel in the carrier's panel, or contact support.",
+        "title": "The carrier did not cancel this shipment"
+      },
+      "failed": {
+        "message": "The cancellation may not have reached the carrier. Check the shipment status before you try again.",
+        "title": "Could not cancel the shipment"
+      },
+      "noLongerActive": {
+        "message": "The shipment is already finished or cancelled. Close this window to see its current status.",
+        "title": "This shipment can no longer be cancelled"
+      },
+      "notSupported": {
+        "message": "OpenLinker cannot cancel shipments for this carrier. Cancel the parcel in the carrier's panel.",
+        "title": "This carrier does not support cancelling"
+      }
+    }
+  },
   "ui": {
     "accessDenied": {
       "eyebrow": "No access",

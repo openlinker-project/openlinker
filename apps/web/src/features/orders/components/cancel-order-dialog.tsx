@@ -242,8 +242,8 @@ export function CancelOrderDialog({
               </ol>
             </Alert>
             <p className="muted-text">
-              If the parcel is already with the courier, the label cannot be voided. See the parcel
-              instead of cancelling.
+              If the carrier will not cancel the shipment (the parcel is already confirmed or with
+              the courier), cancel the parcel in the carrier&apos;s panel and contact support.
             </p>
             <DialogFooter>
               {keepButton('Keep order')}
