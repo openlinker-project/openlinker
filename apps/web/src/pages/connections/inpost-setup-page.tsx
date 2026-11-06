@@ -4,12 +4,24 @@
  * Page wrapper for the guided InPost (ShipX) connection wizard.
  */
 import type { ReactElement } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { CONNECTION_SHIPPING_COPY } from '../../features/connections/lib/connection-shipping.copy';
+import {
+  OMS_SETUP_RETURN_PATH,
+  isFromOmsSetup,
+} from '../../features/connections/lib/oms-setup-return';
 import { InpostSetupForm } from '../../features/connections/components/inpost-setup-form';
 import { PageLayout } from '../../shared/ui/page-layout';
 
 export function InpostSetupPage(): ReactElement {
+  const [searchParams] = useSearchParams();
   return (
     <PageLayout
+      backTo={
+        isFromOmsSetup(searchParams)
+          ? { to: OMS_SETUP_RETURN_PATH, label: CONNECTION_SHIPPING_COPY.backToOmsSetup }
+          : undefined
+      }
       eyebrow="Integrations"
       title="Connect InPost"
       description="Provide your ShipX API token, organization id, and sender address. OpenLinker uses them to create InPost shipments and labels."

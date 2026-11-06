@@ -16,7 +16,7 @@ import { Button } from '../../../shared/ui/button';
 import { DataTable, type DataTableColumn, type DataTableCardView } from '../../../shared/ui/data-table';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { Select } from '../../../shared/ui/select';
-import { ConnectionEntityLabel, useConnectionsQuery } from '../../connections';
+import { useConnectionsQuery } from '../../connections';
 import { useDemoMode } from '../../system';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
@@ -32,6 +32,7 @@ import {
   type ParcelProfileDraft,
 } from '../lib/parcel-profile';
 import { PARCEL_COPY } from '../lib/parcel-profile.copy';
+import { SHIPPING_ROUTE_COPY } from '../lib/shipping-route.copy';
 import { RoutingSplitBar, type RoutingSplitBucket } from './routing-split-bar';
 import {
   useRoutingRulesQuery,
@@ -58,21 +59,25 @@ interface RoutingRulesPanelProps {
    * tab switch that would discard staged routing edits (#1784 follow-up I3).
    */
   onDirtyChange?: (dirty: boolean) => void;
+  /**
+   * Rendered inside a host that already names the task (the OMS Shipping step,
+   * the routing dialog): drop the panel's own card, title and intro so the
+   * operator reads one heading and one container, not three nested ones.
+   */
+  embedded?: boolean;
+  /** A delivery method to put first and mark, e.g. the one the operator came from. */
+  focusMethodId?: string;
 }
 
 /** Sentinel selection key meaning "no rule" → the default OMP fulfils the method. */
 const DEFAULT_KEY = '__default__';
 
 /** Virtualized-row height estimate; also caps the container to content (#1784 S17). */
-const ROUTING_ROW_HEIGHT = 52;
+const ROUTING_ROW_HEIGHT = 58;
 const ROUTING_MAX_CONTAINER_HEIGHT = 520;
+/** Extra height of a row that shows the default-parcel line under its select. */
+const ROUTING_PARCEL_LINE_HEIGHT = 30;
 
-/** Human qualifier shown before the connection name in dropdowns + row display. */
-const PROCESSOR_KIND_LABEL: Record<FulfillmentProcessorKind, string> = {
-  omp_fulfilled: 'Order-management platform',
-  ol_managed_carrier: 'OpenLinker-managed carrier',
-  source_brokered: 'Marketplace-brokered',
-};
 
 const SHORT_VALUE_HEAD = 6;
 const SHORT_VALUE_TAIL = 4;
@@ -104,9 +109,16 @@ function parseSelectionKey(
   return { kind, connectionId };
 }
 
+/**
+ * Which half of the choice an option belongs to. The select groups options by
+ * it, so each option can be a short name and still read unambiguously.
+ */
+type RouteGroup = 'shop' | 'label';
+
 interface DivertOption {
   key: string;
   label: string;
+  group: RouteGroup;
 }
 
 export function RoutingRulesPanel({
@@ -116,6 +128,8 @@ export function RoutingRulesPanel({
   deliveryMethodsLoading,
   deliveryMethodsError,
   onDirtyChange,
+  embedded = false,
+  focusMethodId,
 }: RoutingRulesPanelProps): ReactElement {
   const rulesQuery = useRoutingRulesQuery(connectionId);
   const candidatesQuery = useRoutingCandidatesQuery(connectionId);
@@ -175,9 +189,8 @@ export function RoutingRulesPanel({
   // Default label is data-driven from the omp_fulfilled candidate (no hardcoded
   // platform name) — falls back to a generic phrase when none is reported.
   const ompCandidate = candidates.find((c) => c.processorKind === 'omp_fulfilled') ?? null;
-  const defaultLabel = ompCandidate
-    ? `${connName(ompCandidate.processorConnectionId)} — default`
-    : 'Default (order-management platform)';
+  const shopName = ompCandidate ? connName(ompCandidate.processorConnectionId) : null;
+  const defaultLabel = SHIPPING_ROUTE_COPY.defaultOption(shopName);
 
   // Divert options exclude omp_fulfilled — that IS the default in v1; explicit
   // OMP pinning is the multi-OMP follow-up. Sorted by label so the divert menu
@@ -188,10 +201,14 @@ export function RoutingRulesPanel({
         .filter((c) => c.processorKind !== 'omp_fulfilled')
         .map((c) => ({
           key: `${c.processorKind}::${c.processorConnectionId}`,
-          label: `${PROCESSOR_KIND_LABEL[c.processorKind]} · ${connName(c.processorConnectionId)}`,
+          label:
+            c.processorKind === 'source_brokered'
+              ? SHIPPING_ROUTE_COPY.sourceShipping(sourceLabel)
+              : connName(c.processorConnectionId),
+          group: 'label' as const,
         }))
         .sort((a, b) => a.label.localeCompare(b.label)),
-    [candidates, connName],
+    [candidates, connName, sourceLabel],
   );
 
   // Render a row per delivery method, plus any saved rule whose method the
@@ -202,8 +219,11 @@ export function RoutingRulesPanel({
     for (const methodId of savedKeyByMethod.keys()) {
       if (!known.has(methodId)) orphans.push({ value: methodId, label: methodId });
     }
-    return [...deliveryMethods, ...orphans];
-  }, [deliveryMethods, savedKeyByMethod]);
+    const rows = [...deliveryMethods, ...orphans];
+    if (!focusMethodId) return rows;
+    // The method the operator came from goes first, so they never hunt for it.
+    return [...rows.filter((m) => m.value === focusMethodId), ...rows.filter((m) => m.value !== focusMethodId)];
+  }, [deliveryMethods, savedKeyByMethod, focusMethodId]);
 
   const draftFor = useCallback(
     (methodId: string): ParcelProfileDraft => profileDrafts[methodId] ?? EMPTY_PARCEL_DRAFT,
@@ -242,7 +262,10 @@ export function RoutingRulesPanel({
       .filter((c) => c.processorKind !== 'omp_fulfilled')
       .map((c) => {
         const key = `${c.processorKind}::${c.processorConnectionId}`;
-        return { key, label: nameFor(c.processorConnectionId), count: counts.get(key) ?? 0 };
+        // Brokered shipping is the source's own service, so it is named after the
+        // marketplace ("Allegro shipping"), not after the source connection.
+        const label = c.processorKind === 'source_brokered' ? SHIPPING_ROUTE_COPY.sourceShipping(sourceLabel) : nameFor(c.processorConnectionId);
+        return { key, label, count: counts.get(key) ?? 0 };
       });
 
     for (const [key, count] of counts) {
@@ -250,7 +273,7 @@ export function RoutingRulesPanel({
       const parsed = parseSelectionKey(key);
       buckets.push({
         key,
-        label: parsed ? `${nameFor(parsed.connectionId)} (unavailable)` : key,
+        label: parsed ? SHIPPING_ROUTE_COPY.unavailable(nameFor(parsed.connectionId)) : key,
         count,
       });
     }
@@ -262,25 +285,27 @@ export function RoutingRulesPanel({
       isDefault: true,
     });
     return buckets;
-  }, [rowMethods, selections, candidates, defaultLabel, connectionNameById]);
+  }, [rowMethods, selections, candidates, defaultLabel, connectionNameById, sourceLabel]);
 
   const optionsForRow = useCallback(
     (currentKey: string): DivertOption[] => {
-      const base: DivertOption[] = [{ key: DEFAULT_KEY, label: defaultLabel }, ...divertOptions];
+      const base: DivertOption[] = [
+        { key: DEFAULT_KEY, label: SHIPPING_ROUTE_COPY.defaultShort(shopName), group: 'shop' },
+        ...divertOptions,
+      ];
       // Keep a saved selection visible even when it is no longer a live candidate
       // (connection disabled, capability lost), so the operator can see + decide.
       if (currentKey !== DEFAULT_KEY && !base.some((o) => o.key === currentKey)) {
         const parsed = parseSelectionKey(currentKey);
         base.push({
           key: currentKey,
-          label: parsed
-            ? `${PROCESSOR_KIND_LABEL[parsed.kind]} · ${connName(parsed.connectionId)} (unavailable)`
-            : currentKey,
+          label: parsed ? SHIPPING_ROUTE_COPY.unavailable(connName(parsed.connectionId)) : currentKey,
+          group: 'label',
         });
       }
       return base;
     },
-    [defaultLabel, divertOptions, connName],
+    [shopName, divertOptions, connName],
   );
 
   const handleSelect = useCallback((methodId: string, key: string): void => {
@@ -311,37 +336,35 @@ export function RoutingRulesPanel({
   // Cell renderers memoized so the DataTable column literals stay stable and
   // don't re-prime the virtualizer on unrelated re-renders (#1784 I7). The
   // `method` cell is static; `routed`/`change` depend on `selections`.
-  const renderMethodLabel = useCallback((method: MappingOption): ReactNode => {
-    if (method.label === method.value) {
-      return <span className="mono-text">{method.value}</span>;
-    }
-    return (
-      <>
-        {method.label}{' '}
-        <span className="mapping-id-hint mono-text">{shortValue(method.value)}</span>
-      </>
-    );
-  }, []);
+  // A method's id is noise unless two methods share a name (Erli reports
+  // weight-banded groups under one label), so it stays inline only then.
+  const duplicateLabels = useMemo(() => {
+    const seen = new Map<string, number>();
+    for (const m of rowMethods) seen.set(m.label, (seen.get(m.label) ?? 0) + 1);
+    return new Set([...seen].filter(([, n]) => n > 1).map(([label]) => label));
+  }, [rowMethods]);
 
-  const renderRoutedTo = useCallback(
-    (currentKey: string): ReactNode => {
-      if (currentKey === DEFAULT_KEY) {
-        return <span className="muted-text">{defaultLabel}</span>;
+  const renderMethodLabel = useCallback(
+    (method: MappingOption): ReactNode => {
+      if (method.label === method.value) {
+        return <span className="mono-text">{method.value}</span>;
       }
-      const parsed = parseSelectionKey(currentKey);
-      if (!parsed) return <span className="mono-text">{currentKey}</span>;
+      if (duplicateLabels.has(method.label)) {
+        return (
+          <>
+            {method.label}{' '}
+            <span className="mapping-id-hint mono-text">{shortValue(method.value)}</span>
+          </>
+        );
+      }
       return (
-        <>
-          <span>{PROCESSOR_KIND_LABEL[parsed.kind]}</span>{' '}
-          <ConnectionEntityLabel
-            connectionId={parsed.connectionId}
-            linkToDetail={false}
-            showId={false}
-          />
-        </>
+        <span className="routing-method" title={shortValue(method.value)}>
+          {method.label}
+          {method.value === focusMethodId ? <span className="routing-method__mark">{SHIPPING_ROUTE_COPY.thisOrder}</span> : null}
+        </span>
       );
     },
-    [defaultLabel],
+    [duplicateLabels, focusMethodId],
   );
 
   // NOTE (#1784 I8): the per-row divert picker stays a native <select> routed
@@ -361,11 +384,19 @@ export function RoutingRulesPanel({
             handleSelect(method.value, e.target.value);
           }}
         >
-          {optionsForRow(currentKey).map((o) => (
-            <option key={o.key} value={o.key}>
-              {o.label}
-            </option>
-          ))}
+          {(['shop', 'label'] as const).map((group) => {
+            const options = optionsForRow(currentKey).filter((o) => o.group === group);
+            if (options.length === 0) return null;
+            return (
+              <optgroup key={group} label={SHIPPING_ROUTE_COPY.groupLabel[group]}>
+                {options.map((o) => (
+                  <option key={o.key} value={o.key}>
+                    {o.label}
+                  </option>
+                ))}
+              </optgroup>
+            );
+          })}
         </Select>
       );
     },
@@ -378,25 +409,25 @@ export function RoutingRulesPanel({
       const draft = draftFor(method.value);
       const summary = isDraftEmpty(draft) ? null : summarizeParcelProfile(draftToFields(draft));
       return (
-        <>
-          <span className={summary ? undefined : 'muted-text'}>
-            {summary ?? PARCEL_COPY.noneSet}
-          </span>{' '}
+        <span className="routing-route-cell__parcel">
+          <span className="routing-route-cell__parcel-value">
+            {PARCEL_COPY.columnHeader}: {summary ?? PARCEL_COPY.noneSet.toLowerCase()}
+          </span>
           {write.visible && (
             <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
-              <Button
-                tone="secondary"
-                className="button--sm"
+              <button
+                type="button"
+                className="routing-route-cell__parcel-action"
                 disabled={write.demoReadOnly}
                 onClick={() => {
                   setEditingMethod(method);
                 }}
               >
                 {summary ? PARCEL_COPY.editAction : PARCEL_COPY.setAction}
-              </Button>
+              </button>
             </ReadOnlyLock>
           )}
-        </>
+        </span>
       );
     },
     [selections, draftFor, write.visible, write.demoReadOnly],
@@ -406,24 +437,26 @@ export function RoutingRulesPanel({
     () => [
       {
         id: 'method',
-        header: `${sourceLabel} delivery method`,
+        header: SHIPPING_ROUTE_COPY.methodColumn(sourceLabel),
         cell: (m) => renderMethodLabel(m),
       },
       {
-        id: 'routed',
-        header: 'Routed to',
-        cell: (m) => renderRoutedTo(selections[m.value] ?? DEFAULT_KEY),
+        id: 'route',
+        header: SHIPPING_ROUTE_COPY.routeColumn,
+        cell: (m) => (
+          <div className="routing-route-cell">
+            {renderProcessorSelect(m)}
+            {renderParcel(m)}
+          </div>
+        ),
       },
-      { id: 'change', header: 'Change', cell: (m) => renderProcessorSelect(m) },
-      { id: 'parcel', header: PARCEL_COPY.columnHeader, cell: (m) => renderParcel(m) },
     ],
-    [sourceLabel, renderMethodLabel, renderRoutedTo, renderProcessorSelect, renderParcel, selections],
+    [sourceLabel, renderMethodLabel, renderProcessorSelect, renderParcel],
   );
 
   const cardView = useMemo<DataTableCardView<MappingOption>>(
     () => ({
       title: (m) => renderMethodLabel(m),
-      subtitle: (m) => renderRoutedTo(selections[m.value] ?? DEFAULT_KEY),
       detail: (m) => (
         <>
           {renderProcessorSelect(m)}
@@ -431,7 +464,7 @@ export function RoutingRulesPanel({
         </>
       ),
     }),
-    [renderMethodLabel, renderRoutedTo, renderProcessorSelect, renderParcel, selections],
+    [renderMethodLabel, renderProcessorSelect, renderParcel],
   );
 
   if (deliveryMethodsLoading || rulesQuery.isLoading || candidatesQuery.isLoading) {
@@ -449,30 +482,31 @@ export function RoutingRulesPanel({
     return <ErrorState title="Unable to load routing configuration" message={dataError.message} />;
   }
 
+  // A row whose route buys a label carries the default-parcel line under its
+  // select, so it is taller; sizing every row the same clipped the last ones.
+  const labelledRows = rowMethods.filter((m) => (selections[m.value] ?? DEFAULT_KEY) !== DEFAULT_KEY).length;
   const containerHeight = Math.min(
     ROUTING_MAX_CONTAINER_HEIGHT,
-    rowMethods.length * ROUTING_ROW_HEIGHT + 8,
+    rowMethods.length * ROUTING_ROW_HEIGHT + labelledRows * ROUTING_PARCEL_LINE_HEIGHT + 8,
   );
 
-  return (
-    <div className="panel panel--dense">
-      <div className="panel__header">
-        <div>
-          <p className="eyebrow">Configuration</p>
-          <h3 className="section-title">Fulfillment Routing</h3>
-        </div>
-        {isDirty && (
-          <span className="status-badge status-badge--warning" aria-live="polite">
-            Unsaved changes
-          </span>
-        )}
-      </div>
+  const dirtyBadge = isDirty ? (
+    <span className="status-badge status-badge--warning" aria-live="polite">
+      Unsaved changes
+    </span>
+  ) : null;
 
-      <p className="muted-text" style={{ marginBottom: 'var(--space-4)' }}>
-        Choose how each {sourceLabel} delivery method is fulfilled. Methods stay with the default
-        order-management platform unless you divert them to a connected carrier or
-        marketplace-delivery processor.
-      </p>
+  return (
+    <div className={embedded ? 'routing-panel routing-panel--embedded' : 'panel panel--dense routing-panel'}>
+      {embedded ? null : (
+        <>
+          <div className="panel__header">
+            <h3 className="section-title">{SHIPPING_ROUTE_COPY.panelTitle}</h3>
+            {dirtyBadge}
+          </div>
+          <p className="muted-text routing-panel__intro">{SHIPPING_ROUTE_COPY.intro(sourceLabel, shopName)}</p>
+        </>
+      )}
 
       {divertOptions.length === 0 && (
         <p
@@ -481,8 +515,7 @@ export function RoutingRulesPanel({
           aria-live="polite"
           style={{ marginBottom: 'var(--space-3)' }}
         >
-          No compatible fulfillment processors are connected yet. Every method stays with the
-          default until you add a carrier-managed or marketplace-delivery connection.
+          {SHIPPING_ROUTE_COPY.noCarrier}
         </p>
       )}
 
@@ -531,14 +564,7 @@ export function RoutingRulesPanel({
         </p>
       )}
 
-      <div
-        style={{
-          marginTop: 'var(--space-4)',
-          display: 'flex',
-          gap: 'var(--space-2)',
-          alignItems: 'center',
-        }}
-      >
+      <div className="routing-panel__actions">
         <Button tone="primary" disabled={!isDirty || replaceMutation.isPending} onClick={handleSave}>
           {replaceMutation.isPending ? 'Saving…' : 'Save routing'}
         </Button>
@@ -547,6 +573,7 @@ export function RoutingRulesPanel({
             Try again
           </Button>
         )}
+        {embedded ? dirtyBadge : null}
       </div>
     </div>
   );

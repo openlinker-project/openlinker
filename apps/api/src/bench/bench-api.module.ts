@@ -24,6 +24,7 @@ import { FulfillmentModule as CoreFulfillmentModule } from '@openlinker/core/ful
 import { InventoryModule } from '@openlinker/core/inventory';
 import { UsersApiModule } from '../users/users.module';
 import { InvoicingModule } from '@openlinker/core/invoicing';
+import { MappingsModule as CoreMappingsModule } from '@openlinker/core/mappings';
 import { OrdersModule } from '@openlinker/core/orders';
 import { ProductsModule } from '@openlinker/core/products';
 import { ShippingModule } from '@openlinker/core/shipping';
@@ -45,6 +46,7 @@ import { BenchExecutorResolver } from './application/services/bench-executor.res
 import { BenchLabelService } from './application/services/bench-label.service';
 import { BenchParcelService } from './application/services/bench-parcel.service';
 import { BenchPresenceService } from './application/services/bench-presence.service';
+import { BenchRouteResolver } from './application/services/bench-route.resolver';
 import { BenchWorkService } from './application/services/bench-work.service';
 import { BenchDocumentsController } from './http/bench-documents.controller';
 import { BenchLabelController } from './http/bench-label.controller';
@@ -62,6 +64,9 @@ import { BenchWorkController } from './http/bench-work.controller';
     SyncModule,
     IntegrationsModule,
     InventoryModule,
+    // #3958 - FULFILLMENT_ROUTING_SERVICE_TOKEN, so the label card can say who
+    // ships a box through the same resolution the label purchase uses.
+    CoreMappingsModule,
     // #3424 - the presence heartbeat's one seam. Read-free: the bench calls
     // `recordBenchActivity` and nothing else here.
     UsersApiModule,
@@ -72,6 +77,7 @@ import { BenchWorkController } from './http/bench-work.controller';
     // Shared by all three surfaces — story D2's "assigned to OpenLinker's own
     // packing executor" half, resolved once rather than restated per service.
     BenchExecutorResolver,
+    BenchRouteResolver,
     BenchWorkService,
     { provide: BENCH_WORK_SERVICE_TOKEN, useExisting: BenchWorkService },
     BenchParcelService,

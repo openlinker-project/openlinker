@@ -1,6 +1,7 @@
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
-import { renderWithProviders } from '../../../test/test-utils';
+import { createAuthenticatedSessionAdapter, renderWithProviders } from '../../../test/test-utils';
 import { DeliveryRiderAction } from './delivery-rider-action';
 import type { OrderDeliveryRider } from '../api/orders.types';
 
@@ -15,22 +16,36 @@ const NOT_CONNECTED_RIDER: OrderDeliveryRider = {
 };
 
 describe('DeliveryRiderAction (#1794)', () => {
-  it('should link an unmapped rider to the source connection Delivery mapping tab with the method pre-filtered', () => {
+  it('should open the routing dialog for the source connection instead of linking to the carriers tab (#3958)', async () => {
+    const user = userEvent.setup();
     renderWithProviders(
       <DeliveryRiderAction
         rider={UNMAPPED_RIDER}
-        sourceConnectionId="conn-abc"
+        sourceConnectionId="conn_1"
         sourceDeliveryMethodId="method-xyz"
         sourceDeliveryMethodName="InPost Paczkomat"
       />,
+      { sessionAdapter: createAuthenticatedSessionAdapter() },
     );
 
-    const link = screen.getByRole('link', { name: 'Add mapping' });
-    const href = link.getAttribute('href') ?? '';
-    expect(href).toContain('/connections/conn-abc/mappings');
-    expect(href).toContain('tab=carriers');
-    expect(href).toContain('method=method-xyz');
-    expect(href).toContain('methodName=');
+    const action = await screen.findByRole('button', { name: 'Add mapping' });
+    // The carriers tab maps a shop carrier and never buys a label, so the
+    // rider must not send the operator there any more.
+    expect(screen.queryByRole('link', { name: 'Add mapping' })).not.toBeInTheDocument();
+    expect(document.querySelector('a[href*="tab=carriers"]')).toBeNull();
+
+    await user.click(action);
+    const dialog = await screen.findByRole('dialog');
+    expect(await screen.findByText('Who ships Main PrestaShop Store orders')).toBeInTheDocument();
+    expect(dialog).toHaveTextContent(/delivery method this order uses is first and marked/);
+  });
+
+  it('should render no Add-mapping action for a role that cannot change routing (#3958)', () => {
+    renderWithProviders(
+      <DeliveryRiderAction rider={UNMAPPED_RIDER} sourceConnectionId="conn_1" />,
+    );
+    expect(screen.queryByRole('button', { name: 'Add mapping' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Add mapping' })).not.toBeInTheDocument();
   });
 
   it('should link a not-connected rider to the candidate carrier guided setup wizard', () => {

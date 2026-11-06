@@ -531,20 +531,20 @@ export const benchParcelCopy = {
     invoiceTitle: (number: string | null): string =>
       number === null ? 'Invoice for this order' : `Invoice ${number}`,
     /**
-     * Deliberately does NOT name the carrier.
+     * Never named from `Shipment.carrier`.
      *
-     * `Shipment.carrier` holds the adapter's own key — `inpost`, lowercase —
-     * so interpolating it printed `inpost label` at a packer, an internal
-     * identifier dressed as a sentence. Title-casing it would produce
-     * `Inpost`, which is a different wrong answer, and no display-name map
-     * exists to look the real one up in.
+     * That field holds the adapter's own key — `inpost`, lowercase — so
+     * interpolating it printed `inpost label` at a packer, an internal
+     * identifier dressed as a sentence, and no display-name map exists to look
+     * the real one up in.
      *
-     * Nothing is lost by leaving it out: the order head one row above already
-     * names the carrier correctly, from the SOURCE's own delivery-method label
-     * ("InPost Paczkomat"), and the tracking number sits directly under this
-     * heading. The carrier arrives here only to be recorded, not rendered.
+     * Since #3958 the parcel carries the ROUTED connection's name, which an
+     * operator typed ("InPost"), so the card can say whose label it is. Without
+     * one (an unknown route, a route that names no carrier) it falls back to
+     * the neutral title rather than to the adapter key.
      */
-    labelTitle: (): string => 'Label for this box',
+    labelTitle: (carrierName: string | null = null): string =>
+      carrierName === null ? 'Label for this box' : `Label from ${carrierName} is ready`,
     trackingLabel: 'Tracking',
     printFailed: 'That did not print. Nothing changed — try again.',
 
@@ -677,6 +677,47 @@ export const benchParcelCopy = {
     labelPendingBadge: 'Not ready yet',
     labelPendingTitle: 'The label is not ready yet',
     labelPendingBody: 'Dispatch will sort it out. Carry on packing — nothing here waits for it.',
+  },
+
+  /**
+   * #3958 - the label card when there is no label to print, by route.
+   *
+   * Four cases a packer can meet instead of one silence: OpenLinker buys the
+   * label, the shop ships the box, nobody has chosen who ships it, or the
+   * carrier the method is routed to is switched off. A packer has no edit
+   * action, so each one ends with what to do with the BOX, and the setup fix
+   * is named as an admin's, never offered here.
+   */
+  labelRoute: {
+    /** Used where the source reports no delivery-method label. */
+    methodFallback: 'this delivery method',
+    buysLabelBadge: 'Label on close',
+    buysLabelTitle: 'OpenLinker buys the label when you close the box',
+    /** On a box already closed, "when you close it" would no longer be true. */
+    buysLabelClosedTitle: 'OpenLinker buys the label for this box',
+    buysLabelBody: (method: string, carrier: string | null): string =>
+      carrier === null
+        ? `${method} gets a label from OpenLinker. Close the box when it is packed.`
+        : `${method} goes with ${carrier}. Close the box when it is packed.`,
+    buysLabelClosedBody: (method: string, carrier: string | null): string =>
+      carrier === null
+        ? `${method} gets a label from OpenLinker. It shows here when it is ready.`
+        : `${method} goes with ${carrier}. The label shows here when it is ready.`,
+    shopShipsBadge: 'No OpenLinker label',
+    shopShipsTitle: (shop: string | null, method: string): string =>
+      shop === null ? `The shop ships ${method} orders` : `${shop} ships ${method} orders`,
+    shopShipsBody: 'Close the box and put it with the shop’s parcels.',
+    noCarrierBadge: 'No carrier set',
+    noCarrierTitle: (method: string): string => `Nobody has chosen who ships ${method}`,
+    noCarrierBody:
+      'Close the box and leave it aside. An admin can choose a carrier in Shipping settings.',
+    carrierOffBadge: 'No label coming',
+    carrierOffTitle: (carrier: string | null): string =>
+      carrier === null
+        ? 'The carrier for this box is switched off'
+        : `${carrier} is switched off, so no label is coming`,
+    carrierOffBody:
+      'Close the box and leave it aside. An admin can turn the carrier back on or choose another in Shipping settings.',
   },
 
   /** F3/F4 — packed, and it cannot go out. */
