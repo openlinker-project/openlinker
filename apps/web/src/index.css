@@ -6169,6 +6169,12 @@ a.delivery-rider-banner__button:focus-visible {
   z-index: 1;
   display: grid;
   place-items: center;
+  scale: 0.86;
+  transition: scale var(--duration-normal) var(--ease-out);
+}
+
+.theme-switch__segment[aria-checked='true'] .theme-switch__segment-icon {
+  scale: 1;
 }
 
 .theme-switch__segment[aria-checked='true'] .theme-switch__segment-icon {

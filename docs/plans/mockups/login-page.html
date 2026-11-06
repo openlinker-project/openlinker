@@ -2225,7 +2225,8 @@ html[data-density='compact'] .status-badge{
 .theme-switch__segment:hover { color:var(--text-primary); }
 .theme-switch__segment:focus-visible { outline:none; box-shadow:var(--shadow-focus); }
 .theme-switch__thumb { position:absolute; inset:0; border-radius:7px; background:var(--bg-surface); box-shadow:0 1px 2px rgb(15 18 26 / 0.08), 0 0 0 1px var(--border-default); }
-.theme-switch__segment-icon { position:relative; z-index:1; display:grid; place-items:center; }
+.theme-switch__segment-icon { position:relative; z-index:1; display:grid; place-items:center; scale:.86; transition:scale var(--duration-normal) var(--ease-out); }
+.theme-switch__segment[aria-checked='true'] .theme-switch__segment-icon { scale:1; }
 .theme-switch__segment[aria-checked='true'] .theme-switch__segment-icon { color:var(--accent-primary); }
 .theme-switch__segment .theme-switch__icon { width:16px; height:16px; }
 .theme-switch__caption { overflow:hidden; font-size:11px; font-weight:500; line-height:22px; color:var(--text-muted); }
@@ -3358,21 +3359,22 @@ function ThemeSwitch({ placement = 'down', locale }) {
               <div className="language-switch__head" id={headId}>{copy.label}</div>
               <div className="theme-switch__control" onPointerLeave={() => setPointing(null)}
                 onFocus={(e) => setKeyboard(e.target.matches(':focus-visible'))} onBlur={() => setKeyboard(false)}>
-                <div id={groupId} className="theme-switch__segments" role="radiogroup" aria-labelledby={headId} onKeyDown={onKeyDown}>
+                <motion.div id={groupId} className="theme-switch__segments" role="radiogroup" aria-labelledby={headId} onKeyDown={onKeyDown}
+                  initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.035, delayChildren: 0.04 } } }}>
                   {THEME_OPTIONS.map((v, index) => {
                     const selected = v === theme;
                     return (
-                      <motion.button key={v} ref={(el) => { segmentRefs.current[index] = el; }} animate={selected ? 'on' : 'off'} whileTap="tap" type="button" role="radio" aria-checked={selected}
+                      <motion.button key={v} ref={(el) => { segmentRefs.current[index] = el; }} variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0, transition: LS_SPRING } }} whileTap="tap" type="button" role="radio" aria-checked={selected}
                         tabIndex={selected ? 0 : -1} aria-label={copy[v]} className="theme-switch__segment"
                         onPointerEnter={() => setPointing(index)} onClick={() => setTheme(v)}>
                         {selected ? <motion.span className="theme-switch__thumb" layoutId={`${groupId}-thumb`} transition={THUMB_SPRING} /> : null}
-                        <motion.span className="theme-switch__segment-icon" variants={{ on: { scale: 1, rotate: 0 }, off: { scale: 0.86, rotate: 0 }, tap: { scale: 0.8, rotate: v === 'light' ? 45 : -20 } }} transition={LS_SPRING}>
+                        <motion.span className="theme-switch__segment-icon" variants={{ hidden: { scale: 1, rotate: 0 }, show: { scale: 1, rotate: 0 }, tap: { scale: 0.8, rotate: v === 'light' ? 45 : -20 } }} transition={LS_SPRING}>
                           <ThemeIcon theme={v} />
                         </motion.span>
                       </motion.button>
                     );
                   })}
-                </div>
+                </motion.div>
                 <AnimatePresence initial={false}>
                   {revealed ? (
                     <motion.div key="caption" className="theme-switch__caption" aria-hidden="true"

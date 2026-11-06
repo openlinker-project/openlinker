@@ -37,6 +37,12 @@ const OPTIONS: readonly Theme[] = ['light', 'dark', 'system'];
 
 const SPRING = { type: 'spring', stiffness: 520, damping: 34, mass: 0.7 } as const;
 const THUMB_SPRING = { type: 'spring', bounce: 0.18, visualDuration: 0.32 } as const;
+// The language switch list's entrance, so the two popovers open alike.
+const ENTRANCE_GROUP = { show: { transition: { staggerChildren: 0.035, delayChildren: 0.04 } } };
+const ENTRANCE_ITEM = {
+  hidden: { opacity: 0, x: -8 },
+  show: { opacity: 1, x: 0, transition: SPRING },
+};
 const CAPTION_VARIANTS = {
   hidden: { opacity: 0, y: 3, filter: 'blur(3px)' },
   shown: { opacity: 1, y: 0, filter: 'blur(0px)' },
@@ -297,12 +303,16 @@ export function ThemeSwitch({
                 onFocus={(event) => setKeyboard(event.target.matches(':focus-visible'))}
                 onBlur={() => setKeyboard(false)}
               >
-                <div
+                {/* The modes come in one after another, the language list's entrance. */}
+                <motion.div
                   id={groupId}
                   className="theme-switch__segments"
                   role="radiogroup"
                   aria-labelledby={headId}
                   onKeyDown={onKeyDown}
+                  initial="hidden"
+                  animate="show"
+                  variants={ENTRANCE_GROUP}
                 >
                   {OPTIONS.map((value, index) => {
                     const selected = value === theme;
@@ -315,7 +325,7 @@ export function ThemeSwitch({
                         ref={(el) => {
                           segmentRefs.current[index] = el;
                         }}
-                        animate={selected ? 'on' : 'off'}
+                        variants={ENTRANCE_ITEM}
                         whileTap="tap"
                         type="button"
                         role="radio"
@@ -336,8 +346,8 @@ export function ThemeSwitch({
                         <motion.span
                           className="theme-switch__segment-icon"
                           variants={{
-                            on: { scale: 1, rotate: 0 },
-                            off: { scale: 0.86, rotate: 0 },
+                            hidden: { scale: 1, rotate: 0 },
+                            show: { scale: 1, rotate: 0 },
                             tap: { scale: 0.8, rotate: value === 'light' ? 45 : -20 },
                           }}
                           transition={SPRING}
@@ -347,7 +357,7 @@ export function ThemeSwitch({
                       </motion.button>
                     );
                   })}
-                </div>
+                </motion.div>
                 <AnimatePresence initial={false}>
                   {revealed ? (
                     <motion.div
