@@ -118,7 +118,7 @@ import { OrderListFilterBar } from '../../features/orders/components/order-list-
 import { OrderStatusTabs } from '../../features/orders/components/order-status-tabs';
 import { OrderAttentionSummary } from '../../features/orders/components/order-attention-summary';
 import { OrderPeek, type OrderPeekView } from '../../features/orders/components/order-peek';
-import { CappedBadges } from '../../features/orders/components/capped-badges';
+import { CappedBadges, PeekArrow } from '../../shared/ui/capped-badges';
 import {
   describeOrderFilterScope,
   type OrderFilterChipContext,
@@ -1059,14 +1059,10 @@ export function OrdersListPage(): ReactElement {
         // #4026 — the arrow says the row opens a panel from the right.
         header: <span className="sr-only">{orders.peek.details}</span>,
         cell: (order) => (
-          <button
-            type="button"
-            className="orders-peek-arrow"
-            aria-label={interpolate(orders.peek.detailsAria, { ref: order.internalOrderId })}
-            onClick={() => { openPeek(order.internalOrderId); }}
-          >
-            <span className="orders-peek-arrow__chevron" aria-hidden="true" />
-          </button>
+          <PeekArrow
+            label={interpolate(orders.peek.detailsAria, { ref: order.internalOrderId })}
+            onOpen={() => { openPeek(order.internalOrderId); }}
+          />
         ),
       },
     ],
@@ -1311,7 +1307,7 @@ export function OrdersListPage(): ReactElement {
     >
       {/* Status bar (#4026): the health partition as tabs, and "Needs a look"
           as one line beside them. */}
-      <div className="orders-statusbar">
+      <div className="list-statusbar">
         <OrderStatusTabs
           value={health}
           summary={summary}
@@ -1496,7 +1492,7 @@ export function OrdersListPage(): ReactElement {
             // height here comes from the money column's four-item stack, so a
             // middle-aligned Order cell sat below the top-aligned expander and
             // beside a centred checkbox — three anchors in one row.
-            className="orders-table orders-table--fixed"
+            className="orders-table list-table--fixed list-table--peek"
             stickyLeftColumns={selectionEnabled ? 2 : 1}
             // #4026 — the peek arrow stays pinned right, like the identity
             // columns on the left; only the middle columns scroll.
@@ -1600,7 +1596,7 @@ export function OrdersListPage(): ReactElement {
               openPeek(order.internalOrderId);
             }}
             rowClassName={(order) =>
-              order.internalOrderId === peekId ? 'orders-row--peek' : undefined
+              order.internalOrderId === peekId ? 'list-row--peek' : undefined
             }
             // Server-side ordering (#944/#1713): every sortable header (customer,
             // status, and the merged shipment/money columns) renders its own

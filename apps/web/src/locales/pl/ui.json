@@ -10,6 +10,15 @@
     "requestFailed": "Żądanie nie powiodło się",
     "timedOut": "Upłynął limit czasu żądania."
   },
+  "attentionSummary": {
+    "filtersOn": {
+      "few": "{n} filtry włączone",
+      "many": "{n} filtrów włączonych",
+      "one": "{n} filtr włączony",
+      "other": "{n} filtra włączone"
+    },
+    "unknownCount": "-"
+  },
   "bulkActionBar": {
     "selected": {
       "few": "zaznaczone",
@@ -23,6 +32,10 @@
       "one": "Zaznaczono {n} element",
       "other": "Zaznaczono {n} elementu"
     }
+  },
+  "cappedBadges": {
+    "more": "+{n} więcej",
+    "moreTitle": "Pokaż wszystko w panelu bocznym"
   },
   "categorySearch": {
     "errorTitle": "Nie udało się wyszukać kategorii",
@@ -271,6 +284,16 @@
   },
   "sidePanel": {
     "close": "Zamknij"
+  },
+  "sortMenu": {
+    "button": "Sortuj: {label}",
+    "buttonReversed": "Sortuj: {label} (odwrotnie)",
+    "defaultMark": "domyślnie"
+  },
+  "statusTabs": {
+    "scrollLeft": "Pokaż wcześniejsze zakładki",
+    "scrollRight": "Pokaż kolejne zakładki",
+    "unknownCount": "-"
   },
   "structuredErrors": {
     "copied": "skopiowano",
