@@ -1,193 +1,494 @@
-import { useMemo, useState, type ReactElement } from 'react';
-import { useSearchParams } from 'react-router-dom';
+/**
+ * Sync Progress Page (#4024)
+ *
+ * Diagnostics > Sync progress (route `/cursors`). Every sync bookmark grouped
+ * by connection, judged on time against its schedule, with the syncs that
+ * need a look summarised on top, a detail panel per row and a guide that
+ * explains every state. Mockup: `docs/plans/mockups/sync-progress.html`.
+ *
+ * @module apps/web/src/pages/cursors
+ */
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { describeApiError } from '../../shared/api/describe-api-error';
 import { PageLayout } from '../../shared/ui/page-layout';
-import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
-import { useTableSort } from '../../shared/ui/use-table-sort';
-import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { Input } from '../../shared/ui/input';
-import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
+import { Select } from '../../shared/ui/select';
+import { SegmentedControl } from '../../shared/ui/segmented-control';
+import { StatusBadge } from '../../shared/ui/status-badge';
+import { EmptyState, ErrorState } from '../../shared/ui/feedback-state';
+import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { formatRelativeTime } from '../../shared/format/format-relative-time';
 import { formatDateTime } from '../../shared/format/format-date';
-import { useCursorsQuery } from '../../features/cursors/hooks/use-cursors-query';
-import type { Cursor, CursorFilters } from '../../features/cursors/api/cursors.types';
-import { interpolate, useMessages, type Messages } from '../../shared/i18n';
+import { useIsAdmin, useWriteAccess } from '../../shared/auth/use-permission';
+import { useDemoMode } from '../../features/system';
+import { SYSTEM_CONNECTION_ID, useConnectionsQuery, type Connection } from '../../features/connections';
+import { ConnectionDot } from '../../features/orders';
+import { useCursorOverviewQuery } from '../../features/cursors/hooks/use-cursor-overview-query';
+import type { CursorOverviewConnection, CursorOverviewItem } from '../../features/cursors/api/cursors.types';
+import { describeCursor, sweepKeyForCompletionStamp } from '../../features/cursors/lib/cursor-catalogue';
+import { isProblem, readCursorHealth, readCursorProgress } from '../../features/cursors/lib/read-cursor-health';
+import { SYNC_PROGRESS_COPY } from '../../features/cursors/lib/sync-progress.copy';
+import { CursorRow, type CursorRowView } from '../../features/cursors/components/cursor-row';
+import { WriteMarksBundle } from '../../features/cursors/components/write-marks-bundle';
+import { CursorDetailPanel, type CursorDetailConnection } from '../../features/cursors/components/cursor-detail-panel';
+import { SyncGuidePanel } from '../../features/cursors/components/sync-guide-panel';
 
-const PAGE_SIZE = 20;
-const SEARCH_DEBOUNCE_MS = 300;
+const C = SYNC_PROGRESS_COPY;
+const HEALTH_FILTERS = ['all', 'problem', 'ok'] as const;
+type HealthFilter = (typeof HEALTH_FILTERS)[number];
+/** A connection with no bookmarks is described as push-fed only when it is a data source. */
+const SOURCE_CAPABILITIES = ['OrderSource', 'ProductMaster', 'InventoryMaster'];
 
-type CursorsListCopy = Messages['cursors']['cursorsListPage'];
+interface GroupView {
+  id: string;
+  connection: CursorDetailConnection;
+  role: string | null;
+  rows: CursorRowView[];
+  allRows: CursorRowView[];
+  writeMarks: CursorOverviewConnection['writeMarks'];
+  pushes: boolean;
+}
 
-function buildColumns(copy: CursorsListCopy['columns']): DataTableColumn<Cursor>[] {
-  return [
-    {
-      id: 'cursorKey',
-      header: copy.cursorKey,
-      cell: (cursor) => <span className="mono-text">{cursor.cursorKey}</span>,
-      accessor: (cursor) => cursor.cursorKey,
-      sortable: true,
-    },
-    {
-      id: 'value',
-      header: copy.value,
-      cell: (cursor) => (
-        <span className="mono-text" title={cursor.value}>
-          {cursor.value.length > 40 ? `${cursor.value.slice(0, 40)}...` : cursor.value}
-        </span>
-      ),
-      hideBelow: 768,
-    },
-    {
-      id: 'connectionId',
-      header: copy.connectionId,
-      cell: (cursor) => <span className="mono-text">{cursor.connectionId}</span>,
-      hideBelow: 1024,
-    },
-    {
-      id: 'updatedAt',
-      header: copy.updatedAt,
-      cell: (cursor) => (
-        <span title={formatDateTime(cursor.updatedAt)}>
-          {formatRelativeTime(cursor.updatedAt)}
-        </span>
-      ),
-      accessor: (cursor) => cursor.updatedAt,
-      sortable: true,
-    },
-  ];
+function readHealthFilter(value: string | null): HealthFilter {
+  return (HEALTH_FILTERS as readonly string[]).includes(value ?? '') ? (value as HealthFilter) : 'all';
+}
+
+function roleOf(connection: Connection | undefined): string | null {
+  if (!connection) return null;
+  const caps = connection.enabledCapabilities;
+  if (caps.includes('ProductMaster')) return 'Master catalogue';
+  if (caps.includes('OfferManager')) return 'Marketplace';
+  if (caps.includes('ShippingProviderManager')) return 'Carrier';
+  if (caps.includes('OrderSource')) return 'Shop';
+  return null;
 }
 
 export function CursorsListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
-  const copy = useMessages('cursors').cursorsListPage;
-  const columns = useMemo(() => buildColumns(copy.columns), [copy]);
-  const { sort, setSort } = useTableSort([{ id: 'updatedAt', desc: true }]);
+  const connectionFilter = searchParams.get('connectionId') ?? 'all';
+  const health = readHealthFilter(searchParams.get('health'));
+  const [search, setSearch] = useState(searchParams.get('q') ?? '');
+  const [showKeys, setShowKeys] = useState(false);
+  const [selected, setSelected] = useState<{ view: CursorRowView; groupId: string } | null>(null);
+  const [guide, setGuide] = useState<{ open: boolean; focus: string | null }>({ open: false, focus: null });
 
-  const urlConnectionId = searchParams.get('connectionId') ?? '';
-  const offset = Number(searchParams.get('offset') ?? '0');
+  const overview = useCursorOverviewQuery();
+  const connections = useConnectionsQuery();
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('sync:write', demoMode);
+  const isAdmin = useIsAdmin();
+  const canAct = write.canWrite && isAdmin;
 
-  const [connectionIdInput, setConnectionIdInput] = useState(urlConnectionId);
-  const debouncedConnectionId = useDebouncedValue(connectionIdInput, SEARCH_DEBOUNCE_MS);
+  // Stable between refetches, so every row is judged against the same instant.
+  const now = overview.dataUpdatedAt || Date.now();
+  const ago = useCallback((iso: string) => formatRelativeTime(iso, now), [now]);
+  const formatWhen = useCallback((iso: string) => formatDateTime(iso), []);
+  const q = search.trim().toLowerCase();
 
-  const filters: CursorFilters = {
-    connectionId: debouncedConnectionId || undefined,
+  const setParam = (key: string, value: string | null): void => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value) next.set(key, value);
+        else next.delete(key);
+        return next;
+      },
+      { replace: true },
+    );
   };
-  const pagination = { limit: PAGE_SIZE, offset };
 
-  const query = useCursorsQuery(filters, pagination);
+  const explain = useCallback((id: string) => {
+    setGuide({ open: true, focus: id });
+  }, []);
 
-  function handleFilterChange(value: string): void {
-    setConnectionIdInput(value);
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      if (value) {
-        next.set('connectionId', value);
-      } else {
-        next.delete('connectionId');
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const tag = (document.activeElement?.tagName ?? '').toUpperCase();
+      if (e.key === '?' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) {
+        e.preventDefault();
+        setGuide({ open: true, focus: null });
       }
-      next.delete('offset');
-      return next;
-    });
-  }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, []);
 
-  function setOffset(next: number): void {
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      if (next === 0) {
-        p.delete('offset');
-      } else {
-        p.set('offset', String(next));
+  const groups = useMemo<GroupView[]>(() => {
+    const byId = new Map((connections.data ?? []).map((c) => [c.id, c]));
+    const seen = new Set<string>();
+    const out: GroupView[] = [];
+    for (const g of overview.data?.connections ?? []) {
+      seen.add(g.connectionId);
+      const conn = byId.get(g.connectionId);
+      const isSystem = g.connectionId === SYSTEM_CONNECTION_ID;
+      const platform = conn?.platformType ?? null;
+      const stamps = new Map<string, string>();
+      for (const item of g.cursors) {
+        const sweepKey = item.family === 'completion-stamp' ? sweepKeyForCompletionStamp(item.cursorKey) : null;
+        if (sweepKey) stamps.set(sweepKey, item.value);
       }
-      return p;
-    });
-  }
+      const toView = (item: CursorOverviewItem): CursorRowView => ({
+        cursor: item,
+        label: describeCursor(item.cursorKey).label,
+        health: readCursorHealth(item, platform, now, ago),
+        progress: readCursorProgress(item, stamps.get(item.cursorKey) ?? null, ago, formatWhen),
+      });
+      const allRows = g.cursors.filter((c) => c.family !== 'completion-stamp').map(toView);
+      out.push({
+        id: g.connectionId,
+        connection: {
+          id: g.connectionId,
+          name: isSystem ? C.systemName : (conn?.name ?? g.connectionId),
+          platformType: platform,
+          isSystem,
+        },
+        role: isSystem ? C.systemRole : roleOf(conn),
+        allRows,
+        rows: allRows,
+        writeMarks: g.writeMarks,
+        pushes: false,
+      });
+    }
+    for (const conn of connections.data ?? []) {
+      if (seen.has(conn.id) || conn.status !== 'active') continue;
+      if (!conn.enabledCapabilities.some((cap) => SOURCE_CAPABILITIES.includes(cap))) continue;
+      out.push({
+        id: conn.id,
+        connection: { id: conn.id, name: conn.name, platformType: conn.platformType, isSystem: false },
+        role: roleOf(conn),
+        allRows: [],
+        rows: [],
+        writeMarks: null,
+        pushes: true,
+      });
+    }
+    return out;
+  }, [overview.data, connections.data, now, ago, formatWhen]);
 
-  const total = query.data?.total ?? 0;
-  const hasPrev = offset > 0;
-  const hasNext = offset + PAGE_SIZE < total;
+  const toViewFor = useCallback(
+    (group: GroupView) =>
+      (item: CursorOverviewItem): CursorRowView => ({
+        cursor: item,
+        label: describeCursor(item.cursorKey).label,
+        health: readCursorHealth(item, group.connection.platformType, now, ago),
+        progress: readCursorProgress(item, null, ago, formatWhen),
+      }),
+    [now, ago, formatWhen],
+  );
+
+  const matchesSearch = (row: CursorRowView): boolean =>
+    !q || row.cursor.cursorKey.toLowerCase().includes(q) || row.label.toLowerCase().includes(q);
+  const matchesHealth = (row: CursorRowView): boolean =>
+    health === 'all' || (health === 'problem' ? isProblem(row.health) : !isProblem(row.health));
+
+  const inScope = groups.filter((g) => connectionFilter === 'all' || g.id === connectionFilter);
+  const scopedRows = inScope.flatMap((g) => g.allRows.filter(matchesSearch));
+  const counts: Record<HealthFilter, number> = {
+    all: scopedRows.length,
+    problem: scopedRows.filter((r) => isProblem(r.health)).length,
+    ok: scopedRows.filter((r) => !isProblem(r.health)).length,
+  };
+  const problems = groups.flatMap((g) => g.allRows.filter((r) => isProblem(r.health)).map((r) => ({ group: g, row: r })));
+
+  const visibleGroups = inScope
+    .map((g) => ({ ...g, rows: g.allRows.filter((r) => matchesSearch(r) && matchesHealth(r)) }))
+    .filter((g) => g.rows.length > 0 || (g.writeMarks !== null && health !== 'problem') || (g.pushes && !q && health === 'all'))
+    .sort((a, b) => b.allRows.filter((r) => isProblem(r.health)).length - a.allRows.filter((r) => isProblem(r.health)).length);
+
+  const selectedGroup = selected ? groups.find((g) => g.id === selected.groupId) ?? null : null;
+  const clearFilters = (): void => {
+    setSearch('');
+    setSearchParams(new URLSearchParams(), { replace: true });
+  };
+
+  const loading = overview.isLoading || connections.isLoading;
 
   return (
     <PageLayout
-      eyebrow={copy.eyebrow}
-      title={copy.title}
-      description={copy.description}
+      eyebrow={C.eyebrow}
+      title={C.title}
+      description={C.description}
+      actions={
+        <div className="sync-progress__header-actions">
+          <label className="sync-progress__switch">
+            <input
+              type="checkbox"
+              id="sync-progress-keys"
+              checked={showKeys}
+              onChange={(e) => {
+                setShowKeys(e.target.checked);
+              }}
+            />
+            {C.showKeys}
+          </label>
+          <Button
+            tone="secondary"
+            aria-keyshortcuts="?"
+            onClick={() => {
+              setGuide({ open: true, focus: null });
+            }}
+          >
+            <span className="sync-progress__qmark" aria-hidden="true">
+              ?
+            </span>
+            {C.howToRead}
+            <kbd className="sync-progress__kbd" aria-hidden="true">
+              ?
+            </kbd>
+          </Button>
+        </div>
+      }
     >
-      {/* Filters */}
-      <div className="toolbar toolbar--compact">
-        <Input
-          aria-label={copy.filter.ariaLabel}
-          placeholder={copy.filter.placeholder}
-          value={connectionIdInput}
-          onChange={(e) => { handleFilterChange(e.target.value); }}
-        />
-      </div>
+      {loading ? null : overview.error ? null : problems.length > 0 ? (
+        <section className="sync-progress__attention" aria-label={C.filterProblem}>
+          <div className="sync-progress__attention-head">
+            <p className="sync-progress__attention-title">{C.needsLookTitle(problems.length)}</p>
+            <button
+              type="button"
+              className="sync-progress__help-link"
+              onClick={() => {
+                explain('h-late');
+              }}
+            >
+              {C.needsLookExplain}
+            </button>
+          </div>
+          <ul className="sync-progress__attention-list">
+            {problems.map(({ group, row }) => (
+              <li key={`${group.id}:${row.cursor.cursorKey}`} className="sync-progress__attention-item">
+                <StatusBadge tone={row.health.tone} withDot>
+                  {row.health.label}
+                </StatusBadge>
+                <strong>
+                  {group.connection.name}: {row.label}.
+                </strong>
+                <span>{row.health.why}</span>
+                <button
+                  type="button"
+                  className="sync-progress__help-link"
+                  onClick={() => {
+                    setSelected({ view: row, groupId: group.id });
+                  }}
+                >
+                  {C.details}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : groups.length > 0 ? (
+        <div className="sync-progress__allgood">{C.allGood}</div>
+      ) : null}
 
-      {query.isLoading ? (
-        <LoadingState
-          liveRegion="off"
-          title={copy.loading.title}
-          message={copy.loading.message}
-        />
-      ) : query.error ? (
-        <ErrorState
-          title={copy.error.title}
-          message={describeApiError(query.error, 'cursors')}
-          action={
-            <Button onClick={() => { void query.refetch(); }}>{copy.error.retry}</Button>
-          }
-        />
-      ) : (query.data?.items.length ?? 0) === 0 ? (
-        <EmptyState
-          liveRegion="off"
-          title={copy.empty.title}
-          message={
-            debouncedConnectionId
-              ? copy.empty.filtered
-              : copy.empty.none
-          }
-        />
-      ) : (
-        <>
-          <DataTable
-            caption={copy.caption}
-            columns={columns}
-            rows={query.data?.items ?? []}
-            rowKey={(cursor) => `${cursor.connectionId}:${cursor.cursorKey}`}
-            sort={sort}
-            onSortChange={setSort}
-            cardView={{
-              title: (cursor) => cursor.cursorKey,
-              subtitle: (cursor) => cursor.connectionId,
-              meta: (cursor) => formatRelativeTime(cursor.updatedAt),
+      <div className="sync-progress__toolbar">
+        <label className="field sync-progress__field">
+          <span className="field__label">{C.connection}</span>
+          <Select
+            id="sync-progress-connection"
+            value={connectionFilter}
+            onChange={(e) => {
+              setParam('connectionId', e.target.value === 'all' ? null : e.target.value);
+            }}
+          >
+            <option value="all">{C.allConnections}</option>
+            {groups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.connection.name}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="field sync-progress__field sync-progress__field--grow">
+          <span className="field__label">{C.search}</span>
+          <Input
+            id="sync-progress-search"
+            type="search"
+            placeholder={C.searchPlaceholder}
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setParam('q', e.target.value || null);
             }}
           />
+        </label>
+        <div className="field sync-progress__field">
+          <span className="field__label">{C.health}</span>
+          <SegmentedControl<HealthFilter>
+            aria-label={C.healthFilterLabel}
+            value={health}
+            onChange={(value) => {
+              setParam('health', value === 'all' ? null : value);
+            }}
+            options={[
+              { value: 'all', label: <>{C.filterAll} <span className="sync-progress__count">{counts.all}</span></> },
+              { value: 'problem', label: <>{C.filterProblem} <span className="sync-progress__count">{counts.problem}</span></> },
+              { value: 'ok', label: <>{C.filterOk} <span className="sync-progress__count">{counts.ok}</span></> },
+            ]}
+          />
+        </div>
+      </div>
 
-          <div className="pagination">
-            <span className="text-muted">
-              {interpolate(copy.pagination.range, {
-                from: offset + 1,
-                to: Math.min(offset + PAGE_SIZE, total),
-                total,
-              })}
-            </span>
-            <div className="pagination__actions">
-              <Button
-                disabled={!hasPrev}
-                onClick={() => { setOffset(offset - PAGE_SIZE); }}
-              >
-                {copy.pagination.previous}
-              </Button>
-              <Button
-                disabled={!hasNext}
-                onClick={() => { setOffset(offset + PAGE_SIZE); }}
-              >
-                {copy.pagination.next}
-              </Button>
-            </div>
-          </div>
-        </>
+      {loading ? (
+        <DataTableSkeleton rows={5} columns={4} />
+      ) : overview.error ? (
+        <ErrorState
+          title={C.errorTitle}
+          message={describeApiError(overview.error, 'cursors')}
+          action={
+            <Button
+              onClick={() => {
+                void overview.refetch();
+              }}
+            >
+              {C.retry}
+            </Button>
+          }
+        />
+      ) : groups.length === 0 ? (
+        <EmptyState liveRegion="off" title={C.emptyTitle} message={C.emptyMessage} />
+      ) : visibleGroups.length === 0 ? (
+        <div className="sync-progress__nomatch">
+          {C.noMatch}{' '}
+          <button type="button" className="sync-progress__help-link" onClick={clearFilters}>
+            {C.clearFilters}
+          </button>
+        </div>
+      ) : (
+        <div className="sync-progress__list">
+          {visibleGroups.map((g) => {
+            const bad = g.allRows.filter((r) => isProblem(r.health)).length;
+            return (
+              <section key={g.id} className="sync-progress__group" aria-label={g.connection.name}>
+                <header className="sync-progress__group-head">
+                  <span className="sync-progress__entity">
+                    <ConnectionDot name={g.connection.isSystem ? null : g.connection.name} platformType={g.connection.platformType} />
+                    <span className="sync-progress__entity-name">{g.connection.name}</span>
+                    {g.role ? <span className="sync-progress__entity-meta">{g.role}</span> : null}
+                  </span>
+                  <span className="sync-progress__group-actions">
+                    {g.pushes ? (
+                      <StatusBadge tone="neutral">{C.verdictPushes}</StatusBadge>
+                    ) : bad > 0 ? (
+                      <StatusBadge tone="warning" withDot>
+                        {C.verdictNeedLook(bad)}
+                      </StatusBadge>
+                    ) : (
+                      <StatusBadge tone="success">{C.verdictOnTime}</StatusBadge>
+                    )}
+                    {g.connection.isSystem ? null : (
+                      <Link className="sync-progress__link" to={`/connections/${g.id}`}>
+                        {C.openConnection}
+                      </Link>
+                    )}
+                  </span>
+                </header>
+                {g.pushes ? (
+                  <div className="sync-progress__note-row">
+                    <span>
+                      {C.pushesNote(g.connection.name)}{' '}
+                      <button
+                        type="button"
+                        className="sync-progress__help-link"
+                        onClick={() => {
+                          explain('h-pushes');
+                        }}
+                      >
+                        {C.why}
+                      </button>
+                    </span>
+                  </div>
+                ) : null}
+                {g.rows.length > 0 ? (
+                  <>
+                    <div className="sync-progress__cols">
+                      <button
+                        type="button"
+                        className="sync-progress__col-btn"
+                        onClick={() => {
+                          explain('s-orders');
+                        }}
+                      >
+                        {C.colSync} <span className="sync-progress__qmark" aria-hidden="true">?</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="sync-progress__col-btn"
+                        onClick={() => {
+                          explain('p-readupto');
+                        }}
+                      >
+                        {C.colProgress} <span className="sync-progress__qmark" aria-hidden="true">?</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="sync-progress__col-btn"
+                        onClick={() => {
+                          explain('h-ok');
+                        }}
+                      >
+                        {C.colHealth} <span className="sync-progress__qmark" aria-hidden="true">?</span>
+                      </button>
+                      <span>{C.colLastMoved}</span>
+                      <span />
+                    </div>
+                    {g.rows.map((row) => (
+                      <CursorRow
+                        key={row.cursor.cursorKey}
+                        view={row}
+                        showKeys={showKeys}
+                        ago={ago}
+                        formatWhen={formatWhen}
+                        onOpen={() => {
+                          setSelected({ view: row, groupId: g.id });
+                        }}
+                      />
+                    ))}
+                  </>
+                ) : null}
+                {g.writeMarks && health !== 'problem' ? (
+                  <WriteMarksBundle
+                    connectionId={g.id}
+                    summary={g.writeMarks}
+                    search={q}
+                    showKeys={showKeys}
+                    ago={ago}
+                    formatWhen={formatWhen}
+                    toView={toViewFor(g)}
+                    onOpen={(view) => {
+                      setSelected({ view, groupId: g.id });
+                    }}
+                  />
+                ) : null}
+              </section>
+            );
+          })}
+          {overview.data?.truncated ? <p className="sync-progress__note">{C.truncated}</p> : null}
+        </div>
       )}
+
+      <CursorDetailPanel
+        open={selected !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelected(null);
+        }}
+        view={selected?.view ?? null}
+        connection={selectedGroup?.connection ?? null}
+        canAct={canAct}
+        ago={ago}
+        formatWhen={formatWhen}
+        onExplain={explain}
+      />
+      <SyncGuidePanel
+        open={guide.open}
+        focusId={guide.focus}
+        onOpenChange={(open) => {
+          if (!open) setGuide({ open: false, focus: null });
+        }}
+      />
     </PageLayout>
   );
 }
