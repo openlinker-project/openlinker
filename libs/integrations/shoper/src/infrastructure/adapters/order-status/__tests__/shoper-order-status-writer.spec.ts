@@ -404,6 +404,63 @@ describe('ShoperOrderStatusWriter', () => {
     });
   });
 
+  // #3963 - a payment that arrived after the shop got the order unpaid.
+  describe('paid', () => {
+    const paid = {
+      type: 'paid' as const,
+      externalOrderId: '10',
+      amount: 389,
+      currency: 'PLN',
+      paidOn: 'Allegro',
+    };
+
+    it('should record the full order total as paid', async () => {
+      const h = setup({ order: { order_id: '10', status_id: '2', sum: '389.00', paid: '0.00', is_paid: false } });
+
+      await expect(h.writer.write(paid)).resolves.toEqual({ outcome: 'applied' });
+      expect(h.put).toHaveBeenCalledWith('/orders/10', { paid: 389 });
+    });
+
+    it('should report applied without a write when Shoper already shows the order paid', async () => {
+      const h = setup({ order: { order_id: '10', status_id: '2', sum: '389.00', paid: '389.00', is_paid: true } });
+
+      await expect(h.writer.write(paid)).resolves.toEqual({ outcome: 'applied', detail: 'already paid in the shop' });
+      expect(h.put).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['cancelled', '10'],
+      ['shipped', '7'],
+    ])('should refuse an order that is already %s', async (_label, statusId) => {
+      const h = setup({ order: { order_id: '10', status_id: statusId, sum: '389.00', is_paid: false } });
+
+      const result = await h.writer.write(paid);
+
+      expect(result.outcome).toBe('rejected');
+      expect(result.transient).toBeUndefined();
+      expect(h.put).not.toHaveBeenCalled();
+    });
+
+    it('should report a throttled write as transient', async () => {
+      const h = setup({ order: { order_id: '10', status_id: '2', sum: '389.00', is_paid: false } });
+      h.put.mockRejectedValue(new ShoperApiError(429, 'too_many_requests', 'Too many requests'));
+
+      await expect(h.writer.write(paid)).resolves.toEqual(
+        expect.objectContaining({ outcome: 'rejected', transient: true }),
+      );
+    });
+
+    it('should report a validation refusal as a real refusal', async () => {
+      const h = setup({ order: { order_id: '10', status_id: '2', sum: '389.00', is_paid: false } });
+      h.put.mockRejectedValue(new ShoperApiError(400, 'invalid_request', 'paid is read-only'));
+
+      const result = await h.writer.write(paid);
+
+      expect(result.outcome).toBe('rejected');
+      expect(result.transient).toBeUndefined();
+    });
+  });
+
   describe('in-progress', () => {
     it('should move a new order to the first active in-progress status', async () => {
       const h = setup({ order: { order_id: '10', shipping_id: '1', status_id: '1' } });

@@ -43,6 +43,30 @@ describe('deriveAllegroPaymentStatus', () => {
     expect(deriveAllegroPaymentStatus(form(payment, 'READY_FOR_PROCESSING'))).toBe('paid');
   });
 
+  describe('partial payment (#3963)', () => {
+    const withTotal = (paid: string, total: string): AllegroCheckoutPaymentFacts => ({
+      payment: { type: 'ONLINE', finishedAt: '2026-05-31T10:00:00Z', paidAmount: { amount: paid, currency: 'PLN' } },
+      status: 'READY_FOR_PROCESSING',
+      summary: { totalToPay: { amount: total, currency: 'PLN' } },
+    });
+
+    it('should return awaiting when the paid amount is below the total to pay', () => {
+      expect(deriveAllegroPaymentStatus(withTotal('100.00', '389.00'))).toBe('awaiting');
+    });
+
+    it('should return paid when the paid amount equals the total to pay', () => {
+      expect(deriveAllegroPaymentStatus(withTotal('389.00', '389.00'))).toBe('paid');
+    });
+
+    it('should return paid for an overpayment', () => {
+      expect(deriveAllegroPaymentStatus(withTotal('400.00', '389.00'))).toBe('paid');
+    });
+
+    it('should not read a rounding difference as a partial payment', () => {
+      expect(deriveAllegroPaymentStatus(withTotal('388.999', '389.00'))).toBe('paid');
+    });
+  });
+
   it('should return paid on a positive paidAmount even without a form status', () => {
     const payment: Payment = {
       type: 'WIRE_TRANSFER',

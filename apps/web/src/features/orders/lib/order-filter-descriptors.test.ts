@@ -51,6 +51,7 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
         'openReturn',
         'packBench',
         'packed',
+        'paymentNotSent',
         'phase',
         'routing',
         'search',
@@ -94,6 +95,7 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
       hasBuyerNote: 'hasBuyerNote=true',
       tag: 'tag=tag-vip',
       untagged: 'untagged=true',
+      paymentNotSent: 'paymentNotSent=true',
     };
     for (const key of NARROWING_ORDER_FILTER_KEYS) {
       const qs = qsByKey[key];

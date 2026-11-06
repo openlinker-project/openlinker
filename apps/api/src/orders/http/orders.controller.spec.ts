@@ -75,6 +75,7 @@ import {
 } from '@openlinker/core/orders';
 import { ORDER_CANCELLATION_SERVICE_TOKEN } from '../application/interfaces/order-cancellation.service.interface';
 import { ORDER_EDIT_SERVICE_TOKEN } from '../application/interfaces/order-edit.service.interface';
+import { PAYMENT_WRITEBACK_SERVICE_TOKEN } from '@openlinker/core/orders';
 import type { IOrderCancellationService } from '../application/interfaces/order-cancellation.service.interface';
 import {
   CancelCorrectionFailedError,
@@ -87,6 +88,7 @@ import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from '../application/interfac
 
 describe('OrdersController', () => {
   let controller: OrdersController;
+  let paymentWritebackMock: { retry: jest.Mock; markHandled: jest.Mock };
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
   let orderRecordService: jest.Mocked<IOrderRecordService>;
   let retryService: jest.Mocked<IOrderDestinationRetryService>;
@@ -194,6 +196,9 @@ describe('OrdersController', () => {
       findSearchTextReindexPage: jest.fn(),
       rewriteSearchText: jest.fn(),
       claimShippedNotification: jest.fn(),
+      claimPaymentWriteback: jest.fn().mockResolvedValue(true),
+      recordPaymentWriteback: jest.fn().mockResolvedValue(undefined),
+      markPaymentWritebackHandled: jest.fn().mockResolvedValue(0),
     };
 
     const mockOrderRecordService = {
@@ -376,10 +381,15 @@ describe('OrdersController', () => {
           provide: ORDER_EDIT_SERVICE_TOKEN,
           useValue: { getEditsView: jest.fn().mockResolvedValue(null) },
         },
+        {
+          provide: PAYMENT_WRITEBACK_SERVICE_TOKEN,
+          useValue: { retry: jest.fn().mockResolvedValue(1), markHandled: jest.fn().mockResolvedValue(1) },
+        },
       ],
     }).compile();
 
     controller = module.get<OrdersController>(OrdersController);
+    paymentWritebackMock = module.get(PAYMENT_WRITEBACK_SERVICE_TOKEN);
     repository = module.get(ORDER_RECORD_REPOSITORY_TOKEN);
     orderRecordService = module.get(ORDER_RECORD_SERVICE_TOKEN);
     retryService = module.get(ORDER_DESTINATION_RETRY_SERVICE_TOKEN);
@@ -904,7 +914,7 @@ describe('OrdersController', () => {
         needsAttention: 1,
         synced: 1,
         awaitingDispatch: 9,
-        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, destinationRoutingBlocked: 0,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
         waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
       });
 
@@ -923,7 +933,7 @@ describe('OrdersController', () => {
         needsAttention: 0,
         synced: 1,
         awaitingDispatch: 4,
-        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, destinationRoutingBlocked: 0,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
         waitingInOpenLinker: 3, waitingInOpenLinkerOldestAt: new Date('2026-10-23T07:00:00Z'), onPackBench: 14,
       });
 
@@ -942,7 +952,7 @@ describe('OrdersController', () => {
         needsAttention: 0,
         synced: 0,
         awaitingDispatch: 0,
-        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, destinationRoutingBlocked: 0,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
         waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
       });
 
@@ -2530,4 +2540,25 @@ describe('OrdersController', () => {
       await expect(controller.retryRouting('ol_order_001')).rejects.toMatchObject({ status: 503 });
     });
   });
+
+  // #3963 - operator actions on a payment that did not reach a shop.
+  describe('payment writeback actions', () => {
+    it('should queue the writes again and report how many', async () => {
+      paymentWritebackMock.retry.mockResolvedValue(2);
+
+      await expect(controller.retryPaymentWriteback({ internalOrderIds: ['ol_order_001'] })).resolves.toEqual({
+        enqueued: 2,
+      });
+      expect(paymentWritebackMock.retry).toHaveBeenCalledWith(['ol_order_001']);
+    });
+
+    it('should mark the orders handled and report how many changed', async () => {
+      paymentWritebackMock.markHandled.mockResolvedValue(1);
+
+      await expect(
+        controller.markPaymentWritebackHandled({ internalOrderIds: ['ol_order_001'] })
+      ).resolves.toEqual({ updated: 1 });
+    });
+  });
 });
+

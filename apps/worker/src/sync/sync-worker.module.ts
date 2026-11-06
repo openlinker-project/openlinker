@@ -59,6 +59,7 @@ import { MarketplaceOfferStockRestoreHandler } from './handlers/marketplace-offe
 import { MarketplaceOfferPauseStaleHandler } from './handlers/marketplace-offer-pause-stale.handler';
 import { MarketplaceOfferPauseStaleSweepHandler } from './handlers/marketplace-offer-pause-stale-sweep.handler';
 import { SubiektBridgeReachabilitySweepHandler } from './handlers/subiekt-bridge-reachability-sweep.handler';
+import { OrderPaymentWritebackHandler } from './handlers/order-payment-writeback.handler';
 import { MarketplaceShipmentStatusSyncHandler } from './handlers/marketplace-shipment-status-sync.handler';
 import { MarketplaceShipmentSyncByExternalIdHandler } from './handlers/marketplace-shipment-sync-by-external-id.handler';
 import { ShippingShipmentNotifyDispatchedHandler } from './handlers/shipping-shipment-notify-dispatched.handler';
@@ -170,6 +171,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceOfferPauseStaleHandler,
     MarketplaceOfferPauseStaleSweepHandler,
     SubiektBridgeReachabilitySweepHandler,
+    OrderPaymentWritebackHandler,
     MarketplaceShipmentStatusSyncHandler,
     MarketplaceShipmentSyncByExternalIdHandler,
     ShippingShipmentNotifyDispatchedHandler,

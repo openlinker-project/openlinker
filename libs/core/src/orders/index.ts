@@ -170,6 +170,26 @@ export {
 } from './domain/types/payment-method.types';
 export type { PaymentMethod } from './domain/types/payment-method.types';
 export {
+  PaymentWritebackStateValues,
+  PaymentWritebackReasonValues,
+  readPaymentWriteback,
+  isPaymentWritebackProblem,
+  hasPaymentWritebackProblem,
+  isCashOnDeliveryOrder,
+  decidePaymentWriteback,
+  paymentWritebackBlock,
+} from './domain/types/payment-writeback.types';
+export type {
+  PaymentWriteback,
+  PaymentWritebackEntry,
+  PaymentWritebackState,
+  PaymentWritebackReason,
+  PaymentWritebackDecision,
+  PaymentWritebackMode,
+  PaymentWritebackDestinationInput,
+  DecidePaymentWritebackInput,
+} from './domain/types/payment-writeback.types';
+export {
   decideBuyerEmail,
   BUYER_EMAIL_SUPPRESSION_MESSAGE,
 } from './domain/domain-services/buyer-email-gate.domain-service';
@@ -460,6 +480,12 @@ export type {
   OrderLifecycleRelayResult,
   OrderLifecycleRelayTargetResult,
 } from './application/interfaces/order-lifecycle-relay.service.interface';
+export type {
+  IPaymentWritebackService,
+  PlanPaymentWritebackInput,
+  PushPaymentWritebackInput,
+  PushPaymentWritebackOutcome,
+} from './application/interfaces/payment-writeback.service.interface';
 // #2401: the `dispatch` fulfilment-progress intent consumer.
 export type {
   FulfillmentDispatchIntent,

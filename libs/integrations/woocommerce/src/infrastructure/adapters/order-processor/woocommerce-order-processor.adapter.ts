@@ -105,6 +105,8 @@ import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
+import { WooCommerceNetworkException } from '../../../domain/exceptions/woocommerce-network.exception';
+import { WooCommerceAmbiguousWriteException } from '../../../domain/exceptions/woocommerce-ambiguous-write.exception';
 import { WooCommerceOrderProcessingException } from '../../../domain/exceptions/woocommerce-order-processing.exception';
 import { WooCommerceOrderCreateAmbiguousException } from '../../../domain/exceptions/woocommerce-order-create-ambiguous.exception';
 import { WooCommerceInvalidArgumentException } from '../../../domain/exceptions/woocommerce-invalid-argument.exception';
@@ -117,6 +119,7 @@ import type {
   WooCommerceOrderCreateRequest,
   WooCommerceOrderUpdateRequest,
   WooCommerceOrderResponse,
+  WooCommerceOrderNoteRequest,
   WooCommerceOrderLineItemResponse,
   WooCommerceOrderAddress,
   WooCommerceLineItemRequest,
@@ -598,6 +601,9 @@ export class WooCommerceOrderProcessorAdapter
           return { outcome: 'applied' };
         }
 
+        case 'paid':
+          return await this.writePaid(event);
+
         default: {
           // Unreachable in-tree: the binding is the compile break when an
           // `OrderLifecycleEvent` member is added without an arm here (#2286).
@@ -619,6 +625,64 @@ export class WooCommerceOrderProcessorAdapter
         error instanceof Error ? error.stack : undefined,
       );
       return { outcome: 'rejected', detail };
+    }
+  }
+
+  /**
+   * The `paid` arm (#3963): mark an order the shop holds as unpaid as paid
+   * with `set_paid`, and leave a private note saying who did it and why, so a
+   * merchant reading the order understands the change.
+   *
+   * Never reopens a finished order: cancelled, refunded, failed or trashed is
+   * refused. An order WC already shows as paid (`date_paid_gmt` set) is
+   * reported as applied without a write. A failed note is logged, never fatal,
+   * because the payment write already landed.
+   *
+   * A transport failure, an ambiguous write or a 5xx is reported as
+   * `transient`: `set_paid` is idempotent, so the writeback job may safely
+   * try again.
+   */
+  private async writePaid(
+    event: Extract<OrderLifecycleEvent, { type: 'paid' }>,
+  ): Promise<OrderWritebackResult> {
+    const path = `/wp-json/wc/v3/orders/${event.externalOrderId}`;
+    try {
+      const order = await this.httpClient.get<WooCommerceOrderResponse>(path);
+      const status = order.status ?? '';
+      if (['cancelled', 'refunded', 'failed', 'trash'].includes(status)) {
+        return { outcome: 'rejected', detail: `order is already ${status} in the shop` };
+      }
+      if (order.date_paid_gmt) {
+        return { outcome: 'applied', detail: 'already paid in the shop' };
+      }
+
+      await this.httpClient.put<WooCommerceOrderResponse>(path, {
+        set_paid: true,
+      } satisfies WooCommerceOrderUpdateRequest);
+
+      try {
+        await this.httpClient.post<unknown>(`${path}/notes`, {
+          note: `Marked paid by OpenLinker. ${event.paidOn} payment ${event.amount.toFixed(2)} ${event.currency}.`,
+          customer_note: false,
+        } satisfies WooCommerceOrderNoteRequest);
+      } catch (noteError) {
+        this.logger.warn(
+          `WooCommerce order ${event.externalOrderId} marked paid, but the order note failed: ` +
+            `${noteError instanceof Error ? noteError.message : String(noteError)} (connection: ${this.connection.id})`,
+        );
+      }
+      return { outcome: 'applied' };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const transient =
+        error instanceof WooCommerceNetworkException ||
+        error instanceof WooCommerceAmbiguousWriteException ||
+        (error instanceof WooCommerceHttpResponseException && error.statusCode >= 500);
+      this.logger.warn(
+        `OrderStatusWriteback 'paid' failed for WooCommerce order ${event.externalOrderId}: ${detail} ` +
+          `(connection: ${this.connection.id})`,
+      );
+      return { outcome: 'rejected', detail, ...(transient ? { transient: true } : {}) };
     }
   }
 

@@ -383,6 +383,20 @@ export interface MarketplaceOfferStockRestorePayloadV1 {
 }
 
 /**
+ * Payload for `order.paymentWriteback.push` jobs (#3963).
+ *
+ * Enqueued by `PaymentWritebackService.planAfterSync` (and its manual Retry)
+ * for ONE destination that holds the order unpaid while the source reports it
+ * paid. The destination connection is `job.connectionId`; the source is
+ * carried here because the relay excludes it as the event's origin.
+ */
+export interface OrderPaymentWritebackPushPayloadV1 {
+  schemaVersion: 1;
+  internalOrderId: string;
+  sourceConnectionId: string;
+}
+
+/**
  * Payload for `marketplace.offer.pauseStale` jobs (#1689).
  *
  * Enqueued by the `events.master.deletion` stream consumer whenever a

@@ -36,12 +36,14 @@ import { Logger } from '@openlinker/shared/logging';
 import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
 import type {
   ShoperOrderShipping,
+  ShoperOrderPayment,
+  ShoperOrderPaymentUpdate,
   ShoperOrderStatusUpdate,
   ShoperParcel,
   ShoperParcelTrackingUpdate,
   ShoperShippingRow,
 } from '../../../domain/types/shoper-api.types';
-import type { ShoperStatusWritebackTarget } from '../../../domain/types/shoper-order-status.types';
+import { SHOPER_STATUS_TYPE, type ShoperStatusWritebackTarget } from '../../../domain/types/shoper-order-status.types';
 import type {
   ShoperParcelPostOutcome,
   ShoperParcelShippingChoice,
@@ -112,6 +114,9 @@ export class ShoperOrderStatusWriter implements OrderStatusWriteback {
 
         case 'in-progress':
           return await this.writeStatus(event.externalOrderId, 'in-progress');
+
+        case 'paid':
+          return await this.writePaid(event.externalOrderId);
 
         case 'delivered':
           // Shoper's status types stop at "completed"; no status says delivered.
@@ -388,6 +393,66 @@ export class ShoperOrderStatusWriter implements OrderStatusWriteback {
   }
 
   /** The order's shipping method and status, or null when Shoper reports no such order. */
+  /**
+   * The `paid` arm (#3963): record the full order total as paid, which is what
+   * flips Shoper's read-only `is_paid`. An order Shoper already shows as paid
+   * is reported as applied; a cancelled, rejected or returned order, or one
+   * already completed, is refused so a late payment never reopens it.
+   *
+   * A throttle (429), a 5xx or a request that never got an answer is
+   * reported as `transient`; writing the same total twice is harmless, so the
+   * writeback job may retry.
+   */
+  private async writePaid(externalOrderId: string): Promise<OrderWritebackResult> {
+    let order: ShoperOrderPayment;
+    try {
+      ({ data: order } = await this.client.get<ShoperOrderPayment>(`/orders/${externalOrderId}`));
+    } catch (error) {
+      if (error instanceof ShoperApiError && error.isResourceNotFound()) {
+        return { outcome: 'rejected', detail: `Shoper order ${externalOrderId} not found` };
+      }
+      return this.paidFailure(externalOrderId, error);
+    }
+    if (order.is_paid === true) {
+      return { outcome: 'applied', detail: 'already paid in the shop' };
+    }
+
+    const currentId = toPositiveInt(order.status_id);
+    const current = currentId === null ? null : await this.reference.getStatus(String(currentId));
+    if (
+      current !== null &&
+      (current.type === SHOPER_STATUS_TYPE.NotCompleted || current.type === SHOPER_STATUS_TYPE.Completed)
+    ) {
+      return {
+        outcome: 'rejected',
+        detail: `Shoper order ${externalOrderId} is already completed or closed in the shop`,
+      };
+    }
+
+    const total = Number(order.sum);
+    if (!Number.isFinite(total) || total <= 0) {
+      return { outcome: 'rejected', detail: `Shoper order ${externalOrderId} has no total to mark as paid` };
+    }
+    try {
+      await this.client.put(`/orders/${externalOrderId}`, { paid: total } satisfies ShoperOrderPaymentUpdate);
+    } catch (error) {
+      return this.paidFailure(externalOrderId, error);
+    }
+    this.logger.log(`Marked Shoper order ${externalOrderId} paid (connection: ${this.connection.id})`);
+    return { outcome: 'applied' };
+  }
+
+  private paidFailure(externalOrderId: string, error: unknown): OrderWritebackResult {
+    const detail = error instanceof Error ? error.message : String(error);
+    const transient =
+      !(error instanceof ShoperApiError) || error.statusCode === 429 || error.statusCode >= 500;
+    this.logger.warn(
+      `OrderStatusWriteback 'paid' failed for Shoper order ${externalOrderId}: ${detail} ` +
+        `(connection: ${this.connection.id})`,
+    );
+    return { outcome: 'rejected', detail, ...(transient ? { transient: true } : {}) };
+  }
+
   private async readOrder(externalOrderId: string): Promise<ShoperOrderShipping | null> {
     try {
       const { data } = await this.client.get<ShoperOrderShipping>(`/orders/${externalOrderId}`);

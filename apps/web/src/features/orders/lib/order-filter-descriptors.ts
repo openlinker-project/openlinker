@@ -91,6 +91,8 @@ export interface OrderListFilterState {
   rateConflict: boolean;
   holdReason?: HoldReason;
   omsAttention: boolean;
+  /** #3963 - `?paymentNotSent=true`. */
+  paymentNotSent: boolean;
   /** `true` packed only, `false` not packed yet, `undefined` any. */
   packed?: boolean;
   openReturn: boolean;
@@ -272,6 +274,14 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
     isActive: (s) => s.omsAttention,
     chip: (s) => single('attention', COPY.chipOms, s.omsAttention ? COPY.chipStopped : null),
   },
+  paymentNotSent: {
+    param: 'paymentNotSent',
+    group: 'exceptions',
+    analyticsName: 'payment_not_sent',
+    isActive: (s) => s.paymentNotSent,
+    chip: (s) =>
+      single('paymentNotSent', COPY.chipPayment, s.paymentNotSent ? COPY.chipPaymentNotSent : null),
+  },
   waitingInOpenLinker: {
     param: 'waiting',
     group: 'exceptions',
@@ -390,6 +400,7 @@ export function parseOrderListFilterState(params: URLSearchParams): OrderListFil
     rateConflict: params.get('taxRate') === 'conflict',
     holdReason: isHoldReason(rawHold) ? rawHold : undefined,
     omsAttention: params.get('attention') === 'true',
+    paymentNotSent: params.get('paymentNotSent') === 'true',
     packed: rawPacked === 'true' ? true : rawPacked === 'false' ? false : undefined,
     openReturn: params.get('openReturn') === 'true',
     hasBuyerNote: params.get('hasBuyerNote') === 'true',
@@ -412,6 +423,7 @@ export const ORDER_TOGGLE_FILTER_VALUES = {
   onPackBench: 'true',
   taxRateConflict: 'conflict',
   attention: 'true',
+  paymentNotSent: 'true',
   openReturn: 'true',
   hasBuyerNote: 'true',
 } as const satisfies Partial<Record<NarrowingOrderFilterKey, string>>;
@@ -441,6 +453,7 @@ export function toOrderQueryFilters(
     taxRateConflict: state.rateConflict ? true : undefined,
     holdReason: state.holdReason,
     attention: state.omsAttention ? true : undefined,
+    paymentNotSent: state.paymentNotSent ? true : undefined,
     packed: state.packed,
     search: derived.search || undefined,
     openReturn: state.openReturn ? true : undefined,

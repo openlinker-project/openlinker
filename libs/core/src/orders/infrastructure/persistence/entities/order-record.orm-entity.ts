@@ -69,6 +69,9 @@ export interface SyncAttemptJson {
 @Index('IDX_order_records_fulfillmentBlockReason', ['fulfillmentBlockReason'], {
   where: '"fulfillmentBlockReason" IS NOT NULL',
 })
+@Index('IDX_order_records_paymentWritebackProblem', ['paymentWritebackProblem'], {
+  where: '"paymentWritebackProblem" = true',
+})
 export class OrderRecordOrmEntity {
   @PrimaryColumn({ type: 'text' })
   internalOrderId!: string;
@@ -608,6 +611,26 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'jsonb', nullable: true })
   omsAttention!: AuthorityAttentionEntry[] | null;
+
+  /**
+   * Per-destination payment writeback record (#3963), keyed by destination
+   * connection id: whether a payment that arrived after a shop got the order
+   * reached that shop. It is also the at-most-once claim (a per-key
+   * conditional `jsonb_set`). Sole writers `claimPaymentWriteback` /
+   * `recordPaymentWriteback` / `markPaymentWritebackHandled`; deliberately NOT
+   * round-tripped through `toOrm`, so a re-ingestion can never reset a claim.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  paymentWriteback!: Record<string, unknown> | null;
+
+  /**
+   * Denormalised "a shop still shows this order unpaid and OpenLinker gave up"
+   * flag (#3963), recomputed in the same statement as every write to
+   * `paymentWriteback`. It exists so the orders-list filter and its count use a
+   * tiny partial index instead of a jsonb scan (the #2943 pattern).
+   */
+  @Column({ type: 'boolean', default: false })
+  paymentWritebackProblem!: boolean;
 
   /**
    * Why the fulfilment intercept HELD this order (#2396) — or NULL when it did
