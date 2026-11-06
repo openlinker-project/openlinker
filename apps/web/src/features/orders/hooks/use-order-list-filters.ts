@@ -46,8 +46,12 @@ export const ORDER_SEARCH_DEBOUNCE_MS = 300;
 /** "Breaching soon" window — orders due within this horizon (or already overdue). */
 const BREACHING_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-/** Triage default ordering — soonest ship-by first (NULLs last), server-backed. */
-export const DEFAULT_ORDER_SORT: OrderSortValue = 'dispatchBy';
+/**
+ * Default ordering (#4026): most recently synced into OpenLinker first. Placed
+ * date (#4025) and ship-by soonest stay one click away in the Sort menu and on
+ * their column headers.
+ */
+export const DEFAULT_ORDER_SORT: OrderSortValue = 'createdAt';
 
 /**
  * First-click direction per sort key (#944): the operator-intuitive default
@@ -83,6 +87,8 @@ export interface UseOrderListFiltersResult {
   sort: OrderSortValue;
   dir: OrderSortDirection;
   applySort: (key: OrderSortValue) => void;
+  /** Set key and direction together (the Sort menu, #4026). */
+  setSort: (key: OrderSortValue, dir: OrderSortDirection) => void;
   /** Controlled search box value (every keystroke). */
   searchInput: string;
   /** What the query actually used (debounced). */
@@ -268,6 +274,16 @@ export function useOrderListFilters(): UseOrderListFiltersResult {
     [sort, dir, write],
   );
 
+  const setSort = useCallback(
+    (key: OrderSortValue, nextDir: OrderSortDirection): void => {
+      write((p) => {
+        p.set('sort', key);
+        p.set('dir', nextDir);
+      });
+    },
+    [write],
+  );
+
   const activeKeys = useMemo(() => activeOrderFilterKeys(state), [state]);
   const hasActiveFilters = ORDER_FILTER_PARAMS.some((param) => searchParams.get(param) !== null);
 
@@ -286,6 +302,7 @@ export function useOrderListFilters(): UseOrderListFiltersResult {
     sort,
     dir,
     applySort,
+    setSort,
     searchInput,
     debouncedSearch,
     setSearch,

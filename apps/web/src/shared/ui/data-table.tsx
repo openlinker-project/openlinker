@@ -51,6 +51,12 @@ export interface DataTableColumn<Row> {
    * on the column that SETS the row's height, not on every column.
    */
   lines?: number;
+  /**
+   * Fixed column width (any CSS length, e.g. `'22%'`), applied to the header
+   * cell. Set it on every column together with a `table-layout: fixed` table
+   * class so switching a filter or a page never resizes a column (#4026).
+   */
+  width?: string;
 }
 
 export interface DataTableCardView<Row> {
@@ -167,6 +173,12 @@ interface DataTableProps<Row> {
   onSortChange?: OnChangeFn<SortingState>;
   rowHref?: (row: Row) => string;
   /**
+   * Row activation without navigation (#4026): a click on the row (desktop)
+   * or the card (mobile) that does not land on a control. Wins over
+   * `expandable` and `rowHref` for the row-level click.
+   */
+  onRowClick?: (row: Row) => void;
+  /**
    * Per-row class hook (#3237). The result is APPENDED to the primitive's own
    * computed `data-table__row …` class list, never replacing it — a caller
    * cannot accidentally drop the expandable/linked/expanded state classes the
@@ -250,6 +262,13 @@ interface DataTableProps<Row> {
    */
   stickyLeftColumns?: number;
   /**
+   * Freeze the trailing N data columns to the right edge (#4026), the mirror
+   * of `stickyLeftColumns`: a row action column stays reachable while the
+   * middle columns scroll. Desktop table only; the card view ignores it. Its
+   * boundary appears only while content is hidden beneath it.
+   */
+  stickyRightColumns?: number;
+  /**
    * When true, the table body renders only rows visible inside a fixed-height
    * scroll container. Use for lists that commonly exceed ~200 rows.
    *
@@ -322,6 +341,7 @@ export function DataTable<Row>({
   estimateRowHeight = 36,
   manualSorting = false,
   onSortChange,
+  onRowClick,
   rowHref,
   rowAttributes,
   rowClassName,
@@ -332,6 +352,7 @@ export function DataTable<Row>({
   rowTestId,
   sort,
   stickyLeftColumns = 0,
+  stickyRightColumns = 0,
   virtualize = false,
 }: DataTableProps<Row>): ReactElement {
   const copy = useMessages('ui').dataTable;
@@ -378,14 +399,21 @@ export function DataTable<Row>({
   // measured from the header row because column widths are content-driven.
   const leadCellCount = expandable ? 1 : 0;
   const stickyCount = Math.min(Math.max(stickyLeftColumns, 0), columns.length);
-  const stickyActive = stickyCount > 0 && !renderCards;
-  const frozenCellCount = stickyActive ? leadCellCount + stickyCount : 0;
+  const stickyLeftActive = stickyCount > 0 && !renderCards;
+  const frozenCellCount = stickyLeftActive ? leadCellCount + stickyCount : 0;
+  const rightCount = Math.min(Math.max(stickyRightColumns, 0), columns.length - stickyCount);
+  const stickyRightActive = rightCount > 0 && !renderCards;
+  const frozenRightCount = stickyRightActive ? rightCount : 0;
+  const stickyActive = stickyLeftActive || stickyRightActive;
   const [stickyOffsets, setStickyOffsets] = useState<number[]>([]);
+  const [stickyRightOffsets, setStickyRightOffsets] = useState<number[]>([]);
   const [stickyScrolled, setStickyScrolled] = useState(false);
+  const [stickyRightHidden, setStickyRightHidden] = useState(false);
 
   useLayoutEffect(() => {
     if (!stickyActive) {
       setStickyOffsets((prev) => (prev.length === 0 ? prev : []));
+      setStickyRightOffsets((prev) => (prev.length === 0 ? prev : []));
       return;
     }
     const tableEl = tableRef.current;
@@ -403,6 +431,23 @@ export function DataTable<Row>({
       setStickyOffsets((prev) =>
         prev.length === offsets.length && prev.every((v, i) => v === offsets[i]) ? prev : offsets,
       );
+      // Right offsets, indexed from the row's end: the last cell sits at 0.
+      const right: number[] = [];
+      let accRight = 0;
+      for (let i = 0; i < frozenRightCount && i < cells.length; i += 1) {
+        right.push(accRight);
+        accRight += cells[cells.length - 1 - i].getBoundingClientRect().width;
+      }
+      setStickyRightOffsets((prev) =>
+        prev.length === right.length && prev.every((v, i) => v === right[i]) ? prev : right,
+      );
+      const container = tableEl.parentElement;
+      if (container) {
+        const hidden =
+          frozenRightCount > 0 &&
+          container.scrollLeft + container.clientWidth < container.scrollWidth - 1;
+        setStickyRightHidden((prev) => (prev === hidden ? prev : hidden));
+      }
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -410,22 +455,35 @@ export function DataTable<Row>({
     return () => {
       observer.disconnect();
     };
-  }, [stickyActive, frozenCellCount, columns, rows]);
+  }, [stickyActive, frozenCellCount, frozenRightCount, columns, rows]);
 
   const handleStickyScroll = useCallback(
     (event: UIEvent<HTMLDivElement>): void => {
       if (!stickyActive) return;
-      const next = event.currentTarget.scrollLeft > 0;
+      const el = event.currentTarget;
+      const next = el.scrollLeft > 0;
       setStickyScrolled((prev) => (prev === next ? prev : next));
+      const hidden = frozenRightCount > 0 && el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+      setStickyRightHidden((prev) => (prev === hidden ? prev : hidden));
     },
-    [stickyActive],
+    [stickyActive, frozenRightCount],
   );
 
   // `cellIndex` is the cell's position in the rendered row, counting the
   // leading expander cell (when present) as index 0.
   const stickyCellProps = useCallback(
     (cellIndex: number): { className: string; style?: CSSProperties } => {
-      if (!stickyActive || cellIndex >= frozenCellCount) return { className: '' };
+      const fromEnd = columnCount - 1 - cellIndex;
+      if (fromEnd < frozenRightCount) {
+        const isFirstRight = fromEnd === frozenRightCount - 1;
+        return {
+          className: isFirstRight
+            ? 'data-table__sticky-col data-table__sticky-col--right data-table__sticky-col--first-right'
+            : 'data-table__sticky-col data-table__sticky-col--right',
+          style: { right: stickyRightOffsets[fromEnd] ?? 0 },
+        };
+      }
+      if (!stickyLeftActive || cellIndex >= frozenCellCount) return { className: '' };
       const isLast = cellIndex === frozenCellCount - 1;
       return {
         className: isLast
@@ -434,7 +492,14 @@ export function DataTable<Row>({
         style: { left: stickyOffsets[cellIndex] ?? 0 },
       };
     },
-    [stickyActive, frozenCellCount, stickyOffsets],
+    [
+      stickyLeftActive,
+      frozenCellCount,
+      stickyOffsets,
+      frozenRightCount,
+      stickyRightOffsets,
+      columnCount,
+    ],
   );
 
   const table = useReactTable<Row>({
@@ -558,6 +623,15 @@ export function DataTable<Row>({
     [navigate],
   );
 
+  const makeRowActivateHandler = useCallback(
+    (row: Row) =>
+      (event: MouseEvent<HTMLTableRowElement | HTMLLIElement>): void => {
+        if (shouldIgnoreRowClick(event)) return;
+        onRowClick?.(row);
+      },
+    [onRowClick],
+  );
+
   const makeRowExpandHandler = useCallback(
     (key: Key) =>
       (event: MouseEvent<HTMLTableRowElement>): void => {
@@ -589,17 +663,25 @@ export function DataTable<Row>({
     const detailId = `${detailIdBase}-${String(key)}`;
     const rowClasses = [
       'data-table__row',
-      expandable ? 'data-table__row--expandable' : href ? 'data-table__row--linked' : '',
+      onRowClick
+        ? 'data-table__row--activatable'
+        : expandable
+          ? 'data-table__row--expandable'
+          : href
+            ? 'data-table__row--linked'
+            : '',
       expanded ? 'data-table__row--expanded' : '',
       rowClassName?.(row) ?? '',
     ]
       .filter(Boolean)
       .join(' ');
-    const onClick = expandable
-      ? makeRowExpandHandler(key)
-      : href
-        ? makeRowClickHandler(href)
-        : undefined;
+    const onClick = onRowClick
+      ? makeRowActivateHandler(row)
+      : expandable
+        ? makeRowExpandHandler(key)
+        : href
+          ? makeRowClickHandler(href)
+          : undefined;
     const extraRowAttributes = sanitizeRowAttributes(rowAttributes?.(row));
 
     const bodyRow = (
@@ -697,7 +779,11 @@ export function DataTable<Row>({
     <table
       ref={tableRef}
       data-testid={tableTestId}
-      className={['data-table', stickyScrolled ? 'data-table--sticky-scrolled' : '']
+      className={[
+        'data-table',
+        stickyScrolled ? 'data-table--sticky-scrolled' : '',
+        stickyRightHidden ? 'data-table--sticky-right-hidden' : '',
+      ]
         .filter(Boolean)
         .join(' ')}
     >
@@ -735,7 +821,7 @@ export function DataTable<Row>({
                   key={header.id}
                   scope="col"
                   className={classes || undefined}
-                  style={sticky.style}
+                  style={column?.width ? { ...sticky.style, width: column.width } : sticky.style}
                   aria-sort={
                     canSort
                       ? sortDir === 'asc'
@@ -868,7 +954,13 @@ export function DataTable<Row>({
                   row={row}
                   cardView={cardView}
                   href={href}
-                  onClick={href ? makeRowClickHandler(href) : undefined}
+                  onClick={
+                    onRowClick
+                      ? makeRowActivateHandler(row)
+                      : href
+                        ? makeRowClickHandler(href)
+                        : undefined
+                  }
                 />
               );
             })
