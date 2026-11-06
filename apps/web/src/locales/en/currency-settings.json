@@ -1,0 +1,69 @@
+{
+  "currencyCoverageDialog": {
+    "close": "Close",
+    "description": "How many orders already carry a reporting-currency figure. This is a coverage readout, not a health check - invoices are unaffected either way.",
+    "empty": "No orders have a reporting figure yet. New orders get one as they sync in {currency}, and existing orders are filled in within the hour.",
+    "eraLabel": "Recorded in {currency}",
+    "multipleEras": {
+      "message": "This deployment has changed its reporting currency before. Figures already recorded are never rewritten, so those orders keep the currency that was active when they were recorded.",
+      "title": "More than one reporting-currency era"
+    },
+    "title": "Analytics coverage",
+    "totalLabel": "Orders with a reporting figure"
+  },
+  "currencySettingsDialog": {
+    "actions": {
+      "cancel": "Cancel",
+      "save": "Save",
+      "saving": "Saving…"
+    },
+    "announcement": {
+      "coverageGap": "Warning: coverage gap. {currencies} cannot be converted to {selected}. Acknowledge before saving.",
+      "splitHistory": "Warning: switching to {selected} splits reporting history. Orders already recorded in {currencies} keep those figures."
+    },
+    "coverageGap": {
+      "acknowledge": "I understand.",
+      "message": {
+        "one": "{currencies} order cannot be converted to {selected} by the registered rate source. Those orders will record as not convertible rather than blocking this change.",
+        "other": "{currencies} orders cannot be converted to {selected} by the registered rate source. Those orders will record as not convertible rather than blocking this change."
+      },
+      "title": "Coverage gap"
+    },
+    "description": "Read by Analytics · never used on an invoice",
+    "reportIn": "Report in",
+    "saveError": "Could not save the reporting currency",
+    "splitHistory": {
+      "message": {
+        "one": "<count>{n}</count> order already has a figure recorded in {currency}. It keeps it - recorded figures are never rewritten - so this deployment will hold more than one reporting currency and no single figure will span them.",
+        "other": "<count>{n}</count> orders already have a figure recorded in {currency}. Those keep it - recorded figures are never rewritten - so this deployment will hold more than one reporting currency and no single figure will span them."
+      },
+      "title": "Report in {selected} from now on?"
+    },
+    "title": "Currency",
+    "toast": {
+      "description": "Analytics now reports in {selected}.",
+      "title": "Reporting currency saved"
+    }
+  },
+  "currencySettingsTile": {
+    "actions": {
+      "coverage": "Coverage",
+      "edit": "Edit"
+    },
+    "adminOnly": "Admin only",
+    "body": "Every figure on Analytics is reported in this. Invoices are unaffected - they compute their own rate.",
+    "eyebrow": "Platform",
+    "loadError": "Could not load currency settings: {message}",
+    "loading": "Loading currency settings…",
+    "notConfigured": "Not configured",
+    "rateDateRule": "Rate date rule",
+    "rateSource": "Rate source",
+    "reportingIn": "Reporting in",
+    "reportingValue": "{currency} ({qualifier})",
+    "sourceQualifier": {
+      "default": "default",
+      "env": "from env"
+    },
+    "title": "Currency"
+  }
+}

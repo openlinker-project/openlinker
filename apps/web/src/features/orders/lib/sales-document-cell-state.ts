@@ -7,11 +7,11 @@
  * cell and the mobile card the same way `order-row.ts`'s badge resolvers are.
  *
  * The word names the MOST ACTIONABLE fact, never merely the raw status — an
- * invoice the authority rejected reads "Authority rejected", not "Issued"
+ * invoice the authority rejected reads "Rejected at clearance", not "Issued"
  * beside a red dot, because colour is never the only carrier of a thing
  * needing work (mini-epic #2551 acceptance criteria).
  *
- * No platform name leaks into the word ("Authority rejected", not "KSeF
+ * No platform name leaks into the word ("Rejected at clearance", not "KSeF
  * rejected") — the vocabulary here is the SAME neutral one `libs/core`
  * enforces for the wire shape; a specific authority's name belongs on the
  * popover's identity facts (`providerType`), never on the row.

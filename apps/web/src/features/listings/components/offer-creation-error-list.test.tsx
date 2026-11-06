@@ -71,7 +71,7 @@ describe('OfferCreationErrorList', () => {
 
       // Primary message slot now carries the friendly text.
       expect(
-        screen.getByText(/verify the discriminator/i),
+        screen.getByText(/Check the safety information type/i),
       ).toBeInTheDocument();
       // Code badge remains visible for grep / debugging.
       expect(screen.getByText('SAFETY_INFO_NOT_DEFINED')).toBeInTheDocument();

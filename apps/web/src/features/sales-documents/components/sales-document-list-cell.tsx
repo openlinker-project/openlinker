@@ -21,6 +21,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../../../shared/ui/popo
 import { DocumentKindGlyph, type DocumentKind } from '../../../shared/ui/document-kind-glyph';
 import { resolveSalesDocumentRecordWord } from '../lib/resolve-sales-document-record-word';
 import type { SalesDocumentRecordView } from '../../orders';
+import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 
 export interface SalesDocumentListCellProps {
   orderId: string;
@@ -31,11 +32,6 @@ export interface SalesDocumentListCellProps {
   connectionNames: Map<string, string>;
 }
 
-const KIND_LABEL: Record<string, string> = {
-  invoice: 'Invoice',
-  'fiscal-receipt': 'Fiscal receipt',
-};
-
 const REGULATORY_TONE: Record<string, 'success' | 'info' | 'error' | 'neutral'> = {
   accepted: 'success',
   cleared: 'success',
@@ -43,15 +39,6 @@ const REGULATORY_TONE: Record<string, 'success' | 'info' | 'error' | 'neutral'> 
   'pending-submission': 'info',
   rejected: 'error',
   'not-applicable': 'neutral',
-};
-
-const REGULATORY_LABEL: Record<string, string> = {
-  accepted: 'Accepted',
-  cleared: 'Clearing',
-  submitted: 'Submitted',
-  'pending-submission': 'Awaiting submission',
-  rejected: 'Rejected',
-  'not-applicable': 'N/A',
 };
 
 function isKnownDocumentKind(kind: string): kind is DocumentKind {
@@ -100,9 +87,18 @@ export function SalesDocumentListCell({
   otherRecordCount,
   connectionNames,
 }: SalesDocumentListCellProps): ReactNode {
+  const messages = useMessages('sales-documents');
+  const copy = messages.salesDocumentListCell;
+  const plural = usePlural();
   const { word, tone } = resolveSalesDocumentRecordWord(document);
   const kind = document.kind;
-  const kindLabel = KIND_LABEL[kind] ?? kind;
+  const kindLabel =
+    kind === 'invoice'
+      ? messages.documentKind.invoice
+      : kind === 'fiscal-receipt'
+        ? messages.documentKind.fiscalReceipt
+        : kind;
+  const regulatoryLabels: Record<string, string> = copy.regulatory;
   const identity = document.identity;
   const regulatoryStatus = document.kind === 'invoice' ? document.regulatoryStatus : null;
   const failureReason = document.failureReason;
@@ -111,12 +107,14 @@ export function SalesDocumentListCell({
     otherRecordCount === 0
       ? null
       : otherRecordCount === 1
-        ? 'A second document exists for this order'
-        : `${otherRecordCount + 1} documents exist for this order`;
+        ? copy.dupeSecond
+        : plural(otherRecordCount + 1, copy.dupeMany);
 
   const redundantKindLabel = kindLabel === word;
-  const headline = redundantKindLabel ? word : `${kindLabel} · ${word}`;
-  const spokenState = redundantKindLabel ? word : `${kindLabel}: ${word}`;
+  const headline = redundantKindLabel ? word : interpolate(copy.headline, { kind: kindLabel, word });
+  const spokenState = redundantKindLabel
+    ? word
+    : interpolate(copy.spokenState, { kind: kindLabel, word });
 
   const line = (
     <span className={`sales-doc sales-doc--${tone}`}>
@@ -142,7 +140,11 @@ export function SalesDocumentListCell({
         <button
           type="button"
           className="sales-doc-trigger"
-          aria-label={dupeSentence ? `${spokenState}. ${dupeSentence}` : spokenState}
+          aria-label={
+            dupeSentence
+              ? interpolate(copy.spokenWithDupe, { state: spokenState, dupe: dupeSentence })
+              : spokenState
+          }
         >
           {line}
         </button>
@@ -160,28 +162,34 @@ export function SalesDocumentListCell({
         </div>
         <div className="sales-doc-popover__body">
           {failureReason ? <p className="sales-doc-popover__why">{failureReason}</p> : null}
-          {identity.documentNumber ? <Fact label="Number">{identity.documentNumber}</Fact> : null}
-          <Fact label="Provider">
-            {connectionNames.get(identity.connectionId) ?? identity.connectionId}
-            {identity.providerType ? ` (${identity.providerType})` : ''}
+          {identity.documentNumber ? <Fact label={copy.number}>{identity.documentNumber}</Fact> : null}
+          <Fact label={copy.provider}>
+            {identity.providerType
+              ? interpolate(copy.providerWithType, {
+                  name: connectionNames.get(identity.connectionId) ?? identity.connectionId,
+                  type: identity.providerType,
+                })
+              : (connectionNames.get(identity.connectionId) ?? identity.connectionId)}
           </Fact>
           {regulatoryStatus ? (
-            <Fact label="Clearance">
+            <Fact label={copy.clearance}>
               <span
                 className={`sales-doc-tone sales-doc-tone--${REGULATORY_TONE[regulatoryStatus] ?? 'neutral'}`}
               >
-                {REGULATORY_LABEL[regulatoryStatus] ?? regulatoryStatus}
+                {regulatoryLabels[regulatoryStatus] ?? regulatoryStatus}
               </span>
             </Fact>
           ) : null}
-          {dupeSentence ? <p className="sales-doc-popover__warn">{dupeSentence}.</p> : null}
+          {dupeSentence ? <p className="sales-doc-popover__warn">
+              {interpolate(copy.dupeWarn, { dupe: dupeSentence })}
+            </p> : null}
         </div>
         <div className="sales-doc-popover__foot">
           <Link className="orders-row-cta" to={`/orders/${orderId}#invoicing`}>
-            Open order
+            {copy.openOrder}
           </Link>
           <Link className="orders-row-cta" to={documentHref(document)}>
-            View document →
+            {copy.viewDocument}
           </Link>
         </div>
       </PopoverContent>

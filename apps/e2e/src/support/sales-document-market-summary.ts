@@ -29,6 +29,9 @@
  *
  * @module support
  */
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { SalesDocumentMarketRow } from '../api/api.types';
 
 const REST_OF_WORLD_COUNTRY = '*';
@@ -47,15 +50,64 @@ function isConfigured(row: SalesDocumentMarketRow): boolean {
   );
 }
 
+// #3879: the web app reads these sentences from `locales/en/sales-documents.json` (ADR-081).
+// This package imports no code from `apps/web`, so it reads the same file as
+// DATA and keeps local look-alikes of the four i18n helpers the function body
+// calls, under the same names, so the mirrored text stays identical.
+type PluralForms = { readonly one?: string; readonly other: string };
+type MarketSummaryCopy = {
+  readonly restOfWorld: string;
+  readonly namesAndMore: string;
+  readonly allSet: PluralForms;
+  readonly freshInstall: PluralForms;
+  readonly attention: PluralForms;
+};
+
+const EN_LOCALE_FILE = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../web/src/locales/en/sales-documents.json',
+);
+let enCopy: { marketSummary: MarketSummaryCopy } | null = null;
+
+function getMessages(namespace: 'sales-documents'): { marketSummary: MarketSummaryCopy } {
+  void namespace;
+  enCopy ??= JSON.parse(readFileSync(EN_LOCALE_FILE, 'utf8')) as { marketSummary: MarketSummaryCopy };
+  return enCopy;
+}
+
+function getLocale(): string {
+  return 'en';
+}
+
+function interpolate(template: string, params: Readonly<Record<string, string | number>>): string {
+  return template.replace(/\{(\w+)\}/g, (match, name: string) =>
+    Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : match,
+  );
+}
+
+function formatPlural(
+  count: number,
+  forms: PluralForms,
+  locale: string,
+  params: Readonly<Record<string, string | number>> = {},
+): string {
+  const form = new Intl.PluralRules(locale).select(count) === 'one' ? (forms.one ?? forms.other) : forms.other;
+  return interpolate(form, { ...params, n: new Intl.NumberFormat(locale).format(count) });
+}
+
 function countryLabel(country: string): string {
-  return country === REST_OF_WORLD_COUNTRY ? 'Rest of world' : country;
+  return country === REST_OF_WORLD_COUNTRY
+    ? getMessages('sales-documents').marketSummary.restOfWorld
+    : country;
 }
 
 function namesSentenceFragment(rows: readonly SalesDocumentMarketRow[]): string {
   const names = rows.slice(0, MAX_NAMED_MARKETS).map((row) => countryLabel(row.country));
   const remaining = rows.length - names.length;
   const joined = names.join(', ');
-  return remaining > 0 ? `${joined}, and ${remaining} more` : joined;
+  return remaining > 0
+    ? interpolate(getMessages('sales-documents').marketSummary.namesAndMore, { names: joined, count: remaining })
+    : joined;
 }
 
 export interface SalesDocumentMarketSummary {
@@ -67,16 +119,15 @@ export function summarizeSalesDocumentMarkets(
   rows: readonly SalesDocumentMarketRow[],
 ): SalesDocumentMarketSummary | null {
   if (rows.length === 0) return null;
+  const copy = getMessages('sales-documents').marketSummary;
+  const locale = getLocale();
 
   const blocked = rows.filter((row) => needsDecision(row));
 
   if (blocked.length === 0) {
     return {
       tone: 'all-set',
-      sentence:
-        rows.length === 1
-          ? 'This market is issuing its documents.'
-          : `All ${rows.length} markets are issuing their documents.`,
+      sentence: formatPlural(rows.length, copy.allSet, locale),
     };
   }
 
@@ -86,18 +137,21 @@ export function summarizeSalesDocumentMarkets(
   if (noneConfiguredAtAll && ordersArriving) {
     return {
       tone: 'fresh-install',
-      sentence:
-        blocked.length === 1
-          ? `Orders are arriving from ${namesSentenceFragment(blocked)}, and it has not been set up yet. Nothing is lost while it waits — set up routing when you're ready.`
-          : `Orders are arriving from ${blocked.length} markets — ${namesSentenceFragment(blocked)} — and none has been set up yet. Nothing is lost while they wait — set up routing when you're ready.`,
+      sentence: formatPlural(blocked.length, copy.freshInstall, locale, {
+        names: namesSentenceFragment(blocked),
+      }),
     };
   }
 
+  // #2807 review — states the fraction (mirroring the mockup's "3 of your 4
+  // markets are issuing nothing right now"), not just an enumeration: an
+  // operator reading "4 markets — CZ, FI, NO, and 1 more" has no way to tell
+  // whether that is most of their footprint or a small corner of it.
   return {
     tone: 'attention',
-    sentence:
-      blocked.length === 1
-        ? `1 of ${rows.length} markets — ${namesSentenceFragment(blocked)} — issues nothing right now. Nothing is lost while it's unconfigured — set up routing to start issuing.`
-        : `${blocked.length} of ${rows.length} markets — ${namesSentenceFragment(blocked)} — issue nothing right now. Nothing is lost while they're unconfigured — set up routing to start issuing.`,
+    sentence: formatPlural(blocked.length, copy.attention, locale, {
+      names: namesSentenceFragment(blocked),
+      total: rows.length,
+    }),
   };
 }

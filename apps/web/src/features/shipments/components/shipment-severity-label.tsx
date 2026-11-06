@@ -24,6 +24,8 @@
  */
 import type { ReactElement } from 'react';
 
+import { useMessages } from '../../../shared/i18n';
+
 import type { Shipment } from '../api/shipments.types';
 import { deriveSeverityLabel } from '../lib/shipment-severity';
 
@@ -37,16 +39,19 @@ export function ShipmentSeverityLabel({
   shipment,
   canWrite,
 }: ShipmentSeverityLabelProps): ReactElement {
+  const copy = useMessages('shipments').shipmentSeverityLabel;
   const severity = deriveSeverityLabel(shipment, canWrite);
   return (
     // Class name kept page-prefixed: the styling rule predates this component
     // and is shared with nothing else, so renaming it would be churn in
     // `index.css` for no behavioural gain.
     <span className="shipments-page__severity" data-severity={severity}>
-      <span className="sr-only">Suggested action: </span>
+      <span className="sr-only">
+        {copy.srPrefix}{' '}
+      </span>
       {/* Own element so a test/query can target the visible word alone,
           without the screen-reader prefix bleeding into its text content. */}
-      <span>{severity}</span>
+      <span>{copy.labels[severity] ?? severity}</span>
     </span>
   );
 }

@@ -46,6 +46,8 @@ export const erliPlugin: OpenLinkerPlugin = definePlugin({
   },
   platform: {
     displayName: 'Erli',
+    // Erli takes Allegro category IDs (borrowed taxonomy, #1045).
+    categoryIdSource: 'Allegro',
     setupCard: {
       title: 'Erli',
       description: 'Connect your Erli seller account with your Shop API key.',

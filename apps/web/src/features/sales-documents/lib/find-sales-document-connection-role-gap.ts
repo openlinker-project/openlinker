@@ -44,6 +44,7 @@
 import type { Connection } from '../../connections';
 import type { SalesDocumentRow } from '../api/sales-documents.types';
 import { deriveSalesDocumentRows } from './derive-sales-document-rows';
+import { getMessages, interpolate } from '../../../shared/i18n';
 
 /**
  * Same answer as {@link findSalesDocumentConnectionRoleGap}, but takes an
@@ -96,9 +97,5 @@ export function findSalesDocumentConnectionRoleGap(
 
 /** The pick-time warning sentence for a connection {@link findSalesDocumentConnectionRoleGap} named. */
 export function describeSalesDocumentConnectionRoleGap(connectionName: string): string {
-  return (
-    `${connectionName} has no role set under Connected providers yet. This rule will still ` +
-    `route on its own, but ${connectionName} will show up on the destination-warnings list ` +
-    `here until it has one.`
-  );
+  return interpolate(getMessages('sales-documents').connectionRoleGap, { name: connectionName });
 }
