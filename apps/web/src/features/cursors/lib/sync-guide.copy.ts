@@ -52,9 +52,9 @@ export const SYNC_GUIDE: readonly SyncGuideSection[] = [
     title: 'Health',
     summary: 'What the badges mean',
     items: [
-      { id: 'h-ok', name: 'On time', badge: { tone: 'success', label: 'On time' }, text: 'The sync moved recently enough for its schedule. Nothing to do.', how: 'Moved within 2× its normal interval.' },
-      { id: 'h-late', name: 'Late', badge: { tone: 'warning', label: 'Late' }, text: 'The sync is behind its schedule but still within reach. Often a busy queue or a slow shop.', how: 'Not moved for 2× to 6× its normal interval.', todo: 'Wait one more interval. If it stays late, open the run history.' },
-      { id: 'h-stuck', name: 'Not moving', badge: { tone: 'warning', label: 'Not moving' }, text: 'The sync has not moved for a long time. Orders or stock from this source may be missing in OpenLinker.', how: 'Not moved for more than 6× its normal interval.', todo: 'Open the run history to see why. Check the connection is enabled and its scheduled task is on. Then use Run now.' },
+      { id: 'h-ok', name: 'On time', badge: { tone: 'success', label: 'On time' }, text: 'The sync ran recently enough for its schedule. Nothing to do.', how: 'Moved, or ran successfully, within 2× its normal interval.' },
+      { id: 'h-late', name: 'Late', badge: { tone: 'warning', label: 'Late' }, text: 'The sync is behind its schedule but still within reach. Often a busy queue or a slow shop.', how: 'Not moved or run successfully for 2× to 6× its normal interval.', todo: 'Wait one more interval. If it stays late, open the run history.' },
+      { id: 'h-stuck', name: 'Not moving', badge: { tone: 'warning', label: 'Not moving' }, text: 'The sync has not run for a long time. Orders or stock from this source may be missing in OpenLinker.', how: 'Not moved or run successfully for more than 6× its normal interval.', todo: 'Open the run history to see why. Check the connection is enabled and its scheduled task is on. Then use Run now.' },
       { id: 'h-failing', name: 'Failing', badge: { tone: 'error', label: 'Failing' }, text: 'The last run ended with an error. The bookmark stays where it was, so nothing is skipped. It continues once the error is fixed.', how: 'The latest run for this sync failed.', todo: 'Read the error in the details. An expired token is fixed by reconnecting the account on the connection page.' },
       { id: 'h-misplaced', name: 'Wrong connection', badge: { tone: 'error', label: 'Wrong connection' }, text: 'This bookmark belongs to a different platform than the connection it sits on. A sync was run against the wrong connection, so its progress is not trustworthy.', how: 'The bookmark name names one platform, the connection is another.', todo: 'Report it to whoever maintains your installation. Do not start it over on this connection.' },
       { id: 'h-pushes', name: 'Pushes changes', badge: { tone: 'neutral', label: 'Pushes changes' }, text: 'The connection sends every change to OpenLinker the moment it happens, so there is no bookmark to keep. An empty list here is normal.', todo: 'If changes stop arriving, check the webhook on the connection page.' },
@@ -89,7 +89,7 @@ export const SYNC_GUIDE: readonly SyncGuideSection[] = [
   {
     id: 'syncs',
     title: 'Every sync on this page',
-    summary: '11 syncs',
+    summary: '13 syncs',
     items: [
       { id: 's-orders', name: 'New orders', key: 'allegro.orders.lastEventId, erli.orders.inboxCursor', everyMinutes: 5, text: 'Reads new and changed orders from the marketplace feed and creates them in OpenLinker.' },
       { id: 's-changed-orders', name: 'Changed orders (backup check)', key: 'prestashop.orders.dateUpd', everyMinutes: 10, text: 'The shop normally sends orders by webhook. This check reads every order changed after the time shown, to catch anything a webhook missed.' },
@@ -102,6 +102,7 @@ export const SYNC_GUIDE: readonly SyncGuideSection[] = [
       { id: 's-catalogue', name: 'Product catalogue', key: 'master.product.sweep:connection:…', everyMinutes: 20, canStartOver: true, text: 'Reads every product from your master catalogue, a batch per run, so names, prices and variants stay current.' },
       { id: 's-stock', name: 'Stock levels', key: 'master.inventory.sweep:connection:…', everyMinutes: 15, canStartOver: true, text: 'Reads stock for every product from your master catalogue, a batch per run. Changes go on to your marketplaces.' },
       { id: 's-deleted', name: 'Deleted products check', key: 'master.product-reconcile.sweep:connection:…', everyMinutes: 60, canStartOver: true, text: 'Looks for products deleted in your catalogue, so their listings stop selling.' },
+      { id: 's-categories', name: 'Category tree', key: 'destination.taxonomy.frontier:\u2026', text: 'Copies a marketplace or shop category tree into OpenLinker so pickers and search work without asking the platform. It runs in the background and has no fixed schedule to be late against.' },
       { id: 's-system', name: 'System checks', key: 'automation.deadlineSweep.scanOffset, inventory.reservationShortfall.*', text: 'Checks that run across all connections, such as automation deadlines and stock shortfalls. They are listed under System.' },
     ],
   },
@@ -123,7 +124,7 @@ export const SYNC_GUIDE: readonly SyncGuideSection[] = [
     items: [
       { id: 'q-empty', name: 'Why is a value empty?', text: 'For a catalogue pass, empty means the pass finished. That is the normal state between passes. For any other sync it means nothing has been read yet.' },
       { id: 'q-nobookmarks', name: 'Why does a connection have no bookmarks?', text: 'Connections that push changes to OpenLinker as they happen need no bookmark. Their list is empty by design.' },
-      { id: 'q-late-ok', name: 'Last run was OK, so why is it Not moving?', text: 'The run succeeded but found nothing new and did not advance, or it ran on a different schedule than expected. Check that the scheduled task for this sync is switched on.' },
+      { id: 'q-late-ok', name: 'Nothing moved, so why is it On time?', text: 'A run that finds nothing new leaves the bookmark where it is. The sync still ran on schedule, so its last successful run counts.' },
       { id: 'q-safe', name: 'Is Fetch again safe?', text: 'Yes. Starting a re-check over only reads. Starting a catalogue pass over re-reads every product, which adds load on the shop for a few runs, and writes nothing twice.' },
       { id: 'q-alert', name: 'Will I be told when a sync stops?', text: 'Not yet. Today the “needs a look” box on this page is the signal. Check it after an outage or when orders seem to be missing.' },
       { id: 'q-unknown', name: 'What is an unrecognised bookmark?', text: 'A bookmark this version of OpenLinker has no description for, usually from a plugin. It works normally; the page just cannot explain it.' },

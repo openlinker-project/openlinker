@@ -51,7 +51,7 @@ export function WriteMarksBundle({
     <div className="sync-progress__bundle" data-open={isOpen}>
       <button
         type="button"
-        className="sync-progress__bundle-toggle"
+        className="card-button-reset sync-progress__bundle-toggle"
         aria-expanded={isOpen}
         onClick={() => {
           setOpen(!open);

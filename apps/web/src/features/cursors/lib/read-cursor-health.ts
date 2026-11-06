@@ -45,7 +45,8 @@ export function readCursorHealth(
   ago: (iso: string) => string,
 ): CursorHealth {
   const d = describeCursor(cursor.cursorKey);
-  if (d.platform && connectionPlatform && d.platform !== connectionPlatform) {
+  // `subiekt` owns both `subiekt-gt` and `subiekt-nexo`: compare the family, not the exact type.
+  if (d.platform && connectionPlatform && connectionPlatform.split('-')[0] !== d.platform) {
     return { id: 'misplaced', label: C.healthLabel.misplaced, tone: 'error', why: C.healthWhy.misplaced(d.platform, connectionPlatform), guideId: 'h-misplaced' };
   }
   if (cursor.lastRun?.status === 'dead') {
@@ -63,12 +64,16 @@ export function readCursorHealth(
   if (cursor.family === 'sweep-cycle' && cursor.value === '') {
     return { id: 'ok', label: C.healthLabel.ok, tone: 'success', why: null, guideId: 'h-ok' };
   }
-  const minutes = (now - Date.parse(cursor.updatedAt)) / 60_000;
+  // A run that succeeded but found nothing new leaves the value - and so its
+  // `updatedAt` - untouched (a re-check over an empty set stays at 0). The
+  // sync is still on schedule, so its last successful (or running) run counts as a move.
+  const lastSeen = latestOf(cursor.updatedAt, cursor.lastRun && (cursor.lastRun.status === 'succeeded' || cursor.lastRun.status === 'running') ? cursor.lastRun.at : null);
+  const minutes = (now - Date.parse(lastSeen)) / 60_000;
   if (minutes > d.cadenceMinutes * STUCK_AFTER_INTERVALS) {
-    return { id: 'stuck', label: C.healthLabel.stuck, tone: 'warning', why: C.healthWhy.stuck(ago(cursor.updatedAt), d.cadenceMinutes), guideId: 'h-stuck' };
+    return { id: 'stuck', label: C.healthLabel.stuck, tone: 'warning', why: C.healthWhy.stuck(ago(lastSeen), d.cadenceMinutes), guideId: 'h-stuck' };
   }
   if (minutes > d.cadenceMinutes * LATE_AFTER_INTERVALS) {
-    return { id: 'late', label: C.healthLabel.late, tone: 'warning', why: C.healthWhy.late(ago(cursor.updatedAt), d.cadenceMinutes), guideId: 'h-late' };
+    return { id: 'late', label: C.healthLabel.late, tone: 'warning', why: C.healthWhy.late(ago(lastSeen), d.cadenceMinutes), guideId: 'h-late' };
   }
   return { id: 'ok', label: C.healthLabel.ok, tone: 'success', why: null, guideId: 'h-ok' };
 }
@@ -124,6 +129,10 @@ export function readCursorProgress(
   // A feed cursor is the platform's own format; the only honest statement
   // about it is WHEN it last moved, not what the value means.
   return { main: P.readUpTo(formatWhen(cursor.updatedAt)), sub: null, empty: false, guideId: 'p-readupto', parsedPass: null };
+}
+
+function latestOf(a: string, b: string | null): string {
+  return b !== null && Date.parse(b) > Date.parse(a) ? b : a;
 }
 
 function firstLine(text: string): string {

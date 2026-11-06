@@ -37378,14 +37378,21 @@ legend.analytics-settings-dialog__label {
 .sync-progress__attention-list { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
 .sync-progress__attention-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-3); font-size: 0.8125rem; color: var(--text-primary); }
 .sync-progress__attention-item strong { font-weight: 600; }
+.sync-progress__more { justify-self: start; font-size: 0.8125rem; }
 .sync-progress__allgood { padding: var(--space-3) var(--space-4); border: 1px solid var(--status-success-border); border-radius: var(--radius-lg); background: var(--status-success-soft); color: var(--status-success-strong); font-size: 0.875rem; }
 
 .sync-progress__toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-3); }
-.sync-progress__field { min-width: 0; }
+.sync-progress__field { display: grid; gap: var(--space-1); min-width: 0; }
+.sync-progress__field-label { font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); }
 .sync-progress__field--grow { flex: 1 1 220px; }
+.sync-progress__toolbar .segmented-control__option { text-transform: none; }
+.sync-progress__toolbar .segmented-control__option--active .sync-progress__count { color: inherit; }
 .sync-progress__count { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
 .sync-progress__list { display: grid; gap: var(--space-4); }
+.sync-progress__list,
+.sync-progress__attention,
+.sync-progress__detail { font-size: 0.875rem; }
 .sync-progress__group { overflow: hidden; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); }
 .sync-progress__group-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle); background: var(--bg-shell); }
 .sync-progress__entity { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; font-weight: 600; }
@@ -37399,7 +37406,7 @@ legend.analytics-settings-dialog__label {
 .sync-progress__col-btn:hover { color: var(--text-primary); }
 .sync-progress__row { width: 100%; padding: var(--space-3) var(--space-4); border: 0; border-top: 1px solid var(--border-subtle); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background var(--duration-fast) var(--ease-out); }
 .sync-progress__cols + .sync-progress__row { border-top: 0; }
-.sync-progress__row:hover { background: var(--bg-surface-hover); }
+.sync-progress__row:hover { background: var(--bg-surface-hover); color: inherit; }
 .sync-progress__row:hover .sync-progress__chev { transform: translateX(2px); color: var(--text-primary); }
 .sync-progress__what,
 .sync-progress__pos { display: grid; gap: 2px; min-width: 0; }
@@ -37408,7 +37415,7 @@ legend.analytics-settings-dialog__label {
 .sync-progress__job { font-size: 0.75rem; color: var(--text-muted); }
 .sync-progress__job--fail { color: var(--status-error-strong); }
 .sync-progress__pos-main { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-.sync-progress__pos-main--empty { font-style: italic; color: var(--text-muted); }
+.sync-progress__pos-main--empty { color: var(--text-muted); }
 .sync-progress__pos-sub { font-size: 0.75rem; color: var(--text-muted); }
 .sync-progress__time { font-size: 0.8125rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .sync-progress__chev { font-size: 1rem; color: var(--text-muted); transition: transform 200ms var(--ease-out), color var(--duration-fast); }
@@ -37420,6 +37427,7 @@ legend.analytics-settings-dialog__label {
 .sync-progress__bundle { border-top: 1px solid var(--border-subtle); }
 .sync-progress__bundle-toggle { display: flex; align-items: center; gap: var(--space-3); width: 100%; padding: var(--space-3) var(--space-4); border: 0; background: var(--bg-surface-muted); color: var(--text-secondary); font: inherit; font-size: 0.8125rem; text-align: left; cursor: pointer; }
 .sync-progress__bundle-toggle:hover { color: var(--text-primary); }
+.sync-progress__col-btn:hover { background: none; }
 .sync-progress__bundle-range { margin-left: auto; }
 .sync-progress__bundle-caret { display: inline-block; transition: transform 250ms var(--ease-out); }
 .sync-progress__bundle[data-open='true'] .sync-progress__bundle-caret { transform: rotate(90deg); }
@@ -37459,7 +37467,7 @@ legend.analytics-settings-dialog__label {
 .sync-guide__empty { margin: 0; padding: var(--space-6) var(--space-4); text-align: center; font-size: 0.8125rem; color: var(--text-secondary); }
 .sync-guide__section { border-bottom: 1px solid var(--border-subtle); }
 .sync-guide__section-head { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: var(--space-3) var(--space-4); border: 0; background: none; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
-.sync-guide__section-head:hover { background: var(--bg-surface-hover); }
+.sync-guide__section-head:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
 .sync-guide__section-title { font-size: 0.875rem; font-weight: 600; }
 .sync-guide__section-sum { margin-left: auto; font-size: 0.75rem; color: var(--text-muted); }
 .sync-guide__chev { color: var(--text-muted); transition: transform 250ms var(--ease-out); }
@@ -37479,6 +37487,18 @@ legend.analytics-settings-dialog__label {
 .sync-guide__todo b { font-weight: 600; }
 .sync-guide__meta { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); font-size: 0.75rem; color: var(--text-muted); }
 .sync-guide__key { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted); overflow-wrap: anywhere; }
+
+/* The global `button:hover` / `:active` paint the accent; these are text-like
+ * controls on `.card-button-reset`, so they keep their own colours. */
+.sync-progress__help-link:hover,
+.sync-progress__help-link:active { background: none; color: var(--text-link); text-decoration-thickness: 2px; }
+.sync-progress__col-btn:active,
+.sync-progress__bundle-toggle:active,
+.sync-progress__row:active { background: var(--bg-surface-hover); color: inherit; }
+.sync-progress__col-btn { display: inline-flex; width: auto; justify-self: start; justify-content: flex-start; }
+.sync-progress__help-link { display: inline; width: auto; }
+.sync-progress__bundle-toggle:hover { background: var(--bg-surface-muted); }
+.sync-guide__section-head:active { background: var(--bg-surface-hover); color: var(--text-primary); }
 
 @media (max-width: 767px) {
   .sync-progress__cols { display: none; }

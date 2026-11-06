@@ -26,6 +26,8 @@ export const SYNC_PROGRESS_COPY = {
   needsLookTitle: (n: number): string => (n === 1 ? '1 sync needs a look' : `${n} syncs need a look`),
   needsLookExplain: 'What do these badges mean?',
   details: 'Details',
+  showAllProblems: (n: number): string => `Show all ${n}`,
+  showFewerProblems: 'Show fewer',
   allGood: 'All syncs are on time.',
   openConnection: 'Open connection',
   colSync: 'Sync',
@@ -77,6 +79,9 @@ export const SYNC_PROGRESS_COPY = {
     shortfallDetect: 'Stock shortfall check',
     shortfallClose: 'Stock shortfall recovery',
     stockWriteOrder: 'Stock write order',
+    categoryTree: 'Category tree',
+    unsentTasks: 'Unaccepted fulfilment tasks check',
+    rerouteCheck: 'Fulfilment re-routing check',
     unrecognised: 'Unrecognised bookmark',
   },
 
@@ -89,9 +94,9 @@ export const SYNC_PROGRESS_COPY = {
     misplaced: 'Wrong connection',
   },
   healthWhy: {
-    late: (ago: string, every: number): string => `Last moved ${ago}, expected every ${every} min.`,
+    late: (ago: string, every: number): string => `Last ran ${ago}, expected every ${every} min.`,
     stuck: (ago: string, every: number): string =>
-      `No progress for ${ago.replace(/ ago$/, '')}. It normally moves every ${every} min.`,
+      `Has not run for ${ago.replace(/ ago$/, '')}. It normally runs every ${every} min.`,
     failing: (error: string): string => `Last run failed: ${error}`,
     failingNoError: 'Last run failed. Open the run history for the error.',
     misplaced: (keyPlatform: string, connPlatform: string): string =>
@@ -113,6 +118,14 @@ export const SYNC_PROGRESS_COPY = {
     stamped: (when: string): string => `Finished ${when}`,
   },
 
+  kindLine: {
+    'event-bookmark': 'Reads new events from a feed.',
+    'rolling-offset': 'Re-checks known items, one page per run.',
+    'sweep-cycle': 'Goes through the whole catalogue over several runs.',
+    'completion-stamp': 'Remembers when a pass finished.',
+    'write-order': 'Keeps older stock numbers from overwriting newer ones.',
+  },
+
   sheet: {
     description: 'Details of one sync bookmark: where it is, its runs, and what you can do.',
     whatDoesThisMean: 'What does this mean?',
@@ -123,7 +136,8 @@ export const SYNC_PROGRESS_COPY = {
     runsEvery: 'Runs every',
     everyMinutes: (n: number): string => `${n} min`,
     lastRun: 'Last run',
-    lastRunValue: (ok: boolean, ago: string): string => (ok ? `Succeeded ${ago}` : `Failed ${ago}`),
+    lastRunValue: (status: 'queued' | 'running' | 'succeeded' | 'dead', ago: string): string =>
+      status === 'dead' ? `Failed ${ago}` : status === 'running' ? `Running since ${ago}` : status === 'queued' ? `Queued ${ago}` : `Succeeded ${ago}`,
     runNow: 'Run now',
     runQueued: 'Sync queued. It runs in the next few seconds.',
     runFailed: (message: string): string => `Could not queue the sync: ${message}`,

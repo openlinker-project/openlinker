@@ -37,6 +37,8 @@ import { SyncGuidePanel } from '../../features/cursors/components/sync-guide-pan
 
 const C = SYNC_PROGRESS_COPY;
 const HEALTH_FILTERS = ['all', 'problem', 'ok'] as const;
+/** The needs-a-look box stays a summary; the full set is one click away. */
+const PROBLEMS_SHOWN = 5;
 type HealthFilter = (typeof HEALTH_FILTERS)[number];
 /** A connection with no bookmarks is described as push-fed only when it is a data source. */
 const SOURCE_CAPABILITIES = ['OrderSource', 'ProductMaster', 'InventoryMaster'];
@@ -71,6 +73,8 @@ export function CursorsListPage(): ReactElement {
   const health = readHealthFilter(searchParams.get('health'));
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
   const [showKeys, setShowKeys] = useState(false);
+  const [allProblems, setAllProblems] = useState(false);
+  // Held as ids, not as a row snapshot, so the open panel follows every refetch.
   const [selected, setSelected] = useState<{ view: CursorRowView; groupId: string } | null>(null);
   const [guide, setGuide] = useState<{ open: boolean; focus: string | null }>({ open: false, focus: null });
 
@@ -200,6 +204,9 @@ export function CursorsListPage(): ReactElement {
     .sort((a, b) => b.allRows.filter((r) => isProblem(r.health)).length - a.allRows.filter((r) => isProblem(r.health)).length);
 
   const selectedGroup = selected ? groups.find((g) => g.id === selected.groupId) ?? null : null;
+  const selectedView = selected
+    ? (selectedGroup?.allRows.find((r) => r.cursor.cursorKey === selected.view.cursor.cursorKey) ?? selected.view)
+    : null;
   const clearFilters = (): void => {
     setSearch('');
     setSearchParams(new URLSearchParams(), { replace: true });
@@ -249,7 +256,7 @@ export function CursorsListPage(): ReactElement {
             <p className="sync-progress__attention-title">{C.needsLookTitle(problems.length)}</p>
             <button
               type="button"
-              className="sync-progress__help-link"
+              className="card-button-reset sync-progress__help-link"
               onClick={() => {
                 explain('h-late');
               }}
@@ -258,7 +265,7 @@ export function CursorsListPage(): ReactElement {
             </button>
           </div>
           <ul className="sync-progress__attention-list">
-            {problems.map(({ group, row }) => (
+            {(allProblems ? problems : problems.slice(0, PROBLEMS_SHOWN)).map(({ group, row }) => (
               <li key={`${group.id}:${row.cursor.cursorKey}`} className="sync-progress__attention-item">
                 <StatusBadge tone={row.health.tone} withDot>
                   {row.health.label}
@@ -269,7 +276,7 @@ export function CursorsListPage(): ReactElement {
                 <span>{row.health.why}</span>
                 <button
                   type="button"
-                  className="sync-progress__help-link"
+                  className="card-button-reset sync-progress__help-link"
                   onClick={() => {
                     setSelected({ view: row, groupId: group.id });
                   }}
@@ -279,14 +286,26 @@ export function CursorsListPage(): ReactElement {
               </li>
             ))}
           </ul>
+          {problems.length > PROBLEMS_SHOWN ? (
+            <button
+              type="button"
+              className="card-button-reset sync-progress__help-link sync-progress__more"
+              aria-expanded={allProblems}
+              onClick={() => {
+                setAllProblems(!allProblems);
+              }}
+            >
+              {allProblems ? C.showFewerProblems : C.showAllProblems(problems.length)}
+            </button>
+          ) : null}
         </section>
       ) : groups.length > 0 ? (
         <div className="sync-progress__allgood">{C.allGood}</div>
       ) : null}
 
       <div className="sync-progress__toolbar">
-        <label className="field sync-progress__field">
-          <span className="field__label">{C.connection}</span>
+        <label className="sync-progress__field">
+          <span className="sync-progress__field-label">{C.connection}</span>
           <Select
             id="sync-progress-connection"
             value={connectionFilter}
@@ -302,8 +321,8 @@ export function CursorsListPage(): ReactElement {
             ))}
           </Select>
         </label>
-        <label className="field sync-progress__field sync-progress__field--grow">
-          <span className="field__label">{C.search}</span>
+        <label className="sync-progress__field sync-progress__field--grow">
+          <span className="sync-progress__field-label">{C.search}</span>
           <Input
             id="sync-progress-search"
             type="search"
@@ -315,8 +334,8 @@ export function CursorsListPage(): ReactElement {
             }}
           />
         </label>
-        <div className="field sync-progress__field">
-          <span className="field__label">{C.health}</span>
+        <div className="sync-progress__field">
+          <span className="sync-progress__field-label">{C.health}</span>
           <SegmentedControl<HealthFilter>
             aria-label={C.healthFilterLabel}
             value={health}
@@ -353,7 +372,7 @@ export function CursorsListPage(): ReactElement {
       ) : visibleGroups.length === 0 ? (
         <div className="sync-progress__nomatch">
           {C.noMatch}{' '}
-          <button type="button" className="sync-progress__help-link" onClick={clearFilters}>
+          <button type="button" className="card-button-reset sync-progress__help-link" onClick={clearFilters}>
             {C.clearFilters}
           </button>
         </div>
@@ -392,7 +411,7 @@ export function CursorsListPage(): ReactElement {
                       {C.pushesNote(g.connection.name)}{' '}
                       <button
                         type="button"
-                        className="sync-progress__help-link"
+                        className="card-button-reset sync-progress__help-link"
                         onClick={() => {
                           explain('h-pushes');
                         }}
@@ -407,7 +426,7 @@ export function CursorsListPage(): ReactElement {
                     <div className="sync-progress__cols">
                       <button
                         type="button"
-                        className="sync-progress__col-btn"
+                        className="card-button-reset sync-progress__col-btn"
                         onClick={() => {
                           explain('s-orders');
                         }}
@@ -416,7 +435,7 @@ export function CursorsListPage(): ReactElement {
                       </button>
                       <button
                         type="button"
-                        className="sync-progress__col-btn"
+                        className="card-button-reset sync-progress__col-btn"
                         onClick={() => {
                           explain('p-readupto');
                         }}
@@ -425,7 +444,7 @@ export function CursorsListPage(): ReactElement {
                       </button>
                       <button
                         type="button"
-                        className="sync-progress__col-btn"
+                        className="card-button-reset sync-progress__col-btn"
                         onClick={() => {
                           explain('h-ok');
                         }}
@@ -475,7 +494,7 @@ export function CursorsListPage(): ReactElement {
         onOpenChange={(open) => {
           if (!open) setSelected(null);
         }}
-        view={selected?.view ?? null}
+        view={selectedView}
         connection={selectedGroup?.connection ?? null}
         canAct={canAct}
         ago={ago}
