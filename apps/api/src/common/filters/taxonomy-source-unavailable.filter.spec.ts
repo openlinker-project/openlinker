@@ -32,7 +32,8 @@ describe('TaxonomySourceUnavailableFilter', () => {
     expect(status).toHaveBeenCalledWith(HttpStatus.UNPROCESSABLE_ENTITY);
     expect(json).toHaveBeenCalledWith({
       statusCode: HttpStatus.UNPROCESSABLE_ENTITY,
-      code: 'HTTP_422',
+      code: 'TAXONOMY_SOURCE_UNAVAILABLE',
+      params: { connectionId: 'conn-1' },
       error: 'TaxonomySourceUnavailableException',
       message: expect.stringContaining('no CategoryBrowser capability'),
     });

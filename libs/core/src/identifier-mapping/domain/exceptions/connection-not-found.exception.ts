@@ -8,7 +8,7 @@
  * @module libs/core/src/identifier-mapping/domain/exceptions
  */
 export class ConnectionNotFoundException extends Error {
-  constructor(connectionId: string) {
+  constructor(public readonly connectionId: string) {
     super(`Connection not found: ${connectionId}`);
     this.name = 'ConnectionNotFoundException';
     Error.captureStackTrace(this, this.constructor);
