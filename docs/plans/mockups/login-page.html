@@ -2238,7 +2238,8 @@ html[data-density='compact'] .status-badge{
   .topbar__links a:not(:last-child) { display:none; }
 }
 @media (prefers-reduced-motion: reduce) { .topbar__dot::after { animation:none; } }
-@media (max-width: 600px) { .topbar__links { display:none; } .topbar__links + .topbar__controls { border-left:0; padding-left:0; } .topbar__controls { margin-left:auto; gap:6px; } .topbar__inner { gap:10px; } .topbar .language-switch__trigger .language-switch__chevron { display:none; } }
+@media (max-width: 600px) { .topbar__links { display:none; } .topbar__links + .topbar__controls { border-left:0; padding-left:0; } .topbar__controls { margin-left:auto; gap:6px; } .topbar__inner { gap:10px; } .topbar .language-switch__trigger .language-switch__chevron { display:none; } .topbar .language-switch__trigger { padding-right:11px; } }
+@media (hover: none) and (pointer: coarse) { .topbar .language-switch__trigger { position:relative; min-width:0; min-height:0; height:40px; gap:8px; padding:0 12px 0 11px; } .topbar .language-switch__trigger::after { content:''; position:absolute; inset:-2px; } .topbar .language-switch__flag-wrap, .topbar .language-flag { width:26px; height:18px; } .topbar .theme-switch__icon { width:18px; height:18px; } .topbar .language-switch__chevron { width:11px; height:11px; } }
 
 textarea,
 .textarea{
@@ -3279,7 +3280,8 @@ function ThemeSwitch({ placement = 'down', locale }) {
     else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); move(activeIndex + 1); }
     else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); move(activeIndex - 1); }
   };
-  const revealed = pointing !== null || keyboard;
+  const [touch] = useState(() => window.matchMedia('(hover: none)').matches);
+  const revealed = touch || pointing !== null || keyboard;
   const chevron = <path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />;
   return (
     <div className={['language-switch', 'theme-switch', open ? 'is-open' : ''].filter(Boolean).join(' ')} ref={rootRef}>

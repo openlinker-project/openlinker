@@ -122,6 +122,12 @@ export function ThemeSwitch({
   // keyboard-focused; at rest the caption states the current mode instead.
   const [pointing, setPointing] = useState<number | null>(null);
   const [keyboard, setKeyboard] = useState(false);
+  const [touch] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(hover: none)').matches
+  );
   const groupId = useId();
   const headId = useId();
   const activeIndex = Math.max(0, OPTIONS.indexOf(context?.theme ?? 'system'));
@@ -160,7 +166,8 @@ export function ThemeSwitch({
   if (context === null) return null;
   const { theme, setTheme } = context;
   const nameOf = (value: Theme): string => copy[value];
-  const revealed = pointing !== null || keyboard;
+  // A touch screen has no hover to reveal the names with, so they stay shown.
+  const revealed = touch || pointing !== null || keyboard;
 
   function close(): void {
     setOpen(false);

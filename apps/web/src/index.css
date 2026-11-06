@@ -7208,6 +7208,46 @@ html:has(.login-stage) {
   .login-topbar .language-switch__trigger .language-switch__chevron {
     display: none;
   }
+
+  .login-topbar .language-switch__trigger {
+    padding-right: 11px;
+  }
+}
+
+/* Touch screens: the global 44px button floor turned the two pills into
+ * lumpy near-circles with tiny icons. A proper 40px capsule with larger icons
+ * instead; a 2px invisible ring brings the tap target to 44px. */
+@media (hover: none) and (pointer: coarse) {
+  .login-topbar .language-switch__trigger {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    height: 40px;
+    gap: 8px;
+    padding: 0 12px 0 11px;
+  }
+
+  .login-topbar .language-switch__trigger::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+  }
+
+  .login-topbar .language-switch__flag-wrap,
+  .login-topbar .language-flag {
+    width: 26px;
+    height: 18px;
+  }
+
+  .login-topbar .theme-switch__icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .login-topbar .language-switch__chevron {
+    width: 11px;
+    height: 11px;
+  }
 }
 
 /* Settings > Login page: a wider preview than the 2:1 buyer-email layout, which fits a message,
