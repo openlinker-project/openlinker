@@ -1,0 +1,13 @@
+{
+  "inpostCredentialsPanel.cancel": 10,
+  "inpostCredentialsPanel.rotate": 30,
+  "inpostCredentialsPanel.save": 24,
+  "inpostWebhookRunbook.copyEmail": 32,
+  "inpostWebhookRunbook.generate": 36,
+  "inpostWebhookRunbook.generating": 36,
+  "inpostWebhookRunbook.rotate": 36,
+  "plugin.setupCard.badge": 24,
+  "settings.environment.production": 20,
+  "settings.environment.sandbox": 20,
+  "settings.environment.unset": 20
+}

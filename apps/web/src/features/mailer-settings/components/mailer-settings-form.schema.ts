@@ -12,6 +12,7 @@
  * @module apps/web/src/features/mailer-settings/components
  */
 import { z } from 'zod';
+import { interpolate, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import { MailerTransportValues } from '../api/mailer-settings.types';
 
 export const MAX_HOST_LENGTH = 255;
@@ -45,65 +46,73 @@ function isValidFromAddress(value: string): boolean {
   return match !== null && EMAIL_PATTERN.test(match[1]);
 }
 
-export const mailerSettingsFormSchema = z
-  .object({
-    transport: z.enum(MailerTransportValues),
-    smtpHost: z.string().trim().max(MAX_HOST_LENGTH, `Host is too long (max ${MAX_HOST_LENGTH} characters)`),
-    smtpPort: z.string().trim(),
-    smtpSecure: z.boolean(),
-    fromAddress: z
-      .string()
-      .trim()
-      .max(MAX_FROM_ADDRESS_LENGTH, `From address is too long (max ${MAX_FROM_ADDRESS_LENGTH} characters)`),
-    password: z
-      .string()
-      .trim()
-      .max(MAX_PASSWORD_LENGTH, `Password is too long (max ${MAX_PASSWORD_LENGTH} characters)`),
-  })
-  .superRefine((values, ctx) => {
-    if (values.transport !== 'smtp') {
-      return;
-    }
+export type MailerSettingsFormSchemaCopy = ResolvedCopy<
+  Messages['mailer-settings']
+>['mailerSettingsFormSchema'];
 
-    if (values.smtpHost.length === 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['smtpHost'],
-        message: 'Host is required for SMTP transport',
-      });
-    }
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- the zod type is inferred from this builder
+export function createMailerSettingsFormSchema(copy: MailerSettingsFormSchemaCopy) {
+  return z
+    .object({
+      transport: z.enum(MailerTransportValues),
+      smtpHost: z.string().trim().max(MAX_HOST_LENGTH, interpolate(copy.hostTooLong, { max: MAX_HOST_LENGTH })),
+      smtpPort: z.string().trim(),
+      smtpSecure: z.boolean(),
+      fromAddress: z
+        .string()
+        .trim()
+        .max(MAX_FROM_ADDRESS_LENGTH, interpolate(copy.fromTooLong, { max: MAX_FROM_ADDRESS_LENGTH })),
+      password: z
+        .string()
+        .trim()
+        .max(MAX_PASSWORD_LENGTH, interpolate(copy.passwordTooLong, { max: MAX_PASSWORD_LENGTH })),
+    })
+    .superRefine((values, ctx) => {
+      if (values.transport !== 'smtp') {
+        return;
+      }
 
-    if (values.smtpPort.length === 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['smtpPort'],
-        message: 'Port is required for SMTP transport',
-      });
-    } else {
-      const port = Number(values.smtpPort);
-      if (!Number.isInteger(port) || port < MIN_PORT || port > MAX_PORT) {
+      if (values.smtpHost.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['smtpHost'],
+          message: copy.hostRequired,
+        });
+      }
+
+      if (values.smtpPort.length === 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['smtpPort'],
-          message: `Port must be an integer between ${MIN_PORT} and ${MAX_PORT}`,
+          message: copy.portRequired,
+        });
+      } else {
+        const port = Number(values.smtpPort);
+        if (!Number.isInteger(port) || port < MIN_PORT || port > MAX_PORT) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['smtpPort'],
+            message: interpolate(copy.portRange, { min: MIN_PORT, max: MAX_PORT }),
+          });
+        }
+      }
+
+      if (values.fromAddress.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['fromAddress'],
+          message: copy.fromRequired,
+        });
+      } else if (!isValidFromAddress(values.fromAddress)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['fromAddress'],
+          message: copy.fromInvalid,
         });
       }
-    }
+    });
+}
 
-    if (values.fromAddress.length === 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['fromAddress'],
-        message: 'From address is required for SMTP transport',
-      });
-    } else if (!isValidFromAddress(values.fromAddress)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['fromAddress'],
-        message: 'Enter a valid email address, optionally with a display name (e.g. "OpenLinker <noreply@example.com>")',
-      });
-    }
-  });
-
-export type MailerSettingsFormValues = z.input<typeof mailerSettingsFormSchema>;
-export type MailerSettingsFormSubmission = z.output<typeof mailerSettingsFormSchema>;
+type MailerSettingsFormSchema = ReturnType<typeof createMailerSettingsFormSchema>;
+export type MailerSettingsFormValues = z.input<MailerSettingsFormSchema>;
+export type MailerSettingsFormSubmission = z.output<MailerSettingsFormSchema>;
