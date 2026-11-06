@@ -31,7 +31,7 @@ import {
   ATTENTION_UNKNOWN_COPY,
   attentionTitle,
   type AttentionTitleParams,
-} from './attention-reason.copy';
+} from './attention-reason-text';
 import {
   ATTENTION_REASON_MIRROR,
   attentionBadgeTone,

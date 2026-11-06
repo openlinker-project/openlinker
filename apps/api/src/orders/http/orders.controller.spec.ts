@@ -87,6 +87,7 @@ import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from '../application/interfac
 
 describe('OrdersController', () => {
   let controller: OrdersController;
+  let listOpenReturnOrderIds: jest.Mock;
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
   let orderRecordService: jest.Mocked<IOrderRecordService>;
   let retryService: jest.Mocked<IOrderDestinationRetryService>;
@@ -280,6 +281,7 @@ describe('OrdersController', () => {
       assertTestFixturesAllowed: jest.fn(),
     };
 
+    listOpenReturnOrderIds = jest.fn().mockResolvedValue([]);
     const module: TestingModule = await Test.createTestingModule({
       controllers: [OrdersController],
       providers: [
@@ -351,7 +353,10 @@ describe('OrdersController', () => {
         },
         {
           provide: RETURNS_SERVICE_TOKEN,
-          useValue: { getOpenReturnSummariesForOrders: jest.fn().mockResolvedValue(new Map()) },
+          useValue: {
+            getOpenReturnSummariesForOrders: jest.fn().mockResolvedValue(new Map()),
+            listOpenReturnOrderIds: listOpenReturnOrderIds,
+          },
         },
         {
           provide: ORDER_TAG_SERVICE_TOKEN,
@@ -906,6 +911,7 @@ describe('OrdersController', () => {
         awaitingDispatch: 9,
         salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, destinationRoutingBlocked: 0,
         waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
+        openReturn: 0, hasBuyerNote: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
       });
 
       const result = await controller.statusSummary({});
@@ -925,6 +931,7 @@ describe('OrdersController', () => {
         awaitingDispatch: 4,
         salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, destinationRoutingBlocked: 0,
         waitingInOpenLinker: 3, waitingInOpenLinkerOldestAt: new Date('2026-10-23T07:00:00Z'), onPackBench: 14,
+        openReturn: 0, hasBuyerNote: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
       });
 
       const result = await controller.statusSummary({});
@@ -944,6 +951,7 @@ describe('OrdersController', () => {
         awaitingDispatch: 0,
         salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, destinationRoutingBlocked: 0,
         waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
+        openReturn: 0, hasBuyerNote: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
       });
 
       await controller.statusSummary({
@@ -956,6 +964,40 @@ describe('OrdersController', () => {
           sourceConnectionId: 'conn-001',
           createdFrom: new Date('2026-01-01T00:00:00Z'),
         })
+      );
+    });
+    it('should pass the open-return id list to the repository and report the new counts (#4025)', async () => {
+      listOpenReturnOrderIds.mockResolvedValue(['ol_order_a', 'ol_order_b']);
+      repository.countByHealth.mockResolvedValue({
+        total: 4, sourceDeleted: 0, awaitingMapping: 0, needsAttention: 0, synced: 1, awaitingDispatch: 3,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, destinationRoutingBlocked: 0,
+        waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
+        openReturn: 2, hasBuyerNote: 1, dueWithin24h: 3, bySource: { 'conn-001': 4 },
+        attention: { lateToShip: 3, stuck: 0, toHandle: 2 },
+      });
+
+      const result = await controller.statusSummary({});
+
+      expect(repository.countByHealth).toHaveBeenCalledWith(
+        expect.objectContaining({ openReturnOrderIds: ['ol_order_a', 'ol_order_b'] })
+      );
+      expect(result.openReturn).toBe(2);
+      expect(result.bySource).toEqual({ 'conn-001': 4 });
+      expect(result.attention).toEqual({ lateToShip: 3, stuck: 0, toHandle: 2 });
+    });
+
+    it('should still answer with an empty open-return list when the returns read fails (#4025)', async () => {
+      listOpenReturnOrderIds.mockRejectedValue(new Error('returns down'));
+      repository.countByHealth.mockResolvedValue({
+        total: 0, sourceDeleted: 0, awaitingMapping: 0, needsAttention: 0, synced: 0, awaitingDispatch: 0,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, destinationRoutingBlocked: 0,
+        waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
+        openReturn: 0, hasBuyerNote: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
+      });
+
+      await expect(controller.statusSummary({})).resolves.toBeDefined();
+      expect(repository.countByHealth).toHaveBeenCalledWith(
+        expect.objectContaining({ openReturnOrderIds: [] })
       );
     });
   });

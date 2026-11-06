@@ -16,8 +16,10 @@ import type { Connection } from '../../../features/connections';
 import { useConfigureWebhooksMutation } from '../../../features/connections';
 import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { renderRich } from '../../../shared/i18n';
+import { useErliMessages } from '../messages';
 
 interface ErliConnectionActionsProps {
   connection: Connection;
@@ -30,6 +32,7 @@ export function ErliConnectionActions({
 }: ErliConnectionActionsProps): ReactElement {
   const configureWebhooks = useConfigureWebhooksMutation();
   const { showToast } = useToast();
+  const copy = useErliMessages().erliConnectionActions;
 
   const config =
     typeof connection.config === 'object' && connection.config !== null
@@ -47,27 +50,26 @@ export function ErliConnectionActions({
       if (result.webhooksConfigured && result.testPingTriggered) {
         showToast({
           tone: 'success',
-          title: 'Webhooks configured',
-          description: 'Erli webhook subscriptions registered and verified by a test ping.',
+          title: copy.toast.configured.title,
+          description: copy.toast.configured.description,
         });
       } else if (result.webhooksConfigured) {
         showToast({
           tone: 'warning',
-          title: 'Webhooks configured (ping not received)',
-          description:
-            'Subscriptions registered but the test ping did not arrive. Click again to retry, or wait for the next real event.',
+          title: copy.toast.pingMissing.title,
+          description: copy.toast.pingMissing.description,
         });
       } else {
         showToast({
           tone: 'error',
-          title: 'Configuration push failed',
-          description: result.warning ?? 'Erli did not accept the webhook registration.',
+          title: copy.toast.failed.title,
+          description: result.warning ?? copy.toast.failed.notAccepted,
         });
       }
     } catch (error) {
       showToast({
         tone: 'error',
-        title: 'Configuration push failed',
+        title: copy.toast.failed.title,
         description: (error as Error).message,
       });
     }
@@ -76,32 +78,30 @@ export function ErliConnectionActions({
   return (
     <div className="action-list__item">
       <div>
-        <strong>Configure webhooks</strong>
+        <strong>{copy.title}</strong>
         {hasCallbackBaseUrl ? (
           <p className="muted-text">
-            Register Erli webhook subscriptions and rotate the webhook secret.
-            {webhooksConfigured ? ' Currently configured ✓' : ''}
+            {copy.description}
+            {webhooksConfigured ? ` ${copy.currentlyConfigured}` : ''}
           </p>
         ) : (
           <p className="muted-text">
-            Set the <strong>Callback URL</strong> field on this connection before configuring
-            webhooks. Open <strong>Edit connection</strong>, fill in the Callback URL (the public
-            OpenLinker URL Erli posts webhooks to), save, then return here.
+            {renderRich(copy.callbackUrlMissing, { strong: (text) => <strong>{text}</strong> })}
           </p>
         )}
       </div>
       {hasCallbackBaseUrl && (
-        <ReadOnlyLock active={readOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+        <ReadOnlyLock active={readOnly} message={demoReadOnlyActionMessage()}>
           <Button
             tone={webhooksConfigured ? 'secondary' : 'primary'}
             disabled={configureWebhooks.isPending || readOnly}
             onClick={() => void handleConfigureWebhooks()}
           >
             {configureWebhooks.isPending
-              ? 'Configuring...'
+              ? copy.configuring
               : webhooksConfigured
-                ? 'Re-configure webhooks'
-                : 'Configure webhooks'}
+                ? copy.reconfigure
+                : copy.configure}
           </Button>
         </ReadOnlyLock>
       )}

@@ -14,6 +14,7 @@
  *
  * @module apps/web/src/features/listings/components
  */
+import { getMessages, interpolate } from '../../../shared/i18n';
 import type { CatalogProduct, CategoryParameter, OfferParameter } from '../api/listings.types';
 import type {
   CategoryParameterFormValues,
@@ -162,6 +163,7 @@ export function collectUnmatchedBrandHints(
   const target = variant.brand.toLowerCase().trim();
   if (!target) return {};
 
+  const copy = getMessages('listings').autoPrefillParameters;
   const hints: Record<string, string> = {};
   for (const param of parameters) {
     if (filled[param.id] !== undefined) continue;
@@ -169,8 +171,7 @@ export function collectUnmatchedBrandHints(
     if (!BRAND_NAME_PATTERNS.includes(nameLower)) continue;
     if (param.type !== 'dictionary') continue;
     if (param.restrictions.multipleChoices) continue;
-    hints[param.id] =
-      `Variant brand "${variant.brand}" — no exact match in Allegro brand list; pick manually.`;
+    hints[param.id] = interpolate(copy.unmatchedBrand, { brand: variant.brand });
   }
   return hints;
 }

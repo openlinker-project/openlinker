@@ -17,10 +17,12 @@
  * unlabelled badge, and one added only to the FE type-checks against a value the
  * API will never send. A prose "keep in sync" comment is not enforcement.
  *
- * Rule B — COPY COVERAGE. `DESTINATION_ROUTING_REASON_COPY` must carry exactly
- *   one entry per reason. Membership only: the `satisfies Record<…>` in the copy
- *   file enforces it against the FRONTEND type, and this check is what enforces
- *   it against the BACKEND union, which the type system cannot see.
+ * Rule B — COPY COVERAGE. `orders.destinationRouting.reasons` in
+ *   apps/web/src/locales/en/orders.json must carry exactly one entry per reason.
+ *   Membership only: the `satisfies Record<…>` tone table in
+ *   `destination-routing.ts` and the typed copy lookup enforce it against the
+ *   FRONTEND type, and this check is what enforces it against the BACKEND
+ *   union, which the type system cannot see.
  *
  * ORDER is compared even though nothing here derives meaning from it — unlike
  * `check-return-stage-mirror.mjs`, where the array order IS the stage ordinal.
@@ -67,18 +69,28 @@ const BACKEND_FILE = join(
   'destination-routing-block.types.ts',
 );
 const FRONTEND_FILE = join('apps', 'web', 'src', 'features', 'orders', 'api', 'orders.types.ts');
-const COPY_FILE = join(
-  'apps',
-  'web',
-  'src',
-  'features',
-  'orders',
-  'lib',
-  'destination-routing-copy.ts',
-);
+const COPY_FILE = join('apps', 'web', 'src', 'locales', 'en', 'orders.json');
+const COPY_PATH = ['destinationRouting', 'reasons'];
 
 const DECLARATION = 'DestinationRoutingBlockReasonValues';
-const COPY_DECLARATION = 'DESTINATION_ROUTING_REASON_COPY';
+const COPY_DECLARATION = COPY_PATH.join('.');
+
+/**
+ * The keys of the copy object at `path` in a locale JSON file, with the 1-based
+ * line its first key sits on. `null` when the path is absent or not an object.
+ */
+export function readJsonCopyKeys(src, path) {
+  let node = JSON.parse(src);
+  for (const segment of path) {
+    if (node === null || typeof node !== 'object' || !(segment in node)) return null;
+    node = node[segment];
+  }
+  if (node === null || typeof node !== 'object' || Array.isArray(node)) return null;
+  const keys = Object.keys(node);
+  const first = keys.length > 0 ? src.indexOf(`"${keys[0]}"`) : -1;
+  const line = first < 0 ? 1 : src.slice(0, first).split('\n').length;
+  return { line, keys };
+}
 const DOCS_REF = 'docs/architecture-overview.md § Orders';
 
 
@@ -99,8 +111,7 @@ const DOCS_REF = 'docs/architecture-overview.md § Orders';
  * Comments are therefore blanked to EQUAL-LENGTH whitespace before the bracket
  * is located, which keeps every offset — and so the reported line number —
  * identical to the raw source. Blanking is safe for a value array (kebab-case
- * literals); it is deliberately NOT applied to `parseCopyKeys`, whose input is
- * operator prose that may legitimately contain `//` or `*` inside a string.
+ * literals); copy is read from the locale JSON, so no prose ever reaches this parser.
  *
  * The sibling carries the same latent weakness and is left alone: it passes on
  * its current inputs, and editing a shipped invariant to fix a bug it does not
@@ -131,81 +142,6 @@ function parseReasonValues(content, name) {
 
   const line = content.slice(0, declMatch.index).split('\n').length;
   return { line, values };
-}
-
-/**
- * Extract the TOP-LEVEL keys of `export const <name> = { ... } satisfies ...;`.
- *
- * Brace-matched rather than regex-scanned, because a copy entry is itself an
- * object and a nested key must not be read as a reason id. String bodies are
- * skipped so a brace or a quote inside operator copy cannot end the scan early.
- * Returns `{ line, keys }`, or `null` when the declaration is absent.
- */
-function parseCopyKeys(content, name) {
-  const declRe = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*\\{`);
-  const declMatch = declRe.exec(content);
-  if (!declMatch) return null;
-
-  const open = declMatch.index + declMatch[0].length - 1;
-  const keys = [];
-  let depth = 0;
-  let quote = null;
-  let pendingKey = null;
-
-  for (let i = open; i < content.length; i += 1) {
-    const ch = content[i];
-
-    if (quote !== null) {
-      if (ch === '\\') {
-        i += 1;
-      } else if (ch === quote) {
-        quote = null;
-      }
-      continue;
-    }
-
-    if (ch === '/' && content[i + 1] === '/') {
-      i = content.indexOf('\n', i);
-      if (i === -1) break;
-      continue;
-    }
-    if (ch === '/' && content[i + 1] === '*') {
-      const end = content.indexOf('*/', i + 2);
-      if (end === -1) break;
-      i = end + 1;
-      continue;
-    }
-
-    if (ch === "'" || ch === '"') {
-      const end = findStringEnd(content, i);
-      if (end === -1) break;
-      if (depth === 1) pendingKey = content.slice(i + 1, end);
-      i = end;
-      continue;
-    }
-
-    if (ch === '{') {
-      depth += 1;
-      continue;
-    }
-    if (ch === '}') {
-      depth -= 1;
-      if (depth === 0) break;
-      continue;
-    }
-
-    if (ch === ':' && depth === 1 && pendingKey !== null) {
-      keys.push(pendingKey);
-      pendingKey = null;
-      continue;
-    }
-    if (ch === ',' && depth === 1) {
-      pendingKey = null;
-    }
-  }
-
-  const line = content.slice(0, declMatch.index).split('\n').length;
-  return { line, keys };
 }
 
 /** Index of the closing quote of the string literal starting at `start`. */
@@ -294,8 +230,10 @@ function selfCheck() {
   );
   expect('bracket in a comment does not truncate', bracketed?.values.join(','), 'one,two');
   expect('line number survives comment blanking', parseReasonValues(`\n\nexport const X = ['a'] as const;`, 'X')?.line, 3);
-  const keys = parseCopyKeys(`export const C = {\n  'one': { label: 'x' },\n} as const satisfies R;`, 'C');
-  expect('parser reads copy keys', keys?.keys.join(','), 'one');
+  const json = '{\n  "a": {\n    "b": {\n      "one": { "label": "x" }\n    }\n  }\n}';
+  expect('json reader reads copy keys', readJsonCopyKeys(json, ['a', 'b'])?.keys.join(','), 'one');
+  expect('json reader reports the first key line', readJsonCopyKeys(json, ['a', 'b'])?.line, 4);
+  expect('json reader rejects a missing path', readJsonCopyKeys(json, ['a', 'c']), null);
 
   if (failures.length > 0) {
     console.error('✗ check-destination-routing-reason-mirror self-check FAILED');
@@ -319,7 +257,7 @@ async function main() {
 
   const backend = parseReasonValues(backendSrc, DECLARATION);
   const frontend = parseReasonValues(frontendSrc, DECLARATION);
-  const copy = parseCopyKeys(copySrc, COPY_DECLARATION);
+  const copy = readJsonCopyKeys(copySrc, COPY_PATH);
 
   // An EMPTY parse is fatal, not merely a parse that found no declaration.
   //
@@ -342,7 +280,7 @@ async function main() {
   needValues(backend, BACKEND_FILE);
   needValues(frontend, FRONTEND_FILE);
   if (!copy) {
-    fatal.push(`${COPY_FILE}: could not find \`export const ${COPY_DECLARATION} = {\``);
+    fatal.push(`${COPY_FILE}: could not find the \`${COPY_DECLARATION}\` object`);
   } else if (copy.keys.length === 0) {
     fatal.push(`${COPY_FILE}:${copy.line}: \`${COPY_DECLARATION}\` parsed as EMPTY — refusing to compare`);
   }

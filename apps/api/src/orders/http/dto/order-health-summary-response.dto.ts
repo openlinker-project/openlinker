@@ -13,6 +13,31 @@
  */
 import { ApiProperty } from '@nestjs/swagger';
 
+/**
+ * The three "Needs a look" group totals (#4025). Each is a count of DISTINCT
+ * orders matching ANY filter in its group, so it is NOT the sum of the
+ * per-filter counts beside it.
+ */
+export class OrderAttentionSummaryResponseDto {
+  @ApiProperty({
+    description:
+      'Orders that are SLA overdue, SLA at risk, or due to ship within 24 hours (union, each order once)',
+  })
+  lateToShip!: number;
+
+  @ApiProperty({
+    description:
+      'Orders with a blocked sales document, an OpenLinker inert state, a routing block, a wait in ' +
+      'OpenLinker or a tax rate conflict (union, each order once)',
+  })
+  stuck!: number;
+
+  @ApiProperty({
+    description: 'Orders on the pack bench, with a buyer note, or with an open return (union, each order once)',
+  })
+  toHandle!: number;
+}
+
 export class OrderHealthSummaryResponseDto {
   @ApiProperty({ description: 'Total order records in scope (sum of the five buckets)' })
   total!: number;
@@ -113,4 +138,40 @@ export class OrderHealthSummaryResponseDto {
       'trigger model, so counting it as blocked would put a large red number on a healthy install.',
   })
   salesDocumentIssuedOnRequest!: number;
+
+  @ApiProperty({
+    description:
+      'Orders with an open return (#4025) - the same id list the ?openReturn=true filter uses. ' +
+      'Orthogonal to the health partition.',
+  })
+  openReturn!: number;
+
+  @ApiProperty({
+    description:
+      'Orders with a buyer note an operator can act on (#4025) - the ?hasBuyerNote=true predicate. ' +
+      'Orthogonal to the health partition.',
+  })
+  hasBuyerNote!: number;
+
+  @ApiProperty({
+    description:
+      'Orders with a ship-by deadline within the next 24 hours or already past (#4025) - the ' +
+      '?dueBefore=<now + 24h> predicate. Orthogonal to the health partition.',
+  })
+  dueWithin24h!: number;
+
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'number' },
+    description:
+      'Order count per source connection id (#4025), counted with every scope EXCEPT ' +
+      'sourceConnectionId itself. A connection with no orders in scope is absent, never 0.',
+  })
+  bySource!: Record<string, number>;
+
+  @ApiProperty({
+    type: OrderAttentionSummaryResponseDto,
+    description: 'The three "Needs a look" group totals (#4025)',
+  })
+  attention!: OrderAttentionSummaryResponseDto;
 }

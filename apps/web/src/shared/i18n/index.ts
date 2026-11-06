@@ -25,6 +25,7 @@ export { getLocale } from './active-locale';
 export { usePlural } from './use-plural';
 export type { PluralFn } from './use-plural';
 export { formatPlural, selectPluralForm } from './plural';
+export { labelFor } from './label-for';
 export { useFormat } from './use-format';
 export type { Formatters } from './use-format';
 export { useTranslation } from './use-translation';

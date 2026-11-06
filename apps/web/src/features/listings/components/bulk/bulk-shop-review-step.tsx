@@ -33,10 +33,18 @@
  */
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { RichTextView } from '../../../../shared/ui';
+import {
+  getMessages,
+  interpolate,
+  renderRich,
+  useFormat,
+  useMessages,
+  usePlural,
+} from '../../../../shared/i18n';
 
 import { Alert, Button, CheckboxCell, Input, ProductThumbnail } from '../../../../shared/ui';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../../shared/config/demo-mode';
 import { useInventoryAvailabilityBatchQuery } from '../../../inventory';
 import { publishDestinationKind } from '../../lib/publish-destinations';
 import { checkShopLineSellability } from '../../lib/required-to-sell';
@@ -169,9 +177,8 @@ function variantDisplayLabel(variant: BulkVariantRow): string {
  * that matters - it tells the operator their old copy will go out.
  */
 function describeEmptyDescription(description: string | null | undefined): string {
-  return description === ''
-    ? 'Cleared - this line publishes no description.'
-    : 'From the master product — no override for this line.';
+  const copy = getMessages('listings').bulkShopReviewStep.description;
+  return description === '' ? copy.cleared : copy.fromMaster;
 }
 
 function effectiveShopContent(
@@ -279,6 +286,8 @@ export function BulkShopReviewStep({
   onPublish,
   onSaveEditor,
 }: BulkShopReviewStepProps): ReactElement {
+  const copy = useMessages('listings').bulkShopReviewStep;
+  const plural = usePlural();
   const [status, setStatus] = useState<ShopPublishVisibility>(
     config.publishImmediately ? 'published' : 'draft'
   );
@@ -443,8 +452,8 @@ export function BulkShopReviewStep({
   };
 
   const publishLabel = isSubmitting
-    ? 'Publishing…'
-    : `Publish ${includedLines.length} ${includedLines.length === 1 ? 'listing' : 'listings'}`;
+    ? copy.publishing
+    : plural(includedLines.length, copy.publishListings);
 
   return (
     <div className="bulk-shop-review" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
@@ -452,23 +461,25 @@ export function BulkShopReviewStep({
 
       <header className="bulk-review__header">
         <div className="bulk-review__intro">
-          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>Review shop listings</h2>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>{copy.title}</h2>
           <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: 13 }}>
-            Publishing {includedLines.length}{' '}
-            {includedLines.length === 1 ? 'product listing' : 'product listings'} to{' '}
-            <strong>{connection?.name ?? 'the selected shop'}</strong>. Stock and price come from
-            each product's master values and the batch policy.
+            {renderRich(
+              plural(includedLines.length, copy.intro),
+              { strong: (text) => <strong>{text}</strong> },
+              { shop: connection?.name ?? copy.selectedShopFallback },
+            )}{' '}
+            {copy.introSource}
           </p>
         </div>
         {lines.length > 0 ? (
           <div className="bulk-review__toolbar">
             <Input
               type="search"
-              placeholder="Filter products..."
+              placeholder={copy.filter.placeholder}
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               className="bulk-review__filter"
-              aria-label="Filter products by name or SKU"
+              aria-label={copy.filter.ariaLabel}
             />
             <Button
               tone="primary"
@@ -485,14 +496,14 @@ export function BulkShopReviewStep({
       {lines.length > 0 ? (
         <div className="bulk-review__summary" role="status">
           <div className="ready">
-            <span className="n">{counts.ready}</span> <span className="lbl">ready</span>
+            <span className="n">{counts.ready}</span> <span className="lbl">{copy.summary.ready}</span>
           </div>
           <div className="attn">
             <span className="n">{counts.needsAttention}</span>{' '}
-            <span className="lbl">need attention</span>
+            <span className="lbl">{copy.summary.needAttention}</span>
           </div>
           <div className="off">
-            <span className="n">{counts.excluded}</span> <span className="lbl">excluded</span>
+            <span className="n">{counts.excluded}</span> <span className="lbl">{copy.summary.excluded}</span>
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 'var(--space-2)' }}>
             <label
@@ -509,7 +520,7 @@ export function BulkShopReviewStep({
                 checked={onlyFlagged}
                 onChange={(e) => setOnlyFlagged(e.target.checked)}
               />
-              Only flagged
+              {copy.onlyFlagged}
             </label>
           </div>
         </div>
@@ -524,24 +535,20 @@ export function BulkShopReviewStep({
         >
           {counts.needsAttention === 0 ? (
             <>
-              <b>All included listings are ready.</b> {counts.ready} listings will be published.
+              <b>{copy.banner.allReady.title}</b> {plural(counts.ready, copy.banner.allReady.detail)}
             </>
           ) : (
             <>
-              <b>
-                {counts.needsAttention}{' '}
-                {counts.needsAttention === 1 ? 'listing needs' : 'listings need'} attention.
-              </b>{' '}
-              They will publish but can&apos;t be purchased until restocked - fix the stock via
-              Edit, exclude the row, or confirm below to publish anyway.
+              <b>{plural(counts.needsAttention, copy.banner.needsAttention.title)}</b>{' '}
+              {copy.banner.needsAttention.detail}
             </>
           )}
         </div>
       ) : null}
 
       <div className="form-field">
-        <span className="form-field__label">Visibility</span>
-        <div className="segmented" role="group" aria-label="Visibility">
+        <span className="form-field__label">{copy.visibility.label}</span>
+        <div className="segmented" role="group" aria-label={copy.visibility.label}>
           <button
             type="button"
             className={
@@ -551,7 +558,7 @@ export function BulkShopReviewStep({
             onClick={() => setStatus('draft')}
           >
             <span className="segmented__dot segmented__dot--draft" aria-hidden="true" />
-            Draft
+            {copy.visibility.draft}
           </button>
           <button
             type="button"
@@ -562,30 +569,26 @@ export function BulkShopReviewStep({
             onClick={() => setStatus('published')}
           >
             <span className="segmented__dot segmented__dot--pub" aria-hidden="true" />
-            Published
+            {copy.visibility.published}
           </button>
         </div>
       </div>
 
       {lines.length === 0 ? (
         <Alert tone="warning">
-          No variants are included. Re-include at least one variant to publish.
+          {copy.noVariantsIncluded}
         </Alert>
       ) : (
         <>
           {includedLines.length === 0 ? (
             <Alert tone="warning">
-              No variants are included. Re-include at least one variant to publish.
+              {copy.noVariantsIncluded}
             </Alert>
           ) : null}
           {outOfStockVariantIds.size > 0 ? (
             <Alert tone="warning">
-              <b>
-                {outOfStockVariantIds.size}{' '}
-                {outOfStockVariantIds.size === 1 ? 'listing is' : 'listings are'} out of stock.
-              </b>{' '}
-              They will publish but can&apos;t be purchased until restocked. Fix the stock via Edit,
-              exclude the row, or confirm to publish anyway.
+              <b>{plural(outOfStockVariantIds.size, copy.outOfStock.title)}</b>{' '}
+              {copy.outOfStock.detail}
               <label
                 style={{
                   display: 'flex',
@@ -601,12 +604,12 @@ export function BulkShopReviewStep({
                   checked={acknowledgeOutOfStock}
                   onChange={(e) => setAcknowledgeOutOfStock(e.target.checked)}
                 />
-                Publish anyway - I understand these listings will be out of stock.
+                {copy.outOfStock.acknowledge}
               </label>
             </Alert>
           ) : null}
           {filteredGroups.length === 0 ? (
-            <Alert tone="info">No products match the current filter.</Alert>
+            <Alert tone="info">{copy.noFilterMatches}</Alert>
           ) : (
             <div className="bulk-review__table">
               {/* Header is announced (not aria-hidden) so screen-reader users
@@ -614,10 +617,10 @@ export function BulkShopReviewStep({
                   the marketplace review's header (#1741 review #9). */}
               <div className="bulk-review__grid bulk-review__head">
                 <span className="bulk-review__c-lead" />
-                <span>Product</span>
-                <span className="bulk-review__c-status">Status</span>
-                <span className="bulk-review__c-stock">Stock</span>
-                <span className="bulk-review__c-price">Price (gross)</span>
+                <span>{copy.columns.product}</span>
+                <span className="bulk-review__c-status">{copy.columns.status}</span>
+                <span className="bulk-review__c-stock">{copy.columns.stock}</span>
+                <span className="bulk-review__c-price">{copy.columns.priceGross}</span>
                 <span className="bulk-review__c-action" />
               </div>
 
@@ -643,10 +646,10 @@ export function BulkShopReviewStep({
 
       <footer className="bulk-wizard__footer">
         <Button tone="ghost" onClick={onBack}>
-          ← Back
+          {copy.back}
         </Button>
         <div className="bulk-wizard__footer-spacer" />
-        <ReadOnlyLock active={demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+        <ReadOnlyLock active={demoReadOnly} message={demoReadOnlyActionMessage()}>
           <Button tone="primary" disabled={!canPublish} onClick={handlePublish}>
             {publishLabel}
           </Button>
@@ -688,6 +691,8 @@ function ShopAggregateChip({
   lines: ShopReviewLine[];
   outOfStockVariantIds: ReadonlySet<string>;
 }): ReactElement {
+  const copy = useMessages('listings').bulkShopReviewStep.chips;
+  const plural = usePlural();
   let ready = 0;
   let attn = 0;
   let off = 0;
@@ -701,19 +706,19 @@ function ShopAggregateChip({
       {ready > 0 ? (
         <span className="bulk-chip bulk-chip--success">
           <span className="bulk-chip__dot" aria-hidden="true" />
-          {ready} ready
+          {plural(ready, copy.readyCount)}
         </span>
       ) : null}
       {attn > 0 ? (
         <span className="bulk-chip bulk-chip--warning">
           <span className="bulk-chip__dot" aria-hidden="true" />
-          {attn} attention
+          {plural(attn, copy.attentionCount)}
         </span>
       ) : null}
       {off > 0 ? (
         <span className="bulk-chip bulk-chip--neutral">
           <span className="bulk-chip__dot" aria-hidden="true" />
-          {off} off
+          {plural(off, copy.offCount)}
         </span>
       ) : null}
     </>
@@ -751,6 +756,9 @@ function ShopProductRow({
   onEdit,
   onSetVariantIncluded,
 }: ShopProductRowProps): ReactElement {
+  const copy = useMessages('listings').bulkShopReviewStep;
+  const plural = usePlural();
+  const format = useFormat();
   const { productId, productName, productImage, isMulti, lines } = group;
   const soleLine = !isMulti ? lines[0] : null;
   const includedCount = lines.filter((l) => l.included).length;
@@ -777,7 +785,7 @@ function ShopProductRow({
           {isMulti ? (
             <CheckboxCell
               state={includedCount === 0 ? 'none' : includedCount === lines.length ? 'all' : 'some'}
-              ariaLabel={`Include all ${productName} variants`}
+              ariaLabel={interpolate(copy.row.includeAllVariants, { name: productName })}
               onToggle={() => {
                 const nextIncluded = includedCount !== lines.length;
                 for (const line of lines) {
@@ -793,7 +801,10 @@ function ShopProductRow({
               onChange={(e) =>
                 onSetVariantIncluded(soleLine.productId, soleLine.variantId, e.target.checked)
               }
-              aria-label={`Include ${productName} - ${soleLine.variantLabel}`}
+              aria-label={interpolate(copy.row.includeVariant, {
+                name: productName,
+                variant: soleLine.variantLabel,
+              })}
             />
           ) : null}
           {isMulti ? (
@@ -801,7 +812,9 @@ function ShopProductRow({
               type="button"
               className="bulk-review__toggle"
               aria-expanded={open}
-              aria-label={`${open ? 'Collapse' : 'Expand'} ${productName} variants`}
+              aria-label={interpolate(open ? copy.row.collapseVariants : copy.row.expandVariants, {
+                name: productName,
+              })}
               onClick={onToggleExpand}
             >
               <span className="bulk-review__caret" aria-hidden="true">
@@ -820,10 +833,13 @@ function ShopProductRow({
             <b>{productName}</b>
             <small>
               {isMulti
-                ? `${lines.length} variants`
+                ? plural(lines.length, copy.row.variantCount)
                 : soleLine?.variantSku
-                  ? `${soleLine.variantSku} · 1 variant`
-                  : '1 variant'}
+                  ? interpolate(copy.row.skuAndCount, {
+                      sku: soleLine.variantSku,
+                      count: plural(1, copy.row.variantCount),
+                    })
+                  : plural(1, copy.row.variantCount)}
             </small>
             {/* A single-variant product publishes from THIS row - its variant row
                 is never rendered - so without the disclosure here the #2200 gap
@@ -831,7 +847,7 @@ function ShopProductRow({
                 how this row already carries the sole line's chips and price. */}
             {soleLine ? (
               <details className="bulk-review__desc">
-                <summary>Description</summary>
+                <summary>{copy.description.summary}</summary>
                 <RichTextView
                   html={soleLine.description}
                   emptyLabel={describeEmptyDescription(soleLine.description)}
@@ -847,7 +863,7 @@ function ShopProductRow({
               {anyAlreadyListed ? (
                 <AlreadyListedChip
                   destinationName={destinationName}
-                  title={`already on ${destinationName} - publishing updates it`}
+                  title={interpolate(copy.alreadyOnUpdates, { destination: destinationName })}
                 />
               ) : null}
             </>
@@ -860,7 +876,7 @@ function ShopProductRow({
               {alreadyListedVariantIds.has(soleLine.variantId) ? (
                 <AlreadyListedChip
                   destinationName={destinationName}
-                  title={`already on ${destinationName} - publishing updates it`}
+                  title={interpolate(copy.alreadyOnUpdates, { destination: destinationName })}
                 />
               ) : null}
             </>
@@ -871,10 +887,12 @@ function ShopProductRow({
             isMulti ? 'bulk-review__c-stock tabular bulk-review__c-stock--note' : 'bulk-review__c-stock tabular'
           }
         >
-          {isMulti ? 'per variant' : (soleLine?.stock ?? 0)}
+          {isMulti ? copy.row.perVariant : (soleLine?.stock ?? 0)}
         </div>
         <div className="bulk-review__c-price tabular">
-          {displayedPrice !== null ? `${displayedPrice} ${currency}` : 'from master'}
+          {displayedPrice !== null
+            ? interpolate(copy.row.price, { amount: format.number(displayedPrice), currency })
+            : copy.row.fromMaster}
         </div>
         <div className="bulk-review__c-action">
           {showEdit ? (
@@ -882,13 +900,13 @@ function ShopProductRow({
               <Button
                 tone="ghost"
                 className="button--xs bulk-review__edit"
-                aria-label={`Edit ${productName}`}
+                aria-label={interpolate(copy.row.editProduct, { name: productName })}
                 onClick={(e) => {
                   e.stopPropagation();
                   onEdit(soleLine?.variantId);
                 }}
               >
-                Edit
+                {copy.row.edit}
               </Button>
             ) : (
               <Button
@@ -899,7 +917,7 @@ function ShopProductRow({
                   onEdit(undefined);
                 }}
               >
-                Edit
+                {copy.row.edit}
               </Button>
             )
           ) : null}
@@ -956,6 +974,8 @@ function ShopVariantRow({
   onEdit,
   onSetIncluded,
 }: ShopVariantRowProps): ReactElement {
+  const copy = useMessages('listings').bulkShopReviewStep;
+  const format = useFormat();
   return (
     <div
       className={
@@ -971,7 +991,10 @@ function ShopVariantRow({
           className="bulk-review__chk"
           checked={line.included}
           onChange={(e) => onSetIncluded(e.target.checked)}
-          aria-label={`Include ${line.productName} - ${line.variantLabel}`}
+          aria-label={interpolate(copy.row.includeVariant, {
+            name: line.productName,
+            variant: line.variantLabel,
+          })}
         />
         <div className="t">
           <b>{line.variantLabel}</b>
@@ -984,7 +1007,7 @@ function ShopVariantRow({
               default so the dense grid keeps its shape, matching the
               listing-detail "Description preview" disclosure. */}
           <details className="bulk-review__desc">
-            <summary>Description</summary>
+            <summary>{copy.description.summary}</summary>
             <RichTextView
               html={line.description}
               emptyLabel={describeEmptyDescription(line.description)}
@@ -997,18 +1020,20 @@ function ShopVariantRow({
         {alreadyListed ? (
           <AlreadyListedChip
             destinationName={destinationName}
-            title={`already on ${destinationName} - publishing updates it`}
+            title={interpolate(copy.alreadyOnUpdates, { destination: destinationName })}
           />
         ) : null}
       </div>
       <div className="bulk-review__c-stock tabular">{line.stock ?? 0}</div>
       <div className="bulk-review__c-price tabular">
-        {line.price !== null ? `${line.price} ${currency}` : 'from master'}
+        {line.price !== null
+          ? interpolate(copy.row.price, { amount: format.number(line.price), currency })
+          : copy.row.fromMaster}
       </div>
       <div className="bulk-review__c-action">
         {showEdit ? (
           <Button tone="ghost" className="button--xs bulk-review__edit" onClick={onEdit}>
-            Edit
+            {copy.row.edit}
           </Button>
         ) : null}
       </div>
@@ -1027,11 +1052,12 @@ function ShopStatusPill({
   included: boolean;
   outOfStock: boolean;
 }): ReactElement {
+  const copy = useMessages('listings').bulkShopReviewStep.chips;
   if (!included) {
     return (
       <span className="bulk-chip bulk-chip--neutral">
         <span className="bulk-chip__dot" aria-hidden="true" />
-        excluded
+        {copy.excluded}
       </span>
     );
   }
@@ -1039,17 +1065,17 @@ function ShopStatusPill({
     return (
       <span
         className="bulk-chip bulk-chip--warning"
-        title="Out of stock - will publish but cannot be purchased until restocked"
+        title={copy.outOfStockTitle}
       >
         <span className="bulk-chip__dot" aria-hidden="true" />
-        needs attention
+        {copy.needsAttention}
       </span>
     );
   }
   return (
     <span className="bulk-chip bulk-chip--success">
       <span className="bulk-chip__dot" aria-hidden="true" />
-      ready
+      {copy.ready}
     </span>
   );
 }

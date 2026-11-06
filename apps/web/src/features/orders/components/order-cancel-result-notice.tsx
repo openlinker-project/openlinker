@@ -31,16 +31,14 @@ import { useState, type ReactElement } from 'react';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
+import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { ConnectionEntityLabel } from '../../connections';
 import type {
   CancelOrderResult,
   ConfirmOrderChangeResult,
   OrderChangeView,
 } from '../api/order-cancel.types';
-import {
-  CANCEL_CORRECTION_UNAVAILABLE_COPY,
-  CANCEL_PARTICIPANT_EFFECT_COPY,
-} from '../lib/order-cancel';
+import { cancelCorrectionUnavailableText, cancelParticipantEffectCopy } from '../lib/order-cancel';
 import { OrderCorrectionProposalDialog } from './order-correction-proposal-dialog';
 
 export interface OrderCancelResultNoticeProps {
@@ -68,23 +66,27 @@ export function OrderCancelResultNotice({
   sessionResult = null,
   onCorrectionConfirmed,
 }: OrderCancelResultNoticeProps): ReactElement | null {
+  const copy = useMessages('orders').orderCancelResultNotice;
+  const plural = usePlural();
   const [reviewOpen, setReviewOpen] = useState(false);
 
   const cancelRequest = changes.find((change) => change.kind === 'order.cancel_request') ?? null;
   const correction = changes.find((change) => change.kind === 'order.cancel_correction') ?? null;
 
   if (cancelRequest?.open) {
-    const channel = sourceName ?? 'the sales channel';
+    const channel = sourceName ?? copy.channelFallback;
     const unreachable =
       sessionResult?.changeId === cancelRequest.id &&
       sessionResult.participants.some(
         (participant) => participant.role === 'source' && participant.effect === 'unreachable',
       );
     return (
-      <Alert tone="info" title={`Cancelling: waiting for ${channel}`} data-testid="order-cancel-pending">
-        {unreachable
-          ? `Could not reach ${channel}; OpenLinker keeps asking. Stock, connected shops and the correction invoice follow once it confirms.`
-          : `OpenLinker asked ${channel} to cancel this order. Stock, connected shops and the correction invoice follow once it confirms.`}
+      <Alert
+        tone="info"
+        title={interpolate(copy.pendingTitle, { channel })}
+        data-testid="order-cancel-pending"
+      >
+        {interpolate(unreachable ? copy.pendingUnreachable : copy.pendingAsked, { channel })}
       </Alert>
     );
   }
@@ -110,9 +112,7 @@ export function OrderCancelResultNotice({
       <Alert
         tone="warning"
         title={
-          leftForYou === 0
-            ? 'Order cancelled'
-            : `Order cancelled: ${leftForYou} thing${leftForYou === 1 ? ' is' : 's are'} left for you`
+          leftForYou === 0 ? copy.done : plural(leftForYou, copy.doneWithLeft)
         }
         data-testid="order-cancel-done"
         action={
@@ -126,7 +126,7 @@ export function OrderCancelResultNotice({
                 setReviewOpen(true);
               }}
             >
-              Review correction
+              {copy.reviewCorrection}
             </Button>
           ) : undefined
         }
@@ -134,24 +134,26 @@ export function OrderCancelResultNotice({
         <ol className="order-cancel-list">
           {refundLeft ? (
             <li data-testid="order-cancel-done-refund">
-              {`${
-                totalLabel ? `Refund ${totalLabel} to the buyer yourself.` : 'Refund the buyer yourself.'
-              } OpenLinker does not move money, so the payment keeps reading Paid until you use Confirm refund to record it.`}
+              {totalLabel ? interpolate(copy.refundAmount, { amount: totalLabel }) : copy.refund}
             </li>
           ) : null}
           {correctionOpen ? (
             <li data-testid="order-cancel-done-correction">
-              {`Review and confirm the correction invoice for ${correctionPayload.documentNumber ?? 'the invoice'}. Nothing is issued until you confirm it.`}
+              {interpolate(copy.correction, {
+                document: correctionPayload.documentNumber ?? copy.documentFallback,
+              })}
             </li>
           ) : null}
           {unavailable ? (
             <li data-testid="order-cancel-done-correction-unavailable">
-              {CANCEL_CORRECTION_UNAVAILABLE_COPY[unavailable]}
+              {cancelCorrectionUnavailableText(unavailable)}
             </li>
           ) : null}
           {correctionConfirmed && correctionPayload ? (
             <li data-testid="order-cancel-done-correction-confirmed">
-              {`The correction for ${correctionPayload.documentNumber ?? 'the invoice'} was confirmed.`}
+              {interpolate(copy.correctionConfirmed, {
+                document: correctionPayload.documentNumber ?? copy.documentFallback,
+              })}
             </li>
           ) : null}
         </ol>
@@ -159,22 +161,19 @@ export function OrderCancelResultNotice({
         {notable.length > 0 || relayFailed ? (
           <ul className="order-cancel-list" data-testid="order-cancel-done-participants">
             {notable.map((participant) => {
-              const copy = CANCEL_PARTICIPANT_EFFECT_COPY[participant.effect];
+              const effect = cancelParticipantEffectCopy(participant.effect);
               return (
                 <li key={`${participant.connectionId}:${participant.role}`}>
                   <ConnectionEntityLabel connectionId={participant.connectionId} />{' '}
-                  <StatusBadge tone={copy.tone} compact>
-                    {copy.label}
+                  <StatusBadge tone={effect.tone} compact>
+                    {effect.label}
                   </StatusBadge>{' '}
-                  {participant.detail ?? copy.description}
+                  {participant.detail ?? effect.description}
                 </li>
               );
             })}
             {relayFailed ? (
-              <li>
-                OpenLinker could not tell the connected shops about the cancellation. Cancel the
-                order there by hand.
-              </li>
+              <li>{copy.relayFailed}</li>
             ) : null}
           </ul>
         ) : null}

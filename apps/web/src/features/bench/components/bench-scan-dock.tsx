@@ -43,7 +43,12 @@ import { Button } from '../../../shared/ui/button';
 import type { BenchParcelLine } from '../api/bench-parcel.types';
 import { useBarcodeCamera } from '../hooks/use-barcode-camera';
 import { benchLineState } from '../lib/bench-parcel-presentation';
-import { benchParcelCopy } from '../lib/bench-parcel.copy';
+import { interpolate, useMessages, usePlural, type Messages, type ResolvedCopy } from '../../../shared/i18n';
+import {
+  formatBenchBinCode,
+  formatBenchLineCodes,
+  formatBenchLineCount,
+} from '../lib/bench-line-text';
 import { BenchThumb } from './bench-thumb';
 
 export interface BenchScanDockProps {
@@ -69,14 +74,15 @@ export interface BenchScanDockProps {
 }
 
 function cameraProblem(
+  mobile: ResolvedCopy<Messages['bench']>['parcel']['mobile'],
   support: ReturnType<typeof useBarcodeCamera>['support'],
   error: ReturnType<typeof useBarcodeCamera>['error']
 ): string | null {
-  if (error === 'permission-denied') return benchParcelCopy.mobile.cameraDenied;
-  if (error === 'no-device') return benchParcelCopy.mobile.cameraNoDevice;
-  if (error === 'failed') return benchParcelCopy.mobile.cameraFailed;
-  if (support === 'no-detector') return benchParcelCopy.mobile.cameraUnsupported;
-  if (support === 'no-camera') return benchParcelCopy.mobile.cameraNoDevice;
+  if (error === 'permission-denied') return mobile.cameraDenied;
+  if (error === 'no-device') return mobile.cameraNoDevice;
+  if (error === 'failed') return mobile.cameraFailed;
+  if (support === 'no-detector') return mobile.cameraUnsupported;
+  if (support === 'no-camera') return mobile.cameraNoDevice;
   return null;
 }
 
@@ -94,6 +100,8 @@ export function BenchScanDock({
   onSwitchParcel,
   layout,
 }: BenchScanDockProps): ReactElement {
+  const copy = useMessages('bench').parcel;
+  const plural = usePlural();
   const [expanded, setExpanded] = useState(false);
   const [typed, setTyped] = useState('');
   const field = useRef<HTMLInputElement | null>(null);
@@ -106,7 +114,7 @@ export function BenchScanDock({
     if (!open && camera.active) camera.stop();
   }, [open, camera]);
 
-  const problem = cameraProblem(camera.support, camera.error);
+  const problem = cameraProblem(copy.mobile, camera.support, camera.error);
   const activeIndex = activeLine === undefined ? -1 : lines.indexOf(activeLine);
   const remaining =
     activeLine === undefined
@@ -129,7 +137,7 @@ export function BenchScanDock({
             <button
               type="button"
               className="bench-camera__round"
-              aria-label={benchParcelCopy.mobile.scanClose}
+              aria-label={copy.mobile.scanClose}
               onClick={camera.stop}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
@@ -138,7 +146,7 @@ export function BenchScanDock({
               <button
                 type="button"
                 className={`bench-camera__round${camera.torchOn ? ' bench-camera__round--on' : ''}`}
-                aria-label={benchParcelCopy.mobile.torch}
+                aria-label={copy.mobile.torch}
                 aria-pressed={camera.torchOn}
                 onClick={camera.toggleTorch}
               >
@@ -153,13 +161,13 @@ export function BenchScanDock({
             <span className="bench-camera__reticle" aria-hidden="true" />
           </div>
 
-          <p className="bench-camera__aim">{benchParcelCopy.mobile.aim}</p>
+          <p className="bench-camera__aim">{copy.mobile.aim}</p>
           {camera.lastValue === null ? null : (
             <p className="bench-camera__read" data-testid="bench-camera-read">
-              {benchParcelCopy.mobile.lastRead} <code>{camera.lastValue}</code>
+              {copy.mobile.lastRead} <code>{camera.lastValue}</code>
             </p>
           )}
-          <p className="bench-camera__note">{benchParcelCopy.mobile.keepScanning}</p>
+          <p className="bench-camera__note">{copy.mobile.keepScanning}</p>
         </div>
       ) : null}
 
@@ -178,16 +186,16 @@ export function BenchScanDock({
           </svg>
           <span className="bench-dock__handle-title">
             {activeIndex >= 0
-              ? benchParcelCopy.mobile.itemOf(activeIndex + 1, lines.length)
-              : benchParcelCopy.mobile.itemsHeading}
+              ? interpolate(copy.mobile.itemOf, { index: activeIndex + 1, total: lines.length })
+              : copy.mobile.itemsHeading}
           </span>
           <span className="bench-dock__handle-name">
-            {activeLine?.name ?? benchParcelCopy.lines.unnamed}
+            {activeLine?.name ?? copy.lines.unnamed}
           </span>
           <span className="bench-dock__handle-left">
             {remaining === 0
-              ? benchParcelCopy.lines.allIn
-              : benchParcelCopy.mobile.stillToScanShort(remaining)}
+              ? copy.lines.allIn
+              : plural(remaining, copy.mobile.stillToScanShort)}
           </span>
         </button>
 
@@ -217,17 +225,17 @@ export function BenchScanDock({
                       </span>
                       <span className="bench-dock__item-body">
                         <span className="bench-dock__item-name">
-                          {line.name ?? benchParcelCopy.lines.unnamed}
+                          {line.name ?? copy.lines.unnamed}
                         </span>
                         <span className="bench-dock__item-codes">
-                          {benchParcelCopy.lines.codes({ ean: line.ean, sku: line.sku })}
+                          {formatBenchLineCodes({ ean: line.ean, sku: line.sku })}
                           {line.binCode === null
                             ? null
-                            : ` · ${benchParcelCopy.lines.binCodeLabel(line.binCode)}`}
+                            : ` · ${formatBenchBinCode(line.binCode)}`}
                         </span>
                       </span>
                       <span className="bench-dock__item-count">
-                        {benchParcelCopy.lines.count(line.verifiedQuantity, line.requiredQuantity)}
+                        {formatBenchLineCount(line.verifiedQuantity, line.requiredQuantity)}
                       </span>
                     </button>
                   </li>
@@ -243,7 +251,7 @@ export function BenchScanDock({
                   onSwitchParcel();
                 }}
               >
-                {benchParcelCopy.mobile.switchParcel}
+                {copy.mobile.switchParcel}
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
               </button>
             )}
@@ -260,15 +268,15 @@ export function BenchScanDock({
             />
             <span className="bench-dock__strip-body">
               <span className="bench-dock__strip-name">
-                {activeLine?.name ?? benchParcelCopy.lines.unnamed}
+                {activeLine?.name ?? copy.lines.unnamed}
               </span>
               <span className="bench-dock__strip-codes">
                 {activeLine === undefined
-                  ? benchParcelCopy.mobile.allItemsDone
-                  : benchParcelCopy.lines.codes({ ean: activeLine.ean, sku: activeLine.sku })}
+                  ? copy.mobile.allItemsDone
+                  : formatBenchLineCodes({ ean: activeLine.ean, sku: activeLine.sku })}
               </span>
               {pendingCount > 0 ? (
-                <span className="bench-dock__strip-pending">{benchParcelCopy.inFlight.sent}</span>
+                <span className="bench-dock__strip-pending">{copy.inFlight.sent}</span>
               ) : null}
             </span>
             {activeLine === undefined ? null : (
@@ -276,7 +284,7 @@ export function BenchScanDock({
                 <span className="bench-dock__count-value">{activeLine.verifiedQuantity}</span>
                 <span className="bench-dock__count-of">
                   {' '}
-                  {benchParcelCopy.hero.countOf(activeLine.requiredQuantity)}
+                  {interpolate(copy.hero.countOf, { required: activeLine.requiredQuantity })}
                 </span>
               </span>
             )}
@@ -296,7 +304,7 @@ export function BenchScanDock({
                   onClick={camera.start}
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7h3l2-2h8l2 2h3v12H3z" /><circle cx="12" cy="13" r="3.5" /></svg>
-                  {benchParcelCopy.mobile.scanAction}
+                  {copy.mobile.scanAction}
                 </button>
               ) : null}
 
@@ -308,14 +316,14 @@ export function BenchScanDock({
                     onUndo();
                   }}
                 >
-                  {benchParcelCopy.undo.action}
+                  {copy.undo.action}
                 </Button>
               )}
               </div>
 
               <form className="bench-dock__type" onSubmit={handleSubmit}>
                 <label htmlFor="bench-dock-scan" className="sr-only">
-                  {benchParcelCopy.hero.scanLabel}
+                  {copy.hero.scanLabel}
                 </label>
                 <input
                   id="bench-dock-scan"
@@ -323,7 +331,7 @@ export function BenchScanDock({
                   type="text"
                   className="mono"
                   autoComplete="off"
-                  placeholder={benchParcelCopy.hero.scanPlaceholder}
+                  placeholder={copy.hero.scanPlaceholder}
                   value={typed}
                   disabled={unreachable}
                   onChange={(event) => {
@@ -337,7 +345,7 @@ export function BenchScanDock({
                     onConfirm(activeLine);
                   }}
                 >
-                  {benchParcelCopy.hero.confirmAction}
+                  {copy.hero.confirmAction}
                 </Button>
               </form>
 
@@ -353,7 +361,7 @@ export function BenchScanDock({
           ) : null}
 
           {open || activeLine === undefined ? null : (
-            <Alert tone="info">{benchParcelCopy.closed.next}</Alert>
+            <Alert tone="info">{copy.closed.next}</Alert>
           )}
         </div>
       </div>

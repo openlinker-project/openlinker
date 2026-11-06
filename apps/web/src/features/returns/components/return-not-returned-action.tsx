@@ -30,7 +30,7 @@ import {
 } from '../../../shared/ui/dialog';
 import { FormField } from '../../../shared/ui/form-field';
 import { Textarea } from '../../../shared/ui/textarea';
-import { RETURN_NOT_RETURNED_COPY } from '../lib/return-custody.copy';
+import { useMessages } from '../../../shared/i18n';
 import { canMarkNotReturned } from '../lib/return-line-quantities';
 import type { ReturnLine } from '../api/returns.types';
 
@@ -45,6 +45,7 @@ export function ReturnNotReturnedAction({
   pending,
   onConfirm,
 }: ReturnNotReturnedActionProps): ReactElement | null {
+  const copy = useMessages('returns').custody.notReturned;
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState('');
 
@@ -54,7 +55,7 @@ export function ReturnNotReturnedAction({
   if (!canMarkNotReturned(line)) {
     return line.quantityReceived > 0 && line.quantityReceived < line.quantityAdvised ? (
       <p className="returns-line-hint text-muted">
-        {RETURN_NOT_RETURNED_COPY.partiallyReceivedHint}
+        {copy.partiallyReceivedHint}
       </p>
     ) : null;
   }
@@ -67,19 +68,19 @@ export function ReturnNotReturnedAction({
   return (
     <>
       <Button onClick={() => setOpen(true)} tone="secondary" type="button">
-        {RETURN_NOT_RETURNED_COPY.action}
+        {copy.action}
       </Button>
 
       <Dialog onOpenChange={setOpen} open={open}>
         <DialogContent>
           <form noValidate onSubmit={submit}>
-            <DialogTitle>{RETURN_NOT_RETURNED_COPY.confirmTitle}</DialogTitle>
-            <DialogDescription>{RETURN_NOT_RETURNED_COPY.confirmBody}</DialogDescription>
+            <DialogTitle>{copy.confirmTitle}</DialogTitle>
+            <DialogDescription>{copy.confirmBody}</DialogDescription>
 
-            <FormField label={RETURN_NOT_RETURNED_COPY.noteLabel} name="not-returned-note">
+            <FormField label={copy.noteLabel} name="not-returned-note">
               <Textarea
                 onChange={(event) => setNote(event.target.value)}
-                placeholder={RETURN_NOT_RETURNED_COPY.notePlaceholder}
+                placeholder={copy.notePlaceholder}
                 rows={2}
                 value={note}
               />
@@ -87,7 +88,7 @@ export function ReturnNotReturnedAction({
 
             <DialogFooter>
               <Button disabled={pending} type="submit">
-                {pending ? RETURN_NOT_RETURNED_COPY.pending : RETURN_NOT_RETURNED_COPY.confirm}
+                {pending ? copy.pending : copy.confirm}
               </Button>
               <Button
                 disabled={pending}
@@ -95,7 +96,7 @@ export function ReturnNotReturnedAction({
                 tone="secondary"
                 type="button"
               >
-                {RETURN_NOT_RETURNED_COPY.cancel}
+                {copy.cancel}
               </Button>
             </DialogFooter>
           </form>

@@ -18,6 +18,7 @@
  */
 import { useMemo } from 'react';
 import { z } from 'zod';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { usePlatforms } from '../../../shared/plugins';
 import {
   PromptTemplateVariableTypeValues,
@@ -37,13 +38,6 @@ const MAX_VARIABLES = 64;
  * and the schema's allowlist agree on the string by construction.
  */
 export const MASTER_CHANNEL_SENTINEL = 'master';
-
-const variableSchema = z.object({
-  name: z.string().trim().min(1, 'Variable name is required').max(128),
-  type: z.enum(PromptTemplateVariableTypeValues),
-  required: z.boolean(),
-  description: z.string().trim().max(256).optional(),
-});
 
 export interface NewPromptTemplateFormValues {
   key: string;
@@ -78,7 +72,16 @@ export function useNewPromptTemplateSchema(): z.ZodType<
   NewPromptTemplateFormValues
 > {
   const plugins = usePlatforms();
+  const copy = useMessages('prompt-templates').newPromptTemplateSchema;
+  const format = useFormat();
   return useMemo(() => {
+    const variableSchema = z.object({
+      name: z.string().trim().min(1, copy.variableNameRequired).max(128),
+      type: z.enum(PromptTemplateVariableTypeValues),
+      required: z.boolean(),
+      description: z.string().trim().max(256).optional(),
+    });
+    const maxPromptLength = format.number(MAX_PROMPT_LENGTH);
     // Guard the reserved `'master'` sentinel — a plugin that registered
     // `platformType: 'master'` would conflate the master template with itself
     // in the schema's allow-set and the picker. Vanishingly unlikely, but the
@@ -94,23 +97,26 @@ export function useNewPromptTemplateSchema(): z.ZodType<
         key: z
           .string()
           .trim()
-          .min(1, 'Key is required')
+          .min(1, copy.keyRequired)
           .max(128)
-          .regex(
-            KEY_PATTERN,
-            'Use lowercase letters, digits, dots, and dashes only (e.g. "offer.description.suggest")',
-          ),
+          .regex(KEY_PATTERN, copy.keyPattern),
         channel: z.string().refine((value) => allowedChannels.has(value), {
-          message: 'Pick the master template or a registered platform',
+          message: copy.channelInvalid,
         }),
         systemPrompt: z
           .string()
-          .min(1, 'System prompt is required')
-          .max(MAX_PROMPT_LENGTH, `System prompt must be ${MAX_PROMPT_LENGTH} characters or fewer`),
+          .min(1, copy.systemPromptRequired)
+          .max(
+            MAX_PROMPT_LENGTH,
+            interpolate(copy.systemPromptTooLong, { max: maxPromptLength }),
+          ),
         userPromptTemplate: z
           .string()
-          .min(1, 'User prompt is required')
-          .max(MAX_PROMPT_LENGTH, `User prompt must be ${MAX_PROMPT_LENGTH} characters or fewer`),
+          .min(1, copy.userPromptRequired)
+          .max(
+            MAX_PROMPT_LENGTH,
+            interpolate(copy.userPromptTooLong, { max: maxPromptLength }),
+          ),
         /**
          * Free-form JSON textarea. Parsed + validated during `superRefine`
          * below — keeps the FE error path off the BE round-trip.
@@ -125,7 +131,9 @@ export function useNewPromptTemplateSchema(): z.ZodType<
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: ['variablesJson'],
-            message: `Invalid JSON: ${err instanceof Error ? err.message : 'parse error'}`,
+            message: interpolate(copy.invalidJson, {
+              error: err instanceof Error ? err.message : copy.parseError,
+            }),
           });
           return;
         }
@@ -133,7 +141,7 @@ export function useNewPromptTemplateSchema(): z.ZodType<
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: ['variablesJson'],
-            message: 'Variables must be a JSON array (use [] for none).',
+            message: copy.notArray,
           });
           return;
         }
@@ -141,7 +149,7 @@ export function useNewPromptTemplateSchema(): z.ZodType<
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: ['variablesJson'],
-            message: `At most ${MAX_VARIABLES} variables allowed`,
+            message: interpolate(copy.tooManyVariables, { max: format.number(MAX_VARIABLES) }),
           });
           return;
         }
@@ -152,11 +160,11 @@ export function useNewPromptTemplateSchema(): z.ZodType<
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: ['variablesJson'],
-            message: `Invalid variables: ${path}${firstIssue.message}`,
+            message: interpolate(copy.invalidVariables, { path, message: firstIssue.message }),
           });
         }
       });
-  }, [plugins]);
+  }, [plugins, copy, format]);
 }
 
 /**
@@ -171,9 +179,10 @@ export interface ChannelSelectOption {
 
 export function useChannelSelectOptions(): readonly ChannelSelectOption[] {
   const plugins = usePlatforms();
+  const masterGeneric = useMessages('prompt-templates').common.masterGeneric;
   return useMemo(
     () => [
-      { value: MASTER_CHANNEL_SENTINEL, label: 'Master (generic)' },
+      { value: MASTER_CHANNEL_SENTINEL, label: masterGeneric },
       // Same `'master'` reservation as `useNewPromptTemplateSchema` — see
       // the rationale comment there.
       ...plugins
@@ -183,7 +192,7 @@ export function useChannelSelectOptions(): readonly ChannelSelectOption[] {
           label: plugin.displayName,
         })),
     ],
-    [plugins],
+    [plugins, masterGeneric],
   );
 }
 

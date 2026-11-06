@@ -11,6 +11,7 @@
  * @module apps/web/src/features/sales-documents/api
  */
 import type { ConnectionStatus } from '../../connections';
+import { getMessages } from '../../../shared/i18n';
 
 /**
  * The two capabilities that make a connection a sales-document routing
@@ -69,23 +70,24 @@ export interface SalesDocumentIssuesOption {
 export function getSalesDocumentIssuesOptions(
   capability: SalesDocumentCapability,
 ): SalesDocumentIssuesOption[] {
+  const kind = getMessages('sales-documents').documentKind;
   if (capability === 'Invoicing') {
     return [
-      { value: 'invoice', label: 'Invoice' },
-      { value: '', label: 'Nothing' },
+      { value: 'invoice', label: kind.invoice },
+      { value: '', label: kind.nothing },
     ];
   }
   if (capability === 'Fiscalization') {
     return [
-      { value: 'fiscal-receipt', label: 'Fiscal receipt' },
-      { value: '', label: 'Nothing' },
+      { value: 'fiscal-receipt', label: kind.fiscalReceipt },
+      { value: '', label: kind.nothing },
     ];
   }
   return [
-    { value: 'fiscal-receipt', label: 'Receipts' },
-    { value: 'invoice', label: 'Invoices' },
-    { value: 'both', label: 'Both' },
-    { value: '', label: 'Nothing' },
+    { value: 'fiscal-receipt', label: kind.receipts },
+    { value: 'invoice', label: kind.invoices },
+    { value: 'both', label: kind.both },
+    { value: '', label: kind.nothing },
   ];
 }
 

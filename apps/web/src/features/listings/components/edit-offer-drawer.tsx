@@ -7,7 +7,7 @@
  *
  * @module apps/web/src/features/listings/components
  */
-import { type ReactElement, useCallback, useEffect, useRef } from 'react';
+import { type ReactElement, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
@@ -17,13 +17,19 @@ import { Button } from '../../../shared/ui/button';
 import { Alert } from '../../../shared/ui/alert';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { exceedsDescriptionCap } from '../../../shared/ui';
+import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { useUpdateOfferFields } from '../hooks/use-update-offer-fields';
 import { useDescriptionFormatQuery } from '../hooks/use-description-format-query';
 import type { OfferMapping } from '../api/listings.types';
 import type { UpdateOfferFieldsPayload } from '../api/listings.types';
-import { editOfferFieldsSchema, type EditOfferFieldsValues } from './edit-offer-fields.schema';
+import {
+  createEditOfferFieldsSchema,
+  EDIT_OFFER_TITLE_MAX_LENGTH,
+  type EditOfferFieldsValues,
+} from './edit-offer-fields.schema';
 import { OfferDescriptionEditor } from './offer-description-editor';
 import { SuggestionDialog } from '../../content';
+import { serverErrorText } from '../lib/server-error-text';
 
 interface EditOfferDrawerProps {
   isOpen: boolean;
@@ -35,6 +41,10 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
   const mutation = useUpdateOfferFields();
   const { showToast } = useToast();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const copy = useMessages('listings').editOfferDrawer;
+  const common = useMessages('listings').common;
+  const format = useFormat();
+  const schema = useMemo(() => createEditOfferFieldsSchema(copy.validation), [copy.validation]);
 
   const form = useForm<EditOfferFieldsValues>({
     defaultValues: {
@@ -43,7 +53,7 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
       priceCurrency: 'PLN',
       descriptionText: '',
     },
-    resolver: zodResolver(editOfferFieldsSchema),
+    resolver: zodResolver(schema),
   });
 
   // #478: depend on the destructured stable `reset` methods, not the
@@ -78,7 +88,7 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
   const canSuggest = linkedProductId !== null;
   const disabledHint =
     linkedProductId === null
-      ? 'AI suggestions require a linked variant — link this offer to a product variant first.'
+      ? copy.suggestionNeedsVariant
       : null;
 
   const { setValue: setFormValue } = form;
@@ -137,8 +147,8 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
       });
       showToast({
         tone: 'success',
-        title: 'Update dispatched',
-        description: 'Changes will appear once the job completes.',
+        title: copy.toasts.dispatchedTitle,
+        description: copy.toasts.dispatchedDescription,
       });
       onClose();
     } catch {
@@ -163,16 +173,16 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Edit offer"
+        aria-label={copy.title}
         className="drawer"
       >
         <div className="drawer__header">
-          <h2 className="drawer__title">Edit offer</h2>
+          <h2 className="drawer__title">{copy.title}</h2>
           <button
             ref={closeButtonRef}
             type="button"
             className="drawer__close"
-            aria-label="Close drawer"
+            aria-label={copy.closeAriaLabel}
             onClick={onClose}
           >
             ✕
@@ -181,16 +191,16 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
 
         <div className="drawer__body">
           {mutation.error ? (
-            <Alert tone="error" title="Update failed">
-              {mutation.error.message}
+            <Alert tone="error" title={copy.updateFailed}>
+              {serverErrorText(common.serverSaid, mutation.error.message, common.unknownError)}
             </Alert>
           ) : null}
 
           {overDescriptionCap && descriptionFormat?.maxBytes != null ? (
             <Alert tone="warning">
-              This description is longer than the destination accepts (
-              {descriptionFormat.maxBytes.toLocaleString()} bytes). Shorten it before saving - the
-              platform would reject the update.
+              {interpolate(copy.overDescriptionCap, {
+                maxBytes: format.number(descriptionFormat.maxBytes),
+              })}
             </Alert>
           ) : null}
 
@@ -203,20 +213,20 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
               <FormErrorSummary errors={validationMessages} />
             ) : null}
             <FormField
-              label="Title"
+              label={copy.fields.title}
               name="title"
               error={form.formState.errors.title?.message}
             >
               <Input
                 {...form.register('title')}
-                maxLength={75}
-                placeholder="Offer title (max 75 characters)"
+                maxLength={EDIT_OFFER_TITLE_MAX_LENGTH}
+                placeholder={copy.fields.titlePlaceholder}
               />
             </FormField>
 
             <div className="form-grid form-grid--2col">
               <FormField
-                label="Price"
+                label={copy.fields.price}
                 name="priceAmount"
                 error={form.formState.errors.priceAmount?.message}
               >
@@ -224,16 +234,16 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
                   {...form.register('priceAmount')}
                   type="text"
                   inputMode="decimal"
-                  placeholder="e.g. 99.99"
+                  placeholder={copy.fields.pricePlaceholder}
                 />
               </FormField>
 
-              <FormField label="Currency" name="priceCurrency">
+              <FormField label={copy.fields.currency} name="priceCurrency">
                 <Input
                   {...form.register('priceCurrency')}
                   readOnly
                   className="input--readonly"
-                  aria-label="Currency (read-only)"
+                  aria-label={copy.fields.currencyReadOnly}
                 />
               </FormField>
             </div>
@@ -247,13 +257,9 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
                       channel={suggestChannel}
                       disabled={mutation.isPending}
                       onApply={handleApplySuggestion}
-                      scopeWarning={
-                        <>
-                          Suggestions are sourced from the product's master content.
-                          Applying replaces the description on <strong>this offer only</strong> —
-                          saving does not update the product master or any other linked offers.
-                        </>
-                      }
+                      scopeWarning={renderRich(copy.suggestionScopeWarning, {
+                        strong: (text) => <strong>{text}</strong>,
+                      })}
                     />
                   ) : (
                     <span
@@ -267,7 +273,7 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
               ) : null}
 
               <FormField
-                label="Description"
+                label={copy.fields.description}
                 name="descriptionText"
                 error={form.formState.errors.descriptionText?.message}
               >
@@ -293,14 +299,14 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
 
         <div className="drawer__footer">
           <Button type="button" onClick={onClose}>
-            Cancel
+            {copy.cancel}
           </Button>
           <Button
             type="submit"
             form="edit-offer-fields-form"
             disabled={!isDirty || mutation.isPending || overDescriptionCap}
           >
-            {mutation.isPending ? 'Saving…' : 'Save changes'}
+            {mutation.isPending ? copy.saving : copy.save}
           </Button>
         </div>
       </div>

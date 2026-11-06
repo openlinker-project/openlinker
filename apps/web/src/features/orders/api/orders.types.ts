@@ -169,7 +169,7 @@ export type SalesDocumentUnresolvedReasonValue =
 // `'routed-to-no-destination'` is a working router making a DECISION and is
 // rendered neutrally; the other three name a destination the router asked for
 // that OpenLinker could not reach. Only those three are counted — see
-// `DESTINATION_ROUTING_ATTENTION_REASONS` in `../lib/destination-routing-copy`.
+// `DESTINATION_ROUTING_ATTENTION_REASONS` in `../lib/destination-routing`.
 export const DestinationRoutingBlockReasonValues = [
   'routed-to-no-destination',
   'routed-destinations-unavailable',
@@ -903,6 +903,9 @@ export interface ReleaseOrderHoldResult {
 // sortable table columns (server-side).
 export const OrderSortValues = [
   'createdAt',
+  // #4025 - when the buyer placed the order (NULLs last both ways). Mirrors
+  // `OrderRecordSortValues` in core.
+  'placedAt',
   'dispatchBy',
   'customer',
   'items',
@@ -997,6 +1000,26 @@ export interface OrderHealthSummary {
    * Optional for graceful degradation against an older API.
    */
   omsAttention?: number;
+  /**
+   * #4025 - counts for the redesigned orders filters. All optional for graceful
+   * degradation against an older API; an absent count is "unknown", never `0`.
+   * `openReturn` / `hasBuyerNote` / `dueWithin24h` use the same predicates as
+   * the `openReturn` / `hasBuyerNote` / `dueBefore` filters.
+   */
+  openReturn?: number;
+  hasBuyerNote?: number;
+  dueWithin24h?: number;
+  /** Order count per source connection id, with the source scope itself removed. Absent id = no orders. */
+  bySource?: Record<string, number>;
+  /** "Needs a look" group totals - each a UNION, never the sum of its members' counts. */
+  attention?: OrderAttentionSummary;
+}
+
+/** #4025 - mirrors core `OrderAttentionSummary`. */
+export interface OrderAttentionSummary {
+  lateToShip: number;
+  stuck: number;
+  toHandle: number;
 }
 
 export interface OrderFilters {
@@ -1385,13 +1408,6 @@ export const ORDER_EXPORT_PII_COLUMNS: readonly OrderExportColumnIdValue[] = [
 export const ORDER_LIST_COLUMN_IDS = ['customer', 'channel', 'status', 'shipment', 'money'] as const;
 export type OrderListColumnIdValue = (typeof ORDER_LIST_COLUMN_IDS)[number];
 
-export const ORDER_LIST_COLUMN_LABELS: Record<OrderListColumnIdValue, string> = {
-  customer: 'Customer',
-  channel: 'Channel',
-  status: 'Status',
-  shipment: 'Shipment',
-  money: 'Money',
-};
 
 /**
  * A personal, named, ordered column set (#3530, D32). `userId: null` marks

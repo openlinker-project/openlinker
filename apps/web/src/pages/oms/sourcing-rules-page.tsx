@@ -46,12 +46,12 @@ import { useActiveLocationCountQuery, useBootstrapLocationsMutation } from '../.
 import {
   SourcingRulesSection,
   SourcingRulesTestPanel,
-  SOURCING_RULES_PAGE_COPY as COPY,
   useInventoryLocationsForRulesQuery,
 } from '../../features/oms';
 import { useDemoMode } from '../../features/system';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../shared/config/demo-mode';
 import { useIsAdmin, useWriteAccess } from '../../shared/auth/use-permission';
+import { interpolate, useMessages } from '../../shared/i18n';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
@@ -59,6 +59,7 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { findOmsConnections } from './oms-connection';
 
 export function SourcingRulesPage(): ReactElement {
+  const copy = useMessages('oms-core').sourcingRulesPage;
   const [searchParams] = useSearchParams();
   const requestedConnectionId = searchParams.get('connectionId');
 
@@ -77,10 +78,10 @@ export function SourcingRulesPage(): ReactElement {
 
   const shell = (children: ReactElement): ReactElement => (
     <PageLayout
-      eyebrow={COPY.crumbGroup}
-      title={COPY.crumbTitle}
-      description={COPY.description}
-      backTo={{ to: '/settings', label: COPY.backToSettings }}
+      eyebrow={copy.crumbGroup}
+      title={copy.crumbTitle}
+      description={copy.description}
+      backTo={{ to: '/settings', label: copy.backToSettings }}
     >
       {children}
     </PageLayout>
@@ -91,14 +92,14 @@ export function SourcingRulesPage(): ReactElement {
     locationsQuery.isLoading ||
     activeLocationCountQuery.isLoading
   ) {
-    return shell(<LoadingState title={COPY.loadingTitle} message={COPY.loadingMessage} />);
+    return shell(<LoadingState title={copy.loadingTitle} message={copy.loadingMessage} />);
   }
 
   if (connectionsQuery.error || locationsQuery.error || activeLocationCountQuery.error) {
     return shell(
       <ErrorState
-        title={COPY.errorTitle}
-        message={COPY.errorMessage}
+        title={copy.errorTitle}
+        message={copy.errorMessage}
         action={
           <Button
             tone="secondary"
@@ -108,7 +109,7 @@ export function SourcingRulesPage(): ReactElement {
               void activeLocationCountQuery.refetch();
             }}
           >
-            {COPY.errorRetry}
+            {copy.errorRetry}
           </Button>
         }
       />
@@ -133,12 +134,12 @@ export function SourcingRulesPage(): ReactElement {
     const named = requestedConnectionId !== null && omsConnections.length > 0;
     return shell(
       <EmptyState
-        eyebrow={COPY.notAvailableEyebrow}
-        title={named ? COPY.wrongConnectionTitle : COPY.noOmsTitle}
-        message={named ? COPY.wrongConnectionMessage : COPY.noOmsMessage}
+        eyebrow={copy.notAvailableEyebrow}
+        title={named ? copy.wrongConnectionTitle : copy.noOmsTitle}
+        message={named ? copy.wrongConnectionMessage : copy.noOmsMessage}
         action={
           <Link className="button button--secondary button--sm" to="/connections">
-            {COPY.goToConnections}
+            {copy.goToConnections}
           </Link>
         }
       />
@@ -149,15 +150,16 @@ export function SourcingRulesPage(): ReactElement {
     return shell(
       <>
         <EmptyState
-          eyebrow={COPY.noLocationsEyebrow}
-          title={COPY.noLocationsTitle}
+          eyebrow={copy.noLocationsEyebrow}
+          title={copy.noLocationsTitle}
           // The bootstrap's own caveats are stated only where the button is
           // actually offered; describing a control the session cannot see is
           // the same dead end as naming a screen that does not exist.
           message={
-            write.visible
-              ? `${COPY.noLocationsMessage} ${COPY.createLocationHint}`
-              : `${COPY.noLocationsMessage} ${COPY.createLocationAdminOnly}`
+            <>
+              {copy.noLocationsMessage}{' '}
+              {write.visible ? copy.createLocationHint : copy.createLocationAdminOnly}
+            </>
           }
           action={
             write.visible ? (
@@ -165,9 +167,9 @@ export function SourcingRulesPage(): ReactElement {
                 disabled={!canBootstrap || bootstrap.isPending}
                 title={
                   write.demoReadOnly
-                    ? DEMO_READ_ONLY_ACTION_MESSAGE
+                    ? demoReadOnlyActionMessage()
                     : !isAdmin
-                      ? COPY.createLocationAdminOnly
+                      ? copy.createLocationAdminOnly
                       : undefined
                 }
                 onClick={() => {
@@ -181,13 +183,13 @@ export function SourcingRulesPage(): ReactElement {
                   });
                 }}
               >
-                {bootstrap.isPending ? COPY.creatingLocation : COPY.createLocation}
+                {bootstrap.isPending ? copy.creatingLocation : copy.createLocation}
               </Button>
             ) : undefined
           }
         />
         {bootstrap.error ? (
-          <ErrorState title={COPY.createLocationErrorTitle} message={bootstrap.error.message} />
+          <ErrorState title={copy.createLocationErrorTitle} message={bootstrap.error.message} />
         ) : null}
       </>
     );
@@ -199,8 +201,11 @@ export function SourcingRulesPage(): ReactElement {
   return shell(
     <>
       {truncated ? (
-        <Alert tone="warning" title={COPY.locationsTruncatedTitle}>
-          {COPY.locationsTruncated(locationsPage.options.length, locationsPage.total)}
+        <Alert tone="warning" title={copy.locationsTruncatedTitle}>
+          {interpolate(copy.locationsTruncated, {
+            shown: locationsPage.options.length,
+            total: locationsPage.total,
+          })}
         </Alert>
       ) : null}
       <SourcingRulesSection connectionId={connection.id} locations={locationsPage.options} />

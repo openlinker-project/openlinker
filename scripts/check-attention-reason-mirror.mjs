@@ -106,16 +106,17 @@ const CORE_FILE = join(
 const FE_MIRROR_FILE = join(
   'apps', 'web', 'src', 'features', 'fulfillment-authority', 'lib', 'attention-reason.ts',
 );
-const FE_COPY_FILE = join(
-  'apps', 'web', 'src', 'features', 'fulfillment-authority', 'lib', 'attention-reason.copy.ts',
-);
+// #3875: the copy lives in the core locale file (ADR-081). Keys there are sorted
+// (`pnpm i18n:sort`), so M4/M5 compare the copy's keys as a SET; the ORDER is
+// still enforced between core and the frontend value arrays (M1/M2).
+const FE_COPY_FILE = join('apps', 'web', 'src', 'locales', 'en', 'fulfillment-authority.json');
 
 const REASON_DECLARATION = 'AuthorityAttentionReasonValues';
 const BADGE_DECLARATION = 'AuthorityAttentionBadgeValues';
 const CORE_DESCRIPTORS = 'AUTHORITY_ATTENTION_REASON_DESCRIPTORS';
 const FE_DESCRIPTORS = 'ATTENTION_REASON_MIRROR';
-const FE_REASON_COPY = 'ATTENTION_REASON_COPY';
-const FE_BADGE_COPY = 'ATTENTION_BADGE_COPY';
+const FE_REASON_COPY = 'attention.reasons';
+const FE_BADGE_COPY = 'attention.badges';
 
 /**
  * Titles this feature declares that another feature is the canonical owner of
@@ -124,19 +125,20 @@ const FE_BADGE_COPY = 'ATTENTION_BADGE_COPY';
  */
 const CROSS_FEATURE_TITLES = [
   {
+    // Returns spec § 5.5 owns this string. Since #3874 the returns copy lives in
+    // the `returns` namespace of the core locale file (ADR-081), so the pair
+    // names a JSON key path instead of a TypeScript declaration.
     reason: 'return-unmatched',
-    file: join('apps', 'web', 'src', 'features', 'returns', 'lib', 'return-detail.copy.ts'),
-    declaration: 'RETURN_ORPHAN_BANNER_COPY',
+    file: join('apps', 'web', 'src', 'locales', 'en', 'returns.json'),
+    declaration: 'detail.orphanBanner',
     field: 'title',
   },
   {
-    // Returns spec § 5.4 owns this string, and #2381 moved it out of
-    // `returns-list.copy.ts` into its own module on #2357's behalf. The pair
-    // used to name the old file AND an old constant spelling, so it resolved to
-    // nothing and passed vacuously (#2673).
+    // Returns spec § 5.4 owns this string (#2381 gave it a module of its own;
+    // #3874 moved it into `returns.restockBlocked` of the core locale file).
     reason: 'restock-blocked',
-    file: join('apps', 'web', 'src', 'features', 'returns', 'lib', 'restock-blocked.copy.ts'),
-    declaration: 'RETURN_RESTOCK_BLOCKED_COPY',
+    file: join('apps', 'web', 'src', 'locales', 'en', 'returns.json'),
+    declaration: 'restockBlocked',
     field: 'title',
   },
 ];
@@ -347,6 +349,25 @@ export function parseDescriptorEntries(content, name) {
 }
 
 /**
+ * Read `field` of the object at the dotted `keyPath` of a JSON locale file, or
+ * null when the file does not parse or the path does not resolve to a string -
+ * the same "unreadable" answer `readEntryField` gives for a TypeScript owner.
+ */
+export function readJsonField(content, keyPath, field) {
+  let node;
+  try {
+    node = JSON.parse(content);
+  } catch {
+    return null;
+  }
+  for (const key of [...keyPath.split('.'), field]) {
+    if (node === null || typeof node !== 'object' || !Object.hasOwn(node, key)) return null;
+    node = node[key];
+  }
+  return typeof node === 'string' ? node : null;
+}
+
+/**
  * Ordered depth-1 entries with their `title` + `titleFallback`, for M7.
  * Fields are `null` when absent.
  */
@@ -502,6 +523,43 @@ async function readIfPresent(path) {
   }
 }
 
+/** The object at a dotted key path of a parsed locale file, or `null`. */
+export function jsonAt(root, keyPath) {
+  let node = root;
+  for (const key of keyPath.split('.')) {
+    if (node === null || typeof node !== 'object' || !Object.hasOwn(node, key)) return null;
+    node = node[key];
+  }
+  return node !== null && typeof node === 'object' ? node : null;
+}
+
+/** Depth-1 keys of the object at `keyPath`, in the shape `parseObjectKeys` returns. */
+export function jsonObjectKeys(root, keyPath) {
+  const node = jsonAt(root, keyPath);
+  return node === null ? null : { line: 1, values: Object.keys(node) };
+}
+
+/** Entries with their `title` + `titleFallback`, in the shape `parseTitleEntries` returns. */
+export function jsonTitleEntries(root, keyPath) {
+  const node = jsonAt(root, keyPath);
+  if (node === null) return null;
+  const str = (v) => (typeof v === 'string' ? v : null);
+  return {
+    line: 1,
+    entries: Object.entries(node).map(([key, value]) => ({
+      key,
+      title: str(value?.title),
+      titleFallback: str(value?.titleFallback),
+    })),
+  };
+}
+
+/** Compare two vocabularies as sets (order-free), reusing `diffValues`' report shape. */
+export function diffValueSets(core, mirror, mirrorLabel) {
+  const sorted = (values) => [...values].sort();
+  return diffValues(sorted(core), sorted(mirror), mirrorLabel);
+}
+
 async function main() {
   const [coreContent, feMirrorContent, feCopyContent] = await Promise.all([
     readFile(join(repoRoot, CORE_FILE), 'utf8'),
@@ -527,8 +585,14 @@ async function main() {
   const feBadges = need(parseValues(feMirrorContent, BADGE_DECLARATION), `${FE_MIRROR_FILE}: no '${BADGE_DECLARATION}' array with string literals`);
   const coreDesc = needEntries(parseDescriptorEntries(coreContent, CORE_DESCRIPTORS), `${CORE_FILE}: no '${CORE_DESCRIPTORS}' object literal`);
   const feDesc = needEntries(parseDescriptorEntries(feMirrorContent, FE_DESCRIPTORS), `${FE_MIRROR_FILE}: no '${FE_DESCRIPTORS}' object literal`);
-  const feReasonCopy = need(parseObjectKeys(feCopyContent, FE_REASON_COPY), `${FE_COPY_FILE}: no '${FE_REASON_COPY}' object literal`);
-  const feBadgeCopy = need(parseObjectKeys(feCopyContent, FE_BADGE_COPY), `${FE_COPY_FILE}: no '${FE_BADGE_COPY}' object literal`);
+  let feCopyJson = null;
+  try {
+    feCopyJson = JSON.parse(feCopyContent);
+  } catch {
+    fatal.push(`${FE_COPY_FILE}: not valid JSON`);
+  }
+  const feReasonCopy = need(feCopyJson && jsonObjectKeys(feCopyJson, FE_REASON_COPY), `${FE_COPY_FILE}: no '${FE_REASON_COPY}' object`);
+  const feBadgeCopy = need(feCopyJson && jsonObjectKeys(feCopyJson, FE_BADGE_COPY), `${FE_COPY_FILE}: no '${FE_BADGE_COPY}' object`);
 
   if (fatal.length > 0) {
     console.error('✗ check-attention-reason-mirror: could not locate every declaration.\n');
@@ -567,21 +631,21 @@ async function main() {
   }
 
   // M4 — copy covers every reason.
-  const m4 = diffValues(coreReasons.values, feReasonCopy.values, FE_REASON_COPY);
+  const m4 = diffValueSets(coreReasons.values, feReasonCopy.values, FE_REASON_COPY);
   if (!m4.ok) {
-    record(`${FE_REASON_COPY} must carry exactly one entry per ${REASON_DECLARATION} member, in the same order`,
+    record(`${FE_REASON_COPY} must carry exactly one entry per ${REASON_DECLARATION} member`,
       [`${CORE_FILE}:${coreReasons.line}  (authoritative)`, `${FE_COPY_FILE}:${feReasonCopy.line}  (operator copy)`], m4.issues);
   }
 
   // M5 — badge labels cover every badge value.
-  const m5 = diffValues(coreBadges.values, feBadgeCopy.values, FE_BADGE_COPY);
+  const m5 = diffValueSets(coreBadges.values, feBadgeCopy.values, FE_BADGE_COPY);
   if (!m5.ok) {
-    record(`${FE_BADGE_COPY} must carry exactly one entry per ${BADGE_DECLARATION} member, in the same order`,
+    record(`${FE_BADGE_COPY} must carry exactly one entry per ${BADGE_DECLARATION} member`,
       [`${CORE_FILE}:${coreBadges.line}  (authoritative)`, `${FE_COPY_FILE}:${feBadgeCopy.line}  (operator copy)`], m5.issues);
   }
 
   // M7 — a placeholder-free title and its fallback are one sentence.
-  const feTitles = parseTitleEntries(feCopyContent, FE_REASON_COPY);
+  const feTitles = jsonTitleEntries(feCopyJson, FE_REASON_COPY);
   if (!feTitles || feTitles.entries.length === 0) {
     console.error(`✗ check-attention-reason-mirror: could not re-read '${FE_REASON_COPY}' for MIRROR 7.\n`);
     process.exit(1);
@@ -597,11 +661,13 @@ async function main() {
   // outcome but 'ok' is recorded, so nothing here can resolve to a skip (#2673).
   const compared = [];
   for (const pair of CROSS_FEATURE_TITLES) {
-    const ours = readEntryField(feCopyContent, FE_REASON_COPY, pair.reason, 'title');
+    const ours = readJsonField(feCopyContent, `${FE_REASON_COPY}.${pair.reason}`, 'title');
     const abs = join(repoRoot, pair.file);
     const fileExists = await stat(abs).then((st) => st.isFile(), () => false);
     const theirs = fileExists
-      ? readEntryField((await readIfPresent(abs)) ?? '', pair.declaration, pair.field, pair.field)
+      ? pair.file.endsWith('.json')
+        ? readJsonField((await readIfPresent(abs)) ?? '', pair.declaration, pair.field)
+        : readEntryField((await readIfPresent(abs)) ?? '', pair.declaration, pair.field, pair.field)
       : null;
 
     switch (classifyCrossFeatureTitle({ ours, fileExists, theirs })) {

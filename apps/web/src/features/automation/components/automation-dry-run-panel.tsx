@@ -37,7 +37,14 @@ import { StatusBadge } from '../../../shared/ui/status-badge';
 import { shortenId } from '../../../shared/ui/entity-label';
 import { useConnectionsQuery } from '../../connections';
 import { useOrdersQuery, type OrderRecord } from '../../orders';
-import { AUTOMATION_ACTION_LABELS, AUTOMATION_DRY_RUN_COPY } from '../lib/automation.copy';
+import {
+  getMessages,
+  interpolate,
+  renderRich,
+  useFormat,
+  useMessages,
+  type Formatters,
+} from '../../../shared/i18n';
 import { describeAutomationWriteError } from '../lib/automation-write-error';
 import { describeAvailability } from '../lib/action-availability';
 import {
@@ -75,9 +82,11 @@ export interface AutomationDryRunPanelProps {
  * diagnostics panel is not a place to surface them. The shortened internal id
  * plus the date is enough to pick an order, and it is true for every record.
  */
-function describeOrderOption(order: OrderRecord): string {
-  const placed = order.createdAt.slice(0, 10);
-  return `${shortenId(order.internalOrderId)} · ${placed}`;
+function describeOrderOption(order: OrderRecord, format: Formatters): string {
+  return interpolate(getMessages('automation').dryRunPanel.orderOption, {
+    id: shortenId(order.internalOrderId),
+    date: format.date(order.createdAt),
+  });
 }
 
 function windowStart(): string {
@@ -90,15 +99,16 @@ function describeHeadline(verdict: AutomationVerdict): {
   label: string;
   tone: 'success' | 'warning' | 'neutral';
 } {
+  const copy = getMessages('automation').dryRun;
   const headline = verdictHeadline(verdict);
   switch (headline) {
     case 'would-fire':
-      return { label: AUTOMATION_DRY_RUN_COPY.wouldFire, tone: 'success' };
+      return { label: copy.wouldFire, tone: 'success' };
     case 'would-match-not-fire':
       // Green here would state the opposite of the waiver note below it.
-      return { label: AUTOMATION_DRY_RUN_COPY.wouldMatchNotFire, tone: 'warning' };
+      return { label: copy.wouldMatchNotFire, tone: 'warning' };
     case 'would-not-fire':
-      return { label: AUTOMATION_DRY_RUN_COPY.wouldNotFire, tone: 'neutral' };
+      return { label: copy.wouldNotFire, tone: 'neutral' };
     default: {
       const exhaustive: never = headline;
       throw new Error(`Unhandled verdict headline: ${String(exhaustive)}`);
@@ -107,6 +117,10 @@ function describeHeadline(verdict: AutomationVerdict): {
 }
 
 function VerdictBlock({ verdict }: { verdict: AutomationVerdict }): ReactElement {
+  const messages = useMessages('automation');
+  const copy = messages.dryRun;
+  const actionLabels: Record<string, string> = messages.actions;
+  const format = useFormat();
   const headline = describeHeadline(verdict);
   return (
     <div className="automation-dry-run__verdict">
@@ -124,32 +138,37 @@ function VerdictBlock({ verdict }: { verdict: AutomationVerdict }): ReactElement
       */}
       {verdict.blockedBy !== null ? (
         <Alert tone="warning">
-          <p>{AUTOMATION_DRY_RUN_COPY.matchedButBlocked}</p>
+          <p>{copy.matchedButBlocked}</p>
           <p className="muted-text">
-            {AUTOMATION_DRY_RUN_COPY.blockedByPrefix}{' '}
-            <span className="mono-text">
-              {verdict.blockedBy.collidingRuleIds
-                .filter((id) => id !== verdict.ruleId)
-                .join(', ')}
-            </span>{' '}
-            {AUTOMATION_DRY_RUN_COPY.blockedActionsPrefix}{' '}
-            <span className="mono-text">{verdict.blockedBy.actions.join(', ')}</span>
+            {renderRich(
+              messages.dryRunPanel.blockedBy,
+              {
+                ids: (chunk) => <span className="mono-text">{chunk}</span>,
+                actions: (chunk) => <span className="mono-text">{chunk}</span>,
+              },
+              {
+                ids: format.list(
+                  verdict.blockedBy.collidingRuleIds.filter((id) => id !== verdict.ruleId),
+                ),
+                actions: format.list(verdict.blockedBy.actions),
+              },
+            )}
           </p>
         </Alert>
       ) : null}
 
       {/* Matches, but the order predates the rule — it would NOT really have run. */}
       {verdict.retroactivityFloorWaived ? (
-        <Alert tone="warning">{AUTOMATION_DRY_RUN_COPY.retroactivityWaived}</Alert>
+        <Alert tone="warning">{copy.retroactivityWaived}</Alert>
       ) : null}
 
       {verdict.nonFiringReason === null ? null : (
         <p className="muted-text">{describeNonFiringReason(verdict.nonFiringReason)}</p>
       )}
 
-      <p className="eyebrow">{AUTOMATION_DRY_RUN_COPY.conditionsTitle}</p>
+      <p className="eyebrow">{copy.conditionsTitle}</p>
       {verdict.conditionTraces.length === 0 ? (
-        <p className="muted-text">{AUTOMATION_DRY_RUN_COPY.noConditions}</p>
+        <p className="muted-text">{copy.noConditions}</p>
       ) : (
         <ul className="automation-dry-run__traces">
           {verdict.conditionTraces.map((trace, index) => (
@@ -169,13 +188,13 @@ function VerdictBlock({ verdict }: { verdict: AutomationVerdict }): ReactElement
 
       {verdict.stepAvailability.length === 0 ? null : (
         <>
-          <p className="eyebrow">{AUTOMATION_DRY_RUN_COPY.stepsTitle}</p>
+          <p className="eyebrow">{copy.stepsTitle}</p>
           <ul className="automation-dry-run__steps">
             {verdict.stepAvailability.map((step, index) => {
               const described = describeAvailability(step.availability);
               return (
                 <li key={`${step.action}-${index}`}>
-                  <span>{AUTOMATION_ACTION_LABELS[step.action] ?? step.action}</span>
+                  <span>{actionLabels[step.action] ?? step.action}</span>
                   <StatusBadge tone={described.tone} compact>
                     {described.label}
                   </StatusBadge>
@@ -200,6 +219,8 @@ export function AutomationDryRunPanel({
   error,
   isStale = false,
 }: AutomationDryRunPanelProps): ReactElement {
+  const copy = useMessages('automation').dryRun;
+  const format = useFormat();
   const [orderId, setOrderId] = useState('');
   // One batched read for the whole panel — never a per-row connection fetch.
   const connectionsQuery = useConnectionsQuery();
@@ -218,16 +239,16 @@ export function AutomationDryRunPanel({
 
   return (
     <section className="automation-dry-run">
-      <p className="eyebrow">{AUTOMATION_DRY_RUN_COPY.title}</p>
-      <p className="muted-text">{AUTOMATION_DRY_RUN_COPY.intro}</p>
+      <p className="eyebrow">{copy.title}</p>
+      <p className="muted-text">{copy.intro}</p>
 
       <div className="automation-dry-run__controls">
-        <FormField label={AUTOMATION_DRY_RUN_COPY.orderLabel} name="dry-run-order">
+        <FormField label={copy.orderLabel} name="dry-run-order">
           <Select value={orderId} onChange={(event) => setOrderId(event.target.value)}>
-            <option value="">{AUTOMATION_DRY_RUN_COPY.orderPlaceholder}</option>
+            <option value="">{copy.orderPlaceholder}</option>
             {orders.map((order) => (
               <option key={order.internalOrderId} value={order.internalOrderId}>
-                {describeOrderOption(order)}
+                {describeOrderOption(order, format)}
               </option>
             ))}
           </Select>
@@ -238,15 +259,15 @@ export function AutomationDryRunPanel({
           disabled={isRunning || orderId === ''}
           onClick={() => onRun(orderId)}
         >
-          {isRunning ? AUTOMATION_DRY_RUN_COPY.running : AUTOMATION_DRY_RUN_COPY.run}
+          {isRunning ? copy.running : copy.run}
         </Button>
       </div>
 
       {ordersQuery.error ? (
-        <Alert tone="error">{AUTOMATION_DRY_RUN_COPY.ordersFailed}</Alert>
+        <Alert tone="error">{copy.ordersFailed}</Alert>
       ) : null}
       {!ordersQuery.isLoading && !ordersQuery.error && orders.length === 0 ? (
-        <p className="muted-text">{AUTOMATION_DRY_RUN_COPY.noOrders}</p>
+        <p className="muted-text">{copy.noOrders}</p>
       ) : null}
 
       {/*
@@ -255,59 +276,62 @@ export function AutomationDryRunPanel({
         matches nothing, when the truth is that it was never evaluated.
       */}
       {refusal === null ? null : (
-        <Alert tone="error" title={AUTOMATION_DRY_RUN_COPY.failedTitle}>
+        <Alert tone="error" title={copy.failedTitle}>
           <p>{refusal.message}</p>
-          <p className="muted-text">{AUTOMATION_DRY_RUN_COPY.failedHint}</p>
+          <p className="muted-text">{copy.failedHint}</p>
         </Alert>
       )}
 
       {result !== null && refusal === null && isStale ? (
-        <Alert tone="warning">{AUTOMATION_DRY_RUN_COPY.staleResult}</Alert>
+        <Alert tone="warning">{copy.staleResult}</Alert>
       ) : null}
 
       {result === null || refusal !== null ? null : (
         <div className="automation-dry-run__result">
           {subject === null ? null : <VerdictBlock verdict={subject} />}
 
-          <p className="eyebrow">{AUTOMATION_DRY_RUN_COPY.factsTitle}</p>
+          <p className="eyebrow">{copy.factsTitle}</p>
           <KeyValueList
             items={[
               {
                 id: 'source',
-                label: AUTOMATION_DRY_RUN_COPY.factSourceLabel,
+                label: copy.factSourceLabel,
                 // One of the four condition fields, so omitting it would show a
                 // `sourceConnection` trace reading "Not matched" while withholding
                 // the fact that explains it.
                 value:
                   result.facts.sourceConnectionId === null
-                    ? AUTOMATION_DRY_RUN_COPY.factUnknown
+                    ? copy.factUnknown
                     : (connectionNameById.get(result.facts.sourceConnectionId) ??
                       result.facts.sourceConnectionId),
               },
               {
                 id: 'country',
-                label: AUTOMATION_DRY_RUN_COPY.factCountryLabel,
-                value: result.facts.country ?? AUTOMATION_DRY_RUN_COPY.factUnknown,
+                label: copy.factCountryLabel,
+                value: result.facts.country ?? copy.factUnknown,
               },
               {
                 id: 'total',
-                label: AUTOMATION_DRY_RUN_COPY.factTotalLabel,
+                label: copy.factTotalLabel,
                 value:
                   result.facts.totalGross === null
-                    ? AUTOMATION_DRY_RUN_COPY.factUnknown
-                    : `${result.facts.totalGross} ${result.facts.currency ?? ''}`.trim(),
+                    ? copy.factUnknown
+                    : format.money(result.facts.totalGross, result.facts.currency ?? undefined),
               },
               {
                 id: 'happened',
-                label: AUTOMATION_DRY_RUN_COPY.factWhenLabel,
-                value: result.facts.occurredAt ?? AUTOMATION_DRY_RUN_COPY.factUnknown,
+                label: copy.factWhenLabel,
+                value:
+                  result.facts.occurredAt === null
+                    ? copy.factUnknown
+                    : format.dateTime(result.facts.occurredAt),
               },
             ]}
           />
 
-          <p className="eyebrow">{AUTOMATION_DRY_RUN_COPY.otherRulesTitle}</p>
+          <p className="eyebrow">{copy.otherRulesTitle}</p>
           {siblings.length === 0 ? (
-            <p className="muted-text">{AUTOMATION_DRY_RUN_COPY.noOtherRules}</p>
+            <p className="muted-text">{copy.noOtherRules}</p>
           ) : (
             <ul className="automation-dry-run__siblings">
               {siblings.map((verdict) => (

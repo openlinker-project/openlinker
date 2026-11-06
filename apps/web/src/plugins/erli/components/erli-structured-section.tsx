@@ -17,18 +17,20 @@ import type { ReactElement } from 'react';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
+import { useErliMessages } from '../messages';
 
 export function ErliStructuredSection({
   form,
   configIsParseable,
   syncStructuredToJson,
 }: StructuredConfigSectionProps): ReactElement {
+  const copy = useErliMessages().erliStructuredSection.callbackUrl;
   return (
     <FormField
-      label="Callback URL"
+      label={copy.label}
       name="callbackBaseUrl"
       error={form.formState.errors.callbackBaseUrl?.message}
-      description="The public OpenLinker URL Erli posts webhook events to (e.g. https://api.example.com)."
+      description={copy.description}
     >
       <Input
         value={form.watch('callbackBaseUrl') ?? ''}

@@ -31,7 +31,7 @@ import { Button } from '../../shared/ui/button';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
-import { useTranslation } from '../../shared/i18n';
+import { renderRich, useMessages } from '../../shared/i18n';
 import { useToast } from '../../shared/ui/toast-provider';
 import { ApiError } from '../../shared/api/api-error';
 import { usePlatform } from '../../shared/plugins';
@@ -51,6 +51,8 @@ import { InvoiceTimeline } from '../../features/invoicing/components/invoice-tim
 import { DOCUMENT_TYPE_LABEL_FALLBACK } from '../../features/invoicing/components/document-type-select';
 import { resolveIssueErrorMessage } from '../../features/invoicing/lib/issue-error-message';
 
+type InvoiceCopy = ReturnType<typeof useMessages<'invoicing'>>['invoice'];
+
 /**
  * Build the `KeyValueList` rows for the Document fields block — same field
  * set the bespoke `<dl className="invoice-panel__kv">` rendered, only the
@@ -61,12 +63,12 @@ function buildInvoiceDetailFieldItems(
   invoice: InvoiceRecord,
   connection: Connection | null,
   showRegulatoryBadge: boolean,
-  t: (key: string, fallback: string) => string,
+  copy: InvoiceCopy,
 ): KeyValueItem[] {
   const items: KeyValueItem[] = [
     {
       id: 'number',
-      label: t('invoice.field.number', 'Number'),
+      label: copy.field.number,
       value: invoice.providerInvoiceNumber ? (
         <InvoicePdfLink
           invoiceNumber={invoice.providerInvoiceNumber}
@@ -78,15 +80,12 @@ function buildInvoiceDetailFieldItems(
     },
     {
       id: 'document',
-      label: t('invoice.field.document', 'Document type'),
-      value: t(
-        `invoice.documentType.${invoice.documentType}`,
-        DOCUMENT_TYPE_LABEL_FALLBACK[invoice.documentType] ?? invoice.documentType,
-      ),
+      label: copy.field.document,
+      value: DOCUMENT_TYPE_LABEL_FALLBACK[invoice.documentType] ?? invoice.documentType,
     },
     {
       id: 'issued',
-      label: t('invoice.field.issued', 'Issued at'),
+      label: copy.field.issued,
       value: invoice.issuedAt ? (
         <TimeDisplay iso={invoice.issuedAt} format="datetime" className="mono-text" />
       ) : (
@@ -95,7 +94,7 @@ function buildInvoiceDetailFieldItems(
     },
     {
       id: 'via',
-      label: t('invoice.field.via', 'Invoiced via'),
+      label: copy.field.via,
       value: connection ? (
         <Link to={`/connections/${connection.id}`} className="link">
           {connection.name}
@@ -109,14 +108,14 @@ function buildInvoiceDetailFieldItems(
   if (showRegulatoryBadge) {
     items.push({
       id: 'clearance',
-      label: t('invoice.field.clearance', 'Regulatory clearance'),
+      label: copy.field.clearance,
       value: <RegulatoryStatusBadge status={invoice.regulatoryStatus} />,
     });
 
     if (invoice.clearanceReference) {
       items.push({
         id: 'clearanceRef',
-        label: t('invoice.field.clearanceRef', 'Reference'),
+        label: copy.field.clearanceRef,
         value: <span className="mono-text">{invoice.clearanceReference}</span>,
       });
     }
@@ -127,7 +126,7 @@ function buildInvoiceDetailFieldItems(
 
 export function InvoiceDetailPage(): ReactElement {
   const { invoiceId = '' } = useParams<{ invoiceId: string }>();
-  const { t } = useTranslation();
+  const copy = useMessages('invoicing').invoice;
   const { showToast } = useToast();
 
   const invoiceQuery = useInvoiceQuery(invoiceId);
@@ -159,15 +158,15 @@ export function InvoiceDetailPage(): ReactElement {
         onSuccess: () => {
           showToast({
             tone: 'success',
-            title: t('invoice.action.issued', 'Invoice issued'),
-            description: t('invoice.action.issuedBody', 'The invoice was re-issued.'),
+            title: copy.action.issued,
+            description: copy.action.issuedBody,
           });
         },
         onError: (error) => {
           showToast({
             tone: 'error',
-            title: t('invoice.action.retryFailed', 'Retry failed'),
-            description: resolveIssueErrorMessage(error, t),
+            title: copy.action.retryFailed,
+            description: resolveIssueErrorMessage(error),
           });
         },
       },
@@ -178,8 +177,8 @@ export function InvoiceDetailPage(): ReactElement {
 
   if (invoiceQuery.isLoading) {
     return (
-      <PageLayout eyebrow="Operations" title={t('invoice.detail.loading', 'Invoice')}>
-        <div className="invoice-detail__skeleton" aria-busy="true" aria-label={t('invoice.detail.loading', 'Loading invoice…')} />
+      <PageLayout eyebrow={copy.detail.eyebrow} title={copy.detail.titleFallback}>
+        <div className="invoice-detail__skeleton" aria-busy="true" aria-label={copy.detail.loading} />
       </PageLayout>
     );
   }
@@ -190,18 +189,15 @@ export function InvoiceDetailPage(): ReactElement {
 
     if (isNotFound) {
       return (
-        <PageLayout eyebrow="Operations" title={t('invoice.detail.notFound', 'Invoice not found')}>
+        <PageLayout eyebrow={copy.detail.eyebrow} title={copy.detail.notFound}>
           <EmptyState
             liveRegion="off"
-            title={t('invoice.detail.notFound', 'Invoice not found')}
-            message={t(
-              'invoice.detail.notFoundMessage',
-              'This invoice does not exist or you may not have access.',
-            )}
+            title={copy.detail.notFound}
+            message={copy.detail.notFoundMessage}
           />
           <div style={{ marginTop: '16px' }}>
             <Link className="button button--secondary" to="/sales-documents">
-              {t('invoice.detail.backToList', 'Back to sales documents')}
+              {copy.detail.backToList}
             </Link>
           </div>
         </PageLayout>
@@ -209,13 +205,13 @@ export function InvoiceDetailPage(): ReactElement {
     }
 
     return (
-      <PageLayout eyebrow="Operations" title={t('invoice.detail.error', 'Error loading invoice')}>
+      <PageLayout eyebrow={copy.detail.eyebrow} title={copy.detail.error}>
         <ErrorState
-          title={t('invoice.detail.error', 'Error loading invoice')}
+          title={copy.detail.error}
           message={err.message}
           action={
             <Button onClick={() => void invoiceQuery.refetch()}>
-              {t('invoice.detail.retry', 'Retry')}
+              {copy.detail.retry}
             </Button>
           }
         />
@@ -226,25 +222,32 @@ export function InvoiceDetailPage(): ReactElement {
   if (!invoice) {
     // Should not normally reach — query.data null only before load
     return (
-      <PageLayout eyebrow="Operations" title={t('invoice.detail.loading', 'Invoice')}>
+      <PageLayout eyebrow={copy.detail.eyebrow} title={copy.detail.titleFallback}>
         <div className="invoice-detail__skeleton" aria-busy="true" />
       </PageLayout>
     );
   }
 
   const showRegulatoryBadge = invoice.regulatoryStatus !== 'not-applicable';
-  const title = invoice.providerInvoiceNumber ?? t('invoice.detail.titleFallback', 'Invoice');
+  const title = invoice.providerInvoiceNumber ?? copy.detail.titleFallback;
 
   return (
     <PageLayout
-      eyebrow="Operations"
+      eyebrow={copy.detail.eyebrow}
       title={title}
       description={
         <span>
-          {t('invoice.detail.orderLabel', 'Order')}{' '}
-          <Link to={`/orders/${invoice.orderId}`} className="link mono-text">
-            {invoice.orderId}
-          </Link>
+          {renderRich(
+            copy.detail.orderLabel,
+            {
+              link: (chunk) => (
+                <Link to={`/orders/${invoice.orderId}`} className="link mono-text">
+                  {chunk}
+                </Link>
+              ),
+            },
+            { orderId: invoice.orderId },
+          )}
         </span>
       }
       actions={
@@ -263,7 +266,7 @@ export function InvoiceDetailPage(): ReactElement {
           {/* Failure / in-doubt alert */}
           {(displayStatus === 'failed' || displayStatus === 'in-doubt') ? (
             <Alert tone={displayStatus === 'failed' ? 'error' : 'warning'} className="invoice-detail__alert">
-              {resolveFailureCopy(invoice, t)}
+              {resolveFailureCopy(invoice)}
             </Alert>
           ) : null}
 
@@ -271,10 +274,10 @@ export function InvoiceDetailPage(): ReactElement {
           <div className="invoice-detail__card">
             <section className="detail-section">
               <h2 className="detail-section__title">
-                {t('invoice.detail.sectionDocument', 'Document')}
+                {copy.detail.sectionDocument}
               </h2>
               <KeyValueList
-                items={buildInvoiceDetailFieldItems(invoice, connection, showRegulatoryBadge, t)}
+                items={buildInvoiceDetailFieldItems(invoice, connection, showRegulatoryBadge, copy)}
               />
             </section>
 
@@ -284,7 +287,7 @@ export function InvoiceDetailPage(): ReactElement {
                 <hr className="invoice-detail__card-divider" />
                 <div>
                   <p className="invoice-detail__provider-label">
-                    {t('invoice.detail.providerRegion', 'Provider region')}
+                    {copy.detail.providerRegion}
                   </p>
                   <InvoiceDetailSection invoice={invoice} connection={connection} />
                 </div>
@@ -301,17 +304,14 @@ export function InvoiceDetailPage(): ReactElement {
           {canRetryInvoice(invoice) ? (
             <div className="invoice-detail__actions">
               <p className="text-muted" style={{ fontSize: '12px', margin: '0 0 8px' }}>
-                {t(
-                  'invoice.failed.retryHint',
-                  'Rejected — nothing was issued, safe to retry once the cause is fixed.',
-                )}
+                {copy.failed.retryHint}
               </p>
               <Button
                 tone="primary"
                 onClick={handleRetry}
                 disabled={issueMutation.isPending}
               >
-                {t('invoice.action.retry', 'Retry')}
+                {copy.action.retry}
               </Button>
             </div>
           ) : displayStatus === 'in-doubt' ? (
@@ -321,30 +321,24 @@ export function InvoiceDetailPage(): ReactElement {
                 onClick={() => {
                   showToast({
                     tone: 'info',
-                    title: t('invoice.inDoubt.checkTitle', 'Check provider'),
-                    description: t(
-                      'invoice.inDoubt.checkBody',
-                      'Open the provider portal and verify whether an invoice exists for this order.',
-                    ),
+                    title: copy.inDoubt.checkTitle,
+                    description: copy.inDoubt.checkBody,
                   });
                 }}
               >
-                {t('invoice.inDoubt.check', 'Check provider')}
+                {copy.inDoubt.check}
               </Button>
               <Button
                 tone="secondary"
                 onClick={() => {
                   showToast({
                     tone: 'info',
-                    title: t('invoice.inDoubt.resolvedTitle', 'Marked resolved'),
-                    description: t(
-                      'invoice.inDoubt.resolvedBody',
-                      'Mark-resolved is a Wave B feature — no backend endpoint yet.',
-                    ),
+                    title: copy.inDoubt.resolvedTitle,
+                    description: copy.inDoubt.resolvedBody,
                   });
                 }}
               >
-                {t('invoice.inDoubt.resolve', 'Mark resolved')}
+                {copy.inDoubt.resolve}
               </Button>
             </div>
           ) : null}

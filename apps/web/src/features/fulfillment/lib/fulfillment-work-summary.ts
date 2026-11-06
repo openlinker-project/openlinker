@@ -62,9 +62,20 @@
  *
  * @module apps/web/src/features/fulfillment/lib
  */
-import { FULFILLMENT_WORK_DETAIL_COPY } from './fulfillment-work-detail.copy';
+import {
+  formatPlural,
+  getLocale,
+  getMessages,
+  interpolate,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 
-const SUMMARY = FULFILLMENT_WORK_DETAIL_COPY.summary;
+type SummaryCopy = ResolvedCopy<Messages['fulfillment']>['workDetail']['summary'];
+
+function summaryCopy(): SummaryCopy {
+  return getMessages('fulfillment').workDetail.summary;
+}
 
 /**
  * Everything the sentence is derived from, and deliberately nothing more.
@@ -104,12 +115,13 @@ export interface FulfillmentWorkSummaryInput {
  * same way, for the same reason.
  */
 function summariseCancelled(reason: string | null, subject: string): string | null {
+  const SUMMARY = summaryCopy();
   switch (reason) {
     case 'operator_forced':
-      return SUMMARY.cancelledByOperator(subject);
+      return interpolate(SUMMARY.cancelledByOperator, { subject });
     case 'holder_rejected':
     case 'holder_unreachable':
-      return SUMMARY.cancelledGivenBack(subject);
+      return interpolate(SUMMARY.cancelledGivenBack, { subject });
     default:
       return null;
   }
@@ -121,21 +133,22 @@ function summariseCancelled(reason: string | null, subject: string): string | nu
  * else, and mutates neither.
  */
 export function summariseFulfillmentWork(input: FulfillmentWorkSummaryInput): string | null {
+  const SUMMARY = summaryCopy();
   const subject = input.executorName ?? SUMMARY.executorFallback;
 
   if (input.status === 'cancelled') return summariseCancelled(input.cancellationReason, subject);
-  if (input.status === 'incomplete') return SUMMARY.incomplete(subject);
-  if (input.activeHoldCount > 0) return SUMMARY.onHold(input.activeHoldCount);
+  if (input.status === 'incomplete') return interpolate(SUMMARY.incomplete, { subject });
+  if (input.activeHoldCount > 0) return formatPlural(input.activeHoldCount, SUMMARY.onHold, getLocale());
   if (input.requestStatus === 'cancellation_requested')
-    return SUMMARY.cancellationRequested(subject);
-  if (input.requestStatus === 'cancellation_rejected') return SUMMARY.cancellationRejected(subject);
-  if (input.requestStatus === 'submitted') return SUMMARY.awaitingAnswer(subject);
+    return interpolate(SUMMARY.cancellationRequested, { subject });
+  if (input.requestStatus === 'cancellation_rejected') return interpolate(SUMMARY.cancellationRejected, { subject });
+  if (input.requestStatus === 'submitted') return interpolate(SUMMARY.awaitingAnswer, { subject });
   // #3096 — the commonest live state a routed task sits in, and the one that
   // left the hero with no sentence at all beneath its headline. Ahead of the
   // location check: an executor that ACCEPTED the task has been routed to,
   // whatever `locationId` says, so "not yet assigned anywhere" would be false.
   if (input.status === 'open' && input.requestStatus === 'accepted')
-    return SUMMARY.acceptedWaiting(subject);
+    return interpolate(SUMMARY.acceptedWaiting, { subject });
   // Only where "nothing to pick yet" is actually true. A task can reach
   // `in_progress` or `closed` while `locationId` stays null — nothing in the
   // server's action derivation reads the location, and on the default
@@ -145,11 +158,11 @@ export function summariseFulfillmentWork(input: FulfillmentWorkSummaryInput): st
   // finished.
   if (input.locationId === null && (input.status === 'open' || input.status === 'scheduled'))
     return SUMMARY.unassigned;
-  if (input.status === 'scheduled') return SUMMARY.scheduled(subject);
+  if (input.status === 'scheduled') return interpolate(SUMMARY.scheduled, { subject });
   if (input.status === 'in_progress') {
     return input.expeditedAt !== null
-      ? SUMMARY.inProgressExpedited(subject)
-      : SUMMARY.inProgress(subject);
+      ? interpolate(SUMMARY.inProgressExpedited, { subject })
+      : interpolate(SUMMARY.inProgress, { subject });
   }
   if (input.status === 'closed') return SUMMARY.closed;
 

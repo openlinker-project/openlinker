@@ -12,14 +12,16 @@
  * @module features/demo/components
  */
 import type { ReactElement } from 'react';
+import { useMessages } from '../../../shared/i18n';
 
 export function SessionRecordingBullets(): ReactElement {
+  const copy = useMessages('demo').recording;
   return (
     <ul className="demo-consent__bullets">
-      <li>Pages you open and buttons you click</li>
-      <li>Text you type, except passwords</li>
-      <li>Your browser, screen size, and rough location from your IP</li>
-      <li>Nothing real. Every store, order, and invoice in the demo is made up.</li>
+      <li>{copy.pages}</li>
+      <li>{copy.typing}</li>
+      <li>{copy.browser}</li>
+      <li>{copy.nothingReal}</li>
     </ul>
   );
 }

@@ -6,11 +6,29 @@
  * destination bar shows without being asked - and (b) the full label/value rows
  * behind its disclosure.
  *
- * Kept React-free so the branches can be pinned by a plain unit test.
+ * Kept React-free so the branches can be pinned by a plain unit test. Every
+ * word reads the `listings.bulkConfigSummary` copy at call time, so the rows
+ * follow the active language.
  *
  * @module apps/web/src/features/listings/components/bulk
  */
+import {
+  getBcp47Locale,
+  getLocale,
+  getMessages,
+  interpolate,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../../shared/i18n';
 import type { BulkWizardConfig, PricingPolicy, StockPolicy } from './bulk-wizard.types';
+
+function copy(): ResolvedCopy<Messages['listings']>['bulkConfigSummary'] {
+  return getMessages('listings').bulkConfigSummary;
+}
+
+function numberFormat(options?: Intl.NumberFormatOptions): Intl.NumberFormat {
+  return new Intl.NumberFormat(getBcp47Locale(getLocale()), options);
+}
 
 /** One label/value row rendered by `KeyValueList` in the bar's settings panel. */
 export interface BulkConfigRow {
@@ -28,28 +46,35 @@ export interface BulkConfigChange {
 
 /** Signed percent, so a negative markup reads as a discount rather than `+-5%`. */
 function formatPercent(percent: number): string {
-  return `${percent > 0 ? '+' : ''}${percent}%`;
+  return numberFormat({ style: 'percent', signDisplay: 'exceptZero', maximumFractionDigits: 4 }).format(
+    percent / 100,
+  );
 }
 
 export function describePricingPolicy(policy: PricingPolicy, currency: string): string {
+  const price = copy().price;
   switch (policy.mode) {
     case 'markup':
-      return `Master price ${formatPercent(policy.percent)}`;
+      return interpolate(price.masterWithMarkup, { percent: formatPercent(policy.percent) });
     case 'flat':
-      return `Flat ${policy.amount.toFixed(2)} ${currency}`;
+      return interpolate(price.flat, {
+        amount: numberFormat({ minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(policy.amount),
+        currency,
+      });
     default:
-      return 'Master price';
+      return price.master;
   }
 }
 
 export function describeStockPolicy(policy: StockPolicy): string {
+  const stock = copy().stock;
   switch (policy.mode) {
     case 'cap':
-      return `Master stock, capped at ${policy.value}`;
+      return interpolate(stock.capped, { value: numberFormat().format(policy.value) });
     case 'flat':
-      return `Flat ${policy.value}`;
+      return interpolate(stock.flat, { value: numberFormat().format(policy.value) });
     default:
-      return 'Master stock';
+      return stock.master;
   }
 }
 
@@ -59,18 +84,19 @@ export function describeStockPolicy(policy: StockPolicy): string {
  * chip saying nothing changed.
  */
 export function collectBulkConfigChanges(config: BulkWizardConfig): BulkConfigChange[] {
+  const { labels, values } = copy();
   const changes: BulkConfigChange[] = [];
   if (config.pricingPolicy.mode !== 'use-master') {
-    changes.push({ label: 'Price', value: describePricingPolicy(config.pricingPolicy, config.currency) });
+    changes.push({ label: labels.price, value: describePricingPolicy(config.pricingPolicy, config.currency) });
   }
   if (config.stockPolicy.mode !== 'use-master') {
-    changes.push({ label: 'Stock', value: describeStockPolicy(config.stockPolicy) });
+    changes.push({ label: labels.stock, value: describeStockPolicy(config.stockPolicy) });
   }
   if (!config.publishImmediately) {
-    changes.push({ label: 'On create', value: 'Save as draft' });
+    changes.push({ label: labels.onCreate, value: values.saveAsDraft });
   }
   if (config.generateDescription) {
-    changes.push({ label: 'Description', value: 'Written by AI' });
+    changes.push({ label: labels.description, value: values.writtenByAi });
   }
   return changes;
 }
@@ -106,11 +132,16 @@ export function looksLikeIdentifier(value: string): boolean {
  * `[object Object]`.
  */
 export function formatPlatformParamValue(value: unknown): string {
-  if (value === null || value === undefined || value === '') return 'Not set';
+  const notSet = copy().values.notSet;
+  if (value === null || value === undefined || value === '') return notSet;
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (Array.isArray(value)) {
-    return value.length === 0 ? 'Not set' : value.map((entry) => formatPlatformParamValue(entry)).join(', ');
+    return value.length === 0
+      ? notSet
+      : new Intl.ListFormat(getBcp47Locale(getLocale()), { type: 'unit' }).format(
+          value.map((entry) => formatPlatformParamValue(entry)),
+        );
   }
   return JSON.stringify(value);
 }
@@ -131,19 +162,20 @@ export function buildBulkConfigRows({
   platformType,
   connectionIdLabel,
 }: BulkConfigRowsInput): BulkConfigRow[] {
+  const { labels, values } = copy();
   const rows: BulkConfigRow[] = [
-    { id: 'currency', label: 'Listing currency', value: config.currency },
-    { id: 'price', label: 'Price', value: describePricingPolicy(config.pricingPolicy, config.currency) },
-    { id: 'stock', label: 'Stock', value: describeStockPolicy(config.stockPolicy) },
+    { id: 'currency', label: labels.currency, value: config.currency },
+    { id: 'price', label: labels.price, value: describePricingPolicy(config.pricingPolicy, config.currency) },
+    { id: 'stock', label: labels.stock, value: describeStockPolicy(config.stockPolicy) },
     {
       id: 'on-create',
-      label: 'On create',
-      value: config.publishImmediately ? 'Publish immediately' : 'Save as draft',
+      label: labels.onCreate,
+      value: config.publishImmediately ? values.publishImmediately : values.saveAsDraft,
     },
     {
       id: 'description',
-      label: 'Description',
-      value: config.generateDescription ? 'Written by AI' : 'From the master catalogue',
+      label: labels.description,
+      value: config.generateDescription ? values.writtenByAi : values.fromMasterCatalogue,
     },
   ];
 
@@ -157,8 +189,12 @@ export function buildBulkConfigRows({
     });
   }
 
-  rows.push({ id: 'platform', label: 'Integration', value: `${platformLabel} (${platformType})` });
-  rows.push({ id: 'connection-id', label: 'Connection id', value: connectionIdLabel, mono: true });
+  rows.push({
+    id: 'platform',
+    label: labels.integration,
+    value: interpolate(values.integration, { platform: platformLabel, platformType }),
+  });
+  rows.push({ id: 'connection-id', label: labels.connectionId, value: connectionIdLabel, mono: true });
 
   return rows;
 }

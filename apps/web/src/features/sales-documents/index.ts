@@ -30,12 +30,12 @@ export {
   SALES_DOCUMENT_GATE_REASON_COPY,
   SALES_DOCUMENT_UNRESOLVED_REASON_COPY,
   resolveSalesDocumentReasonCopy,
-} from './lib/sales-document-reason-copy';
+} from './lib/sales-document-reasons';
 export type {
   SalesDocumentReasonCopy,
   SalesDocumentGateReasonCopy,
   SalesDocumentReasonTone,
-} from './lib/sales-document-reason-copy';
+} from './lib/sales-document-reasons';
 
 // #3340 follow-up — whether a missing document is on a list anyone will see.
 // Derived from the same guarded values array as the copy map above.

@@ -19,6 +19,7 @@
  */
 import { useEffect, type ReactElement } from 'react';
 
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -31,7 +32,7 @@ import {
 } from '../../../shared/ui/dialog';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useIsAdmin, useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type {
@@ -41,8 +42,8 @@ import type {
 import type { DiscountCorrectionLine } from '../api/order-edit.types';
 import { useConfirmOrderChangeMutation } from '../hooks/use-confirm-order-change-mutation';
 import {
-  CONFIRM_CORRECTION_ERROR_TITLES,
   readOrderCancelErrorCode,
+  confirmCorrectionErrorTitle,
   readServerReason,
   type OrderCancelErrorCode,
 } from '../lib/order-cancel';
@@ -80,6 +81,10 @@ export function OrderCorrectionProposalDialog({
   onConfirmed,
 }: OrderCorrectionProposalDialogProps): ReactElement {
   const discount = kind === 'order.discount_correction';
+  const copy = useMessages('orders').orderCorrectionProposal;
+  const format = useFormat();
+  const price = (value: number): string =>
+    format.number(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const { showToast } = useToast();
   const mutation = useConfirmOrderChangeMutation();
   // The confirm route is admin-only; everyone else reads the proposal.
@@ -101,7 +106,7 @@ export function OrderCorrectionProposalDialog({
       { internalOrderId, changeId: proposal.changeId },
       {
         onSuccess: (result) => {
-          showToast({ tone: 'success', description: 'Correction confirmed.' });
+          showToast({ tone: 'success', description: copy.confirmed });
           onConfirmed(result);
           onOpenChange(false);
         },
@@ -117,22 +122,20 @@ export function OrderCorrectionProposalDialog({
       >
         <DialogTitle>
           {proposal.documentNumber
-            ? `Correction for ${proposal.documentNumber}`
-            : 'Correction invoice'}
+            ? interpolate(copy.titleForDocument, { document: proposal.documentNumber })
+            : copy.title}
         </DialogTitle>
         <DialogDescription>
-          {discount
-            ? 'The order was discounted, so the invoice is corrected to the discounted prices. Confirming issues the correcting invoice, and an issued correction can not be withdrawn.'
-            : 'The order was cancelled, so every line of the invoice goes to zero. Confirming issues the correcting invoice, and an issued correction can not be withdrawn.'}
+          {discount ? copy.discountReason : copy.cancelReason} {copy.irreversible}
         </DialogDescription>
 
         {mutation.isError ? (
           <Alert
             tone="error"
-            title={(errorCode ? CONFIRM_CORRECTION_ERROR_TITLES[errorCode] : undefined) ?? 'Could not confirm the correction'}
+            title={(errorCode ? confirmCorrectionErrorTitle(errorCode) : undefined) ?? copy.errorTitle}
             data-testid="order-correction-error"
           >
-            {readServerReason(mutation.error, 'Could not confirm the correction.')}
+            {readServerReason(mutation.error, copy.errorBody)}
           </Alert>
         ) : null}
 
@@ -142,9 +145,9 @@ export function OrderCorrectionProposalDialog({
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Line</th>
-                    <th>Product</th>
-                    <th>Unit price</th>
+                    <th>{copy.column.line}</th>
+                    <th>{copy.column.product}</th>
+                    <th>{copy.column.unitPrice}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -153,8 +156,8 @@ export function OrderCorrectionProposalDialog({
                       <td className="mono-text">{line.originalLineNumber}</td>
                       <td>{line.name}</td>
                       <td className="mono-text order-cancel-diff">
-                        <del>{line.previousUnitPriceGross.toFixed(2)}</del>{' '}
-                        <ins>{line.newUnitPriceGross.toFixed(2)}</ins>
+                        <del>{price(line.previousUnitPriceGross)}</del>{' '}
+                        <ins>{price(line.newUnitPriceGross)}</ins>
                       </td>
                     </tr>
                   ))}
@@ -167,9 +170,9 @@ export function OrderCorrectionProposalDialog({
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Line</th>
-                  <th>Product</th>
-                  <th>Quantity</th>
+                  <th>{copy.column.line}</th>
+                  <th>{copy.column.product}</th>
+                  <th>{copy.column.quantity}</th>
                 </tr>
               </thead>
               <tbody>
@@ -190,11 +193,11 @@ export function OrderCorrectionProposalDialog({
         <DialogFooter>
           <DialogClose asChild>
             <Button type="button" tone="secondary" disabled={mutation.isPending}>
-              Close
+              {copy.close}
             </Button>
           </DialogClose>
           {retryable && (canConfirm || write.demoReadOnly) ? (
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
             <Button
               type="button"
               tone="primary"
@@ -202,7 +205,7 @@ export function OrderCorrectionProposalDialog({
               data-testid="order-correction-confirm"
               onClick={confirm}
             >
-              {mutation.isPending ? 'Confirming…' : 'Confirm correction'}
+              {mutation.isPending ? copy.confirming : copy.confirm}
             </Button>
             </ReadOnlyLock>
           ) : null}

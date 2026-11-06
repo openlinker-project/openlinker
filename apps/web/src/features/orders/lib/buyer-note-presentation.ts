@@ -13,10 +13,13 @@
  * app has no user-name resolver a viewer is guaranteed to be allowed to call, and
  * a raw OL user id says nothing to the reader. `null` when nobody is recorded.
  */
+import { getMessages } from '../../../shared/i18n';
+
 export function describeNoteActor(
   userId: string | null | undefined,
   currentUserId: string | null | undefined,
 ): string | null {
   if (!userId) return null;
-  return currentUserId && userId === currentUserId ? 'you' : 'another user';
+  const copy = getMessages('orders').noteActor;
+  return currentUserId && userId === currentUserId ? copy.you : copy.anotherUser;
 }

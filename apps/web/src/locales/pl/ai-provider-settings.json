@@ -1,0 +1,100 @@
+{
+  "aiProviderKeyDialog": {
+    "apiKeyLabel": "Klucz API",
+    "cancel": "Anuluj",
+    "description": "Przechowywany w postaci zaszyfrowanej. Tylko po stronie serwera - API nigdy go nie zwraca.",
+    "placeholders": {
+      "anthropic": "sk-ant-...",
+      "openai": "sk-..."
+    },
+    "providers": {
+      "anthropic": "Anthropic",
+      "fake": "Atrapa",
+      "openai": "OpenAI"
+    },
+    "save": "Zapisz klucz",
+    "saveErrorTitle": "Nie udało się zapisać klucza",
+    "savedToastDescription": "Kolejne żądania do {provider} będą używać nowego klucza.",
+    "savedToastTitle": "Klucz API zapisany",
+    "saving": "Zapisywanie…",
+    "title": "Ustaw klucz API dla {provider}",
+    "titleGeneric": "Ustaw klucz API"
+  },
+  "aiProviderSettingsFormSchema": {
+    "apiKeyTooLong": "Klucz API jest za długi (maks. {max} znaków)",
+    "apiKeyTooShort": "Klucz API musi mieć co najmniej {min} znaków"
+  },
+  "aiProviderSettingsPage": {
+    "adminOnly": "Dostęp tylko dla administratorów.",
+    "adminRequiredMessage": "Ta strona zarządza kluczami i wyborem dostawców AI - wymaga sesji administratora.",
+    "adminRequiredTitle": "Wymagana rola administratora",
+    "description": "Zarządzaj kluczami API poszczególnych dostawców i przełączaj aktywnego dostawcę obsługującego żądania AI.",
+    "errorTitle": "Nie udało się wczytać ustawień dostawców",
+    "eyebrow": "AI",
+    "loadingMessage": "Odczytywanie bieżącego stanu kluczy…",
+    "loadingTitle": "Wczytywanie ustawień dostawców",
+    "noProviderBody": "Sugestie AI nie będą działać, dopóki nie zapiszesz klucza i nie aktywujesz dostawcy. Dopóki nie wybierzesz tu dostawcy, OpenLinker używa dostawcy ustawionego w konfiguracji serwera.",
+    "noProviderTitle": "Nie skonfigurowano dostawcy AI",
+    "retry": "Ponów",
+    "title": "Ustawienia dostawców",
+    "unknownError": "Nieznany błąd"
+  },
+  "aiProviderTable": {
+    "activeBadge": "Aktywny",
+    "addKeyFirst": "Najpierw dodaj klucz",
+    "cancel": "Anuluj",
+    "caption": "Klucze są przechowywane w postaci zaszyfrowanej. Aktywny dostawca jest odczytywany przy każdym żądaniu - zmiana działa od następnego wywołania AI.",
+    "clear": "Wyczyść",
+    "clearConfirmDescription": "Serwer przejdzie na własny skonfigurowany klucz (jeśli jest ustawiony) albo zgłosi brak klucza. Żądania AI do tego dostawcy nie będą działać, dopóki nie zapiszesz nowego klucza.",
+    "clearConfirmLabel": "Wyczyść klucz",
+    "clearConfirmTitle": "Wyczyścić klucz API dla {provider}?",
+    "clearConfirmTitleGeneric": "Wyczyścić klucz API?",
+    "clearErrorTitle": "Nie udało się wyczyścić klucza",
+    "clearedToastDescription": "Dla {provider} serwer przejdzie na własny skonfigurowany klucz albo na brak klucza.",
+    "clearedToastTitle": "Klucz API wyczyszczony",
+    "columns": {
+      "actions": "Akcje",
+      "active": "Aktywny",
+      "key": "Klucz",
+      "provider": "Dostawca",
+      "source": "Źródło",
+      "updated": "Zmieniono"
+    },
+    "heading": "Dostawcy",
+    "makeActive": "Ustaw jako aktywny",
+    "no": "Nie",
+    "notApplicable": "nd.",
+    "providers": {
+      "anthropic": {
+        "hint": "Claude - Vercel AI SDK",
+        "label": "Anthropic"
+      },
+      "fake": {
+        "hint": "Deterministyczny - bez sieci",
+        "label": "Atrapa (offline)"
+      },
+      "openai": {
+        "hint": "GPT - Vercel AI SDK",
+        "label": "OpenAI"
+      }
+    },
+    "rotate": "Wymień",
+    "serverFallback": "zapasowy z serwera",
+    "setKey": "Ustaw klucz",
+    "sources": {
+      "db": "Zapisany zaszyfrowany",
+      "env": "Zapasowy z serwera",
+      "none": "Brak"
+    },
+    "switchConfirmDescription": "Kolejne żądania AI będą kierowane do {provider}. Żądania już wysłane do {current} zostaną obsłużone przez tego dostawcę.",
+    "switchConfirmLabel": "Przełącz dostawcę",
+    "switchConfirmTitle": "Przełączyć aktywnego dostawcę na {provider}?",
+    "switchConfirmTitleGeneric": "Przełączyć aktywnego dostawcę?",
+    "switchErrorTitle": "Nie udało się przełączyć dostawcy",
+    "switchedToastDescription": "Kolejne żądania AI trafiają do {provider}.",
+    "switchedToastTitle": "Aktywny dostawca przełączony",
+    "unknownError": "Nieznany błąd",
+    "updatedBy": "przez {user}",
+    "yes": "Tak"
+  }
+}

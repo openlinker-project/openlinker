@@ -7,6 +7,7 @@ import { KeyValueList } from '../../shared/ui/key-value-list';
 import { RawPayloadPanel } from '../../shared/ui/raw-payload-panel';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { usePlatform } from '../../shared/plugins';
+import { interpolate, type Messages, type ResolvedCopy, useMessages } from '../../shared/i18n';
 import { useListingQuery } from '../../features/listings/hooks/use-listing-query';
 import { EditOfferDrawer } from '../../features/listings/components/edit-offer-drawer';
 import { ListingMarketplaceOfferSection } from '../../features/listings/components/listing-marketplace-offer-section';
@@ -19,6 +20,7 @@ import {
   KNOWN_MAPPING_ENTITY_TYPES,
   type KnownMappingEntityType,
 } from '../../features/listings/api/listings.types';
+import { serverErrorText } from '../../features/listings/lib/server-error-text';
 
 /**
  * Both `entityType === 'ProductVariant'` and `entityType === 'Offer'` mappings
@@ -46,18 +48,25 @@ function isKnownEntityType(value: string): value is KnownMappingEntityType {
   return (KNOWN_MAPPING_ENTITY_TYPES as readonly string[]).includes(value);
 }
 
+type ListingDetailCopy = ResolvedCopy<Messages['listings']>['listingDetailPage'];
+
 function renderInternalIdValue(
   entityType: string,
   internalId: string,
   variant: ProductVariantSummary | undefined,
+  copy: ListingDetailCopy,
 ): ReactNode {
   // SKU/EAN enrichment renders inline next to the linked id when the variant
   // query has resolved (#464). Errors / 404s render quietly — the bare ID is
   // still useful by itself.
   const enrichment = variant ? (
     <span className="listing-detail-variant-tags">
-      {variant.sku ? <span className="mono-text">SKU {variant.sku}</span> : null}
-      {variant.ean ? <span className="mono-text">EAN {variant.ean}</span> : null}
+      {variant.sku ? (
+        <span className="mono-text">{interpolate(copy.skuTag, { sku: variant.sku })}</span>
+      ) : null}
+      {variant.ean ? (
+        <span className="mono-text">{interpolate(copy.eanTag, { ean: variant.ean })}</span>
+      ) : null}
     </span>
   ) : null;
 
@@ -83,6 +92,8 @@ function renderInternalIdValue(
 
 export function ListingDetailPage(): ReactElement {
   const { id = '' } = useParams<{ id: string }>();
+  const copy = useMessages('listings').listingDetailPage;
+  const common = useMessages('listings').common;
   const query = useListingQuery(id);
   const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
 
@@ -97,19 +108,19 @@ export function ListingDetailPage(): ReactElement {
 
   if (query.isLoading) {
     return (
-      <PageLayout eyebrow="Listings" title="Offer mapping">
-        <LoadingState liveRegion="off" title="Loading offer mapping" message="Fetching mapping details…" />
+      <PageLayout eyebrow={copy.eyebrow} title={copy.title}>
+        <LoadingState liveRegion="off" title={copy.loadingTitle} message={copy.loadingMessage} />
       </PageLayout>
     );
   }
 
   if (query.error || !query.data) {
     return (
-      <PageLayout eyebrow="Listings" title="Offer mapping">
+      <PageLayout eyebrow={copy.eyebrow} title={copy.title}>
         <ErrorState
-          title="Unable to load offer mapping"
-          message={query.error?.message ?? 'Offer mapping not found'}
-          action={<Button onClick={() => { void query.refetch(); }}>Retry</Button>}
+          title={copy.errorTitle}
+          message={serverErrorText(common.serverSaid, query.error?.message, copy.notFound)}
+          action={<Button onClick={() => { void query.refetch(); }}>{copy.retry}</Button>}
         />
       </PageLayout>
     );
@@ -123,41 +134,40 @@ export function ListingDetailPage(): ReactElement {
 
   return (
     <PageLayout
-      backTo={{ to: '/listings', label: 'Listings' }}
-      eyebrow="Listings"
-      title={`Mapping — ${mapping.externalId}`}
+      backTo={{ to: '/listings', label: copy.eyebrow }}
+      eyebrow={copy.eyebrow}
+      title={interpolate(copy.mappingTitle, { externalId: mapping.externalId })}
       actions={
         mappingPlugin?.supportsListingEdit ? (
-          <Button onClick={() => setIsEditDrawerOpen(true)}>
-            Edit offer
-          </Button>
+          <Button onClick={() => setIsEditDrawerOpen(true)}>{copy.editOffer}</Button>
         ) : undefined
       }
     >
       <section className="detail-section">
         <KeyValueList
           items={[
-            { id: 'mappingId', label: 'Mapping ID', value: mapping.id, mono: true },
-            { id: 'entityType', label: 'Entity Type', value: mapping.entityType, mono: true },
-            { id: 'externalId', label: 'External ID', value: mapping.externalId, mono: true },
+            { id: 'mappingId', label: copy.fields.mappingId, value: mapping.id, mono: true },
+            { id: 'entityType', label: copy.fields.entityType, value: mapping.entityType, mono: true },
+            { id: 'externalId', label: copy.fields.externalId, value: mapping.externalId, mono: true },
             {
               id: 'internalId',
-              label: 'Internal ID',
+              label: copy.fields.internalId,
               value: renderInternalIdValue(
                 mapping.entityType,
                 mapping.internalId,
                 variantQuery.data,
+                copy,
               ),
               mono: true,
             },
-            { id: 'platform', label: 'Platform Type', value: mapping.platformType, mono: true },
+            { id: 'platform', label: copy.fields.platformType, value: mapping.platformType, mono: true },
             {
               id: 'connection',
-              label: 'Connection',
+              label: copy.fields.connection,
               value: <ConnectionEntityLabel connectionId={mapping.connectionId} />,
             },
-            { id: 'createdAt', label: 'Created', value: <TimeDisplay iso={mapping.createdAt} /> },
-            { id: 'updatedAt', label: 'Updated', value: <TimeDisplay iso={mapping.updatedAt} /> },
+            { id: 'createdAt', label: copy.fields.created, value: <TimeDisplay iso={mapping.createdAt} /> },
+            { id: 'updatedAt', label: copy.fields.updated, value: <TimeDisplay iso={mapping.updatedAt} /> },
           ]}
         />
       </section>
@@ -170,31 +180,31 @@ export function ListingDetailPage(): ReactElement {
       {mapping.offerCreation ? (
         <section className="detail-section">
           <div className="listing-detail-offer-creation__header">
-            <h3 className="listing-detail-offer-creation__title">Offer creation</h3>
+            <h3 className="listing-detail-offer-creation__title">{copy.offerCreation}</h3>
             <OfferCreationStatusBadge status={mapping.offerCreation.status} />
           </div>
           <KeyValueList
             items={[
               {
                 id: 'offerCreationId',
-                label: 'Record ID',
+                label: copy.fields.recordId,
                 value: mapping.offerCreation.id,
                 mono: true,
               },
               {
                 id: 'externalOfferId',
-                label: 'External Offer ID',
+                label: copy.fields.externalOfferId,
                 value: mapping.offerCreation.externalOfferId ?? '—',
                 mono: true,
               },
               {
                 id: 'offerCreationCreatedAt',
-                label: 'Created',
+                label: copy.fields.created,
                 value: <TimeDisplay iso={mapping.offerCreation.createdAt} />,
               },
               {
                 id: 'offerCreationUpdatedAt',
-                label: 'Updated',
+                label: copy.fields.updated,
                 value: <TimeDisplay iso={mapping.offerCreation.updatedAt} />,
               },
             ]}
@@ -207,7 +217,7 @@ export function ListingDetailPage(): ReactElement {
 
       {mapping.context !== null ? (
         <section className="detail-section">
-          <RawPayloadPanel title="Context" payload={mapping.context} />
+          <RawPayloadPanel title={copy.contextTitle} payload={mapping.context} />
         </section>
       ) : null}
 
