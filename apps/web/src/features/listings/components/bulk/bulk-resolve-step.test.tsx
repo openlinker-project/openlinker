@@ -70,6 +70,8 @@ function variantRow(id: string, over: Partial<BulkVariantRow> = {}): BulkVariant
     resolvedCategoryId: null,
     resolvedProductCardId: null,
     resolutionMethod: null,
+    overriddenCard: null,
+    mappingAgrees: false,
     categoryCandidates: [],
     override: {},
     ...over,

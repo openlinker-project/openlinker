@@ -39,6 +39,8 @@ const resolved: BulkResolveOutcome = {
       resolvedCategoryId: null,
       resolvedProductCardId: null,
       resolutionMethod: null,
+      overriddenCard: null,
+      mappingAgrees: false,
       masterPrice: 39,
       masterStock: 5,
       masterCurrency: 'PLN',

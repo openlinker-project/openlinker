@@ -236,6 +236,17 @@ describe('allegroOfferValidation', () => {
       ).toEqual([ALLEGRO_EAN_UNVERIFIED_BLOCKER]);
     });
 
+    it('says nothing when the barcode matched a card that was set aside for the mapping (#3994)', () => {
+      expect(
+        allegroOfferValidation.validateRow({
+          ...base,
+          barcode: '5901234000017',
+          catalogueConsulted: true,
+          barcodeMatchedCatalogue: true,
+        }),
+      ).toEqual([]);
+    });
+
     it('says nothing when no catalogue was consulted - a miss would mean nothing', () => {
       expect(
         allegroOfferValidation.validateRow({

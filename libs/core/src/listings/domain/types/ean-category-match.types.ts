@@ -34,10 +34,12 @@ export type EanMatchResultKind = (typeof EanMatchResultKindValues)[number];
  * - `auto_detect`: unique product card found in the marketplace catalogue by
  *   EAN (the adapter's `EanCategoryMatcher` path). This is the default and the
  *   only value adapters ever produce — the field is absent on their results.
- * - `category_mapping`: no catalogue match for the EAN, but the operator's
- *   configured per-source-category mapping resolved the destination category.
- *   Set only by `CategoryResolutionService.resolveCategoriesBatch` on the
- *   mapping-fallback path; carries no catalogue card (`productCardId` is empty).
+ * - `category_mapping`: the operator's configured per-source-category mapping
+ *   resolved the destination category - either because the EAN had no
+ *   catalogue match, or because its card sat in a different category than the
+ *   mapping names (#3994, then `overriddenCard` says which). Set only by
+ *   `CategoryResolutionService`; carries no catalogue card (`productCardId` is
+ *   empty).
  */
 export const EanMatchMethodValues = ['auto_detect', 'category_mapping'] as const;
 
@@ -65,10 +67,35 @@ export type EanMatchMethod = (typeof EanMatchMethodValues)[number];
  *   no-throw contract).
  */
 export type EanMatchResult =
-  | { kind: 'matched'; allegroCategoryId: string; productCardId: string; method?: EanMatchMethod }
+  | {
+      kind: 'matched';
+      allegroCategoryId: string;
+      productCardId: string;
+      method?: EanMatchMethod;
+      /**
+       * `true` on an `auto_detect` result whose catalogue card sits in exactly
+       * the category the operator's mapping names (#3994). Absent means "not
+       * compared" - no mapping exists, or no source category was supplied - and
+       * must never be read as a disagreement.
+       */
+      mappingAgrees?: true;
+      /**
+       * Set only on a `category_mapping` result produced because a catalogue
+       * card matched the EAN in a DIFFERENT category than the operator's mapping
+       * (#3994). The mapping won, so the card is not linked; it is reported so
+       * the operator can see the disagreement and choose the card deliberately.
+       */
+      overriddenCard?: EanMatchCardRef;
+    }
   | { kind: 'multi-match'; candidates: EanMatchCandidate[] }
   | { kind: 'no-ean' }
   | { kind: 'no-match' };
+
+/** A catalogue card the resolver found but did not use (#3994). */
+export interface EanMatchCardRef {
+  allegroCategoryId: string;
+  productCardId: string;
+}
 
 export interface EanMatchCandidate {
   allegroCategoryId: string;

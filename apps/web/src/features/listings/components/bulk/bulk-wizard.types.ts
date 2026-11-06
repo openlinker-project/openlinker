@@ -12,7 +12,7 @@
  */
 import type { Product, ProductVariant } from '../../../products';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
-import type { EanMatchCandidate } from '../../api/listings.types';
+import type { EanMatchCandidate, EanMatchCardRef } from '../../api/listings.types';
 
 export const BulkWizardStepValues = [
   'config',
@@ -130,6 +130,14 @@ export interface BulkVariantRow {
   /** Catalogue card id from this variant's unique EAN match (#808). */
   resolvedProductCardId: string | null;
   resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | null;
+  /**
+   * A catalogue card matched this variant's EAN in a different category than
+   * the operator's mapping, so the mapping was used and the card set aside
+   * (#3994). Null when there was no such disagreement.
+   */
+  overriddenCard: EanMatchCardRef | null;
+  /** The matched card sits in the mapped category (#3994); false = not compared or no card. */
+  mappingAgrees: boolean;
   /** Multi-match candidates for this variant's EAN. */
   categoryCandidates: readonly EanMatchCandidate[];
   /** Per-variant override written by the editor; sent as `perVariantOverrides[variantId]`. */

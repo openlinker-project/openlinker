@@ -105,6 +105,8 @@ function makeVariantRow(variant: ProductVariant): BulkVariantRow {
     resolvedCategoryId: null,
     resolvedProductCardId: null,
     resolutionMethod: null,
+    overriddenCard: null,
+    mappingAgrees: false,
     categoryCandidates: [],
     override: {},
   };

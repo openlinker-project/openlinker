@@ -45,6 +45,12 @@ import {
   type ChipDescriptor,
 } from './bulk-blockers';
 import { describeBlocker, type BlockerCopyContext } from './bulk-blocker-copy';
+import {
+  ReviewCategoryCell,
+  describeProductCategory,
+  describeVariantCategory,
+} from './bulk-review-category-cell';
+import { BulkCardCategoryDialog } from './bulk-card-category-dialog';
 
 interface BulkReviewStepProps {
   rows: BulkWizardRow[];
@@ -74,6 +80,38 @@ interface BulkReviewStepProps {
   ) => void;
   onApproveAll: () => void;
   onBack: () => void;
+  /**
+   * Adopt the catalogue card the resolver set aside in favour of the mapping
+   * (#3994). Single-variant products only; absent ⇒ the dialog offers no adopt.
+   */
+  onUseCardCategory?: (productId: string) => void;
+  /** The destination resolves the category itself at submit (borrowed taxonomy). */
+  destinationResolvesCategoryAtSubmit?: boolean;
+}
+
+/** What every row needs to render its Category cell and open the card dialog (#3994). */
+interface CategoryColumn {
+  connectionId: string;
+  resolvesAtSubmit: boolean;
+  onCompareCard: (productId: string, variantId: string) => void;
+}
+
+/** Blockers rendered inside the Category cell rather than as a status chip (#3994). */
+const CATEGORY_CELL_BLOCKERS: ReadonlySet<string> = new Set(['card-category-differs']);
+
+/** The set-aside catalogue product a row's Category cell should flag, if any (#3994). */
+function cardConflict(
+  row: BulkWizardRow,
+  variant: BulkVariantRow,
+  category: CategoryColumn,
+): { card: NonNullable<BulkVariantRow['overriddenCard']>; onCompare: () => void } | null {
+  if (!variant.overriddenCard || !variant.blockers.includes('card-category-differs')) return null;
+  return {
+    card: variant.overriddenCard,
+    onCompare: () => {
+      category.onCompareCard(row.productId, variant.variantId);
+    },
+  };
 }
 
 /**
@@ -149,6 +187,8 @@ export function BulkReviewStep({
   onSaveEditor,
   onApproveAll,
   onBack,
+  onUseCardCategory,
+  destinationResolvesCategoryAtSubmit = false,
 }: BulkReviewStepProps): ReactElement {
   const blockerChips = useMemo<Record<string, ChipDescriptor>>(() => {
     const merged: Record<string, ChipDescriptor> = { ...NEUTRAL_BLOCKER_CHIPS };
@@ -172,6 +212,23 @@ export function BulkReviewStep({
     focusField?: OfferBlockerField;
   } | null>(null);
   const [zoom, setZoom] = useState<{ src: string; name: string } | null>(null);
+  // The card-vs-mapping comparison (#3994), keyed by the row it was opened from.
+  const [comparing, setComparing] = useState<{ productId: string; variantId: string } | null>(null);
+  const categoryColumn = useMemo<CategoryColumn>(
+    () => ({
+      connectionId: config.connectionId,
+      resolvesAtSubmit: destinationResolvesCategoryAtSubmit,
+      onCompareCard: (productId, variantId): void => {
+        setComparing({ productId, variantId });
+      },
+    }),
+    [config.connectionId, destinationResolvesCategoryAtSubmit],
+  );
+  const comparingRow = comparing ? rows.find((r) => r.productId === comparing.productId) ?? null : null;
+  const comparingVariant =
+    comparing && comparingRow
+      ? comparingRow.variants.find((v) => v.variantId === comparing.variantId) ?? null
+      : null;
   // "Jump to next flagged" cursor + deferred scroll target so the jump can cross
   // pagination boundaries: it advances a cursor through the flagged set, flips to
   // the target's page, then scrolls once that page has rendered (#1741 review #10).
@@ -444,13 +501,14 @@ export function BulkReviewStep({
         )}
       </div>
 
-      <div className="bulk-review__table">
+      <div className="bulk-review__table bulk-review__table--with-category">
         {/* Header is announced (not aria-hidden) so screen-reader users get the
             column labels for the rows below (#1741 review #9). */}
         <div className="bulk-review__grid bulk-review__head">
           <span className="bulk-review__c-lead" />
           <span>Product</span>
           <span className="bulk-review__c-status">Status</span>
+          <span className="bulk-review__c-cat">Category</span>
           <span className="bulk-review__c-stock">Stock</span>
           <span className="bulk-review__c-price">Price (gross)</span>
           <span className="bulk-review__c-action" />
@@ -476,6 +534,7 @@ export function BulkReviewStep({
             onZoom={(src, name) => {
               setZoom({ src, name });
             }}
+            category={categoryColumn}
           />
         ))}
       </div>
@@ -550,6 +609,36 @@ export function BulkReviewStep({
         />
       ) : null}
 
+      {comparingRow && comparingVariant?.overriddenCard ? (
+        <BulkCardCategoryDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setComparing(null);
+          }}
+          connectionId={config.connectionId}
+          destinationName={destinationName}
+          subject={
+            comparingRow.variants.length > 1
+              ? `${comparingRow.product?.name ?? 'Product'} - ${distinguishingLabel(
+                  comparingVariant,
+                  comparingRow.variants.indexOf(comparingVariant),
+                )}`
+              : (comparingRow.product?.name ?? 'Product')
+          }
+          ean={comparingVariant.ean}
+          mappedCategoryId={comparingVariant.resolvedCategoryId ?? ''}
+          card={comparingVariant.overriddenCard}
+          canAdoptCard={comparingRow.variants.length === 1 && onUseCardCategory !== undefined}
+          demoReadOnly={demoReadOnly}
+          onUseCard={() => {
+            onUseCardCategory?.(comparingRow.productId);
+          }}
+          onEditProduct={() => {
+            setEditing({ productId: comparingRow.productId, focusField: 'category' });
+          }}
+        />
+      ) : null}
+
       {zoom ? (
         <BulkImageLightbox
           src={zoom.src}
@@ -575,6 +664,7 @@ interface ProductRowProps {
   onSetProductIncluded: (productId: string, included: boolean) => void;
   onEdit: (focusVariantId?: string, focusField?: OfferBlockerField) => void;
   onZoom: (src: string, name: string) => void;
+  category: CategoryColumn;
 }
 
 function ProductRow({
@@ -589,6 +679,7 @@ function ProductRow({
   onSetProductIncluded,
   onEdit,
   onZoom,
+  category,
 }: ProductRowProps): ReactElement {
   const isMulti = row.variants.length > 1;
   const isSimple = row.variants.length === 1;
@@ -718,6 +809,24 @@ function ProductRow({
             </>
           )}
         </div>
+        {noVariants ? (
+          <div className="bulk-review__c-cat" />
+        ) : (
+          <ReviewCategoryCell
+            connectionId={category.connectionId}
+            resolvesAtSubmit={category.resolvesAtSubmit}
+            {...(isSimple ? describeVariantCategory(row, row.variants[0]) : describeProductCategory(row))}
+            conflict={isSimple ? cardConflict(row, row.variants[0], category) : null}
+            siblingConflicts={
+              isMulti && !open
+                ? {
+                    count: row.variants.filter((v) => cardConflict(row, v, category) !== null).length,
+                    onReveal: onToggleExpand,
+                  }
+                : null
+            }
+          />
+        )}
         <div
           className={[
             'bulk-review__c-stock tabular',
@@ -765,6 +874,7 @@ function ProductRow({
               onEdit={(focusField) => {
                 onEdit(variant.variantId, focusField);
               }}
+              category={category}
             />
           ))}
         </div>
@@ -783,6 +893,7 @@ interface VariantRowProps {
   destinationName: string;
   onSetVariantIncluded: (productId: string, variantId: string, included: boolean) => void;
   onEdit: (focusField?: OfferBlockerField) => void;
+  category: CategoryColumn;
 }
 
 function VariantRow({
@@ -795,6 +906,7 @@ function VariantRow({
   destinationName,
   onSetVariantIncluded,
   onEdit,
+  category,
 }: VariantRowProps): ReactElement {
   const label = distinguishingLabel(variant, index);
   const catBlocked = variant.blockers.some(
@@ -846,6 +958,12 @@ function VariantRow({
           copyContext={blockerCopyContext(row, variant, destinationName, config)}
         />
       </div>
+      <ReviewCategoryCell
+        connectionId={category.connectionId}
+        resolvesAtSubmit={category.resolvesAtSubmit}
+        {...describeVariantCategory(row, variant)}
+        conflict={cardConflict(row, variant, category)}
+      />
       <div className="bulk-review__c-stock tabular">{stock.value ?? '-'}</div>
       <div className="bulk-review__c-price tabular">
         {price.value !== null ? `${price.value.toFixed(2)} ${config.currency}` : '-'}
@@ -898,7 +1016,11 @@ function VariantChips({
       </>
     );
   }
-  if (variant.blockers.length === 0) {
+  // The card-vs-mapping disagreement is shown on the category it is about, in
+  // the Category column (#3994) - repeating it here as a status chip would say
+  // the same thing twice, in the column furthest from the category.
+  const visible = variant.blockers.filter((b) => !CATEGORY_CELL_BLOCKERS.has(b));
+  if (visible.length === 0) {
     return (
       <>
         <Chip descriptor={{ tone: 'success', label: 'ready', fixable: false }} />
@@ -908,7 +1030,7 @@ function VariantChips({
   }
   return (
     <>
-      {variant.blockers.map((b) => {
+      {visible.map((b) => {
         const descriptor = chips[b] ?? FALLBACK_CHIP;
         // The cause sentence rides on the chip (#2240). One chip per row keeps
         // the identity column at its documented two lines; the explanation is a
