@@ -11,7 +11,7 @@
 import { useState, type ReactElement } from 'react';
 import type { Cursor, CursorOverviewItem, CursorWriteMarksSummary } from '../api/cursors.types';
 import { useWriteMarksQuery } from '../hooks/use-write-marks-query';
-import { SYNC_PROGRESS_COPY } from '../lib/sync-progress.copy';
+import type { SyncProgressCopy } from '../lib/sync-progress-copy';
 import { CursorRow, type CursorRowView } from './cursor-row';
 
 interface WriteMarksBundleProps {
@@ -23,6 +23,7 @@ interface WriteMarksBundleProps {
   formatWhen: (iso: string) => string;
   toView: (item: CursorOverviewItem) => CursorRowView;
   onOpen: (view: CursorRowView) => void;
+  copy: SyncProgressCopy;
 }
 
 function asOverviewItem(c: Cursor): CursorOverviewItem {
@@ -38,6 +39,7 @@ export function WriteMarksBundle({
   formatWhen,
   toView,
   onOpen,
+  copy: C,
 }: WriteMarksBundleProps): ReactElement {
   const [open, setOpen] = useState(false);
   const isOpen = open || search.length > 0;
@@ -45,7 +47,6 @@ export function WriteMarksBundle({
   const rows = (query.data?.items ?? [])
     .filter((c) => !search || c.cursorKey.toLowerCase().includes(search))
     .map((c) => toView(asOverviewItem(c)));
-  const C = SYNC_PROGRESS_COPY;
 
   return (
     <div className="sync-progress__bundle" data-open={isOpen}>
@@ -75,6 +76,7 @@ export function WriteMarksBundle({
                   showKeys={showKeys}
                   ago={ago}
                   formatWhen={formatWhen}
+                  copy={C}
                   onOpen={() => {
                     onOpen(view);
                   }}

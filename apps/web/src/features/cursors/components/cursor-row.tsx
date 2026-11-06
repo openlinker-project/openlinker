@@ -10,7 +10,7 @@ import type { ReactElement } from 'react';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { CursorHealth, CursorProgress } from '../lib/read-cursor-health';
 import type { CursorOverviewItem } from '../api/cursors.types';
-import { SYNC_PROGRESS_COPY } from '../lib/sync-progress.copy';
+import type { SyncProgressCopy } from '../lib/sync-progress-copy';
 
 export interface CursorRowView {
   cursor: CursorOverviewItem;
@@ -25,27 +25,31 @@ interface CursorRowProps {
   ago: (iso: string) => string;
   formatWhen: (iso: string) => string;
   onOpen: () => void;
+  copy: SyncProgressCopy;
 }
 
-export function lastRunLine(view: CursorRowView, ago: (iso: string) => string): { text: string; failed: boolean } | null {
+export function lastRunLine(
+  view: CursorRowView,
+  ago: (iso: string) => string,
+  C: SyncProgressCopy,
+): { text: string; failed: boolean } | null {
   const run = view.cursor.lastRun;
   if (!run) return null;
-  const C = SYNC_PROGRESS_COPY;
   if (run.status === 'dead') return { text: C.lastRunFailed(ago(run.at)), failed: true };
   if (run.status === 'running') return { text: C.lastRunRunning, failed: false };
   if (run.status === 'queued') return { text: C.lastRunQueued, failed: false };
   return { text: C.lastRunOk(ago(run.at)), failed: false };
 }
 
-export function CursorRow({ view, showKeys, ago, formatWhen, onOpen }: CursorRowProps): ReactElement {
+export function CursorRow({ view, showKeys, ago, formatWhen, onOpen, copy }: CursorRowProps): ReactElement {
   const { cursor, label, health, progress } = view;
-  const job = lastRunLine(view, ago);
+  const job = lastRunLine(view, ago, copy);
   return (
     <button
       type="button"
       className="card-button-reset sync-progress__row"
       onClick={onOpen}
-      aria-label={`${label}, ${health.label}. Show details`}
+      aria-label={`${label}, ${health.label}`}
     >
       <span className="sync-progress__what">
         <span className="sync-progress__label">{label}</span>

@@ -11,14 +11,15 @@
  *
  * @module apps/web/src/features/cursors/lib
  */
-import { SYNC_PROGRESS_COPY } from './sync-progress.copy';
-import type { SyncGuideItemId } from './sync-guide.copy';
+import type { SyncProgressCopy } from './sync-progress-copy';
+
+export type CursorLabelKey = keyof SyncProgressCopy['labels'];
 
 export interface CursorDescription {
-  label: string;
+  labelKey: CursorLabelKey;
   /** Expected minutes between moves; null when the cursor has no schedule of its own. */
   cadenceMinutes: number | null;
-  guideId: SyncGuideItemId | null;
+  guideId: string | null;
   /** Platform that may legitimately write the key (#3991 misplaced-key check). */
   platform: string | null;
   /** Job + payload for Run now; null when there is no safe manual run. */
@@ -27,9 +28,9 @@ export interface CursorDescription {
 
 interface Row {
   match: RegExp;
-  label: string;
+  labelKey: CursorLabelKey;
   cadence: number | null;
-  guideId: SyncGuideItemId | null;
+  guideId: string | null;
   /**
    * The key's first segment names the platform whose feed it reads. Only true
    * for order / offer / return FEEDS: the re-check keys are handler defaults
@@ -40,7 +41,6 @@ interface Row {
   runNow?: (key: string) => CursorDescription['runNow'];
 }
 
-const L = SYNC_PROGRESS_COPY.labels;
 const feed = (jobType: string) => (key: string): CursorDescription['runNow'] => ({
   jobType,
   payload: { schemaVersion: 1, cursorKey: key, limit: 100 },
@@ -48,38 +48,38 @@ const feed = (jobType: string) => (key: string): CursorDescription['runNow'] => 
 const sweep = (jobType: string) => (): CursorDescription['runNow'] => ({ jobType, payload: { schemaVersion: 1 } });
 
 const ROWS: readonly Row[] = [
-  { match: /^[a-z]+\.orders\.(lastEventId|inboxCursor)$/, label: L.newOrders, cadence: 5, guideId: 's-orders', platformFromKey: true, runNow: feed('marketplace.orders.poll') },
-  { match: /^[a-z]+\.orders\.dateUpd$/, label: L.changedOrders, cadence: 10, guideId: 's-changed-orders', platformFromKey: true, runNow: feed('marketplace.orders.poll') },
-  { match: /^[a-z]+\.orders\.[A-Za-z]+Cursor$/, label: L.newOrders, cadence: 10, guideId: 's-orders', platformFromKey: true, runNow: feed('marketplace.orders.poll') },
-  { match: /^allegro\.offers\.lastEventId$/, label: L.offerChanges, cadence: 15, guideId: 's-offer-changes', platformFromKey: true, runNow: feed('marketplace.offers.sync') },
-  { match: /^allegro\.customerReturns\.lastReturnId$/, label: L.newReturns, cadence: 30, guideId: 's-returns', platformFromKey: true, runNow: feed('marketplace.returns.poll') },
-  { match: /^allegro\.customerReturns\.scanOffset$/, label: L.openReturnsCheck, cadence: 60, guideId: 's-returns-check', runNow: feed('marketplace.returns.statusSync') },
-  { match: /\.offerStatus\.scanOffset$/, label: L.listingStatus, cadence: 60, guideId: 's-listing-status', runNow: feed('marketplace.offer.statusSync') },
-  { match: /\.shipmentStatus\.scanOffset$/, label: L.parcelTracking, cadence: 15, guideId: 's-parcel', runNow: feed('marketplace.shipment.statusSync') },
-  { match: /^[a-z]+\.fulfillmentStatus\.scanOffset$/, label: L.shopOrderStatus, cadence: 30, guideId: 's-shop-status', runNow: feed('marketplace.fulfillment.statusSync') },
-  { match: /^destination\.taxonomy\.frontier/, label: L.categoryTree, cadence: null, guideId: 's-categories' },
-  { match: /^fulfillment\.unsubmitted\.after$/, label: L.unsentTasks, cadence: 60, guideId: 's-system' },
-  { match: /^fulfillment\.reroute\.after$/, label: L.rerouteCheck, cadence: 60, guideId: 's-system' },
-  { match: /^sourceFulfillmentStatus\.scanOffset$/, label: L.channelOrderStatus, cadence: 30, guideId: 's-shop-status' },
-  { match: /^shop\.productStatus\.scanOffset$/, label: L.shopProductStatus, cadence: 60, guideId: 's-listing-status' },
-  { match: /^master\.product\.sweep:/, label: L.productCatalogue, cadence: 20, guideId: 's-catalogue', runNow: sweep('master.product.syncAll') },
-  { match: /^master\.inventory\.sweep:/, label: L.stockLevels, cadence: 15, guideId: 's-stock', runNow: sweep('master.inventory.syncAll') },
-  { match: /^master\.product-reconcile\.sweep:/, label: L.deletedProducts, cadence: 60, guideId: 's-deleted', runNow: sweep('master.product.reconcile') },
-  { match: /^master\.product-delta\.sweep:/, label: L.changedProducts, cadence: 20, guideId: 's-catalogue' },
-  { match: /^returns\.orphanReattribution\.scanOffset$/, label: L.orphanReturns, cadence: 30, guideId: 's-system' },
-  { match: /^automation\.deadlineSweep\.scanOffset$/, label: L.automationDeadlines, cadence: 15, guideId: 's-system' },
-  { match: /^inventory\.reservationShortfall\.detectOffset$/, label: L.shortfallDetect, cadence: 15, guideId: 's-system' },
-  { match: /^inventory\.reservationShortfall\.closeOffset$/, label: L.shortfallClose, cadence: 15, guideId: 's-system' },
-  { match: /^inventory\.offerQuantity\.observedAt:offer:/, label: L.stockWriteOrder, cadence: null, guideId: 'p-stock' },
+  { match: /^[a-z]+\.orders\.(lastEventId|inboxCursor)$/, labelKey: 'newOrders', cadence: 5, guideId: 's-orders', platformFromKey: true, runNow: feed('marketplace.orders.poll') },
+  { match: /^[a-z]+\.orders\.dateUpd$/, labelKey: 'changedOrders', cadence: 10, guideId: 's-changed-orders', platformFromKey: true, runNow: feed('marketplace.orders.poll') },
+  { match: /^[a-z]+\.orders\.[A-Za-z]+Cursor$/, labelKey: 'newOrders', cadence: 10, guideId: 's-orders', platformFromKey: true, runNow: feed('marketplace.orders.poll') },
+  { match: /^allegro\.offers\.lastEventId$/, labelKey: 'offerChanges', cadence: 15, guideId: 's-offer-changes', platformFromKey: true, runNow: feed('marketplace.offers.sync') },
+  { match: /^allegro\.customerReturns\.lastReturnId$/, labelKey: 'newReturns', cadence: 30, guideId: 's-returns', platformFromKey: true, runNow: feed('marketplace.returns.poll') },
+  { match: /^allegro\.customerReturns\.scanOffset$/, labelKey: 'openReturnsCheck', cadence: 60, guideId: 's-returns-check', runNow: feed('marketplace.returns.statusSync') },
+  { match: /\.offerStatus\.scanOffset$/, labelKey: 'listingStatus', cadence: 60, guideId: 's-listing-status', runNow: feed('marketplace.offer.statusSync') },
+  { match: /\.shipmentStatus\.scanOffset$/, labelKey: 'parcelTracking', cadence: 15, guideId: 's-parcel', runNow: feed('marketplace.shipment.statusSync') },
+  { match: /^[a-z]+\.fulfillmentStatus\.scanOffset$/, labelKey: 'shopOrderStatus', cadence: 30, guideId: 's-shop-status', runNow: feed('marketplace.fulfillment.statusSync') },
+  { match: /^destination\.taxonomy\.frontier/, labelKey: 'categoryTree', cadence: null, guideId: 's-categories' },
+  { match: /^fulfillment\.unsubmitted\.after$/, labelKey: 'unsentTasks', cadence: 60, guideId: 's-system' },
+  { match: /^fulfillment\.reroute\.after$/, labelKey: 'rerouteCheck', cadence: 60, guideId: 's-system' },
+  { match: /^sourceFulfillmentStatus\.scanOffset$/, labelKey: 'channelOrderStatus', cadence: 30, guideId: 's-shop-status' },
+  { match: /^shop\.productStatus\.scanOffset$/, labelKey: 'shopProductStatus', cadence: 60, guideId: 's-listing-status' },
+  { match: /^master\.product\.sweep:/, labelKey: 'productCatalogue', cadence: 20, guideId: 's-catalogue', runNow: sweep('master.product.syncAll') },
+  { match: /^master\.inventory\.sweep:/, labelKey: 'stockLevels', cadence: 15, guideId: 's-stock', runNow: sweep('master.inventory.syncAll') },
+  { match: /^master\.product-reconcile\.sweep:/, labelKey: 'deletedProducts', cadence: 60, guideId: 's-deleted', runNow: sweep('master.product.reconcile') },
+  { match: /^master\.product-delta\.sweep:/, labelKey: 'changedProducts', cadence: 20, guideId: 's-catalogue' },
+  { match: /^returns\.orphanReattribution\.scanOffset$/, labelKey: 'orphanReturns', cadence: 30, guideId: 's-system' },
+  { match: /^automation\.deadlineSweep\.scanOffset$/, labelKey: 'automationDeadlines', cadence: 15, guideId: 's-system' },
+  { match: /^inventory\.reservationShortfall\.detectOffset$/, labelKey: 'shortfallDetect', cadence: 15, guideId: 's-system' },
+  { match: /^inventory\.reservationShortfall\.closeOffset$/, labelKey: 'shortfallClose', cadence: 15, guideId: 's-system' },
+  { match: /^inventory\.offerQuantity\.observedAt:offer:/, labelKey: 'stockWriteOrder', cadence: null, guideId: 'p-stock' },
 ];
 
 export function describeCursor(cursorKey: string): CursorDescription {
   const row = ROWS.find((r) => r.match.test(cursorKey));
   if (!row) {
-    return { label: L.unrecognised, cadenceMinutes: null, guideId: 'q-unknown', platform: null, runNow: null };
+    return { labelKey: 'unrecognised', cadenceMinutes: null, guideId: 'q-unknown', platform: null, runNow: null };
   }
   return {
-    label: row.label,
+    labelKey: row.labelKey,
     cadenceMinutes: row.cadence,
     guideId: row.guideId,
     platform: row.platformFromKey ? cursorKey.slice(0, cursorKey.indexOf('.')) : null,
@@ -91,4 +91,9 @@ export function describeCursor(cursorKey: string): CursorDescription {
 export function sweepKeyForCompletionStamp(cursorKey: string): string | null {
   const m = /^master\.([a-z-]+)\.completedAt:connection:(.+)$/.exec(cursorKey);
   return m ? `master.${m[1]}.sweep:connection:${m[2]}` : null;
+}
+
+/** The operator label for a cursor key, in the active language. */
+export function cursorLabel(cursorKey: string, copy: SyncProgressCopy): string {
+  return copy.labels[describeCursor(cursorKey).labelKey];
 }
