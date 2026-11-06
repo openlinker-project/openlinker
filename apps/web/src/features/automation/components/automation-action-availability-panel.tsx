@@ -15,7 +15,7 @@
  */
 import type { ReactElement } from 'react';
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import { AUTOMATION_AVAILABILITY_COPY } from '../lib/automation.copy';
+import { useMessages } from '../../../shared/i18n';
 import { describeAvailability } from '../lib/action-availability';
 import type { AutomationActionVocabulary } from '../api/automation.types';
 
@@ -26,12 +26,13 @@ interface AutomationActionAvailabilityPanelProps {
 export function AutomationActionAvailabilityPanel({
   actions,
 }: AutomationActionAvailabilityPanelProps): ReactElement {
+  const copy = useMessages('automation').availability;
   return (
     <article className="panel panel--dense automation-availability">
       <div className="panel__header">
         <div>
-          <p className="eyebrow">{AUTOMATION_AVAILABILITY_COPY.panelTitle}</p>
-          <p className="muted-text">{AUTOMATION_AVAILABILITY_COPY.panelIntro}</p>
+          <p className="eyebrow">{copy.panelTitle}</p>
+          <p className="muted-text">{copy.panelIntro}</p>
         </div>
       </div>
       <ul className="automation-availability__list">
@@ -46,7 +47,7 @@ export function AutomationActionAvailabilityPanel({
                 </StatusBadge>
                 {action.irreversible ? (
                   <StatusBadge tone="warning" compact>
-                    {AUTOMATION_AVAILABILITY_COPY.irreversible}
+                    {copy.irreversible}
                   </StatusBadge>
                 ) : null}
               </div>

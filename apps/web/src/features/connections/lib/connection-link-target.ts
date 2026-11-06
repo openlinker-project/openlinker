@@ -16,6 +16,7 @@
  *
  * @module features/connections/lib
  */
+import { getMessages } from '../../../shared/i18n';
 import { SYSTEM_CONNECTION_ID } from '../api/connections.types';
 
 export interface ConnectionLinkTargetInput {
@@ -52,9 +53,6 @@ export interface ConnectionLinkTarget {
   title: string | undefined;
 }
 
-const SYSTEM_LABEL = 'System';
-const SYSTEM_TITLE = 'Not tied to a specific connection';
-const UNKNOWN_LABEL = 'Unknown';
 const LOADING_TEXT = '…';
 
 /**
@@ -73,6 +71,7 @@ export function resolveConnectionLinkTarget({
   pathname,
   linkToDetail = true,
 }: ConnectionLinkTargetInput): ConnectionLinkTarget {
+  const copy = getMessages('connections').connectionLinkTarget;
   const targetPath = `/connections/${connectionId}`;
 
   if (isSystemConnectionId(connectionId)) {
@@ -82,9 +81,9 @@ export function resolveConnectionLinkTarget({
       linked: false,
       loading: false,
       unknown: false,
-      displayName: SYSTEM_LABEL,
-      text: SYSTEM_LABEL,
-      title: SYSTEM_TITLE,
+      displayName: copy.system,
+      text: copy.system,
+      title: copy.systemTitle,
     };
   }
 
@@ -98,7 +97,7 @@ export function resolveConnectionLinkTarget({
     loading,
     unknown,
     displayName,
-    text: loading ? LOADING_TEXT : (displayName ?? UNKNOWN_LABEL),
+    text: loading ? LOADING_TEXT : (displayName ?? copy.unknown),
     title: unknown ? connectionId : undefined,
   };
 }

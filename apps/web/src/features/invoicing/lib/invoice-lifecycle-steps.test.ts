@@ -38,7 +38,7 @@ describe('resolveInvoiceLifecycleSteps', () => {
     const steps = resolveInvoiceLifecycleSteps(invoice({ regulatoryStatus: 'submitted' }), t);
     expect(steps[1]).toEqual({
       id: 'clearance',
-      label: 'Awaiting the authority',
+      label: 'Awaiting the tax office',
       state: 'active',
       at: null,
     });
@@ -54,6 +54,6 @@ describe('resolveInvoiceLifecycleSteps', () => {
     const rec = invoice({ regulatoryStatus: 'rejected' });
     const steps = resolveInvoiceLifecycleSteps(rec, t);
     expect(steps[1].state).toBe('error');
-    expect(steps[1].label).toBe('Rejected by the authority');
+    expect(steps[1].label).toBe('Rejected by the tax office');
   });
 });

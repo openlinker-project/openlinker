@@ -27,10 +27,8 @@ import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { useDemoMode } from '../../features/system/hooks/use-demo-mode';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { navDemoRestrictedMessage } from '../../shared/config/demo-mode';
+import { useMessages, usePlural } from '../../shared/i18n';
 import {
-  AUTOMATION_ERROR_COPY,
-  AUTOMATION_INDEX_COPY,
-  AUTOMATION_RULES_COPY,
   AutomationComposerDialog,
   AutomationRulesList,
   describeTrigger,
@@ -42,6 +40,10 @@ import {
 } from '../../features/automation';
 
 export function AutomationTriggerPage(): ReactElement {
+  const messages = useMessages('automation');
+  const rulesCopy = messages.rules;
+  const errorCopy = messages.errors;
+  const plural = usePlural();
   const { trigger } = useParams<{ trigger: string }>();
   const demoMode = useDemoMode();
   // The documented primitive, never an inline `role === 'admin'` compare: the
@@ -83,10 +85,10 @@ export function AutomationTriggerPage(): ReactElement {
   const backLink = (
     <>
       {write.canWrite ? (
-        <Button onClick={() => setComposerOpen(true)}>{AUTOMATION_RULES_COPY.addRule}</Button>
+        <Button onClick={() => setComposerOpen(true)}>{rulesCopy.addRule}</Button>
       ) : null}
       <Link className="button button--secondary" to="/automations">
-        {AUTOMATION_RULES_COPY.backToIndex}
+        {rulesCopy.backToIndex}
       </Link>
     </>
   );
@@ -94,13 +96,13 @@ export function AutomationTriggerPage(): ReactElement {
   if (!isKnownTrigger) {
     return (
       <PageLayout
-        eyebrow={AUTOMATION_RULES_COPY.eyebrow}
+        eyebrow={rulesCopy.eyebrow}
         title={described.label}
         actions={backLink}
       >
         <ErrorState
-          title={AUTOMATION_ERROR_COPY.rulesTitle}
-          message={AUTOMATION_ERROR_COPY.vocabularyMessage}
+          title={errorCopy.rulesTitle}
+          message={errorCopy.vocabularyMessage}
         />
       </PageLayout>
     );
@@ -116,19 +118,19 @@ export function AutomationTriggerPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow={AUTOMATION_RULES_COPY.eyebrow}
+      eyebrow={rulesCopy.eyebrow}
       title={described.label}
       description={described.description ?? undefined}
       actions={backLink}
     >
       {rulesQuery.isLoading ? (
         <LoadingState
-          title={AUTOMATION_ERROR_COPY.loadingTitle}
-          message={AUTOMATION_ERROR_COPY.loadingMessage}
+          title={errorCopy.loadingTitle}
+          message={errorCopy.loadingMessage}
         />
       ) : rulesQuery.error ? (
         <ErrorState
-          title={AUTOMATION_ERROR_COPY.rulesTitle}
+          title={errorCopy.rulesTitle}
           message={rulesQuery.error.message}
         />
       ) : (
@@ -137,13 +139,13 @@ export function AutomationTriggerPage(): ReactElement {
             // An unreadable envelope yields zero rules and zero drops, which the
             // list below renders as "no rules for this trigger" — a false claim.
             <ErrorState
-              title={AUTOMATION_ERROR_COPY.unreadableTitle}
-              message={AUTOMATION_ERROR_COPY.unreadableEnvelopeMessage}
+              title={errorCopy.unreadableTitle}
+              message={errorCopy.unreadableEnvelopeMessage}
             />
           ) : null}
           {(rulesQuery.data?.droppedCount ?? 0) > 0 ? (
             <Alert tone="warning">
-              {AUTOMATION_INDEX_COPY.droppedRows(rulesQuery.data?.droppedCount ?? 0)}
+              {plural(rulesQuery.data?.droppedCount ?? 0, messages.index.droppedRows)}
             </Alert>
           ) : null}
           <AutomationRulesList

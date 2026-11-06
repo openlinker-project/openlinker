@@ -429,7 +429,7 @@ describe('InvoicesListPage', () => {
       route: '/invoices',
     });
 
-    await screen.findByText('Receipt (paragon)');
+    await screen.findAllByText('Receipt');
     const cell = container.querySelector('.invoice-document-cell') as HTMLElement;
     expect(within(cell).getByLabelText('No value')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /open invoice pdf/i })).toBeNull();

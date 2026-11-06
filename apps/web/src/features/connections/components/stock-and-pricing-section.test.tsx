@@ -264,7 +264,7 @@ describe('StockAndPricingSection', () => {
 
       await screen.findByLabelText("Assign a location to this connection's stock");
       expect(
-        await screen.findByRole('option', { name: /Main warehouse \(WH1\) — inactive/ }),
+        await screen.findByRole('option', { name: /Main warehouse \(WH1\) - inactive/ }),
       ).toBeInTheDocument();
     });
 

@@ -31,7 +31,7 @@ import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { Textarea } from '../../../shared/ui/textarea';
-import { AUTOMATION_ACTION_LABELS, AUTOMATION_COMPOSER_COPY } from '../lib/automation.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { describeAvailability } from '../lib/action-availability';
 import { AutomationMergeFields } from './automation-merge-fields';
 import type {
@@ -71,6 +71,9 @@ export function AutomationActionRow({
   onRemove,
   canRemove,
 }: AutomationActionRowProps): ReactElement {
+  const messages = useMessages('automation');
+  const composerCopy = messages.composer;
+  const copy = messages.actionRow;
   const selected = actionVocabulary.find((entry) => entry.action === draft.action);
   const described = selected ? describeAvailability(selected.availability) : null;
 
@@ -83,14 +86,14 @@ export function AutomationActionRow({
           actually see, whichever action they picked.
         */}
         <FormField
-          label={AUTOMATION_COMPOSER_COPY.actionLabel}
+          label={composerCopy.actionLabel}
           name={`action-${index}`}
           error={errors.action}
         >
           <Select {...register(`actions.${index}.action`)}>
             {legalActions.map((action) => (
               <option key={action} value={action}>
-                {AUTOMATION_ACTION_LABELS[action] ?? action}
+                {(messages.actions as Record<string, string>)[action] ?? action}
               </option>
             ))}
           </Select>
@@ -106,9 +109,9 @@ export function AutomationActionRow({
             tone="ghost"
             className="button--sm automation-composer__remove"
             onClick={onRemove}
-            aria-label={`${AUTOMATION_COMPOSER_COPY.removeAction} ${index + 1}`}
+            aria-label={interpolate(copy.removeAriaLabel, { n: index + 1 })}
           >
-            {AUTOMATION_COMPOSER_COPY.removeAction}
+            {composerCopy.removeAction}
           </Button>
         ) : null}
       </div>
@@ -117,23 +120,23 @@ export function AutomationActionRow({
       {selected?.reason ? <p className="muted-text">{selected.reason}</p> : null}
 
       {draft.action === 'issue-sales-document' ? (
-        <p className="muted-text">{AUTOMATION_COMPOSER_COPY.a1Note}</p>
+        <p className="muted-text">{composerCopy.a1Note}</p>
       ) : null}
       {draft.action === 'relay-status-to-source' ? (
-        <p className="muted-text">{AUTOMATION_COMPOSER_COPY.a3Note}</p>
+        <p className="muted-text">{composerCopy.a3Note}</p>
       ) : null}
 
       {draft.action === 'dispatch-shipment' ? (
         <>
-          <Alert tone="warning">{AUTOMATION_COMPOSER_COPY.a2Warning}</Alert>
+          <Alert tone="warning">{composerCopy.a2Warning}</Alert>
           <FormField
-            label={AUTOMATION_COMPOSER_COPY.carrierLabel}
+            label={composerCopy.carrierLabel}
             name={`action-${index}-carrier`}
             error={errors.carrierId}
-            description={AUTOMATION_COMPOSER_COPY.carrierHint}
+            description={composerCopy.carrierHint}
           >
             <Select {...register(`actions.${index}.carrierId`)}>
-              <option value="">Select a carrier…</option>
+              <option value="">{copy.selectCarrier}</option>
               {carriers.map((carrier) => (
                 <option key={carrier.id} value={carrier.id}>
                   {carrier.name}
@@ -142,39 +145,39 @@ export function AutomationActionRow({
             </Select>
           </FormField>
           {carriers.length === 0 ? (
-            <p className="muted-text">{AUTOMATION_COMPOSER_COPY.carrierEmpty}</p>
+            <p className="muted-text">{composerCopy.carrierEmpty}</p>
           ) : null}
           {/* Stated, never rendered as an empty picker — see the copy note. */}
-          <p className="muted-text">{AUTOMATION_COMPOSER_COPY.a2NoOptions}</p>
+          <p className="muted-text">{composerCopy.a2NoOptions}</p>
           <label className="ack-row">
             <input type="checkbox" {...register(`actions.${index}.cashOnDelivery`)} />
-            <span>{AUTOMATION_COMPOSER_COPY.codLabel}</span>
+            <span>{composerCopy.codLabel}</span>
           </label>
         </>
       ) : null}
 
       {draft.action === 'send-email' ? (
         <>
-          <FormField label={AUTOMATION_COMPOSER_COPY.recipientLabel} name={`action-${index}-to`}>
+          <FormField label={composerCopy.recipientLabel} name={`action-${index}-to`}>
             <Select {...register(`actions.${index}.recipientKind`)}>
-              <option value="address">{AUTOMATION_COMPOSER_COPY.recipientAddress}</option>
-              <option value="buyer">{AUTOMATION_COMPOSER_COPY.recipientBuyer}</option>
+              <option value="address">{composerCopy.recipientAddress}</option>
+              <option value="buyer">{composerCopy.recipientBuyer}</option>
             </Select>
           </FormField>
           {draft.recipientKind === 'address' ? (
             <FormField
-              label={AUTOMATION_COMPOSER_COPY.addressLabel}
+              label={composerCopy.addressLabel}
               name={`action-${index}-address`}
               error={errors.address}
             >
               <Input type="email" {...register(`actions.${index}.address`)} />
             </FormField>
           ) : null}
-          <FormField label={AUTOMATION_COMPOSER_COPY.subjectLabel} name={`action-${index}-subject`}>
+          <FormField label={composerCopy.subjectLabel} name={`action-${index}-subject`}>
             <Input {...register(`actions.${index}.subject`)} />
           </FormField>
           <FormField
-            label={AUTOMATION_COMPOSER_COPY.bodyLabel}
+            label={composerCopy.bodyLabel}
             name={`action-${index}-body`}
             error={errors.body}
           >
@@ -189,21 +192,21 @@ export function AutomationActionRow({
           <FormField
             label={
               draft.action === 'place-hold'
-                ? AUTOMATION_COMPOSER_COPY.holdReasonLabel
-                : AUTOMATION_COMPOSER_COPY.releaseWhichLabel
+                ? composerCopy.holdReasonLabel
+                : composerCopy.releaseWhichLabel
             }
             name={`action-${index}-reason`}
             error={errors.holdReason}
             description={
-              draft.action === 'place-hold' ? AUTOMATION_COMPOSER_COPY.holdReasonHint : undefined
+              draft.action === 'place-hold' ? composerCopy.holdReasonHint : undefined
             }
           >
             <Select {...register(`actions.${index}.holdReason`)}>
               {/* Empty means "any hold" for A6, and "not chosen" for A5. */}
               <option value="">
                 {draft.action === 'release-hold'
-                  ? AUTOMATION_COMPOSER_COPY.releaseAnyHold
-                  : 'Select a reason…'}
+                  ? composerCopy.releaseAnyHold
+                  : copy.selectReason}
               </option>
               {holdReasons.map((reason) => (
                 <option key={reason} value={reason}>
@@ -213,12 +216,12 @@ export function AutomationActionRow({
             </Select>
           </FormField>
           <FormField
-            label={AUTOMATION_COMPOSER_COPY.noteLabel}
+            label={composerCopy.noteLabel}
             name={`action-${index}-note`}
             error={errors.note}
             description={
               draft.action === 'release-hold'
-                ? AUTOMATION_COMPOSER_COPY.noteRequiredHint
+                ? composerCopy.noteRequiredHint
                 : undefined
             }
           >

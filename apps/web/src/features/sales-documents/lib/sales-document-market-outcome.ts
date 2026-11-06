@@ -1,11 +1,11 @@
 /**
- * Sales-Document Market Outcome Copy (#2540/#2541/#2542)
+ * Sales-Document Market Outcome (#2540/#2541/#2542)
  *
  * Turns one `SalesDocumentMarketRow.outcome` into the words a market-list row
  * or a section summary sentence needs — "what does this market's orders get"
  * and, when the answer is nothing, why. Derived from the backend's own
  * resolved outcome, never re-derived from country/connection state client
- * side (the #2534 rule that `sales-document-reason-copy.ts` also follows).
+ * side (the #2534 rule that `sales-document-reasons.ts` also follows).
  *
  * `'acknowledged'` is rendered as a settled, neutral state — not a decision
  * needing attention — because the whole point of an acknowledgment (#2186)
@@ -13,7 +13,8 @@
  *
  * @module apps/web/src/features/sales-documents/lib
  */
-import { SALES_DOCUMENT_UNRESOLVED_REASON_COPY } from './sales-document-reason-copy';
+import { getMessages } from '../../../shared/i18n';
+import { SALES_DOCUMENT_UNRESOLVED_REASON_COPY } from './sales-document-reasons';
 import type { SalesDocumentMarketOutcome } from '../api/sales-document-markets.types';
 import type { DocumentKind } from '../../../shared/ui/document-kind-glyph';
 
@@ -37,10 +38,12 @@ function isKnownDocumentKind(kind: string | null | undefined): kind is DocumentK
 export function describeSalesDocumentMarketOutcome(
   outcome: SalesDocumentMarketOutcome,
 ): SalesDocumentMarketOutcomeCopy {
+  const messages = getMessages('sales-documents');
+  const copy = messages.marketOutcome;
   if (outcome.kind === 'route') {
     const glyphKind = isKnownDocumentKind(outcome.documentKind) ? outcome.documentKind : null;
     return {
-      headline: glyphKind === 'fiscal-receipt' ? 'Fiscal receipt' : 'Invoice',
+      headline: glyphKind === 'fiscal-receipt' ? messages.documentKind.fiscalReceipt : messages.documentKind.invoice,
       glyphKind,
       isIssuing: true,
       needsDecision: false,
@@ -50,7 +53,7 @@ export function describeSalesDocumentMarketOutcome(
 
   if (outcome.kind === 'aggregate') {
     return {
-      headline: 'Collected, not yet issued',
+      headline: copy.aggregate,
       glyphKind: null,
       isIssuing: false,
       needsDecision: false,
@@ -60,7 +63,7 @@ export function describeSalesDocumentMarketOutcome(
 
   if (outcome.kind === 'acknowledged') {
     return {
-      headline: 'No document, by choice',
+      headline: copy.acknowledged,
       glyphKind: null,
       isIssuing: false,
       needsDecision: false,
@@ -77,10 +80,10 @@ export function describeSalesDocumentMarketOutcome(
     ? (SALES_DOCUMENT_UNRESOLVED_REASON_COPY as Record<string, { short: string }>)[outcome.reason]
     : undefined;
   return {
-    headline: 'Nothing issued',
+    headline: copy.nothingIssued,
     glyphKind: null,
     isIssuing: false,
     needsDecision: true,
-    reasonShort: reasonCopy?.short ?? 'Not set up',
+    reasonShort: reasonCopy?.short ?? copy.notSetUp,
   };
 }

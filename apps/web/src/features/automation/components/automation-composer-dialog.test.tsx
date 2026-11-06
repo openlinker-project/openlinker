@@ -14,9 +14,12 @@ import {
   seedActions,
   selectCarrierConnections,
 } from './automation-composer-dialog';
-import { AUTOMATION_COMPOSER_COPY, AUTOMATION_DRY_RUN_COPY } from '../lib/automation.copy';
+import { getMessages } from '../../../shared/i18n';
 import type { AutomationVocabulary } from '../api/automation.types';
 import type { Connection } from '../../connections';
+
+const AUTOMATION_COMPOSER_COPY = getMessages('automation').composer;
+const AUTOMATION_DRY_RUN_COPY = getMessages('automation').dryRun;
 
 const VOCABULARY: AutomationVocabulary = {
   triggers: [
@@ -364,7 +367,7 @@ describe('AutomationComposerDialog — the §5.6a arming gate', () => {
     expect(await screen.findByRole('button', { name: 'Save automation' })).toBeDisabled();
     expect(
       screen.getByText(
-        'Test this rule before saving it — it can spend money, and OpenLinker cannot undo that.',
+        'Test this rule before saving it - it can spend money, and OpenLinker cannot undo that.',
       ),
     ).toBeInTheDocument();
   });

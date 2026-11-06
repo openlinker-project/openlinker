@@ -72,8 +72,8 @@ export {
   isPreWaybill,
   canRegenerateLabel,
 } from './lib/shipment-action-eligibility';
-export { cancelShipmentCopy } from './lib/cancel-shipment-copy';
-export type { CancelShipmentCopy } from './lib/cancel-shipment-copy';
+export { cancelShipmentCopy } from './lib/cancel-shipment-dialog';
+export type { CancelShipmentCopy } from './lib/cancel-shipment-dialog';
 export { deriveSeverityLabel } from './lib/shipment-severity';
 export type { ShipmentSeverity } from './lib/shipment-severity';
 export { ShipmentSeverityLabel } from './components/shipment-severity-label';
