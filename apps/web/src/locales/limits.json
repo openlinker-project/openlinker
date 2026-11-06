@@ -139,6 +139,7 @@
   "app:sections.products": 16,
   "app:sections.settings": 16,
   "app:shell.alerts": 12,
+  "app:userMenu.language": 14,
   "app:userMenu.signOut": 14,
   "auth:changePassword.submit": 24,
   "auth:forgotPassword.submit": 24,

@@ -109,6 +109,7 @@
   "userMenu": {
     "accountMenu": "Menu konta {username}",
     "density": "Gęstość",
+    "language": "Język",
     "signOut": "Wyloguj się",
     "theme": "Motyw"
   }

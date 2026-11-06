@@ -107,6 +107,7 @@
   "userMenu": {
     "accountMenu": "Account menu for {username}",
     "density": "Density",
+    "language": "Language",
     "signOut": "Sign out",
     "theme": "Theme"
   }

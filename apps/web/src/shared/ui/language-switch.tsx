@@ -5,11 +5,13 @@
  * that opens a list of every language with its flag, code and native name.
  * The trigger is flag-only by design; on hover or focus the language's native
  * name slides out beside the flag (and the trigger's accessible name always
- * carries it). Native names, not translated ones, so someone who cannot read the
+ * carries it). Inside a menu - the account menu in the top bar (#4021) - the
+ * same list renders inline as `LanguageToggle`, a radio group: a popover
+ * opened from inside a Radix menu would close the menu on its first click. Native names, not translated ones, so someone who cannot read the
  * current language still finds theirs. Only languages the app ships are
- * listed. The list is centred on the trigger, rendered in a portal so the
- * sidebar's `overflow: hidden` cannot clip it, and opens upward in the sidebar footer
- * and downward in the signed-out corner (`placement`). Motion animates the
+ * listed. The list is centred on the trigger, rendered in a portal so a
+ * clipping parent cannot cut it, and opens downward on the login card or
+ * upward when placed low on a screen (`placement`). Motion animates the
  * popover, the sliding selection border and the flag flip; every animation
  * is skipped under `prefers-reduced-motion` through the app's `MotionConfig`.
  *
@@ -19,6 +21,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import {
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -63,6 +66,25 @@ const LANGUAGE_OPTIONS: readonly LanguageOption[] = LocaleCodeValues.map((code) 
  */
 const REFOCUS_WINDOW_MS = 1500;
 let refocusRequestedAt: number | null = null;
+
+function requestRefocus(): void {
+  refocusRequestedAt = Date.now();
+}
+
+/**
+ * Focuses `element` when a language change was just made, and clears the note
+ * once something took focus. A hidden element cannot take focus and leaves
+ * the note for one that can. Call from a mount effect.
+ */
+export function restoreFocusAfterLanguageChange(element: HTMLElement | null): void {
+  if (refocusRequestedAt === null) return;
+  if (Date.now() - refocusRequestedAt >= REFOCUS_WINDOW_MS) {
+    refocusRequestedAt = null;
+    return;
+  }
+  element?.focus();
+  if (element !== null && document.activeElement === element) refocusRequestedAt = null;
+}
 
 const SPRING = { type: 'spring', stiffness: 520, damping: 34, mass: 0.7 } as const;
 
@@ -118,7 +140,7 @@ function step(from: number, direction: 1 | -1): number {
 }
 
 export interface LanguageSwitchProps {
-  /** `up` in the sidebar footer, `down` in a top corner. */
+  /** `down` below the trigger (the login card), `up` above it. */
   placement?: 'up' | 'down';
   className?: string;
 }
@@ -150,16 +172,7 @@ export function LanguageSwitch({
   const current = LANGUAGE_OPTIONS.find((option) => option.code === locale) ?? LANGUAGE_OPTIONS[0];
 
   useEffect(() => {
-    if (refocusRequestedAt === null) return;
-    const fresh = Date.now() - refocusRequestedAt < REFOCUS_WINDOW_MS;
-    if (!fresh) {
-      refocusRequestedAt = null;
-      return;
-    }
-    triggerRef.current?.focus();
-    // A hidden twin (the sidebar's, behind the mobile drawer) cannot take focus
-    // and leaves the note for the one that can.
-    if (document.activeElement === triggerRef.current) refocusRequestedAt = null;
+    restoreFocusAfterLanguageChange(triggerRef.current);
   }, []);
 
   useEffect(() => {
@@ -193,7 +206,7 @@ export function LanguageSwitch({
   }
 
   function choose(option: LanguageOption): void {
-    if (option.code !== locale) refocusRequestedAt = Date.now();
+    if (option.code !== locale) requestRefocus();
     localeContext?.setLocale(option.code);
     close();
   }
@@ -444,6 +457,97 @@ export function LanguageSwitch({
         </AnimatePresence>,
         host ?? document.body
       )}
+    </div>
+  );
+}
+
+export interface LanguageToggleProps {
+  className?: string;
+}
+
+/**
+ * The language list as an inline radio group, for a menu (#4021). Same
+ * languages, flags and native names as the popover, and the same keyboard
+ * model as `ThemeToggle`: arrows move and select, Home / End jump, only the
+ * selected option is in the tab order. A language change remounts the app
+ * (`LocaleKeyed`), so the choice leaves a note for the menu trigger to take
+ * focus back (`restoreFocusAfterLanguageChange`).
+ */
+export function LanguageToggle({ className }: LanguageToggleProps): ReactElement | null {
+  const localeContext = useOptionalLocale();
+  const copy = useMessages('ui').languageSwitch;
+  const betaHintId = useId();
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  // Stable ref callbacks: a fresh one per render loops under React 19 inside
+  // Radix's merged refs (see ThemeToggle, #461).
+  const setOptionRef = useMemo(
+    () =>
+      LANGUAGE_OPTIONS.map((_, index) => (el: HTMLButtonElement | null): void => {
+        optionRefs.current[index] = el;
+      }),
+    []
+  );
+
+  if (localeContext === null) return null;
+  const { locale, setLocale } = localeContext;
+
+  function choose(index: number): void {
+    const option = LANGUAGE_OPTIONS[index];
+    if (option.code === locale) return;
+    requestRefocus();
+    setLocale(option.code);
+  }
+
+  function onKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number): void {
+    const last = LANGUAGE_OPTIONS.length - 1;
+    let next: number | null = null;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = step(index, -1);
+    else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = step(index, 1);
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = last;
+    if (next === null) return;
+    event.preventDefault();
+    // Stop the menu's own arrow-key roving from taking over.
+    event.stopPropagation();
+    optionRefs.current[next]?.focus();
+    choose(next);
+  }
+
+  const classes = ['language-toggle', className].filter(Boolean).join(' ');
+
+  return (
+    <div role="radiogroup" aria-label={copy.label} className={classes}>
+      <span id={betaHintId} className="sr-only">
+        {copy.betaHint}
+      </span>
+      {LANGUAGE_OPTIONS.map((option, index) => {
+        const selected = option.code === locale;
+        return (
+          <button
+            key={option.code}
+            ref={setOptionRef[index]}
+            type="button"
+            role="radio"
+            lang={option.code}
+            aria-checked={selected}
+            aria-describedby={option.beta ? betaHintId : undefined}
+            tabIndex={selected ? 0 : -1}
+            className={['language-toggle__option', selected ? 'language-toggle__option--active' : '']
+              .filter(Boolean)
+              .join(' ')}
+            onClick={() => choose(index)}
+            onKeyDown={(event) => onKeyDown(event, index)}
+          >
+            <LanguageFlag code={option.code} />
+            <span className="language-toggle__name">{option.name}</span>
+            {option.beta ? (
+              <span className="language-toggle__beta" title={copy.betaHint}>
+                {copy.beta}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
     </div>
   );
 }
