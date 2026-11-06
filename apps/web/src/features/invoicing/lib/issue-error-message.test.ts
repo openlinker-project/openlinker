@@ -18,9 +18,6 @@ import {
 } from './issue-error-message';
 import { ApiError } from '../../../shared/api/api-error';
 
-/** Identity `t` — returns the EN fallback so assertions read against real copy. */
-const t = (_key: string, fallback: string): string => fallback;
-
 /** A message carrying the internal identifiers the capability branch must hide. */
 const LEAKY_MESSAGE =
   "Capability 'Invoicing' not enabled for connection conn_abc123 (adapter subiekt-gt)";
@@ -31,7 +28,7 @@ describe('resolveIssueErrorMessage', () => {
       error: 'CapabilityNotEnabledException',
       message: LEAKY_MESSAGE,
     });
-    const result = resolveIssueErrorMessage(error, t);
+    const result = resolveIssueErrorMessage(error);
     expect(result).toBe('Invoicing is not enabled for this connection.');
     expect(result).not.toContain('conn_abc123');
     expect(result).not.toContain('subiekt-gt');
@@ -42,23 +39,23 @@ describe('resolveIssueErrorMessage', () => {
       error: 'CapabilityNotSupportedException',
       message: LEAKY_MESSAGE,
     });
-    expect(resolveIssueErrorMessage(error, t)).toBe('Invoicing is not enabled for this connection.');
+    expect(resolveIssueErrorMessage(error)).toBe('Invoicing is not enabled for this connection.');
   });
 
   it('422 ⇒ surfaces error.message (correlationId string)', () => {
     const msg = 'Provider rejected the invoice (correlationId: c-7f3a)';
-    expect(resolveIssueErrorMessage(new ApiError(msg, 422, { message: msg }), t)).toBe(msg);
+    expect(resolveIssueErrorMessage(new ApiError(msg, 422, { message: msg }))).toBe(msg);
   });
 
   it('non-capability 400 (buyer profile) ⇒ surfaces error.message', () => {
     const msg = 'Buyer profile is missing a tax id';
     const error = new ApiError(msg, 400, { error: 'BadRequestException', message: msg });
-    expect(resolveIssueErrorMessage(error, t)).toBe(msg);
+    expect(resolveIssueErrorMessage(error)).toBe(msg);
   });
 
   it('403 ⇒ permission-specific fixed copy (#1613), no error.message echo', () => {
     const error = new ApiError('Forbidden resource', 403, { message: 'Forbidden resource' });
-    const result = resolveIssueErrorMessage(error, t);
+    const result = resolveIssueErrorMessage(error);
     expect(result).toBe(
       "You don't have permission to issue invoices - this action requires an administrator account.",
     );
@@ -67,11 +64,11 @@ describe('resolveIssueErrorMessage', () => {
 
   it('409 ⇒ already-issued fixed copy', () => {
     const error = new ApiError('Invoice already issued for order: o1', 409, {});
-    expect(resolveIssueErrorMessage(error, t)).toBe('This order already has an issued invoice.');
+    expect(resolveIssueErrorMessage(error)).toBe('This order already has an issued invoice.');
   });
 
   it('network / non-ApiError ⇒ generic fixed copy (no message echo)', () => {
-    const result = resolveIssueErrorMessage(new Error('socket hang up'), t);
+    const result = resolveIssueErrorMessage(new Error('socket hang up'));
     expect(result).toBe('Could not issue the invoice. Please try again.');
     expect(result).not.toContain('socket hang up');
   });

@@ -25,6 +25,7 @@ import content from './content.json';
 import currencySettings from './currency-settings.json';
 import cursors from './cursors.json';
 import customers from './customers.json';
+import deliveryOnDocuments from './delivery-on-documents.json';
 import demo from './demo.json';
 import devUi from './dev-ui.json';
 import fiscalization from './fiscalization.json';
@@ -69,6 +70,7 @@ export const en = {
   'currency-settings': currencySettings,
   cursors,
   customers,
+  'delivery-on-documents': deliveryOnDocuments,
   demo,
   'dev-ui': devUi,
   fiscalization,

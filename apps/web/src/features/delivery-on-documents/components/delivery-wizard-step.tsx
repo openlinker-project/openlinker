@@ -14,6 +14,7 @@
  * @module apps/web/src/features/delivery-on-documents/components
  */
 import { useState, type ReactElement } from 'react';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { Infotip } from '../../../shared/ui/infotip';
 import { StatusBadge } from '../../../shared/ui/status-badge';
@@ -57,6 +58,7 @@ function MiniReceipt({
   settings: DeliveryFormSettings;
   country: string;
 }): ReactElement {
+  const copy = useMessages('delivery-on-documents');
   const money = (amount: number): string =>
     formatMoney(amount, country, country === 'PL' ? EXAMPLE_BASKET.currency : null);
   const parts =
@@ -65,7 +67,9 @@ function MiniReceipt({
       : splitByValue(EXAMPLE_BASKET.delivery, EXAMPLE_BASKET.lines);
   return (
     <div className="dd-mini">
-      <span className="dd-mini__title">Receipt for an order from {countryName(country)}</span>
+      <span className="dd-mini__title">
+        {interpolate(copy.wizard.receiptFor, { country: countryName(country) })}
+      </span>
       {EXAMPLE_BASKET.lines.map((line) => (
         <span key={line.name} className="dd-mini__line dd-mini__line--muted">
           <span>{line.name}</span>
@@ -94,6 +98,7 @@ export function DeliveryWizardStep({
   onChange,
   suggestions,
 }: DeliveryWizardStepProps): ReactElement {
+  const copy = useMessages('delivery-on-documents');
   const [editing, setEditing] = useState<EditorTarget | null>(null);
   const rules = wizardRules(value, suggestions);
   const first = suggestions[0];
@@ -119,11 +124,11 @@ export function DeliveryWizardStep({
   return (
     <div className="dd-wizard">
       <div className="dd-wizard__intro">
-        <h3>How should delivery appear on receipts and invoices?</h3>
-        <p className="muted-text">Pick one. You can change it at any time later.</p>
+        <h3>{copy.wizard.title}</h3>
+        <p className="muted-text">{copy.wizard.intro}</p>
       </div>
 
-      <div className="dd-choices" role="radiogroup" aria-label="Delivery on documents">
+      <div className="dd-choices" role="radiogroup" aria-label={copy.wizard.groupLabel}>
         <label className={`dd-choice${value.choice === 'suggested' ? ' dd-choice--on' : ''}`}>
           <input
             type="radio"
@@ -133,13 +138,13 @@ export function DeliveryWizardStep({
           />
           <span className="dd-choice__body">
             <span className="dd-choice__title">
-              Use the suggested settings
+              {copy.wizard.suggestedTitle}
               <StatusBadge tone="info" compact withDot={false}>
-                Recommended
+                {copy.wizard.recommended}
               </StatusBadge>
               {first ? (
                 <Infotip
-                  ariaLabel="What the suggestion is based on"
+                  ariaLabel={copy.common.suggestionBasis}
                   definitions={first.sources}
                 />
               ) : null}
@@ -159,10 +164,8 @@ export function DeliveryWizardStep({
             onChange={() => setChoice('own')}
           />
           <span className="dd-choice__body">
-            <span className="dd-choice__title">Set it up myself</span>
-            <span className="dd-choice__text">
-              Choose the names and VAT rate for each buyer country.
-            </span>
+            <span className="dd-choice__title">{copy.wizard.ownTitle}</span>
+            <span className="dd-choice__text">{copy.wizard.ownText}</span>
           </span>
         </label>
       </div>
@@ -183,14 +186,12 @@ export function DeliveryWizardStep({
             className="button--sm dd-own__add"
             onClick={() => setEditing({ mode: 'add', country: null, settings: neutralSettings() })}
           >
-            + Add a country
+            {copy.common.addCountryButton}
           </Button>
         </div>
       ) : null}
 
-      <p className="dd-later">
-        You can change this later in the connection, under Mappings, Delivery on documents.
-      </p>
+      <p className="dd-later">{copy.wizard.later}</p>
 
       <DeliveryLineEditorDialog
         target={editing}
