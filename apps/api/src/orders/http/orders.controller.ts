@@ -682,11 +682,24 @@ export class OrdersController {
     @Query() query: OrderHealthSummaryQueryDto
   ): Promise<OrderHealthSummaryResponseDto> {
     const { sourceConnectionId, customerId, createdFrom, createdTo } = query;
+    // #4025 - the open-return count reads the same id list the ?openReturn=
+    // filter resolves. A failure degrades that one count to 0 rather than
+    // failing the whole summary the list page renders above its rows.
+    let openReturnOrderIds: string[] = [];
+    try {
+      openReturnOrderIds = await this.returnsService.listOpenReturnOrderIds();
+    } catch (error) {
+      this.logger.error(
+        'Failed to resolve open-return order ids for the health summary',
+        (error as Error).stack
+      );
+    }
     const summary = await this.orderRecordRepository.countByHealth({
       sourceConnectionId,
       customerId,
       createdFrom: createdFrom ? new Date(createdFrom) : undefined,
       createdTo: createdTo ? new Date(createdTo) : undefined,
+      openReturnOrderIds,
     });
     // The wire carries an ISO string; the domain summary carries a Date (#2254).
     return {

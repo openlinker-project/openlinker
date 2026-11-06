@@ -903,6 +903,9 @@ export interface ReleaseOrderHoldResult {
 // sortable table columns (server-side).
 export const OrderSortValues = [
   'createdAt',
+  // #4025 - when the buyer placed the order (NULLs last both ways). Mirrors
+  // `OrderRecordSortValues` in core.
+  'placedAt',
   'dispatchBy',
   'customer',
   'items',
@@ -997,6 +1000,26 @@ export interface OrderHealthSummary {
    * Optional for graceful degradation against an older API.
    */
   omsAttention?: number;
+  /**
+   * #4025 - counts for the redesigned orders filters. All optional for graceful
+   * degradation against an older API; an absent count is "unknown", never `0`.
+   * `openReturn` / `hasBuyerNote` / `dueWithin24h` use the same predicates as
+   * the `openReturn` / `hasBuyerNote` / `dueBefore` filters.
+   */
+  openReturn?: number;
+  hasBuyerNote?: number;
+  dueWithin24h?: number;
+  /** Order count per source connection id, with the source scope itself removed. Absent id = no orders. */
+  bySource?: Record<string, number>;
+  /** "Needs a look" group totals - each a UNION, never the sum of its members' counts. */
+  attention?: OrderAttentionSummary;
+}
+
+/** #4025 - mirrors core `OrderAttentionSummary`. */
+export interface OrderAttentionSummary {
+  lateToShip: number;
+  stuck: number;
+  toHandle: number;
 }
 
 export interface OrderFilters {
