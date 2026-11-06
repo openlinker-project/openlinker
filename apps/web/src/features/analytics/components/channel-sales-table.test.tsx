@@ -454,7 +454,7 @@ describe('ChannelSalesTable', () => {
 
       const conn2Notes = conn2Row!.querySelectorAll('.excl-note');
       expect(conn2Notes).toHaveLength(1);
-      expect(conn2Notes[0]).toHaveTextContent('1 order have no tax rate at all');
+      expect(conn2Notes[0]).toHaveTextContent('1 order has no tax rate at all');
     });
 
     it('should annotate a channel for every cross-referenceable category it has an excluded order in', async () => {
