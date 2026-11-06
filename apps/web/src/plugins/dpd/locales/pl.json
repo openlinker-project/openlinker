@@ -1,0 +1,27 @@
+{
+  "dpdCredentialsPanel": {
+    "cancel": "Anuluj",
+    "description": "Login i hasło są bezpiecznie przechowywane na serwerze. Wymień je, aby zastąpić oba bez restartu API.",
+    "envBacked": "Zmienna środowiskowa (nie można edytować w interfejsie)",
+    "envBackedLabel": "Dane uwierzytelniające",
+    "label": "Dane uwierzytelniające DPDServices",
+    "newLoginPlaceholder": "Nowy login",
+    "newPasswordPlaceholder": "Nowe hasło",
+    "rotate": "Wymień dane logowania",
+    "rotating": "Wymienianie...",
+    "save": "Zapisz dane logowania",
+    "toast": {
+      "description": "Nowy login i hasło DPD są już w użyciu.",
+      "title": "Dane uwierzytelniające wymienione"
+    }
+  },
+  "dpdSetupRoute": {
+    "crumb": "Połącz DPD Polska"
+  },
+  "plugin": {
+    "setupCard": {
+      "badge": "DPDServices REST",
+      "description": "Połącz konto kurierskie DPD Polska przez API REST DPDServices."
+    }
+  }
+}
