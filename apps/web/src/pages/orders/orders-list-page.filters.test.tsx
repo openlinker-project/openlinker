@@ -1,8 +1,8 @@
 /**
  * OrdersListPage — search + filter bar (#3507, mockup m4b-orders-filters)
  *
- * The accordion Filters panel, the active-filter chips, the quick-filter row,
- * the phone bottom sheet, keyboard shortcuts, the header button group, and the
+ * The Filters side panel (#4026, a bottom sheet on phones), the active-filter
+ * pills, "Needs a look", keyboard shortcuts, the header button group, and the
  * viewer's read-only list (U5). URL semantics are unchanged from the toolbar
  * these replace, so every assertion is on what reaches `orders.list`.
  */
@@ -95,24 +95,20 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('OrdersListPage filter bar', () => {
-  it('should disclose the Filters panel with its four groups when the toggle is pressed', async () => {
+  it('should open the Filters side panel with its sections when the toggle is pressed', async () => {
     const user = userEvent.setup();
     setup();
     await screen.findByText('ALG-1');
     const toggle = screen.getByTestId('orders-filter-toggle');
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByRole('region', { name: 'Filters' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'All filters' })).not.toBeInTheDocument();
 
     await user.click(toggle);
 
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    const region = screen.getByRole('region', { name: 'Filters' });
-    expect(toggle).toHaveAttribute('aria-controls', region.id);
-    for (const legend of ['Source & dates', 'Shipment', 'Exceptions', 'Tags']) {
-      expect(within(region).getByRole('group', { name: legend })).toBeInTheDocument();
+    const panel = await screen.findByRole('dialog', { name: 'All filters' });
+    for (const section of ['Source & dates', 'Shipment', 'Exceptions', 'Tags', 'Stage']) {
+      expect(within(panel).getByText(section)).toBeInTheDocument();
     }
-    // Focus stays on the toggle — an accordion, not a dialog.
-    expect(toggle).toHaveFocus();
   });
 
   it('should show a chip per active filter and remove only that filter when its × is pressed', async () => {
@@ -121,7 +117,6 @@ describe('OrdersListPage filter bar', () => {
     await screen.findByText('ALG-1');
     const chips = screen.getByRole('group', { name: 'Active filters' });
     expect(within(chips).getByText('Allegro Store')).toBeInTheDocument();
-    expect(screen.getByTestId('orders-filter-toggle')).toHaveAccessibleName('Filters 2 active');
 
     await user.click(
       within(chips).getByRole('button', { name: 'Remove filter Source: Allegro Store' }),
@@ -155,26 +150,32 @@ describe('OrdersListPage filter bar', () => {
     expect(screen.queryByRole('group', { name: 'Active filters' })).not.toBeInTheDocument();
   });
 
-  it('should send hasBuyerNote=true to the server when the "With buyer note" chip is pressed', async () => {
+  it('should send hasBuyerNote=true to the server from "Buyer left a note" in Needs a look', async () => {
     const user = userEvent.setup();
     const { list } = setup();
     await screen.findByText('ALG-1');
     expect(lastFilters(list).hasBuyerNote).toBeUndefined();
 
-    await user.click(screen.getByTestId('orders-filter-buyer-note'));
+    await user.click(screen.getByRole('button', { name: /to handle/ }));
+    await user.click(await screen.findByRole('button', { name: /^Buyer left a note/ }));
 
     await waitFor(() => {
       expect(lastFilters(list).hasBuyerNote).toBe(true);
     });
-    expect(screen.getByTestId('orders-filter-buyer-note')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /^Buyer left a note/ })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('should read hasBuyerNote from the URL so the filter survives a reload', async () => {
+    const user = userEvent.setup();
     const { list } = setup('/orders?hasBuyerNote=true');
     await screen.findByText('ALG-1');
 
     expect(lastFilters(list).hasBuyerNote).toBe(true);
-    expect(screen.getByTestId('orders-filter-buyer-note')).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: /to handle/ }));
+    expect(await screen.findByRole('button', { name: /^Buyer left a note/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
   });
 
   it('should show the buyer-note indicator on a row only when the order has a note', async () => {
@@ -227,18 +228,16 @@ describe('OrdersListPage filter bar', () => {
     expect(screen.getByRole('searchbox', { name: 'Search orders' })).toHaveFocus();
   });
 
-  it('should toggle the panel when "F" is pressed and ignore it while typing in search', async () => {
+  it('should open the panel when "F" is pressed and ignore it while typing in search', async () => {
     setup();
     await screen.findByText('ALG-1');
-    fireEvent.keyDown(document.body, { key: 'f' });
-    expect(screen.getByRole('region', { name: 'Filters' })).toBeInTheDocument();
 
     const search = screen.getByRole('searchbox', { name: 'Search orders' });
     fireEvent.keyDown(search, { key: 'f' });
-    expect(screen.getByRole('region', { name: 'Filters' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'All filters' })).not.toBeInTheDocument();
 
-    fireEvent.keyDown(document.body, { key: 'F' });
-    expect(screen.queryByRole('region', { name: 'Filters' })).not.toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: 'f' });
+    expect(await screen.findByRole('dialog', { name: 'All filters' })).toBeInTheDocument();
   });
 
   it('should keep the header actions on one row inside a button group', async () => {
@@ -281,12 +280,11 @@ describe('OrdersListPage filter bar', () => {
       setup();
       await screen.findAllByText('ALG-1');
       await user.click(screen.getByTestId('orders-filter-toggle'));
-      const sheet = await screen.findByRole('dialog', { name: 'Filters' });
-      expect(sheet).toHaveClass('dialog__content--sheet');
+      const sheet = await screen.findByRole('dialog', { name: 'All filters' });
       expect(within(sheet).getByText('Source & dates')).toBeInTheDocument();
       await user.click(within(sheet).getByRole('button', { name: 'Show 1 order' }));
       await waitFor(() => {
-        expect(screen.queryByRole('dialog', { name: 'Filters' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('dialog', { name: 'All filters' })).not.toBeInTheDocument();
       });
     } finally {
       viewport.restore();
