@@ -12,7 +12,12 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 // Inline `type` modifier in ONE statement, deliberately: `eslint --fix` merges
 // a separate `import type` line from this module back into the value import
 // (see the same note in `offer-mapping-response.dto.ts`).
-import { OfferLifecycleValues, type OfferLifecycle } from '@openlinker/core/listings';
+import {
+  OfferLifecycleValues,
+  OfferStaleSignalFilterValues,
+  type OfferLifecycle,
+  type OfferStaleSignalFilter,
+} from '@openlinker/core/listings';
 import { PaginatedReadQueryDto } from '../../../common/dto/paginated-read-query.dto';
 
 export class ListOfferMappingsQueryDto extends PaginatedReadQueryDto {
@@ -70,6 +75,28 @@ export class ListOfferMappingsQueryDto extends PaginatedReadQueryDto {
   @IsOptional()
   @IsIn(OfferLifecycleValues)
   lifecycle?: OfferLifecycle;
+
+  @ApiPropertyOptional({
+    enum: OfferStaleSignalFilterValues,
+    description:
+      '`selling` keeps only live offers still selling a product deleted in the shop: the variant ' +
+      'is stale at the master and the channel last reported stock above zero (#4045). Returns ' +
+      'exactly the rows `attentionCounts.sellingDeletedProduct` counts.',
+  })
+  @IsOptional()
+  @IsIn(OfferStaleSignalFilterValues)
+  staleSignal?: OfferStaleSignalFilter;
+
+  @ApiPropertyOptional({
+    description:
+      '`true` keeps only listings carrying an account-scoped validation problem - one the ' +
+      'channel reports about the seller\'s shop rather than this offer (#4045). Returns exactly ' +
+      'the rows `attentionCounts.shopBlocked` counts.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  shopBlocked?: boolean;
 
   // Off by default (#2032 review thread 3): the counts are a second full
   // aggregate over the same four-join set `findMany` already scans, and
