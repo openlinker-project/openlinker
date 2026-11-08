@@ -3277,6 +3277,16 @@ textarea,
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* A page's own content on a very wide screen (#4026 follow-up): centred and
+   capped, so an ultrawide monitor does not stretch a list edge to edge. The
+   cap is a little wider than the list mockups' 1440px and, with the sidebar
+   and the shell padding, only takes effect past ~1980px of viewport. */
+.page-layout {
+  width: 100%;
+  max-width: 1680px;
+  margin-inline: auto;
+}
+
 .page-header {
   gap: 0.45rem;
 }

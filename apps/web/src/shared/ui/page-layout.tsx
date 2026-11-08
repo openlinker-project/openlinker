@@ -20,7 +20,7 @@ export function PageLayout({
   title,
 }: PageLayoutProps): ReactElement {
   return (
-    <section className="page-section">
+    <section className="page-section page-layout">
       <div className={actions ? 'page-header page-header--split' : 'page-header'}>
         <div className="page-header__content">
           {backTo ? <BackLink to={backTo.to} label={backTo.label} data-testid={backTo['data-testid']} /> : null}
