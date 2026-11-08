@@ -155,7 +155,7 @@ describe('ShipmentsPage', () => {
     expect(screen.getByRole('button', { name: /clear filters/i })).toBeInTheDocument();
   });
 
-  it('should hide method-specific columns when no connection declares the shipping capability', async () => {
+  it('should fold the method and Paczkomat under the Processor badge whatever the capabilities (#4044)', async () => {
     const mockApi = createMockApiClient({
       shipments: { list: vi.fn().mockResolvedValue(page([makeShipment()])) },
       connections: { list: vi.fn().mockResolvedValue([makeConnection({ supportedCapabilities: [] })]) },
@@ -163,8 +163,11 @@ describe('ShipmentsPage', () => {
 
     renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
 
-    expect((await screen.findAllByText('generated')).length).toBeGreaterThan(0);
-    expect(screen.queryByText('Method')).not.toBeInTheDocument();
+    const table = await screen.findByRole('table');
+    const method = table.querySelector('.shipments-processor-cell__method');
+    expect(method?.textContent).toBe('Paczkomat · POZ08A');
+    // Method is sorted from the Processor header, never hidden.
+    expect(within(table).getByRole('button', { name: /method/i })).toBeInTheDocument();
   });
 
   it('should show method-specific columns when a connection declares the shipping capability', async () => {
@@ -408,7 +411,7 @@ describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () 
     vi.unstubAllGlobals();
   });
 
-  it('should expand and collapse the row accordion, showing the Regenerate action', async () => {
+  it('should open the shipment peek with the Regenerate action and close it again (#4044)', async () => {
     const failed = makeShipment({
       id: 'ol_shipment_failed',
       status: 'failed',
@@ -429,29 +432,20 @@ describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () 
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
 
-    const toggle = await screen.findByRole('button', {
-      name: `Expand details for shipment ${failed.id}`,
-    });
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    const arrow = await screen.findByRole('button', { name: /open details for shipment/i });
     expect(screen.queryByRole('link', { name: /regenerate label/i })).not.toBeInTheDocument();
 
-    fireEvent.click(toggle);
+    fireEvent.click(arrow);
 
-    expect(
-      await screen.findByRole('link', { name: /regenerate label/i }),
-    ).toBeInTheDocument();
-    const expandedToggle = screen.getByRole('button', {
-      name: `Collapse details for shipment ${failed.id}`,
+    const peek = await screen.findByRole('dialog');
+    expect(within(peek).getByRole('link', { name: /regenerate label/i })).toBeInTheDocument();
+    // Open order comes first and goes to the order.
+    expect(within(peek).getByRole('link', { name: 'Open order' })).toHaveAttribute('href', '/orders/ol_order_1');
+
+    fireEvent.click(within(peek).getByRole('button', { name: /close/i }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
-    // The attribute, not just the label — nothing else in the repo pins it,
-    // and AT users depend on it rather than on the accessible name.
-    expect(expandedToggle).toHaveAttribute('aria-expanded', 'true');
-
-    fireEvent.click(expandedToggle);
-    expect(screen.queryByRole('link', { name: /regenerate label/i })).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: `Expand details for shipment ${failed.id}` }),
-    ).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('should render the Order column id as a link to the order (not "Unknown")', async () => {
@@ -678,7 +672,7 @@ describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () 
 
     // "Processor" and "which carrier connection" are one question, so the fold
     // hosts here rather than beside.
-    const fold = table.querySelector('.shipments-processor-cell .conn-fold');
+    const fold = table.querySelector('.shipments-processor-stack .conn-fold');
     expect(fold).not.toBeNull();
 
     const foldEl = fold as HTMLElement;
@@ -837,17 +831,15 @@ describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () 
     renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
 
     const table = await screen.findByRole('table');
-    // `DataTable` marks a frozen column's header/cell with `data-table__sticky-col`
-    // and freezes the auto expander cell alongside them — so the header row
-    // carries three: expander + Status + Order. Freezing Status alone left a
-    // horizontally-scrolled row showing a failure with no way to tell which
-    // order it belonged to (#1905).
+    // `DataTable` marks a frozen column's header/cell with `data-table__sticky-col`:
+    // Status + Order on the left, and the peek arrow pinned on the right (#4044).
+    // Freezing Status alone left a horizontally-scrolled row showing a failure
+    // with no way to tell which order it belonged to (#1905).
     const frozenHeaders = table.querySelectorAll('thead .data-table__sticky-col');
     expect(frozenHeaders.length).toBe(3);
-    // The Order header is the outermost frozen data column.
     const headers = Array.from(table.querySelectorAll('thead th')).map((th) => th.textContent);
-    expect(headers[1]).toContain('Status');
-    expect(headers[2]).toContain('Order');
+    expect(headers[0]).toContain('Status');
+    expect(headers[1]).toContain('Order');
   });
 });
 
@@ -874,6 +866,7 @@ describe('ShipmentsPage — cause-first triage strip (#1826)', () => {
 
     renderWithProviders(<ShipmentsPage />, {
       apiClient: mockApi,
+      route: '/shipments?status=failed',
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
 
@@ -901,6 +894,7 @@ describe('ShipmentsPage — cause-first triage strip (#1826)', () => {
 
     renderWithProviders(<ShipmentsPage />, {
       apiClient: mockApi,
+      route: '/shipments?status=failed',
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
 
@@ -922,6 +916,7 @@ describe('ShipmentsPage — cause-first triage strip (#1826)', () => {
 
     renderWithProviders(<ShipmentsPage />, {
       apiClient: mockApi,
+      route: '/shipments?status=failed',
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
 
@@ -944,6 +939,7 @@ describe('ShipmentsPage — cause-first triage strip (#1826)', () => {
 
     renderWithProviders(<ShipmentsPage />, {
       apiClient: mockApi,
+      route: '/shipments?status=failed',
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
 
@@ -1131,7 +1127,7 @@ describe('ShipmentsPage — viewer-role redaction (#1826)', () => {
     expect(screen.queryByText(/sender postal code not serviceable/i)).not.toBeInTheDocument();
   });
 
-  it('should keep the status chip and accordion visible but hide write actions for a viewer session', async () => {
+  it('should keep the status chip and peek visible but hide write actions for a viewer session', async () => {
     const failed = makeShipment({
       id: 'ol_shipment_failed',
       status: 'failed',
@@ -1152,14 +1148,12 @@ describe('ShipmentsPage — viewer-role redaction (#1826)', () => {
     // Chip stays visible (redacted, not hidden).
     expect(await screen.findByText('failed')).toBeInTheDocument();
 
-    const toggle = screen.getByRole('button', { name: `Expand details for shipment ${failed.id}` });
-    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole('button', { name: /open details for shipment/i }));
 
-    // Scoped to the accordion — the status cell shows the same redacted
+    // Scoped to the peek — the status cell shows the same redacted
     // placeholder, so an unscoped query would find two matches.
-    await screen.findByText('Shipment failed'); // the accordion's own field label
-    const detail = document.querySelector('.data-table__detail') as HTMLElement;
-    expect(detail).not.toBeNull();
+    const detail = await screen.findByRole('dialog');
+    await within(detail).findByText('Shipment failed'); // the detail's own field label
     expect(within(detail).getByText('Details hidden for this role.')).toBeInTheDocument();
     expect(within(detail).queryByRole('link', { name: /regenerate label/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /review connection settings/i })).not.toBeInTheDocument();
@@ -1292,6 +1286,7 @@ describe('ShipmentsPage — mobile card parity (#1826)', () => {
 
       renderWithProviders(<ShipmentsPage />, {
         apiClient: mockApi,
+        route: '/shipments?status=failed',
         sessionAdapter: createAuthenticatedSessionAdapter(),
       });
 
