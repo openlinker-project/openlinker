@@ -141,6 +141,39 @@
     "thisConnection": "tym połączeniu"
   },
   "shipmentsPage": {
+    "attention": {
+      "fix": {
+        "groupCount": {
+          "few": "{n} na {connection}",
+          "many": "{n} na {connection}",
+          "one": "{n} na {connection}",
+          "other": "{n} na {connection}"
+        },
+        "itemDesc": "Przewoźnik odrzucił etykietę. Wiersz podaje powód.",
+        "itemTitle": "Nieudane przesyłki",
+        "label": "Nieudane - do poprawy",
+        "sameProblem": "Ten sam problem na jednym połączeniu",
+        "settings": "Ustawienia",
+        "short": "do poprawy",
+        "show": "Pokaż",
+        "unknownConnection": "tym połączeniu"
+      },
+      "label": "Do przejrzenia",
+      "relay": {
+        "itemDesc": "Numer przesyłki nie dotarł do kanału sprzedaży. Kupujący nie dostał powiadomienia.",
+        "itemTitle": "Numer przesyłki nie dotarł do kanału",
+        "label": "Numer przesyłki nie przekazany",
+        "short": "bez przekazanego numeru"
+      },
+      "send": {
+        "draftDesc": "Brak etykiety. Wygeneruj ją, aby wysłać.",
+        "draftTitle": "Szkice",
+        "label": "Czeka na Ciebie",
+        "readyDesc": "Etykieta wydrukowana, paczka nie oznaczona jako nadana.",
+        "readyTitle": "Etykieta gotowa",
+        "short": "do nadania"
+      }
+    },
     "columns": {
       "action": "Działanie",
       "connection": "Połączenie",
@@ -148,10 +181,8 @@
       "customer": "Klient",
       "method": "Metoda",
       "order": "Zamówienie",
-      "paczkomat": "Paczkomat",
       "processor": "Realizacja",
-      "status": "Status",
-      "tracking": "Nr przesyłki"
+      "status": "Status"
     },
     "description": "Zestawienie wszystkich przesyłek ze wszystkich zamówień - filtruj według statusu, metody, połączenia lub daty.",
     "empty": {
@@ -168,20 +199,63 @@
       "allConnections": "Wszystkie połączenia",
       "allMethods": "Wszystkie metody",
       "allProcessors": "Każda realizacja",
-      "allStatuses": "Wszystkie statusy",
-      "anyRelayState": "Dowolny stan przekazania",
       "anyTracking": "Dowolny numer przesyłki",
-      "byConnection": "Filtruj według połączenia",
-      "byMethod": "Filtruj według metody wysyłki",
-      "byProcessor": "Filtruj według realizacji",
-      "byRelay": "Filtruj według przekazania numeru przesyłki",
-      "byStatus": "Filtruj według statusu",
-      "byTracking": "Filtruj według numeru przesyłki",
       "createdFrom": "Utworzono od",
       "createdTo": "Utworzono do",
       "relayStuck": "Numer przesyłki nie dotarł do kanału",
       "withTracking": "Z numerem przesyłki",
       "withoutTracking": "Bez numeru przesyłki"
+    },
+    "listFilters": {
+      "allFiltersTitle": "Wszystkie filtry",
+      "clearAll": "Wyczyść wszystko",
+      "closeFilters": "Zamknij filtry",
+      "connection": "Połączenie",
+      "filterGroupAria": "Filtry",
+      "filters": "Filtry",
+      "filtersTitle": "Wszystkie filtry (F)",
+      "from": "Od",
+      "groups": {
+        "created": "Utworzono",
+        "tracking": "Numer przesyłki"
+      },
+      "method": "Metoda",
+      "methodLocked": "Realizacja już wyznacza metodę. Wyczyść Realizację, aby wybrać metodę.",
+      "panelHint": "Numer przesyłki i data utworzenia. Status, realizacja, metoda i połączenie są nad listą.",
+      "pills": {
+        "connection": "Połączenie",
+        "created": "Utworzono",
+        "createdFrom": "od {date}",
+        "createdTo": "do {date}",
+        "method": "Metoda",
+        "processor": "Realizacja",
+        "relay": "Przekazanie numeru",
+        "relayValue": "Nie dotarł do kanału",
+        "tracking": "Numer przesyłki"
+      },
+      "processor": "Realizacja",
+      "results": {
+        "few": "{total} wyniki",
+        "many": "{total} wyników",
+        "one": "{total} wynik",
+        "other": "{total} wyniku"
+      },
+      "sectionAny": "Dowolne",
+      "showShipments": {
+        "few": "Pokaż {n} przesyłki",
+        "many": "Pokaż {n} przesyłek",
+        "one": "Pokaż {n} przesyłkę",
+        "other": "Pokaż {n} przesyłki"
+      },
+      "showShipmentsUnknown": "Pokaż przesyłki",
+      "sortMenu": {
+        "createdAt": "Najnowsze",
+        "createdAtAsc": "Najstarsze",
+        "shippingMethod": "Metoda",
+        "status": "Status"
+      },
+      "sortMenuAria": "Sortuj przesyłki",
+      "to": "Do"
     },
     "loading": "Wczytywanie przesyłek…",
     "pagination": {
@@ -189,12 +263,34 @@
       "previous": "Wstecz",
       "showing": "Wyświetlanie {from}-{to} z {total}"
     },
+    "peek": {
+      "created": "Utworzono",
+      "description": "Szczegóły przesyłki. Strzałki albo j i k przechodzą między przesyłkami.",
+      "details": "Szczegóły",
+      "detailsAria": "Otwórz szczegóły przesyłki {id}",
+      "kicker": "Przesyłka",
+      "openOrder": "Otwórz zamówienie",
+      "processor": "Realizacja",
+      "shipmentId": "ID przesyłki",
+      "stateAria": "Stan przesyłki",
+      "status": "Status",
+      "tracking": "Numer przesyłki"
+    },
+    "statusTabs": {
+      "all": "Wszystkie przesyłki",
+      "aria": "Przesyłki według statusu",
+      "labels": {
+        "cancelled": "Anulowane",
+        "delivered": "Dostarczone",
+        "dispatched": "Nadane",
+        "draft": "Szkic",
+        "failed": "Nieudane",
+        "generated": "Wygenerowane",
+        "in-transit": "W drodze"
+      }
+    },
     "tableCaption": "Przesyłki",
     "title": "Przesyłki",
-    "toggle": {
-      "collapse": "Zwiń szczegóły przesyłki {id}",
-      "expand": "Rozwiń szczegóły przesyłki {id}"
-    },
     "triageOverflow": {
       "few": "+{n} kolejne grupy ze wspólnym komunikatem przewoźnika.",
       "many": "+{n} kolejnych grup ze wspólnym komunikatem przewoźnika.",
