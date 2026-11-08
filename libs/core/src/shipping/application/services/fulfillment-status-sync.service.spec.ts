@@ -102,6 +102,8 @@ describe('FulfillmentStatusSyncService', () => {
     shipments = {
       create: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn(),
+      listConnectionIds: jest.fn(),
       findById: jest.fn(),
       findByOrderId: jest.fn().mockResolvedValue([]),
       findActiveByOrderId: jest.fn(),

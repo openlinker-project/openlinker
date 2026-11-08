@@ -172,6 +172,8 @@ describe('ShipmentDispatchService', () => {
     repository = {
       create: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn(),
+      listConnectionIds: jest.fn(),
       findById: jest.fn(),
       findByOrderId: jest.fn(),
       findActiveByOrderId: jest.fn(),

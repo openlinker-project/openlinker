@@ -17,6 +17,7 @@ import type {
   PaginatedShipments,
   ShipmentFilters,
   ShipmentPagination,
+  ShipmentSummary,
 } from './shipments.types';
 
 export interface ShipmentsApi {
@@ -27,6 +28,9 @@ export interface ShipmentsApi {
    * (100); higher values return HTTP 400. Page via `offset`.
    */
   list: (filters?: ShipmentFilters, pagination?: ShipmentPagination) => Promise<PaginatedShipments>;
+
+  /** The list's counts for the same filters (#4043). */
+  summary: (filters?: ShipmentFilters) => Promise<ShipmentSummary>;
 
   /** `POST /shipments/generate-label` — kicks off the #835 dispatch seam.
    *  Returns `kind: 'dispatched'` + `shipment` for OL-managed dispatches;
@@ -98,6 +102,9 @@ export function createShipmentsApi(
   return {
     list(filters, pagination): Promise<PaginatedShipments> {
       return request<PaginatedShipments>(`/shipments${buildQuery(filters, pagination)}`);
+    },
+    summary(filters): Promise<ShipmentSummary> {
+      return request<ShipmentSummary>(`/shipments/summary${buildQuery(filters)}`);
     },
     generateLabel(input): Promise<DispatchResult> {
       return request<DispatchResult>('/shipments/generate-label', {
