@@ -83,6 +83,11 @@ export interface SidePanelProps {
 }
 
 const PHONE_QUERY = '(max-width: 640px)';
+/**
+ * Above full HD a panel pinned to the right edge of an ultrawide screen sits
+ * far from where the eye is, so it opens as a centred modal instead.
+ */
+const WIDE_QUERY = '(min-width: 1921px)';
 const SIDE_SPRING = { type: 'tween', duration: 0.36, ease: [0.32, 0.72, 0, 1] } as const;
 /** vaul's curve: fast out, long settle. */
 /**
@@ -91,20 +96,23 @@ const SIDE_SPRING = { type: 'tween', duration: 0.36, ease: [0.32, 0.72, 0, 1] } 
  */
 const SHEET_TWEEN = { type: 'tween', duration: 0.34, ease: [0.22, 1, 0.36, 1] } as const;
 /** How dark the phone scrim gets at rest; it fades further as the sheet is dragged. */
+/** No overshoot: an operator tool, not a toy (the motion guide's rule). */
+const MODAL_SPRING = { type: 'spring', visualDuration: 0.34, bounce: 0 } as const;
+const MODAL_EXIT = { type: 'tween', duration: 0.16, ease: [0.4, 0, 1, 1] } as const;
 const SHEET_SCRIM_MAX = 0.55;
 const DISMISS_FRACTION = 0.3;
 const DISMISS_VELOCITY = 450;
 
-function useIsPhone(): boolean {
-  const [phone, setPhone] = useState(() => window.matchMedia?.(PHONE_QUERY).matches ?? false);
+function useMediaMatch(media: string): boolean {
+  const [matches, setMatches] = useState(() => window.matchMedia?.(media).matches ?? false);
   useEffect(() => {
-    const query = window.matchMedia?.(PHONE_QUERY);
+    const query = window.matchMedia?.(media);
     if (!query) return undefined;
-    const onChange = (): void => setPhone(query.matches);
+    const onChange = (): void => setMatches(query.matches);
     query.addEventListener('change', onChange);
     return () => query.removeEventListener('change', onChange);
-  }, []);
-  return phone;
+  }, [media]);
+  return matches;
 }
 
 export function SidePanel({
@@ -128,7 +136,8 @@ export function SidePanel({
   const copy = useMessages('ui').sidePanel;
   const close = closeLabel ?? copy.close;
   const reduce = useReducedMotion();
-  const phone = useIsPhone();
+  const phone = useMediaMatch(PHONE_QUERY);
+  const modal = useMediaMatch(WIDE_QUERY) && !phone;
   const controls = useDragControls();
   const panelRef = useRef<HTMLElement>(null);
   const y = useMotionValue(0);
@@ -169,8 +178,15 @@ export function SidePanel({
     </RadixDialog.Close>
   );
 
-  const enter = reduce ? { opacity: 0 } : phone ? { y: '100%' } : { x: 'calc(100% + 16px)' };
-  const rest = reduce ? { opacity: 1 } : phone ? { y: 0 } : { x: 0 };
+  const enter = reduce
+    ? { opacity: 0 }
+    : phone
+      ? { y: '100%' }
+      : modal
+        ? { opacity: 0, scale: 0.96, y: 16 }
+        : { x: 'calc(100% + 16px)' };
+  const rest = reduce ? { opacity: 1 } : phone ? { y: 0 } : modal ? { opacity: 1, scale: 1, y: 0 } : { x: 0 };
+  const exit = modal && !reduce ? { opacity: 0, scale: 0.98, y: 8, transition: MODAL_EXIT } : enter;
 
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
@@ -179,7 +195,13 @@ export function SidePanel({
           <RadixDialog.Portal forceMount>
             <RadixDialog.Overlay asChild forceMount>
               <motion.div
-                className={`side-panel__overlay${elevated ? ' side-panel__overlay--elevated' : ''}`}
+                className={[
+                  'side-panel__overlay',
+                  elevated ? 'side-panel__overlay--elevated' : '',
+                  modal ? 'side-panel__overlay--modal' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -193,7 +215,7 @@ export function SidePanel({
                 ref={panelRef}
                 className={[
                   'side-panel',
-                  phone ? 'side-panel--sheet' : floating ? 'side-panel--floating' : '',
+                  phone ? 'side-panel--sheet' : modal ? 'side-panel--modal' : floating ? 'side-panel--floating' : '',
                   elevated ? 'side-panel--elevated' : '',
                   className,
                 ]
@@ -202,8 +224,8 @@ export function SidePanel({
                 style={{ ['--side-panel-width' as string]: `${width}px`, ...(phone ? { y } : {}) }}
                 initial={enter}
                 animate={rest}
-                exit={enter}
-                transition={phone ? SHEET_TWEEN : SIDE_SPRING}
+                exit={exit}
+                transition={phone ? SHEET_TWEEN : modal ? MODAL_SPRING : SIDE_SPRING}
                 drag={phone && !reduce ? 'y' : false}
                 dragControls={controls}
                 dragListener={false}

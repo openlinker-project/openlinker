@@ -1271,6 +1271,23 @@ textarea,
   }
 }
 
+/* Ultrawide (> 1920px): the sidebar floats in a box off the screen edge
+   (#4026 follow-up), matching the centred content and modal panels. */
+@media (min-width: 1921px) {
+  .shell {
+    grid-template-columns: 264px minmax(0, 1fr);
+  }
+
+  .shell-sidebar {
+    top: 12px;
+    height: calc(100vh - 24px);
+    margin: 12px 0 12px 12px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm);
+  }
+}
+
 .shell-brand {
   display: flex;
   align-items: center;
@@ -7751,6 +7768,27 @@ a.kpi-card:focus-visible {
 }
 
 .side-panel__overlay--elevated { z-index: 60; }
+
+/* Ultrawide (> 1920px): the panel opens as a centred modal (#4026 follow-up).
+   Centred with auto margins rather than a translate, because Motion owns the
+   transform for the open/close scale. `fit-content` lets the auto margins
+   centre it vertically while the body still scrolls inside the cap. */
+.side-panel.side-panel--modal {
+  inset: 0;
+  margin: auto;
+  width: min(calc(var(--side-panel-width, 480px) + 120px), calc(100vw - 64px));
+  height: fit-content;
+  max-height: min(880px, calc(100vh - 96px));
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  transform-origin: 50% 60%;
+}
+.side-panel__overlay--modal .side-panel__overlay-fill {
+  backdrop-filter: blur(6px) saturate(0.8);
+  -webkit-backdrop-filter: blur(6px) saturate(0.8);
+}
 .side-panel--elevated { z-index: 61; }
 
 .side-panel__head {
