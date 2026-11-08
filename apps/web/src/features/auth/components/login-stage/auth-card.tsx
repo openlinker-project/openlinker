@@ -230,7 +230,7 @@ export function AuthCard({
 
   const textInput = (
     field: 'username' | 'email',
-    props: { autoComplete: string; placeholder: string; type?: string },
+    props: { autoComplete: string; placeholder?: string; type?: string },
     fieldProps: AuthFieldControlProps
   ): ReactElement => (
     <Controller
@@ -426,9 +426,7 @@ export function AuthCard({
               label={ui.usernameOrEmail}
               error={tab === 'login' ? errorText('username') : undefined}
             >
-              {(fp) =>
-                textInput('username', { autoComplete: 'username', placeholder: ui.usernamePh }, fp)
-              }
+              {(fp) => textInput('username', { autoComplete: 'username' }, fp)}
             </AuthField>
             <AuthField
               id={ids.lp}

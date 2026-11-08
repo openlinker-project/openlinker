@@ -3801,7 +3801,7 @@ function AuthPanel({ preset, copy, showTrackingFootnote = false, onReserve, init
           </div>
           <form className="auth-form" onSubmit={submit('login')} onKeyDown={loginFormTab} noValidate>
             <Field id={ids.lu} label={ui.usernameOrEmail} error={errText('username')}>
-              <Input value={values.username} onChange={set('username')} autoComplete="username" placeholder={ui.usernamePh} />
+              <Input value={values.username} onChange={set('username')} autoComplete="username" />
             </Field>
             <Field id={ids.lp} label={ui.password} aside={<a href="#forgot" onClick={(e) => e.preventDefault()}>{ui.forgot}</a>} error={errText('password')}>
               <PasswordInput value={values.password} onChange={set('password')} autoComplete="current-password" />
