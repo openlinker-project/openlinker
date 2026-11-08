@@ -168,14 +168,20 @@
       "tryAgain": "Spróbuj ponownie"
     },
     "filters": {
-      "all": "Wszystko",
+      "anyConnection": "Wszystkie połączenia",
+      "anyDirection": "Każda zmiana",
+      "anySize": "Każda wielkość",
       "bigChanges": "Duże zmiany (10% lub więcej)",
-      "connectionGroup": "Filtruj po połączeniu",
+      "bigChangesShort": "Tylko duże zmiany",
       "connectionLabel": "Połączenie",
       "decreases": "↓ Obniżki",
-      "directionGroup": "Filtruj po kierunku zmiany ceny",
       "directionLabel": "Zmiana ceny",
-      "increases": "↑ Podwyżki"
+      "filterGroupAria": "Filtry",
+      "increases": "↑ Podwyżki",
+      "pillConnection": "Połączenie",
+      "pillDirection": "Zmiana ceny",
+      "pillSize": "Wielkość",
+      "sizeLabel": "Wielkość"
     },
     "hiddenStale": {
       "few": "{n} kolejne zmiany nie są tu widoczne, bo ta oferta jest wstrzymana.",
@@ -193,7 +199,7 @@
     "selectAll": "Zaznacz wszystkie",
     "selectRow": "Zaznacz {product} w kanale {destination}",
     "toolbar": {
-      "clearFilters": "Wyczyść filtry",
+      "clearAll": "Wyczyść wszystko",
       "intro": "Jeden wiersz na kanał docelowy - cena zmieniona raz w źródle może dać osobną, niezależnie przeglądaną zmianę w każdym marketplace lub sklepie, w którym jest opublikowana. Ceny zawierają VAT.",
       "pricingRules": "Reguły cenowe"
     }

@@ -152,14 +152,20 @@
       "tryAgain": "Try again"
     },
     "filters": {
-      "all": "All",
+      "anyConnection": "All connections",
+      "anyDirection": "Any change",
+      "anySize": "Any size",
       "bigChanges": "Big changes (10% or more)",
-      "connectionGroup": "Filter by connection",
+      "bigChangesShort": "Big changes only",
       "connectionLabel": "Connection",
       "decreases": "↓ Decreases",
-      "directionGroup": "Filter by price direction",
       "directionLabel": "Price change",
-      "increases": "↑ Increases"
+      "filterGroupAria": "Filters",
+      "increases": "↑ Increases",
+      "pillConnection": "Connection",
+      "pillDirection": "Price change",
+      "pillSize": "Size",
+      "sizeLabel": "Size"
     },
     "hiddenStale": {
       "one": "{n} more change isn't shown here because that listing is paused.",
@@ -175,7 +181,7 @@
     "selectAll": "Select all",
     "selectRow": "Select {product} on {destination}",
     "toolbar": {
-      "clearFilters": "Clear filters",
+      "clearAll": "Clear all",
       "intro": "One row per destination - a price that changed once at the source can produce a separate, independently-reviewable change on every marketplace or shop it's published to. Prices include VAT.",
       "pricingRules": "Pricing rules"
     }
