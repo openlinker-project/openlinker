@@ -3470,7 +3470,7 @@ const UI = {
   pl: {
     username: 'Nazwa użytkownika', usernameOrEmail: 'Nazwa użytkownika lub e-mail', email: 'E-mail', password: 'Hasło',
     confirm: 'Powtórz hasło', min8: 'min. 8 znaków', forgot: 'Nie pamiętasz hasła?', show: 'Pokaż', hide: 'Ukryj',
-    showPw: 'Pokaż hasło', hidePw: 'Ukryj hasło', usernamePh: 'np. moj-sklep', emailPh: 'kontakt@twojsklep.pl',
+    showPw: 'Pokaż hasło', hidePw: 'Ukryj hasło',
     loginFailedTitle: 'Nie udało się zalogować', signedInTitle: 'Zalogowano', signedInLead: 'Otwieramy panel OpenLinker.',
     mockBack: 'Makieta: wróć do formularza', tabsLabel: 'Logowanie lub rejestracja', language: 'Język',
     tracking: 'Ta wizyta jest zapisywana w statystykach. Nie tworzymy na jej podstawie profilu osoby.',
@@ -3484,7 +3484,7 @@ const UI = {
   en: {
     username: 'Username', usernameOrEmail: 'Username or email', email: 'Email', password: 'Password',
     confirm: 'Repeat password', min8: 'at least 8 characters', forgot: 'Forgot your password?', show: 'Show', hide: 'Hide',
-    showPw: 'Show password', hidePw: 'Hide password', usernamePh: 'e.g. my-store', emailPh: 'contact@yourstore.com',
+    showPw: 'Show password', hidePw: 'Hide password',
     loginFailedTitle: "Couldn't sign you in", signedInTitle: 'Signed in', signedInLead: 'Opening OpenLinker.',
     mockBack: 'Mockup: back to the form', tabsLabel: 'Sign in or create an account', language: 'Language',
     tracking: 'This visit is counted in our statistics. No personal profile is built from it.',
@@ -3763,10 +3763,10 @@ function AuthPanel({ preset, copy, showTrackingFootnote = false, onReserve, init
               </div>
               <form className="auth-form" onSubmit={submit('register')} noValidate>
                 <Field id={ids.u} label={ui.username} error={errText('username')}>
-                  <Input value={values.username} onChange={set('username')} autoComplete="username" placeholder={ui.usernamePh} />
+                  <Input value={values.username} onChange={set('username')} autoComplete="username" />
                 </Field>
                 <Field id={ids.e} label={ui.email} error={errText('email')}>
-                  <Input type="email" value={values.email} onChange={set('email')} autoComplete="email" placeholder={ui.emailPh} />
+                  <Input type="email" value={values.email} onChange={set('email')} autoComplete="email" />
                 </Field>
                 <Field id={ids.p} label={ui.password} aside={<span className="f__hint">{ui.min8}</span>} error={errText('password')}>
                   <PasswordInput value={values.password} onChange={set('password')} autoComplete="new-password" />

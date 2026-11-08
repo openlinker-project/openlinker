@@ -232,7 +232,6 @@
     "ui": {
       "confirm": "Repeat password",
       "email": "Email",
-      "emailPh": "contact@yourstore.com",
       "forgot": "Forgot your password?",
       "hide": "Hide",
       "hidePw": "Hide password",
@@ -251,7 +250,6 @@
       "tracking": "This visit is counted in our statistics. No personal profile is built from it.",
       "username": "Username",
       "usernameOrEmail": "Username or email",
-      "usernamePh": "e.g. my-store",
       "v": {
         "confirm": "Repeat your password.",
         "email": "Enter your email address.",

@@ -236,7 +236,6 @@
     "ui": {
       "confirm": "Powtórz hasło",
       "email": "E-mail",
-      "emailPh": "kontakt@twojsklep.pl",
       "forgot": "Nie pamiętasz hasła?",
       "hide": "Ukryj",
       "hidePw": "Ukryj hasło",
@@ -255,7 +254,6 @@
       "tracking": "Ta wizyta jest zapisywana w statystykach. Nie tworzymy na jej podstawie profilu osoby.",
       "username": "Nazwa użytkownika",
       "usernameOrEmail": "Nazwa użytkownika lub e-mail",
-      "usernamePh": "np. moj-sklep",
       "v": {
         "confirm": "Powtórz hasło.",
         "email": "Wpisz adres e-mail.",
