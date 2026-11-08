@@ -2,10 +2,14 @@
  * Listings List Page
  *
  * Operator-facing cockpit over offer-to-variant mappings (epic #2023, mockup
- * #1965): a 6-column table with channel-side price/quantity, 5 lifecycle tabs
- * (Active / Invalid / Draft / Ended / Unsynced) with live filter-aware counts,
- * and a toolbar (search + channel select). Backed entirely by `GET /listings`
- * (#2025/#2026) - no client-side filtering of a bucket's own page.
+ * #1965), on the orders list system since #4046: a view switch in the page
+ * head (All listings / Price changes), ONE lifecycle tab row (Active / Invalid
+ * / Draft / Ended / Unsynced) with live filter-aware counts, "Needs a look"
+ * (price changes, blocked by shop, selling deleted) from #4045, a toolbar
+ * (search `/` + a Channel dropdown with counts) with applied pills, fixed
+ * column widths, and a peek a row opens instead of leaving the page. Backed
+ * entirely by `GET /listings` (#2025/#2026) - no client-side filtering of a
+ * bucket's own page.
  *
  * @module apps/web/src/pages/listings
  */
@@ -20,7 +24,6 @@ import {
 } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
-import { Alert } from '../../shared/ui/alert';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
@@ -28,11 +31,14 @@ import { Button } from '../../shared/ui/button';
 import { AbsentValue } from '../../shared/ui/absent-value';
 import { EmptyValue } from '../../shared/ui/empty-value';
 import { Input } from '../../shared/ui/input';
-import { Select } from '../../shared/ui/select';
+import { ActiveFilterChips, type ActiveFilterChip } from '../../shared/ui/active-filter-chips';
+import { PeekArrow } from '../../shared/ui/capped-badges';
+import { FilterDropdown, FilterGroup } from '../../shared/ui/filter-dropdown';
+import { SegmentedControl } from '../../shared/ui/segmented-control';
+import { StatusTabs, type StatusTabTone } from '../../shared/ui/status-tabs';
 import { KeyValueList } from '../../shared/ui/key-value-list';
 import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
 import { StatusBadge } from '../../shared/ui/status-badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import {
   interpolate,
@@ -60,10 +66,11 @@ import {
   type ListingRowBadge,
 } from '../../features/listings/lib/listing-row-state';
 import { readListingProblems } from '../../features/listings/lib/listing-problems';
-import {
-  deriveListingConnectionNotices,
-  type ListingConnectionNotice,
-} from '../../features/listings/lib/listing-connection-notices';
+import { ListingAttentionSummary } from '../../features/listings/components/listing-attention-summary';
+import { EditOfferDrawer } from '../../features/listings/components/edit-offer-drawer';
+import { useRefreshListingStatusMutation } from '../../features/listings/hooks/use-refresh-listing-status-mutation';
+import { useListingChannelCounts } from '../../features/listings/hooks/use-listing-channel-counts';
+import { ListingPeek, type ListingPeekView } from './listing-peek';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import { PriceChangesQueueTable, usePriceChangesQuery } from '../../features/price-changes';
@@ -118,6 +125,15 @@ const LIFECYCLE_TABS: readonly LifecycleTabDef[] = [
   { key: 'ended', lifecycle: 'Ended' },
   { key: 'unsynced', lifecycle: 'Unsynced' },
 ];
+
+/** Tab dot per bucket (#4046): Invalid and Draft are tinted, the rest plain. */
+const LIFECYCLE_TAB_TONE: Readonly<Record<LifecycleTab, StatusTabTone | null>> = {
+  active: null,
+  invalid: 'error',
+  draft: 'warning',
+  ended: null,
+  unsynced: null,
+};
 
 /** The operator's word for a lifecycle bucket; an unknown value is shown as sent. */
 function lifecycleLabel(lifecycle: string, copy: ListingsListCopy): string {
@@ -262,54 +278,6 @@ function ListingCell({
   );
 }
 
-/**
- * One shop-level problem, rendered once for the whole connection (#2231).
- *
- * The channel reports these against every offer of the shop, so the rows drop
- * them and this carries them instead - naming the connection, because a page can
- * legitimately show two, and stating how many of the listings SHOWN are affected,
- * because the list is paged and filtered and cannot honestly claim a total.
- *
- * The title says the channel REPORTS a shop-level block, not that the shop
- * cannot sell: an offer whose channel status is `active` keeps its Active badge
- * even while carrying problems, because the channel is the authority on its own
- * publication - so a stronger claim here would contradict rows on the same
- * screen. The per-problem sentences below say what is blocked, in the channel's
- * own words.
- */
-function ConnectionProblemNotice({ notice }: { notice: ListingConnectionNotice }): ReactElement {
-  const copy = useMessages('listings').listingsListPage.connectionNotice;
-  const plural = usePlural();
-  return (
-    <Alert
-      tone="error"
-      className="listings-connection-notice"
-      title={interpolate(copy.title, { connection: notice.connectionLabel })}
-    >
-      <p>
-        {interpolate(copy.summary, {
-          problems: notice.problems
-            .map((problem) => problem.summary ?? problem.message)
-            .join(' \u00b7 '),
-        })}
-      </p>
-      <ul className="listings-connection-notice__problems">
-        {notice.problems.map((problem) => (
-          <li key={problem.code ?? problem.message}>
-            {problem.message}
-            {problem.code !== undefined ? (
-              <span className="listings-connection-notice__code mono-text">{problem.code}</span>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-      <p className="text-muted">
-        {plural(notice.affectedShownCount, copy.affectedShown)}
-      </p>
-    </Alert>
-  );
-}
-
 function ChannelPill({ row, label }: { row: OfferMapping; label: string }): ReactElement {
   return (
     <span className="channel-pill" data-channel={row.platformType}>
@@ -420,6 +388,9 @@ export function ListingsListPage(): ReactElement {
 
   const urlSearch = searchParams.get('search') ?? '';
   const urlConnectionId = searchParams.get('connectionId') ?? '';
+  // "Needs a look" filters (#4045/#4046): present-and-set is the only state.
+  const sellingDeleted = searchParams.get('staleSignal') === 'selling';
+  const shopBlocked = searchParams.get('shopBlocked') === 'true';
   // A malformed `?offset=` (hand-edited, or a stale bookmark) must fall back
   // to page 1, not become `NaN` and 400 the request (#2032 review thread 12).
   const rawOffset = Number(searchParams.get('offset') ?? '0');
@@ -464,6 +435,8 @@ export function ListingsListPage(): ReactElement {
     search: debouncedSearch || undefined,
     connectionId: urlConnectionId || undefined,
     lifecycle: activeTabDef.lifecycle,
+    staleSignal: sellingDeleted ? 'selling' : undefined,
+    shopBlocked: shopBlocked || undefined,
     // This page is the only caller that renders a tab bar (#2032 review
     // thread 3) - `variant-stock-table.tsx` / `product-row-detail.tsx` /
     // `use-nav-counts.ts` share this same query hook and must not pay for
@@ -537,17 +510,10 @@ export function ListingsListPage(): ReactElement {
     return map;
   }, [connectionsQuery.data]);
 
-  // Shop-level channel problems, lifted out of the rows and grouped per
-  // connection (#2231). Derived from the page's own rows: no extra request, and
-  // the notice is therefore honest about counting only the listings shown.
-  const connectionNotices = useMemo(
-    () =>
-      deriveListingConnectionNotices(
-        query.data?.items ?? [],
-        new Map([...connectionsById].map(([id, facts]) => [id, facts.name])),
-      ),
-    [query.data?.items, connectionsById],
-  );
+  // The row a peek is open on, and the offer the Edit drawer edits (#4046).
+  const [peekId, setPeekId] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<OfferMapping | null>(null);
+  const refreshStatus = useRefreshListingStatusMutation();
 
   const channelLabel = useCallback(
     (row: OfferMapping): string => resolvePlatformLabel(platforms, row),
@@ -558,6 +524,7 @@ export function ListingsListPage(): ReactElement {
     () => [
       {
         id: 'listing',
+        width: '40%',
         // #2538 - Thumbnail, title and a meta line.
         lines: 2,
         header: copy.columns.listing,
@@ -565,11 +532,13 @@ export function ListingsListPage(): ReactElement {
       },
       {
         id: 'channel',
+        width: '9%',
         header: copy.columns.channel,
         cell: (row): ReactNode => <ChannelPill row={row} label={channelLabel(row)} />,
       },
       {
         id: 'connection',
+        width: '13%',
         // #2538 - ConnectionCell stacks the name over its status.
         lines: 2,
         header: copy.columns.connection,
@@ -586,6 +555,7 @@ export function ListingsListPage(): ReactElement {
       },
       {
         id: 'price',
+        width: '12%',
         header: (
           <ColumnHead label={copy.columns.price} note={copy.columns.onChannel} align="right" />
         ),
@@ -594,6 +564,7 @@ export function ListingsListPage(): ReactElement {
       },
       {
         id: 'quantity',
+        width: '10%',
         header: (
           <ColumnHead label={copy.columns.quantity} note={copy.columns.onChannel} align="right" />
         ),
@@ -606,11 +577,46 @@ export function ListingsListPage(): ReactElement {
         // hourly scan makes a days-old value ordinary, and the mobile card
         // already calls the identical value "Status read".
         header: <ColumnHead label={copy.columns.updated} note={copy.columns.statusRead} />,
+        width: '12%',
         cell: (row): ReactNode => <UpdatedCell row={row} />,
       },
+      {
+        id: 'peek',
+        width: '3rem',
+        // #4046 - the arrow says the row opens a panel from the right.
+        header: <span className="sr-only">{copy.peek.details}</span>,
+        cell: (row): ReactNode => (
+          <PeekArrow
+            label={interpolate(copy.peek.detailsAria, {
+              name: row.identity?.productName ?? row.externalId,
+            })}
+            onOpen={() => {
+              setPeekId(row.id);
+            }}
+          />
+        ),
+      },
     ],
-    [channelLabel, connectionsById, connectionsQuery.isLoading, activeTabDef.lifecycle, copy.columns],
+    [
+      channelLabel,
+      connectionsById,
+      connectionsQuery.isLoading,
+      activeTabDef.lifecycle,
+      copy.columns,
+      copy.peek,
+    ],
   );
+
+  /** A discrete filter (channel, needs-a-look) written straight to the URL. */
+  function setParam(key: 'connectionId' | 'staleSignal' | 'shopBlocked', value: string | null): void {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set(key, value);
+      else next.delete(key);
+      next.delete('offset');
+      return next;
+    });
+  }
 
   function handleFilterChange(key: 'search' | 'connectionId', value: string): void {
     if (key === 'search') setSearchInput(value);
@@ -675,6 +681,8 @@ export function ListingsListPage(): ReactElement {
       const next = new URLSearchParams(prev);
       next.delete('search');
       next.delete('connectionId');
+      next.delete('staleSignal');
+      next.delete('shopBlocked');
       next.delete('offset');
       next.delete('tab');
       // The platform-type filter is gone (#2025/#2030) but a bookmarked URL can
@@ -685,7 +693,17 @@ export function ListingsListPage(): ReactElement {
     });
   }
 
-  const hasFilters = !!(debouncedSearch || urlConnectionId);
+  const hasFilters = !!(debouncedSearch || urlConnectionId || sellingDeleted || shopBlocked);
+
+  /** Pills clear every filter but the tab (#4046); the empty state still resets the tab too. */
+  function clearPills(): void {
+    setSearchInput('');
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      for (const key of ['search', 'connectionId', 'staleSignal', 'shopBlocked', 'offset']) next.delete(key);
+      return next;
+    });
+  }
 
   // /listings is backed exclusively by OfferManager-capable connections (the
   // channel <Select> below filters on the same capability) - a shop with only
@@ -701,6 +719,21 @@ export function ListingsListPage(): ReactElement {
   // connections configured, so it gets its own empty state + CTA.
   const noConnectionsConfigured = !connectionsQuery.isLoading && offerManagerConnections.length === 0;
 
+  const channelCounts = useListingChannelCounts(
+    filters,
+    offerManagerConnections.map((connection) => connection.id),
+  );
+
+  const peekIndex = peekId ? (query.data?.items ?? []).findIndex((row) => row.id === peekId) : -1;
+  const peekRow = peekIndex >= 0 ? query.data?.items[peekIndex] : undefined;
+  const navigatePeek = useCallback(
+    (step: -1 | 1): void => {
+      const next = query.data?.items[peekIndex + step];
+      if (next) setPeekId(next.id);
+    },
+    [query.data?.items, peekIndex],
+  );
+
   const demoMode = useDemoMode();
   // The unified "Publish products" entry opens a picker first — visible
   // (enabled) for a demo viewer per the useWriteAccess + ReadOnlyLock pattern
@@ -709,203 +742,303 @@ export function ListingsListPage(): ReactElement {
 
   const [isWizardOpen, setIsWizardOpen] = useState(false);
 
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    function onKeydown(e: KeyboardEvent): void {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.key !== '/') return;
+      const target = e.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      searchRef.current?.focus();
+    }
+    document.addEventListener('keydown', onKeydown);
+    return () => {
+      document.removeEventListener('keydown', onKeydown);
+    };
+  }, []);
+
+  const connectionName = (connectionId: string): string | null =>
+    connectionsById.get(connectionId)?.name ?? null;
+
+  const chips: ActiveFilterChip[] = [];
+  if (searchInput) {
+    const text = `“${searchInput}”`;
+    chips.push({
+      key: 'search',
+      label: copy.pills.search,
+      value: text,
+      valueText: text,
+      onRemove: () => {
+        handleFilterChange('search', '');
+      },
+    });
+  }
+  if (urlConnectionId) {
+    const text = connectionName(urlConnectionId) ?? urlConnectionId;
+    chips.push({
+      key: 'channel',
+      label: copy.pills.channel,
+      value: text,
+      valueText: text,
+      onRemove: () => {
+        setParam('connectionId', null);
+      },
+    });
+  }
+  if (shopBlocked) {
+    chips.push({
+      key: 'shopBlocked',
+      label: copy.pills.needsALook,
+      value: copy.pills.shopBlocked,
+      valueText: copy.pills.shopBlocked,
+      onRemove: () => {
+        setParam('shopBlocked', null);
+      },
+    });
+  }
+  if (sellingDeleted) {
+    chips.push({
+      key: 'sellingDeleted',
+      label: copy.pills.needsALook,
+      value: copy.pills.sellingDeleted,
+      valueText: copy.pills.sellingDeleted,
+      onRemove: () => {
+        setParam('staleSignal', null);
+      },
+    });
+  }
+
+  const statusTabs = LIFECYCLE_TABS.map((def) => ({
+    key: def.key,
+    label: copy.lifecycleTabs[def.key].label,
+    tone: LIFECYCLE_TAB_TONE[def.key],
+    count: lifecycleCounts?.[def.lifecycle] ?? undefined,
+  }));
+
+  const peekView: ListingPeekView | null = peekRow
+    ? {
+        row: peekRow,
+        title: peekRow.identity?.productName ?? copy.listingCell.noLinkedVariant,
+        thumbnail: (
+          <ProductThumbnail
+            name={peekRow.identity?.productName ?? peekRow.externalId}
+            src={peekRow.identity?.imageUrl ?? null}
+            size="sm"
+          />
+        ),
+        variant: peekRow.identity?.variantLabel ?? null,
+        connection: (
+          <ConnectionCell
+            connectionId={peekRow.connectionId}
+            connection={connectionsById.get(peekRow.connectionId) ?? null}
+            loading={connectionsQuery.isLoading}
+          />
+        ),
+        price: <PriceCell row={peekRow} />,
+        lifecycle: (
+          <span className="listing-peek__badges">
+            {peekRow.channelStatus?.lifecycle ? (
+              <StatusBadge tone="neutral" compact withDot>
+                {lifecycleLabel(peekRow.channelStatus.lifecycle, copy)}
+              </StatusBadge>
+            ) : null}
+            {listingRowBadges(peekRow).map((badge) => (
+              <RowBadge key={badge.id} badge={badge} />
+            ))}
+          </span>
+        ),
+        onChannel: (
+          <span className="listing-peek__on-channel">
+            <PriceCell row={peekRow} />
+            <span className="text-muted" aria-hidden="true">
+              ·
+            </span>
+            <QuantityCell row={peekRow} />
+          </span>
+        ),
+        statusRead: <UpdatedCell row={peekRow} />,
+        channel: channelLabel(peekRow),
+        reason: listingRowAlert(peekRow),
+        onEdit: write.visible
+          ? (): void => {
+              setEditTarget(peekRow);
+            }
+          : undefined,
+        onCheckStatus: write.visible
+          ? (): void => {
+              refreshStatus.mutate(peekRow);
+            }
+          : undefined,
+        checkingStatus: refreshStatus.isPending,
+      }
+    : null;
+
   return (
     <PageLayout
       eyebrow={copy.eyebrow}
       title={copy.title}
       description={copy.description}
       actions={
-        write.visible ? (
-          <Button onClick={() => setIsWizardOpen(true)}>{copy.publishProducts}</Button>
-        ) : null
+        <span className="button-group listings-head-actions">
+          {/* The view switch (#3147) moved here from a tab row of its own
+              (#4046), so the lifecycle row is the page's ONLY tab row. */}
+          <SegmentedControl<'all' | 'queue'>
+            aria-label={copy.views.ariaLabel}
+            value={view}
+            onChange={(value) => {
+              setSearchParams((prev) => {
+                const next = new URLSearchParams(prev);
+                if (value === 'queue') next.set('view', 'queue');
+                else next.delete('view');
+                return next;
+              });
+            }}
+            options={[
+              { value: 'all', label: copy.views.all },
+              {
+                value: 'queue',
+                label: (
+                  <>
+                    {copy.views.priceChanges}{' '}
+                    <span className="seg-count tabular">
+                      {/* Never a placeholder 0, and a FAILED read never 0
+                          either (#3164 review): unknown is a skeleton,
+                          unavailable a dash. */}
+                      {priceChangesCountUnavailable ? (
+                        '—'
+                      ) : priceChangesOpenCount === null ? (
+                        <span className="tabs__count-skeleton" aria-hidden="true" />
+                      ) : (
+                        format.number(priceChangesOpenCount)
+                      )}
+                    </span>
+                  </>
+                ),
+              },
+            ]}
+          />
+          {write.visible ? (
+            <Button onClick={() => setIsWizardOpen(true)}>{copy.publishProducts}</Button>
+          ) : null}
+        </span>
       }
     >
-      <Tabs
-        value={view}
-        onValueChange={(value) => {
-          setSearchParams((prev) => {
-            const next = new URLSearchParams(prev);
-            if (value === 'queue') next.set('view', 'queue');
-            else next.delete('view');
-            return next;
-          });
-        }}
-      >
-        <TabsList aria-label={copy.views.ariaLabel}>
-          <TabsTrigger value="all">{copy.views.all}</TabsTrigger>
-          <TabsTrigger value="queue">
-            {copy.views.priceChanges}{' '}
-            <span className="tabs__count">
-              {/* Same 3-state treatment as the lifecycle tab counts below
-                  (#3164 review) — a count that snaps from a placeholder `0`
-                  to its real value reads as a bug, and a FAILED read must
-                  never render `0` either (absence and "none matched" are
-                  different claims, `docs/frontend-architecture.md § Paginated
-                  Totals As A Second Stage`). While the query is disabled
-                  (browsing "all listings" and never yet visited "Price
-                  changes" this session) `data` is `undefined` and this reads
-                  the same as "still loading". */}
-              {priceChangesCountUnavailable ? (
-                '—'
-              ) : priceChangesOpenCount === null ? (
-                <span className="tabs__count-skeleton" aria-hidden="true" />
-              ) : (
-                format.number(priceChangesOpenCount)
-              )}
-            </span>
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-
       {view === 'queue' ? (
         <PriceChangesQueueTable />
       ) : (
         <>
-      <div className="toolbar toolbar--compact listings-toolbar">
-        <div className="toolbar__group">
-          <Input
-            aria-label={copy.toolbar.searchAriaLabel}
-            placeholder={copy.toolbar.searchPlaceholder}
-            value={searchInput}
-            onChange={(e) => {
-              handleFilterChange('search', e.target.value);
-            }}
-          />
-          {/* Channel select replaces the old raw connectionId/platformType text
-              inputs (#2030) - populated from the same batched connections read
-              already used for the Connection column (#1996), so it never costs
-              a second request, and shows each connection's own NAME rather than
-              its raw id or platformType. Scoped to OfferManager-capable
-              connections (mirrors useProductMasterConnections' ProductMaster
-              filter) - /listings is backed exclusively by offer mappings, so a
-              ProductMaster/ProductPublisher-only connection can never produce a
-              row here and would otherwise dead-end the table on selection. */}
-          <Select
-            aria-label={copy.toolbar.channelAriaLabel}
-            value={urlConnectionId}
-            onChange={(e) => {
-              handleFilterChange('connectionId', e.target.value);
-            }}
-          >
-            <option value="">{copy.toolbar.allChannels}</option>
-            {offerManagerConnections.map((connection) => (
-              <option key={connection.id} value={connection.id}>
-                {connection.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <Button tone="ghost" className="button--sm" onClick={clearFilters}>
-          {copy.toolbar.clear}
-        </Button>
-      </div>
+          <div className="list-statusbar">
+            <StatusTabs<LifecycleTab>
+              tabs={statusTabs}
+              value={tab}
+              onChange={(next) => {
+                setTab(next ?? DEFAULT_TAB);
+              }}
+              aria-label={copy.lifecycleAriaLabel}
+            />
+            <ListingAttentionSummary
+              priceChanges={priceChangesCountUnavailable ? null : priceChangesOpenCount}
+              onReviewPriceChanges={() => {
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.set('view', 'queue');
+                  return next;
+                });
+              }}
+              attention={totalStage.attentionCounts}
+              shopBlocked={shopBlocked}
+              onShowShopBlocked={(connectionId) => {
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.set('shopBlocked', 'true');
+                  if (connectionId) next.set('connectionId', connectionId);
+                  next.delete('offset');
+                  return next;
+                });
+              }}
+              onClearShopBlocked={() => {
+                setParam('shopBlocked', null);
+              }}
+              sellingDeleted={sellingDeleted}
+              onSellingDeletedChange={(on) => {
+                setParam('staleSignal', on ? 'selling' : null);
+              }}
+              connectionName={connectionName}
+            />
+          </div>
 
-      <Tabs
-        value={tab}
-        onValueChange={(value) => {
-          if (isLifecycleTab(value)) setTab(value);
-        }}
-      >
-        <TabsList aria-label={copy.lifecycleAriaLabel}>
-          {LIFECYCLE_TABS.map((def) => (
-            <TabsTrigger key={def.key} value={def.key}>
-              {/* Explicit {' '} - not JSX whitespace, which collapses away
-                  entirely - so the accessible name reads "Active 7", not the
-                  run-on "Active7" (#2029 round 1 review). */}
-              {copy.lifecycleTabs[def.key].label}{' '}
-              <span className="tabs__count">
-                {/* A count that snaps from 0 to its real value reads as a
-                    bug (#2029 / mockup frame 04) - render a skeleton line
-                    instead of a placeholder zero while it's unknown.
+          {/* Screen-reader counterpart to the tab counts and the refetch line:
+              ONE shared `role="status"` region (#2032 review round 2). */}
+          <span className="sr-only" role="status" aria-live="polite">
+            {query.isFetching && !query.isPending
+              ? copy.status.refreshing
+              : lifecycleCounts
+                ? copy.status.countsLoaded
+                : countsUnavailable
+                  ? copy.status.countsUnavailable
+                  : copy.status.countsLoading}
+          </span>
 
-                    Gated on the counts themselves, not on `query.isPending`
-                    (#2032 review round 2, regression caught by CI). Since
-                    #2943 the buckets come from their own query, keyed WITHOUT
-                    `lifecycle`, which is what replaced the fingerprint this
-                    comment used to point at: a tab switch is a cache hit and
-                    keeps showing them, a search/connection change mints a new
-                    key and drops to skeleton immediately even though
-                    `isPending` stays false on the rows query.
-
-                    A skeleton is a positive claim that content is arriving, so
-                    a FAILED count must not render one - it would spin for the
-                    life of the page (#2957 review, I2). `lifecycleCountsState`
-                    and not `state`, because a short page overrides the latter
-                    to `'known'` while saying nothing about the other tabs. */}
-                {countsUnavailable ? (
-                  '—'
-                ) : lifecycleCounts === null ? (
-                  <span className="tabs__count-skeleton" aria-hidden="true" />
-                ) : (
-                  (lifecycleCounts[def.lifecycle] != null
-                    ? format.number(lifecycleCounts[def.lifecycle])
-                    : '—')
-                )}
+          <div className="list-filters">
+            <div className="list-toolbar">
+              <div className="list-search">
+                <span className="list-search__glyph" aria-hidden="true">
+                  ⌕
+                </span>
+                <Input
+                  ref={searchRef}
+                  type="search"
+                  aria-label={copy.toolbar.searchAriaLabel}
+                  placeholder={copy.toolbar.searchPlaceholder}
+                  value={searchInput}
+                  onChange={(e) => {
+                    handleFilterChange('search', e.target.value);
+                  }}
+                />
+                <span className="button__shortcut list-search__kbd" aria-hidden="true">
+                  /
+                </span>
+              </div>
+              {/* Scoped to OfferManager-capable connections: /listings is
+                  backed exclusively by offer mappings, so any other connection
+                  could never produce a row here (#2030). */}
+              <FilterGroup aria-label={copy.toolbar.filterGroupAria}>
+                <FilterDropdown
+                  label={copy.toolbar.channel}
+                  anyLabel={copy.toolbar.allChannels}
+                  value={urlConnectionId || null}
+                  options={offerManagerConnections.map((connection) => ({
+                    value: connection.id,
+                    label: connection.name,
+                    count: channelCounts.get(connection.id),
+                  }))}
+                  onChange={(next) => {
+                    setParam('connectionId', next);
+                  }}
+                />
+              </FilterGroup>
+              <span className="list-toolbar__spacer" />
+              <span className="text-muted mono tabular list-results" aria-live="polite">
+                {totalStage.total === null || rowsAreForAnotherTab
+                  ? null
+                  : plural(totalStage.total, copy.toolbar.results, { total: format.number(totalStage.total) })}
               </span>
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        {/* Screen-reader-only counterpart to the skeleton-to-number transition
-            above: DataTableSkeleton uses the same role/aria-live pattern for
-            the row table, so the tab bar announces its own loading -> loaded
-            transition the same way (#2029 round 1 review).
-            One shared `role="status"` region, not two (#2032 review round 2,
-            finding 2 fix, corrected post-CI): a second always-mounted
-            `role="status"` node - even rendering empty text when not
-            fetching - made every `getByRole('status')` query in this page's
-            own test suite ambiguous. The refetch message takes priority
-            while a fetch is in flight; otherwise this is the pre-existing
-            lifecycle-counts announcement. */}
-        <span className="sr-only" role="status" aria-live="polite">
-          {query.isFetching && !query.isPending
-            ? copy.status.refreshing
-            : lifecycleCounts
-              ? copy.status.countsLoaded
-              : countsUnavailable
-                ? copy.status.countsUnavailable
-                : copy.status.countsLoading}
-        </span>
+              {query.isFetching && !query.isPending ? (
+                <span className="listings-refetch-indicator" aria-hidden="true" />
+              ) : null}
+            </div>
+            <ActiveFilterChips chips={chips} onClearAll={clearPills} clearAllLabel={copy.toolbar.clearAll} />
+          </div>
 
-        {/* `placeholderData: keepPreviousData` (round-1 fix) stops the table
-            from blanking on a tab/search/page change, but until now nothing
-            told the operator a NEW fetch was in flight while the PRIOR
-            filter's rows stayed on screen (#2032 review round 2, finding 2) -
-            an operator who types a search term and immediately scans the
-            table could act on results that don't match what they just typed.
-            `isFetching && !isPending`: excludes the very first load, which
-            the skeleton below already owns. Visual-only (`aria-hidden`) - the
-            shared status region above carries the a11y announcement. */}
-        {query.isFetching && !query.isPending ? (
-          <span className="listings-refetch-indicator" aria-hidden="true" />
-        ) : null}
-
-        {/* Only the active tab's data is ever fetched (one lifecycle-filtered
-            request, not five), so the other four render an empty, forceMount'd
-            panel purely so their trigger's `aria-controls` resolves to a real
-            DOM node (#2032 review thread 12.1) - Radix always emits
-            `aria-controls={contentId}` on every trigger regardless of whether
-            a matching panel is mounted, and the APG tabs pattern requires each
-            `tab` to reference its `tabpanel`. Radix does NOT hide a
-            forceMount'd, non-selected panel - `present` stays true regardless
-            of selection, so `hidden` is never set and the panel is an
-            ordinary flex item. `tabs__content--aria-anchor` takes it out of
-            layout and out of the tab order, both of which an empty
-            tabIndex=0 stop would otherwise pollute (#2450 review). */}
-        {LIFECYCLE_TABS.filter((def) => def.key !== tab).map((def) => (
-          <TabsContent
-            key={def.key}
-            value={def.key}
-            forceMount
-            className="tabs__content--aria-anchor"
-          />
-        ))}
-
-        <TabsContent value={tab}>
           {/* `isPending`, not `isLoading` (#2032 review thread 12.5): with
               `placeholderData: keepPreviousData` a tab/search/page change
-              keeps `isLoading` momentarily true too, and gating the
-              skeleton on it would still blank the table on every one of
-              them - the exact symptom this fix removes. */}
+              keeps `isLoading` momentarily true too, and gating the skeleton
+              on it would blank the table on every one of them. */}
           {query.isPending ? (
             <DataTableSkeleton columns={columns} label={copy.loading} />
           ) : query.error ? (
@@ -941,66 +1074,46 @@ export function ListingsListPage(): ReactElement {
                   </Link>
                 }
               />
+            ) : // The default `Active` tab lands empty on a fresh install and
+            // permanently on an Erli-only one (#2032 review thread 8), so a
+            // non-Unsynced empty tab whose Unsynced bucket holds the catalogue
+            // offers a direct way there instead of a dead end.
+            tab !== 'unsynced' && (lifecycleCounts?.Unsynced ?? 0) > 0 ? (
+              <EmptyState
+                liveRegion="off"
+                title={activeTabCopy.emptyTitle}
+                message={`${activeTabCopy.emptyMessage} ${plural(
+                  lifecycleCounts?.Unsynced ?? 0,
+                  copy.empty.unsyncedHint,
+                )}`}
+                action={
+                  <Button onClick={() => setTab('unsynced')}>
+                    {interpolate(copy.empty.showUnsynced, {
+                      count: format.number(lifecycleCounts?.Unsynced ?? 0),
+                    })}
+                  </Button>
+                }
+              />
             ) : (
-              // The default `Active` tab lands empty on a fresh install and
-              // permanently on an Erli-only one (#2032 review thread 8): the
-              // hourly status scan is 100 offers/tick, a wizard create writes
-              // no snapshot at all, and Erli's status-sync scheduler defaults
-              // OFF. The nav badge (total mappings) can read 40 while this
-              // tab reads zero, which looks broken rather than "not synced
-              // yet" - so a non-Unsynced empty tab whose Unsynced bucket
-              // holds the catalog offers a direct way there instead of a
-              // dead end.
-              tab !== 'unsynced' && (lifecycleCounts?.Unsynced ?? 0) > 0 ? (
-                <EmptyState
-                  liveRegion="off"
-                  title={activeTabCopy.emptyTitle}
-                  message={`${activeTabCopy.emptyMessage} ${plural(
-                    lifecycleCounts?.Unsynced ?? 0,
-                    copy.empty.unsyncedHint,
-                  )}`}
-                  action={
-                    <Button onClick={() => setTab('unsynced')}>
-                      {interpolate(copy.empty.showUnsynced, {
-                        count: format.number(lifecycleCounts?.Unsynced ?? 0),
-                      })}
-                    </Button>
-                  }
-                />
-              ) : (
-                <EmptyState
-                  liveRegion="off"
-                  title={activeTabCopy.emptyTitle}
-                  message={activeTabCopy.emptyMessage}
-                />
-              )
+              <EmptyState liveRegion="off" title={activeTabCopy.emptyTitle} message={activeTabCopy.emptyMessage} />
             )
           ) : (
             <>
-              {connectionNotices.map((notice) => (
-                <ConnectionProblemNotice key={notice.connectionId} notice={notice} />
-              ))}
               <DataTable
                 caption={copy.title}
-                // Scopes the identity column's width floor to this table - the
-                // mockup put `min-width: 28rem` on `.data-table td:first-child`,
-                // which here would reach ~12 unrelated tables (#2028).
-                className="listings-table"
-                // Freezes the Listing column so it stays visible while the
-                // commercial columns scroll into view on a narrower desktop -
-                // same pattern as orders/products, just 1 column here since
-                // Listing (not a Channel/Connection pair) is the sole identity
-                // anchor for this table.
+                // `listings-table` scopes the identity column's floor (#2028);
+                // fixed widths keep every column still across tabs (#4046).
+                className="listings-table list-table--fixed list-table--peek"
+                // Listing is the sole identity anchor; the peek arrow is pinned right.
                 stickyLeftColumns={1}
+                stickyRightColumns={1}
                 columns={columns}
                 rows={query.data?.items ?? []}
                 rowKey={(m) => m.id}
-                rowHref={(m) => m.id}
-                // The Listing cell is a tall composite (thumbnail + name line +
-                // meta line), so the row link has to be a sized box or its
-                // focus ring paints across the row's middle instead of around
-                // it — see the prop's docblock.
-                rowLinkDisplay="block"
+                onRowClick={(m) => {
+                  setPeekId(m.id);
+                }}
+                rowClassName={(m) => (m.id === peekId ? 'list-row--peek' : undefined)}
                 cardView={{
                   title: (m) => <ListingCell row={m} shape="card" activeLifecycle={activeTabDef.lifecycle} />,
                   // Channel / Connection / Price / Quantity as a two-column fact
@@ -1063,9 +1176,6 @@ export function ListingsListPage(): ReactElement {
                           label: copy.card.statusRead,
                           value: <UpdatedCell row={m} />,
                         },
-                        // The card head drops these two so the product name keeps
-                        // its room at 360px (#1965 frame 05) - they stay reachable
-                        // one tap away rather than disappearing.
                         {
                           id: 'externalId',
                           label: copy.card.offerId,
@@ -1087,20 +1197,14 @@ export function ListingsListPage(): ReactElement {
                         {
                           id: 'validation',
                           label: copy.card.channelProblems,
-                          // The card's disclosure is the mobile counterpart of
-                          // the publication-status panel, so it lists EVERY
-                          // reason - shop-level ones included, since the notice
-                          // above the list is off-screen by the time this is
-                          // open (#2231).
+                          // Every reason, shop-level ones included (#2231).
                           value: readListingProblems(m.channelStatus).length ? (
                             <ul className="listings-card-messages">
                               {readListingProblems(m.channelStatus).map((problem, index) => (
                                 <li key={`${problem.code ?? problem.message}:${index}`}>
                                   {problem.message}
                                   {problem.code !== undefined ? (
-                                    <span className="problem-line__code mono-text">
-                                      {problem.code}
-                                    </span>
+                                    <span className="problem-line__code mono-text">{problem.code}</span>
                                   ) : null}
                                 </li>
                               ))}
@@ -1115,15 +1219,9 @@ export function ListingsListPage(): ReactElement {
                 }}
               />
 
-              {/* `rowCount` comes from a page that may still be the PREVIOUS
-                  tab's (`keepPreviousData`), while the count query is keyed
-                  without `lifecycle` and re-derives the new tab's bucket
-                  immediately. Pairing the two prints "Showing 1-25 of 3"
-                  (#2957 review, I1) - a range wider than its own total, which
-                  is a worse artefact than a late number. For that one
-                  transition the summary describes ONE thing: the rows on
-                  screen, as a floor. Paging is deliberately NOT suppressed -
-                  see `rowsAreForAnotherTab`. */}
+              {/* For a tab switch the rows may still be the PREVIOUS tab's
+                  while the total already describes the new one (#2957 review,
+                  I1) - see `rowsAreForAnotherTab`. */}
               <ListPagination
                 offset={offset}
                 limit={PAGE_SIZE}
@@ -1131,21 +1229,33 @@ export function ListingsListPage(): ReactElement {
                 total={rowsAreForAnotherTab ? null : totalStage.total}
                 totalState={rowsAreForAnotherTab ? 'settling' : totalStage.state}
                 showTotalLoader={totalStage.showLoader}
-                // The one list that keeps a previous page alive, so the one
-                // that must say so (#2957 review round 7, I1). Without it the
-                // pager derives a range end and a Next affordance from a fresh
-                // offset paired with another page's rows.
                 rowsArePlaceholder={query.isPlaceholderData}
                 onOffsetChange={setOffset}
               />
             </>
           )}
-        </TabsContent>
-      </Tabs>
 
-      <OfferProductPickerModal isOpen={isWizardOpen} onClose={() => setIsWizardOpen(false)} />
+          <ListingPeek
+            view={peekView}
+            position={peekIndex + 1}
+            count={query.data?.items.length ?? 0}
+            onNavigate={navigatePeek}
+            onOpenChange={(open) => {
+              if (!open) setPeekId(null);
+            }}
+          />
+          {editTarget ? (
+            <EditOfferDrawer
+              isOpen
+              mapping={editTarget}
+              onClose={() => {
+                setEditTarget(null);
+              }}
+            />
+          ) : null}
         </>
       )}
+      <OfferProductPickerModal isOpen={isWizardOpen} onClose={() => setIsWizardOpen(false)} />
     </PageLayout>
   );
 }
