@@ -67,6 +67,14 @@ export interface OfferValidationProblem {
   scope: OfferValidationScope;
 }
 
+/**
+ * The `OfferStatusSnapshotDetails` key holding the structured problems, pinned
+ * because SQL names it too (#4045 counts and filters on the account scope).
+ * `satisfies keyof` turns a rename into a compile error rather than a query
+ * that silently finds nothing.
+ */
+export const OFFER_VALIDATION_PROBLEMS_KEY = 'validationProblems' satisfies keyof OfferStatusSnapshotDetails;
+
 export function isOfferValidationScope(value: unknown): value is OfferValidationScope {
   return typeof value === 'string' && (OfferValidationScopeValues as readonly string[]).includes(value);
 }

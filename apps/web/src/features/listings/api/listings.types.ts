@@ -206,6 +206,34 @@ export interface ListingsFilters {
    * `listings-list-page.tsx` sets this.
    */
   includeLifecycleCounts?: boolean;
+  /**
+   * `'selling'`: live offers still selling a product deleted in the shop
+   * (#4045) - exactly the rows `attentionCounts.sellingDeletedProduct` counts.
+   */
+  staleSignal?: 'selling';
+  /**
+   * `true`: listings carrying an account-scoped (shop-level) problem (#4045) -
+   * exactly the rows `attentionCounts.shopBlocked` counts.
+   */
+  shopBlocked?: boolean;
+}
+
+/** Listings blocked by a shop-level problem on one connection (#4045). */
+export interface OfferShopBlockedConnection {
+  connectionId: string;
+  count: number;
+  /** Distinct problems, most widespread first; `code` is absent when the platform sent none. */
+  problems: Array<{ code?: string; message: string }>;
+}
+
+/**
+ * The listings page's "Needs a look" numbers (#4045), each counted under the
+ * list's filters with its own filter removed.
+ */
+export interface OfferAttentionCounts {
+  sellingDeletedProduct: number;
+  shopBlocked: number;
+  shopBlockedByConnection: OfferShopBlockedConnection[];
 }
 
 export interface ListingsPagination {
@@ -222,6 +250,8 @@ export interface OfferMappingCount {
   total: number;
   /** Present only when the request set `includeLifecycleCounts`. */
   lifecycleCounts?: OfferLifecycleCounts;
+  /** "Needs a look" counts (#4045); present only with `includeLifecycleCounts`. */
+  attentionCounts?: OfferAttentionCounts;
 }
 
 export interface PaginatedOfferMappings {
@@ -236,6 +266,8 @@ export interface PaginatedOfferMappings {
    * `includeLifecycleCounts` (#2032 review thread 3).
    */
   lifecycleCounts?: OfferLifecycleCounts;
+  /** "Needs a look" counts (#4045); present only with `includeLifecycleCounts`. */
+  attentionCounts?: OfferAttentionCounts;
   limit: number;
   offset: number;
 }

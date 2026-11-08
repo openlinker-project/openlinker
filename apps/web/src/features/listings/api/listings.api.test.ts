@@ -374,3 +374,16 @@ describe('resolveCategoriesStream', () => {
     ).rejects.toBeInstanceOf(ApiError);
   });
 });
+
+describe('listings list filters (#4045)', () => {
+  it('sends the two needs-a-look filters on the list and count requests', async () => {
+    const request = vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 });
+    const api = createListingsApi(request as never, vi.fn() as never);
+
+    await api.list({ staleSignal: 'selling', shopBlocked: true });
+    await api.count({ shopBlocked: true });
+
+    expect(request.mock.calls[0]?.[0]).toBe('/listings?staleSignal=selling&shopBlocked=true');
+    expect(request.mock.calls[1]?.[0]).toBe('/listings/count?shopBlocked=true');
+  });
+});

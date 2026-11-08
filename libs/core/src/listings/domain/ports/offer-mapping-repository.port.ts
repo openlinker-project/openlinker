@@ -10,6 +10,7 @@ import type { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import type { OfferLifecycleCounts } from '../types/offer-lifecycle.types';
 import type {
   FindRecentlyListedVariantIdsOptions,
+  OfferAttentionCounts,
   OfferMappingCountFilters,
   OfferMappingFilters,
   OfferMappingListItem,
@@ -122,6 +123,18 @@ export interface OfferMappingRepositoryPort {
    * same function that classifies each list row.
    */
   countByLifecycle(filters: OfferMappingCountFilters): Promise<OfferLifecycleCounts>;
+
+  /**
+   * The listings page's "Needs a look" numbers (#4045): live offers selling a
+   * product deleted in the shop, and listings blocked by an account-scoped
+   * problem (with the distinct problems per connection).
+   *
+   * Counted under the same membership filters as the list, each with its own
+   * filter (`staleSignal` / `shopBlocked`) removed, so a number stays readable
+   * while its filter is applied. Built from the same predicates the two list
+   * filters apply, so a count always equals the rows its filter returns.
+   */
+  countAttention(filters: OfferMappingCountFilters): Promise<OfferAttentionCounts>;
 
   /**
    * Count Offer mappings grouped by `internalId` for a connection.

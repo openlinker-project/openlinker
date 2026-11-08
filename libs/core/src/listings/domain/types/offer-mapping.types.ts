@@ -36,6 +36,49 @@ export interface OfferMappingFilters {
    * to a seller whose 300 ended offers all sit past page 1.
    */
   lifecycle?: OfferLifecycle;
+  /**
+   * `'selling'` keeps only live offers still selling a product deleted in the
+   * shop: the variant is stale at the master AND the channel last reported
+   * stock above zero (#4045). The same predicate counts
+   * {@link OfferAttentionCounts.sellingDeletedProduct}.
+   */
+  staleSignal?: OfferStaleSignalFilter;
+  /**
+   * `true` keeps only listings carrying an ACCOUNT-scoped validation problem -
+   * one the channel reports about the seller's shop, not this offer (#2231,
+   * #4045). Keyed on the adapter-set `scope`, never on platform codes. The same
+   * predicate counts {@link OfferAttentionCounts.shopBlocked}.
+   */
+  shopBlocked?: boolean;
+}
+
+export const OfferStaleSignalFilterValues = ['selling'] as const;
+export type OfferStaleSignalFilter = (typeof OfferStaleSignalFilterValues)[number];
+
+/** One account-scoped problem as a connection reports it (#4045). */
+export interface OfferAccountProblemSummary {
+  /** The platform's own code; absent when it reported none. */
+  code?: string;
+  message: string;
+}
+
+/** Listings blocked by a shop-level problem on one connection (#4045). */
+export interface OfferShopBlockedConnection {
+  connectionId: string;
+  count: number;
+  /** Distinct problems on this connection, most widespread first. */
+  problems: readonly OfferAccountProblemSummary[];
+}
+
+/**
+ * The listings page's "Needs a look" numbers (#4045). Each is counted under the
+ * same membership filters as the list, with its OWN filter removed, so a total
+ * still reads when its filter is the one applied.
+ */
+export interface OfferAttentionCounts {
+  sellingDeletedProduct: number;
+  shopBlocked: number;
+  shopBlockedByConnection: readonly OfferShopBlockedConnection[];
 }
 
 /**

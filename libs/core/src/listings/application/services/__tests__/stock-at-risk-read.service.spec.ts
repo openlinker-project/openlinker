@@ -30,6 +30,7 @@ describe('StockAtRiskReadService', () => {
       findMappingPage: jest.fn(),
       countByConnectionAndVariants: jest.fn(),
       countByLifecycle: jest.fn(),
+      countAttention: jest.fn(),
       countListedVariantsByProducts: jest.fn(),
       findStaleMappedVariants: jest.fn(),
       findRecentlyListedVariantIds: jest.fn().mockResolvedValue([]),

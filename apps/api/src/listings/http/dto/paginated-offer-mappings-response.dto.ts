@@ -64,6 +64,43 @@ export class OfferLifecycleCountsResponseDto implements Record<OfferLifecycle, n
   Unsynced!: number;
 }
 
+export class OfferAccountProblemResponseDto {
+  @ApiPropertyOptional({ description: "The platform's own code; absent when it reported none" })
+  code?: string;
+
+  @ApiProperty({ description: 'The operator-facing sentence' })
+  message!: string;
+}
+
+export class OfferShopBlockedConnectionResponseDto {
+  @ApiProperty()
+  connectionId!: string;
+
+  @ApiProperty({ description: 'Listings on this connection with an account-scoped problem' })
+  count!: number;
+
+  @ApiProperty({
+    type: [OfferAccountProblemResponseDto],
+    description: 'Distinct account-scoped problems on this connection, most widespread first (up to 5)',
+  })
+  problems!: OfferAccountProblemResponseDto[];
+}
+
+/**
+ * The listings page's "Needs a look" numbers (#4045). Each is counted under the
+ * same filters as the list with its own filter removed.
+ */
+export class OfferAttentionCountsResponseDto {
+  @ApiProperty({ description: 'Live offers selling a product deleted in the shop (`staleSignal=selling`)' })
+  sellingDeletedProduct!: number;
+
+  @ApiProperty({ description: 'Listings blocked by an account-scoped problem (`shopBlocked=true`)' })
+  shopBlocked!: number;
+
+  @ApiProperty({ type: [OfferShopBlockedConnectionResponseDto] })
+  shopBlockedByConnection!: OfferShopBlockedConnectionResponseDto[];
+}
+
 export class PaginatedOfferMappingsResponseDto {
   @ApiProperty({ type: [OfferMappingResponseDto] })
   items!: OfferMappingResponseDto[];
@@ -92,6 +129,13 @@ export class PaginatedOfferMappingsResponseDto {
       'it costs a second full scan a caller with no tab bar to feed must not pay for.',
   })
   lifecycleCounts?: OfferLifecycleCountsResponseDto;
+
+  @ApiPropertyOptional({
+    type: OfferAttentionCountsResponseDto,
+    description:
+      '"Needs a look" counts (#4045). Present only when the request set `includeLifecycleCounts`.',
+  })
+  attentionCounts?: OfferAttentionCountsResponseDto;
 
   @ApiProperty({ description: 'Page size used for this response' })
   limit!: number;
