@@ -16,6 +16,9 @@ import type { ProductVariant } from '../entities/product-variant.entity';
  * Filter criteria for querying products. All fields are optional.
  * Used by ProductMasterPort for filtering products.
  */
+export const ProductBundleFilterValues = ['only', 'exclude'] as const;
+export type ProductBundleFilter = (typeof ProductBundleFilterValues)[number];
+
 export interface ProductFilters {
   /**
    * Restrict the read to these EXTERNAL product ids.
@@ -228,10 +231,11 @@ export interface ProductListFilters {
   hideFullyStale?: boolean;
 
   /**
-   * Only products that have a variant with a CURRENT bundle definition (#3624).
-   * A retired definition does not count.
+   * Narrow by bundle-ness (#3624). `only` keeps products with a variant that has a
+   * CURRENT bundle definition; `exclude` keeps the rest. A retired definition does not
+   * count as a bundle. Absent applies no filter.
    */
-  bundlesOnly?: boolean;
+  bundleFilter?: ProductBundleFilter;
 }
 
 /**

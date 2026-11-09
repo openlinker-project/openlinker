@@ -29,7 +29,7 @@ import type { Product, ProductVariant } from '../../features/products/api/produc
 import type { InventoryItem } from '../../features/inventory/api/inventory.types';
 import type { Connection } from '../../features/connections';
 import { usePlatforms } from '../../shared/plugins';
-import { ProductUsedInBundles } from '../../features/bundles';
+import { BundleComposition, ProductUsedInBundles } from '../../features/bundles';
 import { findPlatformDisplayName } from '../../features/mappings';
 
 export interface ProductRowDetailProps {
@@ -116,6 +116,13 @@ export function ProductRowDetail({
           </div>
         )}
       </div>
+      {/* #3624 - what a bundle row is made of; mounted only while the row is open. */}
+      {product.bundle ? (
+        <BundleComposition
+          variantId={product.bundle.variantId}
+          testId={`bundle-list-composition-${product.sku ?? product.id}`}
+        />
+      ) : null}
       {/* #3624 - the bundles this product is a component of. */}
       <ProductUsedInBundles variantIds={variants.map((variant) => variant.id)} />
       <div className="products-detail-publication-status">

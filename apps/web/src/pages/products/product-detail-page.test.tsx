@@ -303,6 +303,34 @@ describe('ProductDetailPage', () => {
     expect(screen.getByText('Master')).toBeInTheDocument();
   });
 
+  it('should offer Make a bundle from this, linking with the product as component', async () => {
+    const mockApi = createMockApiClient({
+      products: { getById: vi.fn().mockResolvedValue(sampleProduct) },
+      bundles: { get: vi.fn().mockRejectedValue(new Error('not a bundle')) },
+    });
+    renderDetailPage(mockApi, true);
+    const action = await screen.findByTestId('product-detail-make-bundle');
+    expect(action).toHaveAttribute(
+      'href',
+      '/products/bundles/new?componentProduct=ol_product_abc123',
+    );
+  });
+
+  it('should not offer Make a bundle when the product is itself a bundle', async () => {
+    const mockApi = createMockApiClient({
+      products: { getById: vi.fn().mockResolvedValue(sampleProduct) },
+      bundles: { get: vi.fn().mockResolvedValue({ variantId: 'v', version: 1, components: [], componentAvailability: [] }) },
+    });
+    renderDetailPage(mockApi, true);
+    await screen.findAllByText('Test Product');
+    await waitFor(() => {
+      expect(mockApi.bundles.get).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('product-detail-make-bundle')).toBeNull();
+    });
+  });
+
   it('should render the product-level Attributes block when the product has features', async () => {
     const mockApi = createMockApiClient({
       products: {

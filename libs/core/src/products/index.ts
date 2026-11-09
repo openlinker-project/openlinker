@@ -126,6 +126,8 @@ export {
   PaginatedProductVariants,
   ProductStockFilter,
   ProductStockFilterValues,
+  ProductBundleFilter,
+  ProductBundleFilterValues,
   ProductListSortField,
   ProductListSortFieldValues,
   ProductListSortDirection,

@@ -55,6 +55,7 @@ import {
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
+import { productImageProxyPath } from './product-image-path';
 import type {
   BundleProductSummaryDto} from './dto/bundle-definition.dto';
 import {
@@ -153,6 +154,7 @@ export class BundleDefinitionsController {
         sku: variant.sku,
         price: variant.price ?? product?.price ?? null,
         currency: product?.currency ?? null,
+        imageUrl: productImageProxyPath(product),
       });
     }
     return result;
@@ -261,6 +263,7 @@ export class BundleDefinitionsController {
             sku: null,
             price: null,
             currency: null,
+            imageUrl: null,
           },
         }));
     });
@@ -287,6 +290,7 @@ export class BundleDefinitionsController {
           sku: null,
           price: null,
           currency: null,
+          imageUrl: null,
         },
       };
     });
@@ -323,7 +327,7 @@ export class BundleDefinitionsController {
         createdAt: version.createdAt.toISOString(),
         openOrders: countByVersion.get(version.version) ?? 0,
         componentSummaries: version.components.map(
-          (c) => summaries.get(c.variantId) ?? { name: null, sku: null, price: null, currency: null }
+          (c) => summaries.get(c.variantId) ?? { name: null, sku: null, price: null, currency: null, imageUrl: null }
         ),
       }));
   }
@@ -356,7 +360,7 @@ export class BundleDefinitionsController {
       // resolved reads as "cannot sync", not as a failed detail read.
       this.masterSync.findBundleReadingMaster(variantId).catch(() => null),
     ]);
-    const emptySummary: BundleProductSummaryDto = { name: null, sku: null, price: null, currency: null };
+    const emptySummary: BundleProductSummaryDto = { name: null, sku: null, price: null, currency: null, imageUrl: null };
     const atpByVariant = new Map(rows.map((row) => [row.productVariantId, row.availableToPromise]));
     const componentAvailability = definition.components.map((c) => {
       const atp = atpByVariant.get(c.variantId) ?? null;

@@ -1557,10 +1557,9 @@ describe('ProductsListPage', () => {
       expect(screen.getByTestId('bundle-list-limiting-ZES-PORANNY')).toHaveTextContent(
         'limited by: Lyzeczka do kawy',
       );
-      expect(screen.getByTestId('bundle-list-show-composition-ZES-PORANNY')).toBeInTheDocument();
-      // An ordinary product offers to become a bundle instead.
-      expect(screen.getByTestId('bundle-list-make-bundle-KAW-250-ETI')).toBeInTheDocument();
-      expect(screen.queryByTestId('bundle-list-make-bundle-ZES-PORANNY')).toBeNull();
+      // The make-a-bundle action lives on the product page, not on the row.
+      expect(screen.queryByTestId('bundle-list-make-bundle-KAW-250-ETI')).toBeNull();
+      expect(screen.queryByTestId('bundle-list-show-composition-ZES-PORANNY')).toBeNull();
     });
 
     it('should give an unknown bundle one state and one sentence of reason, never a zero', async () => {
@@ -1581,7 +1580,32 @@ describe('ProductsListPage', () => {
       await user.click(screen.getByTestId('bundle-list-filter-bundles'));
       await waitFor(() => {
         expect(mockApi.products.listRows).toHaveBeenCalledWith(
-          expect.objectContaining({ bundles: true }),
+          expect.objectContaining({ bundles: 'only' }),
+          expect.anything(),
+          expect.anything(),
+        );
+      });
+    });
+
+    it('should ask for everything except bundles when Without bundles is chosen', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const mockApi = mountBundles();
+      await screen.findByTestId('bundle-list-filter-without');
+      await user.click(screen.getByTestId('bundle-list-filter-without'));
+      await waitFor(() => {
+        expect(mockApi.products.listRows).toHaveBeenCalledWith(
+          expect.objectContaining({ bundles: 'exclude' }),
+          expect.anything(),
+          expect.anything(),
+        );
+      });
+    });
+
+    it('should read the legacy bundles=true link as the Bundles view', async () => {
+      const mockApi = mountBundles('/products?bundles=true');
+      await waitFor(() => {
+        expect(mockApi.products.listRows).toHaveBeenCalledWith(
+          expect.objectContaining({ bundles: 'only' }),
           expect.anything(),
           expect.anything(),
         );
@@ -1609,10 +1633,6 @@ describe('ProductsListPage', () => {
       });
       expect(await screen.findByTestId('bundle-list-readonly-notice')).toHaveTextContent('admin or operator role');
       expect(screen.getByTestId('bundle-list-new-bundle')).toHaveAttribute('aria-disabled', 'true');
-      expect(await screen.findByTestId('bundle-list-make-bundle-KAW-250-ETI')).toHaveAttribute(
-        'aria-disabled',
-        'true',
-      );
     });
   });
 });

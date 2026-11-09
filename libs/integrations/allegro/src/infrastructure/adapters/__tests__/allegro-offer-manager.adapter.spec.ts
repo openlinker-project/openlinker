@@ -1237,6 +1237,69 @@ describe('AllegroOfferManagerAdapter', () => {
     });
 
     describe('sellerDefaults backfill (#487)', () => {
+      beforeEach(() => {
+        httpClient.get.mockResolvedValue({
+          status: 200,
+          headers: {},
+          data: { productSet: [{ product: { id: 'card-1' } }] },
+        });
+      });
+
+      it('should keep every entry and quantity of a multi-entry offer when backfilling GPSR fields (#3520)', async () => {
+        httpClient.get.mockResolvedValue({
+          status: 200,
+          headers: {},
+          data: {
+            productSet: [
+              { product: { id: 'card-a' }, quantity: { value: 2 } },
+              {
+                product: { name: 'Inline', images: ['https://i/1.jpg'] },
+                quantity: { value: 3 },
+                responsibleProducer: { id: 'rp-own' },
+              },
+            ],
+          },
+        });
+
+        await adapter.updateOfferFields({
+          externalOfferId: 'allegro-bundle-1',
+          fields: {
+            description: { sections: [{ items: [{ type: 'TEXT', content: 'Copy' }] }] },
+          },
+        });
+
+        const [, body] = httpClient.patch.mock.calls[0] as [string, Record<string, unknown>];
+        expect(body.productSet).toEqual([
+          {
+            product: { id: 'card-a' },
+            quantity: { value: 2 },
+            responsibleProducer: { id: 'rp-test-1' },
+            safetyInformation: { type: 'NO_SAFETY_INFORMATION' },
+          },
+          {
+            product: { name: 'Inline', images: ['https://i/1.jpg'] },
+            quantity: { value: 3 },
+            responsibleProducer: { id: 'rp-own' },
+            safetyInformation: { type: 'NO_SAFETY_INFORMATION' },
+          },
+        ]);
+      });
+
+      it('should skip the productSet backfill when the live offer cannot be read', async () => {
+        httpClient.get.mockRejectedValue(new Error('boom'));
+
+        await adapter.updateOfferFields({
+          externalOfferId: 'allegro-offer-x',
+          fields: {
+            description: { sections: [{ items: [{ type: 'TEXT', content: 'Copy' }] }] },
+          },
+        });
+
+        const [, body] = httpClient.patch.mock.calls[0] as [string, Record<string, unknown>];
+        expect(body.productSet).toBeUndefined();
+        expect(body.location).toBeDefined();
+      });
+
       it('merges location and productSet[0] GPSR siblings on description-only updates when sellerDefaults is configured', async () => {
         await adapter.updateOfferFields({
           externalOfferId: 'allegro-offer-487',
@@ -3616,6 +3679,87 @@ describe('AllegroOfferManagerAdapter', () => {
           city: 'Warszawa',
           postCode: '00-001',
         });
+      });
+    });
+
+    describe('bundle as a product-set offer (#3520)', () => {
+      const setCmd: CreateOfferCommand = {
+        ...baseCmd,
+        variantBarcode: null,
+        productSet: [
+          {
+            variantId: 'v-1',
+            productId: 'p-1',
+            quantity: 2,
+            name: 'Mug',
+            barcode: '5901234123457',
+            imageUrls: ['https://example.com/mug.jpg'],
+          },
+          {
+            variantId: 'v-2',
+            productId: 'p-2',
+            quantity: 1,
+            name: 'Spoon',
+            barcode: null,
+            imageUrls: ['https://example.com/spoon.jpg'],
+          },
+        ],
+      };
+
+      it('emits one entry per component with its quantity: a card link where the barcode matches, an inline product otherwise', async () => {
+        httpClient.post.mockResolvedValue(
+          mockHttpResponse({ id: 'allegro-offer-set', publication: { status: 'INACTIVE' } })
+        );
+        httpClient.get.mockResolvedValueOnce({
+          data: { products: [{ id: 'allegro-card-mug', ean: '5901234123457' }] },
+          status: 200,
+          headers: {},
+        });
+
+        await adapter.createOffer(setCmd);
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          productSet: Array<{
+            product: { id?: string; name?: string; images?: string[] };
+            quantity: { value: number };
+            responsibleProducer: { id: string };
+          }>;
+          stock: unknown;
+        };
+        expect(body.productSet).toHaveLength(2);
+        expect(body.productSet[0]).toMatchObject({
+          product: { id: 'allegro-card-mug' },
+          quantity: { value: 2 },
+          responsibleProducer: { id: 'rp-test-1' },
+        });
+        expect(body.productSet[0].product.name).toBeUndefined();
+        expect(body.productSet[1]).toMatchObject({
+          product: { name: 'Spoon' },
+          quantity: { value: 1 },
+          responsibleProducer: { id: 'rp-test-1' },
+        });
+        expect(body.productSet[1].product.images).toHaveLength(1);
+        expect(body.productSet[1].product.images?.[0]).toContain('allegrostatic');
+        expect(body.stock).toEqual({ available: 5, unit: 'UNIT' });
+      });
+
+      it('refuses by component name when a component can be neither card-linked nor built inline, and calls nothing', async () => {
+        const cmd: CreateOfferCommand = {
+          ...setCmd,
+          productSet: [{ ...setCmd.productSet![1], imageUrls: [] }],
+        };
+
+        await expect(adapter.createOffer(cmd)).rejects.toMatchObject({
+          name: 'OfferCreateRejectedException',
+          errors: [
+            expect.objectContaining({
+              field: 'productSet[0]',
+              code: 'PRODUCT_SET_COMPONENT_UNPUBLISHABLE',
+              message: expect.stringContaining('Spoon'),
+            }),
+          ],
+        });
+        expect(httpClient.post).not.toHaveBeenCalled();
       });
     });
 

@@ -12,7 +12,7 @@ describe('ProductUsedInBundles (#3624)', () => {
             bundleVariantId: 'v-set',
             quantity: 2,
             giftSlot: true,
-            bundle: { name: 'Zestaw poranny', sku: 'ZES-PORANNY', price: 65, currency: 'PLN' },
+            bundle: { name: 'Zestaw poranny', sku: 'ZES-PORANNY', price: 65, currency: 'PLN', imageUrl: null },
           },
         ]),
       },
@@ -24,7 +24,7 @@ describe('ProductUsedInBundles (#3624)', () => {
   });
 
   it('should ask once for every variant and not clash on two variants in one bundle', async () => {
-    const entry = { bundleVariantId: 'v-set', quantity: 1, bundle: { name: 'Set', sku: 'SET', price: 1, currency: 'PLN' } };
+    const entry = { bundleVariantId: 'v-set', quantity: 1, bundle: { name: 'Set', sku: 'SET', price: 1, currency: 'PLN', imageUrl: null } };
     const usedInMany = vi.fn().mockResolvedValue([
       { ...entry, componentVariantId: 'v-a' },
       { ...entry, componentVariantId: 'v-b' },

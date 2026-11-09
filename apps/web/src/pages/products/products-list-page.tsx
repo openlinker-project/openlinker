@@ -97,7 +97,6 @@ import { useCostSummaryQuery } from '../../features/products/hooks/use-cost-cove
 import { useTrackMargin } from '../../features/analytics';
 import { ListingsCoveragePills } from './listings-coverage-pills';
 import { ProductRowDetail } from './product-row-detail';
-import { BundleComposition } from '../../features/bundles';
 import { interpolate, useMessages } from '../../shared/i18n';
 import { SegmentedControl } from '../../shared/ui/segmented-control';
 import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
@@ -234,10 +233,16 @@ export function ProductsListPage(): ReactElement {
   // existing view is unchanged until the operator asks for it.
   const hideFullyStale = searchParams.get('hideStale') === '1';
   // #3624 - the "Bundles" view of the same list, URL-synced like every filter here.
-  const bundlesOnly = searchParams.get('bundles') === 'true';
+  const rawBundles = searchParams.get('bundles');
+  // `true` is the pre-"Without bundles" spelling of `only`; old links keep working.
+  const bundleView: 'only' | 'exclude' | undefined =
+    rawBundles === 'only' || rawBundles === 'true'
+      ? 'only'
+      : rawBundles === 'exclude'
+        ? 'exclude'
+        : undefined;
   const bundleCopy = useMessages('bundles');
   const bundleWrite = useWriteAccess('bundles:write', useDemoMode());
-  const [openCompositions, setOpenCompositions] = useState<ReadonlySet<string>>(new Set());
   const rawSort = searchParams.get('sort');
   const sortField = isSortField(rawSort) ? rawSort : DEFAULT_SORT;
   const rawDir = searchParams.get('dir');
@@ -382,7 +387,7 @@ export function ProductsListPage(): ReactElement {
     unlistedOn,
     connectionId: sourceConnectionId,
     hideFullyStale: hideFullyStale || undefined,
-    bundles: bundlesOnly || undefined,
+    bundles: bundleView,
   };
   const sort: ProductListSort = { field: sortField, dir: sortDir };
   const pagination = { limit: PAGE_SIZE, offset };
@@ -554,7 +559,7 @@ export function ProductsListPage(): ReactElement {
   );
 
   const anyFilterActive = Boolean(
-    debouncedSearch || stock || unlistedOnParam || sourceConnectionId || hideFullyStale || bundlesOnly,
+    debouncedSearch || stock || unlistedOnParam || sourceConnectionId || hideFullyStale || bundleView !== undefined,
   );
   // Count badge on the narrow-viewport "Filters" toggle - non-default filter
   // axes only (search stays visible outside the panel).
@@ -563,7 +568,7 @@ export function ProductsListPage(): ReactElement {
     (unlistedOnParam ? 1 : 0) +
     (sourceConnectionId ? 1 : 0) +
     (hideFullyStale ? 1 : 0) +
-    (bundlesOnly ? 1 : 0);
+    (bundleView !== undefined ? 1 : 0);
 
   const clearFilters = useCallback((): void => {
     setSearchInput('');
@@ -918,65 +923,20 @@ export function ProductsListPage(): ReactElement {
                     </span>
                   </span>
                 ) : null}
-                {/* #3624 - bundle row furniture. The row testid sits on this cell
-                    because the table row already carries the stock-list one. */}
-                <span
-                  className="products-cell-sub"
-                  data-testid={`bundle-list-row-${product.sku ?? product.id}`}
-                >
-                  {product.bundle ? (
-                    <>
-                      <span data-testid={`bundle-list-limiting-${product.sku ?? product.id}`}>
-                        {product.bundle.limitedBy !== null
-                          ? interpolate(bundleCopy.list.limitedBy, {
-                              name: product.bundle.limitedBy.name ?? product.bundle.limitedBy.sku ?? '',
-                            })
-                          : null}
-                      </span>{' '}
-                      <button
-                        type="button"
-                        className="mk-link"
-                        data-testid={`bundle-list-show-composition-${product.sku ?? product.id}`}
-                        aria-expanded={openCompositions.has(product.id)}
-                        onClick={() => {
-                          setOpenCompositions((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(product.id)) next.delete(product.id);
-                            else next.add(product.id);
-                            return next;
-                          });
-                        }}
-                      >
-                        {openCompositions.has(product.id)
-                          ? bundleCopy.list.hideComposition
-                          : bundleCopy.list.showComposition}
-                      </button>
-                      {openCompositions.has(product.id) ? (
-                        <BundleComposition
-                          variantId={product.bundle.variantId}
-                          testId={`bundle-list-composition-${product.sku ?? product.id}`}
-                        />
-                      ) : null}
-                    </>
-                  ) : (
-                    <Link
-                      className="mk-link"
-                      data-testid={`bundle-list-make-bundle-${product.sku ?? product.id}`}
-                      aria-disabled={!bundleWrite.canWrite}
-                      title={bundleWrite.canWrite ? undefined : bundleCopy.form.viewOnlyReason}
-                      to={
-                        bundleWrite.canWrite
-                          ? `/products/bundles/new?componentProduct=${encodeURIComponent(product.id)}`
-                          : '#'
-                      }
-                      onClick={(event) => {
-                        if (!bundleWrite.canWrite) event.preventDefault();
-                      }}
-                    >
-                      {bundleCopy.list.makeBundle}
-                    </Link>
-                  )}
-                </span>
+                {/* #3624 - a bundle row says what limits it; its composition opens
+                    with the row (ProductRowDetail). */}
+                {product.bundle?.limitedBy ? (
+                  <span
+                    className="products-cell-sub"
+                    data-testid={`bundle-list-row-${product.sku ?? product.id}`}
+                  >
+                    <span data-testid={`bundle-list-limiting-${product.sku ?? product.id}`}>
+                      {interpolate(bundleCopy.list.limitedBy, {
+                        name: product.bundle.limitedBy.name ?? product.bundle.limitedBy.sku ?? '',
+                      })}
+                    </span>
+                  </span>
+                ) : null}
                 {/* The Source column is `hideBelow: 1024`, so below that width the
                     product's origin would vanish. It folds here instead (#2094):
                     a product's source connection is this identity column's own
@@ -1102,7 +1062,6 @@ export function ProductsListPage(): ReactElement {
       handleCreateOffersForProduct,
       bundleCopy,
       bundleWrite.canWrite,
-      openCompositions,
     ],
   );
 
@@ -1260,13 +1219,14 @@ export function ProductsListPage(): ReactElement {
       <div className="ds-row" style={{ gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
         <SegmentedControl
           aria-label={bundleCopy.list.filterLabel}
-          value={bundlesOnly ? 'bundles' : 'all'}
+          value={bundleView === 'only' ? 'bundles' : bundleView === 'exclude' ? 'without' : 'all'}
           onChange={(value) => {
-            setFilterParam('bundles', value === 'bundles' ? 'true' : '');
+            setFilterParam('bundles', value === 'bundles' ? 'only' : value === 'without' ? 'exclude' : '');
           }}
           options={[
             { value: 'all', label: bundleCopy.list.filterAll, 'data-testid': 'bundle-list-filter-all' },
             { value: 'bundles', label: bundleCopy.list.filterBundles, 'data-testid': 'bundle-list-filter-bundles' },
+            { value: 'without', label: bundleCopy.list.filterWithoutBundles, 'data-testid': 'bundle-list-filter-without' },
           ]}
         />
       </div>

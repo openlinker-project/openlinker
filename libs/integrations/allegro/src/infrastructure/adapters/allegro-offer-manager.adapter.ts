@@ -60,6 +60,7 @@ import type {
   CreateOfferResult,
   CreateOfferResultStatus,
   CreateOfferValidationError,
+  OfferProductSetComponent,
   OfferCategory,
   CategoryParameter,
   CategoryParameterSection,
@@ -280,6 +281,14 @@ function slugify(name: string): string {
  * already expressed in Allegro's terms. A field is set only when the product
  * supplied a usable value; otherwise the connection's `sellerDefaults` apply.
  */
+/** One planned product-set entry (#3520), with the pictures still to re-host. */
+interface PlannedProductSetEntry {
+  index: number;
+  name: string;
+  imageUrls: string[];
+  entry: AllegroProductSetEntry;
+}
+
 interface ProductGpsrDeclaration {
   responsibleProducerId?: string;
   safetyInformation?: AllegroSafetyInformation;
@@ -1999,7 +2008,20 @@ export class AllegroOfferManagerAdapter
     }
 
     // #487 — opportunistic seller-defaults backfill (see method JSDoc).
-    const { patch: defaultsPatch, fields: backfilled } = this.buildSellerDefaultsPatch();
+    const built = this.buildSellerDefaultsPatch();
+    const defaultsPatch = built.patch;
+    const backfilled = built.fields;
+    if (defaultsPatch.productSet) {
+      const resolved = await this.resolveProductSetBackfill(
+        cmd.externalOfferId,
+        defaultsPatch.productSet[0]
+      );
+      if (resolved) {
+        defaultsPatch.productSet = resolved;
+      } else {
+        delete defaultsPatch.productSet;
+      }
+    }
     const body: AllegroOfferFieldsPatchBody = { ...defaultsPatch, ...callerBody };
     if (backfilled.length > 0) {
       this.logger.debug(
@@ -2025,6 +2047,59 @@ export class AllegroOfferManagerAdapter
   }
 
   /**
+   * Turn the one-entry GPSR template into a patch that is safe for the live
+   * offer's `productSet` (#3520). A PATCH replaces the whole set, so a bundle
+   * offer (several entries) must be sent back with EVERY entry, each keeping its
+   * `product` and `quantity`, and only a missing GPSR field filled in. Returns
+   * `null` when nothing needs filling or the live set cannot be read (skipping
+   * the backfill is safe, sending fewer entries than exist is not).
+   */
+  private async resolveProductSetBackfill(
+    offerId: string,
+    template: AllegroProductSetEntry
+  ): Promise<AllegroProductSetEntry[] | null> {
+    let live: AllegroProductSetEntry[];
+    try {
+      const offer = await this.fetchProductOfferById(offerId);
+      live = offer?.productSet ?? [];
+    } catch (error) {
+      this.logger.warn(
+        `Allegro updateOfferFields: could not read productSet for offerId=${offerId}, ` +
+          `skipping GPSR backfill: ${(error as Error).message}`
+      );
+      return null;
+    }
+    if (live.length <= 1) {
+      return [template];
+    }
+    let changed = false;
+    const entries = live.map((entry) => {
+      const next: AllegroProductSetEntry = {};
+      if (entry.product) {
+        // `publication` is read-only state of the card, never part of a patch.
+        next.product = { ...entry.product };
+        delete next.product.publication;
+      }
+      if (entry.quantity) {
+        next.quantity = entry.quantity;
+      }
+      const producer = entry.responsibleProducer ?? template.responsibleProducer;
+      const safety = entry.safetyInformation ?? template.safetyInformation;
+      if (producer) {
+        next.responsibleProducer = producer;
+      }
+      if (safety) {
+        next.safetyInformation = safety;
+      }
+      if (producer !== entry.responsibleProducer || safety !== entry.safetyInformation) {
+        changed = true;
+      }
+      return next;
+    });
+    return changed ? entries : null;
+  }
+
+  /**
    * Build the slice of `AllegroOfferFieldsPatchBody` that the connection's
    * `sellerDefaults` is willing to provide on PATCH. Each subfield is
    * independently gated — partial configurations still help (the create-time
@@ -2036,6 +2111,10 @@ export class AllegroOfferManagerAdapter
    * working create path (`applyPlatformParams` below). The wire shape is what
    * Allegro accepts on POST, and we expect the same shape on partial product-
    * set updates; sandbox verification is the AC closer (#487).
+   *
+   * The returned `productSet` is a one-entry TEMPLATE only. `updateOfferFields`
+   * resolves it against the live offer (`resolveProductSetBackfill`, #3520)
+   * so a bundle offer keeps every entry it has.
    *
    * After-sales backfill (`afterSalesServices.{returnPolicy,warranty,
    * impliedWarranty}`) is intentionally not populated here. Those policy ids
@@ -2189,6 +2268,13 @@ export class AllegroOfferManagerAdapter
     };
 
     const body = this.buildCreateOfferRequest(cmd, cardLinkResult, gpsrDeclaration);
+    // #3520 - a bundle is ONE offer holding one entry per component. Planned
+    // (and refused when a component cannot be expressed) before any image is
+    // uploaded, then written over the single-product entry built above.
+    const productSetPlan = cmd.productSet ? await this.planProductSet(cmd, cmd.productSet) : null;
+    if (productSetPlan) {
+      body.productSet = productSetPlan.map((planned) => planned.entry);
+    }
     if (taxSettings) {
       body.taxSettings = taxSettings;
     }
@@ -2220,6 +2306,28 @@ export class AllegroOfferManagerAdapter
       );
     }
 
+    // #3520 - inline set components carry their OWN pictures (the bundle's
+    // `body.images` show the set, not each part); re-host them on Allegro's CDN
+    // exactly like the offer images.
+    if (productSetPlan) {
+      for (const planned of productSetPlan) {
+        if (planned.imageUrls.length === 0) continue;
+        const upload = await uploadImagesViaAllegro(this.uploadHttpClient, planned.imageUrls);
+        if (!upload.ok) {
+          throw new OfferCreateRejectedException(
+            ALLEGRO_ADAPTER_KEY,
+            0,
+            upload.failures.map((failure) => ({
+              field: `productSet[${planned.index}].product.images`,
+              code: failure.code,
+              message: `Image of bundle component "${planned.name}" could not be re-hosted on Allegro: ${failure.message}`,
+            }))
+          );
+        }
+        planned.entry.product = { ...planned.entry.product, images: upload.locations };
+      }
+    }
+
     // #419 — Allegro requires `productSet[0].product.images` (≥1) when
     // creating an inline product. Mirror the post-upload `body.images` here
     // (not in applyPlatformParams) so the URLs Allegro sees in the inline
@@ -2235,6 +2343,7 @@ export class AllegroOfferManagerAdapter
     // `images` field that Allegro does not expect on the link path. Skip
     // when `product.id` is present.
     if (
+      !productSetPlan &&
       body.productSet?.[0]?.product &&
       body.productSet[0].product.id === undefined &&
       body.images &&
@@ -2328,7 +2437,7 @@ export class AllegroOfferManagerAdapter
    * and the offer itself is fine - it carries the seller's chosen default.
    */
   private async resolveProductGpsrDeclaration(
-    cmd: CreateOfferCommand
+    cmd: Pick<CreateOfferCommand, 'gpsr' | 'internalVariantId'>
   ): Promise<ProductGpsrDeclaration> {
     const declaration: ProductGpsrDeclaration = {};
     const gpsr = cmd.gpsr;
@@ -2477,6 +2586,96 @@ export class AllegroOfferManagerAdapter
    * Splitting out the precondition logic keeps `createOffer` flat and
    * makes the smart-link skip-paths trivially traceable in tests.
    */
+  /**
+   * Product-set planning (#3520, ADR-083). One entry per bundle component, each
+   * built by the same rule a single product follows: a catalogue card found by
+   * the component's barcode within the offer's category, otherwise an inline
+   * product (name + its own pictures). `quantity.value` is the number of that
+   * product in ONE sold set, which is what Allegro's `ProductSetElementQuantity`
+   * means. A component that can be neither card-linked nor built inline is
+   * refused by name - falling back to a one-product offer would sell a set as
+   * one of its parts.
+   *
+   * Inline components carry no product-section parameters: those belong to the
+   * bundle's category, not to each part. A category that requires them will be
+   * answered by Allegro with a validation error on that entry.
+   */
+  private async planProductSet(
+    cmd: CreateOfferCommand,
+    components: readonly OfferProductSetComponent[]
+  ): Promise<PlannedProductSetEntry[]> {
+    const categoryId = cmd.overrides?.categoryId;
+    const refusals: CreateOfferValidationError[] = [];
+    const planned: PlannedProductSetEntry[] = [];
+
+    for (const [index, component] of components.entries()) {
+      const card =
+        component.barcode && categoryId
+          ? await resolveAllegroProductCardByEan(this.httpClient, this.cache, {
+              ean: component.barcode,
+              categoryId,
+            })
+          : ({ kind: 'no_match' } as const);
+
+      const declaration = await this.resolveProductGpsrDeclaration({
+        gpsr: component.gpsr,
+        internalVariantId: component.variantId,
+      });
+      const responsibleProducerId =
+        declaration.responsibleProducerId ?? this.sellerDefaults?.responsibleProducerId;
+      const safetyInformation =
+        declaration.safetyInformation ?? this.sellerDefaults?.safetyInformation;
+      if (!responsibleProducerId || !safetyInformation) {
+        refusals.push({
+          field: `productSet[${index}]`,
+          code: 'PRODUCT_SET_COMPONENT_GPSR_MISSING',
+          message: `Bundle component "${component.name}" has no responsible producer or safety information, and the connection has no default for them.`,
+        });
+        continue;
+      }
+      const common = {
+        quantity: { value: component.quantity },
+        responsibleProducer: { id: responsibleProducerId },
+        safetyInformation,
+      };
+
+      if (card.kind === 'unique') {
+        planned.push({
+          index,
+          name: component.name,
+          imageUrls: [],
+          entry: { product: { id: card.productId }, ...common },
+        });
+        continue;
+      }
+
+      const name = sanitizeAllegroName(component.name);
+      if (!name || component.imageUrls.length === 0) {
+        refusals.push({
+          field: `productSet[${index}]`,
+          code: 'PRODUCT_SET_COMPONENT_UNPUBLISHABLE',
+          message:
+            `Bundle component "${component.name}" has no unique Allegro catalogue match` +
+            `${component.barcode ? ' for its barcode' : ' (it has no barcode)'} and cannot be ` +
+            `listed as an inline product without ${name ? 'a picture' : 'a name'}. Add a barcode ` +
+            `that matches an Allegro product card, or a picture, to that product.`,
+        });
+        continue;
+      }
+      planned.push({
+        index,
+        name: component.name,
+        imageUrls: component.imageUrls,
+        entry: { product: { name }, ...common },
+      });
+    }
+
+    if (refusals.length > 0) {
+      throw new OfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, refusals);
+    }
+    return planned;
+  }
+
   private async maybeResolveProductCard(
     cmd: CreateOfferCommand
   ): Promise<ResolveProductCardResult> {
@@ -2849,7 +3048,9 @@ export class AllegroOfferManagerAdapter
       // the card per sale item — which defaults to 1 when omitted. Writing the
       // sellable stock here was both wrong-typed (Allegro wants an object, not
       // a bare int → `JsonMappingException` at `productSet[0].quantity`) and
-      // wrong semantics. OL lists 1 variant = 1 sale unit, so we omit it (#808).
+      // wrong semantics. An ordinary OL variant is one sale unit, so we omit it
+      // (#808); a BUNDLE variant is the exception and takes the product-set path
+      // (`planProductSet`, #3520), where each component carries its own quantity.
       // `gpsrDeclaration` is complete by the `createOffer` preflight
       // (`collectMissingSellerDefaultsFields`), which runs on every path,
       // card-linked included.

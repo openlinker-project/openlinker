@@ -393,7 +393,7 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
     <div className="bundle-form" data-testid="bundle-form">
       <div className="page-header page-header--split">
         <div className="page-header__content">
-          <Link to="/products?bundles=true" className="back-link">
+          <Link to="/products?bundles=only" className="back-link">
             {copy.form.backToProducts}
           </Link>
           <h2 className="page-title" data-testid="bundle-form-title">

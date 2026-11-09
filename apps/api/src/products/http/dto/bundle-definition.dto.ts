@@ -119,6 +119,13 @@ export class BundleProductSummaryDto {
   @ApiPropertyOptional({ type: Number, nullable: true, description: 'Gross catalogue price' })
   price!: number | null;
   @ApiPropertyOptional({ type: String, nullable: true }) currency!: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description:
+      'Authenticated API path of the product picture (fetch with the bearer token); null when the product has none',
+  })
+  imageUrl!: string | null;
 }
 
 export class BundleUsedInResponseDto {

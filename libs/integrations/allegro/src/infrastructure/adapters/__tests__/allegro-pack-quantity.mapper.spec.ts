@@ -19,6 +19,12 @@ describe('toPackQuantity (#3929)', () => {
     ).toBeUndefined();
   });
 
+  it('leaves a product-set offer published from a bundle absent even with component quantities above one (#3520)', () => {
+    expect(
+      toPackQuantity({ products: [{ id: 'mug', quantity: 2 }, { id: 'spoon', quantity: 1 }] })
+    ).toBeUndefined();
+  });
+
   it.each([
     ['absent', undefined],
     ['null', null],

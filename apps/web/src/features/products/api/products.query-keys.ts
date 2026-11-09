@@ -14,7 +14,7 @@ function productFilterKey(filters?: ProductFilters): readonly unknown[] {
     filters?.taxRateState ?? '',
     filters?.connectionId ?? 'all',
     filters?.hideFullyStale ?? false,
-    filters?.bundles ?? false,
+    filters?.bundles ?? 'any',
   ];
 }
 

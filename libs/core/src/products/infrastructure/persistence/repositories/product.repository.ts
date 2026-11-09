@@ -231,9 +231,10 @@ export class ProductRepository implements ProductRepositoryPort {
       );
     }
 
-    if (filters.bundlesOnly) {
+    if (filters.bundleFilter) {
+      // One definition of "live bundle" for both arms, so only/exclude partition the set.
       qb.andWhere(
-        `EXISTS (
+        `${filters.bundleFilter === 'exclude' ? 'NOT ' : ''}EXISTS (
           SELECT 1 FROM product_variants pvb
           WHERE pvb."productId" = product.id
             AND EXISTS (
