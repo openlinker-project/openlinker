@@ -7,8 +7,15 @@
  * project. The sentence is shown only when all of it fits (`FitText`): a
  * cut-off sentence reads worse than none, so it is never ellipsised.
  *
+ * It sticks to the top of the screen. Over the first 64 px of scroll it gets a
+ * surface and settles into a slightly lower bar with slightly smaller brand
+ * and switches: one 0..1 value tied directly to the scroll (no spring, so it
+ * never lags the page) feeds transforms in CSS, and the bar keeps its slot, so
+ * nothing below it moves.
+ *
  * @module features/auth/components/login-stage
  */
+import { motion, useScroll, useTransform } from 'motion/react';
 import { useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { ThemeSwitch } from '../../../appearance';
 import { LanguageSwitch } from '../../../language';
@@ -72,11 +79,18 @@ interface LoginTopBarProps {
   bar: LoginStageCopy['bar'];
 }
 
+/** Scroll, in px, over which the bar settles into its compact form. */
+const SHRINK_OVER = 64;
+
 export function LoginTopBar({ bar }: LoginTopBarProps): ReactElement {
+  const { scrollY } = useScroll();
+  const shrink = useTransform(scrollY, [0, SHRINK_OVER], [0, 1], { clamp: true });
   return (
-    <header
+    <motion.header
       className={bar ? 'login-topbar login-topbar--demo' : 'login-topbar login-topbar--plain'}
+      style={{ '--topbar-shrink': shrink } as unknown as Record<string, unknown>}
     >
+      <span className="login-topbar__surface" aria-hidden="true" />
       <div className="login-topbar__inner">
         <span className="login-topbar__brand">
           <LoginBrandMark />
@@ -105,6 +119,27 @@ export function LoginTopBar({ bar }: LoginTopBarProps): ReactElement {
           <LanguageSwitch placement="down" reveal="end" touchSize />
         </span>
       </div>
-    </header>
+    </motion.header>
+  );
+}
+
+/**
+ * What the demo's top bar drops on a phone (the sentence and the project
+ * links), shown under the card instead, so a phone visitor loses nothing.
+ * Rendered only on narrow screens (CSS); the top bar keeps them elsewhere.
+ */
+export function LoginStageFooter({ bar }: LoginTopBarProps): ReactElement | null {
+  if (!bar) return null;
+  return (
+    <footer className="login-stage__footer">
+      <p className="login-stage__footer-text">{bar.text}</p>
+      <nav className="login-stage__footer-links" aria-label={bar.linksLabel}>
+        {bar.links.map((link) => (
+          <a key={link.href} href={link.href} target="_blank" rel="noreferrer">
+            {link.label}
+          </a>
+        ))}
+      </nav>
+    </footer>
   );
 }

@@ -56,8 +56,10 @@ function withoutTabParam(search: string): string {
   const rest = params.toString();
   return rest ? `?${rest}` : '';
 }
-const SIGNED_IN_HOLD_MS = 1800;
-const SIGNED_IN_HOLD_REDUCED_MS = 400;
+// Long enough for the success tick to register, short enough not to be a wait:
+// the app then fades in (`.shell--app`).
+const SIGNED_IN_HOLD_MS = 600;
+const SIGNED_IN_HOLD_REDUCED_MS = 300;
 
 interface LoginStageScreenProps {
   mode: 'guest' | 'consent';
@@ -234,7 +236,7 @@ export function LoginStageScreen({ mode }: LoginStageScreenProps): ReactElement 
 
   if (!isReady || systemConfigQuery.isLoading) {
     return (
-      <div className="guest-layout">
+      <div className="guest-layout guest-layout--pending">
         <LoadingState title={messages.ui.loading} message={messages.ui.loading} />
       </div>
     );

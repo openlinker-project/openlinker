@@ -242,6 +242,10 @@ Exceptions kept intentionally eager:
 
 A parameterized test at `apps/web/src/app/routes/route-lazy.test.ts` asserts the exact lazy-route count; bump `EXPECTED_LAZY_ROUTE_COUNT` when intentionally adding or removing a lazy route.
 
+### First paint (#4029)
+
+A screen never shows a loader for a check that takes a moment: the session-check placeholders (`.guest-layout--pending`, `.shell--pending`) stay invisible for 400 ms and only then fade in, so a quick check shows the plain page background. The page that follows fades in once (`.shell--app`, `.login-stage`, 320 ms, no delay of its own). Nothing waits on purpose. A new top-level layout's loading branch takes the `--pending` class.
+
 ### Breadcrumb metadata on routes (#610)
 
 Each authenticated route module declares its breadcrumb metadata inline via `route.handle` using the `RouteCrumbHandle` shape from `apps/web/src/app/nav-registry.types.ts`:

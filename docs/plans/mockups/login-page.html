@@ -1897,15 +1897,19 @@ html[data-density='compact'] .status-badge{
 }
 
 /* ── Stage: the blurred live app behind, a brand gradient over it, the copy and the card on top ── */
-.stage { position:relative; isolation:isolate; overflow:hidden; display:flex; flex-direction:column; min-height:calc(100dvh - 77px); background:var(--bg-canvas); }
-.stage__bg { position:absolute; inset:0; z-index:-2; }
+.stage { position:relative; isolation:isolate; overflow:clip; display:flex; flex-direction:column; min-height:calc(100dvh - 77px); background:var(--bg-canvas); }
+.stage__bg { position:absolute; inset:0; z-index:-2; will-change:transform; }
+.stage__bg-settle { position:absolute; inset:0; transform-origin:50% 0%; }
 .bg-app { position:absolute; inset:-30px; overflow:hidden; filter:blur(4px) saturate(.9); opacity:var(--bg-app-opacity); pointer-events:none; user-select:none; -webkit-user-select:none; }
 .bg-app__frame { position:absolute; left:0; top:0; transform-origin:left top; }
+@media (max-width: 1023.98px) { .bg-app .shell { grid-template-rows:minmax(0, 1fr); } }
 .bg-app .shell { min-height:0; height:100%; }
 .bg-app .shell-content { overflow:hidden; }
 .bg-app__scenes { position:relative; animation:none; }
 .bg-app__scene { position:absolute; inset:0; padding:inherit; will-change:opacity, transform; }
 .bg-app__crumb { position:relative; display:inline-grid; }
+.shell-topbar__hamburger { width:36px; height:36px; display:inline-flex; align-items:center; justify-content:center; border:1px solid var(--border-default); border-radius:6px; background:var(--bg-surface); color:var(--text-primary); font-size:16px; flex-shrink:0; }
+@media (min-width: 1024px) { .shell-topbar__hamburger { display:none; } }
 .bg-app__crumb > span { grid-area:1 / 1; }
 .bg-app__nav { transition: background-color 1.2s ease, color 1.2s ease, box-shadow 1.2s ease; }
 .bg-app__drift { width:100%; height:100%; animation: bg-drift 28s ease-in-out infinite alternate; transform-origin:60% 40%; }
@@ -1929,7 +1933,8 @@ html[data-density='compact'] .status-badge{
 .auth-card { background:var(--bg-surface); border:1px solid var(--border-default); border-radius:16px; padding:24px 28px 26px; box-shadow: 0 1px 2px rgb(15 18 26 / .06), 0 28px 64px -16px rgb(15 18 26 / .28); }
 @media (max-width: 960px) {
   .stage__inner { grid-template-columns:minmax(0,1fr); gap:28px; padding-block:28px 48px; padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); }
-  .stage__bg { display:none; }
+  .stage__wash { background: linear-gradient(180deg, color-mix(in oklab, var(--bg-canvas) 72%, transparent) 0%, color-mix(in oklab, var(--bg-canvas) 50%, transparent) 100%); }
+  .bg-app__drift { animation:none; }
   .h1 { font-size:clamp(2rem, 8vw, 2.6rem); }
   .lead { font-size:1rem; }
   .auth-card { padding:22px 18px 24px; }
@@ -1991,6 +1996,7 @@ html[data-density='compact'] .status-badge{
   transition: opacity var(--duration-fast) var(--ease-out) 80ms;
 }
 .peek-button--reveal-end .peek-button__peek{ right:auto; left:0; }
+@media (hover: hover) and (pointer: fine) and (max-width: 1349.98px) { .topbar .peek-button--reveal-end .peek-button__peek{ right:0; left:auto; } }
 .peek-button__peek > *{
   flex: none;
 }
@@ -2195,13 +2201,18 @@ html[data-density='compact'] .status-badge{
   pointer-events: none;
 }
 /* ── Top bar (new): brand + demo notice + links + the real LanguageSwitch ── */
-.topbar { position:relative; z-index:3; color:var(--text-primary); }
+.topbar { --topbar-shrink:0; position:sticky; top:0; z-index:3; color:var(--text-primary); }
+.topbar__surface { position:absolute; inset:0; z-index:-1; border-bottom:1px solid var(--border-subtle); background:color-mix(in oklab, var(--bg-canvas) 92%, transparent); box-shadow:0 10px 24px -20px rgb(15 18 26 / .35); transform-origin:50% 0%; transform:scaleY(calc(1 - var(--topbar-shrink) * .1875)); opacity:var(--topbar-shrink); pointer-events:none; }
+.topbar .topbar__inner { transform:translateY(calc(var(--topbar-shrink) * -6px)); }
+.topbar .brand { transform-origin:0% 50%; transform:scale(calc(1 - var(--topbar-shrink) * .08)); }
+.topbar .topbar__controls { transform-origin:100% 50%; transform:scale(calc(1 - var(--topbar-shrink) * .06)); }
+.auth-card :is(input, select, textarea) { scroll-margin-top:88px; scroll-margin-bottom:24px; }
 .topbar__inner { box-sizing:border-box; max-width:1240px; margin:0 auto; min-height:64px; display:flex; align-items:center; gap:14px; padding-left:max(32px, env(safe-area-inset-left, 0px)); padding-right:max(32px, env(safe-area-inset-right, 0px)); }
 @media (max-width: 960px) { .topbar__inner { padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); } }
 .topbar .brand { font-size:1.125rem; font-weight:600; letter-spacing:-0.025em; gap:12px; }
 .topbar .brand > svg { display:block; width:32px; height:32px; }
 /* Same header as openlinker.io: canvas-dark at 95% with a blur, subtle-dark bottom border. */
-.topbar--demo { background:transparent; border-bottom:1px solid var(--border-subtle); }
+.topbar--demo { background:transparent; border-bottom:1px solid color-mix(in oklab, var(--border-subtle) calc((1 - var(--topbar-shrink)) * 100%), transparent); }
 .topbar--plain { background:transparent; }
 .topbar__chip { display:inline-flex; align-items:center; gap:7px; height:24px; padding:0 10px; border-radius:999px; font-size:.75rem; font-weight:600; letter-spacing:.02em; color:var(--accent-primary-soft-strong); background:color-mix(in oklab, var(--accent-primary) 14%, transparent); border:1px solid color-mix(in oklab, var(--accent-primary) 40%, transparent); }
 .topbar__dot { position:relative; width:6px; height:6px; border-radius:50%; background:var(--accent-primary); }
@@ -2236,8 +2247,17 @@ html[data-density='compact'] .status-badge{
 .segmented-switch__name[data-state='active'] { color:var(--text-secondary); }
 .segmented-switch__name[data-state='pointed'] { color:var(--text-primary); }
 .topbar__spacer { flex:1; }
+/* What the top bar drops on a phone (sentence + project links), under the card instead (1:1 with apps/web). */
+.stage__footer { display:none; justify-items:center; gap:6px; padding-top:4px; text-align:center; }
+.stage__footer-text { margin:0; color:var(--text-secondary); font-size:.8125rem; }
+.stage__footer-links { display:flex; flex-wrap:wrap; justify-content:center; gap:2px; }
+.stage__footer-links a { min-height:44px; display:inline-flex; align-items:center; padding:0 10px; border-radius:7px; color:var(--text-secondary); font-size:.8125rem; font-weight:500; text-decoration:none; }
+.stage__footer-links a:hover { color:var(--text-primary); }
+.stage__footer-links a:focus-visible { outline:none; box-shadow:var(--shadow-focus); }
 @media (max-width: 960px) {
-  .topbar__links a:not(:last-child) { display:none; }
+  .topbar__text, .topbar__links { display:none; }
+  .topbar__controls, .topbar__links + .topbar__controls { margin-left:auto; padding-left:0; border-left:0; }
+  .stage__footer { display:grid; }
 }
 @media (prefers-reduced-motion: reduce) { .topbar__dot::after { animation:none; } }
 @media (max-width: 600px) { .topbar__links { display:none; } .topbar__links + .topbar__controls { border-left:0; padding-left:0; } .topbar__controls { margin-left:auto; gap:6px; } .topbar__inner { gap:10px; } .topbar .peek-button__trigger .peek-button__chevron { display:none; } .topbar .peek-button__trigger { padding-right:11px; } }
@@ -2582,10 +2602,35 @@ function GlowOrb({ name, depth, px, py }) {
   const y = M.useTransform(py, (v) => v * depth.y);
   return <motion.div className={`login-glow__lean login-glow__lean--${name}`} style={{ x, y }}><div className={`login-glow__orb login-glow__orb--${name}`} /></motion.div>;
 }
-function LoginGlow() {
-  const still = (M.useReducedMotionConfig ? M.useReducedMotionConfig() : false) ?? false;
+/* ── Parallax: 1:1 port of apps/web/src/features/auth/components/login-stage/use-login-parallax.ts.
+   The panel is a screen set back in 3D: with a mouse it tilts towards the pointer (the light leans the other
+   way); on a phone it starts leaning back and straightens with the scroll, tied 1:1 to the scroll position. */
+const TILT = { x: 4, y: 6 };
+const PHONE_LEAN = 16;
+const PERSPECTIVE = 1400;
+const TILT_FOLLOW = { stiffness: 40, damping: 18, mass: 1 };
+/* apps/web uses `useScroll()` from motion/react; the UMD build loaded here does not update it for the
+   window, so the mockup reads the window scroll into a motion value itself. */
+function useWindowScrollY() {
+  const y = M.useMotionValue(typeof window === 'undefined' ? 0 : window.scrollY);
+  useEffect(() => {
+    const on = () => y.set(window.scrollY);
+    on();
+    window.addEventListener('scroll', on, { passive: true });
+    return () => window.removeEventListener('scroll', on);
+  }, [y]);
+  return y;
+}
+function useStill() { return (M.useReducedMotionConfig ? M.useReducedMotionConfig() : false) ?? false; }
+function useMatches(query) {
+  const [m, setM] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => { const l = window.matchMedia(query); const on = () => setM(l.matches); on(); l.addEventListener('change', on); return () => l.removeEventListener('change', on); }, [query]);
+  return m;
+}
+function useLoginPointer() {
+  const still = useStill();
   const rawX = M.useMotionValue(0); const rawY = M.useMotionValue(0);
-  const px = M.useSpring(rawX, GLOW_FOLLOW); const py = M.useSpring(rawY, GLOW_FOLLOW);
+  const x = M.useSpring(rawX, TILT_FOLLOW); const y = M.useSpring(rawY, TILT_FOLLOW);
   useEffect(() => {
     if (still || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return undefined;
     const onMove = (e) => { rawX.set((e.clientX / window.innerWidth) * 2 - 1); rawY.set((e.clientY / window.innerHeight) * 2 - 1); };
@@ -2594,10 +2639,48 @@ function LoginGlow() {
     document.documentElement.addEventListener('pointerleave', onLeave);
     return () => { window.removeEventListener('pointermove', onMove); document.documentElement.removeEventListener('pointerleave', onLeave); };
   }, [still, rawX, rawY]);
+  return { x, y };
+}
+function useBackdropParallax(pointer) {
+  const still = useStill();
+  const phone = useMatches('(max-width: 960px)');
+  const scrollY = useWindowScrollY();
+  const strength = M.useMotionValue(still || !phone ? 0 : 1);
+  useEffect(() => { strength.set(still || !phone ? 0 : 1); }, [still, phone, strength]);
+  const lean = M.useTransform([scrollY, strength], ([y, k]) => {
+    const range = document.documentElement.scrollHeight - window.innerHeight;
+    const prog = range > 0 ? Math.min(Math.max(y / range, 0), 1) : 0;
+    return k * PHONE_LEAN * (1 - prog);
+  });
+  const rotateX = M.useTransform([pointer.y, lean], ([py, l]) => -py * TILT.x + l);
+  const rotateY = M.useTransform(pointer.x, (v) => v * TILT.y);
+  return { rotateX, rotateY, transformPerspective: PERSPECTIVE, transformOrigin: phone ? '50% 20%' : '50% 50%' };
+}
+function LoginGlow({ pointer }) {
+  const still = useStill();
   return (
     <div className={['login-glow', still ? 'login-glow--still' : ''].filter(Boolean).join(' ')} aria-hidden="true">
-      {GLOW_ORBS.map((o) => <GlowOrb key={o.key} name={o.key} depth={o.depth} px={px} py={py} />)}
+      {GLOW_ORBS.map((o) => <GlowOrb key={o.key} name={o.key} depth={o.depth} px={pointer.x} py={pointer.y} />)}
     </div>
+  );
+}
+/* The stage's background layers: panel preview (live tilt + a one-off swing up), wash, light. */
+function StageBackdrop({ background }) {
+  const still = useStill();
+  const pointer = useLoginPointer();
+  const tilt = useBackdropParallax(pointer);
+  return (
+    <>
+      {background ? (
+        <motion.div className="stage__bg" style={tilt}>
+          <motion.div className="stage__bg-settle" initial={still ? false : { opacity: 0, rotateX: 24, scale: 1.08, transformPerspective: 1400 }} animate={{ opacity: 1, rotateX: 0, scale: 1, transformPerspective: 1400 }} transition={{ duration: 1.8, ease: [0.22, 1, 0.36, 1] }}>
+            {background}
+          </motion.div>
+        </motion.div>
+      ) : null}
+      <div className="stage__wash" aria-hidden="true" />
+      <LoginGlow pointer={pointer} />
+    </>
   );
 }
 
@@ -2755,9 +2838,12 @@ const APP_H = 800;
 /* 1:1 with login-backdrop.tsx: the frame takes the screen's proportions and is never scaled past 1.5x,
    so a wide monitor shows the panel as it looks on a wide monitor instead of a 2.6x blow-up. */
 const MAX_SCALE = 1.5;
+const BLEED = 30;
+/* Below 1024 px the shell is its phone layout; show it at real size inside the bleed. */
 function backdropFrame(w, h) {
+  if (w - 2 * BLEED < 1024) return { width: Math.max(0, w - 2 * BLEED), height: Math.max(0, h - 2 * BLEED), scale: 1, offset: BLEED };
   const scale = Math.min(Math.max(w / APP_W, h / APP_H), MAX_SCALE);
-  return { width: Math.max(APP_W, Math.ceil(w / scale)), height: Math.max(APP_H, Math.ceil(h / scale)), scale };
+  return { width: Math.max(APP_W, Math.ceil(w / scale)), height: Math.max(APP_H, Math.ceil(h / scale)), scale, offset: 0 };
 }
 
 // Words, numbers and the currency follow the language (mirrors apps/web login-backdrop.tsx):
@@ -2995,7 +3081,7 @@ const TOUR = ['analytics', 'orders', 'shipments'];
 function AppPreview() {
   const reduce = useReducedMotion();
   const boxRef = useRef(null);
-  const [frame, setFrame] = useState({ width: APP_W, height: APP_H, scale: 1 });
+  const [frame, setFrame] = useState({ width: APP_W, height: APP_H, scale: 1, offset: 0 });
   const [i, setI] = useState(0);
   const lang = React.useContext(LocaleCtx);
   const c = BACKDROP_COPY[lang];
@@ -3016,7 +3102,7 @@ function AppPreview() {
   const scene = scenes[key];
   return (
     <div className="bg-app" ref={boxRef} aria-hidden="true" inert="">
-      <div className="bg-app__frame" style={{ width: frame.width, height: frame.height, transform: `scale(${frame.scale})` }}>
+      <div className="bg-app__frame" style={{ left: frame.offset, top: frame.offset, width: frame.width, height: frame.height, transform: `scale(${frame.scale})` }}>
        <div className="bg-app__drift">
         <div className="shell">
           <div className="shell-sidebar">
@@ -3049,6 +3135,7 @@ function AppPreview() {
           </div>
           <div className="shell-main">
             <header className="shell-topbar">
+              <span className="shell-topbar__hamburger"><span aria-hidden="true">☰</span></span>
               <nav className="shell-crumbs">
                 <span className="shell-crumbs__group">{c.nav.operations}</span>
                 <span className="shell-crumbs__sep" aria-hidden="true">/</span>
@@ -3431,9 +3518,22 @@ function ThemeSwitch({ placement = 'down', locale }) {
 
 /* ── Top bar: the one header for every mode. Demo adds what this place is and where to go next;
    a real install shows only the brand and the language. */
+/* Sticks to the top; over the first 64 px of scroll it gets a surface and settles slightly lower and smaller.
+   One 0..1 value tied directly to the scroll feeds CSS transforms (1:1 with login-top-bar.tsx). */
 function TopBar({ demo, locale, setLocale }) {
+  const scrollY = useWindowScrollY();
+  const shrink = M.useTransform(scrollY, [0, 64], [0, 1], { clamp: true });
+  /* The framer-motion UMD build here does not write a CSS-variable motion value from `style`
+     (apps/web does), so the mockup sets it by hand. */
+  const headerRef = useRef(null);
+  useEffect(() => {
+    const write = (v) => headerRef.current?.style.setProperty('--topbar-shrink', String(v));
+    write(shrink.get());
+    return shrink.on('change', write);
+  }, [shrink]);
   return (
-    <header className={`topbar ${demo ? 'topbar--demo' : 'topbar--plain'}`}>
+    <header ref={headerRef} className={`topbar ${demo ? 'topbar--demo' : 'topbar--plain'}`}>
+      <span className="topbar__surface" aria-hidden="true" />
       <div className="topbar__inner">
         <span className="brand">
           <svg viewBox="0 0 500 500" aria-hidden="true"><g transform="translate(250 250) rotate(-30)"><rect x="-72" y="-160" width="144" height="320" rx="72" fill="none" stroke="#ee8c3c" strokeWidth="42" /></g><rect x="105" y="232" width="290" height="36" rx="18" fill="#ee8c3c" /></svg>
@@ -3499,7 +3599,7 @@ const UI = {
 
 const DEMO_COPY = {
   pl: {
-    bar: { chip: 'Demo', text: 'Demo tylko do odczytu, z przykładowymi danymi.', linksLabel: 'Więcej o OpenLinkerze', links: [['openlinker.io', 'https://openlinker.io/pl/'], ['Dokumentacja', 'https://docs.openlinker.io/'], ['GitHub', 'https://github.com/openlinker-project/openlinker']] },
+    bar: { chip: 'Demo', text: 'Demo z przykładowymi danymi tylko do odczytu.', linksLabel: 'Więcej o OpenLinkerze', links: [['openlinker.io', 'https://openlinker.io/pl/'], ['Dokumentacja', 'https://docs.openlinker.io/'], ['GitHub', 'https://github.com/openlinker-project/openlinker']] },
     headline: { before: ['Zobacz, jak OpenLinker', 'obsługuje zamówienia'], rotating: ['z Allegro.', 'z Erli.', 'z PrestaShopa.', 'z WooCommerce.', 'z Shopera.'], after: null },
     lead: 'Załóż konto i przejrzyj prawdziwy panel z przykładowym sklepem: zamówienia, wysyłki i faktury.',
     highlights: ['Konto demo jest darmowe', 'Na własnym serwerze nie płacisz prowizji od zamówień', 'Cały kod jest na GitHubie, na licencji Apache 2.0'],
@@ -3688,7 +3788,8 @@ function AuthPanel({ preset, copy, showTrackingFootnote = false, onReserve, init
     if (errors[key]) setErrors((e) => ({ ...e, [key]: undefined }));
     if (loginFailed) setLoginFailed(false);
   };
-  const go = (next) => { setTab(next); setErrors({}); setLoginFailed(false); setPending(false); };
+  const focusAfterSwitch = useRef(false);
+  const go = (next, focusForm = true) => { focusAfterSwitch.current = focusForm; setTab(next); setErrors({}); setLoginFailed(false); setPending(false); };
   /* Errors are stored as keys, not sentences, so switching language re-renders them in the new one. */
   const errText = (k) => (errors[k] ? (ui.v[errors[k]] || errors[k]) : undefined);
 
@@ -3737,14 +3838,30 @@ function AuthPanel({ preset, copy, showTrackingFootnote = false, onReserve, init
     onReserve(card.offsetHeight - stackRef.current.offsetHeight + tallest);
   }, [tallest, showTrackingFootnote]);
   const bindView = (k) => (el) => { viewRefs.current[k] = el; };
+  useEffect(() => {
+    if (!focusAfterSwitch.current) return;
+    focusAfterSwitch.current = false;
+    const field = viewRefs.current[active]?.querySelector('input:not([type="hidden"]), select, textarea');
+    if (!field) return;
+    field.focus({ preventScroll: true });
+    field.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }, [active]);
+  const tabRefs = useRef({});
+  const onTabsKeyDown = (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const next = tab === 'register' ? 'login' : 'register';
+    go(next, false);
+    tabRefs.current[next]?.focus();
+  };
   const submitLabel = (idle, busy) => (pending ? <><span className="spinner" aria-hidden="true" />{busy}</> : idle);
 
   return (
     <div className="panel__inner" ref={rootRef}>
       {canRegister ? (
-        <div className="tabs" role="tablist" aria-label={ui.tabsLabel}>
+        <div className="tabs" role="tablist" aria-label={ui.tabsLabel} onKeyDown={onTabsKeyDown}>
           {['register', 'login'].map((key) => (
-            <button key={key} role="tab" type="button" className="tab" aria-selected={tab === key} onClick={() => go(key)}>
+            <button key={key} ref={(el) => { tabRefs.current[key] = el; }} role="tab" type="button" className="tab" aria-selected={tab === key} tabIndex={tab === key ? 0 : -1} onClick={() => { if (key !== tab) go(key); }}>
               {tab === key ? <motion.span layoutId="tab-pill" className="tab__pill" transition={SPRING} /> : null}
               <span>{copy.tabs[key]}</span>
             </button>
@@ -3997,8 +4114,7 @@ function LoginPreview({ copy, lang, canRegister = false, screen = 'login', phone
         <LocaleCtx.Provider value={lang}>
           <MotionConfig reducedMotion="always">
             <div className="stage stage--gradient" style={{ minHeight: H }}>
-              <div className="stage__wash" />
-              <LoginGlow />
+              <StageBackdrop />
               <TopBar demo={null} locale={lang} setLocale={() => {}} />
               <div className="stage__inner">
                 <Hero copy={copy} />
@@ -4264,9 +4380,7 @@ function App() {
         <div data-state={stateKey || undefined} data-bare={BARE ? "" : undefined}>
         {isAdmin ? <AdminView uiLocale={locale} setLocale={switchLocale} saved={overrides} onSave={setOverrides} /> : (
         <div className={`stage stage--${preset.background}`} key={`${presetKey}:${stateKey}`} style={{ minHeight: BARE ? '100dvh' : 'calc(100dvh - 72px)' }}>
-          {preset.background === 'app-preview' ? <div className="stage__bg"><AppPreview /></div> : null}
-          <div className="stage__wash" aria-hidden="true" />
-          <LoginGlow />
+          <StageBackdrop background={preset.background === 'app-preview' ? <AppPreview /> : null} />
           <TopBar demo={copy.bar} locale={locale} setLocale={switchLocale} />
           <div className="stage__inner">
             <Hero copy={copy} />
@@ -4276,6 +4390,14 @@ function App() {
                 <AuthPanel preset={preset} copy={copy} showTrackingFootnote={campaign} onReserve={setReserve} initial={initial} />
               </motion.section>
             </div>
+            {copy.bar ? (
+              <footer className="stage__footer">
+                <p className="stage__footer-text">{copy.bar.text}</p>
+                <nav className="stage__footer-links" aria-label={copy.bar.linksLabel}>
+                  {copy.bar.links.map(([label, href]) => <a key={href} href={href} target="_blank" rel="noreferrer">{label}</a>)}
+                </nav>
+              </footer>
+            ) : null}
           </div>
         </div>
         )}

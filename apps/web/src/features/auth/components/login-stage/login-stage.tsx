@@ -12,13 +12,14 @@
  *
  * @module features/auth/components/login-stage
  */
-import { motion } from 'motion/react';
+import { motion, useReducedMotionConfig } from 'motion/react';
 import { useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import { AuthCard, type AuthCardProps } from './auth-card';
 import { LoginGlow } from './login-glow';
 import { LoginHero } from './login-hero';
 import { LOGIN_STAGE_EASE } from './login-stage-motion';
-import { LoginTopBar } from './login-top-bar';
+import { LoginStageFooter, LoginTopBar } from './login-top-bar';
+import { useBackdropParallax, useLoginPointer } from './use-login-parallax';
 
 export interface LoginStageProps extends Omit<AuthCardProps, 'onReserve'> {
   /** The demo's blurred app preview; without it the stage shows the gradient only. */
@@ -35,6 +36,9 @@ export function LoginStage({
   ...card
 }: LoginStageProps): ReactElement {
   const [reserve, setReserve] = useState(0);
+  const still = useReducedMotionConfig() ?? false;
+  const pointer = useLoginPointer();
+  const backdrop = useBackdropParallax(pointer);
   const classes = [
     'login-stage',
     background ? 'login-stage--app-preview' : 'login-stage--gradient',
@@ -51,9 +55,26 @@ export function LoginStage({
     : {};
   return (
     <div className={classes}>
-      {background ? <div className="login-stage__bg">{background}</div> : null}
+      {background ? (
+        // Outer layer: the live tilt. Inner layer: a one-off settle (the screen
+        // swings up from a deeper lean), so the two transforms never collide.
+        <motion.div className="login-stage__bg" style={backdrop}>
+          <motion.div
+            className="login-stage__bg-settle"
+            initial={
+              still || !animateEntrance
+                ? false
+                : { opacity: 0, rotateX: 24, scale: 1.08, transformPerspective: 1400 }
+            }
+            animate={{ opacity: 1, rotateX: 0, scale: 1, transformPerspective: 1400 }}
+            transition={{ duration: 1.8, ease: LOGIN_STAGE_EASE }}
+          >
+            {background}
+          </motion.div>
+        </motion.div>
+      ) : null}
       <div className="login-stage__wash" aria-hidden="true" />
-      <LoginGlow />
+      <LoginGlow pointer={pointer} />
       <LoginTopBar bar={card.copy.bar} />
       <div className="login-stage__inner">
         <LoginHero copy={card.copy} />
@@ -67,6 +88,7 @@ export function LoginStage({
             <AuthCard {...card} onReserve={setReserve} />
           </motion.section>
         </div>
+        <LoginStageFooter bar={card.copy.bar} />
       </div>
     </div>
   );

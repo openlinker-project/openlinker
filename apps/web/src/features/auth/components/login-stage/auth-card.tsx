@@ -18,11 +18,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   useCallback,
+  useEffect,
   useId,
   useLayoutEffect,
   useRef,
   useState,
   type FormEvent,
+  type KeyboardEvent,
   type ReactElement,
   type ReactNode,
 } from 'react';
@@ -135,7 +137,12 @@ export function AuthCard({
     return key ? ui.v[key] ?? key : undefined;
   };
 
-  const go = (next: AuthTab): void => {
+  // A tab the visitor picks hands focus to its form's first field, so they can
+  // type at once, and scrolls it into view if it is not (a phone, where the
+  // card sits below the hero); arrow keys on the tabs keep focus on the tabs.
+  const focusFormAfterSwitch = useRef(false);
+  const go = (next: AuthTab, focusForm = true): void => {
+    focusFormAfterSwitch.current = focusForm;
     form.clearErrors();
     setLoginFailed(null);
     setRegisterFailed(null);
@@ -212,6 +219,26 @@ export function AuthCard({
   const bindView = (key: ViewKey) => (el: HTMLDivElement | null) => {
     viewRefs.current[key] = el;
   };
+  useEffect(() => {
+    if (!focusFormAfterSwitch.current) return;
+    focusFormAfterSwitch.current = false;
+    const field = viewRefs.current[active]?.querySelector<HTMLElement>(
+      'input:not([type="hidden"]), select, textarea'
+    );
+    if (!field) return;
+    field.focus({ preventScroll: true });
+    // `nearest` scrolls only when the field is out of view; `scroll-margin`
+    // keeps it clear of the sticky top bar.
+    field.scrollIntoView?.({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+  }, [active, reduce]);
+  const tabRefs = useRef<Partial<Record<AuthTab, HTMLButtonElement | null>>>({});
+  const onTabsKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (tabsLocked || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+    event.preventDefault();
+    const next: AuthTab = tab === 'register' ? 'login' : 'register';
+    go(next, false);
+    tabRefs.current[next]?.focus();
+  };
 
   const pending = isSubmitting;
   const submitLabel = (idle: string, busy: string): ReactNode =>
@@ -280,16 +307,24 @@ export function AuthCard({
   return (
     <div className="auth-card__inner" ref={rootRef}>
       {canRegister ? (
-        <div className="auth-card__tabs" role="tablist" aria-label={ui.tabsLabel}>
+        <div
+          className="auth-card__tabs"
+          role="tablist"
+          aria-label={ui.tabsLabel}
+          onKeyDown={onTabsKeyDown}
+        >
           {(['register', 'login'] as const).map((key) => (
             <button
               key={key}
+              ref={(el) => {
+                tabRefs.current[key] = el;
+              }}
               role="tab"
               type="button"
               className="auth-card__tab"
               aria-selected={tab === key}
               aria-disabled={tabsLocked || undefined}
-              tabIndex={tabsLocked ? -1 : undefined}
+              tabIndex={tabsLocked || tab !== key ? -1 : 0}
               onClick={() => {
                 if (!tabsLocked && key !== tab) go(key);
               }}

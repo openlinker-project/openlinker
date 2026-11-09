@@ -39,20 +39,41 @@ const APP_H = 800;
 // takes the screen's own proportions, so a wide monitor shows the panel the
 // way it looks on a wide monitor.
 const MAX_SCALE = 1.5;
+// The backdrop box overhangs the page by this much on every side, so the blur
+// has no light edge (`.login-backdrop { inset: -30px }`).
+const BLEED = 30;
+// Below 1024 px the app shell itself switches to its phone layout (no sidebar,
+// a menu button). There the backdrop shows that layout at real size, built from
+// the same components, instead of shrinking the desktop panel to a thumbnail.
+const SHELL_DESKTOP_MIN_W = 1024;
 
 interface FrameSize {
   width: number;
   height: number;
   scale: number;
+  offset: number;
 }
 
-/** Fill `box` with a panel laid out at least APP_W x APP_H, never scaled past MAX_SCALE. */
+/**
+ * Fill `box`. A desktop-sized page gets a panel laid out at least APP_W x APP_H
+ * and never scaled past MAX_SCALE; a narrower one gets the phone panel at 1:1,
+ * inset by the bleed so it lines up with the page.
+ */
 export function backdropFrame(boxWidth: number, boxHeight: number): FrameSize {
+  if (boxWidth - 2 * BLEED < SHELL_DESKTOP_MIN_W) {
+    return {
+      width: Math.max(0, boxWidth - 2 * BLEED),
+      height: Math.max(0, boxHeight - 2 * BLEED),
+      scale: 1,
+      offset: BLEED,
+    };
+  }
   const scale = Math.min(Math.max(boxWidth / APP_W, boxHeight / APP_H), MAX_SCALE);
   return {
     width: Math.max(APP_W, Math.ceil(boxWidth / scale)),
     height: Math.max(APP_H, Math.ceil(boxHeight / scale)),
     scale,
+    offset: 0,
   };
 }
 const SCENE_EVERY_MS = 6500;
@@ -671,7 +692,7 @@ const TOUR = ['analytics', 'orders', 'shipments'] as const;
 export function LoginBackdrop(): ReactElement {
   const reduce = useReducedMotion();
   const boxRef = useRef<HTMLDivElement>(null);
-  const [frame, setFrame] = useState<FrameSize>({ width: APP_W, height: APP_H, scale: 1 });
+  const [frame, setFrame] = useState<FrameSize>({ width: APP_W, height: APP_H, scale: 1, offset: 0 });
   const [index, setIndex] = useState(0);
   const { scenes, nav, copy } = useScenes();
 
@@ -699,6 +720,8 @@ export function LoginBackdrop(): ReactElement {
       <div
         className="login-backdrop__frame"
         style={{
+          left: frame.offset,
+          top: frame.offset,
           width: frame.width,
           height: frame.height,
           transform: `scale(${frame.scale})`,
@@ -725,6 +748,9 @@ export function LoginBackdrop(): ReactElement {
             </div>
             <div className="shell-main">
               <header className="shell-topbar">
+                <button type="button" className="shell-topbar__hamburger" tabIndex={-1}>
+                  <span aria-hidden="true">☰</span>
+                </button>
                 <nav className="shell-crumbs">
                   <span className="shell-crumbs__group">{copy.nav.operations}</span>
                   <span className="shell-crumbs__sep" aria-hidden="true">

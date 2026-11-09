@@ -12,7 +12,7 @@ export function GuestLayout(): ReactElement {
 
   if (!isReady) {
     return (
-      <div className="guest-layout">
+      <div className="guest-layout guest-layout--pending">
         <LoadingState title="Loading" message="Checking session state..." />
       </div>
     );

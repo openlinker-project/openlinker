@@ -1826,6 +1826,40 @@ textarea,
   animation: shell-content-enter 180ms var(--ease-out);
 }
 
+/* The app arriving (after sign-in, a reload, a first visit): the whole page
+   fades in once, with no delay of its own. While the session is still being
+   checked the shell's placeholder stays invisible for a moment, so a quick
+   check shows the calm page background instead of a loader flashing past; a
+   slow one shows the placeholder after 400 ms. `.shell--app` / `--pending`
+   keep this off the login page's blurred preview, which reuses the markup. */
+.shell--app {
+  animation: page-fade-in 320ms var(--ease-out) both;
+}
+
+.shell--pending,
+.guest-layout--pending {
+  animation: page-fade-in 240ms var(--ease-out) 400ms both;
+}
+
+.login-stage {
+  animation: page-fade-in 320ms var(--ease-out) both;
+}
+
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell--app,
+  .shell--pending,
+  .guest-layout--pending,
+  .login-stage {
+    animation: none;
+  }
+}
+
 @keyframes shell-content-enter {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -6088,7 +6122,7 @@ html:has(.login-stage) {
   isolation: isolate;
   font-size: 0.875rem;
   line-height: 1.5;
-  overflow: hidden;
+  overflow: clip;
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
@@ -6099,6 +6133,13 @@ html:has(.login-stage) {
   position: absolute;
   inset: 0;
   z-index: -2;
+  will-change: transform;
+}
+
+.login-stage__bg-settle {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 0%;
 }
 
 .login-stage__wash {
@@ -6255,6 +6296,16 @@ html:has(.login-stage) {
 }
 
 /* Backdrop: the real panel, blurred. */
+
+/* Below 1024 px the backdrop is the app shell's phone layout, whose grid has
+   an empty second row; here it is one screen-filling row, so the content runs
+   the full height (between 960 and 1024 too, where the stage is still two
+   columns). */
+@media (max-width: 1023.98px) {
+  .login-backdrop .shell {
+    grid-template-rows: minmax(0, 1fr);
+  }
+}
 .login-backdrop {
   position: absolute;
   inset: -30px;
@@ -6428,10 +6479,49 @@ html:has(.login-stage) {
 }
 
 /* Top bar: transparent over the stage, so it follows the theme; only borders and text carry it. */
+/* Sticky on every screen. On scroll it gets a surface and settles into a
+ * slightly lower bar: `--topbar-shrink` (0..1, from login-top-bar.tsx, tied
+ * 1:1 to the first 64 px of scroll) drives transforms only, so the bar keeps
+ * its 64 px slot and nothing below it moves. */
 .login-topbar {
-  position: relative;
+  --topbar-shrink: 0;
+  position: sticky;
+  top: 0;
   z-index: 3;
   color: var(--text-primary);
+}
+
+/* A field the card focuses after a tab switch scrolls clear of the sticky bar. */
+.auth-card :is(input, select, textarea) {
+  scroll-margin-top: 88px;
+  scroll-margin-bottom: 24px;
+}
+
+.login-topbar__surface {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-bottom: 1px solid var(--border-subtle);
+  background: color-mix(in oklab, var(--bg-canvas) 92%, transparent);
+  box-shadow: 0 10px 24px -20px rgb(15 18 26 / 0.35);
+  transform-origin: 50% 0%;
+  transform: scaleY(calc(1 - var(--topbar-shrink) * 0.1875));
+  opacity: var(--topbar-shrink);
+  pointer-events: none;
+}
+
+.login-topbar__inner {
+  transform: translateY(calc(var(--topbar-shrink) * -6px));
+}
+
+.login-topbar__brand {
+  transform-origin: 0% 50%;
+  transform: scale(calc(1 - var(--topbar-shrink) * 0.08));
+}
+
+.login-topbar__controls {
+  transform-origin: 100% 50%;
+  transform: scale(calc(1 - var(--topbar-shrink) * 0.06));
 }
 
 .login-topbar__inner {
@@ -6464,7 +6554,9 @@ html:has(.login-stage) {
 
 .login-topbar--demo {
   background: transparent;
-  border-bottom: 1px solid var(--border-subtle);
+  /* Hands its line over to the surface as the bar settles, so there is one. */
+  border-bottom: 1px solid
+    color-mix(in oklab, var(--border-subtle) calc((1 - var(--topbar-shrink)) * 100%), transparent);
 }
 
 .login-topbar--plain {
@@ -6512,6 +6604,49 @@ html:has(.login-stage) {
     transform: scale(1.8);
     opacity: 0;
   }
+}
+
+/* What the top bar drops on a phone, under the card (shown at <= 960 px). */
+.login-stage__footer {
+  display: none;
+  justify-items: center;
+  gap: 6px;
+  padding-top: 4px;
+  text-align: center;
+}
+
+.login-stage__footer-text {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.login-stage__footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+}
+
+.login-stage__footer-links a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 7px;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.login-stage__footer-links a:hover {
+  color: var(--text-primary);
+}
+
+.login-stage__footer-links a:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .login-topbar__text {
@@ -7041,8 +7176,20 @@ html:has(.login-stage) {
     padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
 
-  .login-stage__bg {
-    display: none;
+  /* The phone panel runs the full height of the page and scrolls with it; the
+     wash keeps an even veil over it, since the copy sits above the card. */
+  .login-stage__wash {
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--bg-canvas) 72%, transparent) 0%,
+      color-mix(in oklab, var(--bg-canvas) 50%, transparent) 100%
+    );
+  }
+
+  /* A slow zoom under a full-page blur repaints the blur every frame; on a
+     phone the scroll parallax is the movement, so the zoom stays off. */
+  .login-backdrop__drift {
+    animation: none;
   }
 
   /* On a phone the card sits right under the hero; what follows it moves instead. */
@@ -7068,8 +7215,22 @@ html:has(.login-stage) {
     padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
 
-  .login-topbar__links a:not(:last-child) {
+  /* The sentence and the links move under the card (`.login-stage__footer`):
+     the bar keeps brand, chip and switches. */
+  .login-topbar__text,
+  .login-topbar__links {
     display: none;
+  }
+
+  .login-topbar__controls,
+  .login-topbar__links + .login-topbar__controls {
+    margin-left: auto;
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .login-stage__footer {
+    display: grid;
   }
 }
 
@@ -33578,6 +33739,16 @@ legend.analytics-settings-dialog__label {
 .peek-button--reveal-end .peek-button__peek {
   right: auto;
   left: 0;
+}
+
+/* The login top bar's language switch unrolls rightwards so it leaves the
+ * theme switch beside it uncovered; on a narrower desktop screen the bar's
+ * right edge is close, so with a mouse it unrolls leftwards there instead. */
+@media (hover: hover) and (pointer: fine) and (max-width: 1349.98px) {
+  .login-topbar .peek-button--reveal-end .peek-button__peek {
+    right: 0;
+    left: auto;
+  }
 }
 
 .peek-button__peek .peek-button__chevron {

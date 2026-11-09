@@ -349,6 +349,10 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   const hasInitializedAnalyticsRef = useRef(false);
   const location = useLocation();
   const drawerRef = useRef<HTMLDialogElement>(null);
+  // Until the session and the system config are known, the layout fills the
+  // shell with a "Preparing workspace" placeholder. It stays invisible for a
+  // short check (`.shell--pending`), and the shell fades in once it is settled.
+  const settled = isReady && !systemConfigQuery.isPending;
   // Initialize density at boot so <html data-density="..."> is set before
   // any .data-table renders (avoids a flash of cozy-density rows for
   // users who selected compact). useDensity is a no-op hook for the
@@ -433,7 +437,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
 
   return (
     <CommandPaletteProvider>
-      <div className="shell">
+      <div className={settled ? 'shell shell--app' : 'shell shell--pending'}>
         <div className="shell-sidebar">
           <SidebarBrand />
           <SidebarNav ariaLabel="Primary" counts={counts} groups={groups} />
