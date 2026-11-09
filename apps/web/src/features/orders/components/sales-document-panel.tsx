@@ -151,6 +151,8 @@ import {
   FiscalFailureDetails,
   CopyFiscalFailureDetailsButton,
   FiscalArtefactList,
+  FiscalEarlierAttempts,
+  type AcceptedFiscalRegistration,
   type FiscalRegistrationRecord,
 } from '../../fiscalization';
 
@@ -344,6 +346,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const reauthConnections = selectReauthInvoicingConnections(allConnections);
   const fiscalCandidates = selectFiscalizationCandidates(allConnections);
 
+  const fiscalCopy = useMessages('fiscalization');
   const invoice = invoiceQuery.data ?? null;
   const fiscalRecords = fiscalQuery.data ?? [];
   // Newest record only — mirrors the pre-#2160 `OrderReceiptPanel` (a record on
@@ -365,6 +368,26 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // describe: the request has been accepted and the job has not run yet, so
   // there is nothing but the job to read.
   const fiscalWorkOutstanding = fiscalProgress === 'queued' || fiscalProgress === 'running';
+
+  // #3960 - asking again after a refusal creates a NEW attempt record, so the
+  // refused ones stay on record. While the next attempt waits or runs, the
+  // newest record IS the refused attempt, so it joins the earlier list rather
+  // than rendering as the receipt's current state.
+  const fiscalNextAttemptQueued =
+    fiscalWorkOutstanding && fiscalRecord?.status === 'failed' && fiscalRecord.failureMode === 'rejected';
+  const fiscalEarlierAttempts = fiscalRecord
+    ? fiscalRecords.filter(
+        (candidate) =>
+          candidate.connectionId === fiscalRecord.connectionId &&
+          candidate.status === 'failed' &&
+          candidate.failureMode === 'rejected' &&
+          (candidate.id !== fiscalRecord.id || fiscalNextAttemptQueued),
+      )
+    : [];
+  // 1-based, as an operator counts.
+  const fiscalCurrentAttemptNumber = fiscalRecord
+    ? fiscalRecord.attempt + (fiscalNextAttemptQueued ? 2 : 1)
+    : 1;
 
   // #2559 — a contended attempt is transient by nature: once progress moves
   // past the window that produced it, the flag is stale and must clear itself
@@ -571,8 +594,10 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
     registerMutation.mutate(
       { connectionId, orderId: order.internalOrderId },
       {
-        onSuccess: () => {
-          announce(copy.fiscalReceipt.announce.registered);
+        onSuccess: (accepted) => {
+          // #3960 - the answer says what the REQUEST did. It never says the sale
+          // is registered: that arrives later, on the receipt itself.
+          announce(announceFiscalRequest(accepted, fiscalCopy.announce));
         },
         onError: (error) => {
           // #2559 — a 409 here is the exactly-once claim refusing a SECOND
@@ -1228,8 +1253,11 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                     is true and nothing more: it continues, and it will be here.
                     There is deliberately no estimate - OpenLinker hands the sale
                     over and waits for one answer, observing nothing in between. */}
-                {copy.fiscalReceipt.pending.body}
+                {fiscalCurrentAttemptNumber > 1
+                  ? interpolate(fiscalCopy.pending.attempt, { n: fiscalCurrentAttemptNumber })
+                  : copy.fiscalReceipt.pending.body}
               </p>
+              <FiscalEarlierAttempts attempts={fiscalEarlierAttempts} />
             </>
           ) : null}
 
@@ -1294,6 +1322,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                 internalOrderId={order.internalOrderId}
               />
               {whyKindDisclosure}
+              <FiscalEarlierAttempts attempts={fiscalEarlierAttempts} />
               {/* #2559 — a registered receipt is final. OpenLinker never issues
                   a fiscal correction, so this state must not imply one is
                   possible here. */}
@@ -1303,7 +1332,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             </div>
           ) : null}
 
-          {fiscalSettled && fiscalDisplayStatus === 'rejected' && fiscalRecord ? (
+          {fiscalSettled && fiscalDisplayStatus === 'rejected' && fiscalRecord && !fiscalNextAttemptQueued ? (
             <>
               {/* #3843: the cause and the provider's identifiers are for someone
                   who acts on the order; a read-only role gets the fact alone. */}
@@ -1340,10 +1369,18 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                     }
                     onClick={() => handleRegister(fiscalRecord.connectionId)}
                   >
-                    {copy.fiscalReceipt.action.retry}
+                    {fiscalCopy.rejected.registerAgain}
                   </Button>
                 </div>
               ) : null}
+              {isAdmin || demoMode ? (
+                <p className="sales-document-panel__notice" data-testid="fiscal-register-again-hint">
+                  {interpolate(fiscalCopy.rejected.registerAgainHint, {
+                    n: fiscalRecord.attempt + 2,
+                  })}
+                </p>
+              ) : null}
+              <FiscalEarlierAttempts attempts={fiscalEarlierAttempts} />
             </>
           ) : null}
 
@@ -1657,6 +1694,32 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
  * cannot release THIS order, because the marketplace stamped the rate at
  * purchase. Those are different instructions, so they cannot share a sentence.
  */
+/**
+ * What a fiscal registration request did, as a sentence for the live region
+ * (#3960). Never "Registered.": the request only asks, and the receipt carries
+ * the answer when it arrives.
+ */
+function announceFiscalRequest(
+  accepted: AcceptedFiscalRegistration,
+  copy: Messages['fiscalization']['announce'],
+): string {
+  switch (accepted.outcome) {
+    case 'new-attempt':
+      return accepted.attempt > 0
+        ? interpolate(copy.newAttempt, { n: accepted.attempt + 1 })
+        : copy.requested;
+    case 'joined':
+      return copy.joined;
+    case 'redriven':
+      return copy.redriven;
+    case 'resumed':
+      return copy.resumed;
+    default:
+      // An outcome this build does not know still answered a request.
+      return copy.requested;
+  }
+}
+
 function collectRateLessLines(items: readonly ParsedOrderItem[]): RateLessLine[] {
   return items
     .filter((item) => !item.taxRate)

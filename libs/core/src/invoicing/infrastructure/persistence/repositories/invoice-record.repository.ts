@@ -98,6 +98,12 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
+  // Unlocked by design: callers hold the per-order issuance lock (see the port).
+  async findSuccessorAttempt(recordId: string): Promise<InvoiceRecord | null> {
+    const entity = await this.repository.findOne({ where: { previousAttemptId: recordId } });
+    return entity ? this.toDomain(entity) : null;
+  }
+
   async findAllByOrderId(orderId: string): Promise<InvoiceRecord[]> {
     // Newest-first with the same `id` tiebreak as `findLatestByOrderId`, so the
     // #2047 guard reports a deterministic blocking row when an order somehow
@@ -231,8 +237,15 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
         //   - issuing with an expired lease (a crashed prior attempt).
         // An `issued`, an in-doubt/mode-less `failed`, or a live `issuing` row
         // NEVER matches, so it can never be re-claimed and re-issued.
+        //
+        // #3960: a refused row that already has a SUCCESSOR attempt never
+        // matches either. Once the operator asked again, the newer attempt owns
+        // the invoice; a late job retry of the old row must not issue it twice.
         `(status = 'pending'
-          OR (status = 'failed' AND "failureMode" = 'rejected')
+          OR (status = 'failed' AND "failureMode" = 'rejected'
+              AND NOT EXISTS (
+                SELECT 1 FROM "invoice_records" successor
+                WHERE successor."previousAttemptId" = "invoice_records"."id"))
           OR (status = 'issuing' AND ("leaseExpiresAt" IS NULL OR "leaseExpiresAt" <= :now)))`,
         { now },
       )
@@ -629,6 +642,8 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     entity.documentContent = input.documentContent ?? null;
     entity.sourceDocument = input.sourceDocument ?? null;
     entity.issuedLineSnapshot = input.issuedLineSnapshot ?? null;
+    entity.attempt = input.attempt ?? 0;
+    entity.previousAttemptId = input.previousAttemptId ?? null;
     return entity;
   }
 
@@ -668,6 +683,8 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       entity.warehouseReleaseNumber,
       entity.clearanceDetail,
       entity.sourceDocumentHash,
+      entity.attempt ?? 0,
+      entity.previousAttemptId ?? null,
     );
   }
 }
