@@ -6,9 +6,10 @@
  * connection tester, the config + credentials shape validators, the retry
  * and auth-failure classifiers, and the OAuth completion adapter (a store in
  * another organization installs the app through the authorization-code
- * grant). No capability adapter yet: each enters `supportedCapabilities`
- * together with the adapter that delivers it (the #980 rule), so until then
- * asking for one fails with the SDK's uniform "does not support" error.
+ * grant). Capabilities enter `supportedCapabilities` together with the adapter
+ * that delivers them (the #980 rule); ProductMaster arrived with #3975. Its
+ * rungs `ModifiedProductLister`, `BulkProductReader` and `ProductTaxRateReader`
+ * are guard-only (never in the manifest), narrowed off the dispatched adapter.
  *
  * Outbound pacing: every call goes through `host.http.forConnection` with
  * `SHOPIFY_DEFAULT_RATE_LIMIT` and the STORE's shared bucket (Shopify's
@@ -32,6 +33,7 @@ import {
   SHOPIFY_DEFAULT_RATE_LIMIT,
   SHOPIFY_PLATFORM_TYPE,
 } from './shopify.constants';
+import { ShopifyAdapterFactory, type ShopifyResolution } from './application/shopify-adapter.factory';
 import { resolveShopifyRateLimitBucketKey } from './domain/policies/shopify-rate-limit-bucket.policy';
 import {
   createShopifyClientRuntime,
@@ -52,7 +54,11 @@ export const shopifyAdapterManifest: AdapterMetadata = {
   adapterKey: SHOPIFY_ADAPTER_KEY,
   platformType: SHOPIFY_PLATFORM_TYPE,
   // A capability name enters this list together with the adapter that delivers it.
-  supportedCapabilities: [],
+  supportedCapabilities: ['ProductMaster'],
+  // Stated rather than left to "every supported capability": each later
+  // capability (publisher, order source, ...) must be an operator's choice,
+  // not something every new connection starts doing.
+  defaultEnabledCapabilities: ['ProductMaster'],
   defaultRateLimit: SHOPIFY_DEFAULT_RATE_LIMIT,
   // Shopify's budget is per app and store, so connections to one store share one bucket.
   resolveRateLimitBucketKey: resolveShopifyRateLimitBucketKey,
@@ -72,6 +78,7 @@ export interface CreateShopifyPluginDeps {
 
 export function createShopifyPlugin(deps: CreateShopifyPluginDeps = {}): AdapterPlugin {
   const runtime = deps.runtime ?? createShopifyClientRuntime();
+  const factory = new ShopifyAdapterFactory(runtime);
 
   return {
     manifest: shopifyAdapterManifest,
@@ -97,9 +104,28 @@ export function createShopifyPlugin(deps: CreateShopifyPluginDeps = {}): Adapter
       host.oauthCompletionRegistry.register(SHOPIFY_ADAPTER_KEY, new ShopifyOAuthCompletionAdapter());
     },
 
-    createCapabilityAdapter<T>(_connection: Connection, capability: string): Promise<T> {
+    createCapabilityAdapter<T>(connection: Connection, capability: string, host: HostServices): Promise<T> {
+      // Dispatch FIRST, build lazily: an unsupported capability must fail with
+      // the SDK's uniform "does not support" error before any credential is
+      // decrypted.
+      const resolve = (): Promise<ShopifyResolution> =>
+        factory.resolve(
+          connection,
+          host.credentialsResolver,
+          host.http.forConnection(connection, SHOPIFY_DEFAULT_RATE_LIMIT, {
+            bucketKey: resolveShopifyRateLimitBucketKey(connection),
+          }),
+          host.cache,
+        );
       try {
-        return dispatchCapability<Promise<T>>(capability, {}, SHOPIFY_BRAND);
+        return dispatchCapability<Promise<T>>(
+          capability,
+          {
+            ProductMaster: async () =>
+              factory.createProductMaster(await resolve(), host.identifierMapping, host.cache) as T,
+          },
+          SHOPIFY_BRAND,
+        );
       } catch (error) {
         return Promise.reject(error instanceof Error ? error : new Error(String(error)));
       }

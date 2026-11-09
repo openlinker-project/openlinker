@@ -25,6 +25,7 @@ import { shopifyShopContextCacheKey } from '../../domain/policies/shopify-creden
 import type {
   ShopifyConnection,
   ShopifyLocationNode,
+  ShopifyShopAddress,
   ShopifyShopInfo,
 } from '../../domain/types/shopify-api.types';
 import type { ShopifyGraphqlClient } from '../http/shopify-graphql-client';
@@ -38,6 +39,8 @@ export interface ShopifyShopContext {
   /** GID and name of the single location OpenLinker works against. */
   readonly locationGid: string;
   readonly locationName: string;
+  /** The shop's own billing address (country, province, zip), or null when it states none. */
+  readonly shopAddress: ShopifyShopAddress | null;
 }
 
 interface CachedShopContext extends ShopifyShopContext {
@@ -51,7 +54,7 @@ interface ShopContextQuery {
 }
 
 export const SHOPIFY_SHOP_CONTEXT_QUERY = `query OlShopContext {
-  shop { id name myshopifyDomain currencyCode taxesIncluded }
+  shop { id name myshopifyDomain currencyCode taxesIncluded billingAddress { countryCodeV2 provinceCode zip } }
   location { id name isActive }
   locations(first: 250) { nodes { id name isActive } }
 }`;
@@ -80,7 +83,13 @@ export class ShopifyShopContextProvider {
     const key = shopifyShopContextCacheKey(this.connectionId);
     if (this.cache !== undefined) {
       const cached = await this.cache.get<CachedShopContext>(key).catch(() => null);
-      if (cached !== null && cached.configuredLocationGid === this.configuredLocationGid) {
+      // An entry written before `shopAddress` existed is read again rather than
+      // answering "no address" for its remaining life.
+      if (
+        cached !== null &&
+        cached.configuredLocationGid === this.configuredLocationGid &&
+        cached.shopAddress !== undefined
+      ) {
         return stripCacheFields(cached);
       }
     }
@@ -92,6 +101,7 @@ export class ShopifyShopContextProvider {
       taxesIncluded: data.shop.taxesIncluded,
       locationGid: location.id,
       locationName: location.name,
+      shopAddress: data.shop.billingAddress ?? null,
     };
     if (this.cache !== undefined) {
       const entry: CachedShopContext = { ...context, configuredLocationGid: this.configuredLocationGid };
@@ -137,5 +147,6 @@ function stripCacheFields(cached: CachedShopContext): ShopifyShopContext {
     taxesIncluded: cached.taxesIncluded,
     locationGid: cached.locationGid,
     locationName: cached.locationName,
+    shopAddress: cached.shopAddress,
   };
 }

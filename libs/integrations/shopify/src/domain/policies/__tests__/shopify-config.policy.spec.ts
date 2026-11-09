@@ -11,6 +11,7 @@ describe('parseShopifyConfig', () => {
         apiVersion: '2026-10',
         locationGid: null,
         unmanagedStockQuantity: null,
+        salesCountryIso2: null,
       },
     });
   });
@@ -51,6 +52,18 @@ describe('parseShopifyConfig', () => {
     const result = parseShopifyConfig({ storeDomain: 'a.myshopify.com', unmanagedStockQuantity: value });
 
     expect(!result.ok && result.issues.map((i) => i.path)).toEqual(['unmanagedStockQuantity']);
+  });
+
+  it('should keep a valid sales country for the tax rate read', () => {
+    const result = parseShopifyConfig({ storeDomain: 'a.myshopify.com', salesCountryIso2: 'PL' });
+
+    expect(result.ok && result.config.salesCountryIso2).toBe('PL');
+  });
+
+  it.each(['pl', 'POL', 7])('should refuse the sales country %p', (salesCountryIso2) => {
+    const result = parseShopifyConfig({ storeDomain: 'a.myshopify.com', salesCountryIso2 });
+
+    expect(!result.ok && result.issues.map((i) => i.path)).toEqual(['salesCountryIso2']);
   });
 
   it('should report every bad field at once when several are wrong', () => {

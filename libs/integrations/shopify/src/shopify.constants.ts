@@ -60,4 +60,7 @@ export const SHOPIFY_REQUIRED_SCOPES = [
   // the Online Store.
   'read_publications',
   'write_publications',
+  // ProductTaxRateReader (#3975, L-T4): `draftOrderCalculate` computes the
+  // rate without creating anything, but Shopify gates it behind this scope.
+  'write_draft_orders',
 ] as const;

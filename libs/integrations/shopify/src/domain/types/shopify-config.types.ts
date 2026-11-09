@@ -24,6 +24,11 @@ export interface ShopifyConnectionConfig {
    * (`tracked: false`). Absent means such a variant reports no quantity.
    */
   readonly unmanagedStockQuantity?: number;
+  /**
+   * ISO 3166-1 alpha-2 country the catalogue's tax rate is computed for
+   * (`ProductTaxRateReader`). Absent means the shop's own billing country.
+   */
+  readonly salesCountryIso2?: string;
 }
 
 /** `ShopifyConnectionConfig` after validation and normalisation. */
@@ -33,4 +38,5 @@ export interface ShopifyResolvedConfig {
   /** Location GID, or null when the primary location is resolved at runtime. */
   readonly locationGid: string | null;
   readonly unmanagedStockQuantity: number | null;
+  readonly salesCountryIso2: string | null;
 }
