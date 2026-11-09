@@ -60,50 +60,6 @@ export const omsOnboardingCopy = {
       'Rules for a particular country, or a default for orders no rule covers, are set on the document routing page.',
     openRouting: 'Open document routing',
   },
-  shippingStep: {
-    why: 'Choose which carrier ships each delivery method. Then OpenLinker can buy the label as soon as a parcel is accepted for packing, so the packer only prints it.',
-    routesTitle: 'Carriers for your delivery methods',
-    routesLead: "The same routing as on each connection's mapping page. A change here is a change there.",
-    noCarrierTitle: 'Connect a carrier first',
-    noCarrierBody:
-      'OpenLinker buys labels on your own carrier account, such as InPost or DPD. When the carrier is connected, you come back to this step.',
-    connectCarrier: 'Connect a carrier',
-    noSourcesBody: 'No connection sends orders to OpenLinker yet, so there are no delivery methods to choose a carrier for.',
-    checking: 'Checking…',
-    coverage: (withCarrier: number, total: number): string =>
-      `${String(withCarrier)} of ${String(total)} delivery ${total === 1 ? 'method goes' : 'methods go'} to a carrier`,
-    coverageUnknown: 'Could not read the routing for this connection right now.',
-    cannotList:
-      'This connection does not report its delivery methods, so its orders cannot go to a carrier. You buy their labels at the pack bench.',
-    loadFailed: "Could not load this connection's delivery methods. Its routing is unchanged.",
-    retry: 'Try again',
-    badge: { todo: 'To do', partly: 'Partly set', all: 'All set', noLabels: 'No labels' },
-    expand: (name: string): string => `Choose carriers for ${name}`,
-    autoTitle: 'Buy labels automatically',
-    autoLocked: 'Give at least one delivery method a carrier and save it first.',
-    autoLead: (withCarrier: number, total: number): string =>
-      `Available for ${String(withCarrier)} of ${String(total)} delivery methods. For the others you buy the label at the pack bench.`,
-    autoGroupLabel: 'Buy labels automatically',
-    noTitle: "No, I'll buy labels myself",
-    noBody: 'At the pack bench or in Orders. Nothing is bought on its own.',
-    yesTitle: 'Yes, buy it when a parcel is accepted',
-    yesBody: 'One label per parcel, on the carrier account its delivery method goes to.',
-    defaultsTitle: 'Default parcel for every delivery method',
-    defaultsLead: 'Used when a delivery method has no default parcel of its own.',
-    weightDescription:
-      'Per product, used only when a product has no weight. The parcel weight is the sum of its products.',
-    weightRequired: 'Enter a weight for products that have none.',
-    fromNow: (methods: number, parcel: string | null): string =>
-      `From now on a label is bought for each parcel accepted on ${methods === 1 ? 'that delivery method' : `those ${String(methods)} delivery methods`}${parcel === null ? '' : `, with ${parcel} unless the delivery method sets its own`}. Nothing is bought for an order on hold, unpaid or without an address, and orders already waiting are not changed.`,
-    saveAndContinue: 'Save and continue',
-    saving: 'Saving…',
-    saveFailedTitle: 'Could not save the label settings',
-    unsavedTitle: (name: string): string => `Routing for ${name} is not saved`,
-    unsavedBody:
-      'You changed which carrier ships some delivery methods and did not click Save routing. If you go on, those changes are lost.',
-    goBackAndSave: 'Go back and save',
-    continueWithoutSaving: 'Continue without saving',
-  },
   setupSteps: {
     finish: 'Finish',
     review: 'Review',
@@ -350,24 +306,6 @@ export const omsOnboardingCopy = {
       },
       skipped: 'Marked as not needed.',
       unknown: 'Could not check this right now.',
-    },
-    shipping: {
-      title: 'Shipping',
-      on: (withCarrier: number, total: number): string =>
-        `Labels are bought when a parcel is accepted, for ${String(withCarrier)} of ${String(total)} delivery methods.`,
-      off: (withCarrier: number, total: number): string =>
-        `${String(withCarrier)} of ${String(total)} delivery methods go to a carrier. You buy each label yourself.`,
-      none: 'No delivery method goes to a carrier yet. You buy each label yourself.',
-      unknown: 'Could not check this right now.',
-      change: 'Change',
-      stop: 'Stop buying labels',
-      start: 'Buy labels automatically',
-      stopTitle: 'Stop buying labels automatically?',
-      stopBody:
-        'Parcels accepted from now on reach the pack bench without a label. Labels already bought stay. Your routing and default parcel are kept.',
-      stopCancel: 'Keep buying',
-      stopping: 'Stopping…',
-      stopFailedTitle: 'Could not stop buying labels',
     },
     addPackerDialogBody: 'They sign in at the pack bench with this login.',
     closeDialog: 'Close',

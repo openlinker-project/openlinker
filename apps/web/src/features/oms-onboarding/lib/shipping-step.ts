@@ -19,7 +19,6 @@ import {
   type ParcelProfileDraft,
 } from '../../mappings';
 import type { AutoDispatchSettings } from './config-merge';
-import { omsOnboardingCopy as COPY } from './oms-onboarding.copy';
 
 export interface AutoDispatchDraft {
   readonly draft: ParcelProfileDraft;
@@ -43,11 +42,18 @@ export function draftFromAutoDispatch(saved: AutoDispatchSettings | null): AutoD
   };
 }
 
-/** First problem with the form, or `null` when it can be saved. */
-export function validateAutoDispatchDraft({ draft, customTemplate }: AutoDispatchDraft): string | null {
+/**
+ * First problem with the form, or `null` when it can be saved. The missing
+ * weight sentence is passed in, in the caller's language, so this stays a pure
+ * rule with no copy of its own.
+ */
+export function validateAutoDispatchDraft(
+  { draft, customTemplate }: AutoDispatchDraft,
+  weightRequiredMessage: string
+): string | null {
   const problem = validateDraft(draft, { customTemplate });
   if (problem !== null) return problem;
-  return draft.weightKg.trim() === '' ? COPY.shippingStep.weightRequired : null;
+  return draft.weightKg.trim() === '' ? weightRequiredMessage : null;
 }
 
 /** The settings a valid form saves, switched on. */

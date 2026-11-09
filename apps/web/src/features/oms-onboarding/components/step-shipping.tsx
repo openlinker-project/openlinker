@@ -37,6 +37,7 @@ import {
   type ParcelProfileDraft,
 } from '../../mappings';
 import type { AutoDispatchSettings } from '../lib/config-merge';
+import { useShippingStepCopy } from '../hooks/use-shipping-setup-copy';
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
 import { WIZARD_STEPS } from '../lib/onboarding-state';
 import {
@@ -137,6 +138,7 @@ function SourceRow({
   readonly onToggle: () => void;
   readonly onDirtyChange: (sourceId: string, dirty: boolean) => void;
 }): ReactElement {
+  const step = useShippingStepCopy();
   const status = coverage?.status ?? 'loading';
   const queryClient = useQueryClient();
 
@@ -146,7 +148,7 @@ function SourceRow({
         <div className="oms-onboarding__ship-source-row">
           <span className="oms-onboarding__ship-source-text">
             <span className="oms-onboarding__ship-source-name">{source.name}</span>
-            <span className="oms-onboarding__ship-source-detail">{COPY.shippingStep.loadFailed}</span>
+            <span className="oms-onboarding__ship-source-detail">{step.loadFailed}</span>
           </span>
           <Button
             type="button"
@@ -156,7 +158,7 @@ function SourceRow({
             // The mappings feature keys every read of a connection under ['mappings', id].
             onClick={() => void queryClient.invalidateQueries({ queryKey: ['mappings', source.id] })}
           >
-            {COPY.shippingStep.retry}
+            {step.retry}
           </Button>
         </div>
       </li>
@@ -169,10 +171,10 @@ function SourceRow({
         <div className="oms-onboarding__ship-source-row">
           <span className="oms-onboarding__ship-source-text">
             <span className="oms-onboarding__ship-source-name">{source.name}</span>
-            <span className="oms-onboarding__ship-source-detail">{COPY.shippingStep.cannotList}</span>
+            <span className="oms-onboarding__ship-source-detail">{step.cannotList}</span>
           </span>
           <StatusBadge tone="neutral" compact>
-            {COPY.shippingStep.badge.noLabels}
+            {step.badge.noLabels}
           </StatusBadge>
         </div>
       </li>
@@ -183,10 +185,10 @@ function SourceRow({
   const badge = coverage !== undefined && status === 'ready' ? coverageBadge(coverage) : null;
   const detail =
     status === 'loading' || coverage === undefined
-      ? COPY.shippingStep.checking
+      ? step.checking
       : status === 'unknown'
-        ? COPY.shippingStep.coverageUnknown
-        : COPY.shippingStep.coverage(coverage.withCarrier, coverage.total);
+        ? step.coverageUnknown
+        : step.coverage(coverage.withCarrier, coverage.total);
 
   return (
     <li
@@ -199,7 +201,7 @@ function SourceRow({
         className="oms-onboarding__ship-source-row oms-onboarding__ship-source-toggle"
         aria-expanded={open}
         aria-controls={bodyId}
-        aria-label={COPY.shippingStep.expand(source.name)}
+        aria-label={step.expand(source.name)}
         data-testid={`btn-shipping-source-${source.id}`}
         onClick={onToggle}
       >
@@ -209,7 +211,7 @@ function SourceRow({
         </span>
         {badge === null ? <span /> : (
           <StatusBadge tone={BADGE_TONE[badge]} compact withDot={badge !== 'todo'}>
-            {COPY.shippingStep.badge[badge]}
+            {step.badge[badge]}
           </StatusBadge>
         )}
         <span className="oms-onboarding__ship-source-chev" aria-hidden="true">
@@ -231,6 +233,7 @@ function SourceRow({
 
 export function StepShipping(props: StepShippingProps): ReactElement {
   const { sources, coverage, saved } = props;
+  const step = useShippingStepCopy();
 
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const [mounted, setMounted] = useState<ReadonlySet<string>>(() => new Set());
@@ -266,7 +269,7 @@ export function StepShipping(props: StepShippingProps): ReactElement {
 
   const finish = (): void => {
     if (effectiveChoice === 'yes') {
-      const problem = validateAutoDispatchDraft(form);
+      const problem = validateAutoDispatchDraft(form, step.weightRequired);
       if (problem !== null) {
         setError(problem);
         return;
@@ -312,7 +315,7 @@ export function StepShipping(props: StepShippingProps): ReactElement {
   return (
     <StepPanel
       step={WIZARD_STEPS.shipping}
-      why={COPY.shippingStep.why}
+      why={step.why}
       onBack={props.onBack}
       next={
         <Button
@@ -324,36 +327,36 @@ export function StepShipping(props: StepShippingProps): ReactElement {
           onClick={() => (dirtySource === undefined ? finish() : setLeaving(true))}
         >
           {continueBusy
-            ? COPY.shippingStep.saving
+            ? step.saving
             : effectiveChoice === 'yes'
-              ? COPY.shippingStep.saveAndContinue
+              ? step.saveAndContinue
               : COPY.continue}
         </Button>
       }
     >
       <Part
         n={1}
-        title={COPY.shippingStep.routesTitle}
-        lead={COPY.shippingStep.routesLead}
+        title={step.routesTitle}
+        lead={step.routesLead}
         done={totals.settled && totals.total > 0 && totals.withCarrier >= totals.total}
       >
         {props.hasCarrier ? null : (
           <Alert
             tone="info"
-            title={COPY.shippingStep.noCarrierTitle}
+            title={step.noCarrierTitle}
             data-testid="shipping-no-carrier"
             action={
               <Link className="button button--secondary button--sm" to={CONNECT_CARRIER_PATH}>
-                {COPY.shippingStep.connectCarrier}
+                {step.connectCarrier}
               </Link>
             }
           >
-            {COPY.shippingStep.noCarrierBody}
+            {step.noCarrierBody}
           </Alert>
         )}
         {sources.length === 0 ? (
           <p className="muted-text" data-testid="shipping-no-sources">
-            {COPY.shippingStep.noSourcesBody}
+            {step.noSourcesBody}
           </p>
         ) : (
           <ul className="oms-onboarding__ship-sources">
@@ -374,17 +377,17 @@ export function StepShipping(props: StepShippingProps): ReactElement {
 
       <Part
         n={2}
-        title={COPY.shippingStep.autoTitle}
+        title={step.autoTitle}
         locked={!unlocked}
         lead={
           !totals.settled
-            ? COPY.shippingStep.checking
+            ? step.checking
             : unlocked
-              ? COPY.shippingStep.autoLead(totals.withCarrier, totals.total)
-              : COPY.shippingStep.autoLocked
+              ? step.autoLead(totals.withCarrier, totals.total)
+              : step.autoLocked
         }
       >
-        <div className="dd-choices" role="radiogroup" aria-label={COPY.shippingStep.autoGroupLabel}>
+        <div className="dd-choices" role="radiogroup" aria-label={step.autoGroupLabel}>
           <label className={effectiveChoice === 'no' && unlocked ? 'dd-choice dd-choice--on' : 'dd-choice'}>
             <input
               type="radio"
@@ -399,8 +402,8 @@ export function StepShipping(props: StepShippingProps): ReactElement {
               }}
             />
             <span className="dd-choice__body">
-              <span className="dd-choice__title">{COPY.shippingStep.noTitle}</span>
-              <span className="dd-choice__text">{COPY.shippingStep.noBody}</span>
+              <span className="dd-choice__title">{step.noTitle}</span>
+              <span className="dd-choice__text">{step.noBody}</span>
             </span>
           </label>
           <label className={effectiveChoice === 'yes' ? 'dd-choice dd-choice--on' : 'dd-choice'}>
@@ -417,8 +420,8 @@ export function StepShipping(props: StepShippingProps): ReactElement {
               }}
             />
             <span className="dd-choice__body">
-              <span className="dd-choice__title">{COPY.shippingStep.yesTitle}</span>
-              <span className="dd-choice__text">{COPY.shippingStep.yesBody}</span>
+              <span className="dd-choice__title">{step.yesTitle}</span>
+              <span className="dd-choice__text">{step.yesBody}</span>
             </span>
           </label>
         </div>
@@ -426,14 +429,14 @@ export function StepShipping(props: StepShippingProps): ReactElement {
         {effectiveChoice === 'yes' ? (
           <div className="oms-onboarding__ship-defaults" data-testid="shipping-defaults">
             <div className="oms-onboarding__ship-defaults-head">
-              <h4>{COPY.shippingStep.defaultsTitle}</h4>
-              <p className="muted-text">{COPY.shippingStep.defaultsLead}</p>
+              <h4>{step.defaultsTitle}</h4>
+              <p className="muted-text">{step.defaultsLead}</p>
             </div>
             <ParcelProfileForm
               draft={form.draft}
               customTemplate={form.customTemplate}
               namePrefix="autoDispatch"
-              weightDescription={COPY.shippingStep.weightDescription}
+              weightDescription={step.weightDescription}
               disabled={controlsDisabled}
               onChange={(draft: ParcelProfileDraft, customTemplate: boolean) => {
                 setForm({ draft, customTemplate });
@@ -446,14 +449,14 @@ export function StepShipping(props: StepShippingProps): ReactElement {
               </p>
             )}
             <p className="oms-onboarding__ship-summary">
-              {COPY.shippingStep.fromNow(totals.withCarrier, parcelSummary === null ? null : parcelSummary.toLowerCase())}
+              {step.fromNow(totals.withCarrier, parcelSummary === null ? null : parcelSummary.toLowerCase())}
             </p>
           </div>
         ) : null}
       </Part>
 
       {props.saveError === null ? null : (
-        <Alert tone="error" title={COPY.shippingStep.saveFailedTitle}>
+        <Alert tone="error" title={step.saveFailedTitle}>
           {props.saveError.message}
         </Alert>
       )}
@@ -469,10 +472,10 @@ export function StepShipping(props: StepShippingProps): ReactElement {
             setOpen((previous) => new Set(previous).add(id));
           }
         }}
-        title={COPY.shippingStep.unsavedTitle(dirtySource?.name ?? '')}
-        description={COPY.shippingStep.unsavedBody}
-        cancelLabel={COPY.shippingStep.goBackAndSave}
-        confirmLabel={COPY.shippingStep.continueWithoutSaving}
+        title={step.unsavedTitle(dirtySource?.name ?? '')}
+        description={step.unsavedBody}
+        cancelLabel={step.goBackAndSave}
+        confirmLabel={step.continueWithoutSaving}
         initialFocus="cancel"
         onConfirm={() => {
           setLeaving(false);

@@ -15,7 +15,11 @@ import type { Connection } from '../../connections';
 import { PARCEL_COPY } from '../../mappings';
 import type * as MappingsModule from '../../mappings';
 import { StepShipping, type StepShippingProps } from '../components/step-shipping';
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { shippingStepCopyIn } from '../hooks/use-shipping-setup-copy';
+
+// The step renders in English under test, so its sentences are read from the
+// English locale rather than restated here.
+const STEP = shippingStepCopyIn('en');
 
 // The routing editor is the mappings feature's own and is specified there; here
 // it only needs to report that it holds an unsaved change.
@@ -82,14 +86,14 @@ describe('StepShipping', () => {
     expect(screen.getByTestId('shipping-part-2')).toHaveAttribute('data-locked', 'true');
     expect(screen.getByTestId('radio-auto-dispatch-no')).toBeChecked();
     expect(screen.getByTestId('radio-auto-dispatch-yes')).toBeDisabled();
-    expect(screen.getByText(COPY.shippingStep.autoLocked)).toBeInTheDocument();
+    expect(screen.getByText(STEP.autoLocked)).toBeInTheDocument();
   });
 
   it('should stay locked when no carrier is connected, and link to connecting one', () => {
     renderWithProviders(<StepShipping {...baseProps({ hasCarrier: false })} />);
 
     expect(screen.getByTestId('shipping-part-2')).toHaveAttribute('data-locked', 'true');
-    expect(screen.getByRole('link', { name: COPY.shippingStep.connectCarrier })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: STEP.connectCarrier })).toHaveAttribute(
       'href',
       '/connections/new?from=oms-setup'
     );
@@ -151,7 +155,7 @@ describe('StepShipping', () => {
 
     fireEvent.click(screen.getByTestId('radio-auto-dispatch-yes'));
     fireEvent.click(screen.getByTestId('btn-continue-shipping'));
-    expect(screen.getByTestId('shipping-defaults-error')).toHaveTextContent(COPY.shippingStep.weightRequired);
+    expect(screen.getByTestId('shipping-defaults-error')).toHaveTextContent(STEP.weightRequired);
 
     type(PARCEL_COPY.weightLabel, '0');
     fireEvent.click(screen.getByTestId('btn-continue-shipping'));
@@ -191,7 +195,7 @@ describe('StepShipping', () => {
       />
     );
 
-    expect(screen.getByTestId(`shipping-source-${presta.id}`)).toHaveTextContent(COPY.shippingStep.cannotList);
+    expect(screen.getByTestId(`shipping-source-${presta.id}`)).toHaveTextContent(STEP.cannotList);
     expect(screen.queryByTestId(`btn-shipping-source-${presta.id}`)).not.toBeInTheDocument();
     expect(screen.getByTestId(`btn-shipping-source-${ALLEGRO.id}`)).toBeInTheDocument();
   });
@@ -207,8 +211,8 @@ describe('StepShipping', () => {
     );
 
     const row = screen.getByTestId(`shipping-source-${ALLEGRO.id}`);
-    expect(row).toHaveTextContent(COPY.shippingStep.loadFailed);
-    expect(row).not.toHaveTextContent(COPY.shippingStep.cannotList);
+    expect(row).toHaveTextContent(STEP.loadFailed);
+    expect(row).not.toHaveTextContent(STEP.cannotList);
     expect(screen.getByTestId(`btn-shipping-source-retry-${ALLEGRO.id}`)).toBeInTheDocument();
   });
 
@@ -216,8 +220,8 @@ describe('StepShipping', () => {
     renderWithProviders(<StepShipping {...baseProps()} />);
 
     const row = screen.getByTestId(`shipping-source-${ALLEGRO.id}`);
-    expect(row).toHaveTextContent(COPY.shippingStep.coverage(2, 5));
-    expect(row).toHaveTextContent(COPY.shippingStep.badge.partly);
+    expect(row).toHaveTextContent(STEP.coverage(2, 5));
+    expect(row).toHaveTextContent(STEP.badge.partly);
   });
 
   it('should ask before discarding unsaved routing, and continue only when told to', () => {
@@ -228,10 +232,10 @@ describe('StepShipping', () => {
     fireEvent.click(screen.getByTestId(`routing-${ALLEGRO.id}`));
     fireEvent.click(screen.getByTestId('btn-continue-shipping'));
 
-    expect(screen.getByText(COPY.shippingStep.unsavedTitle('Allegro'))).toBeInTheDocument();
+    expect(screen.getByText(STEP.unsavedTitle('Allegro'))).toBeInTheDocument();
     expect(onContinue).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('button', { name: COPY.shippingStep.continueWithoutSaving }));
+    fireEvent.click(screen.getByRole('button', { name: STEP.continueWithoutSaving }));
     expect(onContinue).toHaveBeenCalledTimes(1);
   });
 
@@ -242,7 +246,7 @@ describe('StepShipping', () => {
     fireEvent.click(screen.getByTestId(`btn-shipping-source-${ALLEGRO.id}`));
     fireEvent.click(screen.getByTestId(`routing-${ALLEGRO.id}`));
     fireEvent.click(screen.getByTestId('btn-continue-shipping'));
-    fireEvent.click(screen.getByRole('button', { name: COPY.shippingStep.goBackAndSave }));
+    fireEvent.click(screen.getByRole('button', { name: STEP.goBackAndSave }));
 
     expect(onContinue).not.toHaveBeenCalled();
     expect(screen.getByTestId(`btn-shipping-source-${ALLEGRO.id}`)).toHaveAttribute('aria-expanded', 'true');

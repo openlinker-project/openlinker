@@ -13,7 +13,9 @@ import {
   type PackingStatusProps,
   type PackingStatusShipping,
 } from '../components/packing-status';
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { shippingStatusCopyIn } from '../hooks/use-shipping-setup-copy';
+
+const SHIPPING = shippingStatusCopyIn('en');
 
 function shipping(overrides: Partial<PackingStatusShipping> = {}): PackingStatusShipping {
   return {
@@ -86,13 +88,13 @@ describe('PackingStatus', () => {
     const onStop = vi.fn(() => Promise.resolve());
     renderWithProviders(<PackingStatus {...baseProps({ shipping: shipping({ onStop }) })} />);
 
-    expect(screen.getByTestId('setup-status-list')).toHaveTextContent(COPY.status.shipping.on(4, 6));
+    expect(screen.getByTestId('setup-status-list')).toHaveTextContent(SHIPPING.on(4, 6));
     fireEvent.click(screen.getByTestId('btn-shipping-stop'));
     expect(onStop).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('button', { name: COPY.status.shipping.stop }));
+    fireEvent.click(screen.getByRole('button', { name: SHIPPING.stop }));
     expect(onStop).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(screen.queryByText(COPY.status.shipping.stopTitle)).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText(SHIPPING.stopTitle)).not.toBeInTheDocument());
   });
 
   it('should offer to buy labels automatically when it is off', () => {
@@ -101,7 +103,7 @@ describe('PackingStatus', () => {
       <PackingStatus {...baseProps({ shipping: shipping({ autoDispatchOn: false, onChange }) })} />
     );
 
-    expect(screen.getByTestId('setup-status-list')).toHaveTextContent(COPY.status.shipping.off(4, 6));
+    expect(screen.getByTestId('setup-status-list')).toHaveTextContent(SHIPPING.off(4, 6));
     expect(screen.queryByTestId('btn-shipping-stop')).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId('btn-shipping-start'));
     expect(onChange).toHaveBeenCalledTimes(1);

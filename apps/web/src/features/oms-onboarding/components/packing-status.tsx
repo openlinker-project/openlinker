@@ -37,6 +37,11 @@ import {
   describeSetupStep,
   type SetupStepKey,
 } from '../lib/setup-steps';
+import {
+  useShippingStatusCopy,
+  useShippingStepCopy,
+  type ShippingStatusCopy,
+} from '../hooks/use-shipping-setup-copy';
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
 import type { ShippingCoverageTotals } from '../lib/shipping-coverage';
 import { AddPackerDialog } from './add-packer-dialog';
@@ -54,13 +59,17 @@ export interface PackingStatusShipping {
   readonly onStop: () => Promise<unknown>;
 }
 
-function shippingDetail(shipping: PackingStatusShipping): string {
+function shippingDetail(
+  shipping: PackingStatusShipping,
+  copy: ShippingStatusCopy,
+  checking: string
+): string {
   const { totals, autoDispatchOn } = shipping;
-  if (!totals.settled) return COPY.shippingStep.checking;
-  if (totals.unknown && totals.total === 0) return COPY.status.shipping.unknown;
-  if (autoDispatchOn && totals.withCarrier > 0) return COPY.status.shipping.on(totals.withCarrier, totals.total);
-  if (totals.withCarrier > 0) return COPY.status.shipping.off(totals.withCarrier, totals.total);
-  return COPY.status.shipping.none;
+  if (!totals.settled) return checking;
+  if (totals.unknown && totals.total === 0) return copy.unknown;
+  if (autoDispatchOn && totals.withCarrier > 0) return copy.on(totals.withCarrier, totals.total);
+  if (totals.withCarrier > 0) return copy.off(totals.withCarrier, totals.total);
+  return copy.none;
 }
 
 export interface PackingStatusProps {
@@ -93,6 +102,8 @@ export interface PackingStatusProps {
 }
 
 export function PackingStatus(props: PackingStatusProps): ReactElement {
+  const shippingCopy = useShippingStatusCopy();
+  const shippingStepCopy = useShippingStepCopy();
   const [addPackerOpen, setAddPackerOpen] = useState(false);
   const [stopLabelsOpen, setStopLabelsOpen] = useState(false);
   const rows: SetupChecklistRow[] = [
@@ -155,8 +166,8 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
     rows.push({
       key: 'labels',
       ok: shipping.autoDispatchOn || shipping.totals.withCarrier > 0,
-      title: COPY.status.shipping.title,
-      detail: shippingDetail(shipping),
+      title: shippingCopy.title,
+      detail: shippingDetail(shipping, shippingCopy, shippingStepCopy.checking),
       action: (
         <span className="oms-onboarding__actions">
           {shipping.autoDispatchOn ? (
@@ -168,7 +179,7 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
                 data-testid="btn-shipping-change"
                 onClick={shipping.onChange}
               >
-                {COPY.status.shipping.change}
+                {shippingCopy.change}
               </Button>
               <Button
                 type="button"
@@ -179,7 +190,7 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
                 title={props.demoReadOnly ? DEMO_READ_ONLY_ACTION_MESSAGE : undefined}
                 onClick={() => setStopLabelsOpen(true)}
               >
-                {COPY.status.shipping.stop}
+                {shippingCopy.stop}
               </Button>
             </>
           ) : (
@@ -190,7 +201,7 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
               data-testid="btn-shipping-start"
               onClick={shipping.onChange}
             >
-              {COPY.status.shipping.start}
+              {shippingCopy.start}
             </Button>
           )}
         </span>
@@ -313,17 +324,17 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
         <ConfirmDialog
           open={stopLabelsOpen}
           onOpenChange={setStopLabelsOpen}
-          title={COPY.status.shipping.stopTitle}
-          description={COPY.status.shipping.stopBody}
+          title={shippingCopy.stopTitle}
+          description={shippingCopy.stopBody}
           body={
             shipping.error === null ? undefined : (
-              <Alert tone="error" title={COPY.status.shipping.stopFailedTitle}>
+              <Alert tone="error" title={shippingCopy.stopFailedTitle}>
                 {shipping.error.message}
               </Alert>
             )
           }
-          cancelLabel={COPY.status.shipping.stopCancel}
-          confirmLabel={shipping.busy ? COPY.status.shipping.stopping : COPY.status.shipping.stop}
+          cancelLabel={shippingCopy.stopCancel}
+          confirmLabel={shipping.busy ? shippingCopy.stopping : shippingCopy.stop}
           isConfirming={shipping.busy}
           initialFocus="cancel"
           onConfirm={() => {
