@@ -32919,11 +32919,6 @@ legend.analytics-settings-dialog__label {
 .gift-tag__facts dd {
   margin: 0;
 }
-.gift-list__order {
-  display: inline-flex;
-  gap: var(--space-1);
-  margin-left: var(--space-2);
-}
 .gift-template-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
@@ -32937,28 +32932,106 @@ legend.analytics-settings-dialog__label {
   text-align: left;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md, 8px);
-  background: var(--surface);
+  background: var(--bg-surface);
   cursor: pointer;
 }
 .gift-template-card:hover,
 .gift-template-card:focus-visible {
-  border-color: var(--accent, currentColor);
+  border-color: var(--accent-primary);
 }
 .gift-composer {
   display: grid;
-  gap: var(--space-5);
-  max-width: 48rem;
+  gap: var(--space-4);
 }
-.gift-composer__group {
+.gift-section {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--space-3);
   margin: 0;
   padding: 0;
   border: 0;
+  min-width: 0;
 }
-.gift-composer__group > legend {
+.gift-section__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-3);
+  align-items: start;
+}
+.gift-section__hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.gift-section__picked,
+.gift-detail__title,
+.gift-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0;
+}
+.gift-product-card {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-muted);
+}
+.gift-product-card__text {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+.gift-promotion,
+.gift-state,
+.gift-given {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.gift-promotion__title,
+.gift-product {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  min-width: 0;
+}
+.gift-product__name {
+  overflow-wrap: anywhere;
+}
+.gift-given__bar {
+  display: block;
+  height: 4px;
+  min-width: 4rem;
+  border-radius: var(--radius-pill);
+  background: var(--bg-strong);
+  overflow: hidden;
+}
+.gift-given__fill {
+  display: block;
+  height: 100%;
+  background: var(--accent-primary);
+}
+.gift-card-summary {
+  display: grid;
+  gap: var(--space-2);
+}
+.gift-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+.gift-results dt {
+  font-size: var(--font-size-xs, 0.75rem);
+  color: var(--text-muted);
+}
+.gift-results dd {
+  margin: 0;
   font-weight: 600;
-  margin-bottom: var(--space-2);
 }
 .gift-composer__actions,
 .gift-composer__resume,

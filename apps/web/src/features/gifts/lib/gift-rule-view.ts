@@ -50,3 +50,31 @@ export function movedOrder(
 export function canExtend(rule: GiftRule): boolean {
   return rule.status === 'ended';
 }
+
+export const RULE_STATE_TONE: Record<GiftRuleStateKey, 'success' | 'info' | 'warning' | 'neutral'> = {
+  active: 'success',
+  scheduled: 'info',
+  pausedStock: 'warning',
+  pausedLimit: 'warning',
+  draft: 'neutral',
+  ended: 'neutral',
+};
+
+export interface GiftRuleCounts {
+  total: number;
+  active: number;
+  pausedStock: number;
+  pausedLimit: number;
+}
+
+/** The numbers the list's first two cards show. */
+export function countRules(rules: readonly GiftRule[]): GiftRuleCounts {
+  const counts: GiftRuleCounts = { total: rules.length, active: 0, pausedStock: 0, pausedLimit: 0 };
+  for (const rule of rules) {
+    const state = ruleStateKey(rule);
+    if (state === 'active') counts.active += 1;
+    else if (state === 'pausedStock') counts.pausedStock += 1;
+    else if (state === 'pausedLimit') counts.pausedLimit += 1;
+  }
+  return counts;
+}

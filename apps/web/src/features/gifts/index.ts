@@ -6,6 +6,7 @@
  * should have.
  */
 export { GiftPromotionsList } from './components/gift-promotions-list';
+export { GiftPromotionsKpis } from './components/gift-promotions-kpis';
 export { GiftRuleComposer } from './components/gift-rule-composer';
 export { GiftRuleTemplateCards } from './components/gift-rule-template-cards';
 export { GiftLineTag } from './components/gift-line-tag';
@@ -23,6 +24,9 @@ export {
   useSaveGiftRuleMutation,
 } from './hooks/use-gift-rules';
 export { useVariantNames } from './hooks/use-variant-names';
+export { useGiftRuleReportQuery } from './hooks/use-gift-rule-report';
+export { countRules } from './lib/gift-rule-view';
+export { summariseGiftResults } from './lib/gift-rule-stats';
 export { giftsQueryKeys } from './api/gifts.query-keys';
 export {
   GiftRuleKindValues,

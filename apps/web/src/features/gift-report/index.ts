@@ -14,5 +14,6 @@ export type {
   GiftBundleReport,
   GiftReport,
   GiftReportFilters,
+  GiftReportGroup,
   GiftReportSource,
 } from './api/gift-report.types';
