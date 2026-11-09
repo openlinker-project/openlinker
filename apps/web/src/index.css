@@ -4620,7 +4620,8 @@ a.delivery-rider-banner__button:focus-visible {
 
 .data-table__cell--hide-below-480,
 .data-table__cell--hide-below-768,
-.data-table__cell--hide-below-1024 {
+.data-table__cell--hide-below-1024,
+.data-table__cell--hide-below-1280 {
   /* Visibility toggled below */
 }
 
@@ -4638,6 +4639,14 @@ a.delivery-rider-banner__button:focus-visible {
 
 @media (max-width: 1023.98px) {
   .data-table__cell--hide-below-1024 {
+    display: none;
+  }
+}
+
+/* For a secondary column on a wide table: between 1024 and 1280 the sidebar
+   leaves ~720-980px of content, too little for seven columns (#4016). */
+@media (max-width: 1279.98px) {
+  .data-table__cell--hide-below-1280 {
     display: none;
   }
 }
@@ -16901,6 +16910,8 @@ input.bulk-dispatch__num--wide {
 .bulk-chip--warning .bulk-chip__dot { background: var(--status-warning); }
 .bulk-chip--neutral { background: var(--bg-muted); border-color: var(--border-default); color: var(--text-muted); }
 .bulk-chip--neutral .bulk-chip__dot { background: var(--text-disabled); }
+.bulk-chip--info { background: var(--status-info-soft); border-color: var(--status-info-border); color: var(--status-info-fg); }
+.bulk-chip--info .bulk-chip__dot { background: var(--status-info); }
 button.bulk-chip { cursor: pointer; }
 button.bulk-chip:hover { filter: brightness(0.97); }
 button.bulk-chip:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
@@ -17102,6 +17113,32 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .bulk-editor__prov--distinct { color: var(--text-secondary); background: var(--bg-muted); }
 .bulk-editor__prov--policy { color: var(--status-info-fg); background: var(--status-info-soft); }
 .bulk-editor__prov--defaults { color: var(--text-muted); background: var(--bg-muted); }
+.bulk-editor__prov--rule { color: var(--status-info-fg); background: var(--status-info-soft); }
+.bulk-editor__prov--rejected { color: var(--status-warning-fg); background: var(--status-warning-soft); }
+/* What the connection's attribute rules do with a parameter (#3995). The badge
+   carries the ordinary case; a line appears only for an exception. */
+.bulk-editor__prov--rule { cursor: help; }
+.bulk-editor__prov--rule:focus-visible, .rules-chip:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.bulk-editor__rule-hint { margin: 4px 0 0; font-size: 12px; line-height: 1.45; color: var(--text-muted); }
+.bulk-editor__rule-hint--warn { color: var(--status-warning-fg); }
+.bulk-editor__rule-hint--warn::before { content: '\25B2'; font-size: 9px; margin-right: 6px; vertical-align: 1px; }
+.bulk-editor__rules-line {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  margin: 0 0 var(--space-3);
+  padding: 6px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.bulk-editor__vparam { display: grid; align-content: start; min-width: 0; }
+.bulk-editor__rules-line a { font-weight: 500; }
+.bulk-editor__rules-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--status-info); align-self: center; }
 /* Grouping-param per-variant override consequence chip (#1741). */
 .bulk-editor__prov--split { color: var(--status-warning-fg); background: var(--status-warning-soft); }
 
@@ -18627,6 +18664,164 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin: var(--space-2) 0 0;
   font-size: 0.6875rem;
   line-height: 1.5;
+}
+
+/* ── Order payment panel (#3963) ──
+   One headline, a quiet progress line, one word per shop. The status words use
+   a dot plus text, so colour is never the only signal. */
+.order-payment-panel { display: grid; gap: var(--space-3); }
+.order-payment-panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+}
+.order-payment-panel__lead { display: grid; gap: 2px; min-width: 0; }
+.order-payment-panel__headline {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.2;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.order-payment-panel__headline--ok { color: var(--status-success-fg); }
+.order-payment-panel__headline--warn { color: var(--status-warning-fg); }
+.order-payment-panel__meta { margin: 0; font-size: 0.8125rem; color: var(--text-secondary); }
+.order-payment-panel__progress { display: grid; gap: 6px; min-width: 180px; }
+.order-payment-panel__progress-label { font-size: 0.75rem; color: var(--text-secondary); text-align: right; }
+.order-payment-panel__track {
+  display: block;
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--bg-surface-muted);
+  overflow: hidden;
+}
+.order-payment-panel__fill { display: block; height: 100%; border-radius: inherit; background: var(--status-info-fg); }
+.order-payment-panel__fill--done { background: var(--status-success-fg); }
+.order-payment-panel__shops {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  border-top: 1px solid var(--border-subtle);
+}
+.order-payment-panel__shop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.order-payment-panel__state {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1) var(--space-3);
+}
+.order-payment-panel__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.order-payment-panel__dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.order-payment-panel__status--ok .order-payment-panel__dot { background: var(--status-success-fg); }
+.order-payment-panel__status--busy .order-payment-panel__dot {
+  background: var(--status-info-fg);
+  animation: order-payment-pulse 1.6s ease-in-out infinite;
+}
+.order-payment-panel__status--warn { color: var(--status-warning-fg); }
+.order-payment-panel__status--warn .order-payment-panel__dot { background: var(--status-warning-fg); }
+.order-payment-panel__status--muted { color: var(--text-secondary); }
+.order-payment-panel__status--muted .order-payment-panel__dot { box-shadow: inset 0 0 0 1.5px var(--text-muted); }
+.order-payment-panel__helper { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
+.order-payment-panel__foot { margin: 0; font-size: 0.75rem; color: var(--text-muted); }
+.order-payment-panel__alert-actions { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); }
+@keyframes order-payment-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) {
+  .order-payment-panel__status--busy .order-payment-panel__dot { animation: none; }
+}
+@media (max-width: 560px) {
+  .order-payment-panel__shop { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
+  .order-payment-panel__state { justify-content: flex-start; }
+  .order-payment-panel__progress { min-width: 0; width: 100%; }
+  .order-payment-panel__progress-label { text-align: left; }
+}
+
+/* ── Payment not sent to shop: list marker + bulk bar (#3963) ── */
+.order-payment-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--status-warning-fg);
+}
+.order-payment-marker__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--status-warning-fg); flex: none; }
+.order-payment-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--status-warning-border);
+  border-radius: var(--radius-md);
+  background: var(--status-warning-soft);
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+}
+.order-payment-bulk__actions { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); }
+
+/* ── "When the buyer pays later" connection setting (#3963) ── */
+.payment-writeback-section__options { border: 0; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.payment-writeback-section__option {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  cursor: pointer;
+}
+.payment-writeback-section__option--on { border-color: var(--accent-primary); }
+.payment-writeback-section__option input { margin: 3px 0 0; accent-color: var(--accent-primary); }
+.payment-writeback-section__option:has(input:focus-visible) { box-shadow: var(--shadow-focus); }
+.payment-writeback-section__body { display: grid; gap: 4px; min-width: 0; }
+.payment-writeback-section__title {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.payment-writeback-section__rec { font-size: 0.75rem; font-weight: 500; color: var(--status-success-fg); }
+.payment-writeback-section__hint { font-size: 0.8125rem; color: var(--text-secondary); }
+.payment-writeback-section__field {
+  display: grid;
+  gap: 4px;
+  margin-top: var(--space-2);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.payment-writeback-section__field .select { max-width: 320px; }
+.payment-writeback-section__facts {
+  margin: var(--space-3) 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
 }
 
 /* Delivery panel */
@@ -34560,6 +34755,290 @@ legend.analytics-settings-dialog__label {
   font-size: 0.75rem;
 }
 
+/* ── Changed by the shop (#3961) ───────────────────────────────────────────
+   A message from outside OpenLinker, like the buyer note beside it: a neutral
+   surface whose LEFT EDGE carries the state, never a whole-card wash. The
+   quantity change is the one strong element; what happens next is a short
+   checklist; the actions sit in their own footer. Mockup:
+   docs/plans/mockups/source-quantity-change.html. */
+.order-source-change {
+  --osc-edge: var(--border-strong);
+  display: grid;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-left: 4px solid var(--osc-edge);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+}
+.order-source-change[data-state='applied'] { --osc-edge: var(--status-success); }
+.order-source-change[data-state='decision'] { --osc-edge: var(--status-warning); }
+.order-source-change[data-state='shipped'] { --osc-edge: var(--status-info); }
+.order-source-change[data-state='failed'] { --osc-edge: var(--status-error); }
+
+.order-source-change__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.order-source-change__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.order-source-change__title svg {
+  color: var(--osc-edge);
+}
+.order-source-change__when {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.order-source-change__status {
+  margin-left: auto;
+}
+
+/* What changed on the left, what happens next on the right. */
+.order-source-change__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 22rem);
+}
+.order-source-change__lines {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  display: grid;
+  align-content: center;
+}
+.order-source-change__line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-block: var(--space-2);
+}
+.order-source-change__line + .order-source-change__line {
+  border-top: 1px dashed var(--border-subtle);
+}
+.order-source-change__item {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.order-source-change__name {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.order-source-change__sku {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.order-source-change__qty {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+.order-source-change__was {
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.order-source-change__arrow {
+  color: var(--text-muted);
+}
+.order-source-change__now {
+  min-width: 2ch;
+  font-size: 1.75rem;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+.order-source-change__now[data-removed] {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--status-error-fg);
+}
+
+.order-source-change__effects {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  display: grid;
+  align-content: center;
+  gap: var(--space-2);
+  border-left: 1px solid var(--border-subtle);
+  background: var(--bg-surface-muted);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.order-source-change__effect {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2);
+  color: var(--text-primary);
+}
+.order-source-change__effect[data-mark='none'] {
+  color: var(--text-secondary);
+}
+.order-source-change__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-top: -1px;
+  border-radius: 9999px;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  box-shadow: inset 0 0 0 1px var(--border-default);
+}
+.order-source-change__effect[data-mark='done'] .order-source-change__icon {
+  background: var(--status-success-soft);
+  color: var(--status-success-fg);
+  box-shadow: inset 0 0 0 1px var(--status-success-border);
+}
+.order-source-change__effect[data-mark='todo'] .order-source-change__icon {
+  background: var(--status-warning-soft);
+  color: var(--status-warning-fg);
+  box-shadow: inset 0 0 0 1px var(--status-warning-border);
+}
+
+.order-source-change__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+@media (max-width: 960px) {
+  .order-source-change__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .order-source-change__effects {
+    border-left: 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+}
+
+/* ── Bench: take out N (#3961) ─────────────────────────────────────────────
+   The bench's one hard signal while a box holds more than the order now asks
+   for. Read from arm's length: the count is the first thing the eye lands on,
+   the item and its codes come next so the packer picks the right unit, and the
+   confirm sits on its own row at touch size. Same edge language as the order
+   page's "Changed by the shop" card, at the bench's larger radius. */
+.bench-source-change__stack {
+  display: grid;
+  gap: var(--space-3);
+}
+.bench-source-change {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-4) var(--space-5);
+  padding: var(--space-5);
+  background: var(--bg-surface);
+  border: 1px solid var(--status-warning-border);
+  border-left: 6px solid var(--status-warning);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+}
+.bench-source-change__count {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+  width: 6rem;
+  min-height: 6rem;
+  border-radius: var(--radius-lg);
+  background: var(--status-warning-soft);
+  box-shadow: inset 0 0 0 1px var(--status-warning-border);
+  color: var(--status-warning-fg);
+}
+.bench-source-change__count-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.bench-source-change__count-value {
+  font-size: 3rem;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.bench-source-change__body {
+  display: grid;
+  align-content: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.bench-source-change__title {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.bench-source-change__ids {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.bench-source-change__text {
+  margin: var(--space-1) 0 0;
+  max-width: 60ch;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+  text-wrap: pretty;
+}
+.bench-source-change__foot {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.bench-source-change__action {
+  min-height: 2.75rem;
+  padding-inline: var(--space-5);
+}
+.bench-source-change__note {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+@media (max-width: 560px) {
+  .bench-source-change {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--space-4);
+  }
+  .bench-source-change__count {
+    width: auto;
+    min-height: 0;
+    grid-auto-flow: column;
+    justify-content: start;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+  }
+}
+
 .order-edit-totals-note {
   margin: 0;
   font-size: 0.75rem;
@@ -34651,3 +35130,631 @@ legend.analytics-settings-dialog__label {
   min-height: 44px;
   font-weight: 600;
 }
+
+/* ── Attribute rules panel, bulk wizard Review step (#3995) ──────────────────
+   One quiet surface: what the rules fill, as a coverage strip per parameter,
+   and under it only what needs the operator. The bar is the one loud element. */
+.rules-panel {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.rules-panel__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.rules-panel__heading { display: grid; gap: 2px; min-width: 0; }
+.rules-panel__title { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.35; color: var(--text-primary); }
+.rules-panel__lede { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-secondary); max-width: 72ch; }
+.rules-panel__manage { flex: none; font-size: 13px; font-weight: 500; white-space: nowrap; }
+
+.rules-panel__coverage { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.rules-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--bg-canvas);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.rules-pill--rejected { border-color: var(--status-warning-border); background: var(--status-warning-soft); }
+.rules-pill__name { font-weight: 500; }
+.rules-pill__bar { display: inline-flex; gap: 2px; width: 44px; height: 6px; }
+.rules-pill__seg { flex: 1 1 0; min-width: 0; border-radius: 2px; background: var(--border-default); }
+.rules-pill__seg--filled { background: var(--status-info); }
+.rules-pill__seg--rejected { background: var(--status-warning); }
+.rules-pill__count { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.rules-pill--rejected .rules-pill__count { color: var(--status-warning-fg); }
+
+.rules-panel__issues { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--border-default); }
+.rules-panel__issue {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+.rules-panel__issues .rules-panel__issue + .rules-panel__issue { border-top: 1px solid var(--border-default); }
+.rules-panel__issue-text { min-width: 0; flex: 1 1 auto; }
+.rules-panel__issues .rules-panel__issue-text::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--status-warning);
+  vertical-align: 2px;
+}
+.rules-panel__issue-where { flex: 0 1 auto; min-width: 0; color: var(--text-muted); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rules-panel__issue--failed {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--status-warning-soft);
+  color: var(--status-warning-fg);
+}
+.rules-panel__more { padding: var(--space-2) 0 0; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border-default); }
+
+/* The per-variant chip, with its value list on hover. */
+.rules-chip { cursor: default; }
+.rules-chip-tip { display: grid; grid-template-columns: auto auto; gap: 2px 12px; margin: 0; font-size: 12px; }
+.rules-chip-tip dt { color: var(--text-muted); }
+.rules-chip-tip dd { margin: 0; font-weight: 500; }
+.rules-chip-tip__rejected { color: var(--status-warning-fg); }
+
+@media (max-width: 640px) {
+  .rules-panel { padding: var(--space-3); }
+  .rules-panel__head { flex-direction: column; gap: var(--space-1); }
+  .rules-panel__issue { flex-wrap: wrap; }
+  .rules-panel__issue-where { flex-basis: 100%; order: 3; text-align: left; white-space: normal; padding-left: 14px; }
+}
+.bulk-editor__vparam:has(.bulk-editor__rule-hint--warn) .bulk-editor__input,
+.bulk-editor__vparam:has(.bulk-editor__rule-hint--warn) .combobox__control { border-color: var(--status-warning-border); }
+/* A field with a hint under it must not push its row-mate's input down (#3995). */
+.bulk-editor__platform-slot .category-parameters-step__group > * { align-self: start; }
+
+/* ── Insights: Connection health (#4016) ─────────────────────────────────
+   A fixed-layout table, so the platform, status and failed-jobs columns line
+   up from row to row whatever the connection name's length. The platform cell
+   hosts the shared `ConnectionChip`, whose name slide-out overflows to the
+   right on hover - the cell keeps `overflow: visible` so it is not clipped. */
+.conn-health {
+  container: conn-health / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.conn-health__summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.conn-health__sentence {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.health-strip {
+  display: flex;
+  gap: 3px;
+  height: 6px;
+}
+
+.health-strip__segment {
+  flex: 1 1 0;
+  min-width: 4px;
+  border-radius: 2px;
+  background: var(--status-success);
+}
+.health-strip__segment--attention { background: var(--status-warning); }
+.health-strip__segment--off { background: var(--border-strong); }
+.health-strip__segment--error { background: var(--status-error); }
+
+.health-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.health-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.health-legend__item::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-success);
+}
+.health-legend__item--attention::before { background: var(--status-warning); }
+.health-legend__item--off::before { background: var(--border-strong); }
+.health-legend__item--error::before { background: var(--status-error); }
+
+.conn-health__table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.conn-health__col-platform { width: 11.5rem; }
+.conn-health__col-status { width: 7.5rem; }
+.conn-health__col-failed { width: 9rem; }
+
+.conn-health__table th {
+  padding: var(--space-2) var(--space-3);
+  border-block: 1px solid var(--border-subtle);
+  background: var(--bg-surface-muted);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conn-health__table td {
+  height: 3rem;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+
+/* Hover only where there is a pointer: on touch a tap left the tinted
+   cells behind as stripes. */
+@media (hover: hover) {
+  .conn-health__row:hover td { background: var(--bg-surface-hover); }
+}
+
+.conn-health__table .conn-health__num { text-align: right; }
+
+.conn-health__name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.conn-health__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-success);
+  box-shadow: 0 0 0 3px var(--status-success-soft);
+}
+.conn-health__row--attention .conn-health__dot {
+  background: var(--status-warning);
+  box-shadow: 0 0 0 3px var(--status-warning-soft);
+}
+.conn-health__row--off .conn-health__dot {
+  background: var(--border-strong);
+  box-shadow: none;
+}
+
+.conn-health__name-text {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conn-health__platform { overflow: visible; }
+
+.conn-health__status { color: var(--text-secondary); }
+.conn-health__status--error,
+.conn-health__status--needs_reauth { color: var(--status-error-fg); font-weight: 500; }
+.conn-health__status--disabled,
+.conn-health__status--archived { color: var(--text-muted); }
+
+.conn-health__failed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px var(--space-2);
+  border: 1px solid var(--status-error-border);
+  border-radius: var(--radius-sm);
+  background: var(--status-error-soft);
+  color: var(--status-error-fg);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.conn-health__failed:hover { border-color: var(--status-error); }
+.conn-health__failed:focus-visible { box-shadow: var(--shadow-focus); outline: none; }
+.conn-health__failed svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.conn-health__none { color: var(--text-muted); }
+
+/* Narrow PANEL, not narrow window: on the Insights grid this panel is half
+   the page, so a viewport query left the four fixed columns squeezing the
+   name column to nothing at mid widths. Below ~620px of panel each row
+   becomes two lines - name and failed jobs, then platform and status. */
+@container conn-health (max-width: 620px) {
+  .conn-health__table,
+  .conn-health__table tbody { display: block; }
+  .conn-health__table thead,
+  .conn-health__table colgroup { display: none; }
+
+  .conn-health__row {
+    display: grid;
+    /* Failed jobs sits beside the name, never beside the chip: on touch the
+       chip shows the connection name statically and can grow to the full
+       width, so line two gets the whole row to itself. */
+    grid-template-columns: minmax(0, max-content) minmax(0, 1fr) auto;
+    grid-template-areas:
+      'name   name   failed'
+      'plat   status status';
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-3) var(--space-2);
+    border-bottom: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+  }
+
+  .conn-health__table .conn-health__row td {
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+
+  /* One tinted row instead of four tinted cells. */
+  @media (hover: hover) {
+    .conn-health__row:hover { background: var(--bg-surface-hover); }
+  }
+
+  .conn-health__cell-name { grid-area: name; min-width: 0; }
+  /* Indent under the name text, past the status dot and its gap. */
+  .conn-health__table .conn-health__row .conn-health__platform {
+    grid-area: plat;
+    min-width: 0;
+    padding-left: 20px;
+  }
+  .conn-health__status {
+    grid-area: status;
+    overflow: hidden;
+    font-size: 0.75rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .conn-health__row .conn-health__num { grid-area: failed; justify-self: end; }
+
+  .conn-health__row--healthy .conn-health__none,
+  .conn-health__row--off .conn-health__none { display: none; }
+}
+/* On touch the chip shows the connection name statically (no hover to
+   reveal it). Here the name already leads the row, so the chip would repeat
+   it and crowd the status out. It is hidden visually only: it stays the
+   link's accessible name. */
+@media (hover: none) {
+  .conn-health .connection-chip__reveal,
+  .sys-health .connection-chip__reveal {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* ── Diagnostics: Sync jobs (#4016) ──────────────────────────────────────
+   Labelled filters grouped on the left, a two-line job type, a clamped last
+   error with an in-place toggle, and a one-line poison-entries row when there
+   is nothing dead-lettered. */
+.sync-jobs-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-shell);
+}
+
+.sync-jobs-filters__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 11rem;
+  max-width: 14rem;
+  min-width: 0;
+}
+.sync-jobs-filters__field--wide { max-width: 18rem; }
+
+.sync-jobs-filters__field label {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.sync-jobs-filters__field .control { width: 100%; }
+
+/* A filter holding a value is tinted, so the operator can see at a glance
+   which ones are narrowing the list. */
+.sync-jobs-filters .control--active {
+  border-color: var(--accent-primary-border);
+  background-color: color-mix(in oklab, var(--accent-primary) 8%, var(--bg-surface));
+}
+
+@media (max-width: 767.98px) {
+  .sync-jobs-filters__field,
+  .sync-jobs-filters__field--wide {
+    flex-basis: 100%;
+    max-width: none;
+  }
+}
+
+/* Floors so a mid-width window scrolls the table sideways instead of
+   squeezing the job type and the error into a few characters. */
+.sync-jobs-table th { white-space: nowrap; }
+.sync-job-type__action { white-space: nowrap; }
+
+@media (max-width: 1279.98px) {
+  .sync-jobs-table th,
+  .sync-jobs-table td {
+    padding-inline: var(--space-3);
+  }
+}
+
+.sync-job-type {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-mono);
+}
+.sync-job-type__action {
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+/* A named type leads with its operator-facing name in the body face; the
+   code under it stays monospace. */
+.sync-job-type--named .sync-job-type__action {
+  font-family: var(--font-sans);
+  white-space: normal;
+}
+
+.sync-job-type__scope {
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+}
+
+.sync-job-error {
+  min-width: 8.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.sync-job-error__text {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--status-error-fg);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.sync-job-error__text--open {
+  display: block;
+  white-space: pre-wrap;
+  -webkit-line-clamp: unset;
+}
+.sync-job-error__toggle {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.75rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.sync-job-error__toggle:hover { color: var(--text-primary); }
+.sync-job-error__toggle:focus-visible {
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-focus);
+  outline: none;
+}
+
+.poison-entries {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.poison-entries__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.poison-entries__intro {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  max-width: 72ch;
+}
+.poison-entries__title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.poison-entries__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.poison-entries__none {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--status-success-fg);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+.poison-entries__none svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ── Insights: System health (#4016) ─────────────────────────────────────
+   Same visual language as Connection health: a summary sentence and strip,
+   then rows of dot, name and a status word on the right. A failure message
+   sits under the name and wraps instead of being squeezed beside a badge. */
+.sys-health__head {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.sys-health__checked {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.sys-health {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.sys-health__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sys-health__group-title {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-block: 1px solid var(--border-subtle);
+  background: var(--bg-surface-muted);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.sys-health__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sys-health__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.sys-health__row:last-child { border-bottom: 0; }
+
+@media (hover: hover) {
+  .sys-health__row:hover { background: var(--bg-surface-hover); }
+}
+
+.sys-health__dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--status-success);
+  box-shadow: 0 0 0 3px var(--status-success-soft);
+}
+.sys-health__row--warning .sys-health__dot {
+  background: var(--status-warning);
+  box-shadow: 0 0 0 3px var(--status-warning-soft);
+}
+.sys-health__row--error .sys-health__dot {
+  background: var(--status-error);
+  box-shadow: 0 0 0 3px var(--status-error-soft);
+}
+
+.sys-health__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sys-health__name-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.sys-health__name {
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.sys-health__message {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.sys-health__row--error .sys-health__message { color: var(--status-error-fg); }
+
+.sys-health__status {
+  color: var(--status-success-fg);
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+  line-height: 20px;
+}
+.sys-health__row--warning .sys-health__status { color: var(--status-warning-fg); }
+.sys-health__row--error .sys-health__status { color: var(--status-error-fg); }

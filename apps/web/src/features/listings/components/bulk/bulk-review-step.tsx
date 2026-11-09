@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { interpolate, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
 import { Alert, Button, CheckboxCell, Input, ProductThumbnail } from '../../../../shared/ui';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import type { StatusBadgeTone } from '../../../../shared/ui';
 import type { OfferBatchIssue, OfferBlockerDescriptor } from '../../../../shared/plugins';
 import type { Connection } from '../../../connections';
@@ -29,6 +30,7 @@ import {
   duplicateEanVariantIds,
   effectivePricingPolicy,
   effectiveStockPolicy,
+  submitCategoryIdOf,
 } from './bulk-policy';
 import type {
   BulkVariantRow,
@@ -47,6 +49,17 @@ import {
   type BlockerCopyContext,
   type ChipDescriptor,
 } from './bulk-blockers';
+import {
+  AttributeRulesPanel,
+  type ParameterCoverage,
+  type RejectedRuleValue,
+} from './attribute-rules-panel';
+import type { AttributeProjectionPreview } from '../../hooks/use-attribute-projection-preview';
+import {
+  listParameterNames,
+  summarizeProjection,
+  type ProjectionSummary,
+} from '../../lib/attribute-projection-summary';
 import {
   ReviewCategoryCell,
   describeProductCategory,
@@ -82,6 +95,11 @@ interface BulkReviewStepProps {
   ) => void;
   onApproveAll: () => void;
   onBack: () => void;
+  /**
+   * What the connection's attribute mappings and rules fill per variant
+   * (#3995). Absent for a destination that has no category parameters.
+   */
+  projection?: AttributeProjectionPreview;
   /**
    * Adopt the catalogue card the resolver set aside in favour of the mapping
    * (#3994). Single-variant products only; absent ⇒ the dialog offers no adopt.
@@ -136,6 +154,8 @@ function chipToneClass(tone: StatusBadgeTone): string {
     case 'warning':
     case 'review':
       return 'bulk-chip--warning';
+    case 'info':
+      return 'bulk-chip--info';
     default:
       return 'bulk-chip--neutral';
   }
@@ -189,6 +209,7 @@ export function BulkReviewStep({
   onSaveEditor,
   onApproveAll,
   onBack,
+  projection,
   onUseCardCategory,
   destinationResolvesCategoryAtSubmit = false,
 }: BulkReviewStepProps): ReactElement {
@@ -241,6 +262,68 @@ export function BulkReviewStep({
   const [pendingScroll, setPendingScroll] = useState<string | null>(null);
 
   const counts = useMemo(() => countBatch(rows, blockerChips), [rows, blockerChips]);
+
+  // Per-variant reading of the rule preview (#3995), checked against the
+  // category each variant submits under NOW - an answer for a category the
+  // operator has since changed says nothing about this one.
+  const projectionSummaries = useMemo(() => {
+    const map = new Map<string, ProjectionSummary>();
+    if (!projection) return map;
+    for (const row of rows) {
+      for (const variant of row.variants) {
+        const summary = summarizeProjection(
+          projection.byVariant.get(variant.variantId),
+          submitCategoryIdOf(row, variant),
+        );
+        if (summary) map.set(variant.variantId, summary);
+      }
+    }
+    return map;
+  }, [projection, rows]);
+
+  // The rules panel's reading of the batch (#3995): per parameter, one segment
+  // per checked variant, plus every value the destination will not accept.
+  const rulesPanel = useMemo(() => {
+    const checked: { productId: string; variantId: string; label: string; summary: ProjectionSummary }[] = [];
+    let failedVariantCount = 0;
+    for (const row of rows) {
+      const productName = row.product?.name ?? 'Product';
+      row.variants.forEach((variant, index) => {
+        if (!variant.included) return;
+        if (projection?.failedVariantIds.has(variant.variantId)) failedVariantCount += 1;
+        const summary = projectionSummaries.get(variant.variantId);
+        if (!summary) return;
+        const label =
+          row.variants.length > 1 ? `${productName}, ${distinguishingLabel(variant, index)}` : productName;
+        checked.push({ productId: row.productId, variantId: variant.variantId, label, summary });
+      });
+    }
+    const names = new Map<string, string>();
+    for (const c of checked) {
+      for (const o of c.summary.byParameterId.values()) {
+        if (o.source === 'rule' && !names.has(o.parameterId)) names.set(o.parameterId, o.parameterName);
+      }
+    }
+    const coverage: ParameterCoverage[] = Array.from(names, ([parameterId, name]) => ({
+      parameterId,
+      name,
+      segments: checked.map(({ summary }) => {
+        const o = summary.byParameterId.get(parameterId);
+        if (!o || o.source !== 'rule') return 'none';
+        return o.outcome === 'accepted' ? 'filled' : 'rejected';
+      }),
+    }));
+    const rejected: RejectedRuleValue[] = checked.flatMap(({ productId, variantId, label, summary }) =>
+      summary.rejected.map((o) => ({
+        productId,
+        variantId,
+        variantLabel: label,
+        parameterName: o.parameterName,
+        rawValue: o.rawValue,
+      })),
+    );
+    return { coverage, rejected, failedVariantCount, checkedVariantCount: checked.length };
+  }, [rows, projection, projectionSummaries]);
 
   // Batch-wide effective-EAN collision (#1934/F7). `enforceIdentifierRules`
   // server-side throws `DuplicateBatchEanException` -> 400 for the WHOLE
@@ -446,6 +529,21 @@ export function BulkReviewStep({
         </Alert>
       ))}
 
+      {projection ? (
+        <AttributeRulesPanel
+          connectionId={config.connectionId}
+          destinationName={destinationName}
+          coverage={rulesPanel.coverage}
+          checkedVariantCount={rulesPanel.checkedVariantCount}
+          rejected={rulesPanel.rejected}
+          failedVariantCount={rulesPanel.failedVariantCount}
+          onRetry={projection.retry}
+          onFix={(productId, variantId) => {
+            setEditing({ productId, focusVariantId: variantId, focusField: 'parameters' });
+          }}
+        />
+      ) : null}
+
       <div
         className={
           counts.includedNeedsAttention === 0 &&
@@ -518,6 +616,7 @@ export function BulkReviewStep({
             chips={blockerChips}
             alreadyListedVariantIds={alreadyListedVariantIds}
             destinationName={destinationName}
+            projectionSummaries={projectionSummaries}
             open={expanded.has(row.productId)}
             onToggleExpand={() => {
               toggleExpand(row.productId);
@@ -608,6 +707,7 @@ export function BulkReviewStep({
           focusField={editing?.focusField}
           demoReadOnly={demoReadOnly}
           onSave={onSaveEditor}
+          projectionSummaries={projectionSummaries}
         />
       ) : null}
 
@@ -660,6 +760,7 @@ interface ProductRowProps {
   chips: Record<string, ChipDescriptor>;
   alreadyListedVariantIds: ReadonlySet<string>;
   destinationName: string;
+  projectionSummaries: ReadonlyMap<string, ProjectionSummary>;
   open: boolean;
   onToggleExpand: () => void;
   onSetVariantIncluded: (productId: string, variantId: string, included: boolean) => void;
@@ -675,6 +776,7 @@ function ProductRow({
   chips,
   alreadyListedVariantIds,
   destinationName,
+  projectionSummaries,
   open,
   onToggleExpand,
   onSetVariantIncluded,
@@ -799,6 +901,7 @@ function ProductRow({
               label={distinguishingLabel(row.variants[0], 0)}
               alreadyListed={alreadyListedVariantIds.has(row.variants[0].variantId)}
               destinationName={destinationName}
+              projection={projectionSummaries.get(row.variants[0].variantId) ?? null}
               copyContext={blockerCopyContext(row, row.variants[0], destinationName, config)}
               onFix={(focusField) => {
                 onEdit(row.variants[0].variantId, focusField);
@@ -874,6 +977,7 @@ function ProductRow({
               chips={chips}
               alreadyListed={alreadyListedVariantIds.has(variant.variantId)}
               destinationName={destinationName}
+              projection={projectionSummaries.get(variant.variantId) ?? null}
               onSetVariantIncluded={onSetVariantIncluded}
               onEdit={(focusField) => {
                 onEdit(variant.variantId, focusField);
@@ -895,6 +999,7 @@ interface VariantRowProps {
   chips: Record<string, ChipDescriptor>;
   alreadyListed: boolean;
   destinationName: string;
+  projection: ProjectionSummary | null;
   onSetVariantIncluded: (productId: string, variantId: string, included: boolean) => void;
   onEdit: (focusField?: OfferBlockerField) => void;
   category: CategoryColumn;
@@ -908,6 +1013,7 @@ function VariantRow({
   chips,
   alreadyListed,
   destinationName,
+  projection,
   onSetVariantIncluded,
   onEdit,
   category,
@@ -961,6 +1067,7 @@ function VariantRow({
           label={label}
           alreadyListed={alreadyListed}
           destinationName={destinationName}
+          projection={projection}
           copyContext={blockerCopyContext(row, variant, destinationName, config)}
         />
       </div>
@@ -998,6 +1105,7 @@ function VariantChips({
   label,
   alreadyListed,
   destinationName,
+  projection,
   copyContext,
 }: {
   variant: BulkVariantRow;
@@ -1010,6 +1118,8 @@ function VariantChips({
   destinationName: string;
   /** Values the blocker sentences interpolate (#2240) - barcode, destination, counts. */
   copyContext: BlockerCopyContext;
+  /** What the attribute rules fill for this variant (#3995); null = nothing to say. */
+  projection: ProjectionSummary | null;
 }): ReactElement {
   const copy = useMessages('listings').bulkReviewStep;
   // The "already on {destination}" chip is a SOFT warning shown alongside the
@@ -1023,6 +1133,7 @@ function VariantChips({
       </>
     );
   }
+  const rulesChips = <ProjectionChips projection={projection} destinationName={destinationName} onFix={onFix} />;
   // The card-vs-mapping disagreement is shown on the category it is about, in
   // the Category column (#3994) - repeating it here as a status chip would say
   // the same thing twice, in the column furthest from the category.
@@ -1031,6 +1142,7 @@ function VariantChips({
     return (
       <>
         <Chip descriptor={{ tone: 'success', label: copy.chips.ready, fixable: false }} />
+        {rulesChips}
         {dupChip}
       </>
     );
@@ -1057,8 +1169,87 @@ function VariantChips({
           />
         );
       })}
+      {rulesChips}
       {dupChip}
     </>
+  );
+}
+
+/**
+ * What the attribute rules do for one variant (#3995): one chip, never gating.
+ * A rule-filled value already counts toward the required-parameter check, and
+ * a rejected one leaves that check's own chip standing - this names the cause
+ * and, on hover, lists the values the variant will be created with.
+ */
+function ProjectionChips({
+  projection,
+  destinationName,
+  onFix,
+}: {
+  projection: ProjectionSummary | null;
+  destinationName: string;
+  onFix: (focusField?: OfferBlockerField) => void;
+}): ReactElement | null {
+  const copy = useMessages('listings').attributeRules;
+  const plural = usePlural();
+  if (!projection) return null;
+  const { ruleFilled, rejected } = projection;
+  if (ruleFilled.length === 0 && rejected.length === 0) return null;
+  const label =
+    rejected.length === 1
+      ? interpolate(copy.chip.rejectedOne, { parameter: rejected[0].parameterName })
+      : rejected.length > 1
+        ? plural(rejected.length, copy.chip.rejectedCount)
+        : plural(ruleFilled.length, copy.chip.fromRules);
+  const tone = rejected.length > 0 ? 'bulk-chip--warning' : 'bulk-chip--info';
+  const values = (
+    <dl className="rules-chip-tip">
+      {ruleFilled.map((o) => (
+        <div key={o.parameterId} style={{ display: 'contents' }}>
+          <dt>{o.parameterName}</dt>
+          <dd>{o.rawValue}</dd>
+        </div>
+      ))}
+      {rejected.map((o) => (
+        <div key={o.parameterId} style={{ display: 'contents' }}>
+          <dt>{o.parameterName}</dt>
+          <dd className="rules-chip-tip__rejected">
+            {interpolate(copy.chip.notOnList, { value: o.rawValue, destination: destinationName })}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {rejected.length > 0 ? (
+          <button
+            type="button"
+            className={`bulk-chip ${tone}`}
+            aria-label={interpolate(copy.rejectedRowLabel, {
+              names: listParameterNames(rejected, copy.parameterList, plural),
+              destination: destinationName,
+            })}
+            onClick={(e) => {
+              e.stopPropagation();
+              onFix('parameters');
+            }}
+          >
+            <span className="bulk-chip__dot" aria-hidden="true" />
+            {label}
+          </button>
+        ) : (
+          <span className={`bulk-chip ${tone} rules-chip`} tabIndex={0}>
+            <span className="bulk-chip__dot" aria-hidden="true" />
+            {label}
+          </span>
+        )}
+      </TooltipTrigger>
+      <TooltipContent side="top" align="start">
+        {values}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

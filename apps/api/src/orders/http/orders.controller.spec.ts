@@ -75,6 +75,12 @@ import {
 } from '@openlinker/core/orders';
 import { ORDER_CANCELLATION_SERVICE_TOKEN } from '../application/interfaces/order-cancellation.service.interface';
 import { ORDER_EDIT_SERVICE_TOKEN } from '../application/interfaces/order-edit.service.interface';
+import {
+  ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
+  PAYMENT_WRITEBACK_SERVICE_TOKEN,
+} from '@openlinker/core/orders';
+
+import { FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN } from '../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
 import type { IOrderCancellationService } from '../application/interfaces/order-cancellation.service.interface';
 import {
   CancelCorrectionFailedError,
@@ -87,6 +93,9 @@ import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from '../application/interfac
 
 describe('OrdersController', () => {
   let controller: OrdersController;
+  let sourceAmendment: { reconcile: jest.Mock; accept: jest.Mock };
+  let parcelClosureNotifier: { notifyParcelClosed: jest.Mock; relayRecordedClose: jest.Mock };
+  let paymentWritebackMock: { retry: jest.Mock; markHandled: jest.Mock };
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
   let orderRecordService: jest.Mocked<IOrderRecordService>;
   let retryService: jest.Mocked<IOrderDestinationRetryService>;
@@ -194,6 +203,9 @@ describe('OrdersController', () => {
       findSearchTextReindexPage: jest.fn(),
       rewriteSearchText: jest.fn(),
       claimShippedNotification: jest.fn(),
+      claimPaymentWriteback: jest.fn().mockResolvedValue(true),
+      recordPaymentWriteback: jest.fn().mockResolvedValue(undefined),
+      markPaymentWritebackHandled: jest.fn().mockResolvedValue(0),
     };
 
     const mockOrderRecordService = {
@@ -376,10 +388,23 @@ describe('OrdersController', () => {
           provide: ORDER_EDIT_SERVICE_TOKEN,
           useValue: { getEditsView: jest.fn().mockResolvedValue(null) },
         },
+        {
+          provide: ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
+          useValue: { reconcile: jest.fn(), accept: jest.fn() },
+        },
+        {
+          provide: FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN,
+          useValue: { notifyParcelClosed: jest.fn(), relayRecordedClose: jest.fn() },
+        },
+        {
+          provide: PAYMENT_WRITEBACK_SERVICE_TOKEN,
+          useValue: { retry: jest.fn().mockResolvedValue(1), markHandled: jest.fn().mockResolvedValue(1) },
+        },
       ],
     }).compile();
 
     controller = module.get<OrdersController>(OrdersController);
+    paymentWritebackMock = module.get(PAYMENT_WRITEBACK_SERVICE_TOKEN);
     repository = module.get(ORDER_RECORD_REPOSITORY_TOKEN);
     orderRecordService = module.get(ORDER_RECORD_SERVICE_TOKEN);
     retryService = module.get(ORDER_DESTINATION_RETRY_SERVICE_TOKEN);
@@ -394,6 +419,64 @@ describe('OrdersController', () => {
     fulfillmentWork = module.get(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN);
     orderChanges = module.get(ORDER_CHANGE_SERVICE_TOKEN);
     orderCancellation = module.get(ORDER_CANCELLATION_SERVICE_TOKEN);
+    sourceAmendment = module.get(ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN);
+    parcelClosureNotifier = module.get(FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN);
+  });
+
+  describe('source change actions (#3961)', () => {
+    const result = {
+      outcome: 'held' as const,
+      cause: 'box-holds-more' as const,
+      lines: [{ orderLineId: 'li_1', from: 2, to: 1 }],
+    };
+    const answer = { outcome: result.outcome, cause: result.cause, lines: result.lines };
+
+    beforeEach(() => {
+      // The shared mock predates any route reading a single record by id.
+      orderRecordService.getOrderRecord = jest.fn();
+    });
+
+    it('should run the same comparison ingestion runs on "Check again"', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as never);
+      sourceAmendment.reconcile.mockResolvedValue({ ...result, closedParcels: [] });
+
+      await expect(controller.recheckSourceChange('ol_order_1')).resolves.toEqual(answer);
+      expect(sourceAmendment.reconcile).toHaveBeenCalledWith({ internalOrderId: 'ol_order_1' });
+      expect(parcelClosureNotifier.relayRecordedClose).not.toHaveBeenCalled();
+    });
+
+    it('should relay at once a box the applied change closed', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as never);
+      sourceAmendment.reconcile.mockResolvedValue({
+        ...result,
+        outcome: 'applied',
+        cause: null,
+        closedParcels: [{ workId: 'w1', closedAt: new Date() }],
+      });
+
+      await controller.recheckSourceChange('ol_order_1');
+
+      expect(parcelClosureNotifier.relayRecordedClose).toHaveBeenCalledWith('w1');
+    });
+
+    it('should accept on behalf of the session user, never a body field', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as never);
+      sourceAmendment.accept.mockResolvedValue({ ...result, outcome: 'accepted', cause: null, closedParcels: [] });
+
+      await controller.acceptSourceChange('ol_order_1', { id: 'user-1' } as never);
+
+      expect(sourceAmendment.accept).toHaveBeenCalledWith({
+        internalOrderId: 'ol_order_1',
+        actorUserId: 'user-1',
+      });
+    });
+
+    it('should answer 404 for an unknown order without touching the order', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+
+      await expect(controller.recheckSourceChange('missing')).rejects.toThrow(NotFoundException);
+      expect(sourceAmendment.reconcile).not.toHaveBeenCalled();
+    });
   });
 
   describe('listOrders', () => {
@@ -904,7 +987,7 @@ describe('OrdersController', () => {
         needsAttention: 1,
         synced: 1,
         awaitingDispatch: 9,
-        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, destinationRoutingBlocked: 0,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
         waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
       });
 
@@ -923,7 +1006,7 @@ describe('OrdersController', () => {
         needsAttention: 0,
         synced: 1,
         awaitingDispatch: 4,
-        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, destinationRoutingBlocked: 0,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
         waitingInOpenLinker: 3, waitingInOpenLinkerOldestAt: new Date('2026-10-23T07:00:00Z'), onPackBench: 14,
       });
 
@@ -942,7 +1025,7 @@ describe('OrdersController', () => {
         needsAttention: 0,
         synced: 0,
         awaitingDispatch: 0,
-        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, destinationRoutingBlocked: 0,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
         waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
       });
 
@@ -2530,4 +2613,25 @@ describe('OrdersController', () => {
       await expect(controller.retryRouting('ol_order_001')).rejects.toMatchObject({ status: 503 });
     });
   });
+
+  // #3963 - operator actions on a payment that did not reach a shop.
+  describe('payment writeback actions', () => {
+    it('should queue the writes again and report how many', async () => {
+      paymentWritebackMock.retry.mockResolvedValue(2);
+
+      await expect(controller.retryPaymentWriteback({ internalOrderIds: ['ol_order_001'] })).resolves.toEqual({
+        enqueued: 2,
+      });
+      expect(paymentWritebackMock.retry).toHaveBeenCalledWith(['ol_order_001']);
+    });
+
+    it('should mark the orders handled and report how many changed', async () => {
+      paymentWritebackMock.markHandled.mockResolvedValue(1);
+
+      await expect(
+        controller.markPaymentWritebackHandled({ internalOrderIds: ['ol_order_001'] })
+      ).resolves.toEqual({ updated: 1 });
+    });
+  });
 });
+

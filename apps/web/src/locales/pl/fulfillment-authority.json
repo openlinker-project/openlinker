@@ -55,6 +55,12 @@
         "title": "Wybór miejsca pakowania zamówienia {ref} utknął",
         "titleFallback": "Wybór miejsca pakowania tego zamówienia utknął"
       },
+      "source-change-unapplied": {
+        "action": "Otwórz zamówienie i wybierz, co zrobić z kartonem.",
+        "body": "Sklep zmienił ilość produktu, więc OpenLinker wstrzymał karton, zamiast zmieniać go samodzielnie.",
+        "title": "Zamówienie {ref} zmieniono w {channel} po rozpoczęciu pakowania",
+        "titleFallback": "To zamówienie zmieniono w sklepie po rozpoczęciu pakowania"
+      },
       "sourcing-ambiguous": {
         "action": "Otwórz wymienione poniżej połączenia i zostaw decyzję tylko jednemu z nich.",
         "body": "Dwa systemy są ustawione do podejmowania decyzji, więc OpenLinker nie wykonuje żadnej z nich. Zamówienia są wysyłane tak jak wcześniej.",

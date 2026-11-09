@@ -716,6 +716,12 @@ export interface OrderRecord {
    */
   omsAttention?: OrderOmsAttentionEntry[] | null;
   /**
+   * Per destination shop: did a payment that arrived after the shop got the
+   * order reach it (#3963)? Optional for an older API; empty for an order no
+   * shop got before it was paid.
+   */
+  paymentWriteback?: OrderPaymentWritebackEntry[] | null;
+  /**
    * The reason of this order's OPEN hold, or null when it is not held (#2340).
    * Present on EVERY row — list and detail — because the column is already
    * loaded, which is what lets the list badge it for free.
@@ -999,6 +1005,12 @@ export interface OrderHealthSummary {
    * Optional for graceful degradation against an older API.
    */
   omsAttention?: number;
+  /**
+   * Orders where a shop still shows the order unpaid and OpenLinker gave up
+   * sending the payment (#3963). Its own axis, never inside the health
+   * partition. Optional for an older API.
+   */
+  paymentNotSent?: number;
 }
 
 export interface OrderFilters {
@@ -1062,6 +1074,13 @@ export interface OrderFilters {
    * stayed the operator-facing `attention`.
    */
   attention?: boolean;
+  /** #3963 - orders whose payment did not reach a shop (`?paymentNotSent=`). */
+  paymentNotSent?: boolean;
+  /**
+   * Narrow to orders carrying ONE attention reason (#3961), sent as
+   * `?attentionReason=`. Backs the "Changed by the shop" chip.
+   */
+  attentionReason?: string;
   /**
    * Narrow to orders held for ONE reason (#2342), sent as `?hold=`.
    *
@@ -1454,3 +1473,69 @@ export interface OrderDocumentEmailEntry {
   failureMessage: string | null;
   createdAt: string;
 }
+
+/**
+ * What "Check again" / "Keep as is" did to an order the source changed after it
+ * went to packing (#3961). Codes only; the sentences live under `orders.sourceChange` in the locale files.
+ */
+export const SourceChangeOutcomeValues = [
+  'nothing-to-do',
+  'applied',
+  'held',
+  'shipped',
+  'accepted',
+  'contended',
+  'failed',
+] as const;
+export type SourceChangeOutcome = (typeof SourceChangeOutcomeValues)[number];
+
+export interface SourceChangeLine {
+  orderLineId: string;
+  from: number;
+  to: number;
+}
+
+export interface SourceChangeResult {
+  outcome: SourceChangeOutcome;
+  cause: string | null;
+  lines: SourceChangeLine[];
+}
+
+/**
+ * What OpenLinker knows about a payment at ONE destination shop (#3963).
+ * `state` stays a plain string: the column is jsonb, and a value from a newer
+ * release must round-trip; the UI renders an unrecognised one neutrally.
+ */
+export const PaymentWritebackStateValues = [
+  'awaiting',
+  'sending',
+  'paid-in-shop',
+  'created-paid',
+  'retrying',
+  'not-sent',
+  'cod',
+  'not-tracked',
+  'skipped-by-setting',
+  'handled',
+] as const;
+export type PaymentWritebackState = (typeof PaymentWritebackStateValues)[number];
+
+export interface OrderPaymentWritebackEntry {
+  destinationConnectionId: string;
+  state: string;
+  at: string;
+  attempts: number;
+  reason: string | null;
+  detail: string | null;
+  /** The shop still shows the order unpaid and OpenLinker gave up. */
+  problem: boolean;
+}
+
+export interface PaymentWritebackRetryResult {
+  enqueued: number;
+}
+
+export interface PaymentWritebackHandledResult {
+  updated: number;
+}
+
