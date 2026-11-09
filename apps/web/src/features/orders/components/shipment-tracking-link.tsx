@@ -10,6 +10,7 @@
  * @module apps/web/src/features/orders/components
  */
 import type { ReactElement } from 'react';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import {
   buildCarrierTrackingUrl,
   getCarrierDisplayName,
@@ -21,6 +22,7 @@ interface ShipmentTrackingLinkProps {
 }
 
 export function ShipmentTrackingLink({ shipment }: ShipmentTrackingLinkProps): ReactElement | null {
+  const copy = useMessages('orders').shipmentTrackingLink;
   if (!shipment.trackingNumber) {
     return null;
   }
@@ -36,8 +38,8 @@ export function ShipmentTrackingLink({ shipment }: ShipmentTrackingLinkProps): R
   }
 
   const ariaLabel = carrierName
-    ? `Track shipment on ${carrierName} (opens in new tab)`
-    : 'Track shipment (opens in new tab)';
+    ? interpolate(copy.trackOn, { carrier: carrierName })
+    : copy.track;
 
   return (
     <a

@@ -38,23 +38,43 @@ export const EPARAGONY_PAYMENT_FORM_VALUES = [
 export type EparagonyPaymentFormValue = (typeof EPARAGONY_PAYMENT_FORM_VALUES)[number];
 
 /**
- * Operator-facing labels. The vendor's own spelling is shown alongside an
- * English gloss, because the value is transmitted verbatim onto a fiscal
- * document - an operator matching it against their device's manual needs to see
- * the vendor's word, not our translation of it.
+ * The vendor's own spelling of each payment form, with its diacritics.
+ *
+ * Shown to the operator alongside an English gloss (the `paymentFormGlosses`
+ * copy in the `eparagony` namespace), because the value is transmitted
+ * verbatim onto a fiscal document - an operator matching it against their
+ * device's manual needs to see the vendor's word, not our translation of it.
+ * These are vendor values, not copy, so they are not translated.
  */
-export const EPARAGONY_PAYMENT_FORM_LABELS: Record<EparagonyPaymentFormValue, string> = {
-  Gotowka: 'Gotówka (cash)',
-  Karta: 'Karta (card)',
-  Czek: 'Czek (cheque)',
-  Bon: 'Bon (voucher)',
-  Inna: 'Inna (other)',
-  Kredyt: 'Kredyt (credit)',
-  'Waluta obca': 'Waluta obca (foreign currency)',
-  Przelew: 'Przelew (bank transfer)',
-  Mobilna: 'Mobilna (mobile payment)',
+export const EPARAGONY_PAYMENT_FORM_VENDOR_SPELLING: Record<EparagonyPaymentFormValue, string> = {
+  Gotowka: 'Gotówka',
+  Karta: 'Karta',
+  Czek: 'Czek',
+  Bon: 'Bon',
+  Inna: 'Inna',
+  Kredyt: 'Kredyt',
+  'Waluta obca': 'Waluta obca',
+  Przelew: 'Przelew',
+  Mobilna: 'Mobilna',
   Voucher: 'Voucher',
 };
+
+/**
+ * The copy key of each payment form's English gloss, or `null` where the
+ * vendor's word needs none (`Voucher`).
+ */
+export const EPARAGONY_PAYMENT_FORM_GLOSS_KEYS = {
+  Gotowka: 'cash',
+  Karta: 'card',
+  Czek: 'cheque',
+  Bon: 'voucher',
+  Inna: 'other',
+  Kredyt: 'credit',
+  'Waluta obca': 'foreignCurrency',
+  Przelew: 'bankTransfer',
+  Mobilna: 'mobile',
+  Voucher: null,
+} as const satisfies Record<EparagonyPaymentFormValue, string | null>;
 
 /** The default the adapter's document mapper applies when the connection sets none. */
 export const EPARAGONY_DEFAULT_PAYMENT_FORM: EparagonyPaymentFormValue = 'Przelew';

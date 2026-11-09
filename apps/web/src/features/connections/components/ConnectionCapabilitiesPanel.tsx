@@ -11,6 +11,7 @@
  *
  * @module apps/web/src/features/connections/components
  */
+import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import type { Connection, CoreCapability } from '../api/connections.types';
@@ -21,7 +22,7 @@ import {
   capabilityConflictMessage,
   getCapabilityConflict,
 } from '../lib/capability-metadata';
-import { MCP_CONNECTION_CHANGE_HINT, MCP_TOOL_CAPABILITIES } from '../../mcp-tokens';
+import { MCP_TOOL_CAPABILITIES, useMcpConnectionChangeHint } from '../../mcp-tokens';
 import { AccessGate } from '../../../shared/ui/access-gate';
 import { Alert } from '../../../shared/ui/alert';
 import { StatusBadge } from '../../../shared/ui/status-badge';
@@ -79,18 +80,21 @@ export function capabilityRowTestId(capability: string): string {
  * plainly false on a connection that only registers receipts, and half true
  * on one that does both.
  */
-function salesDocumentNoun(
+function salesDocumentKind(
   supportsInvoicing: boolean,
   supportsFiscalization: boolean,
-): string {
-  if (supportsInvoicing && supportsFiscalization) return 'sales documents';
-  return supportsInvoicing ? 'invoices' : 'fiscal receipts';
+): 'both' | 'invoices' | 'receipts' {
+  if (supportsInvoicing && supportsFiscalization) return 'both';
+  return supportsInvoicing ? 'invoices' : 'receipts';
 }
 
 export function ConnectionCapabilitiesPanel({
   connection,
   readOnly = false,
 }: ConnectionCapabilitiesPanelProps): ReactElement {
+  const copy = useMessages('connections').connectionCapabilitiesPanel;
+  const format = useFormat();
+  const mcpConnectionChangeHint = useMcpConnectionChangeHint();
   const updateMutation = useUpdateConnectionMutation();
   const { showToast } = useToast();
   const [pending, setPending] = useState<CoreCapability | null>(null);
@@ -151,8 +155,8 @@ export function ConnectionCapabilitiesPanel({
       });
       showToast({
         tone: 'success',
-        title: 'Capabilities updated',
-        description: `${capability} ${checked ? 'enabled' : 'disabled'}.`,
+        title: copy.updatedTitle,
+        description: interpolate(checked ? copy.enabledToast : copy.disabledToast, { capability }),
       });
     } catch {
       // mutation.error renders via Alert below
@@ -165,8 +169,8 @@ export function ConnectionCapabilitiesPanel({
     <div className="panel panel--dense">
       <div className="panel__header">
         <div>
-          <p className="eyebrow">Capabilities</p>
-          <h3 className="section-title">Enabled roles</h3>
+          <p className="eyebrow">{copy.eyebrow}</p>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
         <span className="panel__meta" data-testid="capability-count">
           {/* Counter reflects the well-known core caps only — both sides
@@ -174,12 +178,15 @@ export function ConnectionCapabilitiesPanel({
            * ever stores plugin-registered capabilities, those are
            * excluded from both numerator and denominator until this
            * panel grows a separate plugin-cap surface. */}
-          {enabled.size} of {supported.length} enabled
+          {interpolate(copy.count, {
+            enabled: format.number(enabled.size),
+            total: format.number(supported.length),
+          })}
         </span>
       </div>
 
       {updateMutation.error ? (
-        <Alert tone="error" title="Unable to update capabilities">
+        <Alert tone="error" title={copy.errorTitle}>
           {updateMutation.error.message}
         </Alert>
       ) : null}
@@ -191,12 +198,12 @@ export function ConnectionCapabilitiesPanel({
        * it cannot operate — hence a content gate, not a `ReadOnlyLock`. */}
       {backsMcpTools ? (
         <AccessGate require="connections:write">
-          <Alert tone="info">{MCP_CONNECTION_CHANGE_HINT}</Alert>
+          <Alert tone="info">{mcpConnectionChangeHint}</Alert>
         </AccessGate>
       ) : null}
 
       {supported.length > 0 ? (
-        <div className="capability-list__pills" aria-label="Supported capabilities">
+        <div className="capability-list__pills" aria-label={copy.supported}>
           {supported.map((capability) => (
             <StatusBadge
               key={`pill-${capability}`}
@@ -211,7 +218,7 @@ export function ConnectionCapabilitiesPanel({
       ) : null}
 
       {supported.length === 0 ? (
-        <p className="muted-text">This connection has no capabilities available to toggle here.</p>
+        <p className="muted-text">{copy.none}</p>
       ) : (
         <ul className="capability-list">
           {supported.map((capability) => {
@@ -260,18 +267,21 @@ export function ConnectionCapabilitiesPanel({
         <Alert
           tone="info"
           data-testid="capability-routing-note"
-          title="Enabling a role does not route anything to it"
+          title={copy.routingNote.title}
         >
-          This connection becomes <em>eligible</em> to issue{' '}
-          {salesDocumentNoun(supportsInvoicing, supportsFiscalization)}. Which orders
-          actually get one is decided under{' '}
-          <Link to="/settings/sales-documents">Sales documents routing</Link>, per country.
+          {renderRich(
+            copy.routingNote.body[salesDocumentKind(supportsInvoicing, supportsFiscalization)],
+            {
+              em: (text) => <em>{text}</em>,
+              link: (text) => <Link to="/settings/sales-documents">{text}</Link>,
+            },
+          )}
         </Alert>
       ) : null}
 
       {enabled.size === 0 && supported.length > 0 ? (
-        <Alert tone="warning" title="No capabilities enabled">
-          This connection is inactive for every capability. No sync jobs will use it.
+        <Alert tone="warning" title={copy.noneEnabled.title}>
+          {copy.noneEnabled.body}
         </Alert>
       ) : null}
     </div>

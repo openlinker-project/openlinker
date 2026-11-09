@@ -1,0 +1,1694 @@
+{
+  "advancedNewConnectionPage": {
+    "bannerBody": "Ten formularz pokazuje surowe klucze adapterów, odwołania do danych uwierzytelniających i konfigurację JSON. Skorzystaj z <link>konfiguracji z przewodnikiem</link>, chyba że potrzebujesz bezpośredniej kontroli, aby zdiagnozować integrację lub uruchomić platformę bez osobnego kreatora.",
+    "bannerTitle": "Wyjście awaryjne - lepiej użyj kreatora",
+    "description": "Bezpośredni formularz pól połączenia - klucz adaptera, odwołanie do danych uwierzytelniających i surowa konfiguracja JSON.",
+    "escapeHatchChip": "Wyjście awaryjne",
+    "rawFormChip": "Tryb surowy",
+    "title": "Zaawansowana konfiguracja połączenia"
+  },
+  "allegroSellerDefaultsSection": {
+    "attachments": {
+      "hint": "Prześlij jeden lub więcej plików PDF. Allegro przechowuje plik; OpenLinker zachowuje tylko zwrócony identyfikator.",
+      "label": "Załączniki z informacjami o bezpieczeństwie",
+      "labelCount": "Załączniki z informacjami o bezpieczeństwie ({count}/{max})",
+      "listLabel": "Przesłane załączniki dotyczące bezpieczeństwa",
+      "maxReached": "Osiągnięto maksymalną liczbę załączników: {max}",
+      "remove": "Usuń",
+      "removeNamed": "Usuń {name}",
+      "removeToAdd": "Usuń jeden, aby dodać kolejny.",
+      "size": {
+        "bytes": "{n} B",
+        "kilobytes": "{n} KB",
+        "megabytes": "{n} MB"
+      },
+      "uploadFailed": "Przesyłanie nie powiodło się"
+    },
+    "description": "Allegro wymaga w każdej ofercie miejsca wysyłki i danych GPSR UE (rozporządzenie 2023/988, obowiązkowe od 13 grudnia 2024). Te ustawienia domyślne są wysyłane przy tworzeniu produktu w ofercie i używane awaryjnie, gdy nie uda się powiązać z istniejącą kartą produktu.",
+    "eyebrow": "Domyślne ustawienia sprzedawcy Allegro",
+    "location": {
+      "city": "Miejscowość",
+      "description": "Używane jako miejsce wysyłki w każdej ofercie.",
+      "postCode": "Kod pocztowy",
+      "postCodeHint": "Polski format NN-NNN.",
+      "province": "Województwo",
+      "provincePlaceholder": "Wybierz województwo…",
+      "title": "Miejsce wysyłki"
+    },
+    "producer": {
+      "description": "Wpis rejestru GPSR UE z konta sprzedawcy Allegro.",
+      "emptyBody": "Utwórz producenta odpowiedzialnego w panelu sprzedawcy Allegro, a następnie kliknij Odśwież.",
+      "emptyTitle": "Brak wpisów producentów odpowiedzialnych",
+      "errorTitle": "Nie udało się wczytać producentów odpowiedzialnych",
+      "loading": "Wczytywanie…",
+      "noEntries": "Brak wpisów",
+      "refresh": "Odśwież",
+      "refreshing": "Odświeżanie…",
+      "selectEntry": "Wybierz wpis…",
+      "title": "Producent odpowiedzialny"
+    },
+    "safety": {
+      "description": "Wybierz <strong>Nie dotyczy</strong> dla produktów bez obowiązków GPSR w zakresie bezpieczeństwa, podaj informacje o bezpieczeństwie jako tekst albo prześlij pliki PDF jako załączniki. Niektóre kategorie (aparaty, elektronika z bateriami itp.) wymagają opcji <strong>TEKST</strong> lub <strong>ZAŁĄCZNIKI</strong> i odrzucają opcję „Nie dotyczy”.",
+      "descriptionHint": "Tekst widoczny dla kupujących. 1-5000 znaków; bez HTML, nowe wiersze dozwolone.",
+      "descriptionLabel": "Opis informacji o bezpieczeństwie",
+      "options": {
+        "attachments": "Podaj informacje o bezpieczeństwie (plik)",
+        "none": "Nie dotyczy",
+        "text": "Podaj informacje o bezpieczeństwie (tekst)"
+      },
+      "title": "Informacje o bezpieczeństwie",
+      "type": "Typ"
+    },
+    "title": "Wymagane przez Allegro do tworzenia ofert"
+  },
+  "allegroSetupPage": {
+    "chip": "OAuth 2.0",
+    "chipSecondary": "API {platform}",
+    "description": "Zezwól OpenLinker na zarządzanie ofertami, zamówieniami i stanami magazynowymi {platform} przez API {platform}.",
+    "fallbackPlatform": "marketplace",
+    "title": "Połącz z {platform}"
+  },
+  "archiveConnectionButton": {
+    "archive": "Archiwizuj",
+    "cancel": "Zostaw",
+    "confirm": "Archiwizuj połączenie",
+    "confirmName": "Wpisz „{name}”, aby potwierdzić",
+    "consequences": {
+      "credentials": "Zapisane dane uwierzytelniające zostaną usunięte.",
+      "history": "Mapowania, zamówienia, oferty i historia zadań w tle zostaną zachowane i nadal będą pokazywać jego nazwę.",
+      "restore": "Możesz je później przywrócić, ale trzeba będzie ponownie podać dane uwierzytelniające."
+    },
+    "dialogDescription": "„{name}” zniknie z listy połączeń i z każdego miejsca, w którym wybiera się połączenie.",
+    "dialogTitle": "Zarchiwizować to połączenie?",
+    "errorTitle": "Nie udało się zarchiwizować połączenia",
+    "referrersHint": "Najpierw zmień ich powiązanie z katalogiem, a potem zarchiwizuj to połączenie.",
+    "referrersIntro": "„{name}” jest połączeniem katalogowym dla:",
+    "referrersTitle": "Inne połączenia wciąż korzystają z tego katalogu",
+    "successDescription": "„{name}” zostało ukryte na liście połączeń. Możesz je przywrócić z filtra Zarchiwizowane.",
+    "successTitle": "Połączenie zarchiwizowane"
+  },
+  "capabilityHelp": {
+    "AvailabilityAuthority": "Decyduje, ile każdego produktu można sprzedać, zastępując stan, który OpenLinker wyliczyłby samodzielnie.",
+    "CategoryProvisioner": "Tworzy lub dopasowuje kategorie w kanale docelowym podczas publikowania ofert w tym połączeniu.",
+    "Fiscalization": "Rejestruje zakończoną sprzedaż w tym połączeniu, które wykonuje fiskalizację lub w niej pośredniczy. OpenLinker nigdy nie decyduje, czy zamówienie jej wymaga.",
+    "FulfillmentExecutor": "Kompletuje, pakuje i wysyła to, co przekaże mu OpenLinker, oraz raportuje postęp. Daną pracą zajmuje się w danym momencie tylko jedno połączenie.",
+    "InventoryMaster": "Odczytuje stany magazynowe z tego połączenia jako głównego źródła stanów.",
+    "Invoicing": "Wystawia dokumenty fiskalne (faktury) i zarządza nimi przez to połączenie.",
+    "OfferManager": "Zarządza ofertami w tym połączeniu z marketplace.",
+    "OrderProcessorManager": "Tworzy zamówienia w tym połączeniu i nimi zarządza (zwykle sklep docelowy).",
+    "OrderSource": "Pobiera nowe zamówienia z tego połączenia (wyłącz, jeśli zamówienia pochodzą z marketplace).",
+    "ProductMaster": "Odczytuje katalog produktów (warianty, atrybuty, kategorie) z tego połączenia.",
+    "ProductPublisher": "Publikuje oferty w sklepie należącym do tego połączenia i nimi zarządza (wystawianie między platformami).",
+    "ReturnsAuthority": "Decyduje, co dzieje się z towarem odesłanym przez klienta - czy wraca do sprzedaży i kto to zatwierdza."
+  },
+  "capabilityMetadata": {
+    "conflict": "Niedostępne, gdy wybrano {capability} - główne źródło stanów nie może być jednocześnie celem zapisu stanów."
+  },
+  "catalogTrustPanel": {
+    "cycleNone": "Brak otwartego",
+    "cycleOpen": "Otwarty - wznowi się przy najbliższym cogodzinnym przebiegu",
+    "deltaDisabledNote": "Przebieg przyrostowy jest obecnie wyłączony w ustawieniach serwera, więc w praktyce nadal obowiązuje pełne ponowne wyliczanie.",
+    "deltaPass": "Przebieg przyrostowy",
+    "disabled": "Wyłączony",
+    "enabled": "Włączony",
+    "errorTitle": "Nie udało się wczytać wiarygodności katalogu",
+    "eyebrow": "Kondycja",
+    "lastReconciled": "Ostatnie uzgodnienie usunięć",
+    "loadingMessage": "Odczytywanie zadeklarowanej przez system główny możliwości synchronizacji.",
+    "loadingTitle": "Wczytywanie wiarygodności katalogu",
+    "meta": "Główny katalog produktów",
+    "noCycle": "Nie ukończono jeszcze żadnego cyklu",
+    "reconcileCycle": "Cykl uzgadniania",
+    "reconcileNote": "Uzgadnianie usunięć przechodzi jedną stronę na każdy cogodzinny przebieg - przy dużym katalogu pełny cykl obejmuje wiele przebiegów, więc ta wartość to rzeczywiste opóźnienie wykrywania usunięć.",
+    "retry": "Ponów",
+    "rungLabels": {
+      "full-enumeration": "Pełne wyliczanie",
+      "modified-since": "Zmienione od",
+      "unknown": "Nieznany"
+    },
+    "rungNotes": {
+      "full-enumeration": "Tylko pełne ponowne wyliczanie - ten system główny nie potrafi zgłaszać zmian od danego momentu; każda synchronizacja katalogu odczytuje cały katalog.",
+      "modified-since": "Ten system główny deklaruje wyliczanie zmian od danego momentu - zaplanowane synchronizacje mogą pobierać tylko to, co się zmieniło.",
+      "unknown": "Nie udało się ustalić adaptera tego połączenia, aby określić jego możliwość synchronizacji katalogu."
+    },
+    "syncCapability": "Możliwość synchronizacji",
+    "title": "Replikacja katalogu"
+  },
+  "codCurrencySupport": {
+    "description": "Przewoźnik pobiera płatność za pobraniem w tych walutach.",
+    "label": "Obsługiwane waluty pobrania"
+  },
+  "connectionActionsPanel": {
+    "archive": {
+      "help": "Ukryj je na liście połączeń i usuń zapisane dane uwierzytelniające. Mapowania i historia zostaną zachowane, a połączenie można później przywrócić.",
+      "notArchivable": "To połączenie można wyłączyć, ale nie zarchiwizować. Przechowuje ustawienia, na których polegają inne części OpenLinker, więc pozostaje na liście połączeń.",
+      "title": "Archiwizuj połączenie"
+    },
+    "archived": "To połączenie jest zarchiwizowane.",
+    "disable": {
+      "action": "Wyłącz",
+      "cancel": "Zostaw aktywne",
+      "dialogDescription": "Spowoduje to zatrzymanie całej synchronizacji dla „{name}”. Możesz je później ponownie włączyć.",
+      "dialogTitle": "Wyłączyć to połączenie?",
+      "disabling": "Wyłączanie...",
+      "doneDescription": "„{name}” zostało wyłączone.",
+      "doneTitle": "Połączenie wyłączone",
+      "errorTitle": "Nie udało się wyłączyć połączenia",
+      "help": "Zatrzymaj całą synchronizację tego połączenia. Można to cofnąć, włączając je ponownie.",
+      "title": "Wyłącz połączenie"
+    },
+    "edit": {
+      "action": "Edytuj",
+      "help": "Zmień nazwę, konfigurację lub ustawienia adaptera.",
+      "title": "Edytuj połączenie"
+    },
+    "enable": {
+      "help": "Wznów synchronizację tego połączenia. Zaplanowane zadania w tle ruszą przy najbliższym przebiegu.",
+      "title": "Włącz połączenie"
+    },
+    "eyebrow": "Operator",
+    "meta": "Zarządzaj połączeniem",
+    "restore": {
+      "help": "Przywróć je jako wyłączone połączenie. Dane uwierzytelniające zostały usunięte przy archiwizacji, więc przed włączeniem trzeba je podać ponownie.",
+      "title": "Przywróć połączenie"
+    },
+    "settings": {
+      "help": "To połączenie konfiguruje się na jego własnej stronie ustawień.",
+      "open": "Otwórz"
+    },
+    "sync": {
+      "action": "Synchronizuj…",
+      "help": "Ręcznie dodaj do kolejki zadanie synchronizacji dla tego połączenia. Typ zadania i dane wybierzesz w kolejnym kroku.",
+      "title": "Uruchom synchronizację"
+    },
+    "test": {
+      "failed": "Test połączenia nie powiódł się",
+      "failedWithStatus": "{message} (HTTP {status})",
+      "help": "Sprawdź integrację prostym uwierzytelnionym zapytaniem. Weryfikuje bazowy adres URL i zapisane dane uwierzytelniające.",
+      "ok": "Połączenie działa ({ms} ms)",
+      "testing": "Testowanie...",
+      "title": "Przetestuj połączenie"
+    },
+    "title": "Akcje"
+  },
+  "connectionCapabilitiesPanel": {
+    "count": "Włączone: {enabled} z {total}",
+    "disabledToast": "Wyłączono {capability}.",
+    "enabledToast": "Włączono {capability}.",
+    "errorTitle": "Nie udało się zaktualizować możliwości",
+    "eyebrow": "Możliwości",
+    "none": "To połączenie nie ma możliwości, które można tu przełączać.",
+    "noneEnabled": {
+      "body": "To połączenie jest nieaktywne dla wszystkich możliwości. Żadne zadanie synchronizacji z niego nie skorzysta.",
+      "title": "Brak włączonych możliwości"
+    },
+    "routingNote": {
+      "body": {
+        "both": "To połączenie staje się <em>uprawnione</em> do wystawiania dokumentów sprzedaży. O tym, które zamówienia faktycznie je otrzymają, decyduje się w sekcji <link>Kierowanie dokumentów sprzedaży</link>, osobno dla każdego kraju.",
+        "invoices": "To połączenie staje się <em>uprawnione</em> do wystawiania faktur. O tym, które zamówienia faktycznie je otrzymają, decyduje się w sekcji <link>Kierowanie dokumentów sprzedaży</link>, osobno dla każdego kraju.",
+        "receipts": "To połączenie staje się <em>uprawnione</em> do wystawiania paragonów fiskalnych. O tym, które zamówienia faktycznie je otrzymają, decyduje się w sekcji <link>Kierowanie dokumentów sprzedaży</link>, osobno dla każdego kraju."
+      },
+      "title": "Włączenie roli niczego do niej nie kieruje"
+    },
+    "supported": "Obsługiwane możliwości",
+    "title": "Włączone role",
+    "updatedTitle": "Zaktualizowano możliwości"
+  },
+  "connectionCategoryMappingsPage": {
+    "desktopOnly": {
+      "body": "Edytor mapowania kategorii zestawia obok siebie drzewo kategorii i wyszukiwarkę marketplace, więc potrzebuje szerszego ekranu. Otwórz tę stronę na komputerze lub tablecie w poziomie, aby przypisywać kategorie.",
+      "title": "Otwórz na komputerze, aby edytować kategorie"
+    },
+    "error": {
+      "title": "Nie udało się wczytać"
+    },
+    "eyebrow": "Połączenie",
+    "loading": {
+      "message": "Pobieranie kategorii i mapowań...",
+      "title": "Wczytywanie"
+    },
+    "mappedSummary": {
+      "few": "Zmapowano {mapped} z {n} kategorii",
+      "many": "Zmapowano {mapped} z {n} kategorii",
+      "one": "Zmapowano {mapped} z {n} kategorii",
+      "other": "Zmapowano {mapped} z {n} kategorii"
+    },
+    "marketplaceHeading": "Kategoria marketplace",
+    "marketplaceSelect": {
+      "label": "Połączenie z marketplace",
+      "option": "{name} ({platform})",
+      "placeholder": "Wybierz połączenie z marketplace…"
+    },
+    "noCategories": {
+      "message": "Nie znaleziono kategorii dla tego połączenia. Upewnij się, że sklep ma skonfigurowane kategorie.",
+      "title": "Brak kategorii sklepu"
+    },
+    "noMarketplace": {
+      "addConnection": "Dodaj połączenie",
+      "message": "Przed mapowaniem kategorii dodaj połączenie z marketplace.",
+      "title": "Brak skonfigurowanego połączenia z marketplace"
+    },
+    "pickCategory": {
+      "message": "Kliknij kategorię sklepu po lewej, aby przypisać kategorię marketplace.",
+      "title": "Wybierz kategorię"
+    },
+    "pickMarketplace": {
+      "message": "Wybierz powyżej połączenie z marketplace, aby przeglądać jego drzewo kategorii.",
+      "title": "Wybierz połączenie z marketplace"
+    },
+    "sourceHeading": "Kategorie sklepu",
+    "title": "Mapowania kategorii"
+  },
+  "connectionCell": {
+    "copiedId": "Skopiowano ID połączenia",
+    "copiedNamedId": "Skopiowano ID połączenia {name}",
+    "copyId": "Kopiuj ID połączenia",
+    "copyNamedId": "Kopiuj ID połączenia {name}",
+    "foldPrefix": "Połączenie:",
+    "statusNotes": {
+      "archived": "W archiwum",
+      "disabled": "Wyłączone",
+      "error": "Błąd",
+      "needs_reauth": "Autoryzacja"
+    }
+  },
+  "connectionChip": {
+    "ariaLabel": "{name}, {platform}",
+    "sandboxFace": "{platform} sandbox",
+    "sandboxLabel": "{platform} (sandbox)",
+    "title": "{name} - {platform}"
+  },
+  "connectionConfigPanel": {
+    "empty": "Nie ustawiono żadnych wartości konfiguracji.",
+    "eyebrow": "Konfiguracja",
+    "keyCount": {
+      "few": "{n} klucze",
+      "many": "{n} kluczy",
+      "one": "{n} klucz",
+      "other": "{n} klucza"
+    },
+    "rawConfig": "Surowa konfiguracja",
+    "title": "Konfiguracja połączenia"
+  },
+  "connectionDetailPage": {
+    "actions": {
+      "categoryMappings": "Mapowania kategorii",
+      "edit": "Edytuj połączenie",
+      "mappings": "Mapowania",
+      "pricingSync": "Ceny i synchronizacja"
+    },
+    "archivedBanner": {
+      "body": "Jest ukryte na liście połączeń, nie uruchamia żadnych zadań w tle, a jego dane uwierzytelniające zostały usunięte. Mapowania i historia są zachowane. Przywróć je, aby skonfigurować je ponownie.",
+      "title": "To połączenie jest zarchiwizowane"
+    },
+    "backLabel": "Połączenia",
+    "catalogBanner": {
+      "ambiguousBody": "Istnieje kilka połączeń z katalogiem produktów - wybierz jedno wprost, w przeciwnym razie synchronizacja kodów kreskowych zostanie pominięta. <link>Edytuj połączenie</link>.",
+      "autoLinkedBody": "Łączenie po kodach kreskowych użyje <strong>{name}</strong> (jedynego połączenia z katalogiem produktów). <link>Edytuj połączenie</link>, aby ustawić to na stałe.",
+      "autoLinkedTitle": "Katalog produktów połączony automatycznie",
+      "disabledBody": "Łączenie po kodach kreskowych jest wyłączone dla tego połączenia. <link>Edytuj połączenie</link>, aby wybrać katalog.",
+      "disabledTitle": "Łączenie po kodach kreskowych wyłączone",
+      "noCandidatesBody": "Brak aktywnych połączeń z katalogiem produktów do powiązania. Najpierw <link>dodaj połączenie ze sklepem</link>.",
+      "notLinkedTitle": "Katalog produktów nie jest połączony"
+    },
+    "created": "Utworzono <date></date>",
+    "credentialsBanner": {
+      "body": "To połączenie przywrócono z archiwum, co nie przywraca danych uwierzytelniających. Podaj je ponownie, a następnie włącz połączenie, aby wznowić synchronizację.",
+      "enter": "Podaj dane uwierzytelniające",
+      "title": "Wymagane dane uwierzytelniające"
+    },
+    "description": "Przegląd połączenia, konfiguracja, kondycja i akcje operatora.",
+    "descriptionOms": "Zarządzane w ustawieniach pakowania.",
+    "error": {
+      "title": "Nie udało się wczytać połączenia"
+    },
+    "eyebrow": "Szczegóły integracji",
+    "fallbackTitle": "Połączenie {id}",
+    "loading": {
+      "message": "Pobieranie najnowszego podsumowania i diagnostyki połączenia.",
+      "title": "Wczytywanie połączenia"
+    },
+    "notFound": {
+      "message": "Dla tej ścieżki nie zwrócono danych połączenia. Spróbuj ponownie z listy integracji lub sprawdź wybrany identyfikator.",
+      "title": "Nie znaleziono połączenia"
+    },
+    "overview": {
+      "adapter": "Adapter",
+      "connectionId": "ID połączenia",
+      "credentials": "Dane uwierzytelniające",
+      "credentialsNotSet": "Nie ustawiono",
+      "credentialsServer": "Ustawione na serwerze",
+      "credentialsStored": "Zapisane w OpenLinker",
+      "defaultAdapter": "adapter domyślny",
+      "eyebrow": "Podsumowanie połączenia",
+      "lastUpdated": "Ostatnia zmiana",
+      "name": "Nazwa",
+      "platform": "Platforma"
+    },
+    "packingSettings": "Ustawienia pakowania",
+    "pausedBanner": {
+      "body": "To połączenie jest wyłączone, więc OpenLinker nie uruchamia dla niego żadnych zadań w tle. Konfiguracja, dane uwierzytelniające i mapowania pozostają bez zmian. Włącz je, aby wznowić.",
+      "enable": "Włącz połączenie",
+      "title": "Synchronizacja wstrzymana"
+    },
+    "reauthBanner": {
+      "body": "OpenLinker nie może już uwierzytelnić się w {platform} - zapisane dane uwierzytelniające zostały odrzucone, więc synchronizacja tego połączenia jest wstrzymana. Uwierzytelnij się ponownie, aby przywrócić dostęp; połączenie i jego mapowania zostaną zachowane.",
+      "title": "Wymagane ponowne uwierzytelnienie",
+      "updateCredentials": "Zaktualizuj dane uwierzytelniające"
+    },
+    "reauthenticate": "Uwierzytelnij ponownie",
+    "tabs": {
+      "actions": "Akcje",
+      "config": "Konfiguracja",
+      "health": "Kondycja",
+      "overview": "Przegląd"
+    }
+  },
+  "connectionDiagnosticsPanel": {
+    "columns": {
+      "attempts": "Próby",
+      "jobType": "Typ zadania",
+      "lastError": "Ostatni błąd",
+      "status": "Status",
+      "updated": "Zmieniono"
+    },
+    "errorTitle": "Nie udało się wczytać diagnostyki",
+    "eyebrow": "Kondycja",
+    "jobStatuses": {
+      "dead": "Nieudane trwale",
+      "failed": "Nieudane",
+      "queued": "W kolejce",
+      "running": "W toku",
+      "succeeded": "Zakończone"
+    },
+    "lastFailed": "Ostatnie niepowodzenie",
+    "lastSucceeded": "Ostatnie powodzenie",
+    "loadingMessage": "Pobieranie ostatniej historii zadań w tle.",
+    "loadingTitle": "Wczytywanie diagnostyki",
+    "meta": "Ostatnia aktywność",
+    "never": "Nigdy",
+    "recentErrors": "Ostatnie błędy",
+    "recentJobs": "Ostatnie zadania synchronizacji",
+    "retry": "Ponów",
+    "sourceLabels": {
+      "fiscalRegistrations": "paragonów fiskalnych",
+      "invoices": "faktur",
+      "syncJobs": "zadań synchronizacji"
+    },
+    "title": "Diagnostyka",
+    "unknown": "Nieznane",
+    "unreadableMessage": "Nie udało się teraz odczytać danych tego połączenia dotyczących: {sources}, więc poniższe czasy obejmują tylko pozostałe źródła. „Nieznane” oznacza, że tego nie wiemy, a nie że nic się nie wydarzyło. Spróbuj ponownie za chwilę.",
+    "unreadableTitle": "Części aktywności nie udało się sprawdzić"
+  },
+  "connectionLinkTarget": {
+    "system": "System",
+    "systemTitle": "Niezwiązane z konkretnym połączeniem",
+    "unknown": "Nieznane"
+  },
+  "connectionMappingsPage": {
+    "carrierFallback": {
+      "noFallback": {
+        "few": "<count>{n}</count> metody niezmapowane - synchronizacja będzie się nie udawać, dopóki nie zostanie ustawione mapowanie lub przewoźnik zastępczy.",
+        "many": "<count>{n}</count> metod niezmapowanych - synchronizacja będzie się nie udawać, dopóki nie zostanie ustawione mapowanie lub przewoźnik zastępczy.",
+        "one": "<count>{n}</count> metoda niezmapowana - synchronizacja będzie się nie udawać, dopóki nie zostanie ustawione mapowanie lub przewoźnik zastępczy.",
+        "other": "<count>{n}</count> metody niezmapowanej - synchronizacja będzie się nie udawać, dopóki nie zostanie ustawione mapowanie lub przewoźnik zastępczy."
+      },
+      "usingDynamic": {
+        "few": "<count>{n}</count> metody niezmapowane - przy synchronizacji używany jest OpenLinker Dynamic (dokładny koszt {platform}).",
+        "many": "<count>{n}</count> metod niezmapowanych - przy synchronizacji używany jest OpenLinker Dynamic (dokładny koszt {platform}).",
+        "one": "<count>{n}</count> metoda niezmapowana - przy synchronizacji używany jest OpenLinker Dynamic (dokładny koszt {platform}).",
+        "other": "<count>{n}</count> metody niezmapowanej - przy synchronizacji używany jest OpenLinker Dynamic (dokładny koszt {platform})."
+      },
+      "usingFallback": {
+        "few": "<count>{n}</count> metody niezmapowane - używany przewoźnik zastępczy: {fallback}.",
+        "many": "<count>{n}</count> metod niezmapowanych - używany przewoźnik zastępczy: {fallback}.",
+        "one": "<count>{n}</count> metoda niezmapowana - używany przewoźnik zastępczy: {fallback}.",
+        "other": "<count>{n}</count> metody niezmapowanej - używany przewoźnik zastępczy: {fallback}."
+      }
+    },
+    "carriers": {
+      "description": "Zmapuj identyfikatory metod dostawy {source} na odpowiadające im identyfikatory przewoźników {destination}.",
+      "dynamicSuffix": "dokładny koszt {platform}",
+      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowany przewoźnik może spowodować błąd synchronizacji zamówienia, chyba że ustawiono przewoźnika zastępczego. Dodaj mapowanie poniżej.",
+      "sourceColumn": "Metoda dostawy {platform}",
+      "targetColumn": "Przewoźnik {platform}",
+      "title": "Mapowania przewoźników"
+    },
+    "description": "Skonfiguruj mapowania {source} → {destination} dla statusów zamówień, przewoźników i metod płatności.",
+    "discard": {
+      "cancel": "Edytuj dalej",
+      "confirm": "Odrzuć zmiany",
+      "description": "Na tej karcie są niezapisane zmiany mapowań. Przełączenie karty je odrzuci.",
+      "title": "Odrzucić niezapisane zmiany?"
+    },
+    "error": {
+      "description": "Nie udało się wczytać konfiguracji mapowań.",
+      "title": "Nie udało się wczytać mapowań"
+    },
+    "eyebrow": "Połączenie",
+    "fallbackDestination": "połączony sklep",
+    "fallbackSource": "marketplace",
+    "inactive": {
+      "both": "Ani połączenie źródłowe {source}, ani docelowe {destination} nie jest aktywne. Mapowania zostaną zapisane, ale zamówienia nie będą synchronizowane, dopóki oba nie zostaną ponownie włączone.",
+      "destination": "Połączenie docelowe {destination} nie jest aktywne. Mapowania zostaną zapisane, ale zamówienia nie będą synchronizowane, dopóki nie zostanie ponownie włączone.",
+      "source": "Połączenie źródłowe {source} nie jest aktywne. Mapowania zostaną zapisane, ale zamówienia nie będą synchronizowane, dopóki nie zostanie ponownie włączone."
+    },
+    "loading": {
+      "description": "Wczytywanie konfiguracji mapowań…",
+      "message": "Pobieranie skonfigurowanych mapowań tego połączenia.",
+      "title": "Wczytywanie mapowań"
+    },
+    "noSource": {
+      "description": "Z {name} nie jest jeszcze powiązany żaden obsługiwany marketplace.",
+      "goToConnections": "Przejdź do połączeń",
+      "message": "Mapowania zamówień konfiguruje się po stronie marketplace. Otwórz połączenie z obsługiwanym marketplace i ustaw ten sklep jako jego katalog, aby je powiązać.",
+      "title": "Z tym sklepem nie jest powiązany żaden obsługiwany marketplace"
+    },
+    "orderStates": {
+      "description": "Ustal, na który stan zamówienia {destination} przechodzi każdy status OpenLinker. Sklepy ze zmienionymi lub dodanymi stanami mapuje się tutaj; niezmapowane statusy używają stanu z domyślnej instalacji.",
+      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowane statusy używają stanu zamówienia z domyślnej instalacji. Dodaj mapowanie poniżej.",
+      "sourceColumn": "Status OpenLinker",
+      "targetColumn": "Stan zamówienia {platform}",
+      "title": "Mapowania stanów zamówień"
+    },
+    "payments": {
+      "description": "Zmapuj nazwy dostawców płatności {source} na odpowiadające im nazwy modułów płatności {destination}.",
+      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowane metody płatności są zapisywane w zamówieniu jako „Check payment”. Zmapowana metoda jest zapisywana pod wybraną nazwą. Dodaj mapowanie poniżej.",
+      "sourceColumn": "Dostawca płatności {platform}",
+      "targetColumn": "Moduł płatności {platform}",
+      "title": "Mapowania płatności"
+    },
+    "pickSource": {
+      "choose": "Wybierz marketplace",
+      "description": "Wybierz marketplace, aby skonfigurować mapowania {name}.",
+      "message": "Mapowania zamówień należą do marketplace. Wybierz, który z powiązanych marketplace'ów (łącznie {n}) chcesz skonfigurować dla {name}.",
+      "title": "Wybierz marketplace do skonfigurowania"
+    },
+    "status": {
+      "columnLabel": "Status {platform}",
+      "description": "Zmapuj statusy zamówień {source} na odpowiadające im identyfikatory statusów zamówień {destination}.",
+      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowane statusy przy synchronizacji otrzymują status domyślny. Dodaj mapowanie poniżej.",
+      "title": "Mapowania statusów zamówień"
+    },
+    "tabs": {
+      "attributeRules": "Reguły atrybutów",
+      "carriers": "Przewoźnicy",
+      "deliveryOnDocuments": "Dostawa na dokumentach",
+      "fulfillment": "Realizacja",
+      "orderStates": "Stany zamówień",
+      "payments": "Płatności",
+      "status": "Statusy zamówień"
+    },
+    "tabsLabel": "Rodzaje mapowań",
+    "title": "Konfiguracja mapowań",
+    "unsupported": {
+      "description": "Mapowanie zamówień {platform} nie jest jeszcze obsługiwane.",
+      "message": "Mapowanie zamówień jest obecnie dostępne dla zamówień z obsługiwanych marketplace'ów. Obsługa kolejnych platform jest planowana.",
+      "title": "Mapowanie nie jest jeszcze dostępne dla połączeń {platform}"
+    }
+  },
+  "connectionPricingSyncPage": {
+    "descriptions": {
+      "destination": "Domyślna reguła cenowa i tryb synchronizacji dla tego kanału docelowego oraz ewentualne nadpisania dla poszczególnych źródeł.",
+      "destinationAndSource": "Domyślna reguła cenowa i tryb synchronizacji dla tego kanału docelowego oraz sposób, w jaki każdy zasilany przez to połączenie kanał docelowy dostosowuje cenę.",
+      "source": "Jak każdy zasilany przez to połączenie kanał docelowy dostosowuje cenę."
+    },
+    "error": {
+      "description": "Nie udało się wczytać połączenia.",
+      "title": "Nie udało się wczytać połączenia",
+      "unknown": "Nieznany błąd"
+    },
+    "eyebrow": "Połączenie",
+    "loading": {
+      "description": "Wczytywanie połączenia…",
+      "message": "Pobieranie szczegółów połączenia.",
+      "title": "Wczytywanie"
+    },
+    "nothing": {
+      "description": "{name} nie ma tu nic do skonfigurowania.",
+      "message": "Ceny i synchronizacja dotyczą połączenia, które może wystawiać oferty w marketplace, publikować produkty w sklepie lub dostarczać katalog główny. Najpierw włącz jedną z tych możliwości w tym połączeniu.",
+      "title": "Nic tu do skonfigurowania"
+    },
+    "title": "Ceny i synchronizacja",
+    "titleWithName": "Ceny i synchronizacja - {name}"
+  },
+  "connectionSyncStatusPanel": {
+    "behindMessage": "Praca czeka ponad dobę, a kolejka się nie zmniejsza. Zamówienia i stany tego połączenia są nieaktualne, dopóki nie nadrobi zaległości.",
+    "behindTitle": "To połączenie ma zaległości",
+    "dead": {
+      "few": "{n} zadania w tle zostały porzucone po wielokrotnych niepowodzeniach w ostatnim tygodniu. Nie uruchomią się ponownie same.",
+      "many": "{n} zadań w tle zostało porzuconych po wielokrotnych niepowodzeniach w ostatnim tygodniu. Nie uruchomią się ponownie same.",
+      "one": "{n} zadanie w tle zostało porzucone po wielokrotnych niepowodzeniach w ostatnim tygodniu. Nie uruchomi się ponownie samo.",
+      "other": "{n} zadania w tle zostało porzucone po wielokrotnych niepowodzeniach w ostatnim tygodniu. Nie uruchomią się ponownie same."
+    },
+    "details": {
+      "alertAbove": "Alert powyżej",
+      "alertNotMeasured": "Jeszcze nie zmierzono - w ostatniej godzinie nic się nie zakończyło",
+      "alertWaiting": "Czeka: {n}",
+      "finishedWork": "Zakończona praca",
+      "lastSuccess": "Ostatnie powodzenie",
+      "newWork": "Nowa praca",
+      "noPosition": "Brak zapisanej pozycji - to normalne, gdy sklep sam nas powiadamia",
+      "noSuccess": "Brak w ostatnim tygodniu",
+      "notMeasured": "Jeszcze nie zmierzono",
+      "note": "Nowa i zakończona praca są mierzone z ostatniej godziny. „Czeka” obejmuje tylko zadania w tle, których kolejna próba już przypada; zadanie odczekujące po niepowodzeniu jest liczone w pozycji „Czeka na ponowienie”. Próg alertu to tyle, ile to połączenie zwykle kończy w ciągu doby, więc zmienia się razem ze sklepem zamiast być stałą liczbą, a alert pojawia się dopiero, gdy najstarsze oczekujące zadanie czeka dłużej niż dobę.",
+      "positionMoved": "Ostatnia zmiana pozycji synchronizacji",
+      "runningNow": "W toku",
+      "summary": "Szczegóły",
+      "taskTime": {
+        "few": "{duration} (z {n} zadań w tle)",
+        "many": "{duration} (z {n} zadań w tle)",
+        "one": "{duration} (z {n} zadania w tle)",
+        "other": "{duration} (z {n} zadania w tle)"
+      },
+      "typicalTaskTime": "Typowy czas zadania w tle",
+      "waitingToRetry": "Czeka na ponowienie"
+    },
+    "errorTitle": "Nie udało się wczytać kolejki synchronizacji",
+    "eyebrow": "Kondycja",
+    "headline": {
+      "clearance": "Około {wait} do opróżnienia przy obecnym tempie.",
+      "empty": "Dla tego połączenia nic nie czeka.",
+      "failing": "W ostatniej godzinie nic nie zakończyło się powodzeniem, a zadania w tle kończą się niepowodzeniem. Kolejka może wyglądać na pustą, bo praca przepada, zamiast być wykonywana.",
+      "notShrinking": {
+        "few": "Czekają {n} zadania w tle, a kolejka się nie zmniejsza.",
+        "many": "Czeka {n} zadań w tle, a kolejka się nie zmniejsza.",
+        "one": "Czeka {n} zadanie w tle, a kolejka się nie zmniejsza.",
+        "other": "Czeka {n} zadania w tle, a kolejka się nie zmniejsza."
+      },
+      "notShrinkingOldest": {
+        "few": "Czekają {n} zadania w tle, najstarsze od {wait}, a kolejka się nie zmniejsza.",
+        "many": "Czeka {n} zadań w tle, najstarsze od {wait}, a kolejka się nie zmniejsza.",
+        "one": "Czeka {n} zadanie w tle, najstarsze od {wait}, a kolejka się nie zmniejsza.",
+        "other": "Czeka {n} zadania w tle, najstarsze od {wait}, a kolejka się nie zmniejsza."
+      },
+      "shrinking": {
+        "few": "Czekają {n} zadania w tle, a kolejka się zmniejsza.",
+        "many": "Czeka {n} zadań w tle, a kolejka się zmniejsza.",
+        "one": "Czeka {n} zadanie w tle, a kolejka się zmniejsza.",
+        "other": "Czeka {n} zadania w tle, a kolejka się zmniejsza."
+      },
+      "shrinkingOldest": {
+        "few": "Czekają {n} zadania w tle, najstarsze od {wait}, a kolejka się zmniejsza.",
+        "many": "Czeka {n} zadań w tle, najstarsze od {wait}, a kolejka się zmniejsza.",
+        "one": "Czeka {n} zadanie w tle, najstarsze od {wait}, a kolejka się zmniejsza.",
+        "other": "Czeka {n} zadania w tle, najstarsze od {wait}, a kolejka się zmniejsza."
+      },
+      "unknown": "Nie udało się teraz odczytać kolejki. Spróbuj ponownie za chwilę."
+    },
+    "loadingMessage": "Liczenie pracy oczekującej dla tego połączenia.",
+    "loadingTitle": "Wczytywanie kolejki synchronizacji",
+    "perHour": "{rate} na godzinę",
+    "retry": "Ponów",
+    "stalled": {
+      "few": "{n} zadania w tle zostały podjęte, ale w ostatniej godzinie nic się nie zakończyło. Zwykle oznacza to, że przetwarzanie w tle zatrzymało się w połowie.",
+      "many": "{n} zadań w tle zostało podjętych, ale w ostatniej godzinie nic się nie zakończyło. Zwykle oznacza to, że przetwarzanie w tle zatrzymało się w połowie.",
+      "one": "{n} zadanie w tle zostało podjęte, ale w ostatniej godzinie nic się nie zakończyło. Zwykle oznacza to, że przetwarzanie w tle zatrzymało się w połowie.",
+      "other": "{n} zadania w tle zostało podjęte, ale w ostatniej godzinie nic się nie zakończyło. Zwykle oznacza to, że przetwarzanie w tle zatrzymało się w połowie."
+    },
+    "statusLabels": {
+      "backlogged": "Zaległości",
+      "draining": "Nadrabianie",
+      "failing": "Zadania nieudane",
+      "growing": "Narastające opóźnienie",
+      "idle": "Nic nie czeka",
+      "unknown": "Nieznany"
+    },
+    "title": "Kolejka synchronizacji",
+    "wait": {
+      "days": {
+        "few": "{n} dni",
+        "many": "{n} dni",
+        "one": "{n} dzień",
+        "other": "{n} dnia"
+      },
+      "hours": "{n} godz.",
+      "minutes": "{n} min"
+    }
+  },
+  "connectionsListPage": {
+    "caption": "Skonfigurowane połączenia",
+    "columns": {
+      "actions": "Akcje",
+      "connection": "Połączenie",
+      "identifier": "Identyfikator",
+      "status": "Status"
+    },
+    "defaultAdapter": "adapter domyślny",
+    "description": "Wszystkie skonfigurowane połączenia integracji - filtruj według platformy lub statusu.",
+    "empty": {
+      "addFirst": "Dodaj pierwsze połączenie",
+      "clearFilters": "Wyczyść filtry",
+      "filtered": "Żadne połączenie nie pasuje do bieżących filtrów.",
+      "title": "Nie znaleziono połączeń",
+      "unfiltered": "Utwórz pierwsze połączenie, aby zacząć konfigurować integracje."
+    },
+    "error": {
+      "title": "Nie udało się wczytać połączeń"
+    },
+    "eyebrow": "Integracje",
+    "filters": {
+      "allPlatforms": "Wszystkie platformy",
+      "allStatuses": "Wszystkie statusy",
+      "platform": "Filtruj według platformy",
+      "status": "Filtruj według statusu"
+    },
+    "loading": {
+      "message": "Pobieranie aktualnej listy połączeń i podsumowania ich kondycji.",
+      "title": "Wczytywanie połączeń"
+    },
+    "newConnection": "Nowe połączenie",
+    "statusOptions": {
+      "active": "Aktywne",
+      "archived": "Zarchiwizowane",
+      "disabled": "Wyłączone",
+      "error": "Błąd",
+      "needs_reauth": "Wymaga ponownej autoryzacji"
+    },
+    "title": "Połączenia"
+  },
+  "createConnectionForm": {
+    "create": "Utwórz połączenie",
+    "createdDescription": "Utworzono połączenie „{name}”.",
+    "createdTitle": "Połączenie utworzone",
+    "creating": "Tworzenie...",
+    "errorTitle": "Nie udało się utworzyć połączenia",
+    "eyebrow": "Konfiguracja",
+    "fields": {
+      "adapterKey": {
+        "description": "Opcjonalne, gdy domyślny adapter można ustalić na podstawie wybranej platformy.",
+        "label": "Klucz adaptera"
+      },
+      "configJson": {
+        "description": "Podaj tylko bezpieczne wartości konfiguracji połączenia. Sekrety muszą pozostać poza przeglądarką.",
+        "label": "Konfiguracja JSON"
+      },
+      "credentialsJson": {
+        "description": "Surowe dane uwierzytelniające (np. { \"bridgeToken\": \"…\" } dla mostka księgowego). Szyfrowane po stronie serwera. Użyj zamiast odwołania.",
+        "label": "Dane uwierzytelniające JSON"
+      },
+      "credentialsRef": {
+        "description": "Istniejące odwołanie db:. Zostaw puste, jeśli podajesz poniżej surowe dane uwierzytelniające JSON.",
+        "label": "Odwołanie do danych uwierzytelniających"
+      },
+      "enabledCapabilities": {
+        "description": "Rozdzielone przecinkami (np. Invoicing). Zostaw puste, aby użyć wszystkich możliwości obsługiwanych przez adapter.",
+        "label": "Włączone możliwości"
+      },
+      "name": {
+        "label": "Nazwa połączenia",
+        "placeholder": "Główny sklep"
+      },
+      "platformType": {
+        "description": "Wybierz rodzinę platform, z którą zintegruje się to połączenie.",
+        "label": "Typ platformy",
+        "placeholder": "Wybierz platformę"
+      }
+    },
+    "meta": "Sprawdzane dane",
+    "noCredentials": {
+      "body": "{platform} działa wewnątrz OpenLinker i nie przekracza żadnej granicy sieciowej, więc nie ma się gdzie uwierzytelniać. Całkowicie pomiń pola danych uwierzytelniających.",
+      "title": "{platform} nie wymaga danych uwierzytelniających"
+    },
+    "oauth": {
+      "body": "Połączenia {platform} wymagają autoryzacji OAuth. <link>Użyj kreatora konfiguracji {platform}</link>, aby bezpiecznie połączyć konto.",
+      "title": "{platform} korzysta z OAuth"
+    },
+    "reset": {
+      "action": "Wyczyść szkic",
+      "cancel": "Edytuj dalej",
+      "description": "Spowoduje to wyczyszczenie bieżących wartości formularza i stanu walidacji szkicu integracji.",
+      "doneDescription": "Wartości szkicu połączenia zostały wyczyszczone.",
+      "doneTitle": "Szkic wyczyszczony",
+      "title": "Wyczyścić szkic połączenia?"
+    },
+    "title": "Szkic połączenia"
+  },
+  "createConnectionSchema": {
+    "configInvalid": "Konfiguracja musi być prawidłowym JSON-em",
+    "configRequired": "Konfiguracja JSON jest wymagana",
+    "credentialsExactlyOne": "Podaj dokładnie jedno: odwołanie do danych uwierzytelniających „db:” albo surowy obiekt JSON z danymi uwierzytelniającymi",
+    "credentialsJsonInvalid": "Dane uwierzytelniające muszą być prawidłowym obiektem JSON",
+    "credentialsRefPrefix": "Odwołanie do danych uwierzytelniających musi zaczynać się od „db:” - surowe klucze nie są już akceptowane",
+    "nameRequired": "Nazwa połączenia jest wymagana",
+    "platformTypeRequired": "Typ platformy jest wymagany"
+  },
+  "dpdSetupForm": {
+    "beforeYouStart": {
+      "body": "Potrzebujesz <strong>loginu</strong> i <strong>hasła</strong> do DPDServices REST oraz <strong>FID płatnika</strong> (identyfikatora konta). Przed przejściem na produkcję sprawdź wszystko w środowisku sandbox.",
+      "title": "Zanim zaczniesz"
+    },
+    "create": "Utwórz połączenie",
+    "createError": "Nie udało się utworzyć połączenia",
+    "createdDescription": "Utworzono połączenie {platform} „{name}”.",
+    "createdTitle": "Połączenie utworzone",
+    "creating": "Tworzenie...",
+    "environments": {
+      "production": "Produkcja",
+      "sandbox": "Sandbox"
+    },
+    "fields": {
+      "environment": {
+        "label": "Środowisko"
+      },
+      "login": {
+        "label": "Login"
+      },
+      "masterFid": {
+        "description": "Potrzebne tylko przy konfiguracji {platform} z wieloma kontami.",
+        "label": "Master FID (opcjonalnie)"
+      },
+      "name": {
+        "label": "Nazwa połączenia",
+        "placeholder": "{platform} - magazyn główny"
+      },
+      "password": {
+        "description": "Przechowywane bezpiecznie na serwerze - po zapisaniu nie będzie ponownie wyświetlane.",
+        "label": "Hasło"
+      },
+      "payerFid": {
+        "description": "Liczbowy identyfikator konta (payerFID) wysyłany z każdą przesyłką.",
+        "label": "FID płatnika"
+      },
+      "senderAddress": {
+        "label": "Adres",
+        "placeholder": "ul. Magazynowa 1"
+      },
+      "senderCity": {
+        "label": "Miejscowość",
+        "placeholder": "Warszawa"
+      },
+      "senderCompany": {
+        "label": "Firma (opcjonalnie)",
+        "placeholder": "Sklep ACME"
+      },
+      "senderCountryCode": {
+        "description": "ISO 3166-1 alpha-2 (np. PL).",
+        "label": "Kraj"
+      },
+      "senderEmail": {
+        "label": "E-mail (opcjonalnie)",
+        "placeholder": "magazyn@acme.pl"
+      },
+      "senderName": {
+        "label": "Osoba kontaktowa (opcjonalnie)",
+        "placeholder": "Magazyn główny"
+      },
+      "senderPhone": {
+        "label": "Telefon (opcjonalnie)"
+      },
+      "senderPostalCode": {
+        "description": "Polski format NN-NNN (np. 00-001).",
+        "label": "Kod pocztowy"
+      }
+    },
+    "platformFallback": "przewoźnik",
+    "review": {
+      "masterFid": "Master FID",
+      "name": "Nazwa",
+      "sender": "Nadawca"
+    },
+    "senderAddress": {
+      "body": "Drukowany na każdej etykiecie {platform} jako adres zwrotny / nadawcy. Polski format kodu pocztowego <mono>NN-NNN</mono>.",
+      "title": "Adres nadawcy"
+    },
+    "steps": {
+      "account": "Konto i dane dostępowe",
+      "review": "Sprawdź i połącz",
+      "sender": "Adres nadawcy"
+    }
+  },
+  "dpdSetupPage": {
+    "chip": "DPDServices REST",
+    "description": "Podaj dane dostępowe DPDServices, konto płatnika i adres nadawcy. OpenLinker używa ich do generowania etykiet kurierskich i protokołów przekazania.",
+    "fallbackPlatform": "przewoźnik",
+    "title": "Połącz z {platform}"
+  },
+  "dpdSetupSchema": {
+    "addressRequired": "Adres nadawcy jest wymagany",
+    "cityRequired": "Miejscowość nadawcy jest wymagana",
+    "countryFormat": "Kraj musi być kodem ISO 3166-1 alpha-2 (np. PL)",
+    "emailInvalid": "Podaj prawidłowy adres e-mail",
+    "loginRequired": "Login jest wymagany",
+    "masterFidNumeric": "Master FID musi być liczbowym identyfikatorem",
+    "nameRequired": "Nazwa połączenia jest wymagana",
+    "passwordRequired": "Hasło jest wymagane",
+    "payerFidNumeric": "FID płatnika musi być liczbowym identyfikatorem",
+    "postalCodeFormat": "Kod pocztowy musi mieć polski format NN-NNN"
+  },
+  "editConnectionForm": {
+    "cancel": "Anuluj",
+    "catalogPicker": {
+      "description": "OpenLinker używa tego połączenia z katalogiem, aby przypisywać kody kreskowe ofert (EAN/GTIN) do wariantów produktów. Jeśli pole jest puste i istnieje dokładnie jedno połączenie z katalogiem, zostanie użyte automatycznie.",
+      "emptyBody": "Łączenie po kodach kreskowych wymaga źródła katalogu. <link>Dodaj połączenie ze sklepem</link>, aby włączyć łączenie ofert z produktami.",
+      "emptyTitle": "Brak połączeń z katalogiem",
+      "label": "Połączenie z katalogiem produktów",
+      "loadErrorTitle": "Nie udało się wczytać połączeń z katalogiem",
+      "loadFailed": "Nie udało się wczytać połączeń",
+      "loading": "Wczytywanie połączeń…",
+      "missing": "Brak: {id}",
+      "none": "Brak (łączenie po kodach kreskowych wyłączone)",
+      "retry": "Ponów",
+      "staleBody": "To połączenie wskazuje usunięte lub wyłączone połączenie z katalogiem. Wybierz nowe poniżej albo usuń powiązanie.",
+      "staleTitle": "Brak powiązanego katalogu"
+    },
+    "errorTitle": "Nie udało się zaktualizować połączenia",
+    "eyebrow": "Edytuj połączenie",
+    "fields": {
+      "adapterKey": {
+        "description": "Opcjonalne, gdy domyślny adapter można ustalić na podstawie wybranej platformy.",
+        "label": "Klucz adaptera"
+      },
+      "credentials": {
+        "environment": "Ustawione w ustawieniach serwera (nie można edytować tutaj)",
+        "label": "Dane uwierzytelniające",
+        "removed": "Nie ustawiono - usunięte przy archiwizacji tego połączenia",
+        "stored": "Przechowywane bezpiecznie (zarządzane przez integrację)"
+      },
+      "name": {
+        "label": "Nazwa połączenia",
+        "placeholder": "Główny sklep"
+      },
+      "platformType": "Typ platformy"
+    },
+    "goToConnection": "Przejdź do połączenia",
+    "meta": "Zmień ustawienia",
+    "needsAttention": {
+      "few": "{n} pola wymagają uwagi. Zobacz listę na górze formularza.",
+      "many": "{n} pól wymaga uwagi. Zobacz listę na górze formularza.",
+      "one": "{n} pole wymaga uwagi. Zobacz listę na górze formularza.",
+      "other": "{n} pola wymaga uwagi. Zobacz listę na górze formularza."
+    },
+    "notSavedTitle": "Zmiany nie zostały zapisane",
+    "rawJson": {
+      "description": "Surowa konfiguracja. Edytuj ostrożnie - sekrety muszą pozostać poza przeglądarką.",
+      "hide": "Ukryj surową konfigurację JSON",
+      "label": "Konfiguracja JSON",
+      "show": "Pokaż surową konfigurację JSON"
+    },
+    "rawJsonInvalid": {
+      "body": "Popraw poniżej surową konfigurację JSON, zanim zaczniesz edytować pola formularza - są zablokowane, aby własne klucze JSON nie zostały po cichu utracone.",
+      "title": "Surowy JSON jest nieprawidłowy"
+    },
+    "save": "Zapisz zmiany",
+    "saving": "Zapisywanie...",
+    "someNeedAttention": "Niektóre pola wymagają uwagi. Zobacz listę na górze formularza.",
+    "unexpectedError": "Wystąpił nieoczekiwany błąd.",
+    "updatedDescription": "Ustawienia połączenia zostały zapisane.",
+    "updatedTitle": "Połączenie zaktualizowane",
+    "warningsTitle": "Zapisano, ale coś wymaga sprawdzenia"
+  },
+  "editConnectionPage": {
+    "backLabel": "Połączenie",
+    "description": "Zmień nazwę połączenia, konfigurację i ustawienia adaptera.",
+    "error": {
+      "title": "Nie udało się wczytać połączenia"
+    },
+    "eyebrow": "Ustawienia połączenia",
+    "loading": {
+      "message": "Pobieranie danych połączenia do edycji.",
+      "title": "Wczytywanie połączenia"
+    },
+    "notFound": {
+      "message": "Nie zwrócono danych połączenia. Sprawdź ID połączenia lub wróć do listy.",
+      "title": "Nie znaleziono połączenia"
+    },
+    "title": "Edytuj połączenie"
+  },
+  "editConnectionSchema": {
+    "atMost100000": "Maksymalnie 100000",
+    "atMost6000": "Maksymalnie 6000",
+    "atMost64": "Maksymalnie 64",
+    "attachmentRequired": "Dodaj co najmniej jeden załącznik, gdy wybrano „Podaj informacje o bezpieczeństwie (plik)”.",
+    "bridgeUrlInvalid": "Adres URL mostka musi być prawidłowym adresem URL",
+    "bridgeUrlProtocol": "Adres URL mostka musi używać http:// lub https://",
+    "callbackUrlInvalid": "Adres URL zwrotny musi być prawidłowym adresem URL",
+    "callbackUrlProtocol": "Adres URL zwrotny musi używać http:// lub https://",
+    "configInvalid": "Konfiguracja musi być prawidłowym JSON-em",
+    "configRequired": "Konfiguracja JSON jest wymagana",
+    "countryCode": "Kraj musi być kodem ISO 3166-1 alpha-2 (np. PL)",
+    "defaultCarrierInvalid": "ID domyślnego przewoźnika musi być dodatnią liczbą całkowitą.",
+    "emailInvalid": "Podaj prawidłowy adres e-mail",
+    "marginTooHigh": "Marża musi być mniejsza niż 100%. Aby dodać więcej niż cena katalogowa, użyj narzutu.",
+    "nameRequired": "Nazwa połączenia jest wymagana",
+    "numberOrZero": "Musi być liczbą równą 0 lub większą",
+    "percentRequired": "Podaj wartość procentową",
+    "positiveWholeNumber": "Musi być dodatnią liczbą całkowitą",
+    "postcodeFormat": "Kod pocztowy musi mieć polski format NN-NNN",
+    "productCatalogInvalid": "Katalog produktów musi być prawidłowym ID połączenia",
+    "siteUrlHttps": "Adres URL strony musi używać HTTPS",
+    "siteUrlInvalid": "Adres URL strony musi być prawidłowy (np. https://shop.example.com)",
+    "storefrontUrlInvalid": "Adres URL sklepu musi być prawidłowym adresem URL",
+    "storefrontUrlProtocol": "Adres URL sklepu musi używać http:// lub https://",
+    "unmanagedStockInvalid": "Ilość dla stanu niezarządzanego musi być dodatnią liczbą całkowitą.",
+    "wholeNumberOrZero": "Musi być liczbą całkowitą równą 0 lub większą"
+  },
+  "enableConnectionButton": {
+    "enable": "Włącz",
+    "enabling": "Włączanie…",
+    "errorTitle": "Nie udało się włączyć połączenia",
+    "successDescription": "„{name}” jest znowu aktywne. Synchronizacja zostanie wznowiona przy najbliższym zaplanowanym przebiegu.",
+    "successTitle": "Połączenie włączone"
+  },
+  "erliSetupForm": {
+    "beforeYouStart": {
+      "body": "W panelu sprzedawcy {platform} wygeneruj <strong>klucz Shop API</strong>. OpenLinker wysyła go jako token bearer w każdym zapytaniu do Shop API {platform}. Klucz jest bezpiecznie przechowywany na serwerze i wyświetlany tylko raz.",
+      "title": "Zanim zaczniesz"
+    },
+    "connect": "Połącz z {platform}",
+    "connecting": "Łączenie…",
+    "createError": "Nie udało się utworzyć połączenia",
+    "createdDescription": "Utworzono połączenie {platform} „{name}”.",
+    "createdTitle": "Połączenie utworzone",
+    "done": "Gotowe",
+    "environments": {
+      "production": "Produkcja",
+      "sandbox": "Sandbox"
+    },
+    "fields": {
+      "apiKey": {
+        "description": "Klucz Shop API {platform} - wygenerowany w panelu sprzedawcy {platform}.",
+        "label": "Klucz API"
+      },
+      "environment": {
+        "description": "Wybierz Sandbox, aby przetestować połączenie ze środowiskiem testowym {platform} przed przejściem na produkcję.",
+        "label": "Środowisko",
+        "option": "{name} - {url}"
+      },
+      "name": {
+        "description": "Nazwa identyfikująca to konto {platform} w OpenLinker.",
+        "label": "Nazwa połączenia",
+        "placeholder": "Mój sklep {platform}"
+      }
+    },
+    "latency": "({ms} ms)",
+    "platformFallback": "marketplace",
+    "review": {
+      "deliveryOnDocuments": "Dostawa na dokumentach",
+      "name": "Nazwa"
+    },
+    "steps": {
+      "credentials": "Dane dostępowe",
+      "review": "Sprawdź i połącz",
+      "salesDocuments": "Dokumenty sprzedaży"
+    },
+    "test": "Przetestuj połączenie",
+    "testError": "Nie udało się przetestować połączenia",
+    "testFailed": "Test połączenia nie powiódł się",
+    "testPassed": "Test połączenia zakończony powodzeniem",
+    "testing": "Testowanie…"
+  },
+  "erliSetupPage": {
+    "chip": "Klucz API",
+    "description": "Podaj klucz Shop API {platform}. OpenLinker używa go do synchronizacji ofert i zamówień z kontem sprzedawcy {platform}.",
+    "fallbackPlatform": "marketplace",
+    "title": "Połącz z {platform}"
+  },
+  "erliSetupSchema": {
+    "apiKeyRequired": "Klucz API jest wymagany",
+    "nameRequired": "Nazwa połączenia jest wymagana"
+  },
+  "erliSetupSummary": {
+    "connection": "Połączenie",
+    "environment": "Środowisko",
+    "environments": {
+      "production": "Produkcja",
+      "sandbox": "Sandbox"
+    },
+    "name": "Nazwa"
+  },
+  "fulfilmentOwnershipSection": {
+    "heading": "Kto pakuje zamówienia",
+    "help": "Włącz, gdy to ten system pakuje paczkę i ją wysyła (np. zewnętrzny system magazynowy). OpenLinker ukryje wtedy własny przycisk „Oznacz jako spakowane” i znacznik spakowania dla trafiających tu zamówień. Zmienia to tylko widok: nic nie jest blokowane, a ten system nadal może zgłosić zamówienie jako spakowane.",
+    "toggle": "Ten system sam pakuje i wysyła zamówienia"
+  },
+  "inpostSetupForm": {
+    "beforeYouStart": {
+      "body": "W panelu ShipX {platform} wygeneruj <strong>token API</strong> ShipX i zanotuj <strong>ID organizacji</strong>. Przed przejściem na produkcję sprawdź wszystko w środowisku sandbox.",
+      "title": "Zanim zaczniesz"
+    },
+    "create": "Utwórz połączenie",
+    "createError": "Nie udało się utworzyć połączenia",
+    "createdDescription": "Utworzono połączenie {platform} „{name}”.",
+    "createdTitle": "Połączenie utworzone",
+    "creating": "Tworzenie...",
+    "environments": {
+      "production": "Produkcja",
+      "sandbox": "Sandbox"
+    },
+    "fields": {
+      "apiToken": {
+        "description": "Token bearer ShipX - przechowywany bezpiecznie na serwerze, po zapisaniu nie będzie ponownie wyświetlany.",
+        "label": "Token API"
+      },
+      "environment": {
+        "label": "Środowisko"
+      },
+      "name": {
+        "label": "Nazwa połączenia",
+        "placeholder": "{platform} - magazyn główny"
+      },
+      "organizationId": {
+        "description": "ID organizacji ShipX - parametr ścieżki URL w każdym endpoincie przesyłek.",
+        "label": "ID organizacji"
+      },
+      "senderBuildingNumber": {
+        "label": "Numer budynku"
+      },
+      "senderCity": {
+        "label": "Miejscowość",
+        "placeholder": "Warszawa"
+      },
+      "senderCountryCode": {
+        "description": "ISO 3166-1 alpha-2 (np. PL).",
+        "label": "Kraj"
+      },
+      "senderEmail": {
+        "label": "E-mail nadawcy",
+        "placeholder": "magazyn@acme.pl"
+      },
+      "senderName": {
+        "label": "Nazwa nadawcy (opcjonalnie)",
+        "placeholder": "Sklep ACME"
+      },
+      "senderPhone": {
+        "label": "Telefon nadawcy"
+      },
+      "senderPostCode": {
+        "description": "Polski format NN-NNN (np. 00-001).",
+        "label": "Kod pocztowy"
+      },
+      "senderStreet": {
+        "label": "Ulica",
+        "placeholder": "ul. Magazynowa"
+      }
+    },
+    "platformFallback": "przewoźnik",
+    "review": {
+      "name": "Nazwa",
+      "sender": "Nadawca"
+    },
+    "senderAddress": {
+      "body": "Używany jako nadawca przesyłek ShipX. Polski format kodu pocztowego <mono>NN-NNN</mono>.",
+      "title": "Adres nadawcy"
+    },
+    "steps": {
+      "account": "Konto i dane dostępowe",
+      "review": "Sprawdź i połącz",
+      "sender": "Adres nadawcy"
+    }
+  },
+  "inpostSetupPage": {
+    "chip": "ShipX API",
+    "description": "Podaj token API ShipX, ID organizacji i adres nadawcy. OpenLinker używa ich do tworzenia przesyłek i etykiet {platform}.",
+    "fallbackPlatform": "przewoźnik",
+    "title": "Połącz z {platform}"
+  },
+  "inpostSetupSchema": {
+    "apiTokenRequired": "Token API jest wymagany",
+    "buildingNumberRequired": "Numer budynku jest wymagany",
+    "cityRequired": "Miejscowość jest wymagana",
+    "countryFormat": "Kraj musi być kodem ISO 3166-1 alpha-2 (np. PL)",
+    "emailInvalid": "Podaj prawidłowy adres e-mail",
+    "nameRequired": "Nazwa połączenia jest wymagana",
+    "organizationIdRequired": "ID organizacji jest wymagane",
+    "phoneRequired": "Telefon nadawcy jest wymagany",
+    "postCodeFormat": "Kod pocztowy musi mieć polski format NN-NNN",
+    "streetRequired": "Ulica jest wymagana"
+  },
+  "invoiceTriggerModel": {
+    "labels": {
+      "auto-on-paid": "Automatycznie po opłaceniu zamówienia",
+      "auto-on-shipped": "Automatycznie po wysłaniu zamówienia",
+      "batched": "Zbiorczo",
+      "manual": "Ręcznie"
+    }
+  },
+  "newConnectionPage": {
+    "backLabel": "Połączenia",
+    "description": "Wybierz platformę, którą chcesz połączyć. Każda platforma ma kreator konfiguracji - bez surowych kluczy adapterów i konfiguracji JSON.",
+    "title": "Dodaj połączenie",
+    "wizardsChip": "Kreatory dla każdej platformy"
+  },
+  "pickBankAccount": {
+    "errorDescription": "Wybór nie został zapisany - {hint} {message}",
+    "errorTitle": "Nie udało się zapisać konta bankowego"
+  },
+  "platformPicker": {
+    "advanced": "Chcesz ustawić surowy klucz adaptera lub własną konfigurację JSON? <link>Użyj trybu zaawansowanego</link>.",
+    "alreadySetUp": "Już skonfigurowane - kliknij, aby edytować →",
+    "continue": "Dalej →"
+  },
+  "prestashopRateLimitReadout": {
+    "cap": "Limit: {cap}",
+    "capWithConcurrency": "Limit: {cap}, maks. {n} równocześnie",
+    "checking": "Sprawdzanie stanu limitu zapytań…",
+    "loadError": "Nie udało się wczytać stanu limitu zapytań.",
+    "noLimit": "Nie skonfigurowano limitu wychodzącego - zapytania do tego połączenia nie są spowalniane.",
+    "noPerMinuteCap": "bez limitu na minutę",
+    "perMinute": "{n}/min",
+    "queue": "W toku: {inFlight}, w kolejce: {queued}",
+    "refresh": "Odśwież",
+    "refreshing": "Odświeżanie…",
+    "retry": "Ponów"
+  },
+  "prestashopSetupForm": {
+    "beforeYouStart": {
+      "body": "W panelu administracyjnym {platform} włącz Webservice w sekcji <strong>Parametry zaawansowane → Webservice</strong> i wygeneruj klucz z włączonymi wymaganymi zasobami.",
+      "title": "Zanim zaczniesz"
+    },
+    "capabilities": {
+      "help": "Wybierz role, które ma pełnić to połączenie. Możesz to później zmienić na stronie szczegółów połączenia.",
+      "legend": "Możliwości"
+    },
+    "create": "Utwórz połączenie",
+    "createError": "Nie udało się utworzyć połączenia",
+    "createdDescription": "Utworzono połączenie {platform} „{name}”.",
+    "createdTitle": "Połączenie utworzone",
+    "creating": "Tworzenie...",
+    "currencies": {
+      "CHF": "Frank szwajcarski",
+      "CZK": "Korona czeska",
+      "DKK": "Korona duńska",
+      "EUR": "Euro",
+      "GBP": "Funt brytyjski",
+      "HUF": "Forint węgierski",
+      "NOK": "Korona norweska",
+      "PLN": "Złoty polski",
+      "RON": "Lej rumuński",
+      "SEK": "Korona szwedzka",
+      "USD": "Dolar amerykański"
+    },
+    "fields": {
+      "baseUrl": {
+        "description": "Publiczny adres URL sklepu {platform} (bez końcowej ścieżki).",
+        "label": "Adres URL sklepu"
+      },
+      "currency": {
+        "description": "Kod ISO 4217 stosowany do każdego produktu synchronizowanego z tego połączenia. Jeśli zostawisz puste, OpenLinker zapyta sklep o jego domyślną walutę; produkty pozostaną bez waluty, jeśli sklep jej nie ustawił.",
+        "label": "Waluta domyślna (opcjonalnie)",
+        "notSet": "- nie ustawiono -",
+        "option": "{code} - {name}"
+      },
+      "name": {
+        "label": "Nazwa połączenia",
+        "placeholder": "Główny sklep {platform}"
+      },
+      "shopId": {
+        "description": "Potrzebne tylko w instalacjach {platform} z wieloma sklepami.",
+        "label": "ID sklepu (opcjonalnie)"
+      },
+      "storefrontBaseUrl": {
+        "description": "Nadpisz tylko wtedy, gdy publiczny adres sklepu różni się od adresu webservice. Zostaw puste, jeśli są takie same - domyślnie używany jest adres URL sklepu.",
+        "label": "Publiczny adres URL sklepu (opcjonalnie)"
+      },
+      "webserviceKey": {
+        "description": "Generowany w panelu administracyjnym {platform} w sekcji Parametry zaawansowane → Webservice.",
+        "label": "Klucz webservice",
+        "placeholder": "np. ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
+      }
+    },
+    "platformFallback": "sklep",
+    "review": {
+      "currency": "Waluta domyślna",
+      "name": "Nazwa",
+      "noneSelected": "Nic nie wybrano",
+      "shopId": "ID sklepu",
+      "storefrontUrl": "Publiczny adres URL sklepu"
+    },
+    "steps": {
+      "capabilities": "Możliwości",
+      "credentials": "Dane dostępowe",
+      "review": "Sprawdź i połącz",
+      "verify": "Sprawdź dane dostępowe"
+    },
+    "verify": {
+      "body": "OpenLinker użyje poniższych wartości, aby połączyć się z panelem administracyjnym {platform}. Zanim przejdziesz dalej, upewnij się, że adres sklepu działa, a klucz webservice jest aktywny. Po zapisaniu połączenia możesz wykonać test na żywo ze strony szczegółów połączenia.",
+      "title": "Sprawdź dane dostępowe"
+    }
+  },
+  "prestashopSetupPage": {
+    "chip": "Webservice API",
+    "description": "Podaj adres URL sklepu i klucz webservice. OpenLinker używa ich do synchronizacji produktów, zamówień i stanów magazynowych.",
+    "fallbackPlatform": "sklep",
+    "title": "Połącz z {platform}"
+  },
+  "prestashopSetupSchema": {
+    "baseUrlInvalid": "Adres URL sklepu musi być prawidłowy (np. https://shop.example.com)",
+    "baseUrlProtocol": "Adres URL sklepu musi używać http:// lub https://",
+    "currencyFormat": "Użyj 3-literowego kodu ISO 4217",
+    "nameRequired": "Nazwa połączenia jest wymagana",
+    "storefrontUrlInvalid": "Publiczny adres URL sklepu musi być prawidłowym adresem URL",
+    "storefrontUrlProtocol": "Publiczny adres URL sklepu musi używać http:// lub https://",
+    "webserviceKeyRequired": "Klucz webservice jest wymagany"
+  },
+  "prestashopSetupSummary": {
+    "capabilities": "Możliwości",
+    "connection": "Połączenie",
+    "defaultCurrency": "Waluta domyślna",
+    "liveTestNote": "Test na żywo będzie dostępny po zapisaniu połączenia - na stronie szczegółów połączenia.",
+    "name": "Nazwa",
+    "noCapabilities": "Nie wybrano możliwości",
+    "shopId": "ID sklepu",
+    "storefrontUrl": "Publiczny adres URL sklepu",
+    "webserviceEndpoint": "Endpoint webservice"
+  },
+  "pricingAndSyncSection": {
+    "activity": {
+      "description": "Ostatnie decyzje cenowe w tym połączeniu.",
+      "title": "Ostatnia aktywność",
+      "unavailable": "Historia aktywności nie jest jeszcze dostępna."
+    },
+    "blocked": {
+      "defaultRule": "Nie można jeszcze zapisać. Reguła domyślna: {error}",
+      "sourceOverride": "Nie można jeszcze zapisać. Nadpisanie dla źródła: {error}"
+    },
+    "defaultRule": {
+      "description": "Używana dla każdego źródła poniżej, chyba że któremuś nadasz własną regułę.",
+      "edit": "Edytuj regułę domyślną",
+      "modeLabel": "Domyślny tryb synchronizacji cen",
+      "title": "Domyślna reguła cenowa"
+    },
+    "discard": "Odrzuć",
+    "drop": {
+      "confirm": "Odrzuć i zapisz",
+      "description": {
+        "few": "Zapisanie trwale usunie: {items}. Zostaną przywrócone wartości domyślne.",
+        "many": "Zapisanie trwale usunie: {items}. Zostaną przywrócone wartości domyślne.",
+        "one": "Zapisanie trwale usunie: {items}. Zostanie przywrócona wartość domyślna.",
+        "other": "Zapisanie trwale usunie: {items}. Zostaną przywrócone wartości domyślne."
+      },
+      "item": "{label} ({parts})",
+      "title": "Usunąć własne ustawienia tego źródła?"
+    },
+    "errors": {
+      "marginTooHigh": "Marża musi być mniejsza niż 100%. Aby dodać więcej niż cena katalogowa, użyj narzutu.",
+      "percentInvalid": "Podaj wartość procentową równą 0 lub większą."
+    },
+    "loadErrorTitle": "Nie udało się wczytać ustawień cen i synchronizacji",
+    "loadingMessage": "Wczytywanie ustawień…",
+    "loadingTitle": "Ceny i synchronizacja",
+    "modeHints": {
+      "automatic": "Nowe ceny zaczynają obowiązywać od razu po zmianie w sklepie - bez weryfikacji i bez czekania.",
+      "manual": "Nowe ceny czekają na Twoją akceptację na stronie Zmiany cen, zanim zaczną obowiązywać."
+    },
+    "modes": {
+      "automatic": "Automatycznie",
+      "manual": "Ręczna weryfikacja"
+    },
+    "noRule": "Nie ustawiono reguły cenowej - cena ze sklepu jest wysyłana bez zmian.",
+    "pending": {
+      "count": {
+        "few": "{n} zmiany czekają",
+        "many": "{n} zmian czeka",
+        "one": "{n} zmiana czeka",
+        "other": "{n} zmiany czeka"
+      },
+      "none": "W tym połączeniu nie czekają żadne zmiany cen.",
+      "review": "przejrzyj je"
+    },
+    "ruleFields": {
+      "percent": "Procent",
+      "rounding": "Zaokrąglenie",
+      "roundings": {
+        "endingIn99": "Zaokrąglij do końcówki ,99",
+        "nearestWhole": "Zaokrąglij do pełnej kwoty",
+        "none": "Bez zaokrąglania"
+      },
+      "type": "Reguła cenowa",
+      "types": {
+        "margin": "Zachowaj marżę procentową",
+        "markup": "Dodaj procent",
+        "passthrough": "Użyj ceny ze sklepu bez zmian"
+      }
+    },
+    "save": "Zapisz zmiany",
+    "saveFailed": "Nie udało się zapisać ustawień cen i synchronizacji.",
+    "savedDescription": "Zaktualizowano ustawienia cen i synchronizacji.",
+    "savedTitle": "Zapisano",
+    "saving": "Zapisywanie…",
+    "sources": {
+      "description": "Użyj tego, gdy jeden dostawca lub magazyn ma mieć inne ceny - np. drugi magazyn z własną marżą.",
+      "inheritedMode": "tryb synchronizacji",
+      "inheritedRule": "reguła",
+      "modeLabel": "Tryb synchronizacji cen dla {source}",
+      "notFound": "Powiązane źródło nie należy do obecnych źródeł tego połączenia, więc nie ma tu nic do pokazania.",
+      "ownMode": "Użyj innego trybu synchronizacji dla tego źródła",
+      "ownRule": "Użyj innej reguły dla tego źródła",
+      "title": "Nadaj źródłu własne ustawienia",
+      "usingDefault": "(domyślnie: {parts})"
+    },
+    "unsaved": "Wprowadzono zmiany, które nie zostały jeszcze zapisane."
+  },
+  "rateLimitSection": {
+    "ceiling": {
+      "adapterDefault": "{n} zapytań jednocześnie (domyślnie dla adaptera)",
+      "fromSetting": "{n} zapytań jednocześnie (z ustawienia maksymalnej liczby równoczesnych zapytań, poniżej domyślnej wartości adaptera {adapterDefault})",
+      "sentence": "Dopasowywanie kategorii w tym połączeniu działa z limitem maksymalnie <strong>{ceiling}</strong> przy każdym rozmiarze partii. Ten limit stosuje sam adapter, niezależnie od limitu poniżej."
+    },
+    "defaultLimit": {
+      "both": "{perMinute} zapytań/min, {concurrent} równocześnie",
+      "concurrent": "{concurrent} równocześnie",
+      "perMinute": "{perMinute} zapytań/min"
+    },
+    "defaultPlaceholder": "Domyślnie: {value}",
+    "enable": "Włącz limit zapytań",
+    "fieldsReplace": "Ustawienie któregokolwiek pola poniżej całkowicie zastępuje wartość domyślną adaptera; drugie pole jest wtedy naprawdę bez limitu, a nie nadal ograniczone wartością domyślną.",
+    "fieldsShared": "Każde pole poniżej może tylko obniżyć wspólny limit; puste pole zachowuje wspólną wartość domyślną.",
+    "intro": "OpenLinker rozkłada zapytania równomiernie, zamiast wysyłać je seriami.",
+    "maxConcurrent": {
+      "description": "Ogranicza liczbę równoczesnych zapytań do tego połączenia, dzieloną równo między repliki. Te dwa limity są niezależne - obowiązuje ten, który zadziała pierwszy.",
+      "label": "Maks. równoczesnych zapytań"
+    },
+    "requestsPerMinute": {
+      "description": "Limit z równomiernym rozłożeniem, dzielony równo między repliki - np. 60 przy 1 replice daje mniej więcej jedno zapytanie na sekundę.",
+      "label": "Zapytania na minutę"
+    },
+    "rollout": "Egzekwowanie limitu jest wprowadzane stopniowo dla kolejnych ścieżek synchronizacji - ustawienie limitu nie działa, dopóki ruch wychodzący tego połączenia nie zostanie na nie przeniesiony. Jeśli OpenLinker działa w kilku kopiach (replikach), każda wartość jest dzielona między nie równo, więc rzeczywista łączna przepustowość odpowiada ustawieniom poniżej, a nie jest mnożona przez liczbę kopii.",
+    "shared": "Ten limit jest wspólny z innymi połączeniami do tego samego sklepu, więc wartości poniżej mogą go tylko zaostrzyć.",
+    "title": "Limit zapytań wychodzących",
+    "unlimited": "Bez limitu",
+    "withDefault": "Zostaw limit wyłączony, aby użyć wartości domyślnej adaptera tego połączenia - <strong>{limit}</strong>.",
+    "withoutDefault": "Jeśli zostawisz limit wyłączony, ten adapter nie stosuje tu własnego limitu na minutę ani limitu równoczesnych zapytań."
+  },
+  "restoreConnectionButton": {
+    "errorTitle": "Nie udało się przywrócić połączenia",
+    "restore": "Przywróć",
+    "restoring": "Przywracanie...",
+    "successDescription": "„{name}” wróciło jako wyłączone połączenie. Przed włączeniem podaj ponownie dane uwierzytelniające.",
+    "successTitle": "Połączenie przywrócone",
+    "tryAgain": "Spróbuj ponownie."
+  },
+  "routerReadinessPanel": {
+    "activeLocations": "Aktywne lokalizacje magazynowe",
+    "adminOnly": "Utworzenie lokalizacji magazynowej wymaga konta administratora.",
+    "createDefault": "Utwórz domyślną lokalizację",
+    "createErrorTitle": "Nie udało się utworzyć lokalizacji",
+    "createHint": "Tworzy jedną lokalizację magazynową, <code>MAIN</code>. Ponowne uruchomienie niczego nie tworzy. Kraj i region są celowo puste - filtry kierowania je odczytują, a zgadnięty kraj byłby gorszy niż brak kraju, więc uzupełnij je w lokalizacji po jej utworzeniu.",
+    "creating": "Tworzenie…",
+    "errorTitle": "Nie udało się sprawdzić gotowości kierowania",
+    "eyebrow": "Kondycja",
+    "loadingMessage": "Sprawdzanie, czy ta instalacja ma lokalizację magazynową.",
+    "loadingTitle": "Wczytywanie gotowości kierowania",
+    "locationReady": "Lokalizacja gotowa",
+    "noLocation": "Brak lokalizacji",
+    "notes": {
+      "offWithoutLocation": "Kierowania realizacji nie można włączyć, dopóki ta instalacja nie ma co najmniej jednej aktywnej lokalizacji magazynowej - próba włączenia teraz zostanie odrzucona. Najpierw utwórz lokalizację.",
+      "onWithoutLocation": "Kierowanie realizacji jest włączone, ale bez aktywnej lokalizacji nie ma dokąd wysłać zamówienia - obecnie niczego nie rozstrzyga, a zamówienia są obsługiwane w zwykły sposób. To niewykonany jeszcze krok konfiguracji, a nie usterka: utwórz lokalizację, a kierowanie zacznie działać.",
+      "ready": "Kierowanie realizacji można włączyć. Sama lokalizacja nie ma stanu, więc pozycje zostaną skierowane dopiero po przypisaniu do niej stanu - to sprawdzenie odpowiada na pytanie, czy kierowanie można włączyć, a nie czy znajdzie miejsce dla zamówienia.",
+      "unknown": "Ta instalacja nie ma aktywnej lokalizacji magazynowej, której wymaga kierowanie realizacji. Nie wiadomo tu, czy kierowanie jest obecnie włączone - ten odczyt jeszcze nie odpowiedział - więc podana jest tylko znana część."
+    },
+    "retry": "Ponów",
+    "title": "Gotowość kierowania realizacji"
+  },
+  "salesDocumentStatusSection": {
+    "dualRoleWarning": "Wystawienie dowolnego rodzaju dokumentu wymaga pasującej reguły dokumentów sprzedaży dla rynków tego połączenia - status „Główne” powyżej nie ma tu znaczenia, niezależnie od tego, czy jest ustawiony. Tylko reguła może zdecydować między fakturą a paragonem dla połączenia pełniącego obie role; bez niej zamówienia są wstrzymywane zamiast automatycznie obsługiwane, bo dokument fiskalny nigdy nie jest zgadywany.",
+    "issues": "Wystawia",
+    "issuesLabels": {
+      "both": "Dowolny (faktura lub paragon fiskalny)",
+      "fiscal-receipt": "Paragon fiskalny",
+      "invoice": "Faktura"
+    },
+    "notPrimary": "Nie główne",
+    "nothing": "Nic",
+    "otherPrimary": "{name} jest już główne.",
+    "primary": "Główne",
+    "readOnly": "Tylko do odczytu. <link>Zarządzaj w Ustawienia → Kierowanie dokumentów sprzedaży</link>",
+    "status": "Status",
+    "title": "Dokument sprzedaży"
+  },
+  "setDefaultBankAccount": {
+    "errorDescription": "Konto zostało zapisane w OpenLinker, ale dostawca fakturowania nadal pokazuje poprzednie konto domyślne. {message}",
+    "errorTitle": "Nie udało się zaktualizować konta domyślnego"
+  },
+  "setup": {
+    "back": "Wstecz",
+    "connections": "Połączenia",
+    "eyebrow": "Integracje",
+    "guidedSetup": "Kreator konfiguracji",
+    "next": "Dalej"
+  },
+  "shoperSetupForm": {
+    "beforeYouStart": {
+      "body": "W panelu administracyjnym {platform} otwórz <strong>Dodaj integrację</strong> i utwórz integrację. {platform} wyda <strong>Token API</strong>; OpenLinker wysyła go jako token bearer w każdym zapytaniu. Nadaj integracji dostęp do: produkty, warianty produktów, stany dostępności, kategorie, stawki vat, magazyny, zamówienia, przesyłki, statusy zamówień, klienci, webhooki, dostawy i płatności.",
+      "title": "Zanim zaczniesz"
+    },
+    "capabilities": {
+      "help": "Wybierz role, które ma pełnić to połączenie. Możesz to później zmienić na stronie szczegółów połączenia. Przyjmowanie i pobieranie zamówień jest domyślnie wyłączone, bo powoduje tworzenie lub odczytywanie zamówień w sklepie.",
+      "legend": "Możliwości"
+    },
+    "create": "Utwórz połączenie",
+    "createError": "Nie udało się utworzyć połączenia",
+    "createdDescription": "Utworzono połączenie {platform} „{name}”.",
+    "createdHint": "Przetestuj połączenie, aby potwierdzić, że sklep akceptuje token.",
+    "createdTitle": "Połączenie utworzone",
+    "creating": "Tworzenie...",
+    "done": "Gotowe",
+    "fields": {
+      "baseUrl": {
+        "description": "Nazwa hosta sklepu, np. xxxxx.shoparena.pl. Tylko HTTPS, bez ścieżki.",
+        "label": "Adres sklepu"
+      },
+      "name": {
+        "description": "Nazwa identyfikująca ten sklep {platform} w OpenLinker.",
+        "label": "Nazwa połączenia",
+        "placeholder": "Mój sklep"
+      },
+      "token": {
+        "description": "Token API wydany w panelu administracyjnym {platform}. Przechowywany bezpiecznie na serwerze.",
+        "label": "Token API"
+      }
+    },
+    "latency": "({ms} ms)",
+    "ordersNextStep": {
+      "body": "Do utworzenia zamówienia {platform} potrzebuje domyślnej metody dostawy, metody płatności i statusu zamówienia. Wybierz je z list sklepu w <link>ustawieniach połączenia</link>.",
+      "title": "Jeszcze jeden krok do przyjmowania zamówień"
+    },
+    "platformFallback": "sklep",
+    "review": {
+      "name": "Nazwa",
+      "noneSelected": "Nic nie wybrano",
+      "orderDefaults": {
+        "body": "Po utworzeniu połączenia wybierzesz domyślną metodę dostawy, metodę płatności i status z list sklepu.",
+        "title": "Ustawienia domyślne zamówień w kolejnym kroku"
+      }
+    },
+    "steps": {
+      "capabilities": "Możliwości",
+      "review": "Sprawdź i utwórz",
+      "shop": "Sklep",
+      "token": "Token API"
+    },
+    "test": "Przetestuj połączenie",
+    "testError": "Nie udało się przetestować połączenia",
+    "testFailed": "Test połączenia nie powiódł się",
+    "testPassed": "Test połączenia zakończony powodzeniem",
+    "testing": "Testowanie…"
+  },
+  "shoperSetupPage": {
+    "chip": "Token API",
+    "description": "Podaj adres sklepu i token API. OpenLinker używa ich do połączenia z REST API sklepu.",
+    "fallbackPlatform": "Twój sklep",
+    "title": "Połącz z {platform}"
+  },
+  "shoperSetupSchema": {
+    "baseUrlRequired": "Adres sklepu jest wymagany",
+    "nameRequired": "Nazwa połączenia jest wymagana",
+    "tokenRequired": "Token API jest wymagany"
+  },
+  "stockAndPricingSection": {
+    "intro": "Domyślnie ten kanał docelowy otrzymuje ilość i cenę z katalogu bez zmian. Ceny katalogowe są brutto: to, co płaci kupujący, łącznie z VAT.",
+    "location": {
+      "assertion": "To jest <strong>deklaracja</strong>, a nie wykrycie: wybierając lokalizację, potwierdzasz, że cały obecnie nieprzypisany do lokalizacji stan tego połączenia fizycznie się w niej znajduje. Używaj tego tylko wtedy, gdy wszystko za tym połączeniem jest wysyłane z jednego miejsca - jeśli za tym połączeniem stoi więcej niż jeden fizyczny magazyn, zostaw to wyłączone, bo ustawienie przypisałoby stan do niewłaściwej lokalizacji przy realizacji.",
+      "currentlySet": "Obecnie ustawiono: {id} (spoza tej listy)",
+      "description": "Sklepy nie potrafią podać, gdzie fizycznie znajduje się ich stan, więc bez tego ustawienia kierowanie realizacji traktuje go jako nieprzypisany do lokalizacji i pomija. To niczego nie przenosi ani nie sprawdza - informuje tylko OpenLinker, gdzie należy przyjąć, że stan już się znajduje.",
+      "label": "Lokalizacja",
+      "loadError": "Nie udało się teraz wczytać zapisanej lokalizacji, więc nie można pokazać jej nazwy poniżej - nadal jest zapisana i niezmieniona.",
+      "loading": "Wczytywanie listy lokalizacji…",
+      "option": "{name} ({code})",
+      "optionInactive": "{name} ({code}) - nieaktywna",
+      "placeholder": "Wybierz lokalizację",
+      "toggle": "Przypisz lokalizację do stanu tego połączenia",
+      "unknownStored": "Zapisanej lokalizacji nie ma na bieżącej liście (mogła zostać usunięta lub wyłączona z kierowania stanów). Pozostaje zapisana i niezmieniona, dopóki nie wybierzesz innej."
+    },
+    "price": {
+      "example": "Cena katalogowa <strong>{price}</strong> zostanie opublikowana jako <strong>{published}</strong>. Cena ustawiona dla pojedynczej pozycji zawsze ma pierwszeństwo i nigdy nie jest tu korygowana.",
+      "managedElsewhere": "Cena publikowana w tym kanale docelowym - reguła domyślna plus ewentualne nadpisania dla źródeł - jest zarządzana na osobnej stronie. <link>Zarządzaj cenami i synchronizacją</link>.",
+      "percent": {
+        "label": "Procent",
+        "marginHint": "Musi być mniejszy niż 100. Marża 100 lub większa nie ma rozwiązania, więc zostałaby zignorowana i opublikowana byłaby cena katalogowa.",
+        "markupHint": "Dodawany do ceny katalogowej."
+      },
+      "rounding": {
+        "description": "Stosowane po doliczeniu procentu.",
+        "label": "Zaokrąglenie",
+        "options": {
+          "endingIn99": "Końcówka ,99",
+          "nearestWhole": "Zaokrąglij do pełnej kwoty",
+          "none": "Zachowaj dwa miejsca po przecinku"
+        }
+      },
+      "toggle": "Publikuj inną cenę niż w katalogu",
+      "type": {
+        "description": "Narzut dodaje procent do ceny. Marża ustala cenę tak, aby podany procent był udziałem w cenie końcowej, który zostaje dla Ciebie.",
+        "label": "Jak ustalić cenę",
+        "options": {
+          "margin": "Docelowa marża",
+          "markup": "Dodaj narzut",
+          "passthrough": "Użyj ceny z katalogu"
+        }
+      }
+    },
+    "stock": {
+      "example": {
+        "few": "Przy <strong>{n} sztukach</strong> w katalogu ten kanał docelowy otrzymuje <strong>{published}</strong>.",
+        "many": "Przy <strong>{n} sztukach</strong> w katalogu ten kanał docelowy otrzymuje <strong>{published}</strong>.",
+        "one": "Przy <strong>{n} sztuce</strong> w katalogu ten kanał docelowy otrzymuje <strong>{published}</strong>.",
+        "other": "Przy <strong>{n} sztuki</strong> w katalogu ten kanał docelowy otrzymuje <strong>{published}</strong>."
+      },
+      "lowExample": {
+        "few": "Przy <strong>{n} sztukach</strong> otrzymuje <strong>{zero}</strong>.",
+        "many": "Przy <strong>{n} sztukach</strong> otrzymuje <strong>{zero}</strong>.",
+        "one": "Przy <strong>{n} sztuce</strong> otrzymuje <strong>{zero}</strong>.",
+        "other": "Przy <strong>{n} sztuki</strong> otrzymuje <strong>{zero}</strong>."
+      },
+      "safetyBuffer": {
+        "description": "Zachowuje zapas, aby szybko schodzący produkt nie został sprzedany ponad stan między synchronizacjami. Zostaw puste lub wpisz 0, aby publikować pełną ilość.",
+        "label": "Sztuki do zatrzymania"
+      },
+      "toggle": "Publikuj mniejszy stan niż posiadany",
+      "zeroThreshold": {
+        "description": "Gdy ilość do opublikowania spadnie poniżej tej liczby sztuk, publikuj 0. Przydatne dla wolno schodzących produktów, których wolisz nie ryzykować. Zostaw puste lub wpisz 0, aby nigdy nie przerywać wcześniej.",
+        "label": "Wstrzymaj sprzedaż poniżej"
+      }
+    },
+    "title": "Stan i cena w tym kanale docelowym"
+  },
+  "subiektSetupForm": {
+    "beforeYouStart": {
+      "body": "Uruchom mostek OpenLinker na komputerze z Windows, na którym zainstalowano <strong>{product}</strong>, ustaw w nim token w pliku <code>appsettings.json</code>, a następnie wklej poniżej adres tego komputera i ten sam token. OpenLinker komunikuje się z {product} wyłącznie przez mostek - nigdy nie łączy się z nim bezpośrednio.",
+      "title": "Zanim zaczniesz"
+    },
+    "connect": "Połącz z {platform}",
+    "connecting": "Łączenie…",
+    "createError": "Nie udało się utworzyć połączenia",
+    "createdDescription": "Utworzono połączenie {platform} „{name}”.",
+    "createdTitle": "Połączenie utworzone",
+    "done": "Gotowe",
+    "fields": {
+      "bridgeBaseUrl": {
+        "description": "Adres mostka, bez ścieżki. Zwykle adres w sieci lokalnej - dozwolony jest http (np. {example}).",
+        "label": "Adres URL mostka"
+      },
+      "bridgeToken": {
+        "description": "Tę wartość wybierasz samodzielnie - nikt jej nie wydaje. {hint} Wklej tu tę samą wartość. Przechowywana bezpiecznie na serwerze i nigdy ponownie nie wyświetlana.",
+        "label": "Token mostka",
+        "labelOptional": "Token mostka (opcjonalnie)"
+      },
+      "name": {
+        "description": "Nazwa identyfikująca to konto {platform} w OpenLinker.",
+        "label": "Nazwa połączenia",
+        "placeholder": "Mój {platform}"
+      },
+      "timeoutMs": {
+        "description": "Zaawansowane - jak długo OpenLinker czeka na mostek, zanim zrezygnuje. Od {min} do {max} ms. Zostaw puste, aby użyć wartości domyślnej mostka.",
+        "label": "Limit czasu zapytania (ms, opcjonalnie)"
+      },
+      "triggerModel": {
+        "autoOnPaid": "Automatycznie, po opłaceniu zamówienia",
+        "description": "Każde zamówienie wysłane przez OpenLinker do {product} staje się dokumentem ZK. To ustawienie decyduje, czy faktura zostanie wystawiona automatycznie, czy poczeka na Ciebie. Zmienisz to później w Ustawienia → Kierowanie dokumentów sprzedaży.",
+        "label": "Wystawianie faktury",
+        "manual": "Ręcznie - wystawiam każdą samodzielnie"
+      }
+    },
+    "invoiceSetting": {
+      "auto": "To połączenie będzie wystawiać faktury automatycznie po opłaceniu zamówienia.",
+      "change": "Zmień to lub całkowicie wyłącz w <link>Ustawienia → Kierowanie dokumentów sprzedaży</link>.",
+      "manual": "To połączenie będzie wystawiać faktury tylko wtedy, gdy wystawisz je ręcznie.",
+      "title": "Gdzie jest ustawienie faktur"
+    },
+    "latency": "({ms} ms)",
+    "test": "Przetestuj połączenie",
+    "testError": "Nie udało się przetestować połączenia",
+    "testFailed": "Test połączenia nie powiódł się",
+    "testPassed": "Test połączenia zakończony powodzeniem",
+    "testing": "Testowanie…"
+  },
+  "subiektSetupPage": {
+    "chip": "Mostek Sfera",
+    "description": "Wskaż OpenLinker mostek {product}. OpenLinker używa go do obsługi zamówień w {product}.",
+    "title": "Połącz z {product}"
+  },
+  "subiektSetupSchema": {
+    "bridgeUrlInvalid": "Adres URL mostka musi być prawidłowy (np. {example})",
+    "bridgeUrlProtocol": "Adres URL mostka musi zaczynać się od http:// lub https://",
+    "bridgeUrlRequired": "Adres URL mostka jest wymagany",
+    "nameRequired": "Nazwa połączenia jest wymagana",
+    "timeoutMax": "Limit czasu zapytania może wynosić maksymalnie 120000 ms",
+    "timeoutMin": "Limit czasu zapytania musi wynosić co najmniej 1000 ms",
+    "timeoutWhole": "Limit czasu zapytania musi być całkowitą liczbą milisekund",
+    "tokenRequired": "Token mostka jest wymagany - mostek {product} odrzuca każde zapytanie bez niego."
+  },
+  "woocommerceSetupForm": {
+    "beforeYouStart": {
+      "body": "W panelu administracyjnym {platform} przejdź do <strong>{platform} → Ustawienia → Zaawansowane → REST API</strong> i wygeneruj klucz z uprawnieniami <strong>Odczyt/Zapis</strong>. Skopiuj poniżej consumer key i consumer secret - są wyświetlane tylko raz.",
+      "title": "Zanim zaczniesz"
+    },
+    "capabilities": {
+      "help": "Wybierz role, które ma pełnić to połączenie. Możesz to później zmienić na stronie szczegółów połączenia.",
+      "legend": "Możliwości"
+    },
+    "create": "Utwórz połączenie",
+    "createError": "Nie udało się utworzyć połączenia",
+    "createdDescription": "Utworzono połączenie {platform} „{name}”.",
+    "createdTitle": "Połączenie utworzone",
+    "creating": "Tworzenie...",
+    "fields": {
+      "consumerKey": {
+        "description": "Zaczyna się od ck_ - generowany w ustawieniach REST API {platform}.",
+        "label": "Consumer key"
+      },
+      "consumerSecret": {
+        "description": "Zaczyna się od cs_ - generowany razem z consumer key.",
+        "label": "Consumer secret"
+      },
+      "name": {
+        "description": "Nazwa identyfikująca ten sklep w OpenLinker.",
+        "label": "Nazwa połączenia",
+        "placeholder": "Mój sklep {platform}"
+      },
+      "siteUrl": {
+        "description": "Główny adres URL sklepu {platform}. Musi używać HTTPS.",
+        "label": "Adres URL strony"
+      }
+    },
+    "platformFallback": "sklep",
+    "review": {
+      "name": "Nazwa",
+      "noneSelected": "Nic nie wybrano"
+    },
+    "steps": {
+      "capabilities": "Możliwości",
+      "credentials": "Dane dostępowe API",
+      "review": "Sprawdź i utwórz",
+      "store": "Dane sklepu"
+    }
+  },
+  "woocommerceSetupPage": {
+    "chip": "REST API",
+    "description": "Podaj adres URL sklepu i dane dostępowe REST API. OpenLinker używa ich do synchronizacji zamówień i stanów magazynowych.",
+    "fallbackPlatform": "sklep",
+    "title": "Połącz z {platform}"
+  },
+  "woocommerceSetupSchema": {
+    "capabilityConflict": "W tym samym połączeniu nie można jednocześnie włączyć głównego źródła stanów i zapisu stanów do tego sklepu.",
+    "consumerKeyPrefix": "Consumer key musi zaczynać się od ck_",
+    "consumerKeyRequired": "Consumer key jest wymagany",
+    "consumerSecretPrefix": "Consumer secret musi zaczynać się od cs_",
+    "consumerSecretRequired": "Consumer secret jest wymagany",
+    "nameRequired": "Nazwa połączenia jest wymagana",
+    "siteUrlHttps": "Adres URL strony musi używać HTTPS",
+    "siteUrlInvalid": "Adres URL strony musi być prawidłowy (np. https://shop.example.com)",
+    "siteUrlRequired": "Adres URL strony jest wymagany"
+  }
+}

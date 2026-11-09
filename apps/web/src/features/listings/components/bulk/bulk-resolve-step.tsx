@@ -26,6 +26,15 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useQueries } from '@tanstack/react-query';
+import {
+  interpolate,
+  useFormat,
+  useMessages,
+  usePlural,
+  type Messages,
+  type PluralFn,
+  type ResolvedCopy,
+} from '../../../../shared/i18n';
 import { Alert, Button } from '../../../../shared/ui';
 import { useApiClient } from '../../../../app/api/api-client-provider';
 import { inventoryQueryKeys } from '../../../inventory';
@@ -144,14 +153,15 @@ function sourceCategoriesOf(row: BulkWizardRow): string[] {
   return (row.product?.categories ?? []).filter((c) => typeof c === 'string' && c.trim() !== '');
 }
 
+type ResolveStepCopy = ResolvedCopy<Messages['listings']>['bulkResolveStep'];
+
 /** "about 40 seconds left" / "about 3 minutes left", never a false precision. */
-function formatEstimate(remainingMs: number): string {
+function formatEstimate(remainingMs: number, copy: ResolveStepCopy, plural: PluralFn): string {
   const seconds = Math.max(1, Math.round(remainingMs / 1000));
   if (seconds < 90) {
-    return `about ${Math.max(5, Math.round(seconds / 5) * 5)} seconds left`;
+    return plural(Math.max(5, Math.round(seconds / 5) * 5), copy.estimateSeconds);
   }
-  const minutes = Math.round(seconds / 60);
-  return `about ${minutes} ${minutes === 1 ? 'minute' : 'minutes'} left`;
+  return plural(Math.round(seconds / 60), copy.estimateMinutes);
 }
 
 interface ResolveProduct {
@@ -172,6 +182,9 @@ export function BulkResolveStep({
   onBack,
   onComplete,
 }: BulkResolveStepProps): ReactElement {
+  const copy = useMessages('listings').bulkResolveStep;
+  const plural = usePlural();
+  const format = useFormat();
   const apiClient = useApiClient();
 
   // Flatten every sibling of every product into a resolve unit.
@@ -408,21 +421,22 @@ export function BulkResolveStep({
 
   const [announcement, setAnnouncement] = useState('');
   useEffect(() => {
+    const announce = (): void => {
+      setAnnouncement(
+        plural(progressRef.current.total, copy.announcement, {
+          resolved: format.number(progressRef.current.resolved),
+        }),
+      );
+    };
     if (stream.phase === 'done') {
       // The one moment worth announcing immediately.
-      setAnnouncement(
-        `Resolved ${progressRef.current.resolved} of ${progressRef.current.total} variants.`,
-      );
+      announce();
       return;
     }
     if (stream.phase !== 'streaming') return;
-    const id = setInterval(() => {
-      setAnnouncement(
-        `Resolved ${progressRef.current.resolved} of ${progressRef.current.total} variants.`,
-      );
-    }, PROGRESS_ANNOUNCE_INTERVAL_MS);
+    const id = setInterval(announce, PROGRESS_ANNOUNCE_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [stream.phase]);
+  }, [stream.phase, plural, format, copy.announcement]);
 
   /**
    * Rate-based estimate from this attempt's own start. Absent until a few
@@ -434,36 +448,41 @@ export function BulkResolveStep({
     if (resolvedVariants < ESTIMATE_MIN_RESOLVED || resolvedVariants >= totalVariants) return null;
     const elapsed = nowMs - stream.startedAt;
     if (elapsed <= 0) return null;
-    return formatEstimate((elapsed / resolvedVariants) * (totalVariants - resolvedVariants));
+    return formatEstimate(
+      (elapsed / resolvedVariants) * (totalVariants - resolvedVariants),
+      copy,
+      plural,
+    );
   })();
 
   if (hasError) {
     const message =
       stream.errorMessage ??
-      (availabilityError instanceof Error ? availabilityError.message : 'Resolution failed.');
+      (availabilityError instanceof Error ? availabilityError.message : copy.resolutionFailed);
     const resolvedSoFar = Object.keys(stream.results).length;
     return (
       // No `role="alert"` on the wrapper: `Alert` carries it, and nesting the
       // two makes several screen readers announce the message twice.
       <div className="bulk-wizard__body--center">
         <Alert tone="error">
-          Could not resolve categories and stock for this batch. {message}
+          {interpolate(copy.errorAlert, { message })}
         </Alert>
         {resolvedSoFar > 0 ? (
           <p className="bulk-wizard__resolve-sub">
-            {resolvedSoFar} of {resolveItems.length} variants already resolved. Retrying picks up
-            the remaining ones instead of starting over.
+            {plural(resolveItems.length, copy.resolvedSoFar, {
+              resolved: format.number(resolvedSoFar),
+            })}
           </p>
         ) : null}
         <div className="bulk-wizard__footer">
           {onBack ? (
             <Button tone="ghost" onClick={onBack}>
-              Back
+              {copy.back}
             </Button>
           ) : null}
           <div className="bulk-wizard__footer-spacer" />
           <Button tone="secondary" onClick={retry}>
-            Retry resolve
+            {copy.retry}
           </Button>
           {/* A batch that lost its last few variants does not need a second full
               wait: an unresolved variant carries a `no-match` into Review, which
@@ -472,7 +491,7 @@ export function BulkResolveStep({
               no partial result to continue with. */}
           {resolvedSoFar > 0 ? (
             <Button tone="primary" onClick={stream.stop}>
-              Continue with {resolvedSoFar} resolved
+              {interpolate(copy.continueWith, { n: format.number(resolvedSoFar) })}
             </Button>
           ) : null}
         </div>
@@ -497,24 +516,26 @@ export function BulkResolveStep({
         {waiting ? <div className="bulk-wizard__resolve-pending" aria-hidden="true" /> : null}
         <h2 className="bulk-wizard__resolve-title">
           {!waiting
-            ? 'Nothing to match against the catalog'
+            ? copy.nothingToMatchTitle
             : totalVariants > 0
-              ? `Resolving ${totalVariants} ${totalVariants === 1 ? 'variant' : 'variants'}`
-              : 'Pulling master price and stock'}
+              ? plural(totalVariants, copy.resolvingTitle)
+              : copy.pullingTitle}
         </h2>
         <p className="bulk-wizard__resolve-sub">
           {!waiting
-            ? 'This destination has no product catalog to match barcodes against, so categories are picked in Review or resolved at submit.'
+            ? copy.noCatalogueSub
             : totalVariants === 0
-              ? 'No variant in this batch carries a barcode or a source category, so there is nothing to match against the catalog.'
+              ? copy.noBarcodeSub
               : resumed
-                ? `Picking up where the last attempt stopped: ${resolvedVariants} of ${totalVariants} variants already resolved.`
-                : 'Asking the marketplace catalog about the first barcode. Results appear one product at a time as they come back.'}
+                ? plural(totalVariants, copy.resumedSub, {
+                    resolved: format.number(resolvedVariants),
+                  })
+                : copy.firstBarcodeSub}
         </p>
         {waiting && onBack ? (
           <div className="bulk-wizard__footer">
             <Button tone="ghost" onClick={onBack}>
-              Back
+              {copy.back}
             </Button>
             <div className="bulk-wizard__footer-spacer" />
           </div>
@@ -561,7 +582,7 @@ export function BulkResolveStep({
   return (
     <div className="bulk-wizard__body--center">
       <h2 className="bulk-wizard__resolve-title">
-        Resolving {totalVariants} {totalVariants === 1 ? 'variant' : 'variants'}
+        {plural(totalVariants, copy.resolvingTitle)}
       </h2>
 
       {/* Deliberately NOT a live region - see `PROGRESS_ANNOUNCE_INTERVAL_MS`.
@@ -569,16 +590,20 @@ export function BulkResolveStep({
       <div className="bulk-wizard__resolve-track bulk-wizard__resolve-track--batch">
         <p className="bulk-wizard__resolve-track-meta">
           <span>
-            {resolvedVariants} of {totalVariants} variants resolved
+            {plural(totalVariants, copy.batchResolved, {
+              resolved: format.number(resolvedVariants),
+            })}
           </span>
           <span>
-            {completedProducts} of {resolveProductsById.size} products done
+            {plural(resolveProductsById.size, copy.productsDone, {
+              done: format.number(completedProducts),
+            })}
           </span>
         </p>
         <div
           className="bulk-wizard__progress-bar"
           role="progressbar"
-          aria-label="Variants resolved in this batch"
+          aria-label={copy.batchProgressAria}
           aria-valuemin={0}
           aria-valuemax={totalVariants}
           aria-valuenow={resolvedVariants}
@@ -596,13 +621,13 @@ export function BulkResolveStep({
                 finished, so a sighted user read "1 of 3" as a screen reader
                 announced "0 of 3". All three now report the same number. */}
             <span>
-              {current.done} of {current.total} variants
+              {plural(current.total, copy.currentVariants, { done: format.number(current.done) })}
             </span>
           </p>
           <div
             className="bulk-wizard__progress-bar"
             role="progressbar"
-            aria-label={`Variants resolved for ${current.name}`}
+            aria-label={interpolate(copy.currentAria, { name: current.name })}
             aria-valuemin={0}
             aria-valuemax={current.total}
             aria-valuenow={current.done}
@@ -635,16 +660,19 @@ export function BulkResolveStep({
               <div className="bulk-progress__name">
                 {product.name}
                 <small>
-                  variant {product.done} of {product.total}
+                  {interpolate(copy.feedVariant, {
+                    done: format.number(product.done),
+                    total: format.number(product.total),
+                  })}
                 </small>
               </div>
               <div className={barClass}>
                 <span style={{ width: `${pct}%` }} />
               </div>
               <span
-                className={['chip', OUTCOME_CHIP[product.outcome].tone].filter(Boolean).join(' ')}
+                className={['chip', OUTCOME_CHIP_TONE[product.outcome]].filter(Boolean).join(' ')}
               >
-                {OUTCOME_CHIP[product.outcome].label}
+                {copy.outcome[product.outcome]}
               </span>
             </li>
           );
@@ -652,10 +680,8 @@ export function BulkResolveStep({
       </ul>
 
       <p className="bulk-wizard__resolve-sub">
-        Each variant&apos;s barcode is matched against the marketplace catalog, then per-variant
-        master price and stock are pulled. Products that need a category are flagged here so you
-        can fix them in Review before submit.
-        {estimate !== null ? ` Roughly ${estimate}.` : ''}
+        {copy.explainer}
+        {estimate !== null ? ` ${interpolate(copy.estimateSentence, { estimate })}` : null}
       </p>
 
       {/* The only live region on this panel, restated on a slow interval. The
@@ -668,7 +694,7 @@ export function BulkResolveStep({
       <div className="bulk-wizard__footer">
         {onBack ? (
           <Button tone="ghost" onClick={onBack}>
-            Back
+            {copy.back}
           </Button>
         ) : null}
         <div className="bulk-wizard__footer-spacer" />
@@ -677,7 +703,7 @@ export function BulkResolveStep({
             `no-match` into Review, which Review already handles per row. */}
         {stream.phase === 'streaming' && resolvedVariants > 0 ? (
           <Button tone="secondary" onClick={stream.stop}>
-            Stop and review {resolvedVariants}
+            {interpolate(copy.stopAndReview, { n: format.number(resolvedVariants) })}
           </Button>
         ) : null}
       </div>
@@ -687,11 +713,11 @@ export function BulkResolveStep({
 
 type ProductResolveOutcome = 'catalogue' | 'mapping' | 'manual' | 'pending';
 
-const OUTCOME_CHIP: Record<ProductResolveOutcome, { tone: string; label: string }> = {
-  catalogue: { tone: 'chip--success', label: 'Matched in catalog' },
-  mapping: { tone: 'chip--review', label: 'From category mapping' },
-  manual: { tone: 'chip--warning', label: 'Needs a category' },
-  pending: { tone: '', label: 'Checking barcode' },
+const OUTCOME_CHIP_TONE: Record<ProductResolveOutcome, string> = {
+  catalogue: 'chip--success',
+  mapping: 'chip--review',
+  manual: 'chip--warning',
+  pending: '',
 };
 
 /**

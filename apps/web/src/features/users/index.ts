@@ -13,3 +13,4 @@ export { useDeactivateUserMutation } from './hooks/use-deactivate-user-mutation'
 export { useReactivateUserMutation } from './hooks/use-reactivate-user-mutation';
 export { useDeleteUserMutation } from './hooks/use-delete-user-mutation';
 export { useRegisterMutation } from './hooks/use-register-mutation';
+export { ASSIGNABLE_ROLES, userRoleLabel, userStatusLabel } from './lib/user-labels';

@@ -46,14 +46,8 @@ import { ConnectionEntityLabel, useConnectionsQuery } from '../../features/conne
 // imports are a documented gap, not an allowance (tech-lead review on
 // #3285, SUGGESTION).
 import { useDemoMode } from '../../features/system';
+import { useMessages, type Messages, type ResolvedCopy } from '../../shared/i18n';
 import {
-  RETURNS_ORPHAN_COPY,
-  RETURNS_ROW_COPY,
-  RETURN_DETAIL_COPY,
-  RETURN_DETAIL_HEADER_COPY,
-  RETURN_LINES_COPY,
-  RETURN_ORPHAN_BANNER_COPY,
-  RETURN_SOURCE_PANEL_COPY,
   ReturnCustodyPanel,
   ReturnMoneyPanel,
   CorrectionProposalPanel,
@@ -71,29 +65,35 @@ import {
 } from '../../features/returns';
 
 /** The header facts, as a definition list. */
+type ReturnsCopy = ResolvedCopy<Messages['returns']>;
+
 function buildHeaderItems(
   detail: ReturnDetail,
   connectionName: string | null,
+  returnsCopy: ReturnsCopy,
 ): KeyValueItem[] {
+  const headerCopy = returnsCopy.detail.header;
+  const orphanCopy = returnsCopy.list.orphan;
+  const rowCopy = returnsCopy.list.row;
   const items: KeyValueItem[] = [
     {
       id: 'channelReference',
-      label: RETURN_DETAIL_HEADER_COPY.channelReference,
+      label: headerCopy.channelReference,
       value:
         detail.externalReturnId !== null ? (
           <span className="mono-text">{detail.externalReturnId}</span>
         ) : (
-          <span className="text-muted">{RETURN_DETAIL_HEADER_COPY.noChannelReference}</span>
+          <span className="text-muted">{headerCopy.noChannelReference}</span>
         ),
     },
     {
       id: 'openLinkerId',
-      label: RETURN_DETAIL_HEADER_COPY.openLinkerId,
+      label: headerCopy.openLinkerId,
       value: <span className="mono-text">{detail.id}</span>,
     },
     {
       id: 'source',
-      label: RETURN_DETAIL_HEADER_COPY.source,
+      label: headerCopy.source,
       value: (
         <ConnectionEntityLabel
           connectionId={detail.sourceConnectionId}
@@ -105,7 +105,7 @@ function buildHeaderItems(
     },
     {
       id: 'order',
-      label: RETURN_DETAIL_HEADER_COPY.order,
+      label: headerCopy.order,
       value:
         detail.internalOrderId !== null ? (
           <Link to={`/orders/${detail.internalOrderId}`} className="link mono-text">
@@ -114,23 +114,23 @@ function buildHeaderItems(
         ) : (
           // Never a blank: the orphan banner above carries the explanation, and
           // the channel's own reference is the operator's only lead.
-          <span className="text-muted" title={RETURNS_ORPHAN_COPY.explanation}>
-            {RETURNS_ORPHAN_COPY.short}
+          <span className="text-muted" title={orphanCopy.explanation}>
+            {orphanCopy.short}
             {detail.externalOrderId !== null ? ` · ${detail.externalOrderId}` : ''}
           </span>
         ),
     },
     {
       id: 'origin',
-      label: RETURN_DETAIL_HEADER_COPY.origin,
+      label: headerCopy.origin,
       value:
         detail.origin === 'operator_authored'
-          ? RETURN_DETAIL_HEADER_COPY.originOperator
-          : RETURN_DETAIL_HEADER_COPY.originSource,
+          ? headerCopy.originOperator
+          : headerCopy.originSource,
     },
     {
       id: 'opened',
-      label: RETURN_DETAIL_HEADER_COPY.opened,
+      label: headerCopy.opened,
       value:
         detail.openedAt !== null ? (
           <TimeDisplay iso={detail.openedAt} format="datetime" className="mono-text" />
@@ -138,7 +138,7 @@ function buildHeaderItems(
           // Labelled, never substituted: `createdAt` is OpenLinker's clock and
           // passing it off as the channel's would misdate the return by however
           // long ingestion lagged.
-          <span className="text-muted" title={RETURNS_ROW_COPY.recordedAtFallback}>
+          <span className="text-muted" title={rowCopy.recordedAtFallback}>
             <TimeDisplay iso={detail.createdAt} format="datetime" className="mono-text" />
           </span>
         ),
@@ -148,7 +148,7 @@ function buildHeaderItems(
   if (detail.authorizedAt !== null) {
     items.push({
       id: 'authorized',
-      label: RETURN_DETAIL_HEADER_COPY.authorized,
+      label: headerCopy.authorized,
       value: <TimeDisplay iso={detail.authorizedAt} format="datetime" className="mono-text" />,
     });
   }
@@ -156,7 +156,7 @@ function buildHeaderItems(
   if (detail.declinedAt !== null) {
     items.push({
       id: 'declined',
-      label: RETURN_DETAIL_HEADER_COPY.declined,
+      label: headerCopy.declined,
       value: <TimeDisplay iso={detail.declinedAt} format="datetime" className="mono-text" />,
     });
   }
@@ -164,14 +164,14 @@ function buildHeaderItems(
   if (detail.closedAt !== null) {
     items.push({
       id: 'closed',
-      label: RETURN_DETAIL_HEADER_COPY.closed,
+      label: headerCopy.closed,
       value: <TimeDisplay iso={detail.closedAt} format="datetime" className="mono-text" />,
     });
   }
 
   items.push({
     id: 'updated',
-    label: RETURN_DETAIL_HEADER_COPY.lastUpdated,
+    label: headerCopy.lastUpdated,
     value: <TimeDisplay iso={detail.updatedAt} format="relative" />,
   });
 
@@ -180,6 +180,12 @@ function buildHeaderItems(
 
 export function ReturnDetailPage(): ReactElement {
   const { returnId = '' } = useParams<{ returnId: string }>();
+  const returnsCopy = useMessages('returns');
+  const pageCopy = returnsCopy.detail.page;
+  const linesCopy = returnsCopy.detail.lines;
+  const orphanBannerCopy = returnsCopy.detail.orphanBanner;
+  const sourcePanelCopy = returnsCopy.detail.sourcePanel;
+  const rowCopy = returnsCopy.list.row;
   const demoMode = useDemoMode();
   const writeAccess = useWriteAccess('orders:write', demoMode);
   // #3078/#3085 — the match dialog's detail-page mount point. A single slot:
@@ -204,14 +210,14 @@ export function ReturnDetailPage(): ReactElement {
   if (query.isLoading) {
     return (
       <PageLayout
-        eyebrow={RETURN_DETAIL_COPY.eyebrow}
-        title={RETURN_DETAIL_COPY.titleFallback}
-        backTo={{ to: '/returns', label: RETURN_DETAIL_COPY.backToList }}
+        eyebrow={pageCopy.eyebrow}
+        title={pageCopy.titleFallback}
+        backTo={{ to: '/returns', label: pageCopy.backToList }}
       >
         <LoadingState
           liveRegion="off"
-          title={RETURN_DETAIL_COPY.loading}
-          message={RETURN_DETAIL_COPY.loadingMessage}
+          title={pageCopy.loading}
+          message={pageCopy.loadingMessage}
         />
       </PageLayout>
     );
@@ -224,29 +230,29 @@ export function ReturnDetailPage(): ReactElement {
 
     return (
       <PageLayout
-        eyebrow={RETURN_DETAIL_COPY.eyebrow}
-        title={isNotFound ? RETURN_DETAIL_COPY.notFoundTitle : RETURN_DETAIL_COPY.titleFallback}
-        backTo={{ to: '/returns', label: RETURN_DETAIL_COPY.backToList }}
+        eyebrow={pageCopy.eyebrow}
+        title={isNotFound ? pageCopy.notFoundTitle : pageCopy.titleFallback}
+        backTo={{ to: '/returns', label: pageCopy.backToList }}
       >
         {isNotFound ? (
           <EmptyState
             liveRegion="off"
-            title={RETURN_DETAIL_COPY.notFoundTitle}
-            message={RETURN_DETAIL_COPY.notFoundMessage}
+            title={pageCopy.notFoundTitle}
+            message={pageCopy.notFoundMessage}
           />
         ) : (
           <ErrorState
             title={
-              isUnreadable ? RETURN_DETAIL_COPY.unreadableTitle : RETURN_DETAIL_COPY.errorTitle
+              isUnreadable ? pageCopy.unreadableTitle : pageCopy.errorTitle
             }
-            message={isUnreadable ? RETURN_DETAIL_COPY.unreadableMessage : error.message}
+            message={isUnreadable ? pageCopy.unreadableMessage : error.message}
             action={
               <Button
                 onClick={() => {
                   void query.refetch();
                 }}
               >
-                {RETURN_DETAIL_COPY.retry}
+                {pageCopy.retry}
               </Button>
             }
           />
@@ -263,14 +269,14 @@ export function ReturnDetailPage(): ReactElement {
     // the page is still loading something that was never requested.
     return (
       <PageLayout
-        eyebrow={RETURN_DETAIL_COPY.eyebrow}
-        title={RETURN_DETAIL_COPY.notFoundTitle}
-        backTo={{ to: '/returns', label: RETURN_DETAIL_COPY.backToList }}
+        eyebrow={pageCopy.eyebrow}
+        title={pageCopy.notFoundTitle}
+        backTo={{ to: '/returns', label: pageCopy.backToList }}
       >
         <EmptyState
           liveRegion="off"
-          title={RETURN_DETAIL_COPY.notFoundTitle}
-          message={RETURN_DETAIL_COPY.notFoundMessage}
+          title={pageCopy.notFoundTitle}
+          message={pageCopy.notFoundMessage}
         />
       </PageLayout>
     );
@@ -278,13 +284,13 @@ export function ReturnDetailPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow={RETURN_DETAIL_COPY.eyebrow}
-      title={detail.externalReturnId ?? RETURN_DETAIL_COPY.titleFallback}
-      backTo={{ to: '/returns', label: RETURN_DETAIL_COPY.backToList }}
+      eyebrow={pageCopy.eyebrow}
+      title={detail.externalReturnId ?? pageCopy.titleFallback}
+      backTo={{ to: '/returns', label: pageCopy.backToList }}
       actions={
         detail.declinedAt !== null ? (
           <StatusBadge tone="warning" compact>
-            {RETURNS_ROW_COPY.declined}
+            {rowCopy.declined}
           </StatusBadge>
         ) : null
       }
@@ -302,7 +308,7 @@ export function ReturnDetailPage(): ReactElement {
               writeAccess.visible ? (
                 <ReadOnlyLock
                   active={writeAccess.demoReadOnly}
-                  message={RETURN_ORPHAN_BANNER_COPY.matchActionReadOnly}
+                  message={orphanBannerCopy.matchActionReadOnly}
                 >
                   <Button
                     tone="secondary"
@@ -311,7 +317,7 @@ export function ReturnDetailPage(): ReactElement {
                       setIsMatchDialogOpen(true);
                     }}
                   >
-                    {RETURN_ORPHAN_BANNER_COPY.matchAction}
+                    {orphanBannerCopy.matchAction}
                   </Button>
                 </ReadOnlyLock>
               ) : null
@@ -329,10 +335,10 @@ export function ReturnDetailPage(): ReactElement {
         </>
       ) : null}
 
-      <KeyValueList items={buildHeaderItems(detail, connection?.name ?? null)} />
+      <KeyValueList items={buildHeaderItems(detail, connection?.name ?? null, returnsCopy)} />
 
       <section className="returns-detail__lines">
-        <h2 className="section-title">{RETURN_LINES_COPY.sectionTitle}</h2>
+        <h2 className="section-title">{linesCopy.sectionTitle}</h2>
         {/* Once, above the table: the two rails move independently, and that is
             the single most misread thing about the model. */}
         <ReturnRailsNote />
@@ -379,13 +385,13 @@ export function ReturnDetailPage(): ReactElement {
       ) : null}
 
       <section className="returns-detail__source">
-        <h2 className="section-title">{RETURN_SOURCE_PANEL_COPY.sectionTitle}</h2>
-        <p className="text-muted">{RETURN_SOURCE_PANEL_COPY.explainer}</p>
+        <h2 className="section-title">{sourcePanelCopy.sectionTitle}</h2>
+        <p className="text-muted">{sourcePanelCopy.explainer}</p>
         <KeyValueList
           items={[
             {
               id: 'rawStatus',
-              label: RETURN_SOURCE_PANEL_COPY.statusLabel,
+              label: sourcePanelCopy.statusLabel,
               value: (
                 <ReturnSourceStatus
                   rawStatus={detail.rawStatus}

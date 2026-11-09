@@ -37,6 +37,10 @@ import {
   readSellerReadiness,
   type SellerReadiness,
 } from '../eparagony-seller';
+import { interpolate, usePlural, type PluralFn } from '../../../shared/i18n';
+import { useEparagonyMessages } from '../messages';
+
+type SellerSectionCopy = ReturnType<typeof useEparagonyMessages>['eparagonySellerSection'];
 
 const SELLER_FIELDS = [
   'eparagonyMerchantTIN',
@@ -55,25 +59,25 @@ const ADDRESS_FIELDS: readonly SellerField[] = Object.values(SELLER_ADDRESS_FORM
 
 const ADDRESS_LEGEND_ID = 'eparagony-seller-address-legend';
 
-const READINESS_NOTE: Record<Exclude<SellerReadiness, 'missing-tin'>, string> = {
-  'invoices-only':
-    'Invoices can be issued. A correction also needs the seller name and the full address.',
-  complete: 'Invoices and corrections have everything they need.',
-};
-
 /**
  * The closed group's one line. Says the outcome rather than echoing every
  * field: the operator decides from it whether to open the group at all.
  */
-function summaryFor(readiness: SellerReadiness, tin: string, problems: number): string {
+function summaryFor(
+  copy: SellerSectionCopy,
+  plural: PluralFn,
+  readiness: SellerReadiness,
+  tin: string,
+  problems: number,
+): string {
   const base =
     readiness === 'missing-tin'
-      ? 'No tax number, every invoice is refused'
+      ? copy.summary.missingTin
       : readiness === 'invoices-only'
-        ? `NIP ${tin}, incomplete for corrections`
-        : `NIP ${tin}, complete`;
+        ? interpolate(copy.summary.invoicesOnly, { tin })
+        : interpolate(copy.summary.complete, { tin });
   if (problems === 0) return base;
-  return `${base} (${problems} problem${problems === 1 ? '' : 's'} to fix)`;
+  return plural(problems, copy.summary.withProblems, { summary: base });
 }
 
 type SellerSectionProps = Pick<
@@ -86,6 +90,8 @@ export function EparagonySellerSection({
   configIsParseable,
   syncStructuredToJson,
 }: SellerSectionProps): ReactElement {
+  const copy = useEparagonyMessages().eparagonySellerSection;
+  const plural = usePlural();
   const errors = form.formState.errors;
   // Watched field by field rather than `form.watch()` with no argument, which
   // would re-render this section on every keystroke anywhere in a long form.
@@ -134,49 +140,54 @@ export function EparagonySellerSection({
   return (
     <InlineDisclosure
       className="eparagony-seller"
-      label="Seller on invoices:"
-      value={summaryFor(readiness, tin, problems)}
+      label={copy.label}
+      value={summaryFor(copy, plural, readiness, tin, problems)}
       defaultOpen={openAtLoad}
     >
       <div className="eparagony-seller__panel">
-        <p className="form-field__description">
-          eparagony.pl prints these on every invoice this connection issues, as the seller.
-        </p>
+        <p className="form-field__description">{copy.help}</p>
 
         {readiness === 'missing-tin' ? (
           <Alert tone="warning" density="compact" data-testid="eparagony-seller-missing-tin">
-            Every invoice from this connection is refused until you add the seller’s tax number.
+            {copy.missingTin}
           </Alert>
         ) : null}
 
-        {field('eparagonyMerchantTIN', 'Tax number (NIP)', {
-          description:
-            'Must be the same NIP as on your eparagony.pl account. eparagony.pl refuses every invoice under a different number.',
+        {field('eparagonyMerchantTIN', copy.tin.label, {
+          description: copy.tin.description,
           inputMode: 'numeric',
         })}
 
-        {field('eparagonyMerchantName', 'Seller name', {
-          description: 'The name as registered, for example the full company name.',
+        {field('eparagonyMerchantName', copy.name.label, {
+          description: copy.name.description,
           autoComplete: 'organization',
         })}
 
         <fieldset className="eparagony-seller__address" aria-labelledby={ADDRESS_LEGEND_ID}>
           <legend className="form-field__label" id={ADDRESS_LEGEND_ID}>
-            Seller address
+            {copy.address.legend}
           </legend>
           <div className="eparagony-seller__address-row eparagony-seller__address-row--street">
-            {field('eparagonyMerchantStreet', 'Street', { placeholder: 'Prosta' })}
-            {field('eparagonyMerchantNumber', 'Building', { placeholder: '51' })}
-            {field('eparagonyMerchantApartment', 'Apartment')}
+            {field('eparagonyMerchantStreet', copy.address.street.label, {
+              placeholder: copy.address.street.placeholder,
+            })}
+            {field('eparagonyMerchantNumber', copy.address.number.label, {
+              placeholder: copy.address.number.placeholder,
+            })}
+            {field('eparagonyMerchantApartment', copy.address.apartment.label)}
           </div>
           <div className="eparagony-seller__address-row eparagony-seller__address-row--city">
-            {field('eparagonyMerchantPostalCode', 'Postal code', { placeholder: '00-838' })}
-            {field('eparagonyMerchantCity', 'City', { placeholder: 'Warszawa' })}
-            {field('eparagonyMerchantCountry', 'Country', { placeholder: 'PL' })}
+            {field('eparagonyMerchantPostalCode', copy.address.postalCode.label, {
+              placeholder: copy.address.postalCode.placeholder,
+            })}
+            {field('eparagonyMerchantCity', copy.address.city.label, {
+              placeholder: copy.address.city.placeholder,
+            })}
+            {field('eparagonyMerchantCountry', copy.address.country.label, {
+              placeholder: copy.address.country.placeholder,
+            })}
           </div>
-          <p className="form-field__description">
-            Optional on an invoice. Leave it empty, or fill in every part except the apartment.
-          </p>
+          <p className="form-field__description">{copy.address.description}</p>
         </fieldset>
 
         {readiness !== 'missing-tin' ? (
@@ -184,7 +195,7 @@ export function EparagonySellerSection({
             className={`eparagony-seller__readiness eparagony-seller__readiness--${readiness}`}
             data-testid="eparagony-seller-readiness"
           >
-            {READINESS_NOTE[readiness]}
+            {copy.readiness[readiness === 'complete' ? 'complete' : 'invoicesOnly']}
           </p>
         ) : null}
       </div>

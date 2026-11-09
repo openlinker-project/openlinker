@@ -18,6 +18,7 @@ import type {
   OfferRowValidationInput,
   SuppliedParameterLike,
 } from '../../../../shared/plugins';
+import { getMessages, interpolate } from '../../../../shared/i18n';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
 import type { EanMatchResult } from '../../api/listings.types';
 import { collapseToInvalidBarcode } from './bulk-blockers';
@@ -615,14 +616,15 @@ export function effectiveVariantEan(variant: BulkVariantRow): string | null {
  * usable distinguishing attribute (never the raw variant id - plan §8).
  */
 export function distinguishingLabel(variant: BulkVariantRow, index: number): string {
+  const copy = getMessages('listings').bulkPolicy;
   const attrs = variant.distinguishingAttributes;
   if (attrs) {
     const parts = Object.entries(attrs)
       .filter(([, v]) => typeof v === 'string' && v.trim() !== '')
-      .map(([k, v]) => `${k}: ${String(v)}`);
+      .map(([k, v]) => interpolate(copy.attributePair, { name: k, value: String(v) }));
     if (parts.length > 0) return parts.join(' · ');
   }
-  return `Variant ${index + 1}`;
+  return interpolate(copy.variantFallback, { n: index + 1 });
 }
 
 /**

@@ -55,6 +55,13 @@ describe('GuestLayout', () => {
     expect(screen.getByText('OpenLinker')).toBeInTheDocument();
   });
 
+  it('should put the language switch on the guest card, not in the page corner (#4021)', async () => {
+    renderLayout();
+
+    const trigger = await screen.findByRole('button', { name: /^Language:/ });
+    expect(trigger.closest('.guest-card')).not.toBeNull();
+  });
+
   it('should redirect to / when session is authenticated', async () => {
     renderLayout(createAuthenticatedSessionAdapter());
 

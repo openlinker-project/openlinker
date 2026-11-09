@@ -81,7 +81,7 @@ import { describeSalesDocumentRuleDraft } from '../lib/describe-sales-document-r
 import { useSalesDocumentRuleOverlapQuery } from '../hooks/use-sales-document-rule-overlap-query';
 import { useSalesDocumentRulesQuery } from '../hooks/use-sales-document-rules-query';
 import {
-  SALES_DOCUMENT_OVERLAP_CONSEQUENCE,
+  describeSalesDocumentOverlapConsequence,
   describeSalesDocumentOverlapClear,
   describeSalesDocumentOverlapConflictRival,
   describeSalesDocumentOverlapUndecided,
@@ -91,6 +91,7 @@ import {
   describeSalesDocumentConnectionRoleGap,
   findSalesDocumentConnectionRoleGap,
 } from '../lib/find-sales-document-connection-role-gap';
+import { renderRich, useMessages } from '../../../shared/i18n';
 
 interface SalesDocumentRuleComposerDialogProps {
   country: string;
@@ -240,21 +241,20 @@ function WarningGlyph(): ReactElement {
 }
 
 function BuyerTaxIdCoverageWarning(): ReactElement {
+  const copy = useMessages('sales-documents').salesDocumentRuleComposerDialog;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           type="button"
           className="rule-composer-warning-trigger"
-          aria-label="Coverage caveat for this condition"
+          aria-label={copy.taxIdCaveatLabel}
         >
           <WarningGlyph />
         </button>
       </TooltipTrigger>
       <TooltipContent className="rule-composer-warning-tooltip" side="top">
-        Only some sources report this today: a PrestaShop order carries a real tax-ID status
-        (present, or explicitly none). An Allegro or WooCommerce order reports neither — this
-        condition will never match those, and the order falls through to the next tier instead.
+        {copy.taxIdCaveat}
       </TooltipContent>
     </Tooltip>
   );
@@ -266,6 +266,8 @@ export function SalesDocumentRuleComposerDialog({
   onOpenChange,
   onOpenRule,
 }: SalesDocumentRuleComposerDialogProps): ReactElement {
+  const messages = useMessages('sales-documents');
+  const copy = messages.salesDocumentRuleComposerDialog;
   const connectionsQuery = useConnectionsQuery();
   const createRule = useCreateSalesDocumentRuleMutation();
   const dryRun = useDryRunSalesDocumentRuleMutation();
@@ -407,11 +409,11 @@ export function SalesDocumentRuleComposerDialog({
    * states by sitting on its placeholder.
    */
   const saveWithheldReason: string | null = mixedCurrencies
-    ? 'This rule bounds the order total in more than one currency, so it would never match an order. Use one currency.'
+    ? copy.saveHint.mixedCurrencies
     : !draftIsWellFormed
-      ? 'Finish every condition before saving - an amount needs a number and a three-letter currency, and a country needs a code.'
+      ? copy.saveHint.incomplete
       : recheckInFlight
-        ? 'Checking this draft against the other rules in this market…'
+        ? copy.saveHint.checking
         : null;
 
   async function handleSave(): Promise<void> {
@@ -461,15 +463,15 @@ export function SalesDocumentRuleComposerDialog({
         style={{ maxWidth: '32rem' }}
         data-testid="rule-composer"
       >
-        <DialogTitle>Add rule</DialogTitle>
+        <DialogTitle>{copy.title}</DialogTitle>
 
         {createRule.error ? <Alert tone="error">{createRule.error.message}</Alert> : null}
 
         <section className="rule-composer-section">
           <header className="rule-composer-section__header">
-            <p className="eyebrow">Conditions</p>
+            <p className="eyebrow">{copy.conditions.heading}</p>
             <p className="muted-text">
-              Every added condition must ALL be true for this rule to match (AND).
+              {copy.conditions.intro}
             </p>
           </header>
 
@@ -481,7 +483,7 @@ export function SalesDocumentRuleComposerDialog({
                 data-testid={`rule-condition-${index}`}
               >
                 <Select
-                  aria-label="Condition field"
+                  aria-label={copy.conditions.fieldLabel}
                   data-testid={`rule-condition-field-${index}`}
                   value={condition.kind}
                   onChange={(event) => {
@@ -491,14 +493,14 @@ export function SalesDocumentRuleComposerDialog({
                     );
                   }}
                 >
-                  <option value="buyerHasTaxId">Buyer has a tax ID</option>
-                  <option value="orderCountry">Order country is</option>
-                  <option value="orderTotalGross">Order total (gross)</option>
+                  <option value="buyerHasTaxId">{copy.conditions.fields.buyerHasTaxId}</option>
+                  <option value="orderCountry">{copy.conditions.fields.orderCountry}</option>
+                  <option value="orderTotalGross">{copy.conditions.fields.orderTotalGross}</option>
                 </Select>
 
                 {condition.kind === 'buyerHasTaxId' ? (
                   <Select
-                    aria-label="Buyer has a tax ID value"
+                    aria-label={copy.conditions.taxIdValueLabel}
                     data-testid={`rule-condition-value-${index}`}
                     value={String(condition.boolValue)}
                     onChange={(event) =>
@@ -509,17 +511,17 @@ export function SalesDocumentRuleComposerDialog({
                       )
                     }
                   >
-                    <option value="true">yes</option>
-                    <option value="false">no</option>
+                    <option value="true">{copy.conditions.yes}</option>
+                    <option value="false">{copy.conditions.no}</option>
                   </Select>
                 ) : null}
 
                 {condition.kind === 'orderCountry' ? (
                   <Input
-                    aria-label="Order country value"
+                    aria-label={copy.conditions.countryValueLabel}
                     data-testid={`rule-condition-value-${index}`}
                     value={condition.stringValue}
-                    placeholder="e.g. PL"
+                    placeholder={copy.placeholders.country}
                     onChange={(event) =>
                       setConditions((prev) =>
                         prev.map((c, i) =>
@@ -540,7 +542,7 @@ export function SalesDocumentRuleComposerDialog({
                       third dropdown this composer does not have.
                     */}
                     <Select
-                      aria-label="Order total comparison"
+                      aria-label={copy.conditions.comparisonLabel}
                       data-testid={`rule-condition-test-${index}`}
                       value={condition.op}
                       onChange={(event) =>
@@ -551,14 +553,14 @@ export function SalesDocumentRuleComposerDialog({
                         )
                       }
                     >
-                      <option value="gte">≥</option>
-                      <option value="lt">&lt;</option>
+                      <option value="gte">{copy.conditions.atLeast}</option>
+                      <option value="lt">{copy.conditions.below}</option>
                     </Select>
                     <Input
-                      aria-label="Order total amount"
+                      aria-label={copy.conditions.amountLabel}
                       data-testid={`rule-condition-amount-${index}`}
                       inputMode="decimal"
-                      placeholder="450.00"
+                      placeholder={copy.placeholders.amount}
                       value={condition.amount}
                       onChange={(event) =>
                         setConditions((prev) =>
@@ -569,9 +571,9 @@ export function SalesDocumentRuleComposerDialog({
                       }
                     />
                     <Input
-                      aria-label="Order total currency"
+                      aria-label={copy.conditions.currencyLabel}
                       data-testid={`rule-condition-currency-${index}`}
-                      placeholder="PLN"
+                      placeholder={copy.placeholders.currency}
                       maxLength={3}
                       value={condition.currency}
                       onChange={(event) =>
@@ -597,7 +599,7 @@ export function SalesDocumentRuleComposerDialog({
               data-testid="rule-add-condition"
               onClick={() => setConditions((prev) => [...prev, newConditionDraft()])}
             >
-              + Add condition
+              {copy.conditions.add}
             </Button>
             <Button
               tone="secondary"
@@ -605,65 +607,65 @@ export function SalesDocumentRuleComposerDialog({
               data-testid="rule-test-sample-order"
               onClick={() => setSampleOrderOpen((prev) => !prev)}
             >
-              Test with a sample order
+              {copy.sample.toggle}
             </Button>
           </div>
           <p className="muted-text rule-composer-section__footnote">
-            The underlying <span className="mono-text">field</span> is one closed, cross-country
-            vocabulary — never a country-specific string.
+            {renderRich(copy.footnote, {
+              mono: (text) => <span className="mono-text">{text}</span>,
+            })}
           </p>
 
           {sampleOrderOpen ? (
             <div className="rule-composer-dry-run" data-testid="rule-test-sample-order-panel">
               <p className="eyebrow" style={{ marginBottom: 6 }}>
-                Sample order
+                {copy.sample.heading}
               </p>
               <div className="frame-grid frame-grid--2">
                 <Input
-                  aria-label="Sample order delivery country"
-                  placeholder="e.g. PL"
+                  aria-label={copy.sample.countryLabel}
+                  placeholder={copy.placeholders.country}
                   value={sampleCountry}
                   onChange={(event) => setSampleCountry(event.target.value.toUpperCase())}
                 />
                 <Select
-                  aria-label="Sample order buyer has a tax ID"
+                  aria-label={copy.sample.taxIdLabel}
                   value={sampleBuyerHasTaxId}
                   onChange={(event) =>
                     setSampleBuyerHasTaxId(event.target.value as 'unknown' | 'yes' | 'no')
                   }
                 >
-                  <option value="unknown">Buyer tax ID: unknown</option>
-                  <option value="yes">Buyer tax ID: present</option>
-                  <option value="no">Buyer tax ID: none</option>
+                  <option value="unknown">{copy.sample.taxIdUnknown}</option>
+                  <option value="yes">{copy.sample.taxIdPresent}</option>
+                  <option value="no">{copy.sample.taxIdNone}</option>
                 </Select>
                 <Input
-                  aria-label="Sample order total amount"
+                  aria-label={copy.sample.amountLabel}
                   inputMode="decimal"
-                  placeholder="450.00"
+                  placeholder={copy.placeholders.amount}
                   value={sampleAmount}
                   onChange={(event) => setSampleAmount(event.target.value)}
                 />
                 <Input
-                  aria-label="Sample order currency"
-                  placeholder="PLN"
+                  aria-label={copy.sample.currencyLabel}
+                  placeholder={copy.placeholders.currency}
                   maxLength={3}
                   value={sampleCurrency}
                   onChange={(event) => setSampleCurrency(event.target.value.toUpperCase())}
                 />
                 <Select
-                  aria-label="Sample order pricing"
+                  aria-label={copy.sample.pricingLabel}
                   value={sampleTaxTreatment}
                   onChange={(event) =>
                     setSampleTaxTreatment(event.target.value as 'inclusive' | 'exclusive')
                   }
                 >
-                  <option value="inclusive">Gross-priced (VAT included)</option>
-                  <option value="exclusive">Net-priced (VAT excluded)</option>
+                  <option value="inclusive">{copy.sample.gross}</option>
+                  <option value="exclusive">{copy.sample.net}</option>
                 </Select>
               </div>
               <p className="muted-text" style={{ marginTop: 'var(--space-1)' }}>
-                An amount-threshold condition can only be compared against a gross-priced order —
-                pick net-priced to see how the rule holds an order it cannot evaluate.
+                {copy.sample.pricingHint}
               </p>
 
               <div className="row" style={{ marginTop: 'var(--space-2)' }}>
@@ -679,7 +681,7 @@ export function SalesDocumentRuleComposerDialog({
                   }
                   onClick={handleDryRun}
                 >
-                  {dryRun.isPending ? 'Testing…' : 'Run test'}
+                  {dryRun.isPending ? copy.sample.testing : copy.sample.run}
                 </Button>
               </div>
 
@@ -703,8 +705,7 @@ export function SalesDocumentRuleComposerDialog({
                       saved rule with the window set above would actually do.
                       One line closes that gap rather than leaving it implicit. */}
                   <p className="muted-text" style={{ marginTop: 'var(--space-1)' }}>
-                    This test ignores the effective window above and checks the
-                    rule&apos;s conditions only.
+                    {copy.sample.ignoresWindow}
                   </p>
                 </>
               ) : null}
@@ -714,12 +715,12 @@ export function SalesDocumentRuleComposerDialog({
 
         <section className="rule-composer-section">
           <header className="rule-composer-section__header">
-            <p className="eyebrow">Document &amp; destination</p>
+            <p className="eyebrow">{copy.destination.heading}</p>
           </header>
           <div className="frame-grid frame-grid--2">
             <div>
               <label className="eyebrow" htmlFor="sd-rule-doctype" style={{ marginBottom: 2 }}>
-                Document type
+                {copy.destination.documentType}
               </label>
               <Select
                 id="sd-rule-doctype"
@@ -730,13 +731,13 @@ export function SalesDocumentRuleComposerDialog({
                   setConnectionId('');
                 }}
               >
-                <option value="invoice">Invoice</option>
-                <option value="fiscal-receipt">Receipt</option>
+                <option value="invoice">{messages.documentKind.invoice}</option>
+                <option value="fiscal-receipt">{messages.documentKind.receipt}</option>
               </Select>
             </div>
             <div>
               <label className="eyebrow" htmlFor="sd-rule-connection" style={{ marginBottom: 2 }}>
-                Integration
+                {copy.destination.integration}
               </label>
               <Select
                 id="sd-rule-connection"
@@ -744,7 +745,7 @@ export function SalesDocumentRuleComposerDialog({
                 value={connectionId}
                 onChange={(event) => setConnectionId(event.target.value)}
               >
-                <option value="">Select a connection…</option>
+                <option value="">{copy.destination.selectConnection}</option>
                 {candidates.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -757,7 +758,7 @@ export function SalesDocumentRuleComposerDialog({
             <Alert
               data-testid="rule-connection-role-gap"
               tone="warning"
-              title="This connection has no role yet"
+              title={copy.destination.roleGapTitle}
             >
               <p>{describeSalesDocumentConnectionRoleGap(connectionRoleGap)}</p>
             </Alert>
@@ -766,12 +767,12 @@ export function SalesDocumentRuleComposerDialog({
 
         <section className="rule-composer-section">
           <header className="rule-composer-section__header">
-            <p className="eyebrow">Effective window</p>
+            <p className="eyebrow">{copy.window.heading}</p>
           </header>
           <div className="frame-grid frame-grid--2">
             <div>
               <label className="eyebrow" htmlFor="sd-rule-from" style={{ marginBottom: 2 }}>
-                Effective from
+                {copy.window.from}
               </label>
               <Input
                 id="sd-rule-from"
@@ -783,7 +784,9 @@ export function SalesDocumentRuleComposerDialog({
             </div>
             <div>
               <label className="eyebrow" htmlFor="sd-rule-to" style={{ marginBottom: 2 }}>
-                Effective to <span className="text-muted">(optional)</span>
+                {renderRich(copy.window.to, {
+                  muted: (text) => <span className="text-muted">{text}</span>,
+                })}
               </label>
               <Input
                 id="sd-rule-to"
@@ -810,7 +813,7 @@ export function SalesDocumentRuleComposerDialog({
           both misread the design and break that assertion.
         */}
         <div className="rule-composer-readback">
-          <p className="eyebrow rule-composer-readback__eyebrow">This rule says</p>
+          <p className="eyebrow rule-composer-readback__eyebrow">{copy.readback.heading}</p>
           <p data-testid="rule-readback" className="rule-composer-readback__sentence">
             {describeSalesDocumentRuleDraft({
               conditions: conditions.map(toConditionInput),
@@ -826,13 +829,13 @@ export function SalesDocumentRuleComposerDialog({
             currency does not match and falls through to the next tier.
           */}
           <p className="muted-text rule-composer-readback__hint">
-            Orders priced in another currency do not match this rule.
+            {copy.readback.currencyHint}
           </p>
         </div>
 
         {conflicts.length > 0 ? (
           <div data-testid="rule-conflict">
-            <Alert tone="error" title="This could match the same order as an existing rule">
+            <Alert tone="error" title={copy.conflict.title}>
               {/*
                 One row per rival, each with its OWN reveal control. A single
                 sentence naming three rivals beside a button that opened only
@@ -857,13 +860,13 @@ export function SalesDocumentRuleComposerDialog({
                           onOpenChange(false);
                         }}
                       >
-                        Show that rule
+                        {copy.conflict.showRule}
                       </Button>
                     ) : null}
                   </li>
                 ))}
               </ul>
-              <p>{SALES_DOCUMENT_OVERLAP_CONSEQUENCE}</p>
+              <p>{describeSalesDocumentOverlapConsequence()}</p>
             </Alert>
           </div>
         ) : null}
@@ -910,18 +913,16 @@ export function SalesDocumentRuleComposerDialog({
         */}
         {overlapState === 'unavailable' ? (
           <div data-testid="rule-overlap-unavailable">
-            <Alert tone="warning" title="We could not run the overlap check">
+            <Alert tone="warning" title={copy.overlapUnavailable.title}>
               <p>
-                This rule has not been compared against the others in this market. Saving is still
-                allowed, and an order matched by two rules is held rather than given the wrong
-                document.
+                {copy.overlapUnavailable.body}
               </p>
             </Alert>
           </div>
         ) : null}
         {undecided.length > 0 ? (
           <div data-testid="rule-overlap-undecided">
-            <Alert tone="warning" title="We could not check every rule">
+            <Alert tone="warning" title={copy.undecidedTitle}>
               {undecided.map((hit) => (
                 <p key={hit.ruleId}>
                   {describeSalesDocumentOverlapUndecided(
@@ -957,7 +958,7 @@ export function SalesDocumentRuleComposerDialog({
               onOpenChange(false);
             }}
           >
-            Cancel
+            {copy.cancel}
           </Button>
           {/*
             The testid swaps with the state, matching the mockup: a blocked
@@ -976,7 +977,7 @@ export function SalesDocumentRuleComposerDialog({
             }
             onClick={() => void handleSave()}
           >
-            {createRule.isPending ? 'Saving…' : recheckInFlight ? 'Checking…' : 'Save rule'}
+            {createRule.isPending ? copy.saving : recheckInFlight ? copy.checking : copy.save}
           </Button>
         </div>
       </DialogContent>

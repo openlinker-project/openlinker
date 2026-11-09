@@ -14,19 +14,20 @@
  */
 import type { ReactElement } from 'react';
 
-import { benchConnectivityCopy } from '../lib/bench-connectivity.copy';
+import { useMessages } from '../../../shared/i18n';
 import { useBenchReachabilityContext } from '../hooks/bench-reachability-context';
 
 export function BenchConnectivityIndicator(): ReactElement {
   // `?? 'ok'`: with no provider this readout has nothing to report, so the
   // quiet state is the honest one.
+  const benchCopy = useMessages('bench').connectivity;
   const connectivity = useBenchReachabilityContext()?.connectivity ?? 'ok';
   const copy =
     connectivity === 'link-down'
-      ? benchConnectivityCopy.connectivity.linkDown
+      ? benchCopy.connectivity.linkDown
       : connectivity === 'server-unreachable'
-        ? benchConnectivityCopy.connectivity.serverUnreachable
-        : benchConnectivityCopy.connectivity.ok;
+        ? benchCopy.connectivity.serverUnreachable
+        : benchCopy.connectivity.ok;
 
   // A `title` carries the detail, and the dot is paired with a word so colour
   // is never the only signal.

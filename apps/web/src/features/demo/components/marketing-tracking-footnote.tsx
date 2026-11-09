@@ -9,11 +9,9 @@
  * @module features/demo/components
  */
 import type { ReactElement } from 'react';
+import { useMessages } from '../../../shared/i18n';
 
 export function MarketingTrackingFootnote(): ReactElement {
-  return (
-    <p className="guest-form__tracking-footnote">
-      This visit is being logged for analytics. No personal profile is created from this.
-    </p>
-  );
+  const copy = useMessages('demo');
+  return <p className="guest-form__tracking-footnote">{copy.trackingFootnote}</p>;
 }

@@ -19,7 +19,7 @@
  */
 import { useState, type ReactElement } from 'react';
 
-import { useTranslation } from '../../../shared/i18n';
+import { getMessages, interpolate, renderRich, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { TimeDisplay } from '../../../shared/ui/time-display';
@@ -45,13 +45,13 @@ export function InvoiceUnconfirmedNotice({
   onCheckProvider,
   onMarkResolved,
 }: InvoiceUnconfirmedNoticeProps): ReactElement {
-  const { t } = useTranslation();
+  const copy = useMessages('invoicing').invoice.inDoubt;
   // "Mark resolved" asserts something OpenLinker cannot verify, so a stray
   // click must not be enough: it opens a confirm with focus on "Not yet".
   const [confirmOpen, setConfirmOpen] = useState(false);
   // Only a timeout can honestly say "did not answer in time"; a provider that
   // answered without settling the question must not be described as silent.
-  const cause = resolveCause(failureCode, t).replace('{{connection}}', connectionName);
+  const cause = interpolate(resolveCause(failureCode), { connection: connectionName });
 
   return (
     <div className="alert alert--warning invoice-unconfirmed" role="status" data-testid="invoice-unconfirmed">
@@ -63,34 +63,38 @@ export function InvoiceUnconfirmedNotice({
             <circle cx="8" cy="11.4" r="0.8" fill="currentColor" />
           </svg>
           <strong className="invoice-unconfirmed__title">
-            {t('invoice.inDoubt.title', "We can't tell if this invoice was issued")}
+            {copy.title}
           </strong>
           {attemptedAt ? (
             <TimeDisplay iso={attemptedAt} format="datetime" className="invoice-unconfirmed__time mono-text" />
           ) : null}
         </div>
         <p className="invoice-unconfirmed__cause">
-          {cause} {t('invoice.inDoubt.maybe', 'The invoice may exist there, or it may not.')}
+          {cause} {copy.maybe}
         </p>
 
-        <ol className="invoice-unconfirmed__steps" aria-label={t('invoice.inDoubt.stepsLabel', 'To finish this order')}>
+        <ol className="invoice-unconfirmed__steps" aria-label={copy.stepsLabel}>
           <li className="invoice-unconfirmed__step">
             <span className="invoice-unconfirmed__n" aria-hidden="true">1</span>
             <span className="invoice-unconfirmed__text">
-              {t('invoice.inDoubt.step1', "Look for this order's invoice in")} <strong>{connectionName}</strong>.
+              {renderRich(
+                copy.step1,
+                { b: (chunk) => <strong>{chunk}</strong> },
+                { connection: connectionName },
+              )}
             </span>
             <Button tone="secondary" className="button--sm invoice-unconfirmed__action" onClick={onCheckProvider}>
-              {t('invoice.inDoubt.check', 'Check provider')}
+              {copy.check}
             </Button>
           </li>
           {onMarkResolved ? (
           <li className="invoice-unconfirmed__step">
             <span className="invoice-unconfirmed__n" aria-hidden="true">2</span>
             <span className="invoice-unconfirmed__text">
-              {t('invoice.inDoubt.step2', 'Mark it resolved once you know.')}
+              {copy.step2}
             </span>
             <Button tone="secondary" className="button--sm invoice-unconfirmed__action" onClick={() => setConfirmOpen(true)}>
-              {t('invoice.inDoubt.resolve', 'Mark resolved')}
+              {copy.resolve}
             </Button>
           </li>
           ) : null}
@@ -103,15 +107,12 @@ export function InvoiceUnconfirmedNotice({
               <path d="M5.4 7V5a2.6 2.6 0 0 1 5.2 0v2" fill="none" stroke="currentColor" strokeWidth="1.3" />
             </svg>
             <span>
-              {t(
-                'invoice.inDoubt.paused',
-                "Retry and switching provider stay off until then, so this sale can't get two invoices.",
-              )}
+              {copy.paused}
             </span>
           </p>
           {providerResponse ? (
             <details className="invoice-unconfirmed__details">
-              <summary>{t('invoice.inDoubt.providerResponse', 'Provider response')}</summary>
+              <summary>{copy.providerResponse}</summary>
               <p className="invoice-unconfirmed__response mono-text">{providerResponse}</p>
             </details>
           ) : null}
@@ -122,13 +123,10 @@ export function InvoiceUnconfirmedNotice({
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         initialFocus="cancel"
-        title={t('invoice.inDoubt.confirmTitle', 'Mark this invoice as resolved?')}
-        description={t(
-          'invoice.inDoubt.confirmBody',
-          "Do this only after you've checked {{connection}}. OpenLinker can't check it for you.",
-        ).replace('{{connection}}', connectionName)}
-        cancelLabel={t('invoice.inDoubt.confirmCancel', 'Not yet')}
-        confirmLabel={t('invoice.inDoubt.resolve', 'Mark resolved')}
+        title={copy.confirmTitle}
+        description={interpolate(copy.confirmBody, { connection: connectionName })}
+        cancelLabel={copy.confirmCancel}
+        confirmLabel={copy.resolve}
         onConfirm={() => {
           setConfirmOpen(false);
           onMarkResolved();
@@ -139,18 +137,9 @@ export function InvoiceUnconfirmedNotice({
   );
 }
 
-function resolveCause(
-  failureCode: FailureCode | null,
-  t: (key: string, fallback: string) => string,
-): string {
-  if (failureCode === 'transport-timeout') {
-    return t('invoice.inDoubt.causeTimeout', '{{connection}} did not answer in time.');
-  }
-  if (failureCode === 'provider-answer-inconclusive') {
-    return t(
-      'invoice.inDoubt.causeInconclusive',
-      '{{connection}} answered, but not in a way that says whether the invoice was created.',
-    );
-  }
-  return t('invoice.inDoubt.causeUnknown', '{{connection}} did not confirm the result.');
+function resolveCause(failureCode: FailureCode | null): string {
+  const copy = getMessages('invoicing').invoice.inDoubt;
+  if (failureCode === 'transport-timeout') return copy.causeTimeout;
+  if (failureCode === 'provider-answer-inconclusive') return copy.causeInconclusive;
+  return copy.causeUnknown;
 }

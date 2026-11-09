@@ -549,7 +549,7 @@ describe('ShipmentRowDetail — omp/branch-1', () => {
       />,
       { apiClient },
     );
-    expect(screen.getByText('Fulfilled by the destination — no tracking yet.')).toBeInTheDocument();
+    expect(screen.getByText('Fulfilled by the destination - no tracking yet.')).toBeInTheDocument();
   });
 });
 
@@ -582,7 +582,7 @@ describe('ShipmentRowDetail — empty-content fallback (#1826)', () => {
     );
     expect(
       screen.getByText(
-        'No actions available for this shipment yet — check back once the carrier status sync catches up.',
+        'No actions available for this shipment yet - check back once the carrier status sync catches up.',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByRole('link')).not.toBeInTheDocument();

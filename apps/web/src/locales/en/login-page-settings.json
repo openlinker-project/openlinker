@@ -1,0 +1,68 @@
+{
+  "back": "Settings",
+  "cancel": "Cancel",
+  "description": "Everyone sees this before they sign in. Each language has its own text.",
+  "emptyHint": "An empty field shows the default text.",
+  "eyebrow": "Settings",
+  "fields": {
+    "formSubtitle": {
+      "hint": "For example, who creates accounts at your company.",
+      "label": "Form subtitle"
+    },
+    "formTitle": {
+      "hint": "Above the sign-in fields.",
+      "label": "Form title"
+    },
+    "headline": {
+      "hint": "The first line, for example the name of the panel.",
+      "label": "Headline"
+    },
+    "headlineAccent": {
+      "hint": "The second line in the brand colour, for example your company name.",
+      "label": "Headline highlight"
+    },
+    "lead": {
+      "hint": "One or two sentences about what the panel is for.",
+      "label": "Text under the headline"
+    },
+    "registerSubtitle": {
+      "hint": "For example, who approves new accounts.",
+      "label": "Request form subtitle"
+    },
+    "registerTitle": {
+      "hint": "Above the request-access fields.",
+      "label": "Request form title"
+    },
+    "support": {
+      "hint": "Below the sign-in form. You can add a link to your help page, an address or a phone number.",
+      "label": "Sign-in help"
+    }
+  },
+  "formCardTitle": "Form",
+  "language": "Text language",
+  "loadError": "Couldn't load the login page settings.",
+  "preview": "Preview",
+  "previewClose": "Close",
+  "previewHintEn": "This is what people signing in in English will see.",
+  "previewHintPl": "This is what people signing in in Polish will see.",
+  "previewLogin": "Sign in",
+  "previewOpen": "Show preview",
+  "previewRegister": "Request access",
+  "previewScreen": "Screen",
+  "registrationEnv": "Until you save here, the OL_REGISTRATION_ENABLED variable decides.",
+  "registrationHint": "Someone without an account sends a request. You approve it in Users, on the Pending tab.",
+  "registrationLabel": "Requests for access",
+  "registrationToggle": "Show a “Request access” tab on the login page",
+  "reset": "Restore defaults",
+  "save": "Save",
+  "saveError": "Couldn't save the login page.",
+  "saved": "Saved. The new text is live on the login page.",
+  "saving": "Saving...",
+  "screenHint": "The fields and the preview follow the chosen screen.",
+  "tile": "Headline, form text, sign-in help and requests for access.",
+  "title": "Login page",
+  "tooLong": "Use at most {max} characters.",
+  "unsaved": "You have unsaved changes.",
+  "usersOff": "Requests for access are off, so the login page does not take them. <link>Login page settings</link>",
+  "usersOn": "Requests for access are on, so new ones land on the Pending tab. <link>Login page settings</link>"
+}

@@ -64,7 +64,7 @@ import {
   fulfillmentActionAppliedToast,
   fulfillmentActionFailedFallback,
   type FulfillmentTaskActionMode,
-} from '../lib/fulfillment-task.copy';
+} from '../lib/fulfillment-task-labels';
 import { useFulfillmentTaskActionMutation } from './use-fulfillment-task-action-mutation';
 
 /** A dialog-backed action the operator has opened but not yet submitted. */

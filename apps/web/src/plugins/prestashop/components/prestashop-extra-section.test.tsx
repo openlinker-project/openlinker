@@ -58,7 +58,7 @@ describe('PrestashopExtraSection', () => {
 
     expect(
       await screen.findByText(
-        'No outbound limit configured — requests to this connection are not paced.',
+        'No outbound limit configured - requests to this connection are not paced.',
       ),
     ).toBeInTheDocument();
   });

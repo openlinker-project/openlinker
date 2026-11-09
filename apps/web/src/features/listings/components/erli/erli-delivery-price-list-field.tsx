@@ -15,15 +15,19 @@
  */
 import type { ReactElement } from 'react';
 
+import { interpolate, useMessages } from '../../../../shared/i18n';
 import { Alert } from '../../../../shared/ui/alert';
 import { Button } from '../../../../shared/ui/button';
 import { FormField } from '../../../../shared/ui/form-field';
 import { Input } from '../../../../shared/ui/input';
 import { Select } from '../../../../shared/ui/select';
 import { useDeliveryPriceListsQuery } from '../../hooks/use-delivery-price-lists-query';
+import { serverErrorText } from '../../lib/server-error-text';
 
 interface ErliDeliveryPriceListFieldProps {
   connectionId: string;
+  /** The marketplace's display name, so copy can say whose account to check. */
+  platformName: string;
   /** Selected delivery price list name (empty string = none chosen). */
   value: string;
   onChange: (name: string) => void;
@@ -31,9 +35,12 @@ interface ErliDeliveryPriceListFieldProps {
 
 export function ErliDeliveryPriceListField({
   connectionId,
+  platformName,
   value,
   onChange,
 }: ErliDeliveryPriceListFieldProps): ReactElement {
+  const copy = useMessages('listings').erliDeliveryPriceListField;
+  const common = useMessages('listings').common;
   const query = useDeliveryPriceListsQuery(connectionId);
   const priceLists = query.data?.deliveryPriceLists ?? [];
 
@@ -46,12 +53,12 @@ export function ErliDeliveryPriceListField({
     'aria-describedby'?: string;
   }>;
   if (query.isLoading) {
-    control = <Input disabled value="Loading delivery price lists…" readOnly />;
+    control = <Input disabled value={copy.loading} readOnly />;
   } else if (query.error) {
     control = (
       <Alert
         tone="error"
-        title="Unable to load delivery price lists"
+        title={copy.loadErrorTitle}
         action={
           <Button
             type="button"
@@ -59,18 +66,18 @@ export function ErliDeliveryPriceListField({
             className="button--sm"
             onClick={() => void query.refetch()}
           >
-            Retry
+            {copy.retry}
           </Button>
         }
       >
-        {query.error instanceof Error ? query.error.message : 'Please try again.'}
+        {serverErrorText(common.serverSaid, query.error instanceof Error ? query.error.message : undefined, copy.tryAgain)}
       </Alert>
     );
   } else if (priceLists.length === 0) {
     control = (
       <Alert
         tone="info"
-        title="No delivery price lists found"
+        title={copy.emptyTitle}
         action={
           <Button
             type="button"
@@ -78,17 +85,17 @@ export function ErliDeliveryPriceListField({
             className="button--sm"
             onClick={() => void query.refetch()}
           >
-            Refresh
+            {copy.refresh}
           </Button>
         }
       >
-        No delivery price lists found on this Erli account - add one in Erli, then refresh.
+        {interpolate(copy.emptyBody, { platform: platformName })}
       </Alert>
     );
   } else {
     control = (
       <Select value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">Choose a delivery price list…</option>
+        <option value="">{copy.placeholder}</option>
         {priceLists.map((list) => (
           <option key={list.id} value={list.name}>
             {list.name}
@@ -100,9 +107,9 @@ export function ErliDeliveryPriceListField({
 
   return (
     <FormField
-      label="Delivery price list"
+      label={copy.label}
       name="deliveryPriceList"
-      description="Fetched from Erli. Required for buyers to purchase."
+      description={interpolate(copy.description, { platform: platformName })}
     >
       {control}
     </FormField>

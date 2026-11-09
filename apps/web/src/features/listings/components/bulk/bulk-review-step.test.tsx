@@ -181,7 +181,7 @@ describe('BulkReviewStep', () => {
     // Single-variant product renders flat; its blocker chip is a fix button.
     // The accessible name carries the human variant label (distinguishing attr),
     // never the raw ol_variant id (#1741 review).
-    expect(screen.getByRole('button', { name: /Fix: no barcode - Rozmiar: v1/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Fix: No barcode - Rozmiar: v1/ })).toBeInTheDocument();
   });
 
   it('carries the cause sentence on the chip so one chip can explain itself (#2240)', () => {
@@ -190,12 +190,12 @@ describe('BulkReviewStep', () => {
     );
     // One chip per cause in the table - the sentence rides in the title/accessible
     // name rather than in a second, always-present "category not set" chip.
-    const chip = screen.getByRole('button', { name: /Fix: no catalog match - Rozmiar: v1/ });
+    const chip = screen.getByRole('button', { name: /Fix: No catalog match - Rozmiar: v1/ });
     expect(chip).toHaveAttribute(
       'title',
       expect.stringContaining("isn't in the Test Marketplace catalog"),
     );
-    expect(screen.queryByText('category not set')).not.toBeInTheDocument();
+    expect(screen.queryByText('Category not set')).not.toBeInTheDocument();
   });
 
   it('LOCKS the submit while a batch-level precondition is unmet (#2240 review)', () => {
@@ -288,7 +288,7 @@ describe('BulkReviewStep', () => {
       renderWithProviders(
         <BulkReviewStep {...baseProps()} rows={[makeRow('p1', [setAside('v1')])]} />,
       );
-      expect(screen.queryByText('card ≠ mapping')).not.toBeInTheDocument();
+      expect(screen.queryByText('catalog ≠ mapping')).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: /Compare with your mapping/ })).toBeInTheDocument();
     });
 

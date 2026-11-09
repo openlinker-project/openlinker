@@ -13,12 +13,13 @@
  */
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { interpolate, renderRich, useFormat, useMessages, usePlural } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import type { StockView, StockViewVariant } from '../api/inventory.types';
 import { useConnectionNames } from '../hooks/use-connection-names';
-import { formatStaleness } from '../lib/stock-view';
+import { formatStalenessDuration } from '../lib/stock-view';
 import type { StockRowModel } from '../lib/stock-row';
 
 export interface StockAlertsProps {
@@ -38,10 +39,6 @@ function variantName(row: StockRowModel): string {
   return row.variant.sku ?? row.variant.id;
 }
 
-function joinNames(names: readonly string[]): string {
-  return names.length <= 2 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-}
-
 export function StockAlerts({
   rows,
   view,
@@ -51,6 +48,10 @@ export function StockAlerts({
   onRetry,
   masterConnectionId = null,
 }: StockAlertsProps): ReactElement | null {
+  const copy = useMessages('inventory').stockAlerts;
+  const plural = usePlural();
+  const format = useFormat();
+  const joinNames = (names: readonly string[]): string => format.list(names);
   const connectionNames = useConnectionNames();
   const list = [...rows.values()];
   const anyUnknown = !pending && !restricted && list.some((row) => row.state === 'unknown');
@@ -72,14 +73,13 @@ export function StockAlerts({
     <div data-testid="stock-alerts" aria-busy={pending}>
       {!canAdjust ? (
         <Alert data-testid="stock-viewer-notice" tone="info" density="compact">
-          You have view-only access. Ask an admin or operator to change stock.
+          {copy.viewerNotice}
         </Alert>
       ) : null}
 
       {restricted ? (
-        <Alert data-testid="stock-restricted-notice" tone="info" title="How much you can sell isn't shown to your role">
-          The count in the shop is current. What you can sell, what is reserved and what each channel gets are
-          visible to admins, operators and viewers.
+        <Alert data-testid="stock-restricted-notice" tone="info" title={copy.restricted.title}>
+          {copy.restricted.body}
         </Alert>
       ) : null}
 
@@ -87,15 +87,14 @@ export function StockAlerts({
         <Alert
           data-testid="stock-unknown-alert"
           tone="warning"
-          title="Stock for this product isn't known right now"
+          title={copy.unknown.title}
           action={
             <Button tone="secondary" data-testid="stock-retry" onClick={onRetry}>
-              Try again
+              {copy.unknown.retry}
             </Button>
           }
         >
-          OpenLinker couldn&apos;t read the reserved count, so it shows no number and isn&apos;t sending stock to
-          your channels. Nothing was changed.
+          {copy.unknown.body}
         </Alert>
       ) : null}
 
@@ -105,8 +104,8 @@ export function StockAlerts({
           tone="warning"
           title={
             oldestStale.stalenessMs !== null
-              ? `Stock hasn't been refreshed for ${formatStaleness(oldestStale.stalenessMs).replace(' ago', '')}`
-              : "Stock hasn't been refreshed recently"
+              ? interpolate(copy.stale.titleFor, { duration: formatStalenessDuration(oldestStale.stalenessMs) })
+              : copy.stale.titleRecently
           }
           action={
             staleConnection ? (
@@ -115,55 +114,56 @@ export function StockAlerts({
                 to={`/connections/${encodeURIComponent(staleConnection)}`}
                 data-testid="stock-stale-open-connection"
               >
-                Open connection
+                {copy.stale.openConnection}
               </Link>
             ) : undefined
           }
         >
           {oldestStale.observedAt ? (
             <>
-              {staleConnectionName ?? 'The shop'} last answered <TimeDisplay iso={oldestStale.observedAt} />.{' '}
+              {renderRich(
+                copy.stale.lastAnswered,
+                { time: () => <TimeDisplay iso={oldestStale.observedAt ?? ''} /> },
+                { shop: staleConnectionName ?? copy.stale.theShop },
+              )}{' '}
             </>
           ) : null}
-          OpenLinker hasn&apos;t sent your channels a new number since then. Stock counts as stale after{' '}
-          {view.staleSyncThreshold.hours} h without an update.
+          {interpolate(copy.stale.body, { hours: view.staleSyncThreshold.hours })}
         </Alert>
       ) : null}
 
       {multiSourceRows.length > 0 ? (
         <Alert data-testid="stock-multi-source-alert" tone="warning" density="compact">
-          {joinNames(multiSourceRows.map(variantName))} {multiSourceRows.length === 1 ? 'is' : 'are'} counted by{' '}
-          {joinNames([...new Set(multiSourceRows.flatMap((row) => row.sourceNames))])}, and the counts are added
-          together. Corrections for {multiSourceRows.length === 1 ? 'it' : 'them'} are off and new orders
-          don&apos;t reserve {multiSourceRows.length === 1 ? 'it' : 'them'}.{' '}
-          <Link to="/connections">See the connections</Link>
+          {plural(multiSourceRows.length, copy.multiSource.body, {
+            variants: joinNames(multiSourceRows.map(variantName)),
+            sources: joinNames([...new Set(multiSourceRows.flatMap((row) => row.sourceNames))]),
+          })}{' '}
+          <Link to="/connections">{copy.multiSource.link}</Link>
         </Alert>
       ) : null}
 
       {multiLocationRows.length > 0 ? (
         <Alert data-testid="stock-multi-location-alert" tone="info" density="compact">
-          {joinNames(multiLocationRows.map(variantName))} {multiLocationRows.length === 1 ? 'is' : 'are'} kept in more
-          than one location. OpenLinker shows the total, but you correct{' '}
-          {multiLocationRows.length === 1 ? 'it' : 'them'} in {multiLocationRows[0]!.masterName}, and new orders
-          don&apos;t reserve {multiLocationRows.length === 1 ? 'it' : 'them'} yet.
+          {plural(multiLocationRows.length, copy.multiLocation, {
+            variants: joinNames(multiLocationRows.map(variantName)),
+            master: multiLocationRows[0]!.masterName,
+          })}
         </Alert>
       ) : null}
 
       {goneRows.length > 0 ? (
         <Alert data-testid="stock-gone-alert" tone="info" density="compact">
-          {goneRows[0]!.masterName} stopped reporting {joinNames(goneRows.map(variantName))}, so{' '}
-          {goneRows.length === 1 ? 'its offers were' : 'their offers were'} paused. If it was deleted on purpose,
-          there is nothing else to do.
+          {plural(goneRows.length, copy.gone, {
+            master: goneRows[0]!.masterName,
+            variants: joinNames(goneRows.map(variantName)),
+          })}
         </Alert>
       ) : null}
 
       {everythingEmpty ? (
         <div className="empty-state" data-testid="stock-empty">
-          <h2>No stock recorded for this product yet</h2>
-          <p>
-            {masterName ?? 'The master'} hasn&apos;t reported stock for this product. Until it does, OpenLinker
-            counts it as 0 to sell and channels show it as sold out.
-          </p>
+          <h2>{copy.empty.title}</h2>
+          <p>{interpolate(copy.empty.body, { master: masterName ?? copy.empty.theMaster })}</p>
           {masterConnectionId ? (
             <div className="toolbar__group" style={{ justifyContent: 'center' }}>
               <Link
@@ -171,7 +171,7 @@ export function StockAlerts({
                 to={`/connections/${encodeURIComponent(masterConnectionId)}`}
                 data-testid="stock-empty-open-connection"
               >
-                Check the connection&apos;s stock sync
+                {copy.empty.checkSync}
               </Link>
             </div>
           ) : null}
@@ -181,7 +181,7 @@ export function StockAlerts({
       {pending ? (
         <p className="av-loading-note" data-testid="stock-loading">
           <span className="button__spinner" aria-hidden="true"></span>
-          Working out what you can sell for {rows.size} variant{rows.size === 1 ? '' : 's'}…
+          {plural(rows.size, copy.loading)}
         </p>
       ) : null}
     </div>

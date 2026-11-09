@@ -8,6 +8,7 @@
  * @module pages/dev-ui/sections
  */
 import type { ReactElement, ReactNode } from 'react';
+import { useMessages } from '../../../shared/i18n';
 import {
   Alert,
   BackLink,
@@ -124,6 +125,7 @@ function Pattern({ title, description, children }: PatternProps): ReactElement {
 }
 
 export function PatternsSection(): ReactElement {
+  const copy = useMessages('dev-ui').patternsSection;
   return (
     <div className="ds-stack" style={{ gap: 'var(--space-6)' }}>
       <Pattern
@@ -217,8 +219,7 @@ export function PatternsSection(): ReactElement {
             Install webhooks
           </h3>
           <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.8125rem', maxWidth: '60ch' }}>
-            We'll register inbound webhook URLs on your store so order events arrive in seconds, not minutes. You can
-            skip this and rely on polling — the catalog still syncs hourly.
+            {copy.installWebhooksBody}
           </p>
         </div>
         <div className="ds-row" style={{ justifyContent: 'space-between' }}>

@@ -109,7 +109,7 @@ export function ReviewCategoryCell({
   conflict,
   siblingConflicts,
 }: ReviewCategoryCellProps): ReactElement {
-  const copy = useMessages('listings').bulkReview.categoryCell;
+  const copy = useMessages('listings').bulkReviewCategoryCell;
   if (categoryId === null) {
     // The sibling line must render here too: a multi-variant product with no
     // product-tier category still hides its disagreeing variants behind the
@@ -147,7 +147,7 @@ function ResolvedCategory({
   conflict: { card: EanMatchCardRef; onCompare: () => void } | null;
   siblingConflicts: { count: number; onReveal: () => void } | null;
 }): ReactElement {
-  const copy = useMessages('listings').bulkReview.categoryCell;
+  const copy = useMessages('listings').bulkReviewCategoryCell;
   const pathQuery = useCategoryPathQuery(connectionId, categoryId);
   const path = pathQuery.data ?? [];
   const leaf = path.length > 0 ? path[path.length - 1].name : null;
@@ -189,7 +189,7 @@ function ResolvedCategory({
 }
 
 function SiblingConflictsLink({ count, onReveal }: { count: number; onReveal: () => void }): ReactElement {
-  const copy = useMessages('listings').bulkReview.categoryCell;
+  const copy = useMessages('listings').bulkReviewCategoryCell;
   const plural = usePlural();
   return (
     <button type="button" className="review-cat__conflict" onClick={onReveal}>
@@ -209,7 +209,7 @@ function ConflictLink({
   onCompare: () => void;
 }): ReactElement {
   const cardPath = useCategoryPathQuery(connectionId, card.allegroCategoryId);
-  const copy = useMessages('listings').bulkReview.categoryCell;
+  const copy = useMessages('listings').bulkReviewCategoryCell;
   const cardLeaf = cardPath.data?.[cardPath.data.length - 1]?.name;
   const label =
     cardLeaf === undefined

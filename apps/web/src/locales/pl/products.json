@@ -1,0 +1,606 @@
+{
+  "costCoverageBanner": {
+    "addCostPrices": "Dodaj ceny zakupu",
+    "bodyAddCosts": "Dodaj koszty, a zamówienia złożone od teraz będą wliczane do marży.",
+    "bodyNetSales": "Ich sprzedaż netto wyniosła {amount} i nie jest wliczona do marży.",
+    "bodyNothingElse": "Nic innego się nie zmienia: zamówienia, oferty i faktury działają tak samo z kosztem i bez niego.",
+    "dismiss": "Ukryj do końca sesji",
+    "title": {
+      "few": "{n} warianty sprzedane w ostatnich {days} dniach nie mają ceny zakupu",
+      "many": "{n} wariantów sprzedanych w ostatnich {days} dniach nie ma ceny zakupu",
+      "one": "{n} wariant sprzedany w ostatnich {days} dniach nie ma ceny zakupu",
+      "other": "{n} wariantu sprzedanego w ostatnich {days} dniach nie ma ceny zakupu"
+    }
+  },
+  "costPricesPage": {
+    "amountError": "Wpisz 0 lub więcej, maks. 2 miejsca po przecinku.",
+    "bulk": {
+      "appliesTo": "Dotyczy",
+      "cancel": "Anuluj",
+      "clearSelection": "Wyczyść zaznaczenie",
+      "currencyLabel": "Waluta kosztu",
+      "description": "Użyj tego, gdy warianty kosztują tyle samo, np. dwa kolory jednego kubka.",
+      "dialogLabel": "Ustaw jeden koszt",
+      "inputDescription": "Bez VAT. Wliczany do marży zamówień złożonych po zapisaniu. Wcześniejsze zamówienia pozostają bez kosztu.",
+      "inputLabel": "Cena zakupu netto za sztukę",
+      "neverOverwrites": "Warianty, które mają już koszt, nigdy nie są tu zaznaczane, więc nic nie zostanie nadpisane.",
+      "open": "Ustaw jeden koszt dla zaznaczonych",
+      "preview": "brak kosztu → {cost}",
+      "save": {
+        "few": "Zapisz koszt dla {n} wariantów",
+        "many": "Zapisz koszt dla {n} wariantów",
+        "one": "Zapisz koszt dla {n} wariantu",
+        "other": "Zapisz koszt dla {n} wariantu"
+      },
+      "selectedLabel": {
+        "few": "Zaznaczono {n} warianty",
+        "many": "Zaznaczono {n} wariantów",
+        "one": "Zaznaczono {n} wariant",
+        "other": "Zaznaczono {n} wariantu"
+      },
+      "title": {
+        "few": "Ustaw jeden koszt dla {n} wariantów",
+        "many": "Ustaw jeden koszt dla {n} wariantów",
+        "one": "Ustaw jeden koszt dla {n} wariantu",
+        "other": "Ustaw jeden koszt dla {n} wariantu"
+      }
+    },
+    "cost": {
+      "add": "Dodaj koszt",
+      "currencyLabel": "Waluta",
+      "inputLabel": "Koszt netto dla {variant}",
+      "notRecorded": "Nie zapisano",
+      "save": "Zapisz",
+      "saved": "{cost} netto · zapisano, liczy się od następnego zamówienia"
+    },
+    "demoReadOnlyMessage": "To demo tylko do odczytu, więc nie można zmieniać cen zakupu.",
+    "doneEmpty": {
+      "message": "Nowe zamówienia są w pełni wliczane do marży.",
+      "messageWithUnsold": {
+        "few": "Nowe zamówienia są w pełni wliczane do marży. {n} warianty nie sprzedały się od 30 dni i nie mają kosztu; pojawią się tu, gdy któryś się sprzeda.",
+        "many": "Nowe zamówienia są w pełni wliczane do marży. {n} wariantów nie sprzedało się od 30 dni i nie ma kosztu; pojawią się tu, gdy któryś się sprzeda.",
+        "one": "Nowe zamówienia są w pełni wliczane do marży. {n} wariant nie sprzedał się od 30 dni i nie ma kosztu; pojawi się tu, gdy tylko się sprzeda.",
+        "other": "Nowe zamówienia są w pełni wliczane do marży. {n} wariantu nie sprzedało się od 30 dni i nie ma kosztu; pojawią się tu, gdy któryś się sprzeda."
+      },
+      "openMargin": "Otwórz marżę",
+      "showUnsold": {
+        "few": "Pokaż {n} warianty",
+        "many": "Pokaż {n} wariantów",
+        "one": "Pokaż {n} wariant",
+        "other": "Pokaż {n} wariantu"
+      },
+      "title": "Każdy sprzedany wariant ma koszt"
+    },
+    "footnote": {
+      "enterSaves": "Enter zapisuje wiersz i przechodzi do następnego.",
+      "sortedAll": "Posortowane według sprzedaży netto z ostatnich 30 dni, a potem nazwy.",
+      "sortedSold": "Posortowane według sprzedaży netto z ostatnich 30 dni.",
+      "topShare": {
+        "few": "Pierwsze {n} warianty to {share} sprzedaży niewliczonej do marży.",
+        "many": "Pierwsze {n} wariantów to {share} sprzedaży niewliczonej do marży.",
+        "one": "Pierwszy {n} wariant to {share} sprzedaży niewliczonej do marży.",
+        "other": "Pierwsze {n} wariantu to {share} sprzedaży niewliczonej do marży."
+      }
+    },
+    "header": {
+      "back": "Produkty",
+      "description": "Ile płacisz za każdy wariant, bez VAT. Używane tylko do marży w analityce.",
+      "eyebrow": "Produkty",
+      "title": "Ceny zakupu"
+    },
+    "kpis": {
+      "expected": {
+        "label": "Udział sprzedaży netto z kosztem",
+        "metric": "Ostatnie 30 dni; koszt liczy się od następnego zamówienia"
+      },
+      "gapAmount": {
+        "label": "Sprzedaż netto poza marżą",
+        "metric": "Ostatnie 30 dni, te warianty"
+      },
+      "regionLabel": "Pokrycie kosztami",
+      "soldMissing": {
+        "allCovered": "Wszystkie sprzedane warianty mają koszt",
+        "label": "Sprzedane w 30 dni, bez kosztu",
+        "ofSold": {
+          "few": "Z {n} sprzedanych wariantów",
+          "many": "Z {n} sprzedanych wariantów",
+          "one": "Z {n} sprzedanego wariantu",
+          "other": "Z {n} sprzedanego wariantu"
+        }
+      },
+      "unsoldMissing": {
+        "label": "Nigdy niesprzedane, bez kosztu",
+        "metric": "Niepilne: nie wpływają jeszcze na marżę"
+      }
+    },
+    "loadError": "Nie udało się wczytać listy kosztów",
+    "loading": {
+      "message": "Pobieranie listy…",
+      "title": "Wczytywanie wariantów"
+    },
+    "meter": {
+      "ariaLabel": "Z kosztem: {share} sprzedaży netto",
+      "eyebrow": "Ostatnie 30 dni",
+      "meta": "Koszty liczą się od następnego zamówienia, więc wcześniejsze zamówienia pozostają bez zmian.",
+      "notInMargin": "Poza marżą: {share}",
+      "title": "Udział sprzedaży netto z kosztem",
+      "withCost": "Z kosztem: {share} sprzedaży netto"
+    },
+    "netSuffix": "netto",
+    "noMatch": {
+      "emptyList": "Ta lista jest pusta.",
+      "filtered": "Nic nie pasuje do wyszukiwania lub kanału. Wyczyść filtr, aby zobaczyć więcej.",
+      "title": "Brak pasujących wariantów"
+    },
+    "readOnly": {
+      "message": "Tylko administrator może dodać lub zmienić cenę zakupu. Wyślij mu tę stronę: lista jest już posortowana według ważności.",
+      "title": "Możesz przeglądać ceny zakupu, ale nie możesz ich zmieniać"
+    },
+    "retry": "Ponów",
+    "table": {
+      "caption": "Warianty według sprzedaży netto z ostatnich 30 dni, z ceną zakupu",
+      "columns": {
+        "cost": "Koszt netto",
+        "netSales": "Sprzedaż netto",
+        "netSalesWithCurrency": "Sprzed. netto {currency}",
+        "runningShare": "Udział narastająco",
+        "soldOn": "Sprzedano w",
+        "units": "Sztuki, 30 dni",
+        "variant": "Wariant"
+      },
+      "regionLabel": "Warianty (przewijane)",
+      "selectAll": "Zaznacz wszystkie na tej stronie",
+      "selectRow": "Zaznacz {variant}"
+    },
+    "tabs": {
+      "all": "Wszystkie bez kosztu",
+      "hasCost": "Z kosztem",
+      "label": "Które warianty",
+      "sold": "Sprzedane, bez kosztu"
+    },
+    "toasts": {
+      "bulkCountsFromNext": "Liczy się do marży od następnego zamówienia.",
+      "bulkSaveFailed": "Nie udało się zapisać kosztów.",
+      "bulkSaved": {
+        "few": "Zapisano koszt dla {n} wariantów",
+        "many": "Zapisano koszt dla {n} wariantów",
+        "one": "Zapisano koszt dla {n} wariantu",
+        "other": "Zapisano koszt dla {n} wariantu"
+      },
+      "bulkSkipped": {
+        "few": "{n} warianty miały już koszt i pozostały bez zmian.",
+        "many": "{n} wariantów miało już koszt i pozostało bez zmian.",
+        "one": "{n} wariant miał już koszt i pozostał bez zmian.",
+        "other": "{n} wariantu miało już koszt i pozostało bez zmian."
+      },
+      "saveFailed": "Nie udało się zapisać kosztu."
+    },
+    "toolbar": {
+      "allChannels": "Wszystkie kanały",
+      "channelLabel": "Kanał",
+      "searchLabel": "Szukaj wariantów",
+      "searchPlaceholder": "Szukaj wariantu, SKU"
+    },
+    "trackingOff": "Śledzenie marży jest wyłączone. Wpisane tu ceny zakupu są nadal zapisywane i kopiowane do nowych zamówień; panel marży i przypomnienia pozostaną ukryte, dopóki administrator nie włączy śledzenia w ustawieniach analityki."
+  },
+  "externalIdChips": {
+    "empty": "Brak zewnętrznych mapowań",
+    "openConnection": "Otwórz połączenie dla {platform} {externalId}"
+  },
+  "listingsCoveragePills": {
+    "pillTitle": {
+      "few": "{label}: wystawiono {listed} z {n} wariantów",
+      "many": "{label}: wystawiono {listed} z {n} wariantów",
+      "one": "{label}: wystawiono {listed} z {n} wariantu",
+      "other": "{label}: wystawiono {listed} z {n} wariantu"
+    }
+  },
+  "marketplacePickerModal": {
+    "cancel": "Anuluj",
+    "continue": "Dalej →",
+    "description": {
+      "few": "Publikacja <strong>{n}</strong> produktów. Wybierz marketplace lub sklep, w którym je opublikować.",
+      "many": "Publikacja <strong>{n}</strong> produktów. Wybierz marketplace lub sklep, w którym je opublikować.",
+      "one": "Publikacja <strong>{n}</strong> produktu. Wybierz marketplace lub sklep, w którym go opublikować.",
+      "other": "Publikacja <strong>{n}</strong> produktu. Wybierz marketplace lub sklep, w którym je opublikować."
+    },
+    "railLabel": "Kanał docelowy publikacji",
+    "title": "Gdzie opublikować?"
+  },
+  "productDetailPage": {
+    "attributes": "Atrybuty",
+    "backToProducts": "Produkty",
+    "description": {
+      "editInContent": "Edytuj w zakładce Treść →",
+      "empty": "Nie zsynchronizowano opisu ze źródła. Przygotuj i opublikuj opis dla każdego kanału w zakładce Treść.",
+      "readOnlyBadge": "Źródło · tylko do odczytu",
+      "title": "Opis"
+    },
+    "eyebrow": "Produkty",
+    "fallbackTitle": "Szczegóły produktu",
+    "hero": {
+      "catalogueUpdated": "Katalog zaktualizowany",
+      "category": "Kategoria",
+      "checkingStock": "Sprawdzanie stanu",
+      "created": "Utworzono",
+      "label": "Podsumowanie produktu",
+      "listingCount": {
+        "few": "{n} oferty",
+        "many": "{n} ofert",
+        "one": "{n} oferta",
+        "other": "{n} oferty"
+      },
+      "sku": "SKU",
+      "stockNotKnown": "Stan nieznany",
+      "variantCount": {
+        "few": "{n} warianty",
+        "many": "{n} wariantów",
+        "one": "{n} wariant",
+        "other": "{n} wariantu"
+      }
+    },
+    "kpis": {
+      "acrossLocations": {
+        "few": "w {n} lokalizacjach",
+        "many": "w {n} lokalizacjach",
+        "one": "w {n} lokalizacji",
+        "other": "w {n} lokalizacji"
+      },
+      "available": "Dostępne",
+      "inMaster": "{n} w {source}",
+      "listings": "Oferty",
+      "notKnown": "teraz nieznane",
+      "price": "Cena (brutto)",
+      "reserved": "zarezerwowano {n}",
+      "short": "brakuje {n}",
+      "theMaster": "systemie głównym",
+      "title": "W skrócie",
+      "toSell": "do sprzedaży",
+      "variants": "Warianty",
+      "workingOut": "ustalanie, ile możesz sprzedać"
+    },
+    "loadError": {
+      "notFound": "Nie znaleziono produktu",
+      "title": "Nie udało się wczytać produktu"
+    },
+    "loading": {
+      "message": "Pobieranie szczegółów produktu…",
+      "title": "Wczytywanie produktu"
+    },
+    "retry": "Ponów",
+    "source": "Źródło",
+    "tabs": {
+      "content": "Treść",
+      "label": "Widoki produktu",
+      "overview": "Przegląd"
+    },
+    "variants": {
+      "empty": "Nie znaleziono wariantów tego produktu.",
+      "heading": "Warianty i stany",
+      "headingWithCount": "Warianty i stany ({n})",
+      "loadError": "Nie udało się wczytać stanów",
+      "loading": {
+        "message": "Pobieranie stanów magazynowych…",
+        "title": "Wczytywanie stanów"
+      },
+      "stockSynced": "Stan zsynchronizowany"
+    }
+  },
+  "productDetailSummary": {
+    "fields": {
+      "currency": "Waluta",
+      "currencyNotSet": "nieustawiona w źródle",
+      "internalId": "ID wewnętrzne",
+      "sourceExternalId": "Zewnętrzne ID w źródle",
+      "stockSynced": "Stan zsynchronizowany"
+    },
+    "links": {
+      "editContent": "Edytuj treść",
+      "editContentTitle": "Edytuj opis tego produktu",
+      "productDetails": "Szczegóły produktu",
+      "productDetailsTitle": "Otwórz pełną stronę produktu"
+    }
+  },
+  "productGallery": {
+    "close": "Zamknij",
+    "groupLabel": "Zdjęcia produktu",
+    "lightboxAlt": "{name} - zdjęcie {index} z {total}",
+    "next": "Następne zdjęcie",
+    "openViewer": "Otwórz podgląd zdjęć",
+    "previous": "Poprzednie zdjęcie",
+    "thumbLabel": "Zdjęcie {index} z {total}",
+    "viewerDescriptionBrowse": "Przeglądaj zdjęcia klawiszami strzałek lub przyciskami na ekranie.",
+    "viewerDescriptionClose": "Naciśnij Escape, aby zamknąć.",
+    "viewerTitle": "Podgląd zdjęć: {name}"
+  },
+  "productRowDetail": {
+    "createOffer": "+ Utwórz ofertę",
+    "deletedAtSource": "Usunięty w źródle",
+    "ean": "EAN {ean}",
+    "liveMarketplaceStatus": "Bieżący status w marketplace",
+    "loading": {
+      "message": "Pobieranie stanów wariantów…",
+      "title": "Wczytywanie wariantów"
+    },
+    "noVariants": "Nie znaleziono wariantów tego produktu.",
+    "reservedShort": "/ rez. {n}",
+    "stockError": "Nie udało się wczytać stanów",
+    "variantsError": {
+      "notFound": "Nie znaleziono produktu",
+      "title": "Nie udało się wczytać wariantów"
+    },
+    "variantsHeading": "Warianty i stany",
+    "variantsHeadingWithCount": "Warianty i stany ({n})"
+  },
+  "productSourceSection": {
+    "alsoMappedOn": "Zmapowany także w",
+    "empty": "Brak mapowania źródła",
+    "masterTag": "Główne",
+    "openConnection": "Otwórz połączenie dla {platform} {externalId}",
+    "openMasterConnection": "Otwórz główne połączenie dla {platform}"
+  },
+  "productStaleness": {
+    "fullyStale": "Usunięty w źródle",
+    "partlyStale": {
+      "few": "{stale} z {n} wariantów usunięto w źródle",
+      "many": "{stale} z {n} wariantów usunięto w źródle",
+      "one": "{stale} z {n} wariantu usunięto w źródle",
+      "other": "{stale} z {n} wariantu usunięto w źródle"
+    }
+  },
+  "productStockStatus": {
+    "inStock": "Dostępny",
+    "lowStock": "Niski stan",
+    "outOfStock": "Brak w magazynie",
+    "oversold": "Ponad stan"
+  },
+  "productsListPage": {
+    "availabilityUnknownLink": "Kto o czym decyduje",
+    "bulk": {
+      "clear": "Wyczyść",
+      "hint": "Maks. {max} na partię · dostępne jeszcze {remaining}",
+      "hintAtCap": "Maks. {max} na partię",
+      "publish": "Opublikuj produkty ({n})",
+      "publishTo": "Opublikuj w {destination} ({n})",
+      "selected": {
+        "few": "Zaznaczono {n} produkty",
+        "many": "Zaznaczono {n} produktów",
+        "one": "Zaznaczono {n} produkt",
+        "other": "Zaznaczono {n} produktu"
+      }
+    },
+    "columns": {
+      "listings": "Oferty",
+      "product": "Produkt",
+      "selectAll": "Zaznacz wszystkie widoczne produkty",
+      "source": "Źródło",
+      "stock": "Stan",
+      "unselectAll": "Odznacz wszystkie widoczne produkty"
+    },
+    "costPrices": "Ceny zakupu",
+    "description": "Centrum katalogu - wyszukiwanie, kondycja stanów i pokrycie ofertami w każdym kanale. Zaznacz do {max} produktów, aby zbiorczo utworzyć oferty.",
+    "empty": {
+      "filtered": "Żaden produkt nie pasuje do bieżących filtrów.",
+      "manageConnections": "Zarządzaj połączeniami",
+      "title": "Nie znaleziono produktów",
+      "unsynced": "Nie zsynchronizowano jeszcze żadnych produktów."
+    },
+    "error": {
+      "retry": "Ponów",
+      "title": "Nie udało się wczytać produktów"
+    },
+    "eyebrow": "Operacje",
+    "filters": {
+      "all": "Wszystkie {total}",
+      "clear": "Wyczyść filtry",
+      "hideDeleted": "Ukryj usunięte w źródle",
+      "noCostPrice": "Bez ceny zakupu",
+      "panel": {
+        "asc": "Rosnąco",
+        "deletedAtSource": "Usunięte w źródle",
+        "desc": "Malejąco",
+        "listings": "Oferty",
+        "sort": "Sortowanie",
+        "sortBy": "Sortuj według",
+        "source": "Źródło",
+        "stock": "Stan"
+      },
+      "results": {
+        "few": "{total} wyniki",
+        "many": "{total} wyników",
+        "one": "{total} wynik",
+        "other": "{total} wyniku"
+      },
+      "searchLabel": "Szukaj produktów po nazwie lub SKU",
+      "searchPlaceholder": "Szukaj po nazwie lub SKU…",
+      "sourceAll": "Źródło: wszystkie połączenia",
+      "sourceLabel": "Filtruj po połączeniu źródłowym",
+      "stockChips": {
+        "low": "Niski stan",
+        "out": "Brak w magazynie",
+        "oversold": "Ponad stan"
+      },
+      "toggle": "Filtry",
+      "unlistedOn": "Niewystawione w {name}"
+    },
+    "kpi": {
+      "listingGaps": "Braki w ofertach",
+      "lowStock": "Niski stan",
+      "noTaxRate": "Brak stawki VAT",
+      "outOfStock": "Brak w magazynie",
+      "products": "Produkty"
+    },
+    "loading": "Wczytywanie produktów…",
+    "price": {
+      "currencyUnknown": "Nieznana waluta"
+    },
+    "row": {
+      "capReached": "Osiągnięto maksimum {max} produktów na partię",
+      "capTooltip": "Maks. {max} na partię",
+      "cardVariants": {
+        "few": "{n} warianty",
+        "many": "{n} wariantów",
+        "one": "{n} wariant",
+        "other": "{n} wariantu"
+      },
+      "collapse": "Zwiń stany wariantów dla {name}",
+      "expand": "Rozwiń stany wariantów dla {name}",
+      "publish": "+ Opublikuj",
+      "select": "Zaznacz {name}",
+      "sku": "SKU: <value>{sku}</value>",
+      "unselect": "Odznacz {name}",
+      "updatedPrefix": "akt.",
+      "variantsBadge": {
+        "few": "{n} warianty",
+        "many": "{n} wariantów",
+        "one": "{n} wariant",
+        "other": "{n} wariantu"
+      }
+    },
+    "sortOptions": {
+      "createdAt": "Utworzono",
+      "name": "Nazwa",
+      "price": "Cena",
+      "sku": "SKU",
+      "stock": "Stan",
+      "updatedAt": "Zmieniono"
+    },
+    "stock": {
+      "master": "główny {n}",
+      "notKnown": "Nieznany",
+      "notKnownTitle": "OpenLinker nie zna tej wartości. To nie jest zero.",
+      "reserved": "zarezerw. {n}",
+      "toSell": "do sprzedaży",
+      "toSellWithStatus": "{n} do sprzedaży · {status}"
+    },
+    "tableCaption": "Produkty",
+    "taxRateSuggestion": {
+      "body": "Stawki przychodzą razem ze zwykłą synchronizacją produktów. Uruchom ją, aby sprawdzić, które pozycje mają stawkę, a którym jej brakuje.",
+      "dismiss": "Ukryj do końca sesji",
+      "title": {
+        "few": "{n} produkty nie były jeszcze sprawdzone pod kątem stawki VAT",
+        "many": "{n} produktów nie było jeszcze sprawdzonych pod kątem stawki VAT",
+        "one": "{n} produkt nie był jeszcze sprawdzony pod kątem stawki VAT",
+        "other": "{n} produktu nie było jeszcze sprawdzone pod kątem stawki VAT"
+      }
+    },
+    "title": "Produkty"
+  },
+  "variantCost": {
+    "form": {
+      "amountError": "Wpisz koszt 0 lub więcej, maks. 2 miejsca po przecinku. Zostaw pole puste, jeśli jeszcze go nie znasz.",
+      "cancel": "Anuluj",
+      "currencyLabel": "Waluta kosztu",
+      "description": "Ile płacisz za jedną sztukę, bez VAT. Używane do marży zamówień złożonych od teraz; wcześniejsze zamówienia pozostają bez kosztu.",
+      "label": "Cena zakupu netto za sztukę",
+      "netSuffix": "netto",
+      "save": "Zapisz koszt",
+      "saveFailed": "Nie udało się zapisać kosztu."
+    },
+    "notRecorded": "Nie zapisano",
+    "section": {
+      "add": "Dodaj koszt",
+      "clear": "Usuń koszt",
+      "clearFailed": "Nie udało się usunąć kosztu.",
+      "clearHint": "Usunięcie kosztu dotyczy tylko zamówień złożonych od teraz.",
+      "demoReadOnlyReason": "To demo tylko do odczytu, więc nie można zmieniać cen zakupu.",
+      "edit": "Edytuj koszt",
+      "enteredInOpenLinker": "Wprowadzono w OpenLinker",
+      "missing": "Nie zapisano kosztu. Zamówienia tego wariantu nie są wliczane do marży.",
+      "readOnlyReason": "Tylko administrator może zmieniać ceny zakupu.",
+      "syncNeverChanges": "Synchronizacja z systemem głównym nigdy nie zmienia ani nie usuwa tej wartości.",
+      "syncNeverChangesNamed": "Synchronizacja z {source} nigdy nie zmienia ani nie usuwa tej wartości.",
+      "title": "Cena zakupu",
+      "unavailable": "Koszt jest teraz niedostępny.",
+      "valueWithUnit": "{amount} <unit>netto za sztukę</unit>"
+    }
+  },
+  "variantStockTable": {
+    "card": {
+      "category": "Kategoria",
+      "lastCheck": "Ostatnie sprawdzenie",
+      "loadingLive": "Wczytywanie bieżących danych z marketplace…",
+      "notChecked": "Jeszcze nie sprawdzono",
+      "offer": "Oferta",
+      "offerUpdated": "Oferta zaktualizowana",
+      "qty": "Ilość"
+    },
+    "channelsFailed": "Nie udało się teraz wczytać danych z marketplace. To, co wysyła OpenLinker, jest nadal poprawne.",
+    "channelsPartial": "Nie udało się teraz wczytać części danych z marketplace. To, co wysyła OpenLinker, jest nadal poprawne.",
+    "createOffer": "+ Utwórz ofertę",
+    "currencyUnknown": "Nieznana waluta",
+    "gapCount": {
+      "few": "{n} braki",
+      "many": "{n} braków",
+      "one": "{n} brak",
+      "other": "{n} braku"
+    },
+    "listings": {
+      "empty": "Żadna oferta w marketplace nie odwołuje się jeszcze do tego wariantu.",
+      "heading": "Oferty",
+      "headingWithCount": "Oferty ({n})",
+      "legend": "Wysyła = to, co publikuje OpenLinker. Ilość = to, co oferta pokazuje teraz, odczytane na żywo po otwarciu wiersza. Ostatnie sprawdzenie = synchronizacja statusu ofert, która sprawdza 100 ofert na godzinę.",
+      "loadError": "Nie udało się wczytać ofert.",
+      "loading": "Wczytywanie ofert…"
+    },
+    "meta": {
+      "ean": "EAN {ean}",
+      "sku": "SKU {sku}"
+    },
+    "metaGrid": {
+      "attributes": "Atrybuty",
+      "ean": "EAN / GTIN",
+      "taxRate": "Stawka VAT",
+      "variantId": "ID wariantu"
+    },
+    "offerStatus": {
+      "activating": "Aktywowanie",
+      "active": "Aktywna",
+      "bidding": "Licytacja",
+      "ended": "Zakończona",
+      "inactive": "Nieaktywna"
+    },
+    "openOn": "Otwórz w {platform}",
+    "photos": {
+      "badge": {
+        "fromProduct": "Z produktu",
+        "none": "Brak zdjęć",
+        "own": "Zdjęcia wariantu ({n})"
+      },
+      "source": {
+        "fromProduct": "Ten wariant nie ma własnych zdjęć, więc używane są zdjęcia produktu.",
+        "fromProductNamed": "Ten wariant nie ma własnych zdjęć w {source}, więc używane są zdjęcia produktu.",
+        "none": "Ani ten wariant, ani produkt nie ma zdjęcia.",
+        "own": "Zdjęcia tego wariantu zsynchronizowane z systemu głównego.",
+        "ownNamed": "Z {source}"
+      },
+      "title": "Zdjęcia"
+    },
+    "sends": {
+      "belowThreshold": "Wysyła 0 (0 poniżej {threshold})",
+      "paused": "Wstrzymana",
+      "plain": "Wysyła {n}",
+      "withBuffer": "Wysyła {n} ({buffer} w rezerwie)"
+    },
+    "table": {
+      "caption": "Warianty produktu, stany magazynowe i oferty w marketplace",
+      "columns": {
+        "cost": "Koszt (netto)",
+        "listings": "Oferty",
+        "photo": "Zdjęcie",
+        "price": "Cena",
+        "stock": "Stan",
+        "taxRate": "Stawka VAT",
+        "variant": "Wariant"
+      }
+    },
+    "taxRate": {
+      "ambiguous": "produkt ma kilka możliwych stawek - ustal w sklepie, która jest właściwa",
+      "inherited": "odziedziczona z produktu",
+      "none": "Brak stawki VAT",
+      "override": "stawka wariantu",
+      "productHasNone": "produkt też jej nie ma"
+    },
+    "toggleDetails": "Przełącz szczegóły dla {variant}"
+  }
+}

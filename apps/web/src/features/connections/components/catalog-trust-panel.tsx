@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
+import { useFormat, useMessages } from '../../../shared/i18n';
 import { useCatalogTrustQuery } from '../hooks/use-catalog-trust-query';
 import type { MasterCatalogRung } from '../api/connections.types';
-import { formatDateTime } from '../../../shared/format/format-date';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 
@@ -20,11 +20,6 @@ interface CatalogTrustPanelProps {
   connectionId: string;
 }
 
-const RUNG_LABEL: Record<MasterCatalogRung, string> = {
-  'modified-since': 'Modified-since',
-  'full-enumeration': 'Full enumeration',
-  unknown: 'Unknown',
-};
 
 const RUNG_TONE: Record<MasterCatalogRung, StatusBadgeTone> = {
   'modified-since': 'success',
@@ -33,38 +28,33 @@ const RUNG_TONE: Record<MasterCatalogRung, StatusBadgeTone> = {
   unknown: 'warning',
 };
 
-const RUNG_COPY: Record<MasterCatalogRung, string> = {
-  'modified-since':
-    'This master declares modified-since enumeration — scheduled syncs can pull only what changed.',
-  'full-enumeration':
-    'Full re-enumeration only — this master cannot report changes since a point in time; every catalog sync re-reads the whole catalog.',
-  unknown: "Could not resolve this connection's adapter to determine its catalog sync capability.",
-};
 
 export function CatalogTrustPanel({ connectionId }: CatalogTrustPanelProps): ReactElement {
+  const copy = useMessages('connections').catalogTrustPanel;
+  const format = useFormat();
   const trustQuery = useCatalogTrustQuery(connectionId);
 
   return (
     <div className="panel panel--dense">
       <div className="panel__header">
         <div>
-          <p className="eyebrow">Health</p>
-          <h3 className="section-title">Catalog replication</h3>
+          <p className="eyebrow">{copy.eyebrow}</p>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
-        <span className="panel__meta">Product master</span>
+        <span className="panel__meta">{copy.meta}</span>
       </div>
 
       {trustQuery.isLoading ? (
-        <LoadingState title="Loading catalog trust" message="Reading the master's declared sync capability." />
+        <LoadingState title={copy.loadingTitle} message={copy.loadingMessage} />
       ) : null}
 
       {trustQuery.error ? (
         <ErrorState
-          title="Unable to load catalog trust"
+          title={copy.errorTitle}
           message={trustQuery.error.message}
           action={
             <button type="button" className="button button--secondary" onClick={() => void trustQuery.refetch()}>
-              Retry
+              {copy.retry}
             </button>
           }
         />
@@ -74,47 +64,45 @@ export function CatalogTrustPanel({ connectionId }: CatalogTrustPanelProps): Rea
         <>
           <dl className="definition-list">
             <div>
-              <dt>Sync capability</dt>
+              <dt>{copy.syncCapability}</dt>
               <dd>
                 <StatusBadge tone={RUNG_TONE[trustQuery.data.rung]}>
-                  {RUNG_LABEL[trustQuery.data.rung]}
+                  {copy.rungLabels[trustQuery.data.rung]}
                 </StatusBadge>
               </dd>
             </div>
             {trustQuery.data.rung === 'modified-since' ? (
               <div>
-                <dt>Delta pass</dt>
-                <dd>{trustQuery.data.deltaPassEnabled ? 'Enabled' : 'Disabled'}</dd>
+                <dt>{copy.deltaPass}</dt>
+                <dd>{trustQuery.data.deltaPassEnabled ? copy.enabled : copy.disabled}</dd>
               </div>
             ) : null}
             <div>
-              <dt>Deletion last reconciled</dt>
+              <dt>{copy.lastReconciled}</dt>
               <dd>
                 {trustQuery.data.lastReconcileCompletedAt !== null
-                  ? formatDateTime(trustQuery.data.lastReconcileCompletedAt)
-                  : 'No cycle completed yet'}
+                  ? format.dateTime(trustQuery.data.lastReconcileCompletedAt)
+                  : copy.noCycle}
               </dd>
             </div>
             <div>
-              <dt>Reconcile cycle</dt>
+              <dt>{copy.reconcileCycle}</dt>
               <dd>
                 {trustQuery.data.reconcileCycleOpen
-                  ? 'Open — resumes on the next hourly tick'
-                  : 'None open'}
+                  ? copy.cycleOpen
+                  : copy.cycleNone}
               </dd>
             </div>
           </dl>
 
-          <p className="catalog-trust-panel__note">{RUNG_COPY[trustQuery.data.rung]}</p>
+          <p className="catalog-trust-panel__note">{copy.rungNotes[trustQuery.data.rung]}</p>
           {trustQuery.data.rung === 'modified-since' && !trustQuery.data.deltaPassEnabled ? (
             <p className="catalog-trust-panel__note">
-              The delta pass is currently disabled (OL_MASTER_PRODUCT_DELTA_SYNC_ENABLED), so full
-              re-enumeration still applies in practice.
+              {copy.deltaDisabledNote}
             </p>
           ) : null}
           <p className="catalog-trust-panel__note">
-            Deletion reconciliation advances one budgeted page per hourly tick — a full cycle spans
-            many ticks on a large catalog, so recency here is the real deletion-detection latency.
+            {copy.reconcileNote}
           </p>
         </>
       ) : null}

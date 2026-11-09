@@ -1,0 +1,614 @@
+{
+  "activity": {
+    "ariaLabel": "Return activity timeline",
+    "emptyMessage": "Receiving, disposing, declining and refunding this return will each appear here.",
+    "emptyTitle": "Nothing recorded yet",
+    "errorMessage": "Things may well have happened on this return - OpenLinker could not read them just now.",
+    "errorTitle": "Activity could not be loaded",
+    "forbiddenMessage": "This history includes refund amounts, so it is limited to accounts that handle money. Everything else on this page is unaffected.",
+    "forbiddenTitle": "Activity is not available to this account",
+    "loading": "Loading activity…",
+    "loadingMessage": "Reading what has happened on this return.",
+    "retry": "Try again",
+    "sectionTitle": "Activity"
+  },
+  "apiErrors": {
+    "detailUnreadable": "Return {returnId} could not be read",
+    "proposalUnreadable": "The credit-note proposal could not be read.",
+    "resultUnreadable": "The server accepted the change but sent a result this build could not read.",
+    "timelineUnreadable": "The return activity for this order could not be read."
+  },
+  "authorizeReturnDialog": {
+    "cancel": "Not yet",
+    "confirm": "Approve",
+    "confirming": "Approving…",
+    "description": "You recorded this return yourself. Approving it is an audit stamp confirming it really happened - it does not hold up restock or refund, which already act on the return on their own.",
+    "genericError": "The approval could not be completed. Try again.",
+    "refusedAcknowledge": "Got it",
+    "refusedBody": "This return came in from the source, which already decided it. OpenLinker only approves returns recorded here by an operator.",
+    "refusedTitle": "Can't approve this one",
+    "title": "Give this the OK?"
+  },
+  "custody": {
+    "dispose": {
+      "action": "Dispose",
+      "awaitingAttestation": "This line has a stock write waiting on you - see the notice above and mark it handled before restocking more. You can still scrap these units.",
+      "cancel": "Cancel",
+      "dispositionLabel": "What happened to them",
+      "heading": "Record what happened to these units",
+      "nonPositive": "Record at least one unit.",
+      "notWholeUnits": "Record whole units.",
+      "noteLabel": "Note (optional)",
+      "notePlaceholder": "e.g. scuffed box",
+      "nothingToDispose": "Every received unit on this line has already been dealt with.",
+      "orphanBlocked": "This return is not matched to an order, so OpenLinker will not add stock anywhere. You can still scrap these units.",
+      "overDisposition": {
+        "one": "You only have {n} received unit left to deal with on this line.",
+        "other": "You only have {n} received units left to deal with on this line."
+      },
+      "pending": "Recording…",
+      "quantityHint": "Defaults to everything received but not yet dealt with.",
+      "quantityLabel": "Units",
+      "restockBlockedToast": "Recorded - but the stock could not be added.",
+      "restockHelp": "Adds the units back to your stock, in the system that owns your stock.",
+      "restockLabel": "Restock",
+      "scrapHelp": "Writes the units off. Stock is not changed.",
+      "scrapLabel": "Scrap",
+      "submit": "Record",
+      "success": "Disposition recorded."
+    },
+    "error": {
+      "byReason": {
+        "illegal-transition": "This line is already finished, so it cannot change. Reload the page to see where it ended up.",
+        "non-positive-quantity": "Record at least one whole unit.",
+        "nothing-advised": "The source advised no units on this line, so there is nothing to write off.",
+        "over-disposition": "That is more units than this line has received. Reload the page to see the current counts.",
+        "over-receipt": "You've recorded more units than the buyer advised. Record what arrived up to the advised quantity, and open a separate return for the rest.",
+        "partially-received": "Some units already arrived on this line, so it cannot be written off. Deal with what arrived - the shortfall stays visible against the advised quantity.",
+        "restock-already-blocked": "This line already has a stock write waiting on you - mark it handled before restocking more."
+      },
+      "conflict": "This line has changed since the page loaded. Reload and try again.",
+      "forbidden": "Your account cannot record changes to returns.",
+      "generic": "The change could not be recorded. Nothing was saved.",
+      "notFound": "This return line no longer exists. Reload the page."
+    },
+    "notReturned": {
+      "action": "Mark as not returned",
+      "cancel": "Go back",
+      "confirm": "Write the line off",
+      "confirmBody": "This writes the line off. Use it when you have decided the buyer is not sending the goods back - it is never something OpenLinker concludes on its own.",
+      "confirmTitle": "Record that this parcel is not coming?",
+      "noteLabel": "Note (optional)",
+      "notePlaceholder": "Why is it not coming back?",
+      "partiallyReceivedHint": "Some units already arrived on this line, so it cannot be written off. Deal with what arrived - the shortfall stays visible against the advised quantity.",
+      "pending": "Recording…",
+      "success": "Line written off."
+    },
+    "receive": {
+      "action": "Receive",
+      "bulkAction": "Receive all as advised",
+      "bulkCancel": "Go back",
+      "bulkConfirm": "Record all arrivals",
+      "bulkConfirmBody": "This records the full outstanding quantity on every line still awaiting its parcel. Check the parcel against the advised quantities first - each line is recorded as a real arrival.",
+      "bulkConfirmTitle": "Record every line as fully arrived?",
+      "bulkNothing": "No line is still awaiting units.",
+      "bulkPartial": "Some lines could not be recorded. The ones that failed are unchanged.",
+      "bulkSuccess": "Recorded arrivals on every outstanding line.",
+      "cancel": "Cancel",
+      "heading": "Record what arrived",
+      "nonPositive": "Record at least one unit.",
+      "notWholeUnits": "Record whole units.",
+      "noteLabel": "Note (optional)",
+      "notePlaceholder": "Anything worth recording about this arrival",
+      "nothingOutstanding": "Every advised unit on this line has already arrived.",
+      "overReceipt": "You've recorded more units than the buyer advised. Record what arrived up to the advised quantity, and open a separate return for the rest.",
+      "pending": "Recording…",
+      "quantityHint": "Defaults to everything still outstanding on this line.",
+      "quantityLabel": "Units received",
+      "readOnly": "Recording what arrived is disabled in the demo.",
+      "submit": "Record arrival",
+      "success": "Arrival recorded."
+    },
+    "restockTarget": {
+      "adapter-unresolved": "OpenLinker can't reach the system that owns your stock right now, so it can't say where these units would land.",
+      "ambiguous-inventory-master": "{n} connections claim to own your stock, so OpenLinker will not guess which one to write to - restocking will be refused until exactly one is set up.",
+      "ambiguous-owner": "{n} product masters hold stock for this product, so OpenLinker will not guess which one to put the units back into.",
+      "no-inventory-master": "No connection owns your stock, so restocking cannot add units anywhere. Scrapping still works.",
+      "no-position": "OpenLinker holds no stock for this product in any connected product master, so it cannot tell where these units would land.",
+      "resolved": "Stock will be added in {name}.",
+      "unattributed-owner": "The stock for this product has no known owner yet - run a stock sync from the product master, then restock."
+    }
+  },
+  "detail": {
+    "decline": {
+      "action": "Decline return",
+      "blockedAlreadyDeclined": "The channel has already reported this return as declined.",
+      "blockedNoSourceReturnId": "This return has no reference at the channel - there is nothing to ask them about. Returns you recorded yourself are always in this state.",
+      "blockedOrphan": "This return is not matched to an order, so nothing can be sent to the channel about it yet.",
+      "blockedSourceDeclaresNoDecline": "This channel publishes no way to decline a return, so OpenLinker has nothing to send.",
+      "blockedUnknownReason": "OpenLinker could not establish whether this channel accepts a decline, so the action is held back rather than sent into the unknown.",
+      "cancel": "Cancel",
+      "commentDescription": "Some channels require a comment for some codes, and shorten it to their own limit.",
+      "commentLabel": "Comment (optional)",
+      "commentTooLong": "Keep the comment to 500 characters or fewer.",
+      "confirmAction": "Send decline",
+      "confirmBody": "Declining tells the channel you are refusing this return. The channel decides what happens next - OpenLinker records the outcome it reports.",
+      "confirmTitle": "Decline this return?",
+      "readOnly": "You do not have permission to make changes.",
+      "reasonCodeDescription": "The channel’s own code for refusing a return. OpenLinker passes it through unchanged; if the channel does not accept it, the reply below lists the codes it does.",
+      "reasonCodeLabel": "Channel rejection code",
+      "reasonCodeRequired": "Enter the channel’s rejection code.",
+      "sectionTitle": "Decline this return",
+      "submitting": "Sending…"
+    },
+    "declineError": {
+      "conflictPrefix": "This return is not matched to an order, so it cannot be declined.",
+      "conflictWithTrigger": "This return is not matched to an order, so it cannot be declined. Blocked action: {trigger}",
+      "generic": "The decline could not be sent.",
+      "notFound": "This return no longer exists. Reload the page to see the current list.",
+      "unsupported": "The channel cannot be asked to decline this return.",
+      "unsupportedWithReason": "The channel cannot be asked to decline this return. {reason}"
+    },
+    "declineOutcome": {
+      "already-declined": {
+        "body": "This return was already declined, so nothing was sent again.",
+        "title": "Already declined"
+      },
+      "decline-sent": {
+        "body": "The channel has the request and has not yet reported the outcome. OpenLinker records their decision when it arrives - until then this return is not declined.",
+        "title": "Decline sent"
+      },
+      "declined": {
+        "body": "The channel reported the decline as a fact, with the time it happened.",
+        "title": "The channel declined this return"
+      },
+      "in-flight": {
+        "body": "An earlier request for this return is still open, so no second request was sent.",
+        "title": "A decline is already in progress"
+      },
+      "refused": {
+        "body": "OpenLinker asked and the channel said no. Its own words:",
+        "title": "The channel refused the request"
+      },
+      "unknown": {
+        "body": "The request was sent. Re-open this return in a moment to see what the channel recorded.",
+        "title": "The channel answered in a way OpenLinker does not recognise"
+      }
+    },
+    "header": {
+      "authorized": "Authorized",
+      "channelReference": "Channel reference",
+      "closed": "Closed",
+      "declined": "Declined",
+      "lastUpdated": "Last updated",
+      "noChannelReference": "None - this return has no reference at the channel",
+      "openLinkerId": "OpenLinker ID",
+      "opened": "Opened",
+      "order": "Order",
+      "origin": "Origin",
+      "originOperator": "Recorded by you",
+      "originSource": "Reported by the channel",
+      "source": "Source"
+    },
+    "lines": {
+      "advisedOnly": "{advised} announced by the channel",
+      "collapseLine": "Close {name}",
+      "custodyLabel": "Goods",
+      "empty": "The channel reported no lines for this return.",
+      "expandLine": "Record what happened to {name}",
+      "itemLabel": "Item",
+      "moneyLabel": "Refund",
+      "notTrackedYet": "Not tracked yet",
+      "notTrackedYetHint": "OpenLinker does not yet follow the goods or the refund for a return. It records what the channel reports, and this will start moving in a later release.",
+      "noteLabel": "Note",
+      "orderLineLabel": "Order line",
+      "quantityLabel": "Advised",
+      "reasonLabel": "Reason",
+      "receivedLabel": "Received",
+      "receivedOfAdvised": "{received} of {advised} received",
+      "restockedLabel": "Restocked",
+      "scrappedLabel": "Scrapped",
+      "sectionTitle": "What came back",
+      "tableCaption": "Returned lines, in the order the channel reported them",
+      "unmatchedLine": "Could not be matched to a line",
+      "unmatchedLineHint": "OpenLinker could not tell which line of the order this returned item belongs to. The return is still recorded in full.",
+      "unnamedItem": "Unnamed item",
+      "unreadableLines": {
+        "one": "1 line of this return could not be read and is not shown.",
+        "other": "{n} lines of this return could not be read and are not shown."
+      }
+    },
+    "orphanBanner": {
+      "matchAction": "Match to an order",
+      "matchActionReadOnly": "You do not have permission to make changes.",
+      "reattribution": "If the order is ingested later, OpenLinker matches this return to it automatically and the actions below become available.",
+      "safeHere": "It is safe here - nothing is lost.",
+      "title": "This return is not matched to an order."
+    },
+    "page": {
+      "backToList": "Returns",
+      "errorTitle": "Unable to load return",
+      "eyebrow": "Operations",
+      "loading": "Loading return…",
+      "loadingMessage": "Fetching this return and its lines.",
+      "notFoundMessage": "This return does not exist, or it has been removed.",
+      "notFoundTitle": "Return not found",
+      "retry": "Retry",
+      "titleFallback": "Return",
+      "unreadableMessage": "OpenLinker received this return but could not read it. This is a version mismatch, not a problem with the return itself.",
+      "unreadableTitle": "Return could not be read"
+    },
+    "rail": {
+      "custodyLabel": "Parcel",
+      "inDoubtNote": "OpenLinker asked for this refund but could not confirm what happened. Do not refund again - check with the source first.",
+      "independenceNote": "These two move independently. A marketplace can refund the buyer before the parcel arrives, and a parcel can arrive with no refund owed.",
+      "moneyLabel": "Money",
+      "refundedBy": "Confirmed by {sourceName}",
+      "refundedByUnknownSource": "Confirmed by the source"
+    },
+    "sourcePanel": {
+      "explainer": "These values are the channel’s own, recorded word for word. OpenLinker does not translate or interpret them.",
+      "sectionTitle": "What the channel says",
+      "statusLabel": "Status"
+    }
+  },
+  "list": {
+    "empty": {
+      "noMatches": {
+        "message": "Try widening or clearing the filters to see the returns recorded so far.",
+        "title": "No returns match these filters"
+      },
+      "none": {
+        "message": "Returns reported by your connected channels will appear here.",
+        "title": "No returns recorded yet"
+      },
+      "notConfigured": {
+        "message": "None of your connected channels report returns to OpenLinker yet. This is a configuration state, not a failure - nothing is wrong with the returns you already have.",
+        "title": "Returns ingestion is not set up"
+      },
+      "pastEnd": {
+        "action": "Back to first page",
+        "message": "This page is past the end of the results.",
+        "title": "Nothing on this page"
+      }
+    },
+    "error": {
+      "retry": "Retry",
+      "title": "Unable to load returns",
+      "unreadableEnvelopeMessage": "The response came back in a shape this version of OpenLinker could not read, so no returns are shown. This does not mean there are none recorded.",
+      "unreadableTitle": "Returns could not be read"
+    },
+    "filter": {
+      "all": "All",
+      "allSources": "All sources",
+      "attributed": "Matched to an order",
+      "bucketGroupLabel": "Filter by attribution",
+      "clear": "Clear filters",
+      "orphan": "Orphan",
+      "sourceLabel": "Filter by source connection",
+      "withCount": "{label} ({count})"
+    },
+    "orphan": {
+      "badge": "Orphan",
+      "explanation": "Returns for orders OpenLinker has never seen. They are kept, but nothing is triggered from them - no stock change, no refund, no credit note - until they are matched to an order.",
+      "short": "No matching order"
+    },
+    "page": {
+      "description": "Returns reported by your connected channels, newest first. OpenLinker records what the channel says and does not reinterpret it.",
+      "eyebrow": "Operations",
+      "recordActionReadOnly": "You do not have permission to record returns.",
+      "tableCaption": "Returns, newest first",
+      "title": "Returns"
+    },
+    "pagination": {
+      "next": "Next",
+      "previous": "Previous"
+    },
+    "range": "Showing {from}-{to} of {total}",
+    "rangeWithUnreadable": "{range} · {unreadable}",
+    "row": {
+      "declined": "Declined",
+      "noExternalId": "No channel reference",
+      "noExternalIdTitle": "No channel reference: {id}",
+      "openedLabel": "Opened",
+      "orderLabel": "Order",
+      "orderSummary": "Order {id}",
+      "orphanSummary": "Orphan · {externalOrderId}",
+      "recordedAtFallback": "First recorded by OpenLinker",
+      "recordedByYou": "Recorded by you",
+      "returnLabel": "Return",
+      "sourceLabel": "Source",
+      "sourceStatusLabel": "Source status",
+      "stageLabel": "Stage"
+    },
+    "segment": {
+      "allReturnsLabel": "All returns",
+      "stripLabel": "Filter returns by what needs doing"
+    },
+    "sourceStatus": {
+      "attribution": "Reported by the source channel, word for word. OpenLinker does not interpret this value.",
+      "notReported": "Not reported",
+      "notReportedHint": "The source channel reported no status for this return.",
+      "prefix": "Source",
+      "value": "{prefix}: {status}"
+    },
+    "unreadableRows": {
+      "one": "{n} return on this page could not be read and is not shown.",
+      "other": "{n} returns on this page could not be read and are not shown."
+    }
+  },
+  "matchReturnDialog": {
+    "alreadyAttributedAcknowledge": "OK, got it",
+    "alreadyAttributedBody": "Someone else - another operator, or OpenLinker's own background check - matched this return to an order already. There is nothing left to do here.",
+    "alreadyAttributedTitle": "Already linked",
+    "cancel": "Cancel",
+    "confirm": "Confirm match",
+    "confirming": "Matching…",
+    "description": "Pick a recent order below, or type its internal order id directly if you already know it.",
+    "fieldDescription": "Must be an order OpenLinker already has on file.",
+    "fieldLabel": "Order",
+    "fieldPlaceholder": "ol_order_… or pick from recent orders",
+    "fieldRequired": "Enter an order id, or pick one from the list.",
+    "genericError": "The match could not be completed. Try again.",
+    "readOnly": "Matching a return to an order is disabled in the demo.",
+    "resolvedOrder": "This will match to order {orderNumber}.",
+    "title": "Which order is this?",
+    "unknownOrder": "OpenLinker doesn't have an order matching \"{typed}\" - double-check it, or pick one from the list.",
+    "warning": "This can't be undone - double-check the order before confirming."
+  },
+  "money": {
+    "panel": {
+      "action": "Confirm refund",
+      "cancel": "Cancel",
+      "executedOther": "Recorded by OpenLinker.",
+      "executedOutOfBand": "You recorded this. OpenLinker did not move the money.",
+      "none": "No refund has been recorded against this return yet.",
+      "orphanBlocked": "This return is not matched to an order, so a refund cannot be recorded against it yet.",
+      "recordNotWritten": "The refund was recorded against this return, but the linked order refund record could not be written. The money state is saved - do not confirm again.",
+      "recordedTitle": "Refunds recorded against this return",
+      "refundLine": "{reason} - {executedBy}",
+      "sectionTitle": "Money",
+      "success": "Refund recorded."
+    },
+    "refundCeiling": {
+      "acknowledge": "Record it anyway",
+      "acknowledgeHint": "Tick this to record the refund deliberately, then confirm again.",
+      "figures": "Order total {ceiling} {currency}, already refunded {alreadyRefunded} {currency}, requested {requested} {currency}.",
+      "title": "This refund is more than the order's total"
+    },
+    "refundError": {
+      "byReason": {
+        "already-attempted": "A refund has already been recorded or triggered for every line on this return. Refunding again would pay the buyer twice.",
+        "no-lines": "This return has no lines to refund against.",
+        "outstanding-in-doubt": "A previous refund attempt crossed into the source and OpenLinker never learned what happened. Confirm what the source actually did before attempting another - do not retry blindly."
+      },
+      "conflict": "This return has changed since the page loaded. Reload and try again.",
+      "forbidden": "Your account cannot record refunds.",
+      "generic": "The refund could not be recorded. Nothing was saved.",
+      "notFound": "This return no longer exists. Reload the page."
+    }
+  },
+  "orderReturnsPanel": {
+    "emptyMessage": "Returns reported against this order will appear here.",
+    "emptyTitle": "No returns on this order",
+    "errorMessage": "This order may still have returns - OpenLinker could not read them just now. Nothing below is a statement about them.",
+    "errorTitle": "Returns could not be loaded",
+    "loading": "Loading returns…",
+    "loadingMessage": "Reading the returns recorded against this order.",
+    "noChannelReference": "No channel reference",
+    "retry": "Try again",
+    "sectionTitle": "Returns",
+    "truncated": "Showing {shown} of {total} returns on this order.",
+    "unreadableMessage": "The response did not match what this version of OpenLinker expects, so no returns are shown. This is not evidence that the order has none.",
+    "unreadableTitle": "Returns could not be read",
+    "unscopedMessage": "This page could not tell which order to look up returns for, so none were requested. This is not a statement about whether the order has any.",
+    "unscopedTitle": "Returns were not loaded"
+  },
+  "orphanWorklist": {
+    "approvalScanTruncated": "Showing the 100 most recent attributed returns - an older one waiting for approval may not appear here.",
+    "approveReadOnly": "You do not have permission to approve returns.",
+    "errorMessage": "OpenLinker could not read this list just now. This is not a statement about it.",
+    "errorTitle": "Could not be loaded",
+    "loading": "Checking…",
+    "loadingMessage": "Reading the returns list.",
+    "needsApprovalAction": "Review and approve",
+    "needsApprovalDescription": "You recorded these yourself. Approving is an audit stamp confirming it really happened - it does not hold up restock or refund.",
+    "needsApprovalEmpty": "Nothing is waiting for your approval.",
+    "needsApprovalTitle": "Waiting for your OK",
+    "needsOrderAction": "Match to an order",
+    "needsOrderDescription": "OpenLinker can't restock, refund or correct the invoice for these until they're linked to an order.",
+    "needsOrderEmpty": "Nothing is waiting to be matched to an order.",
+    "needsOrderTitle": "Needs an order",
+    "needsOrderTruncated": "Showing {shown} of {total} - more are waiting to be matched.",
+    "retry": "Try again",
+    "sectionTitle": "Needs your attention",
+    "unreadableMessage": "The response did not match what this version of OpenLinker expects, so nothing is shown here. This is not evidence there is nothing.",
+    "unreadableTitle": "Could not be read"
+  },
+  "proposal": {
+    "ambiguousBanner": "OpenLinker could not tell which invoice line some of these returned items came from. Pick one for each before confirming - it decides which line the credit note corrects.",
+    "breakdownAutomatic": "Credited automatically",
+    "breakdownCantCredit": "Can't credit yet",
+    "breakdownNeedsPick": "Needs your pick",
+    "candidate": "{name} - {quantity} × {unitPrice} ({taxRate})",
+    "candidatesDiffer": "These candidates differ in price or tax rate, so the choice changes the amount credited.",
+    "cleanBanner": "Every returned line matched exactly one invoice line.",
+    "handoff": "Review and issue correction",
+    "handoffConnectionStale": "The connection that issued this invoice is disabled or no longer set up for invoicing - a correction cannot be issued from here right now.",
+    "handoffDialogTitle": "Issue correction",
+    "handoffLoading": "Loading correction options…",
+    "handoffUnavailable": "No correction flow is available for this invoice from here yet.",
+    "headlineEstimateNote": "Estimated from the invoice's own line prices - the issued document's amounts come from your invoicing provider.",
+    "headlineLabel": "Total credit",
+    "irreversible": "Once a credit note has been issued and sent, it cannot be withdrawn. Check every line before you confirm.",
+    "lineFallback": "Line {n}",
+    "noAutoIssue": "OpenLinker never issues a credit note on its own. It matches the returned lines to the invoice and shows you what it found; issuing is always your decision.",
+    "noMatchReasons": {
+      "ambiguous-invoice-line": "This return could not be matched to exactly one invoice line automatically. Check the invoice by hand before crediting it.",
+      "disposition-not-confirmed": "These units are not confirmed disposed of yet - a refused restock is still outstanding.",
+      "no-line-by-name": "No invoice line has this name.",
+      "no-line-name": "The returned line has no name to match on.",
+      "quantity-exceeds-invoiced": "More units were returned than the invoice billed."
+    },
+    "orphanAbsent": "No credit note is prepared for an unmatched return. Match it to an order first.",
+    "outcomeBadges": {
+      "no-disposed-lines": "Nothing to credit yet",
+      "no-invoice": "No invoice",
+      "no-line-snapshot": "Lines not stored",
+      "nothing-correctable": "Nothing to credit"
+    },
+    "outcomes": {
+      "no-disposed-lines": "No returned units have been disposed of yet.",
+      "no-invoice": "No invoice has been issued for this order, so there is nothing to correct.",
+      "no-line-snapshot": "The invoice was issued before OpenLinker recorded its lines, so they cannot be matched automatically.",
+      "nothing-correctable": "Nothing on this return can be credited yet."
+    },
+    "readOnly": "Your account can see this credit note but cannot record it.",
+    "recordAction": "Record for review",
+    "recordBlockedAmbiguous": "At least one line needs a pick before this can be recorded.",
+    "recordError": "Could not record the proposal. Try again.",
+    "recordPending": "Recording…",
+    "recordSuccess": "Recorded for review.",
+    "recordWhatCameBack": "Record what came back",
+    "recordedBadge": "Recorded for review",
+    "reviewCta": "Confirm these matches",
+    "sectionTitle": "Credit note proposal",
+    "statusAmbiguous": "Needs your choice",
+    "statusMatched": "Matched",
+    "statusNoMatch": "Not included",
+    "viewInvoice": "View the invoice"
+  },
+  "recordReturnDialog": {
+    "cancel": "Cancel",
+    "confirm": "Record it",
+    "confirming": "Recording…",
+    "connectionFieldDescription": "OpenLinker uses this to work out where the item is actually mapped.",
+    "connectionFieldLabel": "From which connection?",
+    "connectionLoadingPlaceholder": "Loading connections…",
+    "connectionMismatchWarning": "This order came in via {orderConnectionName}, but you picked a different connection - double-check that is intentional.",
+    "connectionPlaceholder": "Select the channel this return came in on",
+    "connectionsLoadFailed": "The list of connections could not be loaded, so this return cannot be recorded right now.",
+    "description": "For a channel with no returns feed at all. Every field is required - OpenLinker can't open a return without knowing which order, which channel and how many units.",
+    "genericError": "The return could not be recorded. Try again.",
+    "itemFieldLabel": "What came back?",
+    "itemFieldPlaceholder": "Item name",
+    "lineRemovedByEdit": "That item was removed from this order by an edit in OpenLinker (quantity 0), so it cannot be returned.",
+    "note": "Each submit opens a new return. If you're not sure this one's already recorded, check the list first.",
+    "orderFieldDescription": "Pick a recent order below, or type its internal order id directly.",
+    "orderFieldLabel": "Order",
+    "orderFieldPlaceholder": "ol_order_… or pick from recent orders",
+    "orderNotOnConnection": "OpenLinker holds no mapping for that order on this connection - pick the connection the order actually came in on.",
+    "quantityFieldLabel": "Quantity",
+    "reasonFieldLabel": "Why?",
+    "reasonPlaceholder": "Select a reason",
+    "skuFieldDescription": "OpenLinker restocks by SKU. Without one, this return's units can never be added back to stock.",
+    "skuFieldLabel": "SKU",
+    "skuFieldPlaceholder": "SKU",
+    "title": "Record a return by hand",
+    "triggerLabel": "+ Record a return",
+    "unknownOrder": "OpenLinker doesn't have an order matching \"{typed}\" - double-check it, or pick one from the list.",
+    "validation": {
+      "connectionRequired": "Select the channel this return came in on.",
+      "itemNameRequired": "Enter what came back.",
+      "itemNameTooLong": "Item name must be at most {max} characters.",
+      "orderRequired": "Enter an order id, or pick one from the list.",
+      "quantityMin": "Quantity must be at least {min}.",
+      "quantityWhole": "Quantity must be a whole number.",
+      "reasonRequired": "Select a reason.",
+      "skuRequired": "Enter the item's SKU - OpenLinker needs it to restock later.",
+      "skuTooLong": "SKU must be at most {max} characters."
+    }
+  },
+  "restockAttested": {
+    "byOther": "Stock added manually by another operator on {date}.",
+    "byYou": "Stock added manually by you on {date}.",
+    "disclaimer": "OpenLinker did not change your stock.",
+    "toast": "Recorded that you handled the stock yourself."
+  },
+  "restockBlocked": {
+    "attest": "Mark stock handled manually",
+    "badge": "Restock blocked",
+    "body": "OpenLinker recorded the disposition, but <b>{connection}</b> does not accept stock adjustments from OpenLinker, so your stock has not changed.",
+    "bodyUnknownConnection": "OpenLinker recorded the disposition, but <b>the system that owns your stock</b> does not accept stock adjustments from OpenLinker, so your stock has not changed.",
+    "openConnection": "Open {connection}",
+    "openUnknownConnection": "Open the system that owns your stock",
+    "remedy": "Add {quantity} × {sku} in {connection} yourself, then mark this handled.",
+    "remedyUnknownConnection": "Add {quantity} × {sku} in the system that owns your stock yourself, then mark this handled.",
+    "remedyUnknownSku": "Add {quantity} × the returned units in {connection} yourself, then mark this handled.",
+    "remedyUnknownSkuAndConnection": "Add {quantity} × the returned units in the system that owns your stock yourself, then mark this handled.",
+    "title": "Stock was not added.",
+    "why": "Why did this happen?",
+    "whyCollapse": "Hide"
+  },
+  "restockBlockedExplainer": {
+    "body": "Adding stock back needs a write into the system that owns your stock. <b>{connection}</b> accepts stock readings from OpenLinker but not stock adjustments, so OpenLinker recorded what you decided and stopped there rather than telling you it had done something it hadn’t.",
+    "bodyUnknownConnection": "Adding stock back needs a write into the system that owns your stock. <b>The system that owns your stock</b> accepts stock readings from OpenLinker but not stock adjustments, so OpenLinker recorded what you decided and stopped there rather than telling you it had done something it hadn’t.",
+    "heading": "OpenLinker can publish your stock, but it can't always change it.",
+    "reassurance": "Nothing is lost: the units are still counted as received on this return, and this message stays until you say you’ve handled it."
+  },
+  "returnLineStateChips": {
+    "custody": {
+      "advised": "Announced",
+      "disposed": "Handled",
+      "in_transit": "On the way",
+      "not_returned": "Never arrived",
+      "received": "Received"
+    },
+    "money": {
+      "denied": "Refund refused",
+      "in_doubt": "Refund outcome unconfirmed",
+      "not_refundable": "No refund due",
+      "pending": "Not refunded",
+      "refunded": "Refunded",
+      "triggered": "Refund started"
+    }
+  },
+  "returnRow": {
+    "counterLine": "{received} of {expected} received",
+    "stage": {
+      "awaiting_parcel": "Awaiting parcel",
+      "declined": "Declined",
+      "disposed": "Disposed",
+      "not_returned": "Not returned",
+      "partially_received": "Partially received",
+      "received_awaiting_disposition": "Received - awaiting disposition"
+    }
+  },
+  "returnSegments": {
+    "label": {
+      "all_open": "All open",
+      "money_pending": "Money pending",
+      "needs_disposition": "Needs disposition",
+      "needs_receiving": "Needs receiving",
+      "orphans": "Orphans"
+    }
+  },
+  "timeline": {
+    "authorized": "Return authorized",
+    "byAnotherOperator": "another operator",
+    "byOpenLinker": "OpenLinker",
+    "byOperator": "an operator",
+    "byUnknownConnection": "an unrecognised source",
+    "byYou": "you",
+    "closed": "Return closed",
+    "declined": "Return declined",
+    "dispose": "Returned goods disposed",
+    "disposedAs": "Disposition: {disposition}",
+    "matched": "Matched to an order",
+    "not_returned": "Marked as not returned",
+    "opened": "Return opened",
+    "quantityUnits": {
+      "one": "{n} unit",
+      "other": "{n} units"
+    },
+    "receive": "Return received",
+    "refundAmount": "{amount} {currency}",
+    "refundExecuted": "Executed by OpenLinker against the source.",
+    "refundRecordedOnly": "Recorded by an operator - OpenLinker did not move the money and does not claim to have.",
+    "refund_confirmed": "Refund confirmed",
+    "restockBlocked": "The stock write was refused - the units are not back in the book yet.",
+    "returnReference": "Return {externalReturnId}",
+    "stock_attestation": "Stock handled manually",
+    "unknownKind": "Return activity: {kind}"
+  }
+}

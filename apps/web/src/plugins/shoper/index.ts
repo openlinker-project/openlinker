@@ -12,6 +12,7 @@
 import { publicApiBaseUrl } from '../../shared/config/public-api-base-url';
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
+import { getShoperMessages, shoperMessages } from './messages';
 import { ShoperConnectionActions } from './components/shoper-connection-actions';
 import { ShoperStructuredSection } from './components/shoper-structured-section';
 import { shoperConnectionConfig } from './shoper-connection-config';
@@ -19,6 +20,7 @@ import { shoperSetupRoute } from './shoper-setup.route';
 
 export const shoperPlugin: OpenLinkerPlugin = definePlugin({
   id: 'shoper',
+  messages: shoperMessages,
   platformType: 'shoper',
   build: {
     routes: [shoperSetupRoute],
@@ -27,9 +29,15 @@ export const shoperPlugin: OpenLinkerPlugin = definePlugin({
     displayName: 'Shoper',
     setupCard: {
       title: 'Shoper',
-      description: 'Connect your Shoper shop with its API token.',
+      // Getters, not values: the card is read at render, so the copy follows
+      // the active language instead of freezing at module load.
+      get description(): string {
+        return getShoperMessages().plugin.setupCard.description;
+      },
       to: '/connections/new/shoper',
-      badge: 'API token',
+      get badge(): string {
+        return getShoperMessages().plugin.setupCard.badge;
+      },
     },
     getCallbackUrlDefault: publicApiBaseUrl,
     StructuredConfigSection: ShoperStructuredSection,

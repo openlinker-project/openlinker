@@ -73,10 +73,12 @@ import { AuthorizeReturnDialog } from './authorize-return-dialog';
 // Cross-feature import goes through the system barrel — the same route
 // `price-changes-queue-table.tsx` already takes into `../../system`.
 import { useDemoMode } from '../../system';
-import { ORPHAN_RETURNS_WORKLIST_COPY as COPY } from '../lib/orphan-returns-worklist.copy';
-import { describeUnreadableRows } from '../lib/returns-list.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
+import { describeUnreadableRows } from '../lib/returns-list-text';
 
 interface WorklistGroupProps {
+  /** Stable, language-independent id for the heading the section is labelled by. */
+  groupId: string;
   title: string;
   description: string;
   actionLabel: string;
@@ -104,6 +106,7 @@ interface WorklistGroupProps {
 }
 
 function WorklistGroup({
+  groupId,
   title,
   description,
   actionLabel,
@@ -117,7 +120,8 @@ function WorklistGroup({
   onRetry,
   renderAction,
 }: WorklistGroupProps): ReactElement {
-  const titleId = `orphan-returns-worklist__group-title-${title.replace(/\s+/g, '-').toLowerCase()}`;
+  const COPY = useMessages('returns').orphanWorklist;
+  const titleId = `orphan-returns-worklist__group-title-${groupId}`;
   // `droppedCount` and `truncationNote` are facts about the READ, not about the
   // rows, so they must survive a zero-row result — a truncated or
   // partially-unreadable page must never render as a confirmed-empty list
@@ -184,6 +188,7 @@ export function OrphanReturnsWorklist(): ReactElement {
 
   const demoMode = useDemoMode();
   const writeAccess = useWriteAccess('orders:write', demoMode);
+  const COPY = useMessages('returns').orphanWorklist;
 
   const needsOrderQuery = useReturnsQuery(
     { bucket: 'orphan' },
@@ -225,6 +230,7 @@ export function OrphanReturnsWorklist(): ReactElement {
       <h2 className="section-title">{COPY.sectionTitle}</h2>
 
       <WorklistGroup
+        groupId="needs-an-order"
         title={COPY.needsOrderTitle}
         description={COPY.needsOrderDescription}
         actionLabel={COPY.needsOrderAction}
@@ -236,7 +242,10 @@ export function OrphanReturnsWorklist(): ReactElement {
         droppedCount={needsOrderResult?.droppedCount ?? 0}
         truncationNote={
           needsOrderResult !== null && needsOrderTruncated
-            ? COPY.needsOrderTruncated(needsOrderItems.length, needsOrderResult.total)
+            ? interpolate(COPY.needsOrderTruncated, {
+                shown: needsOrderItems.length,
+                total: needsOrderResult.total,
+              })
             : null
         }
         onRetry={() => {
@@ -245,6 +254,7 @@ export function OrphanReturnsWorklist(): ReactElement {
       />
 
       <WorklistGroup
+        groupId="waiting-for-your-ok"
         title={COPY.needsApprovalTitle}
         description={COPY.needsApprovalDescription}
         actionLabel={COPY.needsApprovalAction}

@@ -1,0 +1,24 @@
+{
+  "allegroCallbackRoute": {
+    "crumb": "Allegro callback"
+  },
+  "allegroExtraSection": {
+    "delivery": {
+      "diagnostics": "Cursor key: <code>{cursorKey}</code> · Job type: <code>{jobType}</code>",
+      "intro": "Allegro Delivery (\"Wysyłam z Allegro\") labels are issued via Allegro's shipment-management API and tracked automatically:",
+      "labelCreation": "<strong>Label creation</strong> is synchronous from OpenLinker's side - operators generate a label from the order detail panel; OpenLinker waits for Allegro's command to complete before responding.",
+      "pickupPoints": "<strong>Buyer-selected pickup points</strong> (Allegro One Box, Paczkomat, kurier) are pre-filled on the label form from the order snapshot.",
+      "summary": "<strong>No configuration needed</strong> - how shipment tracking works",
+      "title": "Allegro Delivery",
+      "trackingNumber": "<strong>Tracking number</strong> resolves <em>asynchronously</em>. Allegro generates the waybill on a delay; OpenLinker polls every 15 minutes and backfills the row when it arrives (no manual refresh needed)."
+    }
+  },
+  "allegroSetupRoute": {
+    "crumb": "Connect Allegro"
+  },
+  "plugin": {
+    "setupCard": {
+      "description": "Connect an Allegro seller account. Authorization uses OAuth 2.0 - no manual token paste."
+    }
+  }
+}

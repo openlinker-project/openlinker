@@ -11,6 +11,13 @@
  * @module apps/web/src/features/prompt-templates/components
  */
 import { useEffect, useState, type ReactElement } from 'react';
+import {
+  getMessages,
+  interpolate,
+  renderRich,
+  useFormat,
+  useMessages,
+} from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -23,7 +30,6 @@ import {
 import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-list';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { formatRelativeTime } from '../../../shared/format/format-relative-time';
 import { useArchivePromptTemplateMutation } from '../hooks/use-prompt-template-mutations';
 import type {
   PromptTemplateState,
@@ -42,41 +48,46 @@ const STATE_TONE: Record<PromptTemplateState, StatusBadgeTone> = {
 };
 
 function channelLabel(channel: PromptTemplateSummary['channel']): string {
-  return channel === null ? 'master' : channel;
+  return channel === null ? getMessages('prompt-templates').common.master : channel;
 }
 
-function buildMetadataItems(row: PromptTemplateSummary): KeyValueItem[] {
+function buildMetadataItems(
+  row: PromptTemplateSummary,
+  relativeTime: (iso: string) => string,
+): KeyValueItem[] {
+  const messages = getMessages('prompt-templates');
+  const copy = messages.archivePromptTemplateDialog.metadata;
   return [
     {
       id: 'key',
-      label: 'Key',
+      label: copy.key,
       mono: true,
       value: row.key,
     },
     {
       id: 'channel',
-      label: 'Channel',
+      label: copy.channel,
       value: channelLabel(row.channel),
     },
     {
       id: 'version',
-      label: 'Version',
+      label: copy.version,
       mono: true,
-      value: `v${row.latestVersion}`,
+      value: interpolate(messages.common.versionTag, { version: row.latestVersion }),
     },
     {
       id: 'state',
-      label: 'State',
+      label: copy.state,
       value: (
         <StatusBadge tone={STATE_TONE[row.latestState]} compact>
-          {row.latestState}
+          {messages.common.states[row.latestState] ?? row.latestState}
         </StatusBadge>
       ),
     },
     {
       id: 'updated',
-      label: 'Updated',
-      value: formatRelativeTime(row.updatedAt),
+      label: copy.updated,
+      value: relativeTime(row.updatedAt),
     },
   ];
 }
@@ -85,6 +96,9 @@ export function ArchivePromptTemplateDialog({
   row,
   onOpenChange,
 }: ArchivePromptTemplateDialogProps): ReactElement {
+  const messages = useMessages('prompt-templates');
+  const copy = messages.archivePromptTemplateDialog;
+  const format = useFormat();
   const { showToast } = useToast();
   const mutation = useArchivePromptTemplateMutation();
   const { mutateAsync: archive, reset: resetMutation } = mutation;
@@ -115,12 +129,17 @@ export function ArchivePromptTemplateDialog({
       const stillVisibleInActive = row.publishedVersion !== null;
       showToast({
         tone: 'success',
-        title: `Archived v${row.latestVersion}`,
+        title: interpolate(copy.archivedToastTitle, { version: row.latestVersion }),
         description: stillVisibleInActive
-          ? `Published v${row.publishedVersion} is still active for ${row.key} (${channelLabel(
-              row.channel,
-            )}).`
-          : `${row.key} (${channelLabel(row.channel)}) moved to Archived.`,
+          ? interpolate(copy.stillActiveDescription, {
+              published: row.publishedVersion ?? '',
+              key: row.key,
+              channel: channelLabel(row.channel),
+            })
+          : interpolate(copy.movedDescription, {
+              key: row.key,
+              channel: channelLabel(row.channel),
+            }),
       });
       onOpenChange(false);
     } catch {
@@ -134,38 +153,40 @@ export function ArchivePromptTemplateDialog({
   // explicit object", so the operator re-reads what they're committing
   // to immediately before clicking.
   const confirmLabel = ((): string => {
-    if (mutation.isPending) return 'Archiving…';
-    if (row === null) return 'Archive';
+    if (mutation.isPending) return copy.archiving;
+    if (row === null) return copy.archive;
+    const params = { version: row.latestVersion };
     if (isPublishedTarget) {
-      return force ? `Archive published v${row.latestVersion} (force)` : `Archive published v${row.latestVersion}`;
+      return interpolate(force ? copy.archivePublishedForce : copy.archivePublished, params);
     }
-    return `Archive v${row.latestVersion}`;
+    return interpolate(copy.archiveVersion, params);
   })();
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="archive-prompt-template-dialog">
         <DialogTitle>
-          Archive {row !== null ? `v${row.latestVersion}` : 'template'}
+          {row !== null
+            ? interpolate(copy.archiveVersion, { version: row.latestVersion })
+            : copy.titleGeneric}
         </DialogTitle>
-        <DialogDescription>
-          The row will be hidden from the Active list but kept in history for audit and revert.
-        </DialogDescription>
+        <DialogDescription>{copy.description}</DialogDescription>
 
         {row !== null ? (
           <div className="archive-prompt-template-dialog__metadata">
-            <KeyValueList items={buildMetadataItems(row)} />
+            <KeyValueList items={buildMetadataItems(row, format.relativeTime)} />
           </div>
         ) : null}
 
         {isPublishedTarget ? (
           <div className="archive-prompt-template-dialog__danger-zone">
             <p className="archive-prompt-template-dialog__danger-heading">
-              Only published version
+              {copy.dangerHeading}
             </p>
             <p className="archive-prompt-template-dialog__danger-body">
-              Active suggestions for this <span className="mono-text">(key, channel)</span> will
-              fail until a replacement is published.
+              {renderRich(copy.dangerBody, {
+                code: (text) => <span className="mono-text">{text}</span>,
+              })}
             </p>
             <label className="archive-prompt-template-dialog__force">
               <input
@@ -173,7 +194,7 @@ export function ArchivePromptTemplateDialog({
                 checked={force}
                 onChange={(event) => setForce(event.target.checked)}
               />
-              <span>Confirm: this is the only published version</span>
+              <span>{copy.forceLabel}</span>
             </label>
           </div>
         ) : null}
@@ -184,7 +205,7 @@ export function ArchivePromptTemplateDialog({
 
         <DialogFooter>
           <Button type="button" tone="secondary" onClick={() => onOpenChange(false)}>
-            Cancel
+            {messages.common.cancel}
           </Button>
           <Button
             type="button"

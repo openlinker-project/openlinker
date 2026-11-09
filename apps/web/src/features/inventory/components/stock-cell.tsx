@@ -13,9 +13,12 @@
  * @module apps/web/src/features/inventory/components
  */
 import type { ReactElement, ReactNode } from 'react';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import { STOCK_STATUS_LABEL } from '../../products';
-import { deriveRowStatus, UNNAMED_MASTER, type StockRowModel, type StockRowStatus } from '../lib/stock-row';
+import { deriveRowStatus, type StockRowModel, type StockRowStatus } from '../lib/stock-row';
+
+type StockCellCopy = ReturnType<typeof useMessages<'inventory'>>['stockCell'];
 
 const BADGE_TONE: Record<StockRowStatus['kind'], StatusBadgeTone> = {
   'in-stock': 'success',
@@ -26,14 +29,14 @@ const BADGE_TONE: Record<StockRowStatus['kind'], StatusBadgeTone> = {
   missing: 'neutral',
 };
 
-function badgeLabel(status: StockRowStatus, masterName: string): string {
+function badgeLabel(copy: StockCellCopy, status: StockRowStatus, masterName: string): string {
   switch (status.kind) {
     case 'short':
-      return `Short by ${status.by}`;
+      return interpolate(copy.shortBy, { n: status.by });
     case 'not-known':
-      return 'Not known';
+      return copy.notKnown;
     case 'missing':
-      return `Missing in ${masterName}`;
+      return interpolate(copy.missingIn, { master: masterName });
     default:
       return STOCK_STATUS_LABEL[status.kind];
   }
@@ -47,12 +50,13 @@ function valueClass(status: StockRowStatus): string {
 }
 
 export function StockCell({ row }: { row: StockRowModel }): ReactElement {
+  const copy = useMessages('inventory').stockCell;
   const { key, state, stock } = row;
-  const masterLabel = row.masterName === UNNAMED_MASTER ? 'the master' : row.masterName;
+  const masterLabel = row.masterName;
   const masterNote = (extra?: ReactNode): ReactElement => (
     <span className="variant-stock-table__stock-note">
       <span data-testid={`stock-master-${key}`}>
-        {row.masterAvailable} in {masterLabel}
+        {interpolate(copy.inMaster, { n: row.masterAvailable, master: masterLabel })}
       </span>
       {extra}
     </span>
@@ -68,7 +72,7 @@ export function StockCell({ row }: { row: StockRowModel }): ReactElement {
             aria-hidden="true"
             data-testid={`stock-atp-${key}`}
           ></span>
-          <span className="sr-only">Loading stock</span>
+          <span className="sr-only">{copy.loadingStock}</span>
         </span>
         {masterNote()}
       </span>
@@ -83,7 +87,7 @@ export function StockCell({ row }: { row: StockRowModel }): ReactElement {
             <span className="variant-stock-table__stock-value" data-testid={`stock-atp-${key}`}>
               {row.masterAvailable}
             </span>{' '}
-            <span className="variant-stock-table__stock-label">in {masterLabel}</span>
+            <span className="variant-stock-table__stock-label">{interpolate(copy.inMasterLabel, { master: masterLabel })}</span>
           </span>
         </span>
       </span>
@@ -93,7 +97,7 @@ export function StockCell({ row }: { row: StockRowModel }): ReactElement {
   const status = deriveRowStatus(row);
   const badge = (
     <StatusBadge tone={BADGE_TONE[status.kind]} compact withDot>
-      {badgeLabel(status, masterLabel)}
+      {badgeLabel(copy, status, masterLabel)}
     </StatusBadge>
   );
 
@@ -120,7 +124,7 @@ export function StockCell({ row }: { row: StockRowModel }): ReactElement {
           <span className={valueClass(status)} data-testid={`stock-atp-${key}`}>
             {stock.availableToPromise}
           </span>{' '}
-          <span className="variant-stock-table__stock-label">to sell</span>
+          <span className="variant-stock-table__stock-label">{copy.toSell}</span>
         </span>
         {badge}
       </span>
@@ -129,7 +133,7 @@ export function StockCell({ row }: { row: StockRowModel }): ReactElement {
             reserved > 0 ? (
               <>
                 {' · '}
-                <span data-testid={`stock-held-${key}`}>{reserved} reserved</span>
+                <span data-testid={`stock-held-${key}`}>{interpolate(copy.reserved, { n: reserved })}</span>
               </>
             ) : null,
           )

@@ -26,32 +26,30 @@ import { Link } from 'react-router-dom';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { TimeDisplay } from '../../../shared/ui/time-display';
-import {
-  AUTOMATION_ACTION_LABELS,
-  AUTOMATION_ACTIVITY_COPY,
-  AUTOMATION_RUN_OUTCOME_COPY,
-} from '../lib/automation.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useDismissAutomationRunMutation } from '../hooks/use-dismiss-automation-run-mutation';
 import { useRetryAutomationRunMutation } from '../hooks/use-retry-automation-run-mutation';
 import { retryRefusalCopy, stepReasonText } from '../lib/automation-failure';
-import { AUTOMATION_FAILURE_COPY } from '../lib/automation.copy';
 import { describeStepStatus, stepStatusTone } from '../lib/step-status';
 import { runOutcomeTone } from '../lib/run-outcome';
 import { describeTrigger } from '../lib/automation-trigger-labels';
 import type { AutomationRun, AutomationStepResult } from '../api/automation.types';
 
 function StepLine({ step }: { step: AutomationStepResult }): ReactElement {
-  const label = AUTOMATION_ACTION_LABELS[step.action] ?? step.action;
+  const messages = useMessages('automation');
+  const actionLabels: Record<string, string> = messages.actions;
+  const label = actionLabels[step.action] ?? step.action;
   return (
     <li className="automation-activity__step">
       <StatusBadge tone={stepStatusTone(step.status)} compact>
         {describeStepStatus(step.status)}
       </StatusBadge>
       <span>
-        {label}
-        {step.status === 'skipped' ? ` — ${AUTOMATION_ACTIVITY_COPY.skippedSuffix}` : ''}
+        {step.status === 'skipped'
+          ? interpolate(messages.activityTable.skippedStep, { step: label })
+          : label}
       </span>
       {/*
         The operation's OWN words, attributed, where something reported (#2387).
@@ -68,7 +66,7 @@ function StepLine({ step }: { step: AutomationStepResult }): ReactElement {
       )}
       {step.syncJobId === null ? null : (
         <Link className="mono-text" to={`/jobs-logs/${step.syncJobId}`}>
-          {AUTOMATION_ACTIVITY_COPY.viewJob}
+          {messages.activity.viewJob}
         </Link>
       )}
     </li>
@@ -80,10 +78,13 @@ function StepLine({ step }: { step: AutomationStepResult }): ReactElement {
  * the mobile card's summary slot, so the two cannot say different things.
  */
 function RunOutcome({ run }: { run: AutomationRun }): ReactElement {
+  const messages = useMessages('automation');
+  const outcomeLabels: Record<string, string> = messages.runOutcomes;
+  const failure = messages.failure;
   return (
     <div className="automation-activity__outcome">
       <StatusBadge tone={runOutcomeTone(run.outcome)} withDot compact>
-        {(AUTOMATION_RUN_OUTCOME_COPY as Record<string, string>)[run.outcome] ?? run.outcome}
+        {outcomeLabels[run.outcome] ?? run.outcome}
       </StatusBadge>
       {/*
         `needsAttention` is the SERVER's answer, rendered — never re-derived
@@ -92,14 +93,14 @@ function RunOutcome({ run }: { run: AutomationRun }): ReactElement {
       */}
       {run.needsAttention ? (
         <StatusBadge tone="error" compact>
-          {AUTOMATION_FAILURE_COPY.badge}
+          {failure.badge}
         </StatusBadge>
       ) : null}
       {run.dismissedAt === null ? null : (
-        <span className="muted-text">{AUTOMATION_FAILURE_COPY.dismissed}</span>
+        <span className="muted-text">{failure.dismissed}</span>
       )}
       {run.retryOfRunId === null ? null : (
-        <span className="muted-text">{AUTOMATION_FAILURE_COPY.isRetryOf}</span>
+        <span className="muted-text">{failure.isRetryOf}</span>
       )}
       {/*
         `isRetryOf` says this run IS a retry; this says it HAS BEEN retried.
@@ -107,7 +108,7 @@ function RunOutcome({ run }: { run: AutomationRun }): ReactElement {
         attention badge and no actions cell, with nothing explaining why (#2666).
       */}
       {run.supersededByRetry ? (
-        <span className="muted-text">{AUTOMATION_FAILURE_COPY.superseded}</span>
+        <span className="muted-text">{failure.superseded}</span>
       ) : null}
     </div>
   );
@@ -141,6 +142,7 @@ function AutomationRunActions({
   readOnlyLocked: boolean;
   readOnlyMessage: string;
 }): ReactElement | null {
+  const failure = useMessages('automation').failure;
   const retry = useRetryAutomationRunMutation();
   const dismiss = useDismissAutomationRunMutation();
 
@@ -162,7 +164,7 @@ function AutomationRunActions({
           title={run.retryable ? undefined : (refusal ?? undefined)}
           onClick={() => retry.mutate(run.id)}
         >
-          {retry.isPending ? AUTOMATION_FAILURE_COPY.retrying : AUTOMATION_FAILURE_COPY.retry}
+          {retry.isPending ? failure.retrying : failure.retry}
         </Button>
       </ReadOnlyLock>
       <ReadOnlyLock active={readOnlyLocked} message={readOnlyMessage}>
@@ -172,18 +174,18 @@ function AutomationRunActions({
           onClick={() => dismiss.mutate(run.id)}
         >
           {dismiss.isPending
-            ? AUTOMATION_FAILURE_COPY.dismissing
-            : AUTOMATION_FAILURE_COPY.dismiss}
+            ? failure.dismissing
+            : failure.dismiss}
         </Button>
       </ReadOnlyLock>
       {/* Dismissal stays available even when a retry cannot run — that is the
           whole point of `rule-deleted`: the alarm must be clearable by hand. */}
       {run.retryable ? null : <span className="muted-text">{refusal}</span>}
       {retry.isError ? (
-        <span className="muted-text">{AUTOMATION_FAILURE_COPY.retryFailed}</span>
+        <span className="muted-text">{failure.retryFailed}</span>
       ) : null}
       {dismiss.isError ? (
-        <span className="muted-text">{AUTOMATION_FAILURE_COPY.dismissFailed}</span>
+        <span className="muted-text">{failure.dismissFailed}</span>
       ) : null}
     </div>
   );
@@ -196,16 +198,19 @@ export function AutomationActivityTable({
   readOnlyLocked,
   readOnlyMessage,
 }: AutomationActivityTableProps): ReactElement {
+  const messages = useMessages('automation');
+  const copy = messages.activity;
+  const failure = messages.failure;
   const columns: DataTableColumn<AutomationRun>[] = [
     {
       id: 'when',
-      header: AUTOMATION_ACTIVITY_COPY.whenHeader,
+      header: copy.whenHeader,
       // Newest first is the server's order (`firedAt DESC`) and the default here.
       cell: (run) => <TimeDisplay iso={run.firedAt} format="relative" title={run.firedAt} />,
     },
     {
       id: 'rule',
-      header: AUTOMATION_ACTIVITY_COPY.ruleHeader,
+      header: copy.ruleHeader,
       cell: (run) => (
         // The rule NAME as it fired — frozen at write time, so a rename or a
         // deletion never makes history unreadable.
@@ -218,12 +223,12 @@ export function AutomationActivityTable({
       // the rule name. A failure reason is recoverable from nothing, which is
       // why the steps column below carries no `hideBelow`.
       hideBelow: 1024,
-      header: AUTOMATION_ACTIVITY_COPY.triggerHeader,
+      header: copy.triggerHeader,
       cell: (run) => <span>{describeTrigger(run.trigger).label}</span>,
     },
     {
       id: 'subject',
-      header: AUTOMATION_ACTIVITY_COPY.subjectHeader,
+      header: copy.subjectHeader,
       cell: (run) =>
         run.subjectKind === 'order' ? (
           <Link className="mono-text" to={`/orders/${encodeURIComponent(run.subjectId)}`}>
@@ -237,7 +242,7 @@ export function AutomationActivityTable({
     },
     {
       id: 'steps',
-      header: AUTOMATION_ACTIVITY_COPY.stepsHeader,
+      header: copy.stepsHeader,
       // NO `hideBelow`, deliberately. Card view starts at mobile width, but the
       // style guide puts TABLET on "full table, scrolled horizontally" — so a
       // hidden column here leaves the whole 768–1023 band with a `Failed` badge
@@ -253,12 +258,12 @@ export function AutomationActivityTable({
     },
     {
       id: 'outcome',
-      header: AUTOMATION_ACTIVITY_COPY.outcomeHeader,
+      header: copy.outcomeHeader,
       cell: (run) => <RunOutcome run={run} />,
     },
     {
       id: 'actions',
-      header: AUTOMATION_FAILURE_COPY.actionsHeader,
+      header: failure.actionsHeader,
       cell: (run) => (
         <AutomationRunActions
           run={run}
@@ -272,7 +277,7 @@ export function AutomationActivityTable({
 
   return (
     <DataTable
-      caption={AUTOMATION_ACTIVITY_COPY.title}
+      caption={copy.title}
       columns={columns}
       rows={runs}
       rowKey={(run) => run.id}

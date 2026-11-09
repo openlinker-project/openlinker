@@ -9,6 +9,7 @@
 
 import type { ReactElement } from 'react';
 import type { CategoryMapping } from '../api/mappings.types';
+import { useMessages } from '../../../shared/i18n';
 
 interface CategoryMappingRowProps {
   id: string;
@@ -28,6 +29,7 @@ export function CategoryMappingRow({
   onSelect,
 }: CategoryMappingRowProps): ReactElement {
   const paddingLeft = `${depth * 1.25}rem`;
+  const copy = useMessages('mappings').categoryMappingRow;
 
   return (
     <button
@@ -44,7 +46,7 @@ export function CategoryMappingRow({
         </span>
       ) : (
         <span className="category-row__badge category-row__badge--unmapped">
-          — not mapped —
+          {copy.notMapped}
         </span>
       )}
     </button>

@@ -148,7 +148,7 @@ describe('VariantChannelMatrix', () => {
     // Only the "Total" COLUMN header exists — no Total ROW for a single variant.
     expect(screen.getAllByText('Total')).toHaveLength(1);
     expect(
-      screen.getByText('Matches the Net sales, Units and channel figures shown above — one variant, so nothing to sum.')
+      screen.getByText('Matches the Net sales, Units and channel figures shown above - one variant, so nothing to sum.')
     ).toBeInTheDocument();
   });
 
@@ -401,7 +401,7 @@ describe('VariantChannelMatrix', () => {
 
     expect(await screen.findByText('Not listed')).toBeInTheDocument();
     expect(
-      screen.getByLabelText('Publish Widget on this channel — it already sells elsewhere')
+      screen.getByLabelText('Publish Widget on this channel - it already sells elsewhere')
     ).toBeInTheDocument();
     // Stated once in the header, and the body cell defers to it rather than
     // claiming there was simply no sale in range.

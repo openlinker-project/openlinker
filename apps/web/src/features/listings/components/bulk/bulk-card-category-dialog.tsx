@@ -82,7 +82,7 @@ export function BulkCardCategoryDialog({
   onUseCard,
   onEditProduct,
 }: BulkCardCategoryDialogProps): ReactElement {
-  const copy = useMessages('listings').bulkReview.cardCategoryDialog;
+  const copy = useMessages('listings').bulkCardCategoryDialog;
   const mapped = useCategoryPathQuery(connectionId, mappedCategoryId);
   const cardPath = useCategoryPathQuery(connectionId, card.allegroCategoryId);
   const loading = mapped.isPending || cardPath.isPending;

@@ -34,8 +34,20 @@
  * The neutral price/stock/category blockers stay host-owned — only the
  * Allegro-specific ones live here.
  *
+ * Every label and message reads the `listings.allegroOfferValidation` copy when
+ * it is read (blocker labels are getters), never at module load, so the words
+ * follow the active language.
+ *
  * @module features/listings/components/allegro
  */
+import {
+  getBcp47Locale,
+  getLocale,
+  getMessages,
+  interpolate,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../../shared/i18n';
 import type { OfferValidationContribution } from '../../../../shared/plugins';
 import { isRestrictedCirculationGtin } from '../../lib/gtin-classification';
 import { checkRowParameterRestrictions } from '../../lib/parameter-restrictions';
@@ -142,19 +154,24 @@ export function missingAllegroSellerDetails(config: Record<string, unknown>): st
   const location = asRecord(defaults?.['location']);
   const locationComplete =
     location !== undefined && SELLER_LOCATION_FIELDS.every((field) => isFilled(location[field]));
-  if (!locationComplete) missing.push('a ship-from location');
-  if (!isFilled(defaults?.['responsibleProducerId'])) missing.push('a responsible producer');
+  const items = getMessages('listings').allegroOfferValidation.missingSellerDetails.items;
+  if (!locationComplete) missing.push(items.shipFromLocation);
+  if (!isFilled(defaults?.['responsibleProducerId'])) missing.push(items.responsibleProducer);
   if (!isSafetyInformationComplete(defaults?.['safetyInformation'])) {
-    missing.push('safety information');
+    missing.push(items.safetyInformation);
   }
 
   return missing;
 }
 
-/** "a, b and c" - a plain list, no Oxford comma, no trailing punctuation. */
+/** "a, b and c" - a plain list in the active language, no trailing punctuation. */
 function joinPlainly(parts: readonly string[]): string {
-  if (parts.length <= 1) return parts[0] ?? '';
-  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+  return new Intl.ListFormat(getBcp47Locale(getLocale()), { type: 'conjunction' }).format(parts);
+}
+
+/** The blocker chip labels, read when a chip renders. */
+function blockerLabels(): ResolvedCopy<Messages['listings']>['allegroOfferValidation']['blockers'] {
+  return getMessages('listings').allegroOfferValidation.blockers;
 }
 
 export const allegroOfferValidation: OfferValidationContribution = {
@@ -163,50 +180,66 @@ export const allegroOfferValidation: OfferValidationContribution = {
       id: ALLEGRO_NEEDS_PRODUCT_PARAMETERS_BLOCKER,
       field: 'parameters',
       tone: 'warning',
-      label: 'add product params',
+      get label(): string {
+        return blockerLabels().addProductParams;
+      },
     },
     {
       id: ALLEGRO_TITLE_TOO_LONG_BLOCKER,
       field: 'title',
       tone: 'error',
-      label: 'title too long',
+      get label(): string {
+        return blockerLabels().titleTooLong;
+      },
     },
     {
       id: ALLEGRO_TITLE_TOO_SHORT_BLOCKER,
       field: 'title',
       tone: 'error',
-      label: 'title too short',
+      get label(): string {
+        return blockerLabels().titleTooShort;
+      },
     },
     {
       id: ALLEGRO_PARAM_VALUE_INVALID_BLOCKER,
       field: 'parameters',
       tone: 'error',
-      label: 'parameter value rejected',
+      get label(): string {
+        return blockerLabels().paramValueRejected;
+      },
     },
     {
       id: ALLEGRO_NO_PHOTO_BLOCKER,
       field: 'images',
       tone: 'error',
-      label: 'no photo',
+      get label(): string {
+        return blockerLabels().noPhoto;
+      },
     },
     {
       id: ALLEGRO_SIBLINGS_WITHOUT_CARD_BLOCKER,
       field: 'ean',
       tone: 'error',
-      label: 'siblings share one card',
+      get label(): string {
+        return blockerLabels().siblingsShareOneCard;
+      },
     },
     {
       id: ALLEGRO_EAN_UNVERIFIED_BLOCKER,
       field: 'ean',
       tone: 'warning',
-      label: 'EAN not in catalogue',
+      get label(): string {
+        return blockerLabels().eanNotInCatalogue;
+      },
       advisory: true,
     },
     {
       id: ALLEGRO_IN_STORE_BARCODE_BLOCKER,
       field: 'ean',
       tone: 'warning',
-      label: 'in-store barcode',
+      get label(): string {
+        return blockerLabels().inStoreBarcode;
+      },
       advisory: true,
     },
   ],
@@ -272,12 +305,12 @@ export const allegroOfferValidation: OfferValidationContribution = {
   validateBatch: (input) => {
     const missing = missingAllegroSellerDetails(input.connectionConfig);
     if (missing.length === 0) return [];
+    const copy = getMessages('listings').allegroOfferValidation.missingSellerDetails;
     return [
       {
         id: ALLEGRO_MISSING_SELLER_DEFAULTS_ISSUE,
-        title: `This connection is missing ${joinPlainly(missing)}.`,
-        detail:
-          'Allegro requires them on every offer, so every offer in this batch would be rejected. Add them in the connection settings, then come back - the submit stays locked until they are set.',
+        title: interpolate(copy.title, { items: joinPlainly(missing) }),
+        detail: copy.detail,
       },
     ];
   },

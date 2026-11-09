@@ -7,11 +7,12 @@ import { ApiError } from '../../../shared/api/api-error';
 import {
   classifyOrderEditRefusal,
   describeCeilingVerdict,
+  describeStockOutcome,
   isPlainDecimal,
   keepsAnyUnit,
   lockedSectionsFor,
   ORDER_EDIT_ERROR_CODES,
-  ORDER_EDIT_REFUSAL_COPY,
+  orderEditRefusalCopy,
   orderEditErrorNeedsRefresh,
   orderEditHistoryTitle,
   readOrderEditErrorCode,
@@ -36,22 +37,30 @@ describe('readOrderEditErrorCode', () => {
 describe('refusal copy', () => {
   it('should carry copy for every code the backend can answer', () => {
     for (const code of ORDER_EDIT_ERROR_CODES) {
-      expect(ORDER_EDIT_REFUSAL_COPY[code].title).not.toBe('');
-      expect(ORDER_EDIT_REFUSAL_COPY[code].fallbackReason).not.toBe('');
+      expect(orderEditRefusalCopy(code).title).not.toBe('');
+      expect(orderEditRefusalCopy(code).fallbackReason).not.toBe('');
     }
   });
 
   it('should point a packed order at Packing and an issued document at Sales document', () => {
-    expect(ORDER_EDIT_REFUSAL_COPY.ORDER_PACKED.remedy).toEqual({
+    expect(orderEditRefusalCopy('ORDER_PACKED').remedy).toEqual({
       target: 'packing',
       label: 'Go to Packing',
     });
-    expect(ORDER_EDIT_REFUSAL_COPY.SALES_DOCUMENT_ISSUED.remedy?.target).toBe('invoicing');
-    expect(ORDER_EDIT_REFUSAL_COPY.LABEL_ALREADY_BOUGHT.remedy?.target).toBe('shipment');
+    expect(orderEditRefusalCopy('SALES_DOCUMENT_ISSUED').remedy?.target).toBe('invoicing');
+    expect(orderEditRefusalCopy('LABEL_ALREADY_BOUGHT').remedy?.target).toBe('shipment');
+  });
+
+  it('should list numbered steps in order', () => {
+    expect(orderEditRefusalCopy('ORDER_PACKED').steps).toEqual([
+      'Mark the order as not packed.',
+      'Edit the order.',
+    ]);
+    expect(orderEditRefusalCopy('NOTHING_CHANGED').steps).toEqual([]);
   });
 
   it('should use no em dash anywhere in the copy', () => {
-    const text = JSON.stringify(ORDER_EDIT_REFUSAL_COPY);
+    const text = JSON.stringify(ORDER_EDIT_ERROR_CODES.map(orderEditRefusalCopy));
     expect(text).not.toContain('—');
   });
 });
@@ -135,7 +144,7 @@ describe('describeCeilingVerdict', () => {
         alreadyRefunded: '0',
         requested: '15.00',
         currency: 'PLN',
-      }).tone,
+      }).tone
     ).toBe('info');
     const exceeded = describeCeilingVerdict({
       status: 'exceeded',
@@ -147,7 +156,9 @@ describe('describeCeilingVerdict', () => {
     expect(exceeded.tone).toBe('warning');
     expect(exceeded.text).toContain('15.00 PLN requested');
     expect(exceeded.text).toContain('10.00 PLN left after 90.00 PLN already refunded');
-    expect(describeCeilingVerdict({ status: 'unknown', reason: 'x' }).text).toMatch(/could not check/);
+    expect(describeCeilingVerdict({ status: 'unknown', reason: 'x' }).text).toMatch(
+      /could not check/
+    );
   });
 
   it('should report the order ceiling minus what was already refunded as the remainder (E-42)', () => {
@@ -162,11 +173,51 @@ describe('describeCeilingVerdict', () => {
   });
 });
 
+describe('describeStockOutcome', () => {
+  const englishList = (items: readonly string[]): string =>
+    new Intl.ListFormat('en', { type: 'conjunction' }).format(items);
+
+  it('should count the lines and name the reasons a restore failed', () => {
+    const line = { orderLineId: 'l', stockRestored: false as const, detail: 'no master' };
+    expect(describeStockOutcome([line], englishList)?.text).toBe(
+      'Stock was not put back for one line (no master). OpenLinker will try again.'
+    );
+    expect(
+      describeStockOutcome(
+        [
+          { orderLineId: 'a', stockRestored: true, detail: null },
+          { orderLineId: 'b', stockRestored: true, detail: null },
+        ],
+        englishList
+      )?.text
+    ).toBe('Stock was put back for 2 lines.');
+    expect(describeStockOutcome([], englishList)).toBeNull();
+  });
+
+  it('should join several reasons as a list in the active language', () => {
+    expect(
+      describeStockOutcome(
+        [
+          { orderLineId: 'a', stockRestored: false, detail: 'no master' },
+          { orderLineId: 'b', stockRestored: false, detail: 'master offline' },
+        ],
+        englishList
+      )?.text
+    ).toContain('(no master and master offline)');
+  });
+});
+
 describe('orderEditHistoryTitle', () => {
   it('should title each edit kind and fall back for an unknown one', () => {
-    const entry = { changeId: 'c', at: 'x', byUserId: null, channelKeeps: true, channelConnectionId: 'k' };
+    const entry = {
+      changeId: 'c',
+      at: 'x',
+      byUserId: null,
+      channelKeeps: true,
+      channelConnectionId: 'k',
+    };
     expect(orderEditHistoryTitle({ ...entry, kind: 'order.address_change' })).toBe(
-      'Shipping address changed',
+      'Shipping address changed'
     );
     expect(orderEditHistoryTitle({ ...entry, kind: 'order.future' })).toBe('Order edited');
   });

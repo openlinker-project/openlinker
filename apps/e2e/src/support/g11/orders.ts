@@ -66,6 +66,10 @@ export async function loadDriver(
  * hold the realtime lane's per-scope slots and starve the next scenario's ingestion, so once the
  * record is `ready` (the part G11 asserts) the debris is parked as dead. Queue housekeeping only:
  * no order or cost row is touched.
+ *
+ * Since #3959 a stand with NO other order destination no longer fails this way (the order is
+ * simply not mirrored), so this only finds debris on a stand whose destinations exist but are
+ * inactive, or on one running an API built before #3959.
  */
 export function retireDestinationlessOrderJobs(ctx: G11Ctx): void {
   ctx.db.exec(

@@ -20,6 +20,7 @@ import { useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } 
 import { ThemeSwitch } from '../../../appearance';
 import { LanguageSwitch } from '../../../language';
 import type { LoginStageCopy } from '../../lib/login-stage-copy';
+import { useMessages } from '../../../../shared/i18n';
 
 export function LoginBrandMark({ className }: { className?: string }): ReactElement {
   return (
@@ -83,6 +84,7 @@ interface LoginTopBarProps {
 const SHRINK_OVER = 64;
 
 export function LoginTopBar({ bar }: LoginTopBarProps): ReactElement {
+  const brand = useMessages('app').brand;
   const { scrollY } = useScroll();
   const shrink = useTransform(scrollY, [0, SHRINK_OVER], [0, 1], { clamp: true });
   return (
@@ -94,7 +96,7 @@ export function LoginTopBar({ bar }: LoginTopBarProps): ReactElement {
       <div className="login-topbar__inner">
         <span className="login-topbar__brand">
           <LoginBrandMark />
-          OpenLinker
+          {brand.name}
         </span>
         {bar ? (
           <>

@@ -31,6 +31,13 @@ import { Controller, useFormContext, useWatch } from 'react-hook-form';
 
 import { Combobox, type ComboboxOption, type ComboboxValue } from '../../../shared/ui/combobox';
 import { FormField } from '../../../shared/ui/form-field';
+import {
+  interpolate,
+  useFormat,
+  useMessages,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 
 import type {
   CategoryParameter,
@@ -43,6 +50,8 @@ import {
 } from './category-parameter-visibility';
 
 const NATIVE_SELECT_THRESHOLD = 50;
+
+type StepCopy = ResolvedCopy<Messages['listings']>['categoryParametersStep'];
 
 interface CategoryParametersStepProps {
   parameters: CategoryParameter[];
@@ -80,6 +89,8 @@ export function CategoryParametersStep({
   extraHints,
 }: CategoryParametersStepProps): ReactElement {
   const { control, setValue, getValues, formState } = useFormContext();
+  const copy = useMessages('listings').categoryParametersStep;
+  const format = useFormat();
   // Watching the entire `parameters` slice keeps visibility / option-narrowing
   // in sync with the form state on every keystroke. Acceptable cost — the
   // wizard form is small and per-render evaluation is O(parameters × constant).
@@ -142,7 +153,7 @@ export function CategoryParametersStep({
     <div className="category-parameters-step">
       {required.length > 0 && (
         <fieldset className="category-parameters-step__group">
-          <legend className="category-parameters-step__group-legend">Required</legend>
+          <legend className="category-parameters-step__group-legend">{copy.required}</legend>
           {required.map((param) => (
             <ParameterField
               key={param.id}
@@ -159,10 +170,10 @@ export function CategoryParametersStep({
       {optional.length > 0 && (
         <details className="category-parameters-step__expander">
           <summary className="category-parameters-step__expander-summary">
-            Show optional fields ({optional.length})
+            {interpolate(copy.showOptional, { count: format.number(optional.length) })}
           </summary>
           <fieldset className="category-parameters-step__group category-parameters-step__group--optional">
-            <legend className="sr-only">Optional</legend>
+            <legend className="sr-only">{copy.optional}</legend>
             {optional.map((param) => (
               <ParameterField
                 key={param.id}
@@ -197,6 +208,8 @@ function ParameterField({
   extraHint,
 }: ParameterFieldProps): ReactElement {
   const { control, formState } = useFormContext();
+  const copy = useMessages('listings').categoryParametersStep;
+  const format = useFormat();
   const fieldName = `${formNamespace}.${parameter.id}`;
   // RHF stores errors set via dotted paths (`form.setError('parameters.p_x',
   // …)`) at `formState.errors.parameters.p_x`, not as a flat key. Walk the
@@ -208,8 +221,8 @@ function ParameterField({
       : undefined;
   const error = fieldError?.message;
 
-  const description = describeFilter(parameter, parentValues);
-  const autoFillHint = prefilled ? 'Auto-filled from variant data' : undefined;
+  const description = describeFilter(parameter, parentValues, copy, format.number);
+  const autoFillHint = prefilled ? copy.autoFilled : undefined;
 
   const label = (
     <span>
@@ -228,7 +241,7 @@ function ParameterField({
       <Controller
         control={control}
         name={fieldName}
-        render={({ field }): ReactElement => renderControl(parameter, parentValues, field)}
+        render={({ field }): ReactElement => renderControl(parameter, parentValues, field, copy)}
       />
     </FormField>
   );
@@ -246,12 +259,13 @@ function renderControl(
   parameter: CategoryParameter,
   parentValues: CategoryParameterFormValues,
   field: ControllerField,
+  copy: StepCopy,
 ): ReactElement {
   if (parameter.type === 'dictionary') {
-    return renderDictionary(parameter, parentValues, field);
+    return renderDictionary(parameter, parentValues, field, copy);
   }
   if (parameter.restrictions.range) {
-    return renderRange(parameter, field);
+    return renderRange(parameter, field, copy);
   }
   return renderScalar(parameter, field);
 }
@@ -260,6 +274,7 @@ function renderDictionary(
   parameter: CategoryParameter,
   parentValues: CategoryParameterFormValues,
   field: ControllerField,
+  copy: StepCopy,
 ): ReactElement {
   const entries = visibleDictionaryEntries(parameter, parentValues);
   const useCombobox =
@@ -276,7 +291,7 @@ function renderDictionary(
         allowCustomValues={parameter.restrictions.customValuesEnabled}
         value={toComboboxValue(parameter, field.value as FormParameterValue)}
         onChange={(next): void => field.onChange(fromComboboxValue(parameter, next))}
-        placeholder={`Pick ${parameter.name.toLowerCase()}`}
+        placeholder={interpolate(copy.pickPlaceholder, { name: parameter.name.toLowerCase() })}
         invalid={false}
       />
     );
@@ -292,7 +307,7 @@ function renderDictionary(
       onBlur={field.onBlur}
       aria-label={parameter.name}
     >
-      <option value="">Select…</option>
+      <option value="">{copy.selectPlaceholder}</option>
       {entries.map((entry) => (
         <option key={entry.id} value={entry.id}>
           {entry.value}
@@ -321,7 +336,11 @@ function renderScalar(parameter: CategoryParameter, field: ControllerField): Rea
   );
 }
 
-function renderRange(parameter: CategoryParameter, field: ControllerField): ReactElement {
+function renderRange(
+  parameter: CategoryParameter,
+  field: ControllerField,
+  copy: StepCopy,
+): ReactElement {
   const v = (field.value && typeof field.value === 'object' && !Array.isArray(field.value)
     ? field.value
     : { from: '', to: '' }) as { from?: string; to?: string };
@@ -340,7 +359,7 @@ function renderRange(parameter: CategoryParameter, field: ControllerField): Reac
         value={v.from ?? ''}
         onChange={(e): void => update({ ...v, from: e.target.value })}
         onBlur={field.onBlur}
-        aria-label={`${parameter.name} from`}
+        aria-label={interpolate(copy.rangeFrom, { name: parameter.name })}
         step={step}
         min={parameter.restrictions.min}
         max={parameter.restrictions.max}
@@ -354,7 +373,7 @@ function renderRange(parameter: CategoryParameter, field: ControllerField): Reac
         value={v.to ?? ''}
         onChange={(e): void => update({ ...v, to: e.target.value })}
         onBlur={field.onBlur}
-        aria-label={`${parameter.name} to`}
+        aria-label={interpolate(copy.rangeTo, { name: parameter.name })}
         step={step}
         min={parameter.restrictions.min}
         max={parameter.restrictions.max}
@@ -408,13 +427,18 @@ export function fromComboboxValue(
 function describeFilter(
   parameter: CategoryParameter,
   parentValues: CategoryParameterFormValues,
+  copy: StepCopy,
+  formatNumber: (value: number) => string,
 ): ReactNode {
   if (!parameter.dependsOn || parameter.type !== 'dictionary' || !parameter.dictionary) {
     return null;
   }
   const visible = visibleDictionaryEntries(parameter, parentValues);
   if (visible.length === parameter.dictionary.length) return null;
-  return `Filtered by parent: ${visible.length} of ${parameter.dictionary.length} options available`;
+  return interpolate(copy.filteredByParent, {
+    visible: formatNumber(visible.length),
+    total: formatNumber(parameter.dictionary.length),
+  });
 }
 
 function scaleStep(precision: number | undefined): string | undefined {

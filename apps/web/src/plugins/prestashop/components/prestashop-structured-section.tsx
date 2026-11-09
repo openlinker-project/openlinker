@@ -20,9 +20,13 @@ import { Select } from '../../../shared/ui/select';
 import { useMappingOptions } from '../../../features/mappings';
 import type { MappingOption } from '../../../features/mappings';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
+import { interpolate } from '../../../shared/i18n';
+import { usePrestashopMessages } from '../messages';
 
-function carrierOptionLabel(option: MappingOption): string {
-  return option.kind === 'dynamic' ? `${option.label} — exact Allegro cost` : option.label;
+function carrierOptionLabel(option: MappingOption, dynamicTemplate: string): string {
+  return option.kind === 'dynamic'
+    ? interpolate(dynamicTemplate, { label: option.label })
+    : option.label;
 }
 
 export function PrestashopStructuredSection({
@@ -31,43 +35,44 @@ export function PrestashopStructuredSection({
   configIsParseable,
   syncStructuredToJson,
 }: StructuredConfigSectionProps): ReactElement {
+  const copy = usePrestashopMessages().prestashopStructuredSection;
   return (
     <>
       <FormField
-        label="Shop URL"
+        label={copy.shopUrl.label}
         name="baseUrl"
         error={form.formState.errors.baseUrl?.message}
-        description="The public URL of the PrestaShop storefront."
+        description={copy.shopUrl.description}
       >
         <Input
           value={form.watch('baseUrl') ?? ''}
           onChange={(event) => syncStructuredToJson('baseUrl', event.target.value)}
-          placeholder="https://shop.example.com"
+          placeholder={copy.shopUrl.placeholder}
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.baseUrl)}
         />
       </FormField>
 
       <FormField
-        label="Storefront URL (optional)"
+        label={copy.storefrontUrl.label}
         name="storefrontBaseUrl"
         error={form.formState.errors.storefrontBaseUrl?.message}
-        description="Override only if your public storefront URL is different from the webservice URL. Leave blank if they're the same — defaults to Shop URL."
+        description={copy.storefrontUrl.description}
       >
         <Input
           value={form.watch('storefrontBaseUrl') ?? ''}
           onChange={(event) => syncStructuredToJson('storefrontBaseUrl', event.target.value)}
-          placeholder="https://shop.example.com"
+          placeholder={copy.storefrontUrl.placeholder}
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.storefrontBaseUrl)}
         />
       </FormField>
 
       <FormField
-        label="Shop ID (optional)"
+        label={copy.shopId.label}
         name="shopId"
         error={form.formState.errors.shopId?.message}
-        description="Only needed for multi-shop PrestaShop installations."
+        description={copy.shopId.description}
       >
         <Input
           value={form.watch('shopId') ?? ''}
@@ -79,17 +84,17 @@ export function PrestashopStructuredSection({
       </FormField>
 
       <FormField
-        label="OL callback URL"
+        label={copy.callbackUrl.label}
         name="openlinkerCallbackBaseUrl"
         error={form.formState.errors.openlinkerCallbackBaseUrl?.message}
-        description="OpenLinker's URL from PrestaShop's perspective — used by the PS module to POST webhooks back to OL. Pre-filled with the API address this app uses; override for Docker dev (e.g. http://host.docker.internal:3000) or unusual deploys. Required to use the 'Configure webhooks' action."
+        description={copy.callbackUrl.description}
       >
         <Input
           value={form.watch('openlinkerCallbackBaseUrl') ?? ''}
           onChange={(event) =>
             syncStructuredToJson('openlinkerCallbackBaseUrl', event.target.value)
           }
-          placeholder="https://api.openlinker.example"
+          placeholder={copy.callbackUrl.placeholder}
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.openlinkerCallbackBaseUrl)}
         />
@@ -104,10 +109,10 @@ export function PrestashopStructuredSection({
       />
 
       <FormField
-        label="InPost PS module type (optional)"
+        label={copy.inpostModuleType.label}
         name="inpostPsModuleType"
         error={form.formState.errors.inpostPsModuleType?.message}
-        description="Select the official InPost PrestaShop module installed on this shop. When set, OL reads the paczkomat locker code from the delivery address during order ingestion. Leave unset if InPost orders are not in use."
+        description={copy.inpostModuleType.description}
       >
         <Select
           value={form.watch('inpostPsModuleType') ?? ''}
@@ -115,8 +120,8 @@ export function PrestashopStructuredSection({
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.inpostPsModuleType)}
         >
-          <option value="">None (disabled)</option>
-          <option value="official_inpost">Official InPost module (address2)</option>
+          <option value="">{copy.inpostModuleType.none}</option>
+          <option value="official_inpost">{copy.inpostModuleType.officialInpost}</option>
         </Select>
       </FormField>
     </>
@@ -151,6 +156,7 @@ function PrestashopFallbackCarrierField({
   disabled,
   onChange,
 }: PrestashopFallbackCarrierFieldProps): ReactElement {
+  const copy = usePrestashopMessages().prestashopStructuredSection.fallbackCarrier;
   const { options, isLoading, errors } = useMappingOptions(connectionId);
   const carriersError = errors.prestashopCarriers ?? null;
   const carriers = options.prestashopCarriers;
@@ -161,18 +167,18 @@ function PrestashopFallbackCarrierField({
   return (
     <>
       <FormField
-        label="Fallback carrier (optional)"
+        label={copy.label}
         name="defaultCarrierId"
         error={errorMessage}
-        description="Used when an Allegro shipping method has no carrier mapping. Leave unset to use the OpenLinker Dynamic carrier (exact Allegro shipping cost) at sync time — works only when the OL PrestaShop module is installed."
+        description={copy.description}
       >
         {isLoading ? (
           <Select disabled>
-            <option>Loading carriers…</option>
+            <option>{copy.loading}</option>
           </Select>
         ) : carriersError ? (
           <Select disabled>
-            <option>Failed to load carriers</option>
+            <option>{copy.failed}</option>
           </Select>
         ) : (
           <Select
@@ -181,10 +187,10 @@ function PrestashopFallbackCarrierField({
             disabled={disabled}
             invalid={Boolean(errorMessage)}
           >
-            <option value="">None — use OpenLinker Dynamic at runtime</option>
+            <option value="">{copy.none}</option>
             {carriers.map((c) => (
               <option key={c.value} value={c.value}>
-                {carrierOptionLabel(c)}
+                {carrierOptionLabel(c, copy.dynamicOption)}
               </option>
             ))}
           </Select>
@@ -193,9 +199,7 @@ function PrestashopFallbackCarrierField({
 
       {showNoFallbackWarning ? (
         <Alert tone="warning" className="edit-connection__fallback-warning">
-          No fallback carrier is set and the OpenLinker PrestaShop module isn't installed on this
-          connection. Sync will fail for any Allegro shipping method without a carrier mapping
-          until you pick a fallback or install the OL PS module.
+          {copy.noFallbackWarning}
         </Alert>
       ) : null}
     </>

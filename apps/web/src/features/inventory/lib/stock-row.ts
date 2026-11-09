@@ -14,6 +14,7 @@
  *
  * @module apps/web/src/features/inventory/lib
  */
+import { getMessages, interpolate } from '../../../shared/i18n';
 import { deriveStockStatus } from '../../products';
 import type { InventoryItem, StockChannelsStatus, StockViewVariant } from '../api/inventory.types';
 import { isAtpUnknown, isMultiLocation, isVariantStaled } from './stock-view';
@@ -33,10 +34,13 @@ export interface StockAdjustTarget {
 
 export type StockRowState = 'loading' | 'restricted' | 'unknown' | 'staled' | 'ok';
 
-/** Stands in for a connection name nobody supplied; callers show a dash rather than this. */
-export const UNNAMED_MASTER = 'the master';
-
-export const VIEWER_STOCK_HINT = 'Only admins and operators can change stock.';
+/**
+ * True when `masterName` is the stand-in for a connection name nobody
+ * supplied; callers show a dash rather than it where a name is expected.
+ */
+export function isUnnamedMaster(masterName: string): boolean {
+  return masterName === getMessages('inventory').stockRow.unnamedMaster;
+}
 
 export interface StockRowModel {
   variant: StockPanelVariant;
@@ -101,6 +105,7 @@ export interface BuildStockRowsInput {
 }
 
 export function buildStockRows(input: BuildStockRowsInput): Map<string, StockRowModel> {
+  const copy = getMessages('inventory').stockRow;
   const rows = new Map<string, StockRowModel>();
   for (const variant of input.variants) {
     const stock = input.stockByVariant?.get(variant.id) ?? null;
@@ -118,17 +123,17 @@ export function buildStockRows(input: BuildStockRowsInput): Map<string, StockRow
     const sources = liveSources(stock);
     const sourceNames = sources.names.length > 0 ? sources.names : [];
     const masterName =
-      sourceNames.length > 0 ? sourceNames.join(' + ') : (input.fallbackMasterName ?? UNNAMED_MASTER);
+      sourceNames.length > 0 ? sourceNames.join(' + ') : (input.fallbackMasterName ?? copy.unnamedMaster);
     const multiLocation = stock !== null && isMultiLocation(stock);
     const multiSource = sources.ids.length > 1;
 
     let adjustHint: string | null = null;
-    if (!input.canAdjust) adjustHint = VIEWER_STOCK_HINT;
-    else if (state === 'unknown') adjustHint = 'Available again once OpenLinker can read the count.';
-    else if (multiSource) adjustHint = 'Two shops count this variant. Correct it in the shop that should own it.';
+    if (!input.canAdjust) adjustHint = copy.adjustHints.viewer;
+    else if (state === 'unknown') adjustHint = copy.adjustHints.unknown;
+    else if (multiSource) adjustHint = copy.adjustHints.multiSource;
     else if (multiLocation && stock) {
-      adjustHint = `This variant is in ${stock.livePositionCount} locations. Correct it in ${masterName}.`;
-    } else if (state === 'staled') adjustHint = `${masterName} no longer reports this variant.`;
+      adjustHint = interpolate(copy.adjustHints.multiLocation, { n: stock.livePositionCount, master: masterName });
+    } else if (state === 'staled') adjustHint = interpolate(copy.adjustHints.staled, { master: masterName });
 
     rows.set(variant.id, {
       variant,

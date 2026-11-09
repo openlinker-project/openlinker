@@ -14,7 +14,7 @@
  * @module apps/web/src/features/fiscalization/components
  */
 import type { ReactElement } from 'react';
-import { useTranslation } from '../../../shared/i18n';
+import { useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import type { FiscalArtefact } from '../api/fiscalization.types';
 
@@ -35,7 +35,7 @@ function download(artefact: FiscalArtefact): void {
 }
 
 export function FiscalArtefactList({ artefacts }: FiscalArtefactListProps): ReactElement | null {
-  const { t } = useTranslation();
+  const copy = useMessages('fiscalization').fiscalReceipt.artefact;
 
   if (artefacts.length === 0) {
     return null;
@@ -45,10 +45,12 @@ export function FiscalArtefactList({ artefacts }: FiscalArtefactListProps): Reac
     <ul className="artefact-list">
       {artefacts.map((artefact, index) => (
         <li className="artefact-row" key={`${artefact.medium}-${index}`}>
-          <span className="artefact-row__medium">{artefact.medium}</span>
+          <span className="artefact-row__medium">
+            {copy.medium[artefact.medium] ?? artefact.medium}
+          </span>
           <span className="artefact-row__body">
             <span className="artefact-row__title">
-              {artefact.label ?? t(`fiscalReceipt.artefact.${artefact.medium}`, artefact.medium)}
+              {artefact.label ?? copy.medium[artefact.medium] ?? artefact.medium}
             </span>
           </span>
           <span className="artefact-row__action">
@@ -59,7 +61,7 @@ export function FiscalArtefactList({ artefacts }: FiscalArtefactListProps): Reac
                 rel="noopener noreferrer"
                 className="button button--secondary button--sm"
               >
-                {t('fiscalReceipt.artefact.open', 'Open')}
+                {copy.open}
               </a>
             ) : null}
             {artefact.medium === 'document' ? (
@@ -68,20 +70,20 @@ export function FiscalArtefactList({ artefacts }: FiscalArtefactListProps): Reac
                 className="button--sm"
                 onClick={() => download(artefact)}
               >
-                {t('fiscalReceipt.artefact.download', 'Download')}
+                {copy.download}
               </Button>
             ) : null}
             {artefact.medium === 'code' ? (
               <img
                 src={`data:${artefact.contentType ?? 'image/png'};base64,${artefact.content}`}
-                alt={t('fiscalReceipt.artefact.codeAlt', 'Scannable code for the receipt')}
+                alt={copy.codeAlt}
                 width={64}
                 height={64}
               />
             ) : null}
             {artefact.medium === 'text' || artefact.medium === 'markup' ? (
               <span className="text-muted">
-                {t('fiscalReceipt.artefact.internal', 'For internal use')}
+                {copy.internal}
               </span>
             ) : null}
           </span>

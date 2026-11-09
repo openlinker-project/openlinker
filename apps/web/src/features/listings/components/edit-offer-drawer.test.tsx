@@ -145,6 +145,7 @@ describe('EditOfferDrawer', () => {
     fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
 
     expect(await screen.findByText(/update failed/i)).toBeInTheDocument();
+    expect(screen.getByText('The server said: Allegro API error')).toBeInTheDocument();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });
