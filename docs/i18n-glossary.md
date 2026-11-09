@@ -45,6 +45,8 @@ Add a row when a new domain term reaches the UI. Change a row only together with
 | Fulfilment task | Zadanie realizacji | |
 | Pack bench | Stanowisko pakowania | |
 | Packer | Pakowacz | |
+| Box | Karton | the physical box a packer fills at the bench |
+| Shelf | Półka | where a packer takes an item from or puts it back |
 | Return | Zwrot | goods coming back |
 | Refund | Zwrot pieniędzy | money going back; never just "zwrot" |
 | Restock | Przyjęcie na stan | |

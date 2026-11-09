@@ -48,10 +48,12 @@ import {
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
   ORDER_CHANGE_SERVICE_TOKEN,
   ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
+  ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
   PAYMENT_WRITEBACK_SERVICE_TOKEN,
 } from '../../orders.tokens';
 import { IPaymentWritebackService } from '../interfaces/payment-writeback.service.interface';
 import { IOrderCancellationEffectsService } from '../interfaces/order-cancellation-effects.service.interface';
+import { IOrderSourceAmendmentEffectsService } from '../interfaces/order-source-amendment-effects.service.interface';
 import { IOrderChangeService } from './order-change.service.interface';
 import type { OrderChange } from '../../domain/entities/order-change.entity';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
@@ -280,6 +282,10 @@ export class OrderIngestionService implements IOrderIngestionService {
     // runs it. Same module, no cycle.
     @Inject(ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN)
     private readonly cancellationEffects: IOrderCancellationEffectsService,
+    // #3961: carries a line change the source reports AFTER routing into the
+    // packing work (or holds the box). Same module, no cycle; appended last.
+    @Inject(ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN)
+    private readonly sourceAmendmentEffects: IOrderSourceAmendmentEffectsService,
     // #3963: mirrors a payment that arrived after a shop got the order. Same
     // module, no cycle. Appended last.
     @Inject(PAYMENT_WRITEBACK_SERVICE_TOKEN)
@@ -783,6 +789,15 @@ export class OrderIngestionService implements IOrderIngestionService {
       routingTarget
     );
     await this.persistFulfillmentOutcome(order.id, routing);
+
+    // #3961: a re-ingested order may carry a line the source changed after it
+    // was routed. Routing answers `already-routed` and touches no work, so the
+    // difference is reconciled here - level-triggered, from the stored record,
+    // so a failed or skipped attempt is simply repeated by the next ingestion.
+    // A first ingestion cannot be an amendment. Never throws.
+    if (existing != null && order.status !== 'cancelled' && !cancelledFromEarlySignal) {
+      await this.sourceAmendmentEffects.reconcile({ internalOrderId: order.id });
+    }
 
     let results: Awaited<ReturnType<IOrderSyncService['syncOrder']>> = [];
 

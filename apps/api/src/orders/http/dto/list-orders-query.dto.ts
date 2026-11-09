@@ -15,6 +15,7 @@ import {
   Max,
   IsDateString,
   IsBoolean,
+  IsIn,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
@@ -41,6 +42,10 @@ import {
   OrderLifecyclePhaseValues,
   type OrderLifecyclePhase,
 } from '@openlinker/core/order-lifecycle';
+import {
+  AuthorityAttentionReasonValues,
+  type AuthorityAttentionReason,
+} from '@openlinker/core/fulfillment-authority';
 import { PaginatedReadQueryDto } from '../../../common/dto/paginated-read-query.dto';
 
 export class ListOrdersQueryDto extends PaginatedReadQueryDto {
@@ -295,6 +300,17 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
   @IsBoolean()
   attention?: boolean;
+
+  @ApiPropertyOptional({
+    enum: AuthorityAttentionReasonValues,
+    name: 'attentionReason',
+    description:
+      'Keep only orders carrying an attention entry with exactly this reason (#3961). ' +
+      '`source-change-unapplied` lists the orders the shop changed after packing started that wait for a decision.',
+  })
+  @IsOptional()
+  @IsIn(AuthorityAttentionReasonValues)
+  attentionReason?: AuthorityAttentionReason;
 
   @ApiPropertyOptional({
     type: Boolean,

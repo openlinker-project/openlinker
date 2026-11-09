@@ -381,6 +381,15 @@ export function OrderListFilterBar({
             filtersApi.toggle('attention');
           }}
         />
+        {/* #3961 - no count: the summary aggregate does not split reasons. */}
+        <FilterCheck
+          label={COPY.checks.shopChanged}
+          tone="warning"
+          checked={state.shopChanged}
+          onChange={() => {
+            filtersApi.toggle('attentionReason');
+          }}
+        />
         <FilterCheck
           label={paymentCopy.filterCheck}
           tone="warning"

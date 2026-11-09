@@ -574,6 +574,15 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       );
     }
 
+    if (filters.omsAttentionReason !== undefined) {
+      // #3961 - one named attention reason. The reason is BOUND as a jsonpath
+      // variable, never interpolated: it arrives from a query string.
+      qb.andWhere(
+        `jsonb_path_exists(COALESCE(rec."omsAttention", '[]'::jsonb), '$[*] ? (@.reason == $r)', jsonb_build_object('r', CAST(:omsAttentionReason AS text)))`,
+        { omsAttentionReason: filters.omsAttentionReason }
+      );
+    }
+
     if (filters.paymentNotSent !== undefined) {
       // #3963 - its own axis, ANDed like `omsAttention`. Reads the flag the
       // writer recomputes in the same statement as the jsonb, served by a
