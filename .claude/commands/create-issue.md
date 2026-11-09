@@ -51,7 +51,7 @@ Use the format below. Be specific. Reference actual file paths. Do not repeat ar
 ### Step 5 — Create and assign it
 
 Create the issue on GitHub using the MCP GitHub tools (consistent with `work.md`, which notes all GitHub operations go through MCP because the `gh` CLI is not installed). Then:
-- **Assign it to the requesting user** - set the assignee via the MCP `update_issue` tool. Do not use `gh` CLI syntax such as `--assignee @me`.
+- **Assign it to the requesting user** - set the assignee via the MCP `issue_write` tool (the same tool `work.md` uses for issue updates). Do not use `gh` CLI syntax such as `--assignee @me`.
 
 Output the issue URL.
 
