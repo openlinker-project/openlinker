@@ -1,50 +1,20 @@
 import type { ReactElement } from 'react';
-import { useEffect } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { BENCH_PATH, resolveSessionSurface } from '../../shared/auth/session-surface';
 import { useSession } from '../../shared/auth/use-session';
 import { resolveNextPath } from '../../shared/lib/resolve-next-path';
 import { LoadingState } from '../../shared/ui/feedback-state';
-import { useSystemConfigQuery } from '../../features/system';
-import { captureMarketingLanding } from '../../features/demo';
-import { LanguageSwitch } from '../../shared/ui/language-switch';
+import { LanguageSwitch } from '../../features/language';
 import { useMessages } from '../../shared/i18n';
-
-const MARKETING_CAPTURE_PATHS = ['/login', '/register'];
 
 export function GuestLayout(): ReactElement {
   const copy = useMessages('app');
   const { isReady, session } = useSession();
-  const systemConfigQuery = useSystemConfigQuery();
   const location = useLocation();
-
-  // Marketing UTM capture — mounted here (rather than per-page) so it fires
-  // regardless of which of /login or /register a visitor actually lands on,
-  // but deliberately scoped to only those two paths: that's where
-  // `MarketingTrackingFootnote` discloses it, and `/forgot-password`,
-  // `/reset-password/:token`, and `/confirm-email/:token` are excluded on
-  // purpose — the latter two carry a single-use sensitive token as a path
-  // segment, and `captureMarketingLanding` sends the full `window.location`
-  // (including path) to PostHog, which would otherwise leak the token.
-  // Also skipped once the session is authenticated, so a visitor who is
-  // already signed in and about to be redirected away from /login never
-  // gets captured.
-  useEffect(() => {
-    if (!systemConfigQuery.isSuccess) {
-      return;
-    }
-    if (session.status === 'authenticated') {
-      return;
-    }
-    if (!MARKETING_CAPTURE_PATHS.includes(location.pathname)) {
-      return;
-    }
-    captureMarketingLanding(systemConfigQuery.data);
-  }, [systemConfigQuery.isSuccess, systemConfigQuery.data, session.status, location.pathname]);
 
   if (!isReady) {
     return (
-      <div className="guest-layout">
+      <div className="guest-layout guest-layout--pending">
         <LoadingState title={copy.loading.loading} message={copy.loading.checkingSession} />
       </div>
     );
@@ -65,10 +35,10 @@ export function GuestLayout(): ReactElement {
 
   return (
     <div className="guest-layout">
-      <div className="guest-layout__language">
-        <LanguageSwitch placement="down" />
-      </div>
       <div className="guest-card">
+        <div className="guest-card__language">
+          <LanguageSwitch placement="down" />
+        </div>
         <div className="guest-brand">
           <strong className="guest-brand__title">{copy.brand.name}</strong>
           <span className="guest-brand__subtitle">{copy.brand.tagline}</span>
