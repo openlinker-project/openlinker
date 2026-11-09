@@ -1831,18 +1831,22 @@ textarea,
    checked the shell's placeholder stays invisible for a moment, so a quick
    check shows the calm page background instead of a loader flashing past; a
    slow one shows the placeholder after 400 ms. `.shell--app` / `--pending`
-   keep this off the login page's blurred preview, which reuses the markup. */
+   keep this off the login page's blurred preview, which reuses the markup.
+   Every entrance here fills `backwards` only: a `both`/`forwards` fill keeps
+   the animation in effect after it ends, so the element would stay a stacking
+   context (and, for `transform`, the containing block of its fixed
+   descendants) for good, trapping a dropdown under the next block. */
 .shell--app {
-  animation: page-fade-in 320ms var(--ease-out) both;
+  animation: page-fade-in 320ms var(--ease-out) backwards;
 }
 
 .shell--pending,
 .guest-layout--pending {
-  animation: page-fade-in 240ms var(--ease-out) 400ms both;
+  animation: page-fade-in 240ms var(--ease-out) 400ms backwards;
 }
 
 .login-stage {
-  animation: page-fade-in 320ms var(--ease-out) both;
+  animation: page-fade-in 320ms var(--ease-out) backwards;
 }
 
 /* ── Content entrance (#4029) ──────────────────────────────────────────
@@ -1902,13 +1906,13 @@ textarea,
 
 .shell--app .shell-content .page-section:not(.page-section .page-section) > *,
 .reveal-stagger > * {
-  animation: content-rise 520ms var(--ease-out) both;
+  animation: content-rise 520ms var(--ease-out) backwards;
   animation-delay: calc(60ms + var(--rise-i) * 50ms);
 }
 
 /* Cards in a row start once their row has begun, then follow one another. */
 .shell--app .shell-content :is(.status-strip, .ds-grid) > * {
-  animation: content-rise 520ms var(--ease-out) both;
+  animation: content-rise 520ms var(--ease-out) backwards;
   animation-delay: calc(160ms + var(--rise-i) * 50ms);
 }
 
