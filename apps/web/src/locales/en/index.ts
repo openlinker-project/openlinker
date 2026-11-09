@@ -35,6 +35,8 @@ import fulfillmentAuthority from './fulfillment-authority.json';
 import inventory from './inventory.json';
 import invoicing from './invoicing.json';
 import listings from './listings.json';
+import login from './login.json';
+import loginPageSettings from './login-page-settings.json';
 import mailerSettings from './mailer-settings.json';
 import mappings from './mappings.json';
 import mcpTokens from './mcp-tokens.json';
@@ -78,6 +80,8 @@ export const en = {
   inventory,
   invoicing,
   listings,
+  login,
+  'login-page-settings': loginPageSettings,
   'mailer-settings': mailerSettings,
   mappings,
   'mcp-tokens': mcpTokens,
