@@ -14,22 +14,29 @@
  */
 import { z } from 'zod';
 
+import { interpolate, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import { HoldReasonValues } from '../../orders';
 
 export const FULFILLMENT_NOTE_MAX_LENGTH = 1000;
 
-export const fulfillmentTaskActionSchema = z.object({
-  reason: z
-    .enum(HoldReasonValues, { message: 'Choose why this fulfilment task is being held' })
-    .optional(),
-  note: z
-    .string()
-    .max(
-      FULFILLMENT_NOTE_MAX_LENGTH,
-      `Keep the note under ${FULFILLMENT_NOTE_MAX_LENGTH} characters`
-    )
-    .optional(),
-});
+type SchemaCopy = ResolvedCopy<Messages['fulfillment']>['fulfillmentTaskActionSchema'];
 
-export type FulfillmentTaskActionFormValues = z.input<typeof fulfillmentTaskActionSchema>;
-export type FulfillmentTaskActionSubmission = z.output<typeof fulfillmentTaskActionSchema>;
+/** Built per render from the active language's copy - messages never live at module level. */
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- the zod object type is inferred; spelling it out would duplicate the schema
+export function createFulfillmentTaskActionSchema(copy: SchemaCopy) {
+  return z.object({
+    reason: z.enum(HoldReasonValues, { message: copy.reasonRequired }).optional(),
+    note: z
+      .string()
+      .max(
+        FULFILLMENT_NOTE_MAX_LENGTH,
+        interpolate(copy.noteTooLong, { max: FULFILLMENT_NOTE_MAX_LENGTH })
+      )
+      .optional(),
+  });
+}
+
+type FulfillmentTaskActionSchema = ReturnType<typeof createFulfillmentTaskActionSchema>;
+
+export type FulfillmentTaskActionFormValues = z.input<FulfillmentTaskActionSchema>;
+export type FulfillmentTaskActionSubmission = z.output<FulfillmentTaskActionSchema>;

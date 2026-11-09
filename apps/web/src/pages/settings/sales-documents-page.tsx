@@ -26,17 +26,19 @@ import { useSession } from '../../shared/auth/use-session';
 import { ErrorState } from '../../shared/ui/feedback-state';
 import { HelpLink } from '../../shared/ui/help-link';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { useMessages } from '../../shared/i18n';
 import { SalesDocumentRuleEnginePanel, SalesDocumentsPanel } from '../../features/sales-documents';
 
 export function SalesDocumentsPage(): ReactElement {
   const { session } = useSession();
+  const copy = useMessages('settings').salesDocumentsPage;
 
   if (session.status === 'authenticated' && session.user?.role !== 'admin') {
     return (
-      <PageLayout eyebrow="Settings" title="Sales documents routing" description="Admin-only access.">
+      <PageLayout eyebrow={copy.eyebrow} title={copy.title} description={copy.adminOnly.description}>
         <ErrorState
-          title="Admin role required"
-          message="This page routes fiscal documents to a connection — it requires an admin session."
+          title={copy.adminOnly.title}
+          message={copy.adminOnly.message}
         />
       </PageLayout>
     );
@@ -44,10 +46,10 @@ export function SalesDocumentsPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow="Settings"
-      title="Sales documents routing"
-      description="Choose what each market issues, per country, and what each connected provider may issue. OpenLinker never decides which document an order legally needs."
-      backTo={{ to: '/settings', label: 'Settings' }}
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
+      backTo={{ to: '/settings', label: copy.backLabel }}
       actions={<HelpLink surfaceKey="sales-documents-routing" />}
     >
       <SalesDocumentRuleEnginePanel />

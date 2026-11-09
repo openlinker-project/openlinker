@@ -52,8 +52,12 @@ import { Select } from '../../../shared/ui/select';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
+import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
+import { usePlatform } from '../../../shared/plugins';
 
-const STEP_LABELS = ['Credentials', 'Sales documents', 'Review & connect'] as const;
+// Endpoint hosts, not prose: the same in every language.
+const SANDBOX_URL = 'https://sandbox.erli.dev';
+const PRODUCTION_URL = 'https://erli.pl';
 
 const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<ErliSetupFormValues>>> = [
   ['name', 'apiKey', 'environment'],
@@ -67,6 +71,15 @@ function maskSecret(secret: string): string {
 }
 
 export function ErliSetupForm(): ReactElement {
+  const copy = useMessages('connections').erliSetupForm;
+  const setupCopy = useMessages('connections').setup;
+  const platform = usePlatform('erli')?.displayName ?? copy.platformFallback;
+  const STEP_LABELS = [
+    copy.steps.credentials,
+    copy.steps.salesDocuments,
+    copy.steps.review,
+  ];
+  const format = useFormat();
   const createConnection = useCreateConnectionMutation();
   const testConnection = useTestConnectionMutation();
   const { showToast } = useToast();
@@ -136,8 +149,8 @@ export function ErliSetupForm(): ReactElement {
       setCreatedConnectionId(created.id);
       showToast({
         tone: 'success',
-        title: 'Connection created',
-        description: `Erli connection "${created.name}" was created.`,
+        title: copy.createdTitle,
+        description: interpolate(copy.createdDescription, { platform, name: created.name }),
       });
     } catch {
       return;
@@ -174,44 +187,46 @@ export function ErliSetupForm(): ReactElement {
       }
     >
       <form className="wizard-card" onSubmit={handleFormSubmit} noValidate>
-        <BackLink to="/connections/new" label="Connections" className="wizard-card__back" />
+        <BackLink to="/connections/new" label={setupCopy.connections} className="wizard-card__back" />
 
         {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
           <FormErrorSummary errors={validationMessages} />
         ) : null}
         {createConnection.error ? (
-          <Alert tone="error" title="Unable to create connection">
+          <Alert tone="error" title={copy.createError}>
             {createConnection.error.message}
           </Alert>
         ) : null}
 
         {stepIndex === 0 ? (
           <>
-          <Alert tone="info" title="Before you start">
-            In your Erli seller panel, generate a <strong>Shop API key</strong>. OpenLinker sends it as a
-            bearer token on every request to the Erli Shop API. The key is stored securely on the server
-            and only shown once.
+          <Alert tone="info" title={copy.beforeYouStart.title}>
+            {renderRich(
+              copy.beforeYouStart.body,
+              { strong: (text) => <strong>{text}</strong> },
+              { platform },
+            )}
           </Alert>
 
           <FormField
-            label="Connection name"
+            label={copy.fields.name.label}
             name="name"
             error={form.formState.errors.name?.message}
-            description="A label to identify this Erli account in OpenLinker."
+            description={interpolate(copy.fields.name.description, { platform })}
           >
             <Input
               {...form.register('name')}
-              placeholder="My Erli Store"
+              placeholder={interpolate(copy.fields.name.placeholder, { platform })}
               autoComplete="off"
               invalid={Boolean(form.formState.errors.name)}
             />
           </FormField>
 
           <FormField
-            label="API key"
+            label={copy.fields.apiKey.label}
             name="apiKey"
             error={form.formState.errors.apiKey?.message}
-            description="Your Erli Shop API key — generated in the Erli seller panel."
+            description={interpolate(copy.fields.apiKey.description, { platform })}
           >
             <Input
               {...form.register('apiKey')}
@@ -223,14 +238,14 @@ export function ErliSetupForm(): ReactElement {
           </FormField>
 
           <FormField
-            label="Environment"
+            label={copy.fields.environment.label}
             name="environment"
             error={form.formState.errors.environment?.message}
-            description="Choose Sandbox to test against Erli's sandbox before switching to production."
+            description={interpolate(copy.fields.environment.description, { platform })}
           >
             <Select {...form.register('environment')}>
-              <option value="sandbox">Sandbox - https://sandbox.erli.dev</option>
-              <option value="production">Production - https://erli.pl</option>
+              <option value="sandbox">{interpolate(copy.fields.environment.option, { name: copy.environments.sandbox, url: SANDBOX_URL })}</option>
+              <option value="production">{interpolate(copy.fields.environment.option, { name: copy.environments.production, url: PRODUCTION_URL })}</option>
             </Select>
           </FormField>
           </>
@@ -246,13 +261,13 @@ export function ErliSetupForm(): ReactElement {
 
         {stepIndex === 2 ? (
           <dl className="wizard-review-list">
-            <dt>Name</dt>
+            <dt>{copy.review.name}</dt>
             <dd>{values.name || '-'}</dd>
-            <dt>API key</dt>
+            <dt>{copy.fields.apiKey.label}</dt>
             <dd className="mono-text">{values.apiKey ? maskSecret(values.apiKey) : '-'}</dd>
-            <dt>Environment</dt>
-            <dd>{values.environment === 'production' ? 'Production' : 'Sandbox'}</dd>
-            <dt>Delivery on documents</dt>
+            <dt>{copy.fields.environment.label}</dt>
+            <dd>{values.environment === 'production' ? copy.environments.production : copy.environments.sandbox}</dd>
+            <dt>{copy.review.deliveryOnDocuments}</dt>
             <dd>{deliverySummary}</dd>
           </dl>
         ) : null}
@@ -262,23 +277,25 @@ export function ErliSetupForm(): ReactElement {
             {testResult ? (
               <Alert
                 tone={testResult.success ? 'success' : 'error'}
-                title={testResult.success ? 'Connection test passed' : 'Connection test failed'}
+                title={testResult.success ? copy.testPassed : copy.testFailed}
               >
                 {testResult.message}
-                {typeof testResult.latencyMs === 'number' ? ` (${testResult.latencyMs}ms)` : null}
+                {typeof testResult.latencyMs === 'number'
+                  ? ` ${interpolate(copy.latency, { ms: format.number(testResult.latencyMs) })}`
+                  : null}
               </Alert>
             ) : null}
             {testConnection.error ? (
-              <Alert tone="error" title="Unable to test connection">
+              <Alert tone="error" title={copy.testError}>
                 {testConnection.error.message}
               </Alert>
             ) : null}
             <div className="form-actions">
               <Button type="button" onClick={() => void onTest()} disabled={testConnection.isPending}>
-                {testConnection.isPending ? 'Testing…' : 'Test connection'}
+                {testConnection.isPending ? copy.testing : copy.test}
               </Button>
               <Button tone="secondary" type="button" onClick={() => void navigate('/connections')}>
-                Done
+                {copy.done}
               </Button>
             </div>
           </>
@@ -287,18 +304,18 @@ export function ErliSetupForm(): ReactElement {
             <div className="wizard-actions__group">
               {stepIndex > 0 ? (
                 <Button tone="secondary" type="button" onClick={goBack}>
-                  Back
+                  {setupCopy.back}
                 </Button>
               ) : null}
             </div>
             <div className="wizard-actions__group">
               {stepIndex < STEP_LABELS.length - 1 ? (
                 <Button key="next" type="button" onClick={() => void goNext()}>
-                  Next
+                  {setupCopy.next}
                 </Button>
               ) : (
                 <Button key="submit" type="submit" disabled={createConnection.isPending}>
-                  {createConnection.isPending ? 'Connecting…' : 'Connect Erli'}
+                  {createConnection.isPending ? copy.connecting : interpolate(copy.connect, { platform })}
                 </Button>
               )}
             </div>

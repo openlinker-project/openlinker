@@ -8,11 +8,12 @@
  * is clicked through by reflex and protects nothing, so this returns an empty
  * array when nothing moved and the page opens no modal at all.
  *
- * Pure, and tested on its own — the sentences an operator reads before a save
+ * Pure, and tested on its own - the sentences an operator reads before a save
  * are as much the feature as the numbers behind them.
  *
  * @module apps/web/src/features/settings/lib
  */
+import { getMessages, interpolate } from '../../../shared/i18n';
 import type {
   OperationalSettingField,
   OperationalSettingKey,
@@ -115,12 +116,12 @@ export const CADENCE_APPLIES_AT_NEXT_SCHEDULER_START = 'next-scheduler-start';
 /**
  * Deliberately claims no duration. The API reports THAT a cadence waits for
  * the background service, never how long that takes, and an invented "within
- * a minute" is a promise nothing here can keep.
+ * a minute" is a promise nothing here can keep. Read when called, so it
+ * follows the active language.
  */
-export const CADENCE_TIMING_NOTE =
-  'This one does not start straight away. The new schedule is picked up the next time ' +
-  'OpenLinker\'s background service restarts. Everything else on this page applies from the ' +
-  'next run.';
+export function cadenceTimingNote(): string {
+  return getMessages('settings').syncPacingChanges.cadenceTimingNote;
+}
 
 function projectionFor(
   values: SyncPacingValues,
@@ -138,16 +139,19 @@ function projectionFor(
   });
 }
 
-function passSentence(before: number | null, after: number | null, noun: string): string {
+type PassKind = 'cataloguePass' | 'stockPass' | 'deletionWindow';
+
+function passSentence(before: number | null, after: number | null, kind: PassKind): string {
+  const copy = getMessages('settings').syncPacingChanges[kind];
   const from = formatDays(before);
   const to = formatDays(after);
   if (from === null || to === null) {
-    return `OpenLinker does not know how many products this shop holds, so ${noun} cannot be worked out yet.`;
+    return copy.unknown;
   }
   if (from === to) {
-    return `${noun} stays at about ${to}.`;
+    return interpolate(copy.same, { to });
   }
-  return `${noun} goes from about ${from} to about ${to}.`;
+  return interpolate(copy.changed, { from, to });
 }
 
 /**
@@ -197,63 +201,75 @@ export function diffSyncPacing(
   const before = projectionFor(saved, context);
   const after = projectionFor(draft, context);
   const changes: SyncPacingChange[] = [];
+  const copy = getMessages('settings').syncPacingChanges;
 
   if (draft.catalogueSweepBudget !== saved.catalogueSweepBudget) {
     const fits = after.catalogueRunSeconds <= context.hostProcessLimitSeconds;
     changes.push({
       field: 'catalogueSweepBudget',
-      label: 'Catalogue: products per run',
+      label: copy.catalogueSweepBudget.label,
       aboveRecommended: crossingFor('catalogueSweepBudget', draft.catalogueSweepBudget, context),
       fromLabel: String(saved.catalogueSweepBudget),
       toLabel: String(draft.catalogueSweepBudget),
-      effect:
-        `A run goes from about ${formatSeconds(before.catalogueRunSeconds)} to about ` +
-        `${formatSeconds(after.catalogueRunSeconds)}. ` +
-        `${passSentence(before.cataloguePassDays, after.cataloguePassDays, 'A full pass')} ` +
-        `Your host stops processes at ${formatSeconds(context.hostProcessLimitSeconds)}, so this ` +
-        `${fits ? 'still fits' : 'will not fit'}.`,
+      effect: [
+        interpolate(copy.catalogueSweepBudget.runChange, {
+          from: formatSeconds(before.catalogueRunSeconds),
+          to: formatSeconds(after.catalogueRunSeconds),
+        }),
+        passSentence(before.cataloguePassDays, after.cataloguePassDays, 'cataloguePass'),
+        interpolate(
+          fits ? copy.catalogueSweepBudget.hostLimitFits : copy.catalogueSweepBudget.hostLimitExceeded,
+          { limit: formatSeconds(context.hostProcessLimitSeconds) }
+        ),
+      ].join(' '),
     });
   }
 
   if (draft.inventorySweepBudget !== saved.inventorySweepBudget) {
     changes.push({
       field: 'inventorySweepBudget',
-      label: 'Stock: products per run',
+      label: copy.inventorySweepBudget.label,
       aboveRecommended: crossingFor('inventorySweepBudget', draft.inventorySweepBudget, context),
       fromLabel: String(saved.inventorySweepBudget),
       toLabel: String(draft.inventorySweepBudget),
-      effect:
-        `Each run asks the shop for about ${String(after.stockRequestsPerRun)} things instead of ` +
-        `${String(before.stockRequestsPerRun)}. ` +
-        `${passSentence(before.stockPassDays, after.stockPassDays, 'A full stock pass')}`,
+      effect: [
+        interpolate(copy.inventorySweepBudget.requestChange, {
+          to: String(after.stockRequestsPerRun),
+          from: String(before.stockRequestsPerRun),
+        }),
+        passSentence(before.stockPassDays, after.stockPassDays, 'stockPass'),
+      ].join(' '),
     });
   }
 
   if (draft.sweepPageSize !== saved.sweepPageSize) {
     changes.push({
       field: 'sweepPageSize',
-      label: 'Products per shop request',
+      label: copy.sweepPageSize.label,
       aboveRecommended: crossingFor('sweepPageSize', draft.sweepPageSize, context),
       fromLabel: String(saved.sweepPageSize),
       toLabel: String(draft.sweepPageSize),
-      effect:
-        `OpenLinker asks the shop for ${String(draft.sweepPageSize)} products at a time instead of ` +
-        `${String(saved.sweepPageSize)}. Asking for fewer at a time means more requests for the ` +
-        `same work; it does not change how much OpenLinker gets through.`,
+      effect: [
+        interpolate(copy.sweepPageSize.pageChange, {
+          to: String(draft.sweepPageSize),
+          from: String(saved.sweepPageSize),
+        }),
+        copy.sweepPageSize.fewerMeansMore,
+      ].join(' '),
     });
   }
 
   if (draft.deletionAuditBudget !== saved.deletionAuditBudget) {
     changes.push({
       field: 'deletionAuditBudget',
-      label: 'Deleted products: checked per run',
+      label: copy.deletionAuditBudget.label,
       aboveRecommended: crossingFor('deletionAuditBudget', draft.deletionAuditBudget, context),
       fromLabel: String(saved.deletionAuditBudget),
       toLabel: String(draft.deletionAuditBudget),
       effect: passSentence(
         before.deletionWindowDays,
         after.deletionWindowDays,
-        'How long a deleted product can keep selling'
+        'deletionWindow'
       ),
     });
   }
@@ -261,17 +277,17 @@ export function diffSyncPacing(
   if (draft.deletionAuditCadence !== saved.deletionAuditCadence) {
     changes.push({
       field: 'deletionAuditCadence',
-      label: 'Deleted products: how often OpenLinker checks',
+      label: copy.deletionAuditCadence.label,
       fromLabel: describeCadence(saved.deletionAuditCadence),
       toLabel: describeCadence(draft.deletionAuditCadence),
       effect: passSentence(
         before.deletionWindowDays,
         after.deletionWindowDays,
-        'How long a deleted product can keep selling'
+        'deletionWindow'
       ),
       timing:
         context.cadenceAppliesAt === CADENCE_APPLIES_AT_NEXT_SCHEDULER_START
-          ? CADENCE_TIMING_NOTE
+          ? copy.cadenceTimingNote
           : undefined,
     });
   }

@@ -1,0 +1,417 @@
+{
+  "deletionAuditCadence": {
+    "everyHours": {
+      "one": "Every hour",
+      "other": "Every {n} hours"
+    },
+    "everyMinutes": {
+      "one": "Every minute",
+      "other": "Every {n} minutes"
+    },
+    "options": {
+      "every15Minutes": "Every 15 minutes",
+      "every30Minutes": "Every 30 minutes",
+      "every4Hours": "Every 4 hours",
+      "everyHour": "Every hour",
+      "onceADay": "Once a day"
+    }
+  },
+  "inventoryMovementRetentionSection": {
+    "changed": "Stock history retention changed",
+    "eyebrow": "Housekeeping",
+    "field": {
+      "ariaLabel": "Days stock movement history is kept",
+      "description": "How long a stock movement (a sale, a return restock, a correction, a change found at a sync) stays in the history. Older rows are deleted in small batches.",
+      "label": "Stock history kept for"
+    },
+    "save": "Save history retention",
+    "savedOnItsOwn": "saved on its own",
+    "savesOnItsOwn": "Saves on its own, no confirmation.",
+    "title": "Stock history retention",
+    "undo": "Undo",
+    "unitDays": "days",
+    "useDefault": "Use the default"
+  },
+  "operationalSettingsPage": {
+    "adminOnly": {
+      "description": "Admin-only access.",
+      "message": "This page changes how hard OpenLinker works your shop - it requires an admin session.",
+      "title": "Admin role required"
+    },
+    "catalogue": {
+      "assumedCadence": "every 20 min (assumed)",
+      "budget": {
+        "ariaLabel": "Products per catalogue run",
+        "description": "How many products OpenLinker reads from the shop in one run. Raise it and a full pass finishes sooner, but each run leans harder on the shop."
+      },
+      "eyebrow": "Catalogue",
+      "pageSize": {
+        "ariaLabel": "Products per shop request",
+        "description": "How many products OpenLinker asks the shop for in one request. Asking for fewer means more requests for the same work; asking for more makes a single failed request cost more.",
+        "label": "Products per shop request"
+      },
+      "title": "Product sweep"
+    },
+    "deletions": {
+      "budget": {
+        "ariaLabel": "Products checked per deletion-audit run",
+        "description": "How many products are checked in one run.",
+        "label": "Products checked per run"
+      },
+      "cadenceDescription": "Together with the number above, this decides how long a deleted product can keep selling. It cannot be turned off.",
+      "cadenceLabel": "How often it runs",
+      "cadenceNotSaved": "{cadence} (not saved yet)",
+      "cadenceWithSource": "{cadence} ({source})",
+      "changedFrom": "changed from {cadence}",
+      "eyebrow": "Deleted products",
+      "intro": "OpenLinker walks its own list of products and checks each one against the shop, so a deletion is found even when nothing told us about it. Some shops do tell us - a shop module can report a delete as it happens - and where they do, the audit is the backstop rather than the only route. This page cannot tell which is true for a given connection.",
+      "noOffSwitch": "no off switch here",
+      "noSwitch": "This page has no switch to turn the audit off, because it is what stops a deleted product's offers from selling. It can still be turned off in OpenLinker's server configuration, and this page cannot see that.",
+      "sourceDefault": "default",
+      "sourceEnv": "from a server setting",
+      "sourceSetting": "you set this",
+      "title": "Deletion audit",
+      "whenThisStarts": "When this starts"
+    },
+    "description": "How hard OpenLinker works your shop, and how long a full pass takes. Changing these trades shop load against how quickly OpenLinker notices a change.",
+    "error": {
+      "retry": "Retry",
+      "title": "Unable to load sync pacing",
+      "unknown": "Unknown error"
+    },
+    "eyebrow": "Settings",
+    "footer": {
+      "retentionChanged": "Job retention changed",
+      "retentionSave": "Save retention",
+      "retentionUndo": "Undo",
+      "save": "Save changes",
+      "savesOnItsOwn": "Saves on its own, no confirmation.",
+      "undo": "Undo my edits"
+    },
+    "hosting": {
+      "catalogueSize": "Products OpenLinker holds",
+      "catalogueSizeDescription": "Used only to work out how long a full pass takes. This is what OpenLinker has copied over so far, which during a first sync is fewer than your shop holds.",
+      "eyebrow": "Your server",
+      "fromCatalogue": "read from your catalogue",
+      "keptInBrowser": "kept in this browser",
+      "meta": "Used by the calculator",
+      "notKnownYet": "not known yet",
+      "processTimeLimit": "Process time limit",
+      "processTimeLimitAria": "Process time limit in seconds",
+      "processTimeLimitDescription": "How long your host lets a single process run before killing it. Shared hosting is often 300 seconds. Ask your provider, or leave it at 300. OpenLinker cannot read it from your host.",
+      "secondsUnit": "s",
+      "title": "Hosting limits"
+    },
+    "loading": {
+      "message": "Reading the values in force…",
+      "title": "Loading sync pacing"
+    },
+    "mobileBar": {
+      "ariaLabel": "Unsaved changes",
+      "save": "Save"
+    },
+    "notSaved": "The change was not saved",
+    "productsPerRun": "Products per run",
+    "saveStatus": {
+      "noChanges": "No changes yet.",
+      "oneUnacknowledged": "One value is past what we suggest. Tick the box next to it to continue.",
+      "ready": "You will see what each one does before it saves.",
+      "someUnacknowledged": "Some values are past what we suggest. Tick the box next to each of them to continue."
+    },
+    "savedToast": {
+      "description": "The next run uses the new values.",
+      "descriptionWithCadence": "The next run uses the new values. How often deleted products are checked changes when the background service next restarts.",
+      "title": "Sync pacing saved"
+    },
+    "sections": {
+      "catalogue": "Catalogue",
+      "deletions": "Deleted products",
+      "hosting": "Hosting",
+      "inventoryHistory": "Stock history",
+      "retention": "Job retention",
+      "stock": "Stock",
+      "stockStaleness": "Stale stock"
+    },
+    "sectionsNavLabel": "Sections on this page",
+    "stock": {
+      "assumedCadence": "every 15 min (assumed)",
+      "budget": {
+        "ariaLabel": "Products per stock run",
+        "description": "How many products have their stock re-read in one run. On a shop that does not push stock changes to OpenLinker, this is the only thing that notices a quantity change."
+      },
+      "eyebrow": "Stock",
+      "title": "Stock sweep"
+    },
+    "title": "Sync pacing",
+    "unsavedChanges": {
+      "one": "{n} unsaved change",
+      "other": "{n} unsaved changes"
+    },
+    "workerMayDiffer": {
+      "body": "Values you have not saved come from this server's settings or from OpenLinker's defaults. The part of OpenLinker that does the syncing runs as a separate process and reads its own settings, so it may be using something else. Saving a value here makes it definite for both.",
+      "title": "Some of these are not saved here yet"
+    }
+  },
+  "pacingValueField": {
+    "aboveOurRecommendation": "{source}, above our recommendation",
+    "acknowledge": "I understand, and I want {value} anyway. My server can take it.",
+    "changedFrom": "changed from {value}",
+    "notSavedYet": "{value} (not saved yet)",
+    "pastSuggestedFallback": "This is above the maximum OpenLinker suggests.",
+    "pastSuggestedTitle": "Past what we suggest",
+    "source": {
+      "default": "default",
+      "env": "from this server's environment",
+      "setting": "you set this"
+    },
+    "suggestedMax": "suggested ≤ {max}",
+    "valueWithSource": "{value} ({source})"
+  },
+  "salesDocumentsPage": {
+    "adminOnly": {
+      "description": "Admin-only access.",
+      "message": "This page routes fiscal documents to a connection - it requires an admin session.",
+      "title": "Admin role required"
+    },
+    "backLabel": "Settings",
+    "description": "Choose what each market issues, per country, and what each connected provider may issue. OpenLinker never decides which document an order legally needs.",
+    "eyebrow": "Settings",
+    "title": "Sales documents routing"
+  },
+  "settingsPage": {
+    "account": {
+      "anonymous": "No active session.",
+      "email": "Email",
+      "eyebrow": "Session",
+      "loading": "Loading session…",
+      "meta": "Read-only",
+      "role": "Role",
+      "title": "Account",
+      "username": "Username"
+    },
+    "chips": {
+      "account": "Account",
+      "buyerEmails": "Buyer emails",
+      "currency": "Currency",
+      "environment": "Environment",
+      "inventoryLocations": "Inventory locations",
+      "mailer": "Mailer",
+      "mcpTokens": "MCP tokens",
+      "orderTags": "Order tags",
+      "posthog": "PostHog",
+      "salesDocuments": "Sales documents routing",
+      "sourcingRules": "Sourcing rules",
+      "syncPacing": "Sync pacing",
+      "upcoming": "Upcoming",
+      "whoDecides": "Who decides what"
+    },
+    "comingSoon": "Coming soon",
+    "description": "Platform configuration, session context, and upcoming operator preferences.",
+    "environment": {
+      "apiBaseUrl": "API base URL",
+      "environment": "Environment",
+      "eyebrow": "Runtime",
+      "meta": "Build-time config",
+      "title": "Environment"
+    },
+    "eyebrow": "Settings",
+    "notifications": {
+      "body": "Sync failure alerts, manual-review triggers, and threshold notifications will be configurable here.",
+      "eyebrow": "Alerts",
+      "title": "Notifications"
+    },
+    "organization": {
+      "body": "Team members, roles, and workspace-level settings will be managed here.",
+      "eyebrow": "Workspace",
+      "title": "Organization"
+    },
+    "preferences": {
+      "body": "Timezone, date format, and display density options will be available here.",
+      "eyebrow": "Display",
+      "title": "Preferences"
+    },
+    "title": "Settings"
+  },
+  "stockStalenessSection": {
+    "eyebrow": "Stock view",
+    "field": {
+      "ariaLabel": "Hours before a stock figure is flagged as stale",
+      "description": "How long a stock figure may go without a fresh read from the master before the stock view marks it stale.",
+      "label": "Flag stock as stale after"
+    },
+    "reset": "Reset",
+    "save": "Save threshold",
+    "savedOnItsOwn": "saved on its own",
+    "savedToast": {
+      "description": "The stock view uses the new threshold straight away.",
+      "title": "Stale stock warning saved"
+    },
+    "title": "Stale stock warning",
+    "unitHours": "hours"
+  },
+  "syncJobRetentionSection": {
+    "completed": {
+      "ariaLabel": "Days a completed sync job is kept",
+      "description": "How long a finished (succeeded) sync job's record is kept for troubleshooting, and to keep it from being re-run twice by accident. Bounded 30-365 days.",
+      "label": "Completed jobs kept for"
+    },
+    "eyebrow": "Housekeeping",
+    "failed": {
+      "ariaLabel": "Days a permanently-failed sync job is kept",
+      "description": "How long a job that ran out of retries is kept. It is the only record that the work was lost, so the default is longer than a completed job's. Bounded 30-365 days.",
+      "label": "Failed jobs kept for"
+    },
+    "savedOnItsOwn": "saved on its own",
+    "title": "Job retention",
+    "unitDays": "days"
+  },
+  "syncPacingChanges": {
+    "cadenceTimingNote": "This one does not start straight away. The new schedule is picked up the next time OpenLinker's background service restarts. Everything else on this page applies from the next run.",
+    "cataloguePass": {
+      "changed": "A full pass goes from about {from} to about {to}.",
+      "same": "A full pass stays at about {to}.",
+      "unknown": "OpenLinker does not know how many products this shop holds, so a full pass cannot be worked out yet."
+    },
+    "catalogueSweepBudget": {
+      "hostLimitExceeded": "Your host stops processes at {limit}, so this will not fit.",
+      "hostLimitFits": "Your host stops processes at {limit}, so this still fits.",
+      "label": "Catalogue: products per run",
+      "runChange": "A run goes from about {from} to about {to}."
+    },
+    "deletionAuditBudget": {
+      "label": "Deleted products: checked per run"
+    },
+    "deletionAuditCadence": {
+      "label": "Deleted products: how often OpenLinker checks"
+    },
+    "deletionWindow": {
+      "changed": "How long a deleted product can keep selling goes from about {from} to about {to}.",
+      "same": "How long a deleted product can keep selling stays at about {to}.",
+      "unknown": "OpenLinker does not know how many products this shop holds, so how long a deleted product can keep selling cannot be worked out yet."
+    },
+    "inventorySweepBudget": {
+      "label": "Stock: products per run",
+      "requestChange": "Each run asks the shop for about {to} things instead of {from}."
+    },
+    "stockPass": {
+      "changed": "A full stock pass goes from about {from} to about {to}.",
+      "same": "A full stock pass stays at about {to}.",
+      "unknown": "OpenLinker does not know how many products this shop holds, so a full stock pass cannot be worked out yet."
+    },
+    "sweepPageSize": {
+      "fewerMeansMore": "Asking for fewer at a time means more requests for the same work; it does not change how much OpenLinker gets through.",
+      "label": "Products per shop request",
+      "pageChange": "OpenLinker asks the shop for {to} products at a time instead of {from}."
+    }
+  },
+  "syncPacingConfirmDialog": {
+    "aboveRecommended": "Above the {max} we suggest.",
+    "description": {
+      "one": "One setting changed. Everything else stays as it is.",
+      "other": "{n} settings changed. Everything else stays as it is."
+    },
+    "keepEditing": "Keep editing",
+    "save": "Save changes",
+    "saving": "Saving…",
+    "title": "Save these changes?",
+    "worseBody": "A product deleted in your shop will now keep selling on your marketplaces for longer than it does today. Nothing else in OpenLinker catches it.",
+    "worseTitle": "One change makes things worse"
+  },
+  "syncPacingModel": {
+    "days": "{n} d",
+    "hours": "{n} h",
+    "seconds": "{n} s"
+  },
+  "syncPacingRail": {
+    "ariaLabel": "Summary of these settings",
+    "assumedCatalogueCadence": "every 20 min (assumed)",
+    "assumedStockCadence": "every 15 min (assumed)",
+    "catalogue": {
+      "fullPass": "Full catalogue pass",
+      "productsPerRequest": "Products per shop request",
+      "title": "Catalogue sweep"
+    },
+    "caveats": {
+      "notWhereItBreaks": "Not where your shop breaks. These figures come from OpenLinker's own pacing, never from pushing a shop until it failed. They show load, they do not predict an outage.",
+      "oneService": "One background service. If you run two, every request count here doubles.",
+      "sizeKnown": "Pass lengths count the products OpenLinker has already copied over, not the products your shop holds. While a first sync is still running the real pass is longer, often far longer. The per-run figures are exact either way.",
+      "sizeUnknown": "OpenLinker does not know yet how many products this shop holds, so pass lengths cannot be worked out. The per-run figures are still exact.",
+      "summary": "What these numbers cannot tell you",
+      "testCatalogue": "Measured on a test catalogue of 100 000 products, 3 variants each, 9 categories, no bundles. Your shop will differ."
+    },
+    "changesTo": "changes to",
+    "days": {
+      "one": "{n} day",
+      "other": "{n} days"
+    },
+    "deletions": {
+      "checkedPerRun": "Products checked per run",
+      "fullCycle": "Full audit cycle",
+      "fullCycleHint": "The longest a deleted product can keep selling when the shop does not report the deletion itself.",
+      "title": "Deletion audit"
+    },
+    "edited": "edited",
+    "eyebrow": "Summary",
+    "hosting": {
+      "cutShort": "<strong>This run will be cut short.</strong> At {budget} products a run takes about {run}, past your host's {limit}. Try {suggestion} or fewer.",
+      "keptInBrowser": "Kept in this browser.",
+      "longestRun": "Longest run (catalogue)",
+      "overlap": "<strong>Runs will overlap.</strong> A run takes about {run}, but the next one starts after {window}.",
+      "processTimeLimit": "Process time limit",
+      "title": "Hosting"
+    },
+    "lede": "Live for what you have typed. Changed rows show the saved value first.",
+    "productsPerRun": "Products per run",
+    "retention": {
+      "cleanUpHint": "Older job records are removed by OpenLinker's regular clean-up.",
+      "completedKept": "Completed jobs kept for",
+      "failedKept": "Failed jobs kept for",
+      "title": "Job retention"
+    },
+    "runs": "Runs",
+    "shopRequestsPerRun": "Shop requests per run",
+    "stock": {
+      "fullPass": "Full stock pass",
+      "title": "Stock sweep"
+    },
+    "title": "What these values do"
+  },
+  "syncPacingTile": {
+    "adjust": "Adjust pacing",
+    "adminOnly": "Admin only",
+    "cataloguePerRun": "Products per catalogue run",
+    "description": "How hard OpenLinker works your shop, and how long a deleted product can keep selling.",
+    "eyebrow": "Shop load",
+    "sourceDefault": "default",
+    "sourceEnv": "from a server setting",
+    "sourceSetting": "you set this",
+    "title": "Sync pacing",
+    "valueWithSource": "{value} ({source})"
+  },
+  "tickBudgetBar": {
+    "ariaHostLimit": "Your host stops processes at {limit}.",
+    "ariaHostLimitPassed": "Your host stops processes at {limit}, which this run would pass.",
+    "ariaNext": "The next one starts after {window}.",
+    "ariaRun": "A run is projected to take {run}.",
+    "hostStopsAt": "host stops at {limit}",
+    "nextRun": "{window} (next run)",
+    "runLength": "Run length",
+    "runOfWindow": "{run} of {window}"
+  },
+  "useInventoryMovementRetentionDraft": {
+    "resetToast": {
+      "description": "The default window applies from the next clean-up.",
+      "title": "History retention reset"
+    },
+    "savedToast": {
+      "description": "The next clean-up uses the new window.",
+      "title": "History retention saved"
+    }
+  },
+  "useSyncJobRetentionDraft": {
+    "savedToast": {
+      "description": "The next clean-up uses the new windows.",
+      "title": "Job retention saved"
+    }
+  }
+}

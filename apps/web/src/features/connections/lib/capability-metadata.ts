@@ -12,31 +12,25 @@
  *
  * @module features/connections/lib
  */
-import type { CoreCapability } from '../api/connections.types';
+import { getMessages, interpolate } from '../../../shared/i18n';
+import { CORE_CAPABILITY_VALUES, type CoreCapability } from '../api/connections.types';
 
-export const CAPABILITY_HELP: Record<CoreCapability, string> = {
-  ProductMaster:
-    'Read the product catalog (variants, attributes, categories) from this connection.',
-  InventoryMaster: 'Read stock levels from this connection as the inventory source of truth.',
-  OrderProcessorManager:
-    'Create and manage orders in this connection (typically the destination shop).',
-  OrderSource:
-    'Fetch new orders from this connection (disable if orders come from a marketplace instead).',
-  OfferManager: 'Manage offers and listings on this marketplace connection.',
-  ProductPublisher:
-    'Publish and manage shop listings owned by this connection (cross-platform listing).',
-  CategoryProvisioner:
-    'Create or resolve destination categories when publishing listings to this connection.',
-  Invoicing: 'Issue and manage fiscal documents (invoices) through this connection.',
-  Fiscalization:
-    'Register a completed sale with this connection, which performs or brokers the fiscal registration. OpenLinker never decides whether an order requires one.',
-  ReturnsAuthority:
-    'Decides what happens to goods a customer sends back — whether they go back on sale, and who approves that.',
-  AvailabilityAuthority:
-    'Decides how much of each product is sellable, overriding the stock figure OpenLinker would otherwise compute.',
-  FulfillmentExecutor:
-    'Picks, packs and ships the work OpenLinker hands it, and reports progress back. One holder at a time per piece of work.',
-};
+/**
+ * Help text per capability, read from `connections.capabilityHelp` in the
+ * active language each time an entry is read.
+ */
+export const CAPABILITY_HELP = Object.defineProperties(
+  {} as Record<CoreCapability, string>,
+  Object.fromEntries(
+    CORE_CAPABILITY_VALUES.map((capability) => [
+      capability,
+      {
+        enumerable: true,
+        get: (): string => getMessages('connections').capabilityHelp[capability],
+      },
+    ]),
+  ),
+);
 
 /**
  * Pairs of capabilities that must never be enabled together on one connection.
@@ -73,5 +67,7 @@ export function hasCapabilityConflict(capabilities: readonly string[]): boolean 
  * exclusivity conflict.
  */
 export function capabilityConflictMessage(conflictingCapability: string): string {
-  return `Unavailable while ${conflictingCapability} is selected - the inventory source of truth cannot also be a stock write-back target.`;
+  return interpolate(getMessages('connections').capabilityMetadata.conflict, {
+    capability: conflictingCapability,
+  });
 }

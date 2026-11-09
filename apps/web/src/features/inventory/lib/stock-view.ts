@@ -8,6 +8,7 @@
  *
  * @module apps/web/src/features/inventory/lib
  */
+import { formatPlural, getLocale, getMessages, interpolate } from '../../../shared/i18n';
 import { deriveStockStatus, type StockStatus } from '../../products';
 import type { StockViewHold, StockViewVariant } from '../api/inventory.types';
 
@@ -38,11 +39,23 @@ export function isMultiLocation(variant: StockViewVariant): boolean {
 
 /** "7 h ago" / "35 min ago" from a staleness in milliseconds. */
 export function formatStaleness(ms: number): string {
+  return stalenessText(ms, getMessages('inventory').stockView.staleness);
+}
+
+/** The same age without "ago", for a sentence that already says "for". */
+export function formatStalenessDuration(ms: number): string {
+  return stalenessText(ms, getMessages('inventory').stockView.stalenessDuration);
+}
+
+function stalenessText(
+  ms: number,
+  copy: { minutes: string; hours: string; days: { one: string; other: string } },
+): string {
   const minutes = Math.max(0, Math.round(ms / 60_000));
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 60) return interpolate(copy.minutes, { n: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours} h ago`;
-  return `${Math.round(hours / 24)} days ago`;
+  if (hours < 48) return interpolate(copy.hours, { n: hours });
+  return formatPlural(Math.round(hours / 24), copy.days, getLocale());
 }
 
 export function publishedHolds(holds: readonly StockViewHold[] | null): StockViewHold[] {
@@ -90,8 +103,11 @@ export function summarizeStock(variants: readonly StockViewVariant[]): StockSumm
 export function describeChannelRule(
   rule: { stockSafetyBuffer: number; stockZeroThreshold: number } | null,
 ): string {
-  const parts: string[] = [];
-  if (rule && rule.stockSafetyBuffer > 0) parts.push(`Keeps ${rule.stockSafetyBuffer} back (safety buffer)`);
-  if (rule && rule.stockZeroThreshold > 0) parts.push(`Shows 0 below ${rule.stockZeroThreshold} units`);
-  return parts.length > 0 ? parts.join('. ') : 'No extra rules';
+  const copy = getMessages('inventory').stockView.channelRule;
+  const buffer =
+    rule && rule.stockSafetyBuffer > 0 ? interpolate(copy.buffer, { n: rule.stockSafetyBuffer }) : null;
+  const zero =
+    rule && rule.stockZeroThreshold > 0 ? interpolate(copy.zeroThreshold, { n: rule.stockZeroThreshold }) : null;
+  if (buffer && zero) return interpolate(copy.joined, { first: buffer, second: zero });
+  return buffer ?? zero ?? copy.none;
 }

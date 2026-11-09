@@ -12,6 +12,9 @@
  *   `deriveFulfillment` …, #924/#930): per-destination counts + fulfillment
  *   state for the single-order header.
  *
+ * The words live in `orders.orderHealth`. Each function takes the namespace,
+ * defaulting to the active language, so a caller outside React need not pass it.
+ *
  * @module apps/web/src/features/orders/lib
  */
 import {
@@ -25,9 +28,11 @@ import {
   type FulfillmentRollupStateValue,
 } from '../api/orders.types';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
-import { resolveDestinationRoutingCopy } from './destination-routing-copy';
+import { getMessages, interpolate, type Messages, type ResolvedCopy } from '../../../shared/i18n';
+import { resolveDestinationRoutingCopy } from './destination-routing';
 import { isHandledInOpenLinker } from './handled-in-openlinker';
-import { HANDLED_IN_OPENLINKER_COPY } from './handled-in-openlinker.copy';
+
+type OrdersCopy = ResolvedCopy<Messages['orders']>;
 
 // ── List-row health classification (#929) ──────────────────────────────────
 // CANONICAL PRECEDENCE (highest wins) — single FE source of truth and the twin
@@ -53,48 +58,47 @@ export interface OrderHealthView {
   reason?: string;
 }
 
-/** Static label + tone per bucket. Shared by the row badge and the KPI segments. */
-export const ORDER_HEALTH_META: Record<OrderHealthValue, { label: string; tone: StatusBadgeTone }> =
-  {
-    source_deleted: { label: 'Source deleted', tone: 'error' },
-    awaiting_mapping: { label: 'Awaiting mapping', tone: 'warning' },
-    needs_attention: { label: 'Sync failed', tone: 'error' },
-    synced: { label: 'Synced', tone: 'success' },
-    awaiting_dispatch: { label: 'Awaiting dispatch', tone: 'info' },
-  };
+/** Tone per bucket. The label is `orders.orderHealth.badges[bucket]`. */
+export const ORDER_HEALTH_TONE: Record<OrderHealthValue, StatusBadgeTone> = {
+  source_deleted: 'error',
+  awaiting_mapping: 'warning',
+  needs_attention: 'error',
+  synced: 'success',
+  awaiting_dispatch: 'info',
+};
+
+function healthView(
+  key: OrderHealthValue,
+  copy: OrdersCopy,
+  reason?: string
+): OrderHealthView {
+  const view: OrderHealthView = { key, label: copy.orderHealth.badges[key], tone: ORDER_HEALTH_TONE[key] };
+  return reason === undefined ? view : { ...view, reason };
+}
 
 /**
  * Classify an order into exactly one health bucket. Pure function of the
- * record's own already-loaded fields — no I/O.
+ * record's own already-loaded fields - no I/O.
  */
-export function deriveOrderHealth(order: OrderRecord): OrderHealthView {
+export function deriveOrderHealth(
+  order: OrderRecord,
+  copy: OrdersCopy = getMessages('orders')
+): OrderHealthView {
   if (order.recordStatus === 'source_deleted') {
-    return {
-      key: 'source_deleted',
-      ...ORDER_HEALTH_META.source_deleted,
-      reason: order.mappingFailureReason ?? undefined,
-    };
+    return healthView('source_deleted', copy, order.mappingFailureReason ?? undefined);
   }
 
   if (order.recordStatus === 'awaiting_mapping') {
-    return {
-      key: 'awaiting_mapping',
-      ...ORDER_HEALTH_META.awaiting_mapping,
-      reason: order.mappingFailureReason ?? undefined,
-    };
+    return healthView('awaiting_mapping', copy, order.mappingFailureReason ?? undefined);
   }
 
   const failed = order.syncStatus.find((s) => s.status === 'failed');
   if (failed) {
-    return {
-      key: 'needs_attention',
-      ...ORDER_HEALTH_META.needs_attention,
-      reason: failed.error ?? undefined,
-    };
+    return healthView('needs_attention', copy, failed.error ?? undefined);
   }
 
   if (order.syncStatus.some((s) => s.status === 'synced')) {
-    return { key: 'synced', ...ORDER_HEALTH_META.synced };
+    return healthView('synced', copy);
   }
 
   // #3482 - an order OpenLinker handles itself has no destination rows, so it used
@@ -105,10 +109,10 @@ export function deriveOrderHealth(order: OrderRecord): OrderHealthView {
     isHandledInOpenLinker(order) &&
     (order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered')
   ) {
-    return { key: 'synced', ...ORDER_HEALTH_META.synced };
+    return healthView('synced', copy);
   }
 
-  return { key: 'awaiting_dispatch', ...ORDER_HEALTH_META.awaiting_dispatch };
+  return healthView('awaiting_dispatch', copy);
 }
 
 // ── Detail-header rollup + fulfillment (#924/#930) ──────────────────────────
@@ -165,19 +169,21 @@ export function deriveHealthLevel(rollup: SyncRollup): OrderHealthLevel {
 export function healthLabel(
   level: OrderHealthLevel,
   /** An order OpenLinker handles itself has no destination rows by design (#3482). */
-  handled?: OrderHandledInOpenLinker
+  handled?: OrderHandledInOpenLinker,
+  copy: OrdersCopy = getMessages('orders')
 ): string {
+  const levels = copy.orderHealth.levels;
   switch (level) {
     case 'attention':
-      return 'Needs attention';
+      return levels.attention;
     case 'pending':
-      return 'In progress';
+      return levels.pending;
     case 'healthy':
-      return 'Synced';
+      return levels.healthy;
     case 'unknown':
       return isHandledInOpenLinker({ handledInOpenLinker: handled })
-        ? HANDLED_IN_OPENLINKER_COPY.syncLabel
-        : 'No destinations';
+        ? copy.handledInOpenLinker.syncLabel
+        : levels.noDestinations;
   }
 }
 
@@ -198,21 +204,30 @@ export function healthLabel(
 export function syncCellLabel(
   rollup: SyncRollup,
   destinationRoutingBlockReason?: string | null,
-  handled?: OrderHandledInOpenLinker
+  handled?: OrderHandledInOpenLinker,
+  copy: OrdersCopy = getMessages('orders')
 ): string {
   if (rollup.total === 0) {
     // Precedence (#3482): handled in OpenLinker (it has live pack-bench work) ->
     // a router that chose nobody (#2703) -> nothing configured. An order the
     // router sent nowhere has no work, so the first arm never shadows the second.
     if (isHandledInOpenLinker({ handledInOpenLinker: handled })) {
-      return HANDLED_IN_OPENLINKER_COPY.syncLabel;
+      return copy.handledInOpenLinker.syncLabel;
     }
-    return resolveDestinationRoutingCopy(destinationRoutingBlockReason)?.label ?? 'No destinations';
+    return (
+      resolveDestinationRoutingCopy(destinationRoutingBlockReason, copy)?.label ??
+      copy.orderHealth.levels.noDestinations
+    );
   }
-  if (rollup.failed > 0) return `${rollup.failed} of ${rollup.total} failed`;
+  const cell = copy.orderHealth.syncCell;
+  if (rollup.failed > 0) return interpolate(cell.failed, { failed: rollup.failed, total: rollup.total });
   if (rollup.skipped > 0)
-    return `${rollup.synced} of ${rollup.total} synced (${rollup.skipped} skipped)`;
-  return `${rollup.synced} of ${rollup.total} synced`;
+    return interpolate(cell.syncedSkipped, {
+      synced: rollup.synced,
+      total: rollup.total,
+      skipped: rollup.skipped,
+    });
+  return interpolate(cell.synced, { synced: rollup.synced, total: rollup.total });
 }
 
 export const FulfillmentStateValues = [
@@ -260,19 +275,11 @@ export function deriveFulfillment(
   return 'not-shipped';
 }
 
-export function fulfillmentLabel(state: FulfillmentState): string {
-  switch (state) {
-    case 'not-shipped':
-      return 'Not shipped';
-    case 'dispatched':
-      return 'Dispatched';
-    case 'delivered':
-      return 'Delivered';
-    case 'failed':
-      return 'Dispatch failed';
-    case 'unavailable':
-      return 'Not tracked';
-  }
+export function fulfillmentLabel(
+  state: FulfillmentState,
+  copy: OrdersCopy = getMessages('orders')
+): string {
+  return copy.orderHealth.fulfilment[state];
 }
 
 /** Sum of item quantities — the "M unit" half of the header summary line. */
@@ -285,14 +292,14 @@ export function totalUnits(items: readonly { quantity: number }[]): number {
 // maps only choose label + tone. Colour is never the only signal — paired with
 // the badge label (StatusBadge enforces dot + text).
 
-/** Label + tone per ship-by SLA bucket. `none` renders nothing (no affordance). */
-export const ORDER_SLA_META: Record<
-  Exclude<SlaStateValue, 'none'>,
-  { label: string; tone: StatusBadgeTone }
-> = {
-  overdue: { label: 'Overdue', tone: 'error' },
-  at_risk: { label: 'At risk', tone: 'warning' },
-  on_track: { label: 'On track', tone: 'success' },
+/**
+ * Tone per ship-by SLA bucket; the label is `orders.orderHealth.sla[bucket]`.
+ * `none` renders nothing (no affordance).
+ */
+export const ORDER_SLA_TONE: Record<Exclude<SlaStateValue, 'none'>, StatusBadgeTone> = {
+  overdue: 'error',
+  at_risk: 'warning',
+  on_track: 'success',
 };
 
 /**
@@ -301,7 +308,8 @@ export const ORDER_SLA_META: Record<
  * FE never re-derives the bucket.
  */
 export function slaBadge(
-  slaState: string | null | undefined
+  slaState: string | null | undefined,
+  copy: OrdersCopy = getMessages('orders')
 ): { label: string; tone: StatusBadgeTone } | null {
   // Only ABSENT short-circuits. An empty string is a value the backend sent and
   // this build cannot read, so it must reach `unknownStateBadge` exactly as it
@@ -314,20 +322,20 @@ export function slaBadge(
   // something this build cannot read" — two different facts with two different
   // right answers. It also re-widens the type past the narrowing, which is how
   // the compiler found this.
-  if (!isSlaState(slaState)) return unknownStateBadge(slaState);
+  if (!isSlaState(slaState)) return unknownStateBadge(slaState, copy);
   if (slaState === 'none') return null;
-  return ORDER_SLA_META[slaState];
+  return { label: copy.orderHealth.sla[slaState], tone: ORDER_SLA_TONE[slaState] };
 }
 
-/** Label + tone per fulfillment-rollup value, for the list/detail row badge. */
-export const ORDER_FULFILLMENT_META: Record<
-  FulfillmentRollupStateValue,
-  { label: string; tone: StatusBadgeTone }
-> = {
-  'not-shipped': { label: 'Not shipped', tone: 'neutral' },
-  dispatched: { label: 'Dispatched', tone: 'info' },
-  delivered: { label: 'Delivered', tone: 'success' },
-  failed: { label: 'Dispatch failed', tone: 'error' },
+/**
+ * Tone per fulfillment-rollup value, for the list/detail row badge; the label is
+ * `orders.orderHealth.fulfilment[value]`.
+ */
+export const ORDER_FULFILLMENT_TONE: Record<FulfillmentRollupStateValue, StatusBadgeTone> = {
+  'not-shipped': 'neutral',
+  dispatched: 'info',
+  delivered: 'success',
+  failed: 'error',
 };
 
 /**
@@ -353,13 +361,20 @@ export const ORDER_FULFILLMENT_META: Record<
  * no fulfilment fact. So the value is surfaced verbatim in a neutral badge, the
  * way an unrecognised marketplace code is surfaced rather than dropped (#2231).
  */
-export function fulfillmentBadge(state: string | null | undefined): {
+export function fulfillmentBadge(
+  state: string | null | undefined,
+  copy: OrdersCopy = getMessages('orders')
+): {
   label: string;
   tone: StatusBadgeTone;
 } {
-  if (state === null || state === undefined) return ORDER_FULFILLMENT_META['not-shipped'];
-  if (!isFulfillmentRollupState(state)) return unknownStateBadge(state);
-  return ORDER_FULFILLMENT_META[state];
+  const view = (known: FulfillmentRollupStateValue): { label: string; tone: StatusBadgeTone } => ({
+    label: copy.orderHealth.fulfilment[known],
+    tone: ORDER_FULFILLMENT_TONE[known],
+  });
+  if (state === null || state === undefined) return view('not-shipped');
+  if (!isFulfillmentRollupState(state)) return unknownStateBadge(state, copy);
+  return view(state);
 }
 
 /**
@@ -379,15 +394,18 @@ const UNKNOWN_STATE_MAX_CHARS = 16;
  * `neutral`, never a status tone: OL has no idea whether this state is good or
  * bad, and picking a tone would assert one.
  */
-function unknownStateBadge(raw: string): { label: string; tone: StatusBadgeTone } {
+function unknownStateBadge(
+  raw: string,
+  copy: OrdersCopy
+): { label: string; tone: StatusBadgeTone } {
   // A blank or whitespace-only value is still unreadable, but naming it is
   // impossible — `Unknown ()` claims to quote the offending value and quotes
   // nothing. Say only what is true: this build cannot read the state.
   const trimmed = raw.trim();
-  if (trimmed === '') return { label: 'Unknown', tone: 'neutral' };
+  if (trimmed === '') return { label: copy.orderHealth.unknown, tone: 'neutral' };
   const shown =
     trimmed.length > UNKNOWN_STATE_MAX_CHARS
       ? `${trimmed.slice(0, UNKNOWN_STATE_MAX_CHARS - 1)}…`
       : trimmed;
-  return { label: `Unknown (${shown})`, tone: 'neutral' };
+  return { label: interpolate(copy.orderHealth.unknownValue, { value: shown }), tone: 'neutral' };
 }

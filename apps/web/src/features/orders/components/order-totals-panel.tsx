@@ -7,7 +7,7 @@
  * typographic anchor rather than living below a table.
  */
 import type { ReactElement } from 'react';
-import { formatAmount } from '../../../shared/format/format-amount';
+import { useFormat, useMessages } from '../../../shared/i18n';
 import type { OrderEditedTotals } from '../api/order-edit.types';
 import type { ParsedOrderTotals } from '../api/order-snapshot.schema';
 
@@ -22,6 +22,9 @@ interface OrderTotalsPanelProps {
 }
 
 export function OrderTotalsPanel({ totals, editedTotals }: OrderTotalsPanelProps): ReactElement {
+  const copy = useMessages('orders').orderTotals;
+  const format = useFormat();
+  const formatAmount = format.money;
   const currency = totals.currency;
   const snapshotDiscount = typeof totals.discountTotal === 'number' ? totals.discountTotal : 0;
   // An older payload without the channel figure cannot be split, so it keeps the
@@ -35,12 +38,12 @@ export function OrderTotalsPanel({ totals, editedTotals }: OrderTotalsPanelProps
   return (
     <dl className="order-totals">
       <div className="order-totals__row">
-        <dt>Subtotal</dt>
+        <dt>{copy.subtotal}</dt>
         <dd className="mono-text">{formatAmount(totals.subtotal, currency)}</dd>
       </div>
       {totals.shipping > 0 ? (
         <div className="order-totals__row">
-          <dt>Shipping</dt>
+          <dt>{copy.shipping}</dt>
           <dd className="mono-text">{formatAmount(totals.shipping, currency)}</dd>
         </div>
       ) : null}
@@ -52,9 +55,9 @@ export function OrderTotalsPanel({ totals, editedTotals }: OrderTotalsPanelProps
               a replacement, so the row keeps its snapshot value and says whose
               number it is rather than letting the reader assume it is OL's. */}
           <dt>
-            Tax{' '}
+            {copy.tax}{' '}
             <span className="text-muted" style={{ fontWeight: 400 }}>
-              as reported by the channel
+              {copy.asReportedByChannel}
             </span>
           </dt>
           <dd className="mono-text">{formatAmount(totals.tax, currency)}</dd>
@@ -63,9 +66,9 @@ export function OrderTotalsPanel({ totals, editedTotals }: OrderTotalsPanelProps
       {channelDiscount > 0 ? (
         <div className="order-totals__row" data-testid="order-totals-discount">
           <dt>
-            Discount{' '}
+            {copy.discount}{' '}
             <span className="text-muted" style={{ fontWeight: 400 }}>
-              as reported by the channel
+              {copy.asReportedByChannel}
             </span>
           </dt>
           <dd className="mono-text">{`−${formatAmount(channelDiscount, currency)}`}</dd>
@@ -73,12 +76,12 @@ export function OrderTotalsPanel({ totals, editedTotals }: OrderTotalsPanelProps
       ) : null}
       {openLinkerDiscount > 0 ? (
         <div className="order-totals__row" data-testid="order-totals-openlinker-discount">
-          <dt>Discount in OpenLinker</dt>
+          <dt>{copy.discountInOpenLinker}</dt>
           <dd className="mono-text">{`−${formatAmount(openLinkerDiscount, currency)}`}</dd>
         </div>
       ) : null}
       <div className="order-totals__row order-totals__row--total">
-        <dt>Total</dt>
+        <dt>{copy.total}</dt>
         <dd className="mono-text">{formatAmount(totals.total, currency)}</dd>
       </div>
     </dl>

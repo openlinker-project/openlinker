@@ -1,0 +1,84 @@
+{
+  "plugin": {
+    "setupCard": {
+      "badge": "Webservice API",
+      "description": "Połącz sklep PrestaShop przez Webservice API. Potrzebny będzie adres URL sklepu i klucz webservice."
+    }
+  },
+  "prestashopConnectionActions": {
+    "configure": "Skonfiguruj webhooki",
+    "configuring": "Konfigurowanie...",
+    "currentlyConfigured": "Obecnie skonfigurowane ✓",
+    "description": "Przesyła do modułu PrestaShop przez WS bazowy adres URL, ID połączenia i świeżo wygenerowany sekret webhooka. Weryfikuje konfigurację synchronicznym pingiem testowym.",
+    "reconfigure": "Skonfiguruj webhooki ponownie",
+    "title": "Skonfiguruj webhooki",
+    "toast": {
+      "configured": {
+        "description": "Moduł PrestaShop został zaktualizowany i zweryfikowany pingiem testowym. Gotowe.",
+        "title": "Webhooki skonfigurowane"
+      },
+      "failed": {
+        "notAccepted": "PrestaShop nie przyjął przesłanej konfiguracji.",
+        "title": "Nie udało się przesłać konfiguracji"
+      },
+      "pingMissing": {
+        "description": "Konfiguracja jest zapisana, ale testowy ping nie dotarł. Kliknij ponownie, aby spróbować jeszcze raz, albo poczekaj na następne rzeczywiste zdarzenie.",
+        "title": "Webhooki skonfigurowane (ping nie dotarł)"
+      }
+    }
+  },
+  "prestashopCredentialsPanel": {
+    "cancel": "Anuluj",
+    "description": "Bezpiecznie przechowywany na serwerze. Wymień go, aby zastąpić klucz bez restartu API.",
+    "envBacked": "Zmienna środowiskowa (nie można edytować w interfejsie)",
+    "envBackedLabel": "Dane uwierzytelniające",
+    "label": "Klucz webservice",
+    "newKeyPlaceholder": "Nowy klucz webservice",
+    "rotate": "Wymień klucz webservice",
+    "rotating": "Wymienianie...",
+    "save": "Zapisz nowy klucz",
+    "toast": {
+      "description": "Nowy klucz webservice jest już w użyciu.",
+      "title": "Dane uwierzytelniające wymienione"
+    }
+  },
+  "prestashopSetupRoute": {
+    "crumb": "Połącz PrestaShop"
+  },
+  "prestashopStructuredSection": {
+    "callbackUrl": {
+      "description": "Adres URL OpenLinker widziany z PrestaShop - moduł PS wysyła pod niego webhooki (POST) do OL. Wstępnie wypełniony adresem API używanym przez tę aplikację; zmień go dla środowiska Docker (np. http://host.docker.internal:3000) lub nietypowych wdrożeń. Wymagany do użycia akcji „Skonfiguruj webhooki”.",
+      "label": "Adres URL zwrotny OL",
+      "placeholder": "https://api.openlinker.example"
+    },
+    "fallbackCarrier": {
+      "description": "Używany, gdy metoda dostawy Allegro nie ma mapowania przewoźnika. Pozostaw pusty, aby podczas synchronizacji użyć przewoźnika OpenLinker Dynamic (dokładny koszt dostawy z Allegro) - działa tylko z zainstalowanym modułem OL dla PrestaShop.",
+      "dynamicOption": "{label} - dokładny koszt z Allegro",
+      "failed": "Nie udało się wczytać przewoźników",
+      "label": "Przewoźnik zapasowy (opcjonalnie)",
+      "loading": "Wczytywanie przewoźników…",
+      "noFallbackWarning": "Nie ustawiono przewoźnika zapasowego, a moduł OpenLinker dla PrestaShop nie jest zainstalowany w tym połączeniu. Synchronizacja nie powiedzie się dla każdej metody dostawy Allegro bez mapowania przewoźnika, dopóki nie wybierzesz przewoźnika zapasowego albo nie zainstalujesz modułu OL dla PS.",
+      "none": "Brak - używaj OpenLinker Dynamic w trakcie działania"
+    },
+    "inpostModuleType": {
+      "description": "Wybierz oficjalny moduł InPost dla PrestaShop zainstalowany w tym sklepie. Po ustawieniu OL odczytuje kod Paczkomatu z adresu dostawy podczas pobierania zamówień. Pozostaw pusty, jeśli zamówienia InPost nie są używane.",
+      "label": "Typ modułu InPost dla PS (opcjonalnie)",
+      "none": "Brak (wyłączone)",
+      "officialInpost": "Oficjalny moduł InPost (address2)"
+    },
+    "shopId": {
+      "description": "Potrzebne tylko w instalacjach PrestaShop z wieloma sklepami.",
+      "label": "ID sklepu (opcjonalnie)"
+    },
+    "shopUrl": {
+      "description": "Publiczny adres URL witryny sklepu PrestaShop.",
+      "label": "Adres URL sklepu",
+      "placeholder": "https://shop.example.com"
+    },
+    "storefrontUrl": {
+      "description": "Zmień tylko wtedy, gdy publiczny adres witryny sklepu różni się od adresu URL webservice. Pozostaw puste, jeśli są takie same - domyślnie używany jest adres URL sklepu.",
+      "label": "Adres URL witryny sklepu (opcjonalnie)",
+      "placeholder": "https://shop.example.com"
+    }
+  }
+}

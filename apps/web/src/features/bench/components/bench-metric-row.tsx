@@ -12,10 +12,11 @@
 import type { ReactElement } from 'react';
 
 import { useBenchMetricsQuery } from '../hooks/use-bench-activity-query';
-import { benchWorkCopy } from '../lib/bench-work.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
 
 export function BenchMetricRow(): ReactElement | null {
   const query = useBenchMetricsQuery();
+  const copy = useMessages('bench').work.metrics;
 
   if (query.isLoading || query.isError || query.data === undefined) return null;
   const metrics = query.data;
@@ -25,22 +26,22 @@ export function BenchMetricRow(): ReactElement | null {
   const trend = metrics.packedToday - metrics.packedYesterday;
   const trendText =
     trend === 0
-      ? benchWorkCopy.metrics.trendFlat
+      ? copy.trendFlat
       : trend > 0
-        ? benchWorkCopy.metrics.trendUp(trend)
-        : benchWorkCopy.metrics.trendDown(Math.abs(trend));
+        ? interpolate(copy.trendUp, { delta: trend })
+        : interpolate(copy.trendDown, { delta: Math.abs(trend) });
 
   return (
     <div className="bench-metric-row" data-testid="bench-metric-row">
       <div className="bench-metric-card">
-        <span className="bench-metric-card__label">{benchWorkCopy.metrics.packedTodayLabel}</span>
+        <span className="bench-metric-card__label">{copy.packedTodayLabel}</span>
         <span className="bench-metric-card__value">
           {metrics.packedToday}
           <span className="bench-metric-card__trend">{trendText}</span>
         </span>
       </div>
       <div className="bench-metric-card">
-        <span className="bench-metric-card__label">{benchWorkCopy.metrics.toPackLabel}</span>
+        <span className="bench-metric-card__label">{copy.toPackLabel}</span>
         <span className="bench-metric-card__value">{metrics.toPackAllBenches}</span>
       </div>
     </div>

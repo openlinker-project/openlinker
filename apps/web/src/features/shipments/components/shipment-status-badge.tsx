@@ -9,6 +9,7 @@
  * @module apps/web/src/features/shipments/components
  */
 import type { ReactElement } from 'react';
+import { useMessages } from '../../../shared/i18n';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { ShipmentStatus } from '../api/shipments.types';
 
@@ -29,9 +30,10 @@ interface ShipmentStatusBadgeProps {
 }
 
 export function ShipmentStatusBadge({ status }: ShipmentStatusBadgeProps): ReactElement {
+  const labels: Readonly<Record<string, string>> = useMessages('shipments').shipmentStatusBadge.statuses;
   return (
     <StatusBadge tone={TONE[status] ?? 'neutral'} withDot pulse={PULSE.has(status)}>
-      {status}
+      {labels[status] ?? status}
     </StatusBadge>
   );
 }

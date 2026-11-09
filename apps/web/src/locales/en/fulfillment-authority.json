@@ -1,0 +1,236 @@
+{
+  "attention": {
+    "badges": {
+      "at-risk": "At risk",
+      "blocked": "Blocked",
+      "not-matched": "Not matched",
+      "stopped": "Stopped"
+    },
+    "reasons": {
+      "availability-unknown": {
+        "action": "Open the connections named below and leave one of them in charge of stock.",
+        "body": "Two of your systems both say they're in charge of your stock, so OpenLinker won't guess. Publishing for these products is paused.",
+        "title": "We don't know how much stock to publish",
+        "titleFallback": "We don't know how much stock to publish"
+      },
+      "fulfillment-unaccepted": {
+        "action": "Open the order to see what each place said, then ship it yourself.",
+        "body": "Every place that could have shipped it said no. It's waiting for you.",
+        "title": "No one took the job for order {ref}",
+        "titleFallback": "No one took the job for this order"
+      },
+      "line-unfulfillable": {
+        "action": "Open the order and refund or return the lines that cannot ship.",
+        "body": "There isn't stock for it in any place that can ship to this buyer. This is a refund or return decision, not something OpenLinker can fix.",
+        "title": "{n} line(s) on order {ref} can't be shipped from anywhere",
+        "titleFallback": "Some lines on this order can't be shipped from anywhere"
+      },
+      "reservation-shortfall": {
+        "action": "Open the order, then check the product to see what stock is left.",
+        "body": "Your stock master dropped below what this order was promised. Nothing was silently reduced - this order is the one at risk.",
+        "title": "Order {ref} is short {n} × {sku}",
+        "titleFallback": "This order is short of stock"
+      },
+      "restock-blocked": {
+        "action": "Open the return to see which system refused and what it said.",
+        "body": "The system that owns this stock refused to put the returned goods back. Nothing was added, and nothing was lost.",
+        "title": "Stock was not added.",
+        "titleFallback": "Stock was not added."
+      },
+      "return-unmatched": {
+        "action": "Nothing to do. If the order arrives later, OpenLinker matches it automatically.",
+        "body": "OpenLinker has never seen the order this return belongs to, so nothing is triggered from it - no stock change, no refund, no credit note.",
+        "title": "This return is not matched to an order.",
+        "titleFallback": "This return is not matched to an order."
+      },
+      "returns-disposition-ambiguous": {
+        "action": "Open the connections named below and leave one of them deciding.",
+        "body": "Two systems are set up to decide, so OpenLinker is doing neither. Returns are still being recorded, but nothing is being restocked or scrapped automatically.",
+        "title": "Nothing is deciding what happens to returns from {channel}",
+        "titleFallback": "Nothing is deciding what happens to these returns"
+      },
+      "routing-stuck": {
+        "action": "Usually nothing to do. If this stays or keeps coming back, check the connection that decides where orders are packed.",
+        "body": "OpenLinker asked where to pack this order and got no answer in time, so it stopped waiting and will choose again. OpenLinker created no packing work for it in the meantime.",
+        "title": "Choosing where to pack order {ref} got stuck",
+        "titleFallback": "Choosing where to pack this order got stuck"
+      },
+      "sourcing-ambiguous": {
+        "action": "Open the connections named below and leave one of them deciding.",
+        "body": "Two systems are set up to decide, so OpenLinker is doing neither. Orders are going out the way they did before.",
+        "title": "Nothing is deciding where {channel} orders ship from",
+        "titleFallback": "Nothing is deciding where these orders ship from"
+      },
+      "stock-decrement-blocked": {
+        "action": "Open the order, then check the stock of its products in your shop and correct it there if needed.",
+        "body": "OpenLinker could not lower the stock for this sale in the shop that owns the product, or it is not sure the change went through. Your shop may still show these items as in stock.",
+        "title": "Stock for order {ref} was not lowered in your shop",
+        "titleFallback": "Stock for this order was not lowered in your shop"
+      }
+    },
+    "section": {
+      "description": "Things OpenLinker stopped doing, and what each one is waiting on.",
+      "empty": "Nothing is stuck. OpenLinker is deciding everything it was asked to.",
+      "heading": "Needs attention",
+      "ordersLabel": "Orders affected",
+      "statesLabel": "Decisions not being made",
+      "unknownNote": "Some of the items below were recorded by a newer version of OpenLinker, so they are shown but not counted above."
+    },
+    "unknown": {
+      "action": "Update OpenLinker to see what this is.",
+      "badgeLabel": "Unrecognised",
+      "body": "This was recorded by a newer version of OpenLinker. It is kept, and it is not counted here.",
+      "title": "OpenLinker stopped for a reason this version does not recognise"
+    }
+  },
+  "whoDecides": {
+    "answers": {
+      "cannotTell": "OpenLinker can't tell",
+      "configuredElsewhere": "Set up under Sales documents routing",
+      "defaultToday": "Wherever the order lands today",
+      "manual": "You handle this by hand",
+      "nobodyToRoute": "Each shop decides (nothing to route)",
+      "openlinker": "OpenLinker",
+      "separator": " · ",
+      "unnamedConnection": "A connection"
+    },
+    "page": {
+      "backLabel": "Settings",
+      "errorMessage": "Something went wrong reading your setup. Try again in a moment.",
+      "errorTitle": "We could not load this page",
+      "eyebrow": "Settings",
+      "lede": "OpenLinker, your shop, your marketplaces and your warehouse each get to decide different things. This page shows who decides what right now, and lets you hand some of those decisions to OpenLinker - or keep them where they are.",
+      "loading": "Working out who decides what…",
+      "loadingTitle": "Who decides what",
+      "presetsEyebrow": "Choose an arrangement",
+      "presetsHeading": "How should this work?",
+      "prospectiveOnly": "Changing this only affects what happens from now on. Anything already in progress - an order already sent to your shop, a label already bought - keeps its current arrangement until it finishes.",
+      "questionsCounter": "7 decisions",
+      "questionsEyebrow": "Right now",
+      "questionsHeading": "Who decides what",
+      "retryLabel": "Try again",
+      "title": "Who decides what"
+    },
+    "presetActions": {
+      "ambiguousMessage": "This would leave two systems deciding the same thing, so OpenLinker would end up deciding neither. Open the connections named below and leave one of them in charge.",
+      "ambiguousTitle": "Nothing was changed",
+      "applyLabel": "Save this arrangement",
+      "applyingLabel": "Saving…",
+      "cancelLabel": "Cancel",
+      "confirmLabel": "Save",
+      "confirmTitle": "Change who decides what?",
+      "failedMessage": "Nothing was changed. Try again in a moment.",
+      "failedTitle": "We could not save this",
+      "partialMessage": "Some of your connections could not be updated. Nothing is broken - choose the same arrangement again and OpenLinker will finish the rest.",
+      "partialTitle": "Only part of this was saved",
+      "readOnly": "Only an administrator can change who decides what.",
+      "rejectedMessage": "Nothing was changed. This build and your server disagree about which arrangements exist - updating OpenLinker should clear it.",
+      "rejectedTitle": "OpenLinker did not accept that choice",
+      "successMessage": "Who decides what has been updated.",
+      "successTitle": "Saved",
+      "unreadableMessage": "Your arrangement may have been saved in part or in full - OpenLinker could not read the answer to tell you which. Reload this page to see where things stand, then choose the same arrangement again if anything is missing.",
+      "unreadableTitle": "We could not read the result"
+    },
+    "presetCards": {
+      "keep-other-system": {
+        "bestIf": "you already run a warehouse or ERP system that you trust and do not want to replace.",
+        "body": "Your existing warehouse or order system keeps deciding. OpenLinker gives it marketplace connectivity - offers, stock publication, order feed, status relay - and files your Polish invoices and receipts, which it cannot.",
+        "changes": "OpenLinker stops working out your promisable stock itself and publishes what your system tells it. Refunds and fiscal documents stay with OpenLinker either way - only OpenLinker holds the credentials that can issue them.",
+        "changesLabel": "What this changes:",
+        "title": "Keep my other system in charge"
+      },
+      "leave-as-they-are": {
+        "bestIf": "one shop, one warehouse, and nothing about your current setup is annoying you.",
+        "body": "Your shop and your marketplaces keep making every decision, exactly as they do now. OpenLinker connects them, publishes your stock and offers, files your invoices, and stays out of the way.",
+        "changes": "It is what OpenLinker already does.",
+        "changesLabel": "Nothing changes when you pick this.",
+        "title": "Leave things as they are"
+      },
+      "openlinker-decides": {
+        "bestIf": "you sell the same stock on more than one channel, or you keep finding orders you wish had been stopped before they shipped.",
+        "body": "OpenLinker becomes the place where decisions get made: it works out how much stock you can safely promise, holds orders that should not go out yet, and decides what happens to goods that come back. Your shop and your carriers still do the physical work.",
+        "changes": "OpenLinker starts subtracting orders it has seen from the stock numbers it publishes, and can hold an order so it never reaches your shop. Your existing stock, order and invoice flows are untouched. Your current setup is kept, so you can switch back.",
+        "changesLabel": "What this changes:",
+        "title": "Let OpenLinker decide"
+      }
+    },
+    "presetChangeMeaning": {
+      "cannotTell": "Two of your systems would both be in charge, so OpenLinker would decide neither.",
+      "configuredElsewhere": "This stays set up on the Sales documents routing page.",
+      "defaultToday": "This goes back to landing wherever it lands today.",
+      "holders": "The systems named above will decide this from now on.",
+      "manual": "Nothing will decide this automatically - you will handle it yourself.",
+      "nobodyToRoute": "You sell from one place, so there will be nothing to choose between.",
+      "openlinker": "OpenLinker will decide this from now on."
+    },
+    "presetConfirm": {
+      "assignmentPreserved": "Your systems keep their settings, so you can put them back in charge later by switching them on again.",
+      "becomes": "becomes",
+      "blockedIntro": "This would leave two systems deciding the same thing, so OpenLinker would decide neither. Open the connections named below and leave one of them in charge.",
+      "blockedTitle": "This cannot be saved yet",
+      "changesHeading": "What changes",
+      "loading": "Working out what this would change…",
+      "noChanges": "Nothing changes when you save this - your setup already works this way.",
+      "retryLabel": "Try again",
+      "unreadable": "We could not work out what this would change, so it cannot be saved yet. Try again in a moment."
+    },
+    "presetLabels": {
+      "bestIf": "Best if:",
+      "current": "Current",
+      "unavailable": "Not available yet",
+      "unavailableReasonFallback": "This is not available yet, for a reason this version does not recognise.",
+      "whyCodeFallback": "OpenLinker decided this for a reason this version does not recognise."
+    },
+    "presetUnavailableReasons": {
+      "needs-a-system-that-can-take-over": "Needs a system that can take over. Connect one first."
+    },
+    "questionLabels": {
+      "availability": "How much stock can we promise?",
+      "fulfillment-execution": "Who picks and ships?",
+      "order-lifecycle": "What state is an order in?",
+      "refund-trigger": "Who issues refunds?",
+      "returns-disposition": "What happens to returned goods?",
+      "sales-documents": "Who issues invoices and receipts?",
+      "sourcing": "Where does an order ship from?"
+    },
+    "rowBadges": {
+      "always": "Always",
+      "chosen": "Chosen",
+      "default": "Default",
+      "elsewhere": "Elsewhere",
+      "not-available": "Not available",
+      "nothing-is-deciding": "Nothing is deciding",
+      "nothing-to-route": "Nothing to route"
+    },
+    "rowDetail": {
+      "answerColumnLabel": "Who decides",
+      "elsewhereLinkLabel": "Set up under Sales documents routing",
+      "inactiveClaimMany": "Switched-off connections still claim this.",
+      "inactiveClaimOne": "A switched-off connection still claims this.",
+      "lockedLabel": "Cannot be handed over",
+      "questionColumnLabel": "Decision",
+      "whyColumnLabel": "Why"
+    },
+    "tile": {
+      "chip": "Who decides what",
+      "description": "See which system is in charge of your stock, your orders and your returns - and hand any of it to OpenLinker.",
+      "eyebrow": "Decisions",
+      "linkLabel": "Open",
+      "title": "Who decides what"
+    },
+    "whyCodes": {
+      "a1-claimed-by-connection": "You have put this system in charge of your stock.",
+      "a1-computed-from-master-minus-buffer": "Worked out from your stock master, minus your safety buffer. Nobody else has claimed it.",
+      "a2-claimed-by-connection": "You have put this system in charge of choosing where orders ship from.",
+      "a2-single-origin-nothing-to-choose": "You sell from one place, so there is nothing to choose between.",
+      "a3-claimed-by-connection": "You have put this system in charge of picking and shipping.",
+      "a3-lands-where-it-does-today": "Whoever the order lands with, as it works today.",
+      "a4-claimed-by-connection": "You have put this system in charge of tracking where an order has got to.",
+      "a4-derived-from-observed-facts": "OpenLinker works it out from what it can see - the shipment, the invoice, any hold you placed.",
+      "a5-claimed-by-connection": "You have put this system in charge of deciding what happens to returns.",
+      "a5-nothing-decides-yet-handled-by-hand": "Nothing decides yet - you handle returns by hand.",
+      "a6-only-ol-holds-payment-credentials": "Only OpenLinker holds the payment credentials, so only OpenLinker can do it. This one cannot be handed over.",
+      "a7-configured-under-sales-documents": "Configured per country under Sales documents routing."
+    }
+  }
+}

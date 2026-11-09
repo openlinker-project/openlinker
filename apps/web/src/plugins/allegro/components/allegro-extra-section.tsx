@@ -16,9 +16,17 @@
 import type { ReactElement } from 'react';
 
 import { AllegroSellerDefaultsSection } from '../../../features/connections';
+import { renderRich } from '../../../shared/i18n';
 import type { ExtraConfigSectionProps } from '../../../shared/plugins';
+import { useAllegroMessages } from '../messages';
 
 const SHIPPING_CAPABILITY = 'ShippingProviderManager';
+
+const rich = {
+  strong: (text: string): ReactElement => <strong>{text}</strong>,
+  em: (text: string): ReactElement => <em>{text}</em>,
+  code: (text: string): ReactElement => <code className="mono-text">{text}</code>,
+};
 
 export function AllegroExtraSection({
   connection,
@@ -26,6 +34,7 @@ export function AllegroExtraSection({
   configIsParseable,
   syncSellerDefaultsToJson,
 }: ExtraConfigSectionProps): ReactElement {
+  const copy = useAllegroMessages().allegroExtraSection.delivery;
   // AC-8 capability gate (#839) — only render the Allegro Delivery
   // subsection when this connection declares ShippingProviderManager.
   // Operators with Allegro-only-as-source connections (no shipping
@@ -44,7 +53,7 @@ export function AllegroExtraSection({
       {showAllegroDelivery ? (
         <section aria-labelledby="allegro-delivery-info-heading">
           <h3 id="allegro-delivery-info-heading" className="detail-section__title">
-            Allegro Delivery
+            {copy.title}
           </h3>
           {/* Collapsible details — keeps the toolbar visually tight on the
               connection page, expands when the operator wants context.
@@ -52,31 +61,19 @@ export function AllegroExtraSection({
               covers the use case). */}
           <details>
             <summary>
-              <strong>No configuration needed</strong> — how shipment tracking works
+              {renderRich(copy.summary, rich)}
             </summary>
-            <p>
-              Allegro Delivery (&ldquo;Wysyłam z Allegro&rdquo;) labels are issued via
-              Allegro&apos;s shipment-management API and tracked automatically:
-            </p>
+            <p>{copy.intro}</p>
             <ul>
-              <li>
-                <strong>Label creation</strong> is synchronous from OL&apos;s side — operators
-                generate a label from the order detail panel; OL waits for Allegro&apos;s
-                command to complete before responding.
-              </li>
-              <li>
-                <strong>Tracking number</strong> resolves <em>asynchronously</em>. Allegro
-                generates the waybill on a delay; OL polls every 15 minutes and backfills the
-                row when it arrives (no manual refresh needed).
-              </li>
-              <li>
-                <strong>Buyer-selected pickup points</strong> (Allegro One Box, Paczkomat,
-                kurier) are pre-filled on the label form from the order snapshot.
-              </li>
+              <li>{renderRich(copy.labelCreation, rich)}</li>
+              <li>{renderRich(copy.trackingNumber, rich)}</li>
+              <li>{renderRich(copy.pickupPoints, rich)}</li>
             </ul>
             <p>
-              Cursor key: <code className="mono-text">allegro.shipmentStatus.scanOffset</code>{' '}
-              · Job type: <code className="mono-text">marketplace.shipment.statusSync</code>
+              {renderRich(copy.diagnostics, rich, {
+                cursorKey: 'allegro.shipmentStatus.scanOffset',
+                jobType: 'marketplace.shipment.statusSync',
+              })}
             </p>
           </details>
         </section>

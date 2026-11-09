@@ -22,11 +22,11 @@ import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../nav-registry.types';
 
 const invoicesListCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Invoices' },
+  crumb: { group: 'operations', page: 'invoices' },
 };
 
 const invoiceDetailCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Invoice' },
+  crumb: { group: 'operations', page: 'invoice' },
 };
 
 export const invoicesRoute: RouteObject = {

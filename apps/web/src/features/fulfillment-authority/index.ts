@@ -23,7 +23,7 @@ export {
   isAuthorityAttentionReason,
 } from './lib/attention-reason';
 
-export type { AttentionReasonCopy, AttentionTitleParams } from './lib/attention-reason.copy';
+export type { AttentionReasonCopy, AttentionTitleParams } from './lib/attention-reason-text';
 export {
   ATTENTION_BADGE_COPY,
   ATTENTION_REASON_COPY,
@@ -31,7 +31,7 @@ export {
   ATTENTION_UNKNOWN_COPY,
   attentionTitle,
   listAttentionReasonCopy,
-} from './lib/attention-reason.copy';
+} from './lib/attention-reason-text';
 
 export { AttentionSection } from './components/attention-section';
 export { OmsAttentionBadges } from './components/oms-attention-badges';
@@ -119,4 +119,4 @@ export {
   ROW_BADGE_COPY,
   WHO_DECIDES_PAGE_COPY,
   WHO_DECIDES_TILE_COPY,
-} from './lib/who-decides.copy';
+} from './lib/who-decides-text';

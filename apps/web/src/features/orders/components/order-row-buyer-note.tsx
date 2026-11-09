@@ -12,10 +12,11 @@ import type { ReactElement } from 'react';
 
 import { readBuyerNote } from '../api/buyer-note.schema';
 import { useOrderQuery } from '../hooks/use-order-query';
-import { BUYER_NOTE_COPY as COPY } from '../lib/buyer-note.copy';
+import { useMessages } from '../../../shared/i18n';
 
 export function OrderRowBuyerNote({ internalOrderId }: { internalOrderId: string }): ReactElement {
   const query = useOrderQuery(internalOrderId);
+  const COPY = useMessages('orders').buyerNote;
 
   let body: ReactElement;
   if (query.isPending) {

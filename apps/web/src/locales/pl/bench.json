@@ -1,0 +1,577 @@
+{
+  "connectivity": {
+    "connectivity": {
+      "linkDown": {
+        "detail": "Ten terminal nie ma sieci. Nic, co zostało już policzone, nie przepada, a nowe skany są odrzucane, dopóki sieć nie wróci.",
+        "label": "Brak połączenia"
+      },
+      "ok": {
+        "detail": "Stanowisko łączy się z OpenLinker.",
+        "label": "Wszystko działa"
+      },
+      "serverUnreachable": {
+        "detail": "Sieć na tym stanowisku działa - to OpenLinker nie odpowiada. Nic, co zostało już policzone, nie przepada. Problem zniknie sam; jeśli nie, powiedz osobie, która opiekuje się OpenLinker.",
+        "label": "OpenLinker nie odpowiada"
+      }
+    }
+  },
+  "identity": {
+    "locked": {
+      "body": "Zaloguj się, aby kontynuować. Nic z otwartego zamówienia nie jest tu pokazywane - ani numer, ani kupujący, ani adres, ani zawartość paczki.",
+      "progressReassurance": "Nic nie przepadło. Paczka jest dokładnie taka, jak ją zostawiono.",
+      "title": "To stanowisko jest zablokowane"
+    },
+    "signIn": {
+      "attribution": "Osoba, która jako następna zakończy otwartą paczkę, zostanie zapisana jako ta, która ją spakowała. Zanim ją przejmiesz, sprawdź, co już zweryfikowano.",
+      "body": "Użyj własnego konta. Działa na każdym stanowisku w tym magazynie.",
+      "title": "Zaloguj się na tym stanowisku"
+    },
+    "warning": "Wylogowanie za {seconds} s - dotknij dowolnego miejsca, aby sesja pozostała aktywna."
+  },
+  "parcel": {
+    "activity": {
+      "heading": "Ostatnia aktywność",
+      "undone": "cofnięto",
+      "verified": "zweryfikowano"
+    },
+    "audio": {
+      "hint": "Odrzucenia są zawsze pokazywane na ekranie. Dźwięk to dodatek na chwile, gdy patrzysz na paczkę.",
+      "muteAction": "Wyłącz dźwięk",
+      "offLabel": "Dźwięk wył.",
+      "onLabel": "Dźwięk wł.",
+      "unmuteAction": "Włącz dźwięk"
+    },
+    "buyerNote": {
+      "acknowledge": "Notatka przeczytana",
+      "eachBoxOwn": "Każda paczka zapisuje własne przeczytanie.",
+      "failed": "Nie udało się zapisać. Notatka pozostaje otwarta - naciśnij ponownie.",
+      "hint": "Skanowanie działa tak czy inaczej. To zapisuje, że notatka została zobaczona przy tej paczce.",
+      "lockedOut": "Ta paczka jest przypisana do innego pakowacza, więc przeczytanie nie zostało zapisane.",
+      "meta": "Kupujący napisał to przy składaniu zamówienia.",
+      "metaWholeOrder": "Kupujący napisał to przy składaniu zamówienia. Dotyczy całego zamówienia.",
+      "noBuyerNote": "Zamówienie nie ma już notatki kupującego, więc nie ma czego zapisać.",
+      "otherRead": "{who}: przeczytano przy paczce {parcel} z {total} o {time}.",
+      "otherReadSomeone": "Inny pakowacz",
+      "otherReadYou": "Ty",
+      "readBy": "Przeczytane: {who}, {time}",
+      "saving": "Zapisywanie...",
+      "showAll": "Pokaż całą notatkę",
+      "showLess": "Pokaż mniej",
+      "someoneElse": "współpracownik",
+      "textNotStored": "Kupujący zostawił notatkę, ale ta instalacja nie przechowuje jej treści.",
+      "title": "Notatka kupującego",
+      "workCancelled": "Ta paczka została anulowana, więc przeczytanie nie zostało zapisane.",
+      "you": "Ty"
+    },
+    "changeSize": {
+      "cancelAction": "Zostaw obecną etykietę",
+      "confirmAction": "Anuluj ją i kup nową etykietę",
+      "confirmNotice": "Obecna etykieta zostanie anulowana i zostanie kupiona nowa.",
+      "description": "Podaj, jaka naprawdę jest ta paczka. Nic innego w zamówieniu się nie zmienia.",
+      "failed": "Nie udało się - spróbuj ponownie.",
+      "heightLabel": "Wysokość (cm)",
+      "lengthLabel": "Długość (cm)",
+      "modeBox": "Zmierz paczkę",
+      "modeLegend": "Co jest nie tak",
+      "modeTemplate": "Wybierz rozmiar",
+      "modeWeight": "Tylko waga",
+      "pendingAction": "Kupowanie nowej etykiety...",
+      "pickTemplate": "Najpierw wybierz rozmiar.",
+      "refusedAdapterUnresolved": "Nie możemy teraz połączyć się z przewoźnikiem, więc nie można wymienić etykiety. Obecna etykieta zostaje. Spróbuj ponownie za minutę - jeśli to się powtarza, zgłoś to w biurze.",
+      "refusedAlreadyHandedOver": "Przewoźnik ma już tę paczkę, więc nie można wymienić jej etykiety. Obecna etykieta zostaje.",
+      "refusedCannotCancel": "Ten przewoźnik nie pozwala anulować etykiety ze stanowiska. Obecna etykieta zostaje. Zgłoś to w biurze.",
+      "refusedNoLabel": "Ta paczka nie ma jeszcze etykiety, więc nie ma czego wymieniać. Poproś biuro o jej zakup.",
+      "refusedParcelCompleted": "Ta paczka jest już oznaczona jako gotowa, więc nie można wymienić jej etykiety. Obecna etykieta zostaje.",
+      "refusedParcelSizeUnknown": "Sama waga tu nie wystarczy - wybierz też rozmiar albo wpisz wymiary paczki. Obecna etykieta zostaje.",
+      "refusedRecipientUnavailable": "Brakuje adresu dostawy dla tego zamówienia, więc nie można kupić nowej etykiety. Obecna etykieta zostaje. Zgłoś to w biurze.",
+      "refusedReplaceInProgress": "Nowa etykieta dla tej paczki jest już kupowana. Poczekaj chwilę i sprawdź ponownie.",
+      "refusedUnknown": "Nie udało się, a obecna etykieta zostaje. Pokaż ten ekran kierownikowi.",
+      "replacedKeptSizeNotice": "Kupiono nową etykietę w rozmiarze {template}. Wydrukuj ją teraz.",
+      "replacedNotice": "Kupiono nową etykietę. Wydrukuj ją teraz.",
+      "required": "Wpisz liczbę większą od zera.",
+      "templateLabel": "Rozmiar",
+      "templatePlaceholder": "Wybierz rozmiar",
+      "title": "Zmień rozmiar etykiety",
+      "tooLarge": "To więcej, niż przyjmie przewoźnik.",
+      "voidBody": "Nie naklejaj starej etykiety na paczkę. Zgłoś to w biurze - trzeba kupić nową etykietę dla tej paczki.",
+      "voidDismiss": "Rozumiem",
+      "voidDoubtBody": "Przewoźnik nie potwierdził, czy anulował starą etykietę, więc jej nie używaj - nie naklejaj jej na paczkę. Zgłoś to w biurze - trzeba ją sprawdzić i kupić nową etykietę dla tej paczki.",
+      "voidDoubtTitle": "Stara etykieta może być już unieważniona, a nowej nie kupiono",
+      "voidTitle": "Stara etykieta jest unieważniona, a nowej nie kupiono",
+      "weightKgLabel": "Waga (kg)",
+      "widthLabel": "Szerokość (cm)"
+    },
+    "closed": {
+      "body": {
+        "few": "Wszystkie {n} sztuki się zgadzają. Ostatni skan zamknął paczkę - nie trzeba było niczego naciskać.",
+        "many": "Wszystkie {n} sztuk się zgadza. Ostatni skan zamknął paczkę - nie trzeba było niczego naciskać.",
+        "one": "Jedyna sztuka się zgadza. Ostatni skan zamknął paczkę - nie trzeba było niczego naciskać.",
+        "other": "Wszystkie {n} sztuki się zgadzają. Ostatni skan zamknął paczkę - nie trzeba było niczego naciskać."
+      },
+      "next": "Następna paczka otworzy się tutaj sama. Zeskanuj jej pierwszy produkt, gdy będziesz przy tej paczce.",
+      "reopenAction": "Otwórz paczkę ponownie",
+      "reopenFailed": "Nie udało się. Nic się nie zmieniło - spróbuj ponownie.",
+      "reopenHint": "Tylko jeśli zamknęła się przez pomyłkę. Wszystkie sztuki zostaną wyzerowane i paczkę skanujesz od początku.",
+      "reopenNotClosed": "Ta paczka nie jest zamknięta, więc nie ma czego otwierać. Skanuj dalej.",
+      "reopenShipped": "Ta paczka już wyszła. Nie można jej tu otworzyć ponownie, bo towaru nie ma już w budynku.",
+      "reopenUnknownRefusal": "Paczka nie została otwarta ponownie, a to stanowisko nie wie dlaczego. Pokaż ten ekran kierownikowi.",
+      "reopenedNotice": "Paczka jest znowu otwarta. Wszystkie sztuki wyzerowano - zeskanuj je ponownie.",
+      "summary": "{orderReference} · Paczka {index} z {total}",
+      "title": "Ta paczka jest zamknięta"
+    },
+    "collision": {
+      "body": {
+        "few": "{who} też skanują tę paczkę. Wasze skany liczą się razem, więc kontynuuj - tylko nie szukajcie wszyscy tej samej brakującej sztuki.",
+        "many": "{who} też skanują tę paczkę. Wasze skany liczą się razem, więc kontynuuj - tylko nie szukajcie wszyscy tej samej brakującej sztuki.",
+        "one": "{who} też skanuje tę paczkę. Wasze skany liczą się razem, więc kontynuuj - tylko nie szukajcie oboje tej samej brakującej sztuki.",
+        "other": "{who} też skanują tę paczkę. Wasze skany liczą się razem, więc kontynuuj - tylko nie szukajcie wszyscy tej samej brakującej sztuki."
+      },
+      "title": "Ktoś inny też ma otwartą tę paczkę"
+    },
+    "completion": {
+      "action": "Oznacz jako gotowe",
+      "cancelAction": "Jeszcze nie",
+      "confirmAction": "Oznacz jako gotowe mimo to",
+      "confirmBodyBoth": "Ani etykieta, ani faktura dla tej paczki nie zostały jeszcze wydrukowane.",
+      "confirmBodyInvoice": "Faktura dla tej paczki nie została jeszcze wydrukowana.",
+      "confirmBodyLabel": "Etykieta dla tej paczki nie została jeszcze wydrukowana.",
+      "confirmBodyNoneLeft": "Oba dokumenty są już wydrukowane.",
+      "confirmHint": "Wydrukuj je teraz albo kontynuuj, jeśli są już wydrukowane gdzie indziej.",
+      "confirmTitle": "Zanim oznaczysz jako gotowe",
+      "doneNotice": "Oznaczono jako gotowe o {time}.",
+      "failed": "Nie udało się. Nic się nie zmieniło - spróbuj ponownie.",
+      "hint": "To informuje biuro, że praca nad tą paczką jest zakończona - schodzi z Twojego stanowiska.",
+      "printFailed": "Nie udało się wydrukować. Spróbuj ponownie albo kontynuuj mimo to.",
+      "printInvoiceAction": "Drukuj fakturę",
+      "printLabelAction": "Drukuj etykietę",
+      "refusedAlreadyCompleted": "Ta paczka była już oznaczona jako gotowa.",
+      "refusedLocked": "Ta paczka jest teraz przypisana do kogoś innego, więc nie można jej tu oznaczyć jako gotowej.",
+      "refusedNotClosed": "Ta paczka nie jest jeszcze zamknięta, więc nie ma czego oznaczać jako gotowe. Skanuj dalej.",
+      "refusedStale": "Ktoś inny zmienił tę paczkę. Ekran pokazuje teraz najnowszy stan - spróbuj ponownie.",
+      "refusedUnknown": "Nie udało się, a to stanowisko nie wie dlaczego. Pokaż ten ekran kierownikowi.",
+      "undoAction": "Cofnij oznaczenie",
+      "undoFailed": "Nie udało się. Nic się nie zmieniło - spróbuj ponownie.",
+      "undoHint": "Paczka zostaje spakowana dokładnie tak jak jest - usuwane jest tylko oznaczenie \"gotowe\".",
+      "undoRefusedLocked": "Ta paczka jest teraz przypisana do kogoś innego, więc nie można tu cofnąć oznaczenia.",
+      "undoRefusedNotCompleted": "Ta paczka nigdy nie była oznaczona jako gotowa, więc nie ma czego cofać.",
+      "undoRefusedStale": "Ktoś inny zmienił tę paczkę. Ekran pokazuje teraz najnowszy stan - spróbuj ponownie.",
+      "undoRefusedUnknown": "Nie udało się, a to stanowisko nie wie dlaczego. Pokaż ten ekran kierownikowi."
+    },
+    "copy": {
+      "action": "Kopiuj: {what}",
+      "barcode": "kod kreskowy",
+      "copied": "Skopiowano: {what}",
+      "orderReference": "numer zamówienia"
+    },
+    "documents": {
+      "audience": {
+        "issuedOnRequest": {
+          "body": "Ten sklep wystawia fakturę tylko na żądanie. Wyślij paczkę; jeśli to zamówienie potrzebuje faktury, zgłoś to w biurze.",
+          "title": "Nikt nie jest powiadamiany automatycznie."
+        },
+        "nobodyTold": {
+          "body": "To zamówienie nie jest na żadnej liście prowadzonej przez OpenLinker. Wyślij paczkę i wspomnij o tym w biurze.",
+          "title": "Nikt nie został powiadomiony."
+        },
+        "onOfficeList": {
+          "body": "Jest na liście zamówień, które wyszły bez dokumentu - nie musisz tego zapisywać.",
+          "title": "Biuro widzi to zamówienie."
+        }
+      },
+      "changeSizeAction": "Zmień rozmiar",
+      "doesNotStop": "Nie wstrzymuje to wysyłki paczki.",
+      "insideLabel": "Wkładasz DO ŚRODKA paczki",
+      "insideLabelMissing": "Wkładane DO ŚRODKA paczki",
+      "invoiceHint": "Złóż ją raz i połóż na towarze, zanim zakleisz paczkę.",
+      "invoiceStatus": {
+        "inProgressBadge": "Wystawiana",
+        "inProgressTitle": "Faktura w drodze",
+        "notConfirmedBadge": "Niepotwierdzona",
+        "notConfirmedBody": "OpenLinker nie wie, czy ta faktura została wystawiona.",
+        "notConfirmedTitle": "Faktura niepotwierdzona",
+        "rejectedBadge": "Niewystawiona",
+        "rejectedTitle": "Nie udało się wystawić faktury"
+      },
+      "invoiceTitle": {
+        "numbered": "Faktura {number}",
+        "unnumbered": "Faktura do tego zamówienia"
+      },
+      "labelHint": "Naklej ją płasko na największej ścianie. Niczego nią nie zasłaniaj.",
+      "labelPendingBadge": "Jeszcze niegotowa",
+      "labelPendingBody": "Dział wysyłki to załatwi. Pakuj dalej - nic tu na to nie czeka.",
+      "labelPendingTitle": "Etykieta nie jest jeszcze gotowa",
+      "labelTitle": "Etykieta dla tej paczki",
+      "link": {
+        "badge": "Wydrukuj ze strony online",
+        "body": "Tej faktury nie można wydrukować stąd. Otwórz ją i wydrukuj z tamtej strony.",
+        "openAction": "Otwórz fakturę online"
+      },
+      "mentionOffice": "Wspomnij o tym w biurze.",
+      "missingBody": "Nie da się tego naprawić na stanowisku i nie wstrzymuje to wysyłki paczki.",
+      "missingInvoiceBody": "Nie ma czego włożyć do paczki. Wyślij ją bez faktury.",
+      "missingInvoiceTitle": "Dla tego zamówienia nie wystawiono faktury",
+      "missingReasonLabel": "Dlaczego",
+      "missingReasonUnknown": "Nic w tym zamówieniu nie wyjaśnia dlaczego.",
+      "missingTitle": "Pakuj dalej - jeden dokument nie dotrze",
+      "notPrintableBadge": "Wystawiona, nie do druku",
+      "notPrintableBody": "Wystawiona, ale nie można jej tu wydrukować.",
+      "notPrintableTitle": {
+        "numbered": "Faktura {number}",
+        "unnumbered": "Faktura wystawiona"
+      },
+      "nothingToPrintBadge": "Nic do wydruku",
+      "onLabel": "Naklejasz NA paczkę",
+      "printFailed": "Nie udało się wydrukować. Nic się nie zmieniło - spróbuj ponownie.",
+      "printInvoiceAction": "Drukuj fakturę",
+      "printLabelAction": "Drukuj etykietę",
+      "printNotAvailable": "Ta faktura nie ma wersji do druku. Wyślij paczkę bez niej.",
+      "printingTo": "Drukowanie na {label}",
+      "readyBadge": "Gotowe do druku",
+      "readyBody": "Oba zostały wystawione wcześniej, poza tym stanowiskiem. Drukowanie ich tutaj niczego nie tworzy.",
+      "readyTitle": "Oba dokumenty czekają na wydruk",
+      "receipt": {
+        "inProgressBadge": "W trakcie rejestracji",
+        "inProgressTitle": "Paragon w drodze",
+        "linkBody": "Otwórz za pomocą linku poniżej.",
+        "linkFailed": "Nie udało się wczytać linku.",
+        "linkPending": "Pobieranie linku. Chwilę.",
+        "madeBadge": "Paragon wystawiony",
+        "noArtefactBody": "W OpenLinker nie ma linku do tego paragonu.",
+        "notConfirmedBadge": "Niepotwierdzony",
+        "notConfirmedBody": "OpenLinker nie wie, czy ten paragon został wystawiony.",
+        "notConfirmedTitle": "Paragon niepotwierdzony",
+        "openAction": "Otwórz paragon",
+        "printAction": "Drukuj paragon",
+        "rejectedBadge": "Niezarejestrowany",
+        "rejectedTitle": "Nie udało się zarejestrować paragonu",
+        "retryAction": "Spróbuj ponownie",
+        "slot": "Paragon do tego zamówienia",
+        "title": {
+          "numbered": "Paragon {reference}",
+          "unnumbered": "Paragon"
+        }
+      },
+      "trackingLabel": "Numer przesyłki",
+      "unknownDocument": {
+        "badge": "Dokument",
+        "slot": "Dokument do tego zamówienia",
+        "title": "Ten ekran nie może pokazać tego dokumentu"
+      }
+    },
+    "errors": {
+      "loadTitle": "Nie udało się otworzyć tej paczki",
+      "retryAction": "Spróbuj ponownie"
+    },
+    "footer": {
+      "keyboardHint": "Nie skanujesz? Naciśnij C, aby ręcznie potwierdzić następny otwarty produkt.",
+      "noCommit": "Ta paczka zamyka się sama w chwili, gdy ostatni produkt zostanie zweryfikowany. Nie trzeba tu niczego naciskać.",
+      "scannerReady": "Skaner podłączony · klawiatura niepotrzebna"
+    },
+    "header": {
+      "backAction": "Wróć do listy",
+      "buyerLabel": "Kupujący",
+      "carrierLabel": "Przewoźnik",
+      "dispatchByLabel": "Wyślij do",
+      "orderLabel": "Zamówienie",
+      "parcelLabel": "Paczka",
+      "parcelOf": "Paczka {index} z {total}",
+      "progress": "Zeskanowano {verified} z {required} sztuk",
+      "statusCancelled": "Anulowana",
+      "statusHeld": "Wstrzymana",
+      "statusInProgress": "W trakcie",
+      "statusPacked": "Spakowana",
+      "thisBoxOnly": "Wszystko poniżej trafia tylko do tej paczki. Pozostałe paczki tego zamówienia są obsługiwane gdzie indziej.",
+      "totalLabel": "Wartość zamówienia"
+    },
+    "hero": {
+      "confirmAction": "Potwierdź ten produkt",
+      "countOf": "z {required}",
+      "keyboardHint": "C potwierdź · U cofnij · Esc powrót do pola skanowania",
+      "matched": "Zgadza się",
+      "scanHint": "Skanowanie liczy samo. Potwierdzaj ręcznie tylko wtedy, gdy kod kreskowy się nie odczytuje.",
+      "scanLabel": "Zeskanuj ten produkt",
+      "scanPlaceholder": "Zeskanuj lub wpisz SKU / EAN, potem naciśnij Enter"
+    },
+    "inFlight": {
+      "recordedAnnouncement": "{name} policzono. {verified} z {required}.",
+      "sent": "Wysłano - oczekiwanie na system",
+      "sentAnnouncement": "{name} wysłano. Oczekiwanie na system.",
+      "unresolved": "{name} wysłano, ale nie ma jeszcze odpowiedzi. Skan nie jest policzony. Zeskanuj ten sam produkt ponownie - jeden skan nigdy nie jest liczony dwa razy.",
+      "unresolvedTitle": "Ten skan nie ma jeszcze odpowiedzi"
+    },
+    "interrupt": {
+      "acknowledgeAction": "Wróć do listy",
+      "body": "Zmieniła się w trakcie pakowania. Przestań skanować, odłóż pojemnik z powrotem na wózek i otwórz następną paczkę.",
+      "cancelledTitle": "To zamówienie właśnie zostało anulowane",
+      "heldTitle": "Ta paczka właśnie została wstrzymana",
+      "unknownTitle": "Tej paczki nie można już spakować"
+    },
+    "lines": {
+      "allIn": "wszystko",
+      "allItemsCaption": "Wszystkie produkty w tej paczce",
+      "badgeNotScanned": "Jeszcze niezeskanowany",
+      "badgeScanning": "Trwa skanowanie",
+      "badgeVerified": "Zgodny",
+      "binCodeLabel": "Lokalizacja {code}",
+      "codes": {
+        "ean": "EAN {ean}",
+        "sku": "SKU {sku}"
+      },
+      "colIdentifiers": "Identyfikatory",
+      "colItem": "Produkt",
+      "colLocation": "Lokalizacja",
+      "colScanned": "Zeskanowano",
+      "colStatus": "Status",
+      "confirmAction": "Potwierdź ten produkt",
+      "confirmActionFor": "Potwierdź {item}",
+      "confirmHint": "Dla produktu, którego kod kreskowy jest uszkodzony, nie ma go albo się nie odczytuje.",
+      "count": "{verified} z {required}",
+      "dimensionsMm": "{length} × {width} × {height} mm",
+      "groupByLocationLabel": "Grupuj wg lokalizacji",
+      "groupByLocationNote": "Sortuje produkty tej paczki według lokalizacji.",
+      "noneYet": "jeszcze niezeskanowane",
+      "stillToScan": {
+        "few": "Jeszcze {n} do zeskanowania",
+        "many": "Jeszcze {n} do zeskanowania",
+        "one": "Jeszcze {n} do zeskanowania",
+        "other": "Jeszcze {n} do zeskanowania"
+      },
+      "unnamed": "Brak zapisanej nazwy produktu",
+      "weightGrams": {
+        "g": "{value} g",
+        "kg": "{value} kg"
+      }
+    },
+    "loading": {
+      "body": "Chwilę.",
+      "title": "Otwieranie paczki"
+    },
+    "mobile": {
+      "aim": "Trzymaj kod kreskowy w ramce",
+      "allItemsDone": "Wszystkie produkty zeskanowane",
+      "cameraDenied": "Aparat jest zablokowany dla tej strony. Zezwól na niego w ustawieniach przeglądarki albo wpisz kod.",
+      "cameraFailed": "Aparat się nie uruchomił. Spróbuj ponownie albo wpisz kod.",
+      "cameraNoDevice": "To urządzenie nie ma aparatu. Wpisz kod.",
+      "cameraUnsupported": "Ta przeglądarka nie potrafi odczytać kodu kreskowego z aparatu. Wpisz kod - liczy się dokładnie tak samo.",
+      "closeList": "Wróć do paczki",
+      "itemOf": "Produkt {index} z {total}",
+      "itemsHeading": "Produkty w tej paczce",
+      "keepScanning": "Skanuj dalej - aparat pozostanie włączony, dopóki ten produkt nie zostanie zeskanowany.",
+      "lastRead": "Odczytano",
+      "scanAction": "Skanuj aparatem",
+      "scanClose": "Zamknij aparat",
+      "stillToScanShort": {
+        "few": "Zostały {n}",
+        "many": "Zostało {n}",
+        "one": "Zostało {n}",
+        "other": "Zostało {n}"
+      },
+      "switchParcel": "Przełącz na inną paczkę",
+      "torch": "Latarka"
+    },
+    "officeNotes": {
+      "title": "Notatki z biura ({count})",
+      "today": "dziś {time}",
+      "yesterday": "wczoraj {time}"
+    },
+    "preview": {
+      "body": "Możesz obejrzeć tę paczkę, ale nie możesz jej skanować, potwierdzać ani zamykać.",
+      "title": "Tylko podgląd"
+    },
+    "refusal": {
+      "cancelledBody": "Odnieś produkty z powrotem na półkę. Ta paczka nie zostanie wysłana.",
+      "cancelledTitle": "Anulowana - nic do spakowania",
+      "heldBody": "Odłóż pojemnik z powrotem na wózek. Dopóki paczka jest wstrzymana, niczego z niej nie można skanować.",
+      "heldTitle": "Wstrzymana - nie pakuj tej paczki",
+      "reasonLabel": "Podany powód",
+      "unknownBody": "Odłóż pojemnik z powrotem na wózek. To stanowisko nie może powiedzieć nic więcej - pokaż ten ekran kierownikowi.",
+      "unknownTitle": "Tej paczki nie wolno pakować"
+    },
+    "undo": {
+      "action": "Cofnij ostatni skan",
+      "nothingToUndo": "Jeszcze nie ma czego cofać.",
+      "parcelClosed": "Ta paczka jest już zamknięta. Najpierw otwórz ją ponownie.",
+      "voidedNotice": {
+        "named": "Cofnięto - ostatnia sztuka {name} już się nie liczy.",
+        "unnamed": "Cofnięto - ostatnia sztuka na tej pozycji już się nie liczy."
+      }
+    },
+    "unlabelled": {
+      "badge": "Spakowana · bez etykiety",
+      "body": {
+        "few": "Paczka jest gotowa i poprawna - wszystkie {n} sztuki się zgadzają i paczka jest zamknięta. Przewoźnik nie wydał dla niej etykiety, więc nie ma czego nakleić. Nie otwieraj jej i nie sprawdzaj ponownie.",
+        "many": "Paczka jest gotowa i poprawna - wszystkie {n} sztuk się zgadza i paczka jest zamknięta. Przewoźnik nie wydał dla niej etykiety, więc nie ma czego nakleić. Nie otwieraj jej i nie sprawdzaj ponownie.",
+        "one": "Paczka jest gotowa i poprawna - jej jedyna sztuka się zgadza i paczka jest zamknięta. Przewoźnik nie wydał dla niej etykiety, więc nie ma czego nakleić. Nie otwieraj jej i nie sprawdzaj ponownie.",
+        "other": "Paczka jest gotowa i poprawna - wszystkie {n} sztuki się zgadzają i paczka jest zamknięta. Przewoźnik nie wydał dla niej etykiety, więc nie ma czego nakleić. Nie otwieraj jej i nie sprawdzaj ponownie."
+      },
+      "carrierCode": "Przewoźnik odrzucił ją z kodem {code}.",
+      "carrierHeading": "Co podał przewoźnik",
+      "carrierHidden": "Przewoźnik podał powód, ale nie jest on pokazywany na stanowisku.",
+      "carrierQuote": "„{message}”",
+      "carrierReassurance": "Z paczką wszystko w porządku. Ktoś musi wybrać inny punkt odbioru albo kuriera, a wtedy etykieta się wydrukuje.",
+      "carrierUnknown": "Przewoźnik nie podał powodu.",
+      "counts": "Paczki czekające tutaj: {here} · w dziale wysyłki: {inDispatch}",
+      "dispatchBody": "Jest na liście paczek czekających na etykietę w dziale wysyłki, dopóki etykieta się nie wydrukuje, więc nie zależy od tego, czy ktoś pamięta o tym stanowisku. Jeśli teraz odejdziesz, paczka zostanie na tej liście.",
+      "dispatchTitle": "Dział wysyłki też widzi tę paczkę",
+      "eyebrow": "Ta paczka nie może zostać wysłana",
+      "invoiceStillFine": "Faktura jest w porządku i może już trafić do paczki, żeby później jej nie brakowało.",
+      "notRetryable": "Z tego stanowiska nie można spróbować ponownie. Zakup etykiety wymaga adresu i wymiarów paczki, których nie ma na tym ekranie - zajmuje się tym dział wysyłki.",
+      "title": "Spakowana, ale bez etykiety"
+    },
+    "unreachable": {
+      "badge": "Brak połączenia",
+      "body": "Wszystko, co już policzono, jest bezpieczne - nic, co zeskanowano, nie przepadło. Nowe skany są odrzucane, dopóki stanowisko nie odzyska połączenia, bo skan, którego nie można zapisać, to skan, którego nie było.",
+      "confirmDisabledHint": "Niedostępne, gdy stanowisko nie ma połączenia z OpenLinker.",
+      "refusedBody": "Nic nie zostało zapisane. Poczekaj, aż komunikat powyżej zniknie, i zeskanuj ten produkt ponownie.",
+      "refusedTitle": "Nie policzono - stanowisko nie łączy się z OpenLinker",
+      "title": "To stanowisko nie łączy się z OpenLinker",
+      "whatToDo": "Przestań skanować i poczekaj. Problem zniknie sam, gdy stanowisko odzyska połączenie."
+    },
+    "verify": {
+      "dismissAction": "Zamknij",
+      "noSuchLine": "Nic nie zostało zapisane. Tego produktu nie ma już w tej paczce. Ekran został odświeżony.",
+      "notPackable": "Nic nie zostało zapisane. Tej paczki nie wolno pakować - odłóż ją na wózek.",
+      "notYours": "Nic nie zostało zapisane. Ta paczka należy teraz do innego pakowacza. Weź następną.",
+      "overPacked": "Trzeci skan odrzucony - ta paczka mieści {required}. Liczba pozostała na {kept}. Stanowisko zapiszczało.",
+      "overPackedBadge": "Nadmiarowy skan odrzucony",
+      "parcelClosed": "Nic nie zostało zapisane. Ta paczka jest już zamknięta. Jeśli coś trzeba zmienić, najpierw otwórz ją ponownie.",
+      "scannedLabel": "Zeskanowano",
+      "unknownRefusal": "Nic nie zostało zapisane, a to stanowisko nie wie dlaczego. Pokaż ten ekran kierownikowi.",
+      "wrongItemBody": {
+        "nothingLeft": "Nic nie zostało zapisane. W tej paczce nie ma już nic do zeskanowania, więc {scanned} nie może do niej trafić.",
+        "waiting": "Nic nie zostało zapisane. Ta paczka wciąż czeka na {expected} - zeskanowano {scanned}."
+      },
+      "wrongItemTitle": "Ten produkt nie należy do tej paczki"
+    }
+  },
+  "work": {
+    "emptyIdle": {
+      "body": "Każda paczka skierowana na to stanowisko została spakowana. Nowa praca pojawi się tu sama - nie trzeba odświeżać, a sesja może pozostać aktywna.",
+      "reassurance": "Praca dociera na to stanowisko normalnie.",
+      "title": "Teraz nie ma nic do spakowania"
+    },
+    "emptyNotRouted": {
+      "body": "OpenLinker nie kieruje tu pracy pakowania, więc nic się nie pojawi, niezależnie od tego, jak długo ten ekran będzie otwarty. Na stanowisku wszystko działa, a to nie to samo co brak paczek do spakowania.",
+      "remedyBody": "Pokaż ten ekran kierownikowi. Osoba z kontem administratora włącza pakowanie w OpenLinker w sekcji Połączenia › Dodaj połączenie › OpenLinker OMS. Do tego czasu zamówienia trafiają tam, gdzie trafiały wcześniej.",
+      "remedyLink": "Otwórz konfigurację pakowania",
+      "remedyTitle": "Co z tym zrobić",
+      "title": "Żadna praca nie może dotrzeć na to stanowisko"
+    },
+    "emptyNotSetUpAdmin": {
+      "action": "Skonfiguruj OpenLinker OMS",
+      "body": "OpenLinker OMS nie jest skonfigurowany albo jest wyłączony, więc zamówienia nie są pakowane w OpenLinker i nic nie pojawi się na tym stanowisku. Skonfiguruj OMS, aby zacząć tu pakować.",
+      "title": "Pakowanie jest wyłączone"
+    },
+    "errors": {
+      "loadTitle": "Nie udało się wczytać pracy dla tego stanowiska",
+      "retryAction": "Ponów próbę"
+    },
+    "footer": {
+      "honesty": "OpenLinker nie widzi Twoich półek - to jest to, co musi wyjść, i kiedy.",
+      "liveness": "Aktualizuje się automatycznie"
+    },
+    "header": {
+      "eyebrow": "Praca pakowania",
+      "fallbackTitle": "Praca pakowania na tym stanowisku",
+      "orderingNote": "Najpilniejsze na górze"
+    },
+    "loading": {
+      "body": "Chwilę.",
+      "title": "Wczytywanie pracy dla tego stanowiska"
+    },
+    "metrics": {
+      "packedTodayLabel": "Spakowane dziś",
+      "toPackLabel": "Do spakowania - wszystkie stanowiska",
+      "trendDown": "-{delta} wobec wczoraj",
+      "trendFlat": "tyle samo co wczoraj",
+      "trendUp": "+{delta} wobec wczoraj"
+    },
+    "placeholder": {
+      "body": "Wybierz paczkę z listy po lewej, aby zacząć ją skanować.",
+      "title": "Brak otwartej paczki"
+    },
+    "row": {
+      "assignedToOtherBadge": "Przypisane do innego pakowacza",
+      "assignedToYouBadge": "Przypisane do Ciebie",
+      "buyerNote": "Notatka kupującego",
+      "buyerNoteRead": "przeczytana",
+      "cancelledBadge": "Anulowane",
+      "cancelledBody": "Nic do spakowania. Odnieś produkty na półkę.",
+      "cancelledTitle": "Anulowane",
+      "deadlineLater": "Później dziś lub po dziś",
+      "deadlineOverdue": "Po terminie",
+      "deadlineSoon": "Termin blisko",
+      "deadlineUnknown": "Nie podano terminu nadania",
+      "expediteAction": "Przenieś na początek",
+      "expediteFailed": "Nie udało się. Lista została odświeżona - spróbuj ponownie.",
+      "expeditedBadge": "Przeniesione na początek",
+      "heldBadge": "Wstrzymane",
+      "heldBody": "Odłóż pojemnik z powrotem na wózek.",
+      "heldTitle": "Wstrzymane - nie pakuj",
+      "itemQuantity": "{quantity} x",
+      "itemUnnamed": "Produktu nie ma w katalogu",
+      "itemsMore": {
+        "few": "Jeszcze {n} produkty w tej paczce",
+        "many": "Jeszcze {n} produktów w tej paczce",
+        "one": "Jeszcze {n} produkt w tej paczce",
+        "other": "Jeszcze {n} produktu w tej paczce"
+      },
+      "lockedForOther": "Otworzyć ją może tylko przypisany pakowacz",
+      "openAction": "Otwórz paczkę",
+      "releaseExpediteAction": "Przywróć kolejność wg terminu",
+      "summary": {
+        "few": "Paczka {parcelIndex} z {parcelTotal} · {n} produkty, sztuki do zeskanowania: {unitsToVerify}",
+        "many": "Paczka {parcelIndex} z {parcelTotal} · {n} produktów, sztuki do zeskanowania: {unitsToVerify}",
+        "one": "Paczka {parcelIndex} z {parcelTotal} · {n} produkt, sztuki do zeskanowania: {unitsToVerify}",
+        "other": "Paczka {parcelIndex} z {parcelTotal} · {n} produktu, sztuki do zeskanowania: {unitsToVerify}"
+      }
+    },
+    "scan": {
+      "dismissAction": "Zamknij",
+      "scannedLabel": "Zeskanowano",
+      "unrecognisedBody": "Na tym ekranie nie ma nic do zeskanowania i nic nie zostało zapisane. Znajdź paczkę, wpisując jej numer lub nazwisko kupującego.",
+      "unrecognisedTitle": "Nie rozpoznano tego skanu"
+    },
+    "scope": {
+      "note": "To praca pakowania skierowana tutaj i przyjęta na tym stanowisku - nie lista wszystkich niespakowanych zamówień. Zamówienia wysyłane przez operatora logistycznego nigdy się tu nie pojawiają."
+    },
+    "search": {
+      "clearAction": "Wyczyść",
+      "hint": "Wystarczy część numeru. Znajdą ją zera wiodące, prefiksy marketplace'ów i nazwisko. Pojemnik nie ma kodu kreskowego, więc paczkę znajduje się, wpisując tekst.",
+      "label": "Znajdź paczkę - wpisz numer zamówienia lub nazwisko kupującego",
+      "noMatches": "Nic tu nie pasuje do wpisanego tekstu. Wyczyść pole, aby znowu zobaczyć wszystko.",
+      "placeholder": "np. 4471, OL-4471, allegro-4471, Nowak"
+    },
+    "sections": {
+      "doNotPack": "Nie pakuj tych",
+      "toPack": "Do spakowania"
+    },
+    "tabs": {
+      "assignedToOthers": "Przypisane do innych pakowaczy",
+      "assignedToYou": "Przypisane do Ciebie",
+      "bench": "Na tym stanowisku",
+      "claimAction": "Przejmij tę paczkę",
+      "claimFailed": "Nie udało się przejąć. Lista została odświeżona - spróbuj ponownie.",
+      "done": "Spakowane dziś",
+      "doneNote": "To dziennik, a nie kolejka - niczego tu nie można otworzyć.",
+      "hold": "Wstrzymane",
+      "noPacksYet": "Dziś jeszcze nic nie spakowano.",
+      "noSectionMatches": "Nic tu nie pasuje do wpisanego tekstu.",
+      "nothingLeftHere": "Nie masz tu już nic do zrobienia",
+      "onHoldHeading": "Wstrzymane - nie pakuj",
+      "takeNextAction": "Weź następne zadanie",
+      "takeNextCancelled": "To zamówienie właśnie zostało anulowane. Spróbuj ponownie.",
+      "takeNextEmpty": "Teraz nie ma nic nieprzypisanego.",
+      "takeNextFailed": "Nie udało się. Lista została odświeżona - spróbuj ponownie.",
+      "takeNextHeld": "To zadanie właśnie zostało wstrzymane. Spróbuj ponownie.",
+      "takeNextLocked": "To zadanie jest już do kogoś przypisane. Wybierz inne.",
+      "takeNextTaken": "Ktoś był szybszy. Spróbuj ponownie - może być więcej.",
+      "unassigned": "Nieprzypisane - każdy może to wziąć",
+      "unlabelledBadge": "Spakowane · bez etykiety",
+      "waitingOnCarrier": "Spakowane - czeka na przewoźnika"
+    },
+    "truncated": {
+      "note": "Pracy jest więcej, niż się tu mieści. Spakuj część, a pojawi się reszta."
+    }
+  }
+}

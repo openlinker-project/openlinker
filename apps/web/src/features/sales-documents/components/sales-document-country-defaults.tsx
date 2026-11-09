@@ -24,14 +24,14 @@
  *
  * @module apps/web/src/features/sales-documents/components
  */
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { useConnectionsQuery } from '../../connections';
 import { Select } from '../../../shared/ui/select';
 import { Alert } from '../../../shared/ui/alert';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { useSalesDocumentCountryDefaultsQuery } from '../hooks/use-sales-document-country-defaults-query';
 import { useUpsertSalesDocumentCountryDefaultMutation } from '../hooks/use-upsert-sales-document-country-default-mutation';
@@ -39,6 +39,7 @@ import { useDeleteSalesDocumentCountryDefaultMutation } from '../hooks/use-delet
 import { deriveSalesDocumentRows, isActiveRoutable } from '../lib/derive-sales-document-rows';
 import { SALES_DOCUMENT_REST_OF_WORLD_COUNTRY } from '../api/sales-document-rules.types';
 import type { ConcreteDocumentKind, SalesDocumentKind } from '../api/sales-documents.types';
+import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
 
 interface SalesDocumentCountryDefaultsProps {
   country: string;
@@ -52,21 +53,15 @@ interface CountryDefaultCandidate {
   stale?: boolean;
 }
 
-function documentKindLabel(kind: SalesDocumentKind): string {
-  return kind === 'invoice' ? 'Invoice' : 'Receipt';
+function documentKindLabel(
+  kind: SalesDocumentKind,
+  labels: { invoice: string; receipt: string },
+): string {
+  return kind === 'invoice' ? labels.invoice : labels.receipt;
 }
 
-/**
- * The readback names the kind in prose, so the article has to follow it — a
- * fixed `a` renders "a Invoice". Only the Receipt branch appears in the
- * mockup, which is why it read correctly there.
- */
-function documentKindArticle(kind: SalesDocumentKind): string {
-  return kind === 'invoice' ? 'an' : 'a';
-}
-
-function countryDisplayName(country: string): string {
-  return country === SALES_DOCUMENT_REST_OF_WORLD_COUNTRY ? '★ Rest of world' : country;
+function bold(text: string): ReactNode {
+  return <b>{text}</b>;
 }
 
 /**
@@ -94,6 +89,8 @@ function candidateOptionValue(
 export function SalesDocumentCountryDefaults({
   country,
 }: SalesDocumentCountryDefaultsProps): ReactElement {
+  const messages = useMessages('sales-documents');
+  const copy = messages.salesDocumentCountryDefaults;
   const connectionsQuery = useConnectionsQuery();
   const defaultsQuery = useSalesDocumentCountryDefaultsQuery(country);
   const upsert = useUpsertSalesDocumentCountryDefaultMutation();
@@ -102,13 +99,13 @@ export function SalesDocumentCountryDefaults({
   const write = useWriteAccess('connections:write', demoMode);
 
   if (connectionsQuery.isLoading || defaultsQuery.isLoading) {
-    return <LoadingState title="Loading default" message="Fetching the country default…" />;
+    return <LoadingState title={copy.loading.title} message={copy.loading.message} />;
   }
   if (connectionsQuery.error || defaultsQuery.error) {
     return (
       <ErrorState
-        title="Unable to load default"
-        message={(connectionsQuery.error ?? defaultsQuery.error)?.message ?? 'Unknown error'}
+        title={copy.loadError}
+        message={(connectionsQuery.error ?? defaultsQuery.error)?.message ?? copy.unknownError}
       />
     );
   }
@@ -196,15 +193,15 @@ export function SalesDocumentCountryDefaults({
   const options = staleCurrentCandidate ? [...candidates, staleCurrentCandidate] : candidates;
 
   const isPending = upsert.isPending || (remove.isPending && current !== null);
-  const displayCountry = countryDisplayName(country);
+  const displayCountry =
+    country === SALES_DOCUMENT_REST_OF_WORLD_COUNTRY ? copy.restOfWorld : country;
 
   return (
     <div className="page-section">
       <p className="eyebrow" style={{ marginBottom: 2 }}>
-        If no rule matched
-        {isPending ? ' — Saving…' : null}
+        {isPending ? copy.eyebrowSaving : copy.eyebrow}
       </p>
-      <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+      <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
         <Select
           id="sd-country-default"
           data-testid="country-default"
@@ -225,17 +222,19 @@ export function SalesDocumentCountryDefaults({
             });
           }}
         >
-          <option value="">Nothing — hold the order</option>
+          <option value="">{copy.nothingOption}</option>
           {options.map((c) => (
             <option key={candidateOptionValue(c, options)} value={candidateOptionValue(c, options)}>
-              {documentKindLabel(c.documentKind)} · {c.name}
-              {c.stale ? ' (no longer eligible)' : ''}
+              {interpolate(c.stale ? copy.optionStale : copy.option, {
+                kind: documentKindLabel(c.documentKind, messages.documentKind),
+                name: c.name,
+              })}
             </option>
           ))}
         </Select>
       </ReadOnlyLock>
       <p className="muted-text">
-        Options: <b>Nothing — hold the order</b>, or any one connection with a role.
+        {renderRich(copy.optionsHint, { b: bold })}
       </p>
       {/* The mockup renders this as a tinted, bordered callout under its own
           `.readback` rule, but that rule is built on `--info-*` tokens the
@@ -244,29 +243,31 @@ export function SalesDocumentCountryDefaults({
           component and its siblings already use. */}
       <div data-testid="country-default-readback">
         <p className="eyebrow" style={{ marginBottom: 2 }}>
-          Which means
+          {copy.readback.heading}
         </p>
         {current ? (
           <p className="muted-text">
-            An order in <b>{displayCountry}</b> matching none of the rules above gets{' '}
-            {documentKindArticle(current.documentKind)}{' '}
-            <b>{documentKindLabel(current.documentKind)}</b> through{' '}
-            <b>
-              {connections.find((c) => c.id === current.connectionId)?.name ??
-                current.connectionId}
-            </b>
-            .
+            {renderRich(
+              current.documentKind === 'invoice' ? copy.readback.invoice : copy.readback.receipt,
+              { b: bold },
+              {
+                country: displayCountry,
+                kind: documentKindLabel(current.documentKind, messages.documentKind),
+                connection:
+                  connections.find((c) => c.id === current.connectionId)?.name ??
+                  current.connectionId,
+              },
+            )}
           </p>
         ) : (
           <p className="muted-text">
-            An order in <b>{displayCountry}</b> matching none of the rules above has no fallback
-            here and is <b>held</b>.
+            {renderRich(copy.readback.held, { b: bold }, { country: displayCountry })}
           </p>
         )}
       </div>
       {candidates.length === 0 ? (
         <p className="muted-text">
-          No connection has a role here yet — give one under Connected providers.
+          {copy.noCandidates}
         </p>
       ) : null}
       {upsert.isError ? <Alert tone="error">{upsert.error.message}</Alert> : null}

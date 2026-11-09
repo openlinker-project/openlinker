@@ -14,6 +14,9 @@
  */
 import { z } from 'zod';
 import { CORE_CAPABILITY_VALUES, type CoreCapability, type CreateConnectionInput } from '../api/connections.types';
+import { schemaMessage } from '../lib/schema-message';
+
+const msg = schemaMessage('shoperSetupSchema');
 
 export const SHOPER_ADAPTER_KEY = 'shoper.restapi.v1';
 
@@ -33,9 +36,9 @@ export const SHOPER_FALLBACK_CAPABILITIES: CoreCapability[] = [
 export const SHOPER_DEFAULT_CAPABILITIES: CoreCapability[] = ['ProductMaster', 'InventoryMaster'];
 
 export const shoperSetupSchema = z.object({
-  name: z.string().trim().min(1, 'Connection name is required'),
-  baseUrl: z.string().trim().min(1, 'Shop address is required'),
-  token: z.string().trim().min(1, 'API token is required'),
+  name: z.string().trim().min(1, msg('nameRequired')),
+  baseUrl: z.string().trim().min(1, msg('baseUrlRequired')),
+  token: z.string().trim().min(1, msg('tokenRequired')),
   enabledCapabilities: z.array(z.enum(CORE_CAPABILITY_VALUES)).default(SHOPER_DEFAULT_CAPABILITIES),
 });
 

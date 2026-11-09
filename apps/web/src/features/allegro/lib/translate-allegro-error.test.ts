@@ -15,14 +15,14 @@ import type { StructuredError } from '../../../shared/ui/structured-error-list';
 
 describe('translateAllegroError', () => {
   it.each([
-    ['SAFETY_INFO_NOT_DEFINED', /verify the discriminator/i],
+    ['SAFETY_INFO_NOT_DEFINED', /check the safety information type/i],
     ['NO_SAFETY_INFORMATION_OPTION_NOT_ALLOWED', /Provide safety information \(text\)/],
-    ['RESPONSIBLE_PRODUCER_NOT_SPECIFIED', /Responsible Producer/],
+    ['RESPONSIBLE_PRODUCER_NOT_SPECIFIED', /responsible producer/i],
     [
       'ConstraintViolationException.AfterSalesServiceConditionsRequiredByCompany',
       /after-sales policies/,
     ],
-    ['UnsupportedLanguageInAcceptLanguageHeader', /unsupported Accept-Language/],
+    ['UnsupportedLanguageInAcceptLanguageHeader', /language setting the marketplace does not support/],
   ])('translates %s into an operator-actionable message', (code, expected) => {
     const result = translateAllegroError({
       code,
@@ -39,7 +39,7 @@ describe('translateAllegroError', () => {
       message: 'Unknown properties found in the request',
     });
     expect(result?.message).toContain('`safetyInformation.foo`');
-    expect(result?.message).toMatch(/regression in the OL Allegro adapter/);
+    expect(result?.message).toMatch(/contact support with the offer ID/);
   });
 
   it('omits the path clause from the UnknownJSONProperty message when field is absent', () => {
@@ -48,7 +48,7 @@ describe('translateAllegroError', () => {
       message: 'Unknown properties found in the request',
     });
     expect(result?.message).not.toContain('at `');
-    expect(result?.message).toMatch(/regression in the OL Allegro adapter/);
+    expect(result?.message).toMatch(/contact support with the offer ID/);
   });
 
   it('returns null for codes that are not in the allowlist', () => {

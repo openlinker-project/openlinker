@@ -1,0 +1,797 @@
+{
+  "common": {
+    "authTypes": {
+      "ksef-token": "Token autoryzacyjny KSeF",
+      "qualified-seal": "Kwalifikowana pieczęć elektroniczna"
+    },
+    "environments": {
+      "demo": "Demo (przedprodukcyjne)",
+      "prod": "Produkcja (rzeczywiste rozliczenie)",
+      "test": "Test (sandbox)"
+    },
+    "fields": {
+      "addressLine1": {
+        "description": "Ulica i numer budynku. Wymagane do wystawienia.",
+        "label": "Adres, linia 1",
+        "placeholder": "ul. Przykładowa 1"
+      },
+      "addressLine2": {
+        "description": "Numer lokalu. Opcjonalne.",
+        "label": "Adres, linia 2"
+      },
+      "city": {
+        "description": "Wymagane do wystawienia.",
+        "label": "Miejscowość",
+        "placeholder": "Warszawa"
+      },
+      "contextIdentifier": {
+        "label": "Identyfikator kontekstu"
+      },
+      "country": {
+        "description": "Kod ISO 3166-1 alpha-2. Domyślnie PL.",
+        "label": "Kraj",
+        "placeholder": "PL"
+      },
+      "environment": {
+        "label": "Środowisko"
+      },
+      "lineUnit": {
+        "label": "Domyślna jednostka pozycji",
+        "placeholder": "szt."
+      },
+      "optional": "(opcjonalne)",
+      "postalCode": {
+        "description": "Wymagane do wystawienia.",
+        "label": "Kod pocztowy",
+        "placeholder": "00-001"
+      },
+      "sellerName": {
+        "description": "Zarejestrowana nazwa firmy (Podmiot1) drukowana na fakturze. Wymagane do wystawienia.",
+        "label": "Pełna nazwa sprzedawcy",
+        "placeholder": "ACME Sp. z o.o."
+      },
+      "sellerNip": {
+        "description": "10-cyfrowy NIP sprzedawcy wystawiającego faktury. Wymagany do wystawiania faktur.",
+        "label": "NIP sprzedawcy",
+        "placeholder": "1234567890"
+      }
+    },
+    "formaPlatnosci": {
+      "1": "Gotówka",
+      "2": "Karta",
+      "3": "Bon",
+      "4": "Czek",
+      "5": "Kredyt",
+      "6": "Przelew",
+      "7": "Mobilna"
+    }
+  },
+  "ksefConnectionConfig": {
+    "bankAccountLength": "Numer konta bankowego musi mieć od 10 do 34 znaków (zgodnie z formatem NrRB w FA(3)).",
+    "countryIso2": "Kraj musi być 2-literowym kodem ISO (np. PL).",
+    "exemptionKindRequired": "Wybierz, na co powołuje się podstawa zwolnienia.",
+    "exemptionTextRequired": "Wpisz podstawę prawną zwolnienia.",
+    "nipChecksum": "NIP sprzedawcy ma nieprawidłową sumę kontrolną.",
+    "nipDigits": "NIP sprzedawcy musi mieć 10 cyfr.",
+    "paymentTermMax": "Termin płatności może wynosić najwyżej 999 dni.",
+    "paymentTermWhole": "Termin płatności musi być nieujemną liczbą całkowitą dni.",
+    "postalCode": "Kod pocztowy musi mieć polski format NN-NNN.",
+    "skontoAmountRequired": "Kwota skonta jest wymagana, gdy ustawiono warunki skonta.",
+    "skontoConditionsRequired": "Warunki skonta są wymagane, gdy ustawiono kwotę skonta."
+  },
+  "ksefCredentialsPanel": {
+    "cancel": "Anuluj",
+    "description": "Przechowywany bezpiecznie na serwerze. Zmień, aby podmienić token KSeF lub odwołanie do pieczęci bez restartu API.",
+    "envBacked": "Zmienna środowiskowa (nie można jej edytować w interfejsie)",
+    "label": "Sekret uwierzytelniający",
+    "newSecretPlaceholder": "Nowy sekret uwierzytelniający",
+    "rotate": "Zmień sekret uwierzytelniający",
+    "rotating": "Zmieniam...",
+    "save": "Zapisz nowy sekret",
+    "toast": {
+      "description": "Nowy sekret uwierzytelniający KSeF jest już używany.",
+      "title": "Dane dostępowe zmienione"
+    }
+  },
+  "ksefFa3View": {
+    "additionalParties": "Inne podmioty",
+    "annotationWithDetail": "{label}: {detail}",
+    "annotations": {
+      "cash-accounting": "Metoda kasowa",
+      "exemption": "Zwolnienie z VAT",
+      "margin": "Procedura marży",
+      "reverse-charge": "Odwrotne obciążenie",
+      "self-billing": "Samofakturowanie",
+      "split-payment": "Mechanizm podzielonej płatności",
+      "triangulation": "Procedura uproszczona (transakcja trójstronna)"
+    },
+    "annotationsTitle": "Adnotacje",
+    "buyer": "Nabywca",
+    "correctedInvoice": "Koryguje fakturę",
+    "correctedKsefNumber": "Numer KSeF faktury korygowanej",
+    "correctionReason": "Przyczyna korekty",
+    "currency": "Waluta",
+    "emptyCell": "-",
+    "exchangeRate": "Kurs waluty (NBP)",
+    "grandTotal": "Do zapłaty",
+    "issueDate": "Data wystawienia",
+    "ksefNumber": "Numer KSeF",
+    "lineDesc": "Opis",
+    "lineGrossTotal": "Wartość brutto",
+    "lineGtu": "GTU",
+    "lineNetPrice": "Cena jedn. netto",
+    "lineNetTotal": "Wartość netto",
+    "lineNo": "#",
+    "lineProcedure": "Procedura",
+    "lineQty": "Ilość",
+    "lineUnit": "J.m.",
+    "lineVat": "Stawka VAT",
+    "lines": "Pozycje faktury",
+    "linesBefore": "Pozycje przed korektą",
+    "marginTotal": "Sprzedaż w procedurze marży",
+    "nipLine": "NIP: <mono>{nip}</mono>",
+    "partyNip": "(NIP {nip})",
+    "partyRole": "· rola {role}",
+    "payment": "Płatność",
+    "paymentAccount": "Konto bankowe",
+    "paymentForm": "Forma płatności",
+    "paymentForms": {
+      "1": "Gotówka",
+      "2": "Karta",
+      "3": "Bon",
+      "4": "Czek",
+      "5": "Kredyt",
+      "6": "Przelew",
+      "7": "Mobilna"
+    },
+    "paymentSkonto": "Skonto",
+    "paymentTerm": "Termin płatności",
+    "saleDate": "Data sprzedaży",
+    "seller": "Sprzedawca",
+    "skontoValue": "{amount} - {conditions}",
+    "totalWithCurrency": "{amount} {currency}",
+    "typeCorrection": "Faktura korygująca",
+    "typeStandard": "Faktura podstawowa",
+    "vatGross": "Brutto",
+    "vatNet": "Netto",
+    "vatRate": "Stawka",
+    "vatSummary": "Podsumowanie VAT",
+    "vatTax": "Podatek",
+    "vatTaxPln": "Podatek (PLN)",
+    "verificationHint": "Zeskanuj, aby zweryfikować tę fakturę w systemie KSeF.",
+    "verificationLabel": "Kod weryfikacyjny",
+    "verificationQrAlt": "Kod QR weryfikacji faktury w KSeF"
+  },
+  "ksefInvoiceCorrectionFlow": {
+    "addLine": "+ Dodaj pozycję",
+    "cancel": "Anuluj",
+    "col": {
+      "lp": "Lp",
+      "newPrice": "Nowe brutto",
+      "newQty": "Nowa ilość",
+      "remove": "Usuń"
+    },
+    "correcting": "Korekta <strong>{reference}</strong>",
+    "emptyCell": "-",
+    "failed": "KOR nieudany",
+    "gridLinesRequired": "Zmień ilość lub cenę co najmniej jednej pozycji, zanim wystawisz korektę.",
+    "issued": "KOR wystawiony",
+    "issuedBody": "Faktura korygująca została przesłana do KSeF.",
+    "issuedOn": "Wystawiono <strong>{date}</strong>",
+    "ksefRef": "KSeF <strong>{reference}</strong>",
+    "lineDeltaRequired": "Każda pozycja musi mieć nową ilość, nową cenę lub obie.",
+    "lineNum": "Numer pozycji {n}",
+    "linesRequired": "Wymagana jest co najmniej jedna pozycja z numerem.",
+    "loadingLines": "Wczytywanie pozycji faktury…",
+    "newPrice": "Nowe brutto, pozycja {n}",
+    "newQty": "Nowa ilość, pozycja {n}",
+    "note": "Dokument KOR zmienia ilość, cenę lub obie dla każdej pozycji. KSeF nadaje numer rozliczenia, a OpenLinker sam uzgadnia jego status.",
+    "providerTag": "Wysłana bezpośrednio do KSeF",
+    "removeLine": "Usuń pozycję {n}",
+    "submit": "Wystaw KOR",
+    "submitting": "Wystawianie…",
+    "title": "Wystaw korektę KOR"
+  },
+  "ksefInvoiceDetailSection": {
+    "art108gHint": "Art. 108g: przy płatności za tę fakturę podaj ten numer KSeF w tytule przelewu.",
+    "clearanceStatus": "Status rozliczenia",
+    "close": "Zamknij",
+    "documentNumber": "Numer faktury",
+    "documentNumberHint": "Nadany przez OpenLinker przy wystawieniu",
+    "emptyCell": "-",
+    "fa3DownloadXml": "Pobierz XML",
+    "fa3Downloading": "Pobieranie…",
+    "fa3Hint": "Wersja czytelna + źródłowy XML",
+    "fa3Label": "Dokument FA(3)",
+    "fa3Preview": "Podgląd FA(3)",
+    "fa3PreviewPlaceholder": "Kliknij 'Pokaż', aby wczytać fakturę.",
+    "fa3View": "Pokaż",
+    "fa3ViewError": "Nie udało się wyświetlić podglądu. Kliknij 'Pokaż', aby ponowić.",
+    "fa3ViewFailed": "Podgląd FA(3) nieudany",
+    "fa3ViewFailedDesc": "Nie udało się pobrać dokumentu.",
+    "fa3XmlFailed": "Nie udało się pobrać XML FA(3)",
+    "fa3XmlFailedDesc": "Nie udało się pobrać dokumentu źródłowego.",
+    "loading": "Wczytywanie…",
+    "number": "Numer KSeF",
+    "numberHint": "Nadawany przez KSeF przy rozliczeniu",
+    "numberPending": "Oczekuje",
+    "rejectionDetail": "Szczegóły odrzucenia",
+    "rejectionDetailHint": "Zgłoszone przez KSeF",
+    "sectionTitle": "KSeF · Krajowy System e-Faktur",
+    "upoDialogDesc": "Urzędowe poświadczenie odbioru (UPO) dla tej faktury w KSeF.",
+    "upoDialogTitle": "Poświadczenie UPO",
+    "upoDownload": "Pobierz UPO",
+    "upoDownloadFailed": "Nie udało się pobrać UPO",
+    "upoDownloadFailedDesc": "Nie udało się pobrać dokumentu poświadczenia.",
+    "upoDownloading": "Pobieranie…",
+    "upoFrameTitle": "Podgląd poświadczenia UPO",
+    "upoHint": "Potwierdzenie rozliczenia",
+    "upoHintPending": "Dostępne po rozliczeniu",
+    "upoLabel": "Urzędowe poświadczenie (UPO)",
+    "upoPreview": "Podgląd",
+    "upoPreviewFailed": "Podgląd UPO nieudany",
+    "upoPreviewFailedDesc": "Nie udało się pobrać dokumentu poświadczenia.",
+    "upoPreviewUnsupported": "Tego poświadczenia nie da się wyświetlić na stronie. Otwórz je przyciskiem \"Pobierz UPO\".",
+    "verificationPendingFrame": "Kod weryfikacyjny pojawi się, gdy KSeF nada numer",
+    "verificationPendingHint": "KSeF przyjął tę fakturę, ale nie nadał jeszcze numeru. OpenLinker sprawdza to automatycznie; kod pojawi się tutaj po nadaniu numeru.",
+    "verificationPendingLabel": "Kod weryfikacyjny (KOD I)",
+    "verificationPendingNotSent": "Ta faktura nie dotarła jeszcze do KSeF. Kod pojawi się tutaj, gdy KSeF ją przyjmie i nada numer."
+  },
+  "ksefInvoiceIssueOptions": {
+    "addParty": "Dodaj podmiot",
+    "gtu": "GTU",
+    "gtuFor": "GTU dla {line}",
+    "lead": "Nic tu nie jest ustawione za ciebie. Zaznacz tylko to, co dotyczy tej sprzedaży; w razie wątpliwości zapytaj księgowego.",
+    "line": "Pozycja",
+    "lineN": "Pozycja {n}",
+    "linesCaption": "Oznaczenia dla pozycji",
+    "none": "Brak",
+    "partyLegend": "Inny podmiot na fakturze (Podmiot3)",
+    "partyName": "Nazwa",
+    "partyNip": "NIP",
+    "partyRole": "Rola",
+    "procedure": "Procedura",
+    "procedureFor": "Procedura dla {line}",
+    "removeParty": "Usuń ten podmiot",
+    "roleGv": "Członek grupy VAT (rola 10)",
+    "roleJst": "Jednostka samorządu terytorialnego (JST, rola 8)",
+    "splitPayment": "Mechanizm podzielonej płatności (MPP)",
+    "splitPaymentHint": "Zwykle wymagany dla towarów z załącznika 15, gdy faktura przekracza 15 000 PLN brutto.",
+    "summary": "Dane KSeF dla tej faktury",
+    "triangulation": "Transakcja trójstronna (WDT, drugi podatnik)"
+  },
+  "ksefNumberingActions": {
+    "configure": "Konfiguruj…",
+    "description": "Kolejne numery, które OpenLinker nadaje każdej fakturze w KSeF.",
+    "notSetUp": "jeszcze nie skonfigurowano",
+    "routedCount": {
+      "few": "{n} typy dokumentów przypisane",
+      "many": "{n} typów dokumentów przypisanych",
+      "one": "{n} typ dokumentu przypisany",
+      "other": "{n} typu dokumentu przypisane"
+    },
+    "setUp": "Skonfiguruj…",
+    "title": "Numeracja faktur"
+  },
+  "ksefNumberingAuditTab": {
+    "columns": {
+      "actions": "Akcje",
+      "explanation": "Wyjaśnienie",
+      "number": "Numer",
+      "seq": "Kolejny",
+      "status": "Status"
+    },
+    "dialog": {
+      "cancel": "Anuluj",
+      "description": "Zapisz pisemne oświadczenie o pominięciu numeru dla numeru kolejnego <num>{seq}</num>. Zostaje ono w audycie numeracji na potrzeby dokumentacji podatkowej.",
+      "errorTitle": "Nie udało się zapisać",
+      "reasonLabel": "Przyczyna",
+      "reasonPlaceholder": "np. Szkic porzucony przed wysłaniem; numer nigdy nie został wystawiony.",
+      "reasonRequired": "Wpisz przyczynę, zanim zapiszesz wyjaśnienie.",
+      "record": "Zapisz wyjaśnienie",
+      "recordFallback": "Nie udało się zapisać wyjaśnienia.",
+      "saveAndPrint": "Zapisz i drukuj oświadczenie",
+      "saving": "Zapisywanie…",
+      "title": "Wyjaśnij lukę w numeracji",
+      "toast": {
+        "description": "Zapisano oświadczenie dla numeru {seq}.",
+        "title": "Wyjaśnienie zapisane"
+      }
+    },
+    "empty": {
+      "message": "Najpierw utwórz serię numeracji - audyt pokazuje przydzielone i wystawione numery.",
+      "title": "Brak serii do audytu"
+    },
+    "explainGap": "Wyjaśnij lukę",
+    "loadError": "Nie udało się wczytać audytu",
+    "loadingAudit": {
+      "message": "Budowanie audytu numeracji…",
+      "title": "Wczytywanie audytu"
+    },
+    "loadingSeries": {
+      "message": "Pobieranie serii numeracji…",
+      "title": "Wczytywanie serii"
+    },
+    "noEntries": {
+      "message": "Ta seria nie przydzieliła jeszcze żadnych numerów.",
+      "title": "Brak wpisów"
+    },
+    "noGaps": {
+      "message": "Ta seria nie ma luk w numeracji.",
+      "title": "Brak luk"
+    },
+    "notExplained": "Bez wyjaśnienia",
+    "onlyGaps": "Tylko luki",
+    "printOswiadczenie": "Drukuj oświadczenie",
+    "retry": "Ponów",
+    "seriesOption": "{name} - {pattern}",
+    "seriesPickerLabel": "Seria do audytu",
+    "summary": "Wystawione: <num>{issued}</num> · luki: <num>{gaps}</num> (wyjaśnione: <num>{explained}</num>) · porzucone: <num>{abandoned}</num> · pominięte: <num>{skipped}</num> · oczekujące: <num>{pending}</num>"
+  },
+  "ksefNumberingEditor": {
+    "alerts": {
+      "documentTypeChanged": {
+        "body": "Ta seria może być już przypisana do typu dokumentu. Zmiana może sprawić, że przypisanie wskaże serię, która już do niego nie pasuje. Po zapisaniu sprawdź ponownie przypisania dokumentów.",
+        "title": "Zmiana typu dokumentu"
+      },
+      "lowering": {
+        "body": "Obniżenie następnego numeru może powtórzyć numer, który został już wystawiony. Rób to tylko przy migracji z innego systemu.",
+        "title": "Obniżenie następnego numeru"
+      },
+      "patternChanged": {
+        "body": "Ta seria wystawiła już numery. Nowy wzorzec zmienia format tylko kolejnych numerów, we wszystkich połączeniach przypisanych do tej serii.",
+        "title": "Zmiana używanego wzorca"
+      }
+    },
+    "cancel": "Anuluj",
+    "fields": {
+      "documentType": {
+        "description": "Który dokument numeruje ta seria.",
+        "label": "Typ dokumentu"
+      },
+      "fiscalYearStart": {
+        "description": "Określa zmienną {token}. Rok obrotowy jest oznaczany rokiem kalendarzowym, w którym się zaczyna; zostaw styczeń, aby {token} oznaczał rok kalendarzowy.",
+        "label": "Rok obrotowy zaczyna się w"
+      },
+      "name": {
+        "label": "Nazwa serii",
+        "placeholder": "Faktury sprzedaży"
+      },
+      "nextSeq": {
+        "description": "Numer, od którego seria jest kontynuowana. Wystawione numery są trwałe i luki mają znaczenie, a seria jest wspólna dla wszystkich przypisanych połączeń.",
+        "label": "Następny numer"
+      },
+      "padding": {
+        "description": "Zera wiodące w {token}.",
+        "label": "Dopełnienie zerami"
+      },
+      "pattern": {
+        "description": "{token} jest wymagany; reszta to zwykły tekst. Seria jest wspólna, więc zmiana dotyczy każdego przypisanego do niej połączenia.",
+        "label": "Wzorzec"
+      },
+      "register": {
+        "description": "Opcjonalny zakres; zostaw puste dla domyślnego.",
+        "label": "Rejestr / podmiot",
+        "placeholder": "np. magazyn-2"
+      },
+      "resetPolicy": {
+        "label": "Zerowanie licznika"
+      }
+    },
+    "headingCreate": "Dodaj serię",
+    "headingEdit": "Edytuj serię",
+    "insertVariable": "Wstaw {variable}",
+    "save": "Zapisz serię",
+    "saveError": {
+      "fallback": "Nie udało się zapisać serii.",
+      "title": "Nie udało się zapisać serii"
+    },
+    "saving": "Zapisywanie…",
+    "toast": {
+      "description": "Numeracja faktur jest ustawiona.",
+      "title": "Seria zapisana"
+    }
+  },
+  "ksefNumberingLib": {
+    "documentTypes": {
+      "corrected": "Korekta",
+      "creditNote": "Nota kredytowa",
+      "invoice": "Faktura",
+      "prepayment": "Zaliczkowa",
+      "proforma": "Pro forma",
+      "receipt": "Paragon"
+    },
+    "months": {
+      "april": "Kwiecień",
+      "august": "Sierpień",
+      "december": "Grudzień",
+      "february": "Luty",
+      "january": "Styczeń",
+      "july": "Lipiec",
+      "june": "Czerwiec",
+      "march": "Marzec",
+      "may": "Maj",
+      "november": "Listopad",
+      "october": "Październik",
+      "september": "Wrzesień"
+    },
+    "resetCaptions": {
+      "daily": "zerowany codziennie",
+      "monthly": "zerowany co miesiąc",
+      "none": "nigdy nie zerowany",
+      "quarterly": "zerowany co kwartał",
+      "yearly": "zerowany co rok"
+    },
+    "resetPolicies": {
+      "daily": "Codziennie",
+      "monthly": "Co miesiąc",
+      "none": "Nigdy",
+      "quarterly": "Co kwartał",
+      "yearly": "Co rok"
+    },
+    "routedDocumentTypes": {
+      "corrected": {
+        "hint": "Faktury korygujące - mają własną serię, aby korekta nigdy nie użyła numeru faktury pierwotnej.",
+        "label": "Korekta"
+      },
+      "invoice": {
+        "hint": "Zwykłe faktury sprzedaży (FA VAT).",
+        "label": "Faktura podstawowa"
+      },
+      "prepayment": {
+        "hint": "Faktury zaliczkowe (FA ZAL).",
+        "label": "Faktura zaliczkowa"
+      },
+      "proforma": {
+        "hint": "Dokumenty pro forma (bez prawnego wymogu numeracji).",
+        "label": "Pro forma"
+      }
+    },
+    "seqStatuses": {
+      "abandoned": "Porzucony",
+      "issued": "Wystawiony",
+      "pending": "Oczekuje",
+      "skipped": "Pominięty"
+    },
+    "variables": {
+      "dd": "Dzień 01-31",
+      "fy": "Rok obrotowy",
+      "mm": "Miesiąc 01-12",
+      "qq": "Kwartał 1-4",
+      "seq": "Numer kolejny",
+      "yy": "Rok, 2 cyfry",
+      "yyyy": "Rok, 4 cyfry"
+    }
+  },
+  "ksefNumberingPage": {
+    "back": "Akcje",
+    "backWithConnection": "Akcje · {connection}",
+    "description": "Serie numeracji są wspólne dla wszystkich połączeń; na tej stronie decydujesz, do której serii trafia każdy typ dokumentu w tym połączeniu.",
+    "eyebrow": "Fakturowanie",
+    "tabs": {
+      "audit": "Audyt numerów",
+      "series": "Serie"
+    },
+    "tabsLabel": "Sekcje numeracji faktur",
+    "title": "Numeracja faktur"
+  },
+  "ksefNumberingPreview": {
+    "announce": {
+      "invalid": "Wzorzec nie jest jeszcze prawidłowy",
+      "valid": "Wynik: {number}",
+      "validOverLimit": "Wynik: {number}, przekracza maksymalną długość"
+    },
+    "caption": "Na podstawie daty wystawienia faktury (podgląd zakłada dzisiejszą) · {timeZone} · {reset}",
+    "eyebrow": "Podgląd na żywo",
+    "meter": "{length} / {max} znaków",
+    "meterOverLimit": "{length} / {max} znaków - za długi dla pola numeru faktury w KSeF",
+    "nextNumber": "Następny numer faktury",
+    "then": "Potem"
+  },
+  "ksefNumberingRoutingCard": {
+    "addForm": {
+      "add": "Dodaj regułę",
+      "addFallback": "Nie udało się dodać przypisania.",
+      "adding": "Dodawanie…",
+      "ariaLabel": "Dodaj regułę przypisania",
+      "cancel": "Anuluj",
+      "chooseSeries": "Wybierz serię…",
+      "currency": "Waluta (dowolna)",
+      "documentType": "Typ dokumentu",
+      "register": "Rejestr (dowolny)",
+      "series": "Seria",
+      "seriesRequired": "Wybierz serię dla nowego przypisania.",
+      "source": "Źródło (dowolne)"
+    },
+    "addRoute": "+ Dodaj regułę",
+    "addSeriesFirst": "Najpierw dodaj serię",
+    "any": "dowolny",
+    "columns": {
+      "currency": "Waluta",
+      "documentType": "Typ dokumentu",
+      "register": "Rejestr",
+      "series": "Seria",
+      "source": "Źródło"
+    },
+    "errorTitle": "Nie udało się zaktualizować przypisań",
+    "heading": "Przypisanie numeracji",
+    "intro": "Wybierz, która seria numeruje każdy typ dokumentu KSeF w tym połączeniu. Przypisanie można zawęzić według rejestru, waluty i źródła; wygrywa najbardziej szczegółowe pasujące przypisanie.",
+    "notAssigned": "Nieprzypisany",
+    "nudge": {
+      "body": "Przypisz serię do typu dokumentu poniżej, aby rozpocząć numerację.",
+      "title": "Seria utworzona"
+    },
+    "resolution": {
+      "currency": "Waluta",
+      "documentType": "Typ dokumentu",
+      "heading": "Kolejność dopasowania",
+      "intro": "Dla przykładowego dokumentu wygrywa najbardziej szczegółowe pasujące przypisanie; niepasujące kryteria są pomijane po kolei (źródło, potem waluta, potem rejestr), aż któreś przypisanie pasuje.",
+      "matches": "pasuje",
+      "matchesWinner": "pasuje ✓",
+      "noRoute": "brak przypisania",
+      "none": "Żadne przypisanie nie pasuje do tego przykładu - wystawienie zakończyłoby się błędem \"brak serii numeracji\". Dodaj domyślne przypisanie dla tego typu dokumentu.",
+      "register": "Rejestr",
+      "source": "Źródło",
+      "stepKey": "register={register}, currency={currency}, source={source}",
+      "steps": {
+        "default": "Domyślne",
+        "dropCurrency": "Pomiń walutę",
+        "dropSource": "Pomiń źródło",
+        "exact": "Dokładne"
+      }
+    },
+    "scopeRegister": "rejestr {register}",
+    "seriesFor": {
+      "plain": "Seria dla: {document}",
+      "scoped": "Seria dla: {document} ({scope})"
+    },
+    "seriesOption": "{name} - {pattern}",
+    "toasts": {
+      "added": {
+        "description": "Reguła przypisania została zapisana.",
+        "title": "Przypisanie dodane"
+      },
+      "removed": {
+        "plain": "{document} nie ma już przypisanej serii.",
+        "scoped": "{document} ({scope}) nie ma już przypisanej serii.",
+        "title": "Przypisanie usunięte"
+      },
+      "saved": {
+        "plain": "{document} używa teraz wybranej serii.",
+        "scoped": "{document} ({scope}) używa teraz wybranej serii.",
+        "title": "Przypisanie zapisane"
+      }
+    },
+    "updateFallback": "Nie udało się zaktualizować przypisania."
+  },
+  "ksefNumberingSchema": {
+    "defaults": {
+      "name": "Faktury sprzedaży"
+    },
+    "errors": {
+      "fiscalYearStart": "Początek roku obrotowego musi być miesiącem od 1 do 12.",
+      "nameRequired": "Nadaj serii nazwę.",
+      "nextSeq": "Następny numer musi być liczbą całkowitą nie mniejszą niż 1.",
+      "padding": "Dopełnienie musi być liczbą całkowitą od 0 do {max}."
+    }
+  },
+  "ksefNumberingSeriesTab": {
+    "addSeries": "Dodaj serię",
+    "columns": {
+      "actions": "Akcje",
+      "documentType": "Typ dokumentu",
+      "name": "Nazwa",
+      "next": "Następny",
+      "pattern": "Wzorzec",
+      "register": "Rejestr",
+      "reset": "Zerowanie"
+    },
+    "edit": "Edytuj",
+    "empty": {
+      "message": "Utwórz serię przed wystawianiem faktur - KSeF wymaga unikalnego, kolejnego numeru dla każdego dokumentu.",
+      "title": "Brak serii numeracji"
+    },
+    "heading": "Serie",
+    "loadError": "Nie udało się wczytać serii numeracji",
+    "loading": {
+      "message": "Pobieranie ustawień numeracji tego połączenia…",
+      "title": "Wczytywanie serii"
+    },
+    "noSeriesInRegister": "Brak serii w tym rejestrze.",
+    "registerFilter": {
+      "all": "Wszystkie rejestry",
+      "default": "Domyślny (bez rejestru)",
+      "label": "Filtruj według rejestru"
+    },
+    "retry": "Ponów",
+    "subtitle": "Wspólne dla wszystkich połączeń; przypisanie poniżej dotyczy tego połączenia."
+  },
+  "ksefRegulatoryStatusLabels": {
+    "accepted": "KSeF: przyjęta",
+    "cleared": "KSeF: w rozliczeniu",
+    "pending-submission": "KSeF: czeka na przesłanie",
+    "rejected": "KSeF: odrzucona",
+    "submitted": "KSeF: przesłana"
+  },
+  "ksefSetupForm": {
+    "authType": {
+      "description": "Sposób, w jaki OpenLinker uwierzytelnia sesję KSeF.",
+      "label": "Typ uwierzytelniania"
+    },
+    "back": "Połączenia",
+    "beforeYouStart": {
+      "body": "Wygeneruj token autoryzacyjny KSeF (albo zarejestruj kwalifikowaną pieczęć elektroniczną) dla kontekstu sprzedawcy w wybranym środowisku KSeF. Sekret jest przechowywany bezpiecznie na serwerze i pokazywany poniżej tylko raz.",
+      "title": "Zanim zaczniesz"
+    },
+    "connect": "Połącz z KSeF",
+    "connecting": "Łączenie…",
+    "contextIdentifier": {
+      "description": "Opcjonalny identyfikator podmiotu lub kontekstu KSeF do wyświetlania i przyszłego zawężania. Nie wpływa na uwierzytelnianie - sesje zawsze uwierzytelniają się w kontekście NIP sprzedawcy."
+    },
+    "createError": "Nie udało się utworzyć połączenia",
+    "created": {
+      "description": "Utworzono połączenie KSeF \"{name}\".",
+      "title": "Połączenie utworzone"
+    },
+    "createdWithWarnings": {
+      "goToConnection": "Przejdź do połączenia",
+      "title": "Połączenie utworzone, ale coś wymaga sprawdzenia"
+    },
+    "environment": {
+      "description": "Docelowe środowisko KSeF. Do testów użyj Test lub Demo; Produkcja rozlicza prawdziwe faktury."
+    },
+    "lineUnit": {
+      "description": "Jednostka miary wpisywana w pozycjach wystawionych faktur. Wyczyść pole, aby pominąć jednostkę w dokumentach."
+    },
+    "name": {
+      "description": "Nazwa, po której rozpoznasz to połączenie e-faktur w OpenLinker.",
+      "label": "Nazwa połączenia",
+      "placeholder": "KSeF - główny sprzedawca"
+    },
+    "secret": {
+      "description": "Token autoryzacyjny KSeF lub odwołanie do kwalifikowanej pieczęci. Tylko do zapisu - przechowywany bezpiecznie i nigdy więcej niepokazywany.",
+      "label": "Sekret uwierzytelniający"
+    }
+  },
+  "ksefSetupPage": {
+    "chips": {
+      "eInvoicing": "e-Faktury",
+      "guided": "Z przewodnikiem"
+    },
+    "description": "Podaj środowisko KSeF, kontekst sprzedawcy i sekret uwierzytelniający. OpenLinker używa ich do rozliczania faktur w Krajowym Systemie e-Faktur.",
+    "eyebrow": "Integracje",
+    "title": "Połącz z KSeF"
+  },
+  "ksefSetupRoute": {
+    "crumb": "Połącz z KSeF"
+  },
+  "ksefSetupSchema": {
+    "countryIso2": "Kraj musi być 2-literowym kodem ISO (np. PL)",
+    "lineUnitMax": "Domyślna jednostka pozycji może mieć najwyżej 20 znaków.",
+    "nameRequired": "Nazwa połączenia jest wymagana",
+    "nipChecksum": "NIP sprzedawcy ma nieprawidłową sumę kontrolną",
+    "nipDigits": "NIP sprzedawcy musi mieć 10 cyfr",
+    "postalCode": "Kod pocztowy musi mieć polski format NN-NNN.",
+    "secretRequired": "Sekret uwierzytelniający jest wymagany"
+  },
+  "ksefStructuredSection": {
+    "bankAccount": {
+      "description": "Wysyłany jako Platnosc/RachunekBankowy/NrRB. Opcjonalny.",
+      "label": "Numer konta bankowego",
+      "placeholder": "61 1090 1014 0000 0000 9999 9999"
+    },
+    "bankName": {
+      "description": "Wysyłana jako Platnosc/RachunekBankowy/NazwaBanku. Opcjonalna.",
+      "label": "Nazwa banku"
+    },
+    "contextIdentifier": {
+      "description": "Opcjonalny identyfikator podmiotu lub kontekstu KSeF przy wystawianiu w imieniu jednostki podrzędnej."
+    },
+    "crossBorder": {
+      "description": "OpenLinker nie wybierze sam stawki WDT, eksportu ani OSS dla zagranicznego nabywcy. Włącz tę opcję tylko wtedy, gdy katalog ma już właściwą stawkę dla takiej sprzedaży; bez niej takie faktury są odrzucane przed wysłaniem.",
+      "label": "Zezwalaj na faktury zagraniczne"
+    },
+    "environment": {
+      "description": "Docelowe środowisko KSeF. Produkcja rozlicza prawdziwe faktury.",
+      "placeholder": "Wybierz środowisko…"
+    },
+    "exemptionKind": {
+      "description": "Używane na fakturach z pozycjami zwolnionymi z VAT (zw).",
+      "label": "Podstawa zwolnienia wskazuje",
+      "options": {
+        "directive": "Dyrektywę VAT UE (P_19B)",
+        "other": "Inną podstawę prawną (P_19C)",
+        "statute": "Polską ustawę o VAT (P_19A)"
+      }
+    },
+    "exemptionText": {
+      "description": "Przepis, na który się powołujesz, np. art. 113 ust. 1 ustawy o VAT. Do 256 znaków.",
+      "label": "Podstawa zwolnienia",
+      "missing": "Nie ustawiono podstawy zwolnienia. Faktury z pozycjami zwolnionymi powołają się na ogólny tekst \"{text}\", który nie wskazuje żadnego przepisu.",
+      "placeholder": "art. 43 ust. 1 pkt …"
+    },
+    "lineUnit": {
+      "description": "Jednostka miary wpisywana w pozycjach wystawionych faktur. Wyczyść pole, aby pominąć jednostkę w dokumentach."
+    },
+    "marginKind": {
+      "default": "Towary używane (domyślnie)",
+      "label": "Rodzaj procedury marży",
+      "options": {
+        "collectors-items": "Przedmioty kolekcjonerskie i antyki",
+        "travel-services": "Biura podróży",
+        "used-goods": "Towary używane",
+        "works-of-art": "Dzieła sztuki"
+      }
+    },
+    "nipLooksOdd": "Ten NIP ma poprawną sumę kontrolną, ale nie wygląda jak typowy NIP. Sprawdź go; KSeF oceni go przy wysyłce pierwszej faktury.",
+    "notSet": "(nie ustawiono)",
+    "paymentMethod": {
+      "description": "Wysyłana jako Platnosc/FormaPlatnosci. Opcjonalna - pomiń, aby wystawiane faktury nie zawierały informacji o płatności.",
+      "label": "Domyślna metoda płatności"
+    },
+    "paymentTerm": {
+      "description": "Wysyłany jako Platnosc/TerminPlatnosci/TerminOpis (dni od daty wystawienia). Opcjonalny; najwyżej 999.",
+      "label": "Domyślny termin płatności (dni)",
+      "placeholder": "14"
+    },
+    "skontoAmount": {
+      "description": "Wysyłana jako Platnosc/Skonto/WysokoscSkonta. Opcjonalna; wymagana razem z warunkami skonta.",
+      "label": "Wysokość skonta",
+      "placeholder": "np. 2%"
+    },
+    "skontoConditions": {
+      "description": "Wysyłane jako Platnosc/Skonto/WarunkiSkonta. Opcjonalne; wymagane razem z wysokością skonta.",
+      "label": "Warunki skonta",
+      "placeholder": "np. zapłata w ciągu 7 dni"
+    },
+    "swift": {
+      "description": "Wysyłany jako Platnosc/RachunekBankowy/SWIFT. Opcjonalny - dla przelewów w walucie obcej.",
+      "label": "SWIFT"
+    },
+    "taxTreatment": {
+      "cashAccounting": "Metoda kasowa (P_16)",
+      "intro": "Te ustawienia opisują twoją działalność, a nie pojedynczą sprzedaż. Każda faktura z tego połączenia startuje od nich; możesz zmienić każde z nich przy ręcznym wystawianiu. OpenLinker nie decyduje, co cię dotyczy.",
+      "legend": "Sposób opodatkowania",
+      "marginScheme": "Procedura marży",
+      "selfBilling": "Samofakturowanie (P_17)"
+    }
+  },
+  "oswiadczenie": {
+    "body": "Oświadczam, że numer {number} w serii numeracji „{series}\" został pominięty i nie został oraz nie zostanie przypisany do żadnej faktury.",
+    "bodyWithSeller": "Działając w imieniu {seller}, oświadczam, że numer {number} w serii numeracji „{series}\" został pominięty i nie został oraz nie zostanie przypisany do żadnej faktury.",
+    "continuity": "Pominięcie powyższego numeru nie narusza ciągłości numeracji faktur - kolejne numery w tej serii są nadawane w sposób ciągły i chronologiczny.",
+    "date": "{date} r.",
+    "dated": "dnia {date}",
+    "nip": "NIP: {nip}",
+    "placeAndDate": "{place}, {dated}",
+    "reasonLabel": "Przyczyna pominięcia:",
+    "reasonLine": "Przyczyna pominięcia: {reason}",
+    "sellerMissing": "Uzupełnij profil sprzedawcy (nazwa, adres, NIP) w ustawieniach połączenia, aby dane sprzedawcy pojawiły się w nagłówku.",
+    "seriesLine": "Seria: {name} ({pattern})",
+    "sheet": {
+      "pattern": "Wzorzec",
+      "series": "Seria",
+      "skippedNumber": "Pominięty numer"
+    },
+    "sheetLabel": "Oświadczenie",
+    "signature": "(podpis osoby upoważnionej)",
+    "skippedLine": "Pominięty numer: {number}",
+    "title": "Oświadczenie o pominięciu numeru faktury",
+    "toolbar": {
+      "close": "Zamknij",
+      "copied": {
+        "description": "Treść oświadczenia skopiowana do schowka.",
+        "title": "Skopiowano"
+      },
+      "copy": "Kopiuj tekst",
+      "copyFailed": "Nie udało się skopiować treści.",
+      "print": "Drukuj / Zapisz jako PDF"
+    }
+  },
+  "plugin": {
+    "setupCard": {
+      "badge": "e-Faktury",
+      "description": "Połącz Krajowy System e-Faktur (KSeF), aby rozliczać faktury. Potrzebny jest token autoryzacyjny KSeF albo kwalifikowana pieczęć elektroniczna."
+    }
+  }
+}

@@ -26,21 +26,21 @@ import type { ReactElement } from 'react';
 import { Alert } from '../../../shared/ui/alert';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { describeCombinedDiscount } from '../lib/combined-discount';
-import { formatAmount } from '../../../shared/format/format-amount';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import type {
   OrderDiscountResult,
   OrderEditAddress,
   OrderEditsView,
 } from '../api/order-edit.types';
 import {
-  DISCOUNT_BRANCH_LABELS,
-  DISCOUNT_CORRECTION_UNAVAILABLE_COPY,
   describeCeilingVerdict,
+  discountBranchLabel,
+  discountCorrectionUnavailableText,
   formatDecimalAmount,
   type OrderEditSection,
 } from '../lib/order-edit';
 import type { EditOrderOutput } from '../hooks/use-edit-order-mutation';
-import type { OrderEditLineMeta } from './order-edit-dialog.schema';
+import type { OrderEditLineMeta } from './order-form.types';
 
 export interface OrderEditDryRun {
   section: OrderEditSection;
@@ -88,7 +88,10 @@ export function OrderEditReview({
   channelName,
   discountDeferred = false,
 }: OrderEditReviewProps): ReactElement {
-  const channel = channelName ?? 'the sales channel';
+  const copy = useMessages('orders').orderEditReview;
+  const sections = useMessages('orders').orderEdit.sections;
+  const format = useFormat();
+  const channel = channelName ?? copy.channelFallback;
   const bySection = new Map(dryRuns.map((run) => [run.section, run.output] as const));
   const addressView = bySection.get('address')?.view.address ?? null;
   const deliveryView = bySection.get('delivery')?.view.deliveryMethod ?? null;
@@ -111,20 +114,20 @@ export function OrderEditReview({
   return (
     <div className="order-edit-review" data-testid="order-edit-review">
       <div className="dialog-section">
-        <p className="dialog-section__head">Changes</p>
+        <p className="dialog-section__head">{copy.changes}</p>
         <div className="data-table__container">
           <table className="data-table order-edit-diff" data-testid="order-edit-diff">
             <thead>
               <tr>
-                <th>What</th>
-                <th>{`${channel} has`}</th>
-                <th>After the edit</th>
+                <th>{copy.columnWhat}</th>
+                <th>{interpolate(copy.channelHas, { channel })}</th>
+                <th>{copy.columnAfter}</th>
               </tr>
             </thead>
             <tbody>
               {addressView ? (
                 <tr data-testid="order-edit-diff-address">
-                  <td>Shipping address</td>
+                  <td>{sections.address}</td>
                   <td>
                     <del>{addressText(addressView.original)}</del>
                   </td>
@@ -135,7 +138,7 @@ export function OrderEditReview({
               ) : null}
               {deliveryView ? (
                 <tr data-testid="order-edit-diff-delivery">
-                  <td>Delivery method</td>
+                  <td>{sections.delivery}</td>
                   <td>
                     <del>{methodText(deliveryView.original)}</del>
                   </td>
@@ -171,15 +174,15 @@ export function OrderEditReview({
                 : null}
               {discountOutput ? (
                 <tr data-testid="order-edit-diff-discount">
-                  <td>Discount</td>
+                  <td>{copy.discount}</td>
                   <td>
-                    <del>none</del>
+                    <del>{copy.discountNone}</del>
                   </td>
                   <td>
                     <ins className="mono-text">
                       {discountOutput.discount
                         ? `−${formatDecimalAmount(discountOutput.discount.amount, discountOutput.discount.currency)}`
-                        : 'removed'}
+                        : copy.discountRemoved}
                     </ins>
                     {combinedDiscountText ? (
                       <span className="text-muted" data-testid="order-edit-combined-discount">
@@ -192,12 +195,12 @@ export function OrderEditReview({
               ) : null}
               {shownTotals ? (
                 <tr data-testid="order-edit-diff-total">
-                  <td>Order total</td>
+                  <td>{copy.orderTotal}</td>
                   <td className="mono-text">
-                    <del>{formatAmount(shownTotals.channelTotal, shownTotals.currency)}</del>
+                    <del>{format.money(shownTotals.channelTotal, shownTotals.currency)}</del>
                   </td>
                   <td className="mono-text">
-                    <ins>{formatAmount(shownTotals.total, shownTotals.currency)}</ins>
+                    <ins>{format.money(shownTotals.total, shownTotals.currency)}</ins>
                   </td>
                 </tr>
               ) : null}
@@ -207,40 +210,34 @@ export function OrderEditReview({
       </div>
 
       {discountDeferred ? (
-        <Alert
-          tone="info"
-          title="The discount is reviewed separately"
-          data-testid="order-edit-discount-deferred"
-        >
-          Save the quantity change first, then apply the discount. The discount stays filled in, so
-          you can review it right after.
+        <Alert tone="info" title={copy.deferred.title} data-testid="order-edit-discount-deferred">
+          {copy.deferred.body}
         </Alert>
       ) : null}
 
       <div className="dialog-section">
-        <p className="dialog-section__head">Where this change is used</p>
+        <p className="dialog-section__head">{copy.impact.title}</p>
         <ul className="order-cancel-impact" data-testid="order-edit-impact">
           <li className="order-cancel-impact__row">
             <span className="order-cancel-impact__head">
-              <span className="order-cancel-impact__what">Shipping label, invoice and pack bench</span>
+              <span className="order-cancel-impact__what">{copy.impact.documentsWhat}</span>
               <StatusBadge tone="success" compact>
-                Use the change
+                {copy.impact.documentsStatus}
               </StatusBadge>
             </span>
-            <span className="order-cancel-impact__how">
-              They read the edited order from now on. A label or invoice that already exists keeps
-              what it was issued with.
-            </span>
+            <span className="order-cancel-impact__how">{copy.impact.documentsBody}</span>
           </li>
           <li className="order-cancel-impact__row">
             <span className="order-cancel-impact__head">
-              <span className="order-cancel-impact__what">{channelName ?? 'Sales channel'}</span>
+              <span className="order-cancel-impact__what">
+                {channelName ?? copy.impact.channelFallback}
+              </span>
               <StatusBadge tone="neutral" compact>
-                Not sent
+                {copy.impact.channelStatus}
               </StatusBadge>
             </span>
             <span className="order-cancel-impact__how">
-              {`${channel} keeps the order as the buyer placed it. Nothing is sent back.`}
+              {interpolate(copy.impact.channelBody, { channel })}
             </span>
           </li>
         </ul>
@@ -258,7 +255,16 @@ function DiscountMoney({
   result: OrderDiscountResult;
   channel: string;
 }): ReactElement {
-  const branch = DISCOUNT_BRANCH_LABELS[result.paymentBranch];
+  const copy = useMessages('orders').orderEditReview.money;
+  const branch = discountBranchLabel(result.paymentBranch);
+  const correctionText = (withConfirm: boolean, noDocument: string): string =>
+    result.correctionProposal
+      ? interpolate(withConfirm ? copy.paidCorrection : copy.codCorrection, {
+          document: result.correctionProposal.documentNumber ?? copy.documentFallback,
+        })
+      : result.correctionUnavailableReason
+        ? discountCorrectionUnavailableText(result.correctionUnavailableReason)
+        : noDocument;
 
   if (result.paymentBranch === 'paid') {
     const refund = result.refundIntent;
@@ -268,54 +274,50 @@ function DiscountMoney({
         tone="warning"
         title={
           refund
-            ? `Refund ${formatDecimalAmount(refund.amount, refund.currency)} on ${channel}`
-            : 'Nothing to refund'
+            ? interpolate(copy.refundTitle, {
+                amount: formatDecimalAmount(refund.amount, refund.currency),
+                channel,
+              })
+            : copy.nothingToRefund
         }
         data-testid="order-edit-money"
       >
-        <p>{`${branch}. OpenLinker doesn’t move money. After you refund on ${channel}, confirm the refund on this order so the documents and what the buyer paid agree.`}</p>
+        <p>{interpolate(copy.paidBody, { branch, channel })}</p>
         {verdict ? (
           <p data-testid="order-edit-ceiling">
             <StatusBadge tone={verdict.tone} compact>
-              {verdict.tone === 'warning' ? 'Check' : 'Within the limit'}
+              {verdict.tone === 'warning' ? copy.ceilingCheck : copy.ceilingWithin}
             </StatusBadge>{' '}
             {verdict.text}
           </p>
         ) : null}
-        <p data-testid="order-edit-correction">
-          {result.correctionProposal
-            ? `A correction for ${result.correctionProposal.documentNumber ?? 'the issued invoice'} will be drafted for you to review. Nothing is issued until you confirm it.`
-            : result.correctionUnavailableReason
-              ? DISCOUNT_CORRECTION_UNAVAILABLE_COPY[result.correctionUnavailableReason]
-              : 'No document has been issued, so there is nothing to correct. The invoice will be issued from the discounted order.'}
-        </p>
+        <p data-testid="order-edit-correction">{correctionText(true, copy.paidNoDocument)}</p>
       </Alert>
     );
   }
 
   if (result.paymentBranch === 'cod' || result.paymentBranch === 'unpaid') {
     return (
-      <Alert tone="info" title="Amount to collect" data-testid="order-edit-money">
+      <Alert tone="info" title={copy.codTitle} data-testid="order-edit-money">
         <p>
           {result.amountToCollect
-            ? `${branch}. The buyer now pays ${formatDecimalAmount(result.amountToCollect.amount, result.amountToCollect.currency)}.`
-            : `${branch}.`}
+            ? interpolate(copy.codBody, {
+                branch,
+                amount: formatDecimalAmount(
+                  result.amountToCollect.amount,
+                  result.amountToCollect.currency
+                ),
+              })
+            : interpolate(copy.codBodyNoAmount, { branch })}
         </p>
-        <p data-testid="order-edit-correction">
-          {result.correctionProposal
-            ? `A correction for ${result.correctionProposal.documentNumber ?? 'the issued invoice'} will be drafted for you to review.`
-            : result.correctionUnavailableReason
-              ? DISCOUNT_CORRECTION_UNAVAILABLE_COPY[result.correctionUnavailableReason]
-              : 'The invoice will be issued from the discounted order.'}
-        </p>
+        <p data-testid="order-edit-correction">{correctionText(false, copy.codNoDocument)}</p>
       </Alert>
     );
   }
 
   return (
-    <Alert tone="warning" title="OpenLinker can’t tell if this order is paid" data-testid="order-edit-money">
-      The discount lowers the order total. Check on {channel} whether the buyer paid, then refund the
-      difference there if they did.
+    <Alert tone="warning" title={copy.unknownTitle} data-testid="order-edit-money">
+      {interpolate(copy.unknownBody, { channel })}
     </Alert>
   );
 }

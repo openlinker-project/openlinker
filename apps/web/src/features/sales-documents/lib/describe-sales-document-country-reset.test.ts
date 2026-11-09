@@ -60,7 +60,7 @@ describe('describeSalesDocumentCountryReset (#2189)', () => {
     );
   });
 
-  it('joins rules, both defaults, and the acknowledgment with an Oxford comma', () => {
+  it('joins rules, both defaults and the acknowledgment as a list', () => {
     const description = describeSalesDocumentCountryReset('★ Rest of world', {
       ruleCount: 2,
       hasInvoiceDefault: true,
@@ -68,7 +68,7 @@ describe('describeSalesDocumentCountryReset (#2189)', () => {
       acknowledged: true,
     });
     expect(description).toBe(
-      "This deletes 2 rules, both country defaults, and the no-document acknowledgment for ★ Rest of world. This can't be undone.",
+      "This deletes 2 rules, both country defaults and the no-document acknowledgment for ★ Rest of world. This can't be undone.",
     );
   });
 

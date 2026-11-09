@@ -21,7 +21,7 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppShell } from './app-shell';
 import type { RouteCrumbHandle } from './nav-registry.types';
-import { NAV_DEMO_RESTRICTED_MESSAGE } from '../shared/config/demo-mode';
+import { navDemoRestrictedMessage } from '../shared/config/demo-mode';
 import { SessionProvider } from '../shared/auth/session-provider';
 import type { SessionAdapter } from '../shared/auth/session-adapter';
 import { ToastProvider } from '../shared/ui/toast-provider';
@@ -50,10 +50,10 @@ interface RenderShellOptions {
 const PAGE_CONTENT = <div data-testid="page-content">Page content</div>;
 
 const dashboardCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Dashboard' },
+  crumb: { group: 'operations', title: 'Dashboard' },
 };
 const connectionsCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Platform', title: 'Connections' },
+  crumb: { group: 'platform', page: 'connections' },
 };
 
 function ShellLayout({ children }: { children: ReactNode }): ReactElement {
@@ -235,7 +235,7 @@ describe('AppShell', () => {
 
     const usersLink = users.closest('.shell-nav__link');
     expect(usersLink).toHaveAttribute('aria-disabled', 'true');
-    expect(usersLink).toHaveAttribute('title', NAV_DEMO_RESTRICTED_MESSAGE);
+    expect(usersLink).toHaveAttribute('title', navDemoRestrictedMessage());
     // The group is visible but its items are not navigable links.
     expect(users.closest('a')).toBeNull();
     // A lock glyph reads the state at a glance (no hover required).
@@ -246,7 +246,7 @@ describe('AppShell', () => {
     expect(promptTemplates.closest('a')).toBeNull();
     expect(promptTemplates.closest('.shell-nav__link')).toHaveAttribute(
       'title',
-      NAV_DEMO_RESTRICTED_MESSAGE,
+      navDemoRestrictedMessage(),
     );
   });
 
@@ -396,6 +396,21 @@ describe('AppShell', () => {
 
     expect(await screen.findByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument();
     expect(screen.getByRole('radiogroup', { name: 'Theme' })).toBeInTheDocument();
+  });
+
+  it('should offer the language in the account menu, not in the sidebar (#4021)', async () => {
+    const user = userEvent.setup();
+    renderShell({ pathname: '/' });
+
+    expect(screen.queryByRole('button', { name: /^Language:/ })).not.toBeInTheDocument();
+
+    await user.click(await screen.findByRole('button', { name: /Account menu for/i }));
+
+    const language = await screen.findByRole('listbox', { name: 'Language' });
+    expect(within(language).getByRole('option', { name: /English/ })).toHaveAttribute('aria-selected', 'true');
+    // First section of the menu, above Theme.
+    const theme = screen.getByRole('radiogroup', { name: 'Theme' });
+    expect(language.compareDocumentPosition(theme) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('opens the mobile drawer when the hamburger is clicked', async () => {

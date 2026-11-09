@@ -1,0 +1,394 @@
+{
+  "action": {
+    "close": {
+      "hint": "To zadanie jest zakończone.",
+      "label": "Zamknij"
+    },
+    "expedite": {
+      "hint": "Spakuj to przed kolejnością wynikającą z terminu. Pozostaje oznaczone jako przesunięte i można je przesunąć z powrotem.",
+      "label": "Przesuń na początek"
+    },
+    "force_cancel": {
+      "hint": "Anuluj to zadanie od razu, bez pytania tego, kto je realizuje.",
+      "label": "Wymuś anulowanie"
+    },
+    "hold": {
+      "hint": "Wstrzymaj to zadanie, dopóki ktoś nie zdejmie wstrzymania.",
+      "label": "Wstrzymaj"
+    },
+    "mark_in_progress": {
+      "hint": "Ktoś rozpoczął pracę nad tym zadaniem.",
+      "label": "Oznacz jako w toku"
+    },
+    "release_expedite": {
+      "hint": "Przestań przesuwać to przed kolejkę. Wraca na swoje miejsce według terminu nadania.",
+      "label": "Przywróć kolejność wg terminu"
+    },
+    "release_hold": {
+      "hint": "Zdejmij to wstrzymanie, aby zadanie mogło znowu ruszyć.",
+      "label": "Zdejmij wstrzymanie"
+    },
+    "schedule": {
+      "hint": "Zaplanuj to zadanie do realizacji. Nie jest jeszcze rozpoczęte.",
+      "label": "Zaplanuj"
+    }
+  },
+  "actionAppliedToast": "Wykonano: {action}.",
+  "actionFailedFallback": "Nie udało się wykonać działania „{action}” dla tego zadania realizacji.",
+  "actionMode": {
+    "force_cancel": {
+      "confirm": "Wymuś anulowanie",
+      "description": "Zadanie zostanie anulowane od razu, bez pytania tego, kto je realizuje, i nie można tego cofnąć. Samo zamówienie nie zostanie anulowane.",
+      "failure": "Nie udało się anulować tego zadania realizacji.",
+      "title": "Wymuś anulowanie tego zadania realizacji"
+    },
+    "hold": {
+      "confirm": "Wstrzymaj",
+      "description": "Zadanie zatrzyma się, dopóki ktoś nie zdejmie wstrzymania. Reszta zamówienia nie jest objęta wstrzymaniem.",
+      "failure": "Nie udało się wstrzymać tego zadania realizacji.",
+      "title": "Wstrzymaj to zadanie realizacji"
+    },
+    "release_hold": {
+      "confirm": "Zdejmij wstrzymanie",
+      "description": "Zadanie realizacji może znowu ruszyć. Pozostałe wstrzymania tego zadania zostają na miejscu.",
+      "failure": "Nie udało się zdjąć tego wstrzymania.",
+      "title": "Zdejmij to wstrzymanie"
+    }
+  },
+  "assignPackingWork": {
+    "card": {
+      "heldBadge": "Wstrzymane",
+      "sitUnassignedBadge": "Bez przydziału od {age}",
+      "summary": {
+        "products": {
+          "few": "{n} produkty",
+          "many": "{n} produktów",
+          "one": "{n} produkt",
+          "other": "{n} produktu"
+        },
+        "productsAndUnitsToScan": "{products}, {units} do zeskanowania",
+        "productsToScan": "{products} do zeskanowania",
+        "units": {
+          "few": "{n} sztuki",
+          "many": "{n} sztuk",
+          "one": "{n} sztuka",
+          "other": "{n} sztuki"
+        }
+      }
+    },
+    "denied": {
+      "message": "Twoja rola nie pozwala przydzielać ani obsługiwać zadań realizacji. Jeśli potrzebny jest dostęp, poproś administratora.",
+      "title": "Tablica realizacji jest dla kierowników"
+    },
+    "drag": {
+      "gripHint": "Przeciągnij, aby przenieść do pakowacza"
+    },
+    "empty": {
+      "message": "Nic nie czeka na spakowanie. Przy wyłączonym kierowaniu realizacji to normalne.",
+      "title": "Teraz nie ma nic do przydzielenia"
+    },
+    "error": {
+      "message": "Nie udało się teraz odczytać tablicy. Nic nie zostało zmienione.",
+      "retry": "Ponów",
+      "title": "Nie udało się wczytać pracy przy pakowaniu"
+    },
+    "groupBy": {
+      "dragUnavailable": "Przeciąganie przenosi zadanie między pakowaczami - przełącz na Pakowacz, aby z niego skorzystać.",
+      "label": "Grupuj według",
+      "location": "Lokalizacja",
+      "packer": "Pakowacz"
+    },
+    "lane": {
+      "empty": "Teraz nic tu nie ma.",
+      "lightestLoadTag": "najmniej obciążony",
+      "offRosterTitle": "Już nie jest pakowaczem",
+      "packerSubtitle": {
+        "offline": "offline",
+        "online": "online",
+        "withStation": "{station} · {presence}"
+      },
+      "unassignedSubtitle": "Widoczne dla każdego pakowacza, dopóki ktoś go nie przejmie lub nie zostanie przydzielone",
+      "unassignedTitle": "Nieprzydzielone"
+    },
+    "loading": {
+      "message": "Wczytywanie pracy przy pakowaniu…"
+    },
+    "metrics": {
+      "oldestUnassignedEmptyLabel": "Brak nieprzydzielonych zadań ze znanym czasem oczekiwania",
+      "oldestUnassignedLabel": "Najdłużej nieprzydzielone",
+      "packersAtBenchesLabel": "Pakowacze przy stanowiskach",
+      "packersAtBenchesUnknownLabel": "Nieznane",
+      "unassignedLabel": "Teraz nieprzydzielone"
+    },
+    "page": {
+      "description": "Zadania realizacji czekające na obsługę. Przydziel je z wyprzedzeniem pakowaczowi albo zostaw otwarte dla tego, kto pierwszy je weźmie.",
+      "eyebrow": "Operacje",
+      "title": "Realizacja zamówień"
+    },
+    "rosterError": {
+      "message": "Nie udało się wczytać listy pakowaczy, więc zadania można tylko wstrzymać albo zostawić nieprzydzielone."
+    },
+    "row": {
+      "assignTo": "Przydziel do…",
+      "moreActionsLabel": "Więcej działań",
+      "moveConflict": "Ktoś zmienił to zadanie wcześniej. Tablica została odświeżona.",
+      "moveFailed": "Nie udało się przenieść tego zadania. Nic się nie zmieniło.",
+      "moveForbidden": "Brak uprawnień do ponownego przydzielania pracy.",
+      "moveNotFound": "Tego zadania już tu nie ma. Tablica została odświeżona.",
+      "moveSucceeded": "Przeniesiono zadanie.",
+      "moveTo": "Przenieś do…",
+      "moveUnknown": "To się nie powiodło i nie wiadomo, czy zmiana została zapisana. Sprawdź tablicę.",
+      "noPackers": "Brak aktywnych pakowaczy do przydzielenia",
+      "packerWithQueue": "{name} ({queued})",
+      "pullBack": "Wycofaj do Nieprzydzielonych",
+      "selfServeAssignedLabel": "Każdy nadal może to wziąć",
+      "selfServeFailed": "Nie udało się zmienić, kto może to przejąć. Nic się nie zmieniło.",
+      "selfServeLabel": "Każdy może to wziąć",
+      "selfServeUpdated": "Zaktualizowano, kto może samodzielnie przejąć zadanie."
+    }
+  },
+  "compactDuration": {
+    "days": "{n} d",
+    "hours": "{n} godz.",
+    "minutes": "{n} min"
+  },
+  "expeditedBadge": "Przesunięte na początek",
+  "fulfillmentConflict": {
+    "actionNotLegal": "To nie jest już możliwe dla tego zadania realizacji. Dostępne działania zostały odświeżone.",
+    "forbidden": "Brak uprawnień do zmiany zadań realizacji.",
+    "notFound": "To zadanie realizacji już nie istnieje.",
+    "versionConflict": "Ktoś zmienił to zadanie realizacji w trakcie przeglądania. Zostało odświeżone - sprawdź je i spróbuj ponownie."
+  },
+  "fulfillmentTaskActionDialog": {
+    "cancel": "Anuluj",
+    "noteLabel": "Notatka (opcjonalnie)",
+    "reasonDescription": "Każdy, kto później zajrzy do tego zadania realizacji, zobaczy wybrany powód.",
+    "reasonLabel": "Powód",
+    "working": "Trwa wykonywanie…"
+  },
+  "fulfillmentTaskActionSchema": {
+    "noteTooLong": "Notatka może mieć najwyżej {max} znaków",
+    "reasonRequired": "Wybierz, dlaczego to zadanie realizacji jest wstrzymywane"
+  },
+  "fulfillmentTaskCard": {
+    "holdNote": "- {note}",
+    "holdSince": "{reason} · od",
+    "onHoldBadge": "Wstrzymane - {reason}"
+  },
+  "orderFulfillmentTasksPanel": {
+    "empty": "Brak zadań realizacji - to zamówienie nie zostało skierowane. Kierowanie jest włączone, więc sprawdź adres dostawy zamówienia i reguły wyboru lokalizacji.",
+    "loadFailed": "Nie udało się wczytać zadań realizacji tego zamówienia.",
+    "loading": "Wczytywanie zadań realizacji…",
+    "noOrder": "Brak zamówienia, dla którego można wyszukać zadania realizacji.",
+    "retry": "Ponów",
+    "showing": "Wyświetlono {shown} z {total} zadań realizacji tego zamówienia.",
+    "title": "Zadania realizacji"
+  },
+  "ownPackBenchName": "stanowisku pakowania",
+  "routingDecision": {
+    "healthy": {
+      "title": "Skierowano automatycznie"
+    },
+    "readFailed": "Nie udało się wczytać stanu kierowania tego zamówienia.",
+    "resolved": {
+      "body": "Odpowiedź nie nadeszła na czas, więc OpenLinker zamknął wcześniejszą próbę i kieruje to zamówienie ponownie. W międzyczasie nic nie zostało spakowane ani wysłane.",
+      "bodyNotRestarted": "Odpowiedź nie nadeszła na czas, więc OpenLinker zamknął wcześniejszą próbę, ale nie mógł ponownie uruchomić kierowania. Spróbuje ponownie sam później. W międzyczasie nic nie zostało spakowane ani wysłane.",
+      "title": "OpenLinker przestał czekać"
+    },
+    "retry": {
+      "action": "Ponów kierowanie",
+      "pending": "Ponawianie…",
+      "started": "Kierowanie uruchomiono ponownie. Zamówienie zaktualizuje się po jego zakończeniu."
+    },
+    "stuck": {
+      "body": "OpenLinker zapytał, gdzie spakować to zamówienie, i nie dostał jeszcze ostatecznej odpowiedzi. Czeka na nią zamiast zgadywać, więc nie wyśle zamówienia dwa razy. Po upływie limitu czasu przestanie czekać i sam wybierze ponownie.",
+      "title": "Kierowanie utknęło"
+    }
+  },
+  "routingDecisionPanel": {
+    "retry": "Ponów",
+    "router": "Decyduje: {name}",
+    "routerFallback": "połączenie, które decyduje, gdzie pakowane są zamówienia",
+    "timeLimit": "limit czasu {limit}",
+    "waiting": "Oczekiwanie",
+    "waitingFor": "Czeka od {age}"
+  },
+  "routingDecisionRetryError": {
+    "byCode": {
+      "ROUTING_RETRY_NOT_HELD": "To zamówienie nie czeka już na kierowanie, więc nie ma czego ponawiać.",
+      "ROUTING_RETRY_NOT_RETRYABLE": "Kierowania tego zamówienia nie można jeszcze ponowić. Obecne oczekiwanie zakończy się samo albo wymaga zmiany w zamówieniu.",
+      "ROUTING_RETRY_NO_ROUTER": "Żadne połączenie nie decyduje, gdzie pakowane są zamówienia, więc kierowanie nie może działać."
+    },
+    "conflict": "Kierowania tego zamówienia nie można teraz ponowić.",
+    "fallback": "Nie udało się ponowić kierowania. Spróbuj ponownie za chwilę.",
+    "notFound": "To zamówienie już nie istnieje.",
+    "unavailable": "Nie udało się uruchomić kierowania. Spróbuj ponownie za chwilę."
+  },
+  "status": {
+    "cancelled": "Anulowane",
+    "closed": "Zamknięte",
+    "in_progress": "W toku",
+    "incomplete": "Niekompletne",
+    "on_hold": "Wstrzymane",
+    "open": "Otwarte",
+    "scheduled": "Zaplanowane"
+  },
+  "taskAcceptance": {
+    "badge": "Nie ma na {where}",
+    "cancellation": {
+      "cancellation_accepted": "anulowanie przyjęte",
+      "cancellation_rejected": "anulowanie odrzucone",
+      "cancellation_requested": "poproszono o anulowanie"
+    },
+    "heroAttention": "Pakowacze nie widzą tego zadania, bo nie ma go na {where}.",
+    "heroPending": {
+      "withExecutor": "Wysłano do {executor}. Pojawi się na {where} po przyjęciu, zwykle w ciągu kilku sekund.",
+      "withoutExecutor": "Wysłano do pakowania. Pojawi się na {where} po przyjęciu, zwykle w ciągu kilku sekund."
+    },
+    "pendingNote": "W drodze na {where}",
+    "refusedBody": "To zadanie zostało odrzucone albo nie dostało odpowiedzi na czas, więc nigdy nie trafiło na {where}. OpenLinker nie ponawia tego samodzielnie.",
+    "refusedNote": "Odrzucone lub bez odpowiedzi na czas · wysłano",
+    "refusedTitle": "Nieprzyjęte",
+    "statusWithDetail": "{status} · {detail}",
+    "stuckBody": "To zadanie wysłano {age} temu i nie zostało przyjęte, więc nie ma go na {where}. OpenLinker nie ponawia tego samodzielnie. Przyczynę zwykle wyjaśnia nieudane zadanie w tle w sekcji Zadania w tle i logi.",
+    "stuckNote": "Jeszcze nieprzyjęte · wysłano",
+    "stuckTitle": "Jeszcze nieprzyjęte"
+  },
+  "workDetail": {
+    "actions": {
+      "nothingLeft": "Nie zostało nic do zrobienia."
+    },
+    "backToWorklist": "Wróć do listy zadań",
+    "executor": {
+      "externalLabel": "{name} · {externalPartner} - {platform}",
+      "externalPartner": "Partner zewnętrzny",
+      "unassigned": "Jeszcze nigdzie nie skierowano",
+      "unavailable": "Szczegóły wykonawcy niedostępne"
+    },
+    "eyebrow": "Zadanie realizacji",
+    "facts": {
+      "channelNotYet": "Jeszcze nie - ponawiane automatycznie",
+      "channelNotified": "Powiadomiono kanał",
+      "completed": "Zakończono",
+      "delivery": "Dostawa",
+      "externalReference": "Numer zewnętrzny",
+      "location": "Lokalizacja",
+      "noLocation": "Brak lokalizacji",
+      "parcel": "Paczka",
+      "parcelClosed": "Paczka zamknięta",
+      "parcelOpen": "Nadal otwarta",
+      "started": "Rozpoczęto"
+    },
+    "holds": {
+      "since": "od"
+    },
+    "lines": {
+      "cancelledSuffix": "(anulowano: {cancelled})",
+      "caveat": "Liczby zebranych sztuk zgłasza osoba realizująca zadanie i mogą być nieco opóźnione względem tego, co widać tutaj.",
+      "eanLabel": "EAN",
+      "empty": "To zadanie realizacji nie obejmuje żadnych pozycji.",
+      "skuLabel": "SKU"
+    },
+    "openOrder": "Pokaż zamówienie",
+    "order": {
+      "retry": "Ponów",
+      "unavailable": "Nie udało się wczytać zamówienia powiązanego z tym zadaniem, więc jego przesyłka, dokument sprzedaży i płatność nie są widoczne."
+    },
+    "orderTitle": "Zamówienie {reference}",
+    "packer": {
+      "rosterError": "Nie udało się wczytać listy pakowaczy, więc to zadanie można tylko zostawić nieprzydzielone.",
+      "unassigned": "Nieprzydzielone",
+      "waiting": "czeka {age}",
+      "waitingUnknown": "czeka na przejęcie"
+    },
+    "payment": {
+      "method": "Forma płatności",
+      "placedOn": "Złożono",
+      "unavailable": "Nie udało się wczytać podsumowania płatności tego zamówienia."
+    },
+    "sections": {
+      "actions": "Co możesz zrobić",
+      "facts": "Szczegóły",
+      "holds": "Dlaczego utknęło",
+      "lines": "Co obejmuje to zadanie",
+      "packer": "Pakowacz",
+      "payment": "Płatność"
+    },
+    "states": {
+      "denied": {
+        "message": "Twoja rola nie pozwala otwierać zadań realizacji. Jeśli potrzebny jest dostęp, poproś administratora.",
+        "title": "Zadania realizacji są dla kierowników"
+      },
+      "deniedBench": {
+        "action": "Przejdź do stanowiska pakowania",
+        "message": "Ten ekran jest dla kierowników. Twoje paczki czekają na stanowisku pakowania.",
+        "title": "Pakowanie odbywa się na stanowisku pakowania"
+      },
+      "error": {
+        "message": "Nie udało się teraz odczytać zadania. Nic nie zostało zmienione.",
+        "retry": "Ponów",
+        "title": "Nie udało się wczytać tego zadania realizacji"
+      },
+      "loading": {
+        "message": "Pobieranie szczegółów zadania.",
+        "title": "Wczytywanie zadania realizacji"
+      },
+      "notFound": {
+        "message": "Żadne zadanie realizacji nie pasuje do tego adresu. Mogło zostać usunięte.",
+        "title": "Nie znaleziono zadania"
+      }
+    },
+    "summary": {
+      "acceptedWaiting": "{subject} - przyjęte, zbieranie jeszcze się nie rozpoczęło.",
+      "awaitingAnswer": "Poproszono o przejęcie: {subject}. Brak jeszcze odpowiedzi.",
+      "cancellationRejected": "{subject} - odmowa anulowania, więc realizacja trwa dalej.",
+      "cancellationRequested": "Poproszono o wstrzymanie pracy: {subject}. Brak odpowiedzi, więc pakowanie może nadal trwać.",
+      "cancelledByOperator": "{subject} - polecono przerwać pracę.",
+      "cancelledGivenBack": "{subject} - zadanie zostało oddane.",
+      "closed": "To zadanie jest zakończone.",
+      "executorFallback": "Osoba realizująca to zadanie",
+      "inProgress": "{subject} - trwa zbieranie i pakowanie.",
+      "inProgressExpedited": "{subject} - trwa zbieranie i pakowanie, przed zwykłym miejscem w kolejce.",
+      "incomplete": "{subject} - udało się spakować tylko część. Wymaga ponownego wyboru lokalizacji lub ręcznej decyzji.",
+      "onHold": {
+        "few": "Zatrzymują to {n} rzeczy. Zobacz poniżej.",
+        "many": "Zatrzymuje to {n} rzeczy. Zobacz poniżej.",
+        "one": "Zatrzymuje to jedna rzecz. Zobacz poniżej.",
+        "other": "Zatrzymuje to {n} rzeczy. Zobacz poniżej."
+      },
+      "scheduled": "{subject} - zbieranie rozpocznie się wkrótce.",
+      "unassigned": "Jeszcze nigdzie nieprzydzielone, więc nie ma czego zbierać, dopóki nie zostanie skierowane."
+    },
+    "titleFallback": "Zadanie realizacji",
+    "vsOrders": {
+      "ordersLabel": "Zamówienia",
+      "ordersText": "Co zostało sprzedane i jaki jest ogólny status. Zawsze jeden wiersz na zamówienie.",
+      "taskLabel": "To zadanie",
+      "taskText": "Jedno fizyczne pakowanie. Zamówienie ma więcej niż jedno takie zadanie tylko wtedy, gdy jest wysyłane z więcej niż jednego miejsca."
+    }
+  },
+  "worklist": {
+    "empty": {
+      "filtered": {
+        "message": "Nic na tej stronie nie pasuje do filtrów. Wyczyść filtry, aby zobaczyć wszystko.",
+        "title": "Żadne zadanie realizacji nie pasuje do tych filtrów"
+      },
+      "pastEnd": {
+        "action": "Wróć do pierwszej strony",
+        "message": "Zadania realizacji istnieją, ale nie tak daleko na liście.",
+        "title": "Nic na tej stronie"
+      }
+    },
+    "filter": {
+      "clear": "Wyczyść filtry",
+      "groupLabel": "Filtry zadań realizacji",
+      "orderLabel": "Zamówienie",
+      "orderPlaceholder": "Filtruj według ID zamówienia"
+    },
+    "lane": {
+      "noDeliveryMethod": "Brak metody dostawy",
+      "noLocation": "Brak lokalizacji",
+      "pageScopeNote": "Zgrupowano tylko zadania z tej strony."
+    }
+  }
+}

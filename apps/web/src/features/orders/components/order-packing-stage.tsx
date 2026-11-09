@@ -12,6 +12,7 @@
  * @module apps/web/src/features/orders/components
  */
 import type { ReactElement } from 'react';
+import { useMessages } from '../../../shared/i18n';
 import type { OrderHandledInOpenLinker } from '../api/orders.types';
 import { derivePackingStage } from '../lib/handled-in-openlinker';
 
@@ -25,7 +26,7 @@ export interface OrderPackingStageProps {
 }
 
 export function OrderPackingStage({ handled, who }: OrderPackingStageProps): ReactElement | null {
-  const view = derivePackingStage(handled);
+  const view = derivePackingStage(handled, useMessages('orders'));
   if (!view) return null;
   return (
     <span

@@ -1,0 +1,95 @@
+{
+  "mcpTokenCreateForm": {
+    "expiryDescription": "Required. Maximum {max} days.",
+    "expiryLabel": "Expires in (days)",
+    "nameLabel": "Name",
+    "namePlaceholder": "e.g. Claude Desktop - laptop",
+    "scopeDescription": "Read-only tokens cannot drive writes. Write implies read.",
+    "scopeLabel": "Scope",
+    "scopeRead": "Read-only (mcp:read)",
+    "scopeWrite": "Read + write (mcp:write)",
+    "submit": "Create token",
+    "submitting": "Creating…",
+    "validation": {
+      "maxDays": "Must be {max} days or fewer",
+      "minDays": "Must be at least 1 day",
+      "nameRequired": "Name is required",
+      "nameTooLong": "Name must be 100 characters or fewer",
+      "wholeDays": "Must be a whole number of days"
+    }
+  },
+  "mcpTokenList": {
+    "boundTo": "Bound to {resource}",
+    "columns": {
+      "actions": "Actions",
+      "expires": "Expires",
+      "lastUsed": "Last used",
+      "name": "Name",
+      "owner": "Owner",
+      "scopes": "Scopes",
+      "status": "Status"
+    },
+    "confirmDescription": "\"{name}\" (owner {owner}) will stop working immediately. Any MCP client configured with it will start failing authentication. This cannot be undone.",
+    "confirmLabel": "Revoke",
+    "confirmTitle": "Revoke this token?",
+    "emptyMessage": "Create a token to let an MCP client authenticate to this OpenLinker instance.",
+    "emptyTitle": "No MCP tokens",
+    "never": "Never",
+    "revoke": "Revoke",
+    "status": {
+      "active": "Active",
+      "expired": "Expired",
+      "revoked": "Revoked",
+      "wrongResource": "Wrong resource"
+    },
+    "wrongResourceWarning": {
+      "one": "1 token is bound to a different MCP resource URL than this deployment currently serves. It will fail with a bare 401 until re-minted - this usually means the deployment's MCP resource URL changed after it was created.",
+      "other": "{n} tokens are bound to a different MCP resource URL than this deployment currently serves. They will fail with a bare 401 until re-minted - this usually means the deployment's MCP resource URL changed after they were created."
+    }
+  },
+  "mcpTokenRevealDialog": {
+    "copied": "Copied",
+    "copy": "Copy",
+    "copyFailed": "Copying failed - select the value above and copy it manually before closing.",
+    "description": "Copy this token now. It cannot be shown again.",
+    "done": "Done",
+    "pasteHint": "Paste it into your MCP client's configuration as an <code>{header}</code> header.",
+    "title": "Token created - {name}",
+    "tokenLabel": "Token",
+    "warning": "This is the only time this value is displayed. OpenLinker stores only a hash of it - if you lose it, revoke the token and create a new one."
+  },
+  "mcpTokensPage": {
+    "adminOnlyDescription": "Admin-only access.",
+    "adminRequiredMessage": "This page manages agent credentials - it requires an admin session.",
+    "adminRequiredTitle": "Admin role required",
+    "backLabel": "Settings",
+    "description": "Personal access tokens that let an MCP client (Claude Desktop, an agent, …) authenticate to this OpenLinker instance.",
+    "eyebrow": "Settings",
+    "title": "MCP tokens"
+  },
+  "mcpTokensPanel": {
+    "adminOnly": "Admin only",
+    "createEyebrow": "Create",
+    "createTitle": "New MCP token",
+    "existingEyebrow": "Existing",
+    "existingTitle": "MCP tokens",
+    "loadErrorTitle": "Could not load tokens",
+    "loadingMessage": "Fetching MCP tokens…",
+    "loadingTitle": "Loading tokens",
+    "revokeErrorTitle": "Could not revoke",
+    "revokedToastDescription": "Any MCP client using it will stop authenticating.",
+    "revokedToastTitle": "Token revoked"
+  },
+  "mcpTokensTile": {
+    "activeTokens": "Active tokens",
+    "adminOnly": "Admin only",
+    "description": "Personal access tokens that let an MCP client authenticate to this OpenLinker instance.",
+    "eyebrow": "Agents",
+    "manage": "Manage tokens",
+    "title": "MCP tokens"
+  },
+  "toolStaleness": {
+    "availabilityNote": "Which tools a client sees depends on which connections are enabled and what they support. Clients cache that list - after enabling or disabling a connection, reconnect the client for the change to appear.",
+    "connectionChangeHint": "MCP tools follow these capabilities - an already-connected agent must reconnect to see a change."
+  }
+}

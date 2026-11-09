@@ -14,6 +14,7 @@ import { Alert } from '../../../shared/ui/alert';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
+import { useShoperMessages } from '../messages';
 import { ShoperOrderDefaultsSection } from './shoper-order-defaults-section';
 
 export function ShoperStructuredSection({
@@ -22,6 +23,7 @@ export function ShoperStructuredSection({
   configIsParseable,
   syncStructuredToJson,
 }: StructuredConfigSectionProps): ReactElement {
+  const copy = useShoperMessages().shoperStructuredSection;
   const webhookCapabilityEnabled =
     connection.enabledCapabilities.includes('OrderSource') ||
     connection.enabledCapabilities.includes('ProductMaster');
@@ -29,10 +31,10 @@ export function ShoperStructuredSection({
   return (
     <>
       <FormField
-        label="OL callback URL"
+        label={copy.callbackUrl.label}
         name="openlinkerCallbackBaseUrl"
         error={form.formState.errors.openlinkerCallbackBaseUrl?.message}
-        description="OpenLinker's public URL as Shoper can reach it. Shoper calls it when an order or a product changes. Pre-filled with the API address this app uses; it must be reachable from the internet. Required for the 'Configure webhooks' action."
+        description={copy.callbackUrl.description}
       >
         <Input
           value={form.watch('openlinkerCallbackBaseUrl') ?? ''}
@@ -45,9 +47,8 @@ export function ShoperStructuredSection({
         />
       </FormField>
       {webhookCapabilityEnabled ? null : (
-        <Alert tone="warning" title="Nothing here uses webhooks">
-          Webhooks deliver orders when Order source is enabled on this connection and product
-          changes when Product master is. Enable one of them first, then configure webhooks.
+        <Alert tone="warning" title={copy.noWebhookCapability.title}>
+          {copy.noWebhookCapability.body}
         </Alert>
       )}
       <ShoperOrderDefaultsSection
