@@ -357,6 +357,15 @@
    * `min-height`.
    */
   --shell-topbar-height: 52px;
+  /* The widest the app's layout block gets on an ultrawide screen: from the
+     left edge of the floating sidebar box to the right edge of the page
+     content. The one knob for "how wide"; the content cap, the sidebar column
+     and the top bar's padding are all derived from it. */
+  --layout-max-width: 2560px;
+  /* The floating layout switches on at the same width: the
+     `@media (min-width: 2560px)` block below must follow this value by hand.
+     (Panels become a centred modal earlier, from 1920px - WIDE_QUERY in
+     shared/ui/side-panel.tsx.) */
   --demo-banner-height: 48px;
 
   --space-1: 0.25rem; /* 4px */
@@ -1271,17 +1280,75 @@ textarea,
   }
 }
 
-/* Ultrawide (> 1920px): the sidebar floats in a box off the screen edge
-   (#4026 follow-up), matching the centred content and modal panels. */
-@media (min-width: 1921px) {
+/* Ultrawide (>= 2560px): the sidebar and the content move together as one
+   centred block (#4026 follow-up). The sidebar floats in a box at the right
+   edge of its own column, right beside the content, and the column absorbs
+   the left half of the spare width:
+
+     block = --layout-max-width = 240px (box) + 32px (content padding) + content
+     side  = (100vw - block) / 2 + 240px   so that the outer gaps are equal:
+     left  = side - 240px
+     right = 100vw - side - (block - 240px)
+
+   The top bar keeps its full width, but its content is padded to line up
+   with the content block's edges. */
+/* Keep this media query equal to --layout-max-width (a media query cannot
+   read a custom property). */
+@media (min-width: 2560px) {
   .shell {
-    grid-template-columns: 264px minmax(0, 1fr);
+    --shell-side: max(264px, calc((100vw - var(--layout-max-width)) / 2 + 240px));
+    grid-template-columns: var(--shell-side) minmax(0, 1fr);
+  }
+
+  .shell .page-layout {
+    margin-inline: 0 auto;
+  }
+
+  .shell .shell-topbar {
+    padding-left: 32px;
+    padding-right: max(16px, calc(100vw - var(--shell-side) - var(--layout-max-width) + 240px));
+  }
+
+  /* The brand sits in the bar above the sidebar box: the box starts 240px
+     left of the main column, and 16px is the box's own inner padding. */
+  .shell .shell-topbar > .shell-brand--wide {
+    display: flex;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -240px;
+    z-index: 1;
+    align-items: center;
+    padding: 0 0 0 16px;
+  }
+
+  .shell-sidebar > .shell-brand {
+    display: none;
+  }
+
+  /* The bar lives in the main column; with the sidebar now below it, its
+     background and bottom rule continue over the sidebar column so the bar
+     reads as one full-width strip. */
+  .shell .shell-topbar::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: -1px;
+    left: calc(-1 * var(--shell-side));
+    width: var(--shell-side);
+    background: var(--bg-shell);
+    border-bottom: 1px solid var(--border-subtle);
+    pointer-events: none;
   }
 
   .shell-sidebar {
-    top: 12px;
-    height: calc(100vh - 24px);
-    margin: 12px 0 12px 12px;
+    justify-self: end;
+    width: 240px;
+    /* Below the top bar, not beside it; the menu inside (`.shell-nav`)
+       scrolls on its own when it outgrows the box. */
+    top: calc(var(--shell-topbar-height) + 12px);
+    height: calc(100vh - var(--shell-topbar-height) - 24px);
+    margin: calc(var(--shell-topbar-height) + 12px) 0 12px;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-sm);
@@ -1323,6 +1390,11 @@ textarea,
 .shell-topbar .shell-brand {
   padding: 0;
   flex-shrink: 0;
+}
+
+/* The ultrawide copy of the brand (#4026 follow-up) shows only from 2560px. */
+.shell-brand--wide {
+  display: none;
 }
 
 /* On a phone the rest of the app's topbar opens with a 36 px menu button and
@@ -3294,13 +3366,12 @@ textarea,
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* A page's own content on a very wide screen (#4026 follow-up): centred and
-   capped, so an ultrawide monitor does not stretch a list edge to edge. The
-   cap is a little wider than the list mockups' 1440px and, with the sidebar
-   and the shell padding, only takes effect past ~1980px of viewport. */
+/* A page's own content on a very wide screen (#4026 follow-up): capped so an
+   ultrawide monitor does not stretch a list edge to edge. The cap is the
+   layout block minus the sidebar box (240px) and the content padding (32px). */
 .page-layout {
   width: 100%;
-  max-width: 1680px;
+  max-width: calc(var(--layout-max-width) - 272px);
   margin-inline: auto;
 }
 
@@ -7769,7 +7840,7 @@ a.kpi-card:focus-visible {
 
 .side-panel__overlay--elevated { z-index: 60; }
 
-/* Ultrawide (> 1920px): the panel opens as a centred modal (#4026 follow-up).
+/* Wide screens (>= 1920px): the panel opens as a centred modal (#4026 follow-up).
    Centred with auto margins rather than a translate, because Motion owns the
    transform for the open/close scale. `fit-content` lets the auto margins
    centre it vertically while the body still scrolls inside the cap. */
@@ -12849,6 +12920,12 @@ a.kpi-card:focus-visible {
 /* A fixed column must contain its content: long item names and status reasons
    truncate inside the column instead of painting over the next one. */
 .list-table--fixed .data-table td { overflow: hidden; }
+/* A connection chip reveals its name to the right on hover, past the cell's
+   edge; the clip above would cut it off mid-word, so a chip's cell does not
+   clip and the hovered one paints above the next column. */
+.list-table--fixed .data-table td:has(.connection-chip) { overflow: visible; }
+.list-table--fixed .data-table td:has(.connection-chip:hover),
+.list-table--fixed .data-table td:has(.connection-chip:focus-visible) { position: relative; z-index: 2; }
 .list-table--fixed .orders-items-line,
 .list-table--fixed .orders-status-reason { max-width: 100%; }
 .list-table--fixed .orders-status-reason { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -13118,6 +13195,9 @@ a.kpi-card:focus-visible {
   .peek-panel__item--link:hover .peek-panel__item-go { transform: rotate(45deg); }
 }
 .peek-panel__item-name { display: flex; flex-direction: column; min-width: 0; }
+/* An order line OpenLinker has not matched to a catalogue product: says why it
+   does not open, instead of looking like a link that is broken. */
+.peek-panel__item-unmapped { font-size: 0.6875rem; color: var(--status-warning-fg); }
 .peek-panel__thumb {
   display: grid;
   flex-shrink: 0;
@@ -22594,30 +22674,156 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
    mirror the orders-drawer `.ext-link` silhouette (bordered pill, leading
    dot, trailing arrow) - the internal links get the accent-outlined
    treatment, same as "Open order" on the orders cockpit. */
-/* Inset "drawer" panel matching the orders cockpit's `.orders-detail`
-   recessed treatment (#1720 review) - a muted-surface box set apart from
-   the row above, instead of sitting flush against the shared
-   `.data-table__detail` background with no boundary of its own. */
+/* ── Product peek body (#4027 follow-up) ──
+ * Three titled sections, each on a shared primitive: the variants and the
+ * marketplace offers as bordered DataTables, the identifiers as a
+ * KeyValueList. The peek body is already the surface, so this block is not a
+ * second inset box. */
 .products-row-detail {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--space-4) var(--space-5);
-  background: var(--bg-surface-muted);
+  gap: var(--space-5);
+  min-width: 0;
+}
+.peek-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.peek-section__title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+.peek-section__count {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.peek-section__empty {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+/* A DataTable inside a peek: the bordered surface of `.table-shell`, a notch
+   tighter, and no sticky header (the peek body is the scroller). */
+.peek-table.data-table__container {
+  background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
 }
+.peek-table .data-table th,
+.peek-table .data-table td {
+  padding: var(--space-2) var(--space-3);
+}
+.peek-table .data-table thead th {
+  position: static;
+}
+.peek-table .data-table tbody tr:first-child td {
+  border-top: 0;
+}
 
-/* 4-up field grid (Internal ID / Source external ID / Currency / Stock
-   synced) - same shape as the orders drawer's detail field grid. */
-.products-detail-fields {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-3) var(--space-5);
+/* Order peek items (#4026 follow-up): the product cell carries the thumbnail,
+   name and SKU; a mapped line is a row link to the product's peek. */
+.order-peek-items__product {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
 }
-@media (max-width: 1023.98px) {
-  .products-detail-fields { grid-template-columns: repeat(2, 1fr); }
+.order-peek-items__name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
+.order-peek-items__title { font-weight: 550; color: var(--text-primary); }
+.order-peek-items .mono-text { font-size: 0.6875rem; }
+.order-peek-items__total { font-weight: 600; }
+/* A line that opens its product reads as a link before it is hovered: the
+   name in the link colour and a chevron button at the end. Hover adds the
+   underline, an accent ring on the chevron and nudges it right - the same
+   arrow the list rows use to open a peek. */
+.order-peek-items__row--open .order-peek-items__title {
+  color: var(--text-link);
+}
+.order-peek-items__row--open:hover .order-peek-items__title {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.order-peek-items__row--open .order-peek-items__go {
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+}
+.order-peek-items__row--open:hover .order-peek-items__go {
+  border-color: var(--accent-primary-border);
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary);
+}
+.order-peek-items__row--open:hover .peek-arrow__chevron {
+  transform: translateX(2px) rotate(45deg);
+}
+/* A line with no product to open is not interactive at all. */
+.order-peek-items .order-peek-items__row--static {
+  cursor: default;
+}
+.order-peek-items .order-peek-items__row--static:hover {
+  background: transparent;
+}
+@media (prefers-reduced-motion: reduce) {
+  .order-peek-items__row--open:hover .peek-arrow__chevron { transform: rotate(45deg); }
+}
+
+/* Order peek facts: the shared KeyValueList, label column sized to its labels. */
+.peek-facts.key-value-list {
+  grid-template-columns: minmax(7.5rem, max-content) minmax(0, 1fr);
+}
+.peek-facts .key-value-list__label,
+.peek-facts .key-value-list__value {
+  padding: var(--space-2) var(--space-3);
+}
+.peek-facts__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Identifiers: the shared KeyValueList, label column sized to its labels at
+   every width (the peek is narrow even on a wide viewport). */
+.products-detail-fields.key-value-list {
+  grid-template-columns: minmax(7.5rem, max-content) minmax(0, 1fr);
+}
+.products-detail-fields .key-value-list__label,
+.products-detail-fields .key-value-list__value {
+  padding: var(--space-2) var(--space-3);
+}
+.products-detail-fields .key-value-list__label,
+.products-detail-fields .key-value-list__value {
+  display: flex;
+  align-items: center;
+}
+/* The full id, wrapping, rather than a second ellipsis: there is room for it
+   here, and the peek is where an operator goes to read it. */
+.products-detail-fields .copyable-id,
+.peek-facts .copyable-id {
+  max-width: 100%;
+}
+.products-detail-fields .copyable-id__value,
+.peek-facts .copyable-id__value {
+  max-width: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+
+/* Still used by the analytics variant/channel matrix (#2765). */
+.products-detail-variants { display: flex; flex-direction: column; gap: var(--space-2); }
 .products-detail-field__label {
   font-family: var(--font-mono);
   font-size: 0.625rem;
@@ -22626,25 +22832,46 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--text-muted);
   margin-bottom: 3px;
 }
-.products-detail-field__value { font-size: 0.8125rem; color: var(--text-secondary); }
 
-.products-detail-variants { display: flex; flex-direction: column; gap: var(--space-2); }
-
-/* ── Live marketplace publication status (#1760) ── */
-.products-detail-publication-status { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
-.offer-publication-status__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
-.offer-publication-status__row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.offer-publication-status__id { font-size: 12px; color: var(--text-muted); }
+/* Marketplace offers (#1760): no offers yet is one quiet line with the next
+   step, not a full empty-state card. */
+.offer-publication-status__empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+}
+.offer-publication-status__empty-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.offer-publication-status__empty-text strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.offer-publication-status__offer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.offer-publication-status__id { font-size: 0.75rem; color: var(--text-secondary); }
 
 /* Every reason an offer cannot sell (#2231): the sentence for the seller, the
-   channel's own code for whoever checks it against the channel's docs. Takes a
-   full row of its own inside the flex-wrapped offer row, so it sits under the
-   badge/id/refresh line rather than squeezing between them. */
+   channel's own code for whoever checks it against the channel's docs. Sits
+   under the offer id inside the Offer cell. */
 .offer-publication-status__problems {
-  flex: 1 1 100%;
   list-style: none;
   margin: 0;
-  padding: var(--space-2) 0 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -22673,45 +22900,24 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   flex: 0 0 auto;
 }
 
-/* Compact per-variant row - attrs/EAN left, stock badge, available/reserved,
-   listings count right. Deliberately NOT the dense VariantStockTable grid
-   (kept for the product-detail page's own accordion); the cockpit's
-   expandable drawer and mobile card need a lighter, flatter row. */
-.products-variant-list { display: flex; flex-direction: column; gap: 6px; }
-.products-variant-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) auto auto auto;
-  align-items: center;
-  column-gap: var(--space-4);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface);
-}
-@media (max-width: 767.98px) {
-  /* A 2-column grid with 4 DOM children (id / badge / stock / listings)
-     auto-wraps unpredictably - badge and stock ended up squeezed against a
-     wrapping id/meta line. Stack every field as its own full-width line
-     instead - more vertical space, but nothing overlaps or wraps oddly
-     (#1720 review). */
-  .products-variant-row {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-  }
-  .products-variant-row__id { width: 100%; }
-  .products-variant-row__listings { width: 100%; justify-content: flex-start; }
-}
+/* Variant cells inside the peek's variants table. */
 .products-variant-row__id { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
-.products-variant-row__attrs { font-size: 0.8125rem; font-weight: 550; color: var(--text-secondary); }
+.products-variant-row__attrs { font-size: 0.8125rem; font-weight: 550; color: var(--text-primary); }
 .products-variant-row__meta { font-size: 0.6875rem; color: var(--text-muted); }
-.products-variant-row__stock { font-size: 0.8125rem; color: var(--text-secondary); white-space: nowrap; }
-.products-variant-row__stock-reserved { margin-left: 4px; font-size: 0.6875rem; color: var(--text-muted); }
+.peek-table td .products-variant-row__meta { max-width: none; overflow: visible; white-space: normal; }
+.products-variant-row__stock-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+.products-variant-row__stock { font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); }
+.products-variant-row__stock-reserved { margin-left: 4px; font-size: 0.6875rem; font-weight: 400; color: var(--text-muted); }
 .products-variant-row__listings {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  align-items: center;
   gap: var(--space-1);
 }
 .products-detail-links {
@@ -23507,6 +23713,14 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .listing-peek__reason--muted { border-left-color: var(--border-strong); background: var(--bg-surface-muted); }
 .listing-peek__facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin: 0; }
 .listing-peek__facts dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+
+/* Product photos beside the state card in a peek (#4046 follow-up). */
+.peek-panel__media { display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.peek-panel__media .product-gallery { width: 100%; }
+@media (max-width: 640px) {
+  .peek-panel__media { grid-template-columns: minmax(0, 1fr); }
+  .peek-panel__media .product-gallery { width: 12rem; }
+}
 
 /* Mobile card head (#1965 frame 05): at 360px the name is what the card is
    about, so nothing next to it may hold a fixed width and nothing may clip. */

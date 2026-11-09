@@ -105,6 +105,7 @@ import { OrderExportDialog } from '../../features/orders/components/order-export
 import { useOrderExportBackgroundToast } from '../../features/orders/hooks/use-order-export';
 import { OrderColumnVisibilityControl } from '../../features/orders/components/order-column-visibility-control';
 import { OrderPeekDetail } from '../../features/orders/components/order-peek-detail';
+import { ProductPeekById } from '../products/product-peek-by-id';
 import { isSafeHttpUrl } from '../../shared/lib/is-safe-http-url';
 import { BULK_DISPATCH_MAX_ITEMS } from '../../features/shipments';
 import type {
@@ -796,6 +797,12 @@ export function OrdersListPage(): ReactElement {
 
   // ── Order peek (#4026): replaces the inline expanded row ───────────────────
   const [peekId, setPeekId] = useState<string | null>(null);
+  // A product opened from an order line, shown on top of the order peek; it
+  // belongs to the order on screen, so stepping or closing the order drops it.
+  const [productPeekId, setProductPeekId] = useState<string | null>(null);
+  useEffect(() => {
+    setProductPeekId(null);
+  }, [peekId]);
   const openPeek = useCallback((internalOrderId: string): void => {
     captureDemoEvent('demo_order_opened', {});
     setPeekId(internalOrderId);
@@ -1268,7 +1275,13 @@ export function OrdersListPage(): ReactElement {
           ? parsed.sourceExternalUrl
           : undefined,
       channelName: sourceLabel,
-      detail: <OrderPeekDetail order={order} thumbLabel={(sourceShort ?? sourceLabel ?? '').slice(0, 1)} />,
+      detail: (
+        <OrderPeekDetail
+          order={order}
+          thumbLabel={(sourceShort ?? sourceLabel ?? '').slice(0, 1)}
+          onOpenProduct={setProductPeekId}
+        />
+      ),
     };
   }
 
@@ -1936,6 +1949,12 @@ export function OrdersListPage(): ReactElement {
         onNavigate={navigatePeek}
         onOpenChange={(open) => {
           if (!open) setPeekId(null);
+        }}
+      />
+      <ProductPeekById
+        productId={productPeekId}
+        onClose={() => {
+          setProductPeekId(null);
         }}
       />
 

@@ -1650,7 +1650,14 @@
     "notSyncedYet": "Not synced yet"
   },
   "offerPublicationStatusPanel": {
+    "caption": "Offers of this product on marketplaces",
     "checkStatus": "Check status",
+    "columns": {
+      "action": "Action",
+      "offer": "Offer",
+      "status": "Status",
+      "synced": "Last checked"
+    },
     "emptyMessage": "This product isn't listed on any marketplace connection yet.",
     "emptyTitle": "No offers on marketplaces",
     "errorTitle": "Unable to load publication status",
@@ -1659,8 +1666,7 @@
     "neverSynced": "Never synced",
     "refresh": "Refresh",
     "refreshing": "Refreshing…",
-    "retry": "Retry",
-    "synced": "Synced <time></time>"
+    "retry": "Retry"
   },
   "parameterRestrictions": {
     "aboveMax": "{name} must be at most {max}, this value is {value}.",

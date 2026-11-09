@@ -172,6 +172,8 @@ export interface ProductFilters {
   taxRateState?: 'missing' | 'not-checked' | 'known';
   /** Hide products where every variant is deleted at the master (#1599/#2447). */
   hideFullyStale?: boolean;
+  /** Exactly this product: how a deep link opens a peek for a product off the current page. */
+  productId?: string;
 }
 
 /**

@@ -84,10 +84,12 @@ export interface SidePanelProps {
 
 const PHONE_QUERY = '(max-width: 640px)';
 /**
- * Above full HD a panel pinned to the right edge of an ultrawide screen sits
- * far from where the eye is, so it opens as a centred modal instead.
+ * From full HD a panel pinned to the right edge sits far from where the eye
+ * is, so it opens as a centred modal instead. Deliberately earlier than the
+ * floating layout (`--layout-max-width`, 2560px): the modal helps on any wide
+ * screen, the floating sidebar only once there is room to spare.
  */
-const WIDE_QUERY = '(min-width: 1921px)';
+const WIDE_QUERY = '(min-width: 1920px)';
 const SIDE_SPRING = { type: 'tween', duration: 0.36, ease: [0.32, 0.72, 0, 1] } as const;
 /** vaul's curve: fast out, long settle. */
 /**

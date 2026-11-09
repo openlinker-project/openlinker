@@ -1796,7 +1796,14 @@
     "notSyncedYet": "Niezsynchronizowana"
   },
   "offerPublicationStatusPanel": {
+    "caption": "Oferty tego produktu w marketplace",
     "checkStatus": "Sprawdź status",
+    "columns": {
+      "action": "Akcja",
+      "offer": "Oferta",
+      "status": "Status",
+      "synced": "Ostatnio sprawdzono"
+    },
     "emptyMessage": "Ten produkt nie jest jeszcze wystawiony w żadnym połączeniu z marketplace.",
     "emptyTitle": "Brak ofert w marketplace",
     "errorTitle": "Nie udało się wczytać statusu publikacji",
@@ -1805,8 +1812,7 @@
     "neverSynced": "Nigdy nie zsynchronizowano",
     "refresh": "Odśwież",
     "refreshing": "Odświeżanie…",
-    "retry": "Ponów",
-    "synced": "Zsynchronizowano <time></time>"
+    "retry": "Ponów"
   },
   "parameterRestrictions": {
     "aboveMax": "{name} może wynosić maks. {max}, a ta wartość to {value}.",

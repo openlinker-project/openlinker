@@ -51,7 +51,7 @@ import { StatusTabs, type StatusTab } from '../../shared/ui/status-tabs';
 import { PeekArrow } from '../../shared/ui/capped-badges';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { usePlatforms } from '../../shared/plugins';
-import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
+import { resolvePlatformLabel } from '../../features/mappings';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import {
@@ -59,7 +59,6 @@ import {
   useProductsQuery,
 } from '../../features/products/hooks/use-products-query';
 import { useProductsTotal } from '../../features/products/hooks/use-products-total';
-import { formatAmount } from '../../shared/format/format-amount';
 import { ListPagination } from '../../shared/ui/list-pagination';
 import type {
   Product,
@@ -74,22 +73,13 @@ import {
   ProductListSortFieldValues,
   ProductStockFilterValues,
 } from '../../features/products/api/products.types';
-import {
-  ConnectionCell,
-  ConnectionChip,
-  ConnectionFold,
-  readConnectionEnvironment,
-  useConnectionsQuery,
-} from '../../features/connections';
-import type { Connection, ConnectionChipChannel } from '../../features/connections';
-import { selectPublishDestinations } from '../../features/listings';
+import { ConnectionCell, ConnectionFold } from '../../features/connections';
 import {
   deriveStockStatus,
   STOCK_STATUS_BADGE_TONE,
   STOCK_STATUS_LABEL,
 } from '../../features/products';
 import { deriveAtpStatus } from '../../features/inventory';
-import { deriveProductStaleness } from '../../features/products/lib/product-staleness';
 import { useCostCoverageQuery } from '../../features/products/hooks/use-cost-coverage-query';
 import { useProductCountProbes } from '../../features/products/hooks/use-product-count-probes';
 import { ProductAttentionSummary } from '../../features/products/components/product-attention-summary';
@@ -99,12 +89,10 @@ import {
   useFormat,
   useMessages,
   usePlural,
-  type Formatters,
 } from '../../shared/i18n';
 import { useTrackMargin } from '../../features/analytics';
-import { ListingsCoveragePills } from './listings-coverage-pills';
-import { ProductRowDetail } from './product-row-detail';
-import { ProductPeek, ProductTaxRateBadge, type ProductPeekView } from './product-peek';
+import { ProductPeek, type ProductPeekView } from './product-peek';
+import { formatPrice, useProductCells } from './use-product-cells';
 import { ProductsFilterBar } from './products-filter-bar';
 import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
 import { bucketCount, captureDemoEvent } from '../../features/demo';
@@ -116,31 +104,12 @@ import {
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
+/** Opens the product peek on arrival: `/products?peek=<productId>`. */
+const PEEK_PARAM = 'peek';
 /** Maximum products an operator can bulk-list in one batch (BE-enforced ceiling). */
 export const BULK_SELECTION_CAP = 100;
 /** limit:1 probe pagination shared by the KPI tiles (nav-counts precedent). */
 const KPI_PROBE = { limit: 1 } as const;
-
-// When currency is missing, the raw amount is shown muted with a hover-reveal
-// rather than silently emitting a bare decimal — explicit ambiguity is safer.
-function formatPrice(
-  price: number | null,
-  currency: string | null,
-  currencyUnknownLabel: string,
-  format: Formatters,
-): ReactNode {
-  if (price === null) {
-    return <span className="text-muted">-</span>;
-  }
-  if (currency) {
-    return formatAmount(price, currency);
-  }
-  return (
-    <span className="text-muted" title={currencyUnknownLabel}>
-      {format.number(price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-    </span>
-  );
-}
 
 /** Type-guard for the `stock` URL param (widen-then-narrow, orders pattern). */
 function isStockFilter(value: string | null): value is ProductStockFilter {
@@ -235,7 +204,8 @@ export function ProductsListPage(): ReactElement {
   // route so the destination has the full list.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // The product the peek shows (#4027); local UI state like the selection.
-  const [peekId, setPeekId] = useState<string | null>(null);
+  // `?peek=<id>` opens it on arrival - an order line links here (#4026).
+  const [peekId, setPeekId] = useState<string | null>(() => searchParams.get(PEEK_PARAM));
   const [pickerOpen, setPickerOpen] = useState(false);
   // Set when the per-row "+ Create offers" CTA opened the picker for a single
   // product (instead of the bulk selection).
@@ -244,24 +214,25 @@ export function ProductsListPage(): ReactElement {
   // Capability-gated create-offers action (#1096): select target connections by
   // the `OfferManager` capability — never a literal platformType. Display names
   // resolve through the plugin registry.
-  const connectionsQuery = useConnectionsQuery();
+  const {
+    connectionsQuery,
+    offerManagerConnections,
+    publishDestinations,
+    hasShopDestination,
+    connectionById,
+    originChipChannel,
+    hasListingGap,
+    renderStockCell,
+    renderCoveragePills,
+    renderStalenessBadge,
+    buildPeekView,
+  } = useProductCells();
   // The bulk "Create offers" CTA opens the bulk wizard whose final submit is a
   // `listings:write` action; gate the CTA on `write.visible` so a genuinely
   // unauthorized (non-demo) viewer never sees it, while a demo viewer sees it
   // enabled and hits the gated confirm step (#1704).
   const demoMode = useDemoMode();
   const write = useWriteAccess('listings:write', demoMode);
-  const offerManagerConnections = useMemo<Connection[]>(
-    () =>
-      (connectionsQuery.data ?? [])
-        // OfferCreator (not coarse OfferManager, #1498): a quantity-only
-        // OfferManager (WooCommerce stock write-back) must not surface in
-        // offer-creation flows.
-        .filter((c) => c.status === 'active' && c.supportedCapabilities?.includes('OfferCreator'))
-        .slice()
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [connectionsQuery.data],
-  );
   const offerCreatorIds = useMemo(
     () => offerManagerConnections.map((c) => c.id),
     [offerManagerConnections],
@@ -278,60 +249,12 @@ export function ProductsListPage(): ReactElement {
     [connectionsQuery.data],
   );
 
-  // Unified publish targets (#1828): offer marketplaces (OfferCreator) OR
-  // online shops (ProductPublisher), capability-driven. Drives the publish
-  // CTAs + picker. The gaps KPI / "Unlisted on" chips / per-row gap detection
-  // stay keyed to the marketplace `offerManagerConnections` subset above -
-  // "gap" is a narrower, offer-specific concept. The coverage PILLS, however,
-  // answer "is this published anywhere" and must include shop destinations
-  // too (#1838 follow-up fix - a product published to a WooCommerce
-  // connection previously rendered no pill at all).
-  const publishDestinations = useMemo(
-    () => selectPublishDestinations(connectionsQuery.data ?? []),
-    [connectionsQuery.data],
-  );
-  const hasShopDestination = useMemo(
-    () => publishDestinations.some((d) => d.kind === 'shop'),
-    [publishDestinations],
-  );
-  // Coverage-pill connection set (#1838 follow-up fix): every active publish
-  // destination (marketplace OR shop) - the same union `publishDestinations`
-  // already resolves, since a connection carries at most one listing-mapping
-  // kind (#1837) so it can never double-count here either.
-  const coveragePillConnections = useMemo(
-    () => publishDestinations.map((d) => d.connection),
-    [publishDestinations],
-  );
 
   // Source select lists ALL active connections (any capability); the cockpit
   // source axis is about provenance, not offer creation.
   const activeConnections = useMemo(
     () => (connectionsQuery.data ?? []).filter((c) => c.status === 'active'),
     [connectionsQuery.data],
-  );
-  // One batched read, indexed once — the Source column's `ConnectionCell` must
-  // never cost a request per row (#1996). A whole `Connection` structurally
-  // satisfies `ConnectionCellFacts` (`{ name, status }`), so this existing map
-  // feeds the cell directly rather than growing a second, parallel index.
-  const connectionById = useMemo(() => {
-    const map = new Map<string, Connection>();
-    (connectionsQuery.data ?? []).forEach((c) => map.set(c.id, c));
-    return map;
-  }, [connectionsQuery.data]);
-
-  // The origin chip's channel (#3670): the registry's short label for the face,
-  // and the connection's environment so a sandbox source never reads the same
-  // as its production twin. The platformType comes off the product's own
-  // external-id row, so the chip renders even while the connection itself is
-  // still unresolved.
-  const originChipChannel = useCallback(
-    (origin: { connectionId: string; platformType: string }): ConnectionChipChannel => ({
-      platformType: origin.platformType,
-      label: resolvePlatformLabel(platforms, origin.platformType),
-      shortLabel: resolvePlatformShortLabel(platforms, origin.platformType),
-      environment: readConnectionEnvironment(connectionById.get(origin.connectionId)?.config),
-    }),
-    [platforms, connectionById],
   );
 
   // ── Server queries ─────────────────────────────────────────────────────
@@ -646,24 +569,6 @@ export function ProductsListPage(): ReactElement {
 
   const atCap = selectedIds.size >= BULK_SELECTION_CAP;
 
-  /**
-   * Row gap detection for the per-row CTA: any active OfferCreator connection
-   * covering fewer variants than the product has. Requires the BE-enriched
-   * `variantCount`; rows without it (older payloads) render no CTA.
-   */
-  const hasListingGap = useCallback(
-    (product: Product): boolean => {
-      const variantCount = product.variantCount ?? 0;
-      if (variantCount === 0 || offerManagerConnections.length === 0) return false;
-      const listedByConnection = new Map(
-        (product.listingsCoverage ?? []).map((c) => [c.connectionId, c.listedVariants]),
-      );
-      return offerManagerConnections.some(
-        (c) => (listedByConnection.get(c.id) ?? 0) < variantCount,
-      );
-    },
-    [offerManagerConnections],
-  );
 
   /** Shared by the desktop select column and mobile card select slot. */
   const renderSelectCheckbox = useCallback(
@@ -695,108 +600,6 @@ export function ProductsListPage(): ReactElement {
     [selectedIds, atCap, handleToggleRow, copy, format],
   );
 
-  const renderStockCell = useCallback((product: Product): ReactNode => {
-    // #3569 - available to promise leads when the list carries it. `null` is
-    // "OpenLinker does not know", so it is never drawn as 0 or as Out of stock.
-    if (product.availableToPromise !== undefined) {
-      const atpStatus = deriveAtpStatus(product.availableToPromise);
-      return (
-        <span className="products-cell-stack" data-testid={`stock-list-cell-${product.sku ?? product.id}`}>
-          {product.availableToPromise === null ? (
-            <span className="av-unknown" title={copy.stock.notKnownTitle}>
-              {copy.stock.notKnown}
-            </span>
-          ) : (
-            <span>
-              <span className="products-stock-value mono tabular">{product.availableToPromise}</span>{' '}
-              <span className="text-muted" style={{ fontSize: '0.75rem' }}>
-                {copy.stock.toSell}
-              </span>
-            </span>
-          )}
-          {atpStatus === 'unknown' ? (
-            <StatusBadge tone="neutral" withDot compact>
-              {copy.stock.notKnown}
-            </StatusBadge>
-          ) : (
-            <StatusBadge tone={STOCK_STATUS_BADGE_TONE[atpStatus]} withDot compact>
-              {STOCK_STATUS_LABEL[atpStatus]}
-            </StatusBadge>
-          )}
-          {product.totalAvailable !== undefined ? (
-            <span className="text-muted products-cell-sub tabular">
-              {interpolate(copy.stock.master, { n: format.number(product.totalAvailable) })}
-            </span>
-          ) : null}
-        </span>
-      );
-    }
-    if (product.totalAvailable === undefined) {
-      return <span className="text-muted">-</span>;
-    }
-    const status = deriveStockStatus(product.totalAvailable);
-    return (
-      <span className="products-cell-stack">
-        <span className="products-stock-value mono tabular">{product.totalAvailable}</span>
-        <StatusBadge tone={STOCK_STATUS_BADGE_TONE[status]} withDot compact>
-          {STOCK_STATUS_LABEL[status]}
-        </StatusBadge>
-        {(product.totalReserved ?? 0) > 0 ? (
-          <span className="text-muted products-cell-sub tabular">
-            {interpolate(copy.stock.reserved, { n: format.number(product.totalReserved ?? 0) })}
-          </span>
-        ) : null}
-      </span>
-    );
-  }, [copy, format]);
-
-  /** The product's stock state as one badge (the peek header). */
-  const renderStockBadge = useCallback(
-    (product: Product): ReactNode => {
-      const n = product.availableToPromise !== undefined ? product.availableToPromise : product.totalAvailable;
-      if (n === undefined) return null;
-      if (n === null) {
-        return (
-          <StatusBadge tone="neutral" withDot compact>
-            {copy.stock.notKnown}
-          </StatusBadge>
-        );
-      }
-      const status = deriveStockStatus(n);
-      return (
-        <StatusBadge tone={STOCK_STATUS_BADGE_TONE[status]} withDot compact>
-          {STOCK_STATUS_LABEL[status]}
-        </StatusBadge>
-      );
-    },
-    [copy],
-  );
-
-  const renderCoveragePills = useCallback(
-    (product: Product): ReactNode => (
-      <ListingsCoveragePills
-        coverage={product.listingsCoverage}
-        variantCount={product.variantCount ?? 0}
-        connections={coveragePillConnections}
-      />
-    ),
-    [coveragePillConnections],
-  );
-
-  /**
-   * #2447 — deleted-at-source flag, shared by the desktop row and the mobile
-   * card meta. "some" (warning) vs "all" (error) so a partially-live
-   * multi-variant product doesn't read as fully gone.
-   */
-  const renderStalenessBadge = useCallback((product: Product): ReactNode => {
-    const staleness = deriveProductStaleness(product);
-    if (!staleness) return null;
-    return (
-      <StatusBadge tone={staleness.tone} withDot compact>
-        {staleness.label}
-      </StatusBadge>
-    );
-  }, []);
 
   /** A header stack of per-label sort buttons; the active key is marked. */
   const renderSortStack = useCallback(
@@ -1028,7 +831,16 @@ export function ProductsListPage(): ReactElement {
 
   // ── Peek (#4027) ───────────────────────────────────────────────────────
   const peekIndex = peekId ? items.findIndex((p) => p.id === peekId) : -1;
-  const peekProduct = peekIndex >= 0 ? items[peekIndex] : undefined;
+  // A deep-linked product that is not on this page is read on its own, in the
+  // same list shape, so the peek shows the same cells it would from a row.
+  const peekLookup = useProductsQuery(
+    peekId ? { productId: peekId } : undefined,
+    { limit: 1, offset: 0 },
+    undefined,
+    { enabled: Boolean(peekId) && peekIndex < 0 && !query.isLoading },
+  );
+  const peekProduct =
+    peekIndex >= 0 ? items[peekIndex] : peekId ? peekLookup.data?.items.find((p) => p.id === peekId) : undefined;
   const navigatePeek = useCallback(
     (step: -1 | 1): void => {
       const next = items[peekIndex + step];
@@ -1037,43 +849,10 @@ export function ProductsListPage(): ReactElement {
     [items, peekIndex],
   );
   const peekView: ProductPeekView | null = peekProduct
-    ? {
-        product: peekProduct,
-        source: peekProduct.externalIds?.[0] ? (
-          <ConnectionChip
-            connectionId={peekProduct.externalIds[0].connectionId}
-            name={connectionById.get(peekProduct.externalIds[0].connectionId)?.name ?? null}
-            loading={connectionsQuery.isLoading}
-            channel={originChipChannel(peekProduct.externalIds[0])}
-          />
-        ) : null,
-        variants:
-          (peekProduct.variantCount ?? 0) > 1 ? plural(peekProduct.variantCount ?? 0, copy.row.variantsBadge) : null,
-        price: formatPrice(peekProduct.price, peekProduct.currency, copy.price.currencyUnknown, format),
-        stockBadge: renderStockBadge(peekProduct),
-        stock: renderStockCell(peekProduct),
-        listings: renderCoveragePills(peekProduct),
-        taxRate: (
-          <>
-            <ProductTaxRateBadge product={peekProduct} />
-            {renderStalenessBadge(peekProduct)}
-          </>
-        ),
-        onPublish:
-          write.visible && (hasListingGap(peekProduct) || hasShopDestination)
-            ? () => {
-                handleCreateOffersForProduct(peekProduct.id);
-              }
-            : undefined,
-        detail: (
-          <ProductRowDetail
-            product={peekProduct}
-            connections={offerManagerConnections}
-            canCreateOffers={write.visible}
-            onCreateOffers={handleCreateOffersForProduct}
-          />
-        ),
-      }
+    ? buildPeekView(peekProduct, {
+        onPublish: write.visible ? handleCreateOffersForProduct : undefined,
+        canCreateOffers: write.visible,
+      })
     : null;
 
   const resultCount =
@@ -1371,11 +1150,23 @@ export function ProductsListPage(): ReactElement {
 
           <ProductPeek
             view={peekView}
-            position={peekIndex + 1}
-            count={items.length}
+            position={peekIndex >= 0 ? peekIndex + 1 : 1}
+            count={peekIndex >= 0 ? items.length : 1}
             onNavigate={navigatePeek}
             onOpenChange={(open) => {
-              if (!open) setPeekId(null);
+              if (!open) {
+                setPeekId(null);
+                if (searchParams.has(PEEK_PARAM)) {
+                  setSearchParams(
+                    (prev) => {
+                      const next = new URLSearchParams(prev);
+                      next.delete(PEEK_PARAM);
+                      return next;
+                    },
+                    { replace: true },
+                  );
+                }
+              }
               else captureDemoEvent('demo_product_row_expanded', {});
             }}
           />

@@ -136,6 +136,27 @@ describe('ProductsListPage', () => {
     expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
+  it('should open the peek for a product off the current page when ?peek= names it', async () => {
+    const offPage = { ...sampleProducts.items[0], id: 'ol_product_offpage', name: 'Off Page Product' };
+    const list = vi.fn().mockImplementation((filters?: { productId?: string }) =>
+      Promise.resolve(
+        filters?.productId === 'ol_product_offpage'
+          ? { ...sampleProducts, items: [offPage], total: 1 }
+          : sampleProducts,
+      ),
+    );
+    const mockApi = createMockApiClient({ products: { list } });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi, route: '/products?peek=ol_product_offpage' });
+
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByText('Off Page Product')).toBeInTheDocument();
+    expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({ productId: 'ol_product_offpage' }),
+      expect.objectContaining({ limit: 1 }),
+    );
+  });
+
   it('should show products table when data loads', async () => {
     const mockApi = createMockApiClient({
       products: {

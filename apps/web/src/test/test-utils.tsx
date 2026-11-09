@@ -185,7 +185,9 @@ export function createMockApiClient(
 ): ApiClient {
   const core: CoreApiClient = {
     request: overrides.request ?? vi.fn(),
-    requestBlob: overrides.requestBlob ?? vi.fn(),
+    // Rejects by default: a surface asking for a proxied picture falls back to
+    // its placeholder, as it would when the API has no image.
+    requestBlob: overrides.requestBlob ?? vi.fn().mockRejectedValue(new Error('No image in this test')),
     requestFile: overrides.requestFile ?? vi.fn(),
     requestStream: overrides.requestStream ?? vi.fn(),
     adapters: {
