@@ -44,6 +44,7 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useToast } from '../../shared/ui/toast-provider';
+import { useMessages } from '../../shared/i18n';
 
 type InsightsTone = 'success' | 'warning' | 'error' | 'neutral';
 
@@ -165,6 +166,7 @@ function rollUpConnectionHealth(
 }
 
 export function InsightsPage(): ReactElement {
+  const healthCopy = useMessages('insights').systemHealth;
   const connectionsQuery = useConnectionsQuery(undefined, {
     refetchInterval: INSIGHTS_HEALTH_INTERVAL_MS,
   });
@@ -614,10 +616,11 @@ export function InsightsPage(): ReactElement {
             {healthQuery.data && (
               <span className="sys-health__head">
                 <StatusBadge tone={mapHealthTone(healthQuery.data.status, false)} withDot>
-                  {toHealthLabel(healthQuery.data.status)}
+                  {healthCopy.overall[healthQuery.data.status] ?? healthCopy.overall.unknown}
                 </StatusBadge>
                 <span className="sys-health__checked">
-                  Checked <TimeDisplay iso={healthQuery.data.timestamp} format="relative" />
+                  {healthCopy.checked}{' '}
+                  <TimeDisplay iso={healthQuery.data.timestamp} format="relative" />
                 </span>
               </span>
             )}

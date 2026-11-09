@@ -107,6 +107,7 @@
       }
     },
     "systemHealth": {
+      "checked": "Sprawdzono",
       "connectedSystems": "Połączone systemy",
       "coreServices": "Usługi podstawowe",
       "legend": {
@@ -128,6 +129,12 @@
           "one": "{n} z ostrzeżeniem",
           "other": "{n} z ostrzeżeniem"
         }
+      },
+      "overall": {
+        "degraded": "Częściowa awaria",
+        "error": "Błąd",
+        "ok": "OK",
+        "unknown": "Nieznany"
       },
       "status": {
         "error": "Błąd",
@@ -466,6 +473,7 @@
     "usersOn": "Prośby o dostęp są włączone, więc nowe trafiają na kartę Pending. <link>Ustawienia strony logowania</link>"
   },
   "syncJobs": {
+    "caption": "Zadania synchronizacji",
     "clearFilters": "Wyczyść filtry",
     "columns": {
       "attempts": "Próby",
@@ -488,6 +496,7 @@
       "showFull": "Pokaż cały błąd",
       "showLess": "Pokaż mniej"
     },
+    "eyebrow": "Diagnostyka",
     "filters": {
       "all": {
         "connections": "Wszystkie połączenia",
@@ -501,10 +510,26 @@
       "outcome": "Wynik",
       "status": "Status"
     },
+    "loadError": "Nie udało się wczytać zadań synchronizacji",
+    "loading": "Wczytywanie zadań synchronizacji…",
     "poison": {
+      "caption": "Wpisy odrzucone ze strumienia",
+      "columns": {
+        "attempts": "Próby",
+        "consumerGroup": "Grupa konsumentów",
+        "entryId": "ID wpisu",
+        "lastError": "Ostatni błąd",
+        "lastSeen": "Ostatnio widziany",
+        "stream": "Strumień"
+      },
       "hint": "Zdarzenia, których odzyskanie wielokrotnie się nie powiodło, trafiają tutaj, zamiast być ponawiane bez końca. Nie ma jeszcze akcji ponownego przetworzenia, więc przyczynę ustal na podstawie surowych pól.",
-      "none": "Brak wpisów"
-    }
+      "loadError": "Nie udało się wczytać wpisów odrzuconych ze strumienia",
+      "loading": "Wczytywanie wpisów odrzuconych ze strumienia…",
+      "none": "Brak wpisów",
+      "title": "Wpisy odrzucone ze strumienia"
+    },
+    "showing": "Wyświetlono {start}–{end} z {total}",
+    "title": "Zadania synchronizacji"
   },
   "ui": {
     "accessDenied": {

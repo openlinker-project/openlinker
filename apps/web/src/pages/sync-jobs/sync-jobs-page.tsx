@@ -23,12 +23,7 @@ import {
 } from '../../features/connections';
 import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
 import { usePlatforms, type Platform } from '../../shared/plugins';
-import {
-  interpolate,
-  useMessages,
-  type Messages,
-  type ResolvedCopy,
-} from '../../shared/i18n';
+import { interpolate, useMessages, type Messages, type ResolvedCopy } from '../../shared/i18n';
 import type {
   SyncJob,
   SyncJobFilters,
@@ -248,8 +243,7 @@ function buildColumns(
     {
       id: 'lastError',
       header: copy.columns.lastError,
-      cell: (job) =>
-        job.lastError ? <LastErrorCell error={job.lastError} /> : <EmptyValue />,
+      cell: (job) => (job.lastError ? <LastErrorCell error={job.lastError} /> : <EmptyValue />),
       hideBelow: 1024,
     },
     {
@@ -267,51 +261,55 @@ function buildColumns(
 // secondary table lightweight relative to the primary sync-jobs one.
 const DEAD_LETTER_PAGE_SIZE = 20;
 
-const DEAD_LETTER_COLUMNS: DataTableColumn<StreamDeadLetter>[] = [
-  {
-    id: 'stream',
-    header: 'Stream',
-    cell: (entry) => <span className="mono-text">{entry.stream}</span>,
-    accessor: (entry) => entry.stream,
-    sortable: true,
-  },
-  {
-    id: 'consumerGroup',
-    header: 'Consumer group',
-    cell: (entry) => <span className="mono-text">{entry.consumerGroup}</span>,
-    hideBelow: 1024,
-  },
-  {
-    id: 'entryId',
-    header: 'Entry ID',
-    cell: (entry) => <span className="mono-text">{entry.entryId}</span>,
-    hideBelow: 768,
-  },
-  {
-    id: 'attempts',
-    header: 'Attempts',
-    align: 'right',
-    cell: (entry) => entry.attempts,
-    accessor: (entry) => entry.attempts,
-    sortable: true,
-  },
-  {
-    id: 'lastError',
-    header: 'Last error',
-    cell: (entry) => (
-      <span className="mono-text" title={entry.lastError}>
-        {entry.lastError.length > 60 ? `${entry.lastError.slice(0, 60)}…` : entry.lastError}
-      </span>
-    ),
-  },
-  {
-    id: 'lastSeenAt',
-    header: 'Last seen',
-    cell: (entry) => <TimeDisplay iso={entry.lastSeenAt} />,
-    accessor: (entry) => entry.lastSeenAt,
-    sortable: true,
-  },
-];
+function buildDeadLetterColumns(
+  copy: SyncJobsCopy['poison']['columns']
+): DataTableColumn<StreamDeadLetter>[] {
+  return [
+    {
+      id: 'stream',
+      header: copy.stream,
+      cell: (entry) => <span className="mono-text">{entry.stream}</span>,
+      accessor: (entry) => entry.stream,
+      sortable: true,
+    },
+    {
+      id: 'consumerGroup',
+      header: copy.consumerGroup,
+      cell: (entry) => <span className="mono-text">{entry.consumerGroup}</span>,
+      hideBelow: 1024,
+    },
+    {
+      id: 'entryId',
+      header: copy.entryId,
+      cell: (entry) => <span className="mono-text">{entry.entryId}</span>,
+      hideBelow: 768,
+    },
+    {
+      id: 'attempts',
+      header: copy.attempts,
+      align: 'right',
+      cell: (entry) => entry.attempts,
+      accessor: (entry) => entry.attempts,
+      sortable: true,
+    },
+    {
+      id: 'lastError',
+      header: copy.lastError,
+      cell: (entry) => (
+        <span className="mono-text" title={entry.lastError}>
+          {entry.lastError.length > 60 ? `${entry.lastError.slice(0, 60)}…` : entry.lastError}
+        </span>
+      ),
+    },
+    {
+      id: 'lastSeenAt',
+      header: copy.lastSeen,
+      cell: (entry) => <TimeDisplay iso={entry.lastSeenAt} />,
+      accessor: (entry) => entry.lastSeenAt,
+      sortable: true,
+    },
+  ];
+}
 
 /**
  * Poison Redis Stream entries that exhausted recovery (#2301, D48) — a
@@ -321,6 +319,9 @@ const DEAD_LETTER_COLUMNS: DataTableColumn<StreamDeadLetter>[] = [
  */
 function StreamDeadLettersSection(): ReactElement {
   const copy = useMessages('syncJobs').poison;
+  const showingTemplate = useMessages('syncJobs').showing;
+  const ui = useMessages('ui');
+  const deadLetterColumns = useMemo(() => buildDeadLetterColumns(copy.columns), [copy.columns]);
   const [offset, setOffset] = useState(0);
   const { sort, setSort } = useTableSort([{ id: 'lastSeenAt', desc: true }]);
 
@@ -343,7 +344,7 @@ function StreamDeadLettersSection(): ReactElement {
       <div className="poison-entries__header">
         <div className="poison-entries__intro">
           <h2 id="stream-dead-letters-heading" className="poison-entries__title">
-            Poison stream entries
+            {copy.title}
             {countQuery.data && countQuery.data.count > 0 ? (
               <span className="text-muted"> ({countQuery.data.count})</span>
             ) : null}
@@ -361,10 +362,10 @@ function StreamDeadLettersSection(): ReactElement {
       </div>
 
       {listQuery.isLoading ? (
-        <DataTableSkeleton columns={DEAD_LETTER_COLUMNS} label="Loading poison stream entries…" />
+        <DataTableSkeleton columns={deadLetterColumns} label={copy.loading} />
       ) : listQuery.error ? (
         <ErrorState
-          title="Unable to load poison stream entries"
+          title={copy.loadError}
           message={listQuery.error.message}
           action={
             <Button
@@ -372,15 +373,15 @@ function StreamDeadLettersSection(): ReactElement {
                 void listQuery.refetch();
               }}
             >
-              Retry
+              {ui.common.retry}
             </Button>
           }
         />
       ) : isEmpty ? null : (
         <>
           <DataTable
-            caption="Poison stream entries"
-            columns={DEAD_LETTER_COLUMNS}
+            caption={copy.caption}
+            columns={deadLetterColumns}
             rows={listQuery.data?.items ?? []}
             rowKey={(entry) => entry.id}
             sort={sort}
@@ -388,7 +389,11 @@ function StreamDeadLettersSection(): ReactElement {
           />
           <div className="pagination">
             <span className="text-muted">
-              Showing {offset + 1}–{Math.min(offset + DEAD_LETTER_PAGE_SIZE, total)} of {total}
+              {interpolate(showingTemplate, {
+                start: offset + 1,
+                end: Math.min(offset + DEAD_LETTER_PAGE_SIZE, total),
+                total,
+              })}
             </span>
             <div className="pagination__actions">
               <Button
@@ -398,7 +403,7 @@ function StreamDeadLettersSection(): ReactElement {
                   setOffset(offset - DEAD_LETTER_PAGE_SIZE);
                 }}
               >
-                Previous
+                {ui.pagination.previous}
               </Button>
               <Button
                 tone="secondary"
@@ -407,7 +412,7 @@ function StreamDeadLettersSection(): ReactElement {
                   setOffset(offset + DEAD_LETTER_PAGE_SIZE);
                 }}
               >
-                Next
+                {ui.pagination.next}
               </Button>
             </div>
           </div>
@@ -419,6 +424,7 @@ function StreamDeadLettersSection(): ReactElement {
 
 export function SyncJobsPage(): ReactElement {
   const copy = useMessages('syncJobs');
+  const ui = useMessages('ui');
   const [searchParams, setSearchParams] = useSearchParams();
   const { sort, setSort } = useTableSort([{ id: 'createdAt', desc: true }]);
 
@@ -496,11 +502,7 @@ export function SyncJobsPage(): ReactElement {
   const hasNext = offset + PAGE_SIZE < total;
 
   return (
-    <PageLayout
-      eyebrow="Diagnostics"
-      title="Sync Jobs"
-      description={copy.description}
-    >
+    <PageLayout eyebrow={copy.eyebrow} title={copy.title} description={copy.description}>
       {/* Filter bar - labelled, grouped on the left, wrapping (#4016). */}
       <div className="sync-jobs-filters" role="group" aria-label={copy.filters.group}>
         <div className="sync-jobs-filters__field">
@@ -588,10 +590,10 @@ export function SyncJobsPage(): ReactElement {
 
       {/* Table */}
       {query.isLoading ? (
-        <DataTableSkeleton columns={columns} label="Loading sync jobs…" />
+        <DataTableSkeleton columns={columns} label={copy.loading} />
       ) : query.error ? (
         <ErrorState
-          title="Unable to load sync jobs"
+          title={copy.loadError}
           message={query.error.message}
           action={
             <Button
@@ -599,7 +601,7 @@ export function SyncJobsPage(): ReactElement {
                 void query.refetch();
               }}
             >
-              Retry
+              {ui.common.retry}
             </Button>
           }
         />
@@ -619,7 +621,7 @@ export function SyncJobsPage(): ReactElement {
               under a short result and cannot hold a two-line job type or an
               expanded error. A page is capped at 100 rows (#4016). */}
           <DataTable
-            caption="Sync jobs"
+            caption={copy.caption}
             className="sync-jobs-table"
             columns={columns}
             rows={query.data?.items ?? []}
@@ -643,7 +645,11 @@ export function SyncJobsPage(): ReactElement {
           {/* Pagination */}
           <div className="pagination">
             <span className="text-muted">
-              Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
+              {interpolate(copy.showing, {
+                start: offset + 1,
+                end: Math.min(offset + PAGE_SIZE, total),
+                total,
+              })}
             </span>
             <div className="pagination__actions">
               <Button
@@ -653,7 +659,7 @@ export function SyncJobsPage(): ReactElement {
                   setOffset(offset - PAGE_SIZE);
                 }}
               >
-                Previous
+                {ui.pagination.previous}
               </Button>
               <Button
                 tone="secondary"
@@ -662,7 +668,7 @@ export function SyncJobsPage(): ReactElement {
                   setOffset(offset + PAGE_SIZE);
                 }}
               >
-                Next
+                {ui.pagination.next}
               </Button>
             </div>
           </div>

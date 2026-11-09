@@ -87,6 +87,7 @@
       }
     },
     "systemHealth": {
+      "checked": "Checked",
       "connectedSystems": "Connected systems",
       "coreServices": "Core services",
       "legend": {
@@ -102,6 +103,12 @@
           "one": "{n} warning",
           "other": "{n} warnings"
         }
+      },
+      "overall": {
+        "degraded": "Degraded",
+        "error": "Error",
+        "ok": "OK",
+        "unknown": "Unknown"
       },
       "status": {
         "error": "Error",
@@ -432,6 +439,7 @@
     "usersOn": "Requests for access are on, so new ones land on the Pending tab. <link>Login page settings</link>"
   },
   "syncJobs": {
+    "caption": "Sync jobs",
     "clearFilters": "Clear filters",
     "columns": {
       "attempts": "Attempts",
@@ -454,6 +462,7 @@
       "showFull": "Show full error",
       "showLess": "Show less"
     },
+    "eyebrow": "Diagnostics",
     "filters": {
       "all": {
         "connections": "All connections",
@@ -467,10 +476,26 @@
       "outcome": "Outcome",
       "status": "Status"
     },
+    "loadError": "Unable to load sync jobs",
+    "loading": "Loading sync jobs…",
     "poison": {
+      "caption": "Poison stream entries",
+      "columns": {
+        "attempts": "Attempts",
+        "consumerGroup": "Consumer group",
+        "entryId": "Entry ID",
+        "lastError": "Last error",
+        "lastSeen": "Last seen",
+        "stream": "Stream"
+      },
       "hint": "Events that failed recovery repeatedly and were recorded here instead of retrying forever. There is no replay action yet, so read the raw fields to investigate.",
-      "none": "None recorded"
-    }
+      "loadError": "Unable to load poison stream entries",
+      "loading": "Loading poison stream entries…",
+      "none": "None recorded",
+      "title": "Poison stream entries"
+    },
+    "showing": "Showing {start}–{end} of {total}",
+    "title": "Sync Jobs"
   },
   "ui": {
     "accessDenied": {
