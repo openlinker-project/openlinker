@@ -607,6 +607,9 @@ jobs:
       - name: Seed a database via the real migration chain
         working-directory: apps/api
         env:
+          # Skip ts-node's whole-project type check (~7 min per step); types are
+          # already checked by the Type Check job, and the SQL still runs as is.
+          TS_NODE_TRANSPILE_ONLY: 'true'
           DB_HOST: ${{ env.PG_GATEWAY_HOST }}
           DB_PORT: ${{ env.PG_HOST_PORT }}
           DB_USERNAME: postgres
@@ -642,6 +645,9 @@ jobs:
       - name: Assert 0 pending migrations against the restored database
         working-directory: apps/api
         env:
+          # Skip ts-node's whole-project type check (~7 min per step); types are
+          # already checked by the Type Check job, and the SQL still runs as is.
+          TS_NODE_TRANSPILE_ONLY: 'true'
           DB_HOST: ${{ env.PG_GATEWAY_HOST }}
           DB_PORT: ${{ env.PG_HOST_PORT }}
           DB_USERNAME: postgres
