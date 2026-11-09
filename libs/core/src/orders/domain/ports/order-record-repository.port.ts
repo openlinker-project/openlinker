@@ -76,6 +76,14 @@ export interface HeldOrderRef {
 
 export interface OrderRecordRepositoryPort {
   /**
+   * Orders created since `since` whose search text matches any of the given
+   * terms (#3962: "N orders since deletion" on the product page). Same
+   * normalisation and match as the orders list search, so the count equals
+   * what the list shows for the same SKU search.
+   */
+  countOrdersMatchingSearchSince(terms: readonly string[], since: Date): Promise<number>;
+
+  /**
    * Find order record by internal order ID
    */
   findById(internalOrderId: string): Promise<OrderRecord | null>;

@@ -52,6 +52,15 @@ export interface UpdateOfferQuantityCommand {
    * variant to name (the stale-offer pause) and on a legacy job.
    */
   productVariantId?: string;
+
+  /**
+   * The parent product's external id when `offerId` is a variation of a
+   * grouped (multi-variant) shop product (#3962). A shop that addresses a
+   * variation under its parent (WooCommerce: `products/{parent}/variations/{id}`)
+   * needs it; without it the write hits the variation id as if it were a
+   * product. Absent for a marketplace offer and for a standalone shop product.
+   */
+  externalParentId?: string;
 }
 
 /**

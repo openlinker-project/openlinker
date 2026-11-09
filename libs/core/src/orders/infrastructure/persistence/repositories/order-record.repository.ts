@@ -216,6 +216,22 @@ export class OrderRecordRepository
     return this.repository.manager.connection;
   }
 
+  async countOrdersMatchingSearchSince(terms: readonly string[], since: Date): Promise<number> {
+    const patterns = terms
+      .map((term) => normalizeOrderSearchText(term))
+      .filter((normalized) => normalized.length > 0)
+      .map((normalized) => `%${OrderRecordRepository.escapeLikePattern(normalized)}%`);
+    if (patterns.length === 0) return 0;
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .where('rec."createdAt" >= :since', { since });
+    qb.andWhere(
+      `(${patterns.map((_, index) => `rec."searchText" LIKE :p${index} ESCAPE '\\'`).join(' OR ')})`,
+      Object.fromEntries(patterns.map((pattern, index) => [`p${index}`, pattern])),
+    );
+    return qb.getCount();
+  }
+
   async findById(internalOrderId: string): Promise<OrderRecord | null> {
     const entity = await this.repository.findOne({
       where: { internalOrderId },

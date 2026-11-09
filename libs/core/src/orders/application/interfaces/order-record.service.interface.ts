@@ -55,6 +55,12 @@ import type {
 
 export interface IOrderRecordService {
   /**
+   * Orders placed in OpenLinker since `since` that mention any of the SKUs
+   * (#3962) - matched like the orders list search.
+   */
+  countOrdersForSkusSince(skus: readonly string[], since: Date): Promise<number>;
+
+  /**
    * Persist order record with PII-aware snapshot
    *
    * Creates a snapshot of the order that respects OL_STORE_PII configuration.

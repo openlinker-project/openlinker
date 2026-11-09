@@ -352,6 +352,22 @@ const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
     extraPayload: { limit: STALE_OFFER_PAUSE_DEFAULT_LIMIT },
   },
   {
+    // #3962: the same sweep for shop connections. Most of them are
+    // publish-only (no `OfferManager`), so the task above never reached them
+    // and a deleted product kept selling there. Same job type and handler; a
+    // shop that also writes stock is swept by both, which is harmless because
+    // every write and hold is idempotent.
+    taskId: 'stale-shop-product-pause-sweep',
+    jobType: 'marketplace.offer.pauseStaleSweep',
+    capability: 'ProductPublisher',
+    enabledEnvVar: 'OL_STALE_OFFER_PAUSE_ENABLED',
+    cronEnvVar: 'OL_STALE_OFFER_PAUSE_CRON',
+    defaultCron: '17 * * * *',
+    idempotencyKey: (connectionId, timestamp) =>
+      `shop:${connectionId}:product:pauseStaleSweep:${timestamp}`,
+    extraPayload: { limit: STALE_OFFER_PAUSE_DEFAULT_LIMIT },
+  },
+  {
     taskId: 'order-fx-stamp-sweep',
     jobType: 'marketplace.order.fxStampSweep',
     // Scoped to `OrderSource` because `order_records.sourceConnectionId` is the

@@ -44,6 +44,9 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
         idempotencyKey: payload.idempotencyKey,
         observedAt: payload.observedAt,
         productVariantId: payload.productVariantId,
+        ...(typeof payload.externalParentId === 'string' && payload.externalParentId !== ''
+          ? { externalParentId: payload.externalParentId }
+          : {}),
       });
 
       if (result.failed.length > 0) {

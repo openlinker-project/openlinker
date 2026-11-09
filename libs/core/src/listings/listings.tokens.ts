@@ -64,6 +64,9 @@ export const SHOP_STATUS_SYNC_SERVICE_TOKEN = Symbol('IShopStatusSyncService');
 export const SHOP_PRODUCT_STATUS_SNAPSHOT_REPOSITORY_TOKEN = Symbol(
   'ShopProductStatusSnapshotRepositoryPort',
 );
+// Listings taken off sale after a master deletion (#3962)
+export const LISTING_SALE_HOLD_REPOSITORY_TOKEN = Symbol('ListingSaleHoldRepositoryPort');
+export const LISTING_SALE_STATUS_SERVICE_TOKEN = Symbol('IListingSaleStatusService');
 
 // Shop-side global attribute read (#1835)
 export const SHOP_ATTRIBUTE_READ_SERVICE_TOKEN = Symbol('IShopAttributeReadService');

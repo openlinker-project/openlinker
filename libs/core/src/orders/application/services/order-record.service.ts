@@ -171,6 +171,10 @@ export class OrderRecordService implements IOrderRecordService {
    * @param sourceConnectionId - Source connection ID (where order originated)
    * @param sourceEventId - Optional source event ID
    */
+  countOrdersForSkusSince(skus: readonly string[], since: Date): Promise<number> {
+    return this.repository.countOrdersMatchingSearchSince(skus, since);
+  }
+
   async persistOrder(
     order: Order,
     sourceConnectionId: string,
