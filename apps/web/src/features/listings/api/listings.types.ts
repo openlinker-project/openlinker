@@ -892,8 +892,23 @@ export interface EanMatchCandidate {
  */
 export type EanMatchMethod = 'auto_detect' | 'category_mapping';
 
+/** A catalogue card the resolver found but did not use (#3994). */
+export interface EanMatchCardRef {
+  allegroCategoryId: string;
+  productCardId: string;
+}
+
 export type EanMatchResult =
-  | { kind: 'matched'; allegroCategoryId: string; productCardId: string; method?: EanMatchMethod }
+  | {
+      kind: 'matched';
+      allegroCategoryId: string;
+      productCardId: string;
+      method?: EanMatchMethod;
+      /** The card sits in the category the operator's mapping names (#3994). Absent = not compared. */
+      mappingAgrees?: true;
+      /** A card matched in a different category than the mapping; the mapping won (#3994). */
+      overriddenCard?: EanMatchCardRef;
+    }
   | { kind: 'multi-match'; candidates: EanMatchCandidate[] }
   | { kind: 'no-ean' }
   | { kind: 'no-match' };
