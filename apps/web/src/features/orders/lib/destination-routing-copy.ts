@@ -19,6 +19,7 @@
  * a draft that inferred it got wrong by printing a cause the backend had not
  * recorded.
  */
+import { getMessages } from '../../../shared/i18n';
 import {
   DestinationRoutingBlockReasonValues,
   type DestinationRoutingBlockReasonValue,
@@ -60,6 +61,31 @@ export const DESTINATION_ROUTING_REASON_COPY = {
   'routed-to-source-only': {
     label: 'Routed back to its own channel',
     hint: 'Fulfilment routing named only the channel this order came from, so there was no destination to send it to. Check the routing rules for this connection.',
+    tone: 'attention',
+  },
+  // #3959 - true of every order on a single-shop install, so it must stay
+  // neutral; a warning here would sit on every row of a healthy install.
+  //
+  // These two entries are translated (ADR-081) while the older four above are
+  // not yet: the getters read the active language on every access, so the
+  // table's shape and its callers stay unchanged, and `LocaleKeyed` remounts
+  // the routed tree on a language switch so no rendered label goes stale.
+  'no-destination-configured': {
+    get label(): string {
+      return getMessages('orders').destinationRouting.noDestinationConfigured.label;
+    },
+    get hint(): string {
+      return getMessages('orders').destinationRouting.noDestinationConfigured.hint;
+    },
+    tone: 'decision',
+  },
+  'no-active-destination': {
+    get label(): string {
+      return getMessages('orders').destinationRouting.noActiveDestination.label;
+    },
+    get hint(): string {
+      return getMessages('orders').destinationRouting.noActiveDestination.hint;
+    },
     tone: 'attention',
   },
 } as const satisfies Record<DestinationRoutingBlockReasonValue, DestinationRoutingCopy>;
