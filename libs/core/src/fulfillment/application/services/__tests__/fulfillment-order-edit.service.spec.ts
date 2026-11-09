@@ -4,6 +4,7 @@
  * @module libs/core/src/fulfillment/application/services/__tests__
  */
 import type { FulfillmentWorkRepositoryPort } from '../../../domain/ports/fulfillment-work-repository.port';
+import type { IFulfillmentProgressService } from '../../interfaces/fulfillment-progress.service.interface';
 import { FulfillmentOrderEditService } from '../fulfillment-order-edit.service';
 
 interface LineSeed {
@@ -49,6 +50,7 @@ describe('FulfillmentOrderEditService (#3542)', () => {
       | 'claimParcelClose'
     >
   >;
+  let progress: { record: jest.Mock };
   let service: FulfillmentOrderEditService;
 
   beforeEach(() => {
@@ -64,7 +66,11 @@ describe('FulfillmentOrderEditService (#3542)', () => {
       findLatestActiveVerification: jest.fn().mockResolvedValue(null),
       claimParcelClose: jest.fn().mockResolvedValue(true),
     };
-    service = new FulfillmentOrderEditService(works as unknown as FulfillmentWorkRepositoryPort);
+    progress = { record: jest.fn().mockResolvedValue({ status: 'recorded', intents: [] }) };
+    service = new FulfillmentOrderEditService(
+      works as unknown as FulfillmentWorkRepositoryPort,
+      progress as unknown as IFulfillmentProgressService
+    );
   });
 
   describe('lowerLineQuantity', () => {
@@ -80,15 +86,17 @@ describe('FulfillmentOrderEditService (#3542)', () => {
         fulfilledDelta: 0,
         cancelledDelta: 3,
       });
-      expect(result).toEqual({ outcome: 'applied', cancelledUnits: 3, workIds: ['w1'] });
+      expect(result).toEqual({ outcome: 'applied', cancelledUnits: 3, workIds: ['w1'], closedParcels: [] });
     });
 
-    it('should produce no relay or re-route intent: the result carries only counters and ids', async () => {
+    // #3961 adds `closedParcels`: a report of a box this call closed, not a
+    // relay or re-route intent. The host decides whether to relay it.
+    it('should produce no relay or re-route intent: the result carries counters, ids and closed parcels', async () => {
       works.findByOrderId.mockResolvedValue([work('w1', [{ orderLineId: 'l1', total: 2 }])] as never);
 
       const result = await service.lowerLineQuantity({ orderId: 'o1', orderLineId: 'l1', newQuantity: 1 });
 
-      expect(Object.keys(result).sort()).toEqual(['cancelledUnits', 'outcome', 'workIds']);
+      expect(Object.keys(result).sort()).toEqual(['cancelledUnits', 'closedParcels', 'outcome', 'workIds']);
     });
 
     it('should be a no-op when replayed: computed from current counters, not from a delta', async () => {
@@ -177,6 +185,55 @@ describe('FulfillmentOrderEditService (#3542)', () => {
       );
     });
 
+    it('should record the close as shipped and report it, so the channel is told it left', async () => {
+      works.countParcelVerifications.mockResolvedValue([{ workLineId: 'w1-l1', verifiedQuantity: 1 }]);
+
+      const result = await service.lowerLineQuantity({ orderId: 'o1', orderLineId: 'l1', newQuantity: 1 });
+
+      expect(result.closedParcels).toEqual([{ workId: 'w1', closedAt: expect.any(Date) as Date }]);
+      const closedAt = result.closedParcels[0].closedAt;
+      expect(progress.record).toHaveBeenCalledWith({
+        kind: 'shipped',
+        workId: 'w1',
+        connectionId: 'holder',
+        idempotencyKey: `parcel-closed:w1:${String(closedAt.getTime())}`,
+        occurredAt: closedAt,
+      });
+    });
+
+    it('should leave a box open that is on hold for another reason, and record nothing', async () => {
+      works.countParcelVerifications.mockResolvedValue([{ workLineId: 'w1-l1', verifiedQuantity: 1 }]);
+      works.listActiveHoldsForWorks.mockResolvedValue(
+        new Map([['w1', [{ id: 'h1', placedByService: null, reason: 'fraud-review' }]]]) as never
+      );
+
+      const result = await service.lowerLineQuantity({ orderId: 'o1', orderLineId: 'l1', newQuantity: 1 });
+
+      expect(works.claimParcelClose).not.toHaveBeenCalled();
+      expect(progress.record).not.toHaveBeenCalled();
+      expect(result.closedParcels).toEqual([]);
+    });
+
+    it('should still close a box held only by the shop change itself', async () => {
+      works.countParcelVerifications.mockResolvedValue([{ workLineId: 'w1-l1', verifiedQuantity: 1 }]);
+      works.listActiveHoldsForWorks.mockResolvedValue(
+        new Map([['w1', [{ id: 'h1', placedByService: 'source-amendment', reason: 'awaiting-amendment' }]]]) as never
+      );
+
+      await service.lowerLineQuantity({ orderId: 'o1', orderLineId: 'l1', newQuantity: 1 });
+
+      expect(works.claimParcelClose).toHaveBeenCalled();
+    });
+
+    it('should keep the close when recording it as shipped fails', async () => {
+      works.countParcelVerifications.mockResolvedValue([{ workLineId: 'w1-l1', verifiedQuantity: 1 }]);
+      progress.record.mockRejectedValue(new Error('db down'));
+
+      const result = await service.lowerLineQuantity({ orderId: 'o1', orderLineId: 'l1', newQuantity: 1 });
+
+      expect(result.closedParcels).toHaveLength(1);
+    });
+
     it('should leave the box open when it still holds fewer units than the new quantity', async () => {
       works.countParcelVerifications.mockResolvedValue([]);
 
@@ -199,7 +256,7 @@ describe('FulfillmentOrderEditService (#3542)', () => {
 
       const result = await service.lowerLineQuantity({ orderId: 'o1', orderLineId: 'l1', newQuantity: 1 });
 
-      expect(result).toEqual({ outcome: 'applied', cancelledUnits: 2, workIds: ['w1'] });
+      expect(result).toEqual({ outcome: 'applied', cancelledUnits: 2, workIds: ['w1'], closedParcels: [] });
     });
   });
 

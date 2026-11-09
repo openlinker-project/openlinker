@@ -172,6 +172,10 @@ import {
   buildOrderEditHistory,
   buildOrderEditsView,
 } from './order-edits-view';
+import {
+  FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN,
+  type IFulfillmentParcelClosureNotifier,
+} from '../../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
 
 /**
  * Covers read-gates -> overlay write. Once the overlay is written a peer's own
@@ -269,7 +273,9 @@ export class OrderEditService implements IOrderEditService {
     @Inject(SYNC_LOCK_TOKEN)
     private readonly lock: SyncLockPort,
     @Inject(ORDER_REFUND_SERVICE_TOKEN)
-    private readonly refunds: IOrderRefundService
+    private readonly refunds: IOrderRefundService,
+    @Inject(FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN)
+    private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier
   ) {}
 
   editAddress(input: EditOrderAddressInput): Promise<OrderEditResult> {
@@ -909,13 +915,15 @@ export class OrderEditService implements IOrderEditService {
     if (prepared.loweredLines.length === 0) return { stock: [], workNarrowingFailures: [] };
 
     const workNarrowingFailures: OrderEditWorkNarrowingFailure[] = [];
+    const closedWorkIds: string[] = [];
     for (const line of prepared.loweredLines) {
       try {
-        await this.fulfillmentEdit.lowerLineQuantity({
+        const lowered = await this.fulfillmentEdit.lowerLineQuantity({
           orderId: written.internalOrderId,
           orderLineId: line.orderLineId,
           newQuantity: line.newQuantity,
         });
+        closedWorkIds.push(...lowered.closedParcels.map((closed) => closed.workId));
       } catch (error) {
         // The overlay is already written and the order IS edited; a work that
         // refuses (units already fulfilled raced in) is reported, never swallowed.
@@ -928,6 +936,13 @@ export class OrderEditService implements IOrderEditService {
           reason: error instanceof Error ? error.message : String(error),
         });
       }
+    }
+
+    // #3961 - a box the lowered quantity left exactly full was closed and
+    // recorded as shipped by core; tell the order's channel now rather than at
+    // the next relay sweep. Best-effort: the notifier never throws.
+    for (const workId of closedWorkIds) {
+      await this.parcelClosureNotifier.relayRecordedClose(workId);
     }
 
     try {

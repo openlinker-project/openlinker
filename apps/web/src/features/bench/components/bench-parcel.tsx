@@ -919,6 +919,14 @@ export function BenchParcelView({
                   takeOut.mutate(
                     { workId, workLineId },
                     {
+                      // A box whose change was already settled (a second tap,
+                      // or the office deciding first) is not a failure: the
+                      // refreshed parcel shows it as it now stands.
+                      onSuccess: (result) => {
+                        if (result.outcome === 'refused' && result.reason !== 'not-held-for-source-change') {
+                          setTakeOutFailed(true);
+                        }
+                      },
                       onError: () => {
                         setTakeOutFailed(true);
                       },

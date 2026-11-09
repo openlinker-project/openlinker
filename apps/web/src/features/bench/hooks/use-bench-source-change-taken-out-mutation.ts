@@ -10,7 +10,7 @@
 import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 
 import { useApiClient } from '../../../app/api/api-client-provider';
-import type { BenchParcel } from '../api/bench-parcel.types';
+import type { BenchSourceChangeTakenOutResult } from '../api/bench-parcel.types';
 import { benchQueryKeys } from '../api/bench-work.query-keys';
 
 export interface BenchSourceChangeTakenOutInput {
@@ -19,7 +19,7 @@ export interface BenchSourceChangeTakenOutInput {
 }
 
 export function useBenchSourceChangeTakenOutMutation(): UseMutationResult<
-  BenchParcel,
+  BenchSourceChangeTakenOutResult,
   Error,
   BenchSourceChangeTakenOutInput
 > {

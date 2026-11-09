@@ -20,6 +20,7 @@ import {
   parseBenchBuyerNoteAcknowledgementResult,
   parseBenchClaimNextResult,
   parseBenchClaimResult,
+  parseBenchSourceChangeTakenOutResult,
   parseBenchCompleteResult,
   parseBenchDocuments,
   parseBenchLabelReplaceResult,
@@ -40,6 +41,7 @@ import type {
   BenchBuyerNoteAcknowledgementResult,
   BenchClaimNextResult,
   BenchClaimResult,
+  BenchSourceChangeTakenOutResult,
   BenchCompleteResult,
   BenchDocuments,
   BenchLabelReplaceInput,
@@ -156,7 +158,7 @@ export interface BenchApi {
    * "Done, I took it out" (#3961): the packer took the extra units of an item
    * the shop lowered back out of the box. Answers the parcel as it now stands.
    */
-  confirmSourceChangeTakenOut: (workId: string, workLineId: string) => Promise<BenchParcel>;
+  confirmSourceChangeTakenOut: (workId: string, workLineId: string) => Promise<BenchSourceChangeTakenOutResult>;
   /** Announce presence on this parcel, and learn whether someone else already has (#3406). */
   pingPresence: (workId: string) => Promise<BenchPresence>;
   /**
@@ -274,8 +276,8 @@ export function createBenchApi(request: ApiRequest, requestBlob: ApiBlobRequest)
       return parseBenchUnlabelledParcelList(await request<unknown>('/bench/unlabelled-parcels'));
     },
 
-    async confirmSourceChangeTakenOut(workId, workLineId): Promise<BenchParcel> {
-      return parseBenchParcel(
+    async confirmSourceChangeTakenOut(workId, workLineId): Promise<BenchSourceChangeTakenOutResult> {
+      return parseBenchSourceChangeTakenOutResult(
         await request<unknown>(`${work(workId)}/source-change/taken-out`, {
           method: 'POST',
           body: JSON.stringify({ workLineId }),

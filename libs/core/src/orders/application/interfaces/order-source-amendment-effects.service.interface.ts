@@ -9,6 +9,8 @@
  *
  * @module libs/core/src/orders/application/interfaces
  */
+import type { ClosedParcelReport } from '@openlinker/core/fulfillment';
+
 import type {
   SourceAmendmentLine,
   SourceChangeHoldCause,
@@ -49,6 +51,13 @@ export interface SourceAmendmentReconcileResult {
   readonly outcome: SourceAmendmentReconcileOutcome;
   readonly lines: readonly SourceAmendmentLine[];
   readonly cause: SourceChangeHoldCause | null;
+  /**
+   * Parcels the applied change left exactly full and therefore closed. Each is
+   * already recorded as shipped, so the relay sweep reports it; a host holding
+   * the parcel-closure notifier relays it at once instead. Empty on every
+   * outcome except `applied`.
+   */
+  readonly closedParcels: readonly ClosedParcelReport[];
 }
 
 export interface IOrderSourceAmendmentEffectsService {

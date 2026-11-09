@@ -254,6 +254,12 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // `completeParcel` is - the same eligibility rule, the same ADR-074 lock -
   // and is attributed to the verified token's own user.
   'BenchParcelController.undoCompletion',
+  // #3961. The packer confirms they took out units the shop no longer wants.
+  // Scoped exactly as getParcel scopes it, plus the ADR-074 lock a scan
+  // enforces, and refused unless the box is held by a source change. It voids
+  // only that line's scans beyond what the order now asks for, then re-runs
+  // the source-change reconcile; it reaches no order, customer or document.
+  'BenchParcelController.confirmSourceChangeTakenOut',
   // #3413. Two reads, scoped exactly as listBenchWork scopes them.
   'BenchWorkController.listPackedToday',
   'BenchWorkController.getMetrics',
@@ -425,6 +431,7 @@ describe('Packer exclusion (#2413)', () => {
       lines: [],
       otherParcelBuyerNoteAcknowledgements: [],
       packerNotes: [],
+      sourceChange: null,
     } as unknown as BenchParcelView;
     const dto = toParcelResponseDto(view);
 

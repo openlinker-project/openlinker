@@ -76,6 +76,8 @@ import {
 import { ORDER_CANCELLATION_SERVICE_TOKEN } from '../application/interfaces/order-cancellation.service.interface';
 import { ORDER_EDIT_SERVICE_TOKEN } from '../application/interfaces/order-edit.service.interface';
 import { ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN } from '@openlinker/core/orders';
+
+import { FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN } from '../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
 import type { IOrderCancellationService } from '../application/interfaces/order-cancellation.service.interface';
 import {
   CancelCorrectionFailedError,
@@ -89,6 +91,7 @@ import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from '../application/interfac
 describe('OrdersController', () => {
   let controller: OrdersController;
   let sourceAmendment: { reconcile: jest.Mock; accept: jest.Mock };
+  let parcelClosureNotifier: { notifyParcelClosed: jest.Mock; relayRecordedClose: jest.Mock };
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
   let orderRecordService: jest.Mocked<IOrderRecordService>;
   let retryService: jest.Mocked<IOrderDestinationRetryService>;
@@ -382,6 +385,10 @@ describe('OrdersController', () => {
           provide: ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
           useValue: { reconcile: jest.fn(), accept: jest.fn() },
         },
+        {
+          provide: FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN,
+          useValue: { notifyParcelClosed: jest.fn(), relayRecordedClose: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -401,6 +408,7 @@ describe('OrdersController', () => {
     orderChanges = module.get(ORDER_CHANGE_SERVICE_TOKEN);
     orderCancellation = module.get(ORDER_CANCELLATION_SERVICE_TOKEN);
     sourceAmendment = module.get(ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN);
+    parcelClosureNotifier = module.get(FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN);
   });
 
   describe('source change actions (#3961)', () => {
@@ -409,6 +417,7 @@ describe('OrdersController', () => {
       cause: 'box-holds-more' as const,
       lines: [{ orderLineId: 'li_1', from: 2, to: 1 }],
     };
+    const answer = { outcome: result.outcome, cause: result.cause, lines: result.lines };
 
     beforeEach(() => {
       // The shared mock predates any route reading a single record by id.
@@ -417,15 +426,30 @@ describe('OrdersController', () => {
 
     it('should run the same comparison ingestion runs on "Check again"', async () => {
       orderRecordService.getOrderRecord.mockResolvedValue({} as never);
-      sourceAmendment.reconcile.mockResolvedValue(result);
+      sourceAmendment.reconcile.mockResolvedValue({ ...result, closedParcels: [] });
 
-      await expect(controller.recheckSourceChange('ol_order_1')).resolves.toEqual(result);
+      await expect(controller.recheckSourceChange('ol_order_1')).resolves.toEqual(answer);
       expect(sourceAmendment.reconcile).toHaveBeenCalledWith({ internalOrderId: 'ol_order_1' });
+      expect(parcelClosureNotifier.relayRecordedClose).not.toHaveBeenCalled();
+    });
+
+    it('should relay at once a box the applied change closed', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as never);
+      sourceAmendment.reconcile.mockResolvedValue({
+        ...result,
+        outcome: 'applied',
+        cause: null,
+        closedParcels: [{ workId: 'w1', closedAt: new Date() }],
+      });
+
+      await controller.recheckSourceChange('ol_order_1');
+
+      expect(parcelClosureNotifier.relayRecordedClose).toHaveBeenCalledWith('w1');
     });
 
     it('should accept on behalf of the session user, never a body field', async () => {
       orderRecordService.getOrderRecord.mockResolvedValue({} as never);
-      sourceAmendment.accept.mockResolvedValue({ ...result, outcome: 'accepted', cause: null });
+      sourceAmendment.accept.mockResolvedValue({ ...result, outcome: 'accepted', cause: null, closedParcels: [] });
 
       await controller.acceptSourceChange('ol_order_1', { id: 'user-1' } as never);
 

@@ -64,8 +64,13 @@ const BENCH_HTTP_ROOT = resolve(__dirname, '..', 'http');
  * it touches no scan and no `parcelClosedAt`, and nothing waits on it.
  * `label/replace` (#3654) is a shipping write, not a packing one: it voids the
  * label already on the box and buys one for the new parcel size, and never
- * touches `parcelClosedAt` or any scan. All listed as deliberate writes rather
- * than silently exempted from the guard this file exists to be.
+ * touches `parcelClosedAt` or any scan. `source-change/taken-out` (#3961) is the
+ * packer confirming they took out units the shop no longer wants: it voids
+ * that line's surplus scans and re-runs the source-change reconcile. When that
+ * leaves the box exactly full the box closes, as a CONSEQUENCE of the count
+ * matching, the same way the last scan closes it - never because a control
+ * asked it to. All listed as deliberate writes rather than silently exempted
+ * from the guard this file exists to be.
  */
 const EXPECTED_BENCH_WRITES = [
   'POST bench/work/:workId/buyer-note/acknowledge',
@@ -75,6 +80,7 @@ const EXPECTED_BENCH_WRITES = [
   'POST bench/work/:workId/label/replace',
   'POST bench/work/:workId/presence',
   'POST bench/work/:workId/reopen',
+  'POST bench/work/:workId/source-change/taken-out',
   'POST bench/work/:workId/verifications',
   'POST bench/work/:workId/verifications/undo',
   'POST bench/work/claim-next',

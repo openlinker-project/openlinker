@@ -42,6 +42,7 @@ import { ORDER_EDIT_SERVICE_TOKEN } from './application/interfaces/order-edit.se
 import { OrderBulkActionsController } from './http/order-bulk-actions.controller';
 import { OrderEditsController } from './http/order-edits.controller';
 import { IntegrationsModule } from '../integrations/integrations.module';
+import { FulfillmentApiModule } from '../fulfillment/fulfillment-api.module';
 
 @Module({
   // CoreMappingsModule (#1791) provides FULFILLMENT_ROUTING_SERVICE_TOKEN —
@@ -92,6 +93,10 @@ import { IntegrationsModule } from '../integrations/integrations.module';
     // the order edit reads a work holder's connection to tell OpenLinker's own
     // executor from a third party. No cycle - it imports only core modules.
     IntegrationsModule,
+    // #3961 - the parcel-closure notifier: a lowered quantity can close a box,
+    // and the edit and "Check again" relay that close at once. No cycle - the
+    // fulfilment API module imports only core modules.
+    FulfillmentApiModule,
   ],
   // ORDER MATTERS (#3507 G03-10). Express matches routes in registration
   // order and Nest registers controllers in this array's order, so the two

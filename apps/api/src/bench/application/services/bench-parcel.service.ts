@@ -100,6 +100,8 @@ import type {
 import type {
   BenchActivityEntryView,
   BenchBuyerNoteAcknowledgementResultView,
+  BenchSourceChangeTakenOutRefusal,
+  BenchSourceChangeTakenOutResultView,
   BenchClaimResultView,
   BenchCompleteResultView,
   BenchUndoCompletionResultView,
@@ -190,14 +192,24 @@ export class BenchParcelService implements IBenchParcelService {
     readonly workId: string;
     readonly workLineId: string;
     readonly actorUserId: string;
-  }): Promise<BenchParcelView> {
+  }): Promise<BenchSourceChangeTakenOutResultView> {
     await this.noteActivity(input.actorUserId);
     const work = await this.loadBenchWork(input.workId);
-    const workLine = work.lines.find((line) => line.id === input.workLineId);
-    const held = work.activeHolds.some((hold) => hold.fromSourceChange);
-    if (!held || workLine === undefined || !isClaimableByViewer(work, input.actorUserId)) {
-      return this.project(work, await this.verification.getState(input.workId));
+    const refused = async (
+      reason: BenchSourceChangeTakenOutRefusal
+    ): Promise<BenchSourceChangeTakenOutResultView> => ({
+      outcome: 'refused',
+      reason,
+      parcel: await this.project(work, await this.verification.getState(input.workId)),
+    });
+
+    // The SAME lock every other bench write checks (ADR-074).
+    if (!isClaimableByViewer(work, input.actorUserId)) return refused('not-claimable-by-viewer');
+    if (!work.activeHolds.some((hold) => hold.fromSourceChange)) {
+      return refused('not-held-for-source-change');
     }
+    const workLine = work.lines.find((line) => line.id === input.workLineId);
+    if (workLine === undefined) return refused('no-such-line');
 
     const order = (await this.orders.findByIds([work.orderId]))[0];
     const keep = (order?.orderItems ?? [])
@@ -213,9 +225,18 @@ export class BenchParcelService implements IBenchParcelService {
     this.logger.log(
       `bench_source_change_taken_out work=${input.workId} line=${input.workLineId} keep=${String(keep)} outcome=${reconciled.outcome}`
     );
+    // A box the change left exactly full was closed and recorded as shipped by
+    // core; tell the order's channel now rather than at the next relay sweep.
+    for (const closed of reconciled.closedParcels) {
+      await this.parcelClosureNotifier.relayRecordedClose(closed.workId);
+    }
 
     const after = await this.worklist.get(input.workId);
-    return this.project(after, await this.verification.getState(input.workId));
+    return {
+      outcome: 'taken-out',
+      reason: null,
+      parcel: await this.project(after, await this.verification.getState(input.workId)),
+    };
   }
 
   /**

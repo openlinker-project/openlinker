@@ -26,6 +26,7 @@ import type {
   BenchBuyerNoteAcknowledgementResult,
   BenchClaimNextResult,
   BenchClaimResult,
+  BenchSourceChangeTakenOutResult,
   BenchCompleteResult,
   BenchDocuments,
   BenchMetrics,
@@ -340,6 +341,16 @@ export function parseBenchBuyerNoteAcknowledgementResult(
   payload: unknown
 ): BenchBuyerNoteAcknowledgementResult {
   return benchBuyerNoteAcknowledgementResultSchema.parse(payload);
+}
+
+export const benchSourceChangeTakenOutResultSchema = z.object({
+  outcome: z.string(),
+  reason: nullableString,
+  parcel: benchParcelSchema,
+});
+
+export function parseBenchSourceChangeTakenOutResult(payload: unknown): BenchSourceChangeTakenOutResult {
+  return benchSourceChangeTakenOutResultSchema.parse(payload);
 }
 
 export const benchClaimResultSchema = z.object({

@@ -169,6 +169,7 @@ export type {
   OrderWorkEditAssessment,
   LowerLineQuantityInput,
   LowerLineQuantityResult,
+  ClosedParcelReport,
   LowerLineOutcome,
 } from './application/interfaces/fulfillment-order-edit.service.interface';
 

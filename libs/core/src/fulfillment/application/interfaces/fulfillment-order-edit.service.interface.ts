@@ -65,11 +65,28 @@ export interface LowerLineQuantityInput {
   readonly newQuantity: number;
 }
 
+/**
+ * A parcel the lowered quantity left exactly full, and that this call therefore
+ * closed (#3961).
+ *
+ * The close is already recorded as `shipped` progress, so the #2728 relay sweep
+ * tells the order's channel even when nobody acts on this. A host that holds
+ * the parcel-closure notifier relays it immediately instead of waiting for the
+ * sweep - `fulfillment` may not reach `orders` or `shipping`, so it can only
+ * report the close, never relay it itself.
+ */
+export interface ClosedParcelReport {
+  readonly workId: string;
+  readonly closedAt: Date;
+}
+
 export interface LowerLineQuantityResult {
   readonly outcome: LowerLineOutcome;
   /** Units newly cancelled by this call; `0` on a replay. */
   readonly cancelledUnits: number;
   readonly workIds: readonly string[];
+  /** Parcels this call closed; empty unless a box was left exactly full. */
+  readonly closedParcels: readonly ClosedParcelReport[];
 }
 
 export interface IFulfillmentOrderEditService {

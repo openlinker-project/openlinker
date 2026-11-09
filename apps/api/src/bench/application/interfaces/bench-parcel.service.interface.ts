@@ -17,6 +17,7 @@ import type { FulfillmentWorkView } from '@openlinker/core/fulfillment';
 import type {
   BenchActivityEntryView,
   BenchBuyerNoteAcknowledgementResultView,
+  BenchSourceChangeTakenOutResultView,
   BenchClaimResultView,
   BenchCompleteResultView,
   BenchUndoCompletionResultView,
@@ -117,7 +118,7 @@ export interface IBenchParcelService {
     readonly workId: string;
     readonly workLineId: string;
     readonly actorUserId: string;
-  }): Promise<BenchParcelView>;
+  }): Promise<BenchSourceChangeTakenOutResultView>;
 
   /**
    * The work behind a parcel, scoped exactly as `getParcel` scopes it.

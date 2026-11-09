@@ -16,6 +16,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   FULFILLMENT_ORDER_EDIT_SERVICE_TOKEN,
+  type ClosedParcelReport,
   type IFulfillmentOrderEditService,
   type OrderWorkEditAssessment,
 } from '@openlinker/core/fulfillment';
@@ -64,7 +65,7 @@ const SOURCE_CHANGE_HOLD_NOTE = 'The shop changed this order after packing start
 const PRODUCER = 'source-amendment';
 const ACCEPT_KIND = 'order.source_change_accept';
 
-const NOTHING: SourceAmendmentReconcileResult = { outcome: 'nothing-to-do', lines: [], cause: null };
+const NOTHING: SourceAmendmentReconcileResult = { outcome: 'nothing-to-do', lines: [], cause: null, closedParcels: [] };
 
 @Injectable()
 export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendmentEffectsService {
@@ -120,7 +121,7 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
       this.logger.log(
         `source_change_accepted order=${input.internalOrderId} lines=${describeLines(plan.lines)}`
       );
-      return { outcome: 'accepted', lines: plan.lines, cause: null };
+      return { outcome: 'accepted', lines: plan.lines, cause: null, closedParcels: [] };
     });
   }
 
@@ -135,13 +136,13 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
       token = await this.lock.acquire(key, SOURCE_AMENDMENT_LOCK_TTL_MS);
     } catch (error) {
       this.logger.warn(`source_amendment_lock_failed order=${orderId}: ${describe(error)}`);
-      return { outcome: 'contended', lines: [], cause: null };
+      return { outcome: 'contended', lines: [], cause: null, closedParcels: [] };
     }
     if (token === null) {
       // An operator edit (or a parallel ingestion) holds the order. Its own
       // follow-ups are idempotent toward the same targets, and the next
       // ingestion compares state again, so skipping is safe.
-      return { outcome: 'contended', lines: [], cause: null };
+      return { outcome: 'contended', lines: [], cause: null, closedParcels: [] };
     }
     try {
       return await work();
@@ -150,7 +151,7 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
         `source_amendment_reconcile_failed order=${orderId}: ${describe(error)}`,
         error instanceof Error ? error.stack : undefined
       );
-      return { outcome: 'failed', lines: [], cause: null };
+      return { outcome: 'failed', lines: [], cause: null, closedParcels: [] };
     } finally {
       await this.lock.release(key, token).catch(() => undefined);
     }
@@ -207,7 +208,7 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
         this.logger.warn(
           `source_change_after_shipping order=${orderId} lines=${describeLines(plan.lines)}`
         );
-        return { outcome: 'shipped', lines: plan.lines, cause: null };
+        return { outcome: 'shipped', lines: plan.lines, cause: null, closedParcels: [] };
 
       case 'hold':
         if (await this.isAccepted(orderId, plan.lines)) return this.accepted(orderId, record, plan.lines);
@@ -216,7 +217,7 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
         this.logger.warn(
           `source_change_held order=${orderId} cause=${plan.cause} lines=${describeLines(plan.lines)}`
         );
-        return { outcome: 'held', lines: plan.lines, cause: plan.cause };
+        return { outcome: 'held', lines: plan.lines, cause: plan.cause, closedParcels: [] };
 
       case 'apply':
         return this.apply(orderId, record, plan.lines);
@@ -234,13 +235,15 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
     lines: readonly SourceAmendmentLine[]
   ): Promise<SourceAmendmentReconcileResult> {
     let failed = false;
+    const closedParcels: ClosedParcelReport[] = [];
     for (const line of lines) {
       try {
-        await this.fulfillmentEdit.lowerLineQuantity({
+        const lowered = await this.fulfillmentEdit.lowerLineQuantity({
           orderId,
           orderLineId: line.orderLineId,
           newQuantity: line.to,
         });
+        closedParcels.push(...lowered.closedParcels);
       } catch (error) {
         failed = true;
         this.logger.error(
@@ -284,12 +287,12 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
       // Leave (or raise) the attention entry so the order is visible until a
       // later ingestion finishes the job.
       await this.markAttention(orderId, 'apply-failed');
-      return { outcome: 'failed', lines, cause: null };
+      return { outcome: 'failed', lines, cause: null, closedParcels };
     }
 
     await this.settle(orderId, record);
     this.logger.log(`source_change_applied order=${orderId} lines=${describeLines(lines)}`);
-    return { outcome: 'applied', lines, cause: null };
+    return { outcome: 'applied', lines, cause: null, closedParcels };
   }
 
   /** The order and its work agree: drop this producer's entry and its own holds, if any. */
@@ -320,7 +323,7 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
     lines: readonly SourceAmendmentLine[]
   ): Promise<SourceAmendmentReconcileResult> {
     await this.settle(orderId, record);
-    return { outcome: 'accepted', lines, cause: null };
+    return { outcome: 'accepted', lines, cause: null, closedParcels: [] };
   }
 
   /**

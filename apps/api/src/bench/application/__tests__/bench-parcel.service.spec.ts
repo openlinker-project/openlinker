@@ -109,6 +109,8 @@ function harness(options: {
     acknowledgedByUserId: string | null;
   }>;
   acknowledgeBuyerNote?: jest.Mock;
+  /** #3961 - the shop-change reconcile the bench re-runs after a take-out. */
+  reconcile?: jest.Mock;
   /** #3586 — pictures of the variant / its product. */
   variantImages?: string[] | null;
   productImages?: string[] | null;
@@ -155,6 +157,7 @@ function harness(options: {
     complete: options.complete ?? jest.fn().mockResolvedValue({ outcome: 'completed' }),
     undoCompletion:
       options.undoCompletion ?? jest.fn().mockResolvedValue({ outcome: 'undone' }),
+    voidSurplusOnLine: jest.fn().mockResolvedValue({ outcome: 'voided', voided: 1 }),
   } as unknown as IFulfillmentVerificationService;
 
   const orders = {
@@ -232,7 +235,15 @@ function harness(options: {
 
   const parcelClosureNotifier = {
     notifyParcelClosed: options.notifyParcelClosed ?? jest.fn().mockResolvedValue(undefined),
+    relayRecordedClose: jest.fn().mockResolvedValue(undefined),
   } as unknown as IFulfillmentParcelClosureNotifier;
+
+  const sourceAmendment = {
+    reconcile:
+      options.reconcile ??
+      jest.fn().mockResolvedValue({ outcome: 'nothing-to-do', lines: [], cause: null, closedParcels: [] }),
+    accept: jest.fn(),
+  };
 
   return {
     service: new BenchParcelService(
@@ -247,8 +258,9 @@ function harness(options: {
       notes,
       parcelClosureNotifier,
       workQuery,
-      { reconcile: jest.fn().mockResolvedValue({ outcome: 'nothing-to-do', lines: [], cause: null }), accept: jest.fn() } as never,
+      sourceAmendment as never,
     ),
+    sourceAmendment,
     verification,
     orders,
     worklist,
@@ -1351,6 +1363,70 @@ describe('BenchParcelService (#2418)', () => {
 
       expect(result.outcome).not.toBe('refused');
       expect(verification.voidLastVerification).toHaveBeenCalled();
+    });
+  });
+
+  describe('#3961 - the packer took the surplus out', () => {
+    const heldWork = (): FulfillmentWorkView =>
+      workView({
+        activeHolds: [{ fromSourceChange: true } as FulfillmentWorkView['activeHolds'][number]],
+      });
+    const orderAsking = (quantity: number): OrderRecord =>
+      ({ internalOrderId: 'ol_order_1', orderItems: [{ id: 'ol_line_1', quantity }], orderSnapshot: {} }) as unknown as OrderRecord;
+
+    it('should void the line down to what the order now asks for, re-check, and relay a box that closed', async () => {
+      const closedAt = new Date('2026-11-09T10:00:00Z');
+      const reconcile = jest.fn().mockResolvedValue({
+        outcome: 'applied',
+        lines: [],
+        cause: null,
+        closedParcels: [{ workId: 'work-1', closedAt }],
+      });
+      const { service, verification, orders, parcelClosureNotifier } = harness({ work: heldWork(), reconcile });
+      (orders.findByIds as jest.Mock).mockResolvedValue([orderAsking(1)]);
+
+      const result = await service.confirmSourceChangeTakenOut({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        actorUserId: 'user-1',
+      });
+
+      expect(result.outcome).toBe('taken-out');
+      expect(verification.voidSurplusOnLine).toHaveBeenCalledWith({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        keep: 1,
+        actorUserId: 'user-1',
+      });
+      expect(reconcile).toHaveBeenCalledWith({ internalOrderId: 'ol_order_1' });
+      expect(parcelClosureNotifier.relayRecordedClose).toHaveBeenCalledWith('work-1');
+    });
+
+    it('should refuse a box that is no longer held for a shop change, and write nothing', async () => {
+      const { service, verification, sourceAmendment } = harness({});
+
+      const result = await service.confirmSourceChangeTakenOut({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        actorUserId: 'user-1',
+      });
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'not-held-for-source-change' });
+      expect(verification.voidSurplusOnLine).not.toHaveBeenCalled();
+      expect(sourceAmendment.reconcile).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a line that is not in this box', async () => {
+      const { service, verification } = harness({ work: heldWork() });
+
+      const result = await service.confirmSourceChangeTakenOut({
+        workId: 'work-1',
+        workLineId: 'line-elsewhere',
+        actorUserId: 'user-1',
+      });
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'no-such-line' });
+      expect(verification.voidSurplusOnLine).not.toHaveBeenCalled();
     });
   });
 });

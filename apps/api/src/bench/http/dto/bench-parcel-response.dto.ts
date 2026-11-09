@@ -32,6 +32,7 @@ import {
   BenchCompletionRefusalValues,
   BenchUndoCompletionRefusalValues,
   BenchParcelRefusalValues,
+  BenchSourceChangeTakenOutRefusalValues,
 } from '../../application/types/bench-parcel.types';
 
 export class BenchSourceChangeTakeOutResponseDto {
@@ -288,6 +289,21 @@ export class BenchBuyerNoteAcknowledgementResultResponseDto {
   outcome!: string;
 
   @ApiProperty({ nullable: true, enum: BenchBuyerNoteAcknowledgementRefusalValues })
+  reason!: string | null;
+
+  @ApiProperty({ type: BenchParcelResponseDto })
+  parcel!: BenchParcelResponseDto;
+}
+
+export class BenchSourceChangeTakenOutResultResponseDto {
+  @ApiProperty({
+    enum: ['taken-out', 'refused'],
+    description:
+      'taken-out: the surplus scans of that line were voided and the order re-checked. refused: nothing was recorded.',
+  })
+  outcome!: string;
+
+  @ApiProperty({ nullable: true, enum: BenchSourceChangeTakenOutRefusalValues })
   reason!: string | null;
 
   @ApiProperty({ type: BenchParcelResponseDto })

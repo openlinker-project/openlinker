@@ -167,6 +167,18 @@ export interface BenchBuyerNoteAcknowledgementResult {
   readonly parcel: BenchParcel;
 }
 
+/**
+ * What "Done, I took it out" did (#3961). `taken-out` voided the surplus and
+ * re-checked the order; `refused` recorded nothing, with `reason`
+ * `not-claimable-by-viewer`, `not-held-for-source-change` (already settled),
+ * `no-such-line`, or something newer. `parcel` comes back on every outcome.
+ */
+export interface BenchSourceChangeTakenOutResult {
+  readonly outcome: string;
+  readonly reason: string | null;
+  readonly parcel: BenchParcel;
+}
+
 /** What one verification did. `parcel` comes back on every outcome, refusals included. */
 export interface BenchVerificationResult {
   /** `verified` | `deduplicated` | `refused`, or something newer. */

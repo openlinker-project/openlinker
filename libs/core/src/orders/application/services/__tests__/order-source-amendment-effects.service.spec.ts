@@ -80,7 +80,7 @@ describe('OrderSourceAmendmentEffectsService (#3961)', () => {
       assessForEdit: jest.fn().mockResolvedValue(assessment()),
       lowerLineQuantity: jest.fn().mockImplementation(() => {
         calls.push('work');
-        return Promise.resolve({ outcome: 'applied', cancelledUnits: 1, workIds: ['w1'] });
+        return Promise.resolve({ outcome: 'applied', cancelledUnits: 1, workIds: ['w1'], closedParcels: [] });
       }),
       holdForSourceChange: jest.fn().mockImplementation(() => {
         calls.push('hold');
@@ -131,6 +131,7 @@ describe('OrderSourceAmendmentEffectsService (#3961)', () => {
         outcome: 'applied',
         lines: [{ orderLineId: 'li_1', from: 2, to: 1 }],
         cause: null,
+        closedParcels: [],
       });
       expect(calls).toEqual(['work', 'reservation', 'stock']);
       expect(fulfillmentEdit.lowerLineQuantity).toHaveBeenCalledWith({
@@ -145,6 +146,20 @@ describe('OrderSourceAmendmentEffectsService (#3961)', () => {
       });
       expect(lock.acquire).toHaveBeenCalledWith(`order:edit:${ORDER_ID}`, expect.any(Number));
       expect(lock.release).toHaveBeenCalled();
+    });
+
+    it('should report the parcels the lowered quantity closed, so the host can relay them', async () => {
+      const closedAt = new Date('2026-11-09T10:00:00Z');
+      fulfillmentEdit.lowerLineQuantity.mockResolvedValueOnce({
+        outcome: 'applied',
+        cancelledUnits: 1,
+        workIds: ['w1'],
+        closedParcels: [{ workId: 'w1', closedAt }],
+      });
+
+      const result = await service.reconcile({ internalOrderId: ORDER_ID });
+
+      expect(result.closedParcels).toEqual([{ workId: 'w1', closedAt }]);
     });
 
     it('should clear its own attention entry and holds once the change is applied', async () => {

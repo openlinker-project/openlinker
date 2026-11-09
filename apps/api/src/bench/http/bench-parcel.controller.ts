@@ -85,6 +85,7 @@ import { toParcelResponseDto } from './dto/bench-parcel.mapper';
 import {
   BenchActivityEntryResponseDto,
   BenchBuyerNoteAcknowledgementResultResponseDto,
+  BenchSourceChangeTakenOutResultResponseDto,
   BenchClaimResultResponseDto,
   BenchCompleteResultResponseDto,
   BenchUndoCompletionResultResponseDto,
@@ -357,24 +358,23 @@ export class BenchParcelController {
       'For a box held because the shop lowered an item after packing started (#3961). Voids the ' +
       'scans of that ONE line beyond what the order now asks for, then re-checks the order: when the ' +
       'box now matches, the change is applied and the hold released. Answers the parcel as it now ' +
-      'stands; a parcel that is not held for a source change is returned unchanged.',
+      'stands; a parcel that is not held for a source change is refused and returned unchanged.',
   })
-  @ApiResponse({ status: 201, type: BenchParcelResponseDto })
+  @ApiResponse({ status: 201, type: BenchSourceChangeTakenOutResultResponseDto })
   @ApiResponse({ status: 401, description: 'The confirmation must name the packer' })
   @ApiResponse({ status: 404, description: 'No such parcel at this bench' })
   async confirmSourceChangeTakenOut(
     @Param('workId') workId: string,
     @Body() body: SourceChangeTakenOutDto,
     @CurrentUser() user: AuthenticatedUser
-  ): Promise<BenchParcelResponseDto> {
+  ): Promise<BenchSourceChangeTakenOutResultResponseDto> {
     if (!user?.id) {
       throw new UnauthorizedException('The confirmation must name the packer');
     }
-    return this.toParcelDto(
-      await this.run(() =>
-        this.parcels.confirmSourceChangeTakenOut({ workId, workLineId: body.workLineId, actorUserId: user.id })
-      )
+    const result = await this.run(() =>
+      this.parcels.confirmSourceChangeTakenOut({ workId, workLineId: body.workLineId, actorUserId: user.id })
     );
+    return { outcome: result.outcome, reason: result.reason, parcel: this.toParcelDto(result.parcel) };
   }
 
   @Post(':workId/verifications/undo')

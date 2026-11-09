@@ -120,6 +120,19 @@ export class FulfillmentParcelClosureNotifierService implements IFulfillmentParc
     }
   }
 
+  async relayRecordedClose(workId: string): Promise<void> {
+    try {
+      this.reportRoute(workId, await this.router.routeDispatch(workId));
+    } catch (error) {
+      this.logger.error(
+        `Could not relay the closed parcel of fulfilment work ${workId}; ` +
+          `the fulfillment.work.relaySweep reconcile pass will retry it: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+        error instanceof Error ? error.stack : undefined
+      );
+    }
+  }
+
   /**
    * Log the route outcomes that leave work for the reconcile sweep. The
    * router already logged the shipment-grain detail; this line names the

@@ -239,6 +239,10 @@ import {
 import type { OrderDeliveryResolutionDto } from './dto/order-delivery-resolution.dto';
 import { ParcelProfileResponseDto } from '../../mappings/http/dto/routing-rule-response.dto';
 import type { OrderDeliveryRiderDto } from './dto/order-delivery-rider.dto';
+import {
+  FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN,
+  type IFulfillmentParcelClosureNotifier,
+} from '../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
 
 /**
  * The one DTO-to-filters mapping this list has (#2944).
@@ -463,7 +467,9 @@ export class OrdersController {
     private readonly orderEdit: IOrderEditService,
     // #3961 - "Check again" / "Keep as is" for a line the source changed after routing.
     @Inject(ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN)
-    private readonly sourceAmendmentEffects: IOrderSourceAmendmentEffectsService
+    private readonly sourceAmendmentEffects: IOrderSourceAmendmentEffectsService,
+    @Inject(FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN)
+    private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -1110,7 +1116,13 @@ export class OrdersController {
     @Param('internalOrderId') internalOrderId: string
   ): Promise<SourceChangeResultResponseDto> {
     await this.requireOrder(internalOrderId);
-    return toSourceChangeResult(await this.sourceAmendmentEffects.reconcile({ internalOrderId }));
+    const result = await this.sourceAmendmentEffects.reconcile({ internalOrderId });
+    // A box the applied change left exactly full was closed and recorded as
+    // shipped by core; tell the order's channel now, not at the next sweep.
+    for (const closed of result.closedParcels) {
+      await this.parcelClosureNotifier.relayRecordedClose(closed.workId);
+    }
+    return toSourceChangeResult(result);
   }
 
   @Roles('admin', 'operator')
