@@ -30,6 +30,82 @@
   "alreadyListedChip": {
     "label": "already on {destination}"
   },
+  "attributeRules": {
+    "chip": {
+      "fromRules": {
+        "one": "{n} from rules",
+        "other": "{n} from rules"
+      },
+      "notOnList": "“{value}” not on {destination}’s list",
+      "rejectedCount": {
+        "one": "{n} rule value rejected",
+        "other": "{n} rule values rejected"
+      },
+      "rejectedOne": "{parameter} rejected"
+    },
+    "coverageLabel": "Parameters filled by rules",
+    "editor": {
+      "badgeRejected": "rule value rejected",
+      "badgeRule": "from rule",
+      "baseNote": "Left empty, these are filled by your attribute rules: {names}.",
+      "baseNotePerVariant": "Left empty, these are filled by your attribute rules for each variant: {names}.",
+      "context": "Parameters from your attribute rules: {filled} of {total}.",
+      "inheritFromRule": "From rule ({value})",
+      "partial": {
+        "one": "Rules fill this for {filled} of {n} variant.",
+        "other": "Rules fill this for {filled} of {n} variants."
+      },
+      "rejectedHint": "{destination} does not accept “{value}” from your rules. Pick a value.",
+      "rejectedSome": {
+        "one": "{destination} does not accept the rule value for {rejected} of {n} variant.",
+        "other": "{destination} does not accept the rule value for {rejected} of {n} variants."
+      },
+      "replacesHint": "Replaces the rule value “{value}”",
+      "ruleValue": "Rule value: {value}"
+    },
+    "failed": {
+      "one": "Could not check the rules for {n} variant. Its required parameters count as empty until the check succeeds.",
+      "other": "Could not check the rules for {n} variants. Their required parameters count as empty until the check succeeds."
+    },
+    "fix": "Fix",
+    "fixLabel": "Fix {parameter} for {variant}",
+    "lede": "Filled in when the offers are created. A value you set yourself wins.",
+    "ledePerVariant": "Filled in when the offers are created, per variant. A value you set yourself wins.",
+    "manage": "Manage rules",
+    "more": {
+      "one": "and {n} more value",
+      "other": "and {n} more values"
+    },
+    "notChecked": "Not checked yet.",
+    "origin": {
+      "copied": "Copied from \"{attribute}\" by your attribute rules",
+      "copiedTranslated": "Copied from \"{attribute}\" and translated by your attribute rules",
+      "fixed": "Fixed value from your attribute rules",
+      "mapping": "From your attribute mapping",
+      "placeSource": {
+        "ean": "EAN",
+        "manufacturer": "manufacturer",
+        "name": "product name",
+        "sku": "SKU",
+        "variant": "variant name",
+        "weight": "weight"
+      },
+      "placed": "Product {field}, placed by your attribute rules",
+      "placedUnknown": "Product field, placed by your attribute rules",
+      "rule": "From your attribute rules"
+    },
+    "parameterList": {
+      "one": "{names} and {n} more",
+      "other": "{names} and {n} more"
+    },
+    "pill": "{name}: filled for {filled} of {total}",
+    "pillRejected": "{name}: filled for {filled} of {total}, {rejected} not accepted",
+    "rejectedLabel": "Values {destination} does not accept",
+    "rejectedRowLabel": "Fix: {names} not accepted by {destination}",
+    "rejectedValue": "{destination} does not accept “{value}”",
+    "retry": "Try again",
+    "title": "Attribute rules"
+  },
   "autoPrefillParameters": {
     "unmatchedBrand": "Variant brand \"{brand}\" - no exact match in the marketplace's brand list; pick manually."
   },

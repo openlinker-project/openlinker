@@ -58,7 +58,10 @@ import {
   OrderRecordNotFoundException,
   IOrderRecordService,
   ORDER_NOTE_SERVICE_TOKEN,
+  ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
   type IOrderNoteService,
+  type IOrderSourceAmendmentEffectsService,
+  type OrderRecord,
 } from '@openlinker/core/orders';
 import {
   INVENTORY_QUERY_SERVICE_TOKEN,
@@ -97,10 +100,13 @@ import type {
 import type {
   BenchActivityEntryView,
   BenchBuyerNoteAcknowledgementResultView,
+  BenchSourceChangeTakenOutRefusal,
+  BenchSourceChangeTakenOutResultView,
   BenchClaimResultView,
   BenchCompleteResultView,
   BenchUndoCompletionResultView,
   BenchParcelLineView,
+  BenchParcelSourceChangeView,
   BenchParcelRefusal,
   BenchParcelView,
   BenchReopenResultView,
@@ -158,13 +164,79 @@ export class BenchParcelService implements IBenchParcelService {
     // #3538 - the per-parcel buyer-note acknowledgements of the ORDER, read once
     // per projection so a split order's other parcels can be shown.
     @Inject(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN)
-    private readonly workQuery: IFulfillmentWorkQueryService
+    private readonly workQuery: IFulfillmentWorkQueryService,
+    // #3961 - "Done, I took it out" re-runs the reconcile that held the box.
+    @Inject(ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN)
+    private readonly sourceAmendment: IOrderSourceAmendmentEffectsService
   ) {}
 
   async getParcel(workId: string): Promise<BenchParcelView> {
     const work = await this.loadBenchWork(workId);
     const state = await this.verification.getState(workId);
     return await this.project(work, state);
+  }
+
+  /**
+   * "Done, I took it out" (#3961). The box was held because the shop lowered a
+   * line and the packer had already scanned more units of it. The packer took
+   * the extra units back out; this voids exactly those scans on THAT line (the
+   * generic undo voids whichever scan was last, often a different item) and
+   * re-runs the same reconcile that held the box, which now finds it matching
+   * and applies the change: narrower work, released hold, stock given back.
+   *
+   * Answers the parcel as it now stands. A box no longer held for a source
+   * change, a line it does not carry, or a packer locked out of the parcel
+   * changes nothing and gets the current parcel back.
+   */
+  async confirmSourceChangeTakenOut(input: {
+    readonly workId: string;
+    readonly workLineId: string;
+    readonly actorUserId: string;
+  }): Promise<BenchSourceChangeTakenOutResultView> {
+    await this.noteActivity(input.actorUserId);
+    const work = await this.loadBenchWork(input.workId);
+    const refused = async (
+      reason: BenchSourceChangeTakenOutRefusal
+    ): Promise<BenchSourceChangeTakenOutResultView> => ({
+      outcome: 'refused',
+      reason,
+      parcel: await this.project(work, await this.verification.getState(input.workId)),
+    });
+
+    // The SAME lock every other bench write checks (ADR-074).
+    if (!isClaimableByViewer(work, input.actorUserId)) return refused('not-claimable-by-viewer');
+    if (!work.activeHolds.some((hold) => hold.fromSourceChange)) {
+      return refused('not-held-for-source-change');
+    }
+    const workLine = work.lines.find((line) => line.id === input.workLineId);
+    if (workLine === undefined) return refused('no-such-line');
+
+    const order = (await this.orders.findByIds([work.orderId]))[0];
+    const keep = (order?.orderItems ?? [])
+      .filter((item) => item.id === workLine.orderLineId)
+      .reduce((sum, item) => sum + item.quantity, 0);
+    await this.verification.voidSurplusOnLine({
+      workId: input.workId,
+      workLineId: input.workLineId,
+      keep,
+      actorUserId: input.actorUserId,
+    });
+    const reconciled = await this.sourceAmendment.reconcile({ internalOrderId: work.orderId });
+    this.logger.log(
+      `bench_source_change_taken_out work=${input.workId} line=${input.workLineId} keep=${String(keep)} outcome=${reconciled.outcome}`
+    );
+    // A box the change left exactly full was closed and recorded as shipped by
+    // core; tell the order's channel now rather than at the next relay sweep.
+    for (const closed of reconciled.closedParcels) {
+      await this.parcelClosureNotifier.relayRecordedClose(closed.workId);
+    }
+
+    const after = await this.worklist.get(input.workId);
+    return {
+      outcome: 'taken-out',
+      reason: null,
+      parcel: await this.project(after, await this.verification.getState(input.workId)),
+    };
   }
 
   /**
@@ -821,6 +893,7 @@ export class BenchParcelService implements IBenchParcelService {
       parcelTotal: parcels.length > 0 ? parcels.length : 1,
       refusal: this.refusalFor(work),
       holdReason: hold?.reason ?? null,
+      sourceChange: describeSourceChange(work, lines, order),
       closedAt: state.closedAt?.toISOString() ?? null,
       packedByUserId: state.packedByUserId,
       // From `work`, unlike `closedAt`/`packedByUserId`/`version` above: none
@@ -928,4 +1001,31 @@ export class BenchParcelService implements IBenchParcelService {
       };
     });
   }
+}
+
+/**
+ * What must come back out of a box held for a source change (#3961): per line,
+ * units verified into THIS box beyond what the order now asks for. Read from the
+ * order's effective items (operator overlay applied), so it agrees with the
+ * reconcile that placed the hold.
+ */
+function describeSourceChange(
+  work: FulfillmentWorkView,
+  lines: readonly BenchParcelLineView[],
+  order: OrderRecord | undefined
+): BenchParcelSourceChangeView | null {
+  if (!work.activeHolds.some((hold) => hold.fromSourceChange)) return null;
+  const orderQuantity = new Map<string, number>();
+  for (const item of order?.orderItems ?? []) {
+    orderQuantity.set(item.id, (orderQuantity.get(item.id) ?? 0) + item.quantity);
+  }
+  const orderLineByWorkLine = new Map(work.lines.map((line) => [line.id, line.orderLineId]));
+  const takeOut: Array<{ workLineId: string; units: number }> = [];
+  for (const line of lines) {
+    const orderLineId = orderLineByWorkLine.get(line.workLineId);
+    if (orderLineId === undefined) continue;
+    const units = line.verifiedQuantity - (orderQuantity.get(orderLineId) ?? 0);
+    if (units > 0) takeOut.push({ workLineId: line.workLineId, units });
+  }
+  return { takeOut };
 }

@@ -100,6 +100,8 @@ export interface OrderListFilterState {
   rateConflict: boolean;
   holdReason?: HoldReason;
   omsAttention: boolean;
+  /** #3961 - only orders the shop changed after packing started, waiting for a decision. */
+  shopChanged: boolean;
   /** #3963 - `?paymentNotSent=true`. */
   paymentNotSent: boolean;
   /** `true` packed only, `false` not packed yet, `undefined` any. */
@@ -289,6 +291,18 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
     isActive: (s) => s.omsAttention,
     chip: (s, ctx) => single('attention', ctx.copy.listFilters.chips.oms, s.omsAttention ? ctx.copy.listFilters.chips.stopped : null),
   },
+  attentionReason: {
+    param: 'attentionReason',
+    group: 'exceptions',
+    analyticsName: 'shop_changed',
+    isActive: (s) => s.shopChanged,
+    chip: (s, ctx) =>
+      single(
+        'attentionReason',
+        ctx.copy.listFilters.chips.shopChanged,
+        s.shopChanged ? ctx.copy.listFilters.chips.shopChangedValue : null
+      ),
+  },
   paymentNotSent: {
     param: 'paymentNotSent',
     group: 'exceptions',
@@ -399,6 +413,9 @@ function pick<T extends string>(values: readonly T[], raw: string | null): T | u
  * "unfiltered" rather than passing through: the server would reject them, and
  * an operator with a stale bookmark should see their orders, not an error.
  */
+/** The one attention reason the "Changed by the shop" filter narrows to (#3961). */
+const SHOP_CHANGED_REASON = 'source-change-unapplied';
+
 export function parseOrderListFilterState(params: URLSearchParams): OrderListFilterState {
   const rawPhase = params.get('phase');
   const rawHold = params.get('hold');
@@ -419,6 +436,7 @@ export function parseOrderListFilterState(params: URLSearchParams): OrderListFil
     rateConflict: params.get('taxRate') === 'conflict',
     holdReason: isHoldReason(rawHold) ? rawHold : undefined,
     omsAttention: params.get('attention') === 'true',
+    shopChanged: params.get('attentionReason') === SHOP_CHANGED_REASON,
     paymentNotSent: params.get('paymentNotSent') === 'true',
     packed: rawPacked === 'true' ? true : rawPacked === 'false' ? false : undefined,
     openReturn: params.get('openReturn') === 'true',
@@ -442,6 +460,7 @@ export const ORDER_TOGGLE_FILTER_VALUES = {
   onPackBench: 'true',
   taxRateConflict: 'conflict',
   attention: 'true',
+  attentionReason: 'source-change-unapplied',
   paymentNotSent: 'true',
   openReturn: 'true',
   hasBuyerNote: 'true',
@@ -472,6 +491,7 @@ export function toOrderQueryFilters(
     taxRateConflict: state.rateConflict ? true : undefined,
     holdReason: state.holdReason,
     attention: state.omsAttention ? true : undefined,
+    attentionReason: state.shopChanged ? SHOP_CHANGED_REASON : undefined,
     paymentNotSent: state.paymentNotSent ? true : undefined,
     packed: state.packed,
     search: derived.search || undefined,
