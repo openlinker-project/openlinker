@@ -191,6 +191,33 @@ describe('BundleDefinitionsController (#3607)', () => {
     expect(result.productId).toBe('p-set');
   });
 
+  it('should give each component summary the product picture proxy path, or null without one', async () => {
+    bundles.get.mockResolvedValue({
+      variantId: 'v-set',
+      version: 1,
+      components: [
+        { variantId: 'v-a', productId: 'p-a', quantity: 1 },
+        { variantId: 'v-b', productId: 'p-b', quantity: 1 },
+      ],
+    });
+    products.getVariantsByIds.mockResolvedValue([
+      { id: 'v-set', productId: 'p-set', sku: 's', price: 1 },
+      { id: 'v-a', productId: 'p-a', sku: 'a', price: 1 },
+      { id: 'v-b', productId: 'p-b', sku: 'b', price: 1 },
+    ]);
+    products.getProductsByIds.mockResolvedValue([
+      { id: 'p-set', name: 'Set', images: null },
+      { id: 'p-a', name: 'A', images: ['http://shop/a.jpg'] },
+      { id: 'p-b', name: 'B', images: [] },
+    ]);
+    availability.getPromisableQuantities.mockResolvedValue([]);
+    inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([]);
+    const result = await controller.get('v-set');
+    const byId = new Map(result.componentAvailability.map((c) => [c.variantId, c.summary.imageUrl]));
+    expect(byId.get('v-a')).toBe('/products/p-a/images/0');
+    expect(byId.get('v-b')).toBeNull();
+  });
+
   it('should 404 the history of a variant that was never a bundle', async () => {
     bundles.history.mockResolvedValue([]);
     await expect(controller.history('nope')).rejects.toBeInstanceOf(NotFoundException);

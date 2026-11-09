@@ -292,7 +292,7 @@ describe('BundleForm (#3624)', () => {
     const detail: BundleDetail = {
       variantId: 'set',
       version: 2,
-      bundle: { name: 'Zestaw poranny', sku: 'ZES-PORANNY', price: 65, currency: 'PLN' },
+      bundle: { name: 'Zestaw poranny', sku: 'ZES-PORANNY', price: 65, currency: 'PLN', imageUrl: null },
       openOrdersOnOlderComposition: 3,
       bundlesAvailable: 1,
       composedByMaster: null,
@@ -303,7 +303,7 @@ describe('BundleForm (#3624)', () => {
           variantId: 'mug',
           productId: 'p-mug',
           quantity: 1,
-          summary: { name: 'Kubek ceramiczny', sku: 'KUB-350-BI', price: 40, currency: 'PLN' },
+          summary: { name: 'Kubek ceramiczny', sku: 'KUB-350-BI', price: 40, currency: 'PLN', imageUrl: null },
           availableToPromise: 78,
           bundlesSupported: 78,
         },
@@ -334,7 +334,7 @@ describe('BundleForm (#3624)', () => {
     const baseDetail: BundleDetail = {
       variantId: 'set',
       version: 2,
-      bundle: { name: 'Zestaw poranny', sku: 'ZES-PORANNY', price: 65, currency: 'PLN' },
+      bundle: { name: 'Zestaw poranny', sku: 'ZES-PORANNY', price: 65, currency: 'PLN', imageUrl: null },
       openOrdersOnOlderComposition: 0,
       bundlesAvailable: 1,
       composedByMaster: null,
@@ -381,7 +381,7 @@ describe('BundleForm (#3624)', () => {
     const detail: BundleDetail = {
       variantId: 'set',
       version: 2,
-      bundle: { name: 'Zestaw poranny', sku: 'ZES-PORANNY', price: 65, currency: 'PLN' },
+      bundle: { name: 'Zestaw poranny', sku: 'ZES-PORANNY', price: 65, currency: 'PLN', imageUrl: null },
       openOrdersOnOlderComposition: 0,
       bundlesAvailable: 1,
       composedByMaster: null,
@@ -400,7 +400,7 @@ describe('BundleForm (#3624)', () => {
             createdAt: '2026-11-02T10:00:00Z',
             openOrders: 0,
             components: [{ variantId: 'mug', productId: 'p-mug', quantity: 1 }],
-            componentSummaries: [{ name: 'Kubek', sku: 'KUB', price: 1, currency: 'PLN' }],
+            componentSummaries: [{ name: 'Kubek', sku: 'KUB', price: 1, currency: 'PLN', imageUrl: null }],
           },
           {
             variantId: 'set',
@@ -409,7 +409,7 @@ describe('BundleForm (#3624)', () => {
             createdAt: '2026-10-02T10:00:00Z',
             openOrders: 3,
             components: [{ variantId: 'mug', productId: 'p-mug', quantity: 1 }],
-            componentSummaries: [{ name: 'Kubek', sku: 'KUB', price: 1, currency: 'PLN' }],
+            componentSummaries: [{ name: 'Kubek', sku: 'KUB', price: 1, currency: 'PLN', imageUrl: null }],
           },
         ]),
       },

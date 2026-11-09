@@ -14,6 +14,8 @@ export interface BundleProductSummary {
   /** Gross catalogue price. */
   price: number | null;
   currency: string | null;
+  /** Authenticated API path of the product picture; `null` when there is none. */
+  imageUrl: string | null;
 }
 
 export interface BundleComponent {
