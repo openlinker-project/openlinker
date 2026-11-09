@@ -26,6 +26,7 @@
  * @module apps/web/src/features/fulfillment/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 
 export interface FulfillmentConflict {
   /** `true` only for `version_conflict`. */
@@ -70,9 +71,7 @@ export function readFulfillmentConflict(error: unknown): FulfillmentConflict | n
   if (code === 'version_conflict') {
     return {
       retryable: true,
-      message:
-        'Somebody moved this fulfilment task while you were looking at it. It has been refreshed — ' +
-        'check it and try again.',
+      message: getMessages('fulfillment').fulfillmentConflict.versionConflict,
       supportedActions,
     };
   }
@@ -80,9 +79,7 @@ export function readFulfillmentConflict(error: unknown): FulfillmentConflict | n
   if (code === 'action_not_legal') {
     return {
       retryable: false,
-      message:
-        'That is no longer possible for this fulfilment task. The available actions have been ' +
-        'refreshed.',
+      message: getMessages('fulfillment').fulfillmentConflict.actionNotLegal,
       supportedActions,
     };
   }
@@ -107,10 +104,10 @@ export function describeFulfillmentActionError(error: unknown, fallback: string)
     return error.message;
   }
   if (error instanceof ApiError && error.isForbidden()) {
-    return 'You do not have permission to change fulfilment tasks.';
+    return getMessages('fulfillment').fulfillmentConflict.forbidden;
   }
   if (error instanceof ApiError && error.isNotFound()) {
-    return 'This fulfilment task no longer exists.';
+    return getMessages('fulfillment').fulfillmentConflict.notFound;
   }
   return fallback;
 }

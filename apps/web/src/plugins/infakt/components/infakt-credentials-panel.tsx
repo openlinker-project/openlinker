@@ -19,8 +19,10 @@ import { Button } from '../../../shared/ui/button';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { useInfaktMessages } from '../messages';
 
 export function InfaktCredentialsPanel({ connection }: { connection: Connection }): ReactElement {
+  const copy = useInfaktMessages().infaktCredentialsPanel;
   const [showRotate, setShowRotate] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const rotate = useUpdateConnectionCredentialsMutation();
@@ -28,8 +30,8 @@ export function InfaktCredentialsPanel({ connection }: { connection: Connection 
 
   if (!connection.credentialsBacked) {
     return (
-      <FormField label="API Key" name="credentials">
-        <Input value="Environment variable (not editable via UI)" disabled />
+      <FormField label={copy.label} name="credentials">
+        <Input value={copy.envBacked} disabled />
       </FormField>
     );
   }
@@ -46,8 +48,8 @@ export function InfaktCredentialsPanel({ connection }: { connection: Connection 
       });
       showToast({
         tone: 'success',
-        title: 'Credentials rotated',
-        description: 'The new inFakt API key is now in use.',
+        title: copy.toast.title,
+        description: copy.toast.description,
       });
       setApiKey('');
       setShowRotate(false);
@@ -58,9 +60,9 @@ export function InfaktCredentialsPanel({ connection }: { connection: Connection 
 
   return (
     <FormField
-      label="API Key"
+      label={copy.label}
       name="credentials"
-      description="Stored securely on the server. Rotate to replace the key without restarting the API."
+      description={copy.description}
     >
       {showRotate ? (
         <div className="form-grid">
@@ -68,7 +70,7 @@ export function InfaktCredentialsPanel({ connection }: { connection: Connection 
           <Input
             type="password"
             autoComplete="off"
-            placeholder="New API key"
+            placeholder={copy.newKeyPlaceholder}
             value={apiKey}
             onChange={(event) => setApiKey(event.target.value)}
           />
@@ -78,7 +80,7 @@ export function InfaktCredentialsPanel({ connection }: { connection: Connection 
               onClick={(event) => void onRotate(event)}
               disabled={rotate.isPending || !canSubmit}
             >
-              {rotate.isPending ? 'Rotating...' : 'Save new API key'}
+              {rotate.isPending ? copy.rotating : copy.save}
             </Button>
             <Button
               tone="secondary"
@@ -88,13 +90,13 @@ export function InfaktCredentialsPanel({ connection }: { connection: Connection 
                 setApiKey('');
               }}
             >
-              Cancel
+              {copy.cancel}
             </Button>
           </div>
         </div>
       ) : (
         <Button tone="secondary" type="button" onClick={() => setShowRotate(true)}>
-          Rotate API key
+          {copy.rotate}
         </Button>
       )}
     </FormField>

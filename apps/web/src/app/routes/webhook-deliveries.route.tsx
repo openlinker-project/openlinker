@@ -2,10 +2,10 @@ import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../nav-registry.types';
 
 const webhooksListCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Diagnostics', title: 'Webhooks' },
+  crumb: { group: 'diagnostics', page: 'webhooks' },
 };
 const webhookDetailCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Diagnostics', title: 'Webhook' },
+  crumb: { group: 'diagnostics', page: 'webhook' },
 };
 
 export const webhookDeliveriesRoute: RouteObject = {

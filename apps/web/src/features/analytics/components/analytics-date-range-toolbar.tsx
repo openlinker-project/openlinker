@@ -8,7 +8,8 @@
  *
  * @module apps/web/src/features/analytics/components
  */
-import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { useMessages } from '../../../shared/i18n';
 import { Button, Popover, PopoverContent, PopoverTrigger, SegmentedControl } from '../../../shared/ui';
 import {
   computePresetRange,
@@ -25,18 +26,10 @@ interface AnalyticsDateRangeToolbarProps {
   trailing?: ReactNode;
 }
 
-const PRESET_OPTIONS: readonly { value: DateRangeHighlight; label: string }[] = [
-  { value: '7d', label: '7d' },
-  { value: '30d', label: '30d' },
-  { value: '90d', label: '90d' },
-  { value: 'custom', label: 'Custom' },
-];
-
-// Operator-facing: no schema jargon (no "placedAt", no "column"). The
-// underlying reason is that `placedAt` isn't yet a filterable read-model
-// column — tracked for #1990 — but that's a developer fact, not one an
-// operator can act on, so it stays out of the rendered copy/aria-label.
-const ORDER_DATE_CAVEAT = "This range doesn't filter results yet — coming soon";
+// The order-date caveat (`orderDateCaveat`) is operator-facing: no schema
+// jargon (no "placedAt", no "column"). The underlying reason is that
+// `placedAt` isn't yet a filterable read-model column - tracked for #1990 -
+// but that's a developer fact, not one an operator can act on.
 
 export function AnalyticsDateRangeToolbar({
   from,
@@ -44,6 +37,16 @@ export function AnalyticsDateRangeToolbar({
   onApply,
   trailing,
 }: AnalyticsDateRangeToolbarProps): ReactElement {
+  const copy = useMessages('analytics').analyticsDateRangeToolbar;
+  const presetOptions = useMemo<readonly { value: DateRangeHighlight; label: string }[]>(
+    () => [
+      { value: '7d', label: copy.presets.last7Days },
+      { value: '30d', label: copy.presets.last30Days },
+      { value: '90d', label: copy.presets.last90Days },
+      { value: 'custom', label: copy.presets.custom },
+    ],
+    [copy]
+  );
   const today = useRef(new Date()).current;
   const [draftFrom, setDraftFrom] = useState(from);
   const [draftTo, setDraftTo] = useState(to);
@@ -86,18 +89,19 @@ export function AnalyticsDateRangeToolbar({
     <div className="toolbar analytics-toolbar">
       <div className="toolbar__group">
         <SegmentedControl
-          aria-label="Date range"
-          options={PRESET_OPTIONS}
+          aria-label={copy.dateRange}
+          options={presetOptions}
           value={highlight}
           onChange={handleSegmentChange}
         />
         <label className="analytics-toolbar__field">
-          <span className="analytics-toolbar__label">From</span>
+          <span className="analytics-toolbar__label">{copy.from}</span>
           <input
             ref={fromInputRef}
             type="date"
             className="control"
-            aria-label="Order date from"
+            aria-label={copy.fromAria}
+            data-analytics-range-from=""
             value={draftFrom}
             onChange={(event) => {
               setForcedCustom(true);
@@ -106,11 +110,11 @@ export function AnalyticsDateRangeToolbar({
           />
         </label>
         <label className="analytics-toolbar__field">
-          <span className="analytics-toolbar__label">To</span>
+          <span className="analytics-toolbar__label">{copy.to}</span>
           <input
             type="date"
             className="control"
-            aria-label="Order date to"
+            aria-label={copy.toAria}
             value={draftTo}
             onChange={(event) => {
               setForcedCustom(true);
@@ -119,7 +123,7 @@ export function AnalyticsDateRangeToolbar({
           />
         </label>
         <Button type="button" tone="secondary" disabled={!canApply} onClick={handleApply}>
-          Apply
+          {copy.apply}
         </Button>
         {/* Static disclaimer, not an interactive control — a plain chip
           markup rather than the interactive Chip primitive, which would
@@ -129,18 +133,18 @@ export function AnalyticsDateRangeToolbar({
           a Tooltip-only caveat would be permanently unreachable on a phone
           (mirrors the AnalyticsTrustHeader info-popover pattern). */}
         <span className="chip chip--info">
-          Order date{' '}
+          {copy.orderDate}{' '}
           <Popover>
             <PopoverTrigger asChild>
               <button
                 type="button"
                 className="analytics-gap-mark"
-                aria-label={`Order date. ${ORDER_DATE_CAVEAT}`}
+                aria-label={copy.orderDateCaveatAria}
               >
-                †
+                {'\u2020'}
               </button>
             </PopoverTrigger>
-            <PopoverContent>{ORDER_DATE_CAVEAT}</PopoverContent>
+            <PopoverContent>{copy.orderDateCaveat}</PopoverContent>
           </Popover>
         </span>
       </div>

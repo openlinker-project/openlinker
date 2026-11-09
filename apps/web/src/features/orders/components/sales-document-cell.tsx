@@ -31,6 +31,14 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Popover, PopoverContent, PopoverTrigger } from '../../../shared/ui/popover';
 import { DocumentKindGlyph, type DocumentKind } from '../../../shared/ui/document-kind-glyph';
+import {
+  interpolate,
+  useFormat,
+  useMessages,
+  usePlural,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 import { resolveSalesDocumentCellState } from '../lib/sales-document-cell-state';
 import type { SalesDocumentView } from '../api/orders.types';
 
@@ -90,17 +98,6 @@ function TickIcon(): ReactNode {
   );
 }
 
-/** Human-readable kind label — never a platform/provider name (that lives on `providerType`). */
-const KIND_LABEL: Record<string, string> = {
-  invoice: 'Invoice',
-  'fiscal-receipt': 'Fiscal receipt',
-};
-
-/** The action's own label, distinct per kind (mirrors the mockup's `c` map). */
-const ACTION_LABEL: Record<string, string> = {
-  invoice: 'Issue invoice',
-  'fiscal-receipt': 'Register receipt',
-};
 
 const REGULATORY_TONE: Record<string, 'success' | 'info' | 'error' | 'neutral'> = {
   accepted: 'success',
@@ -111,14 +108,35 @@ const REGULATORY_TONE: Record<string, 'success' | 'info' | 'error' | 'neutral'> 
   'not-applicable': 'neutral',
 };
 
-const REGULATORY_LABEL: Record<string, string> = {
-  accepted: 'Accepted',
-  cleared: 'Clearing',
-  submitted: 'Submitted',
-  'pending-submission': 'Awaiting submission',
-  rejected: 'Rejected',
-  'not-applicable': 'N/A',
+type CellCopy = ResolvedCopy<Messages['orders']>['salesDocumentCell'];
+
+/** Human-readable kind label - never a platform/provider name (that lives on `providerType`). */
+function kindLabelOf(kind: string, copy: CellCopy): string {
+  if (kind === 'invoice') return copy.kind.invoice;
+  if (kind === 'fiscal-receipt') return copy.kind.fiscalReceipt;
+  return kind;
+}
+
+/** The action's own label, distinct per kind (mirrors the mockup's `c` map). */
+function actionLabelOf(kind: string, copy: CellCopy): string {
+  if (kind === 'invoice') return copy.action.invoice;
+  if (kind === 'fiscal-receipt') return copy.action.fiscalReceipt;
+  return copy.action.open;
+}
+
+const REGULATORY_LABEL_KEY: Record<string, keyof CellCopy['regulatory']> = {
+  accepted: 'accepted',
+  cleared: 'cleared',
+  submitted: 'submitted',
+  'pending-submission': 'pendingSubmission',
+  rejected: 'rejected',
+  'not-applicable': 'notApplicable',
 };
+
+function regulatoryLabelOf(status: string, copy: CellCopy): string {
+  const key = REGULATORY_LABEL_KEY[status];
+  return key ? copy.regulatory[key] : status;
+}
 
 function Fact({ label, children }: { label: string; children: ReactNode }): ReactNode {
   return (
@@ -136,14 +154,17 @@ export function SalesDocumentCell({
   hasIssuingCapability,
   connectionNames,
 }: SalesDocumentCellProps): ReactNode {
+  const copy = useMessages('orders').salesDocumentCell;
+  const format = useFormat();
+  const plural = usePlural();
   const state = resolveSalesDocumentCellState(view);
   const otherRecords = view?.otherRecords ?? [];
   const dupeCount = otherRecords.length;
-  const kindLabel = state.kind ? (KIND_LABEL[state.kind] ?? state.kind) : 'No document';
+  const kindLabel = state.kind ? kindLabelOf(state.kind, copy) : copy.noDocument;
   // An action renders only when this order's kind still needs one AND some
   // connection can issue it — offering a dead-end action is worse than none.
   const showAction = state.keepsAction && state.kind !== null && hasIssuingCapability;
-  const actionLabel = state.kind ? (ACTION_LABEL[state.kind] ?? 'Open') : null;
+  const actionLabel = state.kind ? actionLabelOf(state.kind, copy) : null;
 
   // A `title` an operator can hover, and the SAME sentence in the trigger's
   // `aria-label` below - `aria-label` on the button overrides everything inside
@@ -153,14 +174,18 @@ export function SalesDocumentCell({
     dupeCount === 0
       ? null
       : dupeCount === 1
-        ? 'A second document exists for this order'
-        : `${dupeCount + 1} documents exist for this order`;
+        ? copy.dupe.second
+        : plural(dupeCount + 1, copy.dupe.many);
 
   // With nothing routed, `kindLabel` and the word are the same sentence - say it
   // once rather than "No document: No document".
   const redundantKindLabel = kindLabel === state.word;
-  const headline = redundantKindLabel ? state.word : `${kindLabel} · ${state.word}`;
-  const spokenState = redundantKindLabel ? state.word : `${kindLabel}: ${state.word}`;
+  const headline = redundantKindLabel
+    ? state.word
+    : interpolate(copy.headline, { kind: kindLabel, word: state.word });
+  const spokenState = redundantKindLabel
+    ? state.word
+    : interpolate(copy.spokenState, { kind: kindLabel, word: state.word });
 
   const line = (
     <span className={`sales-doc sales-doc--${state.tone}`}>
@@ -184,29 +209,36 @@ export function SalesDocumentCell({
     <>
       {state.reasonDetail ? <p className="sales-doc-popover__why">{state.reasonDetail}</p> : null}
       {view?.blockDetail ? <p className="sales-doc-popover__why">{view.blockDetail}</p> : null}
-      {identity?.documentNumber ? <Fact label="Number">{identity.documentNumber}</Fact> : null}
+      {identity?.documentNumber ? <Fact label={copy.fact.number}>{identity.documentNumber}</Fact> : null}
       {identity?.connectionId ? (
-        <Fact label="Provider">
+        <Fact label={copy.fact.provider}>
           {/* Name-first, provider type as a qualifier (#2761 review) — on a
               multi-connection install "which connection issued this" is the
               useful fact, and the duplicate-record warning right below it
               already names connections rather than provider types. */}
-          {connectionNames.get(identity.connectionId) ?? identity.connectionId}
-          {identity.providerType ? ` (${identity.providerType})` : ''}
+          {identity.providerType
+            ? interpolate(copy.fact.providerWithType, {
+                name: connectionNames.get(identity.connectionId) ?? identity.connectionId,
+                type: identity.providerType,
+              })
+            : (connectionNames.get(identity.connectionId) ?? identity.connectionId)}
         </Fact>
       ) : null}
       {regulatoryStatus ? (
-        <Fact label="Clearance">
+        <Fact label={copy.fact.clearance}>
           <span className={`sales-doc-tone sales-doc-tone--${REGULATORY_TONE[regulatoryStatus] ?? 'neutral'}`}>
-            {REGULATORY_LABEL[regulatoryStatus] ?? regulatoryStatus}
+            {regulatoryLabelOf(regulatoryStatus, copy)}
           </span>
         </Fact>
       ) : null}
       {dupeCount > 0 ? (
         <p className="sales-doc-popover__warn">
-          {otherRecords.map((r) => connectionNames.get(r.connectionId) ?? r.connectionId).join(', ')}{' '}
-          {dupeCount === 1 ? 'also holds' : 'also hold'} a document for this sale. One sale
-          should have one document.
+          {plural(dupeCount, copy.dupe.alsoHold, {
+            connections: format.list(
+              otherRecords.map((r) => connectionNames.get(r.connectionId) ?? r.connectionId),
+            ),
+          })}{' '}
+          {copy.dupe.oneSaleOneDocument}
         </p>
       ) : null}
     </>
@@ -218,7 +250,11 @@ export function SalesDocumentCell({
         <button
           type="button"
           className="sales-doc-trigger"
-          aria-label={dupeSentence ? `${spokenState}. ${dupeSentence}` : spokenState}
+          aria-label={
+            dupeSentence
+              ? interpolate(copy.spokenWithDupe, { state: spokenState, dupe: dupeSentence })
+              : spokenState
+          }
         >
           {line}
         </button>
@@ -236,7 +272,7 @@ export function SalesDocumentCell({
         <div className="sales-doc-popover__body">{popoverBody}</div>
         <div className="sales-doc-popover__foot">
           <Link className="orders-row-cta" to={`/orders/${internalOrderId}#invoicing`}>
-            Open order
+            {copy.openOrder}
           </Link>
           {showAction && actionLabel ? (
             <Link className="orders-row-cta" to={`/orders/${internalOrderId}#invoicing`}>
@@ -248,7 +284,7 @@ export function SalesDocumentCell({
           ) : null}
           {state.kind === null ? (
             <Link className="orders-row-cta" to="/settings/sales-documents">
-              Set routing
+              {copy.setRouting}
             </Link>
           ) : null}
         </div>

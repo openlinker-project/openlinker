@@ -17,7 +17,7 @@ import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { shortenId } from '../../../shared/ui/entity-label';
-import { RETURNS_ORPHAN_COPY, RETURNS_ROW_COPY } from '../lib/returns-list.copy';
+import { getMessages, interpolate, useMessages } from '../../../shared/i18n';
 import type { ReturnListItem } from '../api/returns.types';
 
 interface ReturnOrderCellProps {
@@ -37,13 +37,14 @@ interface ReturnOrderCellProps {
  * function and cannot drift apart again.
  */
 export function ReturnOrphanBadge(): ReactElement {
+  const copy = useMessages('returns').list.orphan;
   return (
     // `StatusBadge` takes no `title`, so the explanation rides on a wrapper.
     // It is the one piece of copy that must always be one hover away: the
     // badge alone reads as a label, and the point is that it blocks work.
-    <span title={RETURNS_ORPHAN_COPY.explanation}>
+    <span title={copy.explanation}>
       <StatusBadge tone="error" compact>
-        {RETURNS_ORPHAN_COPY.badge}
+        {copy.badge}
       </StatusBadge>
     </span>
   );
@@ -51,6 +52,7 @@ export function ReturnOrphanBadge(): ReactElement {
 
 export function ReturnOrderCell({ item }: ReturnOrderCellProps): ReactElement {
   const isOrphan = item.bucket === 'orphan';
+  const copy = useMessages('returns').list.orphan;
 
   return (
     <span className="returns-order-cell">
@@ -69,7 +71,7 @@ export function ReturnOrderCell({ item }: ReturnOrderCellProps): ReactElement {
       ) : null}
 
       {isOrphan && item.externalOrderId === null ? (
-        <span className="text-muted">{RETURNS_ORPHAN_COPY.short}</span>
+        <span className="text-muted">{copy.short}</span>
       ) : null}
     </span>
   );
@@ -77,12 +79,13 @@ export function ReturnOrderCell({ item }: ReturnOrderCellProps): ReactElement {
 
 /** Compact label used by the mobile card subtitle, sharing this cell's rules. */
 export function returnOrderSummary(item: ReturnListItem): string {
+  const list = getMessages('returns').list;
   if (item.bucket === 'orphan') {
     return item.externalOrderId !== null
-      ? `${RETURNS_ORPHAN_COPY.badge} · ${item.externalOrderId}`
-      : RETURNS_ORPHAN_COPY.badge;
+      ? interpolate(list.row.orphanSummary, { externalOrderId: item.externalOrderId })
+      : list.orphan.badge;
   }
   return item.internalOrderId !== null
-    ? `${RETURNS_ROW_COPY.orderLabel} ${shortenId(item.internalOrderId)}`
-    : RETURNS_ROW_COPY.orderLabel;
+    ? interpolate(list.row.orderSummary, { id: shortenId(item.internalOrderId) })
+    : list.row.orderLabel;
 }

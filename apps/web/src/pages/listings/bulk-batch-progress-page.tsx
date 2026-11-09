@@ -21,6 +21,15 @@ import {
   StatusBadge,
 } from '../../shared/ui';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
+import {
+  interpolate,
+  renderRich,
+  type Messages,
+  type ResolvedCopy,
+  useFormat,
+  useMessages,
+  usePlural,
+} from '../../shared/i18n';
 import { useToast } from '../../shared/ui/toast-provider';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
@@ -35,19 +44,22 @@ import { useBulkBatchQuery } from '../../features/listings/hooks/use-bulk-batch-
 import { useBulkRetryFailedMutation } from '../../features/listings/hooks/use-bulk-retry-failed-mutation';
 import { useConnectionsQuery } from '../../features/connections';
 import { splitAccountLevelFailures } from '../../features/listings/lib/account-level-failures';
-import { interpolate, useFormat, useMessages, usePlural } from '../../shared/i18n';
 import { usePlatform } from '../../shared/plugins';
 import {
   TERMINAL_BULK_BATCH_STATUSES,
   type BulkBatchRecordSummary,
   type BulkBatchStatus,
 } from '../../features/listings/api/bulk-listings.types';
+import { serverErrorText } from '../../features/listings/lib/server-error-text';
 
-/** Tooltip copy for a demo viewer, matching the wizard's own locked submit. */
-const DEMO_LOCK_MESSAGE = 'Read-only demo - recovery actions are disabled.';
+type BulkBatchProgressCopy = ResolvedCopy<Messages['listings']>['bulkBatchProgressPage'];
 
 export function BulkBatchProgressPage(): ReactElement {
   const { batchId } = useParams<{ batchId: string }>();
+  const copy = useMessages('listings').bulkBatchProgressPage;
+  const common = useMessages('listings').common;
+  const format = useFormat();
+  const plural = usePlural();
   const query = useBulkBatchQuery(batchId);
   const retryMutation = useBulkRetryFailedMutation();
   const connectionsQuery = useConnectionsQuery();
@@ -61,9 +73,7 @@ export function BulkBatchProgressPage(): ReactElement {
     () => selectFailedRecords(query.data?.records ?? []),
     [query.data],
   );
-  const copy = useMessages('listings').bulkBatch;
-  const plural = usePlural();
-  const { number: formatCount } = useFormat();
+  const batchCopy = useMessages('listings').bulkBatch;
   const batchConnection = connectionsQuery.data?.find((c) => c.id === query.data?.connectionId);
   const accountRefusal = usePlatform(batchConnection?.platformType)?.offerValidation
     ?.accountLevelRefusal;
@@ -114,23 +124,23 @@ export function BulkBatchProgressPage(): ReactElement {
       const result = await retryMutation.mutateAsync(batchId);
       showToast({
         tone: 'success',
-        title: 'Retry dispatched',
-        description: `${result.retriedCount.toLocaleString()} records re-enqueued.`,
+        title: copy.toasts.retryDispatchedTitle,
+        description: plural(result.retriedCount, copy.toasts.retryDispatchedDescription),
       });
     } catch (error) {
       showToast({
         tone: 'error',
-        title: 'Retry failed',
-        description: (error as Error).message,
+        title: copy.toasts.retryFailedTitle,
+        description: serverErrorText(common.serverSaid, (error as Error).message, common.unknownError),
       });
     }
-  }, [batchId, retryMutation, showToast]);
+  }, [batchId, common, copy.toasts, plural, retryMutation, showToast]);
 
   if (!batchId) {
     return (
       <ErrorState
-        title="Missing batch ID"
-        message="The route is missing a batch identifier."
+        title={copy.missingIdTitle}
+        message={copy.missingIdMessage}
       />
     );
   }
@@ -138,8 +148,8 @@ export function BulkBatchProgressPage(): ReactElement {
   if (query.isLoading) {
     return (
       <LoadingState
-        title="Loading batch"
-        message="Fetching bulk batch status…"
+        title={copy.loadingTitle}
+        message={copy.loadingMessage}
       />
     );
   }
@@ -147,10 +157,10 @@ export function BulkBatchProgressPage(): ReactElement {
   if (query.error) {
     return (
       <ErrorState
-        title="Could not load batch"
-        message={query.error.message}
+        title={copy.errorTitle}
+        message={serverErrorText(common.serverSaid, query.error.message, common.unknownError)}
         action={
-          <Button onClick={() => { void query.refetch(); }}>Retry</Button>
+          <Button onClick={() => { void query.refetch(); }}>{copy.retry}</Button>
         }
       />
     );
@@ -159,8 +169,8 @@ export function BulkBatchProgressPage(): ReactElement {
   if (!query.data) {
     return (
       <ErrorState
-        title="Batch not found"
-        message={`No batch with id "${batchId}" was found.`}
+        title={copy.notFoundTitle}
+        message={interpolate(copy.notFoundMessage, { batchId })}
       />
     );
   }
@@ -171,16 +181,11 @@ export function BulkBatchProgressPage(): ReactElement {
     connectionsQuery.data?.find((c) => c.id === batch.connectionId)?.name ??
     batch.connectionId;
 
-  const succeededPct =
-    batch.totalCount > 0
-      ? Math.round((batch.succeededCount / batch.totalCount) * 100)
-      : 0;
-  const failedPct =
-    batch.totalCount > 0
-      ? Math.round((batch.failedCount / batch.totalCount) * 100)
-      : 0;
+  const succeededShare = batch.totalCount > 0 ? batch.succeededCount / batch.totalCount : 0;
+  const failedShare = batch.totalCount > 0 ? batch.failedCount / batch.totalCount : 0;
+  const percentOptions = { maximumFractionDigits: 0 };
 
-  const elapsed = computeElapsed(batch.createdAt, batch.updatedAt);
+  const elapsed = format.duration(elapsedMs(batch.createdAt, batch.updatedAt)) ?? '—';
   const accountNotice =
     accountRefusal && split.account.length > 0
       ? accountRefusal.describe({
@@ -194,65 +199,73 @@ export function BulkBatchProgressPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow="Operations · Listings"
-      title={
-        <>
-          Bulk batch{' '}
-          <span
-            className="mono-text"
-            style={{ fontSize: 18, color: 'var(--text-muted)', fontWeight: 500 }}
-          >
-            {batch.id.slice(0, 8)}
-          </span>
-        </>
-      }
-      description={
-        <>
-          Status <BatchStatusLabel status={batch.status} /> · {connectionName}{' '}
-          · {batch.totalCount.toLocaleString()} {batch.totalCount === 1 ? 'variant' : 'variants'}
-        </>
-      }
+      eyebrow={copy.eyebrow}
+      title={renderRich(
+        copy.title,
+        {
+          id: (text) => (
+            <span
+              className="mono-text"
+              style={{ fontSize: 18, color: 'var(--text-muted)', fontWeight: 500 }}
+            >
+              {text}
+            </span>
+          ),
+        },
+        { batchId: batch.id.slice(0, 8) },
+      )}
+      description={renderRich(
+        plural(batch.totalCount, copy.statusLine),
+        { status: () => <BatchStatusLabel status={batch.status} copy={copy} /> },
+        { connection: connectionName },
+      )}
       actions={
         <Link to="/listings" className="button">
-          Open in /listings →
+          {copy.openListings} <span aria-hidden="true">→</span>
         </Link>
       }
     >
       <div className="bulk-batch__kpi-strip">
         <MetricCard
-          label="Total"
-          value={batch.totalCount.toLocaleString()}
-          description={`Submitted ${formatRelative(batch.createdAt)}`}
+          label={copy.metrics.total}
+          value={format.number(batch.totalCount)}
+          description={interpolate(copy.metrics.submitted, {
+            when: isValidIso(batch.createdAt) ? format.relativeTime(batch.createdAt) : '—',
+          })}
         />
         <MetricCard
-          label={`Succeeded · ${succeededPct.toString()}%`}
-          value={batch.succeededCount.toLocaleString()}
-          description="Offers live on marketplace"
+          label={interpolate(copy.metrics.succeeded, {
+            percent: format.percent(succeededShare, percentOptions),
+          })}
+          value={format.number(batch.succeededCount)}
+          description={copy.metrics.succeededDescription}
           tone="success"
         />
         <MetricCard
-          label={`Failed · ${failedPct.toString()}%`}
-          value={batch.failedCount.toLocaleString()}
+          label={interpolate(copy.metrics.failed, {
+            percent: format.percent(failedShare, percentOptions),
+          })}
+          value={format.number(batch.failedCount)}
           description={
             batch.failedCount === 0
-              ? 'No failures'
+              ? copy.metrics.noFailures
               : write.visible
-                ? 'Recovery available below'
-                : 'Recovery needs write access'
+                ? copy.metrics.recoveryAvailable
+                : copy.metrics.recoveryNeedsWrite
           }
           tone={batch.failedCount > 0 ? 'error' : 'neutral'}
         />
         <MetricCard
-          label="In progress"
-          value={inProgress.toLocaleString()}
-          description={isTerminal ? 'Batch closed' : 'Polling every 5 s'}
+          label={copy.metrics.inProgress}
+          value={format.number(inProgress)}
+          description={isTerminal ? copy.metrics.batchClosed : copy.metrics.polling}
           tone={inProgress > 0 ? 'info' : 'neutral'}
         />
       </div>
 
       {!isTerminal ? (
         <Alert tone="info">
-          <strong>Batch in progress.</strong> Polling for updates every 5 seconds.
+          {renderRich(copy.inProgressAlert, { strong: (text) => <strong>{text}</strong> })}
         </Alert>
       ) : null}
 
@@ -272,12 +285,12 @@ export function BulkBatchProgressPage(): ReactElement {
         <section className="batch-triage" aria-labelledby="batch-triage-title">
           <h2 className="batch-triage__title" id="batch-triage-title">
             {!isTerminal
-              ? plural(batch.failedCount, copy.triage.failedSoFar)
+              ? plural(batch.failedCount, batchCopy.triage.failedSoFar)
               : batch.succeededCount === 0
-                ? plural(batch.failedCount, copy.triage.failedNothingLive)
-                : `${plural(batch.totalCount, copy.triage.failedOfTotal, {
-                    failed: formatCount(batch.failedCount),
-                  })} ${plural(batch.succeededCount, copy.triage.liveOffers)}`}
+                ? plural(batch.failedCount, copy.recovery.allFailed)
+                : `${plural(batch.totalCount, copy.recovery.someFailed, {
+                    failed: format.number(batch.failedCount),
+                  })} ${plural(batch.succeededCount, copy.recovery.someLive)}`}
           </h2>
           <ul className="batch-triage__list">
             {showAccountRow && accountNotice ? (
@@ -290,7 +303,7 @@ export function BulkBatchProgressPage(): ReactElement {
                     <figure className="batch-triage__quote">
                       <blockquote>{split.firstAccountError.message}</blockquote>
                       <figcaption>
-                        {interpolate(copy.accountRefused.providerSaid, { name: connectionName })}{' '}
+                        {interpolate(batchCopy.accountRefused.providerSaid, { name: connectionName })}{' '}
                         <code>{split.firstAccountError.code}</code>
                       </figcaption>
                     </figure>
@@ -306,7 +319,7 @@ export function BulkBatchProgressPage(): ReactElement {
                     >
                       {accountNotice.action.label}
                       <span aria-hidden="true"> ↗</span>
-                      <span className="sr-only"> {copy.triage.opensInNewTab}</span>
+                      <span className="sr-only"> {batchCopy.triage.opensInNewTab}</span>
                     </a>
                   </div>
                 ) : null}
@@ -317,12 +330,12 @@ export function BulkBatchProgressPage(): ReactElement {
                 <span className="batch-triage__mark" aria-hidden="true" />
                 <div className="batch-triage__body">
                   <p className="batch-triage__cause">
-                    {plural(offerFailedCount, copy.triage.offerCause)}
+                    {plural(offerFailedCount, batchCopy.triage.offerCause)}
                   </p>
                   <p className="batch-triage__detail">
                     {fixTarget.blocker !== null
                       ? describeBatchFixBlocker(fixTarget.blocker)
-                      : copy.triage.offerDetail}
+                      : batchCopy.triage.offerDetail}
                   </p>
                 </div>
                 <div className="batch-triage__action">
@@ -336,12 +349,12 @@ export function BulkBatchProgressPage(): ReactElement {
                         batchId: batch.id,
                       })}
                     >
-                      {interpolate(copy.triage.fixAndResubmit, { n: formatCount(offerFailedCount) })}
+                      {interpolate(copy.recovery.fixAndResubmit, { count: format.number(offerFailedCount) })}
                     </Link>
                   ) : (
-                    <ReadOnlyLock active={write.demoReadOnly} message={DEMO_LOCK_MESSAGE}>
+                    <ReadOnlyLock active={write.demoReadOnly} message={copy.demoLock}>
                       <Button tone="primary" className="button--sm" disabled>
-                        {interpolate(copy.triage.fixAndResubmit, { n: formatCount(offerFailedCount) })}
+                        {interpolate(copy.recovery.fixAndResubmit, { count: format.number(offerFailedCount) })}
                       </Button>
                     </ReadOnlyLock>
                   )}
@@ -352,13 +365,13 @@ export function BulkBatchProgressPage(): ReactElement {
               <li className="batch-triage__row batch-triage__row--neutral">
                 <span className="batch-triage__mark" aria-hidden="true" />
                 <div className="batch-triage__body">
-                  <p className="batch-triage__cause">{copy.triage.retryCause}</p>
+                  <p className="batch-triage__cause">{batchCopy.triage.retryCause}</p>
                   <p className="batch-triage__detail">
-                    {offerFailedCount === 0 ? copy.recovery.accountOnly : copy.triage.retryDetail}
+                    {offerFailedCount === 0 ? batchCopy.recovery.accountOnly : batchCopy.triage.retryDetail}
                   </p>
                 </div>
                 <div className="batch-triage__action">
-                  <ReadOnlyLock active={write.demoReadOnly} message={DEMO_LOCK_MESSAGE}>
+                  <ReadOnlyLock active={write.demoReadOnly} message={copy.demoLock}>
                     <Button
                       tone="secondary"
                       className="button--sm"
@@ -366,8 +379,10 @@ export function BulkBatchProgressPage(): ReactElement {
                       disabled={!write.canWrite || retryMutation.isPending}
                     >
                       {retryMutation.isPending
-                        ? copy.triage.retrying
-                        : interpolate(copy.triage.retryUnchanged, { n: formatCount(batch.failedCount) })}
+                        ? copy.recovery.retrying
+                        : interpolate(copy.recovery.retryUnchanged, {
+                            count: format.number(batch.failedCount),
+                          })}
                     </Button>
                   </ReadOnlyLock>
                 </div>
@@ -381,19 +396,27 @@ export function BulkBatchProgressPage(): ReactElement {
         records={batch.records}
         buildFixUrl={write.canWrite ? buildRowFixUrl : undefined}
         accountLevelRecordIds={accountLevelRecordIds}
-        accountLevelRowLabel={copy.accountRefused.rowPointer}
+        accountLevelRowLabel={batchCopy.accountRefused.rowPointer}
       />
 
       {isTerminal ? (
         <div className="bulk-batch__summary">
           <div className="bulk-batch__summary-main">
             <strong>
-              Batch {batch.status === 'completed' ? 'completed' : 'ended'} in {elapsed}
+              {interpolate(
+                batch.status === 'completed' ? copy.summary.completedIn : copy.summary.endedIn,
+                { elapsed },
+              )}
             </strong>{' '}
-            · {batch.succeededCount.toLocaleString()} created · {batch.failedCount.toLocaleString()} failed
+            <span aria-hidden="true">·</span>{' '}
+            {plural(batch.succeededCount, copy.summary.created)}{' '}
+            <span aria-hidden="true">·</span>{' '}
+            {plural(batch.failedCount, copy.summary.failed)}
           </div>
           <div className="bulk-batch__summary-links">
-            <Link to="/listings">Open in /listings →</Link>
+            <Link to="/listings">
+              {copy.openListings} <span aria-hidden="true">→</span>
+            </Link>
           </div>
         </div>
       ) : null}
@@ -403,43 +426,34 @@ export function BulkBatchProgressPage(): ReactElement {
 
 function BatchStatusLabel({
   status,
+  copy,
 }: {
   status: BulkBatchStatus;
+  copy: BulkBatchProgressCopy;
 }): ReactElement {
+  const labels = copy.statuses;
   switch (status) {
     case 'pending':
-      return <StatusBadge tone="neutral" withDot>pending</StatusBadge>;
+      return <StatusBadge tone="neutral" withDot>{labels.pending}</StatusBadge>;
     case 'running':
-      return <StatusBadge tone="info" withDot pulse>running</StatusBadge>;
+      return <StatusBadge tone="info" withDot pulse>{labels.running}</StatusBadge>;
     case 'completed':
-      return <StatusBadge tone="success" withDot>completed</StatusBadge>;
+      return <StatusBadge tone="success" withDot>{labels.completed}</StatusBadge>;
     case 'partially-failed':
-      return <StatusBadge tone="warning" withDot>partially failed</StatusBadge>;
+      return <StatusBadge tone="warning" withDot>{labels.partiallyFailed}</StatusBadge>;
     case 'failed':
-      return <StatusBadge tone="error" withDot>failed</StatusBadge>;
+      return <StatusBadge tone="error" withDot>{labels.failed}</StatusBadge>;
   }
 }
 
-function computeElapsed(startIso: string, endIso: string): string {
+/** Wall time between two stamps, or null when either is unreadable or out of order. */
+function elapsedMs(startIso: string, endIso: string): number | null {
   const start = new Date(startIso).getTime();
   const end = new Date(endIso).getTime();
-  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return '—';
-  const seconds = Math.round((end - start) / 1000);
-  if (seconds < 60) return `${seconds.toString()}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remSeconds = seconds % 60;
-  return remSeconds > 0
-    ? `${minutes.toString()}m ${remSeconds.toString()}s`
-    : `${minutes.toString()}m`;
+  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return null;
+  return end - start;
 }
 
-function formatRelative(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '—';
-  const seconds = Math.round((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return `${seconds.toString()}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes.toString()} min ago`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours.toString()} h ago`;
+function isValidIso(iso: string): boolean {
+  return !Number.isNaN(new Date(iso).getTime());
 }

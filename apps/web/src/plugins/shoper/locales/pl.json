@@ -1,0 +1,85 @@
+{
+  "plugin": {
+    "setupCard": {
+      "badge": "Token API",
+      "description": "Połącz sklep Shoper za pomocą jego tokenu API."
+    }
+  },
+  "shoperConnectionActions": {
+    "configure": "Skonfiguruj webhooki",
+    "configuring": "Konfigurowanie...",
+    "currentlyConfigured": "Obecnie skonfigurowane ✓",
+    "description": "Rejestruje webhook w Shoper, aby nowe i zmienione zamówienia oraz produkty od razu trafiały do OpenLinker. Wymaga adresu URL zwrotnego OL oraz włączonej możliwości Źródło zamówień lub Główny katalog produktów; uruchom ponownie po włączeniu jednej z nich.",
+    "reconfigure": "Skonfiguruj ponownie",
+    "title": "Skonfiguruj webhooki",
+    "toast": {
+      "configured": {
+        "description": "Shoper będzie teraz powiadamiać OpenLinker o utworzeniu lub zmianie zamówienia albo produktu.",
+        "title": "Webhooki skonfigurowane"
+      },
+      "failed": {
+        "notAccepted": "Shoper nie przyjął rejestracji webhooka.",
+        "title": "Nie udało się zarejestrować webhooka"
+      }
+    }
+  },
+  "shoperConnectionConfig": {
+    "positiveInteger": {
+      "shoperCancelledStatusId": "ID statusu anulowania musi być dodatnią liczbą całkowitą.",
+      "shoperInProgressStatusId": "ID statusu w realizacji musi być dodatnią liczbą całkowitą.",
+      "shoperParcelShippingId": "ID metody dostawy dla przesyłek musi być dodatnią liczbą całkowitą.",
+      "shoperPaymentId": "ID metody płatności musi być dodatnią liczbą całkowitą.",
+      "shoperShippingId": "ID metody dostawy musi być dodatnią liczbą całkowitą.",
+      "shoperStatusId": "ID statusu zamówienia musi być dodatnią liczbą całkowitą."
+    }
+  },
+  "shoperOrderDefaultsSection": {
+    "fields": {
+      "shoperCancelledStatusId": {
+        "description": "Status, który otrzymuje zamówienie, gdy OpenLinker anuluje je w sklepie. Brak ustawienia: pierwszy aktywny status typu anulowanie.",
+        "label": "Status anulowanych zamówień"
+      },
+      "shoperInProgressStatusId": {
+        "description": "Status, który otrzymuje zamówienie, gdy OpenLinker zgłasza, że jest w realizacji. Brak ustawienia: pierwszy aktywny status w realizacji.",
+        "label": "Status zamówień w realizacji"
+      },
+      "shoperParcelShippingId": {
+        "description": "Używana dla paczki, gdy OpenLinker oznacza zamówienie jako wysłane. Najpierw próbowana jest metoda dostawy z zamówienia. Jeśli Shoper ją odrzuci (dzieje się tak w przypadku niektórych metod zintegrowanych z przewoźnikiem, np. InPost lub DPD), używana jest ta metoda, więc wybierz zwykłą. Brak ustawienia: pierwsza zwykła metoda w sklepie.",
+        "label": "Metoda dostawy dla przesyłek"
+      },
+      "shoperPaymentId": {
+        "description": "Shoper wymaga metody płatności, a OpenLinker nie ma mapowania płatności, więc ta metoda jest używana dla każdego zamówienia.",
+        "label": "Domyślna metoda płatności"
+      },
+      "shoperShippingId": {
+        "description": "Używana, gdy metoda dostawy zamówienia nie ma mapowania. Shoper wymaga jej do utworzenia zamówienia.",
+        "label": "Domyślna metoda dostawy"
+      },
+      "shoperStatusId": {
+        "description": "Używany, gdy status zamówienia nie ma mapowania. Wybierz status, od którego mają zaczynać nowe zamówienia.",
+        "label": "Domyślny status zamówienia"
+      }
+    },
+    "loadFailed": "Nie udało się wczytać listy z Shoper",
+    "loading": "Wczytywanie z Shoper…",
+    "notReceivingOrders": {
+      "body": "Domyślne ustawienia dostawy, płatności i statusu są potrzebne tylko wtedy, gdy ten sklep przyjmuje zamówienia. Włącz możliwość Obsługa zamówień, aby je ustawić.",
+      "title": "Domyślne ustawienia zamówień"
+    },
+    "notSet": "Nie ustawiono",
+    "storedId": "Zapisane ID {id} (brak na liście sklepu)"
+  },
+  "shoperSetupRoute": {
+    "crumb": "Połącz Shoper"
+  },
+  "shoperStructuredSection": {
+    "callbackUrl": {
+      "description": "Publiczny adres URL OpenLinker, pod którym Shoper może się z nim połączyć. Shoper wywołuje go, gdy zmienia się zamówienie lub produkt. Wstępnie wypełniony adresem API używanym przez tę aplikację; musi być dostępny z internetu. Wymagany do akcji „Skonfiguruj webhooki”.",
+      "label": "Adres URL zwrotny OL"
+    },
+    "noWebhookCapability": {
+      "body": "Webhooki dostarczają zamówienia, gdy w tym połączeniu włączono Źródło zamówień, a zmiany produktów, gdy włączono Główny katalog produktów. Najpierw włącz jedną z tych możliwości, a potem skonfiguruj webhooki.",
+      "title": "Nic tutaj nie korzysta z webhooków"
+    }
+  }
+}

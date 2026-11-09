@@ -1,0 +1,93 @@
+{
+  "posthogSettingsDialog": {
+    "apiKeyConfigured": "Skonfigurowany. Zostaw puste, aby go zachować, albo wklej nowy klucz, aby go wymienić.",
+    "apiKeyLabel": "Klucz API",
+    "apiKeyNotSet": "Nie ustawiono klucza. Wklej klucz API projektu PostHog.",
+    "apiKeyPlaceholder": "phc_...",
+    "autocaptureLabel": "Automatycznie rejestruj kliknięcia, wysłania formularzy i zmiany stron",
+    "cancel": "Anuluj",
+    "customHostLabel": "Własny adres URL hosta",
+    "customHostPlaceholder": "https://posthog.yourcompany.com",
+    "description": "Skonfiguruj śledzenie PostHog działające tylko w wersji demo. Wartości tutaj są zapisywane w bazie danych i mają pierwszeństwo przed zmiennymi środowiskowymi.",
+    "enableLabel": "Włącz PostHog",
+    "noKeyHint": "PostHog jest włączony, ale nie ustawiono jeszcze klucza API - zdarzenia nie będą rejestrowane, dopóki go nie skonfigurujesz.",
+    "overrideMessage": {
+      "few": "{vars} są ustawione w środowisku tego wdrożenia. Po zapisaniu tutaj używane będą wartości poniżej, dopóki nie przywrócisz ustawień środowiska.",
+      "many": "{vars} są ustawione w środowisku tego wdrożenia. Po zapisaniu tutaj używane będą wartości poniżej, dopóki nie przywrócisz ustawień środowiska.",
+      "one": "{vars} jest ustawiona w środowisku tego wdrożenia. Po zapisaniu tutaj używane będą wartości poniżej, dopóki nie przywrócisz ustawień środowiska.",
+      "other": "{vars} są ustawione w środowisku tego wdrożenia. Po zapisaniu tutaj używane będą wartości poniżej, dopóki nie przywrócisz ustawień środowiska."
+    },
+    "overrideTitle": "To nadpisuje zmienną środowiskową",
+    "region": {
+      "custom": "Własny host (na własnym serwerze)",
+      "eu": "EU Cloud (eu.i.posthog.com)",
+      "us": "US Cloud (us.i.posthog.com)"
+    },
+    "regionLabel": "Region",
+    "reset": "Przywróć ustawienia środowiska",
+    "resetErrorTitle": "Nie udało się przywrócić ustawień środowiska",
+    "resetToastDescription": "Analityka korzysta teraz z ustawień środowiska wdrożenia, jeśli są ustawione.",
+    "resetToastTitle": "Przywrócono ustawienia środowiska",
+    "resetting": "Przywracanie…",
+    "resolvedHostEmpty": "(wpisz host)",
+    "resolvedHostLabel": "Używany host",
+    "save": "Zapisz zmiany",
+    "saveErrorTitle": "Nie udało się zapisać ustawień analityki",
+    "savedToastDescription": "Odwiedzający wersję demo, którzy zgodzą się na analitykę, będą teraz śledzeni według zaktualizowanej konfiguracji.",
+    "savedToastTitle": "Ustawienia analityki zapisane",
+    "saving": "Zapisywanie…",
+    "sendTest": "Wyślij zdarzenie testowe",
+    "sending": "Wysyłanie…",
+    "sessionRecordingLabel": "Nagrywanie sesji (cały tekst i pola zawsze maskowane)",
+    "testAccepted": "Przyjęte",
+    "testMissingInput": "Najpierw wpisz klucz API i używany host",
+    "testRejected": "Odrzucone - sprawdź, czy klucz i region dotyczą tego samego projektu PostHog",
+    "title": "Edytuj ustawienia analityki",
+    "unknownError": "Nieznany błąd"
+  },
+  "posthogSettingsFormSchema": {
+    "apiKeyTooLong": "Klucz API jest za długi (maks. {max} znaków)",
+    "hostInvalid": "Wpisz poprawny adres URL http(s)",
+    "hostRequired": "Adres URL hosta jest wymagany dla własnego regionu",
+    "hostTooLong": "Host jest za długi (maks. {max} znaków)"
+  },
+  "posthogSettingsTile": {
+    "adminOnly": "Tylko administratorzy",
+    "apiKeyLabel": "Klucz API",
+    "autocaptureLabel": "Autorejestracja",
+    "configured": "Skonfigurowany",
+    "disabled": "Wyłączone",
+    "disabledMessage": "Nagrywanie sesji i rejestrowanie odsłon są wyłączone. Dla odwiedzających wersję demo nie jest ładowany żaden skrypt PostHog.",
+    "edit": "Edytuj",
+    "enabled": "Włączone",
+    "eyebrow": "Analityka produktu",
+    "loadError": "Nie udało się wczytać ustawień analityki: {message}",
+    "loading": "Wczytywanie ustawień analityki…",
+    "notSet": "Nie ustawiono",
+    "off": "Wył.",
+    "on": "Wł.",
+    "overridesEnv": "Nadpisuje środowisko",
+    "region": {
+      "custom": "Własny host",
+      "eu": "EU Cloud",
+      "us": "US Cloud"
+    },
+    "regionLabel": "Region",
+    "sessionRecordingLabel": "Nagrywanie sesji",
+    "sourceEnvironment": "Środowisko",
+    "sourceLabel": "Źródło",
+    "sourceSaved": "Zapisane ustawienia",
+    "title": "PostHog"
+  },
+  "productEventsSection": {
+    "catalogTitle": "Katalog zdarzeń (tylko do odczytu)",
+    "groupsTitle": "Grupy zdarzeń",
+    "hint": "Działa niezależnie od autorejestracji - nazwane zdarzenia biznesowe dla czytelniejszych lejków marketingowych.",
+    "noGroups": "Nie zdefiniowano jeszcze grup zdarzeń.",
+    "noProps": "(brak)",
+    "props": "właściwości: {props}",
+    "separateMessage": "openlinker.io używa własnego projektu PostHog - ten panel steruje tylko zdarzeniami wersji demo w aplikacji.",
+    "separateTitle": "Oddzielone od strony marketingowej",
+    "toggleLabel": "Zdarzenia produktowe"
+  }
+}

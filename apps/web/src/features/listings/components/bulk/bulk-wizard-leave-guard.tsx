@@ -19,6 +19,7 @@
  */
 import { useCallback, useEffect, type ReactElement, type RefObject } from 'react';
 import { useBlocker, type BlockerFunction } from 'react-router-dom';
+import { useMessages } from '../../../../shared/i18n';
 import { ConfirmDialog } from '../../../../shared/ui';
 
 interface BulkWizardLeaveGuardProps {
@@ -54,6 +55,7 @@ function NavigationBlocker({ active, released }: BulkWizardLeaveGuardProps): Rea
     [active, released],
   );
   const blocker = useBlocker(shouldBlock);
+  const copy = useMessages('listings').bulkWizardLeaveGuard;
 
   return (
     <ConfirmDialog
@@ -61,10 +63,10 @@ function NavigationBlocker({ active, released }: BulkWizardLeaveGuardProps): Rea
       onOpenChange={(open) => {
         if (!open && blocker.state === 'blocked') blocker.reset();
       }}
-      title="Leave this batch?"
-      description="You have unsaved edits in this batch and nothing has been submitted yet. Leaving now discards them."
-      cancelLabel="Keep editing"
-      confirmLabel="Discard and leave"
+      title={copy.title}
+      description={copy.description}
+      cancelLabel={copy.keepEditing}
+      confirmLabel={copy.discardAndLeave}
       tone="danger"
       initialFocus="cancel"
       onConfirm={() => {

@@ -18,7 +18,7 @@ import {
 import { RoleValues } from './nav-registry.types';
 import type { LiveNavGroup, NavGroup } from './nav-registry.types';
 import type { OmsRoutingState } from '../features/fulfillment-authority';
-import { NAV_DEMO_RESTRICTED_MESSAGE } from '../shared/config/demo-mode';
+import { navDemoRestrictedMessage } from '../shared/config/demo-mode';
 import { ANONYMOUS_SESSION } from '../shared/auth/session.types';
 import type { Session } from '../shared/auth/session.types';
 
@@ -56,8 +56,8 @@ describe('buildNavGroups', () => {
       if (ai?.kind !== 'restricted' || admin?.kind !== 'restricted') {
         throw new Error('expected restricted groups');
       }
-      expect(ai.reason).toBe(NAV_DEMO_RESTRICTED_MESSAGE);
-      expect(admin.reason).toBe(NAV_DEMO_RESTRICTED_MESSAGE);
+      expect(ai.reason).toBe(navDemoRestrictedMessage());
+      expect(admin.reason).toBe(navDemoRestrictedMessage());
       // Item labels are preserved so the operator still sees what exists.
       expect(admin.items.map((i) => i.label)).toContain('Users');
     });
@@ -180,11 +180,11 @@ describe('buildNavGroups', () => {
       ['off', false],
       ['unknown', false],
     ])('should resolve a requiresOms item to %s → %s', (state, visible) => {
-      expect(isOmsNavItemVisible({ to: '/x', label: 'X', requiresOms: true }, state)).toBe(visible);
+      expect(isOmsNavItemVisible({ requiresOms: true }, state)).toBe(visible);
     });
 
     it('should never hide an item that does not require OMS', () => {
-      expect(isOmsNavItemVisible({ to: '/x', label: 'X' }, 'off')).toBe(true);
+      expect(isOmsNavItemVisible({}, 'off')).toBe(true);
     });
   });
 
@@ -318,7 +318,7 @@ describe('buildNavGroups', () => {
     ];
     const PACKER_HIDDEN_OPERATIONS_ITEMS = [
       'Analytics',
-      'Insights',
+      'System health',
       'Orders',
       'Customers',
       // Hidden via its `requiresPermission: 'fulfillment:read'` gate
@@ -358,7 +358,7 @@ describe('buildNavGroups', () => {
     // is deliberately excluded here: it is gated by permission, not role, and
     // `viewer` does not hold `orders:write` — asserting it visible to viewer
     // would fail against pre-existing, unrelated-to-#3221 behaviour.
-    it.each(['Analytics', 'Insights', 'Orders', 'Customers', 'Sales documents'])(
+    it.each(['Analytics', 'System health', 'Orders', 'Customers', 'Sales documents'])(
       '%s is visible to admin, operator, and viewer',
       (label) => {
         for (const role of ['admin', 'operator', 'viewer']) {
@@ -413,7 +413,7 @@ describe('buildNavGroups', () => {
       expect(navRoleOf(ANONYMOUS_SESSION)).toBeUndefined();
       expect(
         isNavItemVisible(
-          { to: '/bench', label: 'Pack bench', requiresRole: ['packer'] },
+          { requiresRole: ['packer'] },
           {
             role: navRoleOf(ANONYMOUS_SESSION),
           }
@@ -446,7 +446,7 @@ describe('buildNavGroups', () => {
     });
 
     it('an item declaring neither gate is always visible', () => {
-      expect(isNavItemVisible({ to: '/orders', label: 'Orders' }, {})).toBe(true);
+      expect(isNavItemVisible({}, {})).toBe(true);
     });
 
     it('an item declaring both gates must satisfy both', () => {

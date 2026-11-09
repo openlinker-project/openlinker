@@ -10,33 +10,35 @@ import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { CreateConnectionForm } from '../../features/connections/components/create-connection-form';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { renderRich, useMessages } from '../../shared/i18n';
 
 export function AdvancedNewConnectionPage(): ReactElement {
+  const copy = useMessages('connections');
+  const page = copy.advancedNewConnectionPage;
   return (
     <PageLayout
-      eyebrow="Integrations"
-      title="Advanced connection setup"
-      description="Direct form for connection fields — adapter key, credentials reference, and raw config JSON."
+      eyebrow={copy.setup.eyebrow}
+      title={page.title}
+      description={page.description}
       actions={
         <Link className="button button--secondary" to="/connections/new">
-          Back
+          {copy.setup.back}
         </Link>
       }
       summary={
         <div className="toolbar__group">
-          <span className="toolbar-chip">Raw form</span>
-          <span className="toolbar-chip">Escape hatch</span>
+          <span className="toolbar-chip">{page.rawFormChip}</span>
+          <span className="toolbar-chip">{page.escapeHatchChip}</span>
         </div>
       }
     >
       <div className="advanced-banner" role="note">
         <div>
-          <p className="advanced-banner__title">Escape hatch — prefer the guided flow</p>
+          <p className="advanced-banner__title">{page.bannerTitle}</p>
           <p>
-            This form exposes raw adapter keys, credential references, and config JSON. Use the{' '}
-            <Link to="/connections/new">guided setup flow</Link> unless you need
-            direct control to debug an integration or bootstrap a platform without a dedicated
-            flow.
+            {renderRich(page.bannerBody, {
+              link: (text) => <Link to="/connections/new">{text}</Link>,
+            })}
           </p>
         </div>
       </div>

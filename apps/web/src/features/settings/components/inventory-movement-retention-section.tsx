@@ -13,6 +13,7 @@ import type { OperationalSettingsView } from '../api/operational-settings.types'
 import type { InventoryMovementRetentionDraft } from '../hooks/use-inventory-movement-retention-draft';
 import { limitsFor } from '../lib/resolve-value-limits';
 import { PacingValueField } from './pacing-value-field';
+import { useMessages } from '../../../shared/i18n';
 
 /** Days are dragged in fives; any whole day can still be typed. */
 const RETENTION_STEP_DAYS = 5;
@@ -26,6 +27,7 @@ export function InventoryMovementRetentionSection({
   view,
   retention,
 }: InventoryMovementRetentionSectionProps): ReactElement | null {
+  const copy = useMessages('settings').inventoryMovementRetentionSection;
   const setting = view.inventoryMovementRetentionDays;
   if (setting === undefined || retention.days === null) {
     return null;
@@ -39,23 +41,22 @@ export function InventoryMovementRetentionSection({
     >
       <header className="pacing-card__header">
         <div>
-          <p className="eyebrow">Housekeeping</p>
+          <p className="eyebrow">{copy.eyebrow}</p>
           <h3 className="section-title" id="pacing-inventory-history-title">
-            Stock history retention
-          </h3>
+            {copy.title}          </h3>
         </div>
-        <span className="panel__meta">saved on its own</span>
+        <span className="panel__meta">{copy.savedOnItsOwn}</span>
       </header>
 
       <div className="pacing-card__fields">
         <PacingValueField
-          label="Stock history kept for"
-          ariaLabel="Days stock movement history is kept"
-          description="How long a stock movement (a sale, a return restock, a correction, a change found at a sync) stays in the history. Older rows are deleted in small batches."
+          label={copy.field.label}
+          ariaLabel={copy.field.ariaLabel}
+          description={copy.field.description}
           value={retention.days}
           limits={limitsFor(view, 'inventoryMovementRetentionDays')}
           step={RETENTION_STEP_DAYS}
-          unit="days"
+          unit={copy.unitDays}
           savedValue={setting.value}
           savedSource={setting.source}
           savedAboveRecommended={setting.aboveRecommended === true}
@@ -75,7 +76,7 @@ export function InventoryMovementRetentionSection({
       {setting.source === 'setting' ? (
         <div className="pacing-save__actions">
           <Button tone="secondary" disabled={retention.saving} onClick={retention.clear}>
-            Use the default
+            {copy.useDefault}
           </Button>
         </div>
       ) : null}
@@ -83,18 +84,17 @@ export function InventoryMovementRetentionSection({
       {retention.changed ? (
         <div className="pacing-save pacing-save--inline" data-dirty="true">
           <div className="pacing-save__text">
-            <p className="pacing-save__count">Stock history retention changed</p>
-            <p className="pacing-save__status">Saves on its own, no confirmation.</p>
+            <p className="pacing-save__count">{copy.changed}</p>
+            <p className="pacing-save__status">{copy.savesOnItsOwn}</p>
           </div>
           <div className="pacing-save__actions">
             <Button tone="secondary" onClick={retention.reset}>
-              Undo
-            </Button>
+              {copy.undo}            </Button>
             <Button
               disabled={retention.saving || retention.needsAcknowledgement}
               onClick={retention.save}
             >
-              Save history retention
+              {copy.save}
             </Button>
           </div>
         </div>

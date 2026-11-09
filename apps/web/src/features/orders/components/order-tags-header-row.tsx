@@ -19,13 +19,16 @@ import { OrderTagPicker } from './order-tag-picker';
 import { useOrderTagIdsQuery } from '../hooks/use-order-tag-ids-query';
 import { useOrderTagsQuery } from '../hooks/use-order-tags-query';
 import { useUnassignOrderTagMutation } from '../hooks/use-order-tag-mutations';
-import { ORDER_TAGS_COPY } from '../lib/order-tags.copy';
+import { useMessages } from '../../../shared/i18n';
+import { serverErrorText } from '../lib/server-error-text';
 
 export interface OrderTagsHeaderRowProps {
   internalOrderId: string;
 }
 
 export function OrderTagsHeaderRow({ internalOrderId }: OrderTagsHeaderRowProps): ReactElement | null {
+  const copy = useMessages('orders').orderTags;
+  const serverSaid = useMessages('orders').common.serverSaid;
   const demoMode = useDemoMode();
   const write = useWriteAccess('orders:write', demoMode);
   const canWrite = write.canWrite;
@@ -49,8 +52,8 @@ export function OrderTagsHeaderRow({ internalOrderId }: OrderTagsHeaderRowProps)
 
   return (
     <div className="order-header__tags" id="detail-tags">
-      <span className="order-header__tags-label">{ORDER_TAGS_COPY.headerLabel}</span>
-      {assigned.length === 0 ? <span className="text-muted">{ORDER_TAGS_COPY.noTags}</span> : null}
+      <span className="order-header__tags-label">{copy.headerLabel}</span>
+      {assigned.length === 0 ? <span className="text-muted">{copy.noTags}</span> : null}
       {assigned.map((tag) => (
         <OrderTagChip
           key={tag.id}
@@ -62,8 +65,8 @@ export function OrderTagsHeaderRow({ internalOrderId }: OrderTagsHeaderRowProps)
                     onError: (error) => {
                       showToast({
                         tone: 'error',
-                        title: ORDER_TAGS_COPY.picker.saveErrorTitle,
-                        description: error.message || ORDER_TAGS_COPY.picker.saveErrorFallback,
+                        title: copy.picker.saveErrorTitle,
+                        description: serverErrorText(serverSaid, error.message, copy.picker.saveErrorFallback),
                       });
                     },
                   });

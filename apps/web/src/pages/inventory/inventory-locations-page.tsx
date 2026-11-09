@@ -17,6 +17,7 @@
 import { useMemo, useState, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { getMessages, interpolate, useMessages, usePlural, type PluralFn } from '../../shared/i18n';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
@@ -27,7 +28,7 @@ import { EmptyValue } from '../../shared/ui/empty-value';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { useToast } from '../../shared/ui/toast-provider';
 import { useWriteAccess } from '../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../shared/config/demo-mode';
 import { useDemoMode } from '../../features/system';
 import { usePlatforms } from '../../shared/plugins';
 import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
@@ -64,10 +65,16 @@ function statusTone(status: InventoryLocation['status']): StatusBadgeTone {
 // #3135 review: the wire value `inactive` was rendered verbatim, while
 // every other badge surface in this app renders operator copy and the
 // "Show retired" toggle beside it already calls the same state "retired".
-const STATUS_LABEL: Record<InventoryLocation['status'], string> = {
-  active: 'Active',
-  inactive: 'Retired',
+const STATUS_LABEL: Readonly<Record<InventoryLocation['status'], string>> = {
+  get active(): string {
+    return getMessages('inventory').inventoryLocationsPage.statuses.active;
+  },
+  get inactive(): string {
+    return getMessages('inventory').inventoryLocationsPage.statuses.inactive;
+  },
 };
+
+type LocationsPageCopy = ReturnType<typeof useMessages<'inventory'>>['inventoryLocationsPage'];
 
 // Guards against a malformed `?page=abc` producing NaN, which would
 // otherwise be sent straight through to the API as the `page` filter
@@ -81,20 +88,26 @@ function readPageParam(raw: string | null): number {
 // The `users-page.tsx` pager, adapted to 1-based paging and a `total` that
 // arrives in the SAME response as the rows (#2316's `PaginatedInventoryLocations`
 // — no two-stage-total machinery needed here, unlike `products-list-page.tsx`).
-function renderPagination(page: number, setPage: (next: number) => void, total: number): ReactElement | null {
+function renderPagination(
+  copy: LocationsPageCopy,
+  plural: PluralFn,
+  page: number,
+  setPage: (next: number) => void,
+  total: number,
+): ReactElement | null {
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   if (pageCount <= 1) return null;
   return (
     <div className="pagination">
       <span className="text-muted">
-        Page {page} of {pageCount} · {total} location{total === 1 ? '' : 's'}
+        {plural(total, copy.pagination.summary, { page, pages: pageCount })}
       </span>
       <div className="pagination__actions">
         <Button disabled={page <= 1} onClick={() => setPage(page - 1)}>
-          Previous
+          {copy.pagination.previous}
         </Button>
         <Button disabled={page >= pageCount} onClick={() => setPage(page + 1)}>
-          Next
+          {copy.pagination.next}
         </Button>
       </div>
     </div>
@@ -102,6 +115,8 @@ function renderPagination(page: number, setPage: (next: number) => void, total: 
 }
 
 export function InventoryLocationsPage(): ReactElement {
+  const copy = useMessages('inventory').inventoryLocationsPage;
+  const plural = usePlural();
   const [searchParams, setSearchParams] = useSearchParams();
   const demoMode = useDemoMode();
   const platforms = usePlatforms();
@@ -142,11 +157,11 @@ export function InventoryLocationsPage(): ReactElement {
       await reactivateMutation.mutateAsync({ id: location.id, patch: { status: 'active' } });
       showToast({
         tone: 'success',
-        title: `"${location.name}" reactivated`,
-        description: 'New stock can target it again.',
+        title: interpolate(copy.toasts.reactivatedTitle, { name: location.name }),
+        description: copy.toasts.reactivatedDescription,
       });
     } catch {
-      showToast({ tone: 'error', title: 'Reactivation failed', description: 'Try again.' });
+      showToast({ tone: 'error', title: copy.toasts.reactivateFailed, description: copy.toasts.tryAgain });
     }
   }
 
@@ -160,16 +175,16 @@ export function InventoryLocationsPage(): ReactElement {
       await retireMutation.mutateAsync({ id: location.id, patch: { status: 'inactive' } });
       showToast({
         tone: 'success',
-        title: `"${location.name}" retired`,
+        title: interpolate(copy.toasts.retiredTitle, { name: location.name }),
         // #3198 review: reversibility is the stated reason this action has no
         // confirm step, and the mockup says it out loud, so the operator was
         // the one party never told. The earlier #3068 note that removed this
         // clause was correct at the time - nothing then exposed reactivation
         // - and expired the moment `handleReactivate` above shipped.
-        description: 'Existing positions keep pointing at it, and it can be reactivated later.',
+        description: copy.toasts.retiredDescription,
       });
     } catch {
-      showToast({ tone: 'error', title: 'Retire failed', description: 'Try again.' });
+      showToast({ tone: 'error', title: copy.toasts.retireFailed, description: copy.toasts.tryAgain });
     }
   }
 
@@ -192,8 +207,8 @@ export function InventoryLocationsPage(): ReactElement {
     } catch (error) {
       showToast({
         tone: 'error',
-        title: 'Could not create the location',
-        description: error instanceof Error ? error.message : 'Try again.',
+        title: copy.toasts.bootstrapFailed,
+        description: error instanceof Error ? error.message : copy.toasts.tryAgain,
       });
     }
   }
@@ -254,7 +269,7 @@ export function InventoryLocationsPage(): ReactElement {
     () => [
       {
         id: 'location',
-        header: 'Location',
+        header: copy.columns.location,
         cell: (location) => (
           <div className="data-table__stack">
             <strong>{location.name}</strong>
@@ -267,24 +282,24 @@ export function InventoryLocationsPage(): ReactElement {
       },
       {
         id: 'kind',
-        header: 'Kind',
+        header: copy.columns.kind,
         cell: (location) => KIND_LABEL[location.kind],
       },
       {
         id: 'geo',
-        header: 'Country / postcode',
+        header: copy.columns.geo,
         cell: (location): ReactElement => {
           const geo = [location.countryIso2, location.postcode].filter(Boolean).join(' · ');
-          return geo ? <span className="mono-text">{geo}</span> : <EmptyValue label="No country/postcode" />;
+          return geo ? <span className="mono-text">{geo}</span> : <EmptyValue label={copy.columns.noGeo} />;
         },
         hideBelow: 1024,
       },
       {
         id: 'owner',
-        header: 'Owning connection',
+        header: copy.columns.owner,
         cell: (location): ReactElement => {
           if (!location.ownerConnectionId) {
-            return <EmptyValue label="No owning connection" />;
+            return <EmptyValue label={copy.columns.noOwner} />;
           }
           const connection = connectionById.get(location.ownerConnectionId) ?? null;
           return (
@@ -309,7 +324,7 @@ export function InventoryLocationsPage(): ReactElement {
       },
       {
         id: 'status',
-        header: 'Status',
+        header: copy.columns.status,
         cell: (location) => (
           <StatusBadge tone={statusTone(location.status)} className="loc-status-badge">
             {STATUS_LABEL[location.status]}
@@ -322,47 +337,47 @@ export function InventoryLocationsPage(): ReactElement {
         cell: (location) =>
           write.visible ? (
             <div className="table-actions">
-              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                 <Button
                   className="button--sm"
                   tone="secondary"
                   disabled={write.demoReadOnly}
                   onClick={() => setDialogTarget({ mode: 'edit', location })}
                 >
-                  Edit
+                  {copy.actions.edit}
                 </Button>
               </ReadOnlyLock>
               {location.status === 'active' ? (
-                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                   <Button
                     className="button--sm loc-status-action"
                     tone="secondary"
                     disabled={write.demoReadOnly || retireMutation.isPending}
                     onClick={() => { void handleRetire(location); }}
                   >
-                    Retire
+                    {copy.actions.retire}
                   </Button>
                 </ReadOnlyLock>
               ) : (
-                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                   <Button
                     className="button--sm loc-status-action"
                     tone="secondary"
                     disabled={write.demoReadOnly || reactivateMutation.isPending}
                     onClick={() => { void handleReactivate(location); }}
                   >
-                    Reactivate
+                    {copy.actions.reactivate}
                   </Button>
                 </ReadOnlyLock>
               )}
-              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                 <Button
                   className="button--sm"
                   tone="danger"
                   disabled={write.demoReadOnly}
                   onClick={() => setDeleteTarget(location)}
                 >
-                  Delete
+                  {copy.actions.delete}
                 </Button>
               </ReadOnlyLock>
             </div>
@@ -377,20 +392,21 @@ export function InventoryLocationsPage(): ReactElement {
       write.demoReadOnly,
       reactivateMutation.isPending,
       retireMutation.isPending,
+      copy,
     ],
   );
 
   return (
     <PageLayout
-      backTo={{ to: '/settings', label: 'Settings' }}
-      eyebrow="Fulfilment routing"
-      title="Inventory locations"
-      description="The warehouses, stores and third-party sites OpenLinker can source stock from. A location isn't authority over stock — it's the place sourcing rules pick between. Delete is refused while any stock still points here; retire it instead."
+      backTo={{ to: '/settings', label: copy.back }}
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
       actions={
         write.visible ? (
-          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
             <Button disabled={write.demoReadOnly} onClick={() => setDialogTarget({ mode: 'create' })}>
-              + Add location
+              {copy.addLocation}
             </Button>
           </ReadOnlyLock>
         ) : null
@@ -399,11 +415,11 @@ export function InventoryLocationsPage(): ReactElement {
       <div className="toolbar">
         <div className="toolbar__group">
           <Select
-            aria-label="Filter by kind"
+            aria-label={copy.filterKind}
             value={kind ?? ''}
             onChange={(e) => { handleFilterChange('kind', e.target.value); }}
           >
-            <option value="">All kinds</option>
+            <option value="">{copy.allKinds}</option>
             {InventoryLocationKindValues.map((k) => (
               <option key={k} value={k}>
                 {KIND_LABEL[k]}
@@ -417,7 +433,7 @@ export function InventoryLocationsPage(): ReactElement {
               checked={showRetired}
               onChange={(e) => { handleFilterChange('retired', e.target.checked ? '' : '0'); }}
             />
-            Show retired
+            {copy.showRetired}
           </label>
         </div>
       </div>
@@ -426,53 +442,53 @@ export function InventoryLocationsPage(): ReactElement {
         <DataTableSkeleton columns={columns.length} rows={5} />
       ) : query.error ? (
         <ErrorState
-          title="Couldn't load locations"
+          title={copy.errorTitle}
           message={query.error.message}
-          action={<Button onClick={() => { void query.refetch(); }}>Retry</Button>}
+          action={<Button onClick={() => { void query.refetch(); }}>{copy.retry}</Button>}
         />
       ) : (query.data?.items ?? []).length === 0 ? (
         <EmptyState
           title={
             pageOutOfRange
-              ? "This page doesn't exist anymore"
+              ? copy.empty.pageGoneTitle
               : filtersActive
-                ? 'No locations match this filter'
-                : 'Routing has nowhere to source stock from'
+                ? copy.empty.filteredTitle
+                : copy.empty.title
           }
           message={
             pageOutOfRange
-              ? `There are ${query.data?.total ?? 0} locations, but not on page ${page}.`
+              ? interpolate(copy.empty.pageGoneMessage, { total: query.data?.total ?? 0, page })
               : filtersActive
-                ? 'No locations match the current filters.'
+                ? copy.empty.filteredMessage
                 // #3135 review: routing is opt-in (#2407) and ConnectionService
                 // refuses the false->true transition while zero locations
                 // exist, so a zero-location install either has routing off
                 // (orders fulfil fine today) or could never have enabled it —
                 // "every order is unfulfillable" was false in both directions.
-                : "Fulfilment routing has nowhere to source stock from yet, so it can't be enabled for any connection. Mint the first location, or add your own — either way it still needs stock assigned before routing can succeed."
+                : copy.empty.message
           }
           action={
             pageOutOfRange ? (
-              <Button onClick={() => setPage(1)}>Back to page 1</Button>
+              <Button onClick={() => setPage(1)}>{copy.empty.backToFirst}</Button>
             ) : filtersActive ? (
-              <Button onClick={clearFilters}>Clear filters</Button>
+              <Button onClick={clearFilters}>{copy.empty.clearFilters}</Button>
             ) : write.visible ? (
               <div className="table-actions">
-                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                   <Button
                     disabled={write.demoReadOnly || bootstrapMutation.isPending}
                     onClick={() => void handleBootstrap()}
                   >
-                    Create first location
+                    {copy.empty.createFirst}
                   </Button>
                 </ReadOnlyLock>
-                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                   <Button
                     tone="secondary"
                     disabled={write.demoReadOnly}
                     onClick={() => setDialogTarget({ mode: 'create' })}
                   >
-                    + Add manually
+                    {copy.empty.addManually}
                   </Button>
                 </ReadOnlyLock>
               </div>
@@ -482,7 +498,7 @@ export function InventoryLocationsPage(): ReactElement {
       ) : (
         <>
           <DataTable
-            caption="Inventory locations"
+            caption={copy.caption}
             columns={columns}
             rowKey={(location) => location.id}
             rows={[...(query.data?.items ?? [])]}
@@ -496,7 +512,7 @@ export function InventoryLocationsPage(): ReactElement {
               ),
             }}
           />
-          {renderPagination(page, setPage, query.data?.total ?? 0)}
+          {renderPagination(copy, plural, page, setPage, query.data?.total ?? 0)}
         </>
       )}
 

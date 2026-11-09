@@ -20,7 +20,7 @@
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import type { Connection } from '../../connections';
@@ -60,7 +60,7 @@ export function StepSalesDocuments({
   // "Not needed" is the way out for a shop with no use for documents, so the
   // requirement cannot dead-end the wizard.
   const canContinue = automatic || skipped;
-  const disabledTitle = demoReadOnly ? DEMO_READ_ONLY_ACTION_MESSAGE : !canWrite ? COPY.adminOnly : undefined;
+  const disabledTitle = demoReadOnly ? demoReadOnlyActionMessage() : !canWrite ? COPY.adminOnly : undefined;
 
   return (
     <StepPanel

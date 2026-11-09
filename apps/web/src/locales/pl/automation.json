@@ -1,0 +1,440 @@
+{
+  "actionRow": {
+    "removeAriaLabel": "Usuń krok {n}",
+    "selectCarrier": "Wybierz przewoźnika…",
+    "selectReason": "Wybierz powód…"
+  },
+  "actions": {
+    "dispatch-shipment": "Kup etykietę nadawczą",
+    "issue-sales-document": "Wystaw fakturę lub paragon",
+    "place-hold": "Wstrzymaj zamówienie",
+    "relay-status-to-source": "Powiadom marketplace",
+    "release-hold": "Zdejmij wstrzymanie",
+    "send-email": "Wyślij e-mail"
+  },
+  "activity": {
+    "backToIndex": "Wróć do automatyzacji",
+    "clearFilters": "Wyczyść filtry",
+    "clearRuleFilter": "Pokaż wszystkie reguły",
+    "description": "Co faktycznie zrobiły automatyzacje, od najnowszych.",
+    "emptyBlockedMessage": "Gdy dwie automatyzacje wydające pieniądze pasują do tego samego zamówienia, OpenLinker uruchamia tylko jedną - ale jeszcze tego nie zapisuje, więc nie ma tu czego pokazać. Nie oznacza to, że nigdy się to nie zdarzyło.",
+    "emptyBlockedTitle": "Konflikty nie są jeszcze zapisywane",
+    "emptyFilteredMessage": "Spróbuj poszerzyć lub wyczyścić filtry.",
+    "emptyFilteredTitle": "Żadne uruchomienie nie pasuje do tych filtrów",
+    "emptyNoRulesAction": "Przejdź do automatyzacji",
+    "emptyNoRulesMessage": "Skonfiguruj automatyzację, a wszystko, co zrobi, pojawi się tutaj.",
+    "emptyNoRulesTitle": "Nie ma jeszcze automatyzacji",
+    "emptyNoRunsMessage": "Automatyzacje są skonfigurowane i czekają. Gdy któraś zostanie dopasowana, pojawi się tutaj.",
+    "emptyNoRunsTitle": "Nic jeszcze nie zostało uruchomione",
+    "errorTitle": "Nie udało się wczytać dziennika uruchomień",
+    "eyebrow": "Automatyzacje",
+    "filterAll": "Wszystkie",
+    "filterFrom": "Od",
+    "filterOrder": "Zamówienie",
+    "filterOutcome": "Wynik",
+    "filterRule": "Reguła",
+    "filterTo": "Do",
+    "filterTrigger": "Zdarzenie",
+    "loadingTitle": "Wczytywanie dziennika uruchomień",
+    "outcomeHeader": "Wynik",
+    "recordingUnavailableFallback": "Ta wersja OpenLinker nie zapisuje uruchomień automatyzacji, więc ta lista nie pokaże, czy cokolwiek zostało uruchomione.",
+    "retentionFooter": "Lista zawiera wszystkie dotychczas zapisane uruchomienia automatyzacji.",
+    "ruleHeader": "Automatyzacja",
+    "seeAllForRule": "Zobacz wszystkie uruchomienia tej reguły →",
+    "skippedSuffix": "nie uruchomiono",
+    "stepsHeader": "Co zrobiła",
+    "subjectHeader": "Zamówienie lub zwrot",
+    "title": "Dziennik uruchomień",
+    "triggerHeader": "Zdarzenie",
+    "viewJob": "Zadanie",
+    "whenHeader": "Kiedy"
+  },
+  "activityPage": {
+    "next": "Dalej",
+    "previous": "Wstecz",
+    "ruleFilterChip": "Reguła: {ruleId} · Pokaż wszystkie reguły"
+  },
+  "activityTable": {
+    "skippedStep": "{step} - nie uruchomiono"
+  },
+  "availability": {
+    "available": "Gotowe",
+    "irreversible": "Nie można cofnąć",
+    "panelIntro": "Regułę można zapisać z dowolnym z tych kroków i OpenLinker ją przyjmie. Faktycznie coś zrobią tylko kroki oznaczone jako gotowe.",
+    "panelTitle": "Co automatyzacje potrafią w tej wersji",
+    "partial": "Działa w niektórych sytuacjach",
+    "reasonSuffix": "- {reason}",
+    "ruleBlockedMany": "Tych kroków nie można uruchomić w tej wersji: {actions}.",
+    "ruleBlockedOne": "Krok {action} nie może zostać uruchomiony w tej wersji.",
+    "ruleBlockedTitle": "Ta reguła nie może jeszcze działać",
+    "rulePartialTitle": "Ta reguła działa tylko czasami",
+    "unavailable": "Jeszcze niedostępne"
+  },
+  "composer": {
+    "a1Note": "O tym, jaki dokument zostanie wystawiony i przez którego dostawcę, decydują reguły w sekcji Kierowanie dokumentów sprzedaży. Ta automatyzacja decyduje tylko o tym, kiedy.",
+    "a2NoOptions": "Poziomy usług i szablony paczek nie są jeszcze dostępne, więc używane są ustawienia domyślne przewoźnika, a deklarowane są waga i wymiary z zamówienia.",
+    "a2Warning": "Przy każdym uruchomieniu kupowana jest etykieta, za którą naliczana jest opłata.",
+    "a3Note": "OpenLinker przekazuje to, co wie. Jeśli etykieta nie została jeszcze kupiona, marketplace otrzyma informację o wysłaniu zamówienia bez numeru przesyłki.",
+    "actionLabel": "Krok",
+    "activeHint": "Możesz zapisać ją wyłączoną i włączyć, gdy wszystko będzie gotowe.",
+    "activeLabel": "Włącz po zapisaniu",
+    "addAction": "+ Dodaj krok",
+    "addCondition": "+ Dodaj warunek",
+    "addressLabel": "Adres e-mail",
+    "amountLabel": "Kwota",
+    "amountOpLabel": "Porównanie",
+    "bodyLabel": "Wiadomość",
+    "cancel": "Anuluj",
+    "carrierEmpty": "Żaden przewoźnik nie jest jeszcze połączony, więc nie można skonfigurować tego kroku.",
+    "carrierHint": "Z którego konta przewoźnika kupić etykietę.",
+    "carrierLabel": "Przewoźnik",
+    "codLabel": "Pobierz od kupującego kwotę zamówienia przy odbiorze",
+    "conditionFieldLabel": "Warunek",
+    "conditionValueLabel": "Wartość",
+    "conditionsHint": "Aby automatyzacja się uruchomiła, wszystkie warunki muszą być spełnione. Zostaw puste, aby działała przy każdym zdarzeniu.",
+    "createTitle": "Nowa automatyzacja",
+    "currencyHint": "Pasować mogą tylko zamówienia w dokładnie tej walucie. Nic nie jest przeliczane.",
+    "currencyLabel": "Waluta",
+    "duplicateRule": "Istnieje już automatyzacja, która robi dokładnie to samo w nakładającym się okresie. Uruchomiłyby się obie, podwajając swoje działania - zmień coś w tej regule albo zawęź okres, w którym obowiązuje.",
+    "effectiveFromLabel": "Obowiązuje od",
+    "effectiveToLabel": "Obowiązuje do",
+    "effectiveToOptional": "(opcjonalnie)",
+    "holdReasonHint": "Dlaczego zamówienie jest wstrzymywane. Zobaczy to osoba, która je znajdzie.",
+    "holdReasonLabel": "Powód",
+    "illegalPair": "To zdarzenie nie może wykonać kroku „{action}”. Wybierz inny krok albo inne zdarzenie do obserwowania.",
+    "mergeFieldsHint": "Kliknij pole, aby je wstawić. Wszystko inne jest wysyłane dokładnie tak, jak to wpiszesz - również błędnie wpisana nazwa pola, aby można ją było zauważyć i poprawić.",
+    "mergeFieldsTitle": "Wstaw dane zamówienia",
+    "moneyAckLabel": "Rozumiem, że ta automatyzacja wydaje pieniądze przy każdym uruchomieniu i tych kroków nie można cofnąć.",
+    "nameHint": "Nazwa będzie widoczna w dzienniku uruchomień i na osi czasu zamówienia.",
+    "nameLabel": "Nazwa",
+    "nonRetroactivity": "Automatyzacja działa tylko na zdarzenia, które nastąpią po jej zapisaniu.",
+    "noteLabel": "Notatka",
+    "noteRequiredHint": "Wymagana, tak jak przy ręcznym zdejmowaniu wstrzymania.",
+    "onlyIfLabel": "Tylko jeśli",
+    "readOnly": "Twoje konto może przeglądać automatyzacje, ale nie może ich tworzyć.",
+    "recipientAddress": "Stały adres",
+    "recipientBuyer": "Kupujący",
+    "recipientLabel": "Wyślij do",
+    "releaseAnyHold": "Dowolne wstrzymanie",
+    "releaseWhichLabel": "Które wstrzymanie zdjąć",
+    "removeAction": "Usuń krok",
+    "removeCondition": "Usuń warunek",
+    "save": "Zapisz automatyzację",
+    "saveFailed": "Automatyzacja nie została zapisana",
+    "saveFailedGeneric": "Podczas zapisywania automatyzacji coś poszło nie tak. Spróbuj ponownie.",
+    "saving": "Zapisywanie…",
+    "stopOnFirstFailure": "Kroki są wykonywane po kolei, a jeśli któryś się nie powiedzie, pozostałe są pomijane. Możesz dodać najwyżej {max}.",
+    "subjectLabel": "Temat",
+    "thenLabel": "Wtedy zrób to",
+    "triggerConfigLabel": "Ile godzin",
+    "whenLabel": "Gdy to się stanie"
+  },
+  "composerDialog": {
+    "effectiveToOptionalLabel": "Obowiązuje do (opcjonalnie)",
+    "untitledName": "Bez nazwy"
+  },
+  "composerSchema": {
+    "actionsRequired": "Dodaj co najmniej jeden krok - automatyzacja bez kroków nic nie robi.",
+    "addressRequired": "Wpisz adres, na który wysłać wiadomość.",
+    "amountShape": "Wpisz kwotę, np. 2000 lub 2000.50.",
+    "bodyRequired": "Wpisz treść wiadomości.",
+    "carrierRequired": "Wybierz konto przewoźnika, z którego kupić etykietę.",
+    "currencyShape": "Wpisz trzyliterowy kod waluty, np. PLN.",
+    "effectiveFromRequired": "Wybierz dzień, od którego reguła obowiązuje.",
+    "holdReasonRequired": "Wybierz, dlaczego zamówienie jest wstrzymywane.",
+    "nameRequired": "Nadaj tej automatyzacji nazwę.",
+    "noteRequired": "Podaj, dlaczego wstrzymanie jest zdejmowane.",
+    "triggerRequired": "Wybierz zdarzenie do obserwowania.",
+    "valueRequired": "Wybierz wartość dla tego warunku."
+  },
+  "conditionFields": {
+    "holdReason": "Powód wstrzymania to",
+    "orderCountry": "Kraj dostawy to",
+    "orderTotalGross": "Wartość zamówienia (brutto)",
+    "sourceConnection": "Zamówienie pochodzi z"
+  },
+  "conditionOutcomes": {
+    "currency-mismatch": "Inna waluta",
+    "false": "Niespełniony",
+    "true": "Spełniony",
+    "unknown": "Nieznane dla tego zamówienia"
+  },
+  "conditionRow": {
+    "amountOps": {
+      "gte": "wynosi co najmniej",
+      "lt": "jest mniejsza niż"
+    },
+    "countryPlaceholder": "np. PL",
+    "removeAriaLabel": "Usuń warunek {n}",
+    "selectConnection": "Wybierz połączenie…",
+    "selectReason": "Wybierz powód…"
+  },
+  "dryRun": {
+    "blockedActionsPrefix": "ponieważ obie wykonują:",
+    "blockedByPrefix": "Zablokowane przez",
+    "conditionsTitle": "Warunki",
+    "factCountryLabel": "Kraj dostawy",
+    "factSourceLabel": "Pochodzenie",
+    "factTotalLabel": "Wartość zamówienia",
+    "factUnknown": "Nieznane",
+    "factWhenLabel": "Kiedy nastąpiło",
+    "factsTitle": "Co OpenLinker wiedział o tym zamówieniu",
+    "failedHint": "Nic nie zostało ocenione, więc nie wiadomo, czy reguła by pasowała.",
+    "failedTitle": "Test się nie wykonał",
+    "gateLocked": "Przetestuj tę regułę przed zapisaniem - może wydawać pieniądze, a OpenLinker nie może tego cofnąć.",
+    "gatePassed": "Przetestowano.",
+    "gateStale": "Reguła została zmieniona po teście. Przetestuj ją ponownie, aby zapisać to, co zostało sprawdzone.",
+    "intro": "Wybierz zamówienie z ostatnich 30 dni i zobacz, co zrobiłaby ta reguła. Nic nie zostanie wysłane, kupione ani zmienione.",
+    "matchedButBlocked": "Reguła pasuje do tego zamówienia, ale inna reguła wykonuje już działanie, którego nie można wykonać dwa razy.",
+    "noConditions": "Ta reguła nie ma warunków, więc dotyczy każdego takiego zdarzenia.",
+    "noOrders": "Brak zamówień z ostatnich 30 dni, więc na razie nie ma na czym testować.",
+    "noOtherRules": "Żadna inna reguła nie obserwuje tego zdarzenia.",
+    "orderLabel": "Zamówienie",
+    "orderPlaceholder": "Wybierz zamówienie…",
+    "ordersFailed": "Nie udało się wczytać ostatnich zamówień.",
+    "otherRulesTitle": "Inne reguły dla tego zdarzenia",
+    "retroactivityWaived": "Reguła pasuje, ale to zamówienie jest starsze od niej - więc w rzeczywistości by się nie uruchomiła. Uwzględniane są tylko zdarzenia po jej zapisaniu.",
+    "run": "Uruchom test",
+    "running": "Testowanie…",
+    "staleResult": "Reguła została zmieniona po tym teście, więc poniższy wynik dotyczy poprzedniej wersji.",
+    "stepsTitle": "Kroki, które by wykonała",
+    "title": "Test na ostatnim zamówieniu",
+    "wouldFire": "Ta reguła by się uruchomiła",
+    "wouldMatchNotFire": "Ta reguła pasuje, ale by się nie uruchomiła",
+    "wouldNotFire": "Ta reguła by się nie uruchomiła"
+  },
+  "dryRunPanel": {
+    "blockedBy": "Zablokowane przez <ids>{ids}</ids>, ponieważ obie wykonują: <actions>{actions}</actions>",
+    "orderOption": "{id} · {date}"
+  },
+  "errors": {
+    "loadingMessage": "Pobieranie reguł i możliwości poszczególnych kroków…",
+    "loadingTitle": "Wczytywanie automatyzacji",
+    "rulesTitle": "Nie udało się wczytać tych reguł",
+    "summaryTitle": "Nie udało się wczytać automatyzacji",
+    "unreadableEnvelopeMessage": "OpenLinker nie mógł odczytać odpowiedzi, więc nie wiadomo, ile jest automatyzacji. Nie oznacza to, że nie ma żadnej.",
+    "unreadableTitle": "Nie udało się odczytać listy automatyzacji",
+    "vocabularyMessage": "Bez tego OpenLinker nie może ustalić, które kroki są dozwolone ani które działają - i nie będzie zgadywać. Spróbuj ponownie za chwilę.",
+    "vocabularyTitle": "Nie udało się wczytać możliwości automatyzacji"
+  },
+  "failure": {
+    "actionsHeader": "Działania",
+    "attentionFilter": "Wymaga uwagi",
+    "badge": "Zatrzymane",
+    "clearAttentionFilter": "Pokaż wszystkie",
+    "dismiss": "Obsłużono samodzielnie",
+    "dismissFailed": "Nie udało się tego zapisać",
+    "dismissed": "Obsłużone przez operatora",
+    "dismissing": "Zapisywanie…",
+    "emptyAttentionMessage": "Żadna automatyzacja nie zatrzymała się w połowie. Niepowodzenia są tu widoczne, dopóki ktoś ich nie uruchomi ponownie lub nie oznaczy jako obsłużone.",
+    "emptyAttentionTitle": "Nic nie wymaga uwagi",
+    "isRetryOf": "Uruchomiono ponownie po wcześniejszym niepowodzeniu",
+    "reasonUnknown": "Nie zapisano przyczyny tego niepowodzenia.",
+    "retry": "Ponów",
+    "retryFailed": "Nie udało się uruchomić ponownie",
+    "retrying": "Ponowne uruchamianie…",
+    "said": "{who} - komunikat:",
+    "skippedMany": {
+      "few": "{n} kolejne kroki nie zostały uruchomione.",
+      "many": "{n} kolejnych kroków nie zostało uruchomionych.",
+      "one": "{n} kolejny krok nie został uruchomiony.",
+      "other": "{n} kolejnego kroku nie uruchomiono."
+    },
+    "skippedOne": "Pominięto: {step}.",
+    "stoppedAfter": "Nic więcej w tej automatyzacji nie zostało uruchomione.",
+    "superseded": "Zastąpione nowszą próbą",
+    "unknownActionTitle": "Krok automatyzacji ({action}) nie mógł się zakończyć dla zamówienia {ref}"
+  },
+  "failureTitle": {
+    "dispatch-shipment": "Nie udało się kupić etykiety dla zamówienia {ref}",
+    "issue-sales-document": "Nie udało się wystawić faktury dla zamówienia {ref}",
+    "place-hold": "Nie udało się wstrzymać zamówienia {ref}",
+    "relay-status-to-source": "Nie udało się powiadomić marketplace'u o zamówieniu {ref}",
+    "release-hold": "Nie udało się zdjąć wstrzymania zamówienia {ref}",
+    "send-email": "Nie udało się wysłać e-maila dla zamówienia {ref}"
+  },
+  "firingModes": {
+    "deadline-sweep": "Według zegara",
+    "edge": "Gdy to nastąpi"
+  },
+  "index": {
+    "actionsHeader": "Działania",
+    "canDoHeader": "Co potrafi teraz",
+    "configure": "Ustaw",
+    "droppedRows": {
+      "few": "Nie udało się odczytać {n} zdarzeń i nie są one pokazane poniżej.",
+      "many": "Nie udało się odczytać {n} zdarzeń i nie są one pokazane poniżej.",
+      "one": "Nie udało się odczytać {n} zdarzenia i nie jest ono pokazane poniżej.",
+      "other": "Nie udało się odczytać {n} zdarzenia i nie jest ono pokazane poniżej."
+    },
+    "firingModeSuffix": "· {mode}",
+    "lastFiredHeader": "Ostatni raz",
+    "lastFiredUnknown": "Jeszcze nie zapisano",
+    "lastFiredUnknownHint": "OpenLinker nie zapisuje jeszcze działań automatyzacji, więc nie wiadomo, kiedy któraś działała ostatnio. Nie oznacza to, że żadna nie działała.",
+    "ruleCountMany": {
+      "few": "{n} reguły",
+      "many": "{n} reguł",
+      "one": "{n} reguła",
+      "other": "{n} reguły"
+    },
+    "ruleCountNone": "Brak reguł",
+    "ruleCountOne": "1 reguła",
+    "rulesHeader": "Twoje reguły",
+    "runnableSteps": "Działa {runnable} z {legal} kroków",
+    "triggerHeader": "Gdy to się stanie"
+  },
+  "mergeFields": {
+    "tokens": {
+      "buyerName": "imię i nazwisko kupującego zgłoszone przez źródło lub „klient”, gdy nie są przechowywane",
+      "holdReason": "powód bieżącego wstrzymania lub „brak wstrzymania”",
+      "orderDispatchBy": "termin nadania z marketplace'u (RRRR-MM-DD, UTC) lub „brak terminu”",
+      "orderPlacedAt": "data zamówienia (RRRR-MM-DD, UTC)",
+      "orderReference": "numer zamówienia widoczny dla operatora",
+      "orderTotal": "wartość brutto z walutą",
+      "ruleName": "nazwa automatyzacji",
+      "shipmentTracking": "numer przesyłki lub „jeszcze nie” („niedostępny” w e-mailu do kupującego)"
+    }
+  },
+  "nonFiringReasons": {
+    "condition-currency-mismatch": "Kwota jest w innej walucie niż to zamówienie, a nic nie jest przeliczane.",
+    "condition-fact-unknown": "Warunek dotyczy czegoś, czego OpenLinker nie wie o tym zamówieniu.",
+    "condition-not-met": "Warunek nie był spełniony dla tego zamówienia.",
+    "fact-precedes-rule": "To nastąpiło przed zapisaniem reguły, a reguły nigdy nie działają wstecz.",
+    "fact-time-unknown": "OpenLinker nie wie, kiedy to nastąpiło, więc nie może ustalić, czy reguła już wtedy istniała.",
+    "illegal-trigger-action-pair": "Ta reguła łączy zdarzenie z krokiem, którego to zdarzenie nigdy nie może uruchomić.",
+    "no-actions": "Reguła nie ma już kroków, które ta wersja potrafi wykonać.",
+    "no-longer-effective": "Reguła przestała obowiązywać przed tym zamówieniem.",
+    "not-yet-effective": "Reguła zacznie obowiązywać dopiero później.",
+    "rule-inactive": "Reguła jest wyłączona.",
+    "trigger-config-invalid": "Regule brakuje ustawienia wymaganego przez jej zdarzenie.",
+    "trigger-mismatch": "Ta reguła obserwuje inne zdarzenie.",
+    "unknown-trigger": "Ta reguła obserwuje zdarzenie, którego ta wersja nie rozpoznaje."
+  },
+  "page": {
+    "description": "Reguły, które działają na zamówieniach i zwrotach bez Twojego klikania. Każda obserwuje jedno zdarzenie, sprawdza ustawione warunki i wykonuje to, co ustalono.",
+    "eyebrow": "Operacje",
+    "runLogAction": "Dziennik",
+    "tableCaption": "Wszystkie zdarzenia, które może obserwować automatyzacja",
+    "title": "Automatyzacje"
+  },
+  "retryRefusal": {
+    "not-failed": "To uruchomienie się nie zakończyło niepowodzeniem, więc nie ma czego uruchamiać ponownie.",
+    "retry-exhausted": "To uruchomienie ponawiano już maksymalną liczbę razy bez powodzenia. Napraw przyczynę u źródła albo odrzuć je.",
+    "rule-deleted": "Ta automatyzacja została usunięta, więc nie ma już czego uruchamiać. Zapis jej działań pozostaje tutaj.",
+    "subject-unsupported": "Ponowne uruchomienie nie jest możliwe dla zwrotu.",
+    "superseded": "To uruchomienie zostało już ponowione. Otwórz nowszą próbę, aby zobaczyć, co się stało."
+  },
+  "rules": {
+    "actionsHeader": "Działania",
+    "active": "Wł.",
+    "addRule": "Nowa reguła",
+    "backToIndex": "Wszystkie automatyzacje",
+    "cancel": "Anuluj",
+    "emptyMessage": "Gdy to zdarzenie nastąpi, nic nie dzieje się automatycznie.",
+    "emptyTitle": "Brak reguł dla tego zdarzenia",
+    "eyebrow": "Automatyzacje",
+    "inactive": "Wył.",
+    "moneyAckBody": "Włączenie pozwala OpenLinkerowi działać w Twoim imieniu za każdym razem, gdy reguła pasuje, a tych kroków nie można cofnąć.",
+    "moneyAckConfirm": "Rozumiem - włącz",
+    "moneyAckTitle": "Ta reguła wydaje pieniądze",
+    "nameHeader": "Reguła",
+    "neverMatchedUnknown": "OpenLinker nie potrafi jeszcze ustalić, czy ta reguła kiedykolwiek pasowała do zamówienia.",
+    "readOnly": "Twoje konto może przeglądać automatyzacje, ale nie może ich zmieniać.",
+    "stateHeader": "Wł. czy wył.",
+    "stepsHeader": "Co robi",
+    "turnOff": "Wyłącz",
+    "turnOffHint": "Wyłączenie reguły zachowuje wszystko, co już zrobiła.",
+    "turnOn": "Włącz",
+    "writeFailed": "Zmiana nie została zapisana"
+  },
+  "runLog": {
+    "blockedByPrefix": "Zablokowane przez",
+    "empty": "Ta reguła jeszcze się nie uruchomiła.",
+    "failed": "Nie udało się wczytać historii tej reguły.",
+    "hide": "Ukryj historię",
+    "jobLink": "Zadanie",
+    "loading": "Wczytywanie historii…",
+    "orderLabel": "Zamówienie",
+    "outcomeLabel": "Wynik",
+    "show": "Pokaż historię",
+    "stepsLabel": "Kroki",
+    "title": "Co zrobiła ta reguła",
+    "unreadableSteps": {
+      "few": "Nie udało się odczytać {n} kroków i nie są one pokazane.",
+      "many": "Nie udało się odczytać {n} kroków i nie są one pokazane.",
+      "one": "Nie udało się odczytać {n} kroku i nie jest on pokazany.",
+      "other": "Nie udało się odczytać {n} kroku i nie jest on pokazany."
+    },
+    "whenLabel": "Kiedy"
+  },
+  "runLogPanel": {
+    "blockedBy": "Zablokowane przez <ids>{ids}</ids>"
+  },
+  "runOutcomes": {
+    "blocked": "Zablokowane",
+    "done": "Gotowe",
+    "failed": "Nieudane",
+    "nothing-to-do": "Nic do zrobienia"
+  },
+  "stepStatuses": {
+    "done": "Gotowe",
+    "failed": "Nieudane",
+    "nothing-to-do": "Nic do zrobienia",
+    "skipped": "Pominięte"
+  },
+  "suggestions": {
+    "caveat": "Otwarcie tej strony niczego nie tworzy. Regułę przejrzysz i włączysz samodzielnie - a OpenLinker uprzedzi, jeśli któryś krok nie może jeszcze działać.",
+    "intro": "Większość sprzedawców zaczyna od tej:",
+    "primary": "Skonfiguruj",
+    "rationale": "Jedno kliknięcie na stanowisku pakowania zamiast trzech, a marketplace od razu otrzymuje informację.",
+    "secondary": "Zacznij od zera",
+    "suggestion": "Gdy zamówienie zostanie oznaczone jako spakowane → kup etykietę nadawczą → powiadom marketplace.",
+    "title": "Nie ma jeszcze automatyzacji."
+  },
+  "triggers": {
+    "inventory.reservation_shortfall": {
+      "description": "Towar został obiecany zamówieniom, których nie da się zrealizować w całości.",
+      "label": "Sprzedano więcej, niż jest na stanie"
+    },
+    "order.dispatch_deadline_near": {
+      "description": "Sprawdzane według zegara, aby ostrzec przed spóźnieniem.",
+      "label": "Zbliża się termin nadania"
+    },
+    "order.document_issued": {
+      "description": "Uruchamia się raz, gdy zostanie wystawiony dokument sprzedaży zamówienia.",
+      "label": "Wystawiono fakturę lub paragon"
+    },
+    "order.hold.placed": {
+      "description": "Coś zatrzymało wysłanie zamówienia.",
+      "label": "Zamówienie zostaje wstrzymane"
+    },
+    "order.hold.released": {
+      "description": "To, co blokowało zamówienie, zostało usunięte.",
+      "label": "Wstrzymanie zamówienia zostaje zdjęte"
+    },
+    "order.on_hold_for": {
+      "description": "Sprawdzane według zegara, a nie w chwili zatrzymania zamówienia.",
+      "label": "Zamówienie utknęło zbyt długo"
+    },
+    "order.packed": {
+      "description": "Uruchamia się, gdy tylko ktoś na stanowisku pakowania oznaczy je jako gotowe.",
+      "label": "Zamówienie zostaje oznaczone jako spakowane"
+    },
+    "order.received": {
+      "description": "Uruchamia się raz, gdy OpenLinker po raz pierwszy przyjmie zamówienie.",
+      "label": "Wpływa nowe zamówienie"
+    },
+    "order.shipped": {
+      "description": "Uruchamia się, gdy paczki zamówienia są u przewoźnika i znany jest numer przesyłki, albo 30 minut po przejęciu paczki przez przewoźnika, jeśli numer nie dotrze.",
+      "label": "Zamówienie zostaje wysłane"
+    },
+    "return.disposed": {
+      "description": "Przyjęte na stan, zutylizowane lub przekazane dalej - zgodnie z Twoją decyzją.",
+      "label": "Zwrócony towar zostaje obsłużony"
+    },
+    "return.received": {
+      "description": "Zwrócony towar dociera do magazynu, raz na każdą paczkę.",
+      "label": "Dociera zwrot"
+    }
+  }
+}

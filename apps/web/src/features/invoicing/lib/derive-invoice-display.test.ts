@@ -127,25 +127,20 @@ describe('canRetryInvoice', () => {
 // ---------------------------------------------------------------------------
 
 describe('resolveFailureCopy', () => {
-  const t = (_key: string, fallback: string) => fallback;
-
   it('returns known failure code copy', () => {
     const copy = resolveFailureCopy(
       makeRecord({ status: 'failed', failureCode: 'buyer-tax-id-invalid' }),
-      t,
     );
     expect(copy).toMatch(/tax ID/i);
   });
 
   it('returns in-doubt-safe generic copy for null failureCode', () => {
-    const copy = resolveFailureCopy(makeRecord({ status: 'failed', failureCode: null }), t);
+    const copy = resolveFailureCopy(makeRecord({ status: 'failed', failureCode: null }));
     expect(copy).toMatch(/confirm whether/i);
   });
 });
 
 describe('resolveFailureCopy - connection missing a setting (#3772)', () => {
-  const t = (_key: string, fallback: string): string => fallback;
-
   it('should show the stored reason, which names the missing setting', () => {
     const reason = 'This connection has no seller tax number set, which every invoice requires.';
     expect(
@@ -156,7 +151,6 @@ describe('resolveFailureCopy - connection missing a setting (#3772)', () => {
           failureCode: 'connection-setup-incomplete',
           failureReason: reason,
         }),
-        t,
       ),
     ).toBe(reason);
   });
@@ -170,7 +164,6 @@ describe('resolveFailureCopy - connection missing a setting (#3772)', () => {
           failureCode: 'connection-setup-incomplete',
           failureReason: null,
         }),
-        t,
       ),
     ).toContain('Complete the connection’s settings');
   });
@@ -184,15 +177,12 @@ describe('resolveFailureCopy - connection missing a setting (#3772)', () => {
           failureCode: 'provider-rejected',
           failureReason: 'The invoicing provider rejected the request.',
         }),
-        t,
       ),
     ).toContain('Check the order’s data');
   });
 });
 
-describe('resolveFailureCopy - provider refused a connection setting', () => {
-  const t = (_key: string, fallback: string): string => fallback;
-  const reason =
+describe('resolveFailureCopy - provider refused a connection setting', () => {  const reason =
     'The seller tax number on this connection is not the one registered with your eparagony account. Correct it in the connection settings, then retry (code 41).';
 
   it('should show the stored reason naming the refused setting', () => {
@@ -204,7 +194,6 @@ describe('resolveFailureCopy - provider refused a connection setting', () => {
           failureCode: 'connection-setting-rejected',
           failureReason: reason,
         }),
-        t,
       ),
     ).toBe(reason);
   });
@@ -217,7 +206,6 @@ describe('resolveFailureCopy - provider refused a connection setting', () => {
         failureCode: 'connection-setting-rejected',
         failureReason: null,
       }),
-      t,
     );
     expect(copy).toContain('connection’s settings');
     expect(copy).not.toContain('order’s data');
@@ -232,8 +220,6 @@ describe('resolveFailureCopy - provider refused a connection setting', () => {
 });
 
 describe('resolveFailureCopy - provider answered without settling', () => {
-  const t = (_key: string, fallback: string): string => fallback;
-
   it('should not describe an answered in-doubt failure as a timeout', () => {
     const copy = resolveFailureCopy(
       makeRecord({
@@ -241,7 +227,6 @@ describe('resolveFailureCopy - provider answered without settling', () => {
         failureMode: 'in-doubt',
         failureCode: 'provider-answer-inconclusive',
       }),
-      t,
     );
     expect(copy).toContain('answered');
     expect(copy).not.toMatch(/timed out/);

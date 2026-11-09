@@ -17,6 +17,7 @@ import { BuyerEmailEditorPage } from './buyer-email-editor-page';
 import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
+  findToastDescription,
   renderWithProviders,
   sampleConnection,
 } from '../../test/test-utils';
@@ -397,7 +398,7 @@ describe('BuyerEmailEditorPage (#3555)', () => {
     expect(screen.getByTestId('buyer-email-test-send')).toBeDisabled();
 
     await userEvent.click(screen.getByTestId('buyer-email-save'));
-    await screen.findByText(/the subject and message were not/);
+    await findToastDescription(/the subject and message were not/);
 
     expect(screen.getByTestId('buyer-email-from')).toHaveValue('new@shop.pl');
     expect(screen.getByTestId('buyer-email-test-send')).toBeEnabled();

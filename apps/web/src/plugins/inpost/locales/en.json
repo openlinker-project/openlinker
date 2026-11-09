@@ -1,0 +1,106 @@
+{
+  "inpostCredentialsPanel": {
+    "cancel": "Cancel",
+    "description": "ShipX Bearer token, stored securely on the server. Rotate to replace it without restarting the API.",
+    "envBacked": "Environment variable (not editable via UI)",
+    "envBackedLabel": "Credentials",
+    "label": "ShipX API token",
+    "newTokenPlaceholder": "New ShipX API token",
+    "rotate": "Rotate API token",
+    "rotating": "Rotating...",
+    "save": "Save new token",
+    "toast": {
+      "description": "The new ShipX API token is now in use.",
+      "title": "Credentials rotated"
+    }
+  },
+  "inpostSetupRoute": {
+    "crumb": "Connect InPost"
+  },
+  "inpostWebhookRunbook": {
+    "copyEmail": "Copy email template",
+    "emailTemplate": "Hello InPost Integration Team,\n\nPlease enable shipment-tracking webhooks for our account, delivered to:\n\n{webhookUrl}\n\nTopic: Shipment.Tracking\n\nThank you.",
+    "generate": "Generate webhook secret",
+    "generating": "Generating...",
+    "intro": "The ShipX API has no webhook-provisioning endpoint, so OpenLinker can't register the webhook for you. Register it yourself:",
+    "rotate": "Rotate webhook secret",
+    "secretAlert": {
+      "body": "Store this now - it can't be retrieved again. Configure it as the webhook signing secret in InPost, then it must match what OpenLinker holds.",
+      "title": "Webhook secret (shown once)"
+    },
+    "steps": {
+      "fallback": "<strong>Fallback - email the integration team.</strong> If your account has no dashboard access, use the template button to email <code>{email}</code> the same endpoint.",
+      "hmac": "<strong>Generate the HMAC secret.</strong> Click <em>Generate webhook secret</em> below and configure the revealed value in InPost so deliveries are signed with it. OpenLinker verifies every delivery by HMAC-SHA256 (ADR-021); a missing or mismatched secret is rejected with <code>401 Invalid webhook signature</code>.",
+      "primary": "<strong>Primary - InPost Manager dashboard.</strong> In Organization settings open <em>Adresy webhook</em> → <em>Dodaj do API</em> and add the endpoint below (InPost runs a ping-pong verification against it)."
+    },
+    "title": "Webhook setup (runbook)",
+    "toast": {
+      "copied": {
+        "description": "Send it to {email} if you can't self-register in the InPost Manager dashboard.",
+        "title": "Email template copied"
+      },
+      "copyFailed": "Copy failed",
+      "generateFailed": "Could not generate webhook secret",
+      "generated": {
+        "description": "Copy it now - it is shown only once. Configure the same value in InPost.",
+        "title": "Webhook secret generated"
+      }
+    }
+  },
+  "plugin": {
+    "setupCard": {
+      "badge": "ShipX API",
+      "description": "Connect an InPost ShipX courier account. You will need a ShipX API token and your organization id."
+    }
+  },
+  "settings": {
+    "apiBaseUrl": {
+      "description": "OpenLinker's public API URL that serves inbound webhooks (POST /webhooks) - this is where InPost delivers tracking events, so it must be the API host, not this admin UI. Leave blank only when the API and this UI share one origin (e.g. behind a single reverse proxy); otherwise set the API's public base URL. Drives the webhook URL shown in the setup runbook below.",
+      "label": "OpenLinker public API base URL (optional)",
+      "placeholder": "https://api.openlinker.example"
+    },
+    "environment": {
+      "description": "ShipX target environment. Use Sandbox to verify before switching to Production.",
+      "label": "Environment",
+      "production": "Production",
+      "sandbox": "Sandbox",
+      "unset": "- not set -"
+    },
+    "organizationId": {
+      "description": "ShipX organization id - a URL path parameter on every shipment endpoint.",
+      "label": "Organization ID"
+    },
+    "sender": {
+      "buildingNumber": {
+        "label": "Building number"
+      },
+      "city": {
+        "label": "City",
+        "placeholder": "Warszawa"
+      },
+      "countryCode": {
+        "description": "ISO 3166-1 alpha-2 (e.g. PL).",
+        "label": "Country"
+      },
+      "email": {
+        "label": "Sender email",
+        "placeholder": "magazyn@acme.pl"
+      },
+      "name": {
+        "label": "Sender name (optional)",
+        "placeholder": "Sklep ACME"
+      },
+      "phone": {
+        "label": "Sender phone"
+      },
+      "postCode": {
+        "description": "PL format NN-NNN (e.g. 00-001).",
+        "label": "Postcode"
+      },
+      "street": {
+        "label": "Street",
+        "placeholder": "ul. Magazynowa"
+      }
+    }
+  }
+}

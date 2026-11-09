@@ -63,15 +63,16 @@ export type { OrderLifecyclePhaseValue } from './lib/order-lifecycle-phase.types
 // #2350 — the SINGLE source for the shortfall sentence. AC1 requires the row
 // badge and `W2-19`'s attention-table title to be byte-identical, so #2356
 // imports these builders rather than restating the string; a second copy cannot
-// exist without deleting this import. `W2-20` (#2357) should ABSORB
-// `stock-at-risk-copy.ts` when it lands, not grow its own copy.
+// exist without deleting this import. The copy lives in `orders.stockAtRisk`;
+// a surface outside the feature binds it with `useStockAtRiskText()`.
 export {
   stockAtRiskTitle,
   stockAtRiskBadge,
   stockAtRiskCallout,
   shortfallItemLabel,
-  STOCK_AT_RISK_BODY,
-} from './lib/stock-at-risk-copy';
+} from './lib/stock-at-risk';
+export type { StockAtRiskText } from './lib/stock-at-risk.types';
+export { useStockAtRiskText } from './hooks/use-stock-at-risk-text';
 export { StockAtRiskBadge } from './components/stock-at-risk-badge';
 export { StockAtRiskCallout } from './components/stock-at-risk-callout';
 export type { OrderReservationShortfall } from './api/orders.types';
@@ -112,23 +113,14 @@ export { OrderTotalsPanel } from './components/order-totals-panel';
 // stay domain-agnostic (frontend-architecture.md § Dependency Rules).
 export { RefundConfirmationForm } from './components/refund-confirmation-form';
 export type { RefundConfirmationSubmission } from './components/refund-confirmation-form';
-export {
-  REFUND_REASON_LABELS,
-  REFUND_REASON_VALUES,
-  describeRefundReason,
-  isRefundReason,
-} from './lib/refund-reason';
+export { REFUND_REASON_VALUES, describeRefundReason, isRefundReason } from './lib/refund-reason';
 export type { RefundReason } from './lib/refund-reason';
-export { REFUND_CONFIRMATION_COPY } from './lib/refund-confirmation.copy';
 
 // #2383 — the returns feature maps its own acts into the orders timeline's row
 // shape. Exported as a TYPE only: the timeline component itself stays a deep
 // import for the one page that mounts it, and no sibling gains the ability to
 // render an orders timeline of its own.
-export type {
-  TimelineEvent,
-  DatedTimelineEvent,
-} from './components/order-activity-timeline';
+export type { TimelineEvent, DatedTimelineEvent } from './components/order-activity-timeline';
 
 // #2646 — the presentational timeline list, extracted when the return detail
 // became a second consumer. A VALUE export, unlike the row type above: the
@@ -140,5 +132,10 @@ export { ActivityTimelineList } from './components/activity-timeline-list';
 // vocabulary at a different grain. It imports these rather than mirroring them:
 // a second frontend copy of one union would need a second guard script, and
 // `scripts/check-hold-reason-mirror.mjs` already pins this one against core.
-export { paymentMethodLabel } from './lib/payment-method-copy';
-export { HOLD_REASON_COPY, HoldReasonValues, holdReasonLabel } from './lib/order-hold.types';
+export { paymentMethodLabel } from './lib/payment-method';
+export { HoldReasonValues, holdReasonLabel } from './lib/order-hold.types';
+// The Settings tag manager (`pages/settings`) reads the tag copy and limits
+// through these rather than the `orders` namespace itself.
+export { useOrderTagsCopy } from './hooks/use-order-tags-copy';
+export { ORDER_TAG_LIMIT, ORDER_TAG_NAME_MAX_LENGTH, orderTagColorLabel } from './lib/order-tags';
+export type { OrderTagsCopy } from './lib/order-tags.types';

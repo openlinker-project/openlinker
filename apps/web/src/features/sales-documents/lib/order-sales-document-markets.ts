@@ -11,7 +11,7 @@
  * @module apps/web/src/features/sales-documents/lib
  */
 import { SALES_DOCUMENT_REST_OF_WORLD_COUNTRY } from '../api/sales-document-rules.types';
-import { describeSalesDocumentMarketOutcome } from './sales-document-market-outcome-copy';
+import { describeSalesDocumentMarketOutcome } from './sales-document-market-outcome';
 import type { SalesDocumentMarketRow } from '../api/sales-document-markets.types';
 
 export function orderSalesDocumentMarkets(

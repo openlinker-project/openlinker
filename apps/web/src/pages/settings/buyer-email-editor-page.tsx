@@ -35,12 +35,11 @@ import { useToast } from '../../shared/ui/toast-provider';
 import { useSession } from '../../shared/auth/use-session';
 import { useConnectionQuery, type Connection } from '../../features/connections';
 import type { AutomationRule } from '../../features/automation';
+import { interpolate, useActiveLocale, useMessages } from '../../shared/i18n';
 import {
-  BUYER_EMAILS_COPY,
   BUYER_EMAIL_MERGE_FIELDS,
-  BUYER_EMAIL_TEMPLATE_COPY,
   buildBuyerEmailEditorSchema,
-  buyerEmailTestFormSchema,
+  buildBuyerEmailTestFormSchema,
   channelKindOf,
   isBuyerEmailTemplate,
   isBuyerEmailTestRateLimitedError,
@@ -48,6 +47,7 @@ import {
   readBuyerEmailsSettings,
   readRuleWording,
   renderPreview,
+  templateCopy,
   useBuyerEmailRules,
   useSaveBuyerEmailTemplateMutation,
   useSendBuyerEmailTestMutation,
@@ -55,8 +55,6 @@ import {
   type BuyerEmailTemplate,
   type BuyerEmailTestFormValues,
 } from '../../features/buyer-emails';
-
-const COPY = BUYER_EMAILS_COPY.editor;
 
 function EditorForm({
   connection,
@@ -67,6 +65,9 @@ function EditorForm({
   template: BuyerEmailTemplate;
   rule: AutomationRule | null;
 }): ReactElement {
+  const messages = useMessages('buyer-emails');
+  const COPY = messages.editor;
+  const locale = useActiveLocale();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { session } = useSession();
@@ -79,7 +80,12 @@ function EditorForm({
 
   const current = readBuyerEmailsSettings(connection.config).templates[template];
   const wording = rule ? readRuleWording(rule) : { subject: '', body: '' };
-  const schema = useMemo(() => buildBuyerEmailEditorSchema({ wordingEditable }), [wordingEditable]);
+  // Rebuilt when the language changes, so the validation messages follow it.
+  const schema = useMemo(
+    () => buildBuyerEmailEditorSchema({ wordingEditable }),
+    [wordingEditable, locale],
+  );
+  const testSchema = useMemo(() => buildBuyerEmailTestFormSchema(), [locale]);
   const form = useForm<BuyerEmailEditorFormValues>({
     defaultValues: {
       // A template with no rule cannot send, so it is never shown as switched on.
@@ -95,7 +101,7 @@ function EditorForm({
   // The test send defaults to the operator's own address: the test is for them.
   const testForm = useForm<BuyerEmailTestFormValues>({
     defaultValues: { to: session.user?.email ?? '' },
-    resolver: zodResolver(buyerEmailTestFormSchema),
+    resolver: zodResolver(testSchema),
     mode: 'onChange',
   });
   const [sentTo, setSentTo] = useState<string | null>(null);
@@ -133,7 +139,7 @@ function EditorForm({
       },
       {
         onSuccess: () => {
-          showToast({ description: BUYER_EMAILS_COPY.page.saved, tone: 'success' });
+          showToast({ description: messages.page.saved, tone: 'success' });
           void navigate(listUrl);
         },
         onError: (error) => {
@@ -181,7 +187,7 @@ function EditorForm({
       data-testid="buyer-email-editor"
     >
       <form className="buyer-email-editor__form panel panel--dense" onSubmit={(event) => void onSave(event)} noValidate>
-        <p className="muted-text">{BUYER_EMAIL_TEMPLATE_COPY[template].description}</p>
+        <p className="muted-text">{templateCopy(template).description}</p>
 
         <label className="buyer-emails-switch" htmlFor={enabledId}>
           <input
@@ -310,7 +316,7 @@ function EditorForm({
             </p>
           ) : null}
           {sentTo ? (
-            <Alert tone="success" title={COPY.testSent(sentTo)} data-testid="buyer-email-test-sent">
+            <Alert tone="success" title={interpolate(COPY.testSent, { to: sentTo })} data-testid="buyer-email-test-sent">
               {COPY.testSentDetail}
             </Alert>
           ) : null}
@@ -321,12 +327,14 @@ function EditorForm({
 }
 
 export function BuyerEmailEditorPage(): ReactElement {
+  const messages = useMessages('buyer-emails');
+  const COPY = messages.editor;
   const { connectionId = '', template = '' } = useParams();
   const connectionQuery = useConnectionQuery(connectionId, { enabled: connectionId !== '' });
   const known = isBuyerEmailTemplate(template);
   // Only this template's rule: the editor reads one, the list reads all four.
   const rules = useBuyerEmailRules(known ? template : undefined);
-  const title = known ? BUYER_EMAIL_TEMPLATE_COPY[template].label : BUYER_EMAILS_COPY.page.title;
+  const title = known ? templateCopy(template).label : messages.page.title;
   const backTo = {
     to: `/settings/buyer-emails?connection=${encodeURIComponent(connectionId)}`,
     label: COPY.back,
@@ -334,11 +342,11 @@ export function BuyerEmailEditorPage(): ReactElement {
 
   let content: ReactElement;
   if (!known) {
-    content = <Alert tone="error">{BUYER_EMAILS_COPY.page.loadError}</Alert>;
+    content = <Alert tone="error">{messages.page.loadError}</Alert>;
   } else if (connectionQuery.isLoading || rules.isLoading) {
     content = <LoadingState liveRegion="off" title={title} message={COPY.loading} />;
   } else if (connectionQuery.isError || !connectionQuery.data) {
-    content = <Alert tone="error">{BUYER_EMAILS_COPY.page.loadError}</Alert>;
+    content = <Alert tone="error">{messages.page.loadError}</Alert>;
   } else if (rules.isError) {
     // Checked before the editor renders: a failed read leaves every rule
     // `null`, and the editor would then claim the rule is missing.
@@ -371,7 +379,7 @@ export function BuyerEmailEditorPage(): ReactElement {
       {/* Same gate as the list page: only an administrator holds `connections:write`. */}
       <AccessGate
         require="connections:write"
-        fallback={<AccessDeniedState message={BUYER_EMAILS_COPY.page.adminOnly} />}
+        fallback={<AccessDeniedState message={messages.page.adminOnly} />}
       >
         {content}
       </AccessGate>

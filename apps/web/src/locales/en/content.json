@@ -1,0 +1,103 @@
+{
+  "contentEditor": {
+    "channel": {
+      "connectionStatus": {
+        "active": "active",
+        "disabled": "disabled",
+        "error": "error",
+        "needs_reauth": "needs re-authorisation"
+      },
+      "inactiveReason": "Connection is {status}. Re-activate to enable editing.",
+      "linkedOffers": {
+        "one": "{platform} · {n} linked offer",
+        "other": "{platform} · {n} linked offers"
+      }
+    },
+    "loadError": {
+      "emptyResponse": "Unexpected empty response",
+      "retry": "Retry",
+      "title": "Unable to load content"
+    },
+    "loading": {
+      "message": "Fetching descriptions…",
+      "title": "Loading content"
+    },
+    "master": {
+      "subtitle": "Canonical description. Publishing updates the product master and clears the draft.",
+      "title": "Master description"
+    },
+    "noChannels": {
+      "message": "Channels appear here when an active marketplace connection that can update offer descriptions has at least one linked offer for this product.",
+      "title": "No eligible channels"
+    },
+    "publishDialog": {
+      "channelDescription": "This will push the draft to every linked offer on the selected channel and clear the draft.",
+      "confirm": "Publish",
+      "masterDescription": "This will send the draft to the product master and clear the draft. External systems may reconcile.",
+      "title": "Publish description?"
+    },
+    "readOnlyAccess": "You have read-only access to content. Saving, discarding, and publishing require operator or admin permissions.",
+    "tabs": {
+      "ariaLabel": "Content targets",
+      "conflictMarker": "!",
+      "draft": "draft",
+      "master": "Master"
+    },
+    "toasts": {
+      "draftDiscarded": "Draft discarded",
+      "draftSaved": "Draft saved",
+      "published": "Published"
+    },
+    "unknownError": "Unknown error"
+  },
+  "contentPanel": {
+    "actions": {
+      "discard": "Discard draft",
+      "publish": "Publish",
+      "save": "Save draft"
+    },
+    "conflict": "An external update was detected after your draft was saved. Review the base value and re-save to acknowledge.",
+    "desktopOnly": {
+      "message": "This editor is read-only below 1024 px. Open on a larger viewport to make changes.",
+      "title": "Editing available on desktop only"
+    },
+    "editorAriaLabel": "{title} description",
+    "overDestinationCap": "This description is longer than the destination accepts ({cap} bytes). Shorten it before saving - the platform would reject the publish.",
+    "overStorageLimit": "Over the {limit}-character storage limit",
+    "publishRejected": "Channel publish rejected by the marketplace",
+    "status": {
+      "draftPending": "Draft pending",
+      "empty": "Empty",
+      "published": "Published"
+    }
+  },
+  "suggestionDialog": {
+    "actions": {
+      "apply": "Apply to editor",
+      "cancel": "Cancel",
+      "generate": "Generate",
+      "generating": "Generating…",
+      "regenerate": "Regenerate"
+    },
+    "description": "Generate a draft for the <strong>{channel}</strong> description. Review before applying - the suggestion replaces the editor buffer but does not auto-save.",
+    "extra": {
+      "description": "Optional. Max {max} chars.",
+      "label": "Extra instructions",
+      "placeholder": "e.g. highlight warranty, mention free shipping"
+    },
+    "masterChannel": "master",
+    "openPromptTemplates": "Open prompt templates →",
+    "preview": {
+      "empty": "The model returned nothing.",
+      "requestId": "Request ID",
+      "title": "Suggested description"
+    },
+    "title": "Suggest description",
+    "tone": {
+      "description": "Optional. Max {max} chars.",
+      "label": "Tone",
+      "placeholder": "e.g. confident, concise"
+    },
+    "trigger": "✨ Suggest with AI"
+  }
+}

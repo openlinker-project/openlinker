@@ -65,7 +65,7 @@ import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../shared/ui/tooltip';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess, type WriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { formatAmount } from '../../../shared/format/format-amount';
 import { useConnectionsQuery } from '../../connections';
 import { useDemoMode } from '../../system';
@@ -85,13 +85,9 @@ import { BulkPublishProgress } from './bulk-publish-progress';
 import { PricingRulesPickerDialog } from './pricing-rules-picker-dialog';
 import { AutoAppliedNote } from './auto-applied-note';
 import type { PriceChangeItem } from '../api/price-changes.types';
-import {
-  STEEP_DELTA_TOOLTIP,
-  deltaToneFor,
-  describePriceChangeActionError,
-  formatDeltaLabel,
-  roundingLabelFor,
-} from '../lib/price-change-copy';
+import { deltaToneFor, formatDeltaLabel, roundingLabelFor } from '../lib/price-rule-labels';
+import { describePriceChangeActionError } from '../lib/describe-price-change-error';
+import { interpolate, usePlural, useMessages } from '../../../shared/i18n';
 import { useToast } from '../../../shared/ui/toast-provider';
 
 /**
@@ -127,6 +123,8 @@ function parseDirectionParam(value: string | null): DirectionFilter {
 
 export function PriceChangesQueueTable(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
+  const copy = useMessages('price-changes').priceChangesQueueTable;
+  const plural = usePlural();
 
   // Every action in this table publishes a price to a live marketplace/shop
   // (or mutates a connection's sync mode) and the backend guards every write
@@ -320,17 +318,18 @@ export function PriceChangesQueueTable(): ReactElement {
     pairs: Array<{ sourceConnectionId: string; destinationConnectionId: string; sourceLabel: string }>,
   ): void {
     if (pairs.length === 0) return;
+    const optIn = copy.automaticOptIn;
     const description =
       pairs.length === 1
-        ? `Future price changes from ${pairs[0].sourceLabel} will publish without review.`
-        : `Future price changes from ${pairs.length} sources will publish without review.`;
+        ? interpolate(optIn.description, { source: pairs[0].sourceLabel })
+        : plural(pairs.length, optIn.descriptionMany);
     showToast({
       tone: 'success',
-      title: pairs.length === 1 ? 'Set to Automatic' : `Turned on automatic pricing for ${pairs.length} sources`,
+      title: pairs.length === 1 ? optIn.title : plural(pairs.length, optIn.titleMany),
       description,
       durationMs: AUTOMATIC_OPT_IN_UNDO_MS,
       action: {
-        label: 'Undo',
+        label: optIn.undo,
         onClick: () => {
           for (const pair of pairs) {
             setSourceSyncModeMutation.mutate(
@@ -343,13 +342,13 @@ export function PriceChangesQueueTable(): ReactElement {
                 onSuccess: () => {
                   showToast({
                     tone: 'success',
-                    description: `Reverted ${pair.sourceLabel} back to manual review.`,
+                    description: interpolate(optIn.reverted, { source: pair.sourceLabel }),
                   });
                 },
                 onError: () => {
                   showToast({
                     tone: 'error',
-                    description: `Couldn't undo automatic pricing for ${pair.sourceLabel}. Try again from the connection's settings.`,
+                    description: interpolate(optIn.undoFailed, { source: pair.sourceLabel }),
                   });
                 },
               },
@@ -380,8 +379,11 @@ export function PriceChangesQueueTable(): ReactElement {
       } else {
         showToast({
           tone: 'success',
-          title: 'Price queued for publishing',
-          description: `${item.productName} will update on ${item.destinationLabel} shortly.`,
+          title: copy.queued.title,
+          description: interpolate(copy.queued.description, {
+            product: item.productName,
+            destination: item.destinationLabel,
+          }),
         });
       }
     } catch (error) {
@@ -415,7 +417,7 @@ export function PriceChangesQueueTable(): ReactElement {
       await refreshMutation.mutateAsync(item.id);
       showToast({
         tone: 'success',
-        description: `Refreshed — showing the latest price for ${item.productName}.`,
+        description: interpolate(copy.refreshed, { product: item.productName }),
       });
     } catch (error) {
       console.error('Failed to refresh price change', error);
@@ -433,8 +435,11 @@ export function PriceChangesQueueTable(): ReactElement {
       // Same "queued, not published" honesty as the accept path above.
       showToast({
         tone: 'success',
-        title: 'Price queued for publishing',
-        description: `${item.productName} will update on ${item.destinationLabel} shortly.`,
+        title: copy.queued.title,
+        description: interpolate(copy.queued.description, {
+          product: item.productName,
+          destination: item.destinationLabel,
+        }),
       });
     } catch (error) {
       console.error('Failed to publish edited price change', error);
@@ -478,7 +483,7 @@ export function PriceChangesQueueTable(): ReactElement {
             return {
               sourceConnectionId,
               destinationConnectionId,
-              sourceLabel: byPairKey.get(pair) ?? 'this source',
+              sourceLabel: byPairKey.get(pair) ?? copy.automaticOptIn.fallbackSource,
             };
           }),
         );
@@ -513,18 +518,18 @@ export function PriceChangesQueueTable(): ReactElement {
     if (failed === 0) {
       showToast({
         tone: 'success',
-        title: `Kept ${succeeded} price${succeeded === 1 ? '' : 's'}`,
-        description: 'The old prices remain live.',
+        title: plural(succeeded, copy.bulkIgnore.keptTitle),
+        description: copy.bulkIgnore.keptDescription,
       });
     } else if (succeeded === 0) {
       showToast({
         tone: 'error',
-        description: `Couldn't keep any of the ${failed} selected price${failed === 1 ? '' : 's'}. Try again.`,
+        description: plural(failed, copy.bulkIgnore.allFailed),
       });
     } else {
       showToast({
         tone: 'error',
-        description: `Kept ${succeeded}, but ${failed} failed. Try again for the rest.`,
+        description: interpolate(copy.bulkIgnore.partial, { succeeded, failed }),
       });
     }
   }
@@ -599,14 +604,14 @@ export function PriceChangesQueueTable(): ReactElement {
     if (isRowStateResolved(state)) {
       return (
         <StatusBadge tone="neutral" compact data-testid="card-status-resolved">
-          Resolved
+          {copy.cardStatus.resolved}
         </StatusBadge>
       );
     }
     if (state === 'row-needs-refresh') {
       return (
         <StatusBadge tone="warning" compact withDot data-testid="card-status-flagged">
-          Needs refresh
+          {copy.cardStatus.needsRefresh}
         </StatusBadge>
       );
     }
@@ -649,18 +654,15 @@ export function PriceChangesQueueTable(): ReactElement {
     }
     return (
       <div className="cell-continuation">
-        <span aria-hidden="true">↳</span>
-        Also changes here{' '}
+        <span aria-hidden="true">{'↳'}</span>
+        {copy.continuation.label}{' '}
         <Tooltip>
           <TooltipTrigger asChild>
-            <button type="button" className="cell-continuation__help" aria-label="What does this mean?">
+            <button type="button" className="cell-continuation__help" aria-label={copy.continuation.helpLabel}>
               ?
             </button>
           </TooltipTrigger>
-          <TooltipContent>
-            One price change, one more listing to update. You can accept, edit, or ignore each listing
-            on its own.
-          </TooltipContent>
+          <TooltipContent>{copy.continuation.tooltip}</TooltipContent>
         </Tooltip>
       </div>
     );
@@ -672,7 +674,10 @@ export function PriceChangesQueueTable(): ReactElement {
       <input
         type="checkbox"
         data-testid="row-select"
-        aria-label={`Select ${item.productName} on ${item.destinationLabel}`}
+        aria-label={interpolate(copy.selectRow, {
+          product: item.productName,
+          destination: item.destinationLabel,
+        })}
         checked={selected.has(item.id)}
         disabled={!isSelectable(item)}
         onChange={() => toggleSelected(item.id)}
@@ -684,18 +689,18 @@ export function PriceChangesQueueTable(): ReactElement {
     {
       id: 'select',
       header: write.visible ? (
-        <input type="checkbox" aria-label="Select all" checked={allSelected} onChange={toggleSelectAll} />
+        <input type="checkbox" aria-label={copy.selectAll} checked={allSelected} onChange={toggleSelectAll} />
       ) : null,
       cell: (item) => (write.visible ? renderSelectCheckbox(item) : null),
     },
     {
       id: 'product',
-      header: 'Product',
+      header: copy.columns.product,
       cell: (item) => renderProductIdentity(item),
     },
     {
       id: 'changedIn',
-      header: 'Changed in',
+      header: copy.columns.changedIn,
       cell: (item) => (
         <>
           <div className="cell-product__source">
@@ -717,7 +722,7 @@ export function PriceChangesQueueTable(): ReactElement {
     },
     {
       id: 'connection',
-      header: 'Connection',
+      header: copy.columns.connection,
       cell: (item) => (
         <Link
           className="connection-tag"
@@ -732,19 +737,19 @@ export function PriceChangesQueueTable(): ReactElement {
       id: 'price',
       header: (
         <>
-          Price on this connection <span className="th-sub">incl. VAT</span>
+          {copy.columns.price} <span className="th-sub">{copy.columns.priceSub}</span>
         </>
       ),
       cell: (item) => <PriceCell item={item} />,
     },
     {
       id: 'detected',
-      header: 'Detected',
+      header: copy.columns.detected,
       cell: (item) => <TimeDisplay iso={item.detectedAt} format="datetime" />,
     },
     {
       id: 'action',
-      header: 'Action',
+      header: copy.columns.action,
       align: 'right',
       cell: (item) => (
         <ActionCell
@@ -763,22 +768,18 @@ export function PriceChangesQueueTable(): ReactElement {
   return (
     <div className="price-changes-queue">
       <div className="tab-toolbar">
-        <p>
-          One row per destination — a price that changed once at the source can produce a separate,
-          independently-reviewable change on every marketplace or shop it&apos;s published to. Prices
-          include VAT.
-        </p>
+        <p>{copy.toolbar.intro}</p>
         <Button
           tone="secondary"
           className="button--sm"
           id="btn-pricing-rules"
           onClick={() => setPricingRulesPickerOpen(true)}
         >
-          Pricing rules
+          {copy.toolbar.pricingRules}
         </Button>
         {hasQueueFilters ? (
           <Button tone="ghost" className="button--sm" onClick={clearQueueFilters}>
-            Clear filters
+            {copy.toolbar.clearFilters}
           </Button>
         ) : null}
       </div>
@@ -791,10 +792,10 @@ export function PriceChangesQueueTable(): ReactElement {
 
       <AutoAppliedNote destinationConnections={destinationConnections} />
 
-      <div className="filter-bar" role="group" aria-label="Filter by connection">
-        <span className="filter-bar__label">Connection</span>
+      <div className="filter-bar" role="group" aria-label={copy.filters.connectionGroup}>
+        <span className="filter-bar__label">{copy.filters.connectionLabel}</span>
         <Chip active={connectionFilter === 'all'} onClick={() => setConnectionFilter('all')}>
-          All {renderChipCount(countsQuery.data?.total ?? 0)}
+          {copy.filters.all} {renderChipCount(countsQuery.data?.total ?? 0)}
         </Chip>
         {destinationConnections.map((connection) => (
           <Chip
@@ -806,28 +807,24 @@ export function PriceChangesQueueTable(): ReactElement {
           </Chip>
         ))}
       </div>
-      <div className="filter-bar" role="group" aria-label="Filter by price direction">
-        <span className="filter-bar__label">Price change</span>
+      <div className="filter-bar" role="group" aria-label={copy.filters.directionGroup}>
+        <span className="filter-bar__label">{copy.filters.directionLabel}</span>
         <Chip active={directionFilter === 'all'} onClick={() => setDirectionFilter('all')}>
-          All
+          {copy.filters.all}
         </Chip>
         <Chip active={directionFilter === 'up'} onClick={() => setDirectionFilter('up')}>
-          ↑ Increases
+          {copy.filters.increases}
         </Chip>
         <Chip active={directionFilter === 'down'} onClick={() => setDirectionFilter('down')}>
-          ↓ Decreases
+          {copy.filters.decreases}
         </Chip>
         <Chip active={magnitudeOnly} onClick={toggleMagnitudeOnly}>
-          Big changes (10% or more)
+          {copy.filters.bigChanges}
         </Chip>
       </div>
 
       {query.data && query.data.hiddenStaleCount > 0 ? (
-        <p className="filter-note">
-          {query.data.hiddenStaleCount} more change
-          {query.data.hiddenStaleCount === 1 ? " isn't" : 's are not'} shown here because that listing
-          is paused.
-        </p>
+        <p className="filter-note">{plural(query.data.hiddenStaleCount, copy.hiddenStale)}</p>
       ) : null}
 
       {query.isPending ? (
@@ -839,16 +836,16 @@ export function PriceChangesQueueTable(): ReactElement {
         // finer per-row `data-state` values below, which answer a different
         // question ("what is THIS row's resolution") on a different element.
         <div data-state="queue-loading">
-          <DataTableSkeleton columns={7} label="Loading price changes…" />
+          <DataTableSkeleton columns={7} label={copy.loading} />
         </div>
       ) : query.error ? (
         <div data-state="queue-error">
           <ErrorState
-            title="Couldn't load price changes"
+            title={copy.error.title}
             message={query.error.message}
             action={
               <Button tone="secondary" onClick={() => void query.refetch()}>
-                Try again
+                {copy.error.tryAgain}
               </Button>
             }
           />
@@ -856,14 +853,14 @@ export function PriceChangesQueueTable(): ReactElement {
       ) : items.length === 0 ? (
         <div data-state="queue-empty">
           <EmptyState
-            title="You're all caught up"
-            message="Nothing needs your attention right now. We'll show new price changes here as soon as one happens in your shop."
+            title={copy.empty.title}
+            message={copy.empty.message}
           />
         </div>
       ) : (
         <div data-state="queue-live">
           <DataTable
-            caption="Price changes"
+            caption={copy.caption}
             columns={columns}
             rows={items}
             rowKey={(item) => item.id}
@@ -872,21 +869,21 @@ export function PriceChangesQueueTable(): ReactElement {
             footer={
               <BulkActionBar
                 count={selectedIds.length}
-                itemNoun="price change"
+                selectedLabel={copy.bulk.selected}
                 actions={
                   <>
-                    <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                    <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                       <Button
                         tone="secondary"
                         disabled={write.demoReadOnly}
                         onClick={() => void handleBulkIgnore()}
                       >
-                        Keep prices
+                        {copy.bulk.keepPrices}
                       </Button>
                     </ReadOnlyLock>
-                    <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                    <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                       <Button disabled={write.demoReadOnly} onClick={() => setBulkDialogOpen(true)}>
-                        Accept selected
+                        {copy.bulk.acceptSelected}
                       </Button>
                     </ReadOnlyLock>
                   </>
@@ -902,7 +899,7 @@ export function PriceChangesQueueTable(): ReactElement {
                   items={[
                     {
                       id: 'changed-in',
-                      label: 'Changed in',
+                      label: copy.columns.changedIn,
                       value: (
                         <>
                           <Link
@@ -922,7 +919,7 @@ export function PriceChangesQueueTable(): ReactElement {
                     },
                     {
                       id: 'connection',
-                      label: 'Connection',
+                      label: copy.columns.connection,
                       value: (
                         <Link
                           className="connection-tag"
@@ -935,12 +932,12 @@ export function PriceChangesQueueTable(): ReactElement {
                     },
                     {
                       id: 'price',
-                      label: 'Price on this connection (incl. VAT)',
+                      label: copy.columns.priceCard,
                       value: <PriceCell item={item} />,
                     },
                     {
                       id: 'detected',
-                      label: 'Detected',
+                      label: copy.columns.detected,
                       value: <TimeDisplay iso={item.detectedAt} format="datetime" />,
                     },
                   ]}
@@ -1033,6 +1030,7 @@ function isRowStateResolved(state: RowState): boolean {
 }
 
 function PriceCell({ item }: { item: PriceChangeItem }): ReactElement {
+  const copy = useMessages('price-changes');
   const tone = deltaToneFor(item);
   const displayNew = item.manualPriceOverride ?? item.computedNewAmount;
   const roundingLabel = roundingLabelFor(item.ruleSummary.rounding);
@@ -1074,14 +1072,16 @@ function PriceCell({ item }: { item: PriceChangeItem }): ReactElement {
         {tone === 'steep' ? (
           <Tooltip>
             <TooltipTrigger asChild>{deltaChip}</TooltipTrigger>
-            <TooltipContent>{STEEP_DELTA_TOOLTIP}</TooltipContent>
+            <TooltipContent>{copy.priceRuleLabels.steepTooltip}</TooltipContent>
           </Tooltip>
         ) : (
           deltaChip
         )}
       </div>
       {roundingLabel && !item.resolvedAt ? (
-        <div className="cell-product__source">Rounded: {roundingLabel}</div>
+        <div className="cell-product__source">
+          {interpolate(copy.priceChangesQueueTable.rounded, { rounding: roundingLabel })}
+        </div>
       ) : null}
     </>
   );
@@ -1104,22 +1104,23 @@ function ActionCell({
   onUndo: (item: PriceChangeItem) => Promise<void>;
   onRefresh: (item: PriceChangeItem) => Promise<void>;
 }): ReactElement {
+  const copy = useMessages('price-changes').priceChangesQueueTable.actions;
   if (item.resolution === 'accepted' || item.resolution === 'accepted-custom') {
     return (
       <span
         className={`status-note ${item.resolution === 'accepted-custom' ? 'status-note--custom' : 'status-note--accepted'}`}
         data-testid={item.resolution === 'accepted-custom' ? 'row-applied-custom' : 'row-applied'}
       >
-        {item.resolution === 'accepted-custom' ? 'Published · your price' : 'Published'}
+        {item.resolution === 'accepted-custom' ? copy.publishedCustom : copy.published}
       </span>
     );
   }
   if (item.resolution === 'ignored') {
     return (
       <span className="status-note" data-testid="row-ignored">
-        Kept the old price{' '}
+        {copy.kept}{' '}
         {write.visible ? (
-          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
             <button
               type="button"
               className="undo"
@@ -1127,7 +1128,7 @@ function ActionCell({
               disabled={write.demoReadOnly}
               onClick={() => void onUndo(item)}
             >
-              Undo
+              {copy.undo}
             </button>
           </ReadOnlyLock>
         ) : null}
@@ -1137,11 +1138,9 @@ function ActionCell({
   if (item.needsRefresh) {
     return (
       <div className="refresh-note">
-        <span className="refresh-note__text">
-          This price changed again while you were deciding — refresh to see the latest.
-        </span>
+        <span className="refresh-note__text">{copy.needsRefresh}</span>
         {write.visible ? (
-          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
             <Button
               tone="secondary"
               className="button--xs"
@@ -1149,7 +1148,7 @@ function ActionCell({
               disabled={write.demoReadOnly}
               onClick={() => void onRefresh(item)}
             >
-              Refresh
+              {copy.refresh}
             </Button>
           </ReadOnlyLock>
         ) : null}
@@ -1161,7 +1160,7 @@ function ActionCell({
   }
   return (
     <div className="row-actions">
-      <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+      <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
         <Button
           tone="secondary"
           className="button--xs"
@@ -1169,10 +1168,10 @@ function ActionCell({
           disabled={write.demoReadOnly}
           onClick={() => void onIgnore(item)}
         >
-          Keep price
+          {copy.keepPrice}
         </Button>
       </ReadOnlyLock>
-      <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+      <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
         <Button
           tone="secondary"
           className="button--xs"
@@ -1180,17 +1179,17 @@ function ActionCell({
           disabled={write.demoReadOnly}
           onClick={() => onEdit(item)}
         >
-          Edit
+          {copy.edit}
         </Button>
       </ReadOnlyLock>
-      <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+      <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
         <Button
           className="button--xs"
           data-testid="row-accept"
           disabled={write.demoReadOnly}
           onClick={() => onAccept(item)}
         >
-          Accept
+          {copy.accept}
         </Button>
       </ReadOnlyLock>
     </div>
@@ -1205,22 +1204,20 @@ function ActionCell({
  * pair in automatic mode is waiting for review.
  */
 function PriceChangeCauseNote({ item }: { item: PriceChangeItem }): ReactElement | null {
+  const copy = useMessages('price-changes').priceChangesQueueTable.causeNote;
   if (item.cause !== 'tax-basis-correction') return null;
   return (
     <div className="cell-product__source">
       <StatusBadge tone="info" compact data-testid="row-cause-tax-basis">
-        VAT correction
+        {copy.vatCorrection}
       </StatusBadge>{' '}
       <Tooltip>
         <TooltipTrigger asChild>
-          <button type="button" className="cell-continuation__help" aria-label="Why did this price change?">
+          <button type="button" className="cell-continuation__help" aria-label={copy.whyLabel}>
             ?
           </button>
         </TooltipTrigger>
-        <TooltipContent>
-          The shop used to send this price without VAT. The new price is what a buyer pays there, VAT
-          included. It is never published automatically - accept, edit or ignore it here.
-        </TooltipContent>
+        <TooltipContent>{copy.tooltip}</TooltipContent>
       </Tooltip>
     </div>
   );

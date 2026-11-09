@@ -1,0 +1,85 @@
+{
+  "plugin": {
+    "setupCard": {
+      "badge": "API token",
+      "description": "Connect your Shoper shop with its API token."
+    }
+  },
+  "shoperConnectionActions": {
+    "configure": "Configure webhooks",
+    "configuring": "Configuring...",
+    "currentlyConfigured": "Currently configured ✓",
+    "description": "Registers a webhook in Shoper so new and changed orders and products reach OpenLinker right away. Needs the OL callback URL and the Order source or Product master capability; run it again after enabling one of them.",
+    "reconfigure": "Re-configure webhooks",
+    "title": "Configure webhooks",
+    "toast": {
+      "configured": {
+        "description": "Shoper will now notify OpenLinker when an order or a product is created or changes.",
+        "title": "Webhooks configured"
+      },
+      "failed": {
+        "notAccepted": "Shoper did not accept the webhook registration.",
+        "title": "Webhook registration failed"
+      }
+    }
+  },
+  "shoperConnectionConfig": {
+    "positiveInteger": {
+      "shoperCancelledStatusId": "The cancelled status id must be a positive whole number.",
+      "shoperInProgressStatusId": "The in-progress status id must be a positive whole number.",
+      "shoperParcelShippingId": "The parcel delivery method id must be a positive whole number.",
+      "shoperPaymentId": "The payment method id must be a positive whole number.",
+      "shoperShippingId": "The delivery method id must be a positive whole number.",
+      "shoperStatusId": "The order status id must be a positive whole number."
+    }
+  },
+  "shoperOrderDefaultsSection": {
+    "fields": {
+      "shoperCancelledStatusId": {
+        "description": "The status an order moves to when OpenLinker cancels it in the shop. Not set: the first active cancelled-type status.",
+        "label": "Status for cancelled orders"
+      },
+      "shoperInProgressStatusId": {
+        "description": "The status an order moves to when OpenLinker reports it in progress. Not set: the first active in-progress status.",
+        "label": "Status for orders in progress"
+      },
+      "shoperParcelShippingId": {
+        "description": "Used for the parcel when OpenLinker marks an order as shipped. The order's own delivery method is tried first. If Shoper refuses it (it does for some carrier-integrated methods, such as InPost or DPD), this method is used instead, so pick a plain one. Not set: the first plain method in the shop.",
+        "label": "Delivery method for shipments"
+      },
+      "shoperPaymentId": {
+        "description": "Shoper requires a payment method and OpenLinker has no payment mapping, so this is the one used for every order.",
+        "label": "Default payment method"
+      },
+      "shoperShippingId": {
+        "description": "Used when an order's delivery method has no mapping. Shoper requires one to create the order.",
+        "label": "Default delivery method"
+      },
+      "shoperStatusId": {
+        "description": "Used when the order's status has no mapping. Pick the status new orders should start in.",
+        "label": "Default order status"
+      }
+    },
+    "loadFailed": "Could not load the list from Shoper",
+    "loading": "Loading from Shoper…",
+    "notReceivingOrders": {
+      "body": "Delivery, payment and status defaults are needed only when this shop receives orders. Enable the Order processor capability to set them.",
+      "title": "Order defaults"
+    },
+    "notSet": "Not set",
+    "storedId": "Saved id {id} (not in the shop's list)"
+  },
+  "shoperSetupRoute": {
+    "crumb": "Connect Shoper"
+  },
+  "shoperStructuredSection": {
+    "callbackUrl": {
+      "description": "OpenLinker's public URL as Shoper can reach it. Shoper calls it when an order or a product changes. Pre-filled with the API address this app uses; it must be reachable from the internet. Required for the 'Configure webhooks' action.",
+      "label": "OL callback URL"
+    },
+    "noWebhookCapability": {
+      "body": "Webhooks deliver orders when Order source is enabled on this connection and product changes when Product master is. Enable one of them first, then configure webhooks.",
+      "title": "Nothing here uses webhooks"
+    }
+  }
+}

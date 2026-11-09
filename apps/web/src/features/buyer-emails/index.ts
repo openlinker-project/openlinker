@@ -15,7 +15,8 @@ export type {
   BuyerEmailsSettings,
 } from './api/buyer-emails.types';
 export * from './lib/buyer-emails-config';
-export { BUYER_EMAILS_COPY, BUYER_EMAIL_TEMPLATE_COPY, templateLabel } from './lib/buyer-emails.copy';
+export { templateCopy, templateLabel } from './lib/buyer-email-template-label';
+export type { BuyerEmailTemplateCopy } from './lib/buyer-email-template-label';
 export {
   BUYER_EMAIL_TEST_RATE_LIMITED_ERROR_CODE,
   isBuyerEmailTestRateLimitedError,
@@ -31,7 +32,7 @@ export {
 } from './hooks/use-save-buyer-email-template-mutation';
 export {
   buildBuyerEmailEditorSchema,
-  buyerEmailTestFormSchema,
+  buildBuyerEmailTestFormSchema,
   type BuyerEmailEditorFormValues,
   type BuyerEmailTestFormValues,
 } from './lib/buyer-email-editor.schema';

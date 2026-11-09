@@ -347,7 +347,7 @@ describe('BulkBatchProgressPage', () => {
     renderPage(apiClient);
 
     expect(await screen.findByText('Could not load batch')).toBeInTheDocument();
-    expect(screen.getByText('Network is down')).toBeInTheDocument();
+    expect(screen.getByText('The server said: Network is down')).toBeInTheDocument();
   });
 
   it('renders one record row per record', async () => {

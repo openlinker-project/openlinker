@@ -15,7 +15,8 @@
  * @module plugins/ksef/components
  */
 import type { ReactElement } from 'react';
-import { useTranslation } from '../../../shared/i18n';
+import { interpolate } from '../../../shared/i18n';
+import { useKsefMessages } from '../messages';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
@@ -49,8 +50,8 @@ export const KSEF_PROCEDURE_CODES = [
 
 /** TRolaPodmiotu3 values the slot offers: the two the buyer flags depend on. */
 const PARTY_ROLES = [
-  { value: '8', labelKey: 'ksef.issueOptions.roleJst', label: 'Public sector unit (JST, role 8)' },
-  { value: '10', labelKey: 'ksef.issueOptions.roleGv', label: 'VAT group member (role 10)' },
+  { value: '8', labelKey: 'roleJst' },
+  { value: '10', labelKey: 'roleGv' },
 ] as const;
 
 /** A copy of `value` without `key` - so an emptied option leaves no `{}` on the wire. */
@@ -111,7 +112,7 @@ export function KsefInvoiceIssueOptions({
   onChange,
   disabled = false,
 }: InvoiceIssueOptionsProps): ReactElement {
-  const { t } = useTranslation();
+  const copy = useKsefMessages().ksefInvoiceIssueOptions;
   const annotations = value.annotations ?? {};
   const party = value.additionalParties?.[0] ?? null;
   const markerOf = (lineId: string): IssueInvoiceLineClassificationInput | undefined =>
@@ -119,12 +120,9 @@ export function KsefInvoiceIssueOptions({
 
   return (
     <details className="ksef-issue-options" data-testid="ksef-issue-options">
-      <summary>{t('ksef.issueOptions.summary', 'KSeF details for this invoice')}</summary>
+      <summary>{copy.summary}</summary>
       <p className="text-muted ksef-issue-options__lead">
-        {t(
-          'ksef.issueOptions.lead',
-          'Nothing here is set for you. Tick only what applies to this sale; your accountant knows best.'
-        )}
+        {copy.lead}
       </p>
 
       <label className="checkbox-row">
@@ -135,12 +133,9 @@ export function KsefInvoiceIssueOptions({
           disabled={disabled}
         />
         <span>
-          {t('ksef.issueOptions.splitPayment', 'Split payment (MPP)')}
+          {copy.splitPayment}
           <small className="text-muted ksef-issue-options__hint">
-            {t(
-              'ksef.issueOptions.splitPaymentHint',
-              'Usually needed for goods listed in annex 15 when the invoice is over 15 000 PLN gross.'
-            )}
+            {copy.splitPaymentHint}
           </small>
         </span>
       </label>
@@ -152,17 +147,17 @@ export function KsefInvoiceIssueOptions({
           disabled={disabled}
         />
         <span>
-          {t('ksef.issueOptions.triangulation', 'Triangular transaction (WDT, second taxpayer)')}
+          {copy.triangulation}
         </span>
       </label>
 
       <fieldset className="ksef-issue-options__party">
         <legend>
-          {t('ksef.issueOptions.partyLegend', 'Another party on the invoice (Podmiot3)')}
+          {copy.partyLegend}
         </legend>
         {party ? (
           <>
-            <FormField label={t('ksef.issueOptions.partyRole', 'Role')} name="ksef-party-role">
+            <FormField label={copy.partyRole} name="ksef-party-role">
               <Select
                 value={party.role}
                 onChange={(e) => onChange(withParty(value, { ...party, role: e.target.value }))}
@@ -170,12 +165,12 @@ export function KsefInvoiceIssueOptions({
               >
                 {PARTY_ROLES.map((role) => (
                   <option key={role.value} value={role.value}>
-                    {t(role.labelKey, role.label)}
+                    {copy[role.labelKey]}
                   </option>
                 ))}
               </Select>
             </FormField>
-            <FormField label={t('ksef.issueOptions.partyName', 'Name')} name="ksef-party-name">
+            <FormField label={copy.partyName} name="ksef-party-name">
               <Input
                 value={party.name}
                 onChange={(e) => onChange(withParty(value, { ...party, name: e.target.value }))}
@@ -183,7 +178,7 @@ export function KsefInvoiceIssueOptions({
                 maxLength={512}
               />
             </FormField>
-            <FormField label={t('ksef.issueOptions.partyNip', 'NIP')} name="ksef-party-nip">
+            <FormField label={copy.partyNip} name="ksef-party-nip">
               <Input
                 value={party.taxId?.value ?? ''}
                 inputMode="numeric"
@@ -207,7 +202,7 @@ export function KsefInvoiceIssueOptions({
               onClick={() => onChange(withParty(value, null))}
               disabled={disabled}
             >
-              {t('ksef.issueOptions.removeParty', 'Remove this party')}
+              {copy.removeParty}
             </Button>
           </>
         ) : (
@@ -216,7 +211,7 @@ export function KsefInvoiceIssueOptions({
             onClick={() => onChange(withParty(value, { role: '8', name: '' }))}
             disabled={disabled}
           >
-            {t('ksef.issueOptions.addParty', 'Add a party')}
+            {copy.addParty}
           </Button>
         )}
       </fieldset>
@@ -224,31 +219,31 @@ export function KsefInvoiceIssueOptions({
       {lines.length > 0 ? (
         <div className="ksef-issue-options__lines-scroll">
           <table className="ksef-issue-options__lines">
-            <caption>{t('ksef.issueOptions.linesCaption', 'Markers per line')}</caption>
+            <caption>{copy.linesCaption}</caption>
             <thead>
               <tr>
-                <th scope="col">{t('ksef.issueOptions.line', 'Line')}</th>
-                <th scope="col">{t('ksef.issueOptions.gtu', 'GTU')}</th>
-                <th scope="col">{t('ksef.issueOptions.procedure', 'Procedure')}</th>
+                <th scope="col">{copy.line}</th>
+                <th scope="col">{copy.gtu}</th>
+                <th scope="col">{copy.procedure}</th>
               </tr>
             </thead>
             <tbody>
               {lines.map((line, index) => {
                 const marker = markerOf(line.id);
-                const lineLabel = line.name ?? t('ksef.issueOptions.lineN', `Line ${index + 1}`);
+                const lineLabel = line.name ?? interpolate(copy.lineN, { n: index + 1 });
                 return (
                   <tr key={line.id}>
                     <td>{lineLabel}</td>
                     <td>
                       <Select
-                        aria-label={t('ksef.issueOptions.gtuFor', `GTU for ${lineLabel}`)}
+                        aria-label={interpolate(copy.gtuFor, { line: lineLabel })}
                         value={marker?.gtuCode ?? ''}
                         onChange={(e) =>
                           onChange(withLineMarker(value, line.id, 'gtuCode', e.target.value))
                         }
                         disabled={disabled}
                       >
-                        <option value="">{t('ksef.issueOptions.none', 'None')}</option>
+                        <option value="">{copy.none}</option>
                         {KSEF_GTU_CODES.map((code) => (
                           <option key={code} value={code}>
                             {code}
@@ -258,17 +253,14 @@ export function KsefInvoiceIssueOptions({
                     </td>
                     <td>
                       <Select
-                        aria-label={t(
-                          'ksef.issueOptions.procedureFor',
-                          `Procedure for ${lineLabel}`
-                        )}
+                        aria-label={interpolate(copy.procedureFor, { line: lineLabel })}
                         value={marker?.procedureCode ?? ''}
                         onChange={(e) =>
                           onChange(withLineMarker(value, line.id, 'procedureCode', e.target.value))
                         }
                         disabled={disabled}
                       >
-                        <option value="">{t('ksef.issueOptions.none', 'None')}</option>
+                        <option value="">{copy.none}</option>
                         {KSEF_PROCEDURE_CODES.map((code) => (
                           <option key={code} value={code}>
                             {code}

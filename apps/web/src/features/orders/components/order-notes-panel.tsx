@@ -28,7 +28,7 @@ import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useIsAdmin, useWriteAccess } from '../../../shared/auth/use-permission';
 import { useSession } from '../../../shared/auth/use-session';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import type { OrderNote } from '../api/orders.types';
 import { useOrderNotesQuery } from '../hooks/use-order-notes-query';
@@ -39,12 +39,23 @@ import {
   useUnpinOrderNoteMutation,
   useUpdateOrderNoteMutation,
 } from '../hooks/use-order-note-mutations';
-import { ORDER_NOTE_MAX_LENGTH, ORDER_NOTES_COPY } from '../lib/order-notes.copy';
+import {
+  interpolate,
+  renderRich,
+  useFormat,
+  useMessages,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
+import { serverErrorText } from '../lib/server-error-text';
+
+/** Server-enforced too (`CreateOrderNoteDto`); the counter only mirrors it. */
+export const ORDER_NOTE_MAX_LENGTH = 2000;
+
+type NotesCopy = ResolvedCopy<Messages['orders']>['orderNotes'];
 
 /** The `id` the pinned banner's "All notes (n)" link and the page hash-scroll target. */
 export const ORDER_NOTES_SECTION_ID = 'order-notes';
-
-const COPY = ORDER_NOTES_COPY;
 
 export interface OrderNotesPanelProps {
   internalOrderId: string;
@@ -53,6 +64,13 @@ export interface OrderNotesPanelProps {
    * "Never sent to …" promise. Empty or absent reads "your sales channels".
    */
   channelNames?: readonly string[];
+}
+
+function counterText(copy: NotesCopy, formatNumber: (n: number) => string, length: number): string {
+  return interpolate(copy.composer.counter, {
+    length: formatNumber(length),
+    max: formatNumber(ORDER_NOTE_MAX_LENGTH),
+  });
 }
 
 function isSameLocalDay(a: string, b: string): boolean {
@@ -74,6 +92,9 @@ function NoteRow({
   canWrite: boolean;
   onRequestDelete: (note: OrderNote) => void;
 }): ReactElement {
+  const COPY = useMessages('orders').orderNotes;
+  const serverSaid = useMessages('orders').common.serverSaid;
+  const format = useFormat();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(note.body);
   const [showToPackerDraft, setShowToPackerDraft] = useState(note.showToPacker);
@@ -109,7 +130,7 @@ function NoteRow({
       showToast({
         tone: 'error',
         title: COPY.row.actionErrorTitle,
-        description: error.message || COPY.row.actionErrorFallback,
+        description: serverErrorText(serverSaid, error.message, COPY.row.actionErrorFallback),
       });
     };
     if (isPinned) unpinNote.mutate(note.id, { onError });
@@ -201,14 +222,14 @@ function NoteRow({
               />
               <span>{COPY.composer.showToPacker}</span>
             </label>
-            <span className="order-notes__counter">{COPY.composer.counter(draft.length)}</span>
+            <span className="order-notes__counter">{counterText(COPY, format.number, draft.length)}</span>
           </div>
           {showToPackerDraft ? (
             <p className="order-notes__packer-warning">{COPY.composer.packerWarning}</p>
           ) : null}
           {updateNote.isError ? (
             <Alert tone="error" title={COPY.row.editErrorTitle}>
-              {updateNote.error.message || COPY.row.editErrorFallback}
+              {serverErrorText(serverSaid, updateNote.error.message, COPY.row.editErrorFallback)}
             </Alert>
           ) : null}
         </div>
@@ -220,6 +241,9 @@ function NoteRow({
 }
 
 export function OrderNotesPanel({ internalOrderId, channelNames = [] }: OrderNotesPanelProps): ReactElement {
+  const COPY = useMessages('orders').orderNotes;
+  const serverSaid = useMessages('orders').common.serverSaid;
+  const format = useFormat();
   const demoMode = useDemoMode();
   const write = useWriteAccess('orders:write', demoMode);
   const isAdmin = useIsAdmin();
@@ -255,7 +279,7 @@ export function OrderNotesPanel({ internalOrderId, channelNames = [] }: OrderNot
                 showToast({
                   tone: 'error',
                   title: COPY.composer.pinErrorTitle,
-                  description: error.message || COPY.composer.pinErrorFallback,
+                  description: serverErrorText(serverSaid, error.message, COPY.composer.pinErrorFallback),
                 });
               },
             });
@@ -279,7 +303,7 @@ export function OrderNotesPanel({ internalOrderId, channelNames = [] }: OrderNot
         showToast({
           tone: 'error',
           title: COPY.deleteDialog.errorTitle,
-          description: error.message || COPY.deleteDialog.errorFallback,
+          description: serverErrorText(serverSaid, error.message, COPY.deleteDialog.errorFallback),
         });
       },
     });
@@ -321,8 +345,8 @@ export function OrderNotesPanel({ internalOrderId, channelNames = [] }: OrderNot
           />
           <span>{COPY.composer.pinToTop}</span>
         </label>
-        <span className="order-notes__counter">{COPY.composer.counter(newBody.length)}</span>
-        <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+        <span className="order-notes__counter">{counterText(COPY, format.number, newBody.length)}</span>
+        <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
           <Button
             type="submit"
             className="button--sm"
@@ -348,7 +372,7 @@ export function OrderNotesPanel({ internalOrderId, channelNames = [] }: OrderNot
         </Button>
       }
     >
-      {createNote.error.message || COPY.composer.saveErrorFallback} {COPY.composer.saveErrorTail}
+      {serverErrorText(serverSaid, createNote.error.message, COPY.composer.saveErrorFallback)} {COPY.composer.saveErrorTail}
     </Alert>
   ) : null;
 
@@ -361,10 +385,16 @@ export function OrderNotesPanel({ internalOrderId, channelNames = [] }: OrderNot
     >
       <div className="detail-section__title-row">
         <h3 className="detail-section__title" id={`${composerId}-heading`}>
-          {COPY.heading(notes.length)}
+          {notes.length > 0
+            ? interpolate(COPY.headingWithCount, { count: format.number(notes.length) })
+            : COPY.heading}
         </h3>
         <span className="detail-section__muted order-notes__privacy">
-          {canAct ? COPY.privacy(channelNames) : COPY.privacyShort}
+          {!canAct
+            ? COPY.privacyShort
+            : channelNames.length > 0
+              ? interpolate(COPY.privacy, { channels: format.list(channelNames, 'disjunction') })
+              : COPY.privacyNoChannels}
         </span>
       </div>
 
@@ -422,8 +452,12 @@ export function OrderNotesPanel({ internalOrderId, channelNames = [] }: OrderNot
         title={COPY.deleteDialog.title}
         description={
           <>
-            {COPY.deleteDialog.descriptionLead} <strong>{pendingDelete?.authorUsername}</strong>{' '}
-            {COPY.deleteDialog.descriptionTail}
+            {COPY.deleteDialog.descriptionRemoved}{' '}
+            {renderRich(
+              COPY.deleteDialog.descriptionTimeline,
+              { strong: (text) => <strong>{text}</strong> },
+              { author: pendingDelete?.authorUsername ?? '' },
+            )}
           </>
         }
         cancelLabel={COPY.deleteDialog.keep}
@@ -464,6 +498,8 @@ function PinIcon(): ReactElement {
  * while loading or when no note is pinned; never a "no pinned note" claim.
  */
 export function PinnedOrderNoteBanner({ internalOrderId }: { internalOrderId: string }): ReactElement | null {
+  const COPY = useMessages('orders').orderNotes;
+  const format = useFormat();
   const notesQuery = useOrderNotesQuery(internalOrderId);
   const notes = notesQuery.data ?? [];
   const pinned = notes.find((note) => note.pinnedAt !== null);
@@ -485,7 +521,7 @@ export function PinnedOrderNoteBanner({ internalOrderId }: { internalOrderId: st
             {COPY.row.shownToPacker}
           </StatusBadge>
         ) : null}
-        <a href={`#${ORDER_NOTES_SECTION_ID}`}>{COPY.pinned.allNotes(notes.length)}</a>
+        <a href={`#${ORDER_NOTES_SECTION_ID}`}>{interpolate(COPY.pinned.allNotes, { count: format.number(notes.length) })}</a>
       </span>
     </div>
   );

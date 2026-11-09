@@ -9,6 +9,7 @@
  * @module pages/dev-ui/sections
  */
 import type { ReactElement, ReactNode } from 'react';
+import { useMessages } from '../../../shared/i18n';
 import {
   AccessDeniedState,
   Alert,
@@ -71,6 +72,7 @@ function Group({ title, description, children }: GroupProps): ReactElement {
 const SPARKLINE_TREND: readonly number[] = [4, 6, 5, 8, 7, 9, 10, 12, 11, 14, 13, 16, 15, 18];
 
 export function PrimitivesSection(): ReactElement {
+  const copy = useMessages('dev-ui').primitivesSection;
   return (
     <div className="ds-stack" style={{ gap: 'var(--space-6)' }}>
       <Group
@@ -512,7 +514,7 @@ export function PrimitivesSection(): ReactElement {
           </p>
           <ErrorState
             title="Admin role required"
-            message="This page manages agent credentials — it requires an admin session."
+            message={copy.adminRequiredMessage}
           />
           <p className="ds-section__sub">
             Permission missing, no <code>fallback</code> — renders nothing

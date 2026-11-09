@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -11,49 +11,56 @@ import { formatRelativeTime } from '../../shared/format/format-relative-time';
 import { formatDateTime } from '../../shared/format/format-date';
 import { useCursorsQuery } from '../../features/cursors/hooks/use-cursors-query';
 import type { Cursor, CursorFilters } from '../../features/cursors/api/cursors.types';
+import { interpolate, useMessages, type Messages } from '../../shared/i18n';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
 
-const COLUMNS: DataTableColumn<Cursor>[] = [
-  {
-    id: 'cursorKey',
-    header: 'Cursor Key',
-    cell: (cursor) => <span className="mono-text">{cursor.cursorKey}</span>,
-    accessor: (cursor) => cursor.cursorKey,
-    sortable: true,
-  },
-  {
-    id: 'value',
-    header: 'Value',
-    cell: (cursor) => (
-      <span className="mono-text" title={cursor.value}>
-        {cursor.value.length > 40 ? `${cursor.value.slice(0, 40)}...` : cursor.value}
-      </span>
-    ),
-    hideBelow: 768,
-  },
-  {
-    id: 'connectionId',
-    header: 'Connection ID',
-    cell: (cursor) => <span className="mono-text">{cursor.connectionId}</span>,
-    hideBelow: 1024,
-  },
-  {
-    id: 'updatedAt',
-    header: 'Last Updated',
-    cell: (cursor) => (
-      <span title={formatDateTime(cursor.updatedAt)}>
-        {formatRelativeTime(cursor.updatedAt)}
-      </span>
-    ),
-    accessor: (cursor) => cursor.updatedAt,
-    sortable: true,
-  },
-];
+type CursorsListCopy = Messages['cursors']['cursorsListPage'];
+
+function buildColumns(copy: CursorsListCopy['columns']): DataTableColumn<Cursor>[] {
+  return [
+    {
+      id: 'cursorKey',
+      header: copy.cursorKey,
+      cell: (cursor) => <span className="mono-text">{cursor.cursorKey}</span>,
+      accessor: (cursor) => cursor.cursorKey,
+      sortable: true,
+    },
+    {
+      id: 'value',
+      header: copy.value,
+      cell: (cursor) => (
+        <span className="mono-text" title={cursor.value}>
+          {cursor.value.length > 40 ? `${cursor.value.slice(0, 40)}...` : cursor.value}
+        </span>
+      ),
+      hideBelow: 768,
+    },
+    {
+      id: 'connectionId',
+      header: copy.connectionId,
+      cell: (cursor) => <span className="mono-text">{cursor.connectionId}</span>,
+      hideBelow: 1024,
+    },
+    {
+      id: 'updatedAt',
+      header: copy.updatedAt,
+      cell: (cursor) => (
+        <span title={formatDateTime(cursor.updatedAt)}>
+          {formatRelativeTime(cursor.updatedAt)}
+        </span>
+      ),
+      accessor: (cursor) => cursor.updatedAt,
+      sortable: true,
+    },
+  ];
+}
 
 export function CursorsListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
+  const copy = useMessages('cursors').cursorsListPage;
+  const columns = useMemo(() => buildColumns(copy.columns), [copy]);
   const { sort, setSort } = useTableSort([{ id: 'updatedAt', desc: true }]);
 
   const urlConnectionId = searchParams.get('connectionId') ?? '';
@@ -101,15 +108,15 @@ export function CursorsListPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow="Diagnostics"
-      title="Cursors"
-      description="Sync cursor state per connection — track incremental sync positions."
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
     >
       {/* Filters */}
       <div className="toolbar toolbar--compact">
         <Input
-          aria-label="Filter by connection ID"
-          placeholder="Connection ID..."
+          aria-label={copy.filter.ariaLabel}
+          placeholder={copy.filter.placeholder}
           value={connectionIdInput}
           onChange={(e) => { handleFilterChange(e.target.value); }}
         />
@@ -118,32 +125,32 @@ export function CursorsListPage(): ReactElement {
       {query.isLoading ? (
         <LoadingState
           liveRegion="off"
-          title="Loading cursors"
-          message="Fetching cursor data..."
+          title={copy.loading.title}
+          message={copy.loading.message}
         />
       ) : query.error ? (
         <ErrorState
-          title="Unable to load cursors"
+          title={copy.error.title}
           message={query.error.message}
           action={
-            <Button onClick={() => { void query.refetch(); }}>Retry</Button>
+            <Button onClick={() => { void query.refetch(); }}>{copy.error.retry}</Button>
           }
         />
       ) : (query.data?.items.length ?? 0) === 0 ? (
         <EmptyState
           liveRegion="off"
-          title="No cursors found"
+          title={copy.empty.title}
           message={
             debouncedConnectionId
-              ? 'No cursors match the current filter.'
-              : 'No sync cursors have been created yet. Cursors appear after the first sync job runs.'
+              ? copy.empty.filtered
+              : copy.empty.none
           }
         />
       ) : (
         <>
           <DataTable
-            caption="Connection cursors"
-            columns={COLUMNS}
+            caption={copy.caption}
+            columns={columns}
             rows={query.data?.items ?? []}
             rowKey={(cursor) => `${cursor.connectionId}:${cursor.cursorKey}`}
             sort={sort}
@@ -157,20 +164,24 @@ export function CursorsListPage(): ReactElement {
 
           <div className="pagination">
             <span className="text-muted">
-              Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
+              {interpolate(copy.pagination.range, {
+                from: offset + 1,
+                to: Math.min(offset + PAGE_SIZE, total),
+                total,
+              })}
             </span>
             <div className="pagination__actions">
               <Button
                 disabled={!hasPrev}
                 onClick={() => { setOffset(offset - PAGE_SIZE); }}
               >
-                Previous
+                {copy.pagination.previous}
               </Button>
               <Button
                 disabled={!hasNext}
                 onClick={() => { setOffset(offset + PAGE_SIZE); }}
               >
-                Next
+                {copy.pagination.next}
               </Button>
             </div>
           </div>

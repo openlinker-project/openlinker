@@ -21,7 +21,7 @@ import { BulkConfigStep } from './bulk-config-step';
 import type { BulkWizardConfig } from './bulk-wizard.types';
 import type { Connection } from '../../../connections';
 import type { SessionUser } from '../../../../shared/auth/session.types';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../../shared/config/demo-mode';
 
 const viewerUser: SessionUser = {
   id: 'user_viewer',
@@ -370,7 +370,7 @@ describe('BulkConfigStep', () => {
       const user = userEvent.setup();
       await user.hover(toggle.closest('.read-only-lock') as HTMLElement);
       const tooltip = await screen.findByRole('tooltip');
-      expect(tooltip).toHaveTextContent(DEMO_READ_ONLY_ACTION_MESSAGE);
+      expect(tooltip).toHaveTextContent(demoReadOnlyActionMessage());
     }, 15000);
 
     it('keeps the toggle enabled for an operator session even when the deployment is in demo mode', async () => {

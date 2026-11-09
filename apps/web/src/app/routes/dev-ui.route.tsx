@@ -11,7 +11,7 @@ import type { RouteCrumbHandle } from '../nav-registry.types';
  */
 export const devUiRoute: RouteObject = {
   path: 'dev/ui',
-  handle: { crumb: { group: 'Development', title: 'Design System' } } satisfies RouteCrumbHandle,
+  handle: { crumb: { group: 'development', page: 'designSystem' } } satisfies RouteCrumbHandle,
   lazy: async () => {
     const { DevUiPage } = await import('../../pages/dev-ui/dev-ui-page');
     return { Component: DevUiPage };

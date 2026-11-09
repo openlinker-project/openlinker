@@ -13,7 +13,7 @@
  */
 import type { ReactElement } from 'react';
 import { TimeDisplay } from '../../../shared/ui/time-display';
-import { RETURNS_ROW_COPY } from '../lib/returns-list.copy';
+import { useMessages } from '../../../shared/i18n';
 import type { ReturnListItem } from '../api/returns.types';
 
 interface ReturnOpenedCellProps {
@@ -21,12 +21,13 @@ interface ReturnOpenedCellProps {
 }
 
 export function ReturnOpenedCell({ item }: ReturnOpenedCellProps): ReactElement {
+  const copy = useMessages('returns').list.row;
   if (item.openedAt !== null) {
     return <TimeDisplay iso={item.openedAt} format="relative" />;
   }
 
   return (
-    <span className="text-muted" title={RETURNS_ROW_COPY.recordedAtFallback}>
+    <span className="text-muted" title={copy.recordedAtFallback}>
       <TimeDisplay iso={item.createdAt} format="relative" />
     </span>
   );

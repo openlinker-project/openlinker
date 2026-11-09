@@ -22,6 +22,7 @@
  * @module features/connections/components
  * @see {@link RestoreConnectionButton} for the way back
  */
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import type { Connection } from '../api/connections.types';
@@ -35,7 +36,7 @@ import { Input } from '../../../shared/ui/input';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 
 interface ArchiveConnectionButtonProps {
@@ -46,8 +47,9 @@ interface ArchiveConnectionButtonProps {
 
 export function ArchiveConnectionButton({
   connection,
-  label = 'Archive',
+  label,
 }: ArchiveConnectionButtonProps): ReactElement {
+  const copy = useMessages('connections').archiveConnectionButton;
   const archiveConnection = useArchiveConnectionMutation();
   const { showToast } = useToast();
   const demoMode = useDemoMode();
@@ -74,8 +76,8 @@ export function ArchiveConnectionButton({
       handleOpenChange(false);
       showToast({
         tone: 'success',
-        title: 'Connection archived',
-        description: `"${connection.name}" is hidden from your connections. You can restore it from the Archived filter.`,
+        title: copy.successTitle,
+        description: interpolate(copy.successDescription, { name: connection.name }),
       });
     } catch {
       // The error renders inside the dialog; keeping it open lets the
@@ -85,29 +87,29 @@ export function ArchiveConnectionButton({
 
   return (
     <>
-      <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+      <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
         <Button
           tone="danger"
           onClick={() => setIsOpen(true)}
           disabled={archiveConnection.isPending || write.demoReadOnly}
         >
-          {label}
+          {label ?? copy.archive}
         </Button>
       </ReadOnlyLock>
 
       <ConfirmDialog
         open={isOpen}
         onOpenChange={handleOpenChange}
-        title="Archive this connection?"
-        description={`"${connection.name}" will disappear from your connections and from every place you pick a connection.`}
+        title={copy.dialogTitle}
+        description={interpolate(copy.dialogDescription, { name: connection.name })}
         body={
           <div className="archive-connection-dialog__body">
             <ul className="archive-connection-dialog__list">
-              <li>Its saved credentials are deleted.</li>
-              <li>Mappings, orders, offers and job history are kept and still show its name.</li>
-              <li>You can restore it later, but you will need to enter its credentials again.</li>
+              <li>{copy.consequences.credentials}</li>
+              <li>{copy.consequences.history}</li>
+              <li>{copy.consequences.restore}</li>
             </ul>
-            <FormField label={`Type "${connection.name}" to confirm`} name="archive-confirm-name">
+            <FormField label={interpolate(copy.confirmName, { name: connection.name })} name="archive-confirm-name">
               <Input
                 value={typedName}
                 onChange={(event) => setTypedName(event.target.value)}
@@ -115,8 +117,8 @@ export function ArchiveConnectionButton({
               />
             </FormField>
             {catalogReferrers ? (
-              <Alert tone="error" title="Other connections still use this catalog">
-                <p>{`"${connection.name}" is the catalog connection of:`}</p>
+              <Alert tone="error" title={copy.referrersTitle}>
+                <p>{interpolate(copy.referrersIntro, { name: connection.name })}</p>
                 <ul className="archive-connection-dialog__list">
                   {catalogReferrers.map((referrer) => (
                     <li key={referrer.id}>
@@ -126,17 +128,17 @@ export function ArchiveConnectionButton({
                     </li>
                   ))}
                 </ul>
-                <p>Change their catalog pairing first, then archive this connection.</p>
+                <p>{copy.referrersHint}</p>
               </Alert>
             ) : archiveConnection.error ? (
-              <Alert tone="error" title="Unable to archive connection">
+              <Alert tone="error" title={copy.errorTitle}>
                 {archiveConnection.error.message}
               </Alert>
             ) : null}
           </div>
         }
-        confirmLabel="Archive connection"
-        cancelLabel="Keep it"
+        confirmLabel={copy.confirm}
+        cancelLabel={copy.cancel}
         tone="danger"
         initialFocus="cancel"
         confirmDisabled={!nameMatches}

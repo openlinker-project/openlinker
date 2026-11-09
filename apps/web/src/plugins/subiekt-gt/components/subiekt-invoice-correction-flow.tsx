@@ -18,7 +18,7 @@
  * @module plugins/subiekt-gt/components
  */
 import { type ReactElement, useState, useRef } from 'react';
-import { useTranslation } from '../../../shared/i18n';
+import { interpolate, renderRich, useFormat } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { InvoiceCorrectionFlowProps } from '../../../shared/plugins/plugin.types';
@@ -32,6 +32,7 @@ import {
   useCorrectionReason,
   useWarningAcknowledgement,
 } from '../../../features/invoicing';
+import { useSubiektGtMessages } from '../messages';
 
 interface LineRow {
   originalLineNumber: string;
@@ -65,7 +66,10 @@ export function SubiektInvoiceCorrectionFlow({
   onCorrectionIssued,
   suggestedLines,
 }: InvoiceCorrectionFlowProps): ReactElement {
-  const { t } = useTranslation();
+  const copy = useSubiektGtMessages().subiektInvoiceCorrectionFlow;
+  const format = useFormat();
+  const strong = { strong: (text: string) => <strong>{text}</strong> };
+  const strongMono = { strong: (text: string) => <strong className="mono-text">{text}</strong> };
   const { showToast } = useToast();
   const mutation = useIssueCorrectionMutation();
   const acknowledgement = useWarningAcknowledgement(mutation.isPending);
@@ -99,24 +103,14 @@ export function SubiektInvoiceCorrectionFlow({
     let parsedLines: CorrectionLineInput[];
     if (linesAreAuthoritative) {
       if (gridLines.length === 0) {
-        setLinesError(
-          t(
-            'subiekt.correction.gridLinesRequired',
-            'Change at least one line’s quantity or price before issuing a correction.',
-          ),
-        );
+        setLinesError(copy.gridLinesRequired);
         return;
       }
       parsedLines = gridLines;
     } else {
       const parsed = parseLineRows(lines);
       if (parsed.length === 0) {
-        setLinesError(
-          t(
-            'subiekt.correction.linesRequired',
-            'At least one line with a line number is required.',
-          ),
-        );
+        setLinesError(copy.linesRequired);
         return;
       }
       parsedLines = parsed;
@@ -141,11 +135,8 @@ export function SubiektInvoiceCorrectionFlow({
           onSuccess: (correctionInvoice) => {
             showToast({
               tone: 'success',
-              title: t('subiekt.correction.issued', 'Correction issued'),
-              description: t(
-                'subiekt.correction.issuedBody',
-                'The correcting document was sent to Subiekt.',
-              ),
+              title: copy.issued,
+              description: copy.issuedBody,
             });
             onCorrectionIssued(correctionInvoice.id);
             onClose();
@@ -157,7 +148,7 @@ export function SubiektInvoiceCorrectionFlow({
             }
             showToast({
               tone: 'error',
-              title: t('subiekt.correction.failed', 'Correction failed'),
+              title: copy.failed,
               description: error.message,
             });
           },
@@ -174,32 +165,29 @@ export function SubiektInvoiceCorrectionFlow({
     <div className="subiekt-correction">
       {/* Header */}
       <div className="subiekt-correction__head">
-        <h3>{t('subiekt.correction.title', 'Issue correction')}</h3>
+        <h3>{copy.title}</h3>
         <span className="section-card__provider">
-          {t('subiekt.correction.providerTag', 'Subiekt · slot')}
+          {copy.providerTag}
         </span>
       </div>
 
       {/* Original invoice reference */}
       <div className="corr__orig">
         <span>
-          {t('subiekt.correction.correcting', 'Correcting')}{' '}
-          <strong>{invoice.providerInvoiceNumber ?? invoice.id}</strong>
+          {renderRich(copy.correcting, strong, {
+            reference: invoice.providerInvoiceNumber ?? invoice.id,
+          })}
         </span>
         {invoice.clearanceReference ? (
           <span>
-            {t('subiekt.correction.ksefRef', 'KSeF')}{' '}
-            <strong className="mono-text">
-              {invoice.clearanceReference.slice(0, 14)}…
-            </strong>
+            {renderRich(copy.ksefRef, strongMono, {
+              reference: `${invoice.clearanceReference.slice(0, 14)}…`,
+            })}
           </span>
         ) : null}
         {invoice.issuedAt ? (
           <span>
-            {t('subiekt.correction.issuedLabel', 'Issued')}{' '}
-            <strong className="mono-text">
-              {invoice.issuedAt.slice(0, 10)}
-            </strong>
+            {renderRich(copy.issuedOn, strongMono, { date: format.date(invoice.issuedAt) })}
           </span>
         ) : null}
       </div>
@@ -220,7 +208,7 @@ export function SubiektInvoiceCorrectionFlow({
       ) : null}
 
       {contentQuery.isLoading ? (
-        <p className="text-muted">{t('subiekt.correction.loadingLines', 'Loading invoice lines…')}</p>
+        <p className="text-muted">{copy.loadingLines}</p>
       ) : linesAreAuthoritative ? (
         <CorrectionLineGrid
           invoiceId={invoice.id}
@@ -234,12 +222,12 @@ export function SubiektInvoiceCorrectionFlow({
             <table className="lineitems">
               <thead>
                 <tr>
-                  <th>{t('subiekt.correction.col.lp', 'Lp')}</th>
-                  <th className="subiekt-correction__col-qty">{t('subiekt.correction.col.newQty', 'New qty')}</th>
+                  <th>{copy.col.lp}</th>
+                  <th className="subiekt-correction__col-qty">{copy.col.newQty}</th>
                   <th className="subiekt-correction__col-price">
-                    {t('subiekt.correction.col.newPrice', 'New gross')}
+                    {copy.col.newPrice}
                   </th>
-                  <th aria-label={t('subiekt.correction.col.remove', 'Remove')} />
+                  <th aria-label={copy.col.remove} />
                 </tr>
               </thead>
               <tbody>
@@ -250,7 +238,7 @@ export function SubiektInvoiceCorrectionFlow({
                         invoiceId={invoice.id}
                         value={row.originalLineNumber}
                         onChange={(next) => updateLine(i, 'originalLineNumber', next)}
-                        ariaLabel={`${t('subiekt.correction.lineNum', 'Line number')} ${i + 1}`}
+                        ariaLabel={interpolate(copy.lineNum, { n: i + 1 })}
                         disabled={isSubmitting}
                       />
                     </td>
@@ -260,10 +248,10 @@ export function SubiektInvoiceCorrectionFlow({
                         className="input input--num input--w-qty"
                         value={row.newQuantity}
                         onChange={(e) => updateLine(i, 'newQuantity', e.target.value)}
-                        placeholder="—"
+                        placeholder={copy.emptyCell}
                         min={0}
                         step="any"
-                        aria-label={`${t('subiekt.correction.newQty', 'New qty, line')} ${i + 1}`}
+                        aria-label={interpolate(copy.newQty, { n: i + 1 })}
                         disabled={isSubmitting}
                       />
                     </td>
@@ -273,10 +261,10 @@ export function SubiektInvoiceCorrectionFlow({
                         className="input input--num input--w-price"
                         value={row.newUnitPriceGross}
                         onChange={(e) => updateLine(i, 'newUnitPriceGross', e.target.value)}
-                        placeholder="—"
+                        placeholder={copy.emptyCell}
                         min={0}
                         step="any"
-                        aria-label={`${t('subiekt.correction.newPrice', 'New gross, line')} ${i + 1}`}
+                        aria-label={interpolate(copy.newPrice, { n: i + 1 })}
                         disabled={isSubmitting}
                       />
                     </td>
@@ -285,7 +273,7 @@ export function SubiektInvoiceCorrectionFlow({
                         tone="secondary"
                         onClick={() => removeLine(i)}
                         disabled={lines.length === 1 || isSubmitting}
-                        aria-label={`${t('subiekt.correction.removeLine', 'Remove line')} ${i + 1}`}
+                        aria-label={interpolate(copy.removeLine, { n: i + 1 })}
                       >
                         ✕
                       </Button>
@@ -297,14 +285,11 @@ export function SubiektInvoiceCorrectionFlow({
           </div>
 
           <Button tone="secondary" onClick={addLine} disabled={isSubmitting}>
-            {t('subiekt.correction.addLine', '+ Add line')}
+            {copy.addLine}
           </Button>
 
           <p className="corr-note subiekt-correction__note">
-            {t(
-              'subiekt.correction.note',
-              'A correcting invoice (faktura korygująca) can adjust quantity and/or price per line — e.g. a returned unit or a post-sale price reduction. Subiekt transmits the correction to KSeF; OpenLinker tracks the status.',
-            )}
+            {copy.note}
           </p>
         </>
       )}
@@ -313,12 +298,12 @@ export function SubiektInvoiceCorrectionFlow({
       <div className="wizard__actions">
         <span className="wizard__spacer" />
         <Button tone="secondary" onClick={onClose} disabled={isSubmitting}>
-          {t('subiekt.correction.cancel', 'Cancel')}
+          {copy.cancel}
         </Button>
         <Button tone="primary" onClick={handleSubmit} disabled={isSubmitting}>
           {isSubmitting
-            ? t('subiekt.correction.submitting', 'Issuing…')
-            : t('subiekt.correction.submit', 'Issue correction')}
+            ? copy.submitting
+            : copy.submit}
         </Button>
       </div>
       {acknowledgement.dialog}

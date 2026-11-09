@@ -21,7 +21,8 @@
  *
  * @module apps/web/src/features/analytics/components
  */
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
+import { useMessages } from '../../../shared/i18n';
 import { SegmentedControl } from '../../../shared/ui';
 import type { NetGrossBasis } from '../api/analytics-settings.types';
 
@@ -31,25 +32,28 @@ interface AnalyticsNetGrossToggleProps {
   onChange: (value: NetGrossBasis) => void;
 }
 
-const OPTIONS: readonly { value: NetGrossBasis; label: string }[] = [
-  { value: 'gross', label: 'Gross' },
-  { value: 'net', label: 'Net' },
-];
-
 export function AnalyticsNetGrossToggle({
   value,
   onChange,
 }: AnalyticsNetGrossToggleProps): ReactElement {
+  const copy = useMessages('analytics').analyticsNetGrossToggle;
+  const options = useMemo<readonly { value: NetGrossBasis; label: string }[]>(
+    () => [
+      { value: 'gross', label: copy.gross },
+      { value: 'net', label: copy.net },
+    ],
+    [copy]
+  );
   const pending = value === null;
   return (
     <div
       className="analytics-toolbar__field analytics-net-gross-toggle"
       aria-busy={pending || undefined}
     >
-      <span className="sr-only">VAT basis</span>
+      <span className="sr-only">{copy.label}</span>
       <SegmentedControl
-        aria-label="VAT basis"
-        options={pending ? OPTIONS.map((option) => ({ ...option, disabled: true })) : OPTIONS}
+        aria-label={copy.label}
+        options={pending ? options.map((option) => ({ ...option, disabled: true })) : options}
         value={value}
         onChange={onChange}
       />

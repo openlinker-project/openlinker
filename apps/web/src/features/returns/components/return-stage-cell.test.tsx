@@ -11,8 +11,10 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { ReturnStageCell } from './return-stage-cell';
-import { RETURN_RESTOCK_BLOCKED_COPY } from '../lib/restock-blocked.copy';
+import { getMessages } from '../../../shared/i18n';
 import type { ReturnListItem } from '../api/returns.types';
+
+const restockBlockedCopy = getMessages('returns').restockBlocked;
 
 function item(restockBlocked: boolean | null): ReturnListItem {
   return {
@@ -47,7 +49,7 @@ describe('ReturnStageCell restock-blocked badge (#2381)', () => {
   it('should render the badge on an explicit true', () => {
     render(<ReturnStageCell item={item(true)} />);
 
-    expect(screen.getByText(RETURN_RESTOCK_BLOCKED_COPY.badge)).toBeInTheDocument();
+    expect(screen.getByText(restockBlockedCopy.badge)).toBeInTheDocument();
   });
 
   it.each([[false], [null]])('should render NO badge for %s', (value) => {
@@ -56,7 +58,7 @@ describe('ReturnStageCell restock-blocked badge (#2381)', () => {
     // `false` is a real answer (nothing is blocked). `null` means the read did
     // not report it — inventing an alarm there would cry wolf on every row of an
     // unreadable page.
-    expect(screen.queryByText(RETURN_RESTOCK_BLOCKED_COPY.badge)).not.toBeInTheDocument();
+    expect(screen.queryByText(restockBlockedCopy.badge)).not.toBeInTheDocument();
   });
 
   it('should render the badge BESIDE the stage, never instead of it', () => {
@@ -64,8 +66,8 @@ describe('ReturnStageCell restock-blocked badge (#2381)', () => {
 
     // They answer different questions — "how far along is this" vs "does it
     // need me" — and a blocked restock does not move the stage.
-    expect(screen.getByText(RETURN_RESTOCK_BLOCKED_COPY.badge)).toBeInTheDocument();
-    expect(screen.getByText('Received — awaiting disposition')).toBeInTheDocument();
+    expect(screen.getByText(restockBlockedCopy.badge)).toBeInTheDocument();
+    expect(screen.getByText('Received - awaiting disposition')).toBeInTheDocument();
   });
 
   it('should share its title text with the per-line notice, from one module', () => {

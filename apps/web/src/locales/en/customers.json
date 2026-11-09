@@ -1,0 +1,111 @@
+{
+  "customerDetailPage": {
+    "addresses": {
+      "caption": "Customer addresses",
+      "columns": {
+        "address": "Address",
+        "city": "City",
+        "country": "Country",
+        "lastSeen": "Last seen",
+        "postcode": "Postcode",
+        "type": "Type"
+      },
+      "empty": {
+        "message": "No address projections have been recorded for this customer.",
+        "title": "No addresses"
+      },
+      "heading": "Addresses"
+    },
+    "error": {
+      "notFound": "Customer not found",
+      "title": "Unable to load customer"
+    },
+    "eyebrow": "Customers",
+    "fallbackTitle": "Customer",
+    "fields": {
+      "created": "Created",
+      "customerId": "Customer ID",
+      "emailHash": "Email hash",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "lastSeen": "Last seen",
+      "lastSource": "Last source connection",
+      "normalizedEmail": "Normalised email",
+      "updated": "Updated"
+    },
+    "loading": {
+      "message": "Fetching customer details…",
+      "title": "Loading customer"
+    },
+    "orders": {
+      "caption": "Customer orders",
+      "columns": {
+        "created": "Created",
+        "orderId": "Order ID",
+        "source": "Source",
+        "status": "Status"
+      },
+      "empty": {
+        "message": "This customer has no orders on record.",
+        "title": "No orders yet"
+      },
+      "error": {
+        "title": "Unable to load customer orders"
+      },
+      "heading": "Orders",
+      "headingWithCount": "Orders ({count})",
+      "loading": {
+        "message": "Fetching orders placed by this customer…",
+        "title": "Loading orders"
+      },
+      "syncStatus": {
+        "failed": "Failed",
+        "pending": "Pending",
+        "skipped_cancelled": "Skipped - cancelled",
+        "synced": "Synced",
+        "syncing": "Syncing"
+      }
+    },
+    "retry": "Retry"
+  },
+  "customersListPage": {
+    "caption": "Customer projections",
+    "columns": {
+      "customer": "Customer",
+      "customerId": "Customer ID",
+      "lastSeen": "Last seen",
+      "lastSource": "Last connection source"
+    },
+    "copyId": {
+      "copied": "Copied customer ID",
+      "copiedFor": "Copied customer ID for {name}",
+      "copy": "Copy customer ID",
+      "copyFor": "Copy customer ID for {name}"
+    },
+    "description": "Customer identity projections - browse resolved identities and address history.",
+    "empty": {
+      "browseOrders": "Browse orders",
+      "clearFilters": "Clear filters",
+      "filtered": "No customer projections match the current filters.",
+      "none": "No customer projections have been recorded yet.",
+      "title": "No customers found"
+    },
+    "error": {
+      "retry": "Retry",
+      "title": "Unable to load customers"
+    },
+    "eyebrow": "Operations",
+    "filters": {
+      "connectionLabel": "Filter by source connection ID",
+      "connectionPlaceholder": "Source connection ID…",
+      "searchLabel": "Search customers",
+      "searchPlaceholder": "Search by email or name…"
+    },
+    "loading": "Loading customers…",
+    "nameless": {
+      "label": "No name recorded",
+      "srPrefix": "Customer,"
+    },
+    "title": "Customers"
+  }
+}

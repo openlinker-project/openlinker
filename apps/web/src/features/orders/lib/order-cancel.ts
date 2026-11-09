@@ -1,8 +1,8 @@
 /**
  * Order cancel copy and rules (#3541, mockup M1)
  *
- * Everything operator-facing about cancelling an order that is not a component:
- * the closed reason vocabulary with its labels, the refusal codes the backend
+ * Everything about cancelling an order that is not a component: the closed
+ * reason vocabulary with its labels (words in the `orders` namespace), the refusal codes the backend
  * answers with (read off `ApiError.details.error`, the `order-hold-errors.ts`
  * precedent), and the pure rules deciding whether the action is offered.
  *
@@ -15,6 +15,7 @@
  * @module apps/web/src/features/orders/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import {
   OrderCancelReasonValues,
   type CancelCorrectionUnavailableReason,
@@ -25,15 +26,6 @@ import {
 export { OrderCancelReasonValues };
 export type { OrderCancelReason };
 
-/** Labels for the closed reason set (D37). `fraud` reads as a payment problem. */
-export const ORDER_CANCEL_REASON_LABELS: Record<OrderCancelReason, string> = {
-  'buyer-request': 'Buyer asked to cancel',
-  'out-of-stock': 'Out of stock',
-  fraud: 'Suspected fraud or payment problem',
-  duplicate: 'Duplicate order',
-  other: 'Other',
-};
-
 export const ORDER_CANCEL_NOTE_MAX_LENGTH = 2000;
 
 /** Whether the reason needs operator text. Mirrors the backend's `other` rule. */
@@ -41,9 +33,15 @@ export function orderCancelReasonRequiresNote(reason: OrderCancelReason): boolea
   return reason === 'other';
 }
 
-/** The label for a reason code, or the raw code for one this build does not know. */
+/**
+ * The label for a reason code (D37; `fraud` reads as a payment problem), or the
+ * raw code for one this build does not know.
+ */
 export function orderCancelReasonLabel(reason: string): string {
-  return (ORDER_CANCEL_REASON_LABELS as Record<string, string>)[reason] ?? reason;
+  const labels = getMessages('orders').orderCancel.reasons;
+  return Object.prototype.hasOwnProperty.call(labels, reason)
+    ? labels[reason as OrderCancelReason]
+    : reason;
 }
 
 /** Order statuses and phases after which cancelling is not an operator action. */
@@ -158,18 +156,17 @@ export function classifyOrderCancelError(error: unknown): OrderCancelRefusalView
 }
 
 /**
- * Titles for the inline refusals. The body of the Alert is always the server's
- * sentence; the title says which kind of refusal it is, because two 409s can
- * have different remedies and a status alone cannot tell them apart.
+ * Title for an inline refusal, or undefined for a code with none. The body of
+ * the Alert is always the server's sentence; the title says which kind of
+ * refusal it is, because two 409s can have different remedies and a status
+ * alone cannot tell them apart.
  */
-export const ORDER_CANCEL_INLINE_TITLES: Partial<Record<OrderCancelErrorCode, string>> = {
-  ORDER_ALREADY_CANCELLED: 'This order is already cancelled',
-  ORDER_HAS_FISCAL_RECEIPT: 'A fiscal receipt blocks the cancel',
-  INVOICE_NOT_SETTLED: 'The invoice has not finished issuing',
-  ORDER_CANCEL_IN_FLIGHT: 'A cancellation is already in progress',
-  ORDER_CANCEL_CONTENDED: 'Someone else is cancelling this order right now',
-  CHANNEL_REFUSED_CANCEL: 'The sales channel refused the cancellation',
-};
+export function orderCancelInlineTitle(code: OrderCancelErrorCode): string | undefined {
+  const titles = getMessages('orders').orderCancel.inlineTitles;
+  return Object.prototype.hasOwnProperty.call(titles, code)
+    ? titles[code as keyof typeof titles]
+    : undefined;
+}
 
 /** Whether a refusal means this page is out of date and should re-read the order. */
 export function orderCancelErrorNeedsRefresh(error: unknown): boolean {
@@ -182,59 +179,39 @@ export function orderCancelErrorNeedsRefresh(error: unknown): boolean {
   );
 }
 
-/** One sentence per participant effect, for the result notice. */
-export const CANCEL_PARTICIPANT_EFFECT_COPY: Record<
+const CANCEL_PARTICIPANT_EFFECT_TONES: Record<
   CancelParticipantEffect,
-  { label: string; tone: 'success' | 'info' | 'warning' | 'error'; description: string }
+  'success' | 'info' | 'warning' | 'error'
 > = {
-  notified: {
-    label: 'Cancelled there',
-    tone: 'success',
-    description: 'The cancellation was sent and accepted.',
-  },
-  'stock-restored-only': {
-    label: 'Stock restored only',
-    tone: 'warning',
-    description:
-      'This channel has no confirmed cancel call. OpenLinker restored the stock, but the order stays open there until you cancel it.',
-  },
-  'not-supported': {
-    label: 'Not supported',
-    tone: 'warning',
-    description: 'This system cannot express a cancellation, so nothing was sent.',
-  },
-  unreachable: {
-    label: 'Could not reach',
-    tone: 'error',
-    description: 'The connection could not be reached. Cancel the order there by hand.',
-  },
-  refused: {
-    label: 'Refused',
-    tone: 'error',
-    description: 'The channel refused the cancellation. Cancel the order there by hand.',
-  },
+  notified: 'success',
+  'stock-restored-only': 'warning',
+  'not-supported': 'warning',
+  unreachable: 'error',
+  refused: 'error',
 };
 
-export const CANCEL_CORRECTION_UNAVAILABLE_COPY: Record<CancelCorrectionUnavailableReason, string> = {
-  'no-line-snapshot':
-    'OpenLinker holds no record of the lines on the original invoice, so it cannot draft a correction. Issue the correction from the invoice panel.',
-  'not-fully-issued':
-    'The invoice has not finished issuing, so it cannot be corrected yet. Issue the correction once it settles.',
-  'proposal-failed':
-    'OpenLinker could not draft the correction invoice. Issue the correction from the invoice panel.',
-};
+/** One label and sentence per participant effect, for the result notice. */
+export function cancelParticipantEffectCopy(effect: CancelParticipantEffect): {
+  label: string;
+  tone: 'success' | 'info' | 'warning' | 'error';
+  description: string;
+} {
+  const words = getMessages('orders').orderCancel.participantEffects[effect];
+  return { label: words.label, tone: CANCEL_PARTICIPANT_EFFECT_TONES[effect], description: words.description };
+}
 
-/** Operator copy for each reason a correction confirm can fail, beside the server's sentence. */
-export const CONFIRM_CORRECTION_ERROR_TITLES: Partial<Record<OrderCancelErrorCode, string>> = {
-  CHANGE_ALREADY_CONFIRMED: 'This correction was already confirmed',
-  CHANGE_EXPIRED: 'This correction proposal expired',
-  CHANGE_NOT_OPEN: 'This correction proposal is no longer open',
-  CHANGE_KIND_NOT_CONFIRMABLE: 'This change cannot be confirmed from here',
-  CORRECTION_IN_PROGRESS: 'The correction is already being issued',
-  CORRECTION_NEEDS_RECONCILIATION: 'The correction needs checking at the provider',
-  CORRECTION_FAILED: 'The invoicing provider rejected the correction',
-  CORRECTION_SUPERSEDED: 'The invoice was already corrected, or the order was cancelled',
-};
+/** Why a cancel's correction invoice could not be drafted, in operator words. */
+export function cancelCorrectionUnavailableText(reason: CancelCorrectionUnavailableReason): string {
+  return getMessages('orders').orderCancel.correctionUnavailable[reason];
+}
+
+/** Operator title for a reason a correction confirm can fail, beside the server's sentence. */
+export function confirmCorrectionErrorTitle(code: OrderCancelErrorCode): string | undefined {
+  const titles = getMessages('orders').orderCancel.confirmCorrectionErrors;
+  return Object.prototype.hasOwnProperty.call(titles, code)
+    ? titles[code as keyof typeof titles]
+    : undefined;
+}
 
 /** The figures a `refund_ceiling_exceeded` 409 carries. */
 export interface RefundCeilingFigures {
@@ -282,16 +259,16 @@ export function abandonReasonCopy(
   reason: string | null,
   documentNumber: string | null,
 ): { title: string; description: string } | null {
+  const copy = getMessages('orders').orderCancel.abandon;
   if (reason === 'label-not-voidable') {
-    return {
-      title: 'Cancelled request: the carrier would not void the label',
-      description: 'The order was not cancelled. Void the label with the carrier, then cancel the order again.',
-    };
+    return { title: copy.labelNotVoidable.title, description: copy.labelNotVoidable.description };
   }
   if (reason === 'correction-superseded') {
     return {
-      title: `Correction no longer needed: ${documentNumber ?? 'a document'} already corrected the invoice`,
-      description: 'The invoice was corrected by another document, so this proposal was closed.',
+      title: interpolate(copy.correctionSuperseded.title, {
+        document: documentNumber ?? copy.correctionSuperseded.documentFallback,
+      }),
+      description: copy.correctionSuperseded.description,
     };
   }
   return null;

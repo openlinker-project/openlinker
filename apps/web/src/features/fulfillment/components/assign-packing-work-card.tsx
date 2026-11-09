@@ -50,8 +50,9 @@ import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-bad
 import { formatOrderRef } from '../../orders';
 import type { FulfillmentTask } from '../api/fulfillment.types';
 import { formatUnassignedAge } from '../lib/assign-packing-work-duration';
-import { ASSIGN_PACKING_WORK_COPY } from '../lib/assign-packing-work.copy';
-import { fulfillmentStatusLabel } from '../lib/fulfillment-task.copy';
+import { getMessages, interpolate, useMessages } from '../../../shared/i18n';
+import { formatScanSummary } from '../lib/assign-packing-work-labels';
+import { fulfillmentStatusLabel } from '../lib/fulfillment-task-labels';
 
 /**
  * Ship-by urgency level (#927) → StatusBadge tone — the `order-detail-page` /
@@ -107,9 +108,10 @@ function badgeFor(
   task: FulfillmentTask,
   inUnassignedLane: boolean
 ): { tone: StatusBadgeTone; label: string } | null {
+  const cardCopy = getMessages('fulfillment').assignPackingWork.card;
   const hold = task.activeHolds[0];
   if (hold !== undefined) {
-    return { tone: 'error', label: ASSIGN_PACKING_WORK_COPY.card.heldBadge };
+    return { tone: 'error', label: cardCopy.heldBadge };
   }
   // A board spans several days, so a bare time-of-day ("11:59 PM") is
   // ambiguous about which day it means, and a single hardcoded `warning`
@@ -127,7 +129,7 @@ function badgeFor(
   if (inUnassignedLane) {
     const age = formatUnassignedAge(task.unassignedSince ?? null);
     if (age !== null) {
-      return { tone: 'error', label: ASSIGN_PACKING_WORK_COPY.card.sitUnassignedBadge(age) };
+      return { tone: 'error', label: interpolate(cardCopy.sitUnassignedBadge, { age }) };
     }
   }
   if (task.status !== 'open') {
@@ -151,6 +153,7 @@ export function AssignPackingWorkCard({
   detailHref,
   showLocation = false,
 }: AssignPackingWorkCardProps): ReactElement {
+  const copy = useMessages('fulfillment').assignPackingWork;
   const badge = badgeFor(task, inUnassignedLane);
   const units = task.lines.reduce((sum, line) => sum + line.totalQuantity, 0);
   const { className: rootClassName, ...restRootProps } = rootProps;
@@ -169,9 +172,9 @@ export function AssignPackingWorkCard({
         <span
           className="assign-packing-work-card__grip"
           aria-hidden="true"
-          title={ASSIGN_PACKING_WORK_COPY.drag.gripHint}
+          title={copy.drag.gripHint}
         >
-          ⠿
+          {'⠿'}
         </span>
       ) : null}
 
@@ -221,7 +224,7 @@ export function AssignPackingWorkCard({
       <span className="assign-packing-work-card__buyer">{task.buyerNameMasked ?? ''}</span>
 
       <span className="assign-packing-work-card__meta">
-        {ASSIGN_PACKING_WORK_COPY.card.summary({
+        {formatScanSummary({
           lines: task.lines.length,
           units,
         })}

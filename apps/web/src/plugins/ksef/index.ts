@@ -23,6 +23,7 @@
 import { createNumberingApi, type NumberingApi } from '../../features/invoicing';
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
+import { getKsefMessages, ksefMessages } from './messages';
 import { KsefConnectionActions } from './components/ksef-connection-actions';
 import { KsefCredentialsPanel } from './components/ksef-credentials-panel';
 import { KsefInvoiceCorrectionFlow } from './components/ksef-invoice-correction-flow';
@@ -44,6 +45,7 @@ declare module '../../app/api/api-client' {
 
 export const ksefPlugin: OpenLinkerPlugin = definePlugin({
   id: 'ksef',
+  messages: ksefMessages,
   platformType: 'ksef',
   build: {
     routes: [ksefSetupRoute, ksefNumberingRoute],
@@ -52,12 +54,17 @@ export const ksefPlugin: OpenLinkerPlugin = definePlugin({
   platform: {
     displayName: 'KSeF (e-invoicing)',
     shortLabel: 'KSeF',
+    // Getters, not values: the card is read at render, so the copy follows
+    // the active language instead of freezing at module load.
     setupCard: {
       title: 'KSeF',
-      description:
-        'Connect the Polish national e-invoicing system (Krajowy System e-Faktur) to clear invoices. You will need a KSeF authorization token or a qualified electronic seal.',
+      get description(): string {
+        return getKsefMessages().plugin.setupCard.description;
+      },
       to: '/connections/new/ksef',
-      badge: 'e-Invoicing',
+      get badge(): string {
+        return getKsefMessages().plugin.setupCard.badge;
+      },
     },
     StructuredConfigSection: KsefStructuredSection,
     connectionConfig: ksefConnectionConfig,

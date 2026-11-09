@@ -1,5 +1,5 @@
 /**
- * Order Hold Vocabulary + Operator Copy (#2342)
+ * Order Hold Vocabulary + Operator Copy Accessors (#2342)
  *
  * The frontend mirror of `HoldReasonValues` (`@openlinker/core/order-lifecycle`,
  * #2305 / ADR-059) plus the operator-facing copy for each reason and for the
@@ -12,15 +12,16 @@
  * send. `scripts/check-hold-reason-mirror.mjs` compares the two arrays
  * value-for-value AND in order, under `pnpm check:invariants`.
  *
- * **Why the copy tables live beside the union.** Both halves change together —
- * adding a reason means writing its label in the same commit, which is exactly
- * what `satisfies Record<HoldReason, …>` enforces. That is the pure-rule
- * exception in `engineering-standards.md § The pure-rule exception to "types
- * only"`, and the same shape as `order-lifecycle-phase.types.ts` next door:
- * pure, no I/O, no dependency, and it IS the rule for the type it sits with.
+ * **Why the copy accessors live beside the union.** Both halves change together -
+ * adding a reason means writing its label in `locales/en/orders.json` in the same
+ * commit, which the `Record<HoldReason, …>` annotation in `holdReasonCopy`
+ * enforces. The words live in the `orders.holds` namespace and are read when a
+ * function is called, so they follow the active language.
  *
  * @module apps/web/src/features/orders/lib
  */
+
+import { getMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 
 /**
  * The eight hold reasons. **Order-sensitive** — the mirror guard compares
@@ -58,51 +59,31 @@ export interface HoldReasonCopy {
   hint: string;
 }
 
+type HoldsCopy = ResolvedCopy<Messages['orders']>['holds'];
+
 /**
- * Copy per reason.
+ * Copy per reason, from the `orders.holds.reasons` namespace, read when called
+ * so it follows the active language.
  *
- * `satisfies Record<HoldReason, …>` is the point: a reason added to the mirror
- * without copy is a compile error here, never a silently unlabelled badge —
- * the `BADGE_BY_REASON` precedent in `order-row.ts`.
+ * The `Record<HoldReason, …>` annotation is the point: a reason added to the
+ * mirror without copy in `en.json` is a compile error here, never a silently
+ * unlabelled badge - the `BADGE_BY_REASON` precedent in `order-row.ts`.
  */
-export const HOLD_REASON_COPY = {
-  'payment-review': {
-    label: 'Payment review',
-    hint: 'Payment is being verified before this order goes any further.',
-  },
-  'fraud-review': {
-    label: 'Fraud review',
-    hint: 'A risk check on this order is still outstanding.',
-  },
-  operator: {
-    label: 'Held by operator',
-    hint: 'Someone paused this order deliberately. See the note for why.',
-  },
-  'stock-shortfall': {
-    label: 'Stock shortfall',
-    hint: 'The quantity this order needs is not actually available to pick.',
-  },
-  'address-invalid': {
-    label: 'Address invalid',
-    hint: 'The delivery address failed validation, so this order cannot be shipped.',
-  },
-  'awaiting-amendment': {
-    label: 'Awaiting change',
-    hint: 'A change to this order is outstanding and has not been applied yet.',
-  },
-  'awaiting-customer-confirmation': {
-    label: 'Awaiting buyer',
-    hint: 'The buyer, not the shop, is what this order is waiting on.',
-  },
-  external: {
-    label: 'Held by channel',
-    hint: 'The sales channel is holding this order for a reason OpenLinker cannot classify.',
-  },
-} satisfies Record<HoldReason, HoldReasonCopy>;
+export function holdReasonCopy(reason: HoldReason): HoldReasonCopy {
+  const reasons: Record<HoldReason, HoldReasonCopy> = getMessages('orders').holds.reasons;
+  return reasons[reason];
+}
 
 /** Label for a reason, or the raw value when this build does not recognise it. */
 export function holdReasonLabel(reason: string): string {
-  return isHoldReason(reason) ? HOLD_REASON_COPY[reason].label : reason;
+  return isHoldReason(reason) ? holdReasonCopy(reason).label : reason;
+}
+
+/** Hint for a reason; a reason this build does not recognise gets the generic one. */
+export function holdReasonHint(reason: string): string {
+  return isHoldReason(reason)
+    ? holdReasonCopy(reason).hint
+    : getMessages('orders').holds.unrecognisedHint;
 }
 
 /**
@@ -110,7 +91,7 @@ export function holdReasonLabel(reason: string): string {
  * suppressing (#2341). Mirrors `ProvisioningResumeDto`.
  *
  * Every field is independently nullable because the backend reports rather than
- * assumes — a 2xx here does not mean the order is moving again.
+ * assumes - a 2xx here does not mean the order is moving again.
  */
 export interface ProvisioningResume {
   status: 'enqueued' | 'skipped' | 'failed';
@@ -129,55 +110,51 @@ export interface ProvisioningResumeCopy {
  * no source-side job to run at all); `enqueue-failed` is the one that leaves the
  * order un-provisioned and needs the operator.
  *
- * Deliberately a loose `Record<string, string>`, unlike `HOLD_REASON_COPY`
- * above: a skip reason added backend-side falls through to the generic
- * "nothing to restart" sentence, which stays TRUE of any `skipped` — so the
- * cost of drift here is a less specific sentence, not a wrong one. Mirroring
- * the core union would buy a second guard script for a two-value list.
+ * Deliberately loose (keyed by the raw string): a skip reason added backend-side
+ * falls through to the generic "nothing to restart" sentence, which stays TRUE
+ * of any `skipped` - so the cost of drift here is a less specific sentence, not
+ * a wrong one.
  */
-const RESUME_REASON_COPY: Record<string, string> = {
-  'order-not-found': 'There is no source record to re-sync.',
-  'missing-source-external-id': 'This order has no channel reference to re-sync from.',
-  'enqueue-failed': 'OpenLinker could not restart it.',
-};
+function skippedMessage(reason: string | null | undefined, copy: HoldsCopy['resume']): string {
+  switch (reason) {
+    case 'order-not-found':
+      return copy.skippedOrderNotFound;
+    case 'missing-source-external-id':
+      return copy.skippedMissingSourceExternalId;
+    case 'enqueue-failed':
+      return copy.skippedEnqueueFailed;
+    default:
+      return copy.skippedGeneric;
+  }
+}
 
 /**
  * Collapse a `provisioningResume` into one operator sentence + a tone.
  *
  * **`failed` must never read as a plain success.** The hold is gone AND the
  * order is still un-provisioned, with no scheduled task that will pick up this
- * one order — so the copy names the remedy (the existing per-destination Retry
+ * one order - so the copy names the remedy (the existing per-destination Retry
  * action) instead of implying the work resumed. An absent `resume` (an API
  * predating #2341) reports the release only, and never invents `enqueued`.
  */
 export function describeProvisioningResume(
   resume: ProvisioningResume | null | undefined,
 ): ProvisioningResumeCopy {
-  if (!resume) return { tone: 'success', message: 'Hold released.' };
+  const copy = getMessages('orders').holds.resume;
+  if (!resume) return { tone: 'success', message: copy.released };
 
   switch (resume.status) {
     case 'enqueued':
-      return { tone: 'success', message: 'Hold released. Sending this order on is queued.' };
-    case 'skipped': {
-      const why = resume.reason ? RESUME_REASON_COPY[resume.reason] : undefined;
-      return {
-        tone: 'success',
-        message: why
-          ? `Hold released. Nothing to restart — ${why.charAt(0).toLowerCase()}${why.slice(1)}`
-          : 'Hold released. There was nothing to restart.',
-      };
-    }
+      return { tone: 'success', message: copy.enqueued };
+    case 'skipped':
+      return { tone: 'success', message: skippedMessage(resume.reason, copy) };
     // `failed` and any status this build does not recognise. Grouping them is
     // the fail-safe direction: an unknown status must not be reported as a
     // success, because the one thing that is certain is that OL did not
     // observe the order start moving again.
     case 'failed':
     default:
-      return {
-        tone: 'warning',
-        message:
-          'Hold released, but this order did not restart. Use Retry on its destination to send it on.',
-      };
+      return { tone: 'warning', message: copy.failed };
   }
 }
 

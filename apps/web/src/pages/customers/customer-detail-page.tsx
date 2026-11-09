@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import { useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -17,8 +17,13 @@ import type {
   OrderSyncStatusValue,
 } from '../../features/orders/api/orders.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
+import { interpolate, labelFor, useFormat, useMessages } from '../../shared/i18n';
 
-function buildCustomerItems(customer: {
+type CustomerDetailCopy = ReturnType<typeof useMessages<'customers'>>['customerDetailPage'];
+
+function buildCustomerItems(
+  copy: CustomerDetailCopy['fields'],
+  customer: {
   internalCustomerId: string;
   emailHash: string;
   normalizedEmail: string | null;
@@ -28,36 +33,37 @@ function buildCustomerItems(customer: {
   lastSeenAt: string;
   createdAt: string;
   updatedAt: string;
-}): KeyValueItem[] {
+  },
+): KeyValueItem[] {
   const items: KeyValueItem[] = [
-    { id: 'id', label: 'Customer ID', value: customer.internalCustomerId, mono: true },
-    { id: 'emailHash', label: 'Email Hash', value: customer.emailHash, mono: true },
+    { id: 'id', label: copy.customerId, value: customer.internalCustomerId, mono: true },
+    { id: 'emailHash', label: copy.emailHash, value: customer.emailHash, mono: true },
   ];
 
   if (customer.normalizedEmail) {
     items.push({
       id: 'normalizedEmail',
-      label: 'Normalized Email',
+      label: copy.normalizedEmail,
       value: customer.normalizedEmail,
       mono: true,
     });
   }
 
   items.push(
-    { id: 'firstName', label: 'First Name', value: customer.firstName ?? <EmptyValue /> },
-    { id: 'lastName', label: 'Last Name', value: customer.lastName ?? <EmptyValue /> },
+    { id: 'firstName', label: copy.firstName, value: customer.firstName ?? <EmptyValue /> },
+    { id: 'lastName', label: copy.lastName, value: customer.lastName ?? <EmptyValue /> },
     {
       id: 'lastSource',
-      label: 'Last Source Connection',
+      label: copy.lastSource,
       value: customer.lastSourceConnectionId ? (
         <ConnectionEntityLabel connectionId={customer.lastSourceConnectionId} />
       ) : (
         <EmptyValue />
       ),
     },
-    { id: 'lastSeen', label: 'Last Seen', value: <TimeDisplay iso={customer.lastSeenAt} /> },
-    { id: 'createdAt', label: 'Created', value: <TimeDisplay iso={customer.createdAt} /> },
-    { id: 'updatedAt', label: 'Updated', value: <TimeDisplay iso={customer.updatedAt} /> },
+    { id: 'lastSeen', label: copy.lastSeen, value: <TimeDisplay iso={customer.lastSeenAt} /> },
+    { id: 'createdAt', label: copy.created, value: <TimeDisplay iso={customer.createdAt} /> },
+    { id: 'updatedAt', label: copy.updated, value: <TimeDisplay iso={customer.updatedAt} /> },
   );
 
   return items;
@@ -72,28 +78,29 @@ const SYNC_STATUS_TONES: Record<OrderSyncStatusValue, StatusBadgeTone> = {
   skipped_cancelled: 'neutral',
 };
 
-const CUSTOMER_ORDER_COLUMNS: DataTableColumn<OrderRecord>[] = [
+function buildOrderColumns(copy: CustomerDetailCopy['orders']): DataTableColumn<OrderRecord>[] {
+  return [
   {
     id: 'internalOrderId',
-    header: 'Order ID',
+    header: copy.columns.orderId,
     cell: (order) => <span className="mono-text">{order.internalOrderId}</span>,
   },
   {
     id: 'syncStatus',
-    header: 'Status',
-    cell: (order) => {
+    header: copy.columns.status,
+    cell: (order): ReactElement => {
       const first = order.syncStatus[0];
       if (!first) return <EmptyValue />;
       return (
         <StatusBadge tone={SYNC_STATUS_TONES[first.status]} compact>
-          {first.status}
+          {labelFor(copy.syncStatus, first.status)}
         </StatusBadge>
       );
     },
   },
   {
     id: 'sourceConnection',
-    header: 'Source',
+    header: copy.columns.source,
     cell: (order) => (
       <ConnectionEntityLabel connectionId={order.sourceConnectionId} showId={false} />
     ),
@@ -101,69 +108,82 @@ const CUSTOMER_ORDER_COLUMNS: DataTableColumn<OrderRecord>[] = [
   },
   {
     id: 'createdAt',
-    header: 'Created',
+    header: copy.columns.created,
     cell: (order) => <TimeDisplay iso={order.createdAt} format="date" />,
     accessor: (order) => order.createdAt,
     sortable: true,
   },
-];
+  ];
+}
 
-const ADDRESS_COLUMNS: DataTableColumn<CustomerAddress>[] = [
+function buildAddressColumns(
+  copy: CustomerDetailCopy['addresses']['columns'],
+): DataTableColumn<CustomerAddress>[] {
+  return [
   {
     id: 'addressType',
-    header: 'Type',
+    header: copy.type,
     cell: (a) => <span className="mono-text">{a.addressType}</span>,
   },
   {
     id: 'address1',
-    header: 'Address',
-    cell: (a) => {
+    header: copy.address,
+    cell: (a): ReactElement => {
       const parts = [a.address1, a.address2].filter(Boolean).join(', ');
       return parts ? <span>{parts}</span> : <EmptyValue />;
     },
   },
   {
     id: 'city',
-    header: 'City',
+    header: copy.city,
     cell: (a) => a.city ?? <EmptyValue />,
   },
   {
     id: 'postcode',
-    header: 'Postcode',
+    header: copy.postcode,
     cell: (a) => a.postcode ?? <EmptyValue />,
   },
   {
     id: 'countryIso2',
-    header: 'Country',
+    header: copy.country,
     cell: (a) => a.countryIso2 ?? <EmptyValue />,
   },
   {
     id: 'lastSeenAt',
-    header: 'Last Seen',
+    header: copy.lastSeen,
     cell: (a) => <TimeDisplay iso={a.lastSeenAt} format="date" />,
   },
-];
+  ];
+}
 
 export function CustomerDetailPage(): ReactElement {
   const { id = '' } = useParams<{ id: string }>();
   const query = useCustomerQuery(id);
   const ordersQuery = useOrdersQuery(id ? { customerId: id } : undefined, { limit: 20 });
+  const copy = useMessages('customers').customerDetailPage;
+  const format = useFormat();
+  const orderColumns = useMemo(() => buildOrderColumns(copy.orders), [copy]);
+  const addressColumns = useMemo(() => buildAddressColumns(copy.addresses.columns), [copy]);
 
   if (query.isLoading) {
     return (
-      <PageLayout eyebrow="Customers" title="Customer">
-        <LoadingState liveRegion="off" title="Loading customer" message="Fetching customer details…" />
+      <PageLayout eyebrow={copy.eyebrow} title={copy.fallbackTitle}>
+        <LoadingState
+          liveRegion="off"
+          title={copy.loading.title}
+          message={copy.loading.message}
+        />
       </PageLayout>
     );
   }
 
   if (query.error || !query.data) {
     return (
-      <PageLayout eyebrow="Customers" title="Customer">
+      <PageLayout eyebrow={copy.eyebrow} title={copy.fallbackTitle}>
         <ErrorState
-          title="Unable to load customer"
-          message={query.error?.message ?? 'Customer not found'}
-          action={<Button onClick={() => { void query.refetch(); }}>Retry</Button>}
+          title={copy.error.title}
+          message={query.error?.message ?? copy.error.notFound}
+          action={<Button onClick={() => { void query.refetch(); }}>{copy.retry}</Button>}
         />
       </PageLayout>
     );
@@ -174,40 +194,44 @@ export function CustomerDetailPage(): ReactElement {
 
   return (
     <PageLayout
-      backTo={{ to: '/customers', label: 'Customers' }}
-      eyebrow="Customers"
+      backTo={{ to: '/customers', label: copy.eyebrow }}
+      eyebrow={copy.eyebrow}
       title={<EntityLabel id={customer.internalCustomerId} name={name || null} />}
     >
       <section className="detail-section">
-        <KeyValueList items={buildCustomerItems(customer)} />
+        <KeyValueList items={buildCustomerItems(copy.fields, customer)} />
       </section>
 
       <section className="detail-section">
         <h2 className="detail-section__title">
-          Orders{ordersQuery.data ? ` (${ordersQuery.data.total})` : ''}
+          {ordersQuery.data
+            ? interpolate(copy.orders.headingWithCount, {
+                count: format.number(ordersQuery.data.total),
+              })
+            : copy.orders.heading}
         </h2>
         {ordersQuery.isLoading ? (
           <LoadingState
             liveRegion="off"
-            title="Loading orders"
-            message="Fetching orders placed by this customer…"
+            title={copy.orders.loading.title}
+            message={copy.orders.loading.message}
           />
         ) : ordersQuery.error ? (
           <ErrorState
-            title="Unable to load customer orders"
+            title={copy.orders.error.title}
             message={ordersQuery.error.message}
-            action={<Button onClick={() => { void ordersQuery.refetch(); }}>Retry</Button>}
+            action={<Button onClick={() => { void ordersQuery.refetch(); }}>{copy.retry}</Button>}
           />
         ) : (ordersQuery.data?.items.length ?? 0) === 0 ? (
           <EmptyState
             liveRegion="off"
-            title="No orders yet"
-            message="This customer has no orders on record."
+            title={copy.orders.empty.title}
+            message={copy.orders.empty.message}
           />
         ) : (
           <DataTable
-            caption="Customer orders"
-            columns={CUSTOMER_ORDER_COLUMNS}
+            caption={copy.orders.caption}
+            columns={orderColumns}
             rows={ordersQuery.data?.items ?? []}
             rowKey={(order) => order.internalOrderId}
             rowHref={(order) => `/orders/${order.internalOrderId}`}
@@ -216,17 +240,17 @@ export function CustomerDetailPage(): ReactElement {
       </section>
 
       <section className="detail-section">
-        <h2 className="detail-section__title">Addresses</h2>
+        <h2 className="detail-section__title">{copy.addresses.heading}</h2>
         {customer.addresses.length === 0 ? (
           <EmptyState
             liveRegion="off"
-            title="No addresses"
-            message="No address projections have been recorded for this customer."
+            title={copy.addresses.empty.title}
+            message={copy.addresses.empty.message}
           />
         ) : (
           <DataTable
-            caption="Customer addresses"
-            columns={ADDRESS_COLUMNS}
+            caption={copy.addresses.caption}
+            columns={addressColumns}
             rows={customer.addresses}
             rowKey={(a) => a.addressHash}
           />
