@@ -14,6 +14,7 @@ import type {
   OrderPagination,
   PaginatedOrders,
   OrderRecord,
+  SourceChangeResult,
   RetryOrderDestinationResult,
   RetryOrderRoutingResult,
   PaymentWritebackRetryResult,
@@ -104,6 +105,13 @@ export interface OrdersApi {
   markPacked: (internalOrderId: string) => Promise<OrderRecord>;
   /** Clear the packed mark (#2287). Clearing an unpacked order is a no-op 200. */
   unmarkPacked: (internalOrderId: string) => Promise<OrderRecord>;
+  /**
+   * Compare an order the source changed after packing started with its packing
+   * work again (#3961). Applies the change when nothing in the box blocks it.
+   */
+  recheckSourceChange: (internalOrderId: string) => Promise<SourceChangeResult>;
+  /** Keep the packing work as it is although the source changed it (#3961). */
+  acceptSourceChange: (internalOrderId: string) => Promise<SourceChangeResult>;
   /**
    * Mark the order's buyer note read (#3539). Fill-once and idempotent: a
    * repeat returns the EXISTING marker, so the first reader is never
@@ -296,6 +304,8 @@ function buildQuery(
   if (filters?.attention !== undefined) {
     params.set('attention', String(filters.attention));
   }
+  // #3961 - one named attention reason ("Changed by the shop").
+  if (filters?.attentionReason) params.set('attentionReason', filters.attentionReason);
   // #3963 - same `!== undefined` guard: `false` is a real predicate.
   if (filters?.paymentNotSent !== undefined) {
     params.set('paymentNotSent', String(filters.paymentNotSent));
@@ -410,6 +420,18 @@ export function createOrdersApi(request: ApiRequest, requestBlob: ApiBlobRequest
     markBuyerNoteRead(internalOrderId): Promise<OrderRecord> {
       return request<OrderRecord>(
         `/orders/${encodeURIComponent(internalOrderId)}/buyer-note/read`,
+        { method: 'POST' },
+      );
+    },
+    recheckSourceChange(internalOrderId): Promise<SourceChangeResult> {
+      return request<SourceChangeResult>(
+        `/orders/${encodeURIComponent(internalOrderId)}/source-change/recheck`,
+        { method: 'POST' },
+      );
+    },
+    acceptSourceChange(internalOrderId): Promise<SourceChangeResult> {
+      return request<SourceChangeResult>(
+        `/orders/${encodeURIComponent(internalOrderId)}/source-change/accept`,
         { method: 'POST' },
       );
     },

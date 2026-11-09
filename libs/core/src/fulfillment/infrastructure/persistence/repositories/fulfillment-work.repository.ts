@@ -1857,9 +1857,34 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
         .orderBy('verification.verifiedAt', 'DESC')
         .getOne();
       if (row === null) return null;
-      return { id: row.id, workLineId: row.workLineId };
+      return { id: row.id, workLineId: row.workLineId, verifiedByUserId: row.verifiedByUserId };
     } catch (error) {
       throw new FulfillmentPersistenceError('findLatestActiveVerification', error);
+    }
+  }
+
+  async findLatestActiveVerificationForLine(
+    workId: string,
+    workLineId: string,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<LatestActiveParcelVerification | null> {
+    const manager = transaction as EntityManager | undefined;
+    const repo =
+      manager === undefined
+        ? this.verifications
+        : manager.getRepository(FulfillmentWorkVerificationOrmEntity);
+    try {
+      const row = await repo
+        .createQueryBuilder('verification')
+        .where('verification.fulfillmentWorkId = :workId', { workId })
+        .andWhere('verification.workLineId = :workLineId', { workLineId })
+        .andWhere('verification.voidedAt IS NULL')
+        .orderBy('verification.verifiedAt', 'DESC')
+        .getOne();
+      if (row === null) return null;
+      return { id: row.id, workLineId: row.workLineId, verifiedByUserId: row.verifiedByUserId };
+    } catch (error) {
+      throw new FulfillmentPersistenceError('findLatestActiveVerificationForLine', error);
     }
   }
 
