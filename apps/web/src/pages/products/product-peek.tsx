@@ -48,6 +48,8 @@ export interface ProductPeekProps {
   open?: boolean;
   /** The body while `view` is null and the panel is open (loading, an error). */
   placeholder?: ReactNode;
+  /** Opened on top of another peek; see `PeekPanel.stacked`. */
+  stacked?: boolean;
 }
 
 export function ProductPeek({
@@ -58,6 +60,7 @@ export function ProductPeek({
   onOpenChange,
   open,
   placeholder,
+  stacked,
 }: ProductPeekProps): ReactElement {
   const page = useMessages('products').productsListPage;
   const copy = page.peek;
@@ -65,6 +68,7 @@ export function ProductPeek({
   return (
     <PeekPanel
       open={open ?? view !== null}
+      stacked={stacked}
       onOpenChange={onOpenChange}
       position={position}
       count={count}

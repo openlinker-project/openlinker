@@ -7861,6 +7861,15 @@ a.kpi-card:focus-visible {
   -webkit-backdrop-filter: blur(6px) saturate(0.8);
 }
 .side-panel--elevated { z-index: 61; }
+/* A panel stacked on another adds no second scrim: the one below already
+   dims the page. The overlay stays, transparent, so a click beside the top
+   panel still closes it. */
+.side-panel__overlay--elevated .side-panel__overlay-fill,
+.side-panel__overlay--elevated.side-panel__overlay--modal .side-panel__overlay-fill {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
 
 .side-panel__head {
   display: grid;

@@ -88,6 +88,7 @@ export function ProductPeekById({ productId, onClose }: ProductPeekByIdProps): R
       <ProductPeek
         view={view}
         open={productId !== null}
+        stacked
         placeholder={placeholder}
         position={1}
         count={1}
