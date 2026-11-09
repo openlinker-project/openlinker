@@ -231,6 +231,10 @@ export class ProductRepository implements ProductRepositoryPort {
       );
     }
 
+    if (filters.productId) {
+      qb.andWhere('product.id = :productId', { productId: filters.productId });
+    }
+
     if (filters.sourceConnectionId) {
       // Product originates from (has a Product mapping on) this connection.
       qb.andWhere(

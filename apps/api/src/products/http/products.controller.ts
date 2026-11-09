@@ -467,6 +467,7 @@ export class ProductsController {
       unlistedOnConnectionIds: this.parseUnlistedOn(query.unlistedOn),
       sourceConnectionId: query.connectionId,
       hideFullyStale: query.hideFullyStale,
+      productId: query.productId,
     };
   }
 

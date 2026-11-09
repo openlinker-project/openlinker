@@ -226,6 +226,14 @@ export interface ProductListFilters {
    * with zero variants is also kept (staleness is not what that means).
    */
   hideFullyStale?: boolean;
+
+  /**
+   * Exactly this product (#4026 follow-up). Lets a surface open a product's
+   * peek by id - an order line, a deep link - with the same list-shaped row
+   * (stock aggregates, listings coverage) the products page renders, which the
+   * single-product detail read does not carry.
+   */
+  productId?: string;
 }
 
 /**
