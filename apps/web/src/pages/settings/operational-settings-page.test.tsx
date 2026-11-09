@@ -295,7 +295,12 @@ describe('OperationalSettingsPage', () => {
     await user.clear(numberBox);
     await user.type(numberBox, '5000');
 
-    expect(await screen.findByText(CATALOGUE_REASON)).toBeInTheDocument();
+    // The page reads its own copy for the reason (#3866), never the API's
+    // English sentence.
+    expect(
+      await screen.findByText(/^At 2000 products, one run takes about 3 minutes/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(CATALOGUE_REASON)).not.toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
     });
