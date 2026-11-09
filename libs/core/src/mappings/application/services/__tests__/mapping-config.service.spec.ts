@@ -351,7 +351,12 @@ describe('MappingConfigService', () => {
 
       const result = await service.getCategoryMappings(CONNECTION_ID);
 
-      expect(categoryRepo.findByDestinationConnection).toHaveBeenCalledWith(CONNECTION_ID);
+      // No source scope given: the repository must receive it as absent, which lists every
+      // source store's mappings for this marketplace (#3993).
+      expect(categoryRepo.findByDestinationConnection).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        undefined
+      );
       expect(result).toEqual(mappings);
     });
   });
@@ -389,7 +394,7 @@ describe('MappingConfigService', () => {
 
       await service.deleteCategoryMapping(CONNECTION_ID, '5');
 
-      expect(categoryRepo.deleteMapping).toHaveBeenCalledWith(CONNECTION_ID, '5');
+      expect(categoryRepo.deleteMapping).toHaveBeenCalledWith(CONNECTION_ID, '5', undefined);
     });
   });
 
