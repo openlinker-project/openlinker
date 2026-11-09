@@ -45,6 +45,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { codedHttpError } from '../../common/errors/coded-http.exception';
 import {
   adapterCapabilityNotSupported,
+  masterCatalogConnectionNotConfigured,
   categoryNotFound,
   offerMappingNotFound,
   providerCapabilityUnsupported,
@@ -1043,11 +1044,11 @@ export class ListingsController {
         ),
       };
     } catch (error) {
-      if (
-        error instanceof AdapterCapabilityNotSupportedException ||
-        error instanceof MasterCatalogConnectionNotConfiguredException
-      ) {
-        throw new UnprocessableEntityException(error.message);
+      if (error instanceof AdapterCapabilityNotSupportedException) {
+        throw adapterCapabilityNotSupported(error, HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+      if (error instanceof MasterCatalogConnectionNotConfiguredException) {
+        throw masterCatalogConnectionNotConfigured(error, HttpStatus.UNPROCESSABLE_ENTITY);
       }
       throw error;
     }

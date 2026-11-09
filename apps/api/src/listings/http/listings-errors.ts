@@ -17,6 +17,7 @@ import {
   ExpandedOfferCeilingExceededException,
   InvalidEanException,
   InvalidOverrideKeyException,
+  type MasterCatalogConnectionNotConfiguredException,
   MasterStockNotSyncedException,
 } from '@openlinker/core/listings';
 import { codedHttpError } from '../../common/errors/coded-http.exception';
@@ -39,6 +40,16 @@ export function adapterCapabilityNotSupported(
   status: number
 ): HttpException {
   return providerCapabilityUnsupported(status, error.capability, error.connectionId, error.message);
+}
+
+/** The marketplace connection has no master catalogue set, so product data cannot be read. */
+export function masterCatalogConnectionNotConfigured(
+  error: MasterCatalogConnectionNotConfiguredException,
+  status: number
+): HttpException {
+  return codedHttpError(status, 'MASTER_CATALOG_CONNECTION_NOT_CONFIGURED', error.message, {
+    connectionId: error.marketplaceConnectionId,
+  });
 }
 
 export function offerMappingNotFound(mappingId: string, message: string): HttpException {

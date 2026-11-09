@@ -46,6 +46,7 @@ import {
   FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY,
   isPresentButInvalidFulfilmentOwnedByDestination,
   describeInvalidPaymentWritebackConfig,
+  PaymentWritebackModeValues,
   ConnectionInUseException,
   BUYER_EMAILS_CONFIG_KEY,
   buyerEmailChannelKindOf,
@@ -483,9 +484,20 @@ export class ConnectionService implements IConnectionService {
    */
   private validatePaymentWritebackConfig(config: Record<string, unknown>): void {
     const problem = describeInvalidPaymentWritebackConfig(config);
-    if (problem !== null) {
-      throw new BadRequestException(`config.${problem}`);
+    if (problem === null) return;
+    // The core check names the offending path first; the code and its params
+    // are derived from that path so the frontend can render it (#3864).
+    const field = `config.${problem.split(' ')[0]}`;
+    if (field.endsWith('.mode')) {
+      throw connectionConfigInvalid(field, 'one-of', `config.${problem}`, {
+        allowed: allowedValues(PaymentWritebackModeValues),
+      });
     }
+    throw connectionConfigInvalid(
+      field,
+      field.endsWith('.paidStateId') ? 'string' : 'object',
+      `config.${problem}`
+    );
   }
 
   /**

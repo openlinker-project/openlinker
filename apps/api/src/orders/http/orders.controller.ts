@@ -1219,7 +1219,7 @@ export class OrdersController {
 
   private async requireOrder(internalOrderId: string): Promise<void> {
     if ((await this.orderRecordService.getOrderRecord(internalOrderId)) === null) {
-      throw new NotFoundException(`Order ${internalOrderId} not found`);
+      throw orderNotFound(internalOrderId, `Order ${internalOrderId} not found`);
     }
   }
 

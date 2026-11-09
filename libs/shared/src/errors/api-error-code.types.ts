@@ -409,6 +409,8 @@ export const ApiErrorCodeValues = [
   'MARKETPLACE_CATEGORY_NOT_FOUND',
   /** The marketplace catalogue has no product with this id. params: `productId`, `connectionId`. */
   'CATALOG_PRODUCT_NOT_FOUND',
+  /** The marketplace connection names no master catalogue to read product data from. params: `connectionId`. */
+  'MASTER_CATALOG_CONNECTION_NOT_CONFIGURED',
   /** A bulk submission resolved to no products or variants. No params. */
   'BULK_SUBMISSION_EMPTY',
   /** No bulk offer creation batch has this id. params: `batchId`. */

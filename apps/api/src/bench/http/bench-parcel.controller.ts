@@ -361,7 +361,7 @@ export class BenchParcelController {
     @CurrentUser() user: AuthenticatedUser
   ): Promise<BenchSourceChangeTakenOutResultResponseDto> {
     if (!user?.id) {
-      throw new UnauthorizedException('The confirmation must name the packer');
+      throw benchPackerUnidentified('The confirmation must name the packer');
     }
     const result = await this.run(() =>
       this.parcels.confirmSourceChangeTakenOut({ workId, workLineId: body.workLineId, actorUserId: user.id })
