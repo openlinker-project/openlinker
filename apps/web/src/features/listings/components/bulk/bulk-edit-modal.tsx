@@ -80,7 +80,13 @@ import {
 } from '../../../../shared/ui';
 import type { DescriptionFormat, StatusBadgeTone } from '../../../../shared/ui';
 import { useDescriptionFormatQuery } from '../../hooks/use-description-format-query';
-import { useFormat, useMessages } from '../../../../shared/i18n';
+import {
+  interpolate,
+  useFormat,
+  useMessages,
+  usePlural,
+  type PluralFn,
+} from '../../../../shared/i18n';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import { Link } from 'react-router-dom';
 import { useToast } from '../../../../shared/ui/toast-provider';
@@ -134,7 +140,11 @@ import type {
   OfferParameter,
   ProjectedParameterOrigin,
 } from '../../api/listings.types';
-import { describeOrigin, type ProjectionSummary } from '../../lib/attribute-projection-summary';
+import {
+  describeOrigin,
+  type AttributeRulesCopy,
+  type ProjectionSummary,
+} from '../../lib/attribute-projection-summary';
 import type { CategoryParameterFormValues, FormParameterValue } from '../category-parameter-form.types';
 import {
   makeBulkEditModalSchema,
@@ -628,9 +638,11 @@ function BulkEditModalForm({
   // product's shared form IS its only variant; on a multi-variant product the
   // rules fill per variant, so the hint only says whether a blank field is
   // covered for all of them.
+  const editorRulesCopy = useMessages('listings').attributeRules.editor;
+  const plural = usePlural();
   const baseRuleHints = useMemo(
-    () => buildBaseRuleHints(row, projectionSummaries, platformName),
-    [row, projectionSummaries, platformName],
+    () => buildBaseRuleHints(row, projectionSummaries, platformName, editorRulesCopy, plural),
+    [row, projectionSummaries, platformName, editorRulesCopy, plural],
   );
   const platformSection = platform?.bulkOfferRowSection;
   const isMultiVariant = row.variants.length > 1;
@@ -1609,12 +1621,8 @@ type Provenance =
   | 'override'
   | 'distinct'
   | 'policy'
-  | 'defaults'
-  | 'rule'
-  | 'rejected';
+  | 'defaults';
 const PROV_LABEL: Record<Provenance, string> = {
-  rule: 'from rule',
-  rejected: 'rule value rejected',
   inherit: 'inherited',
   master: 'from master',
   override: 'overridden',
@@ -1626,6 +1634,8 @@ const PROV_LABEL: Record<Provenance, string> = {
 function ProvBadge({ kind }: { kind: Provenance }): ReactElement {
   return <span className={`bulk-editor__prov bulk-editor__prov--${kind}`}>{PROV_LABEL[kind]}</span>;
 }
+
+type EditorRulesCopy = AttributeRulesCopy['editor'];
 
 interface BaseRuleHints {
   /** One sentence for the whole section, naming what the rules fill. */
@@ -1646,6 +1656,8 @@ function buildBaseRuleHints(
   row: BulkWizardRow,
   summaries: ReadonlyMap<string, ProjectionSummary> | undefined,
   destinationName: string,
+  copy: EditorRulesCopy,
+  plural: PluralFn,
 ): BaseRuleHints | undefined {
   if (!summaries) return undefined;
   const perParam = new Map<string, ProjectedParameterOrigin[]>();
@@ -1669,26 +1681,23 @@ function buildBaseRuleHints(
     if (rejected.length > 0) {
       fields[parameterId] =
         consulted === 1
-          ? `${destinationName} does not accept "${rejected[0].rawValue}" from your rules. Pick a value.`
-          : `${destinationName} does not accept the rule value for ${rejected.length} of ${consulted} variants.`;
+          ? interpolate(copy.rejectedHint, { destination: destinationName, value: rejected[0].rawValue })
+          : plural(consulted, copy.rejectedSome, { destination: destinationName, rejected: rejected.length });
       continue;
     }
     covered.push(origins[0].parameterName);
-    if (consulted === 1) fields[parameterId] = `Rule value: ${origins[0].rawValue}`;
-    else if (origins.length < consulted) fields[parameterId] = `Rules fill this for ${origins.length} of ${consulted} variants.`;
+    if (consulted === 1) fields[parameterId] = interpolate(copy.ruleValue, { value: origins[0].rawValue });
+    else if (origins.length < consulted) {
+      fields[parameterId] = plural(consulted, copy.partial, { filled: origins.length });
+    }
   }
   const note =
     covered.length === 0
       ? null
       : consulted === 1
-        ? `Left empty, ${joinNames(covered)} ${covered.length === 1 ? 'is' : 'are'} filled by your attribute rules.`
-        : `Left empty, ${joinNames(covered)} ${covered.length === 1 ? 'is' : 'are'} filled by your attribute rules for each variant.`;
+        ? interpolate(copy.baseNote, { names: covered.join(', ') })
+        : interpolate(copy.baseNotePerVariant, { names: covered.join(', ') });
   return { note, fields };
-}
-
-function joinNames(names: readonly string[]): string {
-  if (names.length <= 1) return names.join('');
-  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
 
 /**
@@ -1704,12 +1713,13 @@ function RulesContextLine({
   filled: number;
   total: number;
 }): ReactElement | null {
+  const copy = useMessages('listings').attributeRules;
   if (filled === 0) return null;
   return (
     <p className="bulk-editor__rules-line">
       <span className="bulk-editor__rules-dot" aria-hidden="true" />
-      {filled === total ? 'All' : `${filled} of ${total}`} parameters come from your attribute rules.{' '}
-      <Link to={`/connections/${connectionId}/mappings?tab=attribute-rules`}>Manage rules</Link>
+      {interpolate(copy.editor.context, { filled, total })}{' '}
+      <Link to={`/connections/${connectionId}/mappings?tab=attribute-rules`}>{copy.manage}</Link>
     </p>
   );
 }
@@ -1720,12 +1730,13 @@ function RulesContextLine({
  * explanatory prose.
  */
 function RuleProvBadge({ origin }: { origin: ProjectedParameterOrigin }): ReactElement {
-  const originCopy = useMessages('listings').attributeRules.origin;
+  const copy = useMessages('listings').attributeRules;
+  const originCopy = copy.origin;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <span className="bulk-editor__prov bulk-editor__prov--rule" tabIndex={0}>
-          {PROV_LABEL.rule}
+          {copy.editor.badgeRule}
         </span>
       </TooltipTrigger>
       <TooltipContent side="top" align="start">
@@ -1733,6 +1744,12 @@ function RuleProvBadge({ origin }: { origin: ProjectedParameterOrigin }): ReactE
       </TooltipContent>
     </Tooltip>
   );
+}
+
+/** The badge on a field whose rule value the destination rejects (#3995). */
+function RuleRejectedBadge(): ReactElement {
+  const label = useMessages('listings').attributeRules.editor.badgeRejected;
+  return <span className="bulk-editor__prov bulk-editor__prov--rejected">{label}</span>;
 }
 
 /**
@@ -1752,20 +1769,19 @@ function RuleHint({
   baseSet: boolean;
   destinationName: string;
 }): ReactElement | null {
+  const copy = useMessages('listings').attributeRules.editor;
   if (!origin) return null;
   if (origin.outcome === 'rejected') {
     if (overridden || baseSet) return null;
     return (
       <p className="bulk-editor__rule-hint bulk-editor__rule-hint--warn" role="note">
-        {destinationName} does not accept &ldquo;{origin.rawValue}&rdquo; from your rules. Pick a value.
+        {interpolate(copy.rejectedHint, { destination: destinationName, value: origin.rawValue })}
       </p>
     );
   }
   if (overridden || baseSet) {
     return (
-      <p className="bulk-editor__rule-hint">
-        Replaces the rule value &ldquo;{origin.rawValue}&rdquo;
-      </p>
+      <p className="bulk-editor__rule-hint">{interpolate(copy.replacesHint, { value: origin.rawValue })}</p>
     );
   }
   return null;
@@ -2689,7 +2705,7 @@ function VariantScopeForm({
     ) : ruleSupplies && origin ? (
       <RuleProvBadge origin={origin} />
     ) : ruleRejected ? (
-      <ProvBadge kind="rejected" />
+      <RuleRejectedBadge />
     ) : undefined;
     const onReset = opts?.onReset;
 
@@ -2839,8 +2855,10 @@ function VariantScopeForm({
           {param.name}{' '}
           {lockedRuleValue && lockedOrigin ? (
             <RuleProvBadge origin={lockedOrigin} />
+          ) : lockedOrigin ? (
+            <RuleRejectedBadge />
           ) : (
-            <ProvBadge kind={lockedOrigin ? 'rejected' : 'inherit'} />
+            <ProvBadge kind="inherit" />
           )}
         </label>
         <Input

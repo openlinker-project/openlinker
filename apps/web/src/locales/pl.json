@@ -52,6 +52,28 @@
         "rejectedOne": "Odrzucono: {parameter}"
       },
       "coverageLabel": "Parametry uzupełniane przez reguły",
+      "editor": {
+        "badgeRejected": "wartość z reguły odrzucona",
+        "badgeRule": "z reguły",
+        "baseNote": "Pozostawione puste wypełnią twoje reguły atrybutów: {names}.",
+        "baseNotePerVariant": "Pozostawione puste wypełnią twoje reguły atrybutów dla każdego wariantu: {names}.",
+        "context": "Parametry z twoich reguł atrybutów: {filled} z {total}.",
+        "partial": {
+          "few": "Reguły wypełniają to pole dla {filled} z {n} wariantów.",
+          "many": "Reguły wypełniają to pole dla {filled} z {n} wariantów.",
+          "one": "Reguły wypełniają to pole dla {filled} z {n} wariantu.",
+          "other": "Reguły wypełniają to pole dla {filled} z {n} wariantu."
+        },
+        "rejectedHint": "{destination} nie akceptuje wartości „{value}” z twoich reguł. Wybierz wartość.",
+        "rejectedSome": {
+          "few": "{destination} nie akceptuje wartości z reguł dla {rejected} z {n} wariantów.",
+          "many": "{destination} nie akceptuje wartości z reguł dla {rejected} z {n} wariantów.",
+          "one": "{destination} nie akceptuje wartości z reguł dla {rejected} z {n} wariantu.",
+          "other": "{destination} nie akceptuje wartości z reguł dla {rejected} z {n} wariantu."
+        },
+        "replacesHint": "Zastępuje wartość z reguły „{value}”",
+        "ruleValue": "Wartość z reguły: {value}"
+      },
       "failed": {
         "few": "Nie udało się sprawdzić reguł dla {n} wariantów. Do czasu udanego sprawdzenia ich wymagane parametry są traktowane jako puste.",
         "many": "Nie udało się sprawdzić reguł dla {n} wariantów. Do czasu udanego sprawdzenia ich wymagane parametry są traktowane jako puste.",

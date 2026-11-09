@@ -44,6 +44,24 @@
         "rejectedOne": "{parameter} rejected"
       },
       "coverageLabel": "Parameters filled by rules",
+      "editor": {
+        "badgeRejected": "rule value rejected",
+        "badgeRule": "from rule",
+        "baseNote": "Left empty, these are filled by your attribute rules: {names}.",
+        "baseNotePerVariant": "Left empty, these are filled by your attribute rules for each variant: {names}.",
+        "context": "Parameters from your attribute rules: {filled} of {total}.",
+        "partial": {
+          "one": "Rules fill this for {filled} of {n} variant.",
+          "other": "Rules fill this for {filled} of {n} variants."
+        },
+        "rejectedHint": "{destination} does not accept “{value}” from your rules. Pick a value.",
+        "rejectedSome": {
+          "one": "{destination} does not accept the rule value for {rejected} of {n} variant.",
+          "other": "{destination} does not accept the rule value for {rejected} of {n} variants."
+        },
+        "replacesHint": "Replaces the rule value “{value}”",
+        "ruleValue": "Rule value: {value}"
+      },
       "failed": {
         "one": "Could not check the rules for {n} variant. Its required parameters count as empty until the check succeeds.",
         "other": "Could not check the rules for {n} variants. Their required parameters count as empty until the check succeeds."
