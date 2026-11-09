@@ -206,13 +206,13 @@ function QueueRow({
   return (
     <tr data-testid="batch-queue-row" data-order-id={row.orderId} data-row-kind={row.kind}>
       <td className="mono-text">{orderLabel(row.orderId, entry, item)}</td>
-      <td>{entry ? sourceName(entry.sourceConnectionId) : '—'}</td>
-      <td>{entry?.buyerName ?? item?.buyerName ?? '—'}</td>
-      <td>{entry?.placedAt ? formatDateTime(entry.placedAt) : '—'}</td>
+      <td>{entry ? sourceName(entry.sourceConnectionId) : '-'}</td>
+      <td>{entry?.buyerName ?? item?.buyerName ?? '-'}</td>
+      <td>{entry?.placedAt ? formatDateTime(entry.placedAt) : '-'}</td>
       <td className="data-table__cell--right">
         {entry?.totalAmount != null
           ? formatAmount(entry.totalAmount, entry.currency ?? undefined)
-          : '—'}
+          : '-'}
       </td>
       <td>
         {row.kind === 'queued' ? (
@@ -301,7 +301,7 @@ function RunningView({
                   data-outcome={item.outcome}
                 >
                   <td className="mono-text">{item.orderNumber ?? item.orderId}</td>
-                  <td>{item.buyerName ?? '—'}</td>
+                  <td>{item.buyerName ?? '-'}</td>
                   <td>
                     <StatusBadge tone={outcome.tone} compact>
                       {outcome.label}
@@ -319,7 +319,7 @@ function RunningView({
                 data-row-kind="queued"
               >
                 <td className="mono-text">{entry.orderNumber ?? entry.orderId}</td>
-                <td>{entry.buyerName ?? '—'}</td>
+                <td>{entry.buyerName ?? '-'}</td>
                 <td>
                   <span className="muted-text">Queued</span>
                 </td>

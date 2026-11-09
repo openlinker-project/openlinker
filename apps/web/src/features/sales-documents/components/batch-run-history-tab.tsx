@@ -75,7 +75,7 @@ export function BatchRunHistoryTab({
               return (
                 <tr key={run.id} className={isSelected ? 'batch-history__row--current' : undefined}>
                   <td>{formatDateTime(run.startedAt)}</td>
-                  <td className="mono-text">{formatRunDuration(run) ?? '—'}</td>
+                  <td className="mono-text">{formatRunDuration(run) ?? '-'}</td>
                   <td className="data-table__cell--right">{run.eligibleCount}</td>
                   <td>{describeRunResult(run)}</td>
                   <td>
@@ -188,7 +188,7 @@ function BatchRunDetails({
                       data-outcome={item.outcome}
                     >
                       <td className="mono-text">{item.orderNumber ?? item.orderId}</td>
-                      <td>{item.buyerName ?? '—'}</td>
+                      <td>{item.buyerName ?? '-'}</td>
                       <td>
                         <StatusBadge tone={outcome.tone} compact>
                           {outcome.label}
