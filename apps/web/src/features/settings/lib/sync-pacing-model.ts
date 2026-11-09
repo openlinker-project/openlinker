@@ -27,6 +27,7 @@
  *
  * @module apps/web/src/features/settings/lib
  */
+import { getBcp47Locale, getLocale, getMessages, interpolate } from '../../../shared/i18n';
 
 /**
  * One measured run, from `perf/prestashop-baseline/results-D-2026-08-28.md`
@@ -243,18 +244,25 @@ export function suggestCatalogueValueWithin(
   return Math.min(bound.max, Math.max(bound.min, stepped));
 }
 
-/** `46 s`, always whole seconds — a projection to one decimal invites trust it has not earned. */
-export function formatSeconds(seconds: number): string {
-  return `${String(Math.round(seconds))} s`;
+function formatNumber(value: number, maximumFractionDigits: number): string {
+  return new Intl.NumberFormat(getBcp47Locale(getLocale()), { maximumFractionDigits }).format(value);
 }
 
-/** `18 h` under a day, `2.8 d` above it. `null` reads as an em dash at the call site. */
+/** `46 s`, always whole seconds - a projection to one decimal invites trust it has not earned. */
+export function formatSeconds(seconds: number): string {
+  return interpolate(getMessages('settings').syncPacingModel.seconds, {
+    n: formatNumber(Math.round(seconds), 0),
+  });
+}
+
+/** `18 h` under a day, `2.8 d` above it. `null` reads as a dash at the call site. */
 export function formatDays(days: number | null): string | null {
   if (days === null) {
     return null;
   }
+  const units = getMessages('settings').syncPacingModel;
   if (days < 1) {
-    return `${String(Math.round(days * 24 * 10) / 10)} h`;
+    return interpolate(units.hours, { n: formatNumber(days * 24, 1) });
   }
-  return `${String(Math.round(days * 10) / 10)} d`;
+  return interpolate(units.days, { n: formatNumber(days, 1) });
 }

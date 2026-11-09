@@ -13,6 +13,7 @@
 import { useMemo, useState, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSession } from '../../shared/auth/use-session';
+import { getMessages, interpolate, useFormat, useMessages } from '../../shared/i18n';
 import { Button } from '../../shared/ui/button';
 import { PageLayout } from '../../shared/ui/page-layout';
 import {
@@ -24,8 +25,6 @@ import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-s
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { Select } from '../../shared/ui/select';
 import { FormField } from '../../shared/ui/form-field';
-import { formatRelativeTime } from '../../shared/format/format-relative-time';
-import { formatDateTime } from '../../shared/format/format-date';
 import { usePlatform, usePlatforms } from '../../shared/plugins';
 import type { Platform } from '../../shared/plugins';
 import { usePromptTemplatesQuery } from '../../features/prompt-templates/hooks/use-prompt-templates-query';
@@ -66,7 +65,7 @@ function resolveChannelLabel(
   channel: PromptTemplateChannel | null,
   plugin: Platform | undefined,
 ): string {
-  if (channel === null) return 'master';
+  if (channel === null) return getMessages('prompt-templates').common.master;
   return plugin?.displayName ?? humaniseChannel(channel);
 }
 
@@ -119,6 +118,9 @@ function ChannelBadge({
 }
 
 export function PromptTemplatesListPage(): ReactElement {
+  const messages = useMessages('prompt-templates');
+  const copy = messages.promptTemplatesListPage;
+  const format = useFormat();
   const { session } = useSession();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -138,14 +140,14 @@ export function PromptTemplatesListPage(): ReactElement {
   const platformPlugins = usePlatforms();
   const channelFilterOptions = useMemo(
     () => [
-      { value: '', label: 'All' },
-      { value: 'master', label: 'Master (generic)' },
+      { value: '', label: copy.filters.all },
+      { value: 'master', label: messages.common.masterGeneric },
       ...platformPlugins.map((plugin) => ({
         value: plugin.platformType,
         label: plugin.displayName,
       })),
     ],
-    [platformPlugins],
+    [platformPlugins, copy, messages],
   );
 
   const cardView = useMemo<DataTableCardView<PromptTemplateSummary>>(
@@ -156,18 +158,18 @@ export function PromptTemplatesListPage(): ReactElement {
           <ChannelBadge channel={row.channel} />
           <span className="mono-text">
             {row.publishedVersion !== null
-              ? `published v${row.publishedVersion}`
-              : 'never published'}
+              ? interpolate(copy.cardPublished, { version: row.publishedVersion })
+              : copy.neverPublished}
           </span>
           {row.hasDraft ? (
             <StatusBadge tone="review" compact>
-              draft v{row.latestVersion}
+              {interpolate(copy.cardDraft, { version: row.latestVersion })}
             </StatusBadge>
           ) : null}
         </div>
       ),
     }),
-    [],
+    [copy],
   );
 
   const [newDialogOpen, setNewDialogOpen] = useState(false);
@@ -177,14 +179,10 @@ export function PromptTemplatesListPage(): ReactElement {
 
   if (session.status === 'authenticated' && !isAdmin) {
     return (
-      <PageLayout
-        eyebrow="Settings"
-        title="Prompt templates"
-        description="Admin-only access."
-      >
+      <PageLayout eyebrow={messages.common.eyebrow} title={copy.title} description={copy.adminOnly}>
         <ErrorState
-          title="Admin role required"
-          message="This page manages prompts that ship to the model and requires an admin session."
+          title={messages.common.adminRequiredTitle}
+          message={messages.common.adminRequiredMessage}
         />
       </PageLayout>
     );
@@ -220,14 +218,14 @@ export function PromptTemplatesListPage(): ReactElement {
   const columns: DataTableColumn<PromptTemplateSummary>[] = [
     {
       id: 'key',
-      header: 'Key',
+      header: copy.columns.key,
       cell: (row) => <span className="mono-text">{row.key}</span>,
       accessor: (row) => row.key,
       sortable: true,
     },
     {
       id: 'channel',
-      header: 'Channel',
+      header: copy.columns.channel,
       cell: (row) => <ChannelBadge channel={row.channel} />,
       // Accessor is used only for client-side sort: render the raw channel
       // (or `'master'` sentinel) so sort order stays deterministic without
@@ -237,10 +235,12 @@ export function PromptTemplatesListPage(): ReactElement {
     },
     {
       id: 'published',
-      header: 'Published',
+      header: copy.columns.published,
       cell: (row) =>
         row.publishedVersion !== null ? (
-          <span className="mono-text">v{row.publishedVersion}</span>
+          <span className="mono-text">
+            {interpolate(messages.common.versionTag, { version: row.publishedVersion })}
+          </span>
         ) : (
           <span className="muted-text">—</span>
         ),
@@ -249,11 +249,11 @@ export function PromptTemplatesListPage(): ReactElement {
     },
     {
       id: 'draft',
-      header: 'Draft',
+      header: copy.columns.draft,
       cell: (row) =>
         row.hasDraft ? (
           <StatusBadge tone="review" compact>
-            v{row.latestVersion}
+            {interpolate(messages.common.versionTag, { version: row.latestVersion })}
           </StatusBadge>
         ) : (
           <span className="muted-text">—</span>
@@ -262,9 +262,9 @@ export function PromptTemplatesListPage(): ReactElement {
     },
     {
       id: 'updatedAt',
-      header: 'Updated',
+      header: copy.columns.updated,
       cell: (row) => (
-        <span title={formatDateTime(row.updatedAt)}>{formatRelativeTime(row.updatedAt)}</span>
+        <span title={format.dateTime(row.updatedAt)}>{format.relativeTime(row.updatedAt)}</span>
       ),
       accessor: (row) => row.updatedAt,
       sortable: true,
@@ -272,7 +272,7 @@ export function PromptTemplatesListPage(): ReactElement {
     },
     {
       id: 'actions',
-      header: <span className="sr-only">Row actions</span>,
+      header: <span className="sr-only">{copy.columns.rowActions}</span>,
       cell: (row) =>
         row.latestState !== 'archived' ? (
           <Button
@@ -284,29 +284,33 @@ export function PromptTemplatesListPage(): ReactElement {
               setArchiveTarget(row);
             }}
           >
-            Archive
+            {copy.archive}
           </Button>
         ) : (
-          <span className="muted-text">archived</span>
+          <span className="muted-text">{copy.archivedTag}</span>
         ),
     },
   ];
 
   return (
     <PageLayout
-      eyebrow="Settings"
-      title="Prompt templates"
-      description="Author, version, and publish the prompts the AI suggestion flow sends to the model."
+      eyebrow={messages.common.eyebrow}
+      title={copy.title}
+      description={copy.description}
       actions={
         isAdmin ? (
           <Button tone="primary" onClick={() => setNewDialogOpen(true)}>
-            New template
+            {copy.newTemplate}
           </Button>
         ) : undefined
       }
     >
       <div className="prompt-templates-toolbar">
-        <FormField label="Channel" name="prompt-templates-channel-filter" description="Filter by target channel">
+        <FormField
+          label={copy.filters.channelLabel}
+          name="prompt-templates-channel-filter"
+          description={copy.filters.channelDescription}
+        >
           <Select value={channelFilter ?? ''} onChange={handleChannelChange}>
             {channelFilterOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -315,31 +319,35 @@ export function PromptTemplatesListPage(): ReactElement {
             ))}
           </Select>
         </FormField>
-        <FormField label="Status" name="prompt-templates-status-filter" description="Hide fully-archived rows by default">
+        <FormField
+          label={copy.filters.statusLabel}
+          name="prompt-templates-status-filter"
+          description={copy.filters.statusDescription}
+        >
           <Select value={statusFilter} onChange={handleStatusChange}>
-            <option value="active">Active</option>
-            <option value="archived">Archived</option>
-            <option value="all">All</option>
+            <option value="active">{copy.filters.statusActive}</option>
+            <option value="archived">{copy.filters.statusArchived}</option>
+            <option value="all">{copy.filters.statusAll}</option>
           </Select>
         </FormField>
       </div>
 
       {query.isLoading ? (
-        <LoadingState title="Loading prompt templates" message="Fetching templates…" />
+        <LoadingState title={copy.loadingTitle} message={copy.loadingMessage} />
       ) : query.error ? (
         <ErrorState
-          title="Unable to load prompt templates"
-          message={query.error instanceof Error ? query.error.message : 'Unknown error'}
+          title={copy.errorTitle}
+          message={query.error instanceof Error ? query.error.message : messages.common.unknownError}
           action={
             <button className="button button--secondary" onClick={() => void query.refetch()}>
-              Retry
+              {messages.common.retry}
             </button>
           }
         />
       ) : rows.length === 0 ? (
         <EmptyState
-          title="No prompt templates yet"
-          message="The suggestion flow uses these prompts. Seed migrations usually create the first versions."
+          title={copy.emptyTitle}
+          message={copy.emptyMessage}
         />
       ) : (
         <DataTable

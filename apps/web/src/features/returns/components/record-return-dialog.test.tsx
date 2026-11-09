@@ -13,10 +13,12 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { RecordReturnDialog } from './record-return-dialog';
-import { RECORD_RETURN_DIALOG_COPY as COPY } from '../lib/record-return-dialog.copy';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import { ApiError } from '../../../shared/api/api-error';
 import type { OrderRecord } from '../../orders';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
+
+const COPY = getMessages('returns').recordReturnDialog;
 
 function order(overrides: Partial<OrderRecord> = {}): OrderRecord {
   return {
@@ -131,7 +133,7 @@ describe('RecordReturnDialog', () => {
     expect(record).not.toHaveBeenCalled();
   });
 
-  it('should label the reason options with the operator-facing REFUND_REASON_LABELS, not the raw wire value', async () => {
+  it('should label the reason options with the operator-facing reason labels, not the raw wire value', async () => {
     renderDialog();
 
     const option = await screen.findByRole('option', { name: 'Item did not match the listing' });
@@ -189,7 +191,7 @@ describe('RecordReturnDialog', () => {
     await fillValidForm();
     await userEvent.click(screen.getByRole('button', { name: COPY.confirm }));
 
-    expect(await screen.findByText(COPY.unknownOrder('ol_order_1'))).toBeInTheDocument();
+    expect(await screen.findByText(interpolate(COPY.unknownOrder, { typed: 'ol_order_1' }))).toBeInTheDocument();
   });
 
   it('should fall back to the generic message for an unrecognised failure', async () => {
@@ -214,7 +216,7 @@ describe('RecordReturnDialog', () => {
     await userEvent.type(await screen.findByLabelText(COPY.orderFieldLabel), 'ol_order_2');
     await userEvent.selectOptions(screen.getByLabelText(COPY.connectionFieldLabel), 'conn_2');
 
-    expect(await screen.findByText(COPY.connectionMismatchWarning('Main PrestaShop Store'))).toBeInTheDocument();
+    expect(await screen.findByText(interpolate(COPY.connectionMismatchWarning, { orderConnectionName: 'Main PrestaShop Store' }))).toBeInTheDocument();
     // Still submittable — a warning, not a block.
     expect(screen.getByRole('button', { name: COPY.confirm })).not.toBeDisabled();
   });

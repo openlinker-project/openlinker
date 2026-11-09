@@ -73,9 +73,9 @@ describe('ShipmentActionButtons payment gate (#928)', () => {
         onGenerateLabelClick={vi.fn()}
       />,
     );
-    const button = screen.getByRole('button', { name: /shipments:write permission/i });
+    const button = screen.getByRole('button', { name: /permission to manage shipments/i });
     expect(button).toBeDisabled();
-    expect(button).toHaveAttribute('title', expect.stringMatching(/shipments:write permission/i));
+    expect(button).toHaveAttribute('title', expect.stringMatching(/permission to manage shipments/i));
   });
 });
 

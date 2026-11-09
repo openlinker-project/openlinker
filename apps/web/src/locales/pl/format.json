@@ -1,0 +1,38 @@
+{
+  "compactDuration": {
+    "days": {
+      "few": "{n} dni",
+      "many": "{n} dni",
+      "one": "{n} dzień",
+      "other": "{n} dnia"
+    },
+    "hours": "{n} godz.",
+    "minutes": "{n} min"
+  },
+  "duration": {
+    "hoursMinutes": "{h} godz. {m} min",
+    "milliseconds": "{n} ms",
+    "minutesSeconds": "{m} min {s} s",
+    "seconds": "{n} s"
+  },
+  "oldestAge": {
+    "days": "najstarsze {n} d",
+    "hours": "najstarsze {n} godz."
+  },
+  "relative": {
+    "daysAgo": {
+      "few": "{n} dni temu",
+      "many": "{n} dni temu",
+      "one": "{n} dzień temu",
+      "other": "{n} dnia temu"
+    },
+    "hoursAgo": "{n} godz. temu",
+    "justNow": "przed chwilą",
+    "minutesAgo": "{n} min temu"
+  },
+  "shipBy": {
+    "dueNow": "termin teraz",
+    "left": "{duration} do terminu",
+    "overdue": "Po terminie {duration}"
+  }
+}

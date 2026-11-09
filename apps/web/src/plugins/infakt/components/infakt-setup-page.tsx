@@ -6,17 +6,19 @@
 import type { ReactElement } from 'react';
 import { InfaktSetupForm } from './infakt-setup-form';
 import { PageLayout } from '../../../shared/ui/page-layout';
+import { useInfaktMessages } from '../messages';
 
 export function InfaktSetupPage(): ReactElement {
+  const copy = useInfaktMessages().infaktSetupPage;
   return (
     <PageLayout
-      eyebrow="Integrations"
-      title="Connect inFakt"
-      description="Provide your inFakt API key. OpenLinker uses it to issue invoices and read KSeF clearance status through inFakt's native e-invoicing integration."
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
       summary={
         <div className="toolbar__group">
-          <span className="toolbar-chip">API key</span>
-          <span className="toolbar-chip">Guided setup</span>
+          <span className="toolbar-chip">{copy.chips.apiKey}</span>
+          <span className="toolbar-chip">{copy.chips.guided}</span>
         </div>
       }
     >

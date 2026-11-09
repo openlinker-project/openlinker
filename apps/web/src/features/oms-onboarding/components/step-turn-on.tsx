@@ -19,7 +19,7 @@
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
@@ -115,7 +115,7 @@ export function StepTurnOn(props: StepTurnOnProps): ReactElement {
           tone="primary"
           data-testid="btn-turn-on"
           disabled={!props.canWrite || props.otherSystemDecides || props.turningOn}
-          title={props.demoReadOnly ? DEMO_READ_ONLY_ACTION_MESSAGE : !props.canWrite ? COPY.adminOnly : undefined}
+          title={props.demoReadOnly ? demoReadOnlyActionMessage() : !props.canWrite ? COPY.adminOnly : undefined}
           onClick={props.onTurnOn}
         >
           {props.turningOn ? COPY.step4.turningOn : COPY.step4.turnOn}

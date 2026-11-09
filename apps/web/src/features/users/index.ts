@@ -1,4 +1,3 @@
-export { RegisterForm } from './components/register-form';
 export { createUsersApi } from './api/users.api';
 export type { UsersApi } from './api/users.api';
 export type { UserSummary, UserListResponse, UserListFilters, UserStatus, UserRole, ApproveUserInput, PackerSummary, PackerListResponse, CreateUserRequest, CreateUserResponse, CreateUserConflictField } from './api/users.types';
@@ -14,3 +13,4 @@ export { useDeactivateUserMutation } from './hooks/use-deactivate-user-mutation'
 export { useReactivateUserMutation } from './hooks/use-reactivate-user-mutation';
 export { useDeleteUserMutation } from './hooks/use-delete-user-mutation';
 export { useRegisterMutation } from './hooks/use-register-mutation';
+export { ASSIGNABLE_ROLES, userRoleLabel, userStatusLabel } from './lib/user-labels';

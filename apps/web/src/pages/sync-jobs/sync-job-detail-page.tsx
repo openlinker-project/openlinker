@@ -18,8 +18,12 @@ import { useConnectionQuery } from '../../features/connections/hooks/use-connect
 import { OfferCreationTracker } from '../../features/listings/components/offer-creation-tracker';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../shared/config/demo-mode';
 import { useDemoMode } from '../../features/system';
+import { jobTypeLabel } from '../../features/sync-jobs/lib/job-type-label';
+import { interpolate, usePlural, useMessages, type Messages } from '../../shared/i18n';
+
+type SyncJobDetailCopy = Messages['sync-jobs']['syncJobDetailPage'];
 
 /**
  * Extracts the offer-creation record ID from a `marketplace.offer.create`
@@ -37,31 +41,36 @@ function extractOfferCreationRecordId(job: SyncJob): string | null {
   return typeof candidate === 'string' && candidate.length > 0 ? candidate : null;
 }
 
-function buildSyncJobItems(job: SyncJob): KeyValueItem[] {
+function buildSyncJobItems(job: SyncJob, copy: SyncJobDetailCopy['fields']): KeyValueItem[] {
   const items: KeyValueItem[] = [
     {
       id: 'status',
-      label: 'Status',
+      label: copy.status,
       value: <SyncJobStatusBadge status={job.status} outcome={job.outcome} outcomeReason={job.outcomeReason} />,
     },
-    { id: 'jobId', label: 'Job ID', value: job.id, mono: true },
+    {
+      id: 'jobType',
+      label: copy.jobType,
+      value: <span title={job.jobType}>{jobTypeLabel(job.jobType)}</span>,
+    },
+    { id: 'jobId', label: copy.jobId, value: job.id, mono: true },
     {
       id: 'connection',
-      label: 'Connection',
+      label: copy.connection,
       value: <ConnectionEntityLabel connectionId={job.connectionId} />,
     },
-    { id: 'attempts', label: 'Attempts', value: `${job.attempts} / ${job.maxAttempts}` },
+    { id: 'attempts', label: copy.attempts, value: interpolate(copy.attemptsValue, { attempts: job.attempts, max: job.maxAttempts }) },
     ...(job.outcomeReason
-      ? [{ id: 'outcomeReason', label: 'Outcome reason', value: job.outcomeReason, mono: true }]
+      ? [{ id: 'outcomeReason', label: copy.outcomeReason, value: job.outcomeReason, mono: true }]
       : []),
-    { id: 'nextRun', label: 'Next run at', value: <TimeDisplay iso={job.nextRunAt} /> },
-    { id: 'createdAt', label: 'Created', value: <TimeDisplay iso={job.createdAt} /> },
-    { id: 'updatedAt', label: 'Updated', value: <TimeDisplay iso={job.updatedAt} /> },
+    { id: 'nextRun', label: copy.nextRun, value: <TimeDisplay iso={job.nextRunAt} /> },
+    { id: 'createdAt', label: copy.created, value: <TimeDisplay iso={job.createdAt} /> },
+    { id: 'updatedAt', label: copy.updated, value: <TimeDisplay iso={job.updatedAt} /> },
   ];
   if (job.idempotencyKey) {
     items.push({
       id: 'idempotencyKey',
-      label: 'Idempotency key',
+      label: copy.idempotencyKey,
       value: job.idempotencyKey,
       mono: true,
     });
@@ -71,7 +80,7 @@ function buildSyncJobItems(job: SyncJob): KeyValueItem[] {
     // Omitted rather than shown as a dash when unmeasured, matching the
     // lockedAt/lockedBy treatment below - a row that says nothing is better
     // than a row that implies the attempt took no time.
-    items.push({ id: 'lastAttemptDuration', label: 'Last attempt duration', value: duration });
+    items.push({ id: 'lastAttemptDuration', label: copy.lastAttemptDuration, value: duration });
   }
   const deferred = formatDurationMs(job.deferredTotalMs);
   if (deferred !== null) {
@@ -79,15 +88,15 @@ function buildSyncJobItems(job: SyncJob): KeyValueItem[] {
     // Say so, or a job waiting on a throttling destination reads as stuck.
     items.push({
       id: 'deferredTotal',
-      label: 'Deferred so far',
-      value: `${deferred} (waiting on the destination, no attempt consumed)`,
+      label: copy.deferredTotal,
+      value: interpolate(copy.deferredValue, { duration: deferred }),
     });
   }
   if (job.lockedAt) {
-    items.push({ id: 'lockedAt', label: 'Locked at', value: <TimeDisplay iso={job.lockedAt} /> });
+    items.push({ id: 'lockedAt', label: copy.lockedAt, value: <TimeDisplay iso={job.lockedAt} /> });
   }
   if (job.lockedBy) {
-    items.push({ id: 'lockedBy', label: 'Locked by', value: job.lockedBy, mono: true });
+    items.push({ id: 'lockedBy', label: copy.lockedBy, value: job.lockedBy, mono: true });
   }
   return items;
 }
@@ -107,23 +116,25 @@ export function SyncJobDetailPage(): ReactElement {
   // demo viewer, per the #1615 Test connection/Disable connection precedent.
   const write = useWriteAccess('sync:write', demoMode);
   const { showToast } = useToast();
+  const copy = useMessages('sync-jobs').syncJobDetailPage;
+  const plural = usePlural();
 
   if (query.isLoading) {
     return (
-      <PageLayout eyebrow="Sync Jobs" title="Job detail">
-        <LoadingState liveRegion="off" title="Loading job" message="Fetching job details…" />
+      <PageLayout eyebrow={copy.eyebrow} title={copy.fallbackTitle}>
+        <LoadingState liveRegion="off" title={copy.loading.title} message={copy.loading.message} />
       </PageLayout>
     );
   }
 
   if (query.error || !query.data) {
     return (
-      <PageLayout eyebrow="Sync Jobs" title="Job detail">
+      <PageLayout eyebrow={copy.eyebrow} title={copy.fallbackTitle}>
         <ErrorState
-          title="Unable to load job"
-          message={query.error?.message ?? 'Job not found'}
+          title={copy.error.title}
+          message={query.error?.message ?? copy.error.notFound}
           action={
-            <Button onClick={() => { void query.refetch(); }}>Retry</Button>
+            <Button onClick={() => { void query.refetch(); }}>{copy.retry}</Button>
           }
         />
       </PageLayout>
@@ -139,31 +150,32 @@ export function SyncJobDetailPage(): ReactElement {
       onSuccess: () => {
         showToast({
           tone: 'success',
-          title: 'Retrying',
-          description: `Job ${job.id.slice(0, 8)}… requeued.`,
+          title: copy.toast.retrying,
+          description: interpolate(copy.toast.requeued, { id: job.id.slice(0, 8) }),
         });
       },
       onError: (error) => {
-        showToast({ tone: 'error', title: 'Retry failed', description: error.message });
+        showToast({ tone: 'error', title: copy.toast.retryFailed, description: error.message });
       },
     });
   }
 
   return (
     <PageLayout
-      backTo={{ to: '/jobs-logs', label: 'Jobs & Logs' }}
-      eyebrow="Sync Jobs"
-      title={<span className="mono-text">{job.jobType}</span>}
+      backTo={{ to: '/jobs-logs', label: copy.backTo }}
+      eyebrow={copy.eyebrow}
+      title={jobTypeLabel(job.jobType)}
+      description={<span className="mono-text">{job.jobType}</span>}
     >
       {isDead ? (
         <Alert
           tone="error"
-          title={`Job failed after ${job.attempts} attempt${job.attempts === 1 ? '' : 's'}`}
+          title={plural(job.attempts, copy.failedAfter)}
           action={
             write.visible ? (
-              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                 <Button onClick={handleRetry} disabled={retry.isPending || write.demoReadOnly}>
-                  {retry.isPending ? 'Retrying…' : 'Retry'}
+                  {retry.isPending ? copy.retrying : copy.retry}
                 </Button>
               </ReadOnlyLock>
             ) : null
@@ -174,13 +186,13 @@ export function SyncJobDetailPage(): ReactElement {
               {job.lastError.length > 240 ? `${job.lastError.slice(0, 240)}…` : job.lastError}
             </span>
           ) : (
-            'No error message was recorded for this job.'
+            copy.noError
           )}
         </Alert>
       ) : null}
 
       <section className="detail-section">
-        <KeyValueList items={buildSyncJobItems(job)} />
+        <KeyValueList items={buildSyncJobItems(job, copy.fields)} />
       </section>
 
       {offerCreationRecordId !== null ? (
@@ -200,13 +212,13 @@ export function SyncJobDetailPage(): ReactElement {
 
       {job.lastError ? (
         <section className="detail-section">
-          <RawPayloadPanel title="Last error" payload={job.lastError} defaultOpen={!isDead} />
+          <RawPayloadPanel title={copy.panels.lastError} payload={job.lastError} defaultOpen={!isDead} />
         </section>
       ) : null}
 
       {job.payloadJson ? (
         <section className="detail-section">
-          <RawPayloadPanel title="Payload" payload={job.payloadJson} />
+          <RawPayloadPanel title={copy.panels.payload} payload={job.payloadJson} />
         </section>
       ) : null}
     </PageLayout>

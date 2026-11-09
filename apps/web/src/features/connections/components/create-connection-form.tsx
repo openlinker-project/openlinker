@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react';
+import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -23,7 +24,7 @@ import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { captureDemoEvent } from '../../demo';
 
@@ -45,7 +46,14 @@ const DEFAULT_VALUES: CreateConnectionFormValues = {
   platformType: '',
 };
 
+// Technical examples, not prose: the same in every language.
+const CREDENTIALS_REF_EXAMPLE = 'db:cred_123';
+const CREDENTIALS_JSON_EXAMPLE = '{ "bridgeToken": "dev-bridge-key-2026" }';
+const CAPABILITIES_EXAMPLE = 'Invoicing';
+const ADAPTER_KEY_EXAMPLE = 'prestashop.webservice.v1';
+
 export function CreateConnectionForm(): ReactElement {
+  const copy = useMessages('connections').createConnectionForm;
   const createConnection = useCreateConnectionMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
@@ -134,8 +142,8 @@ export function CreateConnectionForm(): ReactElement {
       );
       showToast({
         tone: 'success',
-        title: 'Connection created',
-        description: `Connection "${created.name}" was created.`,
+        title: copy.createdTitle,
+        description: interpolate(copy.createdDescription, { name: created.name }),
       });
       void navigate('/connections');
     } catch {
@@ -148,43 +156,43 @@ export function CreateConnectionForm(): ReactElement {
       <form className="form-card form-narrow" onSubmit={(event) => void onSubmit(event)} noValidate>
         <div className="panel__header">
           <div>
-            <p className="eyebrow">Setup flow</p>
-            <h3 className="section-title">Connection draft</h3>
+            <p className="eyebrow">{copy.eyebrow}</p>
+            <h3 className="section-title">{copy.title}</h3>
           </div>
-          <span className="panel__meta">Validated input</span>
+          <span className="panel__meta">{copy.meta}</span>
         </div>
 
         {form.formState.submitCount > 0 ? <FormErrorSummary errors={validationMessages} /> : null}
         {createConnection.error ? (
-          <Alert tone="error" title="Unable to create connection">
+          <Alert tone="error" title={copy.errorTitle}>
             {createConnection.error.message}
           </Alert>
         ) : null}
 
         <div className="form-grid">
           <FormField
-            label="Connection name"
+            label={copy.fields.name.label}
             name="name"
             error={form.formState.errors.name?.message}
           >
             <Input
               {...form.register('name')}
-              placeholder="Main PrestaShop Store"
+              placeholder={copy.fields.name.placeholder}
               invalid={Boolean(form.formState.errors.name)}
             />
           </FormField>
 
           <FormField
-            label="Platform type"
+            label={copy.fields.platformType.label}
             name="platformType"
             error={form.formState.errors.platformType?.message}
-            description="Use the platform family this connection will integrate with."
+            description={copy.fields.platformType.description}
           >
             <Select
               {...form.register('platformType')}
               invalid={Boolean(form.formState.errors.platformType)}
             >
-              <option value="">Select a platform</option>
+              <option value="">{copy.fields.platformType.placeholder}</option>
               {platformOptions.map((platform) => (
                 <option key={platform.value} value={platform.value}>
                   {platform.label}
@@ -194,22 +202,24 @@ export function CreateConnectionForm(): ReactElement {
           </FormField>
 
           {!requiresCredentials && selectedPlugin ? (
-            <Alert tone="info" title={`${selectedPlugin.displayName} needs no credentials`}>
-              {selectedPlugin.displayName} runs inside OpenLinker and crosses no network boundary,
-              so there is nothing to authenticate against. Leave the credential fields out entirely.
+            <Alert
+              tone="info"
+              title={interpolate(copy.noCredentials.title, { platform: selectedPlugin.displayName })}
+            >
+              {interpolate(copy.noCredentials.body, { platform: selectedPlugin.displayName })}
             </Alert>
           ) : null}
 
           {requiresExternalAuthRedirect || !requiresCredentials ? null : (
             <FormField
-              label="Credentials reference"
+              label={copy.fields.credentialsRef.label}
               name="credentialsRef"
               error={form.formState.errors.credentialsRef?.message}
-              description="An existing db: reference. Leave blank if you supply a raw credentials JSON below."
+              description={copy.fields.credentialsRef.description}
             >
               <Input
                 {...form.register('credentialsRef')}
-                placeholder="db:cred_123"
+                placeholder={CREDENTIALS_REF_EXAMPLE}
                 invalid={Boolean(form.formState.errors.credentialsRef)}
               />
             </FormField>
@@ -217,15 +227,15 @@ export function CreateConnectionForm(): ReactElement {
 
           {requiresExternalAuthRedirect || !requiresCredentials ? null : (
             <FormField
-              label="Credentials JSON"
+              label={copy.fields.credentialsJson.label}
               name="credentialsJson"
               error={form.formState.errors.credentialsJson?.message}
-              description='Raw credential payload (e.g. { "bridgeToken": "…" } for Subiekt). Encrypted server-side. Use instead of a reference.'
+              description={copy.fields.credentialsJson.description}
             >
               <Textarea
                 {...form.register('credentialsJson')}
                 rows={3}
-                placeholder='{ "bridgeToken": "dev-bridge-key-2026" }'
+                placeholder={CREDENTIALS_JSON_EXAMPLE}
                 invalid={Boolean(form.formState.errors.credentialsJson)}
               />
             </FormField>
@@ -233,14 +243,14 @@ export function CreateConnectionForm(): ReactElement {
 
           {requiresExternalAuthRedirect ? null : (
             <FormField
-              label="Enabled capabilities"
+              label={copy.fields.enabledCapabilities.label}
               name="enabledCapabilities"
               error={form.formState.errors.enabledCapabilities?.message}
-              description="Comma-separated (e.g. Invoicing). Leave blank to use the adapter's full supported set."
+              description={copy.fields.enabledCapabilities.description}
             >
               <Input
                 {...form.register('enabledCapabilities')}
-                placeholder="Invoicing"
+                placeholder={CAPABILITIES_EXAMPLE}
                 invalid={Boolean(form.formState.errors.enabledCapabilities)}
               />
             </FormField>
@@ -248,14 +258,14 @@ export function CreateConnectionForm(): ReactElement {
 
           {requiresExternalAuthRedirect ? null : (
             <FormField
-              label="Adapter key"
+              label={copy.fields.adapterKey.label}
               name="adapterKey"
               error={form.formState.errors.adapterKey?.message}
-              description="Optional when the default adapter can be inferred from the selected platform."
+              description={copy.fields.adapterKey.description}
             >
               <Input
                 {...form.register('adapterKey')}
-                placeholder="prestashop.webservice.v1"
+                placeholder={ADAPTER_KEY_EXAMPLE}
                 invalid={Boolean(form.formState.errors.adapterKey)}
               />
             </FormField>
@@ -263,23 +273,29 @@ export function CreateConnectionForm(): ReactElement {
         </div>
 
         {requiresExternalAuthRedirect && selectedPlugin ? (
-          <Alert tone="info" title={`${selectedPlugin.displayName} uses OAuth`}>
-            {selectedPlugin.displayName} connections require OAuth authorization.{' '}
-            {selectedPlugin.setupCard ? (
-              <Link to={selectedPlugin.setupCard.to}>
-                Use the {selectedPlugin.displayName} setup wizard
-              </Link>
-            ) : (
-              `Use the ${selectedPlugin.displayName} setup wizard`
-            )}{' '}
-            to connect your account securely.
+          <Alert
+            tone="info"
+            title={interpolate(copy.oauth.title, { platform: selectedPlugin.displayName })}
+          >
+            {renderRich(
+              copy.oauth.body,
+              {
+                link: (text) =>
+                  selectedPlugin.setupCard ? (
+                    <Link to={selectedPlugin.setupCard.to}>{text}</Link>
+                  ) : (
+                    text
+                  ),
+              },
+              { platform: selectedPlugin.displayName },
+            )}
           </Alert>
         ) : (
           <FormField
-            label="Config JSON"
+            label={copy.fields.configJson.label}
             name="configText"
             error={form.formState.errors.configText?.message}
-            description="Provide only safe connection configuration values. Secrets must remain outside the browser."
+            description={copy.fields.configJson.description}
           >
             <Textarea
               {...form.register('configText')}
@@ -293,7 +309,7 @@ export function CreateConnectionForm(): ReactElement {
           <div className="form-actions">
             <ReadOnlyLock
               active={write.demoReadOnly}
-              message={DEMO_READ_ONLY_ACTION_MESSAGE}
+              message={demoReadOnlyActionMessage()}
               onLockedClick={() =>
                 captureDemoEvent('demo_connection_create_attempted', {
                   platform: watchedPlatformType,
@@ -301,7 +317,7 @@ export function CreateConnectionForm(): ReactElement {
               }
             >
               <Button type="submit" disabled={createConnection.isPending || write.demoReadOnly}>
-                {createConnection.isPending ? 'Creating...' : 'Create connection'}
+                {createConnection.isPending ? copy.creating : copy.create}
               </Button>
             </ReadOnlyLock>
             <Button
@@ -309,7 +325,7 @@ export function CreateConnectionForm(): ReactElement {
               onClick={() => setIsResetDialogOpen(true)}
               disabled={createConnection.isPending}
             >
-              Reset draft
+              {copy.reset.action}
             </Button>
           </div>
         )}
@@ -318,10 +334,10 @@ export function CreateConnectionForm(): ReactElement {
       <ConfirmDialog
         open={isResetDialogOpen}
         onOpenChange={setIsResetDialogOpen}
-        title="Reset connection draft?"
-        description="This will clear the current form values and validation state for the integration draft."
-        confirmLabel="Reset draft"
-        cancelLabel="Keep editing"
+        title={copy.reset.title}
+        description={copy.reset.description}
+        confirmLabel={copy.reset.action}
+        cancelLabel={copy.reset.cancel}
         tone="danger"
         onConfirm={() => {
           form.reset(DEFAULT_VALUES);
@@ -329,8 +345,8 @@ export function CreateConnectionForm(): ReactElement {
           setIsResetDialogOpen(false);
           showToast({
             tone: 'info',
-            title: 'Draft reset',
-            description: 'Connection draft values were cleared.',
+            title: copy.reset.doneTitle,
+            description: copy.reset.doneDescription,
           });
         }}
       />

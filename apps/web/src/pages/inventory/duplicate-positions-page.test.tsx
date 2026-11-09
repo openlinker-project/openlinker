@@ -282,7 +282,7 @@ describe('DuplicatePositionsPage', () => {
     expect(await screen.findByText('Stuck')).toBeInTheDocument();
     expect(screen.queryByText('Pending')).not.toBeInTheDocument();
     expect(
-      screen.getByText(/has stopped running\. It will not resume on its own — ask an engineer/)
+      screen.getByText(/has stopped running\. It will not resume on its own - ask an engineer/)
     ).toBeInTheDocument();
   });
 
@@ -314,7 +314,7 @@ describe('DuplicatePositionsPage', () => {
     // an untested distinction).
     expect(await screen.findByText('Refresh failed')).toBeInTheDocument();
     expect(
-      screen.getByText(/Refresh network error — showing the last successful scan below\./)
+      screen.getByText(/Refresh network error - showing the last successful scan below\./)
     ).toBeInTheDocument();
     expect(screen.getByText('Ready')).toBeInTheDocument();
     expect(screen.queryByText('Unable to load the duplicate-position report')).not.toBeInTheDocument();
@@ -733,7 +733,7 @@ describe('DuplicatePositionsPage', () => {
     await userEvent.click(toggle);
 
     expect(
-      screen.getByText(/Reservation risk — do not blindly follow the survivor badge/)
+      screen.getByText(/Reservation risk - do not blindly follow the survivor badge/)
     ).toBeInTheDocument();
     // The badge's icon is wrapped in its own aria-hidden span (a11y — the
     // glyph must not be read aloud literally by a screen reader), so the
@@ -820,7 +820,7 @@ describe('DuplicatePositionsPage', () => {
     // asserting the neutral note, not the "Currently distorting
     // available-to-promise" alert a naive `liveRowCount > 0` gate would show
     // for this exact shape.
-    expect(screen.getByText('One live row — no oversell risk today.')).toBeInTheDocument();
+    expect(screen.getByText('One live row - no oversell risk today.')).toBeInTheDocument();
     expect(screen.queryByText('Currently distorting available-to-promise.')).not.toBeInTheDocument();
     // The table's own badge must agree with the detail panel.
     expect(screen.getByText('1 live')).toBeInTheDocument();

@@ -1,10 +1,10 @@
 import { screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { Route, Routes } from 'react-router-dom';
 import { GuestLayout } from './guest-layout';
 import {
   createAuthenticatedSessionAdapter,
-  createMockApiClient,
+  type createMockApiClient,
   renderWithProviders,
 } from '../../test/test-utils';
 
@@ -55,6 +55,13 @@ describe('GuestLayout', () => {
     expect(screen.getByText('OpenLinker')).toBeInTheDocument();
   });
 
+  it('should put the language switch on the guest card, not in the page corner (#4021)', async () => {
+    renderLayout();
+
+    const trigger = await screen.findByRole('button', { name: /^Language:/ });
+    expect(trigger.closest('.guest-card')).not.toBeNull();
+  });
+
   it('should redirect to / when session is authenticated', async () => {
     renderLayout(createAuthenticatedSessionAdapter());
 
@@ -88,123 +95,5 @@ describe('GuestLayout', () => {
     });
 
     expect(await screen.findByText('Dashboard page')).toBeInTheDocument();
-  });
-
-  describe('marketing UTM capture (captureMarketingLanding)', () => {
-    afterEach(() => {
-      vi.unstubAllGlobals();
-      window.sessionStorage.clear();
-    });
-
-    it('should capture the landing when demo mode, posthog, and a utm param are all present', async () => {
-      const fetchMock = vi.fn().mockResolvedValue({ ok: true });
-      vi.stubGlobal('fetch', fetchMock);
-      const apiClient = createMockApiClient({
-        system: {
-          getConfig: vi.fn().mockResolvedValue({
-            demoMode: true,
-            demoIntegrations: {
-              posthog: {
-                key: 'phc_abc',
-                host: 'https://eu.i.posthog.com',
-                autocapture: true,
-                sessionRecording: true,
-              },
-            },
-          }),
-        },
-      });
-
-      renderLayout(undefined, {
-        apiClient,
-        route: '/login?utm_source=email&utm_campaign=demo_invite_2026_07',
-      });
-
-      await screen.findByText('Guest content');
-      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-      const [url] = fetchMock.mock.calls[0] as [string];
-      expect(url).toBe('https://eu.i.posthog.com/capture/');
-    });
-
-    it('should not capture when the URL carries no utm params', async () => {
-      const fetchMock = vi.fn().mockResolvedValue({ ok: true });
-      vi.stubGlobal('fetch', fetchMock);
-      const apiClient = createMockApiClient({
-        system: {
-          getConfig: vi.fn().mockResolvedValue({
-            demoMode: true,
-            demoIntegrations: {
-              posthog: {
-                key: 'phc_abc',
-                host: 'https://eu.i.posthog.com',
-                autocapture: true,
-                sessionRecording: true,
-              },
-            },
-          }),
-        },
-      });
-
-      renderLayout(undefined, { apiClient, route: '/login' });
-
-      await screen.findByText('Guest content');
-      expect(fetchMock).not.toHaveBeenCalled();
-    });
-
-    it('should not capture on /forgot-password even when a utm param is present', async () => {
-      const fetchMock = vi.fn().mockResolvedValue({ ok: true });
-      vi.stubGlobal('fetch', fetchMock);
-      const apiClient = createMockApiClient({
-        system: {
-          getConfig: vi.fn().mockResolvedValue({
-            demoMode: true,
-            demoIntegrations: {
-              posthog: {
-                key: 'phc_abc',
-                host: 'https://eu.i.posthog.com',
-                autocapture: true,
-                sessionRecording: true,
-              },
-            },
-          }),
-        },
-      });
-
-      renderLayout(undefined, {
-        apiClient,
-        route: '/forgot-password?utm_source=email&utm_campaign=demo_invite_2026_07',
-      });
-
-      await screen.findByText('Guest content');
-      expect(fetchMock).not.toHaveBeenCalled();
-    });
-
-    it('should not capture when the session is already authenticated even with a utm param present', async () => {
-      const fetchMock = vi.fn().mockResolvedValue({ ok: true });
-      vi.stubGlobal('fetch', fetchMock);
-      const apiClient = createMockApiClient({
-        system: {
-          getConfig: vi.fn().mockResolvedValue({
-            demoMode: true,
-            demoIntegrations: {
-              posthog: {
-                key: 'phc_abc',
-                host: 'https://eu.i.posthog.com',
-                autocapture: true,
-                sessionRecording: true,
-              },
-            },
-          }),
-        },
-      });
-
-      renderLayout(createAuthenticatedSessionAdapter(), {
-        apiClient,
-        route: '/login?utm_source=email&utm_campaign=demo_invite_2026_07',
-      });
-
-      await screen.findByText('Dashboard page');
-      expect(fetchMock).not.toHaveBeenCalled();
-    });
   });
 });

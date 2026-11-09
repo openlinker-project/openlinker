@@ -88,7 +88,7 @@ describe('ProductEventsSection with an empty catalog', () => {
   });
 
   it('shows the empty-state message instead of a blank panel', async () => {
-    vi.doMock('../../demo', () => ({ DemoEventCatalog: {} }));
+    vi.doMock('../../demo', () => ({ DemoEventCatalog: {}, useDemoEventDescriptions: () => ({}) }));
     vi.resetModules();
 
     const { ProductEventsSection: ProductEventsSectionWithEmptyCatalog } = await import(

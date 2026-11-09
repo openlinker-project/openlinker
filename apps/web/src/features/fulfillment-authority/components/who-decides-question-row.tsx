@@ -26,7 +26,7 @@ import {
   QUESTION_LABEL_COPY,
   ROW_BADGE_COPY,
   ROW_DETAIL_COPY,
-} from '../lib/who-decides.copy';
+} from '../lib/who-decides-text';
 
 export interface WhoDecidesQuestionRowProps {
   row: AuthorityAnswerRow;

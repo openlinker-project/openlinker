@@ -17,14 +17,14 @@ import { Link } from 'react-router-dom';
 import { Button } from '../../../shared/ui/button';
 import { EmptyValue } from '../../../shared/ui/empty-value';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
-import { formatAmount } from '../../../shared/format/format-amount';
+import { interpolate, renderRich, useFormat, useMessages, usePlural } from '../../../shared/i18n';
 import type { NetGrossBasis } from '../api/analytics-settings.types';
 import type { MarginFilters, MarginFigures } from '../api/margin-analytics.types';
 import {
   useMarginAnalyticsQuery,
   useMarginProductsQuery,
 } from '../hooks/use-margin-analytics-query';
-import { formatRatio, isNoCostAtAll } from '../lib/margin-copy';
+import { formatRatio, isNoCostAtAll } from '../lib/margin.lib';
 import { ExportCsvButton } from './export-csv-button';
 import { MarginCoverageNote } from './margin-coverage-note';
 import { MarginByChannelTable, MarginByProductTable, marginSlug } from './margin-tables';
@@ -46,10 +46,11 @@ function MarginKpi({
   testId,
   label,
   value,
-  absentLabel = 'No figure for this range',
+  absentLabel,
   metric,
   qualifier,
 }: MarginKpiProps): ReactElement {
+  const copy = useMessages('analytics').marginPanel;
   return (
     <div className="kpi-card" data-testid={testId}>
       <div className="kpi-card__label">
@@ -57,7 +58,7 @@ function MarginKpi({
       </div>
       <div className="kpi-card__headline">
         <div className="kpi-card__value mono-text tabular">
-          {value === null ? <EmptyValue label={absentLabel} /> : value}
+          {value === null ? <EmptyValue label={absentLabel ?? copy.noFigure} /> : value}
         </div>
         <div className="kpi-card__metric">{metric}</div>
       </div>
@@ -86,37 +87,40 @@ function MarginKpiStrip({
   headline: MarginFigures;
   currency: string;
 }): ReactElement {
+  const copy = useMessages('analytics').marginPanel;
+  const kpis = copy.kpis;
+  const format = useFormat();
   return (
-    <section className="status-strip" aria-label="Margin figures">
+    <section className="status-strip" aria-label={copy.figuresAria}>
       <MarginKpi
         testId="margin-kpi-net-revenue"
-        label="Net revenue"
-        value={formatAmount(headline.netRevenue, currency)}
-        metric="All non-cancelled lines, VAT-exclusive"
+        label={kpis.netRevenue.label}
+        value={format.money(headline.netRevenue, currency)}
+        metric={kpis.netRevenue.metric}
       />
       <MarginKpi
         testId="margin-kpi-cost"
-        label="Cost of goods"
-        value={formatAmount(headline.costOfGoods, currency)}
-        metric="Lines with a cost"
+        label={kpis.cost.label}
+        value={format.money(headline.costOfGoods, currency)}
+        metric={kpis.cost.metric}
         qualifier={{
-          label: 'Covered revenue',
+          label: kpis.cost.qualifier,
           value: headline.costCoveragePct === null ? null : formatRatio(headline.costCoveragePct),
-          absentLabel: 'No net revenue in this range',
+          absentLabel: kpis.cost.absent,
         }}
       />
       <MarginKpi
         testId="margin-kpi-margin"
-        label="Gross margin"
-        value={formatAmount(headline.grossMargin, currency)}
-        metric="Covered revenue − cost"
+        label={kpis.margin.label}
+        value={format.money(headline.grossMargin, currency)}
+        metric={kpis.margin.metric}
       />
       <MarginKpi
         testId="margin-kpi-margin-pct"
-        label="Margin %"
+        label={kpis.marginPct.label}
         value={headline.marginPct === null ? null : formatRatio(headline.marginPct)}
-        absentLabel="Margin % needs at least one line with a cost"
-        metric="Of covered revenue"
+        absentLabel={kpis.marginPct.absent}
+        metric={kpis.marginPct.metric}
       />
     </section>
   );
@@ -137,6 +141,10 @@ export function MarginPanel({
   displayCurrency,
   coverageRevealRequest = 0,
 }: MarginPanelProps): ReactElement {
+  const copy = useMessages('analytics').marginPanel;
+  const format = useFormat();
+  const plural = usePlural();
+  const strong = { strong: (text: string) => <strong>{text}</strong> };
   const query = useMarginAnalyticsQuery(filters, 'week');
   const productsQuery = useMarginProductsQuery({
     ...filters,
@@ -164,18 +172,18 @@ export function MarginPanel({
     if (query.isLoading) {
       return (
         <LoadingState
-          eyebrow="Loading"
-          title="Loading margin"
-          message="Working out margin over lines with a recorded cost…"
+          eyebrow={copy.loading.eyebrow}
+          title={copy.loading.title}
+          message={copy.loading.message}
         />
       );
     }
     if (query.error || !data) {
       return (
         <ErrorState
-          title="Unable to load margin"
-          message={query.error?.message ?? 'Margin figures are not available.'}
-          action={<Button onClick={() => void query.refetch()}>Retry</Button>}
+          title={copy.error.title}
+          message={query.error?.message ?? copy.error.message}
+          action={<Button onClick={() => void query.refetch()}>{copy.error.retry}</Button>}
         />
       );
     }
@@ -187,42 +195,41 @@ export function MarginPanel({
       return (
         <>
           <div className="empty-state" data-testid="margin-missing-cost-empty">
-            <h2>No margin yet: no variant has a cost price</h2>
-            <p>
-              Margin needs the net cost you paid for each variant. OpenLinker never guesses it and
-              never treats a missing cost as zero. Enter costs on the product page; orders placed
-              after that count toward margin.
-            </p>
+            <h2>{copy.missingCost.title}</h2>
+            <p>{copy.missingCost.body}</p>
           </div>
           {uncovered.length > 0 ? (
             <div>
               <p className="analytics-margin__basis">
-                <strong>Best sellers without a cost</strong> · by net revenue
+                {renderRich(copy.missingCost.bestSellers, strong)}
               </p>
               <ul className="analytics-margin__empty-list" data-testid="margin-missing-cost-list">
                 {uncovered.map((item) => {
                   const slug = marginSlug(item.sku ?? item.productId);
                   return (
                     <li key={item.productId}>
-                      <span>{item.name ?? 'Unknown product'}</span>
+                      <span>{item.name ?? copy.missingCost.unknownProduct}</span>
                       <span className="mono-text">
-                        {item.sku ? `${item.sku} · ` : ''}
-                        {formatAmount(item.netRevenue, data.currency)}
+                        {item.sku
+                          ? interpolate(copy.missingCost.skuAndAmount, {
+                              sku: item.sku,
+                              amount: format.money(item.netRevenue, data.currency),
+                            })
+                          : format.money(item.netRevenue, data.currency)}
                       </span>
                       <Link
                         className="button button--ghost button--sm"
                         to={`/products/${encodeURIComponent(item.productId)}`}
                         data-testid={`margin-add-cost-link-${slug}`}
                       >
-                        Add cost
+                        {copy.missingCost.addCost}
                       </Link>
                     </li>
                   );
                 })}
               </ul>
               <p className="data-table__footnote">
-                {productsQuery.data?.total ?? uncovered.length} products sold in this range, none
-                with a cost recorded.
+                {plural(productsQuery.data?.total ?? uncovered.length, copy.missingCost.footnote)}
               </p>
             </div>
           ) : null}
@@ -242,29 +249,28 @@ export function MarginPanel({
         {data.trend.length > 0 ? (
           <div>
             <p className="analytics-margin__basis">
-              <strong>Gross margin by week</strong> · label is margin %
+              {renderRich(copy.trendTitle, strong)}
             </p>
             <MarginTrendChart points={data.trend} currency={data.currency} />
           </div>
         ) : null}
         <div>
-          <h4 className="section-title analytics-margin__subtitle">Margin by channel</h4>
+          <h4 className="section-title analytics-margin__subtitle">{copy.byChannel}</h4>
           <MarginByChannelTable
             channels={data.channels}
             headline={data.headline}
             currency={data.currency}
           />
           <p className="data-table__footnote">
-            Gross margin and margin % are over lines with a cost only. Cost coverage is the share
-            of net revenue those lines carry.
+            {copy.byChannelFootnote}
           </p>
         </div>
         <div>
           <div className="panel__header analytics-margin__subheader">
-            <h4 className="section-title analytics-margin__subtitle">Margin by product</h4>
+            <h4 className="section-title analytics-margin__subtitle">{copy.byProduct}</h4>
             <ExportCsvButton
               testId="export-csv-margin-product"
-              reportLabel="Margin by product"
+              reportLabel={copy.byProduct}
               request={{ report: 'margin-product', filters, sortBy: 'netRevenue' }}
               displayCurrency={displayCurrency}
               reportingCurrency={currency}
@@ -272,9 +278,11 @@ export function MarginPanel({
           </div>
           {productsQuery.error ? (
             <ErrorState
-              title="Unable to load margin by product"
+              title={copy.byProductError}
               message={productsQuery.error.message}
-              action={<Button onClick={() => void productsQuery.refetch()}>Retry</Button>}
+              action={
+                <Button onClick={() => void productsQuery.refetch()}>{copy.error.retry}</Button>
+              }
             />
           ) : (
             <>
@@ -282,7 +290,9 @@ export function MarginPanel({
                 items={productsQuery.data?.items ?? []}
                 currency={data.currency}
               />
-              <p className="data-table__footnote">Top {PRODUCT_LIMIT} by net revenue.</p>
+              <p className="data-table__footnote">
+                {interpolate(copy.byProductFootnote, { n: format.number(PRODUCT_LIMIT) })}
+              </p>
             </>
           )}
         </div>
@@ -299,25 +309,24 @@ export function MarginPanel({
     >
       <div className="panel__header">
         <div>
-          <p className="eyebrow">Profitability</p>
-          <h3 className="section-title">Margin</h3>
+          <p className="eyebrow">{copy.eyebrow}</p>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
         <ExportCsvButton
           testId="export-csv-margin-channel"
-          reportLabel="Margin by channel"
+          reportLabel={copy.byChannel}
           request={exportRequestChannel}
           displayCurrency={displayCurrency}
           reportingCurrency={currency}
           disabledReason={
-            noCostAtAll ? 'Nothing to export: no line in this range has a cost' : undefined
+            noCostAtAll ? copy.exportDisabled : undefined
           }
         />
       </div>
       <p className="analytics-margin__basis">
-        <span className="chip chip--info">Net revenue · VAT-exclusive</span>
-        Margin always uses net revenue because costs are entered net
-        {pageBasis === 'gross' ? ', even though this page is set to Gross' : ''}. Cancelled orders
-        excluded.{currency ? ` Amounts in ${currency}, the reporting currency.` : ''}
+        <span className="chip chip--info">{copy.basisChip}</span>
+        {pageBasis === 'gross' ? copy.basisGross : copy.basis}
+        {currency ? ` ${interpolate(copy.currency, { currency })}` : ''}
       </p>
       {renderBody()}
     </article>

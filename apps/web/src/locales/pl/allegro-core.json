@@ -1,0 +1,140 @@
+{
+  "allegroConnectCallbackPage": {
+    "alreadyCompleted": {
+      "message": "Ten link autoryzacyjny został już użyty. Połączenie z marketplace powinno być aktywne.",
+      "title": "Autoryzacja już zakończona",
+      "viewConnections": "Zobacz połączenia"
+    },
+    "apiChip": "API marketplace",
+    "denied": {
+      "message": "Nie udzielono autoryzacji OpenLinker w marketplace. Połączenie nie zostało utworzone.",
+      "startOver": "Zacznij od nowa",
+      "title": "Odmowa autoryzacji"
+    },
+    "description": "Przetwarzanie odpowiedzi autoryzacyjnej z marketplace.",
+    "eyebrow": "Powrót OAuth",
+    "failed": {
+      "title": "Autoryzacja nie powiodła się",
+      "tryAgain": "Spróbuj ponownie",
+      "unknown": "Nieznany błąd"
+    },
+    "invalid": {
+      "message": "W odpowiedzi autoryzacyjnej brakuje wymaganych parametrów. Może się tak zdarzyć po bezpośrednim wejściu na tę stronę.",
+      "startSetup": "Rozpocznij konfigurację",
+      "title": "Nieprawidłowa odpowiedź"
+    },
+    "oauthChip": "OAuth 2.0",
+    "pending": {
+      "message": "Wymiana kodu autoryzacyjnego z marketplace…",
+      "title": "Kończenie autoryzacji"
+    },
+    "success": {
+      "active": "Aktywne",
+      "connectionId": "ID połączenia",
+      "eyebrow": "Gotowe",
+      "goToConnection": "Przejdź do połączenia",
+      "name": "Nazwa",
+      "title": "Połączenie utworzone",
+      "viewAll": "Zobacz wszystkie połączenia"
+    },
+    "title": "Autoryzacja marketplace"
+  },
+  "allegroSetupForm": {
+    "back": "Wstecz",
+    "backLabel": "Połączenia",
+    "beforeYouStart": {
+      "body": "W <link>portalu deweloperskim {platform}</link> utwórz aplikację deweloperską i zarejestruj <uri>{redirectUri}</uri> jako dozwolony adres przekierowania. Skopiuj z tej aplikacji Client ID i Client Secret do pól poniżej.",
+      "title": "Zanim zaczniesz"
+    },
+    "catalogueInfo": {
+      "body": "OpenLinker łączy oferty {platform} z produktami przez kody kreskowe z połączenia z katalogiem produktów. Wybierz sklep, którego katalog ma rozpoznawać te kody.",
+      "title": "Połącz katalog produktów"
+    },
+    "connect": "Połącz z {platform}",
+    "connecting": "Łączenie…",
+    "environmentInfo": {
+      "body": "Sandbox to osobne środowisko {platform} do testów. Dane produkcyjne nie zadziałają w sandboxie i odwrotnie.",
+      "title": "Wybierz właściwe środowisko"
+    },
+    "environments": {
+      "production": "Produkcja",
+      "sandbox": "Sandbox"
+    },
+    "fallbackPlatform": "marketplace",
+    "fields": {
+      "catalogue": {
+        "description": "Wybierz połączenie z katalogiem produktów używane do łączenia ofert z produktami po kodach kreskowych. Możesz to ustawić później, jeśli sklep nie jest jeszcze skonfigurowany.",
+        "failed": "Nie udało się wczytać połączeń",
+        "label": "Połączenie z katalogiem produktów",
+        "loading": "Wczytywanie połączeń…"
+      },
+      "clientId": {
+        "description": "Client ID OAuth z aplikacji deweloperskiej {platform}.",
+        "label": "Client ID",
+        "placeholder": "your-client-id"
+      },
+      "clientSecret": {
+        "description": "Client secret OAuth z aplikacji deweloperskiej {platform}.",
+        "label": "Client secret",
+        "placeholder": "your-client-secret"
+      },
+      "environment": "Środowisko",
+      "name": {
+        "description": "Nazwa tej integracji {platform} w OpenLinker.",
+        "label": "Nazwa połączenia",
+        "placeholder": "{platform} sandbox"
+      }
+    },
+    "next": "Dalej",
+    "none": "Brak (ustaw później)",
+    "reauth": {
+      "body": "Ukończenie tego procesu zastąpi zapisane dane uwierzytelniające oznaczonego połączenia i wznowi synchronizację. Podaj ponownie Client ID i Client Secret z aplikacji deweloperskiej dla <strong>tego samego konta sprzedawcy {platform}</strong> - połączenie i jego mapowania zostaną zachowane. Wybory środowiska i katalogu produktów poniżej nie zmieniają konfiguracji istniejącego połączenia; wymieniane są tylko dane uwierzytelniające.",
+      "title": "Ponowne uwierzytelnienie istniejącego połączenia"
+    },
+    "review": {
+      "delivery": "Dostawa na dokumentach",
+      "empty": "-",
+      "name": "Nazwa",
+      "redirectNote": "Po kliknięciu <strong>Połącz z {platform}</strong> nastąpi przekierowanie do {platform} w celu autoryzacji tego połączenia. Upewnij się, że aplikacja {platform} ma zarejestrowany <uri>{redirectUri}</uri> jako adres przekierowania."
+    },
+    "startFailed": "Nie udało się rozpocząć autoryzacji",
+    "steps": {
+      "credentials": "Dane dostępowe",
+      "environment": "Środowisko",
+      "productCatalogue": "Katalog produktów",
+      "review": "Sprawdź i połącz",
+      "salesDocuments": "Dokumenty sprzedaży"
+    }
+  },
+  "allegroSetupSchema": {
+    "clientIdRequired": "Client ID jest wymagany",
+    "clientSecretRequired": "Client secret jest wymagany",
+    "invalidConnectionId": "Nieprawidłowe ID połączenia",
+    "nameRequired": "Nazwa połączenia jest wymagana"
+  },
+  "allegroSetupSummary": {
+    "clientId": "Client ID",
+    "connection": "Połączenie",
+    "environment": "Środowisko",
+    "linkedTo": "Połączone z",
+    "name": "Nazwa",
+    "notLinked": "- nie połączono -",
+    "productCatalogue": "Katalog produktów",
+    "production": "Produkcja",
+    "sandbox": "Sandbox",
+    "target": "Cel"
+  },
+  "translateAllegroError": {
+    "afterSalesRequired": "Ustaw warunki posprzedażowe (zwroty, gwarancja, rękojmia) na stronie edycji połączenia albo bezpośrednio w ofercie. Marketplace wymaga ich dla kont firmowych.",
+    "noSafetyInformationNotAllowed": "Ta kategoria wymaga merytorycznych informacji o bezpieczeństwie. Edytuj połączenie i wybierz „Podaj informacje o bezpieczeństwie (tekst)” z treścią właściwą dla kategorii (ostrzeżenia dotyczące baterii, ograniczenia wiekowe, CE/RoHS itp.).",
+    "responsibleProducerMissing": "Ustaw producenta odpowiedzialnego w domyślnych ustawieniach sprzedawcy dla tego połączenia.",
+    "safetyInfoNotDefined": "Marketplace odrzucił informacje o bezpieczeństwie dla tej kategorii. Sprawdź typ informacji o bezpieczeństwie i ponownie zapisz domyślne ustawienia sprzedawcy dla połączenia. Jeśli problem się powtarza, kategoria prawdopodobnie wymaga pisemnych informacji o bezpieczeństwie zamiast opcji „brak informacji o bezpieczeństwie”.",
+    "taxRateMissing": "Stawka VAT tego produktu nie jest znana, więc oferta nie może podać, jaki podatek nalicza. Dodaj stawkę w katalogu sklepu i ponownie zsynchronizuj produkt.",
+    "taxRateNotAllowed": "{reason} Popraw stawkę w sklepie i ponownie zsynchronizuj produkt; OpenLinker nigdy nie publikuje oferty bez stawki.",
+    "taxRateNotAllowedDefault": "Ta kategoria marketplace nie dopuszcza stawki VAT tego produktu.",
+    "taxRateNotExpressible": "Ten kanał nie potrafi wyrazić kodu podatkowego tego produktu. Ustaw stawkę obsługiwaną przez kanał albo wystaw produkt tam, gdzie ten kod jest obsługiwany.",
+    "unknownField": "OpenLinker wysłał pole, którego marketplace nie rozpoznaje. Spróbuj ponownie później; jeśli błąd się powtarza, skontaktuj się z pomocą techniczną, podając ID oferty.",
+    "unknownFieldAt": "OpenLinker wysłał pole `{field}`, którego marketplace nie rozpoznaje. Spróbuj ponownie później; jeśli błąd się powtarza, skontaktuj się z pomocą techniczną, podając ID oferty.",
+    "unsupportedLanguage": "OpenLinker wysłał ustawienie języka, którego marketplace nie obsługuje. Spróbuj ponownie później; jeśli błąd się powtarza, skontaktuj się z pomocą techniczną."
+  }
+}

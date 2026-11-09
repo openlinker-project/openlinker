@@ -20,7 +20,7 @@
  * @module apps/web/src/features/automation/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
-import { AUTOMATION_COMPOSER_COPY } from './automation.copy';
+import { getMessages, interpolate } from '../../../shared/i18n';
 
 /** Which field array a refusal points at, when it points at one. */
 export type AutomationErrorTarget = 'conditions' | 'actions' | null;
@@ -58,11 +58,12 @@ function readIndex(details: unknown): number | null {
  * "something went wrong" would hide a sentence that already explains itself.
  */
 export function describeAutomationWriteError(error: unknown): AutomationWriteRefusal {
+  const copy = getMessages('automation').composer;
   if (!(error instanceof ApiError)) {
     const message =
       error instanceof Error && error.message.length > 0
         ? error.message
-        : AUTOMATION_COMPOSER_COPY.saveFailedGeneric;
+        : copy.saveFailedGeneric;
     return { message, target: null, index: null, isDuplicate: false };
   }
 
@@ -72,7 +73,7 @@ export function describeAutomationWriteError(error: unknown): AutomationWriteRef
   switch (name) {
     case 'AutomationRuleConflictError':
       return {
-        message: AUTOMATION_COMPOSER_COPY.duplicateRule,
+        message: copy.duplicateRule,
         target: null,
         index: null,
         isDuplicate: true,
@@ -85,7 +86,7 @@ export function describeAutomationWriteError(error: unknown): AutomationWriteRef
         message:
           action === null
             ? error.message
-            : AUTOMATION_COMPOSER_COPY.illegalPair(action),
+            : interpolate(copy.illegalPair, { action }),
         target: 'actions',
         index,
         isDuplicate: false,
@@ -101,7 +102,7 @@ export function describeAutomationWriteError(error: unknown): AutomationWriteRef
     default:
       return {
         message:
-          error.message.length > 0 ? error.message : AUTOMATION_COMPOSER_COPY.saveFailedGeneric,
+          error.message.length > 0 ? error.message : copy.saveFailedGeneric,
         target: null,
         index: null,
         isDuplicate: false,

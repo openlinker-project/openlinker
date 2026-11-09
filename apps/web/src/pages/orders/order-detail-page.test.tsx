@@ -590,7 +590,7 @@ describe('OrderDetailPage — lifecycle phase (#2310)', () => {
     expect(await screen.findByText('Blocked')).toBeInTheDocument();
     // The detail page has room for the sentence the row does not.
     expect(
-      screen.getByText('Waiting on OpenLinker — the order cannot be matched yet.'),
+      screen.getByText('Waiting on OpenLinker - the order cannot be matched yet.'),
     ).toBeInTheDocument();
   });
 
@@ -785,7 +785,7 @@ describe('OrderDetailPage — buyer tax id in the Summary block (#3180)', () => 
     renderDetail(api);
 
     await screen.findByText('ol_order_abc123');
-    expect(screen.getByTestId('order-buyer-tax-id-none')).toHaveTextContent('None — asserted');
+    expect(screen.getByTestId('order-buyer-tax-id-none')).toHaveTextContent('None - asserted');
     expect(screen.queryByTestId('order-buyer-tax-id')).not.toBeInTheDocument();
   });
 

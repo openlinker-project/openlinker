@@ -93,9 +93,44 @@ export const DestinationRoutingBlockReasonValues = [
    * folded into `routed-destinations-unavailable`.
    */
   'routed-to-source-only',
+  /**
+   * No routing filter, and no connection OTHER than the source can create
+   * orders at all, in any status (#3959).
+   *
+   * **Not a fault.** A shop connected on its own, using OpenLinker for sales
+   * documents, labels or the OMS, has nothing to copy its orders to. Before
+   * #3959 this threw, and the throw ended ingestion before the sales-document
+   * step, so such an install never got an automatic invoice or receipt. It is
+   * now a "nothing to mirror" outcome: `syncOrder` returns `[]`, and the order
+   * says so neutrally. Neutral, not counted, for the same reason as
+   * `routed-to-no-destination`: on a single-shop install it is true of EVERY
+   * order, so a count would put a permanent warning on a healthy install. It
+   * still states the fact per order, which is what keeps an operator who
+   * forgot to add a destination from reading the order as copied.
+   */
+  'no-destination-configured',
+  /**
+   * No routing filter, and at least one connection other than the source CAN
+   * create orders, but none of them is active (#3959).
+   *
+   * Outstanding work: a destination exists and is switched off or broken.
+   * `syncOrder` keeps throwing, so the retry ladder copies the order once the
+   * connection is active again, and `OrderIngestionService` still decides the
+   * sales document before that throw propagates.
+   */
+  'no-active-destination',
 ] as const;
 
 export type DestinationRoutingBlockReason = (typeof DestinationRoutingBlockReasonValues)[number];
+
+/**
+ * The reasons that are a DECISION or a plain fact rather than outstanding work:
+ * rendered neutrally per order, never counted. See each value's own docblock.
+ */
+export const DestinationRoutingNeutralReasonValues: readonly DestinationRoutingBlockReason[] = [
+  'routed-to-no-destination',
+  'no-destination-configured',
+];
 
 /**
  * The subset that is attention-worthy — i.e. counted and filterable.
@@ -117,7 +152,7 @@ export type DestinationRoutingBlockReason = (typeof DestinationRoutingBlockReaso
  */
 export const DestinationRoutingAttentionReasonValues =
   DestinationRoutingBlockReasonValues.filter(
-    (reason) => reason !== 'routed-to-no-destination'
+    (reason) => !DestinationRoutingNeutralReasonValues.includes(reason)
   ) as readonly DestinationRoutingBlockReason[];
 
 /**
@@ -182,6 +217,14 @@ export interface DestinationRoutingObservation {
    * already removed. `undefined` when no filter was supplied.
    */
   readonly unresolvedRequestedIds: readonly string[] | undefined;
+  /**
+   * How many connections OTHER than the source can create orders, in ANY
+   * status (#3959). Read only for an unfiltered fan-out that resolved nothing,
+   * where it tells "nothing to mirror" from "a destination is switched off".
+   * `undefined` when the caller did not look, which keeps the pre-#3959 answer
+   * (`null`) for an unfiltered run.
+   */
+  readonly configuredDestinationCount?: number;
 }
 
 /**
@@ -197,11 +240,19 @@ export interface DestinationRoutingObservation {
 export const deriveDestinationRoutingBlock = (
   observation: DestinationRoutingObservation
 ): DestinationRoutingBlock | null => {
-  const { requestedDestinationIds, resolvedCount, unresolvedRequestedIds } = observation;
+  const { requestedDestinationIds, resolvedCount, unresolvedRequestedIds, configuredDestinationCount } =
+    observation;
 
   // No routing answer at all — the unfiltered fan-out. Nothing was narrowed, so
   // nothing is reported; this is every order on every install today.
   if (requestedDestinationIds === undefined) {
+    // #3959 - an unfiltered fan-out that reached nothing. Which of the two
+    // facts holds is decided by whether any other order destination exists.
+    if (resolvedCount === 0 && configuredDestinationCount !== undefined) {
+      return configuredDestinationCount === 0
+        ? { reason: 'no-destination-configured', detail: null }
+        : { reason: 'no-active-destination', detail: null };
+    }
     return null;
   }
 

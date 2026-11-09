@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { interpolate, useFormat, useMessages, usePlural } from '../../shared/i18n';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
 import { StockAtRiskCallout } from '../../features/orders/components/stock-at-risk-callout';
@@ -106,9 +107,9 @@ import type { OrderDiscountResult, OrderEditLineStock } from '../../features/ord
 import type { EditOrderOutput } from '../../features/orders/hooks/use-edit-order-mutation';
 import type { OrderEditRemedyTarget } from '../../features/orders/lib/order-edit';
 import { hasAcceptedFulfilmentWork, isOrderCancelTerminal } from '../../features/orders/lib/order-cancel';
-import { formatAmount } from '../../shared/format/format-amount';
 import { useOmsRoutingState } from '../../features/fulfillment-authority';
 import { useSession } from '../../shared/auth/use-session';
+import { serverErrorText } from '../../features/orders/lib/server-error-text';
 
 const RAW_SNAPSHOT_ANCHOR_ID = 'order-raw-snapshot';
 const SHIPPING_CAPABILITY = 'ShippingProviderManager';
@@ -131,6 +132,11 @@ const SHIP_BY_TONE: Record<ShipByLevel, StatusBadgeTone> = {
 
 export function OrderDetailPage(): ReactElement {
   const { internalOrderId = '' } = useParams<{ internalOrderId: string }>();
+  const ordersCopy = useMessages('orders');
+  const serverSaid = ordersCopy.common.serverSaid;
+  const copy = ordersCopy.orderDetailPage;
+  const format = useFormat();
+  const plural = usePlural();
   const query = useOrderQuery(internalOrderId);
   const connectionsQuery = useConnectionsQuery();
   // Destinations the operator declared as packing and shipping by themselves (#2118).
@@ -251,40 +257,40 @@ export function OrderDetailPage(): ReactElement {
           onSuccess: () => {
             showToast({
               tone: 'success',
-              title: 'Retry queued',
-              description: 'Sync queued for the failed destination.',
+              title: copy.retryQueuedTitle,
+              description: copy.retryQueuedDescription,
             });
           },
           onError: (error) => {
-            showToast({ tone: 'error', title: 'Retry failed', description: error.message });
+            showToast({ tone: 'error', title: copy.retryFailedTitle, description: serverErrorText(serverSaid, error.message, '') });
           },
         },
       );
     },
-    [retry, internalOrderId, showToast],
+    [retry, internalOrderId, showToast, copy, serverSaid],
   );
 
   if (query.isLoading) {
     return (
-      <PageLayout eyebrow="Orders" title="Order detail">
-        <LoadingState liveRegion="off" title="Loading order" message="Fetching order details…" />
+      <PageLayout eyebrow={copy.eyebrow} title={copy.title}>
+        <LoadingState liveRegion="off" title={copy.loadingTitle} message={copy.loadingMessage} />
       </PageLayout>
     );
   }
 
   if (query.error || !query.data) {
     return (
-      <PageLayout eyebrow="Orders" title="Order detail">
+      <PageLayout eyebrow={copy.eyebrow} title={copy.title}>
         <ErrorState
-          title="Unable to load order"
-          message={query.error?.message ?? 'Order not found'}
+          title={copy.loadErrorTitle}
+          message={serverErrorText(serverSaid, query.error?.message, copy.notFound)}
           action={
             <Button
               onClick={() => {
                 void query.refetch();
               }}
             >
-              Retry
+              {copy.retry}
             </Button>
           }
         />
@@ -329,7 +335,7 @@ export function OrderDetailPage(): ReactElement {
     (change) => change.kind === 'order.cancel_request' && change.status === 'confirmed',
   );
   const cancelTotalLabel = snapshot.totals
-    ? formatAmount(snapshot.totals.total, snapshot.totals.currency)
+    ? format.money(snapshot.totals.total, snapshot.totals.currency)
     : null;
   const cancelUnitCount = snapshot.items.reduce((sum, item) => sum + item.quantity, 0);
   const cancelSourceConnection = connectionsQuery.data?.find((c) => c.id === order.sourceConnectionId);
@@ -463,9 +469,15 @@ export function OrderDetailPage(): ReactElement {
 
   // Internal ID is the header copy-chip; not duplicated here.
   const shipByView = formatShipBy(order.dispatchByAt ?? null);
+  const estimatedCopy = ordersCopy.orderRowDetail.estimated;
+  const summary = copy.summary;
+  const sourceName = connectionsById.get(order.sourceConnectionId)?.name;
+  const syncStatusLabels: Readonly<Record<string, string>> = copy.syncStatus.statuses;
+  const syncStatusLabel = (status: string): string =>
+    Object.prototype.hasOwnProperty.call(syncStatusLabels, status) ? syncStatusLabels[status] : status;
   const summaryItems: KeyValueItem[] = [
     ...(snapshot.orderNumber
-      ? [{ id: 'orderNumber', label: 'Order #', value: snapshot.orderNumber, mono: true }]
+      ? [{ id: 'orderNumber', label: summary.orderNumber, value: snapshot.orderNumber, mono: true }]
       : []),
     ...(snapshot.status
       ? [
@@ -474,33 +486,35 @@ export function OrderDetailPage(): ReactElement {
                 // C-23: not the order's status - OL cancelled it and the channel
                 // has not re-polled yet.
                 id: 'status',
-                label: `Status at ${connectionsById.get(order.sourceConnectionId)?.name ?? 'channel'}`,
+                label: sourceName
+                  ? interpolate(summary.statusAtChannel, { channel: sourceName })
+                  : summary.statusAtUnknownChannel,
                 value: <span className="text-muted">{snapshot.status}</span>,
               }
-            : { id: 'status', label: 'Status', value: snapshot.status },
+            : { id: 'status', label: summary.status, value: snapshot.status },
         ]
       : []),
     {
       id: 'sourceConnection',
-      label: 'Source',
+      label: summary.source,
       value: <ConnectionEntityLabel connectionId={order.sourceConnectionId} />,
     },
     ...(order.sourceEventId
-      ? [{ id: 'sourceEvent', label: 'Source Event ID', value: order.sourceEventId, mono: true }]
+      ? [{ id: 'sourceEvent', label: summary.sourceEventId, value: order.sourceEventId, mono: true }]
       : []),
     // Buyer-placed-on-marketplace time leads (#926); the OL ingestion clocks
     // (Received / Updated) are demoted to "OpenLinker processing" below it.
     ...(snapshot.placedAt
-      ? [{ id: 'placedAt', label: 'Placed', value: <TimeDisplay iso={snapshot.placedAt} format="datetime" /> }]
+      ? [{ id: 'placedAt', label: summary.placed, value: <TimeDisplay iso={snapshot.placedAt} format="datetime" /> }]
       : []),
-    { id: 'createdAt', label: 'Received (OL)', value: <TimeDisplay iso={order.createdAt} format="datetime" /> },
-    { id: 'updatedAt', label: 'Updated (OL)', value: <TimeDisplay iso={order.updatedAt} format="datetime" /> },
+    { id: 'createdAt', label: summary.receivedOl, value: <TimeDisplay iso={order.createdAt} format="datetime" /> },
+    { id: 'updatedAt', label: summary.updatedOl, value: <TimeDisplay iso={order.updatedAt} format="datetime" /> },
     // Dispatch SLA countdown (#927) — the ship-by deadline + urgency badge.
     ...(order.dispatchByAt && shipByView
       ? [
           {
             id: 'shipBy',
-            label: 'Ship by',
+            label: summary.shipBy,
             value: (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                 <TimeDisplay iso={order.dispatchByAt} format="datetime" />
@@ -510,10 +524,10 @@ export function OrderDetailPage(): ReactElement {
                 {order.dispatchByEstimated ? (
                   <span
                     className="text-muted"
-                    aria-label="Estimated"
-                    title="OpenLinker estimate - not a marketplace-confirmed deadline"
+                    aria-label={estimatedCopy.ariaLabel}
+                    title={estimatedCopy.title}
                   >
-                    est.
+                    {estimatedCopy.label}
                   </span>
                 ) : null}
               </span>
@@ -527,7 +541,7 @@ export function OrderDetailPage(): ReactElement {
     // an absent optional fact elsewhere in this list is.
     {
       id: 'buyerTaxId',
-      label: 'Buyer tax ID',
+      label: summary.buyerTaxId,
       value: <OrderBuyerTaxIdValue buyerTaxId={order.buyerTaxId} />,
     },
   ];
@@ -538,11 +552,11 @@ export function OrderDetailPage(): ReactElement {
       // `/shipments` triage jump otherwise had only browser-back to return.
       backTo={
         cameFromShipments
-          ? { to: '/shipments', label: 'Shipments' }
-          : { to: '/orders', label: 'Orders' }
+          ? { to: '/shipments', label: copy.backToShipments }
+          : { to: '/orders', label: copy.backToOrders }
       }
-      eyebrow="Orders"
-      title="Order detail"
+      eyebrow={copy.eyebrow}
+      title={copy.title}
       actions={
         <>
         <OrderConfirmRefundAction
@@ -648,15 +662,13 @@ export function OrderDetailPage(): ReactElement {
       {failedDestinations.length > 0 ? (
         <Alert
           tone="error"
-          title={`${failedDestinations.length} destination${
-            failedDestinations.length > 1 ? 's' : ''
-          } failed`}
+          title={plural(failedDestinations.length, copy.failedDestinations)}
           action={
             <Link
               to={`/orders/failed?connectionId=${encodeURIComponent(order.sourceConnectionId)}`}
               className="button button--secondary button--sm"
             >
-              View failed orders
+              {copy.viewFailedOrders}
             </Link>
           }
         >
@@ -671,7 +683,7 @@ export function OrderDetailPage(): ReactElement {
                     </span>
                   ) : null}
                   <a className="order-detail__failed-raw" href={`#${RAW_SNAPSHOT_ANCHOR_ID}`}>
-                    view raw ▸
+                    {copy.viewRaw} <span aria-hidden="true">▸</span>
                   </a>
                 </div>
                 <Button
@@ -680,7 +692,7 @@ export function OrderDetailPage(): ReactElement {
                   onClick={() => handleRetry(status.destinationConnectionId)}
                   disabled={pendingDestinationId === status.destinationConnectionId}
                 >
-                  {pendingDestinationId === status.destinationConnectionId ? 'Retrying…' : 'Retry'}
+                  {pendingDestinationId === status.destinationConnectionId ? copy.retrying : copy.retry}
                 </Button>
               </li>
             ))}
@@ -716,7 +728,7 @@ export function OrderDetailPage(): ReactElement {
 
       {snapshot.items.length > 0 || snapshot.totals ? (
         <section className="detail-section">
-          <h3 className="detail-section__title">Pricing &amp; tax</h3>
+          <h3 className="detail-section__title">{copy.pricingTitle}</h3>
           <OrderPricingPanel
             items={snapshot.items}
             totals={snapshot.totals}
@@ -731,7 +743,7 @@ export function OrderDetailPage(): ReactElement {
       <div className="order-detail__primary-grid order-detail__primary-grid--split">
         <div className="order-detail__stack">
           <section className="detail-section">
-            <h3 className="detail-section__title">Summary</h3>
+            <h3 className="detail-section__title">{summary.title}</h3>
             <KeyValueList items={summaryItems} />
           </section>
 
@@ -781,7 +793,11 @@ export function OrderDetailPage(): ReactElement {
 
           <section className="detail-section">
             <h3 className="detail-section__title">
-              Sync status{order.syncStatus.length > 0 ? ` (${order.syncStatus.length})` : ''}
+              {order.syncStatus.length > 0
+                ? interpolate(copy.syncStatus.titleWithCount, {
+                    count: format.number(order.syncStatus.length),
+                  })
+                : copy.syncStatus.title}
             </h3>
             {order.syncStatus.length > 0 ? (
               <ul className="order-sync-list">
@@ -789,24 +805,23 @@ export function OrderDetailPage(): ReactElement {
                   <li key={status.destinationConnectionId} className="order-sync-row">
                     <ConnectionEntityLabel connectionId={status.destinationConnectionId} showId={false} />
                     <StatusBadge tone={SYNC_STATUS_TONES[status.status]} compact>
-                      {status.status}
+                      {syncStatusLabel(status.status)}
                     </StatusBadge>
                     <span className="order-sync-row__ext">
                       {status.externalOrderId ? (
                         <span className="mono-text">#{status.externalOrderId}</span>
                       ) : (
-                        <span className="text-muted">no destination order id yet</span>
+                        <span className="text-muted">{copy.syncStatus.noDestinationOrderId}</span>
                       )}
                     </span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-muted">No sync destinations configured.</p>
+              <p className="text-muted">{copy.syncStatus.noDestinations}</p>
             )}
             <p className="order-sync-list__note text-muted">
-              Idempotent create (#909) — a retry won&rsquo;t double-create; a synced row shows its destination
-              order id.
+              {copy.syncStatus.note}
             </p>
           </section>
         </div>
@@ -898,16 +913,16 @@ export function OrderDetailPage(): ReactElement {
           <a
             href={`#${RAW_SNAPSHOT_ANCHOR_ID}`}
             className="order-detail__parse-warning"
-            title="Some fields couldn't be parsed — see raw snapshot"
+            title={copy.parseWarnings.title}
           >
-            <span aria-hidden="true">⚠</span> {snapshot.parseWarnings.length} field
-            {snapshot.parseWarnings.length > 1 ? 's' : ''} couldn&rsquo;t be parsed · view raw
+            <span aria-hidden="true">⚠</span>{' '}
+            {plural(snapshot.parseWarnings.length, copy.parseWarnings.label)}
           </a>
         </p>
       ) : null}
 
       <section className="detail-section">
-        <h3 className="detail-section__title">Activity</h3>
+        <h3 className="detail-section__title">{copy.activityTitle}</h3>
         <OrderActivityTimeline
           createdAt={order.createdAt}
           recordStatus={order.recordStatus}
@@ -940,7 +955,7 @@ export function OrderDetailPage(): ReactElement {
       </section>
 
       <section className="detail-section" id={RAW_SNAPSHOT_ANCHOR_ID}>
-        <RawPayloadPanel title="Order Snapshot" payload={order.orderSnapshot} />
+        <RawPayloadPanel title={copy.rawSnapshotTitle} payload={order.orderSnapshot} />
       </section>
     </PageLayout>
   );

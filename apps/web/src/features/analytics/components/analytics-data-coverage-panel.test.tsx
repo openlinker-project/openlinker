@@ -70,7 +70,7 @@ describe('AnalyticsDataCoveragePanel (#2474)', () => {
     expect(await screen.findByText('23 orders counted in an outdated currency')).toBeInTheDocument();
     expect(screen.getByText('18 orders have an unconfirmed tax rate')).toBeInTheDocument();
     expect(screen.getByText('7 orders have no tax rate at all')).toBeInTheDocument();
-    expect(screen.getByText('2 orders — rate not yet resolved')).toBeInTheDocument();
+    expect(screen.getByText('2 orders - rate not yet resolved')).toBeInTheDocument();
     expect(screen.getByText('4 orders with a product-matching error')).toBeInTheDocument();
 
     // Regression guard (mini-epic AC): no raw backend enum value ever reaches the DOM.
@@ -115,7 +115,7 @@ describe('AnalyticsDataCoveragePanel (#2474)', () => {
 
     await user.click(await screen.findByText('23 orders counted in an outdated currency'));
 
-    expect(await screen.findByText('Showing 1–10 of 23')).toBeInTheDocument();
+    expect(await screen.findByText('Showing 1-10 of 23')).toBeInTheDocument();
     expect(screen.queryByText(/view more/i)).not.toBeInTheDocument();
   });
 
@@ -207,11 +207,11 @@ describe('AnalyticsDataCoveragePanel (#2474)', () => {
 
     renderWithProviders(<AnalyticsDataCoveragePanel filters={FILTERS} onOpenSettings={() => {}} />, { apiClient });
 
-    await user.click(await screen.findByText('1 order have no tax rate at all'));
+    await user.click(await screen.findByText('1 order has no tax rate at all'));
 
     expect(await screen.findByText('no rate')).toHaveAttribute(
       'title',
-      'Catalogue reports several candidate rates — resolve which one is right in the shop.'
+      'Catalogue reports several candidate rates - resolve which one is right in the shop.'
     );
   });
 
@@ -264,7 +264,7 @@ describe('AnalyticsDataCoveragePanel (#2474)', () => {
     await user.click(await screen.findByText('5 orders counted in an outdated currency'));
     await user.click(await screen.findByText('Recalculate all 5 now'));
 
-    expect(await screen.findByText('Recalculated and saved — closing…')).toBeInTheDocument();
+    expect(await screen.findByText('Recalculated and saved - closing…')).toBeInTheDocument();
 
     await waitFor(
       () => expect(screen.getByText('Recalculation finished for the 5 orders you selected')).toBeInTheDocument(),
@@ -389,7 +389,7 @@ describe('AnalyticsDataCoveragePanel (#2474)', () => {
       expect(screen.queryByRole('button', { name: /Recalculate all/ })).not.toBeInTheDocument();
       await user.click(screen.getByText('Close'));
 
-      await user.click(await screen.findByText('2 orders — rate not yet resolved'));
+      await user.click(await screen.findByText('2 orders - rate not yet resolved'));
       await screen.findByText('Close');
       expect(screen.queryByRole('button', { name: /Sync the catalog/ })).not.toBeInTheDocument();
     });
@@ -410,7 +410,7 @@ describe('AnalyticsDataCoveragePanel (#2474)', () => {
       expect(await screen.findByRole('button', { name: /Recalculate all/ })).toBeDisabled();
       await user.click(screen.getByText('Close'));
 
-      await user.click(await screen.findByText('2 orders — rate not yet resolved'));
+      await user.click(await screen.findByText('2 orders - rate not yet resolved'));
       expect(await screen.findByRole('button', { name: /Sync the catalog/ })).toBeDisabled();
     });
   });

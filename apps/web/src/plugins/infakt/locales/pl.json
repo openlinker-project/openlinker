@@ -1,0 +1,267 @@
+{
+  "infaktCredentialsPanel": {
+    "cancel": "Anuluj",
+    "description": "Przechowywany bezpiecznie na serwerze. Zmień, aby podmienić klucz bez restartu API.",
+    "envBacked": "Zmienna środowiskowa (nie można jej edytować w interfejsie)",
+    "label": "Klucz API",
+    "newKeyPlaceholder": "Nowy klucz API",
+    "rotate": "Zmień klucz API",
+    "rotating": "Zmieniam...",
+    "save": "Zapisz nowy klucz API",
+    "toast": {
+      "description": "Nowy klucz API inFakt jest już używany.",
+      "title": "Dane dostępowe zmienione"
+    }
+  },
+  "infaktInvoiceCorrectionFlow": {
+    "addLine": "+ Dodaj pozycję",
+    "cancel": "Anuluj",
+    "col": {
+      "lp": "Lp",
+      "newPrice": "Nowe brutto",
+      "newQty": "Nowa ilość",
+      "remove": "Usuń"
+    },
+    "correcting": "Korekta <strong>{reference}</strong>",
+    "emptyCell": "-",
+    "failed": "KOR nieudany",
+    "gridLinesRequired": "Zmień ilość lub cenę co najmniej jednej pozycji, zanim wystawisz korektę.",
+    "issued": "KOR wystawiony",
+    "issuedBody": "Faktura korygująca została przesłana do KSeF przez inFakt.",
+    "issuedOn": "Wystawiono <strong>{date}</strong>",
+    "ksefRef": "KSeF <strong>{reference}</strong>",
+    "lineDeltaRequired": "Każda pozycja musi mieć nową ilość, nową cenę lub obie.",
+    "lineNum": "Numer pozycji {n}",
+    "linesRequired": "Wymagana jest co najmniej jedna pozycja z numerem.",
+    "loadingLines": "Wczytywanie pozycji faktury…",
+    "newPrice": "Nowe brutto, pozycja {n}",
+    "newQty": "Nowa ilość, pozycja {n}",
+    "note": "Dokument KOR zmienia ilość, cenę lub obie dla każdej pozycji. inFakt przesyła go do KSeF, a OpenLinker sam uzgadnia jego status.",
+    "providerTag": "Wystawiona przez inFakt",
+    "removeLine": "Usuń pozycję {n}",
+    "submit": "Wystaw KOR",
+    "submitting": "Wystawianie…",
+    "title": "Wystaw korektę KOR"
+  },
+  "infaktInvoiceDetailSection": {
+    "numberPending": "Oczekiwanie na numer KSeF",
+    "pdfDownload": "Pobierz PDF",
+    "pdfDownloadFailed": "Nie udało się pobrać PDF",
+    "pdfDownloadFailedDesc": "Nie udało się pobrać pliku PDF faktury.",
+    "pdfDownloading": "Pobieranie…",
+    "pending": "inFakt przesyła tę fakturę do KSeF. Rozliczenie zwykle kończy się w ciągu minuty lub dwóch.",
+    "rejectedFallback": "KSeF odrzucił tę fakturę.",
+    "resend": "Ponów wysyłkę do KSeF",
+    "resendFailed": "Ponowne wysłanie nieudane",
+    "resendFailedDesc": "Nie udało się ponownie wysłać faktury do KSeF.",
+    "resendSuccess": "Wysłano ponownie do KSeF",
+    "resendSuccessDesc": "inFakt ponownie przesyła tę fakturę do KSeF. Status rozliczenia wkrótce się odświeży.",
+    "resending": "Wysyłanie ponownie…",
+    "title": "Rozliczenie w KSeF (przez inFakt)"
+  },
+  "infaktSetupForm": {
+    "apiKey": {
+      "description": "Twój klucz API inFakt - wygenerujesz go w ustawieniach konta inFakt.",
+      "label": "Klucz API"
+    },
+    "back": "Połączenia",
+    "bankAccount": {
+      "checking": "Sprawdzanie kont bankowych w inFakt…",
+      "label": "Konto bankowe dla faktur z przelewem",
+      "option": "{bank} - {number}",
+      "optionDefault": "{bank} - {number} (domyślne w inFakt)",
+      "placeholder": "Wybierz konto bankowe…",
+      "unreachable": "Nie udało się połączyć z inFakt, aby pobrać listę kont bankowych. To połączenie pozostaje przy metodzie <strong>Przelew</strong>, więc faktury nadal będą wystawiane z przelewem i inFakt może je odrzucać, dopóki nie wybierzesz konta bankowego na ekranie edycji połączenia."
+    },
+    "beforeYouStart": {
+      "body": "W ustawieniach konta inFakt wygeneruj <strong>klucz API</strong>. OpenLinker używa go do wystawiania faktur i odczytu statusu rozliczenia w KSeF przez wbudowaną integrację inFakt. Klucz jest przechowywany bezpiecznie na serwerze i pokazywany tylko raz.",
+      "title": "Zanim zaczniesz"
+    },
+    "configureWebhooks": "Skonfiguruj webhooki…",
+    "connect": "Połącz z inFakt",
+    "connecting": "Łączenie…",
+    "createError": "Nie udało się utworzyć połączenia",
+    "created": {
+      "description": "Utworzono połączenie inFakt \"{name}\".",
+      "title": "Połączenie utworzone"
+    },
+    "done": "Gotowe",
+    "environment": {
+      "description": "Wybierz Sandbox, aby przetestować połączenie ze środowiskiem testowym inFakt przed przejściem na produkcję.",
+      "label": "Środowisko",
+      "production": "Produkcja - {url}",
+      "sandbox": "Sandbox - {url}"
+    },
+    "forcedCash": "Na tym koncie inFakt nie ma skonfigurowanego konta bankowego, więc metoda <strong>Przelew</strong> nie jest jeszcze dostępna - faktury będą wystawiane z metodą <strong>Gotówka</strong>. Dodaj konto bankowe w ustawieniach inFakt, a potem zmień metodę płatności na ekranie edycji połączenia.",
+    "forcedCashFailed": {
+      "description": "inFakt nie ma konta bankowego dla faktur z przelewem, ale nie udało się zapisać zmiany tego połączenia na gotówkę - zmień metodę płatności na ekranie edycji połączenia. {error}",
+      "title": "Nie udało się zmienić metody płatności na gotówkę"
+    },
+    "name": {
+      "description": "Nazwa, po której rozpoznasz to konto inFakt w OpenLinker.",
+      "label": "Nazwa połączenia",
+      "placeholder": "Moje konto inFakt"
+    },
+    "paymentMethod": {
+      "cash": "Gotówka",
+      "descriptionBefore": "Przelew wymaga konta bankowego na koncie inFakt - bez niego inFakt odrzuca fakturę. Konto wybierzesz po połączeniu; na początek używamy konta oznaczonego w inFakt jako domyślne, a jeśli go nie ma, metody Gotówka.",
+      "descriptionLocked": "Zablokowane po utworzeniu połączenia - zmień metodę płatności na ekranie edycji połączenia (zmiany wprowadzone tutaj po utworzeniu nie zostałyby zapisane).",
+      "label": "Domyślna metoda płatności",
+      "transfer": "Przelew"
+    },
+    "persistErrorHint": "wybierz je ponownie na ekranie edycji połączenia.",
+    "test": {
+      "failed": "Test połączenia nieudany",
+      "latency": "{message} ({ms}ms)",
+      "passed": "Test połączenia udany",
+      "run": "Przetestuj połączenie",
+      "running": "Testowanie…",
+      "unable": "Nie udało się przetestować połączenia"
+    },
+    "webhookPrompt": {
+      "configure": "Skonfiguruj webhooki",
+      "description": "Webhooki pozwalają inFakt powiadomić OpenLinker w chwili rozliczenia faktury w KSeF, zamiast czekać na kolejne odpytanie. Są opcjonalne, a ich konfiguracja w panelu inFakt zajmuje minutę. Możesz zrobić to później na karcie Akcje połączenia.",
+      "notNow": "Nie teraz",
+      "ready": {
+        "description": "Webhooki skonfigurujesz w dowolnej chwili na karcie Akcje połączenia.",
+        "title": "Połączenie gotowe"
+      },
+      "title": "Skonfigurować teraz webhooki dostarczania?"
+    },
+    "webhooks": {
+      "body": "Otrzymuj z inFakt aktualizacje rozliczenia w KSeF w czasie rzeczywistym.",
+      "title": "Webhooki dostarczania (opcjonalne)"
+    }
+  },
+  "infaktSetupPage": {
+    "chips": {
+      "apiKey": "Klucz API",
+      "guided": "Z przewodnikiem"
+    },
+    "description": "Podaj klucz API inFakt. OpenLinker używa go do wystawiania faktur i odczytu statusu rozliczenia w KSeF przez wbudowaną integrację e-faktur inFakt.",
+    "eyebrow": "Integracje",
+    "title": "Połącz z inFakt"
+  },
+  "infaktSetupRoute": {
+    "crumb": "Połącz z inFakt"
+  },
+  "infaktSetupSchema": {
+    "apiKeyRequired": "Klucz API jest wymagany",
+    "nameRequired": "Nazwa połączenia jest wymagana"
+  },
+  "infaktStructuredSection": {
+    "bankAccount": {
+      "checkFailed": "Nie udało się sprawdzić kont bankowych w inFakt - faktury użyją ostatnio zapisanego konta.",
+      "checking": "Sprawdzanie kont bankowych w inFakt…",
+      "label": "Konto bankowe dla faktur z przelewem",
+      "none": "Na tym koncie inFakt nie ma skonfigurowanego konta bankowego, więc metoda <strong>Przelew</strong> nie jest jeszcze możliwa. Zapisana metoda płatności tego połączenia to wciąż Przelew, więc inFakt może odrzucać faktury - zmień powyżej metodę płatności na Gotówka albo dodaj konto bankowe w ustawieniach inFakt i odśwież stronę, aby je wybrać.",
+      "option": "{bank} - {number}",
+      "optionDefault": "{bank} - {number} (domyślne w inFakt)",
+      "placeholder": "Wybierz konto bankowe…",
+      "stale": "Zapisane konto ({number}) nie istnieje już w inFakt - faktury nadal dostają zapisaną kopię danych, dopóki nie wybierzesz aktualnego konta."
+    },
+    "environment": {
+      "description": "Środowisko API inFakt. Użyj Sandbox, aby przetestować połączenie przed przejściem na produkcję. Bez ustawienia używana jest produkcja.",
+      "label": "Środowisko",
+      "production": "Produkcja",
+      "sandbox": "Sandbox",
+      "unset": "- nie ustawiono -"
+    },
+    "legacyOverride": {
+      "body": "To połączenie ma starsze nadpisanie adresu bazowego (<code>{url}</code>), które ma pierwszeństwo przed polem Środowisko poniżej - faktury trafiają na ten host, dopóki nadpisanie nie zostanie usunięte, nawet po wybraniu i zapisaniu innego środowiska.",
+      "clear": "Usuń nadpisanie",
+      "clearKeep": "Usuń nadpisanie (zostaw {environment})",
+      "clearUse": "Usuń nadpisanie (użyj {environment})",
+      "keeps": "Po usunięciu połączenie zostaje w środowisku {environment}, na które ten host już wskazuje.",
+      "switches": "Po usunięciu połączenie przejdzie na środowisko {environment}, wybrane poniżej.",
+      "title": "Działa starsze nadpisanie adresu bazowego",
+      "unknownHost": "Ten host nie jest żadnym z dwóch środowisk API inFakt, więc po usunięciu nadpisania połączenie przejdzie na produkcję i zacznie wystawiać prawdziwe faktury. Najpierw wybierz środowisko poniżej."
+    },
+    "paymentMethod": {
+      "cash": "Gotówka",
+      "description": "Przelew wymaga konta bankowego na koncie inFakt - bez niego inFakt odrzuca fakturę. Zostań przy gotówce, dopóki nie dodasz konta w inFakt.",
+      "disclosure": "Metoda płatności na fakturze:",
+      "label": "Domyślna metoda płatności",
+      "transfer": "Przelew"
+    },
+    "persistErrorHint": "wybierz je ponownie albo użyj Zapisz zmiany."
+  },
+  "infaktWebhookConfig": {
+    "activation": {
+      "authFailing": "Dostawy odrzucane · sprawdź sekret",
+      "awaiting": "Oczekiwanie na pierwsze zdarzenie",
+      "verified": "Aktywny · dostawy odebrane"
+    },
+    "authFailing": {
+      "body": "OpenLinker odbiera dostawy, ale odrzuca każdą z nich, bo podpis się nie zgadza. Skopiuj ponownie z inFakt sekret podpisu HMAC poniżej - zapisanego sekretu brakuje albo jest nieaktualny.",
+      "title": "Dostawy z inFakt są odrzucane"
+    },
+    "deliveryEndpoint": "Adres dostarczania",
+    "dialog": {
+      "done": "Gotowe",
+      "title": "Skonfiguruj webhooki"
+    },
+    "enableEvents": "Włącz te zdarzenia w inFakt",
+    "fromInfakt": "Z inFakt",
+    "intro": "inFakt podpisuje każdą dostawę i sam tworzy sekret, więc OpenLinker nie może zarejestrować webhooka za ciebie. Zarejestruj adres w inFakt, a potem wklej sekret, który pokaże inFakt.",
+    "optionalNote": "opcjonalne · synchronizacja płatności",
+    "overwrite": {
+      "confirm": "Zastąp sekret",
+      "description": "Dostawy przestaną działać, dopóki nie zaktualizujesz sekretu w inFakt.",
+      "title": "Zastąpić sekret podpisu?"
+    },
+    "pasteBack": "Wklejasz z powrotem",
+    "register": "Rejestrujesz",
+    "registerHint": "Utwórz webhook, otwórz jego szczegóły i kliknij <strong>Weryfikuj</strong> (status <em>Do weryfikacji</em> → <em>Aktywny</em>). inFakt wysyła POST z <code>verification_code</code>; OpenLinker automatycznie odsyła go z powrotem.",
+    "save": {
+      "error": "Nie udało się zapisać sekretu podpisu",
+      "saving": "Zapisywanie…",
+      "submit": "Zapisz sekret",
+      "toastDescription": "OpenLinker będzie teraz weryfikować podpisy dostaw z inFakt.",
+      "toastTitle": "Sekret podpisu zapisany"
+    },
+    "secret": {
+      "hint": "Sekret podpisu jest wymagany, aby OpenLinker przyjmował dostawy: otwórz szczegóły webhooka w inFakt → <em>Sekretny klucz do HMAC</em> i wklej tutaj tę wartość. OpenLinker sprawdza wtedy <code>X-Infakt-Signature</code> i odrzuca niezgodne dostawy kodem 401.",
+      "label": "Sekret podpisu",
+      "lane": "Sekret podpisu HMAC",
+      "placeholder": "Wklej sekret z inFakt…"
+    },
+    "signature": {
+      "configured": "Skonfigurowany",
+      "notConfigured": "Nieskonfigurowany"
+    },
+    "status": {
+      "activation": "Aktywacja",
+      "checking": "Sprawdzanie statusu webhooka…",
+      "lastDelivery": "Ostatnia dostawa",
+      "lastDeliveryValue": "{event} · {result}",
+      "loadFailed": "Nie udało się wczytać statusu webhooka.",
+      "retry": "Ponów",
+      "signature": "Podpis",
+      "unknownEvent": "zdarzenie",
+      "unknownResult": "nieznany"
+    },
+    "toInfakt": "Do inFakt",
+    "why": {
+      "body": "inFakt nie ma API do zakładania webhooków, a jego formularz nie ma pola na sekret: inFakt generuje osobny sekret dla każdej subskrypcji i pokazuje go tylko w jej szczegółach. Sekret może więc trafić wyłącznie z inFakt do OpenLinker. Nie zmieniaj sekretu w OpenLinker: powstałaby nowa wartość po stronie serwera, której inFakt nie zna, i każda dostawa przestałaby działać.",
+      "summary": "Dlaczego OpenLinker nie może skonfigurować tego za mnie?"
+    }
+  },
+  "infaktWebhookConnectionActions": {
+    "activation": "Aktywacja: {value}",
+    "configure": "Skonfiguruj webhooki…",
+    "description": "Dostarczaj z inFakt zdarzenia rozliczenia w KSeF w czasie rzeczywistym. Zarejestruj adres i opcjonalnie weryfikuj podpisy dostaw.",
+    "signature": "Podpis: {value}",
+    "title": "Konfiguracja webhooków"
+  },
+  "infaktWebhookSecretSchema": {
+    "tooLong": "Sekret może mieć najwyżej 512 znaków",
+    "tooShort": "Sekret musi mieć co najmniej 8 znaków"
+  },
+  "plugin": {
+    "setupCard": {
+      "badge": "Klucz API",
+      "description": "Polska platforma księgowa z wbudowaną integracją z KSeF"
+    }
+  }
+}

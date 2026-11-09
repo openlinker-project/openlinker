@@ -18,11 +18,11 @@ import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../nav-registry.types';
 
 const salesDocumentsListCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Sales documents' },
+  crumb: { group: 'operations', page: 'salesDocuments' },
 };
 
 const fiscalReceiptDetailCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Fiscal receipt' },
+  crumb: { group: 'operations', page: 'fiscalReceipt' },
 };
 
 export const salesDocumentsListRoute: RouteObject = {

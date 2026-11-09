@@ -9,23 +9,15 @@
  *
  * @module apps/web/src/features/invoicing/lib
  */
+import { getMessages } from '../../../shared/i18n';
 import type { DocumentLifecycleStep } from '../../../shared/ui/document-lifecycle';
 import type { InvoiceRecord } from '../api/invoicing.types';
 
-/**
- * Taken as a PARAMETER, mirroring `HeadlineTranslate` in the sibling
- * `sales-document-headline.ts` — so this module isn't the one place in the
- * pair that hardcodes English.
- */
-export type LifecycleStepTranslate = (key: string, fallback: string) => string;
-
-export function resolveInvoiceLifecycleSteps(
-  invoice: InvoiceRecord,
-  t: LifecycleStepTranslate,
-): DocumentLifecycleStep[] {
+export function resolveInvoiceLifecycleSteps(invoice: InvoiceRecord): DocumentLifecycleStep[] {
+  const copy = getMessages('invoicing').salesDocument.lifecycle;
   const issuedStep: DocumentLifecycleStep = {
     id: 'issued',
-    label: t('salesDocument.lifecycle.issued', 'Issued'),
+    label: copy.issued,
     state: invoice.issuedAt ? 'done' : invoice.status === 'failed' ? 'error' : 'active',
     at: invoice.issuedAt,
   };
@@ -36,15 +28,15 @@ export function resolveInvoiceLifecycleSteps(
     return [issuedStep];
   }
 
-  const clearanceStep: DocumentLifecycleStep = resolveClearanceStep(invoice, t);
+  const clearanceStep: DocumentLifecycleStep = resolveClearanceStep(invoice, copy);
   return [issuedStep, clearanceStep];
 }
 
 function resolveClearanceStep(
   invoice: InvoiceRecord,
-  t: LifecycleStepTranslate,
+  copy: ReturnType<typeof getMessages<'invoicing'>>['salesDocument']['lifecycle'],
 ): DocumentLifecycleStep {
-  const awaiting = t('salesDocument.lifecycle.awaitingAuthority', 'Awaiting the authority');
+  const awaiting = copy.awaitingAuthority;
   switch (invoice.regulatoryStatus) {
     case 'pending-submission':
       return { id: 'clearance', label: awaiting, state: 'todo', at: null };
@@ -57,14 +49,14 @@ function resolveClearanceStep(
       // write that recorded it.
       return {
         id: 'clearance',
-        label: t('salesDocument.lifecycle.cleared', 'Cleared'),
+        label: copy.cleared,
         state: 'done',
         at: invoice.updatedAt,
       };
     case 'rejected':
       return {
         id: 'clearance',
-        label: t('salesDocument.lifecycle.rejectedByAuthority', 'Rejected by the authority'),
+        label: copy.rejectedByAuthority,
         state: 'error',
         at: invoice.updatedAt,
       };

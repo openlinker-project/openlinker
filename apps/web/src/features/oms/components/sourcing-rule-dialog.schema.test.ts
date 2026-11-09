@@ -7,11 +7,16 @@
  */
 import { describe, expect, it } from 'vitest';
 
+import { getMessages } from '../../../shared/i18n';
 import {
-  sourcingRuleFormSchema,
+  createSourcingRuleFormSchema,
   toDateInputValue,
   toEffectiveInstant,
 } from './sourcing-rule-dialog.schema';
+
+const sourcingRuleFormSchema = createSourcingRuleFormSchema(
+  getMessages('oms-core').sourcingRuleDialog.validation
+);
 
 function values(overrides: Record<string, unknown> = {}): unknown {
   return {

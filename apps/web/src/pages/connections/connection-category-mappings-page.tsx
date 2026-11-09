@@ -30,6 +30,7 @@ import { DesktopOnlyBanner } from '../../shared/ui/desktop-only-banner';
 import { Select } from '../../shared/ui/select';
 import type { AllegroCategory } from '../../features/mappings/api/mappings.types';
 import { bucketCount, captureDemoEvent } from '../../features/demo';
+import { interpolate, useFormat, useMessages, usePlural } from '../../shared/i18n';
 
 const MARKETPLACE_PICK_STORAGE_PREFIX = 'openlinker.categoryMappings.lastMarketplace.';
 
@@ -57,6 +58,9 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
   const { connectionId = '' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const copy = useMessages('connections').connectionCategoryMappingsPage;
+  const plural = usePlural();
+  const format = useFormat();
 
   const connectionsQuery = useConnectionsQuery();
   const marketplaceConnections = useMemo(
@@ -164,33 +168,33 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
     deleteMutation.mutate(selectedCategoryId);
   }
 
-  const backTo = { to: `/connections/${connectionId}`, label: 'Connection' };
+  const backTo = { to: `/connections/${connectionId}`, label: copy.eyebrow };
 
   if (isLoading) {
     return (
-      <PageLayout backTo={backTo} eyebrow="Connection" title="Category Mappings">
-        <LoadingState liveRegion="off" title="Loading" message="Fetching categories and mappings..." />
+      <PageLayout backTo={backTo} eyebrow={copy.eyebrow} title={copy.title}>
+        <LoadingState liveRegion="off" title={copy.loading.title} message={copy.loading.message} />
       </PageLayout>
     );
   }
 
   if (loadError) {
     return (
-      <PageLayout backTo={backTo} eyebrow="Connection" title="Category Mappings">
-        <ErrorState title="Unable to load" message={loadError.message} />
+      <PageLayout backTo={backTo} eyebrow={copy.eyebrow} title={copy.title}>
+        <ErrorState title={copy.error.title} message={loadError.message} />
       </PageLayout>
     );
   }
 
   if (marketplaceConnections.length === 0) {
     return (
-      <PageLayout backTo={backTo} eyebrow="Connection" title="Category Mappings">
+      <PageLayout backTo={backTo} eyebrow={copy.eyebrow} title={copy.title}>
         <EmptyState
-          title="No marketplace connection configured"
-          message="Add an Allegro (or other Marketplace) connection before mapping categories."
+          title={copy.noMarketplace.title}
+          message={copy.noMarketplace.message}
           action={
             <Link className="button button--primary" to="/connections/new">
-              Add connection
+              {copy.noMarketplace.addConnection}
             </Link>
           }
         />
@@ -200,10 +204,10 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
 
   if (categories.length === 0) {
     return (
-      <PageLayout backTo={backTo} eyebrow="Connection" title="Category Mappings">
+      <PageLayout backTo={backTo} eyebrow={copy.eyebrow} title={copy.title}>
         <EmptyState
-          title="No PrestaShop categories"
-          message="No categories were found for this connection. Ensure the PrestaShop store has categories configured."
+          title={copy.noCategories.title}
+          message={copy.noCategories.message}
         />
       </PageLayout>
     );
@@ -212,19 +216,17 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
   return (
     <PageLayout
       backTo={backTo}
-      eyebrow="Connection"
-      title="Category Mappings"
-      description={`${mappedCount} of ${categories.length} categories mapped`}
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={plural(categories.length, copy.mappedSummary, {
+        mapped: format.number(mappedCount),
+      })}
     >
-      <DesktopOnlyBanner title="Open on a desktop screen to edit categories">
-        The category mapping editor pairs a category tree with a marketplace search side by side
-        and needs a wider viewport. Open this page on a desktop or tablet in landscape mode to
-        assign categories.
-      </DesktopOnlyBanner>
+      <DesktopOnlyBanner title={copy.desktopOnly.title}>{copy.desktopOnly.body}</DesktopOnlyBanner>
 
       <div className="category-mappings-toolbar">
         <label className="category-mappings-toolbar__label" htmlFor="marketplace-connection-select">
-          Marketplace connection
+          {copy.marketplaceSelect.label}
         </label>
         <Select
           id="marketplace-connection-select"
@@ -232,11 +234,11 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
           onChange={(e) => { handleMarketplaceChange(e.target.value); }}
         >
           <option value="" disabled>
-            Select a marketplace connection…
+            {copy.marketplaceSelect.placeholder}
           </option>
           {marketplaceConnections.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name} ({c.platformType})
+              {interpolate(copy.marketplaceSelect.option, { name: c.name, platform: c.platformType })}
             </option>
           ))}
         </Select>
@@ -244,7 +246,7 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
 
       <div className="category-mappings-layout">
         <div className="category-mappings-layout__tree">
-          <h3>PrestaShop Categories</h3>
+          <h3>{copy.sourceHeading}</h3>
           <CategoryMappingTree
             categories={categories}
             mappings={mappings}
@@ -254,16 +256,16 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
         </div>
 
         <div className="category-mappings-layout__search">
-          <h3>Allegro Category</h3>
+          <h3>{copy.marketplaceHeading}</h3>
           {!marketplaceConnectionId ? (
             <EmptyState
-              title="Select a marketplace connection"
-              message="Pick a marketplace connection above to browse its category tree."
+              title={copy.pickMarketplace.title}
+              message={copy.pickMarketplace.message}
             />
           ) : !selectedCategoryId ? (
             <EmptyState
-              title="Select a category"
-              message="Click a PrestaShop category on the left to assign an Allegro category."
+              title={copy.pickCategory.title}
+              message={copy.pickCategory.message}
             />
           ) : (
             <AllegroCategorySearch

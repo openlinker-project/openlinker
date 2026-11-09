@@ -10,6 +10,7 @@
 import { useState, useMemo, type ReactElement } from 'react';
 import { CategoryMappingRow } from './CategoryMappingRow';
 import type { CategoryMapping } from '../api/mappings.types';
+import { interpolate, useMessages } from '../../../shared/i18n';
 
 interface TreeCategory {
   id: string;
@@ -69,6 +70,7 @@ export function CategoryMappingTree({
   onSelect,
 }: CategoryMappingTreeProps): ReactElement {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const copy = useMessages('mappings').categoryMappingTree;
 
   const tree = useMemo(() => buildTree(categories), [categories]);
 
@@ -106,7 +108,7 @@ export function CategoryMappingTree({
   }, [categories]);
 
   return (
-    <div className="category-tree" role="tree" aria-label="PrestaShop categories">
+    <div className="category-tree" role="tree" aria-label={copy.treeLabel}>
       {visible.map((node) => (
         <div key={node.id} role="treeitem" aria-expanded={hasChildren.has(node.id) ? expanded.has(node.id) : undefined}>
           <div className="category-tree__row">
@@ -115,7 +117,7 @@ export function CategoryMappingTree({
                 type="button"
                 className="category-tree__toggle"
                 onClick={() => { toggleExpand(node.id); }}
-                aria-label={expanded.has(node.id) ? `Collapse ${node.name}` : `Expand ${node.name}`}
+                aria-label={interpolate(expanded.has(node.id) ? copy.collapse : copy.expand, { name: node.name })}
               >
                 {expanded.has(node.id) ? '▾' : '▸'}
               </button>

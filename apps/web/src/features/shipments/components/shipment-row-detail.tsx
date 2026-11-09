@@ -47,7 +47,8 @@ import {
   canRegenerateLabel,
   isPreWaybill,
 } from '../lib/shipment-action-eligibility';
-import { cancelShipmentCopy } from '../lib/cancel-shipment-copy';
+import { cancelShipmentCopy } from '../lib/cancel-shipment-dialog';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { CopyableId } from '../../../shared/ui/copyable-id';
@@ -102,6 +103,7 @@ export function ShipmentRowDetail({
   canWrite,
   canReviewConnection,
 }: ShipmentRowDetailProps): ReactElement {
+  const copy = useMessages('shipments').shipmentRowDetail;
   const cancelMutation = useCancelShipmentMutation();
   const notifyMutation = useNotifyDispatchedMutation();
   const labelDownload = useLabelDownload();
@@ -120,14 +122,14 @@ export function ShipmentRowDetail({
         {shipment.trackingNumber ? (
           <dl className="shipment-detail-grid">
             <div className="shipment-detail-grid__field">
-              <span className="shipment-detail-grid__label">Tracking</span>
+              <span className="shipment-detail-grid__label">{copy.fields.tracking}</span>
               <p className="shipment-detail-grid__value">
                 <CopyableId id={shipment.trackingNumber} label={shipment.trackingNumber} />
               </p>
             </div>
           </dl>
         ) : (
-          <p className="text-muted">Fulfilled by the destination — no tracking yet.</p>
+          <p className="text-muted">{copy.ompNoTracking}</p>
         )}
       </div>
     );
@@ -146,7 +148,7 @@ export function ShipmentRowDetail({
   // while the first stays live, so the CTA is replaced by an explanation.
   const isPostWaybillFailure = isFailed && !isPreWaybill(shipment);
   const liveWaybill = shipment.trackingNumber ?? shipment.providerShipmentId;
-  const carrierName = getCarrierDisplayName(shipment.carrier) ?? 'the carrier';
+  const carrierName = getCarrierDisplayName(shipment.carrier) ?? copy.carrierFallback;
   const cancelCopy = cancelShipmentCopy(shipment.status, carrierName);
   // Drives the "why is there nothing to do here" line below — true for a
   // common transitional state (`dispatched` / `in-transit` before the carrier
@@ -167,10 +169,10 @@ export function ShipmentRowDetail({
   // The internal order id joined them in #2089 — see `orderIdField` below, which
   // both grids render.
   const facts: ReadonlyArray<{ label: string; value: string; mono: boolean }> = [
-    { label: 'Provider', value: shipment.carrier ? carrierName : null, mono: false },
-    { label: 'Method', value: SHIPPING_METHOD_LABEL[shipment.shippingMethod], mono: false },
-    { label: 'Tracking', value: shipment.trackingNumber, mono: true },
-    { label: 'Paczkomat', value: shipment.paczkomatId, mono: true },
+    { label: copy.fields.provider, value: shipment.carrier ? carrierName : null, mono: false },
+    { label: copy.fields.method, value: SHIPPING_METHOD_LABEL[shipment.shippingMethod], mono: false },
+    { label: copy.fields.tracking, value: shipment.trackingNumber, mono: true },
+    { label: copy.fields.paczkomat, value: shipment.paczkomatId, mono: true },
   ].filter((fact): fact is { label: string; value: string; mono: boolean } => fact.value !== null);
 
   // ONE definition for both grids below. The failed grid is a separate `<dl>`
@@ -179,13 +181,13 @@ export function ShipmentRowDetail({
   // while showing it only on healthy rows would have been the wrong way round.
   const orderIdField = (
     <div className="shipment-detail-grid__field">
-      <span className="shipment-detail-grid__label">Order</span>
+      <span className="shipment-detail-grid__label">{copy.fields.order}</span>
       <p className="shipment-detail-grid__value mono-text">
         <CopyableId
           id={shipment.orderId}
           label={shortenId(shipment.orderId)}
-          copyLabel={`Copy internal order ID ${shortenId(shipment.orderId)}`}
-          copiedLabel={`Copied internal order ID ${shortenId(shipment.orderId)}`}
+          copyLabel={interpolate(copy.copyOrderId, { id: shortenId(shipment.orderId) })}
+          copiedLabel={interpolate(copy.copiedOrderId, { id: shortenId(shipment.orderId) })}
         />
       </p>
     </div>
@@ -206,7 +208,9 @@ export function ShipmentRowDetail({
         <dl className="shipment-detail-grid">
           <div className="shipment-detail-grid__field shipment-detail-grid__field--wide">
             <span className="shipment-detail-grid__label">
-              {canWrite && shipment.errorMessage ? 'Carrier rejection' : 'Shipment failed'}
+              {canWrite && shipment.errorMessage
+                ? copy.fields.carrierRejection
+                : copy.fields.shipmentFailed}
             </span>
             <p className="shipment-detail-grid__value">
               {/* A status-sync-derived failure (returned to sender, refused,
@@ -215,14 +219,13 @@ export function ShipmentRowDetail({
                   label above an empty paragraph. */}
               {!canWrite
                 ? REDACTED_ERROR_MESSAGE
-                : shipment.errorMessage ??
-                  'The carrier reported this parcel as undelivered or returned - check the tracker.'}
+                : shipment.errorMessage ?? copy.undeliveredFallback}
             </p>
           </div>
           {orderIdField}
           {shipment.failedAt ? (
             <div className="shipment-detail-grid__field">
-              <span className="shipment-detail-grid__label">Failed</span>
+              <span className="shipment-detail-grid__label">{copy.fields.failed}</span>
               <p className="shipment-detail-grid__value">
                 <TimeDisplay iso={shipment.failedAt} />
               </p>
@@ -233,7 +236,7 @@ export function ShipmentRowDetail({
               so this is the one cause-related field a viewer always sees. */}
           {shipment.providerCode ? (
             <div className="shipment-detail-grid__field">
-              <span className="shipment-detail-grid__label">Rejection code</span>
+              <span className="shipment-detail-grid__label">{copy.fields.rejectionCode}</span>
               <p className="shipment-detail-grid__value mono-text">
                 {shipment.providerCode}
                 {' - '}
@@ -248,7 +251,7 @@ export function ShipmentRowDetail({
               projections, so the field is omitted rather than shown empty. */}
           {shipment.deliveryIntent ? (
             <div className="shipment-detail-grid__field">
-              <span className="shipment-detail-grid__label">Requested as</span>
+              <span className="shipment-detail-grid__label">{copy.fields.requestedAs}</span>
               <p className="shipment-detail-grid__value">
                 {DELIVERY_INTENT_LABEL[shipment.deliveryIntent]}
               </p>
@@ -274,9 +277,7 @@ export function ShipmentRowDetail({
         // them told a viewer to wait for a status sync that was never the
         // problem.
         <p className="text-muted">
-          {canWrite
-            ? 'No actions available for this shipment yet — check back once the carrier status sync catches up.'
-            : 'You do not have permission to act on this shipment.'}
+          {canWrite ? copy.noActionsYet : copy.noActionsReadOnly}
         </p>
       ) : null}
 
@@ -289,11 +290,16 @@ export function ShipmentRowDetail({
         // `generated` only), so the copy points at the carrier-side void rather
         // than promising an in-app control that isn't here.
         <p className="text-muted">
-          {`This parcel already has a live waybill${liveWaybill ? ` (${liveWaybill})` : ''}, so it cannot be re-dispatched from here${
-            canWrite
-              ? ` - regenerating would purchase a second label. Void the existing waybill with ${carrierName} first, then generate a new one.`
-              : '.'
-          }`}
+          {canWrite
+            ? liveWaybill
+              ? interpolate(copy.postWaybill.writableWithWaybill, {
+                  waybill: liveWaybill,
+                  carrier: carrierName,
+                })
+              : interpolate(copy.postWaybill.writable, { carrier: carrierName })
+            : liveWaybill
+              ? interpolate(copy.postWaybill.readOnlyWithWaybill, { waybill: liveWaybill })
+              : copy.postWaybill.readOnly}
         </p>
       ) : null}
 
@@ -308,12 +314,12 @@ export function ShipmentRowDetail({
             to={`/connections/${shipment.connectionId}`}
             className="button button--secondary button--sm"
           >
-            Review connection settings
+            {copy.actions.reviewConnection}
           </Link>
         ) : null}
         {canGenerate ? (
           <Link to={retryHref(shipment)} className="button button--primary button--sm">
-            {isFailed ? 'Regenerate label' : 'Generate label'}
+            {isFailed ? copy.actions.regenerateLabel : copy.actions.generateLabel}
           </Link>
         ) : null}
         {canNotify && canWrite ? (
@@ -323,7 +329,7 @@ export function ShipmentRowDetail({
             onClick={() => setNotifyDialogOpen(true)}
             disabled={notifyMutation.isPending}
           >
-            Mark dispatched
+            {copy.actions.markDispatched}
           </Button>
         ) : null}
         {canDownloadLabel ? (
@@ -333,12 +339,12 @@ export function ShipmentRowDetail({
             onClick={handleDownloadLabel}
             disabled={labelDownload.isDownloading}
           >
-            {labelDownload.isDownloading ? 'Downloading…' : 'Download label'}
+            {labelDownload.isDownloading ? copy.actions.downloading : copy.actions.downloadLabel}
           </Button>
         ) : null}
         {trackingUrl ? (
           <a href={trackingUrl} target="_blank" rel="noreferrer" className="button button--sm">
-            Track parcel
+            {copy.actions.trackParcel}
           </a>
         ) : null}
         {canCancel && canWrite ? (
@@ -348,7 +354,7 @@ export function ShipmentRowDetail({
             onClick={() => setCancelDialogOpen(true)}
             disabled={cancelMutation.isPending}
           >
-            Cancel
+            {copy.actions.cancel}
           </Button>
         ) : null}
       </div>
@@ -360,7 +366,7 @@ export function ShipmentRowDetail({
           // A failure belongs to one attempt: reopening starts clean.
           if (!open) cancelMutation.reset();
         }}
-        title="Cancel this shipment?"
+        title={copy.cancelDialog.title}
         description={
           <>
             {cancelCopy.effect}
@@ -377,8 +383,8 @@ export function ShipmentRowDetail({
             <CancelShipmentErrorAlert error={cancelMutation.error} />
           ) : undefined
         }
-        confirmLabel={cancelMutation.isPending ? 'Cancelling…' : 'Cancel shipment'}
-        cancelLabel="Keep"
+                confirmLabel={cancelMutation.isPending ? copy.cancelDialog.cancelling : copy.cancelDialog.confirm}
+        cancelLabel={copy.cancelDialog.cancelLabel}
         tone="danger"
         isConfirming={cancelMutation.isPending}
         confirmDisabled={
@@ -394,16 +400,10 @@ export function ShipmentRowDetail({
       <ConfirmDialog
         open={notifyDialogOpen}
         onOpenChange={setNotifyDialogOpen}
-        title="Manually mark as dispatched?"
-        description={
-          <>
-            This fires the source-marketplace notification and updates the destination
-            fulfillment state. Use this only when the automatic dispatch flow has stalled — the
-            normal path is automatic via the carrier&apos;s status sync.
-          </>
-        }
-        confirmLabel={notifyMutation.isPending ? 'Notifying…' : 'Mark dispatched'}
-        cancelLabel="Cancel"
+        title={copy.notifyDialog.title}
+        description={copy.notifyDialog.description}
+        confirmLabel={notifyMutation.isPending ? copy.notifyDialog.notifying : copy.notifyDialog.confirm}
+        cancelLabel={copy.notifyDialog.cancelLabel}
         tone="default"
         isConfirming={notifyMutation.isPending}
         onConfirm={() => {

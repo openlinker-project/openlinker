@@ -150,7 +150,7 @@ describe('OrderFulfillmentTasksPanel (#2411)', () => {
 
       // POSITIVE: the held badge is present and names the reason through the
       // shared display label, never the raw `stock-shortfall`.
-      expect(await screen.findByText('On hold — Stock shortfall')).toBeInTheDocument();
+      expect(await screen.findByText('On hold - Stock shortfall')).toBeInTheDocument();
       expect(screen.getByText(/Waiting on the supplier/)).toBeInTheDocument();
       expect(screen.queryByText('stock-shortfall')).not.toBeInTheDocument();
     });
@@ -165,7 +165,7 @@ describe('OrderFulfillmentTasksPanel (#2411)', () => {
         }),
       ]);
 
-      expect(await screen.findByText('On hold — Held by operator')).toBeInTheDocument();
+      expect(await screen.findByText('On hold - Held by operator')).toBeInTheDocument();
       // The status badge still says Scheduled — "held" and "scheduled" are both true.
       expect(screen.getByText('Scheduled')).toBeInTheDocument();
     });
@@ -180,7 +180,7 @@ describe('OrderFulfillmentTasksPanel (#2411)', () => {
         }),
       ]);
 
-      const held = await screen.findByText('On hold — Held by operator');
+      const held = await screen.findByText('On hold - Held by operator');
       const status = screen.getByText('Scheduled');
       expect(held.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
@@ -544,7 +544,7 @@ describe('OrderFulfillmentTasksPanel (#2411)', () => {
         { user: VIEWER }
       );
 
-      expect(await screen.findByText('On hold — Held by operator')).toBeInTheDocument();
+      expect(await screen.findByText('On hold - Held by operator')).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Schedule' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Put on hold' })).not.toBeInTheDocument();
     });

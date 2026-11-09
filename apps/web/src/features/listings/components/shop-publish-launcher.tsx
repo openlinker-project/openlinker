@@ -22,6 +22,7 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 
 import { useShopPublishWizard } from '../../../app/plugin-bindings/use-shop-publish-wizard';
+import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../../shared/ui/dialog';
@@ -52,7 +53,7 @@ interface ShopPublishLauncherProps {
 export const SHOP_PUBLISH_CAPABILITY = 'ProductPublisher';
 
 /**
- * Shop connections eligible for product publishing — active connections that
+ * Shop connections eligible for product publishing - active connections that
  * have enabled the `ProductPublisher` capability. Sorted by name for a
  * stable picker order.
  */
@@ -72,6 +73,7 @@ export function ShopPublishLauncher({
   defaultVariantIds,
   preselectedConnectionId,
 }: ShopPublishLauncherProps): ReactElement | null {
+  const copy = useMessages('listings').shopPublishLauncher;
   const connectionsQuery = useConnectionsQuery();
   const shopConnections = useMemo(
     () => selectShopPublishConnections(connectionsQuery.data ?? []),
@@ -133,8 +135,8 @@ export function ShopPublishLauncher({
   let description: string | null;
 
   if (submitted !== null) {
-    // Tracker mode — owns its own header label inside.
-    title = 'Publish to shop';
+    // Tracker mode - owns its own header label inside.
+    title = copy.title;
     description = null;
     body = (
       <>
@@ -146,7 +148,7 @@ export function ShopPublishLauncher({
         <div className="wizard-actions">
           <div className="wizard-actions__group">
             <Button type="button" tone="ghost" onClick={close}>
-              Close
+              {copy.close}
             </Button>
           </div>
         </div>
@@ -154,39 +156,39 @@ export function ShopPublishLauncher({
     );
   } else if (pickedConnection === null) {
     if (connectionsQuery.isLoading) {
-      title = 'Publish to shop';
-      description = 'Loading shop connections…';
-      body = <p className="muted-text">Loading…</p>;
+      title = copy.title;
+      description = copy.loadingConnections;
+      body = <p className="muted-text">{copy.loading}</p>;
     } else if (shopConnections.length === 0) {
-      title = 'Publish to shop';
+      title = copy.title;
       description = null;
       body = (
         <EmptyState
           liveRegion="off"
-          title="No shop connection yet"
-          message="Connect a WooCommerce store and enable the ProductPublisher capability to publish products from OpenLinker."
+          title={copy.empty.title}
+          message={copy.empty.message}
           action={
             <Link className="button button--secondary" to="/connections">
-              Go to Integrations →
+              {copy.empty.action} <span aria-hidden="true">→</span>
             </Link>
           }
         />
       );
     } else {
-      title = 'Publish to shop';
-      description = 'Choose the shop connection to publish onto.';
+      title = copy.title;
+      description = copy.picker.description;
       body = (
         <>
-          <FormField label="Connection" name="connection">
+          <FormField label={copy.picker.label} name="connection">
             <Select
               value={pickerDraft}
               onChange={(e) => setPickerDraft(e.target.value)}
-              aria-label="Shop connection"
+              aria-label={copy.picker.ariaLabel}
             >
-              <option value="">Choose a connection…</option>
+              <option value="">{copy.picker.placeholder}</option>
               {shopConnections.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} ({c.platformType})
+                  {interpolate(copy.picker.option, { name: c.name, platform: c.platformType })}
                 </option>
               ))}
             </Select>
@@ -194,7 +196,7 @@ export function ShopPublishLauncher({
           <div className="wizard-actions">
             <div className="wizard-actions__group">
               <Button tone="ghost" type="button" onClick={close}>
-                Cancel
+                {copy.cancel}
               </Button>
             </div>
             <div className="wizard-actions__group">
@@ -203,7 +205,7 @@ export function ShopPublishLauncher({
                 disabled={!pickerDraft}
                 onClick={() => setPickedConnectionId(pickerDraft)}
               >
-                Continue
+                {copy.continue}
               </Button>
             </div>
           </div>
@@ -211,26 +213,28 @@ export function ShopPublishLauncher({
       );
     }
   } else if (wizardContribution === null) {
-    title = 'Publish to shop';
+    title = copy.title;
     description = null;
     body = (
       <>
-        <Alert tone="warning" title="No publish wizard for this platform">
-          The selected connection&apos;s platform (
-          <span className="mono-text">{pickedConnection.platformType}</span>) doesn&apos;t ship a
-          publish wizard yet. Shop publishing is available for WooCommerce today.
+        <Alert tone="warning" title={copy.unsupported.title}>
+          {renderRich(
+            copy.unsupported.body,
+            { code: (text) => <span className="mono-text">{text}</span> },
+            { platform: pickedConnection.platformType },
+          )}
         </Alert>
         <div className="wizard-actions">
           <div className="wizard-actions__group">
             <Button tone="ghost" type="button" onClick={close}>
-              Close
+              {copy.close}
             </Button>
           </div>
         </div>
       </>
     );
   } else {
-    title = `Publish to ${pickedConnection.name}`;
+    title = interpolate(copy.titleFor, { name: pickedConnection.name });
     description = pickedConnection.platformType;
     const Wizard = wizardContribution.component;
     body = (

@@ -1,0 +1,109 @@
+{
+  "plugin": {
+    "setupCard": {
+      "badge": "Mostek Sfera GT",
+      "description": "Połącz Subiekt GT przez mostek OpenLinker na komputerze z Windows: odczytuj katalog produktów i stany magazynowe, przyjmuj zamówienia oraz wystawiaj faktury i paragony wraz z dokumentem wydania z magazynu."
+    }
+  },
+  "subiektCapabilityDescriptors": {
+    "regulatoryTransmissionTracking": {
+      "help": "Pokazuje w zamówieniach tego połączenia status przesłania do KSeF zgłoszony przez mostek.",
+      "label": "Pokaż oznaczenie statusu KSeF"
+    }
+  },
+  "subiektCredentialsPanel": {
+    "cancel": "Anuluj",
+    "description": "Bezpiecznie przechowywany na serwerze. Wymień go, aby zastąpić token mostka bez restartu API.",
+    "envBacked": "Zmienna środowiskowa (nie można edytować w interfejsie)",
+    "label": "Token mostka",
+    "newTokenPlaceholder": "Nowy token mostka",
+    "rotate": "Wymień token mostka",
+    "rotating": "Wymienianie...",
+    "save": "Zapisz nowy token",
+    "toast": {
+      "description": "Nowy token mostka jest już w użyciu.",
+      "title": "Dane uwierzytelniające wymienione"
+    }
+  },
+  "subiektInvoiceCorrectionFlow": {
+    "addLine": "+ Dodaj pozycję",
+    "cancel": "Anuluj",
+    "col": {
+      "lp": "Lp.",
+      "newPrice": "Nowa brutto",
+      "newQty": "Nowa ilość",
+      "remove": "Usuń"
+    },
+    "correcting": "Korygowany dokument: <strong>{reference}</strong>",
+    "emptyCell": "-",
+    "failed": "Nie udało się wystawić korekty",
+    "gridLinesRequired": "Zmień ilość lub cenę co najmniej jednej pozycji przed wystawieniem korekty.",
+    "issued": "Korekta wystawiona",
+    "issuedBody": "Dokument korygujący został wysłany do Subiekta.",
+    "issuedOn": "Wystawiono <strong>{date}</strong>",
+    "ksefRef": "KSeF <strong>{reference}</strong>",
+    "lineNum": "Numer pozycji {n}",
+    "linesRequired": "Wymagana jest co najmniej jedna pozycja z numerem pozycji.",
+    "loadingLines": "Wczytywanie pozycji faktury…",
+    "newPrice": "Nowa cena brutto, pozycja {n}",
+    "newQty": "Nowa ilość, pozycja {n}",
+    "note": "Faktura korygująca może zmienić ilość lub cenę w każdej pozycji - np. dla zwróconej sztuki albo obniżki ceny po sprzedaży. Subiekt przesyła korektę do KSeF, a OpenLinker śledzi jej status.",
+    "providerTag": "Subiekt · slot",
+    "removeLine": "Usuń pozycję {n}",
+    "submit": "Wystaw korektę",
+    "submitting": "Wystawianie…",
+    "title": "Wystaw korektę"
+  },
+  "subiektInvoiceDetailSection": {
+    "downloadPdf": "Pobierz PDF",
+    "ksefNumber": "Numer KSeF",
+    "ksefStatus": "Status KSeF",
+    "note": "Subiekt sam przesłał ten dokument do KSeF - OpenLinker odczytuje status, ale niczego nie przesyła.",
+    "pdf": "PDF faktury",
+    "pending": "Oczekuje",
+    "readFrom": "odczytane z Subiekta",
+    "title": "Status w KSeF"
+  },
+  "subiektSetupRoute": {
+    "crumb": "Połącz Subiekt GT"
+  },
+  "subiektStructuredSection": {
+    "bridgeUrl": {
+      "label": "Adres URL mostka"
+    },
+    "cashRegister": {
+      "error": "Nie udało się sprawdzić stanowisk kasowych w Subiekcie - faktury będą wystawiane z domyślnego stanowiska.",
+      "help": "Faktury są zawsze wystawiane z oddziału Centrala - mostek nie obsługuje zmiany oddziału.",
+      "idFallback": "#{id}",
+      "label": "Stanowisko kasowe",
+      "loading": "Sprawdzanie stanowisk kasowych w Subiekcie…",
+      "optionWithSymbol": "{name} ({symbol})",
+      "unset": "Domyślne (decyduje Subiekt)"
+    },
+    "payment": {
+      "account": {
+        "empty": "W Subiekcie nie skonfigurowano rachunku bankowego, więc faktury z płatnością przelewem otrzymają formę płatności, którą Subiekt stosuje domyślnie. Dodaj rachunek w Konfiguracja systemu → Rachunki bankowe, a następnie odśwież tę stronę.",
+        "error": "Nie udało się sprawdzić rachunków bankowych w Subiekcie - faktury użyją ostatnio zapisanego rachunku.",
+        "label": "Rachunek bankowy dla faktur z przelewem",
+        "loading": "Sprawdzanie rachunków bankowych w Subiekcie…",
+        "multiPayerWarning": "Ta instalacja Subiekta ma więcej niż jednego płatnika. OpenLinker nie potrafi jeszcze potwierdzić, na którego płatnika wystawiana jest faktura, więc wybrany tu rachunek nie musi odpowiadać płatnikowi wystawiającemu.",
+        "option": "{bankName} - {accountNumber}",
+        "optionDefault": "{bankName} - {accountNumber} (domyślny w Subiekcie)",
+        "ownerFallback": "Podmiot {id}",
+        "placeholder": "Wybierz rachunek bankowy…"
+      },
+      "method": {
+        "cash": "Gotówka",
+        "help": "Wysyłana z każdą wystawioną fakturą. Pozostaw pustą, aby Subiekt zastosował własną wartość domyślną; wybierz Przelew tylko wtedy, gdy sprzedawca ma rachunek bankowy skonfigurowany w Subiekcie.",
+        "label": "Domyślna metoda płatności",
+        "transfer": "Przelew",
+        "unset": "Nie ustawiono (domyślna Subiekta)"
+      },
+      "summary": "Metoda płatności dla faktury:"
+    },
+    "triggerModel": {
+      "label": "Wyzwalacz faktury",
+      "unset": "Nie ustawiono"
+    }
+  }
+}
