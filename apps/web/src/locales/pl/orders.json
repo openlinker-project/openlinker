@@ -1031,8 +1031,8 @@
       "rateConflict": "Konflikt stawki",
       "routingBlocked": "Kierowanie zablokowane",
       "salesDocsBlocked": "Dokumenty sprzedaży zablokowane",
-      "waiting": "Czeka w OpenLinker",
-      "shopChanged": "Zmienione w sklepie"
+      "shopChanged": "Zmienione w sklepie",
+      "waiting": "Czeka w OpenLinker"
     },
     "chips": {
       "blocked": "Zablokowane",
@@ -1060,6 +1060,8 @@
       "search": "Szukaj",
       "searchValue": "„{query}”",
       "shipBy": "Wyślij do",
+      "shopChanged": "Sklep",
+      "shopChangedValue": "Zmienione",
       "source": "Źródło",
       "stopped": "Zatrzymane",
       "tag": "Tag",
@@ -1067,9 +1069,7 @@
       "unknownSource": "Nieznane źródło",
       "unknownTag": "Nieznany tag",
       "waiting": "OpenLinker",
-      "waitingValue": "Czeka",
-      "shopChanged": "Sklep",
-      "shopChangedValue": "Zmienione"
+      "waitingValue": "Czeka"
     },
     "clearAll": "Wyczyść wszystko",
     "dispatchRiskOverview": "Ryzyko nadania",
@@ -1145,8 +1145,8 @@
         "one": "Jeszcze {n} jest wystawiany na żądanie - czeka na Ciebie zgodnie z konfiguracją, nie jest zablokowany.",
         "other": "Jeszcze {n} jest wystawiane na żądanie - czekają na Ciebie zgodnie z konfiguracją, nie są zablokowane."
       },
-      "waiting": "Czeka w OpenLinker",
-      "shopChanged": "Zmienione w sklepie"
+      "shopChanged": "Zmienione w sklepie",
+      "waiting": "Czeka w OpenLinker"
     },
     "results": {
       "few": "{n} wyniki",
@@ -2977,18 +2977,6 @@
     "track": "Śledź przesyłkę (otwiera nową kartę)",
     "trackOn": "Śledź przesyłkę w {carrier} (otwiera nową kartę)"
   },
-  "stockAtRisk": {
-    "badgeTitle": "{title}. {body}",
-    "body": "Stan w systemie głównym spadł poniżej ilości obiecanej temu zamówieniu. Nic nie zostało po cichu zmniejszone - zagrożone jest właśnie to zamówienie.",
-    "line": "{item} - brakuje {short} z {total} we wszystkich zamówieniach",
-    "titleOne": "Brakuje {quantity} × {item}",
-    "titleSeveral": {
-      "few": "Brak towaru dla {n} pozycji",
-      "many": "Brak towaru dla {n} pozycji",
-      "one": "Brak towaru dla {n} pozycji",
-      "other": "Brak towaru dla {n} pozycji"
-    }
-  },
   "sourceChange": {
     "action": {
       "handled": "Oznacz jako załatwione",
@@ -3037,5 +3025,17 @@
       "shipped": "Już wysłane"
     },
     "title": "Zmienione w sklepie"
+  },
+  "stockAtRisk": {
+    "badgeTitle": "{title}. {body}",
+    "body": "Stan w systemie głównym spadł poniżej ilości obiecanej temu zamówieniu. Nic nie zostało po cichu zmniejszone - zagrożone jest właśnie to zamówienie.",
+    "line": "{item} - brakuje {short} z {total} we wszystkich zamówieniach",
+    "titleOne": "Brakuje {quantity} × {item}",
+    "titleSeveral": {
+      "few": "Brak towaru dla {n} pozycji",
+      "many": "Brak towaru dla {n} pozycji",
+      "one": "Brak towaru dla {n} pozycji",
+      "other": "Brak towaru dla {n} pozycji"
+    }
   }
 }

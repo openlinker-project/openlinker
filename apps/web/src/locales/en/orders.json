@@ -971,8 +971,8 @@
       "rateConflict": "Rate conflict",
       "routingBlocked": "Routing blocked",
       "salesDocsBlocked": "Sales documents blocked",
-      "waiting": "Waiting in OpenLinker",
-      "shopChanged": "Changed by the shop"
+      "shopChanged": "Changed by the shop",
+      "waiting": "Waiting in OpenLinker"
     },
     "chips": {
       "blocked": "Blocked",
@@ -1000,6 +1000,8 @@
       "search": "Search",
       "searchValue": "“{query}”",
       "shipBy": "Ship-by",
+      "shopChanged": "Shop",
+      "shopChangedValue": "Changed",
       "source": "Source",
       "stopped": "Stopped",
       "tag": "Tag",
@@ -1007,9 +1009,7 @@
       "unknownSource": "Unknown source",
       "unknownTag": "Unknown tag",
       "waiting": "OpenLinker",
-      "waitingValue": "Waiting",
-      "shopChanged": "Shop",
-      "shopChangedValue": "Changed"
+      "waitingValue": "Waiting"
     },
     "clearAll": "Clear all",
     "dispatchRiskOverview": "Dispatch risk",
@@ -1081,8 +1081,8 @@
         "one": "{n} more is issued on request - waiting for you by configuration, not blocked.",
         "other": "{n} more are issued on request - waiting for you by configuration, not blocked."
       },
-      "waiting": "Waiting in OpenLinker",
-      "shopChanged": "Changed by the shop"
+      "shopChanged": "Changed by the shop",
+      "waiting": "Waiting in OpenLinker"
     },
     "results": {
       "one": "{n} result",
@@ -2829,16 +2829,6 @@
     "track": "Track shipment (opens in new tab)",
     "trackOn": "Track shipment on {carrier} (opens in new tab)"
   },
-  "stockAtRisk": {
-    "badgeTitle": "{title}. {body}",
-    "body": "The stock master dropped below what this order was promised. Nothing was silently reduced - this order is the one at risk.",
-    "line": "{item} - short {short} of {total} across all orders",
-    "titleOne": "Short {quantity} × {item}",
-    "titleSeveral": {
-      "one": "Short stock on {n} item",
-      "other": "Short stock on {n} items"
-    }
-  },
   "sourceChange": {
     "action": {
       "handled": "Mark as handled",
@@ -2887,5 +2877,15 @@
       "shipped": "Already shipped"
     },
     "title": "Changed by the shop"
+  },
+  "stockAtRisk": {
+    "badgeTitle": "{title}. {body}",
+    "body": "The stock master dropped below what this order was promised. Nothing was silently reduced - this order is the one at risk.",
+    "line": "{item} - short {short} of {total} across all orders",
+    "titleOne": "Short {quantity} × {item}",
+    "titleSeveral": {
+      "one": "Short stock on {n} item",
+      "other": "Short stock on {n} items"
+    }
   }
 }
