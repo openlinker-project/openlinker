@@ -130,6 +130,7 @@ describe('CategoryResolutionService', () => {
         provenance: 'borrows',
         method: 'category_mapping',
       });
+      expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith(CONNECTION_ID, 'src-1');
     });
 
     it('should leave provenance null on the mapping path when no barcode is supplied', async () => {
@@ -176,6 +177,166 @@ describe('CategoryResolutionService', () => {
 
       expect(result.method).toBe('auto_detect');
       expect(result.method).not.toBe('provision');
+    });
+
+    describe('mapping precedence over a barcode match (#3994)', () => {
+      const barcodeAdapter = (categoryId: string | null): Record<string, jest.Mock> => ({
+        updateOfferQuantity: jest.fn(),
+        matchCategoryByBarcode: jest.fn().mockResolvedValue(categoryId),
+      });
+
+      it('should resolve via auto_detect when the barcode matches and no mapping exists', async () => {
+        const adapter = barcodeAdapter('allegro-cat-123');
+        integrationsService.getCapabilityAdapter.mockResolvedValue(adapter);
+        mappingConfig.resolveDestinationCategory.mockResolvedValue(null);
+
+        const result = await service.resolveCategory({
+          connectionId: CONNECTION_ID,
+          barcode: '5901234123457',
+          sourceCategoryIds: ['ps-cat-1'],
+        });
+
+        expect(result).toEqual({
+          destinationCategoryId: 'allegro-cat-123',
+          provenance: 'borrows',
+          method: 'auto_detect',
+        });
+        expect(adapter.matchCategoryByBarcode).toHaveBeenCalledWith('5901234123457');
+      });
+
+      it('should keep auto_detect when the barcode category equals the mapped category', async () => {
+        integrationsService.getCapabilityAdapter.mockResolvedValue(barcodeAdapter('allegro-cat-123'));
+        mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-123');
+
+        const result = await service.resolveCategory({
+          connectionId: CONNECTION_ID,
+          barcode: '5901234123457',
+          sourceCategoryIds: ['ps-cat-1'],
+        });
+
+        expect(result.method).toBe('auto_detect');
+        expect(result.destinationCategoryId).toBe('allegro-cat-123');
+      });
+
+      it('should resolve via category_mapping when the barcode category disagrees with the mapping', async () => {
+        // An explicit mapping beats a barcode inference.
+        integrationsService.getCapabilityAdapter.mockResolvedValue(barcodeAdapter('allegro-powerbanki'));
+        mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-t-shirty');
+
+        const result = await service.resolveCategory({
+          connectionId: CONNECTION_ID,
+          barcode: '5901234000017',
+          sourceCategoryIds: ['ps-tshirts'],
+        });
+
+        expect(result).toEqual({
+          destinationCategoryId: 'allegro-t-shirty',
+          provenance: 'borrows',
+          method: 'category_mapping',
+        });
+      });
+    });
+
+    it('should reuse a borrowed-taxonomy mapping and bear borrows provenance on the mapping path (#1045)', async () => {
+      mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-258066');
+
+      const result = await service.resolveCategory({
+        connectionId: 'erli-conn',
+        sourceCategoryIds: ['ps-cat-1'],
+        borrowedTaxonomy: 'allegro',
+        sourceConnectionId: 'ps-master',
+      });
+
+      expect(result).toEqual({
+        destinationCategoryId: 'allegro-cat-258066',
+        provenance: 'borrows',
+        method: 'category_mapping',
+      });
+      // Borrowed taxonomy + source store threaded into the mapping lookup.
+      expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith('erli-conn', 'ps-cat-1', {
+        borrowedTaxonomy: 'allegro',
+        sourceConnectionId: 'ps-master',
+      });
+      // No adapter resolution on the mapping path (no extra I/O).
+      expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
+    });
+
+    it('should report borrows provenance even when a borrowed mapping is unresolved (#1045)', async () => {
+      mappingConfig.resolveDestinationCategory.mockResolvedValue(null);
+
+      const result = await service.resolveCategory({
+        connectionId: 'erli-conn',
+        sourceCategoryIds: ['ps-cat-1'],
+        borrowedTaxonomy: 'allegro',
+        sourceConnectionId: 'ps-master',
+      });
+
+      expect(result).toEqual({
+        destinationCategoryId: null,
+        provenance: 'borrows',
+        method: 'manual',
+      });
+    });
+
+    it('should try multiple source categories in order until one resolves', async () => {
+      mappingConfig.resolveDestinationCategory
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce('allegro-cat-deep');
+
+      const result = await service.resolveCategory({
+        connectionId: CONNECTION_ID,
+        sourceCategoryIds: ['ps-cat-shallow', 'ps-cat-deep'],
+      });
+
+      expect(result).toEqual({
+        destinationCategoryId: 'allegro-cat-deep',
+        provenance: null,
+        method: 'category_mapping',
+      });
+      expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledTimes(2);
+      expect(mappingConfig.resolveDestinationCategory).toHaveBeenNthCalledWith(1, CONNECTION_ID, 'ps-cat-shallow');
+      expect(mappingConfig.resolveDestinationCategory).toHaveBeenNthCalledWith(2, CONNECTION_ID, 'ps-cat-deep');
+    });
+
+    it('should return manual when there is neither a barcode nor a source category', async () => {
+      const result = await service.resolveCategory({ connectionId: CONNECTION_ID });
+
+      expect(result).toEqual({ destinationCategoryId: null, provenance: null, method: 'manual' });
+      expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to the mapping when adapter resolution fails during auto-detect', async () => {
+      integrationsService.getCapabilityAdapter.mockRejectedValue(new Error('adapter unavailable'));
+      mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-fallback');
+
+      const result = await service.resolveCategory({
+        connectionId: CONNECTION_ID,
+        barcode: '5901234123457',
+        sourceCategoryIds: ['ps-cat-1'],
+      });
+
+      expect(result).toEqual({
+        destinationCategoryId: 'allegro-cat-fallback',
+        provenance: null,
+        method: 'category_mapping',
+      });
+    });
+
+    it('should fall back to the mapping when the adapter cannot match barcodes', async () => {
+      integrationsService.getCapabilityAdapter.mockResolvedValue({ updateOfferQuantity: jest.fn() });
+      mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-mapped');
+
+      const result = await service.resolveCategory({
+        connectionId: CONNECTION_ID,
+        barcode: '5901234123457',
+        sourceCategoryIds: ['ps-cat-1'],
+      });
+
+      expect(result).toEqual({
+        destinationCategoryId: 'allegro-cat-mapped',
+        provenance: 'borrows',
+        method: 'category_mapping',
+      });
     });
   });
 
