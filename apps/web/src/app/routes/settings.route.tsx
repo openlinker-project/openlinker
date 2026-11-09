@@ -3,7 +3,7 @@ import type { RouteCrumbHandle } from '../nav-registry.types';
 
 export const settingsRoute: RouteObject = {
   path: 'settings',
-  handle: { crumb: { group: 'Platform', title: 'Settings' } } satisfies RouteCrumbHandle,
+  handle: { crumb: { group: 'platform', page: 'settings' } } satisfies RouteCrumbHandle,
   lazy: async () => {
     const { SettingsPage } = await import('../../pages/settings/settings-page');
     return { Component: SettingsPage };

@@ -1,4 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import {
+  interpolate,
+  renderRich,
+  useMessages,
+  usePlural,
+  type Messages,
+  type PluralFn,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
@@ -20,7 +29,9 @@ import {
 import { RateLimitSection } from './rate-limit-section';
 import { StockAndPricingSection } from './stock-and-pricing-section';
 import { FulfilmentOwnershipSection } from './fulfilment-ownership-section';
+import { PaymentWritebackSection } from './payment-writeback-section';
 import { readFulfilmentOwnedByDestination } from '../lib/fulfilment-ownership';
+import { readPaymentWritebackForm } from '../lib/payment-writeback-config';
 import { SalesDocumentStatusSection } from './sales-document-status-section';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -32,7 +43,7 @@ import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import {
   usePlatform,
@@ -47,16 +58,18 @@ import { isStockLocationOverrideValidationError } from '../lib/stock-location-ov
 import { collectFormErrorMessages } from '../lib/collect-form-error-messages';
 import { isOmsRoutingUiEnabled } from '../../../shared/config/oms-routing-ui';
 
+// A technical example, not prose: the same in every language.
+const ADAPTER_KEY_EXAMPLE = 'prestashop.webservice.v1';
+
 interface EditConnectionFormProps {
   connection: Connection;
 }
 
-const NEEDS_ATTENTION_ONE = '1 field needs attention. See the list at the top of the form.';
+type EditConnectionCopy = ResolvedCopy<Messages['connections']>['editConnectionForm'];
 
-function describeInvalidFields(count: number): string {
-  if (count === 1) return NEEDS_ATTENTION_ONE;
-  if (count > 1) return `${count} fields need attention. See the list at the top of the form.`;
-  return 'Some fields need attention. See the list at the top of the form.';
+function describeInvalidFields(copy: EditConnectionCopy, plural: PluralFn, count: number): string {
+  if (count >= 1) return plural(count, copy.needsAttention, { n: count });
+  return copy.someNeedAttention;
 }
 
 /**
@@ -420,6 +433,8 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const apiClient = useApiClient();
   const updateConnection = useUpdateConnectionMutation();
   const { showToast } = useToast();
+  const copy = useMessages('connections').editConnectionForm;
+  const plural = usePlural();
   // DEF-21: advisory notices the save returned. They outlive the toast, so the
   // form stays put and lets the operator read them before moving on.
   const [saveWarnings, setSaveWarnings] = useState<string[]>([]);
@@ -503,6 +518,8 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       stockLocationOverride: readStockLocationOverride(connection.config),
       // "This system packs and ships orders itself" (#2118) — platform-neutral.
       fulfilmentOwnedByDestination: readFulfilmentOwnedByDestination(connection.config),
+      // "When the buyer pays later" (#3963) — platform-neutral.
+      paymentWriteback: readPaymentWritebackForm(connection.config),
       // Plugin-owned structured fields (#1330) — the platform's contribution
       // hydrates its own field slice (e.g. KSeF seller/payment) so an
       // unrelated save doesn't blank the persisted platform config.
@@ -726,6 +743,17 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
 
+  // #3963 — re-serialize `config.paymentWriteback` into configText. Same shape
+  // as `syncFulfilmentOwnershipToJson`: the section sets the value FIRST.
+  function syncPaymentWritebackToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      paymentWriteback: form.getValues('paymentWriteback'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
   // Auto-select the sole candidate ONCE on mount, only when the server never
   // stored a value (typeof check distinguishes "unset" from an explicit `""`
   // opt-out) and the operator hasn't already touched the picker. Never marks
@@ -754,7 +782,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   // `Alert` / `FormErrorSummary` sit at the top of a long form while the
   // button is at the bottom, so a failure is also reported as a toast.
   const showSaveFailedToast = (description: string): void => {
-    showToast({ tone: 'error', title: 'Changes not saved', description });
+    showToast({ tone: 'error', title: copy.notSavedTitle, description });
   };
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -801,8 +829,8 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       });
       showToast({
         tone: 'success',
-        title: 'Connection updated',
-        description: 'Connection settings have been saved.',
+        title: copy.updatedTitle,
+        description: copy.updatedDescription,
       });
       if (saved?.warnings && saved.warnings.length > 0) {
         setSaveWarnings(saved.warnings);
@@ -828,46 +856,48 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         updateConnection.reset();
         // The field and the summary already carry the message; the toast
         // points at them rather than repeating it a third time.
-        showSaveFailedToast(NEEDS_ATTENTION_ONE);
+        showSaveFailedToast(describeInvalidFields(copy, plural, 1));
         return;
       }
       // Covers the PATCH rejecting (also shown in the top-of-form `Alert`) and
       // anything thrown before it - the pre-submit refetch or the input
       // mapping - which `updateConnection.error` never sees.
       showSaveFailedToast(
-        error instanceof Error && error.message ? error.message : 'An unexpected error occurred.',
+        error instanceof Error && error.message ? error.message : copy.unexpectedError,
       );
     }
   }, (errors) => {
-    showSaveFailedToast(describeInvalidFields(collectFormErrorMessages(errors).length));
+    showSaveFailedToast(
+      describeInvalidFields(copy, plural, collectFormErrorMessages(errors).length),
+    );
   });
 
   return (
     <form className="form-card form-narrow" onSubmit={(event) => void onSubmit(event)} noValidate>
       <div className="panel__header">
         <div>
-          <p className="eyebrow">Edit connection</p>
+          <p className="eyebrow">{copy.eyebrow}</p>
           <h3 className="section-title">{connection.name}</h3>
         </div>
-        <span className="panel__meta">Update settings</span>
+        <span className="panel__meta">{copy.meta}</span>
       </div>
 
       {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
         <FormErrorSummary errors={validationMessages} />
       ) : null}
       {updateConnection.error ? (
-        <Alert tone="error" title="Unable to update connection">
+        <Alert tone="error" title={copy.errorTitle}>
           {updateConnection.error.message}
         </Alert>
       ) : null}
       {saveWarnings.length > 0 ? (
         <Alert
           tone="warning"
-          title="Saved, with something to check"
+          title={copy.warningsTitle}
           data-testid="connection-save-warnings"
           action={
             <Button tone="secondary" onClick={() => void navigate(`/connections/${connection.id}`)}>
-              Go to connection
+              {copy.goToConnection}
             </Button>
           }
         >
@@ -877,29 +907,29 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         </Alert>
       ) : null}
 
-      <FormField label="Connection name" name="name" error={form.formState.errors.name?.message}>
+      <FormField label={copy.fields.name.label} name="name" error={form.formState.errors.name?.message}>
         <Input
           {...form.register('name')}
-          placeholder="Main PrestaShop Store"
+          placeholder={copy.fields.name.placeholder}
           invalid={Boolean(form.formState.errors.name)}
         />
       </FormField>
 
-      <FormField label="Platform type" name="platformType">
+      <FormField label={copy.fields.platformType} name="platformType">
         <Input value={connection.platformType} disabled />
       </FormField>
 
       {PluginCredentialsPanel ? (
         <PluginCredentialsPanel connection={connection} />
       ) : (
-        <FormField label="Credentials" name="credentials">
+        <FormField label={copy.fields.credentials.label} name="credentials">
           <Input
             value={
               hasMissingCredentials(connection)
-                ? 'Not set - removed when this connection was archived'
+                ? copy.fields.credentials.removed
                 : connection.credentialsBacked
-                  ? 'Stored securely (managed by integration)'
-                  : 'Environment variable (not editable via UI)'
+                  ? copy.fields.credentials.stored
+                  : copy.fields.credentials.environment
             }
             disabled
           />
@@ -907,22 +937,21 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       )}
 
       <FormField
-        label="Adapter key"
+        label={copy.fields.adapterKey.label}
         name="adapterKey"
         error={form.formState.errors.adapterKey?.message}
-        description="Optional when the default adapter can be inferred from the selected platform."
+        description={copy.fields.adapterKey.description}
       >
         <Input
           {...form.register('adapterKey')}
-          placeholder="prestashop.webservice.v1"
+          placeholder={ADAPTER_KEY_EXAMPLE}
           invalid={Boolean(form.formState.errors.adapterKey)}
         />
       </FormField>
 
       {hasStructuredInputs && !configIsParseable ? (
-        <Alert tone="warning" title="Raw JSON is invalid">
-          Fix the raw config JSON below before editing the structured inputs — they are locked so
-          your custom JSON keys are not silently lost.
+        <Alert tone="warning" title={copy.rawJsonInvalid.title}>
+          {copy.rawJsonInvalid.body}
         </Alert>
       ) : null}
 
@@ -1019,6 +1048,16 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         />
       ) : null}
 
+      {/* #3963 — read only where a late payment can be mirrored: an order destination. */}
+      {connection.enabledCapabilities.includes('OrderProcessorManager') ? (
+        <PaymentWritebackSection
+          connectionId={connection.id}
+          form={form}
+          configIsParseable={configIsParseable}
+          syncPaymentWritebackToJson={syncPaymentWritebackToJson}
+        />
+      ) : null}
+
       <div className="config-panel__toggle">
         <Button
           tone="secondary"
@@ -1026,16 +1065,16 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           onClick={() => setShowRawJson((prev) => !prev)}
           aria-expanded={showRawJson}
         >
-          {showRawJson ? 'Hide raw config JSON' : 'Show raw config JSON'}
+          {showRawJson ? copy.rawJson.hide : copy.rawJson.show}
         </Button>
       </div>
 
       {showRawJson || !hasStructuredInputs ? (
         <FormField
-          label="Config JSON"
+          label={copy.rawJson.label}
           name="configText"
           error={form.formState.errors.configText?.message}
-          description="Raw configuration. Edit carefully — secrets must remain outside the browser."
+          description={copy.rawJson.description}
         >
           <Textarea
             {...form.register('configText')}
@@ -1046,13 +1085,13 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       ) : null}
 
       <div className="form-actions">
-        <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+        <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
           <Button type="submit" disabled={updateConnection.isPending || write.demoReadOnly}>
-            {updateConnection.isPending ? 'Saving...' : 'Save changes'}
+            {updateConnection.isPending ? copy.saving : copy.save}
           </Button>
         </ReadOnlyLock>
         <Button tone="secondary" onClick={() => void navigate(`/connections/${connection.id}`)}>
-          Cancel
+          {copy.cancel}
         </Button>
       </div>
     </form>
@@ -1082,6 +1121,7 @@ function MarketplaceCatalogPicker({
   onChange,
   onRetry,
 }: MarketplaceCatalogPickerProps): ReactElement {
+  const copy = useMessages('connections').editConnectionForm.catalogPicker;
   const noCandidates = !isLoading && !loadError && candidates.length === 0 && !isStale;
 
   return (
@@ -1089,10 +1129,10 @@ function MarketplaceCatalogPicker({
       {loadError ? (
         <Alert
           tone="error"
-          title="Could not load ProductMaster connections"
+          title={copy.loadErrorTitle}
           action={
             <Button tone="secondary" type="button" onClick={onRetry}>
-              Retry
+              {copy.retry}
             </Button>
           }
         >
@@ -1101,33 +1141,32 @@ function MarketplaceCatalogPicker({
       ) : null}
 
       {noCandidates ? (
-        <Alert tone="info" title="No ProductMaster connections yet">
-          Barcode linking needs a catalog source.{' '}
-          <Link to="/connections/new?platform=prestashop">Add a PrestaShop connection</Link> to
-          enable offer-to-product linking.
+        <Alert tone="info" title={copy.emptyTitle}>
+          {renderRich(copy.emptyBody, {
+            link: (text) => <Link to="/connections/new?platform=prestashop">{text}</Link>,
+          })}
         </Alert>
       ) : null}
 
       {isStale ? (
-        <Alert tone="error" title="Linked catalog is missing">
-          This connection points to a deleted or disabled ProductMaster. Pick a new one below or
-          clear the link.
+        <Alert tone="error" title={copy.staleTitle}>
+          {copy.staleBody}
         </Alert>
       ) : null}
 
       <FormField
-        label="Product catalog connection"
+        label={copy.label}
         name="masterCatalogConnectionId"
         error={errorMessage}
-        description="OpenLinker uses this ProductMaster connection to resolve offer barcodes (EAN/GTIN) to internal product variants. If left empty and exactly one ProductMaster connection exists, it is used automatically."
+        description={copy.description}
       >
         {isLoading ? (
           <Select disabled>
-            <option>Loading connections…</option>
+            <option>{copy.loading}</option>
           </Select>
         ) : loadError ? (
           <Select disabled>
-            <option>Failed to load connections</option>
+            <option>{copy.loadFailed}</option>
           </Select>
         ) : (
           <Select
@@ -1136,7 +1175,7 @@ function MarketplaceCatalogPicker({
             disabled={disabled}
             invalid={Boolean(errorMessage) || isStale}
           >
-            <option value="">None (barcode linking disabled)</option>
+            <option value="">{copy.none}</option>
             {candidates.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -1144,7 +1183,7 @@ function MarketplaceCatalogPicker({
             ))}
             {isStale ? (
               <option value={value} disabled>
-                Missing: {value}
+                {interpolate(copy.missing, { id: value })}
               </option>
             ) : null}
           </Select>

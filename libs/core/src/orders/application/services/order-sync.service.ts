@@ -133,12 +133,21 @@ export class OrderSyncService implements IOrderSyncService {
     // clears the reason there. Without that, a stale routing reason would stand
     // beside a fresh `fulfillmentBlockReason` and assert "the router sent this
     // nowhere" about an order that is in fact held.
+    // #3959 - an unfiltered fan-out that reached nothing is either "nothing to
+    // mirror" (no other order destination exists at all) or "a destination is
+    // switched off". Only that case pays for the extra read.
+    const configuredDestinationCount =
+      destinations.length === 0 && requestedDestinations === undefined
+        ? await this.countConfiguredDestinations(sourceConnectionId)
+        : undefined;
+
     await this.persistDestinationRoutingBlock(
       order.id,
       deriveDestinationRoutingBlock({
         requestedDestinationIds: requestedDestinations,
         resolvedCount: destinations.length,
         unresolvedRequestedIds,
+        configuredDestinationCount,
       })
     );
 
@@ -146,14 +155,15 @@ export class OrderSyncService implements IOrderSyncService {
     // of them is a non-event. `listCapabilityAdapters` is active-only, so they
     // must be told apart here:
     //
-    //   (a) nothing configured / everything inactive  -> throw, as today
-    //   (b) the router deliberately named NOBODY      -> warn, return []
-    //   (c) the router named ids none of which are
-    //       currently eligible                        -> throw, naming them
+    //   (a1) no other destination exists at all       -> return [] (#3959)
+    //   (a2) destinations exist, none is active       -> throw, retryable
+    //   (b)  the router deliberately named NOBODY     -> warn, return []
+    //   (c)  the router named ids none of which are
+    //        currently eligible                       -> throw, naming them
     //
-    // All three are now ALSO persisted as an operator-visible reason by the
-    // write above — (a) writes `null`, since "nothing configured" is not a
-    // routing narrowing and the resulting failed job is what reports it.
+    // All four are persisted as an operator-visible reason by the write above:
+    // `no-destination-configured`, `no-active-destination`,
+    // `routed-to-no-destination` and `routed-destinations-unavailable`.
     if (destinations.length === 0) {
       if (requestedDestinations !== undefined && requestedDestinations.length === 0) {
         // (b) Ruling 1 — a deliberate empty routing decision is a NON-EVENT and
@@ -186,7 +196,22 @@ export class OrderSyncService implements IOrderSyncService {
         return [];
       }
 
-      // (a) and (c). The exception distinguishes them by whether it carries the
+      // (a1) #3959 - no connection other than the source can create orders, in
+      // any status. A shop on its own has nothing to copy its orders to, and
+      // that is a supported setup, not a failure: throwing here ended
+      // ingestion before the sales-document step, so the order never got its
+      // invoice or receipt, and the job retried ten times against a condition
+      // no retry can change. Same non-event treatment as (b); the order carries
+      // the neutral `no-destination-configured` reason written above.
+      if (configuredDestinationCount === 0) {
+        this.logger.log(
+          `Order ${order.id}: no order destination other than source connection ` +
+            `${sourceConnectionId} exists; nothing to mirror`
+        );
+        return [];
+      }
+
+      // (a2) a destination exists but none is active, and (c). The exception distinguishes them by whether it carries the
       // unresolved ids, and #2704 additionally persists (c) as
       // `'routed-destinations-unavailable'` before this throw.
       //
@@ -457,7 +482,7 @@ export class OrderSyncService implements IOrderSyncService {
       const destinationConnectionId = destinations[index].connectionId;
 
       if (outcome.status === 'fulfilled') {
-        const { orderRef } = outcome.value;
+        const { orderRef, created } = outcome.value;
         this.logger.log(
           `Order ${order.id} synced to destination ${destinationConnectionId} (destination order: ${orderRef.orderId}${orderRef.orderNumber ? `, orderNumber: ${orderRef.orderNumber}` : ''})`
         );
@@ -465,6 +490,7 @@ export class OrderSyncService implements IOrderSyncService {
           destinationConnectionId,
           status: 'success',
           orderRef,
+          created,
         };
       }
 
@@ -768,6 +794,20 @@ export class OrderSyncService implements IOrderSyncService {
    * Source-echo ids are excluded from the unresolved set, and that exclusion is
    * load-bearing rather than cosmetic — see the body.
    */
+  /**
+   * How many connections other than the source can create orders, in ANY
+   * status except archived (#3959). Lazy, so no adapter is built and no
+   * credentials are resolved just to count.
+   */
+  private async countConfiguredDestinations(sourceConnectionId: string): Promise<number> {
+    const configured = await this.integrationsService.listCapabilityAdapters({
+      capability: 'OrderProcessorManager',
+      includeAllStatuses: true,
+      lazy: true,
+    });
+    return configured.filter(({ connectionId }) => connectionId !== sourceConnectionId).length;
+  }
+
   private async resolveDestinations(
     sourceConnectionId: string,
     destinationConnectionIds?: readonly string[]

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, type ReactElement } from 'react';
 import { useAdaptersQuery } from '../../features/adapters/hooks/use-adapters-query';
 import type { AdapterSummary } from '../../features/adapters/api/adapters.types';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -7,11 +7,15 @@ import { StatusBadge } from '../../shared/ui/status-badge';
 import { Button } from '../../shared/ui/button';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { bucketCount, captureDemoEvent } from '../../features/demo';
+import { useMessages, type Messages, type ResolvedCopy } from '../../shared/i18n';
 
-const COLUMNS: DataTableColumn<AdapterSummary>[] = [
+type PageCopy = ResolvedCopy<Messages['adapters']>['adaptersCatalogPage'];
+
+function buildColumns(copy: PageCopy): DataTableColumn<AdapterSummary>[] {
+  return [
   {
     id: 'adapter',
-    header: 'Adapter',
+    header: copy.columns.adapter,
     cell: (adapter) => (
       <div className="data-table__stack">
         <strong>{adapter.displayName ?? adapter.adapterKey}</strong>
@@ -23,14 +27,14 @@ const COLUMNS: DataTableColumn<AdapterSummary>[] = [
   },
   {
     id: 'platform',
-    header: 'Platform',
+    header: copy.columns.platform,
     cell: (adapter) => adapter.platformType,
     accessor: (adapter) => adapter.platformType,
     sortable: true,
   },
   {
     id: 'capabilities',
-    header: 'Capabilities',
+    header: copy.columns.capabilities,
     cell: (adapter) => (
       <div className="badge-group">
         {adapter.supportedCapabilities.map((cap) => (
@@ -44,16 +48,20 @@ const COLUMNS: DataTableColumn<AdapterSummary>[] = [
   },
   {
     id: 'version',
-    header: 'Version',
+    header: copy.columns.version,
     cell: (adapter) => (
-      <span className="mono-text">{adapter.version ?? '—'}</span>
+      <span className="mono-text">{adapter.version ?? copy.noVersion}</span>
     ),
     hideBelow: 480,
   },
-];
+  ];
+}
 
 export function AdaptersCatalogPage(): ReactElement {
   const query = useAdaptersQuery();
+  const copy = useMessages('adapters').adaptersCatalogPage;
+  const common = useMessages('ui').common;
+  const columns = useMemo(() => buildColumns(copy), [copy]);
 
   // Fire once per successful load, not on every refetch — demo-mode
   // analytics only (#1789), no-op elsewhere.
@@ -69,33 +77,33 @@ export function AdaptersCatalogPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow="Platform"
-      title="Adapter catalog"
-      description="Available integration adapters and their supported capabilities."
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
     >
       {query.isLoading ? (
         <LoadingState
-          title="Loading adapters"
-          message="Fetching the adapter registry…"
+          title={copy.loading.title}
+          message={copy.loading.message}
         />
       ) : query.error ? (
         <ErrorState
-          title="Unable to load adapters"
+          title={copy.error.title}
           message={query.error.message}
           action={
-            <Button onClick={() => { void query.refetch(); }}>Retry</Button>
+            <Button onClick={() => { void query.refetch(); }}>{common.retry}</Button>
           }
         />
       ) : (query.data ?? []).length === 0 ? (
         // No action: adapters are system-registered at build time; operators cannot add them from the UI.
         <EmptyState
-          title="No adapters available"
-          message="No integration adapters are registered in the system."
+          title={copy.empty.title}
+          message={copy.empty.message}
         />
       ) : (
         <DataTable
-          caption="Available adapters"
-          columns={COLUMNS}
+          caption={copy.caption}
+          columns={columns}
           rowKey={(adapter) => adapter.adapterKey}
           rows={query.data ?? []}
         />

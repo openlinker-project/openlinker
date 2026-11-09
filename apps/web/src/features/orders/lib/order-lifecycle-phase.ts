@@ -21,13 +21,14 @@
  *
  * **The phase is a SECOND ORTHOGONAL PARTITION beside `OrderHealth`, never a
  * sixth health bucket** (ADR-059). Health answers "is something wrong", the
- * phase answers "what stage is it at" — a held order is usually also `synced`.
+ * phase answers "what stage is it at" - a held order is usually also `synced`.
  * The badge therefore renders BESIDE the health badge, never instead of it.
  *
  * @module apps/web/src/features/orders/lib
  * @see docs/architecture/adrs/059-order-lifecycle-derived-phase.md
  */
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
+import { getMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import {
   OrderLifecyclePhaseValues,
   isOrderLifecyclePhase,
@@ -45,49 +46,52 @@ export {
   type OrderLifecyclePhaseValue,
 };
 
+type OrdersCopy = ResolvedCopy<Messages['orders']>;
+
 /**
- * Label + tone per phase. Same shape as `ORDER_SLA_META` / `ORDER_FULFILLMENT_META`
- * in `order-health.ts`; colour is never the only signal (`StatusBadge` pairs the
- * tone with the label text).
+ * Tone per phase; the label is `orders.lifecyclePhase.labels[phase]`. Same
+ * shape as `ORDER_SLA_TONE` / `ORDER_FULFILLMENT_TONE` in `order-health.ts`;
+ * colour is never the only signal (`StatusBadge` pairs the tone with the label
+ * text).
  *
  * `ready` is deliberately `neutral`, not `info`: on the most common row it sits
  * next to the health badge `awaiting_dispatch`, which is already `info`, and two
  * same-tone dot badges saying nearly the same thing compete for the operator's
  * attention (#2081 rule 2). Neutral reads correctly for a residual state.
- * `cancelled` is neutral for the same reason — it is an outcome, not a problem.
+ * `cancelled` is neutral for the same reason - it is an outcome, not a problem.
  */
-export const ORDER_LIFECYCLE_PHASE_META: Record<
-  OrderLifecyclePhaseValue,
-  { label: string; tone: StatusBadgeTone }
-> = {
-  cancelled: { label: 'Cancelled', tone: 'neutral' },
-  vendor_authoritative: { label: 'Channel status', tone: 'info' },
-  delivered: { label: 'Delivered', tone: 'success' },
-  in_transit: { label: 'With carrier', tone: 'info' },
-  fulfillment_failed: { label: 'Dispatch failed', tone: 'error' },
-  held: { label: 'On hold', tone: 'warning' },
-  amending: { label: 'Change pending', tone: 'warning' },
-  blocked: { label: 'Blocked', tone: 'error' },
-  ready: { label: 'Ready', tone: 'neutral' },
+export const ORDER_LIFECYCLE_PHASE_TONE: Record<OrderLifecyclePhaseValue, StatusBadgeTone> = {
+  cancelled: 'neutral',
+  vendor_authoritative: 'info',
+  delivered: 'success',
+  in_transit: 'info',
+  fulfillment_failed: 'error',
+  held: 'warning',
+  amending: 'warning',
+  blocked: 'error',
+  ready: 'neutral',
 };
 
+/** The badge label for a phase, in the active language. */
+export function orderLifecyclePhaseLabel(
+  phase: OrderLifecyclePhaseValue,
+  copy: OrdersCopy = getMessages('orders')
+): string {
+  return copy.lifecyclePhase.labels[phase];
+}
+
 /**
- * One line per phase answering the operator's actual question — what is this
+ * One line per phase answering the operator's actual question - what is this
  * order waiting on, and who holds it up. Rendered under the detail header's
  * badge; the list row shows the label alone (the row has no space for a
  * sentence, and five vocabularies already compete there).
  */
-export const ORDER_LIFECYCLE_PHASE_WAITING_ON: Record<OrderLifecyclePhaseValue, string> = {
-  cancelled: 'This order was cancelled.',
-  vendor_authoritative: "The sales channel reports this order's status.",
-  delivered: 'Delivered — nothing outstanding.',
-  in_transit: 'With the carrier, waiting on delivery.',
-  fulfillment_failed: 'Dispatch failed — the shipment needs attention.',
-  held: 'On hold — someone paused it; release it to continue.',
-  amending: 'A requested change is waiting for the channel to confirm.',
-  blocked: 'Waiting on OpenLinker — the order cannot be matched yet.',
-  ready: 'Ready — waiting to be dispatched.',
-};
+export function orderLifecyclePhaseWaitingOn(
+  phase: OrderLifecyclePhaseValue,
+  copy: OrdersCopy = getMessages('orders')
+): string {
+  return copy.lifecyclePhase.waitingOn[phase];
+}
 
 /** What the badge renders: a label, a tone, and an optional attribution line. */
 export interface OrderPhaseBadgeDescriptor {
@@ -118,11 +122,12 @@ export interface OrderPhaseBadgeDescriptor {
 export function phaseBadge(
   phase: string | null | undefined,
   vendorLabel?: string | null,
+  copy: OrdersCopy = getMessages('orders'),
 ): OrderPhaseBadgeDescriptor | null {
   if (!isOrderLifecyclePhase(phase)) return null;
-  const meta = ORDER_LIFECYCLE_PHASE_META[phase];
+  const tone = ORDER_LIFECYCLE_PHASE_TONE[phase];
   if (phase === 'vendor_authoritative' && vendorLabel) {
-    return { label: vendorLabel, tone: meta.tone, attribution: 'reported by the sales channel' };
+    return { label: vendorLabel, tone, attribution: copy.lifecyclePhase.attribution };
   }
-  return { label: meta.label, tone: meta.tone };
+  return { label: copy.lifecyclePhase.labels[phase], tone };
 }

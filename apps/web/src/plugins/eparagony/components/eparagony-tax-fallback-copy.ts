@@ -3,7 +3,9 @@
  *
  * The hazard explanation behind `config.defaultTaxRateCode`, kept in one place
  * so the field description and the infotip cannot drift into two accounts of the
- * same rule.
+ * same rule. The sentences live in the `eparagony` namespace under
+ * `taxFallback` (ADR-081); this file holds the env-var constant the copy names
+ * and assembles the infotip from the copy it is handed.
  *
  * Every claim below was verified against the code rather than paraphrased from a
  * docblock, because the docblock overstates the case. `tax-rate.policy.ts` says
@@ -19,14 +21,17 @@
  * The environment variable is quoted from `TAX_RATE_STRICT_ENV_VAR`
  * (`libs/core/src/sales-documents/domain/types/tax-rate-enforcement.types.ts`),
  * which exists "so the rollout runbook and the code cannot drift on the
- * spelling". `apps/web` cannot import it (#591), so the copy below is a mirror
- * and `scripts/check-eparagony-config-mirror.mjs` fails the build if the two
- * spellings diverge - a sentence naming a variable that no longer switches
- * anything is worse than no sentence.
+ * spelling". `apps/web` cannot import it (#591), so the constant below is a
+ * mirror and `scripts/check-eparagony-config-mirror.mjs` fails the build if the
+ * two spellings diverge - a sentence naming a variable that no longer switches
+ * anything is worse than no sentence. The copy never spells the name itself: it
+ * interpolates this constant as `{envVar}`.
  *
  * @module plugins/eparagony/components
  */
+import { interpolate } from '../../../shared/i18n';
 import type { InfotipDefinition } from '../../../shared/ui/infotip';
+import type { getEparagonyMessages } from '../messages';
 
 /**
  * The env var whose absence makes this fallback reachable. Mirrored, guarded -
@@ -34,42 +39,23 @@ import type { InfotipDefinition } from '../../../shared/ui/infotip';
  */
 export const TAX_RATE_STRICT_ENV_VAR = 'OL_TAX_RATE_STRICT_ENABLED';
 
-export const TAX_FALLBACK_INFOTIP_LABEL = 'What the fallback tax rate does, and why it is risky';
+export type TaxFallbackCopy = ReturnType<typeof getEparagonyMessages>['taxFallback'];
 
-/** Shown under the field itself - the short version an operator reads without clicking. */
-export const TAX_FALLBACK_FIELD_DESCRIPTION =
-  'Leave this empty. It is only used for an order line that arrives with no tax rate at ' +
-  'all, and an empty setting makes OpenLinker refuse such a line instead of guessing.';
-
-export const EPARAGONY_TAX_FALLBACK_HAZARD_NOTES: readonly InfotipDefinition[] = [
-  {
-    term: 'What this is',
-    text:
-      'A slot on your own fiscal device (A to G). It is used for one thing only: an order ' +
-      'line that reaches this connection carrying no tax rate. It is you naming your ' +
-      'device’s slot — OpenLinker never invents a rate.',
-  },
-  {
-    term: 'How it is meant to work',
-    text:
-      'The rate belongs to the product, in your shop, and travels with the order line. ' +
-      'Leaving this empty is the intended setup: a line with no rate is then refused, with ' +
-      'an error naming the order, and you fix the rate in the catalogue.',
-    caveat: 'A refused registration is a problem you can fix. An issued receipt is not.',
-  },
-  {
-    term: 'Why setting it is risky',
-    text:
-      'With a slot set, that line is registered at this rate instead of being refused. A ' +
-      'fiscal receipt reaches the buyer and your daily report and cannot be recalled, so a ' +
-      'wrong slot puts a wrong tax figure on a document you are answerable for.',
-  },
-  {
-    term: 'When it actually fires',
-    text:
-      'Only for a line with a blank rate. OpenLinker can refuse those before this connection ' +
-      'ever sees them, but that strict check is off unless someone switched it on ' +
-      `(${TAX_RATE_STRICT_ENV_VAR}).`,
-    caveat: 'On a standard installation it is off, so this fallback can fire.',
-  },
-];
+/** The infotip's notes, in reading order, built from the active language's copy. */
+export function buildTaxFallbackHazardNotes(copy: TaxFallbackCopy): readonly InfotipDefinition[] {
+  const notes = copy.hazardNotes;
+  return [
+    { term: notes.whatThisIs.term, text: notes.whatThisIs.text },
+    {
+      term: notes.intendedUse.term,
+      text: notes.intendedUse.text,
+      caveat: notes.intendedUse.caveat,
+    },
+    { term: notes.risk.term, text: notes.risk.text },
+    {
+      term: notes.whenItFires.term,
+      text: interpolate(notes.whenItFires.text, { envVar: TAX_RATE_STRICT_ENV_VAR }),
+      caveat: notes.whenItFires.caveat,
+    },
+  ];
+}

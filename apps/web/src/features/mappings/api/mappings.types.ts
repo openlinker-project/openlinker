@@ -7,6 +7,8 @@
  * @module apps/web/src/features/mappings/api
  */
 
+import { getMessages } from '../../../shared/i18n';
+
 export interface StatusMapping {
   id: string;
   connectionId: string;
@@ -118,14 +120,22 @@ export interface UpsertOrderStateMappingsPayload {
  * OL→destination order-state mapping panel. Mirrors the BE `OrderStatusValues`
  * union; hand-kept in sync under the FE-001 hand-written-contract strategy.
  */
-export const OL_ORDER_STATUS_OPTIONS: MappingOption[] = [
-  { value: 'pending', label: 'Pending' },
-  { value: 'processing', label: 'Processing' },
-  { value: 'shipped', label: 'Shipped' },
-  { value: 'delivered', label: 'Delivered' },
-  { value: 'cancelled', label: 'Cancelled' },
-  { value: 'refunded', label: 'Refunded' },
-];
+const OL_ORDER_STATUS_VALUES = [
+  'pending',
+  'processing',
+  'shipped',
+  'delivered',
+  'cancelled',
+  'refunded',
+] as const;
+
+/** Labels are getters, read at access time, so they follow the active language. */
+export const OL_ORDER_STATUS_OPTIONS: MappingOption[] = OL_ORDER_STATUS_VALUES.map((value) => ({
+  value,
+  get label(): string {
+    return getMessages('mappings').orderStatuses[value];
+  },
+}));
 
 // ── Category mapping types ────────────────────────────────────────────────
 

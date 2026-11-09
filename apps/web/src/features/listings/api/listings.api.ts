@@ -55,6 +55,7 @@ import type {
   BulkListingRetryResponse,
 } from './bulk-listings.types';
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages, interpolate } from '../../../shared/i18n';
 
 export interface CreateOfferOptions {
   /**
@@ -422,7 +423,9 @@ async function readWithIdleCeiling(
     timer = setTimeout(() => {
       reject(
         new ApiError(
-          `No response from the category lookup for ${Math.round(idleTimeoutMs / 1000)}s.`,
+          interpolate(getMessages('listings').categoryLookup.idleTimeout, {
+            seconds: Math.round(idleTimeoutMs / 1000),
+          }),
           408,
           { idleTimeoutMs },
         ),

@@ -30,10 +30,12 @@
  * @module apps/web/src/features/invoicing/components
  */
 import type { ReactElement } from 'react';
-import { useTranslation } from '../../../shared/i18n';
+import { useMessages } from '../../../shared/i18n';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { deriveInvoiceDisplayStatus } from '../lib/derive-invoice-display';
 import type { InvoiceRecord } from '../api/invoicing.types';
+
+type TimelineCopy = ReturnType<typeof useMessages<'invoicing'>>['invoice']['tl'];
 
 interface InvoiceTimelineProps {
   invoice: InvoiceRecord | null;
@@ -133,14 +135,11 @@ function TlNodeRow({ node }: { node: TlNode }): ReactElement {
  * Build the issuance lane nodes from an InvoiceRecord.
  * Created → Pending → Issued (or failed/in-doubt at the Issued step).
  */
-function buildIssuanceLane(
-  invoice: InvoiceRecord | null,
-  t: (key: string, fallback: string) => string,
-): TlNode[] {
+function buildIssuanceLane(invoice: InvoiceRecord | null, copy: TimelineCopy): TlNode[] {
   const displayStatus = deriveInvoiceDisplayStatus(invoice);
 
   const createdNode: TlNode = {
-    label: t('invoice.tl.created', 'Created'),
+    label: copy.created,
     timestamp: invoice?.createdAt ?? null,
     state: 'done',
   };
@@ -157,7 +156,7 @@ function buildIssuanceLane(
       return [
         createdNode,
         {
-          label: t('invoice.tl.pending', 'Pending'),
+          label: copy.pending,
           state: 'active',
         },
       ];
@@ -166,8 +165,8 @@ function buildIssuanceLane(
       return [
         createdNode,
         {
-          label: t('invoice.tl.issuing', 'Issuing'),
-          subLabel: t('invoice.tl.issuingHint', 'In progress — locked'),
+          label: copy.issuing,
+          subLabel: copy.issuingHint,
           state: 'locked',
         },
       ];
@@ -176,7 +175,7 @@ function buildIssuanceLane(
       return [
         createdNode,
         {
-          label: t('invoice.tl.issued', 'Issued'),
+          label: copy.issued,
           timestamp: invoice.issuedAt,
           state: 'done',
         },
@@ -186,8 +185,8 @@ function buildIssuanceLane(
       return [
         createdNode,
         {
-          label: t('invoice.tl.failed', 'Failed'),
-          subLabel: t('invoice.tl.failedHint', 'Rejected — safe to retry'),
+          label: copy.failed,
+          subLabel: copy.failedHint,
           timestamp: invoice.updatedAt,
           state: 'error',
         },
@@ -197,8 +196,8 @@ function buildIssuanceLane(
       return [
         createdNode,
         {
-          label: t('invoice.tl.inDoubt', 'Uncertain'),
-          subLabel: t('invoice.tl.inDoubtHint', 'Check provider before retrying'),
+          label: copy.inDoubt,
+          subLabel: copy.inDoubtHint,
           timestamp: invoice.updatedAt,
           state: 'warning',
         },
@@ -212,7 +211,7 @@ function buildIssuanceLane(
  */
 function buildClearanceLane(
   invoice: InvoiceRecord | null,
-  t: (key: string, fallback: string) => string,
+  copy: TimelineCopy,
 ): TlNode[] | null {
   if (!invoice || invoice.regulatoryStatus === 'not-applicable') {
     return null;
@@ -231,11 +230,8 @@ function buildClearanceLane(
   if (status === 'pending-submission') {
     return [
       {
-        label: t('invoice.tl.pendingSubmission', 'Awaiting submission'),
-        subLabel: t(
-          'invoice.tl.pendingSubmissionHint',
-          'Issued offline — not yet sent for clearance',
-        ),
+        label: copy.pendingSubmission,
+        subLabel: copy.pendingSubmissionHint,
         timestamp: invoice.updatedAt,
         state: 'active',
         testId: CLEARANCE_WAITING_NODE_TEST_ID,
@@ -246,12 +242,12 @@ function buildClearanceLane(
   if (status === 'submitted') {
     return [
       {
-        label: t('invoice.tl.submitted', 'Submitted'),
+        label: copy.submitted,
         timestamp: invoice.updatedAt,
         state: 'done',
       },
       {
-        label: t('invoice.tl.clearancePending', 'Awaiting acceptance'),
+        label: copy.clearancePending,
         state: 'active',
       },
     ];
@@ -260,11 +256,11 @@ function buildClearanceLane(
   if (status === 'accepted') {
     return [
       {
-        label: t('invoice.tl.submitted', 'Submitted'),
+        label: copy.submitted,
         state: 'done',
       },
       {
-        label: t('invoice.tl.accepted', 'Accepted'),
+        label: copy.accepted,
         timestamp: invoice.updatedAt,
         state: 'done',
       },
@@ -274,11 +270,11 @@ function buildClearanceLane(
   if (status === 'rejected') {
     return [
       {
-        label: t('invoice.tl.submitted', 'Submitted'),
+        label: copy.submitted,
         state: 'done',
       },
       {
-        label: t('invoice.tl.clearanceRejected', 'Rejected by authority'),
+        label: copy.clearanceRejected,
         timestamp: invoice.updatedAt,
         state: 'error',
       },
@@ -288,7 +284,7 @@ function buildClearanceLane(
   // cleared — reserved status, not rendered as terminal success
   return [
     {
-      label: t('invoice.tl.submitted', 'Submitted'),
+      label: copy.submitted,
       timestamp: invoice.updatedAt,
       state: 'done',
     },
@@ -296,19 +292,19 @@ function buildClearanceLane(
 }
 
 export function InvoiceTimeline({ invoice, className }: InvoiceTimelineProps): ReactElement {
-  const { t } = useTranslation();
+  const copy = useMessages('invoicing').invoice.tl;
 
-  const issuanceNodes = buildIssuanceLane(invoice, t);
-  const clearanceNodes = buildClearanceLane(invoice, t);
+  const issuanceNodes = buildIssuanceLane(invoice, copy);
+  const clearanceNodes = buildClearanceLane(invoice, copy);
   const awaitingSubmission = invoice?.regulatoryStatus === 'pending-submission';
 
   return (
     <div className={`invoice-timeline ${className ?? ''}`.trim()}>
       <div className="invoice-timeline__lane invoice-timeline__lane--issuance">
         <p className="invoice-timeline__lane-title">
-          {t('invoice.tl.issuanceLane', 'Issuance')}
+          {copy.issuanceLane}
         </p>
-        <ol className="invoice-tl-list" aria-label={t('invoice.tl.issuanceLane', 'Issuance')}>
+        <ol className="invoice-tl-list" aria-label={copy.issuanceLane}>
           {issuanceNodes.map((node, i) => (
             <TlNodeRow key={i} node={node} />
           ))}
@@ -318,11 +314,11 @@ export function InvoiceTimeline({ invoice, className }: InvoiceTimelineProps): R
       {clearanceNodes ? (
         <div className="invoice-timeline__lane invoice-timeline__lane--clearance">
           <p className="invoice-timeline__lane-title">
-            {t('invoice.tl.clearanceLane', 'Regulatory clearance')}
+            {copy.clearanceLane}
           </p>
           <ol
             className="invoice-tl-list"
-            aria-label={t('invoice.tl.clearanceLane', 'Regulatory clearance')}
+            aria-label={copy.clearanceLane}
             data-testid={awaitingSubmission ? CLEARANCE_WAITING_LADDER_TEST_ID : undefined}
           >
             {clearanceNodes.map((node, i) => (

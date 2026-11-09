@@ -1,0 +1,73 @@
+{
+  "currencyCoverageDialog": {
+    "close": "Zamknij",
+    "description": "Ile zamówień ma już kwotę w walucie raportowej. To odczyt pokrycia, a nie kontrola stanu - faktury nie są tym objęte.",
+    "empty": "Żadne zamówienie nie ma jeszcze kwoty raportowej. Nowe zamówienia dostają ją przy synchronizacji w {currency}, a istniejące są uzupełniane w ciągu godziny.",
+    "eraLabel": "Zapisane w {currency}",
+    "multipleEras": {
+      "message": "Waluta raportowa była już wcześniej zmieniana. Zapisane kwoty nigdy nie są nadpisywane, więc te zamówienia zachowują walutę obowiązującą w chwili zapisu.",
+      "title": "Więcej niż jeden okres waluty raportowej"
+    },
+    "title": "Pokrycie analityki",
+    "totalLabel": "Zamówienia z kwotą raportową"
+  },
+  "currencySettingsDialog": {
+    "actions": {
+      "cancel": "Anuluj",
+      "save": "Zapisz",
+      "saving": "Zapisywanie…"
+    },
+    "announcement": {
+      "coverageGap": "Uwaga: luka w pokryciu. Nie można przeliczyć {currencies} na {selected}. Potwierdź przed zapisaniem.",
+      "splitHistory": "Uwaga: zmiana na {selected} dzieli historię raportów. Zamówienia z kwotą zapisaną już w {currencies} zachowują te kwoty."
+    },
+    "coverageGap": {
+      "acknowledge": "Rozumiem.",
+      "message": {
+        "few": "Zarejestrowane źródło kursów nie przeliczy {currencies} zamówień na {selected}. Takie zamówienia zostaną oznaczone jako nieprzeliczalne, zamiast blokować tę zmianę.",
+        "many": "Zarejestrowane źródło kursów nie przeliczy {currencies} zamówień na {selected}. Takie zamówienia zostaną oznaczone jako nieprzeliczalne, zamiast blokować tę zmianę.",
+        "one": "Zarejestrowane źródło kursów nie przeliczy {currencies} zamówienia na {selected}. Takie zamówienia zostaną oznaczone jako nieprzeliczalne, zamiast blokować tę zmianę.",
+        "other": "Zarejestrowane źródło kursów nie przeliczy {currencies} zamówienia na {selected}. Takie zamówienia zostaną oznaczone jako nieprzeliczalne, zamiast blokować tę zmianę."
+      },
+      "title": "Luka w pokryciu"
+    },
+    "description": "Używana w analityce · nigdy na fakturze",
+    "reportIn": "Raportuj w",
+    "saveError": "Nie udało się zapisać waluty raportowej",
+    "splitHistory": {
+      "message": {
+        "few": "<count>{n}</count> zamówienia mają już kwotę zapisaną w {currency}. Zachowają ją - zapisane kwoty nigdy nie są nadpisywane - więc system będzie miał więcej niż jedną walutę raportową i żadna pojedyncza kwota ich nie obejmie.",
+        "many": "<count>{n}</count> zamówień ma już kwotę zapisaną w {currency}. Zachowają ją - zapisane kwoty nigdy nie są nadpisywane - więc system będzie miał więcej niż jedną walutę raportową i żadna pojedyncza kwota ich nie obejmie.",
+        "one": "<count>{n}</count> zamówienie ma już kwotę zapisaną w {currency}. Zachowa ją - zapisane kwoty nigdy nie są nadpisywane - więc system będzie miał więcej niż jedną walutę raportową i żadna pojedyncza kwota ich nie obejmie.",
+        "other": "<count>{n}</count> zamówienia ma już kwotę zapisaną w {currency}. Zachowają ją - zapisane kwoty nigdy nie są nadpisywane - więc system będzie miał więcej niż jedną walutę raportową i żadna pojedyncza kwota ich nie obejmie."
+      },
+      "title": "Raportować w {selected} od teraz?"
+    },
+    "title": "Waluta",
+    "toast": {
+      "description": "Analityka raportuje teraz w {selected}.",
+      "title": "Zapisano walutę raportową"
+    }
+  },
+  "currencySettingsTile": {
+    "actions": {
+      "coverage": "Pokrycie",
+      "edit": "Edytuj"
+    },
+    "adminOnly": "Tylko administrator",
+    "body": "Wszystkie kwoty w analityce są raportowane w tej walucie. Nie dotyczy to faktur - wyliczają własny kurs.",
+    "eyebrow": "Platforma",
+    "loadError": "Nie udało się wczytać ustawień waluty: {message}",
+    "loading": "Wczytywanie ustawień waluty…",
+    "notConfigured": "Nie skonfigurowano",
+    "rateDateRule": "Reguła daty kursu",
+    "rateSource": "Źródło kursów",
+    "reportingIn": "Raportowanie w",
+    "reportingValue": "{currency} ({qualifier})",
+    "sourceQualifier": {
+      "default": "domyślnie",
+      "env": "ze zmiennej env"
+    },
+    "title": "Waluta"
+  }
+}

@@ -28,6 +28,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { useConnectionsQuery } from '../../connections';
 import { captureDemoEvent } from '../../demo';
+import { interpolate, useMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -65,7 +66,7 @@ import {
 import {
   INSURED_CURRENCY_VALUES,
   LOCKER_TEMPLATE_VALUES,
-  generateLabelSchema,
+  createGenerateLabelSchema,
   type GenerateLabelFormSubmission,
   type GenerateLabelFormValues,
   type LockerTemplate,
@@ -76,8 +77,12 @@ import {
   buildDispatchItem,
   classifyDeliveryMethod,
   detectMissingFields,
+  missingFieldMessage,
   resolveShippingMethod,
 } from '../lib/dispatch-input';
+import { serverErrorText } from '../lib/server-error-text';
+
+type GenerateLabelCopy = ResolvedCopy<Messages['orders']>['generateLabelForm'];
 
 interface GenerateLabelFormProps {
   /** The full order record — supplies recipient pre-fill + routing keys. */
@@ -133,8 +138,12 @@ export function GenerateLabelForm({
   onSuccess,
   onCancel,
 }: GenerateLabelFormProps): ReactElement {
+  const ordersCopy = useMessages('orders');
+  const serverSaid = ordersCopy.common.serverSaid;
+  const copy = ordersCopy.generateLabelForm;
+  const schema = useMemo(() => createGenerateLabelSchema(copy.validation), [copy]);
   const snapshot = parseOrderSnapshot(order.orderSnapshot);
-  const recipient = buildRecipientPreview(snapshot);
+  const recipient = buildRecipientPreview(snapshot, copy.recipient);
   const hasPickupPoint = snapshot.pickupPoint !== undefined;
   // Locker-vs-courier is driven by the actual delivery method (#954), not by
   // `pickupPoint` presence alone (which was circular). A resolved pickup point
@@ -238,7 +247,7 @@ export function GenerateLabelForm({
       insuredAmount: '',
       insuredCurrency: 'PLN',
     },
-    resolver: zodResolver(generateLabelSchema),
+    resolver: zodResolver(schema),
   });
 
   // Cache the `register('length')` call so the spread and the explicit-ref
@@ -353,23 +362,21 @@ export function GenerateLabelForm({
     if (orderCurrency && effectiveCurrency && effectiveCurrency !== orderCurrency) {
       return (
         <p className="generate-label-form__cod-caption">
-          Order is in {orderCurrency}, but this carrier collects cash on delivery in{' '}
-          {effectiveCurrency} — the amount will be collected in {effectiveCurrency}.
+          {interpolate(copy.cod.captionMismatch, { orderCurrency, currency: effectiveCurrency })}
         </p>
       );
     }
     if (allowedCodCurrencies.length <= 1) {
       return (
         <p className="generate-label-form__cod-caption">
-          This carrier collects cash on delivery in {effectiveCurrency} only.
+          {interpolate(copy.cod.captionOnly, { currency: effectiveCurrency ?? '' })}
         </p>
       );
     }
     if (orderCurrency && !currencyDirty) {
       return (
         <p className="generate-label-form__cod-caption">
-          Set from the order currency ({orderCurrency}). Change it if the carrier requires a
-          different one.
+          {interpolate(copy.cod.captionFromOrder, { currency: orderCurrency })}
         </p>
       );
     }
@@ -444,8 +451,8 @@ export function GenerateLabelForm({
       if (result.kind === 'dispatched') {
         showToast({
           tone: 'success',
-          title: 'Label generated',
-          description: 'Tracking number will appear within ~5 minutes.',
+          title: copy.toast.generatedTitle,
+          description: copy.toast.generatedBody,
         });
         // Auto-download the freshly-issued label (AC: "download triggered
         // immediately after successful generation"). Imperative + guarded on the
@@ -463,7 +470,7 @@ export function GenerateLabelForm({
               const mapped = resolveLabelDownloadError(downloadResult.error);
               showToast({
                 tone: mapped.tone,
-                title: "Couldn't fetch the label file",
+                title: copy.toast.downloadFailed,
                 description: mapped.description,
               });
             }
@@ -475,9 +482,8 @@ export function GenerateLabelForm({
         // fulfillment-routing rule matches). Don't claim a label was generated.
         showToast({
           tone: 'info',
-          title: 'Fulfilled by destination store',
-          description:
-            'This order is fulfilled by the destination store — no OpenLinker label is issued.',
+          title: copy.toast.destinationTitle,
+          description: copy.toast.destinationBody,
         });
       }
       form.reset();
@@ -506,7 +512,7 @@ export function GenerateLabelForm({
       aria-labelledby="generate-label-form-heading"
     >
       <h4 id="generate-label-form-heading" className="generate-label-form__heading">
-        Generate label
+        {copy.heading}
       </h4>
 
       {/* AC-3 retry hint (#839) — Allegro-source order whose pickup-point
@@ -514,21 +520,16 @@ export function GenerateLabelForm({
           the kurier fallback, or refetch to see if Allegro has caught up. */}
       {pickupRemovedInOpenLinker && !isLikelyCourier ? (
         <Alert tone="info" className="generate-label-form__pickup-removed">
-          <strong>Pickup point removed in OpenLinker</strong>
-          <p>
-            You removed the buyer&apos;s pickup point from this order, so there is none to deliver
-            to. Edit the delivery method to add a point, or ship by courier.
-          </p>
+          <strong>{copy.pickupRemoved.title}</strong>
+          <p>{copy.pickupRemoved.body}</p>
         </Alert>
       ) : null}
 
       {showPickupRetryHint ? (
         <Alert tone="info" className="generate-label-form__pickup-retry">
-          <strong>Pickup point not yet available</strong>
+          <strong>{copy.pickupRetry.title}</strong>
           <p>
-            Allegro hasn&apos;t returned the buyer&apos;s pickup point for this order yet. It
-            usually arrives within a few hours of the order — the next poll will populate it.
-            You can retry now, or proceed with a courier shipment.
+            {interpolate(copy.pickupRetry.body, { provider: sourcePlatform?.displayName ?? '' })}
           </p>
           <Button
             type="button"
@@ -539,7 +540,7 @@ export function GenerateLabelForm({
             }}
             disabled={pickupRetryInFlight}
           >
-            {pickupRetryInFlight ? 'Retrying…' : 'Retry pickup-point lookup'}
+            {pickupRetryInFlight ? copy.pickupRetry.retrying : copy.pickupRetry.retry}
           </Button>
         </Alert>
       ) : null}
@@ -548,15 +549,13 @@ export function GenerateLabelForm({
           block submission so the operator can't fire a doomed BE call. */}
       {missingFields.length > 0 ? (
         <Alert tone="warning" className="generate-label-form__missing">
-          <strong>Missing recipient data — cannot generate label:</strong>
+          <strong>{copy.missing.title}</strong>
           <ul className="generate-label-form__missing-list">
             {missingFields.map((field) => (
-              <li key={field.id}>{field.message}</li>
+              <li key={field.id}>{missingFieldMessage(field.id, ordersCopy.dispatchInput)}</li>
             ))}
           </ul>
-          <p className="generate-label-form__missing-hint">
-            Open this order in the source platform to fix the buyer record, then re-poll.
-          </p>
+          <p className="generate-label-form__missing-hint">{copy.missing.hint}</p>
         </Alert>
       ) : null}
 
@@ -569,7 +568,7 @@ export function GenerateLabelForm({
           can quote it to carrier support without a log dive. */}
       {mutation.error ? (
         <Alert tone="error" className="generate-label-form__error">
-          <p className="generate-label-form__error-message">{mutation.error.message}</p>
+          <p className="generate-label-form__error-message">{serverErrorText(serverSaid, mutation.error.message, '')}</p>
           <StructuredErrorList errors={extractShippingFieldErrors(mutation.error)} />
           <ShippingTraceReference traceId={extractShippingTraceId(mutation.error)} />
         </Alert>
@@ -583,7 +582,7 @@ export function GenerateLabelForm({
       <fieldset disabled={mutation.isPending} className="generate-label-form__fieldset">
         {/* Recipient — reference display, never editable. */}
         <div className="generate-label-form__recipient">
-          <p className="generate-label-form__section-label">Recipient</p>
+          <p className="generate-label-form__section-label">{copy.recipient.sectionLabel}</p>
           <KeyValueList items={recipient} />
         </div>
 
@@ -593,9 +592,9 @@ export function GenerateLabelForm({
             primitive uses. */}
         <div className="form-field">
           <label className="form-field__label" htmlFor={`${dimsBaseId}-length`}>
-            Dimensions (mm)
+            {copy.dimensions.label}
           </label>
-          <p className="form-field__description">Length × Width × Height</p>
+          <p className="form-field__description">{copy.dimensions.description}</p>
           <div className="generate-label-form__dimensions">
             <Input
               {...lengthRegister}
@@ -603,8 +602,8 @@ export function GenerateLabelForm({
               type="number"
               inputMode="numeric"
               min={1}
-              placeholder="L"
-              aria-label="Length in millimetres"
+              placeholder={copy.dimensions.lengthPlaceholder}
+              aria-label={copy.dimensions.lengthAria}
               ref={(el) => {
                 lengthRegister.ref(el);
                 firstInputRef.current = el;
@@ -617,8 +616,8 @@ export function GenerateLabelForm({
               type="number"
               inputMode="numeric"
               min={1}
-              placeholder="W"
-              aria-label="Width in millimetres"
+              placeholder={copy.dimensions.widthPlaceholder}
+              aria-label={copy.dimensions.widthAria}
               invalid={Boolean(form.formState.errors.width)}
             />
             <Input
@@ -627,8 +626,8 @@ export function GenerateLabelForm({
               type="number"
               inputMode="numeric"
               min={1}
-              placeholder="H"
-              aria-label="Height in millimetres"
+              placeholder={copy.dimensions.heightPlaceholder}
+              aria-label={copy.dimensions.heightAria}
               invalid={Boolean(form.formState.errors.height)}
             />
           </div>
@@ -643,7 +642,7 @@ export function GenerateLabelForm({
         </div>
 
         <FormField
-          label="Weight (g)"
+          label={copy.weight}
           name="weightGrams"
           error={form.formState.errors.weightGrams?.message}
         >
@@ -662,8 +661,12 @@ export function GenerateLabelForm({
             name="paczkomatId"
             description={
               paczkomatIsBuyerSelected
-                ? 'Buyer-selected via Allegro — read-only.'
-                : `Type the ${pickupFieldLabel} code (e.g. POZ08A). Picker coming in a follow-up.`
+                ? sourcePlatform?.displayName
+                  ? interpolate(copy.pickup.buyerSelectedVia, {
+                      provider: sourcePlatform.displayName,
+                    })
+                  : copy.pickup.buyerSelected
+                : interpolate(copy.pickup.typeCode, { pointKind: pickupFieldLabel })
             }
             error={form.formState.errors.paczkomatId?.message}
           >
@@ -685,12 +688,12 @@ export function GenerateLabelForm({
             registered input keeping the field tracked by RHF. */}
         {shippingMethod === 'paczkomat' ? (
           <div className="form-field">
-            <span className="form-field__label">Locker size</span>
+            <span className="form-field__label">{copy.lockerSize.label}</span>
             <p className="form-field__description" id="lockerTemplate-description">
-              InPost parcel template — required for a paczkomat shipment.
+              {copy.lockerSize.description}
             </p>
             <SegmentedControl
-              aria-label="Locker size"
+              aria-label={copy.lockerSize.label}
               aria-describedby="lockerTemplate-description"
               aria-invalid={form.formState.errors.lockerTemplate ? true : undefined}
               aria-errormessage={
@@ -700,7 +703,7 @@ export function GenerateLabelForm({
               onChange={(t) => form.setValue('lockerTemplate', t, { shouldValidate: true })}
               options={LOCKER_TEMPLATE_VALUES.map((t) => ({
                 value: t,
-                label: t,
+                label: copy.lockerSize.options[t],
                 hint: LOCKER_TEMPLATE_GABARYT[t],
               }))}
             />
@@ -722,28 +725,27 @@ export function GenerateLabelForm({
           <div className="form-field generate-label-form__cod-panel">
             <div className="generate-label-form__cod-head">
               <StatusBadge tone="warning" withDot>
-                Cash on delivery
+                {copy.cod.badge}
               </StatusBadge>
               {showSourcedCod ? (
-                <span className="generate-label-form__cod-source">from the order</span>
+                <span className="generate-label-form__cod-source">{copy.cod.fromOrder}</span>
               ) : null}
             </div>
 
             {showSourcedCod && sourcedCod ? (
               <>
                 <p className="generate-label-form__cod-amount tabular">
-                  {sourcedCod.amount} {sourcedCod.currency}
+                  {interpolate(copy.cod.sourcedAmount, {
+                    amount: sourcedCod.amount,
+                    currency: sourcedCod.currency,
+                  })}
                 </p>
-                <p className="generate-label-form__cod-note">
-                  Collected on delivery — set by the order, not editable here.
-                </p>
+                <p className="generate-label-form__cod-note">{copy.cod.sourcedNote}</p>
               </>
             ) : (
               <>
                 <p className="generate-label-form__cod-note">
-                  {isCodOrder
-                    ? "This order is cash-on-delivery, but the collect amount didn't come from the source (non-Allegro or missing). Enter the amount to collect."
-                    : 'Amount to collect on delivery. Leave blank for a prepaid shipment.'}
+                  {isCodOrder ? copy.cod.manualCodOrder : copy.cod.manualOptional}
                 </p>
                 {/* Amount + currency as one control (#1569). The currency
                     defaults from the order and is scoped to the routed carrier:
@@ -757,8 +759,10 @@ export function GenerateLabelForm({
                     placeholder="129.90"
                     aria-label={
                       allowedCodCurrencies.length > 1
-                        ? 'COD amount to collect'
-                        : `COD amount to collect in ${allowedCodCurrencies[0]}`
+                        ? copy.cod.amountAria
+                        : interpolate(copy.cod.amountAriaIn, {
+                            currency: allowedCodCurrencies[0] ?? '',
+                          })
                     }
                     invalid={Boolean(form.formState.errors.codAmount)}
                   />
@@ -766,7 +770,7 @@ export function GenerateLabelForm({
                     <Select
                       {...codCurrencyRegister}
                       className="generate-label-form__money-ccy"
-                      aria-label="COD currency"
+                      aria-label={copy.cod.currencyAria}
                     >
                       {allowedCodCurrencies.map((c) => (
                         <option key={c} value={c}>
@@ -794,21 +798,19 @@ export function GenerateLabelForm({
         <div className="form-field generate-label-form__insured-panel">
           <div className="generate-label-form__insured-head">
             <StatusBadge tone="info" withDot>
-              Insurance
+              {copy.insurance.badge}
             </StatusBadge>
           </div>
-          <p className="generate-label-form__insured-note">
-            Declared value to insure the parcel for. Leave blank for the carrier default.
-          </p>
+          <p className="generate-label-form__insured-note">{copy.insurance.note}</p>
           <div className="generate-label-form__insured">
             <Input
               {...insuredAmountRegister}
               inputMode="decimal"
               placeholder="150.00"
-              aria-label="Declared value to insure"
+              aria-label={copy.insurance.amountAria}
               invalid={Boolean(form.formState.errors.insuredAmount)}
             />
-            <Select {...insuredCurrencyRegister} aria-label="Insurance currency">
+            <Select {...insuredCurrencyRegister} aria-label={copy.insurance.currencyAria}>
               {INSURED_CURRENCY_VALUES.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -824,48 +826,51 @@ export function GenerateLabelForm({
 
         {showSlowNotice ? (
           <div role="status" aria-live="polite" className="generate-label-form__slow-notice">
-            Allegro is processing your label. This typically takes 10–30 seconds.
+            {copy.slowNotice}
           </div>
         ) : null}
       </fieldset>
 
       <div className="generate-label-form__actions">
         <Button type="button" tone="ghost" onClick={onCancel} disabled={mutation.isPending}>
-          Cancel
+          {copy.cancel}
         </Button>
         <Button type="submit" tone="primary" disabled={submitDisabled}>
-          {mutation.isPending ? 'Generating label… (~30s)' : 'Generate label'}
+          {mutation.isPending ? copy.submitting : copy.submit}
         </Button>
       </div>
     </form>
   );
 }
 
-function buildRecipientPreview(snapshot: ParsedOrderSnapshot): KeyValueItem[] {
+function buildRecipientPreview(
+  snapshot: ParsedOrderSnapshot,
+  copy: GenerateLabelCopy['recipient'],
+): KeyValueItem[] {
   const items: KeyValueItem[] = [];
   const a = snapshot.shippingAddress;
 
   const nameParts = [a?.firstName, a?.lastName].filter(Boolean).join(' ').trim();
-  if (nameParts) items.push({ id: 'name', label: 'Name', value: nameParts });
+  if (nameParts) items.push({ id: 'name', label: copy.name, value: nameParts });
   if (snapshot.customerEmail) {
-    items.push({ id: 'email', label: 'Email', value: snapshot.customerEmail, mono: true });
+    items.push({ id: 'email', label: copy.email, value: snapshot.customerEmail, mono: true });
   }
-  if (a?.phone) items.push({ id: 'phone', label: 'Phone', value: a.phone, mono: true });
+  if (a?.phone) items.push({ id: 'phone', label: copy.phone, value: a.phone, mono: true });
   if (a) {
     const line1 = a.address1;
     const line2 = [a.postalCode, a.city, a.country].filter(Boolean).join(', ');
-    items.push({ id: 'addr1', label: 'Street', value: line1 });
-    items.push({ id: 'addr2', label: 'City', value: line2 });
+    items.push({ id: 'addr1', label: copy.street, value: line1 });
+    items.push({ id: 'addr2', label: copy.city, value: line2 });
   }
   if (snapshot.shipping?.methodName) {
-    items.push({ id: 'method', label: 'Method', value: snapshot.shipping.methodName });
+    items.push({ id: 'method', label: copy.method, value: snapshot.shipping.methodName });
   }
 
   if (items.length === 0) {
     items.push({
       id: 'noPrefill',
-      label: 'Recipient',
-      value: 'Could not extract from order — operator must contact buyer.',
+      label: copy.sectionLabel,
+      value: copy.noPrefill,
     });
   }
 
@@ -891,11 +896,12 @@ function collectValidationMessages(
  * caller can pass `extractShippingTraceId(...)` unconditionally.
  */
 function ShippingTraceReference({ traceId }: { traceId: string | null }): ReactElement | null {
+  const copy = useMessages('orders').generateLabelForm;
   if (traceId === null) return null;
 
   return (
     <p className="generate-label-form__error-trace">
-      Reference for carrier support: <CopyableId id={traceId} />
+      {copy.traceReference} <CopyableId id={traceId} />
     </p>
   );
 }

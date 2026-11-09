@@ -19,7 +19,7 @@ import { AccessDeniedState, ErrorState, LoadingState } from '../../shared/ui/fee
 import { PageLayout } from '../../shared/ui/page-layout';
 
 function LoginPageSettingsContent(): ReactElement {
-  const copy = useMessages('loginPageSettings');
+  const copy = useMessages('login-page-settings');
   const locale = useActiveLocale();
   const query = useLoginPageSettingsQuery();
 
@@ -41,7 +41,7 @@ function LoginPageSettingsContent(): ReactElement {
 }
 
 export function LoginPageSettingsPage(): ReactElement {
-  const copy = useMessages('loginPageSettings');
+  const copy = useMessages('login-page-settings');
   return (
     <PageLayout
       backTo={{ to: '/settings', label: copy.back }}

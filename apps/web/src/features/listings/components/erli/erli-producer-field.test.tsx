@@ -28,7 +28,7 @@ describe('ErliProducerField', () => {
     });
 
     renderWithProviders(
-      <ErliProducerField connectionId="conn_erli_1" value="" onChange={vi.fn()} />,
+      <ErliProducerField connectionId="conn_erli_1" platformName="Erli" value="" onChange={vi.fn()} />,
       { apiClient },
     );
 
@@ -44,12 +44,12 @@ describe('ErliProducerField', () => {
     });
 
     renderWithProviders(
-      <ErliProducerField connectionId="conn_erli_1" value="" onChange={vi.fn()} />,
+      <ErliProducerField connectionId="conn_erli_1" platformName="Erli" value="" onChange={vi.fn()} />,
       { apiClient },
     );
 
     expect(
-      await screen.findByText(/No producers on this Erli account/i),
+      await screen.findByText(/No producers on your Erli account/i),
     ).toBeInTheDocument();
   });
 
@@ -64,7 +64,7 @@ describe('ErliProducerField', () => {
     });
 
     renderWithProviders(
-      <ErliProducerField connectionId="conn_erli_1" value="" onChange={onChange} />,
+      <ErliProducerField connectionId="conn_erli_1" platformName="Erli" value="" onChange={onChange} />,
       { apiClient },
     );
 

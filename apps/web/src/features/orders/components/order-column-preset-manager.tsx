@@ -37,7 +37,7 @@ import {
   useOrderColumnPresetsQuery,
   useSetWorkspaceDefaultColumnPresetMutation,
 } from '../hooks/use-order-column-presets';
-import { ORDER_COLUMNS_PANEL_COPY as COPY } from '../lib/order-export.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
 
 function sameColumns(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((id, index) => id === b[index]);
@@ -61,6 +61,7 @@ export function OrderColumnPresetManager({
   columns,
   onColumnsChange,
 }: OrderColumnPresetManagerProps): ReactElement {
+  const copy = useMessages('orders').orderColumnsPanel;
   const isAdmin = useIsAdmin();
   const presetsQuery = useOrderColumnPresetsQuery();
   const createPreset = useCreateColumnPresetMutation();
@@ -131,12 +132,12 @@ export function OrderColumnPresetManager({
   return (
     <>
       <div className="columns-panel__presets">
-        <FormField label={COPY.preset} name="orders-columns-preset">
+        <FormField label={copy.preset} name="orders-columns-preset">
           <Select
             value={effectivePresetId}
             onChange={(e) => { applyPreset(e.target.value); }}
           >
-            <option value="">{COPY.presetCustom}</option>
+            <option value="">{copy.presetCustom}</option>
             {presets.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -145,13 +146,13 @@ export function OrderColumnPresetManager({
           </Select>
         </FormField>
         {presetsQuery.isError ? (
-          <p className="form-field__description columns-panel__note">{COPY.presetsLoadError}</p>
+          <p className="form-field__description columns-panel__note">{copy.presetsLoadError}</p>
         ) : null}
         {saving ? (
           <div className="columns-panel__save">
             <Input
-              aria-label={COPY.presetName}
-              placeholder={COPY.presetName}
+              aria-label={copy.presetName}
+              placeholder={copy.presetName}
               value={newPresetName}
               autoFocus
               onChange={(e) => { setNewPresetName(e.target.value); }}
@@ -165,30 +166,30 @@ export function OrderColumnPresetManager({
               onClick={saveAsPreset}
               disabled={!newPresetName.trim() || createPreset.isPending}
             >
-              {COPY.save}
+              {copy.save}
             </Button>
             <Button tone="ghost" className="button--sm" onClick={closeSaveRow}>
-              {COPY.cancel}
+              {copy.cancel}
             </Button>
             {createPreset.isError ? (
-              <p className="form-field__error columns-panel__note">{COPY.saveError}</p>
+              <p className="form-field__error columns-panel__note">{copy.saveError}</p>
             ) : null}
           </div>
         ) : (
           <div className="columns-panel__actions">
             <Button tone="ghost" className="button--sm" onClick={() => { setSaving(true); }}>
-              {COPY.saveAsPreset}
+              {copy.saveAsPreset}
             </Button>
             {selectedPreset ? (
               <Button tone="ghost" className="button--sm" onClick={() => { setConfirmingDelete(true); }}>
-                {COPY.deletePreset}
+                {copy.deletePreset}
               </Button>
             ) : null}
           </div>
         )}
       </div>
 
-      <ul className="columns-panel__list" aria-label={COPY.listLabel}>
+      <ul className="columns-panel__list" aria-label={copy.listLabel}>
         {visible.map((id, index) => (
           <li key={id} className="columns-panel__item">
             <label className="columns-panel__check">
@@ -199,7 +200,7 @@ export function OrderColumnPresetManager({
               <Button
                 tone="ghost"
                 className="button--xs columns-panel__move-button"
-                aria-label={COPY.moveUp(labelFor(id))}
+                aria-label={interpolate(copy.moveUp, { label: labelFor(id) })}
                 disabled={index === 0}
                 onClick={() => { move(id, -1); }}
               >
@@ -208,7 +209,7 @@ export function OrderColumnPresetManager({
               <Button
                 tone="ghost"
                 className="button--xs columns-panel__move-button"
-                aria-label={COPY.moveDown(labelFor(id))}
+                aria-label={interpolate(copy.moveDown, { label: labelFor(id) })}
                 disabled={index === visible.length - 1}
                 onClick={() => { move(id, 1); }}
               >
@@ -228,7 +229,7 @@ export function OrderColumnPresetManager({
       </ul>
 
       <div className="columns-panel__foot">
-        <span className="text-muted">{COPY.footHint}</span>
+        <span className="text-muted">{copy.footHint}</span>
         {isAdmin ? (
           <Button
             tone="ghost"
@@ -236,7 +237,7 @@ export function OrderColumnPresetManager({
             disabled={setWorkspaceDefault.isPending}
             onClick={() => { setWorkspaceDefault.mutate([...columns]); }}
           >
-            {setWorkspaceDefault.isSuccess ? COPY.workspaceDefaultSaved : COPY.setWorkspaceDefault}
+            {setWorkspaceDefault.isSuccess ? copy.workspaceDefaultSaved : copy.setWorkspaceDefault}
           </Button>
         ) : null}
       </div>
@@ -244,9 +245,9 @@ export function OrderColumnPresetManager({
       <ConfirmDialog
         open={confirmingDelete}
         onOpenChange={setConfirmingDelete}
-        title={COPY.deleteTitle}
-        description={COPY.deleteDescription(selectedPreset?.name ?? '')}
-        confirmLabel={COPY.deleteConfirm}
+        title={copy.deleteTitle}
+        description={interpolate(copy.deleteDescription, { name: selectedPreset?.name ?? '' })}
+        confirmLabel={copy.deleteConfirm}
         tone="danger"
         isConfirming={deletePreset.isPending}
         onConfirm={() => {

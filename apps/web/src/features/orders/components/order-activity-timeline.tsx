@@ -11,6 +11,14 @@
  */
 import { useMemo, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  interpolate,
+  renderRich,
+  useMessages,
+  usePlural,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 import { EmptyState } from '../../../shared/ui/feedback-state';
 import { ActivityTimelineList } from './activity-timeline-list';
 import { ConnectionEntityLabel } from '../../connections';
@@ -169,13 +177,7 @@ interface OrderActivityTimelineProps {
   trailingEvents?: TimelineEvent[];
 }
 
-const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
-  pending: 'queued for',
-  syncing: 'syncing to',
-  synced: 'synced to',
-  failed: 'failed to sync to',
-  skipped_cancelled: 'skipped (cancelled at source) for',
-};
+type TimelineCopy = ResolvedCopy<Messages['orders']>['activityTimeline'];
 
 /**
  * Badge tone → timeline tone (#2100). The timeline's dot vocabulary is narrower
@@ -212,26 +214,40 @@ const TONE_FOR_STATUS: Record<OrderSyncStatusValue, TimelineEvent['tone']> = {
  * rather than vanishing — a change the operator cannot see is worse than one
  * labelled awkwardly.
  */
-function describeAmendment(changes?: OrderAmendmentChange[] | null): string {
+function describeAmendment(
+  changes: OrderAmendmentChange[] | null | undefined,
+  copy: TimelineCopy['amended'],
+): string {
   const parts = (changes ?? []).map((change) => {
-    const line = change.sku ?? change.lineId ?? 'a line';
+    const line = change.sku ?? change.lineId ?? copy.aLine;
     switch (change.kind) {
       case 'line-removed':
-        return `line ${line} removed`;
+        return interpolate(copy.lineRemoved, { line });
       case 'line-added':
-        return `line ${line} added`;
+        return interpolate(copy.lineAdded, { line });
       case 'line-quantity-changed':
-        return `line ${line} quantity ${change.fromQuantity} \u2192 ${change.toQuantity}`;
+        return interpolate(copy.lineQuantityChanged, {
+          line,
+          from: String(change.fromQuantity),
+          to: String(change.toQuantity),
+        });
       case 'shipping-address-changed':
-        return `shipping address changed (${(change.fields ?? []).join(', ')})`;
+        return interpolate(copy.shippingAddressChanged, {
+          fields: (change.fields ?? []).join(', '),
+        });
       default:
         return change.kind;
     }
   });
 
   return parts.length > 0
-    ? `The source changed this order after ingestion: ${parts.join('; ')}.`
-    : 'The source changed this order after ingestion.';
+    ? interpolate(copy.withChanges, { changes: parts.join('; ') })
+    : copy.noChanges;
+}
+
+/** `text`, followed by a backend-supplied detail in parentheses when there is one. */
+function withDetail(text: string, detail: string | null | undefined, copy: TimelineCopy): string {
+  return detail ? interpolate(copy.inParens, { text, detail }) : text;
 }
 
 /**
@@ -259,19 +275,19 @@ function describeAmendment(changes?: OrderAmendmentChange[] | null): string {
  * `OrderHoldPanel`'s `placedBy()` (which returns `null` in the same case) is
  * what keeps two surfaces on one page from disagreeing.
  */
-function describePlacer(hold: OrderHold): string | undefined {
-  if (hold.placedByService) return `system · ${hold.placedByService}`;
-  if (hold.placedByUserId) return 'operator';
+function describePlacer(hold: OrderHold, copy: TimelineCopy): string | undefined {
+  if (hold.placedByService) return interpolate(copy.by.service, { service: hold.placedByService });
+  if (hold.placedByUserId) return copy.by.operator;
   return undefined;
 }
 
 /** Who released it. See {@link describePlacer} — same rule, same reason. */
-function describeReleaser(hold: OrderHold): string | undefined {
-  if (isReleasedByOrderCancel(hold)) return 'OpenLinker (order cancelled)';
-  return hold.releasedByUserId ? 'operator' : undefined;
+function describeReleaser(hold: OrderHold, copy: TimelineCopy): string | undefined {
+  if (isReleasedByOrderCancel(hold)) return copy.by.orderCancelled;
+  return hold.releasedByUserId ? copy.by.operator : undefined;
 }
 
-function buildHoldEvents(holds: OrderHold[]): TimelineEvent[] {
+function buildHoldEvents(holds: OrderHold[], copy: TimelineCopy): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
   for (const hold of holds) {
@@ -281,17 +297,17 @@ function buildHoldEvents(holds: OrderHold[]): TimelineEvent[] {
     events.push({
       id: `hold-placed-${hold.id}`,
       timestamp: hold.placedAt,
-      title: `Put on hold — ${label}`,
+      title: interpolate(copy.hold.placedTitle, { reason: label }),
       // THREE ways, not two. The XOR that makes "not a service ⇒ a human" total
       // is a SQL `CHECK` this bundle cannot import (#591), so a payload carrying
       // neither placer used to render "Held by operator" — asserting a person
       // held the order, which `order-hold.types.ts`'s own docblock forbids by
       // name, and disagreeing with the panel's `placedBy()` on the same page.
       // An unreadable placer omits the eyebrow rather than naming one.
-      by: describePlacer(hold),
+      by: describePlacer(hold, copy),
       description: hold.note
-        ? `${hold.note}${actor && !hold.placedByService ? ` (${actor})` : ''}`
-        : 'OpenLinker stopped sending this order on and stopped dispatching it.',
+        ? withDetail(hold.note, actor && !hold.placedByService ? actor : null, copy)
+        : copy.hold.placedNoNote,
       tone: 'warning',
     });
 
@@ -299,15 +315,15 @@ function buildHoldEvents(holds: OrderHold[]): TimelineEvent[] {
       events.push({
         id: `hold-released-${hold.id}`,
         timestamp: hold.releasedAt,
-        title: 'Hold released',
+        title: copy.hold.releasedTitle,
         // Same rule on the release arm. `order_holds` carries no
         // `releasedByService` column, so "no releasing user" does NOT mean a
         // service did it — a service release is recorded by nobody. Claiming
         // `system` there named an actor the schema cannot identify.
-        by: describeReleaser(hold),
+        by: describeReleaser(hold, copy),
         description: hold.releaseNote
-          ? `${hold.releaseNote}${hold.releasedByUserId ? ` (${hold.releasedByUserId})` : ''}`
-          : 'OpenLinker started sending this order on again.',
+          ? withDetail(hold.releaseNote, hold.releasedByUserId, copy)
+          : copy.hold.releasedNoNote,
         tone: 'default',
       });
     }
@@ -317,6 +333,7 @@ function buildHoldEvents(holds: OrderHold[]): TimelineEvent[] {
 }
 
 function buildEvents(
+  copy: TimelineCopy,
   createdAt: string,
   recordStatus: string,
   syncAttempts: SyncAttempt[],
@@ -340,31 +357,29 @@ function buildEvents(
   const ingestDescription = (): { description: string; tone: TimelineEvent['tone'] } => {
     if (recordStatus === 'source_deleted') {
       return {
-        description:
-          'Item deleted at the source — this order references a product that was removed at ' +
-          `the master. It cannot be fulfilled until the product reappears or the line is cancelled.${
-            mappingFailureReason ? ` (${mappingFailureReason})` : ''
-          }`,
+        description: withDetail(
+          `${copy.received.sourceDeleted} ${copy.received.sourceDeletedRemedy}`,
+          mappingFailureReason,
+          copy,
+        ),
         tone: 'error',
       };
     }
     if (recordStatus === 'awaiting_mapping') {
       return {
-        description:
-          'Awaiting product mapping — some item references could not be resolved yet.' +
-          (mappingFailureReason ? ` (${mappingFailureReason})` : ''),
+        description: withDetail(copy.received.awaitingMapping, mappingFailureReason, copy),
         tone: 'warning',
       };
     }
-    return { description: 'Ingested and ready for sync.', tone: 'default' };
+    return { description: copy.received.ready, tone: 'default' };
   };
   const ingest = ingestDescription();
 
   events.push({
     id: 'ingested',
     timestamp: createdAt,
-    title: 'Order received',
-    by: 'system · ingest',
+    title: copy.received.title,
+    by: copy.by.ingest,
     description: ingest.description,
     tone: ingest.tone,
   });
@@ -397,7 +412,10 @@ function buildEvents(
 
   const attemptNumberByDestination = new Map<string, number>();
   sortedAttempts.forEach((attempt, i) => {
-    const verb = STATUS_PAST_TENSE[attempt.status] ?? attempt.status;
+    const attemptTemplates: Readonly<Record<string, string>> = copy.attempt;
+    const attemptTitle = Object.prototype.hasOwnProperty.call(TONE_FOR_STATUS, attempt.status)
+      ? attemptTemplates[attempt.status]
+      : copy.attempt.unknown;
     const isLastForDestination = lastIndexByDestination.get(attempt.destinationConnectionId) === i;
     const showCapLink =
       isLastForDestination && cappedDestinations.has(attempt.destinationConnectionId);
@@ -407,22 +425,32 @@ function buildEvents(
     events.push({
       id: `attempt-${attempt.destinationConnectionId}-${i}`,
       timestamp: attempt.attemptedAt,
-      by: `system · attempt ${attemptNumber}`,
+      by: interpolate(copy.by.attempt, { n: String(attemptNumber) }),
       title: (
         <>
-          Order {verb}{' '}
-          <ConnectionEntityLabel
-            connectionId={attempt.destinationConnectionId}
-            showId={false}
-          />
+          {renderRich(
+            attemptTitle,
+            {
+              connection: () => (
+                <ConnectionEntityLabel
+                  connectionId={attempt.destinationConnectionId}
+                  showId={false}
+                />
+              ),
+            },
+            { status: attempt.status },
+          )}
         </>
       ),
       description: attempt.error ? (
         <span className="mono-text order-activity__error">{attempt.error}</span>
       ) : attempt.externalOrderNumber ? (
         <>
-          External order{' '}
-          <span className="mono-text">{attempt.externalOrderNumber}</span>
+          {renderRich(
+            copy.attempt.externalOrder,
+            { number: (text) => <span className="mono-text">{text}</span> },
+            { number: attempt.externalOrderNumber },
+          )}
           {attempt.externalOrderId ? (
             <>
               {' '}
@@ -437,7 +465,7 @@ function buildEvents(
           className="order-activity__cap-link"
           to={`/sync/jobs?connectionId=${encodeURIComponent(sourceConnectionId)}`}
         >
-          View all attempts
+          {copy.attempt.viewAllAttempts}
         </Link>
       ) : undefined,
     });
@@ -452,9 +480,9 @@ function buildEvents(
     events.push({
       id: 'source-amended',
       timestamp: lastAmendedAt,
-      title: 'Order changed at the source',
-      by: 'system · ingest',
-      description: describeAmendment(lastAmendmentChanges),
+      title: copy.amended.title,
+      by: copy.by.ingest,
+      description: describeAmendment(lastAmendmentChanges, copy.amended),
       tone: 'warning',
     });
   }
@@ -467,11 +495,11 @@ function buildEvents(
     events.push({
       id: 'packed',
       timestamp: packedAt,
-      title: 'Order packed',
-      by: 'operator',
+      title: copy.packed.title,
+      by: copy.by.operator,
       description: packedByUserId
-        ? `Marked packed by ${packedByUserId}.`
-        : 'Marked packed by an operator.',
+        ? interpolate(copy.packed.by, { user: packedByUserId })
+        : copy.packed.byUnknown,
       tone: 'success',
     });
   }
@@ -479,7 +507,7 @@ function buildEvents(
   // #2342 — the order's own holds, dated and therefore part of the history.
   // Pushed here, after the packed entry and BEFORE the undated invoicing-block
   // row below, so the current-state row stays last.
-  events.push(...buildHoldEvents(holds ?? []));
+  events.push(...buildHoldEvents(holds ?? [], copy));
 
   // #2100 — appended last. It used to be DELIBERATELY UNDATED, because the block
   // is a current-state fact re-decided on every transition and no instant was
@@ -501,11 +529,9 @@ function buildEvents(
     events.push({
       id: 'invoicing-blocked',
       timestamp: salesDocumentBlockedAt ?? null,
-      title: 'No invoice issued',
-      by: 'system · invoicing',
-      description: `${blocked.hint}${
-        salesDocumentBlockDetail ? ` (${salesDocumentBlockDetail})` : ''
-      }`,
+      title: copy.invoicing.blockedTitle,
+      by: copy.by.invoicing,
+      description: withDetail(blocked.hint, salesDocumentBlockDetail, copy),
       tone: BLOCK_TONE_FOR_BADGE[blocked.tone],
     });
   }
@@ -522,10 +548,9 @@ function buildEvents(
     events.push({
       id: 'invoicing-released',
       timestamp: salesDocumentBlockReleasedAt,
-      title: 'Rates arrived, invoice released',
-      by: 'system · invoicing',
-      description:
-        'The tax rate this order was waiting on is now known, so OpenLinker stopped holding the document.',
+      title: copy.invoicing.releasedTitle,
+      by: copy.by.invoicing,
+      description: copy.invoicing.releasedDescription,
       tone: 'success',
     });
   }
@@ -638,9 +663,12 @@ export function OrderActivityTimeline({
   automationRuns,
   trailingEvents,
 }: OrderActivityTimelineProps): ReactElement {
+  const copy = useMessages('orders').activityTimeline;
+  const plural = usePlural();
   const authored = useMemo(
     () =>
       buildEvents(
+        copy,
         createdAt,
         recordStatus,
         syncAttempts,
@@ -660,6 +688,7 @@ export function OrderActivityTimeline({
         automationRuns,
       ),
     [
+      copy,
       createdAt,
       recordStatus,
       syncAttempts,
@@ -687,7 +716,7 @@ export function OrderActivityTimeline({
 
   if (events.length === 0) {
     return (
-      <EmptyState liveRegion="off" title="No activity" message="No events recorded yet." />
+      <EmptyState liveRegion="off" title={copy.emptyTitle} message={copy.emptyMessage} />
     );
   }
 
@@ -696,10 +725,9 @@ export function OrderActivityTimeline({
     {/* The rows moved to `ActivityTimelineList` (#2646) when the return detail
         became a second consumer. Markup and class names are unchanged; the
         caption below stays here because it is a statement about `sync_jobs`. */}
-    <ActivityTimelineList events={events} ariaLabel="Order activity timeline" />
+    <ActivityTimelineList events={events} ariaLabel={copy.ariaLabel} />
     <p className="order-activity__caption">
-      Showing {events.length} of {events.length} event{events.length === 1 ? '' : 's'} · attempts capped at{' '}
-      {SYNC_ATTEMPTS_PER_DESTINATION_CAP} per destination.
+      {plural(events.length, copy.caption, { cap: SYNC_ATTEMPTS_PER_DESTINATION_CAP })}
     </p>
     </>
   );

@@ -21,8 +21,10 @@ import { useSession } from '../../shared/auth/use-session';
 import { LoadingState } from '../../shared/ui/feedback-state';
 import { resolveNextPath } from '../../shared/lib/resolve-next-path';
 import { LoginStageScreen } from './login-stage-layout';
+import { useMessages } from '../../shared/i18n';
 
 export function ConsentLayout(): ReactElement {
+  const copy = useMessages('app');
   const { isReady, session, adapter, refreshSession } = useSession();
   const [searchParams] = useSearchParams();
   const [tokenRefreshed, setTokenRefreshed] = useState(false);
@@ -65,7 +67,7 @@ export function ConsentLayout(): ReactElement {
   if (!isReady) {
     return (
       <div className="guest-layout guest-layout--pending">
-        <LoadingState title="Loading" message="Checking session state..." />
+        <LoadingState title={copy.loading.loading} message={copy.loading.checkingSession} />
       </div>
     );
   }

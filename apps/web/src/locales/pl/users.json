@@ -1,0 +1,139 @@
+{
+  "approve": "Zatwierdź",
+  "changeRole": "Zmień rolę",
+  "columns": {
+    "actions": "Akcje",
+    "approve": "Przypisz rolę i zatwierdź",
+    "email": "E-mail",
+    "memberSince": "Konto od",
+    "packStation": "Stanowisko pakowania",
+    "requested": "Zgłoszono",
+    "role": "Rola",
+    "status": "Status",
+    "username": "Nazwa użytkownika"
+  },
+  "deleteDialog": {
+    "confirm": "Usuń",
+    "description": "Konto użytkownika zostanie trwale usunięte. Tej operacji nie można cofnąć.",
+    "title": "Usuń użytkownika"
+  },
+  "empty": {
+    "allMessage": "Nikt się jeszcze nie zarejestrował.",
+    "allTitle": "Nie znaleziono użytkowników",
+    "pendingMessage": "Tutaj pojawią się nowe zgłoszenia rejestracji do zatwierdzenia lub odrzucenia.",
+    "pendingTitle": "Brak oczekujących rejestracji"
+  },
+  "errors": {
+    "deniedMessage": "Twoja rola nie pozwala przeglądać ani zmieniać kont. Jeśli potrzebujesz dostępu, poproś administratora.",
+    "deniedTitle": "Zarządzanie użytkownikami jest dostępne dla administratorów",
+    "loadFailed": "Nie udało się wczytać użytkowników",
+    "retry": "Spróbuj ponownie"
+  },
+  "packStation": {
+    "cancel": "Anuluj",
+    "change": "Zmień",
+    "cleared": "Wyczyszczono dla {username}.",
+    "description": "Wyświetlana temu pakowaczowi przy stanowisku, np. „Zebra ZD420 / Stanowisko 3”. To tylko konfiguracja operatora - nie wpływa na logowanie i nikogo nie identyfikuje.",
+    "hint": "Zostaw puste, aby wyczyścić.",
+    "label": "Etykieta",
+    "maxLength": "Najwyżej {max} znaków",
+    "notSet": "Nie ustawiono",
+    "placeholder": "Zebra ZD420 / Stanowisko 3",
+    "saveFailed": "Nie udało się zapisać etykiety",
+    "saved": "Zapisano dla {username}.",
+    "set": "Ustaw",
+    "submit": "Zapisz etykietę",
+    "submitting": "Zapisywanie…",
+    "title": "Etykieta stanowiska pakowania",
+    "titleFor": "Etykieta stanowiska pakowania dla {username}",
+    "updated": "Zaktualizowano etykietę stanowiska pakowania"
+  },
+  "page": {
+    "description": "Zarządzaj kontami użytkowników i oczekującymi rejestracjami.",
+    "eyebrow": "Administracja",
+    "title": "Użytkownicy"
+  },
+  "pagination": {
+    "next": "Dalej",
+    "pageOf": "Strona {page} z {count}",
+    "previous": "Wstecz"
+  },
+  "register": {
+    "alreadyHaveAccount": "Masz już konto? <link>Zaloguj się</link>",
+    "backToLogin": "Wróć do logowania",
+    "backToSignIn": "Wróć do logowania",
+    "confirmPassword": "Potwierdź hasło",
+    "confirmPasswordPlaceholder": "Powtórz hasło",
+    "demoBar": "Sprawdź skrzynkę e-mail, aby potwierdzić i aktywować konto",
+    "demoBarTitle": "OpenLinker Demo",
+    "demoCallout": "<strong>Tryb demo jest aktywny</strong> - bez akceptacji. Konto ma dostęp tylko do odczytu. Wyślemy e-mailem link potwierdzający; kliknij go przed zalogowaniem, aby aktywować konto.",
+    "demoSubmitted": "Sprawdź skrzynkę e-mail, aby potwierdzić konto. Kliknij wysłany link, aby je aktywować, a potem się zaloguj.",
+    "email": "E-mail",
+    "emailPlaceholder": "twoj@email.com",
+    "failed": "Rejestracja nie powiodła się",
+    "password": "Hasło",
+    "passwordPlaceholder": "Co najmniej 8 znaków",
+    "recordingNotice": "Sesje w demo są nagrywane. Tworząc konto, akceptujesz to. Hasła nigdy nie są nagrywane.",
+    "submit": "Poproś o dostęp",
+    "submitDemo": "Zacznij przeglądać",
+    "submitted": "Zgłoszenie wysłane. Administrator sprawdzi Twoją prośbę.",
+    "submitting": "Wysyłanie…",
+    "username": "Nazwa użytkownika",
+    "usernamePlaceholder": "Wybierz nazwę użytkownika",
+    "whatWeRecord": "Co nagrywamy"
+  },
+  "reject": "Odrzuć",
+  "roleForApproval": "Rola po zatwierdzeniu",
+  "roles": {
+    "admin": "Administrator",
+    "operator": "Operator",
+    "packer": "Pakowacz",
+    "viewer": "Podgląd"
+  },
+  "rowActions": {
+    "deactivate": "Dezaktywuj",
+    "delete": "Usuń",
+    "reactivate": "Aktywuj ponownie",
+    "reviewInPending": "Sprawdź na karcie Oczekujące"
+  },
+  "statuses": {
+    "active": "Aktywny",
+    "deactivated": "Dezaktywowany",
+    "pending": "Oczekuje"
+  },
+  "tabs": {
+    "all": "Wszyscy",
+    "allCaption": "Wszyscy użytkownicy",
+    "pending": "Oczekujące",
+    "pendingCaption": "Oczekujące rejestracje"
+  },
+  "toasts": {
+    "approveFailed": "Nie udało się zatwierdzić",
+    "approveFailedDescription": "Spróbuj ponownie lub sprawdź uprawnienia.",
+    "approved": "Użytkownik zatwierdzony",
+    "approvedDescription": "Użytkownik może się teraz zalogować.",
+    "deactivateFailed": "Nie udało się dezaktywować",
+    "deactivated": "Użytkownik dezaktywowany",
+    "deactivatedDescription": "Użytkownik nie może się już zalogować.",
+    "deleteFailed": "Nie udało się usunąć",
+    "deleted": "Użytkownik usunięty",
+    "deletedDescription": "Użytkownik został usunięty.",
+    "reactivateFailed": "Nie udało się aktywować ponownie",
+    "reactivated": "Użytkownik aktywowany ponownie",
+    "reactivatedDescription": "Użytkownik może znów się zalogować.",
+    "rejectFailed": "Nie udało się odrzucić",
+    "rejected": "Rejestracja odrzucona",
+    "rejectedDescription": "Zgłoszenie rejestracji zostało usunięte.",
+    "roleUpdateFailed": "Nie udało się zmienić roli",
+    "roleUpdated": "Rola zmieniona",
+    "roleUpdatedDescription": "Zmieniono rolę na {role}.",
+    "tryAgain": "Spróbuj ponownie."
+  },
+  "validation": {
+    "confirmPassword": "Potwierdź hasło",
+    "email": "Podaj prawidłowy adres e-mail",
+    "passwordMin": "Hasło musi mieć co najmniej {min} znaków",
+    "passwordsDiffer": "Hasła nie są zgodne",
+    "username": "Nazwa użytkownika jest wymagana"
+  }
+}

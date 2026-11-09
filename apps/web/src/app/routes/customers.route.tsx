@@ -2,10 +2,10 @@ import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../nav-registry.types';
 
 const customersListCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Customers' },
+  crumb: { group: 'operations', page: 'customers' },
 };
 const customerDetailCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Customer' },
+  crumb: { group: 'operations', page: 'customer' },
 };
 
 export const customersRoute: RouteObject = {

@@ -11,6 +11,7 @@
  *
  * @module apps/web/src/features/delivery-on-documents/lib
  */
+import { getMessages, interpolate } from '../../../shared/i18n';
 import { ISO_3166_1_COUNTRIES } from '../../../shared/lib/iso-3166-1-countries';
 import type {
   DeliveryCountryExampleLine,
@@ -161,11 +162,14 @@ export const rateLabel = (rate: string): string =>
   /^\d+([.,]\d+)?$/.test(rate) ? `${rate}%` : rate;
 
 export function rateText(settings: DeliveryFormSettings): string {
-  if (settings.rate === 'goods') return 'Same as the products';
+  const copy = getMessages('delivery-on-documents').rateText;
+  if (settings.rate === 'goods') return copy.goods;
   if (settings.rate === 'fixed') {
-    return settings.fixedRate ? `Always ${rateLabel(settings.fixedRate)}` : 'Fixed, not set';
+    return settings.fixedRate
+      ? interpolate(copy.fixed, { rate: rateLabel(settings.fixedRate) })
+      : copy.fixedNotSet;
   }
-  return 'Added to product prices';
+  return copy.spread;
 }
 
 export function receiptName(settings: DeliveryFormSettings, rate: string): string {
@@ -192,17 +196,15 @@ export function checkName(
   format: DeliveryLineRateFormat,
   receiptLineNameLength: number = FALLBACK_RECEIPT_LINE_NAME_LENGTH,
 ): { name: string; error: string | null } {
+  const copy = getMessages('delivery-on-documents').checkName;
   const name = raw.replace(/\s+/g, ' ').trim();
-  if (!name) return { name, error: 'Enter a name.' };
+  if (!name) return { name, error: copy.empty };
   const max = maxName(format, receiptLineNameLength);
   if (name.length > max) {
-    return {
-      name,
-      error: `Use at most ${max} characters, so the VAT rate still fits in what fiscal printers read.`,
-    };
+    return { name, error: interpolate(copy.tooLong, { max }) };
   }
   if (/\d+([.,]\d+)?\s*%/.test(name)) {
-    return { name, error: 'Leave the VAT rate out. Receipts add it for you.' };
+    return { name, error: copy.hasRate };
   }
   return { name, error: null };
 }

@@ -15,6 +15,7 @@
  *
  * @module apps/web/src/features/listings/lib
  */
+import { getMessages } from '../../../shared/i18n';
 
 export type RequiredToSellIssueCode = 'OUT_OF_STOCK';
 
@@ -34,7 +35,7 @@ export function checkShopLineSellability(resolvedStock: number): RequiredToSellI
     return [
       {
         code: 'OUT_OF_STOCK',
-        message: 'Out of stock - it will publish but cannot be purchased until restocked.',
+        message: getMessages('listings').requiredToSell.outOfStock,
       },
     ];
   }

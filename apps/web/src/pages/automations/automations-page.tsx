@@ -27,10 +27,8 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { Button } from '../../shared/ui/button';
 import { Alert } from '../../shared/ui/alert';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
+import { useMessages, usePlural } from '../../shared/i18n';
 import {
-  AUTOMATIONS_PAGE_COPY,
-  AUTOMATION_ERROR_COPY,
-  AUTOMATION_INDEX_COPY,
   AutomationActionAvailabilityPanel,
   AutomationSuggestionCard,
   AutomationTriggerIndex,
@@ -49,6 +47,10 @@ import {
 const SUGGESTED_TRIGGER = 'order.packed';
 
 export function AutomationsPage(): ReactElement {
+  const messages = useMessages('automation');
+  const pageCopy = messages.page;
+  const errorCopy = messages.errors;
+  const plural = usePlural();
   const navigate = useNavigate();
   const vocabularyQuery = useAutomationVocabularyQuery();
   const summaryQuery = useAutomationSummaryQuery();
@@ -60,21 +62,21 @@ export function AutomationsPage(): ReactElement {
 
   const header = (
     <Button tone="secondary" onClick={() => void navigate('/automations/activity')}>
-      {AUTOMATIONS_PAGE_COPY.runLogAction}
+      {pageCopy.runLogAction}
     </Button>
   );
 
   if (vocabularyQuery.isLoading || summaryQuery.isLoading) {
     return (
       <PageLayout
-        eyebrow={AUTOMATIONS_PAGE_COPY.eyebrow}
-        title={AUTOMATIONS_PAGE_COPY.title}
-        description={AUTOMATIONS_PAGE_COPY.description}
+        eyebrow={pageCopy.eyebrow}
+        title={pageCopy.title}
+        description={pageCopy.description}
         actions={header}
       >
         <LoadingState
-          title={AUTOMATION_ERROR_COPY.loadingTitle}
-          message={AUTOMATION_ERROR_COPY.loadingMessage}
+          title={errorCopy.loadingTitle}
+          message={errorCopy.loadingMessage}
         />
       </PageLayout>
     );
@@ -85,13 +87,13 @@ export function AutomationsPage(): ReactElement {
   if (vocabularyQuery.error) {
     return (
       <PageLayout
-        eyebrow={AUTOMATIONS_PAGE_COPY.eyebrow}
-        title={AUTOMATIONS_PAGE_COPY.title}
+        eyebrow={pageCopy.eyebrow}
+        title={pageCopy.title}
         actions={header}
       >
         <ErrorState
-          title={AUTOMATION_ERROR_COPY.vocabularyTitle}
-          message={AUTOMATION_ERROR_COPY.vocabularyMessage}
+          title={errorCopy.vocabularyTitle}
+          message={errorCopy.vocabularyMessage}
         />
       </PageLayout>
     );
@@ -100,12 +102,12 @@ export function AutomationsPage(): ReactElement {
   if (summaryQuery.error) {
     return (
       <PageLayout
-        eyebrow={AUTOMATIONS_PAGE_COPY.eyebrow}
-        title={AUTOMATIONS_PAGE_COPY.title}
+        eyebrow={pageCopy.eyebrow}
+        title={pageCopy.title}
         actions={header}
       >
         <ErrorState
-          title={AUTOMATION_ERROR_COPY.summaryTitle}
+          title={errorCopy.summaryTitle}
           message={summaryQuery.error.message}
         />
       </PageLayout>
@@ -120,13 +122,13 @@ export function AutomationsPage(): ReactElement {
   if (summaryQuery.data?.envelopeUnreadable === true) {
     return (
       <PageLayout
-        eyebrow={AUTOMATIONS_PAGE_COPY.eyebrow}
-        title={AUTOMATIONS_PAGE_COPY.title}
+        eyebrow={pageCopy.eyebrow}
+        title={pageCopy.title}
         actions={header}
       >
         <ErrorState
-          title={AUTOMATION_ERROR_COPY.unreadableTitle}
-          message={AUTOMATION_ERROR_COPY.unreadableEnvelopeMessage}
+          title={errorCopy.unreadableTitle}
+          message={errorCopy.unreadableEnvelopeMessage}
         />
       </PageLayout>
     );
@@ -141,9 +143,9 @@ export function AutomationsPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow={AUTOMATIONS_PAGE_COPY.eyebrow}
-      title={AUTOMATIONS_PAGE_COPY.title}
-      description={AUTOMATIONS_PAGE_COPY.description}
+      eyebrow={pageCopy.eyebrow}
+      title={pageCopy.title}
+      description={pageCopy.description}
       actions={header}
     >
       {hasNoRules ? (
@@ -160,7 +162,7 @@ export function AutomationsPage(): ReactElement {
       ) : null}
 
       {droppedCount > 0 ? (
-        <Alert tone="warning">{AUTOMATION_INDEX_COPY.droppedRows(droppedCount)}</Alert>
+        <Alert tone="warning">{plural(droppedCount, messages.index.droppedRows)}</Alert>
       ) : null}
 
       <AutomationTriggerIndex rows={rows} />

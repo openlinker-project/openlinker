@@ -10,6 +10,9 @@
  */
 import { z } from 'zod';
 import { CORE_CAPABILITY_VALUES, type CoreCapability, type CreateConnectionInput } from '../api/connections.types';
+import { schemaMessage } from '../lib/schema-message';
+
+const msg = schemaMessage('prestashopSetupSchema');
 
 export const PRESTASHOP_ADAPTER_KEY = 'prestashop.webservice.v1';
 
@@ -33,14 +36,14 @@ export const PRESTASHOP_FALLBACK_CAPABILITIES: CoreCapability[] = [
 ];
 
 export const prestashopSetupSchema = z.object({
-  name: z.string().trim().min(1, 'Connection name is required'),
+  name: z.string().trim().min(1, msg('nameRequired')),
   baseUrl: z
-    .url('Shop URL must be a valid URL (e.g. https://shop.example.com)')
+    .url(msg('baseUrlInvalid'))
     .refine(
       (value) => value.startsWith('http://') || value.startsWith('https://'),
-      'Shop URL must use http:// or https://',
+      msg('baseUrlProtocol'),
     ),
-  webserviceKey: z.string().trim().min(1, 'Webservice key is required'),
+  webserviceKey: z.string().trim().min(1, msg('webserviceKeyRequired')),
   shopId: z.string().trim().optional(),
   // Optional override for the split-host case (webservice host ≠ public storefront).
   // Empty string is accepted alongside absent so the form can round-trip a blank input
@@ -49,10 +52,10 @@ export const prestashopSetupSchema = z.object({
   storefrontBaseUrl: z
     .union([
       z
-        .url('Storefront URL must be a valid URL')
+        .url(msg('storefrontUrlInvalid'))
         .refine(
           (value) => value.startsWith('http://') || value.startsWith('https://'),
-          'Storefront URL must use http:// or https://',
+          msg('storefrontUrlProtocol'),
         ),
       z.literal(''),
     ])
@@ -72,7 +75,7 @@ export const prestashopSetupSchema = z.object({
         .string()
         .trim()
         .transform((v) => v.toUpperCase())
-        .pipe(z.string().regex(/^[A-Z]{3}$/, 'Use a 3-letter ISO 4217 code')),
+        .pipe(z.string().regex(/^[A-Z]{3}$/, msg('currencyFormat'))),
       z.literal(''),
     ])
     .optional(),

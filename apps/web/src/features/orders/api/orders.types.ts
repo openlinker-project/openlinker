@@ -166,15 +166,17 @@ export type SalesDocumentUnresolvedReasonValue =
 // ENFORCED, not merely commented: `scripts/check-destination-routing-reason-mirror.mjs`
 // fails `pnpm check:invariants` on any drift in either direction, VALUE AND ORDER.
 //
-// `'routed-to-no-destination'` is a working router making a DECISION and is
-// rendered neutrally; the other three name a destination the router asked for
-// that OpenLinker could not reach. Only those three are counted — see
-// `DESTINATION_ROUTING_ATTENTION_REASONS` in `../lib/destination-routing-copy`.
+// `'routed-to-no-destination'` is a working router making a DECISION and
+// `'no-destination-configured'` (#3959) a shop with nothing to copy its orders
+// to; both are rendered neutrally. The rest are outstanding work and are counted
+// - see `DESTINATION_ROUTING_ATTENTION_REASONS` in `../lib/destination-routing`.
 export const DestinationRoutingBlockReasonValues = [
   'routed-to-no-destination',
   'routed-destinations-unavailable',
   'routed-destinations-partially-unavailable',
   'routed-to-source-only',
+  'no-destination-configured',
+  'no-active-destination',
 ] as const;
 export type DestinationRoutingBlockReasonValue =
   (typeof DestinationRoutingBlockReasonValues)[number];
@@ -714,6 +716,12 @@ export interface OrderRecord {
    */
   omsAttention?: OrderOmsAttentionEntry[] | null;
   /**
+   * Per destination shop: did a payment that arrived after the shop got the
+   * order reach it (#3963)? Optional for an older API; empty for an order no
+   * shop got before it was paid.
+   */
+  paymentWriteback?: OrderPaymentWritebackEntry[] | null;
+  /**
    * The reason of this order's OPEN hold, or null when it is not held (#2340).
    * Present on EVERY row — list and detail — because the column is already
    * loaded, which is what lets the list badge it for free.
@@ -997,6 +1005,12 @@ export interface OrderHealthSummary {
    * Optional for graceful degradation against an older API.
    */
   omsAttention?: number;
+  /**
+   * Orders where a shop still shows the order unpaid and OpenLinker gave up
+   * sending the payment (#3963). Its own axis, never inside the health
+   * partition. Optional for an older API.
+   */
+  paymentNotSent?: number;
 }
 
 export interface OrderFilters {
@@ -1060,6 +1074,8 @@ export interface OrderFilters {
    * stayed the operator-facing `attention`.
    */
   attention?: boolean;
+  /** #3963 - orders whose payment did not reach a shop (`?paymentNotSent=`). */
+  paymentNotSent?: boolean;
   /**
    * Narrow to orders held for ONE reason (#2342), sent as `?hold=`.
    *
@@ -1385,13 +1401,6 @@ export const ORDER_EXPORT_PII_COLUMNS: readonly OrderExportColumnIdValue[] = [
 export const ORDER_LIST_COLUMN_IDS = ['customer', 'channel', 'status', 'shipment', 'money'] as const;
 export type OrderListColumnIdValue = (typeof ORDER_LIST_COLUMN_IDS)[number];
 
-export const ORDER_LIST_COLUMN_LABELS: Record<OrderListColumnIdValue, string> = {
-  customer: 'Customer',
-  channel: 'Channel',
-  status: 'Status',
-  shipment: 'Shipment',
-  money: 'Money',
-};
 
 /**
  * A personal, named, ordered column set (#3530, D32). `userId: null` marks
@@ -1459,3 +1468,42 @@ export interface OrderDocumentEmailEntry {
   failureMessage: string | null;
   createdAt: string;
 }
+
+/**
+ * What OpenLinker knows about a payment at ONE destination shop (#3963).
+ * `state` stays a plain string: the column is jsonb, and a value from a newer
+ * release must round-trip; the UI renders an unrecognised one neutrally.
+ */
+export const PaymentWritebackStateValues = [
+  'awaiting',
+  'sending',
+  'paid-in-shop',
+  'created-paid',
+  'retrying',
+  'not-sent',
+  'cod',
+  'not-tracked',
+  'skipped-by-setting',
+  'handled',
+] as const;
+export type PaymentWritebackState = (typeof PaymentWritebackStateValues)[number];
+
+export interface OrderPaymentWritebackEntry {
+  destinationConnectionId: string;
+  state: string;
+  at: string;
+  attempts: number;
+  reason: string | null;
+  detail: string | null;
+  /** The shop still shows the order unpaid and OpenLinker gave up. */
+  problem: boolean;
+}
+
+export interface PaymentWritebackRetryResult {
+  enqueued: number;
+}
+
+export interface PaymentWritebackHandledResult {
+  updated: number;
+}
+

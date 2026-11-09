@@ -136,7 +136,7 @@ describe('SalesDocumentCell (#2552/#2553)', () => {
         },
       }),
     });
-    expect(screen.getByText('Authority rejected')).toBeInTheDocument();
+    expect(screen.getByText('Rejected at clearance')).toBeInTheDocument();
     expect(container.querySelector('.sales-doc--error')).toBeInTheDocument();
   });
 

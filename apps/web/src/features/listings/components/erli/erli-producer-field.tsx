@@ -15,14 +15,18 @@
  */
 import type { ReactElement } from 'react';
 
+import { interpolate, useMessages } from '../../../../shared/i18n';
 import { Alert } from '../../../../shared/ui/alert';
 import { FormField } from '../../../../shared/ui/form-field';
 import { Input } from '../../../../shared/ui/input';
 import { Select } from '../../../../shared/ui/select';
 import { useResponsibleProducersQuery } from '../../hooks/use-responsible-producers-query';
+import { serverErrorText } from '../../lib/server-error-text';
 
 interface ErliProducerFieldProps {
   connectionId: string;
+  /** The marketplace's display name, so copy can say whose account to check. */
+  platformName: string;
   /** Selected producer id (empty string = none chosen). */
   value: string;
   onChange: (producerId: string) => void;
@@ -30,9 +34,12 @@ interface ErliProducerFieldProps {
 
 export function ErliProducerField({
   connectionId,
+  platformName,
   value,
   onChange,
 }: ErliProducerFieldProps): ReactElement {
+  const copy = useMessages('listings').erliProducerField;
+  const common = useMessages('listings').common;
   const query = useResponsibleProducersQuery(connectionId);
   const producers = query.data?.responsibleProducers ?? [];
 
@@ -45,23 +52,23 @@ export function ErliProducerField({
     'aria-describedby'?: string;
   }>;
   if (query.isLoading) {
-    control = <Input disabled value="Loading producers…" readOnly />;
+    control = <Input disabled value={copy.loading} readOnly />;
   } else if (query.error) {
     control = (
-      <Alert tone="error" title="Unable to load producers">
-        {query.error instanceof Error ? query.error.message : 'Please try again.'}
+      <Alert tone="error" title={copy.loadErrorTitle}>
+        {serverErrorText(common.serverSaid, query.error instanceof Error ? query.error.message : undefined, copy.tryAgain)}
       </Alert>
     );
   } else if (producers.length === 0) {
     control = (
-      <Alert tone="info" title="No producers found">
-        No producers on this Erli account - add one in Erli, then reload.
+      <Alert tone="info" title={copy.emptyTitle}>
+        {interpolate(copy.emptyBody, { platform: platformName })}
       </Alert>
     );
   } else {
     control = (
       <Select value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">Choose a producer…</option>
+        <option value="">{copy.placeholder}</option>
         {producers.map((producer) => (
           <option key={producer.id} value={producer.id}>
             {producer.name}
@@ -73,9 +80,9 @@ export function ErliProducerField({
 
   return (
     <FormField
-      label="Producer"
+      label={copy.label}
       name="producer"
-      description="Responsible producer shown on the Erli product card. Fetched from Erli."
+      description={interpolate(copy.description, { platform: platformName })}
     >
       {control}
     </FormField>

@@ -11,12 +11,13 @@
  * @module apps/web/src/features/orders/components
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../../shared/api/api-error';
 import { ordersQueryKeys } from '../api/orders.query-keys';
+import { interpolate, useFormat, useMessages, usePlural } from '../../../shared/i18n';
 
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -32,22 +33,26 @@ import { Select } from '../../../shared/ui/select';
 import { Textarea } from '../../../shared/ui/textarea';
 import type { BulkCancelOrdersResult } from '../api/order-bulk-actions.types';
 import { useBulkCancelOrdersMutation } from '../hooks/use-bulk-order-actions';
-import { BULK_ACTIONS_COPY, BULK_CANCEL_ROW, describeCancelWarning } from '../lib/bulk-order-actions.copy';
+import { bulkCancelRow, describeCancelWarning } from '../lib/bulk-order-actions';
+import type { BulkActionsCopy } from '../lib/bulk-order-actions.types';
 import {
   ORDER_CANCEL_NOTE_MAX_LENGTH,
-  ORDER_CANCEL_REASON_LABELS,
   OrderCancelReasonValues,
+  orderCancelReasonLabel,
   readServerReason,
 } from '../lib/order-cancel';
 import { BulkResultRows, type BulkResultRow } from './bulk-result-rows';
 import {
-  bulkCancelSchema,
+  createBulkCancelSchema,
   type BulkCancelFormValues,
   type BulkCancelSubmission,
 } from './bulk-cancel-dialog.schema';
 
-const COPY = BULK_ACTIONS_COPY.cancel;
-const DEFAULTS: BulkCancelFormValues = { reason: 'buyer-request', note: '', acknowledgeAcceptedWork: false };
+const DEFAULTS: BulkCancelFormValues = {
+  reason: 'buyer-request',
+  note: '',
+  acknowledgeAcceptedWork: false,
+};
 
 export interface BulkCancelDialogProps {
   open: boolean;
@@ -72,13 +77,15 @@ export function isDefiniteNoOp(error: unknown): boolean {
 
 export function toCancelRows(
   result: BulkCancelOrdersResult,
-  connectionNames?: ReadonlyMap<string, string>,
+  copy: BulkActionsCopy,
+  connectionNames?: ReadonlyMap<string, string>
 ): BulkResultRow[] {
   return result.results.map((row) => {
-    const view = BULK_CANCEL_ROW[row.outcome];
-    const detail = [row.reason, row.code ? `(${row.code})` : null].filter(Boolean).join(' ') || null;
+    const view = bulkCancelRow(row.outcome, copy);
+    const detail =
+      [row.reason, row.code ? `(${row.code})` : null].filter(Boolean).join(' ') || null;
     const notes = (row.warnings ?? []).map((w) =>
-      describeCancelWarning(w, (id) => connectionNames?.get(id)),
+      describeCancelWarning(w, (id) => connectionNames?.get(id), copy)
     );
     return {
       orderId: row.orderId,
@@ -92,7 +99,7 @@ export function toCancelRows(
             to={`/orders/${encodeURIComponent(row.orderId)}`}
             data-testid="orders-bulk-cancel-correction-link"
           >
-            {COPY.correctionLink}
+            {copy.cancel.correctionLink}
           </Link>
         ) : null,
     };
@@ -108,10 +115,15 @@ export function BulkCancelDialog({
 }: BulkCancelDialogProps): ReactElement {
   const mutation = useBulkCancelOrdersMutation();
   const queryClient = useQueryClient();
+  const copy = useMessages('orders').bulkActions;
+  const COPY = copy.cancel;
+  const plural = usePlural();
+  const { number } = useFormat();
+  const schema = useMemo(() => createBulkCancelSchema(COPY.validation), [COPY]);
   const [result, setResult] = useState<BulkCancelOrdersResult | null>(null);
   const form = useForm<BulkCancelFormValues, undefined, BulkCancelSubmission>({
     defaultValues: DEFAULTS,
-    resolver: zodResolver(bulkCancelSchema),
+    resolver: zodResolver(schema),
   });
   const { reset: resetForm } = form;
   const { reset: resetMutation } = mutation;
@@ -144,7 +156,7 @@ export function BulkCancelDialog({
             void queryClient.invalidateQueries({ queryKey: ordersQueryKeys.all });
           }
         },
-      },
+      }
     );
   });
 
@@ -155,12 +167,17 @@ export function BulkCancelDialog({
         <DialogContent className="bulk-dispatch" data-testid="orders-bulk-cancel-dialog">
           <DialogTitle>{COPY.resultTitle}</DialogTitle>
           <DialogDescription data-testid="orders-bulk-cancel-summary">
-            <strong>{COPY.resultSummary(done, result.total)}</strong>
-            {result.pending > 0 ? ` · ${COPY.pendingCount(result.pending)}` : ''}
-            {result.refused > 0 ? ` · ${result.refused} refused` : ''}
-            {result.failed > 0 ? ` · ${result.failed} failed` : ''}
+            <strong>
+              {interpolate(COPY.resultSummary, { done: number(done), total: number(result.total) })}
+            </strong>
+            {result.pending > 0 ? ` · ${plural(result.pending, COPY.pendingCount)}` : ''}
+            {result.refused > 0 ? ` · ${plural(result.refused, COPY.refusedCount)}` : ''}
+            {result.failed > 0 ? ` · ${plural(result.failed, COPY.failedCount)}` : ''}
           </DialogDescription>
-          <BulkResultRows rows={toCancelRows(result, connectionNames)} testId="orders-bulk-cancel-results" />
+          <BulkResultRows
+            rows={toCancelRows(result, copy, connectionNames)}
+            testId="orders-bulk-cancel-results"
+          />
           <DialogFooter>
             <Button
               tone="primary"
@@ -169,7 +186,7 @@ export function BulkCancelDialog({
                 onOpenChange(false);
               }}
             >
-              Close
+              {COPY.close}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -180,11 +197,15 @@ export function BulkCancelDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="order-hold-dialog" data-testid="orders-bulk-cancel-dialog">
-        <DialogTitle>{COPY.title(orderIds.length)}</DialogTitle>
+        <DialogTitle>{plural(orderIds.length, COPY.title)}</DialogTitle>
         <DialogDescription>{COPY.description}</DialogDescription>
 
         {mutation.isError && !isDefiniteNoOp(mutation.error) ? (
-          <Alert tone="warning" title={COPY.unconfirmedError} data-testid="orders-bulk-cancel-unconfirmed">
+          <Alert
+            tone="warning"
+            title={COPY.unconfirmedError}
+            data-testid="orders-bulk-cancel-unconfirmed"
+          >
             {COPY.unconfirmedBody}
           </Alert>
         ) : mutation.isError ? (
@@ -209,7 +230,7 @@ export function BulkCancelDialog({
             <Select {...form.register('reason')} data-testid="orders-bulk-cancel-reason">
               {OrderCancelReasonValues.map((value) => (
                 <option key={value} value={value}>
-                  {ORDER_CANCEL_REASON_LABELS[value]}
+                  {orderCancelReasonLabel(value)}
                 </option>
               ))}
             </Select>
@@ -256,7 +277,7 @@ export function BulkCancelDialog({
               disabled={mutation.isPending}
               data-testid="orders-bulk-cancel-submit"
             >
-              {mutation.isPending ? COPY.submitting : COPY.submit(orderIds.length)}
+              {mutation.isPending ? COPY.submitting : plural(orderIds.length, COPY.submit)}
             </Button>
           </DialogFooter>
         </form>

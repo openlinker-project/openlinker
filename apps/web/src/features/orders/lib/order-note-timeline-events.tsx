@@ -11,11 +11,11 @@
  */
 import type { DatedTimelineEvent } from '../components/order-activity-timeline';
 import type { OrderNoteTimelineEntry } from '../api/orders.types';
-import { ORDER_NOTES_COPY } from './order-notes.copy';
+import { getMessages, interpolate, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 
-const COPY = ORDER_NOTES_COPY.timeline;
+type TimelineCopy = ResolvedCopy<Messages['orders']>['orderNotes']['timeline'];
 
-function resolveTitle(entry: OrderNoteTimelineEntry): string {
+function resolveTitle(entry: OrderNoteTimelineEntry, COPY: TimelineCopy): string {
   switch (entry.kind) {
     case 'created':
       return COPY.created;
@@ -26,16 +26,20 @@ function resolveTitle(entry: OrderNoteTimelineEntry): string {
     case 'deleted':
       return COPY.deleted;
     default:
-      return COPY.unknown(entry.kind);
+      return interpolate(COPY.unknown, { kind: entry.kind });
   }
 }
 
-function resolveDescription(entry: OrderNoteTimelineEntry): string | undefined {
+function resolveDescription(
+  entry: OrderNoteTimelineEntry,
+  COPY: TimelineCopy,
+): string | undefined {
   if (entry.kind === 'deleted') return COPY.deletedDescription;
-  return entry.body ? `“${entry.body}”` : undefined;
+  return entry.body ? interpolate(COPY.quotedBody, { body: entry.body }) : undefined;
 }
 
 export function mapNoteTimelineToEvents(entries: readonly OrderNoteTimelineEntry[]): DatedTimelineEvent[] {
+  const COPY = getMessages('orders').orderNotes.timeline;
   return entries.map((entry, index): DatedTimelineEvent => {
     // A flag change IS the packer fact; a footer would only repeat the title.
     const packerFooter =
@@ -43,9 +47,9 @@ export function mapNoteTimelineToEvents(entries: readonly OrderNoteTimelineEntry
     return {
       id: `note:${entry.noteId}:${entry.kind}:${entry.occurredAt}:${index}`,
       timestamp: entry.occurredAt,
-      title: resolveTitle(entry),
+      title: resolveTitle(entry, COPY),
       by: entry.actorUsername,
-      description: resolveDescription(entry),
+      description: resolveDescription(entry, COPY),
       tone: 'default',
       footer: packerFooter ? <span className="text-muted">{COPY.packerFooter}</span> : undefined,
     };

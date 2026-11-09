@@ -17,9 +17,8 @@ import { StatusBadge } from '../../../shared/ui/status-badge';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import type { BuyerEmailDelivery } from '../api/buyer-emails.types';
 import { useOrderBuyerEmailsQuery } from '../hooks/use-order-buyer-emails-query';
-import { BUYER_EMAILS_COPY, templateLabel } from '../lib/buyer-emails.copy';
-
-const COPY = BUYER_EMAILS_COPY.order;
+import { useMessages } from '../../../shared/i18n';
+import { templateLabel } from '../lib/buyer-email-template-label';
 
 function panelState(rows: readonly BuyerEmailDelivery[]): string | undefined {
   if (rows.some((row) => row.outcome === 'bounced')) return 'order-bounced';
@@ -28,6 +27,7 @@ function panelState(rows: readonly BuyerEmailDelivery[]): string | undefined {
 }
 
 function OutcomeBadge({ row }: { row: BuyerEmailDelivery }): ReactElement {
+  const COPY = useMessages('buyer-emails').order;
   if (row.outcome === 'sent') return <StatusBadge tone="success">{COPY.sent}</StatusBadge>;
   if (row.outcome === 'bounced') return <StatusBadge tone="error">{COPY.bounced}</StatusBadge>;
   if (row.outcome === 'pending') return <StatusBadge tone="warning">{COPY.pending}</StatusBadge>;
@@ -40,6 +40,7 @@ export function OrderBuyerEmailsPanel({
   internalOrderId: string;
 }): ReactElement | null {
   const query = useOrderBuyerEmailsQuery(internalOrderId);
+  const COPY = useMessages('buyer-emails').order;
 
   if (query.isError) {
     return (

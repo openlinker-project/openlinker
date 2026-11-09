@@ -6,6 +6,9 @@ import type {
 import type { UpdateConnectionInput } from '../api/connections.types';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
+import { schemaMessage } from '../lib/schema-message';
+
+const msg = schemaMessage('editConnectionSchema');
 
 /**
  * Connection-level seller-defaults schema (#430 / #445). Each sub-field is
@@ -26,7 +29,7 @@ const allegroSellerLocationSchema = z.object({
   city: z.string().trim().max(200).optional(),
   postCode: z
     .union([
-      z.string().regex(/^\d{2}-\d{3}$/, 'Postcode must use the PL format NN-NNN'),
+      z.string().regex(/^\d{2}-\d{3}$/, msg('postcodeFormat')),
       z.literal(''),
     ])
     .optional(),
@@ -55,7 +58,7 @@ const allegroSafetyInformationSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['attachments'],
-        message: 'Add at least one attachment when "Provide safety information (file)" is selected.',
+        message: msg('attachmentRequired').error(),
       });
     }
   });
@@ -86,7 +89,7 @@ const inpostAddressSchema = z.object({
   city: z.string().trim().max(200).optional(),
   postCode: z
     .union([
-      z.string().regex(/^\d{2}-\d{3}$/, 'Postcode must use the PL format NN-NNN'),
+      z.string().regex(/^\d{2}-\d{3}$/, msg('postcodeFormat')),
       z.literal(''),
     ])
     .optional(),
@@ -101,14 +104,14 @@ const inpostAddressSchema = z.object({
         .string()
         .trim()
         .transform((v) => v.toUpperCase())
-        .pipe(z.string().regex(/^[A-Z]{2}$/, 'Country must be an ISO 3166-1 alpha-2 code (e.g. PL)')),
+        .pipe(z.string().regex(/^[A-Z]{2}$/, msg('countryCode'))),
     ])
     .optional(),
 });
 
 const inpostSenderAddressSchema = z.object({
   name: z.string().trim().max(200).optional(),
-  email: z.union([z.string().trim().email('Enter a valid email'), z.literal('')]).optional(),
+  email: z.union([z.string().trim().email(msg('emailInvalid')), z.literal('')]).optional(),
   phone: z.string().trim().max(30).optional(),
   address: inpostAddressSchema.optional(),
 });
@@ -127,8 +130,8 @@ const rateLimitFormSchema = z.object({
     .union([
       z
         .string()
-        .regex(/^[1-9]\d*$/, 'Must be a positive whole number')
-        .refine((v) => Number(v) <= 6000, 'Must be at most 6000'),
+        .regex(/^[1-9]\d*$/, msg('positiveWholeNumber'))
+        .refine((v) => Number(v) <= 6000, msg('atMost6000')),
       z.literal(''),
     ])
     .optional(),
@@ -136,8 +139,8 @@ const rateLimitFormSchema = z.object({
     .union([
       z
         .string()
-        .regex(/^[1-9]\d*$/, 'Must be a positive whole number')
-        .refine((v) => Number(v) <= 64, 'Must be at most 64'),
+        .regex(/^[1-9]\d*$/, msg('positiveWholeNumber'))
+        .refine((v) => Number(v) <= 64, msg('atMost64')),
       z.literal(''),
     ])
     .optional(),
@@ -156,8 +159,8 @@ const stockPolicyFormSchema = z.object({
     .union([
       z
         .string()
-        .regex(/^\d+$/, 'Must be a whole number, 0 or more')
-        .refine((v) => Number(v) <= 100000, 'Must be at most 100000'),
+        .regex(/^\d+$/, msg('wholeNumberOrZero'))
+        .refine((v) => Number(v) <= 100000, msg('atMost100000')),
       z.literal(''),
     ])
     .optional(),
@@ -165,8 +168,8 @@ const stockPolicyFormSchema = z.object({
     .union([
       z
         .string()
-        .regex(/^\d+$/, 'Must be a whole number, 0 or more')
-        .refine((v) => Number(v) <= 100000, 'Must be at most 100000'),
+        .regex(/^\d+$/, msg('wholeNumberOrZero'))
+        .refine((v) => Number(v) <= 100000, msg('atMost100000')),
       z.literal(''),
     ])
     .optional(),
@@ -209,7 +212,7 @@ const pricingRuleFormSchema = z
         // Any decimal precision the backend accepts. A tighter rule rejected a
         // value already stored on the connection, which blocked every save on
         // the page until the operator fixed a field they never set.
-        z.string().regex(/^\d+(\.\d+)?$/, 'Must be a number, 0 or more'),
+        z.string().regex(/^\d+(\.\d+)?$/, msg('numberOrZero')),
         z.literal(''),
       ])
       .optional(),
@@ -225,7 +228,7 @@ const pricingRuleFormSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['percent'],
-        message: 'Enter a percentage',
+        message: msg('percentRequired').error(),
       });
       return;
     }
@@ -233,15 +236,14 @@ const pricingRuleFormSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['percent'],
-        message:
-          'A margin must be below 100%. To add more than the catalogue price, use a markup instead.',
+        message: msg('marginTooHigh').error(),
       });
     }
   });
 
 export const editConnectionSchema = z
   .object({
-    name: z.string().trim().min(1, 'Connection name is required'),
+    name: z.string().trim().min(1, msg('nameRequired')),
     baseUrl: z.string().trim().optional(),
     // WooCommerce-only structured field surfacing `config.siteUrl` — the key
     // the WooCommerce backend config DTO validates (#975). Mirrors the setup
@@ -250,8 +252,8 @@ export const editConnectionSchema = z
     siteUrl: z
       .union([
         z
-          .url('Site URL must be a valid URL (e.g. https://shop.example.com)')
-          .refine((value) => value.startsWith('https://'), 'Site URL must use HTTPS'),
+          .url(msg('siteUrlInvalid'))
+          .refine((value) => value.startsWith('https://'), msg('siteUrlHttps')),
         z.literal(''),
       ])
       .optional(),
@@ -261,10 +263,10 @@ export const editConnectionSchema = z
     storefrontBaseUrl: z
       .union([
         z
-          .url('Storefront URL must be a valid URL')
+          .url(msg('storefrontUrlInvalid'))
           .refine(
             (value) => value.startsWith('http://') || value.startsWith('https://'),
-            'Storefront URL must use http:// or https://',
+            msg('storefrontUrlProtocol'),
           ),
         z.literal(''),
       ])
@@ -276,10 +278,10 @@ export const editConnectionSchema = z
     openlinkerCallbackBaseUrl: z
       .union([
         z
-          .url('Callback URL must be a valid URL')
+          .url(msg('callbackUrlInvalid'))
           .refine(
             (value) => value.startsWith('http://') || value.startsWith('https://'),
-            'Callback URL must use http:// or https://',
+            msg('callbackUrlProtocol'),
           ),
         z.literal(''),
       ])
@@ -293,16 +295,16 @@ export const editConnectionSchema = z
     callbackBaseUrl: z
       .union([
         z
-          .url('Callback URL must be a valid URL')
+          .url(msg('callbackUrlInvalid'))
           .refine(
             (value) => value.startsWith('http://') || value.startsWith('https://'),
-            'Callback URL must use http:// or https://',
+            msg('callbackUrlProtocol'),
           ),
         z.literal(''),
       ])
       .optional(),
     masterCatalogConnectionId: z
-      .union([z.string().uuid('Product catalog must be a valid connection ID'), z.literal('')])
+      .union([z.string().uuid(msg('productCatalogInvalid')), z.literal('')])
       .optional(),
     // PrestaShop-only structured field surfacing `config.defaultCarrierId`
     // (#517). Stored as a string on the form so the same `<Select>`
@@ -312,9 +314,9 @@ export const editConnectionSchema = z
     // refused with a Zod refine.
     defaultCarrierId: z
       .union([
-        z.string().refine((v) => v === '' || /^[1-9]\d*$/.test(v.trim()), {
-          message: 'Default carrier ID must be a positive integer.',
-        }),
+        z
+          .string()
+          .refine((v) => v === '' || /^[1-9]\d*$/.test(v.trim()), msg('defaultCarrierInvalid')),
         z.literal(''),
       ])
       .optional(),
@@ -325,9 +327,9 @@ export const editConnectionSchema = z
     // submit. Empty clears the override so the adapter default (1000) applies.
     unmanagedStockQuantity: z
       .union([
-        z.string().refine((v) => v === '' || /^[1-9]\d*$/.test(v.trim()), {
-          message: 'Unmanaged stock quantity must be a positive integer.',
-        }),
+        z
+          .string()
+          .refine((v) => v === '' || /^[1-9]\d*$/.test(v.trim()), msg('unmanagedStockInvalid')),
         z.literal(''),
       ])
       .optional(),
@@ -338,7 +340,7 @@ export const editConnectionSchema = z
     configText: z
       .string()
       .trim()
-      .min(2, 'Configuration JSON is required')
+      .min(2, msg('configRequired'))
       .refine((value) => {
         try {
           JSON.parse(value);
@@ -346,7 +348,7 @@ export const editConnectionSchema = z
         } catch {
           return false;
         }
-      }, 'Configuration must be valid JSON'),
+      }, msg('configInvalid')),
     adapterKey: z.string().trim().optional(),
     // #430 — Allegro-only structured fields. Always optional at the form
     // level; the BE DTO validates strict shape on PATCH.
@@ -357,10 +359,10 @@ export const editConnectionSchema = z
     subiektBridgeUrl: z
       .union([
         z
-          .url('Bridge URL must be a valid URL')
+          .url(msg('bridgeUrlInvalid'))
           .refine(
             (value) => value.startsWith('http://') || value.startsWith('https://'),
-            'Bridge URL must use http:// or https://',
+            msg('bridgeUrlProtocol'),
           ),
         z.literal(''),
       ])
@@ -413,6 +415,10 @@ export const editConnectionSchema = z
     stockLocationOverride: stockLocationOverrideFormSchema,
     // Per-connection "this system packs and ships orders itself" flag (#2118) — platform-neutral.
     fulfilmentOwnedByDestination: z.boolean().nullable().optional(),
+    // "When the buyer pays later" (#3963) — platform-neutral.
+    paymentWriteback: z
+      .object({ mode: z.enum(['mark-paid', 'leave']), paidStateId: z.string() })
+      .optional(),
   });
 
 /**
@@ -590,6 +596,12 @@ export type StructuredConfigPatch = {
    * keeps the shallow-spread merge honest (see `rateLimit`).
    */
   fulfilmentOwnedByDestination?: boolean | null;
+  /**
+   * "When the buyer pays later" (#3963) — flat `config.paymentWriteback`.
+   * Platform-neutral. `paidStateId: ''` is written as `null` (the shop's own
+   * default paid state).
+   */
+  paymentWriteback?: { mode: 'mark-paid' | 'leave'; paidStateId: string };
 };
 
 /**
@@ -960,6 +972,15 @@ export function mergeStructuredIntoConfig(
   // `true` is a statement, everything else is written as an explicit `false`.
   if (structured.fulfilmentOwnedByDestination !== undefined) {
     next.fulfilmentOwnedByDestination = structured.fulfilmentOwnedByDestination === true;
+  }
+  // "When the buyer pays later" (#3963). Written whole, never deleted, so the
+  // shallow-spread merge stays honest (see `rateLimit`).
+  if (structured.paymentWriteback !== undefined) {
+    const stateId = structured.paymentWriteback.paidStateId.trim();
+    next.paymentWriteback = {
+      mode: structured.paymentWriteback.mode,
+      paidStateId: stateId.length === 0 ? null : stateId,
+    };
   }
   // Platform-owned assembly pass (#1330): plugin field names on the patch are
   // assembled by the platform contribution with the same partial-patch

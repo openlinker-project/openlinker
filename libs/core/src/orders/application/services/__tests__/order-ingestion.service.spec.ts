@@ -7,6 +7,7 @@
  */
 
 import type { IOrderChangeService } from '../order-change.service.interface';
+import type { IPaymentWritebackService } from '../../interfaces/payment-writeback.service.interface';
 import type { IOrderCancellationEffectsService } from '../../interfaces/order-cancellation-effects.service.interface';
 import { OrderIngestionService } from '../order-ingestion.service';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
@@ -40,6 +41,7 @@ import type {
 import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type { IncomingOrder } from '../../../domain/types/incoming-order.types';
 import { MissingOrderItemMappingError } from '../../../domain/exceptions/missing-order-item-mapping.error';
+import { NoOrderDestinationsAvailableException } from '../../../domain/exceptions/no-order-destinations-available.exception';
 import type { OrderRecord } from '../../../domain/entities/order-record.entity';
 
 // #2396 — the ONE router-resolution seam. Mocked so the `selected` arm is
@@ -88,6 +90,7 @@ describe('OrderIngestionService', () => {
   >;
   let connections: jest.Mocked<Pick<ConnectionPort, 'list'>>;
   let cancellationEffects: { applyEffects: jest.Mock };
+  let paymentWriteback: { planAfterSync: jest.Mock };
 
   const connectionId = 'connection-123';
   const cursorKey = 'allegro.orders.lastEventId';
@@ -241,6 +244,7 @@ describe('OrderIngestionService', () => {
         correctionUnavailableReason: null,
       }),
     };
+    paymentWriteback = { planAfterSync: jest.fn().mockResolvedValue(undefined) };
     service = new OrderIngestionService(
       integrationsService,
       syncCursors as unknown as ISyncCursorsService,
@@ -262,7 +266,8 @@ describe('OrderIngestionService', () => {
       connections as unknown as ConnectionPort,
       routerResolver,
       orderChanges as unknown as IOrderChangeService,
-      cancellationEffects as unknown as IOrderCancellationEffectsService
+      cancellationEffects as unknown as IOrderCancellationEffectsService,
+      paymentWriteback as unknown as IPaymentWritebackService
     );
   });
 
@@ -536,6 +541,32 @@ describe('OrderIngestionService', () => {
       identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_test');
       orderSource.getOrder.mockResolvedValue(baseIncoming);
       integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+    });
+
+    it('should plan the payment writeback with this run\'s results after the sync settled (#3963)', async () => {
+      const results = [
+        {
+          destinationConnectionId: 'dest-1',
+          status: 'success' as const,
+          orderRef: { orderId: '1027' },
+          created: false,
+        },
+      ];
+      orderSyncService.syncOrder.mockResolvedValue(results);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-42');
+
+      expect(paymentWriteback.planAfterSync).toHaveBeenCalledTimes(1);
+      expect(paymentWriteback.planAfterSync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          order: expect.objectContaining({ id: 'ol_order_test' }),
+          sourceConnectionId: connectionId,
+          results,
+        })
+      );
+      expect(orderSyncService.syncOrder.mock.invocationCallOrder[0]).toBeLessThan(
+        paymentWriteback.planAfterSync.mock.invocationCallOrder[0]
+      );
     });
 
     it('calls onOrderTransition at the terminal path with the in-scope sourceEventId as the 3rd arg', async () => {
@@ -1240,6 +1271,68 @@ describe('OrderIngestionService', () => {
 
       expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalled();
       expect(orderRecordService.persistOrder).toHaveBeenCalled();
+      expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalled();
+    });
+
+    it('should not decide the sales document when syncOrder fails for another reason', async () => {
+      orderSyncService.syncOrder.mockRejectedValue(new Error('db down'));
+
+      await expect(service.syncOrderFromSource(connectionId, externalOrderId)).rejects.toThrow(
+        'db down'
+      );
+
+      expect(autoIssueTrigger.onOrderTransition).not.toHaveBeenCalled();
+    });
+
+    // #3959 - a missing or inactive destination says nothing about whether the
+    // buyer is owed a document, so the document is decided before the throw
+    // takes the job onto its retry ladder.
+    it('should decide and persist the sales document before rethrowing when no destination is reachable', async () => {
+      const noDestinations = new NoOrderDestinationsAvailableException('ol_order_test', connectionId);
+      // The rethrow path must hand the trigger the JUST-PERSISTED buyer tax id,
+      // exactly as the success path does (#3187), so it is stubbed here and
+      // asserted below rather than left to whatever the default mock returns.
+      orderRecordService.persistOrder.mockResolvedValueOnce({
+        buyerTaxId: '5213796333',
+      } as never);
+      orderSyncService.syncOrder.mockRejectedValue(noDestinations);
+      autoIssueTrigger.onOrderTransition.mockResolvedValueOnce({ kind: 'none' });
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId, 'evt-3959')
+      ).rejects.toBe(noDestinations);
+
+      expect(autoIssueTrigger.onOrderTransition).toHaveBeenCalledTimes(1);
+      expect(autoIssueTrigger.onOrderTransition).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'ol_order_test' }),
+        connectionId,
+        'evt-3959',
+        null,
+        '5213796333'
+      );
+      expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith('ol_order_test', null, {
+        action: 'set',
+        matchedRuleId: null,
+      });
+      expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalled();
+    });
+
+    it('should still rethrow the destination failure when the sales-document step itself fails', async () => {
+      const noDestinations = new NoOrderDestinationsAvailableException('ol_order_test', connectionId);
+      orderSyncService.syncOrder.mockRejectedValue(noDestinations);
+      autoIssueTrigger.onOrderTransition.mockRejectedValueOnce(new Error('enqueue failed'));
+
+      await expect(service.syncOrderFromSource(connectionId, externalOrderId)).rejects.toBe(
+        noDestinations
+      );
+    });
+
+    it('should decide the sales document once when syncOrder returns no destinations (#3959)', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(autoIssueTrigger.onOrderTransition).toHaveBeenCalledTimes(1);
       expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalled();
     });
 

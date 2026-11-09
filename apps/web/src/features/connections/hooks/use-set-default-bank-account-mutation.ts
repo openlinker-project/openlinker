@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import { connectionsQueryKeys } from '../api/connections.query-keys';
 import { useApiClient } from '../../../app/api/api-client-provider';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { useToast } from '../../../shared/ui/toast-provider';
 
 interface SetDefaultBankAccountVariables {
@@ -26,6 +27,7 @@ export function useSetDefaultBankAccountMutation(): UseMutationResult<
   const apiClient = useApiClient();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const copy = useMessages('connections').setDefaultBankAccount;
 
   return useMutation({
     mutationFn: ({ connectionId, accountId }: SetDefaultBankAccountVariables) =>
@@ -46,8 +48,8 @@ export function useSetDefaultBankAccountMutation(): UseMutationResult<
     onError: (error) => {
       showToast({
         tone: 'error',
-        title: 'Could not update the default account',
-        description: `The account was saved in OpenLinker but the invoicing provider still shows the previous default. ${error.message}`,
+        title: copy.errorTitle,
+        description: interpolate(copy.errorDescription, { message: error.message }),
       });
     },
   });

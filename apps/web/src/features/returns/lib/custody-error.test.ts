@@ -10,7 +10,10 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../../shared/api/api-error';
 import { describeCustodyError, readCustodyRefusalReason } from './custody-error';
-import { RETURN_CUSTODY_ERROR_COPY, RETURN_RECEIVE_COPY } from './return-custody.copy';
+import { getMessages } from '../../../shared/i18n';
+
+const errorCopy = getMessages('returns').custody.error;
+const receiveCopy = getMessages('returns').custody.receive;
 
 function conflict(details: unknown): ApiError {
   return new ApiError('some server wording that must not be matched on', 409, details);
@@ -32,7 +35,7 @@ describe('readCustodyRefusalReason', () => {
 describe('describeCustodyError', () => {
   it('should render the spec sentence for an over-receipt', () => {
     expect(describeCustodyError(conflict({ reason: 'over-receipt' }))).toBe(
-      RETURN_RECEIVE_COPY.overReceipt,
+      receiveCopy.overReceipt,
     );
   });
 
@@ -47,7 +50,7 @@ describe('describeCustodyError', () => {
     // does not know what a future one means.
     const message = describeCustodyError(conflict({ reason: 'some-future-reason' }));
 
-    expect(message).toBe(RETURN_CUSTODY_ERROR_COPY.conflict);
+    expect(message).toBe(errorCopy.conflict);
     expect(message).not.toContain('some-future-reason');
   });
 
@@ -59,15 +62,15 @@ describe('describeCustodyError', () => {
 
   it('should map 404 and 403 to their own sentences', () => {
     expect(describeCustodyError(new ApiError('gone', 404, undefined))).toBe(
-      RETURN_CUSTODY_ERROR_COPY.notFound,
+      errorCopy.notFound,
     );
     expect(describeCustodyError(new ApiError('nope', 403, undefined))).toBe(
-      RETURN_CUSTODY_ERROR_COPY.forbidden,
+      errorCopy.forbidden,
     );
   });
 
   it('should fall back for a non-ApiError', () => {
-    expect(describeCustodyError(new Error(''))).toBe(RETURN_CUSTODY_ERROR_COPY.generic);
+    expect(describeCustodyError(new Error(''))).toBe(errorCopy.generic);
     expect(describeCustodyError(new Error('network down'))).toBe('network down');
   });
 });

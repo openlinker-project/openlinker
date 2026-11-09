@@ -16,7 +16,7 @@
  * @module apps/web/src/features/users/components
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, type ReactElement } from 'react';
+import { useEffect, useMemo, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -31,11 +31,12 @@ import {
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { useUpdatePackStationLabelMutation } from '../hooks/use-update-pack-station-label-mutation';
 import { PACK_STATION_LABEL_MAX_LENGTH } from '../api/users.types';
 import type { UserSummary } from '../api/users.types';
 import {
-  packStationLabelDialogSchema,
+  createPackStationLabelDialogSchema,
   toFormValues,
   toUpdateInput,
   type PackStationLabelFormSubmission,
@@ -54,6 +55,14 @@ export function PackStationLabelDialog({
 }: PackStationLabelDialogProps): ReactElement {
   const { showToast } = useToast();
   const mutation = useUpdatePackStationLabelMutation();
+  const copy = useMessages('users').packStation;
+  const schema = useMemo(
+    () =>
+      createPackStationLabelDialogSchema(
+        interpolate(copy.maxLength, { max: PACK_STATION_LABEL_MAX_LENGTH })
+      ),
+    [copy]
+  );
 
   const form = useForm<
     PackStationLabelFormValues,
@@ -61,7 +70,7 @@ export function PackStationLabelDialog({
     PackStationLabelFormSubmission
   >({
     defaultValues: { packStationLabel: '' },
-    resolver: zodResolver(packStationLabelDialogSchema),
+    resolver: zodResolver(schema),
   });
 
   const { reset: resetForm } = form;
@@ -80,11 +89,11 @@ export function PackStationLabelDialog({
       await mutation.mutateAsync({ userId: target.id, ...toUpdateInput(values) });
       showToast({
         tone: 'success',
-        title: 'Pack station label updated',
-        description:
-          toUpdateInput(values).packStationLabel === null
-            ? `Cleared for ${target.username}.`
-            : `Saved for ${target.username}.`,
+        title: copy.updated,
+        description: interpolate(
+          toUpdateInput(values).packStationLabel === null ? copy.cleared : copy.saved,
+          { username: target.username }
+        ),
       });
       onClose();
     } catch {
@@ -103,15 +112,16 @@ export function PackStationLabelDialog({
     >
       <DialogContent>
         <DialogTitle>
-          {target === null ? 'Pack station label' : `Pack station label for ${target.username}`}
+          {target === null
+            ? copy.title
+            : interpolate(copy.titleFor, { username: target.username })}
         </DialogTitle>
         <DialogDescription>
-          Shown to this packer at the bench, e.g. "Zebra ZD420 / Bench 3". Operator
-          configuration only — it carries no login weight and identifies nobody.
+          {copy.description}
         </DialogDescription>
 
         {mutation.error ? (
-          <Alert tone="error" title="Could not save the label">
+          <Alert tone="error" title={copy.saveFailed}>
             {mutation.error.message}
           </Alert>
         ) : null}
@@ -123,13 +133,13 @@ export function PackStationLabelDialog({
           noValidate
         >
           <FormField
-            label="Label"
+            label={copy.label}
             name="packStationLabel"
             error={form.formState.errors.packStationLabel?.message}
-            description="Leave blank to clear it."
+            description={copy.hint}
           >
             <Input
-              placeholder="Zebra ZD420 / Bench 3"
+              placeholder={copy.placeholder}
               maxLength={PACK_STATION_LABEL_MAX_LENGTH}
               {...form.register('packStationLabel')}
             />
@@ -138,11 +148,11 @@ export function PackStationLabelDialog({
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" tone="ghost">
-                Cancel
+                {copy.cancel}
               </Button>
             </DialogClose>
             <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? 'Saving…' : 'Save label'}
+              {mutation.isPending ? copy.submitting : copy.submit}
             </Button>
           </DialogFooter>
         </form>

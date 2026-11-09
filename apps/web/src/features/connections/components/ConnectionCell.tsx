@@ -15,6 +15,7 @@
  * demands. The internal `useConnectionQuery` stays as the standalone fallback
  * for a caller that holds nothing but an id (#2027's own scope).
  */
+import { interpolate, useMessages } from '../../../shared/i18n';
 import type { ReactElement, ReactNode } from 'react';
 import { CopyableId } from '../../../shared/ui/copyable-id';
 import { EmptyValue } from '../../../shared/ui/empty-value';
@@ -73,13 +74,6 @@ export interface ConnectionCellProps {
 // "Re-auth" rather than the app's longer "Re-authentication required": line 2's
 // fixed cost (shortened id + copy control) leaves ~58px inside the 220px cap, so
 // a longer label truncates on every affected row.
-const STATUS_NOTES: Record<Exclude<ConnectionStatus, 'active'>, string> = {
-  disabled: 'Disabled',
-  error: 'Error',
-  needs_reauth: 'Re-auth',
-  archived: 'Archived',
-};
-
 export function ConnectionCell({
   connectionId,
   connection,
@@ -93,6 +87,7 @@ export function ConnectionCell({
   // chip or `ConnectionEntityLabel`), so line 2's copyable id + status note
   // (which describe a real connection) are suppressed rather than shown
   // against a placeholder.
+  const copy = useMessages('connections').connectionCell;
   const isSystem = isSystemConnectionId(connectionId);
   const factsSupplied = connection !== undefined || isSystem;
   const query = useConnectionQuery(connectionId, { enabled: !factsSupplied });
@@ -106,9 +101,8 @@ export function ConnectionCell({
   const loading = loadingProp || (!factsSupplied && query.isLoading);
 
   const statusNote =
-    resolvedStatus && resolvedStatus !== 'active' ? STATUS_NOTES[resolvedStatus] : null;
+    resolvedStatus && resolvedStatus !== 'active' ? copy.statusNotes[resolvedStatus] : null;
 
-  const copySubject = resolvedName ? `connection ID for ${resolvedName}` : 'connection ID';
   const classes = ['connection-cell', className].filter(Boolean).join(' ');
 
   return (
@@ -140,8 +134,14 @@ export function ConnectionCell({
             <CopyableId
               id={connectionId}
               label={shortenId(connectionId)}
-              copyLabel={`Copy ${copySubject}`}
-              copiedLabel={`Copied ${copySubject}`}
+              copyLabel={
+                resolvedName ? interpolate(copy.copyNamedId, { name: resolvedName }) : copy.copyId
+              }
+              copiedLabel={
+                resolvedName
+                  ? interpolate(copy.copiedNamedId, { name: resolvedName })
+                  : copy.copiedId
+              }
             />
             {statusNote ? (
               <span

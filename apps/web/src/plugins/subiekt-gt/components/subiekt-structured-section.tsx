@@ -28,7 +28,7 @@ import { FormField } from '../../../shared/ui/form-field';
 import { InlineDisclosure } from '../../../shared/ui/inline-disclosure';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
-import { useTranslation } from '../../../shared/i18n';
+import { interpolate } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
 import {
   CapabilityTogglesSection,
@@ -41,6 +41,7 @@ import {
   SUBIEKT_TRIGGER_MODELS,
   SUBIEKT_TRIGGER_MODEL_LABELS,
 } from '../subiekt-capability-descriptors';
+import { useSubiektGtMessages } from '../messages';
 
 export function SubiektStructuredSection({
   connection,
@@ -49,17 +50,15 @@ export function SubiektStructuredSection({
   syncStructuredToJson,
   syncObjectToJson,
 }: StructuredConfigSectionProps): ReactElement {
-  const { t } = useTranslation();
+  const copy = useSubiektGtMessages().subiektStructuredSection;
   const plugin = usePlatform(connection.platformType);
   const descriptors = plugin?.capabilityDescriptors ?? {};
 
-  // Human labels for the payment method are routed through the i18n seam so a
-  // future PL catalog localizes them (matches the trigger-model precedent).
   const paymentMethodLabels: Record<'cash' | 'transfer', string> = {
-    cash: t('subiekt.settings.payment.method.cash', 'Cash'),
-    transfer: t('subiekt.settings.payment.method.transfer', 'Transfer'),
+    cash: copy.payment.method.cash,
+    transfer: copy.payment.method.transfer,
   };
-  const paymentUnsetLabel = t('subiekt.settings.payment.method.unset', 'Not set (Subiekt default)');
+  const paymentUnsetLabel = copy.payment.method.unset;
 
   // Tri-state: '' (unset — send-nothing, bridge keeps its own default) | 'cash' | 'transfer'.
   const paymentMethod = form.watch('subiektPaymentMethod') ?? '';
@@ -94,7 +93,9 @@ export function SubiektStructuredSection({
       if (existing) existing.accounts.push(account);
       else
         groups.set(account.ownerPodmiotId, {
-          label: account.ownerName ?? `Podmiot ${account.ownerPodmiotId}`,
+          label:
+            account.ownerName ??
+            interpolate(copy.payment.account.ownerFallback, { id: account.ownerPodmiotId }),
           accounts: [account],
         });
     }
@@ -102,6 +103,21 @@ export function SubiektStructuredSection({
   }, [accounts]);
 
   const registers = cashRegistersQuery.data ?? [];
+
+  function accountLabel(account: (typeof accounts)[number]): string {
+    const params = { bankName: account.bankName, accountNumber: account.accountNumber };
+    return interpolate(
+      account.isDefault ? copy.payment.account.optionDefault : copy.payment.account.option,
+      params,
+    );
+  }
+
+  function registerLabel(register: (typeof registers)[number]): string {
+    const name = register.name ?? interpolate(copy.cashRegister.idFallback, { id: register.id });
+    return register.symbol
+      ? interpolate(copy.cashRegister.optionWithSymbol, { name, symbol: register.symbol })
+      : name;
+  }
 
   function onBankAccountChange(accountId: string): void {
     syncStructuredToJson('subiektBankAccountId', accountId);
@@ -117,7 +133,7 @@ export function SubiektStructuredSection({
   return (
     <>
       <FormField
-        label={t('subiekt.settings.bridgeUrl.label', 'Bridge URL')}
+        label={copy.bridgeUrl.label}
         name="subiektBridgeUrl"
         error={form.formState.errors.subiektBridgeUrl?.message}
       >
@@ -131,7 +147,7 @@ export function SubiektStructuredSection({
       </FormField>
 
       <FormField
-        label={t('subiekt.settings.triggerModel.label', 'Invoice trigger')}
+        label={copy.triggerModel.label}
         name="subiektTriggerModel"
         error={form.formState.errors.subiektTriggerModel?.message}
       >
@@ -141,27 +157,24 @@ export function SubiektStructuredSection({
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.subiektTriggerModel)}
         >
-          <option value="">{t('subiekt.settings.triggerModel.unset', 'Not set')}</option>
+          <option value="">{copy.triggerModel.unset}</option>
           {SUBIEKT_TRIGGER_MODELS.map((model) => (
             <option key={model} value={model}>
-              {t(`subiekt.settings.triggerModel.${model}`, SUBIEKT_TRIGGER_MODEL_LABELS[model])}
+              {SUBIEKT_TRIGGER_MODEL_LABELS[model]}
             </option>
           ))}
         </Select>
       </FormField>
 
       <InlineDisclosure
-        label={t('subiekt.settings.payment.summary', 'Payment method for invoice:')}
+        label={copy.payment.summary}
         value={effectiveLabel}
       >
         <FormField
-          label={t('subiekt.settings.payment.method.label', 'Default payment method')}
+          label={copy.payment.method.label}
           name="subiektPaymentMethod"
           error={form.formState.errors.subiektPaymentMethod?.message}
-          description={t(
-            'subiekt.settings.payment.method.help',
-            'Sent on every issued invoice. Leave unset to let Subiekt apply its own default; pick Transfer only when the seller has a bank account configured in Subiekt.',
-          )}
+          description={copy.payment.method.help}
         >
           <Select
             value={paymentMethod}
@@ -178,19 +191,16 @@ export function SubiektStructuredSection({
         {isTransfer ? (
           bankAccountsQuery.isLoading ? (
             <p className="muted-text">
-              {t('subiekt.settings.payment.account.loading', 'Checking Subiekt for bank accounts…')}
+              {copy.payment.account.loading}
             </p>
           ) : bankAccountsQuery.isError ? (
             <p className="muted-text">
-              {t(
-                'subiekt.settings.payment.account.error',
-                "Couldn't check Subiekt for bank accounts — invoices will use whatever was last saved.",
-              )}
+              {copy.payment.account.error}
             </p>
           ) : accounts.length > 0 ? (
             <>
               <FormField
-                label={t('subiekt.settings.payment.account.label', 'Bank account for Transfer invoices')}
+                label={copy.payment.account.label}
                 name="subiektBankAccountId"
               >
                 <Select
@@ -199,64 +209,50 @@ export function SubiektStructuredSection({
                   disabled={!configIsParseable}
                 >
                   <option value="" disabled>
-                    {t('subiekt.settings.payment.account.placeholder', 'Select a bank account…')}
+                    {copy.payment.account.placeholder}
                   </option>
                   {hasMultiplePayers
                     ? Array.from(accountsByOwner.entries()).map(([ownerPodmiotId, group]) => (
                         <optgroup key={ownerPodmiotId} label={group.label}>
                           {group.accounts.map((account) => (
                             <option key={account.id} value={account.id}>
-                              {account.bankName} — {account.accountNumber}
-                              {account.isDefault ? ' (default in Subiekt)' : ''}
+                              {accountLabel(account)}
                             </option>
                           ))}
                         </optgroup>
                       ))
                     : accounts.map((account) => (
                         <option key={account.id} value={account.id}>
-                          {account.bankName} — {account.accountNumber}
-                          {account.isDefault ? ' (default in Subiekt)' : ''}
+                          {accountLabel(account)}
                         </option>
                       ))}
                 </Select>
               </FormField>
               {hasMultiplePayers ? (
                 <p className="muted-text">
-                  {t(
-                    'subiekt.settings.payment.account.multiPayerWarning',
-                    'This Subiekt install has more than one płatnik. OpenLinker cannot yet confirm which płatnik an invoice is issued under, so the account picked here is not guaranteed to match the issuing payer.',
-                  )}
+                  {copy.payment.account.multiPayerWarning}
                 </p>
               ) : null}
             </>
           ) : (
             <p className="muted-text">
-              {t(
-                'subiekt.settings.payment.account.empty',
-                'No bank account is configured in Subiekt, so Transfer invoices will use whatever form Subiekt applies by default. Add an account under Konfiguracja systemu → Rachunki bankowe, then reload this page.',
-              )}
+              {copy.payment.account.empty}
             </p>
           )
         ) : null}
 
         <FormField
-          label={t('subiekt.settings.cashRegister.label', 'Cash register (Stanowisko Kasowe)')}
+          label={copy.cashRegister.label}
           name="subiektStanowiskoKasoweId"
-          description={t(
-            'subiekt.settings.cashRegister.help',
-            'Invoices are always issued from the Centrala branch — the bridge does not support switching Oddział.',
-          )}
+          description={copy.cashRegister.help}
         >
           {cashRegistersQuery.isLoading ? (
             <p className="muted-text">
-              {t('subiekt.settings.cashRegister.loading', 'Checking Subiekt for cash registers…')}
+              {copy.cashRegister.loading}
             </p>
           ) : cashRegistersQuery.isError ? (
             <p className="muted-text">
-              {t(
-                'subiekt.settings.cashRegister.error',
-                "Couldn't check Subiekt for cash registers — invoices will use the default register.",
-              )}
+              {copy.cashRegister.error}
             </p>
           ) : (
             <Select
@@ -267,12 +263,11 @@ export function SubiektStructuredSection({
               disabled={!configIsParseable}
             >
               <option value="">
-                {t('subiekt.settings.cashRegister.unset', 'Default (Subiekt decides)')}
+                {copy.cashRegister.unset}
               </option>
               {registers.map((register) => (
                 <option key={register.id} value={String(register.id)}>
-                  {register.name ?? `#${register.id}`}
-                  {register.symbol ? ` (${register.symbol})` : ''}
+                  {registerLabel(register)}
                 </option>
               ))}
             </Select>

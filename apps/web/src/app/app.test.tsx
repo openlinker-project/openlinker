@@ -84,7 +84,7 @@ describe('App', () => {
     const primaryNavigation = within(view.container).getByRole('navigation', {
       name: 'Primary',
     });
-    expect(within(primaryNavigation).getByText('Insights').closest('a')).toHaveAttribute(
+    expect(within(primaryNavigation).getByText('System health').closest('a')).toHaveAttribute(
       'href',
       '/insights',
     );

@@ -39,13 +39,18 @@ import { ApiError } from '../../../shared/api/api-error';
 import { useSession } from '../../../shared/auth/use-session';
 import { useReturnEventsQuery } from '../hooks/use-return-events-query';
 import { mapReturnEventsToTimeline } from '../lib/return-timeline-events';
-import { RETURN_ACTIVITY_COPY as COPY } from '../lib/return-activity.copy';
+import { useMessages } from '../../../shared/i18n';
 
 interface ReturnActivityTimelineProps {
   returnId: string;
 }
 
 export function ReturnActivityTimeline({ returnId }: ReturnActivityTimelineProps): ReactElement {
+  const returnsCopy = useMessages('returns');
+  const COPY = returnsCopy.activity;
+  // The mapper reads the active language at call time, so the entries are
+  // re-mapped when it changes.
+  const timelineCopy = returnsCopy.timeline;
   const query = useReturnEventsQuery(returnId);
   const { session } = useSession();
   // The you-vs-another-operator distinction is the whole point of the eyebrow,
@@ -55,8 +60,12 @@ export function ReturnActivityTimeline({ returnId }: ReturnActivityTimelineProps
 
   const entries = query.data ?? null;
   const events = useMemo(
-    () => (entries === null ? [] : mapReturnEventsToTimeline(entries, sessionUserId)),
-    [entries, sessionUserId],
+    () => {
+      // Referenced so a language change re-runs the mapper, which reads copy at call time.
+      void timelineCopy;
+      return entries === null ? [] : mapReturnEventsToTimeline(entries, sessionUserId);
+    },
+    [entries, sessionUserId, timelineCopy],
   );
 
   return (

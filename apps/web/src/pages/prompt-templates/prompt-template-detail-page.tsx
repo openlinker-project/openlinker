@@ -11,6 +11,13 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSession } from '../../shared/auth/use-session';
+import {
+  getMessages,
+  interpolate,
+  useFormat,
+  useMessages,
+  usePlural,
+} from '../../shared/i18n';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { ConfirmDialog } from '../../shared/ui/confirm-dialog';
@@ -23,8 +30,6 @@ import { Tabs, TabsList, TabsContent, TabsTrigger } from '../../shared/ui/tabs';
 import { Textarea } from '../../shared/ui/textarea';
 import { useToast } from '../../shared/ui/toast-provider';
 import { useMediaQuery } from '../../shared/ui/use-media-query';
-import { formatDateTime } from '../../shared/format/format-date';
-import { formatRelativeTime } from '../../shared/format/format-relative-time';
 import { usePromptTemplateQuery } from '../../features/prompt-templates/hooks/use-prompt-template-query';
 import { usePromptTemplateVersionsQuery } from '../../features/prompt-templates/hooks/use-prompt-template-versions-query';
 import {
@@ -52,10 +57,17 @@ const STATE_TONE: Record<PromptTemplateState, StatusBadgeTone> = {
 };
 
 function channelLabel(channel: string | null): string {
-  return channel === null ? 'master' : channel;
+  return channel === null ? getMessages('prompt-templates').common.master : channel;
+}
+
+function stateLabel(state: PromptTemplateState): string {
+  return getMessages('prompt-templates').common.states[state] ?? state;
 }
 
 export function PromptTemplateDetailPage(): ReactElement {
+  const messages = useMessages('prompt-templates');
+  const copy = messages.promptTemplateDetailPage;
+  const format = useFormat();
   const { id } = useParams<{ id: string }>();
   const { session } = useSession();
   const navigate = useNavigate();
@@ -112,34 +124,37 @@ export function PromptTemplateDetailPage(): ReactElement {
         id: template.id,
         input: { systemPrompt, userPromptTemplate, variables },
       });
-      showToast({ tone: 'success', description: 'Draft saved' });
+      showToast({ tone: 'success', description: copy.toasts.saved });
     } catch {
       /* surfaced via updateMutation.error */
     }
-  }, [template, systemPrompt, userPromptTemplate, variables, isDirty, updateDraft, showToast]);
+  }, [template, systemPrompt, userPromptTemplate, variables, isDirty, updateDraft, showToast, copy]);
 
   const handlePublish = useCallback(async (): Promise<void> => {
     if (template === undefined) return;
     setShowPublishConfirm(false);
     try {
       const result = await publishTemplate(template.id);
-      showToast({ tone: 'success', description: `Published v${result.version}` });
+      showToast({
+        tone: 'success',
+        description: interpolate(copy.toasts.published, { version: result.version }),
+      });
     } catch {
       /* surfaced via publishMutation.error */
     }
-  }, [template, publishTemplate, showToast]);
+  }, [template, publishTemplate, showToast, copy]);
 
   const handleDiscard = useCallback(async (): Promise<void> => {
     if (template === undefined) return;
     setShowDiscardConfirm(false);
     try {
       await deleteTemplate(template.id);
-      showToast({ tone: 'success', description: 'Draft discarded' });
+      showToast({ tone: 'success', description: copy.toasts.discarded });
       void navigate('/ai/prompt-templates');
     } catch {
       /* surfaced via deleteMutation.error */
     }
-  }, [template, deleteTemplate, showToast, navigate]);
+  }, [template, deleteTemplate, showToast, navigate, copy]);
 
   const handleCreateDraftFromHere = useCallback(async (): Promise<void> => {
     if (template === undefined) return;
@@ -151,12 +166,15 @@ export function PromptTemplateDetailPage(): ReactElement {
         userPromptTemplate: template.userPromptTemplate,
         variables: template.variables,
       });
-      showToast({ tone: 'success', description: `Draft v${draft.version} created` });
+      showToast({
+        tone: 'success',
+        description: interpolate(copy.toasts.created, { version: draft.version }),
+      });
       void navigate(`/ai/prompt-templates/${draft.id}`);
     } catch {
       /* surfaced via createMutation.error */
     }
-  }, [template, createTemplate, showToast, navigate]);
+  }, [template, createTemplate, showToast, navigate, copy]);
 
   const handleRevertTo = useCallback(
     async (version: number): Promise<void> => {
@@ -169,14 +187,14 @@ export function PromptTemplateDetailPage(): ReactElement {
         });
         showToast({
           tone: 'success',
-          description: `Draft v${draft.version} created from v${version}`,
+          description: interpolate(copy.toasts.reverted, { draft: draft.version, version }),
         });
         void navigate(`/ai/prompt-templates/${draft.id}`);
       } catch {
         /* surfaced via revertMutation.error */
       }
     },
-    [template, revertTemplate, showToast, navigate],
+    [template, revertTemplate, showToast, navigate, copy],
   );
 
   // Hook-order-safe: all hooks must run on every render. Compute the
@@ -188,21 +206,25 @@ export function PromptTemplateDetailPage(): ReactElement {
 
   if (detailQuery.isLoading) {
     return (
-      <PageLayout eyebrow="Settings" title="Prompt template">
-        <LoadingState title="Loading prompt template" message="Fetching template data…" />
+      <PageLayout eyebrow={messages.common.eyebrow} title={copy.title}>
+        <LoadingState title={copy.loadingTitle} message={copy.loadingMessage} />
       </PageLayout>
     );
   }
 
   if (detailQuery.error) {
     return (
-      <PageLayout eyebrow="Settings" title="Prompt template">
+      <PageLayout eyebrow={messages.common.eyebrow} title={copy.title}>
         <ErrorState
-          title="Unable to load prompt template"
-          message={detailQuery.error instanceof Error ? detailQuery.error.message : 'Unknown error'}
+          title={copy.errorTitle}
+          message={
+            detailQuery.error instanceof Error
+              ? detailQuery.error.message
+              : messages.common.unknownError
+          }
           action={
             <Button tone="secondary" onClick={() => void detailQuery.refetch()}>
-              Retry
+              {messages.common.retry}
             </Button>
           }
         />
@@ -212,18 +234,18 @@ export function PromptTemplateDetailPage(): ReactElement {
 
   if (!template) {
     return (
-      <PageLayout eyebrow="Settings" title="Prompt template">
-        <EmptyState title="Template not found" message="The template may have been deleted." />
+      <PageLayout eyebrow={messages.common.eyebrow} title={copy.title}>
+        <EmptyState title={copy.notFoundTitle} message={copy.notFoundMessage} />
       </PageLayout>
     );
   }
 
   if (session.status === 'authenticated' && session.user?.role !== 'admin') {
     return (
-      <PageLayout eyebrow="Settings" title="Prompt template">
+      <PageLayout eyebrow={messages.common.eyebrow} title={copy.title}>
         <ErrorState
-          title="Admin role required"
-          message="This page manages prompts that ship to the model and requires an admin session."
+          title={messages.common.adminRequiredTitle}
+          message={messages.common.adminRequiredMessage}
         />
       </PageLayout>
     );
@@ -252,7 +274,11 @@ export function PromptTemplateDetailPage(): ReactElement {
     <PageLayout
       eyebrow="Settings"
       title={<span className="mono-text">{template.key}</span>}
-      description={`${channelLabel(template.channel)} · v${template.version} · ${template.state}`}
+      description={interpolate(copy.pageDescription, {
+        channel: channelLabel(template.channel),
+        version: template.version,
+        state: stateLabel(template.state),
+      })}
       actions={<div className="prompt-detail-actions">{actions}</div>}
     >
       {isMobile ? <DesktopOnlyBanner /> : null}
@@ -277,9 +303,11 @@ export function PromptTemplateDetailPage(): ReactElement {
         <section className="prompt-detail-editor">
           <div className="prompt-detail-header-strip">
             <StatusBadge tone={stateTone} withDot>
-              {template.state}
+              {stateLabel(template.state)}
             </StatusBadge>
-            <span className="mono-text">v{template.version}</span>
+            <span className="mono-text">
+              {interpolate(messages.common.versionTag, { version: template.version })}
+            </span>
             <StatusBadge tone="neutral" compact>
               {channelLabel(template.channel)}
             </StatusBadge>
@@ -289,35 +317,39 @@ export function PromptTemplateDetailPage(): ReactElement {
             items={[
               {
                 id: 'key',
-                label: 'Key',
+                label: copy.metadata.key,
                 value: <span className="mono-text">{template.key}</span>,
               },
               {
                 id: 'created',
-                label: 'Created',
+                label: copy.metadata.created,
                 value: (
-                  <span title={formatDateTime(template.createdAt)}>
-                    {formatRelativeTime(template.createdAt)}
-                    {template.createdBy !== null ? ` · ${template.createdBy}` : ''}
+                  <span title={format.dateTime(template.createdAt)}>
+                    {template.createdBy !== null
+                      ? interpolate(copy.metadata.createdBy, {
+                          time: format.relativeTime(template.createdAt),
+                          user: template.createdBy,
+                        })
+                      : format.relativeTime(template.createdAt)}
                   </span>
                 ),
               },
               {
                 id: 'updated',
-                label: 'Updated',
+                label: copy.metadata.updated,
                 value: (
-                  <span title={formatDateTime(template.updatedAt)}>
-                    {formatRelativeTime(template.updatedAt)}
+                  <span title={format.dateTime(template.updatedAt)}>
+                    {format.relativeTime(template.updatedAt)}
                   </span>
                 ),
               },
               template.publishedAt !== null
                 ? {
                     id: 'published',
-                    label: 'Published',
+                    label: copy.metadata.published,
                     value: (
-                      <span title={formatDateTime(template.publishedAt)}>
-                        {formatRelativeTime(template.publishedAt)}
+                      <span title={format.dateTime(template.publishedAt)}>
+                        {format.relativeTime(template.publishedAt)}
                       </span>
                     ),
                   }
@@ -327,12 +359,12 @@ export function PromptTemplateDetailPage(): ReactElement {
 
           <Tabs defaultValue="system">
             <TabsList>
-              <TabsTrigger value="system">System prompt</TabsTrigger>
-              <TabsTrigger value="user">User prompt</TabsTrigger>
+              <TabsTrigger value="system">{copy.tabs.system}</TabsTrigger>
+              <TabsTrigger value="user">{copy.tabs.user}</TabsTrigger>
               <TabsTrigger value="variables">
-                Variables ({variables.length})
+                {interpolate(copy.tabs.variables, { n: format.number(variables.length) })}
               </TabsTrigger>
-              <TabsTrigger value="preview">Preview</TabsTrigger>
+              <TabsTrigger value="preview">{copy.tabs.preview}</TabsTrigger>
             </TabsList>
 
             <TabsContent value="system">
@@ -381,8 +413,8 @@ export function PromptTemplateDetailPage(): ReactElement {
         <aside className="prompt-detail-sidebar">
           <div className="panel panel--dense">
             <div className="panel__header">
-              <p className="eyebrow">History</p>
-              <h3 className="section-title">Version history</h3>
+              <p className="eyebrow">{copy.historyEyebrow}</p>
+              <h3 className="section-title">{copy.historyTitle}</h3>
             </div>
             <VersionHistory
               versions={versionsQuery.data ?? []}
@@ -401,9 +433,13 @@ export function PromptTemplateDetailPage(): ReactElement {
       <ConfirmDialog
         open={showPublishConfirm}
         onOpenChange={setShowPublishConfirm}
-        title={`Publish v${template.version}?`}
-        description="Current published version will be archived. The new prompt takes effect on the next suggestion request."
-        confirmLabel={publishMutation.isPending ? 'Publishing…' : `Publish v${template.version}`}
+        title={interpolate(copy.publishConfirm.title, { version: template.version })}
+        description={copy.publishConfirm.description}
+        confirmLabel={
+          publishMutation.isPending
+            ? copy.publishConfirm.publishing
+            : interpolate(copy.publishConfirm.confirm, { version: template.version })
+        }
         isConfirming={publishMutation.isPending}
         onConfirm={() => void handlePublish()}
       />
@@ -411,9 +447,11 @@ export function PromptTemplateDetailPage(): ReactElement {
       <ConfirmDialog
         open={showDiscardConfirm}
         onOpenChange={setShowDiscardConfirm}
-        title={`Discard draft v${template.version}?`}
-        description="All changes in this draft will be lost. This cannot be undone."
-        confirmLabel={deleteMutation.isPending ? 'Discarding…' : 'Discard'}
+        title={interpolate(copy.discardConfirm.title, { version: template.version })}
+        description={copy.discardConfirm.description}
+        confirmLabel={
+          deleteMutation.isPending ? copy.discardConfirm.discarding : copy.discardConfirm.confirm
+        }
         isConfirming={deleteMutation.isPending}
         tone="danger"
         onConfirm={() => void handleDiscard()}
@@ -436,6 +474,7 @@ interface BuildActionsArgs {
 }
 
 function buildActions(args: BuildActionsArgs): ReactElement[] {
+  const copy = getMessages('prompt-templates').promptTemplateDetailPage.actions;
   const buttons: ReactElement[] = [];
   if (args.state === 'draft') {
     buttons.push(
@@ -445,7 +484,7 @@ function buildActions(args: BuildActionsArgs): ReactElement[] {
         disabled={!args.canEdit || !args.isDirty || args.savePending}
         onClick={args.onSave}
       >
-        {args.savePending ? 'Saving…' : 'Save draft'}
+        {args.savePending ? copy.saving : copy.saveDraft}
       </Button>,
     );
     buttons.push(
@@ -455,12 +494,12 @@ function buildActions(args: BuildActionsArgs): ReactElement[] {
         disabled={!args.canEdit || args.isDirty}
         onClick={args.onPublish}
       >
-        Publish v{args.version}
+        {interpolate(copy.publish, { version: args.version })}
       </Button>,
     );
     buttons.push(
       <Button key="discard" tone="ghost" disabled={!args.canEdit} onClick={args.onDiscard}>
-        Discard draft
+        {copy.discardDraft}
       </Button>,
     );
   } else {
@@ -471,7 +510,7 @@ function buildActions(args: BuildActionsArgs): ReactElement[] {
         disabled={!args.canEdit || args.createPending}
         onClick={args.onCreateDraftFromHere}
       >
-        {args.createPending ? 'Creating…' : 'New draft from this version'}
+        {args.createPending ? copy.creating : copy.newDraftFromVersion}
       </Button>,
     );
   }
@@ -485,6 +524,7 @@ interface VariablesEditorProps {
 }
 
 function VariablesEditor({ variables, canEdit, onChange }: VariablesEditorProps): ReactElement {
+  const copy = useMessages('prompt-templates').promptTemplateDetailPage.variablesEditor;
   const updateVariable = (index: number, patch: Partial<PromptTemplateVariable>): void => {
     const next = variables.map((variable, i) => (i === index ? { ...variable, ...patch } : variable));
     onChange(next);
@@ -502,7 +542,7 @@ function VariablesEditor({ variables, canEdit, onChange }: VariablesEditorProps)
   };
 
   if (variables.length === 0 && !canEdit) {
-    return <p className="muted-text">No declared variables.</p>;
+    return <p className="muted-text">{copy.empty}</p>;
   }
 
   return (
@@ -514,7 +554,7 @@ function VariablesEditor({ variables, canEdit, onChange }: VariablesEditorProps)
             type="text"
             value={variable.name}
             readOnly={!canEdit}
-            placeholder="product.name"
+            placeholder={copy.namePlaceholder}
             onChange={(event) => updateVariable(index, { name: event.target.value })}
           />
           <select
@@ -527,10 +567,10 @@ function VariablesEditor({ variables, canEdit, onChange }: VariablesEditorProps)
               })
             }
           >
-            <option value="string">string</option>
-            <option value="number">number</option>
-            <option value="object">object</option>
-            <option value="array">array</option>
+            <option value="string">{copy.types.string}</option>
+            <option value="number">{copy.types.number}</option>
+            <option value="object">{copy.types.object}</option>
+            <option value="array">{copy.types.array}</option>
           </select>
           <label className="prompt-variables-editor__required">
             <input
@@ -539,26 +579,26 @@ function VariablesEditor({ variables, canEdit, onChange }: VariablesEditorProps)
               disabled={!canEdit}
               onChange={(event) => updateVariable(index, { required: event.target.checked })}
             />
-            required
+            {copy.required}
           </label>
           <input
             className="control"
             type="text"
             value={variable.description ?? ''}
             readOnly={!canEdit}
-            placeholder="Optional description"
+            placeholder={copy.descriptionPlaceholder}
             onChange={(event) => updateVariable(index, { description: event.target.value })}
           />
           {canEdit ? (
             <Button tone="ghost" onClick={() => removeVariable(index)}>
-              Remove
+              {copy.remove}
             </Button>
           ) : null}
         </div>
       ))}
       {canEdit ? (
         <Button tone="secondary" onClick={addVariable}>
-          + Add variable
+          {copy.add}
         </Button>
       ) : null}
     </div>
@@ -588,6 +628,11 @@ function PreviewPane({
   previewError,
   undeclaredPlaceholders,
 }: PreviewPaneProps): ReactElement {
+  const copy = useMessages('prompt-templates').promptTemplateDetailPage.preview;
+  const plural = usePlural();
+  const format = useFormat();
+  const sizeLabel = (text: string): string =>
+    plural(text.length, copy.size, { tokens: format.number(Math.ceil(text.length / 4)) });
   const parseResult = parseSampleValues(sampleValuesJson);
   const samplesPresent = parseResult.ok;
 
@@ -614,9 +659,9 @@ function PreviewPane({
     <div className="prompt-preview">
       <div className="prompt-preview__values">
         <div className="prompt-preview__values-header">
-          <p className="eyebrow">Sample values</p>
+          <p className="eyebrow">{copy.sampleValues}</p>
           <Button tone="ghost" onClick={fillDemo}>
-            Fill with demo
+            {copy.fillDemo}
           </Button>
         </div>
         <Textarea
@@ -628,12 +673,12 @@ function PreviewPane({
         />
         {!samplesPresent ? (
           <p className="field-error" role="alert">
-            Invalid JSON: {parseResult.error}
+            {interpolate(copy.invalidJson, { error: parseResult.error })}
           </p>
         ) : null}
         {undeclaredPlaceholders.length > 0 ? (
           <Alert tone="warning" className="prompt-preview__undeclared">
-            Undeclared placeholders render verbatim:{' '}
+            {copy.undeclared}{' '}
             {undeclaredPlaceholders.map((path) => (
               <code key={path} className="mono-text">{`{{${path}}} `}</code>
             ))}
@@ -644,33 +689,29 @@ function PreviewPane({
       <div className="prompt-preview__output">
         <article className="panel panel--dense">
           <header className="panel__header">
-            <p className="eyebrow">System prompt</p>
-            <span className="panel__meta mono-text">
-              {systemPrompt.length} chars · ≈{Math.ceil(systemPrompt.length / 4)} tok
-            </span>
+            <p className="eyebrow">{copy.systemPrompt}</p>
+            <span className="panel__meta mono-text">{sizeLabel(systemPrompt)}</span>
           </header>
           {previewError && 'error' in previewError ? (
             <Alert tone="error">{previewError.error}</Alert>
           ) : previewError && 'systemPrompt' in previewError ? (
             <pre className="prompt-preview__rendered mono-text">{previewError.systemPrompt}</pre>
           ) : (
-            <p className="muted-text">Preview unavailable.</p>
+            <p className="muted-text">{copy.unavailable}</p>
           )}
         </article>
 
         <article className="panel panel--dense">
           <header className="panel__header">
-            <p className="eyebrow">User prompt</p>
-            <span className="panel__meta mono-text">
-              {userPromptTemplate.length} chars · ≈{Math.ceil(userPromptTemplate.length / 4)} tok
-            </span>
+            <p className="eyebrow">{copy.userPrompt}</p>
+            <span className="panel__meta mono-text">{sizeLabel(userPromptTemplate)}</span>
           </header>
           {previewError && 'error' in previewError ? (
             <Alert tone="error">{previewError.error}</Alert>
           ) : previewError && 'userPrompt' in previewError ? (
             <pre className="prompt-preview__rendered mono-text">{previewError.userPrompt}</pre>
           ) : (
-            <p className="muted-text">Preview unavailable.</p>
+            <p className="muted-text">{copy.unavailable}</p>
           )}
         </article>
       </div>
@@ -695,8 +736,11 @@ function VersionHistory({
   onRevert,
   revertPending,
 }: VersionHistoryProps): ReactElement {
-  if (isLoading) return <p className="muted-text">Loading versions…</p>;
-  if (versions.length === 0) return <p className="muted-text">No version history.</p>;
+  const messages = useMessages('prompt-templates');
+  const copy = messages.promptTemplateDetailPage.history;
+  const format = useFormat();
+  if (isLoading) return <p className="muted-text">{copy.loading}</p>;
+  if (versions.length === 0) return <p className="muted-text">{copy.empty}</p>;
 
   return (
     <ul className="prompt-history-list">
@@ -708,22 +752,24 @@ function VersionHistory({
             className={`prompt-history-list__row${isCurrent ? ' prompt-history-list__row--current' : ''}`}
           >
             <div className="prompt-history-list__meta">
-              <span className="mono-text">v{version.version}</span>
+              <span className="mono-text">
+                {interpolate(messages.common.versionTag, { version: version.version })}
+              </span>
               <StatusBadge tone={STATE_TONE[version.state]} compact>
-                {version.state}
+                {stateLabel(version.state)}
               </StatusBadge>
-              <span className="muted-text" title={formatDateTime(version.updatedAt)}>
-                {formatRelativeTime(version.updatedAt)}
+              <span className="muted-text" title={format.dateTime(version.updatedAt)}>
+                {format.relativeTime(version.updatedAt)}
               </span>
             </div>
             <div className="prompt-history-list__actions">
               {!isCurrent ? (
                 <Button tone="ghost" onClick={() => onOpen(version)}>
-                  Open
+                  {copy.open}
                 </Button>
               ) : null}
               <Button tone="ghost" disabled={revertPending} onClick={() => onRevert(version)}>
-                Revert
+                {copy.revert}
               </Button>
             </div>
           </li>
@@ -739,11 +785,20 @@ function parseSampleValues(
   try {
     const parsed = JSON.parse(json) as unknown;
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return { ok: false, error: 'Sample values must be a JSON object.' };
+      return {
+        ok: false,
+        error: getMessages('prompt-templates').promptTemplateDetailPage.errors.sampleNotObject,
+      };
     }
     return { ok: true, value: parsed as Record<string, unknown> };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'Invalid JSON' };
+    return {
+      ok: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : getMessages('prompt-templates').promptTemplateDetailPage.errors.invalidJson,
+    };
   }
 }
 
@@ -772,10 +827,11 @@ function tryRender(
       }),
     };
   } catch (err) {
+    const copy = getMessages('prompt-templates').promptTemplateDetailPage.errors;
     if (err instanceof PromptTemplateRenderError) {
-      return { error: `Missing required value for \`${err.missingVariableName}\`.` };
+      return { error: interpolate(copy.missingRequired, { name: err.missingVariableName }) };
     }
-    return { error: err instanceof Error ? err.message : 'Render failed' };
+    return { error: err instanceof Error ? err.message : copy.renderFailed };
   }
 }
 

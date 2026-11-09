@@ -4,7 +4,7 @@
  * Type definitions for the FE chrome's nav-group registry and route-colocated
  * breadcrumb metadata. Plugins consume these types when declaring nav
  * contributions (`NavContribution.requiresRole`) and routes when declaring
- * crumb metadata (`route.handle = { crumb: { group, title } }`).
+ * crumb metadata (`route.handle = { crumb: { group, page } }`).
  *
  * Lives in a `*.types.ts` sibling of `nav-registry.ts` per the engineering-
  * standards rule on separating type definitions from implementations.
@@ -14,7 +14,14 @@
  * @see breadcrumbs.ts — `resolveCrumbFromMatches` consumes `isCrumbHandle`
  */
 import type { Permission } from '../shared/auth/session.types';
+import type { Messages } from '../shared/i18n';
 import type { NavCounts } from './hooks/use-nav-counts';
+
+/** A section of the app (nav group heading, breadcrumb group): a key of `app.sections`. */
+export type AppSectionKey = keyof Messages['app']['sections'];
+
+/** A page of the app (nav item, breadcrumb title): a key of `app.pages`. */
+export type AppPageKey = keyof Messages['app']['pages'];
 
 /**
  * Roles that the FE chrome gates against. Runtime array + derived union
@@ -164,6 +171,12 @@ export interface PlannedNavItem {
 }
 
 export interface LiveNavGroup {
+  /**
+   * The section a base group was built from. Lets a plugin contribution find
+   * its group by a stable key instead of by the label, which now follows the
+   * active language. Absent on a group a plugin contributed.
+   */
+  id?: AppSectionKey;
   items: LiveNavItem[];
   kind: 'live';
   label: string;
@@ -205,21 +218,41 @@ export interface RestrictedNavGroup {
 export type NavGroup = LiveNavGroup | PlannedNavGroup | RestrictedNavGroup;
 
 /**
- * Registry-shaped variant of `NavGroup`. Mirrors the runtime shape but
- * carries the optional `requiresRole` gate on every variant; the gate is
- * applied during `buildNavGroups` and stripped before reaching the shell.
+ * A base nav item as the registry declares it: a page key instead of a label.
+ * The label is read from `app.pages` when the nav is built, at render time, so
+ * a language switch reaches it (a module-level label would stay in the
+ * language the module was first loaded in).
  */
-export type NavRegistryGroup = LiveNavGroup | PlannedNavGroup;
-export type NavRegistryItem = LiveNavItem | PlannedNavItem;
+export type BaseNavItem = Omit<LiveNavItem, 'label'> & { page: AppPageKey };
+
+/**
+ * A base nav group as the registry declares it: a section key instead of a
+ * label. Carries the optional `requiresRole` gate, applied during
+ * `buildNavGroups` and stripped before reaching the shell.
+ */
+export interface BaseNavGroup {
+  items: BaseNavItem[];
+  kind: 'live';
+  requiresRole?: GroupRoleGate;
+  section: AppSectionKey;
+}
+
+/** What the shared visibility gates read from an item. */
+export type NavItemGates = Pick<LiveNavItem, 'requiresPermission' | 'requiresRole' | 'requiresOms'>;
 
 /**
  * Route-colocated breadcrumb metadata. Each route module sets
- * `handle: { crumb: { group, title } } satisfies RouteCrumbHandle` and the
+ * `handle: { crumb: { group, page } } satisfies RouteCrumbHandle` and the
  * shell's `resolveCrumbFromMatches` walks `useMatches()` deepest-first to
  * find the active crumb.
+ *
+ * `group` is a section key and `page` a page key, both read from the `app`
+ * namespace at render time. A plugin route that has no core page names its
+ * page with `title` instead; that text belongs to the plugin and moves to the
+ * plugin's own namespace in its extraction issue.
  */
 export interface RouteCrumbHandle {
-  crumb: { group: string; title: string };
+  crumb: { group: AppSectionKey; page: AppPageKey } | { group: AppSectionKey; title: string };
 }
 
 /**
@@ -230,6 +263,6 @@ export function isCrumbHandle(handle: unknown): handle is RouteCrumbHandle {
   if (!handle || typeof handle !== 'object') return false;
   const crumb = (handle as { crumb?: unknown }).crumb;
   if (!crumb || typeof crumb !== 'object') return false;
-  const { group, title } = crumb as { group?: unknown; title?: unknown };
-  return typeof group === 'string' && typeof title === 'string';
+  const { group, page, title } = crumb as { group?: unknown; page?: unknown; title?: unknown };
+  return typeof group === 'string' && (typeof page === 'string' || typeof title === 'string');
 }

@@ -409,25 +409,20 @@ export type AutomationAmountOp = (typeof AUTOMATION_AMOUNT_OP_VALUES)[number];
  *
  * `apps/web` has no `@openlinker/*` dependency, so this cannot be an import;
  * `scripts/check-automation-merge-field-mirror.mjs` (under `pnpm check:invariants`)
- * fails the build if the two token sets drift. Each `renders` string is the
- * operator-facing promise, so it must describe what the executor ACTUALLY
+ * fails the build if the two token sets drift. What each token renders is
+ * operator copy in `automation.mergeFields.tokens` (keyed by the token without
+ * braces, dots camel-cased), and it must describe what the executor ACTUALLY
  * produces — see the mirror script's header.
  */
 export const AUTOMATION_MERGE_FIELDS = [
-  { token: '{order.reference}', renders: "the order's operator-facing reference" },
-  { token: '{order.total}', renders: 'the gross total with its currency' },
-  { token: '{order.placedAt}', renders: 'the order date (YYYY-MM-DD, UTC)' },
-  {
-    token: '{order.dispatchBy}',
-    renders: 'the marketplace dispatch deadline (YYYY-MM-DD, UTC), or "no deadline"',
-  },
-  {
-    token: '{buyer.name}',
-    renders: "the buyer's name as the source reported it, or \"customer\" when it is not stored",
-  },
-  { token: '{shipment.tracking}', renders: 'the tracking number, or "not yet" ("not available" in a buyer email)' },
-  { token: '{hold.reason}', renders: "the current hold's reason, or \"no hold\"" },
-  { token: '{rule.name}', renders: "the automation's own name" },
+  { token: '{order.reference}' },
+  { token: '{order.total}' },
+  { token: '{order.placedAt}' },
+  { token: '{order.dispatchBy}' },
+  { token: '{buyer.name}' },
+  { token: '{shipment.tracking}' },
+  { token: '{hold.reason}' },
+  { token: '{rule.name}' },
 ] as const;
 
 /**

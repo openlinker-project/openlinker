@@ -148,7 +148,7 @@ describe('PriceChangesQueueTable', () => {
     // `findToastDescription` (see its docblock in test-utils.tsx) - #3314
     expect(
       await findToastDescription(
-        /changed again while you were reviewing — refresh and take another look/,
+        /changed again while you were reviewing - refresh and take another look/,
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/expected version/)).not.toBeInTheDocument();

@@ -7,8 +7,16 @@
  *
  * @module apps/web/src/pages/orders
  */
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import {
+  interpolate,
+  useFormat,
+  useMessages,
+  usePlural,
+  type Messages,
+  type ResolvedCopy,
+} from '../../shared/i18n';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
@@ -21,6 +29,7 @@ import { useConnectionsQuery } from '../../features/connections/hooks/use-connec
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import type { OrderRecord } from '../../features/orders/api/orders.types';
+import { serverErrorText } from '../../features/orders/lib/server-error-text';
 
 const PAGE_SIZE = 25;
 
@@ -30,45 +39,54 @@ function snapshotItemCount(snapshot: Record<string, unknown>): number {
   return 0;
 }
 
-const COLUMNS: DataTableColumn<OrderRecord>[] = [
-  {
-    id: 'internalOrderId',
-    header: 'Order ID',
-    cell: (order) => (
-      <span className="mono-text" title={order.internalOrderId}>
-        {order.internalOrderId}
-      </span>
-    ),
-  },
-  {
-    id: 'sourceConnectionId',
-    header: 'Connection',
-    cell: (order) => (
-      <ConnectionEntityLabel
-        connectionId={order.sourceConnectionId}
-        linkToDetail={false}
-        showId
-      />
-    ),
-    hideBelow: 1024,
-  },
-  {
-    id: 'items',
-    header: 'Items',
-    cell: (order) => snapshotItemCount(order.orderSnapshot),
-    align: 'right',
-    hideBelow: 480,
-  },
-  {
-    id: 'createdAt',
-    header: 'First Seen',
-    cell: (order) => <TimeDisplay iso={order.createdAt} />,
-    accessor: (order) => order.createdAt,
-    sortable: true,
-  },
-];
+type FailedOrdersCopy = ResolvedCopy<Messages['orders']>['failedOrdersPage'];
+
+function buildColumns(copy: FailedOrdersCopy): DataTableColumn<OrderRecord>[] {
+  return [
+    {
+      id: 'internalOrderId',
+      header: copy.columns.orderId,
+      cell: (order) => (
+        <span className="mono-text" title={order.internalOrderId}>
+          {order.internalOrderId}
+        </span>
+      ),
+    },
+    {
+      id: 'sourceConnectionId',
+      header: copy.columns.connection,
+      cell: (order) => (
+        <ConnectionEntityLabel
+          connectionId={order.sourceConnectionId}
+          linkToDetail={false}
+          showId
+        />
+      ),
+      hideBelow: 1024,
+    },
+    {
+      id: 'items',
+      header: copy.columns.items,
+      cell: (order) => snapshotItemCount(order.orderSnapshot),
+      align: 'right',
+      hideBelow: 480,
+    },
+    {
+      id: 'createdAt',
+      header: copy.columns.firstSeen,
+      cell: (order) => <TimeDisplay iso={order.createdAt} />,
+      accessor: (order) => order.createdAt,
+      sortable: true,
+    },
+  ];
+}
 
 export function FailedOrdersPage(): ReactElement {
+  const copy = useMessages('orders').failedOrdersPage;
+  const serverSaid = useMessages('orders').common.serverSaid;
+  const plural = usePlural();
+  const format = useFormat();
+  const columns = useMemo(() => buildColumns(copy), [copy]);
   const [searchParams, setSearchParams] = useSearchParams();
   const { sort, setSort } = useTableSort([{ id: 'createdAt', desc: true }]);
 
@@ -113,18 +131,18 @@ export function FailedOrdersPage(): ReactElement {
 
   return (
     <PageLayout
-      backTo={{ to: '/orders', label: 'Orders' }}
-      eyebrow="Operations"
-      title="Awaiting Mapping"
-      description="Orders with unresolved offer→variant mappings. These retry automatically once the mapping is created."
+      backTo={{ to: '/orders', label: copy.backToOrders }}
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
     >
       <div className="toolbar">
         <Select
-          aria-label="Filter by connection"
+          aria-label={copy.filterByConnection}
           value={connectionId ?? ''}
           onChange={(e) => { handleConnectionFilterChange(e.target.value); }}
         >
-          <option value="">All connections</option>
+          <option value="">{copy.allConnections}</option>
           {connections.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -133,39 +151,35 @@ export function FailedOrdersPage(): ReactElement {
         </Select>
 
         <StatusBadge tone="warning" compact>
-          {total} awaiting mapping
+          {interpolate(copy.awaitingCount, { n: format.number(total) })}
         </StatusBadge>
       </div>
 
       {query.isLoading ? (
         <LoadingState
           liveRegion="off"
-          title="Loading orders"
-          message="Fetching orders awaiting mapping…"
+          title={copy.loading.title}
+          message={copy.loading.message}
         />
       ) : query.error ? (
         <ErrorState
-          title="Unable to load orders"
-          message={query.error.message}
+          title={copy.error.title}
+          message={serverErrorText(serverSaid, query.error.message, '')}
           action={
-            <Button onClick={() => { void query.refetch(); }}>Retry</Button>
+            <Button onClick={() => { void query.refetch(); }}>{copy.error.retry}</Button>
           }
         />
       ) : (query.data?.items.length ?? 0) === 0 ? (
         <EmptyState
           liveRegion="off"
-          title="No orders awaiting mapping"
-          message={
-            connectionId
-              ? 'No orders with missing mappings for the selected connection.'
-              : 'All orders have been fully resolved. No mapping issues detected.'
-          }
+          title={copy.empty.title}
+          message={connectionId ? copy.empty.forConnection : copy.empty.all}
         />
       ) : (
         <>
           <DataTable
-            caption="Orders awaiting offer→variant mapping"
-            columns={COLUMNS}
+            caption={copy.caption}
+            columns={columns}
             rows={query.data?.items ?? []}
             rowKey={(order) => order.internalOrderId}
             rowHref={(order) => `/orders/${order.internalOrderId}`}
@@ -185,7 +199,7 @@ export function FailedOrdersPage(): ReactElement {
                     showId={false}
                   />
                   {' · '}
-                  {snapshotItemCount(order.orderSnapshot)} item(s)
+                  {plural(snapshotItemCount(order.orderSnapshot), copy.itemCount)}
                 </>
               ),
             }}
@@ -193,20 +207,24 @@ export function FailedOrdersPage(): ReactElement {
 
           <div className="pagination">
             <span className="text-muted">
-              Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
+              {interpolate(copy.pagination.showing, {
+                from: format.number(offset + 1),
+                to: format.number(Math.min(offset + PAGE_SIZE, total)),
+                total: format.number(total),
+              })}
             </span>
             <div className="pagination__actions">
               <Button
                 disabled={!hasPrev}
                 onClick={() => { setOffset(offset - PAGE_SIZE); }}
               >
-                Previous
+                {copy.pagination.previous}
               </Button>
               <Button
                 disabled={!hasNext}
                 onClick={() => { setOffset(offset + PAGE_SIZE); }}
               >
-                Next
+                {copy.pagination.next}
               </Button>
             </div>
           </div>

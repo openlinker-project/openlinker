@@ -41,7 +41,7 @@
  * **The headline is a browser-side estimate with no server counterpart.** A
  * return credits quantity only — core computes no net for a correction and
  * rounds nothing (ADR-063); the provider computes and rounds the actual
- * issued amounts. `RETURN_PROPOSAL_COPY.headlineEstimateNote` says so next to
+ * issued amounts. `copy.headlineEstimateNote` says so next to
  * the figure, so it is never read as the number the document will carry.
  *
  * **"Record for review" is not "issue".** The mockup's confirm-dialog CTA
@@ -49,7 +49,7 @@
  * `CorrectionIssuer` — the button here only records the ADR-044 change
  * proposal an operator later confirms through the existing correction flow
  * on the invoice page. Labelling it "Issue" here would contradict
- * `RETURN_PROPOSAL_COPY.noAutoIssue` printed one line below it.
+ * `copy.noAutoIssue` printed one line below it.
  *
  * **Recorded state lives in the query cache, not local state.** A successful
  * record seeds the preview query with the response (#3089), so `changeId`
@@ -89,7 +89,7 @@ import {
   useInvoiceQuery,
   type CorrectionSuggestedLine,
 } from '../../invoicing';
-import { RETURN_PROPOSAL_COPY } from '../lib/return-proposal.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import {
   computeCorrectionProposalBreakdown,
   lineCredit,
@@ -112,7 +112,7 @@ interface CorrectionProposalPanelProps {
    * unmatched return — the route answers 409 — so `proposal`/`outcome` are
    * meaningless here; this branch owns the shell + `orphanAbsent` copy
    * itself, rather than the page reconstructing the section title a second
-   * time (PR #3379 review: needing `RETURN_PROPOSAL_COPY.sectionTitle`
+   * time (PR #3379 review: needing `copy.sectionTitle`
    * exported so the page could rebuild this component's own header was the
    * symptom that the shell had two owners).
    */
@@ -127,6 +127,10 @@ export function CorrectionProposalPanel({
   writeAccess,
   orphan = false,
 }: CorrectionProposalPanelProps): ReactElement {
+  const copy = useMessages('returns').proposal;
+  const outcomeBadges: Readonly<Record<string, string>> = copy.outcomeBadges;
+  const outcomeTexts: Readonly<Record<string, string>> = copy.outcomes;
+  const noMatchReasons: Readonly<Record<string, string>> = copy.noMatchReasons;
   const { showToast } = useToast();
   const record = useRecordCorrectionProposalMutation(returnId);
   const [correctionOpen, setCorrectionOpen] = useState(false);
@@ -149,18 +153,18 @@ export function CorrectionProposalPanel({
   if (orphan) {
     return (
       <section className="returns-proposal-panel" id="correction">
-        <h2 className="section-title">{RETURN_PROPOSAL_COPY.sectionTitle}</h2>
-        <p className="text-muted">{RETURN_PROPOSAL_COPY.orphanAbsent}</p>
+        <h2 className="section-title">{copy.sectionTitle}</h2>
+        <p className="text-muted">{copy.orphanAbsent}</p>
       </section>
     );
   }
 
   if (proposal === null) {
-    const badge = RETURN_PROPOSAL_COPY.outcomeBadges[outcome];
+    const badge = outcomeBadges[outcome];
     return (
       <section className="returns-proposal-panel" id="correction">
         <header className="returns-proposal-panel__head">
-          <h2 className="section-title">{RETURN_PROPOSAL_COPY.sectionTitle}</h2>
+          <h2 className="section-title">{copy.sectionTitle}</h2>
           {/* Each of the 4 non-proposing outcomes gets its own badge — the
               acceptance criterion is that they be DISTINCT, not merely that
               each have some text. An unrecognised outcome renders no badge
@@ -169,11 +173,11 @@ export function CorrectionProposalPanel({
         </header>
         {/* A named outcome, never a blank. An unrecognised one falls through to
             its raw value so an operator can quote it rather than see nothing. */}
-        <p className="text-muted">{RETURN_PROPOSAL_COPY.outcomes[outcome] ?? outcome}</p>
+        <p className="text-muted">{outcomeTexts[outcome] ?? outcome}</p>
         {/* The one outcome with a REAL, reachable remedy on this page — see
             the copy's own note on why the other two get none. */}
         {outcome === 'no-disposed-lines' ? (
-          <a href="#custody">{RETURN_PROPOSAL_COPY.recordWhatCameBack}</a>
+          <a href="#custody">{copy.recordWhatCameBack}</a>
         ) : null}
       </section>
     );
@@ -204,65 +208,65 @@ export function CorrectionProposalPanel({
 
   return (
     <section className="returns-proposal-panel" id="correction">
-      <h2 className="section-title">{RETURN_PROPOSAL_COPY.sectionTitle}</h2>
+      <h2 className="section-title">{copy.sectionTitle}</h2>
 
       {/* Leads the panel: what is at stake, before anything else — the
           headline amount and its breakdown, both above the fold on desktop. */}
       <div className="returns-proposal-panel__summary">
         <MetricCard
-          label={RETURN_PROPOSAL_COPY.headlineLabel}
+          label={copy.headlineLabel}
           value={formatAmount(breakdown.totalCredit, proposal.currency)}
-          description={RETURN_PROPOSAL_COPY.headlineEstimateNote}
+          description={copy.headlineEstimateNote}
         />
         <dl className="returns-proposal-panel__breakdown">
           <div>
-            <dt>{RETURN_PROPOSAL_COPY.breakdownAutomatic}</dt>
+            <dt>{copy.breakdownAutomatic}</dt>
             <dd className="tabular">{breakdown.automaticCount}</dd>
           </div>
           <div>
-            <dt>{RETURN_PROPOSAL_COPY.breakdownNeedsPick}</dt>
+            <dt>{copy.breakdownNeedsPick}</dt>
             <dd className="tabular">{breakdown.needsPickCount}</dd>
           </div>
           <div>
-            <dt>{RETURN_PROPOSAL_COPY.breakdownCantCredit}</dt>
+            <dt>{copy.breakdownCantCredit}</dt>
             <dd className="tabular">{breakdown.cantCreditCount}</dd>
           </div>
         </dl>
       </div>
 
-      <Alert tone="warning">{RETURN_PROPOSAL_COPY.irreversible}</Alert>
+      <Alert tone="warning">{copy.irreversible}</Alert>
 
       {writeAccess.visible ? (
         <div className="returns-proposal-panel__action">
-          <ReadOnlyLock active={writeAccess.demoReadOnly} message={RETURN_PROPOSAL_COPY.readOnly}>
+          <ReadOnlyLock active={writeAccess.demoReadOnly} message={copy.readOnly}>
             <Button
               onClick={() => {
                 record.mutate(undefined, {
                   onSuccess: () => {
-                    showToast({ tone: 'success', description: RETURN_PROPOSAL_COPY.recordSuccess });
+                    showToast({ tone: 'success', description: copy.recordSuccess });
                   },
                   onError: () => {
-                    showToast({ tone: 'error', description: RETURN_PROPOSAL_COPY.recordError });
+                    showToast({ tone: 'error', description: copy.recordError });
                   },
                 });
               }}
               disabled={recordDisabled}
             >
               {record.isPending
-                ? RETURN_PROPOSAL_COPY.recordPending
-                : RETURN_PROPOSAL_COPY.recordAction}
+                ? copy.recordPending
+                : copy.recordAction}
             </Button>
           </ReadOnlyLock>
           {isRecorded ? (
             <StatusBadge tone="success" withDot>
-              {RETURN_PROPOSAL_COPY.recordedBadge}
+              {copy.recordedBadge}
             </StatusBadge>
           ) : null}
           {/* Independent of the button, never folded into its disabled state
               alone (#2100) — a disabled control with no explanation reads as
               broken rather than as "you still have a pick to make". */}
           {!isRecorded && hasAmbiguity ? (
-            <span className="text-muted">{RETURN_PROPOSAL_COPY.recordBlockedAmbiguous}</span>
+            <span className="text-muted">{copy.recordBlockedAmbiguous}</span>
           ) : null}
         </div>
       ) : null}
@@ -273,15 +277,15 @@ export function CorrectionProposalPanel({
           operator can read. */}
       <Alert tone={hasAmbiguity ? 'conflict' : 'info'}>
         {hasAmbiguity
-          ? RETURN_PROPOSAL_COPY.ambiguousBanner
-          : RETURN_PROPOSAL_COPY.cleanBanner}
+          ? copy.ambiguousBanner
+          : copy.cleanBanner}
       </Alert>
 
       <ul className="returns-proposal-panel__lines">
         {proposal.lines.map((line) => (
           <li className="returns-proposal-line" key={`${line.returnLineId}:${String(line.selectedOriginalLineNumber ?? line.lineIndex)}`}>
             <div className="returns-proposal-line__head">
-              <span>{line.name ?? line.sku ?? `Line ${line.lineIndex + 1}`}</span>
+              <span>{line.name ?? line.sku ?? interpolate(copy.lineFallback, { n: line.lineIndex + 1 })}</span>
               <StatusBadge
                 compact
                 tone={
@@ -296,10 +300,10 @@ export function CorrectionProposalPanel({
                 {/* Plain language, never the raw enum — the issue's own
                     acceptance criterion. */}
                 {line.status === 'matched'
-                  ? RETURN_PROPOSAL_COPY.statusMatched
+                  ? copy.statusMatched
                   : line.status === 'ambiguous'
-                    ? RETURN_PROPOSAL_COPY.statusAmbiguous
-                    : RETURN_PROPOSAL_COPY.statusNoMatch}
+                    ? copy.statusAmbiguous
+                    : copy.statusNoMatch}
               </StatusBadge>
             </div>
 
@@ -315,13 +319,17 @@ export function CorrectionProposalPanel({
                 <ul className="returns-proposal-line__candidates">
                   {line.candidates.map((candidate) => (
                     <li key={candidate.originalLineNumber}>
-                      {candidate.name} — {candidate.quantity} ×{' '}
-                      {candidate.unitPriceGross} ({candidate.taxRate})
+                      {interpolate(copy.candidate, {
+                        name: candidate.name,
+                        quantity: candidate.quantity,
+                        unitPrice: candidate.unitPriceGross,
+                        taxRate: candidate.taxRate,
+                      })}
                     </li>
                   ))}
                 </ul>
                 {line.candidatesPriceOrRateDiffer ? (
-                  <p className="text-muted">{RETURN_PROPOSAL_COPY.candidatesDiffer}</p>
+                  <p className="text-muted">{copy.candidatesDiffer}</p>
                 ) : null}
               </>
             ) : null}
@@ -332,7 +340,7 @@ export function CorrectionProposalPanel({
               <p className="text-muted">
                 {line.noMatchExplanation ??
                   (line.noMatchReason !== null
-                    ? RETURN_PROPOSAL_COPY.noMatchReasons[line.noMatchReason] ??
+                    ? noMatchReasons[line.noMatchReason] ??
                       line.noMatchReason
                     : null)}
               </p>
@@ -342,7 +350,7 @@ export function CorrectionProposalPanel({
       </ul>
 
       <footer className="returns-proposal-panel__footer text-muted">
-        <p>{RETURN_PROPOSAL_COPY.noAutoIssue}</p>
+        <p>{copy.noAutoIssue}</p>
         {/* Reused verbatim from `sales-document-panel.tsx` — the same dialog,
             the same per-provider `InvoiceCorrectionFlow`, no new backend and
             no duplicated correction UI (#3094 amendment). A provider with no
@@ -356,12 +364,12 @@ export function CorrectionProposalPanel({
               onClick={() => setCorrectionOpen(true)}
               disabled={lock?.isStale ?? false}
             >
-              {RETURN_PROPOSAL_COPY.handoff}
+              {copy.handoff}
             </Button>
             {lock?.isStale ? (
               <p className="text-muted">
-                {RETURN_PROPOSAL_COPY.handoffConnectionStale}{' '}
-                <Link to={`/invoices/${invoice.id}`}>{RETURN_PROPOSAL_COPY.viewInvoice}</Link>
+                {copy.handoffConnectionStale}{' '}
+                <Link to={`/invoices/${invoice.id}`}>{copy.viewInvoice}</Link>
               </p>
             ) : null}
             <Dialog open={correctionOpen} onOpenChange={setCorrectionOpen}>
@@ -371,7 +379,7 @@ export function CorrectionProposalPanel({
                   qty×price pair and the reference line both ran together
                   illegibly at that width. */}
               <DialogContent aria-describedby={undefined} className="dialog__content--wide">
-                <DialogTitle>{RETURN_PROPOSAL_COPY.handoffDialogTitle}</DialogTitle>
+                <DialogTitle>{copy.handoffDialogTitle}</DialogTitle>
                 <InvoiceCorrectionFlow
                   invoice={invoice}
                   connection={invoicingConnection}
@@ -386,10 +394,10 @@ export function CorrectionProposalPanel({
             </Dialog>
           </>
         ) : invoiceQuery.isLoading || connectionsQuery.isLoading ? (
-          <p className="text-muted">{RETURN_PROPOSAL_COPY.handoffLoading}</p>
+          <p className="text-muted">{copy.handoffLoading}</p>
         ) : (
           <p className="text-muted">
-            {RETURN_PROPOSAL_COPY.handoffUnavailable}
+            {copy.handoffUnavailable}
             {/* The dialog removed a shortcut, not the destination — the
                 invoice's own page still exists and still has the provider
                 region, so a resolved invoice with no on-page flow is not a
@@ -398,7 +406,7 @@ export function CorrectionProposalPanel({
             {invoice ? (
               <>
                 {' '}
-                <Link to={`/invoices/${invoice.id}`}>{RETURN_PROPOSAL_COPY.viewInvoice}</Link>
+                <Link to={`/invoices/${invoice.id}`}>{copy.viewInvoice}</Link>
               </>
             ) : null}
           </p>

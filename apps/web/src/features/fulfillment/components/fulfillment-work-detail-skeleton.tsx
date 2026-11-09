@@ -14,7 +14,7 @@
 import type { ReactElement } from 'react';
 
 import { DetailSection } from '../../../shared/ui/detail-section';
-import { FULFILLMENT_WORK_DETAIL_COPY } from '../lib/fulfillment-work-detail.copy';
+import { useMessages } from '../../../shared/i18n';
 
 function SkeletonCard({ lines, tone }: { lines: number; tone?: 'hero' }): ReactElement {
   return (
@@ -31,9 +31,10 @@ function SkeletonCard({ lines, tone }: { lines: number; tone?: 'hero' }): ReactE
 }
 
 export function FulfillmentWorkDetailSkeleton(): ReactElement {
+  const copy = useMessages('fulfillment').workDetail;
   return (
     <div role="status" aria-live="polite">
-      <span className="sr-only">{FULFILLMENT_WORK_DETAIL_COPY.states.loading.title}</span>
+      <span className="sr-only">{copy.states.loading.title}</span>
       <div
         className="order-detail__primary-grid order-detail__primary-grid--split fulfilment-work-detail__layout"
         aria-hidden="true"

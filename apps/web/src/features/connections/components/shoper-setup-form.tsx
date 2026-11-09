@@ -21,6 +21,8 @@ import { useEffect, useState, type FormEvent, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type Path } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
+import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
+import { usePlatform } from '../../../shared/plugins';
 import { useAdaptersQuery } from '../../adapters';
 import { captureDemoEvent } from '../../demo';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
@@ -50,7 +52,6 @@ import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 
-const STEP_LABELS = ['Shop', 'API token', 'Capabilities', 'Review & create'] as const;
 
 const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<ShoperSetupFormValues>>> = [
   ['name', 'baseUrl'],
@@ -59,12 +60,27 @@ const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<ShoperSetupFormValues>>> = [
   [],
 ];
 
+// Analytics step names, kept in English so events stay comparable across languages.
+const STEP_EVENT_IDS = ['Shop', 'API token', 'Capabilities', 'Review & create'] as const;
+
+// A host-name example, not prose: the same in every language.
+const SHOP_ADDRESS_EXAMPLE = 'xxxxx.shoparena.pl';
+
 function maskToken(token: string): string {
   if (token.length <= 4) return '•'.repeat(token.length);
   return `${'•'.repeat(Math.max(0, token.length - 4))}${token.slice(-4)}`;
 }
 
 export function ShoperSetupForm(): ReactElement {
+  const copy = useMessages('connections').shoperSetupForm;
+  const setupCopy = useMessages('connections').setup;
+  const format = useFormat();
+  const STEP_LABELS = [
+    copy.steps.shop,
+    copy.steps.token,
+    copy.steps.capabilities,
+    copy.steps.review,
+  ];
   const createConnection = useCreateConnectionMutation();
   const testConnection = useTestConnectionMutation();
   const { showToast } = useToast();
@@ -93,6 +109,8 @@ export function ShoperSetupForm(): ReactElement {
   }, [form.formState.isDirty, createdConnectionId]);
 
   const adapterMetadata = adaptersQuery.data?.find((a) => a.adapterKey === SHOPER_ADAPTER_KEY);
+  const platformName =
+    usePlatform(adapterMetadata?.platformType ?? '')?.displayName ?? copy.platformFallback;
   // The checkbox list is gated on the well-known core capabilities: the
   // create-connection request DTO is still strict on `CoreCapabilityValues` (#576).
   const supportedCapabilities: CoreCapability[] = (
@@ -114,7 +132,7 @@ export function ShoperSetupForm(): ReactElement {
     setCompletedSteps((prev) => new Set(prev).add(stepIndex));
     captureDemoEvent('demo_connection_wizard_step_advanced', {
       platform: 'shoper',
-      step: STEP_LABELS[stepIndex],
+      step: STEP_EVENT_IDS[stepIndex],
     });
     setStepIndex((i) => Math.min(i + 1, STEP_LABELS.length - 1));
   }
@@ -142,8 +160,11 @@ export function ShoperSetupForm(): ReactElement {
       setCreatedConnectionId(created.id);
       showToast({
         tone: 'success',
-        title: 'Connection created',
-        description: `Shoper connection "${created.name}" was created.`,
+        title: copy.createdTitle,
+        description: interpolate(copy.createdDescription, {
+          platform: platformName,
+          name: created.name,
+        }),
       });
     } catch {
       return;
@@ -178,39 +199,46 @@ export function ShoperSetupForm(): ReactElement {
         }
       >
         <div className="wizard-card">
-          <Alert tone="success" title="Connection created">
-            Test the connection to confirm the shop accepts the token.
+          <Alert tone="success" title={copy.createdTitle}>
+            {copy.createdHint}
           </Alert>
           {selectedCapabilities.includes('OrderProcessorManager') ? (
-            <Alert tone="info" title="One more step to receive orders">
-              Shoper needs a default delivery method, payment method and order status to create an
-              order. Pick them from the shop&rsquo;s own lists in{' '}
-              <Link className="link" to={`/connections/${createdConnectionId}/edit`}>
-                the connection settings
-              </Link>
-              .
+            <Alert tone="info" title={copy.ordersNextStep.title}>
+              {renderRich(
+                copy.ordersNextStep.body,
+                {
+                  link: (text) => (
+                    <Link className="link" to={`/connections/${createdConnectionId}/edit`}>
+                      {text}
+                    </Link>
+                  ),
+                },
+                { platform: platformName },
+              )}
             </Alert>
           ) : null}
           {testResult ? (
             <Alert
               tone={testResult.success ? 'success' : 'error'}
-              title={testResult.success ? 'Connection test passed' : 'Connection test failed'}
+              title={testResult.success ? copy.testPassed : copy.testFailed}
             >
               {testResult.message}
-              {typeof testResult.latencyMs === 'number' ? ` (${testResult.latencyMs}ms)` : null}
+              {typeof testResult.latencyMs === 'number'
+                ? ` ${interpolate(copy.latency, { ms: format.number(testResult.latencyMs) })}`
+                : null}
             </Alert>
           ) : null}
           {testConnection.error ? (
-            <Alert tone="error" title="Unable to test connection">
+            <Alert tone="error" title={copy.testError}>
               {testConnection.error.message}
             </Alert>
           ) : null}
           <div className="form-actions">
             <Button type="button" onClick={() => void onTest()} disabled={testConnection.isPending}>
-              {testConnection.isPending ? 'Testing…' : 'Test connection'}
+              {testConnection.isPending ? copy.testing : copy.test}
             </Button>
             <Button tone="secondary" type="button" onClick={() => void navigate('/connections')}>
-              Done
+              {copy.done}
             </Button>
           </div>
         </div>
@@ -225,13 +253,13 @@ export function ShoperSetupForm(): ReactElement {
       }
     >
       <form className="wizard-card" onSubmit={handleFormSubmit} noValidate>
-        <BackLink to="/connections/new" label="Connections" className="wizard-card__back" />
+        <BackLink to="/connections/new" label={setupCopy.connections} className="wizard-card__back" />
 
         {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
           <FormErrorSummary errors={validationMessages} />
         ) : null}
         {createConnection.error ? (
-          <Alert tone="error" title="Unable to create connection">
+          <Alert tone="error" title={copy.createError}>
             {createConnection.error.message}
           </Alert>
         ) : null}
@@ -239,28 +267,28 @@ export function ShoperSetupForm(): ReactElement {
         {stepIndex === 0 ? (
           <>
             <FormField
-              label="Connection name"
+              label={copy.fields.name.label}
               name="name"
               error={form.formState.errors.name?.message}
-              description="A label to identify this Shoper shop in OpenLinker."
+              description={interpolate(copy.fields.name.description, { platform: platformName })}
             >
               <Input
                 {...form.register('name')}
-                placeholder="My Shoper Store"
+                placeholder={copy.fields.name.placeholder}
                 autoComplete="off"
                 invalid={Boolean(form.formState.errors.name)}
               />
             </FormField>
 
             <FormField
-              label="Shop address"
+              label={copy.fields.baseUrl.label}
               name="baseUrl"
               error={form.formState.errors.baseUrl?.message}
-              description="Your shop's host name, e.g. xxxxx.shoparena.pl. HTTPS only, no path."
+              description={copy.fields.baseUrl.description}
             >
               <Input
                 {...form.register('baseUrl')}
-                placeholder="xxxxx.shoparena.pl"
+                placeholder={SHOP_ADDRESS_EXAMPLE}
                 autoComplete="off"
                 invalid={Boolean(form.formState.errors.baseUrl)}
               />
@@ -270,19 +298,19 @@ export function ShoperSetupForm(): ReactElement {
 
         {stepIndex === 1 ? (
           <>
-            <Alert tone="info" title="Before you start">
-              In your Shoper admin panel open <strong>Dodaj integrację</strong> and create an
-              integration. Shoper issues a <strong>Token API</strong>; OpenLinker sends it as a
-              bearer token on every request. Grant the integration access to: produkty, warianty
-              produktów, stany dostępności, kategorie, stawki vat, magazyny, zamówienia, przesyłki,
-              statusy zamówień, klienci, webhooki, dostawy and płatności.
+            <Alert tone="info" title={copy.beforeYouStart.title}>
+              {renderRich(
+                copy.beforeYouStart.body,
+                { strong: (text) => <strong>{text}</strong> },
+                { platform: platformName },
+              )}
             </Alert>
 
             <FormField
-              label="API token"
+              label={copy.fields.token.label}
               name="token"
               error={form.formState.errors.token?.message}
-              description="The Token API issued by the Shoper admin panel. Stored securely on the server."
+              description={interpolate(copy.fields.token.description, { platform: platformName })}
             >
               <Input
                 {...form.register('token')}
@@ -297,11 +325,9 @@ export function ShoperSetupForm(): ReactElement {
 
         {stepIndex === 2 ? (
           <fieldset className="capability-fieldset">
-            <legend className="capability-fieldset__legend">Capabilities</legend>
+            <legend className="capability-fieldset__legend">{copy.capabilities.legend}</legend>
             <p className="muted-text capability-fieldset__help">
-              Pick which roles this connection should fulfil. You can change this later on the
-              connection&rsquo;s detail page. Receiving and ingesting orders are off by default
-              because they start creating or reading orders in the shop.
+              {copy.capabilities.help}
             </p>
             <ul className="capability-list">
               {supportedCapabilities.map((capability) => {
@@ -330,23 +356,22 @@ export function ShoperSetupForm(): ReactElement {
         {stepIndex === 3 ? (
           <>
             <dl className="wizard-review-list">
-              <dt>Name</dt>
+              <dt>{copy.review.name}</dt>
               <dd>{values.name || '—'}</dd>
-              <dt>Shop address</dt>
+              <dt>{copy.fields.baseUrl.label}</dt>
               <dd className="mono-text">{values.baseUrl || '—'}</dd>
-              <dt>API token</dt>
+              <dt>{copy.fields.token.label}</dt>
               <dd className="mono-text">{values.token ? maskToken(values.token) : '—'}</dd>
-              <dt>Capabilities</dt>
+              <dt>{copy.capabilities.legend}</dt>
               <dd>
                 {selectedCapabilities.length > 0
                   ? selectedCapabilities.join(', ')
-                  : 'None selected'}
+                  : copy.review.noneSelected}
               </dd>
             </dl>
             {selectedCapabilities.includes('OrderProcessorManager') ? (
-              <Alert tone="info" title="Order defaults come next">
-                After the connection is created you will pick the default delivery method, payment
-                method and status from the shop&rsquo;s own lists.
+              <Alert tone="info" title={copy.review.orderDefaults.title}>
+                {copy.review.orderDefaults.body}
               </Alert>
             ) : null}
           </>
@@ -356,18 +381,18 @@ export function ShoperSetupForm(): ReactElement {
           <div className="wizard-actions__group">
             {stepIndex > 0 ? (
               <Button tone="secondary" type="button" onClick={goBack}>
-                Back
+                {setupCopy.back}
               </Button>
             ) : null}
           </div>
           <div className="wizard-actions__group">
             {stepIndex < STEP_LABELS.length - 1 ? (
               <Button key="next" type="button" onClick={() => void goNext()}>
-                Next
+                {setupCopy.next}
               </Button>
             ) : (
               <Button key="submit" type="submit" disabled={createConnection.isPending}>
-                {createConnection.isPending ? 'Creating...' : 'Create connection'}
+                {createConnection.isPending ? copy.creating : copy.create}
               </Button>
             )}
           </div>

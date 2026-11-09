@@ -17,6 +17,7 @@ import { AccessDeniedState, ErrorState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
+import { interpolate, useFormat, useMessages, usePlural } from '../../shared/i18n';
 import { Chip } from '../../shared/ui/chip';
 import { Input } from '../../shared/ui/input';
 import { Select } from '../../shared/ui/select';
@@ -29,10 +30,10 @@ import {
 } from '../../features/inventory/hooks/use-inventory-movements-query';
 import { StockMovementsTable } from '../../features/inventory/components/stock-movements-table';
 import {
-  MOVEMENT_TYPE_FILTER_LABEL,
   MOVEMENT_TYPE_FILTER_VALUES,
   movementNeedsAttention,
-} from '../../features/inventory/lib/stock-movement-copy';
+  movementTypeFilterLabel,
+} from '../../features/inventory/lib/stock-movement-presentation';
 import {
   hasActiveMovementFilters,
   hasMovementScope,
@@ -44,25 +45,22 @@ import {
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
 
-const PAGE_COPY = {
-  eyebrow: 'Products',
-  title: 'Stock movement history',
-  description:
-    "Every applied, refused, or unconfirmed change to a variant's stock - plus the reservations that set stock aside for orders.",
-} as const;
+function usePageCopy(): { eyebrow: string; title: string; description: string } {
+  const copy = useMessages('inventory').inventoryMovementsPage;
+  return { eyebrow: copy.eyebrow, title: copy.title, description: copy.description };
+}
 
 export function InventoryMovementsPage(): ReactElement {
+  const copy = useMessages('inventory').inventoryMovementsPage;
+  const pageCopy = usePageCopy();
   // The history read is inventory:read (admin, operator, viewer): a session
   // without it is told so, instead of meeting a failed request it cannot fix.
   return (
     <AccessGate
       require="inventory:read"
       fallback={
-        <PageLayout {...PAGE_COPY}>
-          <AccessDeniedState
-            title="Stock history is not available for your role"
-            message="Stock movements are visible to admins, operators and viewers. Ask an administrator if you need them."
-          />
+        <PageLayout {...pageCopy}>
+          <AccessDeniedState title={copy.denied.title} message={copy.denied.message} />
         </PageLayout>
       }
     >
@@ -72,6 +70,10 @@ export function InventoryMovementsPage(): ReactElement {
 }
 
 function InventoryMovementsContent(): ReactElement {
+  const copy = useMessages('inventory').inventoryMovementsPage;
+  const pageCopy = usePageCopy();
+  const plural = usePlural();
+  const format = useFormat();
   const [searchParams, setSearchParams] = useSearchParams();
   const state = readMovementUrlState(searchParams);
   const filters = toMovementFilters(state);
@@ -128,43 +130,43 @@ function InventoryMovementsContent(): ReactElement {
   const partial = totalStage.total !== null && totalStage.total > rows.length;
 
   return (
-    <PageLayout {...PAGE_COPY}>
+    <PageLayout {...pageCopy}>
       <div className="toolbar stock-movements-toolbar">
         <div className="toolbar__group">
           <Input
             type="search"
             className="stock-movements-search"
-            placeholder="Search SKU or variant name"
-            aria-label="Search SKU or variant name"
+            placeholder={copy.search}
+            aria-label={copy.search}
             data-testid="stock-movements-search"
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
           />
           <label className="stock-movements-field">
-            Type
+            {copy.type}
             <Select
-              aria-label="Filter by type"
+              aria-label={copy.filterType}
               data-testid="stock-movements-filter-type"
               value={state.type}
               onChange={(event) => update({ type: event.target.value, chip: null })}
             >
-              <option value="">All types</option>
+              <option value="">{copy.allTypes}</option>
               {MOVEMENT_TYPE_FILTER_VALUES.map((value) => (
                 <option key={value} value={value}>
-                  {MOVEMENT_TYPE_FILTER_LABEL[value]}
+                  {movementTypeFilterLabel(value)}
                 </option>
               ))}
             </Select>
           </label>
           <label className="stock-movements-field">
-            Master connection
+            {copy.master}
             <Select
-              aria-label="Filter by master connection"
+              aria-label={copy.filterMaster}
               data-testid="stock-movements-filter-master"
               value={state.master}
               onChange={(event) => update({ master: event.target.value })}
             >
-              <option value="">All connections</option>
+              <option value="">{copy.allConnections}</option>
               {connections.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -173,20 +175,20 @@ function InventoryMovementsContent(): ReactElement {
             </Select>
           </label>
           <label className="stock-movements-field">
-            From
+            {copy.from}
             <Input
               type="date"
-              aria-label="Date from"
+              aria-label={copy.dateFrom}
               data-testid="stock-movements-filter-from"
               value={state.from}
               onChange={(event) => update({ from: event.target.value })}
             />
           </label>
           <label className="stock-movements-field">
-            To
+            {copy.to}
             <Input
               type="date"
-              aria-label="Date to"
+              aria-label={copy.dateTo}
               data-testid="stock-movements-filter-to"
               value={state.to}
               onChange={(event) => update({ to: event.target.value })}
@@ -198,7 +200,7 @@ function InventoryMovementsContent(): ReactElement {
       <div className="toolbar page-summary" style={{ margin: 'var(--space-3) 0' }}>
         <div className="toolbar__group">
           <Chip active={state.chip === 'all'} data-testid="stock-movements-chip-all" onClick={() => selectChip('all')}>
-            All
+            {copy.chips.all}
           </Chip>
           <Chip
             tone="warning"
@@ -206,7 +208,7 @@ function InventoryMovementsContent(): ReactElement {
             data-testid="stock-movements-chip-attention"
             onClick={() => selectChip('attention')}
           >
-            Needs attention
+            {copy.chips.attention}
           </Chip>
           <Chip
             tone="review"
@@ -214,24 +216,24 @@ function InventoryMovementsContent(): ReactElement {
             data-testid="stock-movements-chip-promised"
             onClick={() => selectChip('promised')}
           >
-            Reserved only
+            {copy.chips.promised}
           </Chip>
         </div>
       </div>
 
       {state.productVariantId !== '' ? (
         <p className="stock-movements-summary-line" data-testid="stock-movements-scope-variant">
-          Showing one variant only.{' '}
+          {copy.scopeVariant}{' '}
           <Button tone="ghost" onClick={() => update({ productVariantId: null })}>
-            Show all variants
+            {copy.showAllVariants}
           </Button>
         </p>
       ) : null}
       {state.productId !== '' ? (
         <p className="stock-movements-summary-line" data-testid="stock-movements-scope-product">
-          Showing one product only.{' '}
+          {copy.scopeProduct}{' '}
           <Button tone="ghost" onClick={() => update({ productId: null })}>
-            Show all products
+            {copy.showAllProducts}
           </Button>
         </p>
       ) : null}
@@ -240,7 +242,7 @@ function InventoryMovementsContent(): ReactElement {
         <DataTableSkeleton columns={7} rows={6} />
       ) : query.error ? (
         <ErrorState
-          title="Unable to load stock movements"
+          title={copy.errorTitle}
           message={query.error.message}
           action={
             <Button
@@ -248,7 +250,7 @@ function InventoryMovementsContent(): ReactElement {
                 void query.refetch();
               }}
             >
-              Retry
+              {copy.retry}
             </Button>
           }
         />
@@ -256,21 +258,18 @@ function InventoryMovementsContent(): ReactElement {
         <div className="empty-state" data-testid="stock-movements-empty">
           <h2>
             {active
-              ? 'No stock movements match these filters'
+              ? copy.empty.filteredTitle
               : scoped
-                ? `No stock movements recorded for this ${state.productVariantId !== '' ? 'variant' : 'product'} yet`
-                : 'No stock movements yet'}
+                ? state.productVariantId !== ''
+                  ? copy.empty.variantTitle
+                  : copy.empty.productTitle
+                : copy.empty.title}
           </h2>
-          <p>
-            {active
-              ? 'Try widening the date range or clearing a filter.'
-              : scoped
-                ? 'Movements appear here once its stock changes in a master connection or OpenLinker adjusts it.'
-                : 'Movements appear here once stock changes in a master connection or OpenLinker adjusts it.'}
+          <p>{active ? copy.empty.filteredBody : scoped ? copy.empty.scopedBody : copy.empty.body}
           </p>
           {active ? (
             <Button tone="secondary" data-testid="stock-movements-clear-filters" onClick={clearFilters}>
-              Clear filters
+              {copy.empty.clearFilters}
             </Button>
           ) : null}
         </div>
@@ -279,28 +278,29 @@ function InventoryMovementsContent(): ReactElement {
           {state.chip === 'attention' ? (
             <Alert
               tone="warning"
-              title={`${attentionTotal} movement${attentionTotal === 1 ? '' : 's'} need${attentionTotal === 1 ? 's' : ''} a look`}
+              title={plural(attentionTotal, copy.attention.title)}
               data-testid="stock-movements-attention-alert"
             >
-              {[
-                refused > 0 ? `${refused} refused by the master` : null,
-                inDoubt > 0 ? `${inDoubt} unconfirmed` : null,
-              ]
-                .filter(Boolean)
-                .join(' and ')}
-              {partial ? ' on this page' : ''}. The totals may not reflect these changes yet.
+              {interpolate(partial ? copy.attention.onThisPage : copy.attention.body, {
+                parts: format.list(
+                  [
+                    refused > 0 ? interpolate(copy.attention.refused, { n: refused }) : null,
+                    inDoubt > 0 ? interpolate(copy.attention.inDoubt, { n: inDoubt }) : null,
+                  ].filter((part): part is string => part !== null),
+                ),
+              })}
             </Alert>
           ) : null}
           <p className="stock-movements-summary-line" data-testid="stock-movements-count">
             {totalStage.total !== null
-              ? `${totalStage.total} result${totalStage.total === 1 ? '' : 's'}`
-              : `${rows.length}+ results`}
+              ? plural(totalStage.total, copy.count)
+              : interpolate(copy.countAtLeast, { n: rows.length })}
           </p>
           <StockMovementsTable
             rows={rows}
             connectionNames={connectionNames}
             layout="global"
-            caption="Stock movements"
+            caption={copy.caption}
           />
           <ListPagination
             offset={state.offset}

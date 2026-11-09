@@ -5,8 +5,10 @@
  * Guards the translation files of the admin app (ADR-081, #3859). A namespace
  * has one home and one file per language:
  *
- *   core:    apps/web/src/locales/<lang>.json, one namespace per top-level key,
- *            budgets in apps/web/src/locales/limits.json as "<ns>:<key.path>"
+ *   core:    apps/web/src/locales/<lang>/<namespace>.json, one file per
+ *            namespace, listed in locales/en/index.ts (and, for Polish, in
+ *            locales/pl/index.check.ts); budgets in apps/web/src/locales/limits.json
+ *            as "<ns>:<key.path>"
  *   plugins: apps/web/src/plugins/<id>/locales/<lang>.json, one namespace per
  *            plugin, budgets in the plugin's own locales/limits.json as
  *            "<key.path>"
@@ -18,7 +20,7 @@
  *      numbers or nulls - and English has at least one string.
  *   2. Keys: a translation carries no key English lacks (Polish-only plural
  *      `few` / `many` excepted). tsc enforces this for the core file through
- *      locales/pl.check.ts; plugins are only checked here.
+ *      locales/pl/index.check.ts; plugins are only checked here.
  *   3. Placeholders: the same set of `{name}` placeholders as English (plural
  *      `few` / `many` compare against English `other`).
  *   4. Budgets: a key with a limit stays within it in every language - it sits
@@ -28,12 +30,19 @@
  *   6. Sorted: keys in alphabetical order at every level, so parallel changes
  *      land in different places. `--fix` rewrites every file sorted.
  *   7. Files: a translation file without its English file, or a language not
- *      in LANGUAGES, is an error.
+ *      in LANGUAGES, is an error; so is a core file missing from its index
+ *      (locales/en/index.ts, locales/pl/index.check.ts) or an index entry with
+ *      no file.
  *   8. Warning only: Polish more than 1.6x and 15+ characters longer than
  *      English, for a reviewer to look at the layout.
  *   9. Warning only: a key whose name appears in no source file, so it is
  *      probably unused. A heuristic - `title` is always "used" - so it reports
  *      and never fails.
+ *  10. Warning only: a key English has and a translation lacks (an empty
+ *      string counts as missing; a plural counts once), core and plugins
+ *      alike (#3891). It never fails: the runtime already shows the English
+ *      text for that key, and English stays the fallback, so a gap is
+ *      something to translate, not a broken build.
  *
  * The scan fails when it finds fewer core namespaces than MIN_CORE_NAMESPACES:
  * a walk that finds nothing must not read as "all clean".
@@ -197,6 +206,21 @@ export function findUnusedKeys({ label, files }, usedWords) {
 }
 
 /**
+ * One warning per English key a translation lacks, for every language other
+ * than the base. A namespace with no file for a language lacks every key.
+ */
+export function findMissingTranslations({ label, files }) {
+  const warnings = [];
+  for (const language of LANGUAGES) {
+    if (language === BASE) continue;
+    for (const unit of coverageOf(files, language).missing) {
+      warnings.push(`${label} [${language}] ${unit} is not translated; English is shown.`);
+    }
+  }
+  return warnings;
+}
+
+/**
  * How much of English one language has translated. A plural group is one
  * unit (translated when `<unit>.other` is non-empty), any other leaf is one.
  */
@@ -255,6 +279,27 @@ const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'));
 const rel = (file) => relative(ROOT, file);
 
 /**
+ * The JSON files a core index imports must be exactly the files on disk: a
+ * file missing from the index is copy nothing can read, an import with no file
+ * fails the build.
+ */
+function indexErrors(indexFile, namespaces) {
+  if (!existsSync(indexFile)) {
+    return namespaces.length > 0 ? [`${rel(indexFile)} is missing.`] : [];
+  }
+  const source = readFileSync(indexFile, 'utf8');
+  const imported = new Set([...source.matchAll(/from '\.\/([a-z][a-z0-9-]*)\.json'/g)].map((m) => m[1]));
+  const errors = [];
+  for (const ns of namespaces) {
+    if (!imported.has(ns)) errors.push(`${rel(indexFile)} does not import ./${ns}.json.`);
+  }
+  for (const ns of imported) {
+    if (!namespaces.includes(ns)) errors.push(`${rel(indexFile)} imports ./${ns}.json, which does not exist.`);
+  }
+  return errors;
+}
+
+/**
  * Every namespace with the files it lives in. Errors for files that do not
  * fit the layout go to `layoutErrors`.
  */
@@ -262,33 +307,47 @@ function discover(layoutErrors) {
   const namespaces = [];
   const fileSets = [];
 
-  // Core: one file per language, namespaces are its top-level keys.
+  // Core: one folder per language, one file per namespace.
   const coreFiles = {};
   for (const entry of readdirSync(CORE_DIR)) {
-    const match = entry.match(/^([a-z]{2})\.json$/);
-    if (!match) continue;
-    if (!LANGUAGES.includes(match[1])) layoutErrors.push(`${rel(join(CORE_DIR, entry))}: "${match[1]}" is not in LANGUAGES.`);
-    else coreFiles[match[1]] = join(CORE_DIR, entry);
+    const dir = join(CORE_DIR, entry);
+    if (!statSync(dir).isDirectory()) continue;
+    if (!LANGUAGES.includes(entry)) {
+      layoutErrors.push(`${rel(dir)}: "${entry}" is not in LANGUAGES.`);
+      continue;
+    }
+    coreFiles[entry] = {};
+    for (const file of readdirSync(dir)) {
+      const match = file.match(/^([a-z][a-z0-9-]*)\.json$/);
+      if (match) coreFiles[entry][match[1]] = join(dir, file);
+    }
   }
-  if (!coreFiles[BASE]) layoutErrors.push(`${rel(CORE_DIR)} has no ${BASE}.json.`);
-  else {
-    const trees = Object.fromEntries(Object.entries(coreFiles).map(([l, f]) => [l, readJson(f)]));
-    fileSets.push({ files: coreFiles, trees });
+  if (!coreFiles[BASE] || Object.keys(coreFiles[BASE]).length === 0) {
+    layoutErrors.push(`${rel(CORE_DIR)}/${BASE} has no namespace files.`);
+  } else {
+    for (const [language, byNs] of Object.entries(coreFiles)) {
+      for (const ns of Object.keys(byNs)) {
+        if (!(ns in coreFiles[BASE])) layoutErrors.push(`${rel(byNs[ns])}: namespace "${ns}" has no ${BASE}/${ns}.json.`);
+      }
+    }
+    layoutErrors.push(
+      ...indexErrors(join(CORE_DIR, BASE, 'index.ts'), Object.keys(coreFiles[BASE])),
+      ...indexErrors(join(CORE_DIR, 'pl', 'index.check.ts'), Object.keys(coreFiles.pl ?? {})),
+    );
     const limitsFile = join(CORE_DIR, 'limits.json');
     const allLimits = existsSync(limitsFile) ? readJson(limitsFile) : {};
     for (const key of Object.keys(allLimits)) {
       const ns = key.split(':')[0];
-      if (!key.includes(':') || !(ns in trees[BASE])) {
+      if (!key.includes(':') || !(ns in coreFiles[BASE])) {
         layoutErrors.push(`${rel(limitsFile)} "${key}" must be "<namespace>:<key.path>" with a core namespace.`);
       }
     }
-    for (const language of Object.keys(trees)) {
-      for (const ns of Object.keys(trees[language])) {
-        if (!(ns in trees[BASE])) layoutErrors.push(`${rel(coreFiles[language])}: namespace "${ns}" is not in ${BASE}.json.`);
-      }
-    }
-    for (const ns of Object.keys(trees[BASE])) {
-      const files = Object.fromEntries(Object.entries(trees).map(([l, t]) => [l, t[ns]]));
+    for (const ns of Object.keys(coreFiles[BASE]).sort()) {
+      const paths = Object.fromEntries(
+        Object.entries(coreFiles).filter(([, byNs]) => byNs[ns]).map(([l, byNs]) => [l, byNs[ns]]),
+      );
+      const files = Object.fromEntries(Object.entries(paths).map(([l, f]) => [l, readJson(f)]));
+      fileSets.push({ files: paths, trees: files });
       const limits = Object.fromEntries(
         Object.entries(allLimits).filter(([k]) => k.startsWith(`${ns}:`)).map(([k, v]) => [k.slice(ns.length + 1), v]),
       );
@@ -361,7 +420,7 @@ function run() {
   const coreCount = namespaces.filter((n) => n.label.startsWith('core:')).length;
   if (coreCount < MIN_CORE_NAMESPACES) {
     errors.push(
-      `found ${coreCount} core namespace(s) in ${rel(CORE_DIR)}/${BASE}.json, expected at least ${MIN_CORE_NAMESPACES}. ` +
+      `found ${coreCount} core namespace(s) in ${rel(CORE_DIR)}/${BASE}/, expected at least ${MIN_CORE_NAMESPACES}. ` +
         'The scan finding nothing is a broken scan, not a clean tree.',
     );
   }
@@ -370,7 +429,7 @@ function run() {
   for (const namespace of namespaces) {
     const result = checkNamespace(namespace);
     errors.push(...result.errors);
-    warnings.push(...result.warnings, ...findUnusedKeys(namespace, words));
+    warnings.push(...result.warnings, ...findUnusedKeys(namespace, words), ...findMissingTranslations(namespace));
   }
   for (const w of warnings) console.warn(`⚠ ${w}`);
   if (errors.length > 0) {
@@ -457,6 +516,19 @@ function selfCheck() {
   cases += 1;
   const unused = findUnusedKeys({ label: 'fixture', files: { en: { strayKey: { one: 'x', other: 'y' }, usedKey: 'A' } } }, new Set(['usedKey']));
   if (unused.length !== 1 || !unused[0].includes('strayKey')) failures.push(`unused key: expected one warning naming strayKey, got ${JSON.stringify(unused)}`);
+
+  cases += 1;
+  const untranslated = findMissingTranslations({
+    label: 'fixture',
+    files: { en: { a: 'A', b: 'B', c: 'C', n: { one: '{n} x', other: '{n} xs' } }, pl: { a: 'A', b: '', n: { one: 'a', few: 'b', many: 'c', other: 'd' } } },
+  });
+  const expectedUntranslated = ['fixture [pl] b is not translated; English is shown.', 'fixture [pl] c is not translated; English is shown.'];
+  if (JSON.stringify(untranslated) !== JSON.stringify(expectedUntranslated)) {
+    failures.push(`missing translation: expected ${JSON.stringify(expectedUntranslated)}, got ${JSON.stringify(untranslated)}`);
+  }
+  cases += 1;
+  const noPolishFile = findMissingTranslations({ label: 'fixture', files: { en: { a: 'A' } } });
+  if (noPolishFile.length !== 1) failures.push(`missing translation without a Polish file: expected one warning, got ${JSON.stringify(noPolishFile)}`);
 
   cases += 1;
   const sorted = JSON.stringify(sortTree({ b: { d: '1', c: '2' }, a: '3' }));

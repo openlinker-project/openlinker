@@ -1,0 +1,1628 @@
+{
+  "advancedNewConnectionPage": {
+    "bannerBody": "This form exposes raw adapter keys, credential references, and config JSON. Use the <link>guided setup flow</link> unless you need direct control to debug an integration or bootstrap a platform without a dedicated flow.",
+    "bannerTitle": "Escape hatch - prefer the guided flow",
+    "description": "Direct form for connection fields - adapter key, credentials reference, and raw config JSON.",
+    "escapeHatchChip": "Escape hatch",
+    "rawFormChip": "Raw form",
+    "title": "Advanced connection setup"
+  },
+  "allegroSellerDefaultsSection": {
+    "attachments": {
+      "hint": "Upload one or more PDF files. Allegro stores the file; OpenLinker keeps only the returned id.",
+      "label": "Safety information attachments",
+      "labelCount": "Safety information attachments ({count}/{max})",
+      "listLabel": "Uploaded safety attachments",
+      "maxReached": "Maximum {max} attachments reached",
+      "remove": "Remove",
+      "removeNamed": "Remove {name}",
+      "removeToAdd": "Remove one to add another.",
+      "size": {
+        "bytes": "{n} B",
+        "kilobytes": "{n} KB",
+        "megabytes": "{n} MB"
+      },
+      "uploadFailed": "Upload failed"
+    },
+    "description": "Allegro requires a ship-from location and EU GPSR data (Reg. 2023/988, mandatory since 13 Dec 2024) on every offer. These defaults are sent on the inline-product path and used as a fallback when smart-linking to an existing product card misses.",
+    "eyebrow": "Allegro seller defaults",
+    "location": {
+      "city": "City",
+      "description": "Used as the ship-from location on every offer.",
+      "postCode": "Post code",
+      "postCodeHint": "Polish format NN-NNN.",
+      "province": "Voivodeship",
+      "provincePlaceholder": "Select voivodeship…",
+      "title": "Ship-from location"
+    },
+    "producer": {
+      "description": "EU GPSR registry entry from your Allegro seller account.",
+      "emptyBody": "Create a Responsible Producer in your Allegro seller panel, then click Refresh.",
+      "emptyTitle": "No responsible-producer entries yet",
+      "errorTitle": "Could not load responsible producers",
+      "loading": "Loading…",
+      "noEntries": "No entries",
+      "refresh": "Refresh",
+      "refreshing": "Refreshing…",
+      "selectEntry": "Select an entry…",
+      "title": "Responsible producer"
+    },
+    "safety": {
+      "description": "Pick <strong>None applies</strong> for products without GPSR safety obligations, provide free-text safety details, or upload PDFs as attachments. Some categories (cameras, electronics with batteries, etc.) require <strong>TEXT</strong> or <strong>ATTACHMENTS</strong> and reject the \"None applies\" option.",
+      "descriptionHint": "Free text shown to buyers. 1-5000 characters; no HTML, newlines allowed.",
+      "descriptionLabel": "Safety information description",
+      "options": {
+        "attachments": "Provide safety information (file)",
+        "none": "None applies",
+        "text": "Provide safety information (text)"
+      },
+      "title": "Safety information",
+      "type": "Type"
+    },
+    "title": "Required by Allegro for offer creation"
+  },
+  "allegroSetupPage": {
+    "chip": "OAuth 2.0",
+    "chipSecondary": "{platform} API",
+    "description": "Authorize OpenLinker to manage your {platform} offers, orders, and inventory via the {platform} API.",
+    "fallbackPlatform": "the marketplace",
+    "title": "Connect {platform}"
+  },
+  "archiveConnectionButton": {
+    "archive": "Archive",
+    "cancel": "Keep it",
+    "confirm": "Archive connection",
+    "confirmName": "Type \"{name}\" to confirm",
+    "consequences": {
+      "credentials": "Its saved credentials are deleted.",
+      "history": "Mappings, orders, offers and job history are kept and still show its name.",
+      "restore": "You can restore it later, but you will need to enter its credentials again."
+    },
+    "dialogDescription": "\"{name}\" will disappear from your connections and from every place you pick a connection.",
+    "dialogTitle": "Archive this connection?",
+    "errorTitle": "Unable to archive connection",
+    "referrersHint": "Change their catalog pairing first, then archive this connection.",
+    "referrersIntro": "\"{name}\" is the catalog connection of:",
+    "referrersTitle": "Other connections still use this catalog",
+    "successDescription": "\"{name}\" is hidden from your connections. You can restore it from the Archived filter.",
+    "successTitle": "Connection archived"
+  },
+  "capabilityHelp": {
+    "AvailabilityAuthority": "Decides how much of each product is sellable, overriding the stock figure OpenLinker would otherwise compute.",
+    "CategoryProvisioner": "Create or resolve destination categories when publishing listings to this connection.",
+    "Fiscalization": "Register a completed sale with this connection, which performs or brokers the fiscal registration. OpenLinker never decides whether an order requires one.",
+    "FulfillmentExecutor": "Picks, packs and ships the work OpenLinker hands it, and reports progress back. Only one connection handles a given piece of work at a time.",
+    "InventoryMaster": "Read stock levels from this connection as the inventory source of truth.",
+    "Invoicing": "Issue and manage fiscal documents (invoices) through this connection.",
+    "OfferManager": "Manage offers and listings on this marketplace connection.",
+    "OrderProcessorManager": "Create and manage orders in this connection (typically the destination shop).",
+    "OrderSource": "Fetch new orders from this connection (disable if orders come from a marketplace instead).",
+    "ProductMaster": "Read the product catalog (variants, attributes, categories) from this connection.",
+    "ProductPublisher": "Publish and manage shop listings owned by this connection (cross-platform listing).",
+    "ReturnsAuthority": "Decides what happens to goods a customer sends back - whether they go back on sale, and who approves that."
+  },
+  "capabilityMetadata": {
+    "conflict": "Unavailable while {capability} is selected - the inventory source of truth cannot also be a stock write-back target."
+  },
+  "catalogTrustPanel": {
+    "cycleNone": "None open",
+    "cycleOpen": "Open - resumes on the next hourly tick",
+    "deltaDisabledNote": "The delta pass is currently switched off in the server settings, so full re-enumeration still applies in practice.",
+    "deltaPass": "Delta pass",
+    "disabled": "Disabled",
+    "enabled": "Enabled",
+    "errorTitle": "Unable to load catalog trust",
+    "eyebrow": "Health",
+    "lastReconciled": "Deletion last reconciled",
+    "loadingMessage": "Reading the master's declared sync capability.",
+    "loadingTitle": "Loading catalog trust",
+    "meta": "Product master",
+    "noCycle": "No cycle completed yet",
+    "reconcileCycle": "Reconcile cycle",
+    "reconcileNote": "Deletion reconciliation advances one budgeted page per hourly tick - a full cycle spans many ticks on a large catalog, so recency here is the real deletion-detection latency.",
+    "retry": "Retry",
+    "rungLabels": {
+      "full-enumeration": "Full enumeration",
+      "modified-since": "Modified-since",
+      "unknown": "Unknown"
+    },
+    "rungNotes": {
+      "full-enumeration": "Full re-enumeration only - this master cannot report changes since a point in time; every catalog sync re-reads the whole catalog.",
+      "modified-since": "This master declares modified-since enumeration - scheduled syncs can pull only what changed.",
+      "unknown": "Could not resolve this connection's adapter to determine its catalog sync capability."
+    },
+    "syncCapability": "Sync capability",
+    "title": "Catalog replication"
+  },
+  "codCurrencySupport": {
+    "description": "The carrier collects cash on delivery in these currencies.",
+    "label": "Supported COD currencies"
+  },
+  "connectionActionsPanel": {
+    "archive": {
+      "help": "Hide it from your connections and delete its saved credentials. Mappings and history are kept, and it can be restored later.",
+      "notArchivable": "This connection can be disabled but not archived. It holds settings other parts of OpenLinker rely on, so it stays on your connections list.",
+      "title": "Archive connection"
+    },
+    "archived": "This connection is archived.",
+    "disable": {
+      "action": "Disable",
+      "cancel": "Keep active",
+      "dialogDescription": "This will stop all sync activity for \"{name}\". You can re-enable it later.",
+      "dialogTitle": "Disable this connection?",
+      "disabling": "Disabling...",
+      "doneDescription": "\"{name}\" has been disabled.",
+      "doneTitle": "Connection disabled",
+      "errorTitle": "Unable to disable connection",
+      "help": "Stop all sync activity for this connection. This can be reversed by re-enabling.",
+      "title": "Disable connection"
+    },
+    "edit": {
+      "action": "Edit",
+      "help": "Update name, config, or adapter settings.",
+      "title": "Edit connection"
+    },
+    "enable": {
+      "help": "Resume sync activity for this connection. Scheduled jobs start again on the next run.",
+      "title": "Enable connection"
+    },
+    "eyebrow": "Operator",
+    "meta": "Manage connection",
+    "restore": {
+      "help": "Bring it back as a disabled connection. Its credentials were deleted when it was archived, so you will need to enter them again before enabling it.",
+      "title": "Restore connection"
+    },
+    "settings": {
+      "help": "This connection is configured from its own settings page.",
+      "open": "Open"
+    },
+    "sync": {
+      "action": "Trigger sync…",
+      "help": "Manually enqueue a sync job for this connection. Choose job type and payload in the next step.",
+      "title": "Trigger sync"
+    },
+    "test": {
+      "failed": "Connection test failed",
+      "failedWithStatus": "{message} (HTTP {status})",
+      "help": "Probe the integration using a cheap authenticated call. Verifies the base URL and stored credentials.",
+      "ok": "Connection OK ({ms}ms)",
+      "testing": "Testing...",
+      "title": "Test connection"
+    },
+    "title": "Actions"
+  },
+  "connectionCapabilitiesPanel": {
+    "count": "{enabled} of {total} enabled",
+    "disabledToast": "{capability} disabled.",
+    "enabledToast": "{capability} enabled.",
+    "errorTitle": "Unable to update capabilities",
+    "eyebrow": "Capabilities",
+    "none": "This connection has no capabilities available to toggle here.",
+    "noneEnabled": {
+      "body": "This connection is inactive for every capability. No sync jobs will use it.",
+      "title": "No capabilities enabled"
+    },
+    "routingNote": {
+      "body": {
+        "both": "This connection becomes <em>eligible</em> to issue sales documents. Which orders actually get one is decided under <link>Sales documents routing</link>, per country.",
+        "invoices": "This connection becomes <em>eligible</em> to issue invoices. Which orders actually get one is decided under <link>Sales documents routing</link>, per country.",
+        "receipts": "This connection becomes <em>eligible</em> to issue fiscal receipts. Which orders actually get one is decided under <link>Sales documents routing</link>, per country."
+      },
+      "title": "Enabling a role does not route anything to it"
+    },
+    "supported": "Supported capabilities",
+    "title": "Enabled roles",
+    "updatedTitle": "Capabilities updated"
+  },
+  "connectionCell": {
+    "copiedId": "Copied connection ID",
+    "copiedNamedId": "Copied connection ID for {name}",
+    "copyId": "Copy connection ID",
+    "copyNamedId": "Copy connection ID for {name}",
+    "foldPrefix": "Connection:",
+    "statusNotes": {
+      "archived": "Archived",
+      "disabled": "Disabled",
+      "error": "Error",
+      "needs_reauth": "Re-auth"
+    }
+  },
+  "connectionChip": {
+    "ariaLabel": "{name}, {platform}",
+    "sandboxFace": "{platform} sandbox",
+    "sandboxLabel": "{platform} (sandbox)",
+    "title": "{name} - {platform}"
+  },
+  "connectionConfigPanel": {
+    "empty": "No configuration values set.",
+    "eyebrow": "Configuration",
+    "keyCount": {
+      "one": "{n} key",
+      "other": "{n} keys"
+    },
+    "rawConfig": "Raw config",
+    "title": "Connection config"
+  },
+  "connectionDetailPage": {
+    "actions": {
+      "categoryMappings": "Category mappings",
+      "edit": "Edit connection",
+      "mappings": "Mappings",
+      "pricingSync": "Pricing & sync"
+    },
+    "archivedBanner": {
+      "body": "It is hidden from your connections and runs no jobs, and its credentials were deleted. Its mappings and history are kept. Restore it to set it up again.",
+      "title": "This connection is archived"
+    },
+    "backLabel": "Connections",
+    "catalogBanner": {
+      "ambiguousBody": "Multiple product catalogue connections exist - pick one explicitly or barcode sync will be skipped. <link>Edit connection</link>.",
+      "autoLinkedBody": "Barcode linking will use <strong>{name}</strong> (the only product catalogue connection). <link>Edit connection</link> to pin this explicitly.",
+      "autoLinkedTitle": "Product catalogue auto-linked",
+      "disabledBody": "Barcode linking is turned off for this connection. <link>Edit connection</link> to select a catalogue.",
+      "disabledTitle": "Barcode linking disabled",
+      "noCandidatesBody": "No active product catalogue connections to link to. <link>Add a shop connection</link> first.",
+      "notLinkedTitle": "Product catalogue not linked"
+    },
+    "created": "Created <date></date>",
+    "credentialsBanner": {
+      "body": "This connection was restored from the archive, which does not bring back its credentials. Enter them again, then enable the connection to resume syncing.",
+      "enter": "Enter credentials",
+      "title": "Credentials needed"
+    },
+    "description": "Connection overview, configuration, health, and operator actions.",
+    "descriptionOms": "Managed from Packing settings.",
+    "error": {
+      "title": "Unable to load connection"
+    },
+    "eyebrow": "Integration detail",
+    "fallbackTitle": "Connection {id}",
+    "loading": {
+      "message": "Fetching the latest connection summary and diagnostics.",
+      "title": "Loading connection"
+    },
+    "notFound": {
+      "message": "No connection data was returned for this route. Retry from the integrations list or verify the selected identifier.",
+      "title": "Connection not found"
+    },
+    "overview": {
+      "adapter": "Adapter",
+      "connectionId": "Connection ID",
+      "credentials": "Credentials",
+      "credentialsNotSet": "Not set",
+      "credentialsServer": "Set on the server",
+      "credentialsStored": "Stored in OpenLinker",
+      "defaultAdapter": "default adapter",
+      "eyebrow": "Connection summary",
+      "lastUpdated": "Last updated",
+      "name": "Name",
+      "platform": "Platform"
+    },
+    "packingSettings": "Packing settings",
+    "pausedBanner": {
+      "body": "This connection is disabled, so OpenLinker runs no jobs against it. Its configuration, credentials, and mappings are untouched. Enable it to resume.",
+      "enable": "Enable connection",
+      "title": "Syncing is paused"
+    },
+    "reauthBanner": {
+      "body": "OpenLinker can no longer authenticate with {platform} - the stored credentials were rejected, so syncing is paused for this connection. Re-authenticate to restore access; the connection and its mappings are preserved.",
+      "title": "Re-authentication required",
+      "updateCredentials": "Update credentials"
+    },
+    "reauthenticate": "Re-authenticate",
+    "tabs": {
+      "actions": "Actions",
+      "config": "Config",
+      "health": "Health",
+      "overview": "Overview"
+    }
+  },
+  "connectionDiagnosticsPanel": {
+    "columns": {
+      "attempts": "Attempts",
+      "jobType": "Job type",
+      "lastError": "Last error",
+      "status": "Status",
+      "updated": "Updated"
+    },
+    "errorTitle": "Unable to load diagnostics",
+    "eyebrow": "Health",
+    "jobStatuses": {
+      "dead": "Dead",
+      "failed": "Failed",
+      "queued": "Queued",
+      "running": "Running",
+      "succeeded": "Succeeded"
+    },
+    "lastFailed": "Last failed",
+    "lastSucceeded": "Last succeeded",
+    "loadingMessage": "Fetching recent job history.",
+    "loadingTitle": "Loading diagnostics",
+    "meta": "Recent activity",
+    "never": "Never",
+    "recentErrors": "Recent errors",
+    "recentJobs": "Recent sync jobs",
+    "retry": "Retry",
+    "sourceLabels": {
+      "fiscalRegistrations": "fiscal receipts",
+      "invoices": "invoices",
+      "syncJobs": "sync jobs"
+    },
+    "title": "Diagnostics",
+    "unknown": "Unknown",
+    "unreadableMessage": "We could not read this connection's {sources} just now, so the times below cover the remaining sources only. Unknown means we do not know, not that nothing happened. Try again in a moment.",
+    "unreadableTitle": "Some activity could not be checked"
+  },
+  "connectionLinkTarget": {
+    "system": "System",
+    "systemTitle": "Not tied to a specific connection",
+    "unknown": "Unknown"
+  },
+  "connectionMappingsPage": {
+    "carrierFallback": {
+      "noFallback": {
+        "one": "<count>{n}</count> method unmapped - sync will fail until a mapping or fallback is configured.",
+        "other": "<count>{n}</count> methods unmapped - sync will fail until a mapping or fallback is configured."
+      },
+      "usingDynamic": {
+        "one": "<count>{n}</count> method unmapped - using OpenLinker Dynamic (exact {platform} cost) at sync time.",
+        "other": "<count>{n}</count> methods unmapped - using OpenLinker Dynamic (exact {platform} cost) at sync time."
+      },
+      "usingFallback": {
+        "one": "<count>{n}</count> method unmapped - using fallback: {fallback}.",
+        "other": "<count>{n}</count> methods unmapped - using fallback: {fallback}."
+      }
+    },
+    "carriers": {
+      "description": "Map {source} delivery method IDs to the corresponding {destination} carrier IDs.",
+      "dynamicSuffix": "exact {platform} cost",
+      "empty": "No mappings configured yet. An unmapped carrier can fail order sync unless a fallback carrier is set. Add one below.",
+      "sourceColumn": "{platform} delivery method",
+      "targetColumn": "{platform} carrier",
+      "title": "Carrier mappings"
+    },
+    "description": "Configure {source} → {destination} mappings for order statuses, delivery carriers, and payment methods.",
+    "discard": {
+      "cancel": "Keep editing",
+      "confirm": "Discard changes",
+      "description": "You have unsaved mapping edits on this tab. Switching tabs will discard them.",
+      "title": "Discard unsaved changes?"
+    },
+    "error": {
+      "description": "Unable to load mapping configuration.",
+      "title": "Unable to load mappings"
+    },
+    "eyebrow": "Connection",
+    "fallbackDestination": "the connected shop",
+    "fallbackSource": "the marketplace",
+    "inactive": {
+      "both": "Both the {source} source and {destination} destination connections are not active. Mappings save, but orders won't sync until both are re-enabled.",
+      "destination": "The {destination} destination connection is not active. Mappings save, but orders won't sync until it's re-enabled.",
+      "source": "The {source} source connection is not active. Mappings save, but orders won't sync until it's re-enabled."
+    },
+    "loading": {
+      "description": "Loading mapping configuration…",
+      "message": "Fetching configured mappings for this connection.",
+      "title": "Loading mappings"
+    },
+    "noSource": {
+      "description": "No supported marketplace is paired with {name} yet.",
+      "goToConnections": "Go to connections",
+      "message": "Order mappings are configured from the marketplace side. Open a supported marketplace connection and set its catalogue to this shop to pair them.",
+      "title": "No supported marketplace is paired with this shop"
+    },
+    "orderStates": {
+      "description": "Override which {destination} order state each OpenLinker status transitions to. Customised shops (renamed or added states) map here; unmapped statuses use the default-install state.",
+      "empty": "No mappings configured yet. Unmapped statuses use the default-install order state. Add one below.",
+      "sourceColumn": "OpenLinker status",
+      "targetColumn": "{platform} order state",
+      "title": "Order-state mappings"
+    },
+    "payments": {
+      "description": "Map {source} payment provider names to the corresponding {destination} payment module names.",
+      "empty": "No mappings configured yet. Unmapped payment methods are recorded as \"Check payment\" on the order. A mapped one is recorded under the name you choose. Add one below.",
+      "sourceColumn": "{platform} payment provider",
+      "targetColumn": "{platform} payment module",
+      "title": "Payment mappings"
+    },
+    "pickSource": {
+      "choose": "Choose marketplace",
+      "description": "Choose a marketplace to configure {name} mappings.",
+      "message": "Order mappings belong to a marketplace. Choose which of the {n} paired marketplaces you want to configure against {name}.",
+      "title": "Choose which marketplace to configure"
+    },
+    "status": {
+      "columnLabel": "{platform} status",
+      "description": "Map {source} order statuses to the corresponding {destination} order status IDs.",
+      "empty": "No mappings configured yet. Unmapped statuses fall back to the default status at sync time. Add one below.",
+      "title": "Order status mappings"
+    },
+    "tabs": {
+      "attributeRules": "Attribute rules",
+      "carriers": "Carriers",
+      "deliveryOnDocuments": "Delivery on documents",
+      "fulfillment": "Fulfilment",
+      "orderStates": "Order states",
+      "payments": "Payments",
+      "status": "Order statuses"
+    },
+    "tabsLabel": "Mapping types",
+    "title": "Mapping configuration",
+    "unsupported": {
+      "description": "{platform} order mapping isn't supported yet.",
+      "message": "Order mapping is available for orders from the supported marketplaces today. Support for more platforms is planned.",
+      "title": "Mapping isn't available for {platform} connections yet"
+    }
+  },
+  "connectionPricingSyncPage": {
+    "descriptions": {
+      "destination": "The default pricing rule and sync mode for this destination, plus any per-source overrides.",
+      "destinationAndSource": "The default pricing rule and sync mode for this destination, plus how each destination this connection feeds adjusts the price.",
+      "source": "How each destination this connection feeds adjusts the price."
+    },
+    "error": {
+      "description": "Unable to load connection.",
+      "title": "Unable to load connection",
+      "unknown": "Unknown error"
+    },
+    "eyebrow": "Connection",
+    "loading": {
+      "description": "Loading connection…",
+      "message": "Fetching connection details.",
+      "title": "Loading"
+    },
+    "nothing": {
+      "description": "{name} has nothing to configure here.",
+      "message": "Pricing & sync applies to a connection that can list marketplace offers, publish shop products, or supply a master catalogue. Enable one of those capabilities on this connection first.",
+      "title": "Nothing to configure here"
+    },
+    "title": "Pricing & sync",
+    "titleWithName": "Pricing & sync - {name}"
+  },
+  "connectionSyncStatusPanel": {
+    "behindMessage": "Work has been waiting more than a day and the queue is not shrinking. Orders and stock for this connection are out of date until it catches up.",
+    "behindTitle": "This connection is behind",
+    "dead": {
+      "one": "{n} task has given up after repeated failures in the last week. They will not run again on their own.",
+      "other": "{n} tasks have given up after repeated failures in the last week. They will not run again on their own."
+    },
+    "details": {
+      "alertAbove": "Alert above",
+      "alertNotMeasured": "Not measured yet - nothing finished in the last hour",
+      "alertWaiting": "{n} waiting",
+      "finishedWork": "Finished work",
+      "lastSuccess": "Last success",
+      "newWork": "New work",
+      "noPosition": "No saved position - normal when the shop notifies us instead",
+      "noSuccess": "None in the last week",
+      "notMeasured": "Not measured yet",
+      "note": "New and finished work are measured over the last hour. Waiting counts only tasks whose next attempt is due; a task backing off after a failure is counted under \"Waiting to retry\" instead. The alert level is what this connection normally finishes in a day, so it moves with the shop rather than being a fixed number, and it only alerts once the oldest waiting task is more than a day old.",
+      "positionMoved": "Sync position last moved",
+      "runningNow": "Running now",
+      "summary": "Details",
+      "taskTime": {
+        "one": "{duration} (over {n} task)",
+        "other": "{duration} (over {n} tasks)"
+      },
+      "typicalTaskTime": "Typical task time",
+      "waitingToRetry": "Waiting to retry"
+    },
+    "errorTitle": "Unable to load the sync queue",
+    "eyebrow": "Health",
+    "headline": {
+      "clearance": "About {wait} to clear at the current pace.",
+      "empty": "No work is waiting for this connection.",
+      "failing": "Nothing has finished successfully in the last hour and tasks are failing. The queue may look empty because work is dying rather than getting done.",
+      "notShrinking": {
+        "one": "{n} task is waiting, and the queue is not shrinking.",
+        "other": "{n} tasks are waiting, and the queue is not shrinking."
+      },
+      "notShrinkingOldest": {
+        "one": "{n} task is waiting, the oldest for {wait}, and the queue is not shrinking.",
+        "other": "{n} tasks are waiting, the oldest for {wait}, and the queue is not shrinking."
+      },
+      "shrinking": {
+        "one": "{n} task is waiting, and the queue is shrinking.",
+        "other": "{n} tasks are waiting, and the queue is shrinking."
+      },
+      "shrinkingOldest": {
+        "one": "{n} task is waiting, the oldest for {wait}, and the queue is shrinking.",
+        "other": "{n} tasks are waiting, the oldest for {wait}, and the queue is shrinking."
+      },
+      "unknown": "The queue could not be read just now. Try again in a moment."
+    },
+    "loadingMessage": "Counting the work waiting for this connection.",
+    "loadingTitle": "Loading sync queue",
+    "perHour": "{rate} an hour",
+    "retry": "Retry",
+    "stalled": {
+      "one": "{n} task has been picked up but nothing has finished in the last hour. That usually means the background processing stopped part-way through.",
+      "other": "{n} tasks have been picked up but nothing has finished in the last hour. That usually means the background processing stopped part-way through."
+    },
+    "statusLabels": {
+      "backlogged": "Backlog",
+      "draining": "Catching up",
+      "failing": "Tasks failing",
+      "growing": "Falling behind",
+      "idle": "Nothing waiting",
+      "unknown": "Unknown"
+    },
+    "title": "Sync queue",
+    "wait": {
+      "days": {
+        "one": "{n} day",
+        "other": "{n} days"
+      },
+      "hours": "{n} h",
+      "minutes": "{n} min"
+    }
+  },
+  "connectionsListPage": {
+    "caption": "Configured connections",
+    "columns": {
+      "actions": "Actions",
+      "connection": "Connection",
+      "identifier": "Identifier",
+      "status": "Status"
+    },
+    "defaultAdapter": "default adapter",
+    "description": "All configured integration connections - filter by platform or status.",
+    "empty": {
+      "addFirst": "Add the first connection",
+      "clearFilters": "Clear filters",
+      "filtered": "No connections match the current filters.",
+      "title": "No connections found",
+      "unfiltered": "Create the first connection to start configuring integrations."
+    },
+    "error": {
+      "title": "Unable to load connections"
+    },
+    "eyebrow": "Integrations",
+    "filters": {
+      "allPlatforms": "All platforms",
+      "allStatuses": "All statuses",
+      "platform": "Filter by platform",
+      "status": "Filter by status"
+    },
+    "loading": {
+      "message": "Fetching the latest connection inventory and health summary.",
+      "title": "Loading connections"
+    },
+    "newConnection": "New connection",
+    "statusOptions": {
+      "active": "Active",
+      "archived": "Archived",
+      "disabled": "Disabled",
+      "error": "Error",
+      "needs_reauth": "Needs reauthorisation"
+    },
+    "title": "Connections"
+  },
+  "createConnectionForm": {
+    "create": "Create connection",
+    "createdDescription": "Connection \"{name}\" was created.",
+    "createdTitle": "Connection created",
+    "creating": "Creating...",
+    "errorTitle": "Unable to create connection",
+    "eyebrow": "Setup flow",
+    "fields": {
+      "adapterKey": {
+        "description": "Optional when the default adapter can be inferred from the selected platform.",
+        "label": "Adapter key"
+      },
+      "configJson": {
+        "description": "Provide only safe connection configuration values. Secrets must remain outside the browser.",
+        "label": "Config JSON"
+      },
+      "credentialsJson": {
+        "description": "Raw credential payload (e.g. { \"bridgeToken\": \"…\" } for an accounting bridge). Encrypted server-side. Use instead of a reference.",
+        "label": "Credentials JSON"
+      },
+      "credentialsRef": {
+        "description": "An existing db: reference. Leave blank if you supply a raw credentials JSON below.",
+        "label": "Credentials reference"
+      },
+      "enabledCapabilities": {
+        "description": "Comma-separated (e.g. Invoicing). Leave blank to use the adapter's full supported set.",
+        "label": "Enabled capabilities"
+      },
+      "name": {
+        "label": "Connection name",
+        "placeholder": "Main store"
+      },
+      "platformType": {
+        "description": "Use the platform family this connection will integrate with.",
+        "label": "Platform type",
+        "placeholder": "Select a platform"
+      }
+    },
+    "meta": "Validated input",
+    "noCredentials": {
+      "body": "{platform} runs inside OpenLinker and crosses no network boundary, so there is nothing to authenticate against. Leave the credential fields out entirely.",
+      "title": "{platform} needs no credentials"
+    },
+    "oauth": {
+      "body": "{platform} connections require OAuth authorization. <link>Use the {platform} setup wizard</link> to connect your account securely.",
+      "title": "{platform} uses OAuth"
+    },
+    "reset": {
+      "action": "Reset draft",
+      "cancel": "Keep editing",
+      "description": "This will clear the current form values and validation state for the integration draft.",
+      "doneDescription": "Connection draft values were cleared.",
+      "doneTitle": "Draft reset",
+      "title": "Reset connection draft?"
+    },
+    "title": "Connection draft"
+  },
+  "createConnectionSchema": {
+    "configInvalid": "Configuration must be valid JSON",
+    "configRequired": "Configuration JSON is required",
+    "credentialsExactlyOne": "Provide exactly one of: a \"db:\" credentials reference or a raw credentials JSON object",
+    "credentialsJsonInvalid": "Credentials must be a valid JSON object",
+    "credentialsRefPrefix": "Credentials reference must start with \"db:\" - raw keys are no longer accepted",
+    "nameRequired": "Connection name is required",
+    "platformTypeRequired": "Platform type is required"
+  },
+  "dpdSetupForm": {
+    "beforeYouStart": {
+      "body": "You need your DPDServices REST <strong>login</strong> and <strong>password</strong> plus your <strong>payer FID</strong> (account id). Use the sandbox environment to verify before switching to production.",
+      "title": "Before you start"
+    },
+    "create": "Create connection",
+    "createError": "Unable to create connection",
+    "createdDescription": "{platform} connection \"{name}\" was created.",
+    "createdTitle": "Connection created",
+    "creating": "Creating...",
+    "environments": {
+      "production": "Production",
+      "sandbox": "Sandbox"
+    },
+    "fields": {
+      "environment": {
+        "label": "Environment"
+      },
+      "login": {
+        "label": "Login"
+      },
+      "masterFid": {
+        "description": "Only needed for multi-account {platform} setups.",
+        "label": "Master FID (optional)"
+      },
+      "name": {
+        "label": "Connection name",
+        "placeholder": "{platform} - main warehouse"
+      },
+      "password": {
+        "description": "Stored securely on the server - never shown again after save.",
+        "label": "Password"
+      },
+      "payerFid": {
+        "description": "Numeric account id (payerFID) sent on every shipment.",
+        "label": "Payer FID"
+      },
+      "senderAddress": {
+        "label": "Address",
+        "placeholder": "ul. Magazynowa 1"
+      },
+      "senderCity": {
+        "label": "City",
+        "placeholder": "Warszawa"
+      },
+      "senderCompany": {
+        "label": "Company (optional)",
+        "placeholder": "Sklep ACME"
+      },
+      "senderCountryCode": {
+        "description": "ISO 3166-1 alpha-2 (e.g. PL).",
+        "label": "Country"
+      },
+      "senderEmail": {
+        "label": "Email (optional)",
+        "placeholder": "magazyn@acme.pl"
+      },
+      "senderName": {
+        "label": "Contact name (optional)",
+        "placeholder": "Magazyn główny"
+      },
+      "senderPhone": {
+        "label": "Phone (optional)"
+      },
+      "senderPostalCode": {
+        "description": "PL format NN-NNN (e.g. 00-001).",
+        "label": "Postal code"
+      }
+    },
+    "platformFallback": "the carrier",
+    "review": {
+      "masterFid": "Master FID",
+      "name": "Name",
+      "sender": "Sender"
+    },
+    "senderAddress": {
+      "body": "Printed on every {platform} label as the return / sender address. Polish postal format <mono>NN-NNN</mono>.",
+      "title": "Sender address"
+    },
+    "steps": {
+      "account": "Account & credentials",
+      "review": "Review & connect",
+      "sender": "Sender address"
+    }
+  },
+  "dpdSetupPage": {
+    "chip": "DPDServices REST",
+    "description": "Provide your DPDServices credentials, payer account, and sender address. OpenLinker uses them to generate courier labels and handover protocols.",
+    "fallbackPlatform": "the carrier",
+    "title": "Connect {platform}"
+  },
+  "dpdSetupSchema": {
+    "addressRequired": "Sender address is required",
+    "cityRequired": "Sender city is required",
+    "countryFormat": "Country must be an ISO 3166-1 alpha-2 code (e.g. PL)",
+    "emailInvalid": "Enter a valid email",
+    "loginRequired": "Login is required",
+    "masterFidNumeric": "Master FID must be a numeric id",
+    "nameRequired": "Connection name is required",
+    "passwordRequired": "Password is required",
+    "payerFidNumeric": "Payer FID must be a numeric id",
+    "postalCodeFormat": "Postal code must use the PL format NN-NNN"
+  },
+  "editConnectionForm": {
+    "cancel": "Cancel",
+    "catalogPicker": {
+      "description": "OpenLinker uses this catalog connection to resolve offer barcodes (EAN/GTIN) to internal product variants. If left empty and exactly one catalog connection exists, it is used automatically.",
+      "emptyBody": "Barcode linking needs a catalog source. <link>Add a shop connection</link> to enable offer-to-product linking.",
+      "emptyTitle": "No catalog connections yet",
+      "label": "Product catalog connection",
+      "loadErrorTitle": "Could not load catalog connections",
+      "loadFailed": "Failed to load connections",
+      "loading": "Loading connections…",
+      "missing": "Missing: {id}",
+      "none": "None (barcode linking disabled)",
+      "retry": "Retry",
+      "staleBody": "This connection points to a deleted or disabled catalog connection. Pick a new one below or clear the link.",
+      "staleTitle": "Linked catalog is missing"
+    },
+    "errorTitle": "Unable to update connection",
+    "eyebrow": "Edit connection",
+    "fields": {
+      "adapterKey": {
+        "description": "Optional when the default adapter can be inferred from the selected platform.",
+        "label": "Adapter key"
+      },
+      "credentials": {
+        "environment": "Set in the server settings (not editable here)",
+        "label": "Credentials",
+        "removed": "Not set - removed when this connection was archived",
+        "stored": "Stored securely (managed by integration)"
+      },
+      "name": {
+        "label": "Connection name",
+        "placeholder": "Main store"
+      },
+      "platformType": "Platform type"
+    },
+    "goToConnection": "Go to connection",
+    "meta": "Update settings",
+    "needsAttention": {
+      "one": "{n} field needs attention. See the list at the top of the form.",
+      "other": "{n} fields need attention. See the list at the top of the form."
+    },
+    "notSavedTitle": "Changes not saved",
+    "rawJson": {
+      "description": "Raw configuration. Edit carefully - secrets must remain outside the browser.",
+      "hide": "Hide raw config JSON",
+      "label": "Config JSON",
+      "show": "Show raw config JSON"
+    },
+    "rawJsonInvalid": {
+      "body": "Fix the raw config JSON below before editing the structured inputs - they are locked so your custom JSON keys are not silently lost.",
+      "title": "Raw JSON is invalid"
+    },
+    "save": "Save changes",
+    "saving": "Saving...",
+    "someNeedAttention": "Some fields need attention. See the list at the top of the form.",
+    "unexpectedError": "An unexpected error occurred.",
+    "updatedDescription": "Connection settings have been saved.",
+    "updatedTitle": "Connection updated",
+    "warningsTitle": "Saved, with something to check"
+  },
+  "editConnectionPage": {
+    "backLabel": "Connection",
+    "description": "Update the connection name, configuration, and adapter settings.",
+    "error": {
+      "title": "Unable to load connection"
+    },
+    "eyebrow": "Connection settings",
+    "loading": {
+      "message": "Fetching connection data for editing.",
+      "title": "Loading connection"
+    },
+    "notFound": {
+      "message": "No connection data was returned. Check the connection ID or return to the list.",
+      "title": "Connection not found"
+    },
+    "title": "Edit connection"
+  },
+  "editConnectionSchema": {
+    "atMost100000": "Must be at most 100000",
+    "atMost6000": "Must be at most 6000",
+    "atMost64": "Must be at most 64",
+    "attachmentRequired": "Add at least one attachment when \"Provide safety information (file)\" is selected.",
+    "bridgeUrlInvalid": "Bridge URL must be a valid URL",
+    "bridgeUrlProtocol": "Bridge URL must use http:// or https://",
+    "callbackUrlInvalid": "Callback URL must be a valid URL",
+    "callbackUrlProtocol": "Callback URL must use http:// or https://",
+    "configInvalid": "Configuration must be valid JSON",
+    "configRequired": "Configuration JSON is required",
+    "countryCode": "Country must be an ISO 3166-1 alpha-2 code (e.g. PL)",
+    "defaultCarrierInvalid": "Default carrier ID must be a positive integer.",
+    "emailInvalid": "Enter a valid email",
+    "marginTooHigh": "A margin must be below 100%. To add more than the catalogue price, use a markup instead.",
+    "nameRequired": "Connection name is required",
+    "numberOrZero": "Must be a number, 0 or more",
+    "percentRequired": "Enter a percentage",
+    "positiveWholeNumber": "Must be a positive whole number",
+    "postcodeFormat": "Postcode must use the PL format NN-NNN",
+    "productCatalogInvalid": "Product catalog must be a valid connection ID",
+    "siteUrlHttps": "Site URL must use HTTPS",
+    "siteUrlInvalid": "Site URL must be a valid URL (e.g. https://shop.example.com)",
+    "storefrontUrlInvalid": "Storefront URL must be a valid URL",
+    "storefrontUrlProtocol": "Storefront URL must use http:// or https://",
+    "unmanagedStockInvalid": "Unmanaged stock quantity must be a positive integer.",
+    "wholeNumberOrZero": "Must be a whole number, 0 or more"
+  },
+  "enableConnectionButton": {
+    "enable": "Enable",
+    "enabling": "Enabling…",
+    "errorTitle": "Unable to enable connection",
+    "successDescription": "\"{name}\" is active again. Syncing resumes on the next scheduled run.",
+    "successTitle": "Connection enabled"
+  },
+  "erliSetupForm": {
+    "beforeYouStart": {
+      "body": "In your {platform} seller panel, generate a <strong>Shop API key</strong>. OpenLinker sends it as a bearer token on every request to the {platform} Shop API. The key is stored securely on the server and only shown once.",
+      "title": "Before you start"
+    },
+    "connect": "Connect {platform}",
+    "connecting": "Connecting…",
+    "createError": "Unable to create connection",
+    "createdDescription": "{platform} connection \"{name}\" was created.",
+    "createdTitle": "Connection created",
+    "done": "Done",
+    "environments": {
+      "production": "Production",
+      "sandbox": "Sandbox"
+    },
+    "fields": {
+      "apiKey": {
+        "description": "Your {platform} Shop API key - generated in the {platform} seller panel.",
+        "label": "API key"
+      },
+      "environment": {
+        "description": "Choose Sandbox to test against {platform}'s sandbox before switching to production.",
+        "label": "Environment",
+        "option": "{name} - {url}"
+      },
+      "name": {
+        "description": "A label to identify this {platform} account in OpenLinker.",
+        "label": "Connection name",
+        "placeholder": "My {platform} Store"
+      }
+    },
+    "latency": "({ms}ms)",
+    "platformFallback": "the marketplace",
+    "review": {
+      "deliveryOnDocuments": "Delivery on documents",
+      "name": "Name"
+    },
+    "steps": {
+      "credentials": "Credentials",
+      "review": "Review & connect",
+      "salesDocuments": "Sales documents"
+    },
+    "test": "Test connection",
+    "testError": "Unable to test connection",
+    "testFailed": "Connection test failed",
+    "testPassed": "Connection test passed",
+    "testing": "Testing…"
+  },
+  "erliSetupPage": {
+    "chip": "API key",
+    "description": "Provide your {platform} Shop API key. OpenLinker uses it to sync offers and orders with your {platform} seller account.",
+    "fallbackPlatform": "the marketplace",
+    "title": "Connect {platform}"
+  },
+  "erliSetupSchema": {
+    "apiKeyRequired": "API key is required",
+    "nameRequired": "Connection name is required"
+  },
+  "erliSetupSummary": {
+    "connection": "Connection",
+    "environment": "Environment",
+    "environments": {
+      "production": "Production",
+      "sandbox": "Sandbox"
+    },
+    "name": "Name"
+  },
+  "fulfilmentOwnershipSection": {
+    "heading": "Who packs the orders",
+    "help": "Turn this on when the system packs the box and ships it (for example an external warehouse system). OpenLinker then hides its own \"Mark packed\" button and packed tick for orders that go here. It only changes what you see: nothing is blocked, and that system can still report an order as packed.",
+    "toggle": "This system packs and ships orders itself"
+  },
+  "inpostSetupForm": {
+    "beforeYouStart": {
+      "body": "Generate a ShipX <strong>API token</strong> and note your <strong>organization id</strong> in the {platform} ShipX panel. Use the sandbox environment to verify before switching to production.",
+      "title": "Before you start"
+    },
+    "create": "Create connection",
+    "createError": "Unable to create connection",
+    "createdDescription": "{platform} connection \"{name}\" was created.",
+    "createdTitle": "Connection created",
+    "creating": "Creating...",
+    "environments": {
+      "production": "Production",
+      "sandbox": "Sandbox"
+    },
+    "fields": {
+      "apiToken": {
+        "description": "ShipX Bearer token - stored securely on the server, never shown again after save.",
+        "label": "API token"
+      },
+      "environment": {
+        "label": "Environment"
+      },
+      "name": {
+        "label": "Connection name",
+        "placeholder": "{platform} - main warehouse"
+      },
+      "organizationId": {
+        "description": "ShipX organization id - a URL path parameter on every shipment endpoint.",
+        "label": "Organization ID"
+      },
+      "senderBuildingNumber": {
+        "label": "Building number"
+      },
+      "senderCity": {
+        "label": "City",
+        "placeholder": "Warszawa"
+      },
+      "senderCountryCode": {
+        "description": "ISO 3166-1 alpha-2 (e.g. PL).",
+        "label": "Country"
+      },
+      "senderEmail": {
+        "label": "Sender email",
+        "placeholder": "magazyn@acme.pl"
+      },
+      "senderName": {
+        "label": "Sender name (optional)",
+        "placeholder": "Sklep ACME"
+      },
+      "senderPhone": {
+        "label": "Sender phone"
+      },
+      "senderPostCode": {
+        "description": "PL format NN-NNN (e.g. 00-001).",
+        "label": "Postcode"
+      },
+      "senderStreet": {
+        "label": "Street",
+        "placeholder": "ul. Magazynowa"
+      }
+    },
+    "platformFallback": "the carrier",
+    "review": {
+      "name": "Name",
+      "sender": "Sender"
+    },
+    "senderAddress": {
+      "body": "Used as the ShipX shipment sender. Polish postal format <mono>NN-NNN</mono>.",
+      "title": "Sender address"
+    },
+    "steps": {
+      "account": "Account & credentials",
+      "review": "Review & connect",
+      "sender": "Sender address"
+    }
+  },
+  "inpostSetupPage": {
+    "chip": "ShipX API",
+    "description": "Provide your ShipX API token, organization id, and sender address. OpenLinker uses them to create {platform} shipments and labels.",
+    "fallbackPlatform": "the carrier",
+    "title": "Connect {platform}"
+  },
+  "inpostSetupSchema": {
+    "apiTokenRequired": "API token is required",
+    "buildingNumberRequired": "Building number is required",
+    "cityRequired": "City is required",
+    "countryFormat": "Country must be an ISO 3166-1 alpha-2 code (e.g. PL)",
+    "emailInvalid": "Enter a valid email",
+    "nameRequired": "Connection name is required",
+    "organizationIdRequired": "Organization ID is required",
+    "phoneRequired": "Sender phone is required",
+    "postCodeFormat": "Postcode must use the PL format NN-NNN",
+    "streetRequired": "Street is required"
+  },
+  "invoiceTriggerModel": {
+    "labels": {
+      "auto-on-paid": "Auto on order paid",
+      "auto-on-shipped": "Auto on order shipped",
+      "batched": "Batched",
+      "manual": "Manual"
+    }
+  },
+  "newConnectionPage": {
+    "backLabel": "Connections",
+    "description": "Pick the platform you want to connect. Each platform has a guided setup flow - no raw adapter keys or config JSON required.",
+    "title": "Add a connection",
+    "wizardsChip": "Per-platform wizards"
+  },
+  "paymentWriteback": {
+    "factCod": "Cash on delivery and cancelled orders are never marked paid.",
+    "factFailure": "If the shop doesn't accept it, the order shows under Orders, Payment not sent to shop.",
+    "factFromNow": "Applies to payments from now on.",
+    "heading": "When the buyer pays later",
+    "leave": "Leave it as it is",
+    "leaveHelp": "You update payment in the shop yourself.",
+    "markPaid": "Mark the order as paid",
+    "recommended": "Recommended",
+    "stateDefault": "The shop's default paid status",
+    "stateHelp": "Used by shops that track payment as an order status.",
+    "stateLabel": "Status in the shop"
+  },
+  "pickBankAccount": {
+    "errorDescription": "The selection was not persisted - {hint} {message}",
+    "errorTitle": "Could not save the bank account"
+  },
+  "platformPicker": {
+    "advanced": "Need to configure a raw adapter key or bespoke config JSON? <link>Use advanced mode</link>.",
+    "alreadySetUp": "Already set up - click to edit →",
+    "continue": "Continue →"
+  },
+  "prestashopRateLimitReadout": {
+    "cap": "Cap: {cap}",
+    "capWithConcurrency": "Cap: {cap}, max {n} concurrent",
+    "checking": "Checking rate-limit status…",
+    "loadError": "Couldn't load rate-limit status.",
+    "noLimit": "No outbound limit configured - requests to this connection are not paced.",
+    "noPerMinuteCap": "no per-minute cap",
+    "perMinute": "{n}/min",
+    "queue": "{inFlight} in flight, {queued} queued",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing…",
+    "retry": "Retry"
+  },
+  "prestashopSetupForm": {
+    "beforeYouStart": {
+      "body": "In your {platform} admin, enable Webservice under <strong>Advanced Parameters → Webservice</strong> and generate a key with the required resources enabled.",
+      "title": "Before you start"
+    },
+    "capabilities": {
+      "help": "Pick which roles this connection should fulfil. You can change this later on the connection's detail page.",
+      "legend": "Capabilities"
+    },
+    "create": "Create connection",
+    "createError": "Unable to create connection",
+    "createdDescription": "{platform} connection \"{name}\" was created.",
+    "createdTitle": "Connection created",
+    "creating": "Creating...",
+    "currencies": {
+      "CHF": "Swiss Franc",
+      "CZK": "Czech Koruna",
+      "DKK": "Danish Krone",
+      "EUR": "Euro",
+      "GBP": "British Pound",
+      "HUF": "Hungarian Forint",
+      "NOK": "Norwegian Krone",
+      "PLN": "Polish Złoty",
+      "RON": "Romanian Leu",
+      "SEK": "Swedish Krona",
+      "USD": "US Dollar"
+    },
+    "fields": {
+      "baseUrl": {
+        "description": "The public URL of the {platform} storefront (no trailing path).",
+        "label": "Shop URL"
+      },
+      "currency": {
+        "description": "ISO 4217 code applied to every product synced from this connection. Leave blank and OpenLinker asks the shop for its default currency instead; products stay without a currency if the shop has none set.",
+        "label": "Default currency (optional)",
+        "notSet": "- not set -",
+        "option": "{code} - {name}"
+      },
+      "name": {
+        "label": "Connection name",
+        "placeholder": "Main {platform} Store"
+      },
+      "shopId": {
+        "description": "Only needed for multi-shop {platform} installations.",
+        "label": "Shop ID (optional)"
+      },
+      "storefrontBaseUrl": {
+        "description": "Override only if your public storefront URL is different from the webservice URL. Leave blank if they're the same - defaults to Shop URL.",
+        "label": "Storefront URL (optional)"
+      },
+      "webserviceKey": {
+        "description": "Generated in {platform} admin under Advanced Parameters → Webservice.",
+        "label": "Webservice key",
+        "placeholder": "e.g. ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
+      }
+    },
+    "platformFallback": "the shop",
+    "review": {
+      "currency": "Default currency",
+      "name": "Name",
+      "noneSelected": "None selected",
+      "shopId": "Shop ID",
+      "storefrontUrl": "Storefront URL"
+    },
+    "steps": {
+      "capabilities": "Capabilities",
+      "credentials": "Credentials",
+      "review": "Review & connect",
+      "verify": "Verify credentials"
+    },
+    "verify": {
+      "body": "OpenLinker will use the values below to reach your {platform} admin. Make sure the shop URL resolves and the webservice key is active before you continue. After the connection is saved you can run a live test from the connection detail page.",
+      "title": "Verify the credentials"
+    }
+  },
+  "prestashopSetupPage": {
+    "chip": "Webservice API",
+    "description": "Provide your shop URL and webservice key. OpenLinker uses them to sync products, orders, and inventory.",
+    "fallbackPlatform": "the shop",
+    "title": "Connect {platform}"
+  },
+  "prestashopSetupSchema": {
+    "baseUrlInvalid": "Shop URL must be a valid URL (e.g. https://shop.example.com)",
+    "baseUrlProtocol": "Shop URL must use http:// or https://",
+    "currencyFormat": "Use a 3-letter ISO 4217 code",
+    "nameRequired": "Connection name is required",
+    "storefrontUrlInvalid": "Storefront URL must be a valid URL",
+    "storefrontUrlProtocol": "Storefront URL must use http:// or https://",
+    "webserviceKeyRequired": "Webservice key is required"
+  },
+  "prestashopSetupSummary": {
+    "capabilities": "Capabilities",
+    "connection": "Connection",
+    "defaultCurrency": "Default currency",
+    "liveTestNote": "Live test available after the connection is saved - see the connection detail page.",
+    "name": "Name",
+    "noCapabilities": "No capabilities selected",
+    "shopId": "Shop ID",
+    "storefrontUrl": "Storefront URL",
+    "webserviceEndpoint": "Webservice endpoint"
+  },
+  "pricingAndSyncSection": {
+    "activity": {
+      "description": "The last price decisions made on this connection.",
+      "title": "Recent activity",
+      "unavailable": "Activity history isn't available yet."
+    },
+    "blocked": {
+      "defaultRule": "Can't save yet. Default rule: {error}",
+      "sourceOverride": "Can't save yet. Source override: {error}"
+    },
+    "defaultRule": {
+      "description": "Used for every source below, unless you give one its own rule.",
+      "edit": "Edit default rule",
+      "modeLabel": "Default price sync mode",
+      "title": "Default pricing rule"
+    },
+    "discard": "Discard",
+    "drop": {
+      "confirm": "Discard and save",
+      "description": {
+        "one": "Saving will permanently remove: {items}. It will go back to the default.",
+        "other": "Saving will permanently remove: {items}. They will go back to the default."
+      },
+      "item": "{label} ({parts})",
+      "title": "Remove this source's own settings?"
+    },
+    "errors": {
+      "marginTooHigh": "A margin must be below 100%. To add more than the catalogue price, use a markup instead.",
+      "percentInvalid": "Enter a percentage, 0 or more."
+    },
+    "loadErrorTitle": "Couldn't load pricing & sync settings",
+    "loadingMessage": "Loading settings…",
+    "loadingTitle": "Pricing & sync",
+    "modeHints": {
+      "automatic": "New prices go live the moment they change in your shop - no review, no waiting.",
+      "manual": "New prices wait for your OK on the Price changes page before they go live."
+    },
+    "modes": {
+      "automatic": "Automatic",
+      "manual": "Manual review"
+    },
+    "noRule": "No pricing rule is set - the shop price is sent unchanged.",
+    "pending": {
+      "count": {
+        "one": "{n} change waiting",
+        "other": "{n} changes waiting"
+      },
+      "none": "No price changes waiting on this connection.",
+      "review": "review them"
+    },
+    "ruleFields": {
+      "percent": "Percent",
+      "rounding": "Rounding",
+      "roundings": {
+        "endingIn99": "Round to end in .99",
+        "nearestWhole": "Round to a whole number",
+        "none": "No rounding"
+      },
+      "type": "Pricing rule",
+      "types": {
+        "margin": "Keep a percentage margin",
+        "markup": "Add a percentage",
+        "passthrough": "Use shop price as-is"
+      }
+    },
+    "save": "Save changes",
+    "saveFailed": "Failed to save pricing & sync settings.",
+    "savedDescription": "Pricing & sync settings updated.",
+    "savedTitle": "Saved",
+    "saving": "Saving…",
+    "sources": {
+      "description": "Use this when one supplier or warehouse should be priced differently - for example, a second warehouse with its own margin.",
+      "inheritedMode": "sync mode",
+      "inheritedRule": "rule",
+      "modeLabel": "Price sync mode for {source}",
+      "notFound": "The linked source isn't one of this connection's current sources, so there was nothing to show you below.",
+      "ownMode": "Use a different sync mode for this source",
+      "ownRule": "Use a different rule for this source",
+      "title": "Give one source its own settings",
+      "usingDefault": "(using the default {parts})"
+    },
+    "unsaved": "You've changed something and haven't saved it yet."
+  },
+  "rateLimitSection": {
+    "ceiling": {
+      "adapterDefault": "{n} requests in flight (adapter default)",
+      "fromSetting": "{n} requests in flight (from your max-concurrent setting, below this adapter's default of {adapterDefault})",
+      "sentence": "Category matching on this connection runs at most <strong>{ceiling}</strong>, at every batch size. That ceiling is applied by the adapter itself, separately from the cap below."
+    },
+    "defaultLimit": {
+      "both": "{perMinute} requests/min, {concurrent} concurrent",
+      "concurrent": "{concurrent} concurrent",
+      "perMinute": "{perMinute} requests/min"
+    },
+    "defaultPlaceholder": "Default: {value}",
+    "enable": "Enable rate limiting",
+    "fieldsReplace": "Setting either field below replaces the adapter default entirely; the other field is then genuinely unlimited, not still capped by the default.",
+    "fieldsShared": "Each field below can only lower the shared limit; a field you leave empty keeps the shared default.",
+    "intro": "OpenLinker spaces requests evenly rather than sending them in bursts.",
+    "maxConcurrent": {
+      "description": "Caps simultaneous in-flight requests to this connection, split evenly across replicas. These two caps are independent - whichever one binds first wins.",
+      "label": "Max concurrent requests"
+    },
+    "requestsPerMinute": {
+      "description": "Smooth-paced cap, split evenly across replicas - e.g. 60 with 1 replica spaces requests roughly one per second.",
+      "label": "Requests per minute"
+    },
+    "rollout": "Enforcement is rolling out sync path by sync path - setting a cap here has no effect until this connection's outbound traffic has been migrated onto it. If OpenLinker runs as several copies (replicas), each value is divided evenly across them, so the real total throughput matches what you configure below rather than multiplying it per copy.",
+    "shared": "This limit is shared with other connections to the same shop, so the values below can only tighten it.",
+    "title": "Outbound rate limit",
+    "unlimited": "Unlimited",
+    "withDefault": "Leave rate limiting off to use this connection's adapter default - <strong>{limit}</strong>.",
+    "withoutDefault": "Leave rate limiting off and this adapter applies no per-minute or concurrency cap of its own here."
+  },
+  "restoreConnectionButton": {
+    "errorTitle": "Unable to restore connection",
+    "restore": "Restore",
+    "restoring": "Restoring...",
+    "successDescription": "\"{name}\" is back as a disabled connection. Enter its credentials again before enabling it.",
+    "successTitle": "Connection restored",
+    "tryAgain": "Please try again."
+  },
+  "routerReadinessPanel": {
+    "activeLocations": "Active inventory locations",
+    "adminOnly": "Creating an inventory location requires an administrator account.",
+    "createDefault": "Create default location",
+    "createErrorTitle": "Could not create the location",
+    "createHint": "Creates a single warehouse location, <code>MAIN</code>. Running it again creates nothing. Country and region are left blank on purpose - the routing filters read them, and a guessed country would be worse than an absent one, so fill them in on the location once it exists.",
+    "creating": "Creating…",
+    "errorTitle": "Unable to check routing readiness",
+    "eyebrow": "Health",
+    "loadingMessage": "Checking whether this install has an inventory location.",
+    "loadingTitle": "Loading routing readiness",
+    "locationReady": "Location ready",
+    "noLocation": "No location yet",
+    "notes": {
+      "offWithoutLocation": "Fulfilment routing cannot be switched on until this install has at least one active inventory location - an attempt to enable it now is refused. Create one first.",
+      "onWithoutLocation": "Fulfilment routing is switched on, and with no active location there is nowhere for it to send an order - so it is currently deciding nothing and orders fall back to the usual handling. This is a setup step that has not been done yet, not a fault: create a location and routing starts deciding.",
+      "ready": "Fulfilment routing can be switched on. A location on its own holds no stock, so lines still route only once stock is assigned to it - this check answers whether routing can be enabled, not whether it will find somewhere to send an order.",
+      "unknown": "This install has no active inventory location, which fulfilment routing requires. Whether routing is currently switched on is not known here - that read has not answered yet - so this states only the part that is known."
+    },
+    "retry": "Retry",
+    "title": "Fulfilment routing readiness"
+  },
+  "salesDocumentStatusSection": {
+    "dualRoleWarning": "Issuing either document kind requires a matching sales-document rule for this connection's markets - the \"Primary\" status above has no effect here, whether or not it's set. A rule is the only thing that can decide invoice vs. receipt for a dual-role connection; without one, orders are held rather than auto-issued, because a fiscal document is never guessed.",
+    "issues": "Issues",
+    "issuesLabels": {
+      "both": "Either (invoice or fiscal receipt)",
+      "fiscal-receipt": "Fiscal receipt",
+      "invoice": "Invoice"
+    },
+    "notPrimary": "Not primary",
+    "nothing": "Nothing",
+    "otherPrimary": "{name} is already primary.",
+    "primary": "Primary",
+    "readOnly": "Read-only. <link>Manage in Settings → Sales documents routing</link>",
+    "status": "Status",
+    "title": "Sales document"
+  },
+  "setDefaultBankAccount": {
+    "errorDescription": "The account was saved in OpenLinker but the invoicing provider still shows the previous default. {message}",
+    "errorTitle": "Could not update the default account"
+  },
+  "setup": {
+    "back": "Back",
+    "connections": "Connections",
+    "eyebrow": "Integrations",
+    "guidedSetup": "Guided setup",
+    "next": "Next"
+  },
+  "shoperSetupForm": {
+    "beforeYouStart": {
+      "body": "In your {platform} admin panel open <strong>Dodaj integrację</strong> and create an integration. {platform} issues a <strong>Token API</strong>; OpenLinker sends it as a bearer token on every request. Grant the integration access to: produkty, warianty produktów, stany dostępności, kategorie, stawki vat, magazyny, zamówienia, przesyłki, statusy zamówień, klienci, webhooki, dostawy and płatności.",
+      "title": "Before you start"
+    },
+    "capabilities": {
+      "help": "Pick which roles this connection should fulfil. You can change this later on the connection's detail page. Receiving and ingesting orders are off by default because they start creating or reading orders in the shop.",
+      "legend": "Capabilities"
+    },
+    "create": "Create connection",
+    "createError": "Unable to create connection",
+    "createdDescription": "{platform} connection \"{name}\" was created.",
+    "createdHint": "Test the connection to confirm the shop accepts the token.",
+    "createdTitle": "Connection created",
+    "creating": "Creating...",
+    "done": "Done",
+    "fields": {
+      "baseUrl": {
+        "description": "Your shop's host name, e.g. xxxxx.shoparena.pl. HTTPS only, no path.",
+        "label": "Shop address"
+      },
+      "name": {
+        "description": "A label to identify this {platform} shop in OpenLinker.",
+        "label": "Connection name",
+        "placeholder": "My store"
+      },
+      "token": {
+        "description": "The Token API issued by the {platform} admin panel. Stored securely on the server.",
+        "label": "API token"
+      }
+    },
+    "latency": "({ms}ms)",
+    "ordersNextStep": {
+      "body": "{platform} needs a default delivery method, payment method and order status to create an order. Pick them from the shop's own lists in <link>the connection settings</link>.",
+      "title": "One more step to receive orders"
+    },
+    "platformFallback": "the shop",
+    "review": {
+      "name": "Name",
+      "noneSelected": "None selected",
+      "orderDefaults": {
+        "body": "After the connection is created you will pick the default delivery method, payment method and status from the shop's own lists.",
+        "title": "Order defaults come next"
+      }
+    },
+    "steps": {
+      "capabilities": "Capabilities",
+      "review": "Review & create",
+      "shop": "Shop",
+      "token": "API token"
+    },
+    "test": "Test connection",
+    "testError": "Unable to test connection",
+    "testFailed": "Connection test failed",
+    "testPassed": "Connection test passed",
+    "testing": "Testing…"
+  },
+  "shoperSetupPage": {
+    "chip": "API token",
+    "description": "Provide your shop address and API token. OpenLinker uses them to connect to your shop's REST API.",
+    "fallbackPlatform": "your shop",
+    "title": "Connect {platform}"
+  },
+  "shoperSetupSchema": {
+    "baseUrlRequired": "Shop address is required",
+    "nameRequired": "Connection name is required",
+    "tokenRequired": "API token is required"
+  },
+  "stockAndPricingSection": {
+    "intro": "By default this destination is told your catalogue quantity and your catalogue price, unchanged. Catalogue prices are gross: what a buyer pays, VAT included.",
+    "location": {
+      "assertion": "This is an <strong>assertion</strong>, not a detection: by picking a location you are attesting that all of this connection's currently un-located stock physically lives there. Only use this if everything behind this connection ships from one place - if you operate more than one physical warehouse behind this connection, leave this off, since setting it would misattribute stock to the wrong location for fulfilment.",
+      "currentlySet": "Currently set to: {id} (not in this list)",
+      "description": "Shops cannot report where their stock physically is, so without this the fulfilment router treats it as unlocated and skips it. This does not move or verify anything - it only tells OpenLinker where to assume it already is.",
+      "label": "Location",
+      "loadError": "The stored location couldn't be loaded right now, so it can't be shown by name below - it is still saved and unchanged.",
+      "loading": "Loading the location list…",
+      "option": "{name} ({code})",
+      "optionInactive": "{name} ({code}) - inactive",
+      "placeholder": "Select a location",
+      "toggle": "Assign a location to this connection's stock",
+      "unknownStored": "The stored location isn't in the current list (it may have been deleted, or removed from stock routing). It is still saved and unchanged until you pick a different one."
+    },
+    "price": {
+      "example": "A catalogue price of <strong>{price}</strong> is published as <strong>{published}</strong>. A price set on an individual item always wins and is never adjusted here.",
+      "managedElsewhere": "The price published to this destination - a default rule plus any per-source overrides - is managed on its own page. <link>Manage pricing & sync</link>.",
+      "percent": {
+        "label": "Percentage",
+        "marginHint": "Must be below 100. A margin of 100 or more has no answer, so it would be ignored and your catalogue price published instead.",
+        "markupHint": "Added on top of your catalogue price."
+      },
+      "rounding": {
+        "description": "Applied after the percentage.",
+        "label": "Rounding",
+        "options": {
+          "endingIn99": "End in .99",
+          "nearestWhole": "Round to a whole number",
+          "none": "Keep two decimal places"
+        }
+      },
+      "toggle": "Publish a different price than your catalogue",
+      "type": {
+        "description": "A markup adds a percentage on top of your price. A margin sets the price so that the percentage you enter is the share of the final price you keep.",
+        "label": "How to set the price",
+        "options": {
+          "margin": "Target a margin",
+          "markup": "Add a markup",
+          "passthrough": "Use my catalogue price"
+        }
+      }
+    },
+    "stock": {
+      "example": {
+        "one": "With <strong>{n} unit</strong> in your catalogue, this destination is told <strong>{published}</strong>.",
+        "other": "With <strong>{n} units</strong> in your catalogue, this destination is told <strong>{published}</strong>."
+      },
+      "lowExample": {
+        "one": "With <strong>{n} unit</strong> it is told <strong>{zero}</strong>.",
+        "other": "With <strong>{n} units</strong> it is told <strong>{zero}</strong>."
+      },
+      "safetyBuffer": {
+        "description": "Keeps a cushion so a fast-moving item cannot oversell between syncs. Leave blank or enter 0 to publish the full quantity.",
+        "label": "Units to hold back"
+      },
+      "toggle": "Publish less stock than you hold",
+      "zeroThreshold": {
+        "description": "When the quantity to publish falls below this many units, publish 0 instead. Use it for slow-moving stock you would rather hold than risk. Leave blank or enter 0 to never stop early.",
+        "label": "Stop selling below"
+      }
+    },
+    "title": "Stock and price on this destination"
+  },
+  "subiektSetupForm": {
+    "beforeYouStart": {
+      "body": "Run the OpenLinker bridge on the Windows machine where <strong>{product}</strong> is installed, give it a token in its <code>appsettings.json</code>, then paste that machine's address and the same token below. OpenLinker talks to {product} only through the bridge - it never connects to it directly.",
+      "title": "Before you start"
+    },
+    "connect": "Connect {platform}",
+    "connecting": "Connecting…",
+    "createError": "Unable to create connection",
+    "createdDescription": "{platform} connection \"{name}\" was created.",
+    "createdTitle": "Connection created",
+    "done": "Done",
+    "fields": {
+      "bridgeBaseUrl": {
+        "description": "The bridge address, without a path. Usually a LAN address - http is allowed (e.g. {example}).",
+        "label": "Bridge URL"
+      },
+      "bridgeToken": {
+        "description": "You choose this value yourself - it is not issued by anyone. {hint} Paste the same value here. Stored securely on the server and never shown again.",
+        "label": "Bridge token",
+        "labelOptional": "Bridge token (optional)"
+      },
+      "name": {
+        "description": "A label to identify this {platform} account in OpenLinker.",
+        "label": "Connection name",
+        "placeholder": "My {platform}"
+      },
+      "timeoutMs": {
+        "description": "Advanced - how long OpenLinker waits for the bridge before giving up. Between {min} and {max} ms. Leave blank for the bridge default.",
+        "label": "Request timeout (ms, optional)"
+      },
+      "triggerModel": {
+        "autoOnPaid": "Automatically, once the order is paid",
+        "description": "Every order OpenLinker sends to {product} becomes a ZK. This decides whether the invoice follows automatically, or waits for you. Change it later in Settings → Sales documents routing.",
+        "label": "Issue the invoice",
+        "manual": "By hand - I issue each one myself"
+      }
+    },
+    "invoiceSetting": {
+      "auto": "This connection will issue invoices automatically once an order is paid.",
+      "change": "Change that, or switch it off entirely, in <link>Settings → Sales documents routing</link>.",
+      "manual": "This connection will issue invoices only when you issue them by hand.",
+      "title": "Where the invoice setting lives"
+    },
+    "latency": "({ms}ms)",
+    "test": "Test connection",
+    "testError": "Unable to test connection",
+    "testFailed": "Connection test failed",
+    "testPassed": "Connection test passed",
+    "testing": "Testing…"
+  },
+  "subiektSetupPage": {
+    "chip": "Sfera bridge",
+    "description": "Point OpenLinker at your {product} bridge. OpenLinker uses it to work with {product} for your orders.",
+    "title": "Connect {product}"
+  },
+  "subiektSetupSchema": {
+    "bridgeUrlInvalid": "Bridge URL must be a valid URL (e.g. {example})",
+    "bridgeUrlProtocol": "Bridge URL must start with http:// or https://",
+    "bridgeUrlRequired": "Bridge URL is required",
+    "nameRequired": "Connection name is required",
+    "timeoutMax": "Request timeout must be at most 120000 ms",
+    "timeoutMin": "Request timeout must be at least 1000 ms",
+    "timeoutWhole": "Request timeout must be a whole number of milliseconds",
+    "tokenRequired": "Bridge token is required - {product}'s bridge rejects every request without it."
+  },
+  "woocommerceSetupForm": {
+    "beforeYouStart": {
+      "body": "In your {platform} admin, go to <strong>{platform} → Settings → Advanced → REST API</strong> and generate a key with <strong>Read/Write</strong> permissions. Copy the consumer key and consumer secret below - they are only shown once.",
+      "title": "Before you start"
+    },
+    "capabilities": {
+      "help": "Pick which roles this connection should fulfil. You can change this later on the connection's detail page.",
+      "legend": "Capabilities"
+    },
+    "create": "Create connection",
+    "createError": "Unable to create connection",
+    "createdDescription": "{platform} connection \"{name}\" was created.",
+    "createdTitle": "Connection created",
+    "creating": "Creating...",
+    "fields": {
+      "consumerKey": {
+        "description": "Starts with ck_ - generated in {platform} REST API settings.",
+        "label": "Consumer key"
+      },
+      "consumerSecret": {
+        "description": "Starts with cs_ - generated alongside the consumer key.",
+        "label": "Consumer secret"
+      },
+      "name": {
+        "description": "A label to identify this store in OpenLinker.",
+        "label": "Connection name",
+        "placeholder": "My {platform} Store"
+      },
+      "siteUrl": {
+        "description": "The root URL of your {platform} store. Must use HTTPS.",
+        "label": "Site URL"
+      }
+    },
+    "platformFallback": "the shop",
+    "review": {
+      "name": "Name",
+      "noneSelected": "None selected"
+    },
+    "steps": {
+      "capabilities": "Capabilities",
+      "credentials": "API credentials",
+      "review": "Review & create",
+      "store": "Store details"
+    }
+  },
+  "woocommerceSetupPage": {
+    "chip": "REST API",
+    "description": "Provide your store URL and REST API credentials. OpenLinker uses them to sync orders and inventory.",
+    "fallbackPlatform": "the shop",
+    "title": "Connect {platform}"
+  },
+  "woocommerceSetupSchema": {
+    "capabilityConflict": "The inventory source of truth and stock write-back to this shop cannot both be enabled on the same connection.",
+    "consumerKeyPrefix": "Consumer key must start with ck_",
+    "consumerKeyRequired": "Consumer key is required",
+    "consumerSecretPrefix": "Consumer secret must start with cs_",
+    "consumerSecretRequired": "Consumer secret is required",
+    "nameRequired": "Connection name is required",
+    "siteUrlHttps": "Site URL must use HTTPS",
+    "siteUrlInvalid": "Site URL must be a valid URL (e.g. https://shop.example.com)",
+    "siteUrlRequired": "Site URL is required"
+  }
+}

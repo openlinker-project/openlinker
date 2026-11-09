@@ -12,8 +12,10 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ReturnDisposeForm } from './return-dispose-form';
-import { RETURN_DISPOSE_COPY } from '../lib/return-custody.copy';
+import { getMessages } from '../../../shared/i18n';
 import type { ReturnLine, ReturnRestockTarget } from '../api/returns.types';
+
+const disposeCopy = getMessages('returns').custody.dispose;
 
 function line(overrides: Partial<ReturnLine> = {}): ReturnLine {
   return {
@@ -121,14 +123,14 @@ describe('ReturnDisposeForm (#2380)', () => {
   it('should state the orphan block up front rather than let it bounce off a 409', () => {
     renderForm(resolved, { isOrphan: true });
 
-    expect(screen.getByText(RETURN_DISPOSE_COPY.orphanBlocked)).toBeInTheDocument();
+    expect(screen.getByText(disposeCopy.orphanBlocked)).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /restock/i })).toBeDisabled();
   });
 
   it('should disable only Restock while the line has an outstanding restock block (#3466)', () => {
     renderForm(resolved, { restockBlocked: true });
 
-    expect(screen.getByText(RETURN_DISPOSE_COPY.awaitingAttestation)).toBeInTheDocument();
+    expect(screen.getByText(disposeCopy.awaitingAttestation)).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /restock/i })).toBeDisabled();
     // Scrap makes no master write and the server accepts it on a blocked line.
     expect(screen.getByRole('radio', { name: /scrap/i })).not.toBeDisabled();
@@ -141,7 +143,7 @@ describe('ReturnDisposeForm (#2380)', () => {
       line: { quantityReceived: 3 },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: RETURN_DISPOSE_COPY.submit }));
+    fireEvent.click(screen.getByRole('button', { name: disposeCopy.submit }));
 
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(
@@ -160,7 +162,7 @@ describe('ReturnDisposeForm (#2380)', () => {
     const onSubmit = renderForm(resolved, { line: { quantityReceived: 2 } });
 
     fireEvent.change(screen.getByLabelText(/^units$/i), { target: { value: '5' } });
-    fireEvent.click(screen.getByRole('button', { name: RETURN_DISPOSE_COPY.submit }));
+    fireEvent.click(screen.getByRole('button', { name: disposeCopy.submit }));
 
     await waitFor(() => expect(onSubmit).not.toHaveBeenCalled());
   });
@@ -168,11 +170,11 @@ describe('ReturnDisposeForm (#2380)', () => {
   it('should show the explanation of whichever option is selected', () => {
     renderForm();
 
-    expect(screen.getByText(RETURN_DISPOSE_COPY.restockHelp)).toBeInTheDocument();
+    expect(screen.getByText(disposeCopy.restockHelp)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('radio', { name: /scrap/i }));
 
-    expect(screen.getByText(RETURN_DISPOSE_COPY.scrapHelp)).toBeInTheDocument();
+    expect(screen.getByText(disposeCopy.scrapHelp)).toBeInTheDocument();
     // The destination sentence belongs to restock only — a scrap changes no stock.
     expect(screen.queryByText(/Stock will be added in/)).not.toBeInTheDocument();
   });

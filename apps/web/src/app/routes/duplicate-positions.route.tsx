@@ -2,7 +2,7 @@ import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../nav-registry.types';
 
 const duplicatePositionsCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Diagnostics', title: 'Duplicate stock positions' },
+  crumb: { group: 'diagnostics', page: 'duplicatePositions' },
 };
 
 export const duplicatePositionsRoute: RouteObject = {

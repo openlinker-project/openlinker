@@ -19,8 +19,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, type ReactElement } from 'react';
 import { useIsAdmin } from '../../../shared/auth/use-permission';
-import { formatDateTime } from '../../../shared/format/format-date';
-import { useTranslation } from '../../../shared/i18n';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { Input } from '../../../shared/ui/input';
@@ -30,6 +29,7 @@ import { useSendInvoiceEmailMutation } from '../../invoicing';
 import { useSendReceiptEmailMutation } from '../../fiscalization';
 import { useOrderDocumentEmailsQuery } from '../hooks/use-order-document-emails-query';
 import type { OrderDocumentEmailEntry } from '../api/orders.types';
+import { serverErrorText } from '../lib/server-error-text';
 
 type EmailLocale = 'pl' | 'en';
 type SentVia = 'provider' | 'openlinker';
@@ -83,7 +83,9 @@ export function SendDocumentEmail({
   internalOrderId,
   notReadyReason = null,
 }: SendDocumentEmailProps): ReactElement | null {
-  const { t } = useTranslation();
+  const copy = useMessages('orders').sendDocumentEmail;
+  const serverSaid = useMessages('orders').common.serverSaid;
+  const format = useFormat();
   const isAdmin = useIsAdmin();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
@@ -114,15 +116,13 @@ export function SendDocumentEmail({
       setSentVia(result.sentVia ?? null);
       showToast({
         tone: 'success',
-        title: t('salesDocument.email.sent', 'Document emailed to buyer'),
-        description: t('salesDocument.email.sentDesc', 'The buyer will receive it shortly.'),
+        title: copy.sent,
+        description: copy.sentDesc,
       });
     } catch (error) {
       setSentVia(null);
       setRefusal(
-        error instanceof Error && error.message
-          ? error.message
-          : t('salesDocument.email.failed', 'Could not email the document to the buyer.'),
+        serverErrorText(serverSaid, error instanceof Error ? error.message : undefined, copy.failed),
       );
     } finally {
       // Failed attempts are recorded too, so the header and timeline refresh either way.
@@ -133,7 +133,7 @@ export function SendDocumentEmail({
   const title = (
     <h3 id={titleId} className="document-email__title">
       <MailIcon />
-      {t('salesDocument.email.title', 'Email to buyer')}
+      {copy.title}
     </h3>
   );
 
@@ -152,7 +152,7 @@ export function SendDocumentEmail({
             </p>
           </div>
           <Button tone="secondary" className="button--sm" disabled data-testid="send-document-email-button">
-            {t('salesDocument.email.send', 'Send email')}
+            {copy.send}
           </Button>
         </div>
       </section>
@@ -162,17 +162,17 @@ export function SendDocumentEmail({
   const status =
     last === null ? (
       historyQuery.isSuccess ? (
-        <span className="document-email__status">{t('salesDocument.email.statusNone', 'Not sent yet')}</span>
+        <span className="document-email__status">{copy.statusNone}</span>
       ) : null
     ) : last.outcome === 'sent' ? (
       <span className="document-email__status document-email__status--sent" data-testid="send-document-email-status">
         <span className="document-email__dot" aria-hidden="true" />
-        {t('salesDocument.email.statusSent', 'Sent')}
+        {copy.statusSent}
       </span>
     ) : (
       <span className="document-email__status document-email__status--failed" data-testid="send-document-email-status">
         <span className="document-email__dot" aria-hidden="true" />
-        {t('salesDocument.email.statusFailed', 'Last attempt failed')}
+        {copy.statusFailed}
       </span>
     );
 
@@ -185,14 +185,12 @@ export function SendDocumentEmail({
 
       {last?.outcome === 'sent' ? (
         <p className="document-email__last" data-testid="send-document-email-last">
-          {formatDateTime(last.createdAt)}
           {last.sentVia
-            ? ` · ${
-                last.sentVia === 'provider'
-                  ? t('salesDocument.email.viaProvider', 'via the invoicing provider')
-                  : t('salesDocument.email.viaOpenLinker', 'via OpenLinker')
-              }`
-            : ''}
+            ? interpolate(copy.lastSentVia, {
+                when: format.dateTime(last.createdAt),
+                via: last.sentVia === 'provider' ? copy.viaProvider : copy.viaOpenLinker,
+              })
+            : format.dateTime(last.createdAt)}
         </p>
       ) : null}
 
@@ -203,27 +201,24 @@ export function SendDocumentEmail({
       ) : null}
 
       <label className="document-email__field">
-        <span className="document-email__label">{t('salesDocument.email.recipient', 'Recipient')}</span>
+        <span className="document-email__label">{copy.recipient}</span>
         <Input
           type="email"
           value={recipient}
           disabled={pending}
-          placeholder={t('salesDocument.email.recipientPlaceholder', "Buyer's address on the order")}
+          placeholder={copy.recipientPlaceholder}
           aria-describedby={hintId}
           onChange={(e) => setRecipient(e.target.value)}
           data-testid="send-document-email-recipient"
         />
       </label>
       <p id={hintId} className="document-email__hint">
-        {t(
-          'salesDocument.email.recipientHint',
-          "Leave empty to use the buyer's address on the order. A different address is sent by OpenLinker rather than the invoicing provider.",
-        )}
+        {copy.recipientHint}
       </p>
 
       <div className="document-email__actions">
         <SegmentedControl<EmailLocale>
-          aria-label={t('salesDocument.email.language', 'Email language')}
+          aria-label={copy.language}
           className="document-email__locale"
           value={locale}
           onChange={setLocale}
@@ -241,18 +236,18 @@ export function SendDocumentEmail({
           data-testid="send-document-email-button"
         >
           {pending
-            ? t('salesDocument.email.sending', 'Sending…')
+            ? copy.sending
             : last?.outcome === 'sent'
-              ? t('salesDocument.email.sendAgain', 'Send again')
-              : t('salesDocument.email.send', 'Send email')}
+              ? copy.sendAgain
+              : copy.send}
         </Button>
       </div>
 
       {sentVia ? (
         <p className="document-email__hint" data-testid="send-document-email-sent-via">
           {sentVia === 'provider'
-            ? t('salesDocument.email.sentViaProvider', 'Sent via the invoicing provider.')
-            : t('salesDocument.email.sentViaOpenLinker', "Sent via OpenLinker's mailer.")}
+            ? copy.sentViaProvider
+            : copy.sentViaOpenLinker}
         </p>
       ) : null}
     </section>

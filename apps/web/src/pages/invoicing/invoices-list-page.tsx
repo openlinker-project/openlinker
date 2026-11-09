@@ -28,7 +28,7 @@
  * (layout, pagination, DataTable + cardView, feedback states, setFilter/setOffset
  * URL helpers). Enum-param reading + the date-range widen-to-UTC sub-pattern
  * come from `pages/orders/orders-list-page.tsx` (widen-then-narrow guards, NOT
- * the webhook blind cast). i18n via the `t()` seam.
+ * the webhook blind cast). Copy from the `invoicing` namespace.
  *
  * @module apps/web/src/pages/invoicing
  */
@@ -51,7 +51,7 @@ import { EmptyValue } from '../../shared/ui/empty-value';
 import { isSafeHttpUrl } from '../../shared/lib/is-safe-http-url';
 import { oldestAgeSuffix } from '../../shared/lib/oldest-age-suffix';
 import { shortenId } from '../../shared/ui/entity-label';
-import { useTranslation } from '../../shared/i18n';
+import { interpolate, useFormat, useMessages, usePlural } from '../../shared/i18n';
 import {
   deriveInvoiceDisplayStatus,
   useBulkIssueInvoicesMutation,
@@ -59,7 +59,6 @@ import {
   useInvoicesQuery,
   InvoiceStatusBadge,
   RegulatoryStatusBadge,
-  REGULATORY_STATUS_LABEL_FALLBACK,
   InvoicePdfLink,
   InvoiceStatusValues,
   RegulatoryStatusValues,
@@ -68,7 +67,6 @@ import {
   type InvoiceStatus,
   type RegulatoryStatus,
   DOCUMENT_TYPE_LABEL_FALLBACK,
-  DOCUMENT_TYPE_UNKNOWN_LABEL,
 } from '../../features/invoicing';
 import { ConnectionCell, ConnectionFold, useConnectionsQuery } from '../../features/connections';
 import { OrderBuyerTaxIdValue, OrderIdentityCell, formatOrderRef } from '../../features/orders';
@@ -115,7 +113,9 @@ function isTaxIdFilter(value: string | null): value is TaxIdFilter {
 const pendingSubmissionAgeSuffix = oldestAgeSuffix;
 
 export function InvoicesListPage(): ReactElement {
-  const { t } = useTranslation();
+  const copy = useMessages('invoicing').invoice;
+  const plural = usePlural();
+  const { number } = useFormat();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Enum params
@@ -171,14 +171,11 @@ export function InvoicesListPage(): ReactElement {
   // places the desktop and card renderings could silently disagree.
   const documentTypeLabel = (r: InvoiceRecord): string =>
     r.documentType
-      ? t(
-          `invoice.documentType.${r.documentType}`,
-          DOCUMENT_TYPE_LABEL_FALLBACK[r.documentType] ?? r.documentType,
-        )
+      ? (DOCUMENT_TYPE_LABEL_FALLBACK[r.documentType] ?? r.documentType)
       : // `''` is what `InvoiceService` writes on the pending row, and the failure
         // patch never backfills it - so a raw render left the merged cell's only
         // text blank on exactly the rows a triage filter selects.
-        t('invoice.documentType.unknown', DOCUMENT_TYPE_UNKNOWN_LABEL);
+        copy.documentType.unknown;
 
   const renderDocumentCell = (r: InvoiceRecord): ReactElement => {
     const label = documentTypeLabel(r);
@@ -196,7 +193,7 @@ export function InvoicesListPage(): ReactElement {
           ) : (
             <CopyableId
               id={r.providerInvoiceNumber}
-              copyLabel={t('invoice.copyNumber', `Copy document number ${r.providerInvoiceNumber}`)}
+              copyLabel={interpolate(copy.copyNumber, { number: r.providerInvoiceNumber })}
             />
           )
         ) : (
@@ -397,7 +394,7 @@ export function InvoicesListPage(): ReactElement {
       cell: (r) => (
         <input
           type="checkbox"
-          aria-label={t('invoice.column.select', 'Select invoice')}
+          aria-label={copy.column.select}
           checked={selected.has(r.id)}
           onChange={() => toggleRow(r.id)}
           onClick={(e) => e.stopPropagation()}
@@ -408,7 +405,7 @@ export function InvoicesListPage(): ReactElement {
       id: 'orderId',
       // #2538 - OrderIdentityCell stacks the order number over a meta line.
       lines: 2,
-      header: t('invoice.column.orderId', 'Order'),
+      header: copy.column.orderId,
       // Was the raw 41-character `orderId` in a `mono-text` span: no truncation,
       // no Copy, no link. `orderSummary` has been on this response since #1995 /
       // PR #2012 and was typed-but-unconsumed until now (#2090).
@@ -424,26 +421,26 @@ export function InvoicesListPage(): ReactElement {
       // merged column is the host for #2094's tablet fold of the Connection
       // cell, so it cannot be the thing that disappears at that width.
       id: 'documentType',
-      header: t('invoice.column.documentType', 'Document type'),
+      header: copy.column.documentType,
       cell: renderDocumentCell,
       accessor: (r) => r.documentType,
     },
     {
       id: 'status',
-      header: t('invoice.column.status', 'Status'),
+      header: copy.column.status,
       // Derive display status (surfaces in-doubt vs failed split)
       cell: (r) => <InvoiceStatusBadge status={deriveInvoiceDisplayStatus(r)} />,
       accessor: (r) => deriveInvoiceDisplayStatus(r),
     },
     {
       id: 'regulatoryStatus',
-      header: t('invoice.column.regulatory', 'Regulatory'),
+      header: copy.column.regulatory,
       cell: (r) => <RegulatoryStatusBadge status={r.regulatoryStatus} />,
       hideBelow: 1024,
     },
     {
       id: 'clearanceRef',
-      header: t('invoice.column.clearanceRef', 'Clearance ref.'),
+      header: copy.column.clearanceRef,
       cell: (r) =>
         r.clearanceReference ? (
           <span className="mono-text" title={r.clearanceReference}>
@@ -457,7 +454,7 @@ export function InvoicesListPage(): ReactElement {
     },
     {
       id: 'buyerTaxId',
-      header: t('invoice.column.buyerTaxId', 'Buyer tax ID'),
+      header: copy.column.buyerTaxId,
       // #3188: the value the `taxId=with|without` filter was already asking
       // about. Renders the ORDER DETAIL's own component rather than a second
       // copy of the three-state vocabulary - there is no second render to drift.
@@ -481,7 +478,7 @@ export function InvoicesListPage(): ReactElement {
     },
     {
       id: 'connection',
-      header: t('invoice.column.connection', 'Connection'),
+      header: copy.column.connection,
       // The id used to live in a `title` attribute - invisible, unselectable and
       // unreachable on touch. No adornment: an invoice's connection IS its
       // issuing provider and the column header already says so (#2090).
@@ -496,7 +493,7 @@ export function InvoicesListPage(): ReactElement {
     },
     {
       id: 'issuedAt',
-      header: t('invoice.column.issuedAt', 'Issued'),
+      header: copy.column.issuedAt,
       // The mockup's `invoice-row-waiting-{i}` names a "With provider for"
       // column carrying an elapsed duration. This page has no such column and
       // this change does not invent one (#3196) — it hooks the nearest real
@@ -546,49 +543,46 @@ export function InvoicesListPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow="Operations"
-      title={t('invoice.list.title', 'Invoices')}
-      description={t(
-        'invoice.list.description',
-        'Issued, pending, and failed invoices across connections, with regulatory status.',
-      )}
+      eyebrow={copy.detail.eyebrow}
+      title={copy.list.title}
+      description={copy.list.description}
     >
       {retryMutation.error ? (
         <Alert tone="error" className="invoice-list__retry-error">
-          {t('invoice.bulk.retryError', 'Batch retry failed:')} {retryMutation.error.message}
+          {interpolate(copy.bulk.retryError, { message: retryMutation.error.message })}
           <Button
             tone="secondary"
             className="button--sm"
             style={{ marginLeft: 'var(--space-2)' }}
             onClick={() => retryMutation.reset()}
           >
-            {t('invoice.bulk.dismiss', 'Dismiss')}
+            {copy.bulk.dismiss}
           </Button>
         </Alert>
       ) : null}
 
       {bulkIssueMutation.error ? (
         <Alert tone="error" className="invoice-list__issue-error">
-          {t('invoice.bulk.issueError', 'Bulk issue failed:')} {bulkIssueMutation.error.message}
+          {interpolate(copy.bulk.issueError, { message: bulkIssueMutation.error.message })}
           <Button
             tone="secondary"
             className="button--sm"
             style={{ marginLeft: 'var(--space-2)' }}
             onClick={() => bulkIssueMutation.reset()}
           >
-            {t('invoice.bulk.dismiss', 'Dismiss')}
+            {copy.bulk.dismiss}
           </Button>
         </Alert>
       ) : null}
 
       {retryBanner ? (
         <Alert tone="success" className="invoice-list__retry-banner">
-          {t('invoice.bulk.retryResult', 'Batch retry complete.')}{' '}
+          {copy.bulk.retryResult}{' '}
           {retryBanner.retried > 0
-            ? t('invoice.bulk.retried', `${retryBanner.retried} retried.`)
+            ? plural(retryBanner.retried, copy.bulk.retried)
             : null}{' '}
           {retryBanner.skipped > 0
-            ? t('invoice.bulk.skipped', `${retryBanner.skipped} skipped (not eligible).`)
+            ? plural(retryBanner.skipped, copy.bulk.skipped)
             : null}
           <Button
             tone="secondary"
@@ -596,26 +590,26 @@ export function InvoicesListPage(): ReactElement {
             style={{ marginLeft: 'var(--space-2)' }}
             onClick={() => setRetryBanner(null)}
           >
-            {t('invoice.bulk.dismiss', 'Dismiss')}
+            {copy.bulk.dismiss}
           </Button>
         </Alert>
       ) : null}
 
       {issueBanner ? (
         <Alert tone="success" className="invoice-list__issue-banner">
-          {t('invoice.bulk.issueResult', 'Bulk issue complete.')}{' '}
-          {t('invoice.bulk.issuedOfTotal', `Issued ${issueBanner.issued} of ${issueBanner.total}.`)}{' '}
+          {copy.bulk.issueResult}{' '}
+          {interpolate(copy.bulk.issuedOfTotal, {
+            issued: number(issueBanner.issued),
+            total: number(issueBanner.total),
+          })}{' '}
           {issueBanner.issued + issueBanner.skipped + issueBanner.failed !== issueBanner.total
-            ? t(
-                'invoice.bulk.issueUnaccounted',
-                'Some orders were not reported back; refresh the list before retrying.',
-              )
+            ? copy.bulk.issueUnaccounted
             : null}{' '}
           {issueBanner.skipped > 0
-            ? t('invoice.bulk.issueSkipped', `${issueBanner.skipped} skipped (already issued or in progress).`)
+            ? plural(issueBanner.skipped, copy.bulk.issueSkipped)
             : null}{' '}
           {issueBanner.failed > 0
-            ? t('invoice.bulk.issueFailed', `${issueBanner.failed} failed.`)
+            ? plural(issueBanner.failed, copy.bulk.issueFailed)
             : null}
           <Button
             tone="secondary"
@@ -623,32 +617,32 @@ export function InvoicesListPage(): ReactElement {
             style={{ marginLeft: 'var(--space-2)' }}
             onClick={() => setIssueBanner(null)}
           >
-            {t('invoice.bulk.dismiss', 'Dismiss')}
+            {copy.bulk.dismiss}
           </Button>
         </Alert>
       ) : null}
 
       <div className="toolbar">
         <Select
-          aria-label={t('invoice.filter.status', 'Filter by status')}
+          aria-label={copy.filter.status.label}
           value={status ?? ''}
           onChange={(e) => setFilter('status', e.target.value)}
         >
-          <option value="">{t('invoice.filter.status.all', 'All statuses')}</option>
+          <option value="">{copy.filter.status.all}</option>
           {InvoiceStatusValues.map((s) => (
             <option key={s} value={s}>
-              {t(`invoice.status.${s}`, s)}
+              {copy.status[s]}
             </option>
           ))}
         </Select>
 
         <Select
           data-testid="invoices-filter-regulatory"
-          aria-label={t('invoice.filter.regulatory', 'Filter by regulatory status')}
+          aria-label={copy.filter.regulatory.label}
           value={regulatoryStatus ?? ''}
           onChange={(e) => setFilter('regulatoryStatus', e.target.value)}
         >
-          <option value="">{t('invoice.filter.regulatory.all', 'All regulatory statuses')}</option>
+          <option value="">{copy.filter.regulatory.all}</option>
           {/* #3194 reverses a prior deliberate exclusion of `not-applicable`
               (read as noise, since it meant "no regulatory tracking") - it is
               a real, reachable per-provider outcome: `eparagony-invoice.mapper.ts`
@@ -665,7 +659,7 @@ export function InvoicesListPage(): ReactElement {
             <option key={s} value={s}>
               {/* Reuse the badge's label map (#1585 F7) so the filter never falls
                   back to the raw hyphenated slug next to nicely-labelled badges. */}
-              {t(`invoice.regulatory.${s}`, REGULATORY_STATUS_LABEL_FALLBACK[s])}
+              {copy.regulatory[s]}
             </option>
           ))}
         </Select>
@@ -692,22 +686,19 @@ export function InvoicesListPage(): ReactElement {
             tone="warning"
             active={regulatoryStatus === 'pending-submission'}
             onClick={toggleAwaitingSubmission}
-            title={t(
-              'invoice.chip.awaitingSubmission.scope',
-              'Counts only invoices on this page, not the whole install',
-            )}
+            title={copy.chip.awaitingSubmissionScope}
           >
-            {t('invoice.chip.awaitingSubmission', 'Awaiting submission')} {pendingSubmissionCount}
+            {copy.chip.awaitingSubmission} {number(pendingSubmissionCount)}
             {pendingSubmissionAgeSuffix(pendingSubmissionOldestAt)}
           </Chip>
         ) : null}
 
         <Select
-          aria-label={t('invoice.filter.connection', 'Filter by connection')}
+          aria-label={copy.filter.connection.label}
           value={connectionId ?? ''}
           onChange={(e) => setFilter('connectionId', e.target.value)}
         >
-          <option value="">{t('invoice.filter.connection.all', 'All connections')}</option>
+          <option value="">{copy.filter.connection.all}</option>
           {connections.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -717,53 +708,50 @@ export function InvoicesListPage(): ReactElement {
 
         {/* C2: taxId filter */}
         <Select
-          aria-label={t('invoice.filter.taxId', 'Filter by buyer tax ID')}
+          aria-label={copy.filter.taxId.label}
           data-testid="invoices-filter-tax-id"
           value={taxId ?? ''}
           onChange={(e) => setFilter('taxId', e.target.value)}
         >
-          <option value="">{t('invoice.filter.taxId.all', 'All buyer tax IDs')}</option>
-          <option value="with">{t('invoice.filter.taxId.with', 'With tax ID')}</option>
-          <option value="without">{t('invoice.filter.taxId.without', 'Without tax ID')}</option>
+          <option value="">{copy.filter.taxId.all}</option>
+          <option value="with">{copy.filter.taxId.with}</option>
+          <option value="without">{copy.filter.taxId.without}</option>
         </Select>
 
         <Input
           type="date"
-          aria-label={t('invoice.filter.issuedFrom', 'Issued from')}
+          aria-label={copy.filter.issuedFrom}
           value={issuedFrom ?? ''}
           onChange={(e) => setFilter('issuedFrom', e.target.value)}
         />
         <Input
           type="date"
-          aria-label={t('invoice.filter.issuedTo', 'Issued to')}
+          aria-label={copy.filter.issuedTo}
           value={issuedTo ?? ''}
           onChange={(e) => setFilter('issuedTo', e.target.value)}
         />
       </div>
 
       {query.isLoading ? (
-        <DataTableSkeleton columns={columns} label="Loading invoices…" />
+        <DataTableSkeleton columns={columns} label={copy.list.loading} />
       ) : query.error ? (
         <ErrorState
-          title={t('invoice.list.error', 'Unable to load invoices')}
+          title={copy.list.error}
           message={query.error.message}
           action={
             <Button onClick={() => void query.refetch()}>
-              {t('invoice.list.retry', 'Retry')}
+              {copy.list.retry}
             </Button>
           }
         />
       ) : (query.data?.items.length ?? 0) === 0 ? (
         <EmptyState
           liveRegion="off"
-          title={t('invoice.list.empty.title', 'No invoices found')}
+          title={copy.list.empty.title}
           message={
             hasFilters
-              ? t(
-                  'invoice.list.empty.filtered',
-                  'No invoices match the current filters. Try clearing some filters.',
-                )
-              : t('invoice.list.empty.none', 'No invoices have been issued yet.')
+              ? copy.list.empty.filtered
+              : copy.list.empty.none
           }
         />
       ) : (
@@ -783,7 +771,7 @@ export function InvoicesListPage(): ReactElement {
             rowTestId={(r) =>
               rowIndexById.has(r.id) ? `invoice-row-${rowIndexById.get(r.id)}` : undefined
             }
-            caption={t('invoice.list.caption', 'Invoices')}
+            caption={copy.list.caption}
             columns={columns}
             rows={query.data?.items ?? []}
             rowKey={(r) => r.id}
@@ -799,21 +787,24 @@ export function InvoicesListPage(): ReactElement {
 
           <div className="pagination">
             <span className="text-muted">
-              {t('invoice.list.pagination', 'Showing')} {offset + 1}–
-              {Math.min(offset + PAGE_SIZE, total)} {t('invoice.list.paginationOf', 'of')} {total}
+              {interpolate(copy.list.pagination, {
+                from: number(offset + 1),
+                to: number(Math.min(offset + PAGE_SIZE, total)),
+                total: number(total),
+              })}
             </span>
             <div className="pagination__actions">
               <Button
                 disabled={!hasPrev}
                 onClick={() => setOffset(offset - PAGE_SIZE)}
               >
-                {t('invoice.list.prev', 'Previous')}
+                {copy.list.prev}
               </Button>
               <Button
                 disabled={!hasNext}
                 onClick={() => setOffset(offset + PAGE_SIZE)}
               >
-                {t('invoice.list.next', 'Next')}
+                {copy.list.next}
               </Button>
             </div>
           </div>
@@ -823,8 +814,8 @@ export function InvoicesListPage(): ReactElement {
       {/* C3: Batch retry bar - auto-hides when count=0 */}
       <BulkActionBar
         count={selected.size}
-        itemNoun={t('invoice.bulk.itemNoun', 'invoice')}
-        hint={t('invoice.bulk.hint', 'Only failed+rejected invoices will be retried; others are skipped.')}
+        selectedLabel={copy.bulk.selectedLabel}
+        hint={copy.bulk.hint}
         actions={
           <>
             <Button
@@ -832,7 +823,7 @@ export function InvoicesListPage(): ReactElement {
               className="button--sm"
               onClick={() => setSelected(new Set())}
             >
-              {t('invoice.bulk.clear', 'Clear selection')}
+              {copy.bulk.clear}
             </Button>
             <Button
               tone="secondary"
@@ -840,7 +831,7 @@ export function InvoicesListPage(): ReactElement {
               disabled={bulkIssueMutation.isPending}
               onClick={() => setIssueDialogOpen(true)}
             >
-              {t('invoice.bulk.issue', 'Issue invoices')}
+              {copy.bulk.issue}
             </Button>
             <Button
               tone="primary"
@@ -848,7 +839,7 @@ export function InvoicesListPage(): ReactElement {
               disabled={retryMutation.isPending}
               onClick={() => setRetryDialogOpen(true)}
             >
-              {t('invoice.bulk.retry', 'Retry selected')}
+              {copy.bulk.retry}
             </Button>
           </>
         }
@@ -857,13 +848,10 @@ export function InvoicesListPage(): ReactElement {
       <ConfirmDialog
         open={retryDialogOpen}
         onOpenChange={setRetryDialogOpen}
-        title={t('invoice.bulk.retryConfirmTitle', 'Retry invoices')}
-        description={t(
-          'invoice.bulk.retryConfirmBody',
-          `Retry ${selected.size} selected invoice(s)? Only failed+rejected ones will actually be re-attempted; the rest will be skipped.`,
-        )}
-        confirmLabel={t('invoice.bulk.retryConfirmAction', 'Retry')}
-        cancelLabel={t('invoice.bulk.retryCancel', 'Cancel')}
+        title={copy.bulk.retryConfirmTitle}
+        description={plural(selected.size, copy.bulk.retryConfirmBody)}
+        confirmLabel={copy.bulk.retryConfirmAction}
+        cancelLabel={copy.bulk.retryCancel}
         tone="default"
         isConfirming={retryMutation.isPending}
         onConfirm={handleRetryConfirm}
@@ -872,14 +860,10 @@ export function InvoicesListPage(): ReactElement {
       <ConfirmDialog
         open={issueDialogOpen}
         onOpenChange={setIssueDialogOpen}
-        title={t('invoice.bulk.issueConfirmTitle', 'Issue invoices')}
-        description={t(
-          'invoice.bulk.issueConfirmBody',
-          `Issue invoices for the ${selected.size} selected order(s)? Orders that already have ` +
-            `an issued invoice (or one in progress) are skipped; issuance is idempotent per order.`,
-        )}
-        confirmLabel={t('invoice.bulk.issueConfirmAction', 'Issue')}
-        cancelLabel={t('invoice.bulk.issueCancel', 'Cancel')}
+        title={copy.bulk.issueConfirmTitle}
+        description={plural(selected.size, copy.bulk.issueConfirmBody)}
+        confirmLabel={copy.bulk.issueConfirmAction}
+        cancelLabel={copy.bulk.issueCancel}
         tone="default"
         isConfirming={bulkIssueMutation.isPending}
         onConfirm={() => void handleIssueConfirm()}
