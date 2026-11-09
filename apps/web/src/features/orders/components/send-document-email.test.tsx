@@ -8,6 +8,8 @@ import {
 } from '../../../test/test-utils';
 import type { OrderDocumentEmailEntry } from '../api/orders.types';
 import { SendDocumentEmail } from './send-document-email';
+import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 
 function attempt(overrides: Partial<OrderDocumentEmailEntry>): OrderDocumentEmailEntry {
   return {
@@ -148,8 +150,11 @@ describe('SendDocumentEmail', () => {
     expect(sendEmail).toHaveBeenCalledWith('fr_1', { locale: 'pl' });
   });
 
-  it('should render the server refusal verbatim', async () => {
-    const sendEmail = vi.fn().mockRejectedValue(new Error('This invoice has no document to attach yet.'));
+  it('should render the copy for the refusal code, not the server sentence', async () => {
+    const message = 'This invoice has no document to attach yet.';
+    const sendEmail = vi
+      .fn()
+      .mockRejectedValue(new ApiError(message, 422, { code: 'no-document', message }));
     renderWithProviders(<SendDocumentEmail kind="invoice" documentId="inv_1" internalOrderId="ord_1" buyerEmail="jan@example.com" />, {
       apiClient: createMockApiClient({ invoicing: { sendEmail } }),
       sessionAdapter: createAuthenticatedSessionAdapter(),
@@ -157,9 +162,9 @@ describe('SendDocumentEmail', () => {
 
     await userEvent.click(await screen.findByTestId('send-document-email-button'));
 
-    expect(await screen.findByTestId('send-document-email-error')).toHaveTextContent(
-      'This invoice has no document to attach yet.',
-    );
+    const error = await screen.findByTestId('send-document-email-error');
+    expect(error).toHaveTextContent(getMessages('errors').codes['no-document']);
+    expect(error).not.toHaveTextContent(message);
   });
 
   it('should show the last successful send for this document when there is one', async () => {

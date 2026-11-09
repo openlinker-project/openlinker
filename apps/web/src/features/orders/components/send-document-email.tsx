@@ -37,7 +37,7 @@ import { useSendInvoiceEmailMutation } from '../../invoicing';
 import { useSendReceiptEmailMutation } from '../../fiscalization';
 import { useOrderDocumentEmailsQuery } from '../hooks/use-order-document-emails-query';
 import type { OrderDocumentEmailEntry } from '../api/orders.types';
-import { serverErrorText } from '../lib/server-error-text';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 type EmailLocale = 'pl' | 'en';
 type SentVia = 'provider' | 'openlinker';
@@ -99,7 +99,6 @@ export function SendDocumentEmail({
   buyerEmail,
 }: SendDocumentEmailProps): ReactElement | null {
   const copy = useMessages('orders').sendDocumentEmail;
-  const serverSaid = useMessages('orders').common.serverSaid;
   const format = useFormat();
   const isAdmin = useIsAdmin();
   const { showToast } = useToast();
@@ -152,9 +151,7 @@ export function SendDocumentEmail({
       });
     } catch (error) {
       setSentVia(null);
-      setRefusal(
-        serverErrorText(serverSaid, error instanceof Error ? error.message : undefined, copy.failed),
-      );
+      setRefusal(describeApiError(error, 'orders'));
     } finally {
       // Failed attempts are recorded too, so the header and timeline refresh either way.
       void queryClient.invalidateQueries({ queryKey: ['orders', 'document-emails'] });

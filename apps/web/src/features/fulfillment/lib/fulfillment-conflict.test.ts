@@ -2,13 +2,14 @@
  * 409 discrimination tests (#2411).
  *
  * The contract's whole point is that the two 409s are told apart by `code` and
- * acted on differently. These assert the discrimination, the un-coded 409
- * fallthrough (hold limit / already released), and that a non-409 is not
- * silently classified as a conflict.
+ * acted on differently. These assert the discrimination, the other 409s
+ * (hold limit / already released, read from their own code's copy), and that
+ * a non-409 is not silently classified as a conflict.
  */
 import { describe, expect, it } from 'vitest';
 
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import { describeFulfillmentActionError, readFulfillmentConflict } from './fulfillment-conflict';
 
 function conflict(details: unknown): ApiError {
@@ -34,15 +35,18 @@ describe('readFulfillmentConflict (#2411)', () => {
     expect(result?.supportedActions).toEqual(['hold']);
   });
 
-  it('should surface the server message for an un-coded 409 (hold limit reached)', () => {
+  it("should read the code's copy for another 409 (hold limit reached)", () => {
     const result = readFulfillmentConflict(
       new ApiError('This fulfilment task already has the maximum number of holds', 409, {
-        message: 'This fulfilment task already has the maximum number of holds',
+        code: 'FULFILLMENT_HOLD_LIMIT_REACHED',
+        params: { limit: 10 },
       })
     );
 
     expect(result?.retryable).toBe(false);
-    expect(result?.message).toBe('This fulfilment task already has the maximum number of holds');
+    expect(result?.message).toBe(
+      interpolate(getMessages('errors').codes.FULFILLMENT_HOLD_LIMIT_REACHED, { limit: 10 })
+    );
   });
 
   it('should treat an unrecognised code as NOT retryable', () => {
@@ -69,13 +73,13 @@ describe('readFulfillmentConflict (#2411)', () => {
 });
 
 describe('describeFulfillmentActionError (#2411)', () => {
-  it('should use the server message for a 400 — it names the missing field or unknown action', () => {
+  it("should read the code's copy for a 400 - it names the missing field or unknown action", () => {
     const message = describeFulfillmentActionError(
-      new ApiError("'hold' requires holdReason", 400, { message: "'hold' requires holdReason" }),
+      new ApiError("'hold' requires holdReason", 400, { code: 'FULFILLMENT_ACTION_FIELD_MISSING' }),
       'fallback'
     );
 
-    expect(message).toBe("'hold' requires holdReason");
+    expect(message).toBe(getMessages('errors').codes.FULFILLMENT_ACTION_FIELD_MISSING);
   });
 
   it('should explain a 403 rather than repeating the generic fallback', () => {

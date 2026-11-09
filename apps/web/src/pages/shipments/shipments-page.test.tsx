@@ -7,6 +7,8 @@ import {
 } from '../../test/test-utils';
 import { mockMobileViewport } from '../../test/viewport';
 import { ShipmentsPage } from './shipments-page';
+import { ApiError } from '../../shared/api/api-error';
+import { getMessages } from '../../shared/i18n';
 import type { PaginatedShipments, Shipment } from '../../features/shipments/api/shipments.types';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type { SessionUser } from '../../shared/auth/session.types';
@@ -116,14 +118,14 @@ describe('ShipmentsPage', () => {
 
   it('should show error state when fetch fails', async () => {
     const mockApi = createMockApiClient({
-      shipments: { list: vi.fn().mockRejectedValue(new Error('Service unavailable')) },
+      shipments: { list: vi.fn().mockRejectedValue(new ApiError('Service unavailable', 503, {})) },
       connections: { list: vi.fn().mockResolvedValue([]) },
     });
 
     renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('Unable to load shipments')).toBeInTheDocument();
-    expect(screen.getByText('Service unavailable')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status['5xx'])).toBeInTheDocument();
   });
 
   it('should show empty state without a CTA when no shipments exist and no filter is active', async () => {

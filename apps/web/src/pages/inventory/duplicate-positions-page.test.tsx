@@ -8,6 +8,8 @@ import {
   createAuthenticatedSessionAdapter,
 } from '../../test/test-utils';
 import { DuplicatePositionsPage } from './duplicate-positions-page';
+import { ApiError } from '../../shared/api/api-error';
+import { getMessages, interpolate } from '../../shared/i18n';
 import type {
   DuplicatePositionGroup,
   DuplicatePositionsReport,
@@ -83,7 +85,7 @@ describe('DuplicatePositionsPage', () => {
   it('should show an error state with retry when the report fails to load', async () => {
     const apiClient = createMockApiClient({
       inventory: {
-        getDuplicatePositions: vi.fn().mockRejectedValue(new Error('Network error')),
+        getDuplicatePositions: vi.fn().mockRejectedValue(new ApiError('Network error', 0, {})),
         getProvenanceBackfillStatus: vi.fn().mockResolvedValue(buildProvenanceStatus()),
       },
     });
@@ -96,14 +98,14 @@ describe('DuplicatePositionsPage', () => {
     expect(
       await screen.findByText('Unable to load the duplicate-position report')
     ).toBeInTheDocument();
-    expect(screen.getByText('Network error')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.network)).toBeInTheDocument();
   });
 
   it('should show an error state when the provenance-backfill-status read fails', async () => {
     const apiClient = createMockApiClient({
       inventory: {
         getDuplicatePositions: vi.fn().mockResolvedValue(buildReport()),
-        getProvenanceBackfillStatus: vi.fn().mockRejectedValue(new Error('Forbidden')),
+        getProvenanceBackfillStatus: vi.fn().mockRejectedValue(new ApiError('Forbidden', 403, {})),
       },
     });
 
@@ -115,7 +117,7 @@ describe('DuplicatePositionsPage', () => {
     expect(
       await screen.findByText('Unable to load the duplicate-position report')
     ).toBeInTheDocument();
-    expect(screen.getByText('Forbidden')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status['403'])).toBeInTheDocument();
   });
 
   it('should retry BOTH reads when Retry is clicked', async () => {
@@ -290,7 +292,7 @@ describe('DuplicatePositionsPage', () => {
     const getDuplicatePositions = vi
       .fn()
       .mockResolvedValueOnce(buildReport())
-      .mockRejectedValueOnce(new Error('Refresh network error'));
+      .mockRejectedValueOnce(new ApiError('Refresh network error', 0, {}));
     const getProvenanceBackfillStatus = vi.fn().mockResolvedValue(buildProvenanceStatus());
     const apiClient = createMockApiClient({
       inventory: { getDuplicatePositions, getProvenanceBackfillStatus },
@@ -314,7 +316,11 @@ describe('DuplicatePositionsPage', () => {
     // an untested distinction).
     expect(await screen.findByText('Refresh failed')).toBeInTheDocument();
     expect(
-      screen.getByText(/Refresh network error - showing the last successful scan below\./)
+      screen.getByText(
+        interpolate(getMessages('inventory').duplicatePositionsPage.refreshFailedBody, {
+          error: getMessages('errors').status.network,
+        })
+      )
     ).toBeInTheDocument();
     expect(screen.getByText('Ready')).toBeInTheDocument();
     expect(screen.queryByText('Unable to load the duplicate-position report')).not.toBeInTheDocument();

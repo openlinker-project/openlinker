@@ -9,9 +9,10 @@
  * result to the page, whose notice (`OrderCancelResultNotice`) is the `cancel-done`
  * state.
  *
- * **A refusal renders the server's own sentence.** The body carries a machine code
- * and a message naming WHY (the carrier's own words for a label it will not
- * void); the code chooses the layout and the remedy, the message is the reason.
+ * **A refusal renders the copy for its code.** The body carries a machine code,
+ * which chooses the layout, the remedy and the translated sentence. Where the
+ * server's message carries the carrier's or channel's own words (a label it
+ * will not void, a refused cancel), they stay visible as untranslated detail.
  *
  * **The soft gate is explicit.** Work a holder already accepted at the pack bench
  * needs a ticked box before "Cancel order" enables. The page passes
@@ -51,13 +52,14 @@ import {
   orderCancelInlineTitle,
   orderCancelReasonLabel,
   readOrderCancelErrorCode,
-  readServerReason,
+  readOrderCancelRefusalDetail,
 } from '../lib/order-cancel';
 import {
   createCancelOrderSchema,
   type CancelOrderFormValues,
   type CancelOrderSubmission,
 } from './cancel-order-dialog.schema';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface CancelOrderDialogProps {
   open: boolean;
@@ -97,6 +99,7 @@ export function CancelOrderDialog({
   onGoToShipment,
 }: CancelOrderDialogProps): ReactElement {
   const copy = useMessages('orders').cancelOrderDialog;
+  const technicalDetails = useMessages('ui').apiError.technicalDetails;
   const plural = usePlural();
   const schema = useMemo(() => createCancelOrderSchema(copy.validation), [copy.validation]);
   const mutation = useCancelOrderMutation();
@@ -117,6 +120,7 @@ export function CancelOrderDialog({
   const title = orderNumber ?? internalOrderId;
   const channel = sourceName ?? copy.channelFallback;
   const refusal = mutation.isError ? classifyOrderCancelError(mutation.error) : null;
+  const refusalDetail = mutation.isError ? readOrderCancelRefusalDetail(mutation.error) : null;
   const pending = mutation.data?.status === 'pending';
   const needsAck = acceptedWork || refusal === 'needs-ack';
   const acknowledged = form.watch('acknowledgeAcceptedWork') === true;
@@ -232,8 +236,13 @@ export function CancelOrderDialog({
           <div>
             <DialogTitle>{copy.label.title}</DialogTitle>
             <DialogDescription data-testid="order-cancel-label-refusal">
-              {readServerReason(mutation.error, copy.label.fallback)}
+              {describeApiError(mutation.error, 'orders')}
             </DialogDescription>
+            {refusalDetail ? (
+              <p className="muted-text" data-testid="order-cancel-refusal-detail">
+                {`${technicalDetails}: ${refusalDetail}`}
+              </p>
+            ) : null}
             <Alert tone="info" title={copy.label.whatToDo}>
               <ol className="order-cancel-list">
                 <li>{copy.label.stepCancelShipment}</li>
@@ -273,7 +282,7 @@ export function CancelOrderDialog({
               title={copy.shipped.alertTitle}
               data-testid="order-cancel-shipped-refusal"
             >
-              {readServerReason(mutation.error, copy.shipped.fallback)}
+              {describeApiError(mutation.error, 'orders')}
             </Alert>
             <p className="dialog-section__head">{copy.shipped.insteadTitle}</p>
             <ol className="order-cancel-list">
@@ -310,7 +319,12 @@ export function CancelOrderDialog({
             }
             data-testid="order-cancel-error"
           >
-            {readServerReason(mutation.error, copy.confirm.errorFallback)}
+            {describeApiError(mutation.error, 'orders')}
+            {refusalDetail ? (
+              <p className="muted-text" data-testid="order-cancel-refusal-detail">
+                {`${technicalDetails}: ${refusalDetail}`}
+              </p>
+            ) : null}
           </Alert>
         ) : null}
 

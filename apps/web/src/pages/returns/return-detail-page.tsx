@@ -63,6 +63,7 @@ import {
   useReturnQuery,
   type ReturnDetail,
 } from '../../features/returns';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 /** The header facts, as a definition list. */
 type ReturnsCopy = ResolvedCopy<Messages['returns']>;
@@ -242,10 +243,8 @@ export function ReturnDetailPage(): ReactElement {
           />
         ) : (
           <ErrorState
-            title={
-              isUnreadable ? pageCopy.unreadableTitle : pageCopy.errorTitle
-            }
-            message={isUnreadable ? pageCopy.unreadableMessage : error.message}
+            title={isUnreadable ? pageCopy.unreadableTitle : pageCopy.errorTitle}
+            message={isUnreadable ? pageCopy.unreadableMessage : describeApiError(error, 'returns')}
             action={
               <Button
                 onClick={() => {

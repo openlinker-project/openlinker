@@ -37,8 +37,10 @@ export function describeDeclineError(error: unknown): string {
     error instanceof ApiError &&
     error.code !== undefined &&
     ADAPTER_WORDED_CODES.has(error.code) &&
+    // eslint-disable-next-line no-restricted-syntax -- the adapter explains why the channel cannot be asked; OpenLinker cannot reconstruct that, so it follows the translated sentence (#3863)
     error.message.length > 0
   ) {
+    // eslint-disable-next-line no-restricted-syntax -- see the condition above: the adapter's own explanation
     return `${sentence} ${error.message}`;
   }
   return sentence;
