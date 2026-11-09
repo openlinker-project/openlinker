@@ -37,6 +37,7 @@ export function GiftRuleWhenSection({ form, values, readOnly }: GiftRuleSectionP
     <DetailSection title={copy.composer.when}>
       <fieldset className="gift-section" disabled={readOnly}>
         <SegmentedControl
+          className="gift-when-toggle"
           aria-label={copy.detail.kindLabel}
           options={options}
           value={values.kind}

@@ -33066,6 +33066,10 @@ legend.analytics-settings-dialog__label {
 
 /* Return gift decisions are sentences ("Zostaje u klienta"), not one-word
    enum values, so the segmented control's capitalize would Title Case them. */
-.return-gift .segmented-control__option {
+/* Same for the gift "Kiedy" toggle and the products bundle filter: Polish
+   labels such as "Bez zestawów" must not be Title Cased. */
+.return-gift .segmented-control__option,
+.gift-when-toggle .segmented-control__option,
+.bundle-list-filter .segmented-control__option {
   text-transform: none;
 }

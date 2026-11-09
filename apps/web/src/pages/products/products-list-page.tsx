@@ -1218,6 +1218,7 @@ export function ProductsListPage(): ReactElement {
           a bundle shows its availability like any product, or says it is unknown. */}
       <div className="ds-row" style={{ gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
         <SegmentedControl
+          className="bundle-list-filter"
           aria-label={bundleCopy.list.filterLabel}
           value={bundleView === 'only' ? 'bundles' : bundleView === 'exclude' ? 'without' : 'all'}
           onChange={(value) => {
