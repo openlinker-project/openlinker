@@ -412,13 +412,27 @@ export class OfferBuilderService implements IOfferBuilderService {
       input.connectionId,
       definition.components.map((component) => component.variantId)
     );
-    const components: OfferProductSetComponent[] = [];
-    for (const component of definition.components) {
-      const [componentVariant, componentProduct] = await Promise.all([
-        this.productsService.getVariant(component.variantId),
-        this.productsService.getProduct(component.productId),
+    // Batched reads (variants and their siblings), then one concurrent pass over
+    // the components. `Promise.all` keeps the output in definition order.
+    const productIds = [...new Set(definition.components.map((c) => c.productId))];
+    const [variants, siblings, products] = await Promise.all([
+      this.productsService.getVariantsByIds(definition.components.map((c) => c.variantId)),
+      this.productsService.getVariantsByProductIds(productIds),
+      Promise.all(productIds.map((id) => this.productsService.getProduct(id))),
+    ]);
+    const variantsById = new Map(variants.map((variant) => [variant.id, variant]));
+    const productsById = new Map(products.flatMap((product) => (product ? [[product.id, product]] : [])));
+    const siblingsByProduct = new Map<string, ProductVariant[]>();
+    for (const variant of siblings) {
+      siblingsByProduct.set(variant.productId, [
+        ...(siblingsByProduct.get(variant.productId) ?? []),
+        variant,
       ]);
-      if (!componentVariant || !componentProduct) {
+    }
+    // Refuse before any per-component work, in definition order, so the named
+    // component is deterministic.
+    for (const component of definition.components) {
+      if (!variantsById.has(component.variantId) || !productsById.has(component.productId)) {
         throw new OfferBuilderValidationException([
           {
             field: 'productSet',
@@ -427,55 +441,73 @@ export class OfferBuilderService implements IOfferBuilderService {
           },
         ]);
       }
-      const barcode = componentVariant.ean ?? componentVariant.gtin ?? null;
-      const existingOfferExternalId =
-        (liveCounts.get(component.variantId) ?? 0) > 0
-          ? await this.findLiveOfferExternalId(input.connectionId, component.variantId)
-          : undefined;
-      const own = existingOfferExternalId
-        ? {}
-        : await this.resolveInlineComponentFields(
-            input,
-            ctx,
-            componentVariant,
-            component.productId,
-            barcode
-          );
-      components.push({
-        variantId: component.variantId,
-        productId: component.productId,
-        quantity: component.quantity,
-        ...(component.giftSlot ? { giftSlot: true } : {}),
-        name: componentProduct.name,
-        barcode,
-        imageUrls:
-          resolveVariantDefaultImages(
-            componentVariant,
-            await this.productsService.getVariantsByProductId(component.productId),
-            componentProduct.images
-          ) ?? [],
-        ...(componentProduct.gpsr ? { gpsr: componentProduct.gpsr } : {}),
-        ...(existingOfferExternalId ? { existingOfferExternalId } : {}),
-        ...own,
-      });
     }
-    return components;
+    return Promise.all(
+      definition.components.map(async (component): Promise<OfferProductSetComponent> => {
+        const componentVariant = variantsById.get(component.variantId) as ProductVariant;
+        const componentProduct = productsById.get(component.productId) as Product;
+        const barcode = componentVariant.ean ?? componentVariant.gtin ?? null;
+        const existingOfferExternalId =
+          (liveCounts.get(component.variantId) ?? 0) > 0
+            ? await this.findLiveOfferExternalId(input.connectionId, component.variantId)
+            : undefined;
+        const own = existingOfferExternalId
+          ? {}
+          : await this.resolveInlineComponentFields(
+              input,
+              ctx,
+              componentVariant,
+              component.productId,
+              barcode
+            );
+        return {
+          variantId: component.variantId,
+          productId: component.productId,
+          quantity: component.quantity,
+          ...(component.giftSlot ? { giftSlot: true } : {}),
+          name: componentProduct.name,
+          barcode,
+          imageUrls:
+            resolveVariantDefaultImages(
+              componentVariant,
+              siblingsByProduct.get(component.productId) ?? [],
+              componentProduct.images
+            ) ?? [],
+          ...(componentProduct.gpsr ? { gpsr: componentProduct.gpsr } : {}),
+          ...(existingOfferExternalId ? { existingOfferExternalId } : {}),
+          ...own,
+        };
+      })
+    );
   }
 
-  /** External id of a variant's live offer on the connection, skipping refused-creation ones. */
+  /**
+   * External id of a variant's live offer on the connection, skipping
+   * refused-creation ones. The query already filters by connection AND variant;
+   * pages are walked until a live one is found or the set is exhausted, so there
+   * is no silent bound.
+   */
   private async findLiveOfferExternalId(
     connectionId: string,
     variantId: string
   ): Promise<string | undefined> {
-    const [page, dead] = await Promise.all([
-      this.offerMappings.findMappingPage(
+    const dead = new Set(
+      await this.offerMappings.findDeadFailedCreationOfferIds(connectionId, variantId)
+    );
+    const limit = 50;
+    for (let offset = 0; ; offset += limit) {
+      const page = await this.offerMappings.findMappingPage(
         { connectionId, internalId: variantId },
-        { limit: 20, offset: 0 }
-      ),
-      this.offerMappings.findDeadFailedCreationOfferIds(connectionId, variantId),
-    ]);
-    const deadIds = new Set(dead);
-    return page.items.find((mapping) => !deadIds.has(mapping.externalId))?.externalId;
+        { limit, offset }
+      );
+      const live = page.items.find((mapping) => !dead.has(mapping.externalId));
+      if (live) {
+        return live.externalId;
+      }
+      if (page.items.length < limit || offset + limit >= page.total) {
+        return undefined;
+      }
+    }
   }
 
   /**
