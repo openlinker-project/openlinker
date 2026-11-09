@@ -318,7 +318,7 @@ describe('buildNavGroups', () => {
     ];
     const PACKER_HIDDEN_OPERATIONS_ITEMS = [
       'Analytics',
-      'Insights',
+      'System health',
       'Orders',
       'Customers',
       // Hidden via its `requiresPermission: 'fulfillment:read'` gate
@@ -358,7 +358,7 @@ describe('buildNavGroups', () => {
     // is deliberately excluded here: it is gated by permission, not role, and
     // `viewer` does not hold `orders:write` — asserting it visible to viewer
     // would fail against pre-existing, unrelated-to-#3221 behaviour.
-    it.each(['Analytics', 'Insights', 'Orders', 'Customers', 'Sales documents'])(
+    it.each(['Analytics', 'System health', 'Orders', 'Customers', 'Sales documents'])(
       '%s is visible to admin, operator, and viewer',
       (label) => {
         for (const role of ['admin', 'operator', 'viewer']) {
