@@ -9,13 +9,14 @@
  *
  * Capability adapters are constructed from the `ShopifyResolution` built
  * here; each enters together with its issue (ProductMaster: #3975,
- * InventoryMaster: #3976, OrderSource: #3977).
+ * InventoryMaster: #3976, OrderSource: #3977, OrderProcessorManager: #3978).
  *
  * @module libs/integrations/shopify/src/application
  */
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { InventoryMasterPort } from '@openlinker/core/inventory';
-import type { OrderSourcePort } from '@openlinker/core/orders';
+import type { IMappingConfigService } from '@openlinker/core/mappings';
+import type { OrderProcessorManagerPort, OrderSourcePort } from '@openlinker/core/orders';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { CachePort } from '@openlinker/shared';
@@ -26,6 +27,7 @@ import {
   ShopifyRefundingOrderSourceAdapter,
 } from '../infrastructure/adapters/order-source/shopify-order-source.adapter';
 import { ShopifyRefundExecutor } from '../infrastructure/adapters/order-source/shopify-refund-executor';
+import { ShopifyOrderProcessorAdapter } from '../infrastructure/adapters/order-processor/shopify-order-processor.adapter';
 import { ShopifyOrderStatusWriteback } from '../infrastructure/adapters/order-status/shopify-order-status-writeback';
 import { ShopifyInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shopify-inventory-master.adapter';
 import { ShopifyProductMasterAdapter } from '../infrastructure/adapters/product-master/shopify-product-master.adapter';
@@ -110,5 +112,21 @@ export class ShopifyAdapterFactory implements IShopifyAdapterFactory {
           new ShopifyRefundExecutor(client, connection.id),
         )
       : new ShopifyOrderSourceAdapter(client, config.storeDomain, connection, writeback);
+  }
+
+  createOrderProcessor(
+    resolution: ShopifyResolution,
+    identifierMapping: IdentifierMappingPort,
+    mappingConfig?: IMappingConfigService,
+  ): OrderProcessorManagerPort {
+    const { client, connection, shopContext } = resolution;
+    return new ShopifyOrderProcessorAdapter(
+      client,
+      identifierMapping,
+      shopContext,
+      connection,
+      new ShopifyOrderStatusWriteback(client, shopContext, connection),
+      mappingConfig,
+    );
   }
 }

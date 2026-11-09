@@ -96,5 +96,8 @@ export const SHOPIFY_DEFAULT_UNMANAGED_STOCK_QUANTITY = 1000;
 /** Gateway name of Shopify's built-in cash-on-delivery manual method (live, L-O2). */
 export const SHOPIFY_COD_GATEWAY = 'Cash on Delivery (COD)';
 
+/** Tag on every order OpenLinker creates in a store, so the merchant can filter them (#3978). */
+export const SHOPIFY_ORDER_TAG = 'openlinker';
+
 /** Gateway name of Shopify's built-in bank-deposit manual method. */
 export const SHOPIFY_BANK_DEPOSIT_GATEWAY = 'Bank Deposit';

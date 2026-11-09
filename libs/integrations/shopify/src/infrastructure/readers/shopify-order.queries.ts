@@ -56,6 +56,32 @@ export const ORDER_FEED_QUERY = `query OlOrderFeed($first: Int!, $after: String,
 }`;
 
 
+/**
+ * The order this shop already holds for an OpenLinker order, by the
+ * `sourceIdentifier` the create stamped on it. Goes through the search index,
+ * which sees an order only seconds after it was written: a retry finds it, a
+ * race does not (core's per-order create lock covers the race).
+ */
+export const ORDER_BY_SOURCE_IDENTIFIER_QUERY = `query OlOrderBySource($query: String!) {
+  orders(first: 1, query: $query) { nodes { id name } }
+}`;
+
+/**
+ * Creates an order (#3978). `orderCreate` has no `@idempotent` support, so the
+ * caller dedupes before it (see `ORDER_BY_SOURCE_IDENTIFIER_QUERY`). The
+ * created order's fulfillment orders come back so the adapter can move them
+ * to the configured location in the same pass.
+ */
+export const ORDER_CREATE_MUTATION = `mutation OlOrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
+  orderCreate(order: $order, options: $options) {
+    order {
+      id name
+      fulfillmentOrders(first: 20) { nodes { id status assignedLocation { location { id } } } }
+    }
+    userErrors { field message }
+  }
+}`;
+
 export const ORDER_FULFILLMENT_ORDERS_QUERY = `query OlFulfillmentOrders($id: ID!) {
   order(id: $id) {
     id displayFulfillmentStatus cancelledAt

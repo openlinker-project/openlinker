@@ -8,6 +8,8 @@ import {
   type ProductTaxRateReader,
 } from '@openlinker/core/products';
 
+import { isDestinationOptionsReader, type OrderProcessorManagerPort } from '@openlinker/core/orders';
+
 import { createShopifyPlugin, shopifyAdapterManifest } from '../shopify-plugin';
 
 describe('createShopifyPlugin', () => {
@@ -15,8 +17,16 @@ describe('createShopifyPlugin', () => {
     expect(shopifyAdapterManifest).toMatchObject({
       adapterKey: 'shopify.admin.v1',
       platformType: 'shopify',
-      supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource', 'ReturnSourceReader', 'ReturnDecliner'],
-      // OrderSource is opt-in: ingesting orders creates them in every destination.
+      supportedCapabilities: [
+        'ProductMaster',
+        'InventoryMaster',
+        'OrderSource',
+        'OrderProcessorManager',
+        'ReturnSourceReader',
+        'ReturnDecliner',
+      ],
+      // OrderSource and OrderProcessorManager are opt-in: one sends the store's
+      // orders to every destination, the other brings every marketplace order in.
       defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
     });
     expect(createShopifyPlugin().manifest).toBe(shopifyAdapterManifest);
@@ -35,6 +45,29 @@ describe('createShopifyPlugin', () => {
     await expect(
       createShopifyPlugin().createCapabilityAdapter({ id: 'c1' } as Connection, 'OfferManager', {} as never),
     ).rejects.toThrow(/does not support capability: OfferManager/);
+  });
+
+  it('should build the order processor', async () => {
+    const host = {
+      credentialsResolver: { get: jest.fn().mockResolvedValue({ accessToken: 'shpat_x' }) },
+      http: { forConnection: jest.fn().mockReturnValue(jest.fn()) },
+      identifierMapping: {},
+      cache: undefined,
+    };
+    const connection = {
+      id: 'c1',
+      credentialsRef: 'db:ref',
+      config: { storeDomain: 'my-shop.myshopify.com' },
+    } as unknown as Connection;
+
+    const adapter = await createShopifyPlugin().createCapabilityAdapter<OrderProcessorManagerPort>(
+      connection,
+      'OrderProcessorManager',
+      host as never,
+    );
+
+    expect(typeof adapter.createOrder).toBe('function');
+    expect(isDestinationOptionsReader(adapter)).toBe(true);
   });
 
   it('should build the ProductMaster with every guard-only rung', async () => {
