@@ -21,9 +21,9 @@
  * operator a one-click move to the marketplace they pick
  * (`POST .../mappings/categories/reassign`).
  *
- * `down()` is a no-op: the moved rows are indistinguishable from rows written
- * correctly afterwards, and restoring the old key would only make them unused
- * again.
+ * `down()` reverses nothing and only logs a notice saying so: the moved rows
+ * are indistinguishable from rows written correctly afterwards, and restoring
+ * the old key would only make them unused again.
  *
  * Generated: 2026-11-05 (synthetic prefix carrying the issue number, per
  * docs/migrations.md rule 3).
@@ -76,7 +76,17 @@ export class RekeyMasterKeyedCategoryMappings1938393993000 implements MigrationI
     );
   }
 
-  public async down(): Promise<void> {
-    // Intentionally empty, see the header.
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    // Nothing is reversed, see the header. An operator rolling back would
+    // otherwise read a clean revert as "the mappings are keyed as before", so
+    // the migration log says plainly that they stay re-keyed (the RAISE NOTICE
+    // breadcrumb shape of 1881000000001).
+    await queryRunner.query(`
+      DO $$
+      BEGIN
+        RAISE NOTICE
+          '[#3993] Category mappings stay re-keyed to their marketplace connection. The original master-keyed rows and any deduplicated duplicates are not restored.';
+      END$$;
+    `);
   }
 }
