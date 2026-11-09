@@ -716,6 +716,12 @@ export interface OrderRecord {
    */
   omsAttention?: OrderOmsAttentionEntry[] | null;
   /**
+   * Per destination shop: did a payment that arrived after the shop got the
+   * order reach it (#3963)? Optional for an older API; empty for an order no
+   * shop got before it was paid.
+   */
+  paymentWriteback?: OrderPaymentWritebackEntry[] | null;
+  /**
    * The reason of this order's OPEN hold, or null when it is not held (#2340).
    * Present on EVERY row — list and detail — because the column is already
    * loaded, which is what lets the list badge it for free.
@@ -1003,6 +1009,12 @@ export interface OrderHealthSummary {
    */
   omsAttention?: number;
   /**
+   * Orders where a shop still shows the order unpaid and OpenLinker gave up
+   * sending the payment (#3963). Its own axis, never inside the health
+   * partition. Optional for an older API.
+   */
+  paymentNotSent?: number;
+  /**
    * #4025 - counts for the redesigned orders filters. All optional for graceful
    * degradation against an older API; an absent count is "unknown", never `0`.
    * `openReturn` / `hasBuyerNote` / `dueWithin24h` use the same predicates as
@@ -1086,6 +1098,8 @@ export interface OrderFilters {
    * stayed the operator-facing `attention`.
    */
   attention?: boolean;
+  /** #3963 - orders whose payment did not reach a shop (`?paymentNotSent=`). */
+  paymentNotSent?: boolean;
   /**
    * Narrow to orders held for ONE reason (#2342), sent as `?hold=`.
    *
@@ -1478,3 +1492,42 @@ export interface OrderDocumentEmailEntry {
   failureMessage: string | null;
   createdAt: string;
 }
+
+/**
+ * What OpenLinker knows about a payment at ONE destination shop (#3963).
+ * `state` stays a plain string: the column is jsonb, and a value from a newer
+ * release must round-trip; the UI renders an unrecognised one neutrally.
+ */
+export const PaymentWritebackStateValues = [
+  'awaiting',
+  'sending',
+  'paid-in-shop',
+  'created-paid',
+  'retrying',
+  'not-sent',
+  'cod',
+  'not-tracked',
+  'skipped-by-setting',
+  'handled',
+] as const;
+export type PaymentWritebackState = (typeof PaymentWritebackStateValues)[number];
+
+export interface OrderPaymentWritebackEntry {
+  destinationConnectionId: string;
+  state: string;
+  at: string;
+  attempts: number;
+  reason: string | null;
+  detail: string | null;
+  /** The shop still shows the order unpaid and OpenLinker gave up. */
+  problem: boolean;
+}
+
+export interface PaymentWritebackRetryResult {
+  enqueued: number;
+}
+
+export interface PaymentWritebackHandledResult {
+  updated: number;
+}
+

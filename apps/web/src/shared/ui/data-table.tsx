@@ -29,7 +29,7 @@ import { useMediaQuery } from './use-media-query';
 import { useMessages } from '../i18n/use-messages';
 import { interpolate } from '../i18n/interpolate';
 
-export type DataTableHideBreakpoint = 480 | 768 | 1024;
+export type DataTableHideBreakpoint = 480 | 768 | 1024 | 1280;
 
 export interface DataTableColumn<Row> {
   align?: 'left' | 'right';

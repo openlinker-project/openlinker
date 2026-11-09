@@ -32,6 +32,7 @@ import {
   type HoldReason,
 } from '@openlinker/core/order-lifecycle';
 import { OrderHoldDto } from './order-hold-response.dto';
+import { OrderPaymentWritebackEntryDto } from './order-payment-writeback-entry.dto';
 import { OrderEditsViewDto } from './order-edit-response.dto';
 import {
   FulfillmentBlockReasonValues,
@@ -231,6 +232,15 @@ export class OrderRecordResponseDto {
       'other, or both. Keyed by PRODUCER, so an order can carry several at once.',
   })
   omsAttention!: OrderOmsAttentionEntryDto[];
+
+  @ApiProperty({
+    type: [OrderPaymentWritebackEntryDto],
+    description:
+      'Per destination shop: whether a payment that arrived after the shop got the order reached ' +
+      'it (#3963). Empty for an order no shop got before it was paid, and for every order ' +
+      'provisioned before this feature that has not been paid since.',
+  })
+  paymentWriteback!: OrderPaymentWritebackEntryDto[];
 
   @ApiPropertyOptional({
     nullable: true,

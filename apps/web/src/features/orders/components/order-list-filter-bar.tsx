@@ -151,6 +151,7 @@ export function OrderListFilterBar({
   const { state } = filtersApi;
   const orders = useMessages('orders');
   const COPY = orders.listFilters;
+  const paymentCopy = orders.paymentWriteback;
   const plural = usePlural();
   const panelId = useId();
   const searchRef = useRef<HTMLInputElement>(null);
@@ -378,6 +379,15 @@ export function OrderListFilterBar({
           count={summary?.omsAttention}
           onChange={() => {
             filtersApi.toggle('attention');
+          }}
+        />
+        <FilterCheck
+          label={paymentCopy.filterCheck}
+          tone="warning"
+          checked={state.paymentNotSent}
+          count={summary?.paymentNotSent}
+          onChange={() => {
+            filtersApi.toggle('paymentNotSent');
           }}
         />
         <FilterCheck
