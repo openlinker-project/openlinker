@@ -40,6 +40,7 @@ import {
   ORDERS_LIST_FILTERS_COPY as COPY,
   SLA_FILTER_OPTIONS,
 } from './orders-list-filters.copy';
+import { getMessages } from '../../../shared/i18n';
 
 /**
  * Every `OrderFilters` key this list can narrow by.
@@ -280,7 +281,11 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
     analyticsName: 'shop_changed',
     isActive: (s) => s.shopChanged,
     chip: (s) =>
-      single('attentionReason', COPY.chipShopChanged, s.shopChanged ? COPY.chipShopChangedValue : null),
+      single(
+        'attentionReason',
+        getMessages('orders').listFilters.shopChanged.chip,
+        s.shopChanged ? getMessages('orders').listFilters.shopChanged.chipValue : null
+      ),
   },
   waitingInOpenLinker: {
     param: 'waiting',

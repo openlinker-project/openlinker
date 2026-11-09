@@ -57,7 +57,7 @@ describe('describeSourceChange (#3961)', () => {
     const view = describeSourceChange({ ...base, omsAttention: [entry('shipped')] });
 
     expect(view?.status).toBe('shipped');
-    expect(view?.actions).toEqual([{ action: 'accept', label: 'Mark as handled' }]);
+    expect(view?.actions).toEqual([{ action: 'accept', label: 'handled' }]);
   });
 
   it('should offer try-again when applying did not finish', () => {
@@ -71,7 +71,7 @@ describe('describeSourceChange (#3961)', () => {
     const view = describeSourceChange({ ...base, omsAttention: [entry('something-new')] });
 
     expect(view?.status).toBe('decision');
-    expect(view?.effects).toHaveLength(1);
+    expect(view?.effects).toEqual([{ mark: 'todo', key: 'noLongerMatches' }]);
   });
 
   it('should still show a decision when the change itself was not recorded', () => {

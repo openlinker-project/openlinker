@@ -1467,7 +1467,7 @@ export interface OrderDocumentEmailEntry {
 
 /**
  * What "Check again" / "Keep as is" did to an order the source changed after it
- * went to packing (#3961). Codes only; copy lives in `order-source-change.copy.ts`.
+ * went to packing (#3961). Codes only; the sentences live under `orders.sourceChange` in the locale files.
  */
 export const SourceChangeOutcomeValues = [
   'nothing-to-do',

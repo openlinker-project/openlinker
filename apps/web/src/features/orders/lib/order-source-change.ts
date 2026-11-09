@@ -12,12 +12,75 @@
  *
  * @module apps/web/src/features/orders/lib
  */
+import type { Messages } from '../../../shared/i18n';
 import type { OrderAmendmentChange, OrderOmsAttentionEntry } from '../api/orders.types';
-import { SOURCE_CHANGE_COPY, type SourceChangeEffectCopy } from './order-source-change.copy';
 
 const PRODUCER = 'source-amendment';
 
 export type SourceChangeStatus = 'applied' | 'decision' | 'shipped' | 'failed';
+
+/** Whether a next step is done, waiting on someone, or just stated. */
+export type SourceChangeMark = 'done' | 'todo' | 'none';
+
+/** A key under `orders.sourceChange.effect` in the locale files. */
+export type SourceChangeEffectKey = keyof Messages['orders']['sourceChange']['effect'];
+
+/** A key under `orders.sourceChange.action` in the locale files. */
+export type SourceChangeActionLabel = keyof Messages['orders']['sourceChange']['action'];
+
+export interface SourceChangeEffect {
+  readonly mark: SourceChangeMark;
+  readonly key: SourceChangeEffectKey;
+}
+
+/**
+ * What OpenLinker did and what is left, per state. The cause codes are the
+ * backend's `SourceChangeHoldCause` plus the two it writes when nothing is held
+ * (`shipped`, `apply-failed`). The sentences live in the locale files; this
+ * table only orders them and marks each one.
+ */
+const EFFECTS: Readonly<Record<string, readonly SourceChangeEffect[]>> = {
+  applied: [
+    { mark: 'done', key: 'packingAsksNew' },
+    { mark: 'done', key: 'stockFollows' },
+  ],
+  'box-holds-more': [
+    { mark: 'todo', key: 'boxHoldsMore' },
+    { mark: 'done', key: 'packerTold' },
+    { mark: 'none', key: 'stockChangesWhenMatches' },
+  ],
+  'box-closed': [
+    { mark: 'todo', key: 'boxClosedBefore' },
+    { mark: 'done', key: 'packingOnHold' },
+    { mark: 'none', key: 'stockUnchanged' },
+  ],
+  'packed-elsewhere': [
+    { mark: 'todo', key: 'packedElsewhere' },
+    { mark: 'done', key: 'packingOnHold' },
+    { mark: 'none', key: 'tellWarehouse' },
+  ],
+  'already-fulfilled': [
+    { mark: 'todo', key: 'alreadyPacked' },
+    { mark: 'done', key: 'packingOnHold' },
+    { mark: 'none', key: 'stockUnchanged' },
+  ],
+  'units-added': [
+    { mark: 'todo', key: 'noAutoAdd' },
+    { mark: 'done', key: 'packingOnHold' },
+    { mark: 'none', key: 'stockUnchanged' },
+  ],
+  shipped: [
+    { mark: 'none', key: 'parcelLeftOld' },
+    { mark: 'todo', key: 'settleWithBuyer' },
+  ],
+  'apply-failed': [
+    { mark: 'todo', key: 'couldNotUpdate' },
+    { mark: 'none', key: 'triesAgain' },
+  ],
+};
+
+/** An unknown cause falls back to the generic sentence rather than to nothing. */
+const UNKNOWN_EFFECTS: readonly SourceChangeEffect[] = [{ mark: 'todo', key: 'noLongerMatches' }];
 
 export interface SourceChangeLineView {
   readonly key: string;
@@ -31,9 +94,9 @@ export interface SourceChangeLineView {
 export interface SourceChangeView {
   readonly status: SourceChangeStatus;
   readonly lines: readonly SourceChangeLineView[];
-  readonly effects: readonly SourceChangeEffectCopy[];
+  readonly effects: readonly SourceChangeEffect[];
   /** The primary and secondary actions, in render order; empty when nothing is left to do. */
-  readonly actions: ReadonlyArray<{ readonly action: 'recheck' | 'accept'; readonly label: string }>;
+  readonly actions: ReadonlyArray<{ readonly action: 'recheck' | 'accept'; readonly label: SourceChangeActionLabel }>;
 }
 
 export interface DescribeSourceChangeInput {
@@ -51,7 +114,7 @@ export function describeSourceChange(input: DescribeSourceChangeInput): SourceCh
 
   if (entry === undefined) {
     if (lines.length === 0 || !input.hasPackingWork) return null;
-    return { status: 'applied', lines, effects: SOURCE_CHANGE_COPY.effects.applied, actions: [] };
+    return { status: 'applied', lines, effects: effectsFor('applied'), actions: [] };
   }
 
   const cause = entry.detail ?? 'unknown';
@@ -59,16 +122,16 @@ export function describeSourceChange(input: DescribeSourceChangeInput): SourceCh
     return {
       status: 'shipped',
       lines,
-      effects: SOURCE_CHANGE_COPY.effects.shipped,
-      actions: [{ action: 'accept', label: SOURCE_CHANGE_COPY.actions.handled }],
+      effects: effectsFor('shipped'),
+      actions: [{ action: 'accept', label: 'handled' }],
     };
   }
   if (cause === 'apply-failed') {
     return {
       status: 'failed',
       lines,
-      effects: SOURCE_CHANGE_COPY.effects['apply-failed'],
-      actions: [{ action: 'recheck', label: SOURCE_CHANGE_COPY.actions.retry }],
+      effects: effectsFor('apply-failed'),
+      actions: [{ action: 'recheck', label: 'retry' }],
     };
   }
   return {
@@ -76,15 +139,14 @@ export function describeSourceChange(input: DescribeSourceChangeInput): SourceCh
     lines,
     effects: effectsFor(cause),
     actions: [
-      { action: 'recheck', label: SOURCE_CHANGE_COPY.actions.recheck },
-      { action: 'accept', label: SOURCE_CHANGE_COPY.actions.keep },
+      { action: 'recheck', label: 'recheck' },
+      { action: 'accept', label: 'keep' },
     ],
   };
 }
 
-function effectsFor(cause: string): readonly SourceChangeEffectCopy[] {
-  const table: Record<string, readonly SourceChangeEffectCopy[]> = SOURCE_CHANGE_COPY.effects;
-  return table[cause] ?? SOURCE_CHANGE_COPY.effects.unknown;
+function effectsFor(cause: string): readonly SourceChangeEffect[] {
+  return EFFECTS[cause] ?? UNKNOWN_EFFECTS;
 }
 
 function lineChanges(

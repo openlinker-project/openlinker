@@ -1,4 +1,28 @@
 {
+  "bench": {
+    "sourceChange": {
+      "countLabel": "Wyjmij",
+      "ean": "EAN {ean}",
+      "heldBody": "Sklep zmienił to zamówienie, więc zostaw karton bez zmian - biuro zdecyduje, co ma się w nim znaleźć.",
+      "sku": "SKU {sku}",
+      "takeOutBin": {
+        "few": "Sklep zmniejszył ilość tego produktu, więc wyjmij {n} sztuki i odłóż je na półkę {bin}.",
+        "many": "Sklep zmniejszył ilość tego produktu, więc wyjmij {n} sztuk i odłóż je na półkę {bin}.",
+        "one": "Sklep zmniejszył ilość tego produktu, więc wyjmij {n} sztukę i odłóż ją na półkę {bin}.",
+        "other": "Sklep zmniejszył ilość tego produktu, więc wyjmij {n} sztuki i odłóż je na półkę {bin}."
+      },
+      "takeOutNote": "Karton sam wróci do pakowania.",
+      "takeOutShelf": {
+        "few": "Sklep zmniejszył ilość tego produktu, więc wyjmij {n} sztuki i odłóż je na półkę.",
+        "many": "Sklep zmniejszył ilość tego produktu, więc wyjmij {n} sztuk i odłóż je na półkę.",
+        "one": "Sklep zmniejszył ilość tego produktu, więc wyjmij {n} sztukę i odłóż ją na półkę.",
+        "other": "Sklep zmniejszył ilość tego produktu, więc wyjmij {n} sztuki i odłóż je na półkę."
+      },
+      "takenOutAction": "Gotowe, wyjęte",
+      "takenOutFailed": "Nie udało się tego zapisać, więc sprawdź karton i potwierdź ponownie.",
+      "unnamedItem": "Ten produkt"
+    }
+  },
   "format": {
     "compactDuration": {
       "days": {
@@ -31,6 +55,16 @@
       "dueNow": "termin teraz",
       "left": "{duration} do terminu",
       "overdue": "Po terminie {duration}"
+    }
+  },
+  "fulfillmentAuthority": {
+    "attentionReason": {
+      "sourceChangeUnapplied": {
+        "action": "Otwórz zamówienie i wybierz, co zrobić z kartonem.",
+        "body": "Sklep zmienił ilość produktu, więc OpenLinker wstrzymał karton, zamiast zmieniać go samodzielnie.",
+        "title": "Zamówienie {ref} zmieniono w {channel} po rozpoczęciu pakowania",
+        "titleFallback": "To zamówienie zmieniono w sklepie po rozpoczęciu pakowania"
+      }
     }
   },
   "login": {
@@ -335,6 +369,65 @@
     "unsaved": "Masz niezapisane zmiany.",
     "usersOff": "Prośby o dostęp są wyłączone, więc strona logowania ich nie przyjmuje. <link>Ustawienia strony logowania</link>",
     "usersOn": "Prośby o dostęp są włączone, więc nowe trafiają na kartę Pending. <link>Ustawienia strony logowania</link>"
+  },
+  "orders": {
+    "listFilters": {
+      "shopChanged": {
+        "check": "Zmienione w sklepie",
+        "chip": "Sklep",
+        "chipValue": "Zmienione",
+        "quick": "Zmienione w sklepie"
+      }
+    },
+    "sourceChange": {
+      "action": {
+        "handled": "Oznacz jako załatwione",
+        "keep": "Zostaw karton bez zmian",
+        "recheck": "Sprawdź ponownie",
+        "retry": "Spróbuj ponownie"
+      },
+      "effect": {
+        "alreadyPacked": "Zgłoszono już spakowanie większej liczby sztuk",
+        "boxClosedBefore": "Karton zamknięto przed zmianą",
+        "boxHoldsMore": "W kartonie jest już więcej",
+        "couldNotUpdate": "Nie udało się zaktualizować pakowania ani stanu magazynowego",
+        "noAutoAdd": "OpenLinker nie dokłada produktów do kartonu samodzielnie",
+        "noLongerMatches": "Karton nie zgadza się już z zamówieniem",
+        "packedElsewhere": "To zamówienie jest pakowane poza OpenLinker",
+        "packerTold": "Pakowacz widzi, co wyjąć",
+        "packingAsksNew": "Pakowanie pyta o nową ilość",
+        "packingOnHold": "Pakowanie jest wstrzymane",
+        "parcelLeftOld": "Paczka wyszła ze starą ilością",
+        "settleWithBuyer": "Rozlicz różnicę z kupującym w sklepie",
+        "stockChangesWhenMatches": "Stan magazynowy zmieni się, gdy karton będzie zgodny",
+        "stockFollows": "Stan magazynowy i rezerwacja zostały dopasowane",
+        "stockUnchanged": "Stan magazynowy bez zmian",
+        "tellWarehouse": "Daj znać magazynowi, a potem zdecyduj tutaj",
+        "triesAgain": "OpenLinker spróbuje ponownie przy następnej aktualizacji"
+      },
+      "line": {
+        "added": "nowa",
+        "quantityChange": "{from} na {to}",
+        "removed": "usunięto",
+        "sku": "SKU {sku}"
+      },
+      "outcome": {
+        "accepted": "Zostawiono bez zmian, a karton został zwolniony.",
+        "applied": "Pakowanie, stan magazynowy i rezerwacja zgadzają się teraz z zamówieniem.",
+        "contended": "Ktoś inny zmienia teraz to zamówienie, więc spróbuj ponownie za chwilę.",
+        "failed": "Nie udało się tego dokończyć, więc spróbuj ponownie.",
+        "held": "Karton nadal się nie zgadza, więc pozostaje wstrzymany.",
+        "nothingToDo": "Zamówienie i pakowanie już się zgadzają.",
+        "shipped": "Paczka już wyszła, więc nic nie zmieniono."
+      },
+      "status": {
+        "applied": "Zastosowano",
+        "decision": "Wymaga decyzji",
+        "failed": "Nie dokończono",
+        "shipped": "Już wysłane"
+      },
+      "title": "Zmienione w sklepie"
+    }
   },
   "ui": {
     "accessDenied": {

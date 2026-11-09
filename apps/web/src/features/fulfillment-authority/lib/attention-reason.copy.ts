@@ -48,6 +48,7 @@ import {
   type AuthorityAttentionBadge,
   type AuthorityAttentionReason,
 } from './attention-reason';
+import { getMessages } from '../../../shared/i18n';
 
 /**
  * The placeholders a title template may carry. `{n}` is a count, so a number
@@ -90,6 +91,10 @@ export interface AttentionReasonCopy {
  * `satisfies`, not `:`, so the literal keeps its literal key types AND a
  * missing reason is a compile error.
  */
+function sourceChangeCopy(): AttentionReasonCopy {
+  return getMessages('fulfillmentAuthority').attentionReason.sourceChangeUnapplied;
+}
+
 export const ATTENTION_REASON_COPY = {
   'availability-unknown': {
     title: "We don't know how much stock to publish",
@@ -178,14 +183,26 @@ export const ATTENTION_REASON_COPY = {
     body: 'OpenLinker asked where to pack this order and got no answer in time, so it stopped waiting and will choose again. OpenLinker created no packing work for it in the meantime.',
     action: 'Usually nothing to do. If this stays or keeps coming back, check the connection that decides where orders are packed.',
   },
-  // #3961 — the shop changed a line after packing started and OpenLinker would
+  // #3961 - the shop changed a line after packing started and OpenLinker would
   // have had to guess. The box is held (unless the parcel already left), so the
   // copy names the decision rather than an error.
+  // The first entry read from the locale files (ADR-081), so the Polish is
+  // shown too. Getters, so each read takes the operator's CURRENT language
+  // rather than the one active when this module loaded; the rest of this
+  // table moves the same way when the feature is extracted.
   'source-change-unapplied': {
-    title: 'Order {ref} changed in {channel} after packing started',
-    titleFallback: 'This order changed in the shop after packing started',
-    body: 'The shop changed the quantity of an item, and the box no longer matches the order. OpenLinker put the box on hold instead of changing it on its own.',
-    action: 'Open the order and choose what to do with the box.',
+    get title(): string {
+      return sourceChangeCopy().title;
+    },
+    get titleFallback(): string {
+      return sourceChangeCopy().titleFallback;
+    },
+    get body(): string {
+      return sourceChangeCopy().body;
+    },
+    get action(): string {
+      return sourceChangeCopy().action;
+    },
   },
 } satisfies Record<AuthorityAttentionReason, AttentionReasonCopy>;
 

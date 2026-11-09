@@ -22,19 +22,20 @@
 import { useId, type ReactElement } from 'react';
 
 import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useDemoMode } from '../../system';
-import type { OrderAmendmentChange, OrderOmsAttentionEntry } from '../api/orders.types';
+import type { OrderAmendmentChange, OrderOmsAttentionEntry, SourceChangeOutcome } from '../api/orders.types';
 import { useSourceChangeMutation } from '../hooks/use-source-change-mutation';
 import {
   describeSourceChange,
   type SourceChangeLineView,
+  type SourceChangeMark,
   type SourceChangeStatus,
 } from '../lib/order-source-change';
-import { SOURCE_CHANGE_COPY, type SourceChangeMark } from '../lib/order-source-change.copy';
 
 export interface OrderSourceChangeCardProps {
   readonly internalOrderId: string;
@@ -48,6 +49,17 @@ export interface OrderSourceChangeCardProps {
   /** The source's platform, so the channel pill carries the platform colour. */
   readonly sourcePlatform?: string | null;
 }
+
+/** The API's outcome codes, as keys under `orders.sourceChange.outcome`. */
+const OUTCOME_KEY = {
+  applied: 'applied',
+  held: 'held',
+  accepted: 'accepted',
+  shipped: 'shipped',
+  'nothing-to-do': 'nothingToDo',
+  contended: 'contended',
+  failed: 'failed',
+} as const satisfies Record<SourceChangeOutcome, string>;
 
 const STATUS_TONE: Record<SourceChangeStatus, StatusBadgeTone> = {
   applied: 'success',
@@ -71,6 +83,7 @@ export function OrderSourceChangeCard({
   const mutation = useSourceChangeMutation();
   const { showToast } = useToast();
   const titleId = useId();
+  const copy = useMessages('orders').sourceChange;
 
   const view = describeSourceChange({ lastAmendmentChanges, omsAttention, itemNames, hasPackingWork });
   if (view === null) return null;
@@ -82,11 +95,11 @@ export function OrderSourceChangeCard({
         onSuccess: (result) => {
           showToast({
             tone: result.outcome === 'failed' || result.outcome === 'contended' ? 'error' : 'success',
-            description: SOURCE_CHANGE_COPY.outcome[result.outcome],
+            description: copy.outcome[OUTCOME_KEY[result.outcome]],
           });
         },
         onError: (error) => {
-          showToast({ tone: 'error', description: error.message || SOURCE_CHANGE_COPY.outcome.failed });
+          showToast({ tone: 'error', description: error.message || copy.outcome.failed });
         },
       },
     );
@@ -104,7 +117,7 @@ export function OrderSourceChangeCard({
       <header className="order-source-change__head">
         <h3 className="order-source-change__title" id={titleId}>
           <ShopChangeIcon />
-          {SOURCE_CHANGE_COPY.title}
+          {copy.title}
         </h3>
         {sourceName ? (
           <span className="channel-pill" data-channel={sourcePlatform ?? undefined}>
@@ -116,7 +129,7 @@ export function OrderSourceChangeCard({
         ) : null}
         <span className="order-source-change__status">
           <StatusBadge tone={STATUS_TONE[view.status]} withDot>
-            {SOURCE_CHANGE_COPY.status[view.status]}
+            {copy.status[view.status]}
           </StatusBadge>
         </span>
       </header>
@@ -125,16 +138,16 @@ export function OrderSourceChangeCard({
         {view.lines.length > 0 ? (
           <ul className="order-source-change__lines">
             {view.lines.map((line) => (
-              <SourceChangeLine key={line.key} line={line} />
+              <SourceChangeLine key={line.key} line={line} copy={copy.line} />
             ))}
           </ul>
         ) : null}
 
         <ul className="order-source-change__effects">
           {view.effects.map((effect) => (
-            <li key={effect.text} className="order-source-change__effect" data-mark={effect.mark}>
+            <li key={effect.key} className="order-source-change__effect" data-mark={effect.mark}>
               <EffectIcon mark={effect.mark} />
-              <span>{effect.text}</span>
+              <span>{copy.effect[effect.key]}</span>
             </li>
           ))}
         </ul>
@@ -150,7 +163,7 @@ export function OrderSourceChangeCard({
               disabled={!write.canWrite || mutation.isPending}
               onClick={() => run(entry.action)}
             >
-              {entry.label}
+              {copy.action[entry.label]}
             </Button>
           ))}
         </footer>
@@ -159,7 +172,15 @@ export function OrderSourceChangeCard({
   );
 }
 
-function SourceChangeLine({ line }: { readonly line: SourceChangeLineView }): ReactElement {
+type LineCopy = ReturnType<typeof useMessages<'orders'>>['sourceChange']['line'];
+
+function SourceChangeLine({
+  line,
+  copy,
+}: {
+  readonly line: SourceChangeLineView;
+  readonly copy: LineCopy;
+}): ReactElement {
   const removed = line.to === 0;
   const added = line.from === 0;
   return (
@@ -167,21 +188,24 @@ function SourceChangeLine({ line }: { readonly line: SourceChangeLineView }): Re
       <span className="order-source-change__item">
         <span className="order-source-change__name">{line.name}</span>
         {line.sku !== null ? (
-          <span className="order-source-change__sku mono-text">{SOURCE_CHANGE_COPY.sku(line.sku)}</span>
+          <span className="order-source-change__sku mono-text">{interpolate(copy.sku, { sku: line.sku })}</span>
         ) : null}
       </span>
       <span
         className="order-source-change__qty"
-        aria-label={`${String(line.from)} to ${removed ? SOURCE_CHANGE_COPY.lineRemoved : String(line.to)}`}
+        aria-label={interpolate(copy.quantityChange, {
+          from: String(line.from),
+          to: removed ? copy.removed : String(line.to),
+        })}
       >
         {added ? (
-          <span className="order-source-change__was">{SOURCE_CHANGE_COPY.lineAdded}</span>
+          <span className="order-source-change__was">{copy.added}</span>
         ) : (
           <span className="order-source-change__was">{line.from}</span>
         )}
         <ArrowIcon />
         <strong className="order-source-change__now" data-removed={removed || undefined}>
-          {removed ? SOURCE_CHANGE_COPY.lineRemoved : line.to}
+          {removed ? copy.removed : line.to}
         </strong>
       </span>
     </li>

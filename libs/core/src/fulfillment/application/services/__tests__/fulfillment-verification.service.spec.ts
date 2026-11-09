@@ -456,7 +456,7 @@ describe('FulfillmentVerificationService (#2418)', () => {
     });
   });
 
-  describe('#3961 — void the extra units of one line', () => {
+  describe('#3961 - void the extra units of one line', () => {
     it('voids that line\'s units beyond keep, newest first, and only that line', async () => {
       const { service, repo } = harness({
         latestActive: { id: 'verification-7', workLineId: 'line-1' },

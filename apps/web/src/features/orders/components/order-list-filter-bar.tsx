@@ -65,6 +65,7 @@ import {
   SLA_FILTER_OPTIONS,
 } from '../lib/orders-list-filters.copy';
 import { OrderTagChip } from './order-tag-chip';
+import { useMessages } from '../../../shared/i18n';
 
 /** Per-browser memory of the panel being open — a view preference, not a filter, so never in the URL. */
 const PANEL_OPEN_STORAGE_KEY = 'ol.orders-list.filters-open.v1';
@@ -162,6 +163,7 @@ export function OrderListFilterBar({
   formatDay,
 }: OrderListFilterBarProps): ReactElement {
   const { state } = filtersApi;
+  const shopChangedCopy = useMessages('orders').listFilters.shopChanged;
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const panelId = useId();
   const searchRef = useRef<HTMLInputElement>(null);
@@ -389,7 +391,7 @@ export function OrderListFilterBar({
         }}
       />
       <FilterCheck
-        label={COPY.checkShopChanged}
+        label={shopChangedCopy.check}
         tone="warning"
         checked={state.shopChanged}
         onChange={() => {
@@ -813,7 +815,7 @@ export function OrderListFilterBar({
             filtersApi.toggle('attentionReason');
           }}
         >
-          {COPY.quickShopChanged}
+          {shopChangedCopy.quick}
         </Chip>
         <Chip
           active={state.openReturn}

@@ -126,6 +126,7 @@ import { BenchSourceChange } from './bench-source-change';
 import { useBenchSourceChangeTakenOutMutation } from '../hooks/use-bench-source-change-taken-out-mutation';
 import { BenchParcelLineRow } from './bench-parcel-line';
 import { BenchScanDock } from './bench-scan-dock';
+import { useMessages } from '../../../shared/i18n';
 
 export interface BenchParcelProps {
   readonly workId: string;
@@ -191,6 +192,7 @@ export function BenchParcelView({
   // #3961 - "Done, I took it out" on a box the shop lowered.
   const takeOut = useBenchSourceChangeTakenOutMutation();
   const [takeOutFailed, setTakeOutFailed] = useState(false);
+  const sourceChangeCopy = useMessages('bench').sourceChange;
   const presence = useBenchPresenceQuery(workId, { enabled: useBenchInteractive() && canWrite });
   // A3. False while the idle lock covers the bench.
   const interactive = useBenchInteractive();
@@ -938,13 +940,13 @@ export function BenchParcelView({
         />
       ) : null}
       {takeOutFailed ? (
-        <Alert tone="error">{benchParcelCopy.sourceChange.takenOutFailed}</Alert>
+        <Alert tone="error">{sourceChangeCopy.takenOutFailed}</Alert>
       ) : null}
 
       {refusalCopy === null ||
       (parcel.sourceChange !== null && parcel.sourceChange.takeOut.length > 0) ? null : parcel.sourceChange !== null ? (
         <Alert tone="error" title={refusalCopy.title}>
-          {benchParcelCopy.sourceChange.heldBody}
+          {sourceChangeCopy.heldBody}
         </Alert>
       ) : (
         <Alert tone="error" title={refusalCopy.title}>

@@ -107,7 +107,7 @@ export const AuthorityAttentionReasonValues = [
    */
   'routing-stuck',
   /**
-   * SC-U (#3961) — the order source changed a line after the order went to
+   * SC-U (#3961) - the order source changed a line after the order went to
    * packing, and OpenLinker could not apply it on its own: the box already holds
    * more units, the box is closed, the parcel shipped, an outside holder has the
    * work, or the change adds units. Not a §4.2 row: §4.2 predates source edits
@@ -332,7 +332,7 @@ export const AUTHORITY_ATTENTION_REASON_DESCRIPTORS: Readonly<
     equivalentAuthorityKind: null,
     counted: true,
   }),
-  // #3961 — outside spec §4.2, hence an issue-numbered row label. `at-risk`
+  // #3961 - outside spec §4.2, hence an issue-numbered row label. `at-risk`
   // rather than `stopped`: the order is not lost, it waits for one decision.
   'source-change-unapplied': Object.freeze({
     specRow: 'SC-U',

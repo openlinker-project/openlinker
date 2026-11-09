@@ -14,7 +14,7 @@ import type { ReactElement } from 'react';
 
 import { Button } from '../../../shared/ui/button';
 import type { BenchParcelLine, BenchParcelSourceChange } from '../api/bench-parcel.types';
-import { benchParcelCopy } from '../lib/bench-parcel.copy';
+import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 
 export interface BenchSourceChangeProps {
   readonly sourceChange: BenchParcelSourceChange;
@@ -34,7 +34,8 @@ export function BenchSourceChange({
   onTakenOut,
   pending = false,
 }: BenchSourceChangeProps): ReactElement | null {
-  const copy = benchParcelCopy.sourceChange;
+  const copy = useMessages('bench').sourceChange;
+  const plural = usePlural();
   const entries = sourceChange.takeOut
     .map((entry) => ({ entry, line: lines.find((candidate) => candidate.workLineId === entry.workLineId) }))
     .filter(({ entry }) => entry.units > 0);
@@ -57,11 +58,13 @@ export function BenchSourceChange({
             <h3 className="bench-source-change__title">{line?.name ?? copy.unnamedItem}</h3>
             {line?.sku || line?.ean ? (
               <p className="bench-source-change__ids mono-text">
-                {line.sku ? <span>{copy.skuLabel(line.sku)}</span> : null}
-                {line.ean ? <span>{copy.eanLabel(line.ean)}</span> : null}
+                {line.sku ? <span>{interpolate(copy.sku, { sku: line.sku })}</span> : null}
+                {line.ean ? <span>{interpolate(copy.ean, { ean: line.ean })}</span> : null}
               </p>
             ) : null}
-            <p className="bench-source-change__text">{copy.takeOutBody(entry.units, line?.binCode ?? null)}</p>
+            <p className="bench-source-change__text">{line?.binCode
+                ? plural(entry.units, copy.takeOutBin, { bin: line.binCode })
+                : plural(entry.units, copy.takeOutShelf)}</p>
           </div>
           <footer className="bench-source-change__foot">
             {onTakenOut === undefined ? null : (
