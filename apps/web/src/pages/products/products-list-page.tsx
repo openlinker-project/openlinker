@@ -5,8 +5,8 @@
  * list's cross-catalog stock browsing. Same filter system as the orders list
  * (#4026, #4027):
  * - stock tabs (All / Out of stock / Low stock / Oversold) and "Needs a look"
- *   (listing gaps, no tax rate, no cost price), counted via limit:1 list
- *   probes (nav-counts precedent);
+ *   (listing gaps, no tax rate, no cost price), counted through
+ *   `GET /products/count` (useProductCountProbes, #2947);
  * - a toolbar: debounced search, Source / Listings / Tax rate / Filters, the
  *   results count and a Sort menu, with the applied filters as pills - all
  *   URL-state-backed;
@@ -54,26 +54,8 @@ import { usePlatforms } from '../../shared/plugins';
 import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
-import {
-  useProductRowsQuery,
-  useProductsQuery,
-} from '../../features/products/hooks/use-products-query';
-import { useProductsTotal } from '../../features/products/hooks/use-products-total';
 import { formatAmount } from '../../shared/format/format-amount';
 import { ListPagination } from '../../shared/ui/list-pagination';
-import type {
-  Product,
-  ProductFilters,
-  ProductListSort,
-  ProductListSortDir,
-  ProductListSortField,
-  ProductStockFilter,
-} from '../../features/products/api/products.types';
-import {
-  ProductListSortDirValues,
-  ProductListSortFieldValues,
-  ProductStockFilterValues,
-} from '../../features/products/api/products.types';
 import {
   ConnectionCell,
   ConnectionChip,
@@ -84,15 +66,27 @@ import {
 import type { Connection, ConnectionChipChannel } from '../../features/connections';
 import { selectPublishDestinations } from '../../features/listings';
 import {
+  deriveProductStaleness,
   deriveStockStatus,
+  ProductAttentionSummary,
+  ProductListSortDirValues,
+  ProductListSortFieldValues,
+  ProductStockFilterValues,
   STOCK_STATUS_BADGE_TONE,
   STOCK_STATUS_LABEL,
+  useCostCoverageQuery,
+  useProductCountProbes,
+  useProductRowsQuery,
+  useProductsTotal,
+  type Product,
+  type ProductCountProbe,
+  type ProductFilters,
+  type ProductListSort,
+  type ProductListSortDir,
+  type ProductListSortField,
+  type ProductStockFilter,
 } from '../../features/products';
 import { deriveAtpStatus } from '../../features/inventory';
-import { deriveProductStaleness } from '../../features/products/lib/product-staleness';
-import { useCostCoverageQuery } from '../../features/products/hooks/use-cost-coverage-query';
-import { useProductCountProbes } from '../../features/products/hooks/use-product-count-probes';
-import { ProductAttentionSummary } from '../../features/products/components/product-attention-summary';
 import {
   interpolate,
   renderRich,
@@ -119,8 +113,6 @@ const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
 /** Maximum products an operator can bulk-list in one batch (BE-enforced ceiling). */
 export const BULK_SELECTION_CAP = 100;
-/** limit:1 probe pagination shared by the KPI tiles (nav-counts precedent). */
-const KPI_PROBE = { limit: 1 } as const;
 
 // When currency is missing, the raw amount is shown muted with a hover-reveal
 // rather than silently emitting a bare decimal — explicit ambiguity is safer.
@@ -369,42 +361,45 @@ export function ProductsListPage(): ReactElement {
     }
   }, [totalStage.total]);
 
-  // KPI tile counts — four cheap limit:1 probes with distinct query keys
-  // (nav-counts precedent). The gaps probe is disabled with zero OfferCreator
-  // connections (its filter would be meaningless).
-  const allProbe = useProductsQuery(undefined, KPI_PROBE);
-  // #2255 — two probes, because the two states drive different remedies and
-  // must never be added together. `missing` is the tile; `not-checked` is the
-  // sync suggestion, and it is the whole catalogue on day one.
-  const noRateProbe = useProductsQuery({ taxRateState: 'missing' }, KPI_PROBE, undefined, {
-    enabled: hasProductMaster,
-  });
-  const notCheckedProbe = useProductsQuery({ taxRateState: 'not-checked' }, KPI_PROBE, undefined, {
-    enabled: hasProductMaster,
-  });
-  const outProbe = useProductsQuery({ stock: 'out' }, KPI_PROBE);
-  const lowProbe = useProductsQuery({ stock: 'low' }, KPI_PROBE);
-  const oversoldProbe = useProductsQuery({ stock: 'oversold' }, KPI_PROBE);
-  // What "Hide products deleted at source" hides = all products minus what it keeps.
-  const keptProbe = useProductsQuery({ hideFullyStale: true }, KPI_PROBE);
+  // KPI tile counts - one count per filter set through `GET /products/count`
+  // (#2947), never a `limit: 1` list read: the count is the expensive half and
+  // the rows would be thrown away. The "All products" probe shares its cache
+  // entry with the unfiltered results count above. The gaps probe is disabled
+  // with zero OfferCreator connections (its filter would be meaningless).
   const gapsFilters = useMemo<ProductFilters>(
     () => ({ unlistedOn: offerCreatorIds }),
     [offerCreatorIds],
   );
-  const gapsProbe = useProductsQuery(gapsFilters, KPI_PROBE, undefined, {
-    enabled: offerCreatorIds.length > 0,
-  });
+  // #2255 - two tax-rate probes, because the two states drive different
+  // remedies and must never be added together. `missing` is the tile;
+  // `not-checked` is the sync suggestion, and it is the whole catalogue on
+  // day one. "Hidden at source" = all products minus what `hideFullyStale` keeps.
+  const kpiProbes = useMemo<ProductCountProbe[]>(
+    () => [
+      { filters: undefined },
+      { filters: { taxRateState: 'missing' }, enabled: hasProductMaster },
+      { filters: { taxRateState: 'not-checked' }, enabled: hasProductMaster },
+      { filters: { stock: 'out' } },
+      { filters: { stock: 'low' } },
+      { filters: { stock: 'oversold' } },
+      { filters: { hideFullyStale: true } },
+      { filters: gapsFilters, enabled: offerCreatorIds.length > 0 },
+    ],
+    [hasProductMaster, gapsFilters, offerCreatorIds.length],
+  );
+  const [allTotal, taxMissingCount, taxNotCheckedCount, outCount, lowCount, oversoldCount, keptTotal, gapsCount] =
+    useProductCountProbes(kpiProbes);
 
-  const sourceProbeFilters = useMemo<ProductFilters[]>(
-    () => activeConnections.map((c) => ({ connectionId: c.id })),
+  const sourceProbes = useMemo<ProductCountProbe[]>(
+    () => activeConnections.map((c) => ({ filters: { connectionId: c.id } })),
     [activeConnections],
   );
-  const sourceProbeCounts = useProductCountProbes(sourceProbeFilters);
-  const gapProbeFilters = useMemo<ProductFilters[]>(
-    () => offerManagerConnections.map((c) => ({ unlistedOn: [c.id] })),
+  const sourceProbeCounts = useProductCountProbes(sourceProbes);
+  const gapProbes = useMemo<ProductCountProbe[]>(
+    () => offerManagerConnections.map((c) => ({ filters: { unlistedOn: [c.id] } })),
     [offerManagerConnections],
   );
-  const gapProbeCounts = useProductCountProbes(gapProbeFilters);
+  const gapProbeCounts = useProductCountProbes(gapProbes);
   const sourceCounts = useMemo(
     () => Object.fromEntries(activeConnections.map((c, i) => [c.id, sourceProbeCounts[i]])),
     [activeConnections, sourceProbeCounts],
@@ -419,15 +414,13 @@ export function ProductsListPage(): ReactElement {
       })),
     [offerManagerConnections, gapProbeCounts, platforms],
   );
-  const allTotal = allProbe.data?.total;
-  const keptTotal = keptProbe.data?.total;
   const staleCount =
     allTotal !== undefined && keptTotal !== undefined ? Math.max(allTotal - keptTotal, 0) : undefined;
   const stockCounts = {
     all: allTotal,
-    out: outProbe.data?.total,
-    low: lowProbe.data?.total,
-    oversold: oversoldProbe.data?.total,
+    out: outCount,
+    low: lowCount,
+    oversold: oversoldCount,
   };
 
   // ── URL param setters ──────────────────────────────────────────────────
@@ -1129,15 +1122,15 @@ export function ProductsListPage(): ReactElement {
         />
         <ProductAttentionSummary
           allGapsValue={gapsCsv}
-          gapsCount={gapsProbe.data?.total}
+          gapsCount={gapsCount}
           gapConnections={gapConnections}
           unlistedOn={unlistedOnParam}
           onUnlistedOnChange={(next) => {
             setFilterParam('unlistedOn', next);
           }}
           showTax={hasProductMaster}
-          taxMissingCount={noRateProbe.data?.total}
-          taxNotCheckedCount={notCheckedProbe.data?.total}
+          taxMissingCount={taxMissingCount}
+          taxNotCheckedCount={taxNotCheckedCount}
           taxRateState={taxRateState}
           onTaxRateStateChange={(next) => {
             setFilterParam('taxRateState', next ?? '');
@@ -1182,7 +1175,7 @@ export function ProductsListPage(): ReactElement {
           setFilterParam('connectionId', id ?? '');
         }}
         allGapsValue={gapsCsv}
-        gapsCount={gapsProbe.data?.total}
+        gapsCount={gapsCount}
         gapConnections={gapConnections}
         unlistedOn={unlistedOnParam}
         onUnlistedOnChange={(next) => {
@@ -1190,8 +1183,8 @@ export function ProductsListPage(): ReactElement {
         }}
         showTax={hasProductMaster}
         taxRateState={taxRateState}
-        taxMissingCount={noRateProbe.data?.total}
-        taxNotCheckedCount={notCheckedProbe.data?.total}
+        taxMissingCount={taxMissingCount}
+        taxNotCheckedCount={taxNotCheckedCount}
         onTaxRateStateChange={(next) => {
           setFilterParam('taxRateState', next ?? '');
         }}

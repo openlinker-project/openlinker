@@ -23,11 +23,11 @@ import { Select } from '../../shared/ui/select';
 import { SidePanel } from '../../shared/ui/side-panel';
 import { SortMenu } from '../../shared/ui/sort-menu';
 import type {
+  ProductGapConnection,
   ProductListSortDir,
   ProductListSortField,
   ProductStockFilter,
-} from '../../features/products/api/products.types';
-import type { ProductGapConnection } from '../../features/products/components/product-attention-summary';
+} from '../../features/products';
 
 /** Sort menu entries in menu order; `createdAt` (newest first) is the default. */
 const SORT_KEYS: readonly ProductListSortField[] = ['createdAt', 'updatedAt', 'name', 'sku', 'price', 'stock'];

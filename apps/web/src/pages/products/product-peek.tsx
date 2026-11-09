@@ -18,7 +18,7 @@ import { renderRich, useMessages } from '../../shared/i18n';
 import { PeekPanel, PeekStateCard } from '../../shared/ui/peek-panel';
 import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
 import { StatusBadge } from '../../shared/ui/status-badge';
-import type { Product } from '../../features/products/api/products.types';
+import type { Product } from '../../features/products';
 
 export interface ProductPeekView {
   product: Product;
