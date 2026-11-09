@@ -872,6 +872,8 @@
   "orders:deliveryChip.rider.disabled": 26,
   "orders:deliveryChip.rider.notConnected": 21,
   "orders:deliveryChip.rider.unmapped": 13,
+  "orders:destinationRouting.reasons.no-active-destination.label": 32,
+  "orders:destinationRouting.reasons.no-destination-configured.label": 32,
   "orders:dispatchRiskPage.buckets.atRisk.label": 13,
   "orders:dispatchRiskPage.buckets.onTrack.label": 13,
   "orders:dispatchRiskPage.buckets.overdue.label": 12,

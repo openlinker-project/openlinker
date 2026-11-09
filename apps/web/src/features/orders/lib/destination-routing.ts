@@ -8,10 +8,11 @@
  *
  * ## Two tones, and the split is the whole point of #2703
  *
- * `'routed-to-no-destination'` is a **working router making a decision** - it is
- * rendered NEUTRALLY and is never counted. Every other reason names a
- * destination the router asked for that OpenLinker could not reach, which is
- * outstanding work and renders as a warning. Collapsing the two would restore
+ * `'routed-to-no-destination'` is a **working router making a decision** and
+ * `'no-destination-configured'` (#3959) a shop with nothing to copy its orders
+ * to - both are rendered NEUTRALLY and never counted. Every other reason is
+ * outstanding work (a destination OpenLinker could not reach) and renders as a
+ * warning. Collapsing the two would restore
  * exactly the ambiguity #2703 exists to remove, one surface down: an operator
  * could not tell a router deciding from a configuration failing.
  *
@@ -52,6 +53,10 @@ export const DESTINATION_ROUTING_REASON_TONE = {
   'routed-destinations-unavailable': 'attention',
   'routed-destinations-partially-unavailable': 'attention',
   'routed-to-source-only': 'attention',
+  // #3959 - true of every order on a single-shop install, so it must stay
+  // neutral; a warning here would sit on every row of a healthy install.
+  'no-destination-configured': 'decision',
+  'no-active-destination': 'attention',
 } as const satisfies Record<DestinationRoutingBlockReasonValue, DestinationRoutingTone>;
 
 /**
