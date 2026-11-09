@@ -186,4 +186,21 @@ describe('ReviewCategoryCell conflict', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Barcode disagrees on 2 variants' }));
     expect(onReveal).toHaveBeenCalledTimes(1);
   });
+
+  it('should still point at disagreeing variants when the product has no category of its own', () => {
+    const onReveal = vi.fn();
+    renderWithProviders(
+      <ReviewCategoryCell
+        connectionId="c1"
+        categoryId={null}
+        source={null}
+        resolvesAtSubmit={false}
+        siblingConflicts={{ count: 1, onReveal }}
+      />,
+    );
+
+    expect(screen.getByText('Not set')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Barcode disagrees on 1 variant' }));
+    expect(onReveal).toHaveBeenCalledTimes(1);
+  });
 });

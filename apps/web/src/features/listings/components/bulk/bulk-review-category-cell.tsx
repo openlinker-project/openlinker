@@ -18,6 +18,7 @@
  * @module apps/web/src/features/listings/components/bulk
  */
 import type { ReactElement } from 'react';
+import { interpolate, useMessages, usePlural } from '../../../../shared/i18n';
 import { useCategoryPathQuery } from '../../../mappings';
 import type { EanMatchCardRef } from '../../api/listings.types';
 import type { BulkVariantRow, BulkWizardRow } from './bulk-wizard.types';
@@ -26,21 +27,14 @@ import { operatorPickedCategory, productCategoryIdOf, submitCategoryIdOf } from 
 /** Where the submitted category came from. */
 export type CategorySource = 'picked' | 'shared' | 'mapping' | 'card' | 'card-agrees';
 
-const SOURCE_LABEL: Record<CategorySource, string> = {
-  picked: 'Set here',
-  shared: 'Shared',
-  mapping: 'Mapping',
-  card: 'Catalog',
-  'card-agrees': 'Catalog + mapping',
-};
-
-const SOURCE_HINT: Record<CategorySource, string> = {
-  picked: 'You picked this category in this wizard.',
-  shared: 'All variants of a product list under one category, so this variant uses the product category.',
-  mapping: 'Resolved from your category mapping.',
-  card: 'Matched by barcode to a catalog product. No category mapping covers this product.',
-  'card-agrees': 'Matched by barcode to a catalog product that sits in the category your mapping names.',
-};
+/** The copy key of each source: locale keys cannot carry the hyphen. */
+const SOURCE_COPY_KEY = {
+  picked: 'picked',
+  shared: 'shared',
+  mapping: 'mapping',
+  card: 'card',
+  'card-agrees': 'cardAgrees',
+} as const satisfies Record<CategorySource, string>;
 
 /**
  * The submitted category for one variant, and its source. Exported for tests:
@@ -115,10 +109,17 @@ export function ReviewCategoryCell({
   conflict,
   siblingConflicts,
 }: ReviewCategoryCellProps): ReactElement {
+  const copy = useMessages('listings').bulkReview.categoryCell;
   if (categoryId === null) {
+    // The sibling line must render here too: a multi-variant product with no
+    // product-tier category still hides its disagreeing variants behind the
+    // caret, which is exactly what the line exists to prevent.
     return (
       <div className="bulk-review__c-cat review-cat">
-        <span className="review-cat__none">{resolvesAtSubmit ? 'Resolved at submit' : 'Not set'}</span>
+        <span className="review-cat__none">{resolvesAtSubmit ? copy.resolvedAtSubmit : copy.notSet}</span>
+        {siblingConflicts && siblingConflicts.count > 0 ? (
+          <SiblingConflictsLink count={siblingConflicts.count} onReveal={siblingConflicts.onReveal} />
+        ) : null}
       </div>
     );
   }
@@ -146,46 +147,55 @@ function ResolvedCategory({
   conflict: { card: EanMatchCardRef; onCompare: () => void } | null;
   siblingConflicts: { count: number; onReveal: () => void } | null;
 }): ReactElement {
+  const copy = useMessages('listings').bulkReview.categoryCell;
   const pathQuery = useCategoryPathQuery(connectionId, categoryId);
   const path = pathQuery.data ?? [];
   const leaf = path.length > 0 ? path[path.length - 1].name : null;
   const trail = compactTrail(path.slice(0, -1).map((n) => n.name));
   const full = path.map((n) => n.name).join(' › ');
+  const fallbackName = interpolate(copy.categoryFallback, { id: categoryId });
 
   return (
     <div className="bulk-review__c-cat review-cat">
-      <div className="review-cat__head" title={full || `Category ${categoryId}`}>
+      <div className="review-cat__head" title={full || fallbackName}>
         {pathQuery.isPending ? (
           <span className="review-cat__leaf review-cat__leaf--pending" aria-busy="true">
-            Loading…
+            {copy.loading}
           </span>
         ) : (
-          <span className="review-cat__leaf">{leaf ?? `Category ${categoryId}`}</span>
+          <span className="review-cat__leaf">{leaf ?? fallbackName}</span>
         )}
         {source ? (
-          <span className={`review-cat__source review-cat__source--${source}`} title={SOURCE_HINT[source]}>
-            {SOURCE_LABEL[source]}
+          <span
+            className={`review-cat__source review-cat__source--${source}`}
+            title={copy.sourceHint[SOURCE_COPY_KEY[source]]}
+          >
+            {copy.sourceLabel[SOURCE_COPY_KEY[source]]}
           </span>
         ) : null}
       </div>
       {trail ? (
         <span className="review-cat__trail">{trail}</span>
       ) : !pathQuery.isPending && leaf === null ? (
-        <span className="review-cat__trail">Path not synced yet</span>
+        <span className="review-cat__trail">{copy.pathNotSynced}</span>
       ) : null}
       {conflict ? (
         <ConflictLink connectionId={connectionId} card={conflict.card} onCompare={conflict.onCompare} />
       ) : siblingConflicts && siblingConflicts.count > 0 ? (
-        <button type="button" className="review-cat__conflict" onClick={siblingConflicts.onReveal}>
-          <ForkIcon />
-          <span className="review-cat__conflict-text">
-            {siblingConflicts.count === 1
-              ? 'Barcode disagrees on 1 variant'
-              : `Barcode disagrees on ${siblingConflicts.count} variants`}
-          </span>
-        </button>
+        <SiblingConflictsLink count={siblingConflicts.count} onReveal={siblingConflicts.onReveal} />
       ) : null}
     </div>
+  );
+}
+
+function SiblingConflictsLink({ count, onReveal }: { count: number; onReveal: () => void }): ReactElement {
+  const copy = useMessages('listings').bulkReview.categoryCell;
+  const plural = usePlural();
+  return (
+    <button type="button" className="review-cat__conflict" onClick={onReveal}>
+      <ForkIcon />
+      <span className="review-cat__conflict-text">{plural(count, copy.siblingConflicts)}</span>
+    </button>
   );
 }
 
@@ -199,14 +209,18 @@ function ConflictLink({
   onCompare: () => void;
 }): ReactElement {
   const cardPath = useCategoryPathQuery(connectionId, card.allegroCategoryId);
+  const copy = useMessages('listings').bulkReview.categoryCell;
   const cardLeaf = cardPath.data?.[cardPath.data.length - 1]?.name;
-  const label = `Barcode matched ${cardLeaf ?? 'another category'}`;
+  const label =
+    cardLeaf === undefined
+      ? copy.barcodeMatchedUnknown
+      : interpolate(copy.barcodeMatched, { category: cardLeaf });
   return (
     <button
       type="button"
       className="review-cat__conflict"
       onClick={onCompare}
-      aria-label={`${label}. Compare with your mapping`}
+      aria-label={interpolate(copy.compareAria, { label })}
     >
       <ForkIcon />
       <span className="review-cat__conflict-text">{label}</span>
