@@ -47,6 +47,7 @@ export { FulfillmentRoutingRule } from './domain/entities/fulfillment-routing-ru
 export { IncompatibleProcessorException } from './domain/exceptions/incompatible-processor.exception';
 export { DuplicateRoutingRuleException } from './domain/exceptions/duplicate-routing-rule.exception';
 export { InvalidParcelProfileException } from './domain/exceptions/invalid-parcel-profile.exception';
+export { CategoryMappingReassignSameConnectionException } from './domain/exceptions/category-mapping-reassign-same-connection.exception';
 export {
   FulfillmentProcessorKindValues,
   FULFILLMENT_PROCESSOR_KIND,

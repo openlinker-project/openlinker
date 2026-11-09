@@ -26,10 +26,17 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
+import {
+  CategoryMappingReassignSameConnectionException,
+  IMappingConfigService,
+  MAPPING_CONFIG_SERVICE_TOKEN,
+} from '@openlinker/core/mappings';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import { Logger } from '@openlinker/shared/logging';
 import { UpsertStatusMappingsDto } from './dto/upsert-status-mappings.dto';
 import { UpsertCarrierMappingsDto } from './dto/upsert-carrier-mappings.dto';
 import { UpsertPaymentMappingsDto } from './dto/upsert-payment-mappings.dto';
@@ -51,9 +58,13 @@ import {
 @ApiTags('mappings')
 @Controller('connections/:connectionId/mappings')
 export class MappingsController {
+  private readonly logger = new Logger(MappingsController.name);
+
   constructor(
     @Inject(MAPPING_CONFIG_SERVICE_TOKEN)
-    private readonly mappingConfigService: IMappingConfigService
+    private readonly mappingConfigService: IMappingConfigService,
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrationsService: IIntegrationsService
   ) {}
 
   // ── Status mappings ──────────────────────────────────────────────────────
@@ -218,17 +229,47 @@ export class MappingsController {
   })
   @ApiParam({ name: 'connectionId', type: String, description: 'Marketplace connection ID' })
   @ApiResponse({ status: 200, type: CategoryMappingReassignResponseDto })
-  @ApiResponse({ status: 400, description: 'Invalid input' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Invalid input, the same connection on both sides, or a route connection that is not a ' +
+      'marketplace with its own category tree',
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async reassignCategoryMappings(
     @Param('connectionId') connectionId: string,
     @Body() dto: CategoryMappingReassignInputDto
   ): Promise<CategoryMappingReassignResponseDto> {
-    const result = await this.mappingConfigService.reassignCategoryMappings(
-      dto.fromConnectionId,
-      connectionId
-    );
-    return CategoryMappingReassignResponseDto.fromDomain(result);
+    await this.assertMappableMarketplace(connectionId);
+    try {
+      const result = await this.mappingConfigService.reassignCategoryMappings(
+        dto.fromConnectionId,
+        connectionId
+      );
+      return CategoryMappingReassignResponseDto.fromDomain(result);
+    } catch (error) {
+      if (error instanceof CategoryMappingReassignSameConnectionException) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Mappings are only read for a marketplace that lists offers and browses
+   * its own category tree (the connections the Category Mappings page offers).
+   * Moving rows onto anything else - a shop, a master - would store them where
+   * nothing reads them, so it is refused with a reason rather than accepted.
+   */
+  private async assertMappableMarketplace(connectionId: string): Promise<void> {
+    const { connection, metadata } = await this.integrationsService.getAdapter(connectionId);
+    const listsOffers = connection.enabledCapabilities.includes('OfferManager');
+    const hasCategoryTree = metadata.supportedCapabilities.includes('CategoryBrowser');
+    if (!listsOffers || !hasCategoryTree) {
+      throw new BadRequestException(
+        `Connection '${connection.name}' is not a marketplace with its own category tree, so category mappings moved onto it would never be used. Choose a marketplace connection such as Allegro.`
+      );
+    }
   }
 
   @Put('categories/:prestashopCategoryId')
@@ -246,6 +287,13 @@ export class MappingsController {
     @Body() dto: CategoryMappingInputDto
   ): Promise<CategoryMappingResponseDto> {
     // #1036: the wire DTO keeps its Allegro/PS field names; the core input is neutral.
+    if (dto.sourceConnectionId === undefined) {
+      this.logger.warn(
+        `Deprecated: category mapping written for connection ${connectionId} without sourceConnectionId. ` +
+          'It is stored as a source-agnostic row; send sourceConnectionId (the master connection), ' +
+          'which becomes required in the next release (#3993).'
+      );
+    }
     const mapping = await this.mappingConfigService.upsertCategoryMapping(connectionId, {
       sourceConnectionId: dto.sourceConnectionId,
       sourceCategoryId: prestashopCategoryId,

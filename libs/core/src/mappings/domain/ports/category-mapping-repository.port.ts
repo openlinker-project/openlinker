@@ -81,8 +81,9 @@ export interface CategoryMappingRepositoryPort {
 
   /**
    * Delete the mapping for a source category. With `sourceConnectionId`, only
-   * the rows that apply to that source are removed (its own and the
-   * source-agnostic `NULL` one, which would otherwise keep resolving).
+   * that source's own row is removed. The source-agnostic (`NULL`) row is left
+   * alone: it is the fallback every other source resolves through, so
+   * clearing one master's mapping must not take it from the rest.
    */
   deleteMapping(
     destinationConnectionId: string,
@@ -96,7 +97,8 @@ export interface CategoryMappingRepositoryPort {
    * destination when it was `NULL` (#3993: rows the Category Mappings page
    * once wrote under the master's own id). A source category already mapped
    * at the target for that source keeps the target's row, and the moved row
-   * is dropped. Runs in one transaction.
+   * is dropped. Runs in one transaction. The same id on both sides moves
+   * nothing (every row would otherwise clash with itself and be dropped).
    */
   reassignDestination(
     fromDestinationConnectionId: string,

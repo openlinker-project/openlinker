@@ -163,7 +163,7 @@ describe('ConnectionCategoryMappingsPage', () => {
     );
 
     await screen.findByRole('button', { name: 'Choose a category for Women' });
-    expect(screen.getByRole('button', { name: 'Change the category for Men' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Change the category for Men' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: /Not mapped/ }));
 
     await waitFor(() => {

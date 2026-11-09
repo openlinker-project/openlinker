@@ -154,18 +154,19 @@ export class CategoryMappingRepository implements CategoryMappingRepositoryPort 
       await this.repo.delete({ destinationConnectionId, sourceCategoryId });
       return;
     }
+    // The NULL-source row is the fallback for every other source; it is not
+    // this source's to remove.
     await this.repo.delete({ destinationConnectionId, sourceCategoryId, sourceConnectionId });
-    await this.repo.delete({
-      destinationConnectionId,
-      sourceCategoryId,
-      sourceConnectionId: IsNull(),
-    });
   }
 
   async reassignDestination(
     fromDestinationConnectionId: string,
     toDestinationConnectionId: string
   ): Promise<CategoryMappingReassignResult> {
+    // Every row would clash with itself and be dropped as "kept".
+    if (fromDestinationConnectionId === toDestinationConnectionId) {
+      return { moved: 0, keptSourceCategoryIds: [] };
+    }
     return this.repo.manager.transaction(async (manager) => {
       const repo = manager.getRepository(CategoryMappingOrmEntity);
       const moving = await repo.find({

@@ -8019,6 +8019,12 @@ html:has(.login-stage) {
   flex: 1;
 }
 
+.allegro-category-search__note {
+  flex-basis: 100%;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
 .allegro-category-search__clear,
 .allegro-category-search__staged-actions {
   margin-left: auto;

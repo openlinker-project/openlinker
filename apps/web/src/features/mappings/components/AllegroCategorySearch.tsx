@@ -118,14 +118,23 @@ export function AllegroCategorySearch({
 
   return (
     <div className="allegro-category-search">
-      {/* Current saved mapping */}
+      {/* Current saved mapping. A row with no source is the shared fallback for
+          every catalogue: it is not this catalogue's to clear, so it says so
+          and offers an override instead of a Clear that would remove it for
+          the others too (#3993). */}
       {currentMapping && !staged && (
         <div className="allegro-category-search__current" data-testid="category-mapping-current">
-          <span className="allegro-category-search__label">{copy.goesTo}</span>
+          <span className="allegro-category-search__label">
+            {currentMapping.sourceConnectionId === null ? copy.sharedMapping : copy.goesTo}
+          </span>
           <CategoryPathText path={currentMapping.allegroCategoryPath ?? currentMapping.allegroCategoryName} />
-          <Button tone="ghost" className="button--sm allegro-category-search__clear" onClick={onClear} disabled={isSaving}>
-            {copy.clearMapping}
-          </Button>
+          {currentMapping.sourceConnectionId === null ? (
+            <span className="allegro-category-search__note">{copy.sharedMappingHint}</span>
+          ) : (
+            <Button tone="ghost" className="button--sm allegro-category-search__clear" onClick={onClear} disabled={isSaving}>
+              {copy.clearMapping}
+            </Button>
+          )}
         </div>
       )}
 

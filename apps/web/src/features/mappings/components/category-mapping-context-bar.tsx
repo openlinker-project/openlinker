@@ -54,6 +54,7 @@ export function CategoryMappingContextBar({
         <Select
           id={MARKETPLACE_SELECT_ID}
           className="category-map-context__select"
+          aria-label={copy.mapForLabel}
           data-testid="category-mappings-marketplace-select"
           value={marketplaceConnectionId}
           onChange={(e) => { onMarketplaceChange(e.target.value); }}

@@ -96,6 +96,10 @@ export interface IMappingConfigService {
   /**
    * Category mappings authored for a destination connection; with
    * `sourceConnectionId`, only those that apply to that source store (#3993).
+   *
+   * `deleteCategoryMapping` with a source removes that source's own row only.
+   * A source-agnostic (`NULL`) row is the fallback for every other source, so
+   * it is never removed as a side effect of clearing one source's mapping.
    */
   getCategoryMappings(
     destinationConnectionId: string,
@@ -113,7 +117,9 @@ export interface IMappingConfigService {
   /**
    * Move the category mappings keyed by one connection onto another (#3993).
    * Used to adopt the rows the Category Mappings page once saved under the
-   * master's own id, which no offer ever read.
+   * master's own id, which no offer ever read. Rejects with
+   * `CategoryMappingReassignSameConnectionException` when both ids are the
+   * same, since every row would clash with itself and be dropped.
    */
   reassignCategoryMappings(
     fromDestinationConnectionId: string,

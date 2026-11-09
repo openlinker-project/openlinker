@@ -7,6 +7,7 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { MappingConfigService } from '../mapping-config.service';
+import { CategoryMappingReassignSameConnectionException } from '../../../domain/exceptions/category-mapping-reassign-same-connection.exception';
 import {
   STATUS_MAPPING_REPOSITORY_TOKEN,
   CARRIER_MAPPING_REPOSITORY_TOKEN,
@@ -441,6 +442,13 @@ describe('MappingConfigService', () => {
 
       expect(categoryRepo.findByDestinationConnection).toHaveBeenCalledWith(CONNECTION_ID, 'src-1');
       expect(categoryRepo.deleteMapping).toHaveBeenCalledWith(CONNECTION_ID, '3', 'src-1');
+    });
+
+    it('should refuse to reassign a connection onto itself without touching the repository (#3993)', async () => {
+      await expect(service.reassignCategoryMappings(CONNECTION_ID, CONNECTION_ID)).rejects.toBeInstanceOf(
+        CategoryMappingReassignSameConnectionException
+      );
+      expect(categoryRepo.reassignDestination).not.toHaveBeenCalled();
     });
 
     it('should move mappings from one connection to another when reassigning (#3993)', async () => {

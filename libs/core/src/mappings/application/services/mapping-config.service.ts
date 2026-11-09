@@ -33,6 +33,7 @@ import { StatusMappingRepositoryPort } from '../../domain/ports/status-mapping-r
 import { CarrierMappingRepositoryPort } from '../../domain/ports/carrier-mapping-repository.port';
 import { PaymentMappingRepositoryPort } from '../../domain/ports/payment-mapping-repository.port';
 import { CategoryMappingRepositoryPort } from '../../domain/ports/category-mapping-repository.port';
+import { CategoryMappingReassignSameConnectionException } from '../../domain/exceptions/category-mapping-reassign-same-connection.exception';
 import { OrderStateMappingRepositoryPort } from '../../domain/ports/order-state-mapping-repository.port';
 import { AttributeMappingRepositoryPort } from '../../domain/ports/attribute-mapping-repository.port';
 import { AttributeMappingRuleRepositoryPort } from '../../domain/ports/attribute-mapping-rule-repository.port';
@@ -178,6 +179,11 @@ export class MappingConfigService implements IMappingConfigService {
     fromDestinationConnectionId: string,
     toDestinationConnectionId: string
   ): Promise<CategoryMappingReassignResult> {
+    if (fromDestinationConnectionId === toDestinationConnectionId) {
+      return Promise.reject(
+        new CategoryMappingReassignSameConnectionException(fromDestinationConnectionId)
+      );
+    }
     return this.categoryRepo.reassignDestination(
       fromDestinationConnectionId,
       toDestinationConnectionId

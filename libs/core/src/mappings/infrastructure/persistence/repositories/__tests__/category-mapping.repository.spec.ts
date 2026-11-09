@@ -220,18 +220,14 @@ describe('CategoryMappingRepository', () => {
       expect(result.map((m) => m.id).sort()).toEqual(['only-wildcard', 'own']);
     });
 
-    it('should delete the source own and the source-agnostic row when a source is given', async () => {
+    it('should delete only the source own row and keep the shared fallback when a source is given', async () => {
       await sut.deleteMapping('dest-1', 'c1', 'master-1');
 
+      expect(repo.delete).toHaveBeenCalledTimes(1);
       expect(repo.delete).toHaveBeenCalledWith({
         destinationConnectionId: 'dest-1',
         sourceCategoryId: 'c1',
         sourceConnectionId: 'master-1',
-      });
-      expect(repo.delete).toHaveBeenCalledWith({
-        destinationConnectionId: 'dest-1',
-        sourceCategoryId: 'c1',
-        sourceConnectionId: IsNull(),
       });
     });
   });
@@ -270,6 +266,16 @@ describe('CategoryMappingRepository', () => {
       expect(tx.save).not.toHaveBeenCalled();
       expect(tx.delete).toHaveBeenCalledWith({ id: 'legacy' });
       expect(result).toEqual({ moved: 0, keptSourceCategoryIds: ['c1'] });
+    });
+
+    it('should move nothing and delete nothing when both connections are the same', async () => {
+      const tx = withTransaction();
+
+      const result = await sut.reassignDestination('alg-1', 'alg-1');
+
+      expect(result).toEqual({ moved: 0, keptSourceCategoryIds: [] });
+      expect(tx.find).not.toHaveBeenCalled();
+      expect(tx.delete).not.toHaveBeenCalled();
     });
 
     it('should not treat a row authored for another master as a clash', async () => {

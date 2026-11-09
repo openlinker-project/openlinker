@@ -200,6 +200,38 @@ describe('AllegroCategorySearch', () => {
     expect(screen.queryByTestId('category-mapping-staged')).not.toBeInTheDocument();
     expect(onSelect).not.toHaveBeenCalled();
   });
+  it('should show a shared fallback mapping without a Clear action when it has no source (#3993)', async () => {
+    const apiClient = createMockApiClient({
+      mappings: {
+        getAllegroCategories: vi.fn(
+          mockCategoriesEndpoint({ root: [{ id: 'cat-books', name: 'Books', parentId: null, leaf: true }] }),
+        ),
+      },
+    });
+
+    renderWithProviders(
+      <AllegroCategorySearch
+        marketplaceConnectionId={connectionId}
+        currentMapping={{
+          id: 'm-shared',
+          connectionId,
+          sourceConnectionId: null,
+          prestashopCategoryId: '7',
+          allegroCategoryId: 'cat-books',
+          allegroCategoryName: 'Books',
+          allegroCategoryPath: null,
+        }}
+        onSelect={vi.fn()}
+        onClear={vi.fn()}
+        isSaving={false}
+      />,
+      { apiClient },
+    );
+
+    const current = await screen.findByTestId('category-mapping-current');
+    expect(within(current).getByText('Shared by every catalogue')).toBeInTheDocument();
+    expect(within(current).queryByRole('button', { name: /clear mapping/i })).not.toBeInTheDocument();
+  });
   describe('whole-tree search (#2075)', () => {
     // Until #2075 this component was named "Search" and offered only
     // drill-down — the mapping-authoring flow, where the operator already

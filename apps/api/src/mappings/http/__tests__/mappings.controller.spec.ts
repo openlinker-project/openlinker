@@ -14,11 +14,16 @@
  * @module apps/api/src/mappings/http/__tests__
  */
 import 'reflect-metadata';
-import { RequestMethod } from '@nestjs/common';
+import { BadRequestException, RequestMethod } from '@nestjs/common';
 
 import { ROLES_KEY } from '../../../auth/decorators/roles.decorator';
 import { MappingsController } from '../mappings.controller';
-import { CategoryMapping, type IMappingConfigService } from '@openlinker/core/mappings';
+import {
+  CategoryMapping,
+  CategoryMappingReassignSameConnectionException,
+  type IMappingConfigService,
+} from '@openlinker/core/mappings';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
 
 const METHOD_METADATA = 'method';
 
@@ -100,10 +105,19 @@ describe('MappingsController category mappings (#3993)', () => {
     deleteCategoryMapping: jest.fn().mockResolvedValue(undefined),
     reassignCategoryMappings: jest.fn().mockResolvedValue({ moved: 1, keptSourceCategoryIds: ['7'] }),
   };
-  const controller = new MappingsController(service as unknown as IMappingConfigService);
+  const marketplace = {
+    connection: { name: 'Allegro', enabledCapabilities: ['OfferManager'] },
+    metadata: { supportedCapabilities: ['OfferManager', 'CategoryBrowser'] },
+  };
+  const integrations = { getAdapter: jest.fn().mockResolvedValue(marketplace) };
+  const controller = new MappingsController(
+    service as unknown as IMappingConfigService,
+    integrations as unknown as IIntegrationsService
+  );
 
   beforeEach(() => {
     jest.clearAllMocks();
+    integrations.getAdapter.mockResolvedValue(marketplace);
   });
 
   it('should save under the route marketplace with the master as source when upserting', async () => {
@@ -140,5 +154,43 @@ describe('MappingsController category mappings (#3993)', () => {
 
     expect(service.reassignCategoryMappings).toHaveBeenCalledWith('master-1', 'alg-1');
     expect(result).toEqual({ moved: 1, keptSourceCategoryIds: ['7'] });
+  });
+
+  it('should still accept a write without sourceConnectionId for one release when an old client sends it', async () => {
+    service.upsertCategoryMapping.mockResolvedValue(
+      new CategoryMapping('m2', null, 'alg-1', '7', '258066', 'Phones', null, 'allegro')
+    );
+
+    await controller.upsertCategoryMapping('alg-1', '7', {
+      allegroCategoryId: '258066',
+      allegroCategoryName: 'Phones',
+    });
+
+    expect(service.upsertCategoryMapping).toHaveBeenCalledWith(
+      'alg-1',
+      expect.objectContaining({ sourceConnectionId: undefined, sourceCategoryId: '7' })
+    );
+  });
+
+  it('should answer 400 and move nothing when the route connection is not a marketplace with a category tree', async () => {
+    integrations.getAdapter.mockResolvedValue({
+      connection: { name: 'Woo shop', enabledCapabilities: ['OfferManager'] },
+      metadata: { supportedCapabilities: ['OfferManager'] },
+    });
+
+    await expect(
+      controller.reassignCategoryMappings('woo-1', { fromConnectionId: 'master-1' })
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(service.reassignCategoryMappings).not.toHaveBeenCalled();
+  });
+
+  it('should answer 400 when asked to move mappings onto the connection they already belong to', async () => {
+    service.reassignCategoryMappings.mockRejectedValueOnce(
+      new CategoryMappingReassignSameConnectionException('alg-1')
+    );
+
+    await expect(
+      controller.reassignCategoryMappings('alg-1', { fromConnectionId: 'alg-1' })
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
