@@ -42,6 +42,7 @@ describe('erliOfferValidation', () => {
         id: ERLI_MISSING_IMAGE_BLOCKER,
         tone: 'error',
         label: 'no image',
+        field: 'images',
         describe: expect.any(Function),
       },
     ]);
