@@ -55,7 +55,7 @@ describe('GuestLayout', () => {
     expect(screen.getByText('OpenLinker')).toBeInTheDocument();
   });
 
-  it('should put the language switch on the login card, not in the page corner (#4021)', async () => {
+  it('should put the language switch on the guest card, not in the page corner (#4021)', async () => {
     renderLayout();
 
     const trigger = await screen.findByRole('button', { name: /^Language:/ });
