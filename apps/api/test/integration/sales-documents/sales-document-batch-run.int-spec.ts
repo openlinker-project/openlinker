@@ -10,13 +10,17 @@
  *  - "one running run per connection" is the partial unique index, not a read:
  *    two claims started together produce exactly one run;
  *  - a run left `running` by a dead process is closed as `interrupted` by the
- *    next claim, and a finished run frees the connection.
+ *    next claim, and a finished run frees the connection;
+ *  - such a stale run does not count as running, so it cannot refuse
+ *    "Run now" or show as in progress.
  *
  * @module apps/api/test/integration/sales-documents
  */
 import {
   ORDER_RECORD_SERVICE_TOKEN,
   SALES_DOCUMENT_BATCH_RUN_REPOSITORY_TOKEN,
+  SALES_DOCUMENT_BATCH_SERVICE_TOKEN,
+  type ISalesDocumentBatchService,
   type AppendSalesDocumentBatchRunItemInput,
   type CreateSalesDocumentBatchRunInput,
   type FinishSalesDocumentBatchRunInput,
@@ -28,6 +32,7 @@ import {
 } from '@openlinker/core/orders';
 
 import { createTestOrderRecord } from '../fixtures/order.fixtures';
+import { createTestConnection } from '../helpers/test-connection.helper';
 import { getTestHarness, resetTestHarness, teardownTestHarness } from '../setup';
 import type { IntegrationTestHarness } from '../setup';
 
@@ -44,7 +49,7 @@ interface BatchRunRepositoryView {
   finish(runId: string, input: FinishSalesDocumentBatchRunInput): Promise<boolean>;
   appendItem(runId: string, input: AppendSalesDocumentBatchRunItemInput): Promise<void>;
   findById(runId: string): Promise<SalesDocumentBatchRun | null>;
-  findRunning(connectionId: string): Promise<SalesDocumentBatchRun | null>;
+  findRunning(connectionId: string, staleAfterMs: number): Promise<SalesDocumentBatchRun | null>;
   listItems(runId: string): Promise<SalesDocumentBatchRunItem[]>;
   listQueue(filter: SalesDocumentBatchQueueFilter): Promise<SalesDocumentBatchQueueEntry[]>;
   countQueue(connectionId: string): Promise<Record<string, number>>;
@@ -54,6 +59,7 @@ interface BatchRunRepositoryView {
 const CONNECTION_ID = '33333333-3333-4333-8333-333333333333';
 const OTHER_CONNECTION_ID = '44444444-4444-4444-8444-444444444444';
 const HOUR_MS = 60 * 60 * 1000;
+const OPERATOR_ID = '55555555-5555-4555-8555-555555555555';
 
 const runInput = (
   overrides: Partial<CreateSalesDocumentBatchRunInput> = {}
@@ -92,6 +98,19 @@ describe('Sales-document batch runs (#3583)', () => {
 
   const repository = (): BatchRunRepositoryView =>
     harness.getApp().get<BatchRunRepositoryView>(SALES_DOCUMENT_BATCH_RUN_REPOSITORY_TOKEN);
+
+  const batches = (): ISalesDocumentBatchService =>
+    harness.getApp().get<ISalesDocumentBatchService>(SALES_DOCUMENT_BATCH_SERVICE_TOKEN);
+
+  /** Backdate a run's start, as if its worker died that long ago. */
+  const startedAgo = async (runId: string, hours: number): Promise<void> => {
+    await harness
+      .getDataSource()
+      .query(
+        `UPDATE "sales_document_batch_runs" SET "startedAt" = now() - ($2 || ' hours')::interval WHERE "id" = $1`,
+        [runId, String(hours)]
+      );
+  };
 
   const orderRecords = (): IOrderRecordService =>
     harness.getApp().get<IOrderRecordService>(ORDER_RECORD_SERVICE_TOKEN);
@@ -257,7 +276,7 @@ describe('Sales-document batch runs (#3583)', () => {
 
       const started = [first, second].filter((run) => run !== null);
       expect(started).toHaveLength(1);
-      await expect(repository().findRunning(CONNECTION_ID)).resolves.toEqual(
+      await expect(repository().findRunning(CONNECTION_ID, HOUR_MS)).resolves.toEqual(
         expect.objectContaining({ id: started[0]?.id, status: 'running' })
       );
     });
@@ -307,6 +326,53 @@ describe('Sales-document batch runs (#3583)', () => {
       await expect(repository().findById(abandoned!.id)).resolves.toEqual(
         expect.objectContaining({ status: 'interrupted' })
       );
+    });
+    it('should not report a run left running past the stale bound as running', async () => {
+      const abandoned = await repository().claim(runInput(), HOUR_MS);
+      await startedAgo(abandoned!.id, 2);
+
+      await expect(repository().findRunning(CONNECTION_ID, HOUR_MS)).resolves.toBeNull();
+      // Read-only: the row is untouched until a claim closes it.
+      await expect(repository().findById(abandoned!.id)).resolves.toEqual(
+        expect.objectContaining({ status: 'running' })
+      );
+    });
+  });
+
+  describe('"Run now" after a worker died mid-run', () => {
+    const batchedConnection = async (): Promise<void> => {
+      await createTestConnection(harness.getDataSource(), {
+        id: CONNECTION_ID,
+        config: {
+          salesDocument: { documentKind: 'invoice', triggerModels: { invoice: 'batched' } },
+        },
+      });
+    };
+
+    it('should start a run when the only running row is past the stale bound', async () => {
+      await batchedConnection();
+      const abandoned = await repository().claim(runInput(), HOUR_MS);
+      await startedAgo(abandoned!.id, 7);
+
+      const result = await batches().requestRun({
+        connectionId: CONNECTION_ID,
+        startedByUserId: OPERATOR_ID,
+      });
+
+      expect(result).toEqual(expect.objectContaining({ status: 'enqueued' }));
+      await expect(batches().findRunning(CONNECTION_ID)).resolves.toBeNull();
+    });
+
+    it('should still refuse while a run is genuinely in progress', async () => {
+      await batchedConnection();
+      await repository().claim(runInput(), HOUR_MS);
+
+      const result = await batches().requestRun({
+        connectionId: CONNECTION_ID,
+        startedByUserId: OPERATOR_ID,
+      });
+
+      expect(result).toEqual({ status: 'refused', reason: 'run-in-progress' });
     });
   });
 

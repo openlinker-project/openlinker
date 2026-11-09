@@ -15,7 +15,10 @@ import type { SalesDocumentBatchRunRepositoryPort } from '../../../domain/ports/
 import type { SalesDocumentBatchQueueEntry } from '../../../domain/types/sales-document-batch-run.types';
 import type { IOrderRecordService } from '../../interfaces/order-record.service.interface';
 import type { ISalesDocumentViewService } from '../../interfaces/sales-document-view.service.interface';
-import { SalesDocumentBatchService } from '../sales-document-batch.service';
+import {
+  SALES_DOCUMENT_BATCH_STALE_AFTER_MS,
+  SalesDocumentBatchService,
+} from '../sales-document-batch.service';
 
 jest.mock('../../../domain/order-from-ready-snapshot', () => ({
   orderFromReadySnapshot: (record: { internalOrderId: string }) => {
@@ -402,6 +405,21 @@ describe('SalesDocumentBatchService', () => {
       await expect(
         service.requestRun({ connectionId: CONNECTION, startedByUserId: 'u-1' }),
       ).resolves.toEqual({ status: 'refused', reason: 'connection-not-found' });
+    });
+    it('should ask for the running run with the same stale bound a claim closes it with', async () => {
+      // A run left `running` by a dead worker must not refuse "Run now" for ever.
+      connections.get.mockResolvedValue({
+        id: CONNECTION,
+        status: 'active',
+        config: batchedInvoices,
+      } as unknown as Connection);
+
+      await service.requestRun({ connectionId: CONNECTION, startedByUserId: 'u-1' });
+
+      expect(runs.findRunning).toHaveBeenCalledWith(
+        CONNECTION,
+        SALES_DOCUMENT_BATCH_STALE_AFTER_MS,
+      );
     });
   });
 

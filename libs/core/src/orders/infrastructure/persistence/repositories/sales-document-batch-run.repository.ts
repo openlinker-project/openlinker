@@ -144,8 +144,20 @@ export class SalesDocumentBatchRunRepository implements SalesDocumentBatchRunRep
     return entity ? this.toRun(entity) : null;
   }
 
-  async findRunning(connectionId: string): Promise<SalesDocumentBatchRun | null> {
-    const entity = await this.runs.findOne({ where: { connectionId, status: 'running' } });
+  async findRunning(
+    connectionId: string,
+    staleAfterMs: number,
+  ): Promise<SalesDocumentBatchRun | null> {
+    // The same database clock and bound `claim` closes a stale run with, so a
+    // row is never "stale" to one and "running" to the other.
+    const entity = await this.runs
+      .createQueryBuilder('run')
+      .where('run.connectionId = :connectionId', { connectionId })
+      .andWhere(`run.status = 'running'`)
+      .andWhere(`run.startedAt >= now() - (:staleAfterMs || ' milliseconds')::interval`, {
+        staleAfterMs: String(staleAfterMs),
+      })
+      .getOne();
     return entity ? this.toRun(entity) : null;
   }
 

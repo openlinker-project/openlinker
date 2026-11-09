@@ -149,7 +149,7 @@ export class SalesDocumentBatchService implements ISalesDocumentBatchService {
     });
     const [queueCounts, runningRun] = await Promise.all([
       this.runs.countQueue(connectionId),
-      this.runs.findRunning(connectionId),
+      this.runs.findRunning(connectionId, SALES_DOCUMENT_BATCH_STALE_AFTER_MS),
     ]);
     return { connectionId, kinds, queueCounts, runningRun };
   }
@@ -164,7 +164,11 @@ export class SalesDocumentBatchService implements ISalesDocumentBatchService {
     if (documentKinds.length === 0) return { status: 'refused', reason: 'not-batched' };
     const refusal = connectionRefusal(connection);
     if (refusal !== null) return { status: 'refused', reason: refusal };
-    if ((await this.runs.findRunning(input.connectionId)) !== null) {
+    const running = await this.runs.findRunning(
+      input.connectionId,
+      SALES_DOCUMENT_BATCH_STALE_AFTER_MS,
+    );
+    if (running !== null) {
       return { status: 'refused', reason: 'run-in-progress' };
     }
 
@@ -201,7 +205,7 @@ export class SalesDocumentBatchService implements ISalesDocumentBatchService {
   }
 
   findRunning(connectionId: string): Promise<SalesDocumentBatchRun | null> {
-    return this.runs.findRunning(connectionId);
+    return this.runs.findRunning(connectionId, SALES_DOCUMENT_BATCH_STALE_AFTER_MS);
   }
 
   async executeRun(
@@ -219,7 +223,10 @@ export class SalesDocumentBatchService implements ISalesDocumentBatchService {
       SALES_DOCUMENT_BATCH_STALE_AFTER_MS,
     );
     if (run === null) {
-      const running = await this.runs.findRunning(input.connectionId);
+      const running = await this.runs.findRunning(
+        input.connectionId,
+        SALES_DOCUMENT_BATCH_STALE_AFTER_MS,
+      );
       return { status: 'already-running', runningRunId: running?.id ?? null };
     }
 

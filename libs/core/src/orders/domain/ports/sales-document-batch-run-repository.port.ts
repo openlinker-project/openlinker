@@ -40,7 +40,14 @@ export interface SalesDocumentBatchRunRepositoryPort {
 
   findById(runId: string): Promise<SalesDocumentBatchRun | null>;
 
-  findRunning(connectionId: string): Promise<SalesDocumentBatchRun | null>;
+  /**
+   * The connection's live `running` run, or `null`. A row left `running` longer
+   * than `staleAfterMs` belongs to a process that died, so it is NOT returned:
+   * otherwise it would refuse "Run now" and show as in progress until a
+   * scheduled slot happened to claim (and close) it. Read-only - only `claim`
+   * closes such a row, as `interrupted`, with the same bound.
+   */
+  findRunning(connectionId: string, staleAfterMs: number): Promise<SalesDocumentBatchRun | null>;
 
   /** Newest first. */
   listForConnection(
