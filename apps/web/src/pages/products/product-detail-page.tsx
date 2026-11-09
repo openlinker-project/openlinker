@@ -30,6 +30,8 @@ import { ApiError } from '../../shared/api/api-error';
 import { useConnectionsQuery, type Connection } from '../../features/connections';
 import { usePermission, useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
+import { useBundleQuery } from '../../features/bundles/hooks/use-bundle-queries';
+import { useMessages } from '../../shared/i18n';
 import { VariantStockTable, VariantDetailPanel } from './variant-stock-table';
 import { MarketplacePickerModal } from './marketplace-picker-modal';
 import {
@@ -101,6 +103,13 @@ export function ProductDetailPage(): ReactElement {
   const demoMode = useDemoMode();
   const write = useWriteAccess('listings:write', demoMode);
   const canAdjustStock = usePermission('inventory:write');
+  const bundleCopy = useMessages('bundles');
+  const bundleWrite = useWriteAccess('bundles:write', demoMode);
+  // A 404 here means "not a bundle" (an answer, not a failure). Only the first
+  // variant is asked, so a multi-variant product whose later variant is the
+  // bundle still offers the action.
+  const bundleProbe = useBundleQuery(query.data?.variants?.[0]?.id);
+  const isBundle = bundleProbe.isSuccess;
   const [adjustTarget, setAdjustTarget] = useState<StockAdjustTarget | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const offerCreatorConnections = useMemo<Connection[]>(
@@ -230,6 +239,28 @@ export function ProductDetailPage(): ReactElement {
       backTo={{ to: '/products', label: 'Products', 'data-testid': 'stock-back-to-products' }}
       eyebrow="Products"
       title={<EntityLabel id={product.id} name={product.name} />}
+      actions={
+        isBundle ? undefined : bundleWrite.canWrite ? (
+          <Link
+            className="button button--secondary"
+            to={`/products/bundles/new?componentProduct=${encodeURIComponent(product.id)}`}
+            data-testid="product-detail-make-bundle"
+          >
+            {bundleCopy.list.makeBundle}
+          </Link>
+        ) : (
+          <span
+            className="button button--secondary"
+            role="button"
+            aria-disabled="true"
+            tabIndex={0}
+            title={bundleCopy.form.viewOnlyReason}
+            data-testid="product-detail-make-bundle"
+          >
+            {bundleCopy.list.makeBundle}
+          </span>
+        )
+      }
     >
       <Tabs value={activeView} onValueChange={setActiveView}>
         <TabsList aria-label="Product views">
