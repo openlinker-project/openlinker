@@ -26,8 +26,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOrderRecordPlacedAtDescIndex1938340000000 implements MigrationInterface {
-  name = 'AddOrderRecordPlacedAtDescIndex1938340000000';
+export class AddOrderRecordPlacedAtDescIndex1938430000000 implements MigrationInterface {
+  name = 'AddOrderRecordPlacedAtDescIndex1938430000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
