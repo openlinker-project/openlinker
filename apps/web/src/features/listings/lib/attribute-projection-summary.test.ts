@@ -3,7 +3,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { AttributeProjectionPreviewEntry, ProjectedParameterOrigin } from '../api/listings.types';
+import { formatPlural, messagesIn, type InterpolationParams, type PluralForms } from '../../../shared/i18n';
 import { describeOrigin, listParameterNames, summarizeProjection } from './attribute-projection-summary';
+
+const copy = messagesIn('listings', 'en').attributeRules;
+const plural = (n: number, forms: PluralForms, params?: InterpolationParams): string =>
+  formatPlural(n, forms, 'en', params);
 
 const origin = (over: Partial<ProjectedParameterOrigin>): ProjectedParameterOrigin => ({
   parameterId: 'p1',
@@ -58,29 +63,35 @@ describe('describeOrigin', () => {
     expect(
       describeOrigin(
         origin({ rule: { id: 'r', kind: 'copy-remap', sourceAttributeKey: 'Color', remapped: true } }),
+        copy.origin,
       ),
     ).toBe('Copied from "Color" and translated by your attribute rules');
     expect(
-      describeOrigin(origin({ rule: { id: 'r', kind: 'copy-remap', sourceAttributeKey: 'Size', remapped: false } })),
+      describeOrigin(
+        origin({ rule: { id: 'r', kind: 'copy-remap', sourceAttributeKey: 'Size', remapped: false } }),
+        copy.origin,
+      ),
     ).toBe('Copied from "Size" by your attribute rules');
   });
 
   it('should name the product field of a placed value', () => {
-    expect(describeOrigin(origin({ rule: { id: 'r', kind: 'place-value', placeSource: 'ean' } }))).toBe(
+    expect(describeOrigin(origin({ rule: { id: 'r', kind: 'place-value', placeSource: 'ean' } }), copy.origin)).toBe(
       'Product EAN, placed by your attribute rules',
     );
   });
 
   it('should tell a fixed rule and a mapping apart', () => {
-    expect(describeOrigin(origin({}))).toBe('Fixed value from your attribute rules');
-    expect(describeOrigin(origin({ source: 'mapping', rule: undefined }))).toBe('From your attribute mapping');
+    expect(describeOrigin(origin({}), copy.origin)).toBe('Fixed value from your attribute rules');
+    expect(describeOrigin(origin({ source: 'mapping', rule: undefined }), copy.origin)).toBe(
+      'From your attribute mapping',
+    );
   });
 });
 
 describe('listParameterNames', () => {
   it('should cap a long list', () => {
     const names = ['A', 'B', 'C', 'D', 'E', 'F'].map((n) => origin({ parameterName: n }));
-    expect(listParameterNames(names)).toBe('A, B, C, D and 2 more');
-    expect(listParameterNames(names.slice(0, 2))).toBe('A, B');
+    expect(listParameterNames(names, copy.parameterList, plural)).toBe('A, B, C, D and 2 more');
+    expect(listParameterNames(names.slice(0, 2), copy.parameterList, plural)).toBe('A, B');
   });
 });

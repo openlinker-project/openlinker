@@ -16,7 +16,9 @@
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
+import { interpolate, useMessages, usePlural } from '../../../../shared/i18n';
 import { Button } from '../../../../shared/ui';
+import type { AttributeRulesCopy } from '../../lib/attribute-projection-summary';
 
 /** One parameter the rules touch, across the variants that were checked. */
 export interface ParameterCoverage {
@@ -60,6 +62,8 @@ export function AttributeRulesPanel({
   onRetry,
   onFix,
 }: AttributeRulesPanelProps): ReactElement | null {
+  const copy = useMessages('listings').attributeRules;
+  const plural = usePlural();
   if (coverage.length === 0 && failedVariantCount === 0) return null;
 
   const shown = rejected.slice(0, REJECTED_LISTED);
@@ -70,23 +74,25 @@ export function AttributeRulesPanel({
       <header className="rules-panel__head">
         <div className="rules-panel__heading">
           <h3 id="rules-panel-title" className="rules-panel__title">
-            Attribute rules
+            {copy.title}
           </h3>
           <p className="rules-panel__lede">
             {coverage.length > 0
-              ? `Filled in when the offers are created${checkedVariantCount > 1 ? `, per variant` : ''}. A value you set yourself wins.`
-              : 'Not checked yet.'}
+              ? checkedVariantCount > 1
+                ? copy.ledePerVariant
+                : copy.lede
+              : copy.notChecked}
           </p>
         </div>
         <Link className="rules-panel__manage" to={`/connections/${connectionId}/mappings?tab=attribute-rules`}>
-          Manage rules
+          {copy.manage}
         </Link>
       </header>
 
       {coverage.length > 0 ? (
-        <ul className="rules-panel__coverage" aria-label="Parameters filled by rules">
+        <ul className="rules-panel__coverage" aria-label={copy.coverageLabel}>
           {coverage.map((p) => (
-            <CoveragePill key={p.parameterId} coverage={p} />
+            <CoveragePill key={p.parameterId} coverage={p} copy={copy} />
           ))}
         </ul>
       ) : null}
@@ -94,35 +100,41 @@ export function AttributeRulesPanel({
       {failedVariantCount > 0 ? (
         <div className="rules-panel__issue rules-panel__issue--failed" role="status">
           <span className="rules-panel__issue-text">
-            Could not check the rules for {plural(failedVariantCount, 'variant')}. Their required
-            parameters count as empty until the check succeeds.
+            {plural(failedVariantCount, copy.failed)}
           </span>
           <Button tone="secondary" className="button--xs" onClick={onRetry}>
-            Try again
+            {copy.retry}
           </Button>
         </div>
       ) : null}
 
       {shown.length > 0 ? (
-        <ul className="rules-panel__issues" aria-label={`Values ${destinationName} does not accept`}>
+        <ul
+          className="rules-panel__issues"
+          aria-label={interpolate(copy.rejectedLabel, { destination: destinationName })}
+        >
           {shown.map((r) => (
             <li key={`${r.variantId}:${r.parameterName}`} className="rules-panel__issue">
               <span className="rules-panel__issue-text">
-                <b>{r.parameterName}</b>: {destinationName} does not accept &ldquo;{r.rawValue}&rdquo;
+                <b>{r.parameterName}</b>:{' '}
+                {interpolate(copy.rejectedValue, { destination: destinationName, value: r.rawValue })}
               </span>
               <span className="rules-panel__issue-where">{r.variantLabel}</span>
               <Button
                 tone="secondary"
                 className="button--xs"
-                aria-label={`Fix ${r.parameterName} for ${r.variantLabel}`}
+                aria-label={interpolate(copy.fixLabel, {
+                  parameter: r.parameterName,
+                  variant: r.variantLabel,
+                })}
                 onClick={() => onFix(r.productId, r.variantId)}
               >
-                Fix
+                {copy.fix}
               </Button>
             </li>
           ))}
           {hidden > 0 ? (
-            <li className="rules-panel__more">and {plural(hidden, 'more value')}</li>
+            <li className="rules-panel__more">{plural(hidden, copy.more)}</li>
           ) : null}
         </ul>
       ) : null}
@@ -130,15 +142,21 @@ export function AttributeRulesPanel({
   );
 }
 
-function CoveragePill({ coverage }: { coverage: ParameterCoverage }): ReactElement {
+function CoveragePill({
+  coverage,
+  copy,
+}: {
+  coverage: ParameterCoverage;
+  copy: AttributeRulesCopy;
+}): ReactElement {
   const filled = coverage.segments.filter((s) => s === 'filled').length;
   const rejected = coverage.segments.filter((s) => s === 'rejected').length;
   const total = coverage.segments.length;
   const state = rejected > 0 ? 'rejected' : filled === total ? 'full' : 'partial';
   const summary =
     rejected > 0
-      ? `${coverage.name}: filled for ${filled} of ${total}, ${rejected} not accepted`
-      : `${coverage.name}: filled for ${filled} of ${total}`;
+      ? interpolate(copy.pillRejected, { name: coverage.name, filled, total, rejected })
+      : interpolate(copy.pill, { name: coverage.name, filled, total });
   return (
     <li className={`rules-pill rules-pill--${state}`} title={summary} aria-label={summary}>
       <span className="rules-pill__name">{coverage.name}</span>
@@ -162,8 +180,4 @@ function CoveragePill({ coverage }: { coverage: ParameterCoverage }): ReactEleme
       </span>
     </li>
   );
-}
-
-function plural(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }

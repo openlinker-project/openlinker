@@ -80,7 +80,7 @@ import {
 } from '../../../../shared/ui';
 import type { DescriptionFormat, StatusBadgeTone } from '../../../../shared/ui';
 import { useDescriptionFormatQuery } from '../../hooks/use-description-format-query';
-import { useFormat } from '../../../../shared/i18n';
+import { useFormat, useMessages } from '../../../../shared/i18n';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import { Link } from 'react-router-dom';
 import { useToast } from '../../../../shared/ui/toast-provider';
@@ -1720,6 +1720,7 @@ function RulesContextLine({
  * explanatory prose.
  */
 function RuleProvBadge({ origin }: { origin: ProjectedParameterOrigin }): ReactElement {
+  const originCopy = useMessages('listings').attributeRules.origin;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -1728,7 +1729,7 @@ function RuleProvBadge({ origin }: { origin: ProjectedParameterOrigin }): ReactE
         </span>
       </TooltipTrigger>
       <TooltipContent side="top" align="start">
-        {describeOrigin(origin)}: <b>{origin.rawValue}</b>
+        {describeOrigin(origin, originCopy)}: <b>{origin.rawValue}</b>
       </TooltipContent>
     </Tooltip>
   );

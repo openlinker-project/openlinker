@@ -9,6 +9,13 @@
  *
  * @module apps/web/src/features/listings/lib
  */
+import {
+  interpolate,
+  type Messages,
+  type PluralFn,
+  type PluralForms,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 import type {
   AttributeProjectionPreviewEntry,
   ProjectedParameterOrigin,
@@ -45,36 +52,44 @@ export function summarizeProjection(
   return { ruleFilled, rejected, byParameterId };
 }
 
-const PLACE_SOURCE_LABEL: Record<NonNullable<ProjectedParameterOrigin['rule']>['placeSource'] & string, string> = {
-  name: 'product name',
-  variant: 'variant name',
-  manufacturer: 'manufacturer',
-  ean: 'EAN',
-  sku: 'SKU',
-  weight: 'weight',
-};
+/** The `listings.attributeRules` copy, as `useMessages('listings')` resolves it. */
+export type AttributeRulesCopy = ResolvedCopy<Messages['listings']>['attributeRules'];
 
-/** Where a projected value came from, as one short operator-facing phrase. */
-export function describeOrigin(origin: ProjectedParameterOrigin): string {
-  if (origin.source === 'mapping') return 'From your attribute mapping';
+/**
+ * Where a projected value came from, as one short operator-facing phrase.
+ * Copy is passed in rather than read here so this stays a pure function the
+ * edit modal and its tests can call with whichever language is active.
+ */
+export function describeOrigin(
+  origin: ProjectedParameterOrigin,
+  copy: AttributeRulesCopy['origin'],
+): string {
+  if (origin.source === 'mapping') return copy.mapping;
   const rule = origin.rule;
   switch (rule?.kind) {
     case 'fixed':
-      return 'Fixed value from your attribute rules';
+      return copy.fixed;
     case 'copy-remap':
-      return rule.remapped
-        ? `Copied from "${rule.sourceAttributeKey ?? '?'}" and translated by your attribute rules`
-        : `Copied from "${rule.sourceAttributeKey ?? '?'}" by your attribute rules`;
+      return interpolate(rule.remapped ? copy.copiedTranslated : copy.copied, {
+        attribute: rule.sourceAttributeKey ?? '?',
+      });
     case 'place-value':
-      return `Product ${rule.placeSource ? PLACE_SOURCE_LABEL[rule.placeSource] : 'field'}, placed by your attribute rules`;
+      return rule.placeSource
+        ? interpolate(copy.placed, { field: copy.placeSource[rule.placeSource] })
+        : copy.placedUnknown;
     default:
-      return 'From your attribute rules';
+      return copy.rule;
   }
 }
 
 /** Comma-joined parameter names, capped so a tooltip stays one line. */
-export function listParameterNames(origins: readonly ProjectedParameterOrigin[], cap = 4): string {
+export function listParameterNames(
+  origins: readonly ProjectedParameterOrigin[],
+  more: PluralForms,
+  plural: PluralFn,
+  cap = 4,
+): string {
   const names = origins.map((o) => o.parameterName);
   if (names.length <= cap) return names.join(', ');
-  return `${names.slice(0, cap).join(', ')} and ${names.length - cap} more`;
+  return plural(names.length - cap, more, { names: names.slice(0, cap).join(', ') });
 }

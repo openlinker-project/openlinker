@@ -59,6 +59,7 @@ import {
   type RejectedRuleValue,
 } from './attribute-rules-panel';
 import type { AttributeProjectionPreview } from '../../hooks/use-attribute-projection-preview';
+import { interpolate, useMessages, usePlural } from '../../../../shared/i18n';
 import {
   listParameterNames,
   summarizeProjection,
@@ -1063,15 +1064,17 @@ function ProjectionChips({
   destinationName: string;
   onFix: (focusField?: OfferBlockerField) => void;
 }): ReactElement | null {
+  const copy = useMessages('listings').attributeRules;
+  const plural = usePlural();
   if (!projection) return null;
   const { ruleFilled, rejected } = projection;
   if (ruleFilled.length === 0 && rejected.length === 0) return null;
   const label =
     rejected.length === 1
-      ? `${rejected[0].parameterName} rejected`
+      ? interpolate(copy.chip.rejectedOne, { parameter: rejected[0].parameterName })
       : rejected.length > 1
-        ? `${rejected.length} rule values rejected`
-        : `${ruleFilled.length} from rules`;
+        ? plural(rejected.length, copy.chip.rejectedCount)
+        : plural(ruleFilled.length, copy.chip.fromRules);
   const tone = rejected.length > 0 ? 'bulk-chip--warning' : 'bulk-chip--info';
   const values = (
     <dl className="rules-chip-tip">
@@ -1085,7 +1088,7 @@ function ProjectionChips({
         <div key={o.parameterId} style={{ display: 'contents' }}>
           <dt>{o.parameterName}</dt>
           <dd className="rules-chip-tip__rejected">
-            &ldquo;{o.rawValue}&rdquo; not on {destinationName}&rsquo;s list
+            {interpolate(copy.chip.notOnList, { value: o.rawValue, destination: destinationName })}
           </dd>
         </div>
       ))}
@@ -1098,7 +1101,10 @@ function ProjectionChips({
           <button
             type="button"
             className={`bulk-chip ${tone}`}
-            aria-label={`Fix: ${listParameterNames(rejected)} not accepted by ${destinationName}`}
+            aria-label={interpolate(copy.rejectedRowLabel, {
+              names: listParameterNames(rejected, copy.parameterList, plural),
+              destination: destinationName,
+            })}
             onClick={(e) => {
               e.stopPropagation();
               onFix('parameters');
