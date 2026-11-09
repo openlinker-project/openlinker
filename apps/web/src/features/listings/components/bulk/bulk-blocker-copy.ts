@@ -130,10 +130,7 @@ export function describeBlocker(blocker: string, ctx: BlockerCopyContext): Block
     default: {
       const describe = ctx.chips?.[blocker]?.describe;
       if (describe) {
-        return describe({
-          destinationName: ctx.destinationName,
-          missingParameterNames: ctx.missingParameterNames,
-        });
+        return describe({ missingParameterNames: ctx.missingParameterNames });
       }
       const copy = getMessages('listings').bulkBlockers;
       return {

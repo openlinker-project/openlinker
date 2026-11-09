@@ -398,10 +398,11 @@ export interface OfferBlockerDescriptor {
  * - `null` - it tried and the category's parameter list could not be loaded;
  * - an array - the required product parameters still without a value, by
  *   their marketplace name (possibly empty: everything is filled in now).
+ *
+ * It carries no destination name: a platform's sentence names its own
+ * marketplace, and an operator's connection label would read wrongly there.
  */
 export interface OfferBlockerDescribeContext {
-  /** Display name of the destination connection, for the sentence. */
-  destinationName: string;
   missingParameterNames?: readonly string[] | null;
 }
 

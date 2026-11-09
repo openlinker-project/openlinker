@@ -40,11 +40,11 @@ describe('describeBlocker for a platform blocker (#4003)', () => {
         id: 'acme:x',
         tone: 'error',
         label: 'x',
-        describe: (ctx): OfferBlockerCopy => ({ title: `T ${ctx.destinationName}`, detail: 'D', items: ctx.missingParameterNames ?? [] }),
+        describe: (ctx): OfferBlockerCopy => ({ title: 'T', detail: 'D', items: ctx.missingParameterNames ?? [] }),
       },
     ]);
     expect(describeBlocker('acme:x', { ...base, chips, missingParameterNames: ['Model'] })).toEqual({
-      title: 'T Acme',
+      title: 'T',
       detail: 'D',
       items: ['Model'],
     });

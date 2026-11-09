@@ -494,7 +494,7 @@ describe('allegroOfferValidation', () => {
 });
 
 describe('describeNeedsProductParameters (#4003)', () => {
-  const ctx = { destinationName: 'Allegro sandbox' };
+  const ctx = {};
 
   it('should list the missing names with a count when the list was computed', () => {
     const copy = describeNeedsProductParameters({ ...ctx, missingParameterNames: ['Model', 'Kod producenta'] });
