@@ -155,7 +155,12 @@ export function AssignPackingWorkCard({
 }: AssignPackingWorkCardProps): ReactElement {
   const copy = useMessages('fulfillment').assignPackingWork;
   const badge = badgeFor(task, inUnassignedLane);
-  const units = task.lines.reduce((sum, line) => sum + line.totalQuantity, 0);
+  // #3961: cancelled units are not packed, so they are not "units to scan" -
+  // the bench's own definition (`totalQuantity - cancelledQuantity`).
+  const units = task.lines.reduce(
+    (sum, line) => sum + Math.max(0, line.totalQuantity - line.cancelledQuantity),
+    0,
+  );
   const { className: rootClassName, ...restRootProps } = rootProps;
 
   return (

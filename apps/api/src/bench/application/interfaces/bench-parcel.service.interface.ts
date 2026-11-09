@@ -17,6 +17,7 @@ import type { FulfillmentWorkView } from '@openlinker/core/fulfillment';
 import type {
   BenchActivityEntryView,
   BenchBuyerNoteAcknowledgementResultView,
+  BenchSourceChangeTakenOutResultView,
   BenchClaimResultView,
   BenchCompleteResultView,
   BenchUndoCompletionResultView,
@@ -106,6 +107,18 @@ export interface IBenchParcelService {
    * same from outside a scoped read.
    */
   getParcel(workId: string): Promise<BenchParcelView>;
+
+  /**
+   * "Done, I took it out" for a box held because the shop lowered an item
+   * after packing started (#3961): voids that line's scans beyond what the
+   * order now asks for, then re-checks the order so a matching box is applied
+   * and released. Answers the parcel as it now stands.
+   */
+  confirmSourceChangeTakenOut(input: {
+    readonly workId: string;
+    readonly workLineId: string;
+    readonly actorUserId: string;
+  }): Promise<BenchSourceChangeTakenOutResultView>;
 
   /**
    * The work behind a parcel, scoped exactly as `getParcel` scopes it.

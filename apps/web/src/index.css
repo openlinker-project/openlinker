@@ -34744,6 +34744,290 @@ legend.analytics-settings-dialog__label {
   font-size: 0.75rem;
 }
 
+/* ── Changed by the shop (#3961) ───────────────────────────────────────────
+   A message from outside OpenLinker, like the buyer note beside it: a neutral
+   surface whose LEFT EDGE carries the state, never a whole-card wash. The
+   quantity change is the one strong element; what happens next is a short
+   checklist; the actions sit in their own footer. Mockup:
+   docs/plans/mockups/source-quantity-change.html. */
+.order-source-change {
+  --osc-edge: var(--border-strong);
+  display: grid;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-left: 4px solid var(--osc-edge);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+}
+.order-source-change[data-state='applied'] { --osc-edge: var(--status-success); }
+.order-source-change[data-state='decision'] { --osc-edge: var(--status-warning); }
+.order-source-change[data-state='shipped'] { --osc-edge: var(--status-info); }
+.order-source-change[data-state='failed'] { --osc-edge: var(--status-error); }
+
+.order-source-change__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.order-source-change__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.order-source-change__title svg {
+  color: var(--osc-edge);
+}
+.order-source-change__when {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.order-source-change__status {
+  margin-left: auto;
+}
+
+/* What changed on the left, what happens next on the right. */
+.order-source-change__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 22rem);
+}
+.order-source-change__lines {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  display: grid;
+  align-content: center;
+}
+.order-source-change__line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-block: var(--space-2);
+}
+.order-source-change__line + .order-source-change__line {
+  border-top: 1px dashed var(--border-subtle);
+}
+.order-source-change__item {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.order-source-change__name {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.order-source-change__sku {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.order-source-change__qty {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+.order-source-change__was {
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.order-source-change__arrow {
+  color: var(--text-muted);
+}
+.order-source-change__now {
+  min-width: 2ch;
+  font-size: 1.75rem;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+.order-source-change__now[data-removed] {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--status-error-fg);
+}
+
+.order-source-change__effects {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  display: grid;
+  align-content: center;
+  gap: var(--space-2);
+  border-left: 1px solid var(--border-subtle);
+  background: var(--bg-surface-muted);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.order-source-change__effect {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2);
+  color: var(--text-primary);
+}
+.order-source-change__effect[data-mark='none'] {
+  color: var(--text-secondary);
+}
+.order-source-change__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-top: -1px;
+  border-radius: 9999px;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  box-shadow: inset 0 0 0 1px var(--border-default);
+}
+.order-source-change__effect[data-mark='done'] .order-source-change__icon {
+  background: var(--status-success-soft);
+  color: var(--status-success-fg);
+  box-shadow: inset 0 0 0 1px var(--status-success-border);
+}
+.order-source-change__effect[data-mark='todo'] .order-source-change__icon {
+  background: var(--status-warning-soft);
+  color: var(--status-warning-fg);
+  box-shadow: inset 0 0 0 1px var(--status-warning-border);
+}
+
+.order-source-change__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+@media (max-width: 960px) {
+  .order-source-change__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .order-source-change__effects {
+    border-left: 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+}
+
+/* ── Bench: take out N (#3961) ─────────────────────────────────────────────
+   The bench's one hard signal while a box holds more than the order now asks
+   for. Read from arm's length: the count is the first thing the eye lands on,
+   the item and its codes come next so the packer picks the right unit, and the
+   confirm sits on its own row at touch size. Same edge language as the order
+   page's "Changed by the shop" card, at the bench's larger radius. */
+.bench-source-change__stack {
+  display: grid;
+  gap: var(--space-3);
+}
+.bench-source-change {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-4) var(--space-5);
+  padding: var(--space-5);
+  background: var(--bg-surface);
+  border: 1px solid var(--status-warning-border);
+  border-left: 6px solid var(--status-warning);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+}
+.bench-source-change__count {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+  width: 6rem;
+  min-height: 6rem;
+  border-radius: var(--radius-lg);
+  background: var(--status-warning-soft);
+  box-shadow: inset 0 0 0 1px var(--status-warning-border);
+  color: var(--status-warning-fg);
+}
+.bench-source-change__count-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.bench-source-change__count-value {
+  font-size: 3rem;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.bench-source-change__body {
+  display: grid;
+  align-content: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.bench-source-change__title {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.bench-source-change__ids {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.bench-source-change__text {
+  margin: var(--space-1) 0 0;
+  max-width: 60ch;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+  text-wrap: pretty;
+}
+.bench-source-change__foot {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.bench-source-change__action {
+  min-height: 2.75rem;
+  padding-inline: var(--space-5);
+}
+.bench-source-change__note {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+@media (max-width: 560px) {
+  .bench-source-change {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--space-4);
+  }
+  .bench-source-change__count {
+    width: auto;
+    min-height: 0;
+    grid-auto-flow: column;
+    justify-content: start;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+  }
+}
+
 .order-edit-totals-note {
   margin: 0;
   font-size: 0.75rem;

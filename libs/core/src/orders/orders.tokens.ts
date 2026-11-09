@@ -89,6 +89,7 @@ export const ORDER_HOLD_PROJECTION_RECONCILE_SERVICE_TOKEN = Symbol(
 
 /** Cleanup a cancelled order owes, shared by the operator and observed paths (#3540). */
 export const ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN = Symbol('IOrderCancellationEffectsService');
+export const ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN = Symbol('IOrderSourceAmendmentEffectsService');
 
 /**
  * Voids a cancelled order's bought labels (#3540, 4a). Bound by `ShippingModule`
