@@ -68,7 +68,12 @@ describe('A box the lowered quantity leaves full (#3961)', () => {
     harness.getApp().get<IFulfillmentOrderEditService>(FULFILLMENT_ORDER_EDIT_SERVICE_TOKEN);
 
   /** Two lines: three mugs and one teapot. */
-  async function seedWork(): Promise<FulfillmentWork> {
+  async function seedWork(
+    lines: CreateFulfillmentWorkInput['lines'] = [
+      { orderLineId: 'l-mug', productVariantId: 'ol_variant_mug', totalQuantity: 3 },
+      { orderLineId: 'l-pot', productVariantId: 'ol_variant_pot', totalQuantity: 1 },
+    ]
+  ): Promise<FulfillmentWork> {
     const dataSource = harness.getDataSource();
     const oms = await createTestConnection(dataSource, {
       platformType: OMS_PLATFORM_TYPE,
@@ -84,14 +89,12 @@ describe('A box the lowered quantity leaves full (#3961)', () => {
       locationId: 'ol_location_1',
       deliveryMethod: 'courier',
       assignedConnectionId: oms.id,
-      lines: [
-        { orderLineId: 'l-mug', productVariantId: 'ol_variant_mug', totalQuantity: 3 },
-        { orderLineId: 'l-pot', productVariantId: 'ol_variant_pot', totalQuantity: 1 },
-      ],
+      lines,
     });
-    await dataSource.query(`UPDATE "fulfillment_works" SET "requestStatus" = 'accepted' WHERE "id" = $1`, [
-      work.id,
-    ]);
+    await dataSource.query(
+      `UPDATE "fulfillment_works" SET "requestStatus" = 'accepted' WHERE "id" = $1`,
+      [work.id]
+    );
     return work;
   }
 
@@ -114,10 +117,10 @@ describe('A box the lowered quantity leaves full (#3961)', () => {
     });
     await harness
       .getDataSource()
-      .query(`UPDATE "fulfillment_work_verifications" SET "verifiedAt" = $1 WHERE "gestureId" = $2`, [
-        at,
-        gestureId,
-      ]);
+      .query(
+        `UPDATE "fulfillment_work_verifications" SET "verifiedAt" = $1 WHERE "gestureId" = $2`,
+        [at, gestureId]
+      );
   }
 
   describe('findLatestActiveVerificationForLine', () => {
@@ -133,14 +136,20 @@ describe('A box the lowered quantity leaves full (#3961)', () => {
         lineId(work, 'l-mug')
       );
 
-      expect(latest).toMatchObject({ workLineId: lineId(work, 'l-mug'), verifiedByUserId: PACKER_B });
+      expect(latest).toMatchObject({
+        workLineId: lineId(work, 'l-mug'),
+        verifiedByUserId: PACKER_B,
+      });
     });
 
     it('should skip a voided scan and fall back to the one before it', async () => {
       const work = await seedWork();
       await scan(work, 'l-mug', 'g-1', PACKER_A, '2026-11-09T10:00:00Z');
       await scan(work, 'l-mug', 'g-2', PACKER_B, '2026-11-09T10:01:00Z');
-      const newest = await repository().findLatestActiveVerificationForLine(work.id, lineId(work, 'l-mug'));
+      const newest = await repository().findLatestActiveVerificationForLine(
+        work.id,
+        lineId(work, 'l-mug')
+      );
       await repository().voidVerificationById(newest?.id ?? '', {
         workId: work.id,
         voidedByUserId: PACKER_B,
@@ -153,6 +162,54 @@ describe('A box the lowered quantity leaves full (#3961)', () => {
       );
 
       expect(latest).toMatchObject({ verifiedByUserId: PACKER_A });
+    });
+
+    it('should keep to its own work when two works carry the same order line', async () => {
+      // A split order: the mugs sit in two boxes, so one order line has a work
+      // line in each. A scan in the second box must never count for the first.
+      const first = await seedWork([
+        { orderLineId: 'l-mug', productVariantId: 'ol_variant_mug', totalQuantity: 2 },
+      ]);
+      const second = await seedWork([
+        { orderLineId: 'l-mug', productVariantId: 'ol_variant_mug', totalQuantity: 1 },
+      ]);
+      await scan(first, 'l-mug', 'g-1', PACKER_A, '2026-11-09T10:00:00Z');
+      await scan(second, 'l-mug', 'g-2', PACKER_B, '2026-11-09T10:05:00Z');
+
+      const latest = await repository().findLatestActiveVerificationForLine(
+        first.id,
+        lineId(first, 'l-mug')
+      );
+
+      expect(latest).toMatchObject({
+        workLineId: lineId(first, 'l-mug'),
+        verifiedByUserId: PACKER_A,
+      });
+    });
+
+    it('should still answer for a closed box, whose scans a close never voids', async () => {
+      // The last scan closes the box (D18). The read must keep answering, so
+      // the take-out step and its refusal decide on the real count.
+      const work = await seedWork([
+        { orderLineId: 'l-mug', productVariantId: 'ol_variant_mug', totalQuantity: 1 },
+      ]);
+      await scan(work, 'l-mug', 'g-1', PACKER_A, '2026-11-09T10:00:00Z');
+      const state = await verification().getState(work.id);
+      expect(state.closedAt).not.toBeNull();
+
+      const latest = await repository().findLatestActiveVerificationForLine(
+        work.id,
+        lineId(work, 'l-mug')
+      );
+      const refused = await verification().voidSurplusOnLine({
+        workId: work.id,
+        workLineId: lineId(work, 'l-mug'),
+        keep: 0,
+        actorUserId: PACKER_A,
+      });
+
+      expect(latest).toMatchObject({ verifiedByUserId: PACKER_A });
+      expect(refused).toMatchObject({ outcome: 'refused', reason: 'parcel-closed' });
     });
 
     it('should answer null for a line with no active scan', async () => {
@@ -181,17 +238,19 @@ describe('A box the lowered quantity leaves full (#3961)', () => {
       expect(result.closedParcels).toHaveLength(1);
       const rows = (await harness
         .getDataSource()
-        .query(`SELECT "parcelClosedAt", "packedByUserId" FROM "fulfillment_works" WHERE "id" = $1`, [
-          work.id,
-        ])) as Array<{ parcelClosedAt: Date | null; packedByUserId: string | null }>;
+        .query(
+          `SELECT "parcelClosedAt", "packedByUserId" FROM "fulfillment_works" WHERE "id" = $1`,
+          [work.id]
+        )) as Array<{ parcelClosedAt: Date | null; packedByUserId: string | null }>;
       expect(rows[0].parcelClosedAt).not.toBeNull();
       expect(rows[0].packedByUserId).toBe(PACKER_B);
 
       const claims = (await harness
         .getDataSource()
-        .query(`SELECT "eventKind", "connectionId" FROM "fulfillment_progress_claims" WHERE "workId" = $1`, [
-          work.id,
-        ])) as Array<{ eventKind: string; connectionId: string }>;
+        .query(
+          `SELECT "eventKind", "connectionId" FROM "fulfillment_progress_claims" WHERE "workId" = $1`,
+          [work.id]
+        )) as Array<{ eventKind: string; connectionId: string }>;
       expect(claims).toEqual([{ eventKind: 'shipped', connectionId: work.assignedConnectionId }]);
     });
 
@@ -208,7 +267,9 @@ describe('A box the lowered quantity leaves full (#3961)', () => {
       expect(result.closedParcels).toEqual([]);
       const claims = (await harness
         .getDataSource()
-        .query(`SELECT 1 FROM "fulfillment_progress_claims" WHERE "workId" = $1`, [work.id])) as unknown[];
+        .query(`SELECT 1 FROM "fulfillment_progress_claims" WHERE "workId" = $1`, [
+          work.id,
+        ])) as unknown[];
       expect(claims).toHaveLength(0);
     });
   });
