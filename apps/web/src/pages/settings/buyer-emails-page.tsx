@@ -13,6 +13,7 @@
  */
 import { useId, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
 import { FormField } from '../../shared/ui/form-field';
@@ -58,7 +59,7 @@ function ConnectionSettings({
       { connectionId: connection.id, enabled },
       {
         onSuccess: () => showToast({ description: COPY.saved, tone: 'success' }),
-        onError: (error) => showToast({ description: error.message, tone: 'error' }),
+        onError: (error) => showToast({ description: describeApiError(error, 'buyer-emails'), tone: 'error' }),
       },
     );
   }

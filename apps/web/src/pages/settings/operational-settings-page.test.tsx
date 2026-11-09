@@ -14,6 +14,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../shared/api/api-error';
+import { getMessages, interpolate } from '../../shared/i18n';
 import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
@@ -217,7 +218,8 @@ describe('OperationalSettingsPage', () => {
   it('should put a rejected value beside its own control, not in one banner', async () => {
     const update = vi.fn().mockRejectedValue(
       new ApiError('Bad Request', 400, {
-        message: ['catalogueSweepBudget must not be greater than 2000'],
+        code: 'VALIDATION_FAILED',
+        fields: [{ path: 'catalogueSweepBudget', code: 'max', params: { max: 2000 } }],
       }),
     );
     const user = userEvent.setup();
@@ -232,7 +234,7 @@ describe('OperationalSettingsPage', () => {
     await user.click(within(confirm).getByRole('button', { name: 'Save changes' }));
 
     expect(
-      await screen.findByText('catalogueSweepBudget must not be greater than 2000'),
+      await screen.findByText(interpolate(getMessages('errors').fields.max, { max: 2000 })),
     ).toBeInTheDocument();
   });
 
@@ -526,7 +528,8 @@ describe('OperationalSettingsPage', () => {
     it('should put a rejected retention value beside its own control', async () => {
       const update = vi.fn().mockRejectedValue(
         new ApiError('Bad Request', 400, {
-          message: ['syncJobRetentionDays must not be greater than 200'],
+          code: 'VALIDATION_FAILED',
+        fields: [{ path: 'syncJobRetentionDays', code: 'max', params: { max: 200 } }],
         }),
       );
       const user = userEvent.setup();
@@ -540,7 +543,7 @@ describe('OperationalSettingsPage', () => {
       await user.click(screen.getByRole('button', { name: 'Save retention' }));
 
       expect(
-        await screen.findByText('syncJobRetentionDays must not be greater than 200'),
+        await screen.findByText(interpolate(getMessages('errors').fields.max, { max: 200 })),
       ).toBeInTheDocument();
     });
 

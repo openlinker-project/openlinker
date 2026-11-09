@@ -21,6 +21,7 @@
 import { MotionConfig, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import {
   buildDemoLoginCopy,
   buildProductionLoginCopy,
@@ -173,9 +174,7 @@ export function LoginStageScreen({ mode }: LoginStageScreenProps): ReactElement 
         const message =
           error instanceof ApiError && (error.isUnauthorized() || error.isForbidden())
             ? copy.failed
-            : error instanceof Error
-              ? error.message
-              : copy.failed;
+            : describeApiError(error, 'login');
         return { ok: false, message };
       }
     },
@@ -195,7 +194,7 @@ export function LoginStageScreen({ mode }: LoginStageScreenProps): ReactElement 
         return { ok: true };
       } catch (error) {
         if (error instanceof ApiError && error.isConflict()) return { ok: false, taken: true };
-        return { ok: false, message: error instanceof Error ? error.message : undefined };
+        return { ok: false, message: describeApiError(error, 'login') };
       }
     },
     [register, demoMode]
@@ -276,7 +275,7 @@ export function LoginStageScreen({ mode }: LoginStageScreenProps): ReactElement 
         onConsentAccept={onConsentAccept}
         onConsentDecline={onConsentDecline}
         consentPending={consent.isPending}
-        consentError={consent.error?.message ?? null}
+        consentError={consent.error ? describeApiError(consent.error, 'login') : null}
       />
     </MotionConfig>
   );

@@ -6,17 +6,20 @@
  * range" over five controls asks the operator to find the offending one, and
  * they are the person least equipped to.
  *
- * Every message the API can return for this surface begins with the field
- * name — both `class-validator`'s (`catalogueSweepBudget must not be greater
- * than 2000`) and the domain error's (`deletionAuditCadence must fire at
- * least once every 7 days...`), which is what makes prefix matching sound
- * rather than a guess. Anything that matches nothing is returned as a
- * form-level message instead of being dropped: an unattributed error is still
- * an error, and swallowing it is worse than showing it once at the top.
+ * A validation refusal names each invalid field by its path into the request
+ * body (#3861), and the domain refusal (`OPERATIONAL_SETTING_INVALID`) names
+ * its field in `params.field`, so routing a message to its control is a match
+ * on a name rather than a guess. The sentence itself comes from the shared
+ * error copy in the operator's language. Anything that names no known field is
+ * returned as a form-level message instead of being dropped: an unattributed
+ * error is still an error, and swallowing it is worse than showing it once at
+ * the top.
  *
  * @module apps/web/src/features/settings/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
+import { describeFieldError } from '../../../shared/api/apply-field-errors';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import type { OperationalSettingField } from '../api/operational-settings.types';
 
 const FIELDS: readonly OperationalSettingField[] = [
@@ -42,24 +45,8 @@ export const NO_OPERATIONAL_SETTINGS_ERRORS: OperationalSettingsErrors = {
   formErrors: [],
 };
 
-function readMessages(error: unknown): string[] {
-  if (error instanceof ApiError) {
-    const details = error.details;
-    if (typeof details === 'object' && details !== null && 'message' in details) {
-      const raw = (details as { message: unknown }).message;
-      if (Array.isArray(raw)) {
-        return raw.map((entry) => String(entry));
-      }
-      if (typeof raw === 'string') {
-        return [raw];
-      }
-    }
-    return [error.message];
-  }
-  if (error instanceof Error) {
-    return [error.message];
-  }
-  return [];
+function fieldFor(path: string): OperationalSettingField | undefined {
+  return FIELDS.find((candidate) => path === candidate || path.startsWith(`${candidate}.`));
 }
 
 export function mapOperationalSettingsErrors(error: unknown): OperationalSettingsErrors {
@@ -70,18 +57,29 @@ export function mapOperationalSettingsErrors(error: unknown): OperationalSetting
   const fieldErrors: Partial<Record<OperationalSettingField, string>> = {};
   const formErrors: string[] = [];
 
-  for (const message of readMessages(error)) {
-    const field = FIELDS.find((candidate) => message.includes(candidate));
-    if (field === undefined) {
-      formErrors.push(message);
-      continue;
+  if (error instanceof ApiError && error.fields.length > 0) {
+    for (const field of error.fields) {
+      const target = fieldFor(field.path);
+      if (target === undefined) {
+        formErrors.push(describeFieldError(field));
+        continue;
+      }
+      // First message per field wins — a second one for the same control would
+      // replace a specific complaint with a generic one.
+      if (fieldErrors[target] === undefined) {
+        fieldErrors[target] = describeFieldError(field);
+      }
     }
-    // First message per field wins — a second one for the same control would
-    // replace a specific complaint with a generic one.
-    if (fieldErrors[field] === undefined) {
-      fieldErrors[field] = message;
-    }
+    return { fieldErrors, formErrors };
   }
 
+  const sentence = describeApiError(error, 'settings');
+  const named = error instanceof ApiError ? error.params.field : undefined;
+  const target = typeof named === 'string' ? fieldFor(named) : undefined;
+  if (target === undefined) {
+    formErrors.push(sentence);
+  } else {
+    fieldErrors[target] = sentence;
+  }
   return { fieldErrors, formErrors };
 }

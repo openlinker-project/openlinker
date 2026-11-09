@@ -2,6 +2,7 @@ import { useMemo, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useLogin } from '../hooks/use-login';
 import { createLoginFormSchema, type LoginFormValues } from './login-form.schema';
 import { useMessages } from '../../../shared/i18n';
@@ -35,8 +36,8 @@ export function LoginForm({
     resolver: zodResolver(schema),
   });
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : []
+  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
+    fieldError?.message ? [String(fieldError.message)] : []
   );
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -66,7 +67,7 @@ export function LoginForm({
       {form.formState.submitCount > 0 ? <FormErrorSummary errors={validationMessages} /> : null}
       {login.error ? (
         <Alert tone="error" title={copy.failed}>
-          {login.error.message}
+          {describeApiError(login.error, 'auth')}
         </Alert>
       ) : null}
 

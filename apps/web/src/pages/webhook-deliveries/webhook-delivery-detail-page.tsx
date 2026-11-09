@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
@@ -157,7 +158,7 @@ export function WebhookDeliveryDetailPage(): ReactElement {
       <PageLayout eyebrow={copy.eyebrow} title={copy.fallbackTitle}>
         <ErrorState
           title={copy.error.title}
-          message={query.error?.message ?? copy.error.notFound}
+          message={query.error ? describeApiError(query.error, 'webhook-deliveries') : copy.error.notFound}
           action={<Button onClick={() => { void query.refetch(); }}>{copy.retry}</Button>}
         />
       </PageLayout>

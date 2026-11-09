@@ -1,5 +1,6 @@
 import { useMemo, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
@@ -193,7 +194,7 @@ export function WebhookDeliveriesPage(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.errorTitle}
-          message={query.error.message}
+          message={describeApiError(query.error, 'webhook-deliveries')}
           action={<Button onClick={() => { void query.refetch(); }}>{copy.retry}</Button>}
         />
       ) : (query.data?.items.length ?? 0) === 0 ? (

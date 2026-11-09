@@ -80,8 +80,7 @@
     "description": "Jak mocno OpenLinker obciąża sklep i ile trwa pełne przejście. Zmiana tych wartości to wybór między obciążeniem sklepu a tym, jak szybko OpenLinker zauważy zmianę.",
     "error": {
       "retry": "Ponów",
-      "title": "Nie udało się wczytać tempa synchronizacji",
-      "unknown": "Nieznany błąd"
+      "title": "Nie udało się wczytać tempa synchronizacji"
     },
     "eyebrow": "Ustawienia",
     "footer": {
