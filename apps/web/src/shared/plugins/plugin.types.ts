@@ -480,6 +480,13 @@ export interface OfferRowValidationInput {
    */
   catalogueConsulted?: boolean;
   /**
+   * The lookup DID find a catalogue product for this row's barcode, even though
+   * no card will be linked - it sat in a different category than the operator's
+   * mapping and was set aside (#3994). A "barcode not in the catalogue" warning
+   * would then be false. Absent ⇒ unknown, read as before.
+   */
+  barcodeMatchedCatalogue?: boolean;
+  /**
    * How many INCLUDED siblings of this row's product would create a catalogue
    * card of their own. On a multi-variant product Allegro binds the new card to
    * the first variant it accepts and rejects the others, so this is a

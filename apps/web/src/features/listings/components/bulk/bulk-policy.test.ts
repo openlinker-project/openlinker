@@ -365,8 +365,10 @@ import {
   effectiveVariantEan,
   imageCountForVariant,
   isValidGtin,
+  operatorPickedCategory,
   recomputeVariantBlockers,
   siblingStockBlockers,
+  submitCategoryIdOf,
   titleForRow,
   titleForVariant,
   toGtin14,
@@ -397,6 +399,8 @@ function makeVariant(id: string, over: Partial<BulkVariantRow> = {}): BulkVarian
     resolvedCategoryId: 'cat-1',
     resolvedProductCardId: 'card-1',
     resolutionMethod: 'auto_detect',
+    overriddenCard: null,
+    mappingAgrees: false,
     categoryCandidates: [],
     override: {},
     ...over,
@@ -885,5 +889,87 @@ describe('siblingStockBlockers (#3851)', () => {
 
   it('should leave a sibling with a known stock alone', () => {
     expect(siblingStockBlockers([], 4)).toEqual([]);
+  });
+});
+
+describe('catalogue card vs category mapping (#3994)', () => {
+  const card = { allegroCategoryId: 'cat-powerbanki', productCardId: 'card-power' };
+  const mappedVariant = (over: Partial<BulkVariantRow> = {}): BulkVariantRow =>
+    makeVariant('ol_variant_1', {
+      resolvedCategoryId: 'cat-tshirty',
+      resolvedProductCardId: null,
+      resolutionMethod: 'category_mapping',
+      overriddenCard: card,
+      ...over,
+    });
+
+  it('should emit the advisory card chip when a card was set aside for the mapping', () => {
+    const variant = mappedVariant();
+    const row = makeWizardRow([variant]);
+
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, new Map());
+
+    expect(blockers).toContain('card-category-differs');
+  });
+
+  it('should keep the chip on a multi-variant sibling, whose category is always the product pin', () => {
+    // The product tier carries the resolved category for every sibling, which
+    // is what `hasCategoryOverride` reads - the chip must not hide behind it.
+    const variant = mappedVariant();
+    const row: BulkWizardRow = {
+      ...makeWizardRow([variant, makeVariant('ol_variant_2')]),
+      resolvedCategoryId: 'cat-tshirty',
+    };
+
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, new Map());
+
+    expect(blockers).toContain('card-category-differs');
+  });
+
+  it('should drop the chip once the operator picks a category at the product tier', () => {
+    const variant = mappedVariant();
+    const row: BulkWizardRow = {
+      ...makeWizardRow([variant]),
+      override: { overrides: { categoryId: 'cat-powerbanki', productCardId: 'card-power' } },
+    };
+
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, new Map());
+
+    expect(blockers).not.toContain('card-category-differs');
+  });
+
+  it('should never emit the chip when no card was set aside', () => {
+    const variant = makeVariant('ol_variant_1');
+    const row = makeWizardRow([variant]);
+
+    expect(recomputeVariantBlockers(row, variant, CONFIG, new Map())).not.toContain(
+      'card-category-differs',
+    );
+  });
+
+  it('should treat a resolved category as not picked by the operator', () => {
+    const variant = makeVariant('ol_variant_1');
+    const row: BulkWizardRow = { ...makeWizardRow([variant]), resolvedCategoryId: 'cat-1' };
+
+    expect(operatorPickedCategory(row, variant)).toBe(false);
+    expect(
+      operatorPickedCategory(row, { ...variant, override: { overrides: { categoryId: 'cat-2' } } }),
+    ).toBe(true);
+  });
+
+  it('should resolve the submitted category variant override first, then product tier, then own match', () => {
+    const variant = makeVariant('ol_variant_1', { resolvedCategoryId: 'cat-own' });
+    const row = makeWizardRow([variant]);
+
+    expect(submitCategoryIdOf(row, variant)).toBe('cat-own');
+    expect(submitCategoryIdOf({ ...row, resolvedCategoryId: 'cat-product' }, variant)).toBe(
+      'cat-product',
+    );
+    expect(
+      submitCategoryIdOf(
+        { ...row, resolvedCategoryId: 'cat-product' },
+        { ...variant, override: { overrides: { categoryId: 'cat-variant' } } },
+      ),
+    ).toBe('cat-variant');
   });
 });

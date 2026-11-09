@@ -42,15 +42,18 @@ describe('OmsLifecycleFact (#2305)', () => {
     });
 
     // #3526 widened the relay union deliberately (`delivered`, `in-progress` —
-    // both EXTERNAL lifecycle facts a channel can show). Pinned so that any
-    // further widening is a reviewed decision; the split itself is the overlap
-    // assertion above, which still forbids an internal OMS fact from joining.
-    it('should hold the relay union at its #2286 + #3526 members', () => {
+    // both EXTERNAL lifecycle facts a channel can show), and #3963 added `paid`
+    // (the buyer's payment, which a shop that got the order unpaid must learn).
+    // Pinned so that any further widening is a reviewed decision; the split
+    // itself is the overlap assertion above, which still forbids an internal OMS
+    // fact from joining.
+    it('should hold the relay union at its #2286 + #3526 + #3963 members', () => {
       expect(OrderLifecycleEventTypeValues).toEqual([
         'dispatched',
         'cancelled',
         'delivered',
         'in-progress',
+        'paid',
       ]);
     });
   });

@@ -485,6 +485,43 @@ export function BulkWizard({
     [config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit],
   );
 
+  // #3994 - the operator chose the catalogue card the resolver set aside in
+  // favour of their mapping. Only offered for a single-variant product: a
+  // multi-variant family shares ONE category (the server strips a per-variant
+  // one), so a sibling's card cannot be adopted on its own. The card and its
+  // category travel together - a card is only linkable in its own category.
+  const handleUseCardCategory = useCallback(
+    (productId: string) => {
+      if (!config) return;
+      setHasEdits(true);
+      setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, preflightContext, (row) => {
+        if (row.productId !== productId || row.variants.length !== 1) return row;
+        const card = row.variants[0].overriddenCard;
+        if (!card) return row;
+        const override: BulkPerProductOverride = {
+          ...row.override,
+          overrides: {
+            ...(row.override.overrides ?? {}),
+            categoryId: card.allegroCategoryId,
+            productCardId: card.productCardId,
+          },
+        };
+        return {
+          ...row,
+          override,
+          variants: row.variants.map((v) => ({
+            ...v,
+            override: {
+              ...v.override,
+              overrides: { ...(v.override.overrides ?? {}), ...override.overrides },
+            },
+          })),
+        };
+      }));
+    },
+    [config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit],
+  );
+
   const handleSubmit = useCallback(
     async (publishImmediately: boolean) => {
       if (!config) return;
@@ -903,6 +940,8 @@ export function BulkWizard({
                 onSetVariantIncluded={setVariantIncluded}
                 onSetProductIncluded={setProductIncluded}
                 onSaveEditor={handleSaveEditor}
+                onUseCardCategory={handleUseCardCategory}
+                destinationResolvesCategoryAtSubmit={destinationResolvesCategoryAtSubmit}
                 onApproveAll={handleApproveAll}
                 onBack={() => { setStep('config'); }}
               />
@@ -1176,6 +1215,8 @@ export function mergeResolveOutcomes(
           resolvedCategoryId: vo.resolvedCategoryId,
           resolvedProductCardId: vo.resolvedProductCardId,
           resolutionMethod: vo.resolutionMethod,
+          overriddenCard: vo.overriddenCard,
+          mappingAgrees: vo.mappingAgrees,
           masterStock: vo.masterStock,
           masterPrice: vo.masterPrice,
           masterCurrency: vo.masterCurrency,
@@ -1213,6 +1254,8 @@ function seedVariantRow(
     resolvedCategoryId: null,
     resolvedProductCardId: null,
     resolutionMethod: null,
+    overriddenCard: null,
+    mappingAgrees: false,
     categoryCandidates: [],
     override: {},
   };
