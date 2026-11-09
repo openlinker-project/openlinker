@@ -1,7 +1,7 @@
 {
   "cancelError": {
     "carrierRefused": {
-      "message": "Przewoźnik nie pozwala już anulować tej przesyłki, zwykle dlatego, że paczka została potwierdzona. Anuluj paczkę w panelu przewoźnika albo skontaktuj się z pomocą techniczną.",
+      "message": "Przewoźnik nie pozwala już anulować tej przesyłki, zwykle dlatego, że paczka została potwierdzona. Anuluj paczkę w panelu przewoźnika albo przez obsługę klienta przewoźnika.",
       "title": "Przewoźnik nie anulował tej przesyłki"
     },
     "failed": {

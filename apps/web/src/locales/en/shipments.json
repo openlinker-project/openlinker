@@ -1,7 +1,7 @@
 {
   "cancelError": {
     "carrierRefused": {
-      "message": "The carrier no longer allows this shipment to be cancelled, usually because the parcel is already confirmed. Cancel the parcel in the carrier's panel, or contact support.",
+      "message": "The carrier no longer allows this shipment to be cancelled, usually because the parcel is already confirmed. Cancel the parcel in the carrier's panel or through the carrier's customer service.",
       "title": "The carrier did not cancel this shipment"
     },
     "failed": {
