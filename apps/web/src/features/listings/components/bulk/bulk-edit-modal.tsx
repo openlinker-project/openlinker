@@ -79,7 +79,7 @@ import {
 } from '../../../../shared/ui';
 import type { DescriptionFormat } from '../../../../shared/ui';
 import { useDescriptionFormatQuery } from '../../hooks/use-description-format-query';
-import { interpolate, useFormat, useMessages } from '../../../../shared/i18n';
+import { interpolate, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
@@ -2436,6 +2436,7 @@ function VariantScopeForm({
         ? missingRequiredProductParameterNames(categoryParameters, effectiveParamValues)
         : undefined;
   const panelCopy = useMessages('listings').bulkBlockers.panel;
+  const plural = usePlural();
 
   // A missing-parameter token takes the operator to the field (#4003). Product
   // parameters usually live on the shared base, so when this variant's form
@@ -2726,12 +2727,12 @@ function VariantScopeForm({
             const action = needsCategory ? (
               <Button tone="primary" type="button" className="button--sm" onClick={onSetProductCategory}>
                 {canOverrideCategory
-                  ? `Set category for all ${variantCount} variants`
-                  : 'Set the product category'}
+                  ? plural(variantCount, panelCopy.setCategoryForAll)
+                  : panelCopy.setProductCategory}
               </Button>
             ) : variantScope || advisory || items.length > 0 ? null : (
               <Button tone="secondary" type="button" className="button--sm" onClick={onFixOnBase}>
-                Open shared base
+                {panelCopy.openSharedBase}
               </Button>
             );
             return (

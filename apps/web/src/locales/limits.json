@@ -1,4 +1,8 @@
 {
+  "listings:bulkBlockers.panel.advisoryNote": 22,
+  "listings:bulkBlockers.panel.openSharedBase": 28,
+  "listings:bulkBlockers.panel.setCategoryForAll": 40,
+  "listings:bulkBlockers.panel.setProductCategory": 28,
   "ui:confirmDialog.cancel": 12,
   "ui:confirmDialog.confirm": 12,
   "ui:pagination.next": 12,

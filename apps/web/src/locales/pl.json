@@ -94,7 +94,15 @@
         "advisoryNote": "Można opublikować",
         "ariaLabel": "Co blokuje ten wariant",
         "consequence": "Wynika z przyczyny powyżej",
-        "jumpTo": "Przejdź do pola {name}"
+        "jumpTo": "Przejdź do pola {name}",
+        "openSharedBase": "Otwórz wspólne ustawienia",
+        "setCategoryForAll": {
+          "few": "Ustaw kategorię dla {n} wariantów",
+          "many": "Ustaw kategorię dla {n} wariantów",
+          "one": "Ustaw kategorię dla {n} wariantu",
+          "other": "Ustaw kategorię dla {n} wariantu"
+        },
+        "setProductCategory": "Ustaw kategorię produktu"
       }
     }
   },

@@ -88,7 +88,13 @@
         "advisoryNote": "Can still publish",
         "ariaLabel": "What blocks this variant",
         "consequence": "Follows from the cause above",
-        "jumpTo": "Go to {name}"
+        "jumpTo": "Go to {name}",
+        "openSharedBase": "Open shared base",
+        "setCategoryForAll": {
+          "one": "Set category for {n} variant",
+          "other": "Set category for all {n} variants"
+        },
+        "setProductCategory": "Set the product category"
       }
     }
   },
