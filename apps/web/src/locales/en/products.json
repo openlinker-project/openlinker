@@ -144,7 +144,6 @@
     },
     "toasts": {
       "bulkCountsFromNext": "It counts toward margin from the next order.",
-      "bulkSaveFailed": "The costs could not be saved.",
       "bulkSaved": {
         "one": "Cost saved for {n} variant",
         "other": "Cost saved for {n} variants"
@@ -152,8 +151,7 @@
       "bulkSkipped": {
         "one": "{n} already had a cost and was left as it was.",
         "other": "{n} already had a cost and were left as it was."
-      },
-      "saveFailed": "The cost could not be saved."
+      }
     },
     "toolbar": {
       "allChannels": "All channels",
@@ -452,14 +450,12 @@
       "description": "What you pay for one unit, excluding VAT. Used for margin on orders placed from now on; earlier orders keep no cost.",
       "label": "Cost price, net per unit",
       "netSuffix": "net",
-      "save": "Save cost",
-      "saveFailed": "The cost could not be saved."
+      "save": "Save cost"
     },
     "notRecorded": "Not recorded",
     "section": {
       "add": "Add cost",
       "clear": "Clear cost",
-      "clearFailed": "The cost could not be cleared.",
       "clearHint": "Clearing a cost affects orders placed from now on only.",
       "demoReadOnlyReason": "This is a read-only demo, so cost prices cannot be changed.",
       "edit": "Edit cost",

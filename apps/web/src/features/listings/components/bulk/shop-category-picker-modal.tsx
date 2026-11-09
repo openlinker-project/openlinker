@@ -43,6 +43,7 @@ import {
   isTaxonomyUnsynced,
 } from '../../../mappings';
 import { useShopCategoriesQuery } from '../../hooks/use-shop-categories-query';
+import { describeApiError } from '../../../../shared/api/describe-api-error';
 
 interface Crumb {
   id: string;
@@ -256,7 +257,7 @@ function ShopCategoryPickerBody({
         ) : categoriesQuery.error ? (
           <ErrorState
             title={copy.error.title}
-            message={categoriesQuery.error.message}
+            message={describeApiError(categoriesQuery.error, 'listings')}
             action={<Button onClick={() => void categoriesQuery.refetch()}>{copy.error.retry}</Button>}
           />
         ) : nodes.length === 0 ? (

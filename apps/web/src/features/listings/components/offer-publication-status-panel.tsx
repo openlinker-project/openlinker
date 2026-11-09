@@ -36,7 +36,7 @@ import type {
 } from '../api/listings.types';
 import { useOfferPublicationStatusQuery } from '../hooks/use-offer-publication-status-query';
 import { OfferPublicationStatusBadge } from './offer-publication-status-badge';
-import { serverErrorText } from '../lib/server-error-text';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface OfferPublicationStatusPanelProps {
   productId: string;
@@ -49,7 +49,6 @@ export function OfferPublicationStatusPanel({
   enabled = true,
 }: OfferPublicationStatusPanelProps): ReactElement | null {
   const copy = useMessages('listings').offerPublicationStatusPanel;
-  const common = useMessages('listings').common;
   const apiClient = useApiClient();
   const queryClient = useQueryClient();
   const query = useOfferPublicationStatusQuery(productId, undefined, { enabled });
@@ -80,7 +79,7 @@ export function OfferPublicationStatusPanel({
     return (
       <ErrorState
         title={copy.errorTitle}
-        message={serverErrorText(common.serverSaid, query.error.message, common.unknownError)}
+        message={describeApiError(query.error, 'listings')}
         action={<Button onClick={() => void query.refetch()}>{copy.retry}</Button>}
       />
     );

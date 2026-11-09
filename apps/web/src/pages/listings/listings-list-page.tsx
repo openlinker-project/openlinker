@@ -72,7 +72,7 @@ import type {
   OfferLifecycle,
   OfferMapping,
 } from '../../features/listings/api/listings.types';
-import { serverErrorText } from '../../features/listings/lib/server-error-text';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 type ListingsListCopy = ResolvedCopy<Messages['listings']>['listingsListPage'];
 
@@ -415,7 +415,6 @@ function UpdatedCell({ row }: { row: OfferMapping }): ReactElement {
 export function ListingsListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const copy = useMessages('listings').listingsListPage;
-  const common = useMessages('listings').common;
   const plural = usePlural();
   const format = useFormat();
 
@@ -912,7 +911,7 @@ export function ListingsListPage(): ReactElement {
           ) : query.error ? (
             <ErrorState
               title={copy.errorTitle}
-              message={serverErrorText(common.serverSaid, query.error.message, common.unknownError)}
+              message={describeApiError(query.error, 'listings')}
               action={
                 <Button
                   onClick={() => {

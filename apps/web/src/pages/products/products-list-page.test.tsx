@@ -10,6 +10,7 @@ import {
 import { ProductsListPage } from './products-list-page';
 import type { PaginatedProducts } from '../../features/products/api/products.types';
 import type * as DemoModule from '../../features/demo';
+import { getMessages } from '../../shared/i18n';
 
 const captureDemoEvent = vi.fn();
 vi.mock('../../features/demo', async (importOriginal): Promise<typeof DemoModule> => {
@@ -367,7 +368,7 @@ describe('ProductsListPage', () => {
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('Unable to load products')).toBeInTheDocument();
-    expect(screen.getAllByText('Network error').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(getMessages('errors').status.other).length).toBeGreaterThan(0);
   });
 
   it('should render a thumbnail image for products with an image URL', async () => {

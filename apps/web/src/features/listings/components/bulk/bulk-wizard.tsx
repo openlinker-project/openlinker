@@ -79,6 +79,7 @@ import type {
   PricingPolicy,
   StockPolicy,
 } from './bulk-wizard.types';
+import { describeApiError } from '../../../../shared/api/describe-api-error';
 
 interface BulkWizardProps {
   /** Selected products from the Products page (already hydrated with variants). */
@@ -947,7 +948,7 @@ export function BulkWizard({
                 config={config}
                 demoReadOnly={write.demoReadOnly}
                 isSubmitting={shopMutation.isPending}
-                errorMessage={shopMutation.error ? shopMutation.error.message : null}
+                errorMessage={shopMutation.error ? describeApiError(shopMutation.error, 'listings') : null}
                 alreadyListedVariantIds={alreadyListedSet}
                 destinationName={dupGuardDestinationName}
                 onSetVariantIncluded={setVariantIncluded}
@@ -1001,7 +1002,7 @@ export function BulkWizard({
             initialPublishImmediately={config.publishImmediately}
             isSubmitting={mutation.isPending}
             demoReadOnly={write.demoReadOnly}
-            errorMessage={mutation.error ? mutation.error.message : null}
+            errorMessage={mutation.error ? describeApiError(mutation.error, 'listings') : null}
             onConfirm={(publishImmediately) => {
               void handleSubmit(publishImmediately);
             }}
