@@ -3075,71 +3075,6 @@ textarea,
 }
 
 
-/* ── Language toggle (#4021) ──
- * The language list inline in the account menu, beside Theme and Density:
- * the theme toggle's segmented look, each option carrying its flag and native
- * name. The selected one takes the accent border the popover list uses. */
-.language-toggle {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
-  overflow: hidden;
-}
-
-.language-toggle__option {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  height: 2rem;
-  padding: 0 0.625rem;
-  border: none;
-  border-right: 1px solid var(--border-subtle);
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 0.8125rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out);
-}
-
-.language-toggle__option:last-child {
-  border-right: none;
-}
-
-.language-toggle__option:hover {
-  background: var(--bg-surface-muted);
-  color: var(--text-primary);
-}
-
-.language-toggle__option:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
-
-.language-toggle__option--active {
-  background: var(--accent-primary-soft);
-  color: var(--text-primary);
-  font-weight: 600;
-  box-shadow: inset 0 0 0 1.5px var(--accent-primary);
-}
-
-.language-toggle__beta {
-  padding: 0 5px;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--status-info-border);
-  background: var(--status-info-soft);
-  color: var(--status-info);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
 .alert {
   display: flex;
   align-items: flex-start;
@@ -6043,8 +5978,10 @@ a.delivery-rider-banner__button:focus-visible {
 }
 
 /* The language switch in the card's top-right corner (#4021), where the
- * operator is looking, rather than the far corner of a wide screen. The brand
- * keeps clear of it with the same inset on both sides, so it stays centred. */
+ * operator is looking, rather than the far corner of a wide screen. Only the
+ * guest card routes (forgot / reset password, confirm email) use it; login,
+ * register and consent carry the switch in the login stage's top bar (#4048).
+ * The brand keeps clear of it with the same inset on both sides. */
 .guest-card__language {
   position: absolute;
   top: var(--space-3);

@@ -32,7 +32,7 @@ import { useOmsRoutingState } from '../features/fulfillment-authority';
 import type { NavGroup } from './nav-registry.types';
 import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
 import { Button } from '../shared/ui/button';
-import { LanguageToggle, restoreFocusAfterLanguageChange } from '../features/language';
+import { LanguageMenuList, restoreFocusAfterLanguageChange } from '../features/language';
 import { EnvironmentBadge } from '../shared/ui/environment-badge';
 import {
   DropdownMenu,
@@ -258,16 +258,16 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <div className="shell-user-chip__menu-section">
+          <div className="shell-user-chip__menu-section-label">{copy.language}</div>
+          <LanguageMenuList />
+        </div>
+        <div className="shell-user-chip__menu-section">
           <div className="shell-user-chip__menu-section-label">{themeCopy.label}</div>
           <ThemePicker />
         </div>
         <div className="shell-user-chip__menu-section">
           <div className="shell-user-chip__menu-section-label">{copy.density}</div>
           <DensityToggle />
-        </div>
-        <div className="shell-user-chip__menu-section">
-          <div className="shell-user-chip__menu-section-label">{copy.language}</div>
-          <LanguageToggle />
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onLogout}>{copy.signOut}</DropdownMenuItem>
