@@ -444,6 +444,28 @@
       "wrongItemTitle": "Ten produkt nie należy do tej paczki"
     }
   },
+  "sourceChange": {
+    "countLabel": "Wyjmij",
+    "ean": "EAN {ean}",
+    "heldBody": "Sklep zmienił to zamówienie, więc zostaw karton bez zmian - biuro zdecyduje, co ma się w nim znaleźć.",
+    "sku": "SKU {sku}",
+    "takeOutBin": {
+      "few": "Sklep zmniejszył ilość tego produktu, więc wyjmij {n} sztuki i odłóż je na półkę {bin}.",
+      "many": "Sklep zmniejszył ilość tego produktu, więc wyjmij {n} sztuk i odłóż je na półkę {bin}.",
+      "one": "Sklep zmniejszył ilość tego produktu, więc wyjmij {n} sztukę i odłóż ją na półkę {bin}.",
+      "other": "Sklep zmniejszył ilość tego produktu, więc wyjmij {n} sztuki i odłóż je na półkę {bin}."
+    },
+    "takeOutNote": "Karton sam wróci do pakowania.",
+    "takeOutShelf": {
+      "few": "Sklep zmniejszył ilość tego produktu, więc wyjmij {n} sztuki i odłóż je na półkę.",
+      "many": "Sklep zmniejszył ilość tego produktu, więc wyjmij {n} sztuk i odłóż je na półkę.",
+      "one": "Sklep zmniejszył ilość tego produktu, więc wyjmij {n} sztukę i odłóż ją na półkę.",
+      "other": "Sklep zmniejszył ilość tego produktu, więc wyjmij {n} sztuki i odłóż je na półkę."
+    },
+    "takenOutAction": "Gotowe, wyjęte",
+    "takenOutFailed": "Nie udało się tego zapisać, więc sprawdź karton i potwierdź ponownie.",
+    "unnamedItem": "Ten produkt"
+  },
   "work": {
     "emptyIdle": {
       "body": "Każda paczka skierowana na to stanowisko została spakowana. Nowa praca pojawi się tu sama - nie trzeba odświeżać, a sesja może pozostać aktywna.",
