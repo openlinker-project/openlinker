@@ -44,6 +44,13 @@ const MIRRORS = [
     copyFile: 'apps/web/src/locales/en/orders.json',
     copyPath: ['salesDocumentBlockDetail', 'connectionState'],
   },
+  {
+    name: 'ConnectionTestOutcomeValues',
+    backend: 'libs/core/src/integrations/domain/types/connection-test.types.ts',
+    frontend: 'apps/web/src/features/connections/api/connections.types.ts',
+    copyFile: 'apps/web/src/locales/en/connections.json',
+    copyPath: ['testOutcome'],
+  },
 ];
 
 /** String literals of `export const <name> = [...]`, comments blanked first. */

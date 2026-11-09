@@ -55,6 +55,7 @@ import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
 import { describeApiError } from '../../../shared/api/describe-api-error';
+import { describeConnectionTestFailure } from '../lib/describe-connection-test-failure';
 
 // Endpoint hosts, not prose: the same in every language.
 const SANDBOX_URL = 'https://sandbox.erli.dev';
@@ -74,7 +75,6 @@ function maskSecret(secret: string): string {
 export function ErliSetupForm(): ReactElement {
   const copy = useMessages('connections').erliSetupForm;
   const setupCopy = useMessages('connections').setup;
-  const uiCopy = useMessages('ui');
   const platform = usePlatform('erli')?.displayName ?? copy.platformFallback;
   const STEP_LABELS = [
     copy.steps.credentials,
@@ -281,7 +281,7 @@ export function ErliSetupForm(): ReactElement {
                 tone={testResult.success ? 'success' : 'error'}
                 title={testResult.success ? copy.testPassed : copy.testFailed}
               >
-                {testResult.success ? null : interpolate(uiCopy.apiError.technicalDetailsWith, { details: testResult.message })}
+                {testResult.success ? null : describeConnectionTestFailure(testResult)}
                 {typeof testResult.latencyMs === 'number'
                   ? ` ${interpolate(copy.latency, { ms: format.number(testResult.latencyMs) })}`
                   : null}

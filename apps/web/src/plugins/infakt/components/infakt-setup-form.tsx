@@ -28,6 +28,7 @@ import {
   usePickBankAccount,
   type Connection,
   type ConnectionTestResult,
+  describeConnectionTestFailure,
 } from '../../../features/connections';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -53,7 +54,7 @@ import {
   DialogTitle,
 } from '../../../shared/ui/dialog';
 import { InfaktWebhookConfigDialog } from './infakt-webhook-config';
-import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
+import { interpolate, renderRich } from '../../../shared/i18n';
 import { useInfaktMessages } from '../messages';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 
@@ -64,7 +65,6 @@ const strong = { strong: (text: string): ReactElement => <strong>{text}</strong>
 export function InfaktSetupForm(): ReactElement {
   const messages = useInfaktMessages();
   const copy = messages.infaktSetupForm;
-  const uiCopy = useMessages('ui');
   const schemaCopy = messages.infaktSetupSchema;
   const setupSchema = useMemo(() => createInfaktSetupSchema(schemaCopy), [schemaCopy]);
   const createConnection = useCreateConnectionMutation();
@@ -354,7 +354,7 @@ export function InfaktSetupForm(): ReactElement {
               tone={testResult.success ? 'success' : 'error'}
               title={testResult.success ? copy.test.passed : copy.test.failed}
             >
-              {testResult.success ? null : interpolate(uiCopy.apiError.technicalDetailsWith, { details: testResult.message })}
+              {testResult.success ? null : describeConnectionTestFailure(testResult)}
               {typeof testResult.latencyMs === 'number'
                 ? ` ${interpolate(copy.test.latency, { ms: testResult.latencyMs })}`
                 : null}

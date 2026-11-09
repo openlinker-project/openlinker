@@ -20,6 +20,7 @@ import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { captureDemoEvent } from '../../demo';
 import { describeApiError } from '../../../shared/api/describe-api-error';
+import { describeConnectionTestFailure } from '../lib/describe-connection-test-failure';
 
 interface ConnectionActionsPanelProps {
   connection: Connection;
@@ -29,7 +30,6 @@ interface ConnectionActionsPanelProps {
 
 export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionActionsPanelProps): ReactElement {
   const copy = useMessages('connections').connectionActionsPanel;
-  const uiCopy = useMessages('ui');
   const format = useFormat();
   const disableConnection = useDisableConnectionMutation();
   const testConnection = useTestConnectionMutation();
@@ -59,7 +59,7 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
         });
         return;
       }
-      const details = interpolate(uiCopy.apiError.technicalDetailsWith, { details: result.message });
+      const details = describeConnectionTestFailure(result);
       showToast({
         tone: 'error',
         title: copy.test.failed,

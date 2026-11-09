@@ -52,6 +52,7 @@ import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { describeApiError } from '../../../shared/api/describe-api-error';
+import { describeConnectionTestFailure } from '../lib/describe-connection-test-failure';
 
 
 
@@ -76,7 +77,6 @@ function maskToken(token: string): string {
 export function ShoperSetupForm(): ReactElement {
   const copy = useMessages('connections').shoperSetupForm;
   const setupCopy = useMessages('connections').setup;
-  const uiCopy = useMessages('ui');
   const format = useFormat();
   const STEP_LABELS = [
     copy.steps.shop,
@@ -225,7 +225,7 @@ export function ShoperSetupForm(): ReactElement {
               tone={testResult.success ? 'success' : 'error'}
               title={testResult.success ? copy.testPassed : copy.testFailed}
             >
-              {testResult.success ? null : interpolate(uiCopy.apiError.technicalDetailsWith, { details: testResult.message })}
+              {testResult.success ? null : describeConnectionTestFailure(testResult)}
               {typeof testResult.latencyMs === 'number'
                 ? ` ${interpolate(copy.latency, { ms: format.number(testResult.latencyMs) })}`
                 : null}
