@@ -1,0 +1,36 @@
+{
+  "cursorsListPage": {
+    "caption": "Kursory połączeń",
+    "columns": {
+      "connectionId": "ID połączenia",
+      "cursorKey": "Klucz kursora",
+      "updatedAt": "Ostatnia zmiana",
+      "value": "Wartość"
+    },
+    "description": "Stan kursorów synchronizacji dla każdego połączenia - śledź pozycje synchronizacji przyrostowej.",
+    "empty": {
+      "filtered": "Żaden kursor nie pasuje do bieżącego filtra.",
+      "none": "Nie utworzono jeszcze żadnych kursorów synchronizacji. Kursory pojawiają się po pierwszym uruchomieniu zadania synchronizacji w tle.",
+      "title": "Nie znaleziono kursorów"
+    },
+    "error": {
+      "retry": "Ponów",
+      "title": "Nie udało się wczytać kursorów"
+    },
+    "eyebrow": "Diagnostyka",
+    "filter": {
+      "ariaLabel": "Filtruj po ID połączenia",
+      "placeholder": "ID połączenia..."
+    },
+    "loading": {
+      "message": "Pobieranie danych kursorów...",
+      "title": "Wczytywanie kursorów"
+    },
+    "pagination": {
+      "next": "Dalej",
+      "previous": "Wstecz",
+      "range": "Wyświetlono {from}-{to} z {total}"
+    },
+    "title": "Kursory"
+  }
+}

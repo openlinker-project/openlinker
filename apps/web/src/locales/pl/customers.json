@@ -1,0 +1,111 @@
+{
+  "customerDetailPage": {
+    "addresses": {
+      "caption": "Adresy klienta",
+      "columns": {
+        "address": "Adres",
+        "city": "Miasto",
+        "country": "Kraj",
+        "lastSeen": "Ostatnio aktywny",
+        "postcode": "Kod pocztowy",
+        "type": "Typ"
+      },
+      "empty": {
+        "message": "Dla tego klienta nie zapisano żadnych adresów.",
+        "title": "Brak adresów"
+      },
+      "heading": "Adresy"
+    },
+    "error": {
+      "notFound": "Nie znaleziono klienta",
+      "title": "Nie udało się wczytać klienta"
+    },
+    "eyebrow": "Klienci",
+    "fallbackTitle": "Klient",
+    "fields": {
+      "created": "Utworzono",
+      "customerId": "ID klienta",
+      "emailHash": "Hash e-maila",
+      "firstName": "Imię",
+      "lastName": "Nazwisko",
+      "lastSeen": "Ostatnio aktywny",
+      "lastSource": "Ostatnie połączenie źródłowe",
+      "normalizedEmail": "Znormalizowany e-mail",
+      "updated": "Zaktualizowano"
+    },
+    "loading": {
+      "message": "Pobieranie danych klienta…",
+      "title": "Wczytywanie klienta"
+    },
+    "orders": {
+      "caption": "Zamówienia klienta",
+      "columns": {
+        "created": "Utworzono",
+        "orderId": "ID zamówienia",
+        "source": "Źródło",
+        "status": "Status"
+      },
+      "empty": {
+        "message": "Ten klient nie ma żadnych zamówień.",
+        "title": "Brak zamówień"
+      },
+      "error": {
+        "title": "Nie udało się wczytać zamówień klienta"
+      },
+      "heading": "Zamówienia",
+      "headingWithCount": "Zamówienia ({count})",
+      "loading": {
+        "message": "Pobieranie zamówień złożonych przez tego klienta…",
+        "title": "Wczytywanie zamówień"
+      },
+      "syncStatus": {
+        "failed": "Błąd",
+        "pending": "Oczekuje",
+        "skipped_cancelled": "Pominięto - anulowane",
+        "synced": "Zsynchronizowano",
+        "syncing": "Synchronizacja"
+      }
+    },
+    "retry": "Ponów"
+  },
+  "customersListPage": {
+    "caption": "Klienci",
+    "columns": {
+      "customer": "Klient",
+      "customerId": "ID klienta",
+      "lastSeen": "Ostatnio aktywny",
+      "lastSource": "Ostatnie połączenie źródłowe"
+    },
+    "copyId": {
+      "copied": "Skopiowano ID klienta",
+      "copiedFor": "Skopiowano ID klienta {name}",
+      "copy": "Kopiuj ID klienta",
+      "copyFor": "Kopiuj ID klienta {name}"
+    },
+    "description": "Tożsamości klientów - przeglądaj rozpoznanych klientów i historię adresów.",
+    "empty": {
+      "browseOrders": "Przeglądaj zamówienia",
+      "clearFilters": "Wyczyść filtry",
+      "filtered": "Żaden klient nie pasuje do bieżących filtrów.",
+      "none": "Nie zapisano jeszcze żadnych klientów.",
+      "title": "Nie znaleziono klientów"
+    },
+    "error": {
+      "retry": "Ponów",
+      "title": "Nie udało się wczytać klientów"
+    },
+    "eyebrow": "Operacje",
+    "filters": {
+      "connectionLabel": "Filtruj po ID połączenia źródłowego",
+      "connectionPlaceholder": "ID połączenia źródłowego…",
+      "searchLabel": "Szukaj klientów",
+      "searchPlaceholder": "Szukaj po e-mailu lub nazwisku…"
+    },
+    "loading": "Wczytywanie klientów…",
+    "nameless": {
+      "label": "Brak imienia i nazwiska",
+      "srPrefix": "Klient,"
+    },
+    "title": "Klienci"
+  }
+}
