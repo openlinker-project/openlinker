@@ -23,6 +23,8 @@ export interface GiftRuleTestPanelProps {
   ruleId: string | null;
   /** The draft as a write body, or `null` while the form is not complete enough to test. */
   draft: GiftRuleWriteInput | null;
+  /** False when the surrounding tab already carries the title. */
+  showTitle?: boolean;
 }
 
 const REASON_KEYS = {
@@ -46,7 +48,11 @@ function reasonText(
   return key === null || key === undefined ? (verdict.reason ?? '') : copy.test.reasons[key];
 }
 
-export function GiftRuleTestPanel({ ruleId, draft }: GiftRuleTestPanelProps): ReactElement {
+export function GiftRuleTestPanel({
+  ruleId,
+  draft,
+  showTitle = true,
+}: GiftRuleTestPanelProps): ReactElement {
   const copy = useMessages('gifts');
   const [orderId, setOrderId] = useState('');
   const evaluate = useEvaluateGiftRulesMutation();
@@ -55,7 +61,7 @@ export function GiftRuleTestPanel({ ruleId, draft }: GiftRuleTestPanelProps): Re
 
   return (
     <section className="gift-test" aria-label={copy.test.title} data-testid="gift-composer-test-order">
-      <h3>{copy.test.title}</h3>
+      {showTitle ? <h3>{copy.test.title}</h3> : null}
       <p className="text-muted">{copy.test.help}</p>
       <div className="gift-test__row">
         <Input

@@ -34,7 +34,9 @@ import {
 } from '../../features/gifts';
 
 function readKind(value: string | null): GiftRuleKind | null {
-  return (GiftRuleKindValues as readonly string[]).includes(value ?? '') ? (value as GiftRuleKind) : null;
+  return (GiftRuleKindValues as readonly string[]).includes(value ?? '')
+    ? (value as GiftRuleKind)
+    : null;
 }
 
 export function GiftRulePage(): ReactElement {
@@ -55,7 +57,8 @@ export function GiftRulePage(): ReactElement {
   const rule = useGiftRuleQuery(sourceId);
   const names = useVariantNames([
     rule.data?.gift?.variantId ?? '',
-    ...(rule.data?.conditions.flatMap((c) => (c.field === 'containsProduct' ? [c.value] : [])) ?? []),
+    ...(rule.data?.conditions.flatMap((c) => (c.field === 'containsProduct' ? [c.value] : [])) ??
+      []),
   ]);
 
   const initial = useMemo<GiftRuleFormValues | null>(() => {
@@ -63,7 +66,12 @@ export function GiftRulePage(): ReactElement {
       const values = ruleToForm(rule.data, names);
       if (isNew) {
         const fresh = emptyGiftRuleForm(values.kind);
-        return { ...values, name: `${values.name} ${copy.composer.copySuffix}`, from: fresh.from, to: '' };
+        return {
+          ...values,
+          name: `${values.name} ${copy.composer.copySuffix}`,
+          from: fresh.from,
+          to: '',
+        };
       }
       return values;
     }
@@ -71,18 +79,24 @@ export function GiftRulePage(): ReactElement {
     return kind === null || sourceId !== null ? null : emptyGiftRuleForm(kind);
   }, [rule.data, names, isNew, search, sourceId, copy.composer.copySuffix]);
 
+  // The operator stays on the promotion after saving. A new one moves to its own
+  // address so a reload, a copy of the link and the Results card all refer to it.
   const saved = (): void => {
     showToast({ tone: 'success', title: copy.composer.saved, description: '' });
-    void navigate('/automations/gifts');
   };
 
-  const onSave = (
-    values: GiftRuleFormValues,
-    isActive: boolean,
-    extend?: { to: string },
-  ): void => {
+  const onSave = (values: GiftRuleFormValues, isActive: boolean, extend?: { to: string }): void => {
     const input = formToWriteInput(extend ? { ...values, to: extend.to } : values, isActive);
-    save.mutate({ ruleId: isNew ? null : ruleId, input }, { onSuccess: saved });
+    save.mutate(
+      { ruleId: isNew ? null : ruleId, input },
+      {
+        onSuccess: (result) => {
+          saved();
+          if (isNew)
+            void navigate(`/automations/gifts/${encodeURIComponent(result.id)}`, { replace: true });
+        },
+      }
+    );
   };
 
   const header = {
@@ -110,49 +124,47 @@ export function GiftRulePage(): ReactElement {
   }
   if (initial === null) {
     return (
-      <PageLayout {...header} title={<span data-testid="gift-composer-template-heading">{copy.composer.newTitle}</span>}>
+      <PageLayout
+        {...header}
+        title={<span data-testid="gift-composer-template-heading">{copy.composer.newTitle}</span>}
+      >
         <GiftRuleTemplateCards onChoose={(kind) => setSearch({ type: kind })} />
       </PageLayout>
     );
   }
 
   return (
-    <PageLayout
-      {...header}
-      title={<span data-testid="gift-composer-title">{isNew ? copy.composer.newTitle : (rule.data?.name ?? copy.composer.title)}</span>}
-    >
-      <GiftRuleComposer
-        initial={initial}
-        rule={isNew ? null : (rule.data ?? null)}
-        canWrite={write.canWrite}
-        saving={save.isPending || resume.isPending}
-        saveError={
-          save.isError
-            ? save.error.message
-            : resume.isError
-              ? resume.error.message
-              : remove.isError
-                ? `${copy.composer.deleteFailed}: ${remove.error.message}`
-                : null
-        }
-        onSave={onSave}
-        onResume={(additionalUnits) =>
-          resume.mutate({ ruleId, additionalUnits }, { onSuccess: saved })
-        }
-        onDelete={
-          write.canWrite && !isNew
-            ? () =>
-                remove.mutate(ruleId, {
-                  onSuccess: () => {
-                    showToast({ tone: 'success', title: copy.composer.deleted, description: '' });
-                    void navigate('/automations/gifts');
-                  },
-                })
-            : undefined
-        }
-        deleting={remove.isPending}
-        onCopy={() => void navigate(`/automations/gifts/new?copyOf=${encodeURIComponent(ruleId)}`)}
-      />
-    </PageLayout>
+    <GiftRuleComposer
+      initial={initial}
+      rule={isNew ? null : rule.data ?? null}
+      canWrite={write.canWrite}
+      saving={save.isPending || resume.isPending}
+      saveError={
+        save.isError
+          ? save.error.message
+          : resume.isError
+            ? resume.error.message
+            : remove.isError
+              ? `${copy.composer.deleteFailed}: ${remove.error.message}`
+              : null
+      }
+      onSave={onSave}
+      onResume={(additionalUnits) =>
+        resume.mutate({ ruleId, additionalUnits }, { onSuccess: saved })
+      }
+      onDelete={
+        write.canWrite && !isNew
+          ? () =>
+              remove.mutate(ruleId, {
+                onSuccess: () => {
+                  showToast({ tone: 'success', title: copy.composer.deleted, description: '' });
+                  void navigate('/automations/gifts');
+                },
+              })
+          : undefined
+      }
+      deleting={remove.isPending}
+      onCopy={() => void navigate(`/automations/gifts/new?copyOf=${encodeURIComponent(ruleId)}`)}
+    />
   );
 }

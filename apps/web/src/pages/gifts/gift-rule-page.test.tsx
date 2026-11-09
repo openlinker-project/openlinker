@@ -93,6 +93,67 @@ describe('GiftRulePage', () => {
       { apiClient, route: '/automations/gifts/r1', sessionAdapter: createAuthenticatedSessionAdapter() },
     );
 
-    expect(await screen.findByTestId('gift-composer-back')).toBeInTheDocument();
+    await screen.findByTestId('gift-composer-name');
+    expect(screen.getByTestId('gift-composer-back')).toBeInTheDocument();
+  });
+
+  const apiFor = (gifts: Record<string, unknown>): ReturnType<typeof createMockApiClient> =>
+    createMockApiClient({
+      gifts,
+      connections: { list: vi.fn().mockResolvedValue([]) },
+      products: {
+        getVariant: vi.fn().mockResolvedValue({ id: 'v', productId: 'p' }),
+        getById: vi.fn().mockResolvedValue({ id: 'p', name: 'Morning set' }),
+        getVariantCosts: vi.fn().mockResolvedValue([]),
+      },
+    } as never);
+
+  it('should stay on the promotion after saving and say it was saved', async () => {
+    const replaceRule = vi.fn().mockResolvedValue(RULE);
+    renderWithProviders(
+      <Routes>
+        <Route path="/automations/gifts/:ruleId" element={<GiftRulePage />} />
+        <Route path="/automations/gifts" element={<p data-testid="list-page">list</p>} />
+      </Routes>,
+      {
+        apiClient: apiFor({ getRule: vi.fn().mockResolvedValue(RULE), replaceRule }),
+        route: '/automations/gifts/r1',
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      },
+    );
+
+    await screen.findByTestId('gift-composer-name');
+    await waitFor(() => expect(screen.getByTestId('gift-composer-primary')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('gift-composer-primary'));
+
+    await waitFor(() => expect(replaceRule).toHaveBeenCalled());
+    expect(await screen.findByText('Promotion saved')).toBeInTheDocument();
+    expect(screen.getByTestId('gift-composer-name')).toBeInTheDocument();
+    expect(screen.queryByTestId('list-page')).not.toBeInTheDocument();
+  });
+
+  it('should move a new promotion to its own address once it is created', async () => {
+    const createRule = vi.fn().mockResolvedValue({ ...RULE, id: 'created-1' });
+    renderWithProviders(
+      <Routes>
+        <Route path="/automations/gifts/:ruleId" element={<GiftRulePage />} />
+      </Routes>,
+      {
+        apiClient: apiFor({
+          getRule: vi.fn().mockResolvedValue({ ...RULE, id: 'created-1' }),
+          createRule,
+        }),
+        route: '/automations/gifts/new?copyOf=r1',
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      },
+    );
+    // A copy of a saved promotion is a complete new one: no pickers to drive.
+    // The source is read first, so the form is ready once the name is there.
+    await waitFor(() => expect(screen.getByTestId('gift-composer-name')).toHaveValue('Spoon with the set (copy)'));
+    await waitFor(() => expect(screen.getByTestId('gift-composer-primary')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('gift-composer-primary'));
+
+    await waitFor(() => expect(createRule).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId('gift-composer-title')).toHaveTextContent('Spoon with the set'));
   });
 });

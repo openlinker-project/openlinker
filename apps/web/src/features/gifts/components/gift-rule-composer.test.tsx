@@ -3,6 +3,7 @@
  * `paused-out-of-stock`, `limit-reached`, `ended`, `edited-open-orders`, `viewer-readonly`)
  */
 import { cleanup, fireEvent, screen, waitFor, type RenderResult } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
 import type { Connection } from '../../connections';
@@ -39,6 +40,7 @@ function mount(
   rule: GiftRule | null = null,
   canWrite = true,
   products: Record<string, unknown> = {},
+  extra: Record<string, unknown> = {},
 ): GiftRuleComposerProps {
   const props: GiftRuleComposerProps = {
     initial: rule ? ruleToForm(rule, new Map([['v-set', 'Morning set'], ['v-spoon', 'Spoon']])) : emptyGiftRuleForm('product'),
@@ -58,6 +60,7 @@ function mount(
       listRows: vi.fn().mockResolvedValue({ items: [], total: 0 }),
       ...products,
     },
+    ...extra,
   } as never);
   rendered = renderWithProviders(<GiftRuleComposer {...props} />, { apiClient });
   return props;
@@ -86,19 +89,102 @@ describe('GiftRuleComposer', () => {
     expect(props.onSave).not.toHaveBeenCalled();
   });
 
-  it('should hide every option but the defaults summary until More options is opened', () => {
+  it('should fold the rarely used options under More options with a one-line summary', () => {
     mount({}, SAVED);
 
-    expect(screen.getByTestId('gift-composer-more-summary')).toHaveTextContent(
-      'combines with others, no piece limit, pauses when the gift runs out',
+    const more = screen.getByTestId('gift-composer-more');
+    expect(more).toHaveTextContent(
+      'combines with others · skips when the gift is already there · no limit per customer',
     );
-    expect(screen.queryByTestId('gift-composer-opt-no-stack')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'More options' }));
-
+    expect(more.querySelector('details')).not.toHaveAttribute('open');
     expect(screen.getByTestId('gift-composer-opt-no-stack')).toBeInTheDocument();
     expect(screen.getByTestId('gift-composer-opt-skip-present')).toBeChecked();
     expect(screen.getByTestId('gift-composer-opt-doc-form')).toBeInTheDocument();
+  });
+
+  it('should describe the promotion in one plain sentence that follows the form', async () => {
+    mount({}, SAVED);
+
+    const sentence = screen.getByTestId('gift-rule-summary-text');
+    expect(sentence).toHaveTextContent('contains Morning set');
+    expect(sentence).toHaveTextContent('we add a gift: Spoon, 1 pcs.');
+
+    fireEvent.change(screen.getByTestId('gift-composer-gift-qty'), { target: { value: '3' } });
+    fireEvent.change(screen.getByTestId('gift-composer-opt-unit-cap'), { target: { value: '100' } });
+
+    await waitFor(() => expect(sentence).toHaveTextContent('Spoon, 3 pcs. The limit is 100 pcs.'));
+  });
+
+  it('should ask for the missing parts instead of a sentence while the form is incomplete', () => {
+    mount();
+
+    expect(screen.getByTestId('gift-rule-summary-text')).toHaveTextContent('Fill in the form');
+  });
+
+  it('should show the results of a saved promotion from the gift report, matched by its own id', async () => {
+    const group = (ruleRef: string, units: number, orders: number, costNet: number): Record<string, unknown> => ({
+      key: ruleRef,
+      giftSource: 'rule',
+      ruleRef,
+      ruleName: ruleRef,
+      productId: 'p-spoon',
+      variantId: 'v-spoon',
+      sku: null,
+      name: null,
+      currency: 'PLN',
+      units,
+      orders,
+      paidGross: 0,
+      costNet,
+      unknownCostUnits: 0,
+    });
+    mount({}, SAVED, true, {}, {
+      giftReport: {
+        getGiftReport: vi.fn().mockResolvedValue({
+          groups: [group('r1', 34, 30, 143), group('someone-else', 500, 400, 9999)],
+          totals: [],
+        }),
+      },
+    });
+
+    await waitFor(() => expect(screen.getByTestId('gift-rule-results-orders')).toHaveTextContent('30'));
+    expect(screen.getByTestId('gift-rule-results-given')).toHaveTextContent('34 pcs');
+    expect(screen.getByTestId('gift-rule-results-cost')).toHaveTextContent('143');
+    expect(screen.getByTestId('gift-rule-results-cost')).not.toHaveTextContent('9');
+    expect(screen.getByTestId('gift-rule-results-average')).toHaveTextContent('4.21');
+  });
+
+  it('should say the results could not be loaded rather than show zero', async () => {
+    mount({}, SAVED, true, {}, { giftReport: { getGiftReport: vi.fn().mockRejectedValue(new Error('boom')) } });
+
+    expect(await screen.findByTestId('gift-rule-results-failed')).toBeInTheDocument();
+    expect(screen.queryByTestId('gift-rule-results-given')).not.toBeInTheDocument();
+  });
+
+  it('should not draw results or the runs tab for a promotion that is not saved yet', () => {
+    mount();
+
+    expect(screen.queryByTestId('gift-rule-results')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('gift-rule-tab-runs')).not.toBeInTheDocument();
+    expect(screen.getByTestId('gift-composer-test-input')).toBeInTheDocument();
+  });
+
+  it('should offer a saved promotion its test and its recent runs in one card', async () => {
+    const listRuns = vi.fn().mockResolvedValue({
+      runs: [],
+      limit: 20,
+      hasMore: false,
+      recordingAvailable: true,
+      note: null,
+    });
+    mount({}, SAVED, true, {}, { automations: { listRuns } });
+    const user = userEvent.setup();
+
+    expect(screen.getByTestId('gift-composer-test-input')).toBeInTheDocument();
+    expect(listRuns).not.toHaveBeenCalled();
+    await user.click(screen.getByTestId('gift-rule-tab-runs'));
+
+    await waitFor(() => expect(listRuns).toHaveBeenCalledWith('r1'));
   });
 
   it('should give every channel one marker and warn about a double gift where a shop knows gifts', async () => {
@@ -154,13 +240,15 @@ describe('GiftRuleComposer', () => {
     expect(screen.getByTestId('gift-composer-name')).toHaveValue('My own name');
   });
 
-  it('should render a delete action that asks first', () => {
+  it('should render a delete action in the menu that asks first', async () => {
     const onDelete = vi.fn();
     mount({ onDelete }, SAVED);
+    const user = userEvent.setup();
 
-    fireEvent.click(screen.getByTestId('gift-composer-delete'));
+    await user.click(screen.getByTestId('gift-composer-menu'));
+    await user.click(await screen.findByTestId('gift-composer-delete'));
     expect(onDelete).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId('gift-composer-delete-confirm-yes'));
+    await user.click(await screen.findByRole('button', { name: 'Delete promotion' }));
     expect(onDelete).toHaveBeenCalled();
   });
 
@@ -197,10 +285,12 @@ describe('GiftRuleComposer', () => {
     expect(props.onSave).toHaveBeenCalledWith(expect.anything(), true, { to: '2026-12-31' });
   });
 
-  it('should copy a saved promotion', () => {
+  it('should copy a saved promotion from the menu', async () => {
     const props = mount({}, SAVED);
+    const user = userEvent.setup();
 
-    fireEvent.click(screen.getByTestId('gift-composer-copy'));
+    await user.click(screen.getByTestId('gift-composer-menu'));
+    await user.click(await screen.findByTestId('gift-composer-copy'));
 
     expect(props.onCopy).toHaveBeenCalled();
   });
