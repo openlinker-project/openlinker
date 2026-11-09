@@ -30,6 +30,96 @@
   "alreadyListedChip": {
     "label": "już w {destination}"
   },
+  "attributeRules": {
+    "chip": {
+      "fromRules": {
+        "few": "{n} z reguł",
+        "many": "{n} z reguł",
+        "one": "{n} z reguł",
+        "other": "{n} z reguł"
+      },
+      "notOnList": "„{value}” spoza listy wartości {destination}",
+      "rejectedCount": {
+        "few": "Odrzucono {n} wartości z reguł",
+        "many": "Odrzucono {n} wartości z reguł",
+        "one": "Odrzucono {n} wartość z reguł",
+        "other": "Odrzucono {n} wartości z reguł"
+      },
+      "rejectedOne": "Odrzucono: {parameter}"
+    },
+    "coverageLabel": "Parametry uzupełniane przez reguły",
+    "editor": {
+      "badgeRejected": "wartość z reguły odrzucona",
+      "badgeRule": "z reguły",
+      "baseNote": "Pozostawione puste wypełnią twoje reguły atrybutów: {names}.",
+      "baseNotePerVariant": "Pozostawione puste wypełnią twoje reguły atrybutów dla każdego wariantu: {names}.",
+      "context": "Parametry z twoich reguł atrybutów: {filled} z {total}.",
+      "inheritFromRule": "Z reguły ({value})",
+      "partial": {
+        "few": "Reguły wypełniają to pole dla {filled} z {n} wariantów.",
+        "many": "Reguły wypełniają to pole dla {filled} z {n} wariantów.",
+        "one": "Reguły wypełniają to pole dla {filled} z {n} wariantu.",
+        "other": "Reguły wypełniają to pole dla {filled} z {n} wariantu."
+      },
+      "rejectedHint": "{destination} nie akceptuje wartości „{value}” z twoich reguł. Wybierz wartość.",
+      "rejectedSome": {
+        "few": "{destination} nie akceptuje wartości z reguł dla {rejected} z {n} wariantów.",
+        "many": "{destination} nie akceptuje wartości z reguł dla {rejected} z {n} wariantów.",
+        "one": "{destination} nie akceptuje wartości z reguł dla {rejected} z {n} wariantu.",
+        "other": "{destination} nie akceptuje wartości z reguł dla {rejected} z {n} wariantu."
+      },
+      "replacesHint": "Zastępuje wartość z reguły „{value}”",
+      "ruleValue": "Wartość z reguły: {value}"
+    },
+    "failed": {
+      "few": "Nie udało się sprawdzić reguł dla {n} wariantów. Do czasu udanego sprawdzenia ich wymagane parametry są traktowane jako puste.",
+      "many": "Nie udało się sprawdzić reguł dla {n} wariantów. Do czasu udanego sprawdzenia ich wymagane parametry są traktowane jako puste.",
+      "one": "Nie udało się sprawdzić reguł dla {n} wariantu. Do czasu udanego sprawdzenia jego wymagane parametry są traktowane jako puste.",
+      "other": "Nie udało się sprawdzić reguł dla {n} wariantu. Do czasu udanego sprawdzenia ich wymagane parametry są traktowane jako puste."
+    },
+    "fix": "Popraw",
+    "fixLabel": "Popraw parametr {parameter} dla wariantu {variant}",
+    "lede": "Uzupełniane przy tworzeniu ofert. Wartość ustawiona ręcznie ma pierwszeństwo.",
+    "ledePerVariant": "Uzupełniane przy tworzeniu ofert, osobno dla każdego wariantu. Wartość ustawiona ręcznie ma pierwszeństwo.",
+    "manage": "Zarządzaj regułami",
+    "more": {
+      "few": "i jeszcze {n} wartości",
+      "many": "i jeszcze {n} wartości",
+      "one": "i jeszcze {n} wartość",
+      "other": "i jeszcze {n} wartości"
+    },
+    "notChecked": "Jeszcze nie sprawdzono.",
+    "origin": {
+      "copied": "Skopiowano z atrybutu „{attribute}” przez twoje reguły atrybutów",
+      "copiedTranslated": "Skopiowano z atrybutu „{attribute}” i przetłumaczono przez twoje reguły atrybutów",
+      "fixed": "Stała wartość z twoich reguł atrybutów",
+      "mapping": "Z twojego mapowania atrybutów",
+      "placeSource": {
+        "ean": "EAN",
+        "manufacturer": "producent",
+        "name": "nazwa produktu",
+        "sku": "SKU",
+        "variant": "nazwa wariantu",
+        "weight": "waga"
+      },
+      "placed": "Pole produktu ({field}) wstawione przez twoje reguły atrybutów",
+      "placedUnknown": "Pole produktu wstawione przez twoje reguły atrybutów",
+      "rule": "Z twoich reguł atrybutów"
+    },
+    "parameterList": {
+      "few": "{names} i jeszcze {n}",
+      "many": "{names} i jeszcze {n}",
+      "one": "{names} i jeszcze {n}",
+      "other": "{names} i jeszcze {n}"
+    },
+    "pill": "{name}: uzupełniono {filled} z {total}",
+    "pillRejected": "{name}: uzupełniono {filled} z {total}, niezaakceptowane: {rejected}",
+    "rejectedLabel": "Wartości, których {destination} nie akceptuje",
+    "rejectedRowLabel": "Popraw: {destination} nie akceptuje: {names}",
+    "rejectedValue": "{destination} nie akceptuje wartości „{value}”",
+    "retry": "Spróbuj ponownie",
+    "title": "Reguły atrybutów"
+  },
   "autoPrefillParameters": {
     "unmatchedBrand": "Marka wariantu \"{brand}\" - brak dokładnego dopasowania na liście marek marketplace; wybierz ręcznie."
   },

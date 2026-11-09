@@ -162,11 +162,15 @@ import {
 } from '@openlinker/core/returns';
 import {
   ORDER_CHANGE_SERVICE_TOKEN,
+  ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
   ORDER_TAG_SERVICE_TOKEN,
   type IOrderChangeService,
+  type IOrderSourceAmendmentEffectsService,
   type OrderChange,
   type IOrderTagService,
+  type SourceAmendmentReconcileResult,
 } from '@openlinker/core/orders';
+import { SourceChangeResultResponseDto } from './dto/source-change-result-response.dto';
 import {
   ORDER_CANCELLATION_SERVICE_TOKEN,
   type IOrderCancellationService,
@@ -243,6 +247,10 @@ import {
 import type { OrderDeliveryResolutionDto } from './dto/order-delivery-resolution.dto';
 import { ParcelProfileResponseDto } from '../../mappings/http/dto/routing-rule-response.dto';
 import type { OrderDeliveryRiderDto } from './dto/order-delivery-rider.dto';
+import {
+  FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN,
+  type IFulfillmentParcelClosureNotifier,
+} from '../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
 
 /**
  * The one DTO-to-filters mapping this list has (#2944).
@@ -286,6 +294,7 @@ export function toOrderRecordFilters(
     lifecyclePhase: query.phase,
     taxRateConflict: query.taxRateConflict,
     omsAttention: query.attention,
+    omsAttentionReason: query.attentionReason,
     paymentNotSent: query.paymentNotSent,
     activeHoldReason: query.hold,
     packed: query.packed,
@@ -465,6 +474,11 @@ export class OrdersController {
     // #3542 - the order beside the channel's own record of it, detail read only.
     @Inject(ORDER_EDIT_SERVICE_TOKEN)
     private readonly orderEdit: IOrderEditService,
+    // #3961 - "Check again" / "Keep as is" for a line the source changed after routing.
+    @Inject(ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN)
+    private readonly sourceAmendmentEffects: IOrderSourceAmendmentEffectsService,
+    @Inject(FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN)
+    private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier,
     // #3963 - Retry and Mark as handled for a payment that did not reach a shop.
     @Inject(PAYMENT_WRITEBACK_SERVICE_TOKEN)
     private readonly paymentWriteback: IPaymentWritebackService
@@ -1128,6 +1142,63 @@ export class OrdersController {
         });
       }
       throw error;
+    }
+  }
+
+  @Roles('admin', 'operator')
+  @Post(':internalOrderId/source-change/recheck')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Compare a changed order with its packing work again',
+    description:
+      'For an order whose source changed a line after it went to packing (#3961). Runs the same ' +
+      'comparison ingestion runs: if nothing in the box blocks it any more (for example the packer ' +
+      'undid a scan), the packing work, the reservation and the stock move to the new quantities and ' +
+      'the hold is released; otherwise the box stays on hold and `cause` says why. Idempotent.',
+  })
+  @ApiResponse({ status: 200, type: SourceChangeResultResponseDto })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async recheckSourceChange(
+    @Param('internalOrderId') internalOrderId: string
+  ): Promise<SourceChangeResultResponseDto> {
+    await this.requireOrder(internalOrderId);
+    const result = await this.sourceAmendmentEffects.reconcile({ internalOrderId });
+    // A box the applied change left exactly full was closed and recorded as
+    // shipped by core; tell the order's channel now, not at the next sweep.
+    for (const closed of result.closedParcels) {
+      await this.parcelClosureNotifier.relayRecordedClose(closed.workId);
+    }
+    return toSourceChangeResult(result);
+  }
+
+  @Roles('admin', 'operator')
+  @Post(':internalOrderId/source-change/accept')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Keep the packing work although the source changed the order',
+    description:
+      'For an order whose source changed a line after it went to packing (#3961): ship the box as ' +
+      'packed, or mark a change that arrived after shipping as handled. Records the decision against ' +
+      'the exact change, releases the hold and clears the attention entry. A later, different change ' +
+      'from the source is raised again. The acting user is taken from the session.',
+  })
+  @ApiResponse({ status: 200, type: SourceChangeResultResponseDto })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async acceptSourceChange(
+    @Param('internalOrderId') internalOrderId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<SourceChangeResultResponseDto> {
+    await this.requireOrder(internalOrderId);
+    return toSourceChangeResult(
+      await this.sourceAmendmentEffects.accept({ internalOrderId, actorUserId: user.id })
+    );
+  }
+
+  private async requireOrder(internalOrderId: string): Promise<void> {
+    if ((await this.orderRecordService.getOrderRecord(internalOrderId)) === null) {
+      throw new NotFoundException(`Order ${internalOrderId} not found`);
     }
   }
 
@@ -2087,4 +2158,12 @@ export class OrdersController {
       externalOrderNumber: a.externalOrderNumber ?? null,
     };
   }
+}
+
+function toSourceChangeResult(result: SourceAmendmentReconcileResult): SourceChangeResultResponseDto {
+  return {
+    outcome: result.outcome,
+    cause: result.cause,
+    lines: result.lines.map((line) => ({ orderLineId: line.orderLineId, from: line.from, to: line.to })),
+  };
 }
