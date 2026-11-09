@@ -230,13 +230,13 @@ describe('ConnectionCategoryMappingsPage', () => {
       apiWith([sampleConnection, ALLEGRO_CONNECTION], { getCategoryMappings, reassignCategoryMappings }),
     );
 
-    expect(await screen.findByText('Mappings not used when you list offers: 1')).toBeInTheDocument();
+    expect(await screen.findByText('1 mapping is not used when you list offers')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Use them for Allegro store' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Use for Allegro store' }));
 
     await waitFor(() => {
       expect(reassignCategoryMappings).toHaveBeenCalledWith(ALLEGRO_CONNECTION.id, sampleConnection.id);
     });
-    expect(await screen.findByText('Mappings moved to Allegro store: 1')).toBeInTheDocument();
+    expect(await screen.findByText('1 mapping moved to Allegro store')).toBeInTheDocument();
   });
 });

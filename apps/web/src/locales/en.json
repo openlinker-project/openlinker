@@ -54,8 +54,14 @@
       "legacyFailedTitle": "The mappings were not moved",
       "legacyKept": "These categories kept the mapping they already had: {categories}.",
       "legacyMovedBody": "They are used the next time you list offers.",
-      "legacyMovedTitle": "Mappings moved to {marketplace}: {count}",
-      "legacyTitle": "Mappings not used when you list offers: {count}",
+      "legacyMovedTitle": {
+        "one": "{n} mapping moved to {marketplace}",
+        "other": "{n} mappings moved to {marketplace}"
+      },
+      "legacyTitle": {
+        "one": "{n} mapping is not used when you list offers",
+        "other": "{n} mappings are not used when you list offers"
+      },
       "loadingMessage": "Fetching categories and mappings...",
       "loadingTitle": "Loading",
       "mapForLabel": "Map for",

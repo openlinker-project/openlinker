@@ -58,8 +58,18 @@
       "legacyFailedTitle": "Nie przeniesiono mapowań",
       "legacyKept": "Te kategorie zachowały dotychczasowe mapowanie: {categories}.",
       "legacyMovedBody": "Zostaną użyte przy następnym wystawianiu ofert.",
-      "legacyMovedTitle": "Mapowania przeniesione do {marketplace}: {count}",
-      "legacyTitle": "Mapowania nieużywane przy wystawianiu ofert: {count}",
+      "legacyMovedTitle": {
+        "few": "Przeniesiono {n} mapowania do {marketplace}",
+        "many": "Przeniesiono {n} mapowań do {marketplace}",
+        "one": "Przeniesiono {n} mapowanie do {marketplace}",
+        "other": "Przeniesiono {n} mapowania do {marketplace}"
+      },
+      "legacyTitle": {
+        "few": "{n} mapowania nie są używane przy wystawianiu ofert",
+        "many": "{n} mapowań nie jest używanych przy wystawianiu ofert",
+        "one": "{n} mapowanie nie jest używane przy wystawianiu ofert",
+        "other": "{n} mapowania nie jest używane przy wystawianiu ofert"
+      },
       "loadingMessage": "Pobieranie kategorii i mapowań...",
       "loadingTitle": "Wczytywanie",
       "mapForLabel": "Mapuj dla",

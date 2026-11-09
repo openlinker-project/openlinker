@@ -43,7 +43,7 @@ import { Input } from '../../shared/ui/input';
 import { SegmentedControl } from '../../shared/ui/segmented-control';
 import { ConfirmDialog } from '../../shared/ui/confirm-dialog';
 import { usePlatforms } from '../../shared/plugins';
-import { interpolate, useMessages } from '../../shared/i18n';
+import { interpolate, useMessages, usePlural } from '../../shared/i18n';
 import type { AllegroCategory } from '../../features/mappings/api/mappings.types';
 import { bucketCount, captureDemoEvent } from '../../features/demo';
 
@@ -92,6 +92,7 @@ function isMappableMarketplace(connection: Connection, masterId: string): boolea
 
 export function ConnectionCategoryMappingsPage(): ReactElement {
   const copy = useMessages('mappings').categoryMappings;
+  const plural = usePlural();
   const platforms = usePlatforms();
   const { connectionId = '' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -337,7 +338,7 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
           density="compact"
           className="category-mappings-notice"
           data-testid="category-mappings-legacy-notice"
-          title={interpolate(copy.legacyTitle, { count: legacyMappings.length })}
+          title={plural(legacyMappings.length, copy.legacyTitle)}
           action={
             <Button
               tone="secondary"
@@ -359,8 +360,7 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
           density="compact"
           className="category-mappings-notice"
           data-testid="category-mappings-legacy-moved"
-          title={interpolate(copy.legacyMovedTitle, {
-            count: reassignResult.moved,
+          title={plural(reassignResult.moved, copy.legacyMovedTitle, {
             marketplace: marketplace.name,
           })}
         >
