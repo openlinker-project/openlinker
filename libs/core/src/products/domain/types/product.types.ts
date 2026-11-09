@@ -10,15 +10,15 @@
 import type { Product } from '../entities/product.entity';
 import type { ProductVariant } from '../entities/product-variant.entity';
 
+export const ProductBundleFilterValues = ['only', 'exclude'] as const;
+export type ProductBundleFilter = (typeof ProductBundleFilterValues)[number];
+
 /**
  * Product filters
  *
  * Filter criteria for querying products. All fields are optional.
  * Used by ProductMasterPort for filtering products.
  */
-export const ProductBundleFilterValues = ['only', 'exclude'] as const;
-export type ProductBundleFilter = (typeof ProductBundleFilterValues)[number];
-
 export interface ProductFilters {
   /**
    * Restrict the read to these EXTERNAL product ids.

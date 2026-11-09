@@ -276,11 +276,6 @@ function slugify(name: string): string {
   );
 }
 
-/**
- * GPSR values taken from the PRODUCT for one offer (`CreateOfferCommand.gpsr`),
- * already expressed in Allegro's terms. A field is set only when the product
- * supplied a usable value; otherwise the connection's `sellerDefaults` apply.
- */
 /** One planned product-set entry (#3520), with the pictures still to re-host. */
 interface PlannedProductSetEntry {
   index: number;
@@ -292,6 +287,11 @@ interface PlannedProductSetEntry {
   entry: AllegroProductSetEntry;
 }
 
+/**
+ * GPSR values taken from the PRODUCT for one offer (`CreateOfferCommand.gpsr`),
+ * already expressed in Allegro's terms. A field is set only when the product
+ * supplied a usable value; otherwise the connection's `sellerDefaults` apply.
+ */
 interface ProductGpsrDeclaration {
   responsibleProducerId?: string;
   safetyInformation?: AllegroSafetyInformation;
@@ -2581,15 +2581,6 @@ export class AllegroOfferManagerAdapter
   }
 
   /**
-   * Smart-link pre-step (#431). Resolves the variant's barcode against
-   * Allegro's product catalogue *only* when both an EAN-shaped barcode
-   * and a category id are available; otherwise short-circuits to
-   * `no_match` so `applyPlatformParams` falls through to inline.
-   *
-   * Splitting out the precondition logic keeps `createOffer` flat and
-   * makes the smart-link skip-paths trivially traceable in tests.
-   */
-  /**
    * Product-set planning (#3520, ADR-083). One entry per bundle component, each
    * built by the same rule a single product follows: a catalogue card found by
    * the component's barcode within the offer's category, otherwise an inline
@@ -2727,6 +2718,15 @@ export class AllegroOfferManagerAdapter
     }
   }
 
+  /**
+   * Smart-link pre-step (#431). Resolves the variant's barcode against
+   * Allegro's product catalogue *only* when both an EAN-shaped barcode
+   * and a category id are available; otherwise short-circuits to
+   * `no_match` so `applyPlatformParams` falls through to inline.
+   *
+   * Splitting out the precondition logic keeps `createOffer` flat and
+   * makes the smart-link skip-paths trivially traceable in tests.
+   */
   private async maybeResolveProductCard(
     cmd: CreateOfferCommand
   ): Promise<ResolveProductCardResult> {
