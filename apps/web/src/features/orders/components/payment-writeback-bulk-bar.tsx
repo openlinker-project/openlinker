@@ -10,13 +10,13 @@
  */
 import type { ReactElement } from 'react';
 
+import { useMessages, usePlural } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
 import {
   useMarkPaymentWritebackHandledMutation,
   useRetryPaymentWritebackMutation,
 } from '../hooks/use-payment-writeback-mutations';
-import { PAYMENT_WRITEBACK_COPY as COPY } from '../lib/payment-writeback.copy';
 
 interface PaymentWritebackBulkBarProps {
   internalOrderIds: readonly string[];
@@ -26,12 +26,14 @@ export function PaymentWritebackBulkBar({ internalOrderIds }: PaymentWritebackBu
   const retry = useRetryPaymentWritebackMutation();
   const markHandled = useMarkPaymentWritebackHandledMutation();
   const { showToast } = useToast();
+  const copy = useMessages('orders').paymentWriteback;
+  const plural = usePlural();
   if (internalOrderIds.length === 0) return null;
   const ids = [...internalOrderIds];
 
   return (
-    <div className="order-payment-bulk" role="region" aria-label={COPY.filterChip}>
-      <span>{COPY.bulkSummary(ids.length)}</span>
+    <div className="order-payment-bulk" role="region" aria-label={copy.bulkRegionLabel}>
+      <span>{plural(ids.length, copy.bulkSummary)}</span>
       <span className="order-payment-bulk__actions">
         <Button
           tone="secondary"
@@ -39,12 +41,13 @@ export function PaymentWritebackBulkBar({ internalOrderIds }: PaymentWritebackBu
           disabled={markHandled.isPending}
           onClick={() =>
             markHandled.mutate(ids, {
-              onSuccess: (r) => showToast({ tone: 'success', title: COPY.handledDone(r.updated), description: COPY.handledDoneDetail }),
-              onError: (e) => showToast({ tone: 'error', title: 'Could not mark as handled', description: e.message }),
+              onSuccess: (r) =>
+                showToast({ tone: 'success', title: plural(r.updated, copy.handledDone), description: copy.handledDoneDetail }),
+              onError: (e) => showToast({ tone: 'error', title: copy.markHandledFailed, description: e.message }),
             })
           }
         >
-          {COPY.markHandled}
+          {copy.markHandled}
         </Button>
         <Button
           tone="primary"
@@ -52,12 +55,13 @@ export function PaymentWritebackBulkBar({ internalOrderIds }: PaymentWritebackBu
           disabled={retry.isPending}
           onClick={() =>
             retry.mutate(ids, {
-              onSuccess: (r) => showToast({ tone: 'success', title: COPY.retryDone(r.enqueued), description: COPY.retryDoneDetail }),
-              onError: (e) => showToast({ tone: 'error', title: 'Retry failed', description: e.message }),
+              onSuccess: (r) =>
+                showToast({ tone: 'success', title: plural(r.enqueued, copy.retryDone), description: copy.retryDoneDetail }),
+              onError: (e) => showToast({ tone: 'error', title: copy.retryFailed, description: e.message }),
             })
           }
         >
-          {retry.isPending ? COPY.retrying : COPY.retryNow}
+          {retry.isPending ? copy.retrying : copy.retryNow}
         </Button>
       </span>
     </div>

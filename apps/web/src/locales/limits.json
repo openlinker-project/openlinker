@@ -1,4 +1,12 @@
 {
+  "connections:paymentWriteback.recommended": 16,
+  "orders:paymentWriteback.chipLabel": 16,
+  "orders:paymentWriteback.chipValue": 24,
+  "orders:paymentWriteback.filterCheck": 32,
+  "orders:paymentWriteback.filterQuick": 32,
+  "orders:paymentWriteback.markHandled": 24,
+  "orders:paymentWriteback.retryNow": 16,
+  "orders:paymentWriteback.retrying": 16,
   "ui:confirmDialog.cancel": 12,
   "ui:confirmDialog.confirm": 12,
   "ui:pagination.next": 12,

@@ -22,6 +22,7 @@
  */
 import { useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { useMessages } from '../../../shared/i18n';
 import { ActiveFilterChips, type ActiveFilterChip } from '../../../shared/ui/active-filter-chips';
 import { Button } from '../../../shared/ui/button';
 import { Chip, type ChipTone } from '../../../shared/ui/chip';
@@ -162,6 +163,7 @@ export function OrderListFilterBar({
   formatDay,
 }: OrderListFilterBarProps): ReactElement {
   const { state } = filtersApi;
+  const paymentCopy = useMessages('orders').paymentWriteback;
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const panelId = useId();
   const searchRef = useRef<HTMLInputElement>(null);
@@ -389,7 +391,7 @@ export function OrderListFilterBar({
         }}
       />
       <FilterCheck
-        label={COPY.checkPaymentNotSent}
+        label={paymentCopy.filterCheck}
         tone="warning"
         checked={state.paymentNotSent}
         count={summary?.paymentNotSent}
@@ -813,7 +815,7 @@ export function OrderListFilterBar({
               filtersApi.toggle('paymentNotSent');
             }}
           >
-            {COPY.quickPaymentNotSent}
+            {paymentCopy.filterQuick}
             {summary?.paymentNotSent === undefined ? null : (
               <span className="chip__count">{summary.paymentNotSent}</span>
             )}

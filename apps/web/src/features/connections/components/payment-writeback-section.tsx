@@ -20,9 +20,9 @@ import type { UseFormReturn } from 'react-hook-form';
 import { useQuery } from '@tanstack/react-query';
 
 import { useApiClient } from '../../../app/api/api-client-provider';
+import { useMessages } from '../../../shared/i18n';
 import { Select } from '../../../shared/ui/select';
 import type { PaymentWritebackMode } from '../lib/payment-writeback-config';
-import { PAYMENT_WRITEBACK_SETTINGS_COPY as COPY } from '../lib/payment-writeback-settings.copy';
 import type { EditConnectionFormValues } from './edit-connection.schema';
 
 /** Near-static per session, like the mapping option lists. */
@@ -45,6 +45,7 @@ export function PaymentWritebackSection({
 }: PaymentWritebackSectionProps): ReactElement {
   const value = form.watch('paymentWriteback') ?? { mode: 'mark-paid', paidStateId: '' };
   const apiClient = useApiClient();
+  const copy = useMessages('connections').paymentWriteback;
   // The destination's own order statuses. Read through the API client rather
   // than the mappings feature, whose barrel already imports this one.
   const statesQuery = useQuery({
@@ -61,9 +62,9 @@ export function PaymentWritebackSection({
 
   return (
     <section className="rate-limit-section payment-writeback-section" data-testid="payment-writeback-section">
-      <h3 className="rate-limit-section__title">{COPY.heading}</h3>
+      <h3 className="rate-limit-section__title">{copy.heading}</h3>
       <fieldset className="payment-writeback-section__options" disabled={!configIsParseable}>
-        <legend className="sr-only">{COPY.heading}</legend>
+        <legend className="sr-only">{copy.heading}</legend>
         <label className={`payment-writeback-section__option${value.mode === 'mark-paid' ? ' payment-writeback-section__option--on' : ''}`}>
           <input
             type="radio"
@@ -73,24 +74,24 @@ export function PaymentWritebackSection({
           />
           <span className="payment-writeback-section__body">
             <span className="payment-writeback-section__title">
-              {COPY.markPaid} <span className="payment-writeback-section__rec">{COPY.recommended}</span>
+              {copy.markPaid} <span className="payment-writeback-section__rec">{copy.recommended}</span>
             </span>
             {value.mode === 'mark-paid' && states.length > 0 ? (
               <span className="payment-writeback-section__field">
-                <label htmlFor={`payment-writeback-state-${connectionId}`}>{COPY.stateLabel}</label>
+                <label htmlFor={`payment-writeback-state-${connectionId}`}>{copy.stateLabel}</label>
                 <Select
                   id={`payment-writeback-state-${connectionId}`}
                   value={value.paidStateId}
                   onChange={(event) => update({ mode: 'mark-paid', paidStateId: event.target.value })}
                 >
-                  <option value="">{COPY.stateDefault}</option>
+                  <option value="">{copy.stateDefault}</option>
                   {states.map((state) => (
                     <option key={state.value} value={state.value}>
                       {state.label}
                     </option>
                   ))}
                 </Select>
-                <span className="payment-writeback-section__hint">{COPY.stateHelp}</span>
+                <span className="payment-writeback-section__hint">{copy.stateHelp}</span>
               </span>
             ) : null}
           </span>
@@ -103,15 +104,15 @@ export function PaymentWritebackSection({
             onChange={() => update({ mode: 'leave', paidStateId: value.paidStateId })}
           />
           <span className="payment-writeback-section__body">
-            <span className="payment-writeback-section__title">{COPY.leave}</span>
-            <span className="payment-writeback-section__hint">{COPY.leaveHelp}</span>
+            <span className="payment-writeback-section__title">{copy.leave}</span>
+            <span className="payment-writeback-section__hint">{copy.leaveHelp}</span>
           </span>
         </label>
       </fieldset>
       <ul className="payment-writeback-section__facts">
-        <li>{COPY.factCod}</li>
-        <li>{COPY.factFailure}</li>
-        <li>{COPY.factFromNow}</li>
+        <li>{copy.factCod}</li>
+        <li>{copy.factFailure}</li>
+        <li>{copy.factFromNow}</li>
       </ul>
     </section>
   );

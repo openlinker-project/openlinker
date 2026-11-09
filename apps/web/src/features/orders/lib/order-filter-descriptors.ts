@@ -28,6 +28,7 @@ import {
   type OrderTag,
   type SlaStateValue,
 } from '../api/orders.types';
+import { getMessages } from '../../../shared/i18n';
 import { HOLD_REASON_COPY, isHoldReason, type HoldReason } from './order-hold.types';
 import {
   ORDER_LIFECYCLE_PHASE_META,
@@ -279,8 +280,11 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
     group: 'exceptions',
     analyticsName: 'payment_not_sent',
     isActive: (s) => s.paymentNotSent,
-    chip: (s) =>
-      single('paymentNotSent', COPY.chipPayment, s.paymentNotSent ? COPY.chipPaymentNotSent : null),
+    // Read at chip-build time, not module load, so the chip follows the active language.
+    chip: (s) => {
+      const copy = getMessages('orders').paymentWriteback;
+      return single('paymentNotSent', copy.chipLabel, s.paymentNotSent ? copy.chipValue : null);
+    },
   },
   waitingInOpenLinker: {
     param: 'waiting',

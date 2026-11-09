@@ -1,4 +1,19 @@
 {
+  "connections": {
+    "paymentWriteback": {
+      "factCod": "Cash on delivery and cancelled orders are never marked paid.",
+      "factFailure": "If the shop doesn't accept it, the order shows under Orders, Payment not sent to shop.",
+      "factFromNow": "Applies to payments from now on.",
+      "heading": "When the buyer pays later",
+      "leave": "Leave it as it is",
+      "leaveHelp": "You update payment in the shop yourself.",
+      "markPaid": "Mark the order as paid",
+      "recommended": "Recommended",
+      "stateDefault": "The shop's default paid status",
+      "stateHelp": "Used by shops that track payment as an order status.",
+      "stateLabel": "Status in the shop"
+    }
+  },
   "format": {
     "compactDuration": {
       "days": {
@@ -27,6 +42,77 @@
       "dueNow": "due now",
       "left": "{duration} left",
       "overdue": "Overdue {duration}"
+    }
+  },
+  "orders": {
+    "paymentWriteback": {
+      "bulkRegionLabel": "Payment not sent to shop",
+      "bulkSummary": {
+        "one": "{n} order. Its shop still shows it as unpaid.",
+        "other": "{n} orders. Their shops still show them as unpaid."
+      },
+      "cancelledBody": "The order stays cancelled and the shops were not changed. Check the refund in the marketplace.",
+      "cancelledTitle": "The buyer paid a cancelled order",
+      "cashOnDelivery": "Cash on delivery",
+      "chipLabel": "Payment",
+      "chipValue": "Not sent to shop",
+      "filterCheck": "Payment not sent to shop",
+      "filterQuick": "Payment not sent to shop",
+      "handledDone": {
+        "one": "Marked {n} order as handled",
+        "other": "Marked {n} orders as handled"
+      },
+      "handledDoneDetail": "These orders no longer show under \"Payment not sent to shop\".",
+      "listMarker": "Payment not in <shop></shop>",
+      "listMarkerGeneric": "Payment not sent to shop",
+      "markHandled": "Mark as handled",
+      "markHandledFailed": "Could not mark as handled",
+      "notPaidYet": "Not paid yet",
+      "notTracked": {
+        "one": "<shops></shops> doesn't track payment.",
+        "other": "<shops></shops> don't track payment."
+      },
+      "paidAfterCancellation": "Paid after cancellation",
+      "paidOn": "Paid on {source}",
+      "paidOnUnknown": "Paid",
+      "panelTitle": "Payment",
+      "problemBody": "Retry, or mark the order paid in the shop yourself.",
+      "problemTitleMany": {
+        "one": "{n} shop still shows this order as unpaid",
+        "other": "{n} shops still show this order as unpaid"
+      },
+      "problemTitleOne": "<shop></shop> still shows this order as unpaid",
+      "progress": "{done} of {total} shops updated",
+      "retryDone": {
+        "one": "Queued {n} shop update",
+        "other": "Queued {n} shop updates"
+      },
+      "retryDoneDetail": "OpenLinker will mark the order paid in the shop in a moment.",
+      "retryFailed": "Retry failed",
+      "retryNow": "Retry now",
+      "retrying": "Retrying…",
+      "row": {
+        "awaiting": "Waiting for payment",
+        "cod": "Cash on delivery",
+        "codHelper": "Not marked paid",
+        "createdPaid": "Paid at creation",
+        "handled": "Handled",
+        "handledHelper": "Marked as handled",
+        "notSent": "Not sent",
+        "notSentCancelled": "Order cancelled",
+        "notSentRefunded": "Order refunded",
+        "notSentRejected": "The shop refused it",
+        "notSentStopped": "Retries stopped",
+        "notTracked": "Not tracked here",
+        "paidInShop": "Paid in shop",
+        "retrying": "Retrying",
+        "retryingHelper": "The shop did not answer",
+        "sending": "Updating",
+        "skippedBySetting": "Left to you",
+        "skippedBySettingHelper": "Set to leave payment as it is",
+        "unknown": "Unknown state"
+      },
+      "shopsLabel": "Payment in each shop"
     }
   },
   "ui": {

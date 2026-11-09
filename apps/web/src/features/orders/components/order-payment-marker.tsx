@@ -9,15 +9,16 @@
  */
 import type { ReactElement } from 'react';
 
+import { renderRich, useMessages } from '../../../shared/i18n';
 import { ConnectionEntityLabel } from '../../connections';
 import type { OrderPaymentWritebackEntry } from '../api/orders.types';
-import { PAYMENT_WRITEBACK_COPY as COPY } from '../lib/payment-writeback.copy';
 
 interface OrderPaymentMarkerProps {
   entries: readonly OrderPaymentWritebackEntry[] | null | undefined;
 }
 
 export function OrderPaymentMarker({ entries }: OrderPaymentMarkerProps): ReactElement | null {
+  const copy = useMessages('orders').paymentWriteback;
   const problems = (entries ?? []).filter((e) => e.problem);
   if (problems.length === 0) return null;
   return (
@@ -25,11 +26,12 @@ export function OrderPaymentMarker({ entries }: OrderPaymentMarkerProps): ReactE
       <span className="order-payment-marker__dot" aria-hidden="true" />
       {problems.length === 1 ? (
         <span>
-          {COPY.listMarkerPrefix}{' '}
-          <ConnectionEntityLabel connectionId={problems[0].destinationConnectionId} showId={false} />
+          {renderRich(copy.listMarker, {
+            shop: () => <ConnectionEntityLabel connectionId={problems[0].destinationConnectionId} showId={false} />,
+          })}
         </span>
       ) : (
-        COPY.listMarkerGeneric
+        copy.listMarkerGeneric
       )}
     </span>
   );
