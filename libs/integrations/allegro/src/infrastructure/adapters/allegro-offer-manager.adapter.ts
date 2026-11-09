@@ -286,6 +286,9 @@ interface PlannedProductSetEntry {
   index: number;
   name: string;
   imageUrls: string[];
+  mode: 'card-from-offer' | 'card-by-ean' | 'inline';
+  variantId: string;
+  quantity: number;
   entry: AllegroProductSetEntry;
 }
 
@@ -2596,9 +2599,9 @@ export class AllegroOfferManagerAdapter
    * refused by name - falling back to a one-product offer would sell a set as
    * one of its parts.
    *
-   * Inline components carry no product-section parameters: those belong to the
-   * bundle's category, not to each part. A category that requires them will be
-   * answered by Allegro with a validation error on that entry.
+   * Card order per component: its own live offer's card, then the barcode
+   * lookup, then an inline product carrying the component's own category and
+   * product-section parameters (a component with no category is refused).
    */
   private async planProductSet(
     cmd: CreateOfferCommand,
@@ -2609,8 +2612,13 @@ export class AllegroOfferManagerAdapter
     const planned: PlannedProductSetEntry[] = [];
 
     for (const [index, component] of components.entries()) {
-      const card =
-        component.barcode && categoryId
+      // Preferred: the component's own live offer already owns a product card.
+      const cardFromOffer = component.existingOfferExternalId
+        ? await this.readProductCardIdFromOffer(component.existingOfferExternalId)
+        : null;
+      const card = cardFromOffer
+        ? ({ kind: 'unique', productId: cardFromOffer } as const)
+        : component.barcode && categoryId
           ? await resolveAllegroProductCardByEan(this.httpClient, this.cache, {
               ean: component.barcode,
               categoryId,
@@ -2644,21 +2652,25 @@ export class AllegroOfferManagerAdapter
           index,
           name: component.name,
           imageUrls: [],
+          mode: cardFromOffer ? 'card-from-offer' : 'card-by-ean',
+          variantId: component.variantId,
+          quantity: component.quantity,
           entry: { product: { id: card.productId }, ...common },
         });
         continue;
       }
 
       const name = sanitizeAllegroName(component.name);
-      if (!name || component.imageUrls.length === 0) {
+      if (!name || component.imageUrls.length === 0 || !component.categoryId) {
         refusals.push({
           field: `productSet[${index}]`,
           code: 'PRODUCT_SET_COMPONENT_UNPUBLISHABLE',
           message:
             `Bundle component "${component.name}" has no unique Allegro catalogue match` +
             `${component.barcode ? ' for its barcode' : ' (it has no barcode)'} and cannot be ` +
-            `listed as an inline product without ${name ? 'a picture' : 'a name'}. Add a barcode ` +
-            `that matches an Allegro product card, or a picture, to that product.`,
+            `listed as an inline product without ${
+              !name ? 'a name' : component.imageUrls.length === 0 ? 'a picture' : 'a resolvable category'
+            }. Add a barcode that matches an Allegro product card, a picture, or a category mapping, to that product.`,
         });
         continue;
       }
@@ -2666,14 +2678,53 @@ export class AllegroOfferManagerAdapter
         index,
         name: component.name,
         imageUrls: component.imageUrls,
-        entry: { product: { name }, ...common },
+        mode: 'inline',
+        variantId: component.variantId,
+        quantity: component.quantity,
+        entry: {
+          product: {
+            name,
+            category: { id: component.categoryId },
+            ...(component.parameters && component.parameters.length > 0
+              ? {
+                  parameters: this.toAllegroParameters(
+                    component.parameters.filter((p) => p.section === 'product')
+                  ),
+                }
+              : {}),
+          },
+          ...common,
+        },
       });
     }
 
     if (refusals.length > 0) {
       throw new OfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, refusals);
     }
+    this.logger.debug(
+      `Allegro product set for variant=${cmd.internalVariantId}: ${JSON.stringify(
+        planned.map((p) => ({
+          index: p.index,
+          variantId: p.variantId,
+          mode: p.mode,
+          quantity: p.quantity,
+        }))
+      )}`
+    );
     return planned;
+  }
+
+  /** The product card id of a component's own offer, or null when it cannot be read. */
+  private async readProductCardIdFromOffer(offerId: string): Promise<string | null> {
+    try {
+      const offer = await this.fetchProductOfferById(offerId);
+      return offer.productSet?.[0]?.product?.id ?? null;
+    } catch (error) {
+      this.logger.warn(
+        `Could not read bundle component offer ${offerId} for its product card (${(error as Error).message}); falling back`
+      );
+      return null;
+    }
   }
 
   private async maybeResolveProductCard(

@@ -369,6 +369,8 @@ export interface AllegroProductSetEntry {
      */
     id?: string;
     name?: string;
+    /** Inline products only: the product's own category (bundle components). */
+    category?: { id: string };
     parameters?: AllegroOfferParameter[];
     images?: string[];
     /**

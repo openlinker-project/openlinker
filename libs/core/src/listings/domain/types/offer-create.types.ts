@@ -197,6 +197,16 @@ export interface OfferProductSetComponent {
   imageUrls: string[];
   /** The component product's own GPSR declaration, when the catalogue states one. */
   gpsr?: ProductGpsr;
+  /**
+   * External offer id of the component's OWN live offer on the target
+   * connection, when it has one. Its product card already exists there, so an
+   * adapter can reference that card instead of re-describing the product.
+   */
+  existingOfferExternalId?: string;
+  /** Destination category of the component itself (inline products need one). */
+  categoryId?: string;
+  /** Product-section parameters projected for the component's own category. */
+  parameters?: OfferParameter[];
 }
 
 /**

@@ -3702,6 +3702,8 @@ describe('AllegroOfferManagerAdapter', () => {
             name: 'Spoon',
             barcode: null,
             imageUrls: ['https://example.com/spoon.jpg'],
+            categoryId: 'cat-spoon',
+            parameters: [{ id: '248811', values: ['Acme'], section: 'product' }],
           },
         ],
       };
@@ -3740,7 +3742,72 @@ describe('AllegroOfferManagerAdapter', () => {
         });
         expect(body.productSet[1].product.images).toHaveLength(1);
         expect(body.productSet[1].product.images?.[0]).toContain('allegrostatic');
+        expect(body.productSet[1].product).toMatchObject({
+          category: { id: 'cat-spoon' },
+          parameters: [{ id: '248811', values: ['Acme'] }],
+        });
         expect(body.stock).toEqual({ available: 5, unit: 'UNIT' });
+      });
+
+      it('links a component to the card of its own live offer', async () => {
+        httpClient.post.mockResolvedValue(
+          mockHttpResponse({ id: 'allegro-offer-set', publication: { status: 'INACTIVE' } })
+        );
+        httpClient.get.mockResolvedValueOnce({
+          data: { id: 'offer-mug', productSet: [{ product: { id: 'card-from-offer' } }] },
+          status: 200,
+          headers: {},
+        });
+        const cmd: CreateOfferCommand = {
+          ...setCmd,
+          productSet: [{ ...setCmd.productSet![0], existingOfferExternalId: 'offer-mug' }],
+        };
+
+        await adapter.createOffer(cmd);
+
+        expect(httpClient.get.mock.calls[0][0]).toContain('/sale/product-offers/offer-mug');
+        const body = httpClient.post.mock.calls[0][1] as {
+          productSet: Array<{ product: { id?: string }; quantity: { value: number } }>;
+        };
+        expect(body.productSet[0]).toMatchObject({
+          product: { id: 'card-from-offer' },
+          quantity: { value: 2 },
+        });
+      });
+
+      it('falls back to the barcode lookup when the component offer cannot be read', async () => {
+        httpClient.post.mockResolvedValue(
+          mockHttpResponse({ id: 'allegro-offer-set', publication: { status: 'INACTIVE' } })
+        );
+        httpClient.get
+          .mockRejectedValueOnce(new Error('boom'))
+          .mockResolvedValueOnce({
+            data: { products: [{ id: 'allegro-card-mug', ean: '5901234123457' }] },
+            status: 200,
+            headers: {},
+          });
+        const cmd: CreateOfferCommand = {
+          ...setCmd,
+          productSet: [{ ...setCmd.productSet![0], existingOfferExternalId: 'offer-mug' }],
+        };
+
+        await adapter.createOffer(cmd);
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          productSet: Array<{ product: { id?: string } }>;
+        };
+        expect(body.productSet[0].product.id).toBe('allegro-card-mug');
+      });
+
+      it('refuses an inline component that has no category', async () => {
+        const cmd: CreateOfferCommand = {
+          ...setCmd,
+          productSet: [{ ...setCmd.productSet![1], categoryId: undefined }],
+        };
+        await expect(adapter.createOffer(cmd)).rejects.toMatchObject({
+          name: 'OfferCreateRejectedException',
+        });
+        expect(httpClient.post).not.toHaveBeenCalled();
       });
 
       it('refuses by component name when a component can be neither card-linked nor built inline, and calls nothing', async () => {

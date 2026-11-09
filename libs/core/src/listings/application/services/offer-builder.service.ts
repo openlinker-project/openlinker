@@ -48,6 +48,8 @@ import {
   type IAvailabilityService,
 } from '@openlinker/core/inventory';
 import { AvailabilityUnknownError } from '../../domain/exceptions/availability-unknown.error';
+import { OFFER_MAPPING_REPOSITORY_TOKEN } from '../../listings.tokens';
+import { OfferMappingRepositoryPort } from '../../domain/ports/offer-mapping-repository.port';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type {
   CreateOfferCommand,
@@ -113,7 +115,9 @@ export class OfferBuilderService implements IOfferBuilderService {
     @Inject(AVAILABILITY_SERVICE_TOKEN)
     private readonly availabilityService: IAvailabilityService,
     @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
-    private readonly bundleDefinitions: IBundleDefinitionService
+    private readonly bundleDefinitions: IBundleDefinitionService,
+    @Inject(OFFER_MAPPING_REPOSITORY_TOKEN)
+    private readonly offerMappings: OfferMappingRepositoryPort
   ) {}
 
   async buildCreateOfferCommand(input: BuildCreateOfferCommandInput): Promise<CreateOfferCommand> {
@@ -367,7 +371,11 @@ export class OfferBuilderService implements IOfferBuilderService {
     }
 
     // #3520 - a bundle publishes as a product set: one entry per component.
-    const productSet = await this.resolveProductSet(input.internalVariantId);
+    const productSet = await this.resolveProductSet(input, {
+      masterConnectionId,
+      productMaster,
+      borrowedTaxonomy,
+    });
     if (productSet) {
       command.productSet = productSet;
     }
@@ -387,12 +395,23 @@ export class OfferBuilderService implements IOfferBuilderService {
    * definition promises.
    */
   private async resolveProductSet(
-    internalVariantId: string
+    input: BuildCreateOfferCommandInput,
+    ctx: {
+      masterConnectionId: string;
+      productMaster: ProductMasterPort;
+      borrowedTaxonomy: TaxonomyOwner | undefined;
+    }
   ): Promise<OfferProductSetComponent[] | undefined> {
-    const definition = await this.bundleDefinitions.get(internalVariantId);
+    const definition = await this.bundleDefinitions.get(input.internalVariantId);
     if (!definition || definition.components.length === 0) {
       return undefined;
     }
+    // One batched read: components that already have a live offer here are
+    // card-linked from that offer, so their category/attributes are not resolved.
+    const liveCounts = await this.offerMappings.countByConnectionAndVariants(
+      input.connectionId,
+      definition.components.map((component) => component.variantId)
+    );
     const components: OfferProductSetComponent[] = [];
     for (const component of definition.components) {
       const [componentVariant, componentProduct] = await Promise.all([
@@ -408,13 +427,27 @@ export class OfferBuilderService implements IOfferBuilderService {
           },
         ]);
       }
+      const barcode = componentVariant.ean ?? componentVariant.gtin ?? null;
+      const existingOfferExternalId =
+        (liveCounts.get(component.variantId) ?? 0) > 0
+          ? await this.findLiveOfferExternalId(input.connectionId, component.variantId)
+          : undefined;
+      const own = existingOfferExternalId
+        ? {}
+        : await this.resolveInlineComponentFields(
+            input,
+            ctx,
+            componentVariant,
+            component.productId,
+            barcode
+          );
       components.push({
         variantId: component.variantId,
         productId: component.productId,
         quantity: component.quantity,
         ...(component.giftSlot ? { giftSlot: true } : {}),
         name: componentProduct.name,
-        barcode: componentVariant.ean ?? componentVariant.gtin ?? null,
+        barcode,
         imageUrls:
           resolveVariantDefaultImages(
             componentVariant,
@@ -422,9 +455,72 @@ export class OfferBuilderService implements IOfferBuilderService {
             componentProduct.images
           ) ?? [],
         ...(componentProduct.gpsr ? { gpsr: componentProduct.gpsr } : {}),
+        ...(existingOfferExternalId ? { existingOfferExternalId } : {}),
+        ...own,
       });
     }
     return components;
+  }
+
+  /** External id of a variant's live offer on the connection, skipping refused-creation ones. */
+  private async findLiveOfferExternalId(
+    connectionId: string,
+    variantId: string
+  ): Promise<string | undefined> {
+    const [page, dead] = await Promise.all([
+      this.offerMappings.findMappingPage(
+        { connectionId, internalId: variantId },
+        { limit: 20, offset: 0 }
+      ),
+      this.offerMappings.findDeadFailedCreationOfferIds(connectionId, variantId),
+    ]);
+    const deadIds = new Set(dead);
+    return page.items.find((mapping) => !deadIds.has(mapping.externalId))?.externalId;
+  }
+
+  /**
+   * The component's own destination category and product-section parameters,
+   * resolved the way an ordinary variant's are. Failures degrade to "nothing
+   * resolved" so the adapter can refuse that component by name.
+   */
+  private async resolveInlineComponentFields(
+    input: BuildCreateOfferCommandInput,
+    ctx: {
+      masterConnectionId: string;
+      productMaster: ProductMasterPort;
+      borrowedTaxonomy: TaxonomyOwner | undefined;
+    },
+    variant: ProductVariant,
+    productId: string,
+    barcode: string | null
+  ): Promise<{ categoryId?: string; parameters?: OfferParameter[] }> {
+    try {
+      const masterProduct = await ctx.productMaster.getProduct(productId);
+      const categoryId = await this.resolveCategory(
+        { ...input, overrides: undefined },
+        barcode,
+        masterProduct.categories,
+        { borrowedTaxonomy: ctx.borrowedTaxonomy, sourceConnectionId: ctx.masterConnectionId }
+      );
+      if (!categoryId) {
+        return {};
+      }
+      const projection = await this.attributeProjection.project({
+        sourceConnectionId: ctx.masterConnectionId,
+        destinationConnectionId: input.connectionId,
+        destinationCategoryId: categoryId,
+        attributes: variant.attributes ?? {},
+        metadata: buildProjectionMetadata(masterProduct, variant, barcode),
+        ...(ctx.borrowedTaxonomy ? { borrowedTaxonomy: ctx.borrowedTaxonomy } : {}),
+      });
+      const parameters = projection.parameters.filter((p) => p.section === 'product');
+      return { categoryId, ...(parameters.length > 0 ? { parameters } : {}) };
+    } catch (error) {
+      this.logger.warn(
+        `Bundle component ${variant.id}: could not resolve its own category/parameters (${(error as Error).message})`
+      );
+      return {};
+    }
   }
 
   /**
