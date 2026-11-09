@@ -683,12 +683,15 @@ export class OrdersController {
   ): Promise<OrderHealthSummaryResponseDto> {
     const { sourceConnectionId, customerId, createdFrom, createdTo } = query;
     // #4025 - the open-return count reads the same id list the ?openReturn=
-    // filter resolves. A failure degrades that one count to 0 rather than
-    // failing the whole summary the list page renders above its rows.
+    // filter resolves. A failure must not fail the whole summary the list page
+    // renders above its rows, and must not report 0 either: the two counts
+    // built on that list are OMITTED, which the client reads as "unknown".
     let openReturnOrderIds: string[] = [];
+    let openReturnKnown = true;
     try {
       openReturnOrderIds = await this.returnsService.listOpenReturnOrderIds();
     } catch (error) {
+      openReturnKnown = false;
       this.logger.error(
         'Failed to resolve open-return order ids for the health summary',
         (error as Error).stack
@@ -701,9 +704,13 @@ export class OrdersController {
       createdTo: createdTo ? new Date(createdTo) : undefined,
       openReturnOrderIds,
     });
+    const { openReturn, attention, ...rest } = summary;
+    const { toHandle, ...attentionKnown } = attention;
     // The wire carries an ISO string; the domain summary carries a Date (#2254).
     return {
-      ...summary,
+      ...rest,
+      ...(openReturnKnown ? { openReturn } : {}),
+      attention: openReturnKnown ? { ...attentionKnown, toHandle } : attentionKnown,
       salesDocumentBlockedOldestAt: summary.salesDocumentBlockedOldestAt?.toISOString() ?? null,
       waitingInOpenLinkerOldestAt: summary.waitingInOpenLinkerOldestAt?.toISOString() ?? null,
     };

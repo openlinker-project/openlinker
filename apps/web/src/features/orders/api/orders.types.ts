@@ -1021,7 +1021,8 @@ export interface OrderHealthSummary {
 export interface OrderAttentionSummary {
   lateToShip: number;
   stuck: number;
-  toHandle: number;
+  /** Absent when the open returns could not be read (unknown, never 0). */
+  toHandle?: number;
 }
 
 export interface OrderFilters {
