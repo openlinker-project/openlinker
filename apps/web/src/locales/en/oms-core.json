@@ -1,0 +1,275 @@
+{
+  "omsConnection": {
+    "off": "Off",
+    "on": "On"
+  },
+  "routingDryRun": {
+    "banner": "Dry run - nothing is committed",
+    "bannerDetail": "A test never creates work, reserves stock or contacts a carrier. It uses the same engine as real routing.",
+    "basketAddLine": "Add line",
+    "basketCountry": "Country",
+    "basketDelivery": "Delivery method",
+    "basketPostcode": "Postcode",
+    "basketQuantity": "Quantity",
+    "basketRemoveLine": "Remove line",
+    "basketSku": "Variant id",
+    "compareChanged": {
+      "one": "{n} line would move",
+      "other": "{n} lines would move"
+    },
+    "compareDraft": "Draft",
+    "compareHeading": "Draft vs saved rules",
+    "compareNoChange": "The draft places every line exactly where the saved rules do.",
+    "compareSaved": "Saved",
+    "compareToggle": "Compare with my draft",
+    "errorNothingChanged": "Nothing was changed.",
+    "errorRetry": "Try again",
+    "errorTitle": "Couldn't finish this test",
+    "explanationEmpty": "No rules ran, so nothing was filtered or ranked.",
+    "explanationHeading": "Why",
+    "explanationRemoved": "removed {count}",
+    "modeBasket": "Build a basket",
+    "modeOrder": "Test on an order",
+    "orderSearchEmpty": "No orders match.",
+    "orderSearchError": "Orders could not be searched just now.",
+    "orderSearchHint": "Searches all connections.",
+    "orderSearchLabel": "Find an order",
+    "orderSearchPlaceholder": "Order number or buyer",
+    "placement": "{location} × {quantity}",
+    "resolutions": {
+      "refund": "refund",
+      "return": "return"
+    },
+    "resultInputHeading": "What the rules saw",
+    "resultInputNote": "Country, postcode, lines and delivery method only. No buyer details reach the rules.",
+    "resultLinesHeading": "Where each line would ship from",
+    "resultRoutable": "Every line can be sourced",
+    "resultRoutableSplit": "The order is split across locations. That is expected, not an error.",
+    "resultUnfulfillable": "Some units cannot be sourced",
+    "resultUnfulfillableNote": "Unsourced units can only be resolved as a refund or a return, never as a partial cancellation.",
+    "runTest": "Run test",
+    "running": "Testing…",
+    "skipReasons": {
+      "mirrored-before-routing": "It was already created in your product master before routing was on.",
+      "own-shop-order": "It came from your own shop, which already handles it.",
+      "shipped-by-other-system": "Another system has been told to ship it."
+    },
+    "skippedNote": "The result below only shows where the rules would send it if they ran.",
+    "skippedTitle": "Live routing would not route this order",
+    "skippedUnknown": "OpenLinker records a reason for this that this screen does not describe.",
+    "title": "Test sourcing rules",
+    "unfulfillableLine": "{quantity} × {resolution} - {reason}",
+    "unplaced": "unassigned"
+  },
+  "sourcingRule": {
+    "afterActionHints": {
+      "line-split": "Different items can ship from different locations. Each item still ships whole, from one place.",
+      "no-split": "The whole order ships from a single location - or not at all.",
+      "quantity-split": "Even a single item's quantity can be split - e.g. 2 units from one location, 3 from another."
+    },
+    "afterActions": {
+      "line-split": "Line split",
+      "no-split": "No split",
+      "quantity-split": "Quantity split"
+    },
+    "kindHints": {
+      "filter": "Filter - rules out locations that cannot do the job.",
+      "sort": "Sort - ranks whichever locations are left."
+    },
+    "kinds": {
+      "filter": "filter",
+      "sort": "sort"
+    },
+    "nameHints": {
+      "country-served": "Only keeps a location if it's registered in the same country the order ships to - that is about where the location physically is, not which countries it is set up to ship to.",
+      "in-stock": "Rules out any location with no stock of at least one item in this order.",
+      "least-splits": "Prefers a single location that can fulfil the whole order, to avoid splitting it.",
+      "most-complete": "Prefers the location that can fulfil the most items in this order.",
+      "nearest": "Ranks by how close the postcode is to the delivery address - not the real driving or shipping distance. With PII storage off there is no postcode to compare, so it falls back to ranking by country alone.",
+      "not-blocked-by-reject": "Rules out a location that already turned this order down.",
+      "priority": "Ranks locations in the order you choose."
+    },
+    "names": {
+      "country-served": "Country served",
+      "in-stock": "In stock",
+      "least-splits": "Fewest splits",
+      "most-complete": "Most complete",
+      "nearest": "Nearest",
+      "not-blocked-by-reject": "Not blocked",
+      "priority": "Priority list"
+    }
+  },
+  "sourcingRuleConflict": {
+    "forbidden": "You do not have permission to change sourcing rules.",
+    "notFound": "This sourcing rule no longer exists."
+  },
+  "sourcingRuleDeleteDialog": {
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "deleteFailed": "The rule could not be deleted.",
+    "deletesForGood": "This deletes the rule for good, including its history.",
+    "deleting": "Deleting…",
+    "description": "Every rule below it moves up one step.",
+    "removalLoosens": "Removing this rule lifts your only limit on splitting: orders could start splitting more than they do today (up to {ceiling}). No other active rule currently prevents that. Retiring has the same effect as deleting here, because a retired rule is not evaluated either.",
+    "retireFailed": "The rule could not be retired.",
+    "retireInstead": "Retire instead",
+    "retireInsteadHint": "If you just want to stop using it, retire it instead - it stays on the list, keeps its history, and can coexist with a replacement.",
+    "retireRetired": "This rule is already retired, so it is not being evaluated. Deleting removes it and its history for good.",
+    "retireScheduled": "This rule has not started yet, so there is nothing to retire: it is not deciding any orders, and an end date before its start date is refused. Delete it, or change its start date in Edit.",
+    "retireUnrecognised": "This rule cannot be retired because this version of OpenLinker no longer recognises it - it is already being ignored. Deleting is the only way to remove it.",
+    "retiring": "Retiring…",
+    "title": "Delete “{label}”?"
+  },
+  "sourcingRuleDialog": {
+    "addSubtitle": "This will be rule {position} - everything above it is checked first.",
+    "addTitle": "Add sourcing rule",
+    "cancel": "Cancel",
+    "claimedOption": "{label} - already active as rule {row}",
+    "configureSection": "Configure it",
+    "countryServedWarning": "If you run one warehouse that ships to several countries, this rule rules it out for every order NOT placed in that warehouse’s own country - including orders you would normally be happy to ship. It is built for “one warehouse per country”, not “one warehouse serving many”.",
+    "editSubtitle": "Rule {position} - everything above it is checked first.",
+    "editTitle": "Edit sourcing rule",
+    "endsOn": "Ends on (optional)",
+    "endsOnDescription": "Setting this to a past date retires the rule while keeping it for history.",
+    "kindOptions": {
+      "filter": "Filter - rule locations out",
+      "sort": "Sort - rank what is left"
+    },
+    "loosenConfirm": "Save anyway",
+    "loosenDescription": "No other active rule currently limits splitting to {before}. Once you save, orders may be split more than they are today (up to {after}).",
+    "loosenTitle": "Allow more splitting than today?",
+    "loosens": "Based on what you have set here, this would allow MORE splitting overall: {after} instead of today's {before} - no other active rule limits it that tightly.",
+    "nextSection": "What happens next",
+    "noSetup": "This rule needs no extra setup.",
+    "picker": {
+      "add": "Add a location…",
+      "addLabel": "Add a location to the priority list",
+      "inactive": "Inactive",
+      "inactiveOption": "{code} · {name} (inactive)",
+      "locationLabel": "{code} · {name}",
+      "moveDown": "Move {label} down",
+      "moveUp": "Move {label} up",
+      "noMore": "No more locations to add",
+      "remove": "Remove {label}",
+      "staleEntry": "No location exists for this entry - it ranks nothing"
+    },
+    "priorityDescription": "Any location you do not add here is used last, after everything on this list.",
+    "priorityLabel": "Location order (highest priority first)",
+    "ruleLabel": "Rule",
+    "save": "Save rule",
+    "saveFailed": "The rule could not be saved.",
+    "saving": "Saving…",
+    "splittingLabel": "Splitting",
+    "startsOn": "Starts on (optional)",
+    "stricter": "Based on what you have set here, this makes splitting stricter overall: {after} (currently {before}).",
+    "triggerSection": "What triggers this rule",
+    "typeLabel": "Type",
+    "typeLocked": "Cannot be changed. A rule’s type is part of what identifies it, so switching between Filter and Sort is not an edit - it is a different rule. Delete this one and add a new rule instead.",
+    "unchanged": "Based on what you have set here, splitting stays the same overall: {after}.",
+    "validation": {
+      "afterActionRequired": "Choose how far an order may be split",
+      "endBeforeStart": "The end date must be after the start date - otherwise this rule would never run",
+      "filterAsSort": "That rule filters locations; it cannot be used as a sort",
+      "kindRequired": "Choose whether this rule filters or sorts",
+      "nameRequired": "Choose what this rule does",
+      "priorityEmpty": "Add at least one location - a priority list with nothing in it ranks nothing",
+      "priorityNotUsed": "This rule does not use a location order, so the list must be empty",
+      "sortAsFilter": "That rule sorts locations; it cannot be used as a filter"
+    }
+  },
+  "sourcingRuleLockedDialog": {
+    "close": "Close",
+    "deleteRule": "Delete rule",
+    "description": "This version of OpenLinker does not recognise this rule.",
+    "notUsed": "It is saved, but it is not being used - orders route as if it were not here. Editing it would make it look active again, which would not be true.",
+    "remedy": "Delete it and add a new rule instead. Its type and name are stored exactly as they were written, so they are worth quoting if you report this.",
+    "title": "Cannot edit “{label}”"
+  },
+  "sourcingRuleStatus": {
+    "hints": {
+      "active": "This rule is deciding orders right now.",
+      "retired": "Kept for history. It decides nothing.",
+      "scheduled": "Saved, but it does not start deciding orders until its start date.",
+      "unrecognised": "This version of OpenLinker cannot evaluate this rule, so the router ignores it. It can be deleted, but not edited."
+    },
+    "labels": {
+      "active": "Active",
+      "retired": "Retired",
+      "scheduled": "Scheduled",
+      "unrecognised": "Unrecognised"
+    }
+  },
+  "sourcingRulesPage": {
+    "backToSettings": "Settings",
+    "createLocation": "Create a location",
+    "createLocationAdminOnly": "Creating an inventory location requires an administrator account.",
+    "createLocationErrorTitle": "Could not create the location",
+    "createLocationHint": "Creates a single warehouse location, MAIN. Running it again creates nothing. It starts empty, so stock still has to be assigned to it before an order can actually be sent there, and its country is left blank on purpose - the rules read it, and a guessed country is worse than a missing one.",
+    "creatingLocation": "Creating…",
+    "crumbGroup": "Platform",
+    "crumbTitle": "Sourcing rules",
+    "description": "Rules run in order. Filters rule locations out; sorts rank whatever is left.",
+    "errorMessage": "Your connections or locations could not be read just now. Nothing has changed - this is a loading problem, not a configuration one.",
+    "errorRetry": "Retry",
+    "errorTitle": "Could not open sourcing rules",
+    "goToConnections": "Go to connections",
+    "loadingMessage": "Reading your connections and locations…",
+    "loadingTitle": "Opening sourcing rules",
+    "locationsTruncated": "Showing {shown} of {total} locations. A priority rule can only rank the ones listed here, so a location past that point cannot be picked yet.",
+    "locationsTruncatedTitle": "Not every location is listed",
+    "noLocationsEyebrow": "No locations",
+    "noLocationsMessage": "Sourcing rules choose between your locations, and there are none active. Create one before authoring rules - until then every rule would rank an empty set.",
+    "noLocationsTitle": "No locations to route to yet",
+    "noOmsMessage": "Sourcing rules belong to the OpenLinker OMS connection, and there is not one yet. Enable the OMS first; its rules are managed from here afterwards.",
+    "noOmsTitle": "The OpenLinker OMS is not enabled",
+    "notAvailableEyebrow": "Not available here",
+    "wrongConnectionMessage": "Sourcing rules only apply to your OpenLinker OMS connection - anything set up here would never be used. Enable the OMS, then manage its rules from that connection.",
+    "wrongConnectionTitle": "This is not your OpenLinker OMS connection"
+  },
+  "sourcingRulesSection": {
+    "reorderConflict": "Could not save the new order. {message} The list has been refreshed.",
+    "reorderFailed": "The new order could not be saved."
+  },
+  "sourcingRulesState": {
+    "addRule": "Add rule",
+    "dismissReorderError": "Dismiss",
+    "emptyEyebrow": "No rules",
+    "emptyMessage": "Without a rule, no location is ruled out and none is ranked. Add a rule to start narrowing down which locations qualify.",
+    "emptyTitle": "Nothing decides where an order ships from yet",
+    "errorMessage": "Your sourcing rules could not be read just now. Nothing has changed - this is a loading problem, not a configuration one.",
+    "errorRetry": "Retry",
+    "errorTitle": "Could not load sourcing rules",
+    "loadingMessage": "Reading the rules that decide where an order ships from…",
+    "loadingTitle": "Loading sourcing rules"
+  },
+  "sourcingRulesTable": {
+    "actionsHeader": "Actions",
+    "alwaysActive": "Always",
+    "caption": "Sourcing rules, in the order they run",
+    "deleteRule": "Delete {label}",
+    "editLocked": "Cannot edit - this rule is no longer recognised",
+    "editRefusedAction": "Why this rule cannot be edited",
+    "editRule": "Edit {label}",
+    "governs": "Sets today's splitting limit",
+    "moveDown": "Move down",
+    "moveToBottom": "Move to bottom",
+    "moveToTop": "Move to top",
+    "moveUp": "Move up",
+    "ruleHeader": "Rule",
+    "splittingHeader": "Splitting",
+    "splittingHint": "How far this rule lets an order be divided across locations.",
+    "statusHeader": "Status",
+    "stepHeader": "Step",
+    "stepHint": "Rules run in this order. Use the arrows to reorder.",
+    "windowFrom": "from {date}",
+    "windowFromTo": "from {from} · to {to}",
+    "windowHeader": "Active window",
+    "windowTo": "to {date}"
+  },
+  "sourcingRulesTile": {
+    "description": "Decide which of your locations may fulfil an order, and in what order they are preferred.",
+    "eyebrow": "Platform",
+    "linkLabel": "Manage sourcing rules",
+    "title": "Sourcing rules"
+  }
+}

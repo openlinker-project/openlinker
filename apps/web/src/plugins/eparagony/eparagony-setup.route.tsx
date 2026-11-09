@@ -5,10 +5,19 @@
  */
 import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../../app/nav-registry.types';
+import { getEparagonyMessages } from './messages';
 
 export const eparagonySetupRoute: RouteObject = {
   path: 'connections/new/eparagony',
-  handle: { crumb: { group: 'Platform', title: 'Connect eparagony.pl' } } satisfies RouteCrumbHandle,
+  // A getter so the crumb is read in the active language at render.
+  handle: {
+    crumb: {
+      group: 'platform',
+      get title(): string {
+        return getEparagonyMessages().eparagonySetupRoute.crumb;
+      },
+    },
+  } satisfies RouteCrumbHandle,
   lazy: async () => {
     const { EparagonySetupPage } = await import('./components/eparagony-setup-page');
     return { Component: EparagonySetupPage };

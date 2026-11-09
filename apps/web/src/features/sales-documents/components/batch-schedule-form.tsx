@@ -24,7 +24,9 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { salesDocumentBatchQueryKeys } from '../api/sales-document-batch.query-keys';
 import type { BatchScheduleView } from '../api/sales-document-batch.types';
 import type { ConcreteDocumentKind } from '../api/sales-documents.types';
+import { useBatchCopy } from '../hooks/use-batch-copy';
 import { useUpdateSalesDocumentMutation } from '../hooks/use-update-sales-document-mutation';
+import { joinSentences } from '../lib/describe-batch-run';
 import {
   batchScheduleSchema,
   toBatchScheduleConfig,
@@ -32,11 +34,6 @@ import {
   type BatchScheduleFormSubmission,
   type BatchScheduleFormValues,
 } from './batch-schedule.schema';
-
-export const BATCH_KIND_LABELS: Record<ConcreteDocumentKind, string> = {
-  invoice: 'Invoices',
-  'fiscal-receipt': 'Fiscal receipts',
-};
 
 interface BatchScheduleFormProps {
   connectionId: string;
@@ -53,6 +50,9 @@ export function BatchScheduleForm({
 }: BatchScheduleFormProps): ReactElement {
   const { updateField, isPending } = useUpdateSalesDocumentMutation();
   const { showToast } = useToast();
+  const { copy: batchCopy } = useBatchCopy();
+  const copy = batchCopy.form;
+  const kindKey = kind === 'invoice' ? 'invoice' : 'fiscalReceipt';
   const queryClient = useQueryClient();
   const form = useForm<BatchScheduleFormValues, undefined, BatchScheduleFormSubmission>({
     defaultValues: toBatchScheduleFormValues(schedule),
@@ -60,7 +60,7 @@ export function BatchScheduleForm({
   });
   const frequency = form.watch('frequency');
   const errors = form.formState.errors;
-  const label = BATCH_KIND_LABELS[kind];
+  const label = copy.kinds[kindKey];
   const idPrefix = `batch-schedule-${kind}`;
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -76,12 +76,12 @@ export function BatchScheduleForm({
       form.reset(values);
       showToast({
         tone: 'success',
-        title: 'Schedule saved',
-        description: `${label} schedule updated.`,
+        title: copy.savedTitle,
+        description: copy.savedDescription[kindKey],
       });
     } catch (error) {
       form.setError('root', {
-        message: error instanceof Error ? error.message : 'The schedule could not be saved.',
+        message: error instanceof Error ? error.message : copy.saveFailed,
       });
     }
   });
@@ -92,27 +92,26 @@ export function BatchScheduleForm({
       {errors.root?.message ? <Alert tone="error">{errors.root.message}</Alert> : null}
       {schedule?.frequency === null || schedule === undefined ? (
         <p className="muted-text">
-          No schedule yet. Queued {label.toLowerCase()} wait until you save one or start a run by
-          hand.
+          {joinSentences(copy.noScheduleYet, copy.noScheduleWait[kindKey])}
         </p>
       ) : null}
-      <FormField label="Frequency" name={`${idPrefix}-frequency`}>
+      <FormField label={copy.frequency} name={`${idPrefix}-frequency`}>
         <Select {...form.register('frequency')} disabled={disabled}>
-          <option value="daily">Daily, at a fixed time</option>
-          <option value="every-n-hours">Every N hours</option>
-          <option value="month-end">Month end (business customers only)</option>
+          <option value="daily">{copy.frequencies.daily}</option>
+          <option value="every-n-hours">{copy.frequencies.everyNHours}</option>
+          <option value="month-end">{copy.frequencies.monthEnd}</option>
         </Select>
       </FormField>
       {frequency === 'daily' ? (
-        <FormField label="Time" name={`${idPrefix}-time`} error={errors.time?.message}>
+        <FormField label={copy.time} name={`${idPrefix}-time`} error={errors.time?.message}>
           <Input type="time" {...form.register('time')} disabled={disabled} />
         </FormField>
       ) : null}
       {frequency === 'every-n-hours' ? (
         <FormField
-          label="Every"
+          label={copy.every}
           name={`${idPrefix}-every-hours`}
-          description="Hours between runs, starting at 00:00."
+          description={copy.everyDescription}
           error={errors.everyHours?.message}
         >
           <Input
@@ -125,23 +124,21 @@ export function BatchScheduleForm({
         </FormField>
       ) : null}
       {frequency === 'month-end' ? (
-        <Alert tone="info" title="Business customers on the last day, everyone else daily">
-          Runs on the last calendar day of the month at 23:00 and issues orders whose buyer has a
-          company tax ID. Orders without one on this connection go out every day at 23:00, so no
-          order is left unissued.
+        <Alert tone="info" title={copy.monthEndTitle}>
+          {joinSentences(copy.monthEndLastDay, copy.monthEndDaily)}
         </Alert>
       ) : null}
       <FormField
-        label="Time zone"
+        label={copy.timeZone}
         name={`${idPrefix}-time-zone`}
-        description="The times above are read in this zone."
+        description={copy.timeZoneDescription}
         error={errors.timeZone?.message}
       >
         <Input {...form.register('timeZone')} disabled={disabled} />
       </FormField>
       <div className="batch-schedule-form__actions">
         <Button type="submit" disabled={disabled || isPending}>
-          {isPending ? 'Saving…' : `Save ${label.toLowerCase()} schedule`}
+          {isPending ? copy.saving : copy.save[kindKey]}
         </Button>
       </div>
     </form>

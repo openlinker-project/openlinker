@@ -32,7 +32,7 @@
  */
 import type { ReactElement } from 'react';
 
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Button } from '../../../shared/ui/button';
 import {
   DropdownMenu,
@@ -44,9 +44,7 @@ import {
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import type { PackerSummary } from '../../users';
 import type { FulfillmentTask } from '../api/fulfillment.types';
-import { ASSIGN_PACKING_WORK_COPY } from '../lib/assign-packing-work.copy';
-
-const ROW_COPY = ASSIGN_PACKING_WORK_COPY.row;
+import { getMessages, interpolate, useMessages } from '../../../shared/i18n';
 
 export interface FulfillmentAssignmentControlsProps {
   task: FulfillmentTask;
@@ -67,7 +65,8 @@ export interface FulfillmentAssignmentControlsProps {
 
 /** The menu's trigger label: what a click does from where the task is now. */
 export function assignmentTriggerLabel(task: FulfillmentTask): string {
-  return task.assignedToUserId === null ? ROW_COPY.assignTo : ROW_COPY.moveTo;
+  const rowCopy = getMessages('fulfillment').assignPackingWork.row;
+  return task.assignedToUserId === null ? rowCopy.assignTo : rowCopy.moveTo;
 }
 
 export function FulfillmentAssignmentControls({
@@ -81,6 +80,7 @@ export function FulfillmentAssignmentControls({
   size = 'sm',
   order = 'menu-first',
 }: FulfillmentAssignmentControlsProps): ReactElement {
+  const rowCopy = useMessages('fulfillment').assignPackingWork.row;
   const disabled = busy || readOnly;
   const isUnassigned = task.assignedToUserId === null;
   // The task's own packer is not a destination; "move to where it already is"
@@ -88,7 +88,7 @@ export function FulfillmentAssignmentControls({
   const destinations = packers.filter((packer) => packer.id !== task.assignedToUserId);
 
   const menu = (
-    <ReadOnlyLock active={readOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+    <ReadOnlyLock active={readOnly} message={demoReadOnlyActionMessage()}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild disabled={disabled}>
           <Button
@@ -111,12 +111,12 @@ export function FulfillmentAssignmentControls({
                   onMoveTo(packer.id);
                 }}
               >
-                {queued === undefined ? packer.username : ROW_COPY.packerWithQueue(packer.username, queued)}
+                {queued === undefined ? packer.username : interpolate(rowCopy.packerWithQueue, { name: packer.username, queued })}
               </DropdownMenuItem>
             );
           })}
           {destinations.length === 0 ? (
-            <DropdownMenuItem disabled>{ROW_COPY.noPackers}</DropdownMenuItem>
+            <DropdownMenuItem disabled>{rowCopy.noPackers}</DropdownMenuItem>
           ) : null}
           {isUnassigned ? null : (
             <>
@@ -128,7 +128,7 @@ export function FulfillmentAssignmentControls({
                 }}
               >
                 <span aria-hidden="true">↩ </span>
-                {ROW_COPY.pullBack}
+                {rowCopy.pullBack}
               </DropdownMenuItem>
             </>
           )}
@@ -147,7 +147,7 @@ export function FulfillmentAssignmentControls({
           onToggleSelfServe(event.target.checked);
         }}
       />
-      {isUnassigned ? ROW_COPY.selfServeLabel : ROW_COPY.selfServeAssignedLabel}
+      {isUnassigned ? rowCopy.selfServeLabel : rowCopy.selfServeAssignedLabel}
     </label>
   );
 

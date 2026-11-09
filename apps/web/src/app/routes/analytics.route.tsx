@@ -6,7 +6,7 @@ import type { RouteCrumbHandle } from '../nav-registry.types';
  */
 export const analyticsIndexRoute: RouteObject = {
   index: true,
-  handle: { crumb: { group: 'Operations', title: 'Analytics' } } satisfies RouteCrumbHandle,
+  handle: { crumb: { group: 'operations', page: 'analytics' } } satisfies RouteCrumbHandle,
   lazy: async () => {
     const { AnalyticsPage } = await import('../../pages/analytics/analytics-page');
     return { Component: AnalyticsPage };

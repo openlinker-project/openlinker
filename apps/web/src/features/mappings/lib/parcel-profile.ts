@@ -8,7 +8,7 @@
  * @module apps/web/src/features/mappings/lib
  */
 import type { ParcelProfileFields } from '../api/mappings.types';
-import { PARCEL_COPY } from './parcel-profile.copy';
+import { getMessages, interpolate } from '../../../shared/i18n';
 
 /** The form draft: everything a string exactly as the inputs hold it. */
 export interface ParcelProfileDraft {
@@ -157,34 +157,35 @@ export function validateDraft(
   draft: ParcelProfileDraft,
   options: ValidateDraftOptions = {},
 ): string | null {
+  const copy = getMessages('mappings').parcelProfile;
   const template = draft.template.trim();
-  if (options.customTemplate && template === '') return PARCEL_COPY.customTemplateEmpty;
+  if (options.customTemplate && template === '') return copy.customTemplateEmpty;
   if (template.length > PARCEL_PROFILE_LIMITS.templateMaxLength) {
-    return PARCEL_COPY.templateTooLong(PARCEL_PROFILE_LIMITS.templateMaxLength);
+    return interpolate(copy.templateTooLong, { max: PARCEL_PROFILE_LIMITS.templateMaxLength });
   }
   const dims = [draft.lengthCm, draft.widthCm, draft.heightCm];
   const filled = dims.filter((d) => d.trim() !== '').length;
-  if (filled > 0 && filled < 3) return PARCEL_COPY.boxIncomplete;
+  if (filled > 0 && filled < 3) return copy.boxIncomplete;
   for (const value of [...dims, draft.weightKg]) {
     if (value.trim() === '') continue;
     const n = parseDecimal(value);
-    if (n === null || n <= 0) return PARCEL_COPY.notPositive;
+    if (n === null || n <= 0) return copy.notPositive;
   }
   const f = draftToFields(draft);
   if (
     [f.lengthMm, f.widthMm, f.heightMm, f.defaultWeightGrams].some((v) => v !== null && v < 1)
   ) {
-    return PARCEL_COPY.notPositive;
+    return copy.notPositive;
   }
   // Compared in wire units after rounding, i.e. exactly what the server's
   // `@Max` will see.
   const dimensionMmMax = PARCEL_PROFILE_LIMITS.dimensionCmMax * MM_PER_CM;
   if ([f.lengthMm, f.widthMm, f.heightMm].some((v) => v !== null && v > dimensionMmMax)) {
-    return PARCEL_COPY.tooLarge(PARCEL_PROFILE_LIMITS.dimensionCmMax);
+    return interpolate(copy.tooLarge, { max: PARCEL_PROFILE_LIMITS.dimensionCmMax });
   }
   const weightGramsMax = PARCEL_PROFILE_LIMITS.weightKgMax * GRAMS_PER_KG;
   if (f.defaultWeightGrams !== null && f.defaultWeightGrams > weightGramsMax) {
-    return PARCEL_COPY.weightTooLarge(PARCEL_PROFILE_LIMITS.weightKgMax);
+    return interpolate(copy.weightTooLarge, { max: PARCEL_PROFILE_LIMITS.weightKgMax });
   }
   return null;
 }
@@ -194,15 +195,22 @@ export function summarizeParcelProfile(
   fields: ParcelProfileFields | null | undefined,
 ): string | null {
   if (!hasParcelProfile(fields) || !fields) return null;
+  const copy = getMessages('mappings').parcelProfile;
   const parts: string[] = [];
-  if (fields.parcelTemplate) parts.push(PARCEL_COPY.sizeSummary(fields.parcelTemplate));
+  if (fields.parcelTemplate) {
+    parts.push(interpolate(copy.sizeSummary, { template: fields.parcelTemplate }));
+  }
   if (fields.lengthMm != null && fields.widthMm != null && fields.heightMm != null) {
     parts.push(
-      PARCEL_COPY.boxSummary(mmToCm(fields.lengthMm), mmToCm(fields.widthMm), mmToCm(fields.heightMm)),
+      interpolate(copy.boxSummary, {
+        length: mmToCm(fields.lengthMm),
+        width: mmToCm(fields.widthMm),
+        height: mmToCm(fields.heightMm),
+      }),
     );
   }
   if (fields.defaultWeightGrams != null) {
-    parts.push(PARCEL_COPY.weightSummary(gramsToKg(fields.defaultWeightGrams)));
+    parts.push(interpolate(copy.weightSummary, { kg: gramsToKg(fields.defaultWeightGrams) }));
   }
   return parts.length > 0 ? parts.join(', ') : null;
 }

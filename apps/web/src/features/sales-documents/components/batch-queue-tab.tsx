@@ -10,14 +10,14 @@
  * @module apps/web/src/features/sales-documents/components
  */
 import { useMemo, useState, type ReactElement } from 'react';
-import { formatAmount } from '../../../shared/format/format-amount';
-import { formatDateTime, formatAbsoluteTime } from '../../../shared/format/format-date';
+import { interpolate, useFormat } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { Chip, type ChipTone } from '../../../shared/ui/chip';
 import { EmptyState } from '../../../shared/ui/feedback-state';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { BatchQueueEntry, BatchRun, BatchRunItem } from '../api/sales-document-batch.types';
+import { useBatchCopy } from '../hooks/use-batch-copy';
 import { useStartSalesDocumentBatchRunMutation } from '../hooks/use-start-sales-document-batch-run-mutation';
 import {
   buildBatchQueueRows,
@@ -27,18 +27,25 @@ import {
   type BatchQueueFilter,
   type BatchQueueRow,
 } from '../lib/batch-queue-rows';
-import { describeItemDetail, describeItemOutcome, formatElapsed } from '../lib/describe-batch-run';
+import {
+  BATCH_EMPTY_CELL,
+  batchKindKey,
+  describeItemDetail,
+  describeItemOutcome,
+  formatElapsed,
+  joinSentences,
+  type BatchCopy,
+} from '../lib/describe-batch-run';
 
-const KIND_BADGE: Record<string, { label: string; tone: 'info' | 'neutral' }> = {
-  invoice: { label: 'Invoice', tone: 'info' },
-  'fiscal-receipt': { label: 'Fiscal receipt', tone: 'neutral' },
-};
-
-const CHIPS: ReadonlyArray<{ filter: BatchQueueFilter; label: string; tone: ChipTone }> = [
-  { filter: 'all', label: 'All', tone: 'neutral' },
-  { filter: 'invoice', label: 'Invoice', tone: 'info' },
-  { filter: 'fiscal-receipt', label: 'Fiscal receipt', tone: 'neutral' },
-  { filter: 'blocked', label: 'Blocked', tone: 'warning' },
+const CHIPS: ReadonlyArray<{
+  filter: BatchQueueFilter;
+  label: (copy: BatchCopy) => string;
+  tone: ChipTone;
+}> = [
+  { filter: 'all', label: (copy) => copy.queue.filters.all, tone: 'neutral' },
+  { filter: 'invoice', label: (copy) => copy.queue.filters.invoice, tone: 'info' },
+  { filter: 'fiscal-receipt', label: (copy) => copy.queue.filters.fiscalReceipt, tone: 'neutral' },
+  { filter: 'blocked', label: (copy) => copy.queue.filters.blocked, tone: 'warning' },
 ];
 
 interface BatchQueueTabProps {
@@ -68,10 +75,11 @@ interface BatchQueueTabProps {
 }
 
 function KindBadge({ kind }: { kind: string }): ReactElement {
-  const badge = KIND_BADGE[kind] ?? { label: kind, tone: 'neutral' as const };
+  const { copy } = useBatchCopy();
+  const key = batchKindKey(kind);
   return (
-    <StatusBadge tone={badge.tone} compact>
-      {badge.label}
+    <StatusBadge tone={key === 'invoice' ? 'info' : 'neutral'} compact>
+      {key === null ? kind : copy.queue.kinds[key]}
     </StatusBadge>
   );
 }
@@ -82,6 +90,9 @@ function orderLabel(orderId: string, entry: BatchQueueEntry | null, item?: Batch
 
 export function BatchQueueTab(props: BatchQueueTabProps): ReactElement {
   const { connectionId, providerName, queue, runningRun } = props;
+  const batch = useBatchCopy();
+  const { copy: batchCopy, plural } = batch;
+  const copy = batchCopy.queue;
   const [filter, setFilter] = useState<BatchQueueFilter>('all');
   const startRun = useStartSalesDocumentBatchRunMutation(connectionId);
 
@@ -107,21 +118,21 @@ export function BatchQueueTab(props: BatchQueueTabProps): ReactElement {
         startRun.isPending ||
         props.awaitingRun
       }
-      title={props.runDisabledReason ?? (queue.length === 0 ? 'Nothing to run' : undefined)}
+      title={props.runDisabledReason ?? (queue.length === 0 ? copy.nothingToRun : undefined)}
     >
-      {startRun.isPending || props.awaitingRun ? 'Starting…' : 'Run now'}
+      {startRun.isPending || props.awaitingRun ? copy.starting : copy.runNow}
     </Button>
   );
 
   return (
     <div className="batch-queue">
-      {startRun.error ? <Alert tone="error">{describeRunNowError(startRun.error)}</Alert> : null}
-      {props.awaitingRun ? (
-        <Alert tone="info">The run has been queued and starts in a moment.</Alert>
+      {startRun.error ? (
+        <Alert tone="error">{describeRunNowError(startRun.error, batchCopy)}</Alert>
       ) : null}
+      {props.awaitingRun ? <Alert tone="info">{copy.runQueued}</Alert> : null}
       <div className="toolbar page-summary batch-queue__toolbar">
         {rows.length > 0 ? (
-          <div className="toolbar__group" role="group" aria-label="Filter the next batch">
+          <div className="toolbar__group" role="group" aria-label={copy.filterLabel}>
             {CHIPS.map((chip) => (
               <Chip
                 key={chip.filter}
@@ -129,7 +140,10 @@ export function BatchQueueTab(props: BatchQueueTabProps): ReactElement {
                 active={filter === chip.filter}
                 onClick={() => setFilter(chip.filter)}
               >
-                {chip.label} · {counts[chip.filter]}
+                {interpolate(copy.chip, {
+                  label: chip.label(batchCopy),
+                  count: counts[chip.filter],
+                })}
               </Chip>
             ))}
           </div>
@@ -137,32 +151,26 @@ export function BatchQueueTab(props: BatchQueueTabProps): ReactElement {
         {props.canRun ? <div className="batch-queue__run">{runButton}</div> : null}
       </div>
       {props.runDisabledReason !== null ? (
-        <p className="muted-text">
-          {queue.length} {queue.length === 1 ? 'order' : 'orders'} queued, untouched since the last
-          successful run.
-        </p>
+        <p className="muted-text">{plural(queue.length, copy.untouched)}</p>
       ) : null}
 
       {rows.length === 0 ? (
-        <EmptyState
-          title="Nothing waiting for the next batch"
-          message="Orders appear here once they qualify (paid, or shipped, depending on the market) and this connection is their resolved sales-document connection."
-        />
+        <EmptyState title={copy.emptyTitle} message={copy.emptyMessage} />
       ) : (
         <>
           <div className="data-table__container">
             <table className="data-table" data-testid="batch-queue-table">
-              <caption className="sr-only">Orders in the next batch</caption>
+              <caption className="sr-only">{copy.caption}</caption>
               <thead>
                 <tr>
-                  <th scope="col">Order</th>
-                  <th scope="col">Source</th>
-                  <th scope="col">Buyer</th>
-                  <th scope="col">Placed</th>
+                  <th scope="col">{copy.columns.order}</th>
+                  <th scope="col">{copy.columns.source}</th>
+                  <th scope="col">{copy.columns.buyer}</th>
+                  <th scope="col">{copy.columns.placed}</th>
                   <th scope="col" className="data-table__cell--right">
-                    Total
+                    {copy.columns.total}
                   </th>
-                  <th scope="col">Will issue</th>
+                  <th scope="col">{copy.columns.willIssue}</th>
                 </tr>
               </thead>
               <tbody>
@@ -179,13 +187,10 @@ export function BatchQueueTab(props: BatchQueueTabProps): ReactElement {
           </div>
           {queue.length < props.queueTotal ? (
             <p className="muted-text">
-              Showing the first {queue.length} of {props.queueTotal} queued orders.
+              {interpolate(copy.showingFirst, { shown: queue.length, total: props.queueTotal })}
             </p>
           ) : null}
-          <p className="muted-text">
-            A batch never creates a second document for an order that already has one. Those show up
-            here as Blocked instead of silently dropping out of the queue.
-          </p>
+          <p className="muted-text">{joinSentences(copy.noSecondDocument, copy.blockedNote)}</p>
         </>
       )}
     </div>
@@ -201,18 +206,20 @@ function QueueRow({
   sourceName: (connectionId: string) => string;
   providerName: string;
 }): ReactElement {
+  const batch = useBatchCopy();
+  const format = useFormat();
   const entry = row.entry;
   const item = row.kind === 'blocked' ? row.item : undefined;
   return (
     <tr data-testid="batch-queue-row" data-order-id={row.orderId} data-row-kind={row.kind}>
       <td className="mono-text">{orderLabel(row.orderId, entry, item)}</td>
-      <td>{entry ? sourceName(entry.sourceConnectionId) : '-'}</td>
-      <td>{entry?.buyerName ?? item?.buyerName ?? '-'}</td>
-      <td>{entry?.placedAt ? formatDateTime(entry.placedAt) : '-'}</td>
+      <td>{entry ? sourceName(entry.sourceConnectionId) : BATCH_EMPTY_CELL}</td>
+      <td>{entry?.buyerName ?? item?.buyerName ?? BATCH_EMPTY_CELL}</td>
+      <td>{entry?.placedAt ? format.dateTime(entry.placedAt) : BATCH_EMPTY_CELL}</td>
       <td className="data-table__cell--right">
         {entry?.totalAmount != null
-          ? formatAmount(entry.totalAmount, entry.currency ?? undefined)
-          : '-'}
+          ? format.money(entry.totalAmount, entry.currency ?? undefined)
+          : BATCH_EMPTY_CELL}
       </td>
       <td>
         {row.kind === 'queued' ? (
@@ -220,10 +227,10 @@ function QueueRow({
         ) : (
           <>
             <StatusBadge tone="warning" compact>
-              Blocked
+              {batch.copy.queue.blocked}
             </StatusBadge>
             <span className="muted-text batch-queue__reason">
-              {describeItemDetail(row.item, providerName)}
+              {describeItemDetail(row.item, providerName, batch)}
             </span>
           </>
         )}
@@ -239,6 +246,10 @@ function RunningView({
   providerName,
   now,
 }: BatchQueueTabProps & { runningRun: BatchRun }): ReactElement {
+  const batch = useBatchCopy();
+  const { copy: batchCopy, plural } = batch;
+  const copy = batchCopy.running;
+  const format = useFormat();
   const processedIds = new Set(runningItems.map((item) => item.orderId));
   const waiting = queue.filter((entry) => !processedIds.has(entry.orderId));
   const total = runningItems.length + waiting.length;
@@ -251,20 +262,22 @@ function RunningView({
         <div className="panel__header">
           <h3>
             <StatusBadge tone="info" pulse>
-              Running
+              {copy.badge}
             </StatusBadge>{' '}
-            Run started {formatAbsoluteTime(runningRun.startedAt)}
+            {interpolate(copy.startedAt, { time: format.time(runningRun.startedAt) })}
           </h3>
-          <span className="panel__meta">elapsed {elapsed}</span>
+          <span className="panel__meta">{interpolate(copy.elapsed, { elapsed })}</span>
         </div>
         <p className="muted-text">
-          Processed {runningItems.length} of {total} orders, one at a time. Each order is issued
-          under its own lock, so two connections can never issue a document for the same order.
+          {joinSentences(
+            plural(total, copy.processed, { done: runningItems.length }),
+            copy.lockNote
+          )}
         </p>
         <div
           className="batch-progress"
           role="progressbar"
-          aria-label="Batch run progress"
+          aria-label={copy.progressLabel}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={percent}
@@ -273,26 +286,26 @@ function RunningView({
         </div>
         <div className="batch-schedule-form__actions">
           <Button data-testid="batch-run-now" disabled>
-            Run in progress…
+            {copy.inProgress}
           </Button>
-          <span className="muted-text">Run now is unavailable until this run finishes.</span>
+          <span className="muted-text">{copy.runNowUnavailable}</span>
         </div>
       </div>
 
       <div className="data-table__container">
         <table className="data-table">
-          <caption className="sr-only">Orders in the run in progress</caption>
+          <caption className="sr-only">{copy.caption}</caption>
           <thead>
             <tr>
-              <th scope="col">Order</th>
-              <th scope="col">Buyer</th>
-              <th scope="col">Outcome</th>
-              <th scope="col">Detail</th>
+              <th scope="col">{batchCopy.itemColumns.order}</th>
+              <th scope="col">{batchCopy.itemColumns.buyer}</th>
+              <th scope="col">{batchCopy.itemColumns.outcome}</th>
+              <th scope="col">{batchCopy.itemColumns.detail}</th>
             </tr>
           </thead>
           <tbody>
             {runningItems.map((item) => {
-              const outcome = describeItemOutcome(item);
+              const outcome = describeItemOutcome(item, batch);
               return (
                 <tr
                   key={item.orderId}
@@ -301,13 +314,13 @@ function RunningView({
                   data-outcome={item.outcome}
                 >
                   <td className="mono-text">{item.orderNumber ?? item.orderId}</td>
-                  <td>{item.buyerName ?? '-'}</td>
+                  <td>{item.buyerName ?? BATCH_EMPTY_CELL}</td>
                   <td>
                     <StatusBadge tone={outcome.tone} compact>
                       {outcome.label}
                     </StatusBadge>
                   </td>
-                  <td>{describeItemDetail(item, providerName)}</td>
+                  <td>{describeItemDetail(item, providerName, batch)}</td>
                 </tr>
               );
             })}
@@ -319,9 +332,9 @@ function RunningView({
                 data-row-kind="queued"
               >
                 <td className="mono-text">{entry.orderNumber ?? entry.orderId}</td>
-                <td>{entry.buyerName ?? '-'}</td>
+                <td>{entry.buyerName ?? BATCH_EMPTY_CELL}</td>
                 <td>
-                  <span className="muted-text">Queued</span>
+                  <span className="muted-text">{copy.queued}</span>
                 </td>
                 <td>
                   <KindBadge kind={entry.documentKind} />

@@ -92,6 +92,26 @@ describe('Order destination-routing block (integration)', () => {
     expect(summary.destinationRoutingBlocked).toBe(1);
   });
 
+  // #3959 - a single shop is its own only destination on EVERY order, so its
+  // reason must never be counted; a switched-off destination must be.
+  it('should count no-active-destination but never no-destination-configured', async () => {
+    const ds = harness.getDataSource();
+    const standalone = await createTestOrderRecord(ds, { sourceConnectionId: SOURCE });
+    const inactive = await createTestOrderRecord(ds, { sourceConnectionId: SOURCE });
+    await repository.updateDestinationRoutingBlock(standalone.internalOrderId, {
+      reason: 'no-destination-configured',
+      detail: null,
+    });
+    await repository.updateDestinationRoutingBlock(inactive.internalOrderId, {
+      reason: 'no-active-destination',
+      detail: null,
+    });
+
+    expect(await ids(true)).toEqual([inactive.internalOrderId]);
+    expect(await ids(false)).toEqual([standalone.internalOrderId]);
+    expect((await repository.countByHealth({})).destinationRoutingBlocked).toBe(1);
+  });
+
   it('should clear the reason and detail when the block is written as null', async () => {
     const { unavailable } = await seed();
 

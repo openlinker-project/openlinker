@@ -1,0 +1,64 @@
+{
+  "mailerSettingsDialog": {
+    "cancel": "Anuluj",
+    "clearErrorTitle": "Nie udało się wyczyścić hasła",
+    "clearPassword": "Wyczyść zapisane hasło",
+    "clearedToastDescription": "Do czasu ustawienia nowego hasła serwer używa hasła ze zmiennych środowiskowych albo żadnego.",
+    "clearedToastTitle": "Hasło SMTP wyczyszczone",
+    "clearing": "Czyszczenie…",
+    "description": "Wybierz sposób wysyłania poczty wychodzącej. Hasło SMTP można tylko zapisać - API nigdy go nie zwraca.",
+    "fromDescription": "Akceptuje też nazwę wyświetlaną, np. \"OpenLinker <orders@example.com>\".",
+    "fromLabel": "Adres nadawcy",
+    "fromPlaceholder": "orders@example.com",
+    "hostLabel": "Host SMTP",
+    "hostPlaceholder": "smtp.example.com",
+    "passwordConfigured": "Hasło jest skonfigurowane. Zostaw puste, aby je zachować, albo wpisz nowe, aby je wymienić.",
+    "passwordLabel": "Hasło SMTP",
+    "passwordNotSet": "Nie ustawiono hasła. Wpisz wartość, aby je skonfigurować.",
+    "passwordPlaceholder": "Zostaw puste, aby zachować bieżące hasło",
+    "portLabel": "Port SMTP",
+    "portPlaceholder": "587",
+    "save": "Zapisz zmiany",
+    "saveErrorTitle": "Nie udało się zapisać ustawień poczty",
+    "savedToastDescription": "Poczta wychodząca będzie używać zaktualizowanej konfiguracji.",
+    "savedToastTitle": "Ustawienia poczty zapisane",
+    "saving": "Zapisywanie…",
+    "secureLabel": "Używaj bezpośredniego TLS (zostaw odznaczone dla STARTTLS lub połączenia bez szyfrowania)",
+    "title": "Edytuj ustawienia poczty",
+    "transport": {
+      "console": "Konsola (tylko log, e-mail nie jest wysyłany)",
+      "smtp": "SMTP"
+    },
+    "transportLabel": "Sposób wysyłki",
+    "unknownError": "Nieznany błąd"
+  },
+  "mailerSettingsFormSchema": {
+    "fromInvalid": "Wpisz poprawny adres e-mail, opcjonalnie z nazwą wyświetlaną (np. \"OpenLinker <noreply@example.com>\")",
+    "fromRequired": "Adres nadawcy jest wymagany dla wysyłki SMTP",
+    "fromTooLong": "Adres nadawcy jest za długi (maks. {max} znaków)",
+    "hostRequired": "Host jest wymagany dla wysyłki SMTP",
+    "hostTooLong": "Host jest za długi (maks. {max} znaków)",
+    "passwordTooLong": "Hasło jest za długie (maks. {max} znaków)",
+    "portRange": "Port musi być liczbą całkowitą od {min} do {max}",
+    "portRequired": "Port jest wymagany dla wysyłki SMTP"
+  },
+  "mailerSettingsTile": {
+    "adminOnly": "Tylko administratorzy",
+    "configured": "Skonfigurowane",
+    "edit": "Edytuj",
+    "eyebrow": "Poczta wychodząca",
+    "fromLabel": "Adres nadawcy",
+    "hostLabel": "Host",
+    "loadError": "Nie udało się wczytać ustawień poczty: {message}",
+    "loading": "Wczytywanie ustawień poczty…",
+    "notSet": "Nie ustawiono",
+    "passwordLabel": "Hasło SMTP",
+    "portLabel": "Port",
+    "title": "Poczta",
+    "transport": {
+      "console": "Konsola",
+      "smtp": "SMTP"
+    },
+    "transportLabel": "Sposób wysyłki"
+  }
+}

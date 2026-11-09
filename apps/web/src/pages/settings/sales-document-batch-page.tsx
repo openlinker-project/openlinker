@@ -11,12 +11,14 @@ import type { ReactElement } from 'react';
 import { useParams } from 'react-router-dom';
 import { useIsAdmin } from '../../shared/auth/use-permission';
 import { useSession } from '../../shared/auth/use-session';
+import { interpolate, useMessages } from '../../shared/i18n';
 import { ErrorState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { useConnectionQuery } from '../../features/connections';
 import { SalesDocumentBatchScreen } from '../../features/sales-documents';
 
 export function SalesDocumentBatchPage(): ReactElement {
+  const copy = useMessages('sales-documents').batch.page;
   const { session } = useSession();
   const isAdmin = useIsAdmin();
   const { connectionId = '' } = useParams<{ connectionId: string }>();
@@ -24,10 +26,14 @@ export function SalesDocumentBatchPage(): ReactElement {
 
   if (session.status === 'authenticated' && !isAdmin) {
     return (
-      <PageLayout eyebrow="Settings" title="Batch issuing" description="Admin-only access.">
+      <PageLayout
+        eyebrow={copy.eyebrowShort}
+        title={copy.title}
+        description={copy.adminDescription}
+      >
         <ErrorState
-          title="Admin role required"
-          message="Batch issuing creates fiscal documents on a schedule. It requires an admin session."
+          title={copy.adminTitle}
+          message={`${copy.adminReason} ${copy.adminRequirement}`}
         />
       </PageLayout>
     );
@@ -36,10 +42,10 @@ export function SalesDocumentBatchPage(): ReactElement {
   const name = connection.data?.name;
   return (
     <PageLayout
-      eyebrow="Settings · Sales documents"
-      title={name ? `Batch issuing: ${name}` : 'Batch issuing'}
-      description="Groups this connection's invoices and receipts into scheduled runs instead of issuing each one the moment its order qualifies."
-      backTo={{ to: '/settings/sales-documents', label: 'Sales documents routing' }}
+      eyebrow={copy.eyebrow}
+      title={name ? interpolate(copy.titleFor, { name }) : copy.title}
+      description={copy.description}
+      backTo={{ to: '/settings/sales-documents', label: copy.backLabel }}
     >
       <SalesDocumentBatchScreen connectionId={connectionId} />
     </PageLayout>

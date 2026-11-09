@@ -16,6 +16,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useMemo, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -42,7 +43,7 @@ import { InventoryLocationKindValues, InventoryLocationStatusValues } from '../a
 import {
   KIND_LABEL,
   LOCATION_DIALOG_DEFAULT_VALUES,
-  locationDialogSchema,
+  createLocationDialogSchema,
   STATUS_OPTION_LABEL,
   toCreateInput,
   toUpdateInput,
@@ -73,6 +74,9 @@ function toFormValues(location: InventoryLocation): LocationDialogFormValues {
 }
 
 export function LocationDialog({ target, onClose }: LocationDialogProps): ReactElement {
+  const copy = useMessages('inventory').locationDialog;
+  const fields = copy.fields;
+  const schema = useMemo(() => createLocationDialogSchema(copy), [copy]);
   const { showToast } = useToast();
   const platforms = usePlatforms();
   const connectionsQuery = useConnectionsQuery();
@@ -84,7 +88,7 @@ export function LocationDialog({ target, onClose }: LocationDialogProps): ReactE
 
   const form = useForm<LocationDialogFormValues, undefined, LocationDialogFormSubmission>({
     defaultValues: LOCATION_DIALOG_DEFAULT_VALUES,
-    resolver: zodResolver(locationDialogSchema),
+    resolver: zodResolver(schema),
   });
 
   const { reset: resetForm } = form;
@@ -112,19 +116,30 @@ export function LocationDialog({ target, onClose }: LocationDialogProps): ReactE
         .filter((connection) => connection.status === 'active' || connection.id === currentOwnerId)
         .map((connection) => ({
           id: connection.id,
-          label: `${resolvePlatformLabel(platforms, connection.platformType)} — ${connection.name}`,
+          label: interpolate(copy.connectionOption, {
+            platform: resolvePlatformLabel(platforms, connection.platformType),
+            name: connection.name,
+          }),
         })),
-    [connectionsQuery.data, platforms, currentOwnerId],
+    [connectionsQuery.data, platforms, currentOwnerId, copy.connectionOption],
   );
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
       if (target?.mode === 'edit') {
         await updateMutation.mutateAsync({ id: target.location.id, patch: toUpdateInput(values) });
-        showToast({ tone: 'success', title: 'Location updated', description: `"${values.name}" was saved.` });
+        showToast({
+          tone: 'success',
+          title: copy.toasts.updatedTitle,
+          description: interpolate(copy.toasts.updatedDescription, { name: values.name }),
+        });
       } else {
         await createMutation.mutateAsync(toCreateInput(values));
-        showToast({ tone: 'success', title: 'Location created', description: `"${values.name}" was added.` });
+        showToast({
+          tone: 'success',
+          title: copy.toasts.createdTitle,
+          description: interpolate(copy.toasts.createdDescription, { name: values.name }),
+        });
       }
       onClose();
     } catch (error) {
@@ -151,18 +166,18 @@ export function LocationDialog({ target, onClose }: LocationDialogProps): ReactE
   const showValidationSummary = form.formState.submitCount > 0 && validationMessages.length > 0;
 
   const open = target !== null;
-  const title = isEdit ? `Edit "${target.location.name}"` : 'Add location';
+  const title = isEdit ? interpolate(copy.titleEdit, { name: target.location.name }) : copy.titleCreate;
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
       <DialogContent>
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription>
-          The warehouses, stores and third-party sites OpenLinker can source stock from.
+          {copy.description}
         </DialogDescription>
 
         {mutation.error && isUnmappedApiError(mutation.error, (e) => e.isConflict() || e.status === 422) ? (
-          <Alert tone="error" title="Could not save the location">
+          <Alert tone="error" title={copy.saveError}>
             {mutation.error.message}
           </Alert>
         ) : null}
@@ -173,21 +188,21 @@ export function LocationDialog({ target, onClose }: LocationDialogProps): ReactE
           <div className="form-field-row">
             {isEdit ? null : (
               <FormField
-                label="Code"
+                label={fields.code}
                 name="code"
                 error={form.formState.errors.code?.message}
-                description="Unique across the install. Normalised to uppercase on save."
+                description={fields.codeHint}
               >
-                <Input placeholder="WH1" maxLength={64} {...form.register('code')} />
+                <Input placeholder={fields.codePlaceholder} maxLength={64} {...form.register('code')} />
               </FormField>
             )}
-            <FormField label="Name" name="name" error={form.formState.errors.name?.message}>
-              <Input placeholder="Main warehouse" maxLength={255} {...form.register('name')} />
+            <FormField label={fields.name} name="name" error={form.formState.errors.name?.message}>
+              <Input placeholder={fields.namePlaceholder} maxLength={255} {...form.register('name')} />
             </FormField>
           </div>
 
           <div className="form-field-row">
-            <FormField label="Kind" name="kind" error={form.formState.errors.kind?.message}>
+            <FormField label={fields.kind} name="kind" error={form.formState.errors.kind?.message}>
               <Select {...form.register('kind')}>
                 {InventoryLocationKindValues.map((kind) => (
                   <option key={kind} value={kind}>
@@ -197,19 +212,19 @@ export function LocationDialog({ target, onClose }: LocationDialogProps): ReactE
               </Select>
             </FormField>
             <FormField
-              label="Owning connection (optional)"
+              label={fields.owner}
               name="ownerConnectionId"
               error={form.formState.errors.ownerConnectionId?.message}
               description={
                 connectionsQuery.isError
-                  ? "Couldn't load connections — try again, or leave unset."
+                  ? fields.ownerLoadError
                   : connectionsQuery.isLoading
-                    ? 'Loading connections…'
-                    : 'Whose sync may write stock here. Not authority over the location.'
+                    ? fields.ownerLoading
+                    : fields.ownerHint
               }
             >
               <Select {...form.register('ownerConnectionId')}>
-                <option value="">— none —</option>
+                <option value="">{fields.ownerNone}</option>
                 {connectionOptions.map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.label}
@@ -222,10 +237,10 @@ export function LocationDialog({ target, onClose }: LocationDialogProps): ReactE
           {isEdit ? (
             <div className="form-field-row">
               <FormField
-                label="Status"
+                label={fields.status}
                 name="status"
                 error={form.formState.errors.status?.message}
-                description="Retiring stops new stock from targeting it; existing history keeps pointing at the row. Flip back to Active to re-activate."
+                description={fields.statusHint}
               >
                 <Select {...form.register('status')}>
                   {InventoryLocationStatusValues.map((status) => (
@@ -241,31 +256,31 @@ export function LocationDialog({ target, onClose }: LocationDialogProps): ReactE
 
           <div className="form-field-row">
             <FormField
-              label="Country (optional)"
+              label={fields.country}
               name="countryIso2"
               error={form.formState.errors.countryIso2?.message}
             >
-              <Input placeholder="PL" maxLength={2} style={{ textTransform: 'uppercase' }} {...form.register('countryIso2')} />
+              <Input placeholder={fields.countryPlaceholder} maxLength={2} style={{ textTransform: 'uppercase' }} {...form.register('countryIso2')} />
             </FormField>
             <FormField
-              label="Postcode (optional)"
+              label={fields.postcode}
               name="postcode"
               error={form.formState.errors.postcode?.message}
             >
-              <Input placeholder="00-001" maxLength={16} {...form.register('postcode')} />
+              <Input placeholder={fields.postcodePlaceholder} maxLength={16} {...form.register('postcode')} />
             </FormField>
           </div>
 
           <div className="form-field-row">
             <FormField
-              label="Latitude (optional)"
+              label={fields.latitude}
               name="latitude"
               error={form.formState.errors.latitude?.message}
             >
               <Input type="number" step="0.0001" min={-90} max={90} {...form.register('latitude')} />
             </FormField>
             <FormField
-              label="Longitude (optional)"
+              label={fields.longitude}
               name="longitude"
               error={form.formState.errors.longitude?.message}
             >
@@ -274,22 +289,22 @@ export function LocationDialog({ target, onClose }: LocationDialogProps): ReactE
           </div>
 
           <FormField
-            label="Operator reference (optional)"
+            label={fields.externalRef}
             name="externalRef"
             error={form.formState.errors.externalRef?.message}
-            description="Not an identifier mapping — nothing external reads this."
+            description={fields.externalRefHint}
           >
-            <Input placeholder="Free text — e.g. an internal warehouse code" maxLength={255} {...form.register('externalRef')} />
+            <Input placeholder={fields.externalRefPlaceholder} maxLength={255} {...form.register('externalRef')} />
           </FormField>
 
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" tone="ghost">
-                Cancel
+                {copy.cancel}
               </Button>
             </DialogClose>
             <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? 'Saving…' : 'Save location'}
+              {mutation.isPending ? copy.saving : copy.save}
             </Button>
           </DialogFooter>
         </form>

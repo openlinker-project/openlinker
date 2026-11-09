@@ -50,6 +50,7 @@
  * @module apps/web/src/features/analytics/components
  */
 import { useEffect, useState, type ReactElement } from 'react';
+import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -64,7 +65,7 @@ import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { useAnalyticsSettingsQuery } from '../hooks/use-analytics-settings-query';
 import { useUpdateAnalyticsSettingsMutation } from '../hooks/use-update-analytics-settings-mutation';
@@ -89,22 +90,6 @@ interface AnalyticsSettingsDialogProps {
 
 const NATIVE_VALUE = '';
 
-/**
- * The one statement of the tax-inclusion toggle's consequence, shared
- * verbatim by the checkbox description and its confirm-dialog description
- * (#2857) — so the two can't drift the way they had (#2993 review, IMPORTANT
- * 3: the checkbox rendered a typographic apostrophe and the dialog a
- * straight one because each was hand-typed separately).
- */
-const TAX_INCLUDE_CONSEQUENCE = (
-  <>
-    Trust a tax rate found retroactively in the catalog and include such orders in Net Sales
-    automatically. This applies to everyone and to every date range, not just the one
-    you&rsquo;re viewing - turning it off removes these orders from Net Sales again the next time
-    the figures are queried.
-  </>
-);
-
 export function AnalyticsSettingsDialog({
   open,
   onOpenChange,
@@ -114,6 +99,8 @@ export function AnalyticsSettingsDialog({
   onApplyView,
   coverageFilters,
 }: AnalyticsSettingsDialogProps): ReactElement {
+  const copy = useMessages('analytics').analyticsSettingsDialog;
+  const plural = usePlural();
   const { showToast } = useToast();
   const demoMode = useDemoMode();
   const write = useWriteAccess('analytics:write', demoMode);
@@ -158,8 +145,8 @@ export function AnalyticsSettingsDialog({
       onSuccess: () => {
         showToast({
           tone: 'success',
-          title: 'Recalculation started',
-          description: 'Affected orders are being restated in the background.',
+          title: copy.toast.recalculationStarted.title,
+          description: copy.toast.recalculationStarted.description,
         });
       },
       onError: (error) => {
@@ -271,25 +258,24 @@ export function AnalyticsSettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent aria-label="Analytics settings">
-        <DialogTitle>Analytics settings</DialogTitle>
+      <DialogContent aria-label={copy.title}>
+        <DialogTitle>{copy.title}</DialogTitle>
         {/* Scoped to the two view-preference fields only — the Currency
             section below carries its own, separate permanent-write caveat.
             Do not widen this back into a blanket "nothing is saved". */}
-        <DialogDescription>
-          Display currency and rate basis (below) only change what you see on this screen — nothing
-          is saved. Actions further down can write data permanently — each one says so plainly.
-        </DialogDescription>
+        <DialogDescription>{copy.description}</DialogDescription>
 
         <div className="analytics-settings-dialog__field">
-          <span className="analytics-settings-dialog__label">Show amounts in</span>
+          <span className="analytics-settings-dialog__label">{copy.showAmountsIn}</span>
           <Select
-            aria-label="Show amounts in"
+            aria-label={copy.showAmountsIn}
             value={draftDisplayCurrency}
             onChange={(event) => setDraftDisplayCurrency(event.target.value)}
           >
             <option value={NATIVE_VALUE}>
-              {reportingCurrency ? `${reportingCurrency} · reporting currency` : 'Reporting currency'}
+              {reportingCurrency
+                ? interpolate(copy.reportingCurrencyNamed, { currency: reportingCurrency })
+                : copy.reportingCurrency}
             </option>
             {DISPLAY_CURRENCY_OPTIONS.filter((code) => code !== reportingCurrency).map((code) => (
               <option key={code} value={code}>
@@ -300,7 +286,7 @@ export function AnalyticsSettingsDialog({
         </div>
 
         <fieldset className="analytics-settings-dialog__field">
-          <legend className="analytics-settings-dialog__label">Rate basis</legend>
+          <legend className="analytics-settings-dialog__label">{copy.rateBasis.legend}</legend>
           <label className="analytics-settings-dialog__rate-basis-option">
             <input
               type="radio"
@@ -309,10 +295,9 @@ export function AnalyticsSettingsDialog({
               onChange={() => setDraftRateBasis('current-rate')}
             />
             <span>
-              <strong>Current rate</strong>
+              <strong>{copy.rateBasis.current.title}</strong>
               <span className="analytics-settings-dialog__rate-basis-desc">
-                What it&rsquo;s worth today — sums each order&rsquo;s real amount and converts it at
-                today&rsquo;s rate.
+                {copy.rateBasis.current.description}
               </span>
             </span>
           </label>
@@ -324,25 +309,21 @@ export function AnalyticsSettingsDialog({
               onChange={() => setDraftRateBasis('order-date')}
             />
             <span>
-              <strong>Rate on order date</strong>
+              <strong>{copy.rateBasis.orderDate.title}</strong>
               <span className="analytics-settings-dialog__rate-basis-desc">
-                Keeps each order at its own order-date rate. Showing a different currency converts
-                that total at today&rsquo;s rate - analytics only, not a figure for tax filings.
+                {copy.rateBasis.orderDate.description}
               </span>
             </span>
           </label>
         </fieldset>
 
         <section className="analytics-settings-dialog__section">
-          <h3 className="analytics-settings-dialog__section-title">Default VAT basis</h3>
-          <p className="analytics-settings-dialog__status">
-            Saved immediately and applies to every future visit that doesn&rsquo;t pick its own basis
-            via the toolbar toggle.
-          </p>
+          <h3 className="analytics-settings-dialog__section-title">{copy.vatBasis.title}</h3>
+          <p className="analytics-settings-dialog__status">{copy.vatBasis.status}</p>
           {write.visible && (
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
               <fieldset className="analytics-settings-dialog__field">
-                <legend className="sr-only">Default VAT basis</legend>
+                <legend className="sr-only">{copy.vatBasis.title}</legend>
                 <label className="analytics-settings-dialog__rate-basis-option">
                   <input
                     type="radio"
@@ -352,9 +333,9 @@ export function AnalyticsSettingsDialog({
                     onChange={() => handleNetGrossBasisDefaultChange('gross')}
                   />
                   <span>
-                    <strong>Gross</strong>
+                    <strong>{copy.vatBasis.gross.title}</strong>
                     <span className="analytics-settings-dialog__rate-basis-desc">
-                      VAT-inclusive figures, by default.
+                      {copy.vatBasis.gross.description}
                     </span>
                   </span>
                 </label>
@@ -367,9 +348,9 @@ export function AnalyticsSettingsDialog({
                     onChange={() => handleNetGrossBasisDefaultChange('net')}
                   />
                   <span>
-                    <strong>Net</strong>
+                    <strong>{copy.vatBasis.net.title}</strong>
                     <span className="analytics-settings-dialog__rate-basis-desc">
-                      VAT-exclusive figures, by default.
+                      {copy.vatBasis.net.description}
                     </span>
                   </span>
                 </label>
@@ -382,8 +363,8 @@ export function AnalyticsSettingsDialog({
           className="analytics-settings-dialog__section"
           data-testid="settings-margin-tracking"
         >
-          <h3 className="analytics-settings-dialog__section-title">Margin</h3>
-          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <h3 className="analytics-settings-dialog__section-title">{copy.margin.title}</h3>
+          <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
             <label className="analytics-settings-dialog__toggle">
               <input
                 type="checkbox"
@@ -395,48 +376,39 @@ export function AnalyticsSettingsDialog({
                 onChange={(event) => handleTrackMarginChange(event.target.checked)}
               />
               <span>
-                <strong>Track margin and remind about missing cost prices</strong>
+                <strong>{copy.margin.toggle}</strong>
                 <span className="analytics-settings-dialog__toggle-desc">
-                  Off: the Margin panel, the cost reminders on Products, Analytics and Operations
-                  overview, and the &ldquo;No cost price&rdquo; chip are hidden. Cost prices you
-                  already entered stay saved and keep being copied onto new orders, so turning
-                  this back on shows margin straight away.
+                  {copy.margin.description}
                 </span>
               </span>
             </label>
           </ReadOnlyLock>
           {!write.canWrite && !write.demoReadOnly ? (
             <Alert tone="info">
-              {trackMargin
-                ? 'Margin is on for everyone on this account. Only an admin can change this.'
-                : 'Margin is off for everyone on this account. Only an admin can change this.'}
+              {trackMargin ? copy.margin.onAdminOnly : copy.margin.offAdminOnly}
             </Alert>
           ) : null}
         </section>
 
         <section className="analytics-settings-dialog__section">
-          <h3 className="analytics-settings-dialog__section-title">Currency — recalculation</h3>
-          <Alert tone="warning">
-            This section writes data permanently: &ldquo;Recalculate now&rdquo; saves the real
-            exchange rate from each order&rsquo;s date to the database — this isn&rsquo;t a preview.
-          </Alert>
+          <h3 className="analytics-settings-dialog__section-title">{copy.currency.title}</h3>
+          <Alert tone="warning">{copy.currency.warning}</Alert>
           <label className="analytics-settings-dialog__toggle">
             <input type="checkbox" disabled checked={false} onChange={() => undefined} />
             <span>
-              <strong>Automatically recalculate outstanding orders when the reporting currency changes</strong>
-              <span className="analytics-settings-dialog__toggle-desc">Not available yet.</span>
+              <strong>{copy.currency.autoToggle}</strong>
+              <span className="analytics-settings-dialog__toggle-desc">
+                {copy.currency.notAvailable}
+              </span>
             </span>
           </label>
           {coverageQuery.isLoading ? (
-            <p className="analytics-settings-dialog__status">Checking for outstanding orders…</p>
+            <p className="analytics-settings-dialog__status">{copy.currency.checking}</p>
           ) : currencyPendingCount > 0 ? (
             <div className="analytics-settings-dialog__status">
-              <span>
-                {currencyPendingCount} order{currencyPendingCount === 1 ? '' : 's'} waiting to be
-                recalculated
-              </span>
+              <span>{plural(currencyPendingCount, copy.currency.pending)}</span>
               {write.visible && (
-                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                   <Button
                     type="button"
                     className="button--sm"
@@ -444,23 +416,23 @@ export function AnalyticsSettingsDialog({
                     onClick={() => setConfirmingRecalculate(true)}
                   >
                     {currencyRunInProgress
-                      ? 'Recalculating…'
+                      ? copy.currency.recalculating
                       : recalculate.isPending
-                        ? 'Starting…'
-                        : 'Recalculate now'}
+                        ? copy.currency.starting
+                        : copy.currency.recalculateNow}
                   </Button>
                 </ReadOnlyLock>
               )}
             </div>
           ) : (
-            <p className="analytics-settings-dialog__status">Everything&rsquo;s up to date</p>
+            <p className="analytics-settings-dialog__status">{copy.currency.upToDate}</p>
           )}
         </section>
 
         <section className="analytics-settings-dialog__section">
-          <h3 className="analytics-settings-dialog__section-title">Tax rates</h3>
+          <h3 className="analytics-settings-dialog__section-title">{copy.tax.title}</h3>
           {write.visible && (
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
               <label className="analytics-settings-dialog__toggle">
                 <input
                   type="checkbox"
@@ -475,45 +447,49 @@ export function AnalyticsSettingsDialog({
                   }}
                 />
                 <span>
-                  <strong>Use the rate found in the product catalog</strong>
+                  <strong>{copy.tax.toggle}</strong>
                   <span className="analytics-settings-dialog__toggle-desc">
-                    {TAX_INCLUDE_CONSEQUENCE}
+                    {copy.tax.consequence}
                   </span>
                 </span>
               </label>
             </ReadOnlyLock>
           )}
           {coverageQuery.isLoading || settingsQuery.isLoading ? (
-            <p className="analytics-settings-dialog__status">Checking tax-rate coverage…</p>
+            <p className="analytics-settings-dialog__status">{copy.tax.checking}</p>
           ) : coverageQuery.isError || settingsQuery.isError ? (
-            <Alert tone="error">
-              Couldn&rsquo;t load tax-rate coverage — the counts and setting state below may be
-              wrong.
-            </Alert>
+            <Alert tone="error">{copy.tax.loadError}</Alert>
           ) : (
             <ul className="analytics-settings-dialog__tax-summary">
-              <li>{taxA} orders — rate found, {settingsQuery.data?.includeBackfilledTaxRatesInNetSales ? 'included automatically' : 'waiting for confirmation'}</li>
-              <li>{taxB} orders — no rate at the source (needs fixing at the source)</li>
-              <li>{taxC} orders — product added after launch, rate still unresolved</li>
+              <li>
+                {plural(
+                  taxA,
+                  settingsQuery.data?.includeBackfilledTaxRatesInNetSales
+                    ? copy.tax.foundIncluded
+                    : copy.tax.foundWaiting
+                )}
+              </li>
+              <li>{plural(taxB, copy.tax.noRate)}</li>
+              <li>{plural(taxC, copy.tax.unresolved)}</li>
             </ul>
           )}
         </section>
 
         <DialogFooter>
           <Button type="button" tone="secondary" onClick={() => onOpenChange(false)}>
-            Cancel
+            {copy.cancel}
           </Button>
           <Button type="button" onClick={handleApply}>
-            Apply
+            {copy.apply}
           </Button>
         </DialogFooter>
       </DialogContent>
       <ConfirmDialog
         open={confirmingRecalculate}
         onOpenChange={setConfirmingRecalculate}
-        title="Recalculate now?"
-        description="This saves the real exchange rate from each order's own date to the database, for good — this is not a preview and cannot be undone from here."
-        confirmLabel="Recalculate"
+        title={copy.recalculateConfirm.title}
+        description={copy.recalculateConfirm.description}
+        confirmLabel={copy.recalculateConfirm.confirm}
         isConfirming={recalculate.isPending}
         onConfirm={handleRecalculate}
         overlayClassName="dialog__overlay--elevated"
@@ -522,30 +498,27 @@ export function AnalyticsSettingsDialog({
       <ConfirmDialog
         open={confirmingTaxInclude}
         onOpenChange={setConfirmingTaxInclude}
-        title="Turn on including orders with a guessed tax rate?"
-        description={TAX_INCLUDE_CONSEQUENCE}
+        title={copy.taxConfirm.title}
+        description={copy.tax.consequence}
         body={
           <>
-            <Alert tone="warning">
-              These tax rates come from today&rsquo;s catalog, not the order date. If any of them
-              changed since, Net Sales for those orders will be less accurate.
-            </Alert>
+            <Alert tone="warning">{copy.taxConfirm.warning}</Alert>
             {coverageQuery.isLoading ? (
               <p className="analytics-settings-dialog__status" style={{ marginBottom: 0 }}>
-                Checking how many orders are affected…
+                {copy.taxConfirm.checking}
               </p>
             ) : coverageQuery.isError ? (
               <p className="analytics-settings-dialog__status" style={{ marginBottom: 0 }}>
-                Affects an unknown number of orders — we couldn&rsquo;t load the count.
+                {copy.taxConfirm.countUnknown}
               </p>
             ) : (
               <p className="analytics-settings-dialog__status" style={{ marginBottom: 0 }}>
-                Affects {taxA} order{taxA === 1 ? '' : 's'}.
+                {plural(taxA, copy.taxConfirm.affects)}
               </p>
             )}
           </>
         }
-        confirmLabel="Turn on"
+        confirmLabel={copy.taxConfirm.confirm}
         isConfirming={updateSettings.isPending}
         onConfirm={handleConfirmTaxInclude}
         overlayClassName="dialog__overlay--elevated"

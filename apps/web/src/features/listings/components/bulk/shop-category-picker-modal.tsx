@@ -35,6 +35,7 @@ import {
   type CategorySearchResultHit,
 } from '../../../../shared/ui/category-search-results';
 import { useDebouncedValue } from '../../../../shared/hooks/use-debounced-value';
+import { interpolate, renderRich, useMessages } from '../../../../shared/i18n';
 import {
   useCategorySearchQuery,
   isSearchableCategoryQuery,
@@ -99,6 +100,7 @@ function ShopCategoryPickerBody({
   onSelect: (categoryId: string, pathNames: string[]) => void;
   onClose: () => void;
 }): ReactElement {
+  const copy = useMessages('listings').shopCategoryPickerModal;
   const [breadcrumb, setBreadcrumb] = useState<Crumb[]>([]);
   const [search, setSearch] = useState('');
 
@@ -171,42 +173,41 @@ function ShopCategoryPickerBody({
     <>
       <div className="bulk-editor__catpick-head">
         <DialogTitle className="bulk-editor__catpick-title">
-          Choose category <span>- {productName}</span>
+          {renderRich(copy.title, { muted: (text) => <span>{text}</span> }, { product: productName })}
         </DialogTitle>
         <Button
           tone="ghost"
           type="button"
           className="button--icon"
-          aria-label="Close category picker"
+          aria-label={copy.closeLabel}
           onClick={onClose}
         >
           ×
         </Button>
       </div>
       <DialogDescription className="sr-only">
-        Pick a destination shop category for this product. Any category can be selected, or browse
-        into it to see its subcategories.
+        {copy.description}
       </DialogDescription>
 
       <div className="bulk-editor__catpick-search">
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search all categories..."
-          aria-label="Search all categories"
+          placeholder={copy.searchPlaceholder}
+          aria-label={copy.searchLabel}
           aria-controls="shop-catpick-search-results"
         />
       </div>
 
       {isSearching ? null : (
-        <nav className="bulk-editor__catpick-crumbs" aria-label="Category path">
+        <nav className="bulk-editor__catpick-crumbs" aria-label={copy.pathLabel}>
           <button
             type="button"
             className="bulk-editor__catpick-crumb"
             onClick={jumpToRoot}
             disabled={breadcrumb.length === 0}
           >
-            Root
+            {copy.root}
           </button>
           {breadcrumb.map((crumb, i) => (
             <span key={crumb.id} className="bulk-editor__catpick-crumb-group">
@@ -249,14 +250,14 @@ function ShopCategoryPickerBody({
         ) : categoriesQuery.isLoading ? (
           <LoadingState
             liveRegion="off"
-            title="Loading categories"
-            message="Fetching categories..."
+            title={copy.loading.title}
+            message={copy.loading.message}
           />
         ) : categoriesQuery.error ? (
           <ErrorState
-            title="Unable to load categories"
+            title={copy.error.title}
             message={categoriesQuery.error.message}
-            action={<Button onClick={() => void categoriesQuery.refetch()}>Retry</Button>}
+            action={<Button onClick={() => void categoriesQuery.refetch()}>{copy.error.retry}</Button>}
           />
         ) : nodes.length === 0 ? (
           <div className="bulk-editor__catpick-empty">
@@ -265,8 +266,8 @@ function ShopCategoryPickerBody({
                 "this shop has no categories". Claiming the latter would be a
                 false statement about the operator's own storefront. */}
             {breadcrumb.length === 0
-              ? "This shop's categories have not been synced yet. They appear here once the first sync completes."
-              : 'This category has no subcategories. Select it, or step back to a different branch.'}
+              ? copy.empty.notSynced
+              : copy.empty.noChildren}
           </div>
         ) : (
           <ul className="bulk-editor__catpick-items" role="list">
@@ -284,27 +285,27 @@ function ShopCategoryPickerBody({
                 >
                   <span className="bulk-editor__catpick-name">
                     <b>{node.name}</b>
-                    <small>selectable category</small>
+                    <small>{copy.selectableCategory}</small>
                   </span>
                   <span className="bulk-editor__catpick-actions">
                     <Button
                       tone="ghost"
                       type="button"
                       className="button--sm bulk-editor__catpick-browse"
-                      aria-label={`Browse into ${node.name}`}
+                      aria-label={interpolate(copy.browseLabel, { name: node.name })}
                       onClick={() => drillInto({ id: node.id, name: node.name })}
                     >
-                      Browse ›
+                      {copy.browse}
                     </Button>
                     <Button
                       tone={isCurrent ? 'secondary' : 'primary'}
                       type="button"
                       className="button--sm"
                       aria-pressed={isCurrent}
-                      aria-label={`Select ${node.name}`}
+                      aria-label={interpolate(copy.selectLabel, { name: node.name })}
                       onClick={() => pick(node)}
                     >
-                      {isCurrent ? 'Selected' : 'Select'}
+                      {isCurrent ? copy.selected : copy.select}
                     </Button>
                   </span>
                 </li>
@@ -315,9 +316,9 @@ function ShopCategoryPickerBody({
       </div>
 
       <div className="bulk-editor__catpick-foot">
-        <span className="grow">Pick the shop category this product is placed in.</span>
+        <span className="grow">{copy.footer}</span>
         <Button tone="ghost" type="button" onClick={onClose}>
-          Cancel
+          {copy.cancel}
         </Button>
       </div>
     </>

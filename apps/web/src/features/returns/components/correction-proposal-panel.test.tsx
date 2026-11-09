@@ -15,13 +15,15 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import { CorrectionProposalPanel } from './correction-proposal-panel';
-import { RETURN_PROPOSAL_COPY } from '../lib/return-proposal.copy';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
 import type {
   ReturnCorrectionProposal,
   ReturnCorrectionProposalLine,
   ReturnCorrectionProposalResult,
 } from '../api/returns.types';
+import { getMessages } from '../../../shared/i18n';
+
+const RETURN_PROPOSAL_COPY = getMessages('returns').proposal;
 
 const RETURN_ID = 'ol_return_1';
 
@@ -290,7 +292,7 @@ describe('CorrectionProposalPanel — the 4 non-proposing outcomes (#3093)', () 
   });
 
   it('should give each of the 4 outcomes a DIFFERENT badge and message', () => {
-    const outcomes = ['no-invoice', 'no-line-snapshot', 'no-disposed-lines', 'nothing-correctable'];
+    const outcomes = ['no-invoice', 'no-line-snapshot', 'no-disposed-lines', 'nothing-correctable'] as const;
     const badges = outcomes.map((o) => RETURN_PROPOSAL_COPY.outcomeBadges[o]);
     const messages = outcomes.map((o) => RETURN_PROPOSAL_COPY.outcomes[o]);
 

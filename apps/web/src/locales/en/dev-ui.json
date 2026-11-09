@@ -1,0 +1,14 @@
+{
+  "brandbookSection": {
+    "identitySubtitle": "OpenLinker is an operator cockpit for multi-channel commerce. The visual identity favours information density and signal clarity - a serious instrument, not a generic admin."
+  },
+  "devUiPage": {
+    "description": "Brandbook, primitives gallery, and composed pattern examples. Not surfaced in the nav - reachable only by URL."
+  },
+  "patternsSection": {
+    "installWebhooksBody": "We'll register inbound webhook URLs on your store so order events arrive in seconds, not minutes. You can skip this and rely on polling - the catalogue still syncs hourly."
+  },
+  "primitivesSection": {
+    "adminRequiredMessage": "This page manages agent credentials - it requires an admin session."
+  }
+}

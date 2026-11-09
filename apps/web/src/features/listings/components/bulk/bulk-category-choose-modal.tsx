@@ -38,6 +38,7 @@ import {
   type CategorySearchResultHit,
 } from '../../../../shared/ui/category-search-results';
 import { useDebouncedValue } from '../../../../shared/hooks/use-debounced-value';
+import { interpolate, renderRich, useMessages } from '../../../../shared/i18n';
 import {
   useAllegroCategoriesQuery,
   useCategorySearchQuery,
@@ -114,6 +115,7 @@ function BulkCategoryChooseBody({
   onClose: () => void;
   scope: 'base' | 'variant';
 }): ReactElement {
+  const copy = useMessages('listings').bulkCategoryChooseModal;
   const [breadcrumb, setBreadcrumb] = useState<Crumb[]>([]);
   const [search, setSearch] = useState('');
 
@@ -183,28 +185,28 @@ function BulkCategoryChooseBody({
     <>
       <div className="bulk-editor__catpick-head">
         <DialogTitle className="bulk-editor__catpick-title">
-          Choose category <span>- {productName}</span>
+          {renderRich(copy.title, { muted: (text) => <span>{text}</span> }, { product: productName })}
         </DialogTitle>
         <Button
           tone="ghost"
           type="button"
           className="button--icon"
-          aria-label="Close category picker"
+          aria-label={copy.closeLabel}
           onClick={onClose}
         >
           ×
         </Button>
       </div>
       <DialogDescription className="sr-only">
-        Pick the marketplace category shared by every variant of this product.
+        {copy.description}
       </DialogDescription>
 
       <div className="bulk-editor__catpick-search">
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search all categories..."
-          aria-label="Search all categories"
+          placeholder={copy.searchPlaceholder}
+          aria-label={copy.searchLabel}
           aria-controls="bulk-catpick-search-results"
         />
       </div>
@@ -214,14 +216,14 @@ function BulkCategoryChooseBody({
           as the results' location. It is preserved, not reset, so clearing the
           query restores the level. */}
       {isSearching ? null : (
-        <nav className="bulk-editor__catpick-crumbs" aria-label="Category path">
+        <nav className="bulk-editor__catpick-crumbs" aria-label={copy.pathLabel}>
           <button
             type="button"
             className="bulk-editor__catpick-crumb"
             onClick={jumpToRoot}
             disabled={breadcrumb.length === 0}
           >
-            Root
+            {copy.root}
           </button>
           {breadcrumb.map((crumb, i) => (
             <span key={crumb.id} className="bulk-editor__catpick-crumb-group">
@@ -263,20 +265,20 @@ function BulkCategoryChooseBody({
         ) : categoriesQuery.isLoading ? (
           <LoadingState
             liveRegion="off"
-            title="Loading categories"
-            message="Fetching categories..."
+            title={copy.loading.title}
+            message={copy.loading.message}
           />
         ) : categoriesQuery.error ? (
           <ErrorState
-            title="Unable to load categories"
+            title={copy.error.title}
             message={categoriesQuery.error.message}
-            action={<Button onClick={() => void categoriesQuery.refetch()}>Retry</Button>}
+            action={<Button onClick={() => void categoriesQuery.refetch()}>{copy.error.retry}</Button>}
           />
         ) : nodes.length === 0 ? (
           <div className="bulk-editor__catpick-empty">
             {breadcrumb.length === 0
-              ? 'No categories synced yet for this destination. Search will work once the first sync completes.'
-              : 'This level has no subcategories. Step back and pick a different branch.'}
+              ? copy.empty.notSynced
+              : copy.empty.noChildren}
           </div>
         ) : (
           <ul className="bulk-editor__catpick-items" role="list">
@@ -294,7 +296,7 @@ function BulkCategoryChooseBody({
                 >
                   <span className="bulk-editor__catpick-name">
                     <b>{node.name}</b>
-                    <small>{node.leaf ? 'selectable category' : 'subcategory'}</small>
+                    <small>{node.leaf ? copy.kind.leaf : copy.kind.branch}</small>
                   </span>
                   {node.leaf ? (
                     <Button
@@ -304,17 +306,17 @@ function BulkCategoryChooseBody({
                       aria-pressed={isCurrent}
                       onClick={() => pick(node)}
                     >
-                      {isCurrent ? 'Selected' : 'Select'}
+                      {isCurrent ? copy.selected : copy.select}
                     </Button>
                   ) : (
                     <Button
                       tone="ghost"
                       type="button"
                       className="button--sm bulk-editor__catpick-browse"
-                      aria-label={`Browse into ${node.name}`}
+                      aria-label={interpolate(copy.browseLabel, { name: node.name })}
                       onClick={() => drillInto({ id: node.id, name: node.name })}
                     >
-                      Browse ›
+                      {copy.browse}
                     </Button>
                   )}
                 </li>
@@ -327,11 +329,11 @@ function BulkCategoryChooseBody({
       <div className="bulk-editor__catpick-foot">
         <span className="grow">
           {scope === 'variant'
-            ? 'Applies to this variant only - it leaves the grouped listing.'
-            : 'Applies to all variants - Allegro groups siblings under one category.'}
+            ? copy.footer.variant
+            : copy.footer.base}
         </span>
         <Button tone="ghost" type="button" onClick={onClose}>
-          Cancel
+          {copy.cancel}
         </Button>
       </div>
     </>

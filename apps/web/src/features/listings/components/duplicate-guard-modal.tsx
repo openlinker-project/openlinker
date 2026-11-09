@@ -9,7 +9,7 @@
  * The wording + primary action are driven by the destination KIND (resolved
  * from the connection's capabilities upstream, never a platformType literal):
  *   - marketplace: the backend *skips* already-listed variants rather than
- *     duplicating them (#1741's authoritative guard) — the copy here must
+ *     duplicating them (#1741's authoritative guard) - the copy here must
  *     match that (#1933; it previously promised a duplicate that was never
  *     created).
  *   - shop: publishing *updates the existing product* (upsert).
@@ -21,6 +21,14 @@
  */
 import type { ReactElement } from 'react';
 
+import {
+  renderRich,
+  selectPluralForm,
+  useActiveLocale,
+  useFormat,
+  useMessages,
+  usePlural,
+} from '../../../shared/i18n';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import type { PublishDestinationKind } from '../lib/publish-destinations';
 
@@ -38,10 +46,6 @@ interface DuplicateGuardModalProps {
   overlayClassName?: string;
 }
 
-function variantNoun(count: number): string {
-  return count === 1 ? 'variant' : 'variants';
-}
-
 export function DuplicateGuardModal({
   open,
   onOpenChange,
@@ -53,23 +57,23 @@ export function DuplicateGuardModal({
   className,
   overlayClassName,
 }: DuplicateGuardModalProps): ReactElement {
-  const title = `${duplicateCount} ${variantNoun(duplicateCount)} already on ${destinationName}`;
+  const copy = useMessages('listings').duplicateGuardModal;
+  const plural = usePlural();
+  const locale = useActiveLocale();
+  const format = useFormat();
+  const title = plural(duplicateCount, copy.title, { destination: destinationName });
+  const strong = { strong: (text: string) => <strong>{text}</strong> };
+  const params = { n: format.number(duplicateCount), destination: destinationName };
 
-  const description =
-    kind === 'shop' ? (
-      <>
-        <strong>{duplicateCount}</strong> {variantNoun(duplicateCount)} you selected already exist on{' '}
-        <strong>{destinationName}</strong>. Publishing <strong>updates the existing product</strong>{' '}
-        (upsert) rather than creating a new one. Continue?
-      </>
-    ) : (
-      <>
-        <strong>{duplicateCount}</strong> {variantNoun(duplicateCount)} you selected already have an
-        offer on <strong>{destinationName}</strong>. {duplicateCount === 1 ? 'It' : 'They'} will be{' '}
-        <strong>skipped, not duplicated</strong> - only variants not yet listed there will be published.
-        Continue?
-      </>
-    );
+  const description = renderRich(
+    selectPluralForm(
+      duplicateCount,
+      kind === 'shop' ? copy.descriptionShop : copy.descriptionMarketplace,
+      locale,
+    ),
+    strong,
+    params,
+  );
 
   return (
     <ConfirmDialog
@@ -77,8 +81,8 @@ export function DuplicateGuardModal({
       onOpenChange={onOpenChange}
       title={title}
       description={description}
-      cancelLabel="Go back"
-      confirmLabel={kind === 'shop' ? 'Update existing' : 'Publish remaining variants'}
+      cancelLabel={copy.cancel}
+      confirmLabel={kind === 'shop' ? copy.confirmShop : copy.confirmMarketplace}
       isConfirming={isConfirming}
       onConfirm={onConfirm}
       className={className}

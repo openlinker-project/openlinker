@@ -20,18 +20,21 @@
 import { useState, type ReactElement } from 'react';
 import { useEditOrderMutation, type EditOrderOutput } from '../hooks/use-edit-order-mutation';
 import { readServerReason } from '../lib/order-cancel';
-import { formatDateTime } from '../../../shared/format/format-date';
 
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
-import { formatAmount } from '../../../shared/format/format-amount';
+import { interpolate, useFormat, useMessages, usePlural } from '../../../shared/i18n';
 import { useIsAdmin, useWriteAccess } from '../../../shared/auth/use-permission';
 import { useDemoMode } from '../../system';
 import type { ConfirmOrderChangeResult } from '../api/order-cancel.types';
-import type { OrderDiscountResult, OrderEditLineStock, OrderEditsView } from '../api/order-edit.types';
+import type {
+  OrderDiscountResult,
+  OrderEditLineStock,
+  OrderEditsView,
+} from '../api/order-edit.types';
 import {
-  DISCOUNT_CORRECTION_UNAVAILABLE_COPY,
   describeStockOutcome,
+  discountCorrectionUnavailableText,
   formatDecimalAmount,
 } from '../lib/order-edit';
 import { OrderCorrectionProposalDialog } from './order-correction-proposal-dialog';
@@ -80,6 +83,9 @@ export function OrderEditedNotice({
   onConfirmed,
   onDiscountResent,
 }: OrderEditedNoticeProps): ReactElement | null {
+  const copy = useMessages('orders').orderEditedNotice;
+  const format = useFormat();
+  const plural = usePlural();
   const demoMode = useDemoMode();
   const write = useWriteAccess('orders:write', demoMode);
   const isAdmin = useIsAdmin();
@@ -90,35 +96,53 @@ export function OrderEditedNotice({
 
   if (!edits || isOnlyRemovedDiscount(edits)) return null;
 
-  const channel = sourceName ?? 'the sales channel';
+  const channel = sourceName ?? copy.channelFallback;
   const refund = edits.discountProposals.find((p) => p.kind === 'order.discount_refund') ?? null;
   const correction =
     edits.discountProposals.find((p) => p.kind === 'order.discount_correction') ?? null;
-  const unavailable = correction === null ? (sessionDiscount?.correctionUnavailableReason ?? null) : null;
+  const unavailable =
+    correction === null ? sessionDiscount?.correctionUnavailableReason ?? null : null;
   const totals = edits.totals;
   const lowered = edits.lines.length;
   const unmatched = edits.unmatchedLineEdits ?? [];
-  const stockOutcome = describeStockOutcome(sessionStock ?? []);
+  const stockOutcome = describeStockOutcome(sessionStock ?? [], format.list);
   const sessionAmount = sessionDiscount?.discount?.amount ?? null;
   const combinedDiscountText = totals
-    ? describeCombinedDiscount(totals, edits.discount ? Number(edits.discount.amount) : null, sourceName)
+    ? describeCombinedDiscount(
+        totals,
+        edits.discount ? Number(edits.discount.amount) : null,
+        sourceName
+      )
     : null;
+  const channelTotal = totals ? format.money(totals.channelTotal, totals.currency) : null;
+  const stillShows =
+    channelTotal !== null
+      ? lowered > 0
+        ? plural(lowered, copy.stillShowsTotalLowered, { channel, total: channelTotal })
+        : interpolate(copy.stillShowsTotal, { channel, total: channelTotal })
+      : lowered > 0
+        ? plural(lowered, copy.stillShowsLowered, { channel })
+        : interpolate(copy.stillShows, { channel });
 
   return (
     <>
-      <Alert tone="info" title="This order was edited in OpenLinker" data-testid="order-edit-notice">
+      <Alert tone="info" title={copy.title} data-testid="order-edit-notice">
         <p>
-          {`${channel} still shows the order as the buyer placed it${
-            totals ? `: ${formatAmount(totals.channelTotal, totals.currency)}` : ''
-          }${lowered > 0 ? `, with ${lowered === 1 ? 'one line' : `${lowered} lines`} you lowered here` : ''}.`}
+          {stillShows}
           {totals && totals.total !== totals.channelTotal
-            ? ` The order here is ${formatAmount(totals.total, totals.currency)}.`
+            ? ` ${interpolate(copy.orderHere, { amount: format.money(totals.total, totals.currency) })}`
             : ''}
         </p>
-        {combinedDiscountText ? <p data-testid="order-edit-combined-discount">{combinedDiscountText}</p> : null}
+        {combinedDiscountText ? (
+          <p data-testid="order-edit-combined-discount">{combinedDiscountText}</p>
+        ) : null}
         {edits.cod && edits.cod.amount !== null && edits.cod.amount !== edits.cod.channelAmount ? (
           <p data-testid="order-edit-cod">
-            {`Cash on delivery: collect ${formatDecimalAmount(edits.cod.amount, edits.cod.currency)} (${channel} has ${formatDecimalAmount(edits.cod.channelAmount, edits.cod.currency)}).`}
+            {interpolate(copy.cod, {
+              amount: formatDecimalAmount(edits.cod.amount, edits.cod.currency),
+              channel,
+              channelAmount: formatDecimalAmount(edits.cod.channelAmount, edits.cod.currency),
+            })}
           </p>
         ) : null}
         {stockOutcome && stockOutcome.tone === 'info' ? (
@@ -126,7 +150,12 @@ export function OrderEditedNotice({
         ) : null}
         {refund ? (
           <p data-testid="order-edit-refund-pending">
-            {`Refund ${refund.amount ? formatDecimalAmount(refund.amount, refund.currency) : 'the difference'} on ${channel}, then confirm the refund here.`}
+            {interpolate(copy.refundPending, {
+              amount: refund.amount
+                ? formatDecimalAmount(refund.amount, refund.currency)
+                : copy.refundDifference,
+              channel,
+            })}
             {canAct ? (
               <>
                 {' '}
@@ -139,7 +168,7 @@ export function OrderEditedNotice({
                     setRefundOpen(true);
                   }}
                 >
-                  Confirm refund
+                  {copy.confirmRefund}
                 </Button>
               </>
             ) : null}
@@ -147,8 +176,7 @@ export function OrderEditedNotice({
         ) : null}
         {correction ? (
           <p data-testid="order-edit-correction-pending">
-            Review and issue the correction invoice for the discount. Nothing is issued until you
-            confirm it.
+            {copy.correctionPending}
             {canAct ? (
               <>
                 {' '}
@@ -161,7 +189,7 @@ export function OrderEditedNotice({
                     setCorrectionOpen(true);
                   }}
                 >
-                  Review correction
+                  {copy.reviewCorrection}
                 </Button>
               </>
             ) : null}
@@ -169,13 +197,12 @@ export function OrderEditedNotice({
         ) : null}
         {unavailable ? (
           <p data-testid="order-edit-correction-unavailable">
-            {DISCOUNT_CORRECTION_UNAVAILABLE_COPY[unavailable]}
+            {discountCorrectionUnavailableText(unavailable)}
           </p>
         ) : null}
         {sessionDiscount?.refundIntentFailed ? (
           <p data-testid="order-edit-refund-intent-failed">
-            The discount was saved, but OpenLinker could not open the refund for it. Send the same
-            discount again to open it, then refund the difference on {channel}.
+            {interpolate(copy.refundIntentFailed, { channel })}
             {canAct && sessionAmount !== null ? (
               <>
                 {' '}
@@ -191,49 +218,47 @@ export function OrderEditedNotice({
                         internalOrderId,
                         edit: { kind: 'discount', body: { amount: sessionAmount } },
                       },
-                      { onSuccess: (output) => onDiscountResent?.([output]) },
+                      { onSuccess: (output) => onDiscountResent?.([output]) }
                     );
                   }}
                 >
-                  {resend.isPending ? 'Sending…' : 'Send the discount again'}
+                  {resend.isPending ? copy.resending : copy.resend}
                 </Button>
               </>
             ) : null}
             {resend.isError ? (
               <span role="alert" data-testid="order-edit-resend-error">
                 {' '}
-                {readServerReason(resend.error, 'Could not send the discount again.')}
+                {readServerReason(resend.error, copy.resendFailed)}
               </span>
             ) : null}
           </p>
         ) : null}
       </Alert>
       {sessionWorkFailureCount > 0 ? (
-        <Alert tone="warning" title="Packing work not fully updated" data-testid="order-edit-work-failed">
-          <p>
-            Packing work could not be updated for {sessionWorkFailureCount}{' '}
-            {sessionWorkFailureCount === 1 ? 'line' : 'lines'}. Retry the edit.
-          </p>
+        <Alert tone="warning" title={copy.workFailed.title} data-testid="order-edit-work-failed">
+          <p>{plural(sessionWorkFailureCount, copy.workFailed.body)}</p>
         </Alert>
       ) : null}
       {stockOutcome && stockOutcome.tone === 'warning' ? (
-        <Alert tone="warning" title="Stock was not put back" data-testid="order-edit-stock-failed">
+        <Alert tone="warning" title={copy.stockFailedTitle} data-testid="order-edit-stock-failed">
           <p>{stockOutcome.text}</p>
         </Alert>
       ) : null}
       {unmatched.length > 0 ? (
-        <Alert
-          tone="warning"
-          title="Edited in OpenLinker - needs attention"
-          data-testid="order-edit-unmatched"
-        >
-          <p>
-            {`${channel} changed the lines of this order, so ${unmatched.length === 1 ? 'an edit' : 'these edits'} made here no longer apply. Check the items before you ship.`}
-          </p>
+        <Alert tone="warning" title={copy.unmatched.title} data-testid="order-edit-unmatched">
+          <p>{plural(unmatched.length, copy.unmatched.body, { channel })}</p>
           <ul>
             {unmatched.map((entry) => (
-              <li key={`${entry.orderLineId}:${entry.editedAt}`} data-testid="order-edit-unmatched-line">
-                {`Line ${entry.orderLineId}: lowered to ${entry.editedQuantity} on ${formatDateTime(entry.editedAt)}`}
+              <li
+                key={`${entry.orderLineId}:${entry.editedAt}`}
+                data-testid="order-edit-unmatched-line"
+              >
+                {interpolate(copy.unmatched.line, {
+                  line: entry.orderLineId,
+                  quantity: entry.editedQuantity,
+                  date: format.dateTime(entry.editedAt),
+                })}
               </li>
             ))}
           </ul>

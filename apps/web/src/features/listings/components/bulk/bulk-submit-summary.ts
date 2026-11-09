@@ -9,10 +9,18 @@
  * non-zero reason is named; an exclusion the toast does not mention is a
  * shrink the operator cannot see.
  *
- * Kept React-free so every combination can be pinned by a plain unit test.
+ * Kept React-free so every combination can be pinned by a plain unit test. The
+ * sentence reads the `listings.bulkSubmitSummary` copy at call time.
  *
  * @module apps/web/src/features/listings/components/bulk
  */
+import {
+  formatPlural,
+  getBcp47Locale,
+  getLocale,
+  getMessages,
+  interpolate,
+} from '../../../../shared/i18n';
 import type { BulkOfferCreateResponse } from '../../api/bulk-listings.types';
 
 export type BulkSubmitSkipCounts = Pick<
@@ -29,24 +37,26 @@ export function describeBulkSubmitOutcome(
   selectedCount: number,
   skips: BulkSubmitSkipCounts
 ): string {
+  const copy = getMessages('listings').bulkSubmitSummary;
+  const locale = getLocale();
   const reasons: string[] = [];
   if (skips.skippedAlreadyListedCount > 0) {
-    reasons.push(`${skips.skippedAlreadyListedCount.toLocaleString()} already listed`);
+    reasons.push(formatPlural(skips.skippedAlreadyListedCount, copy.alreadyListed, locale));
   }
   if (skips.skippedInvalidEanCount > 0) {
-    reasons.push(`${skips.skippedInvalidEanCount.toLocaleString()} with an invalid EAN checksum`);
+    reasons.push(formatPlural(skips.skippedInvalidEanCount, copy.invalidEan, locale));
   }
   if (skips.skippedAvailabilityUnknownCount > 0) {
     // Transient on the backend (#2323), so the operator is told a re-submit may help.
-    reasons.push(
-      `${skips.skippedAvailabilityUnknownCount.toLocaleString()} with unknown availability (re-submit to retry)`
-    );
+    reasons.push(formatPlural(skips.skippedAvailabilityUnknownCount, copy.availabilityUnknown, locale));
   }
   const skipped =
     skips.skippedAlreadyListedCount +
     skips.skippedInvalidEanCount +
     skips.skippedAvailabilityUnknownCount;
   const queuedCount = Math.max(0, selectedCount - skipped);
-  const queued = `${queuedCount.toLocaleString()} offers queued for creation.`;
-  return reasons.length > 0 ? `${queued} Skipped: ${reasons.join(', ')}.` : queued;
+  const queued = formatPlural(queuedCount, copy.queued, locale);
+  if (reasons.length === 0) return queued;
+  const list = new Intl.ListFormat(getBcp47Locale(locale), { type: 'unit' }).format(reasons);
+  return interpolate(copy.withSkips, { queued, reasons: list });
 }

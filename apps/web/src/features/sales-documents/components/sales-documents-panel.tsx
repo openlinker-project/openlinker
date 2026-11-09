@@ -30,7 +30,7 @@ import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-bad
 import type { ConnectionStatus } from '../../connections';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { INVOICE_TRIGGER_MODEL_VALUES, INVOICE_TRIGGER_MODEL_LABELS } from '../../connections';
 import { useSalesDocumentRows } from '../hooks/use-sales-document-rows';
@@ -44,12 +44,7 @@ import {
   type SalesDocumentKind,
   type SalesDocumentRow,
 } from '../api/sales-documents.types';
-
-/** Short per-kind label for a `'both'` row's trigger controls (#3582). */
-const TRIGGER_KIND_LABELS: Record<ConcreteDocumentKind, string> = {
-  invoice: 'Invoices',
-  'fiscal-receipt': 'Receipts',
-};
+import { interpolate, useMessages } from '../../../shared/i18n';
 
 // Mirrors `apps/web/src/pages/connections/connections-list-page.tsx`'s own
 // `toStatusTone` — kept as a small duplicate rather than a shared export,
@@ -70,19 +65,16 @@ function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
   }
 }
 
-const CONFLICT_COPY: Record<'multiple-primaries' | 'ambiguous-no-primary', { title: string; body: string }> = {
-  'multiple-primaries': {
-    title: 'Two or more connections are set to issue',
-    body: 'Until you pick one, OpenLinker issues nothing for new orders. Picking for you would mean guessing, and a wrong document is a legal problem, not a data problem.',
-  },
-  'ambiguous-no-primary': {
-    title: 'No connection is marked primary',
-    body: 'Several connections issue a sales document but none is primary, so OpenLinker issues nothing for new orders. Pick exactly one below.',
-  },
-};
+const CONFLICT_KEY = {
+  'multiple-primaries': 'multiplePrimaries',
+  'ambiguous-no-primary': 'ambiguousNoPrimary',
+} as const;
 
 export function SalesDocumentsPanel(): ReactElement {
+  const copy = useMessages('sales-documents').salesDocumentsPanel;
   const { connectionsQuery, rows } = useSalesDocumentRows();
+  const statusLabels: Record<string, string> = copy.status;
+  const capabilityLabels: Record<string, string> = copy.capability;
   const { updateField, isPending } = useUpdateSalesDocumentMutation();
   const [pendingConnectionId, setPendingConnectionId] = useState<string | null>(null);
 
@@ -92,8 +84,8 @@ export function SalesDocumentsPanel(): ReactElement {
   if (connectionsQuery.isLoading) {
     return (
       <LoadingState
-        title="Loading connections"
-        message="Fetching Invoicing and Fiscalization connections…"
+        title={copy.loading.title}
+        message={copy.loading.message}
       />
     );
   }
@@ -101,18 +93,17 @@ export function SalesDocumentsPanel(): ReactElement {
   if (connectionsQuery.error) {
     return (
       <ErrorState
-        title="Unable to load connections"
+        title={copy.loadError}
         message={connectionsQuery.error.message}
-        action={<Button onClick={() => void connectionsQuery.refetch()}>Retry</Button>}
+        action={<Button onClick={() => void connectionsQuery.refetch()}>{copy.retry}</Button>}
       />
     );
   }
 
   if (rows.length === 0) {
     return (
-      <Alert tone="info" title="No sales-document connections yet">
-        Enable the <code>Invoicing</code> or <code>Fiscalization</code> capability on a connection
-        to configure what it issues here.
+      <Alert tone="info" title={copy.empty.title}>
+        {copy.empty.message}
       </Alert>
     );
   }
@@ -155,13 +146,13 @@ export function SalesDocumentsPanel(): ReactElement {
     disabled: boolean,
     showKindLabel: boolean,
   ): ReactElement {
-    const kindLabel = kind === null ? null : TRIGGER_KIND_LABELS[kind];
+    const kindLabel = kind === null ? null : copy.triggerKind[kind];
     const select = (
       <Select
         aria-label={
-          kindLabel === null
-            ? `When ${row.name} issues`
-            : `When ${row.name} issues ${kindLabel.toLowerCase()}`
+          kind === null
+            ? interpolate(copy.triggerLabel, { name: row.name })
+            : interpolate(copy.triggerKindLabel[kind], { name: row.name })
         }
         // A row issuing nothing has no kind to read; it shows the invoice value
         // only as a placeholder, disabled.
@@ -182,7 +173,7 @@ export function SalesDocumentsPanel(): ReactElement {
       <ReadOnlyLock
         key={kind ?? 'none'}
         active={write.demoReadOnly}
-        message={DEMO_READ_ONLY_ACTION_MESSAGE}
+        message={demoReadOnlyActionMessage()}
       >
         {showKindLabel && kindLabel !== null ? (
           <div className="sales-documents-panel__trigger">
@@ -213,34 +204,32 @@ export function SalesDocumentsPanel(): ReactElement {
   return (
     <div className="page-section" style={{ marginTop: 'var(--space-6)' }}>
       <header style={{ marginBottom: 'var(--space-4)' }}>
-        <h3 className="detail-section__title">Connected providers</h3>
+        <h3 className="detail-section__title">{copy.title}</h3>
       </header>
 
       {conflict ? (
-        <Alert tone="error" title={CONFLICT_COPY[conflict].title}>
-          {CONFLICT_COPY[conflict].body}
+        <Alert tone="error" title={copy.conflict[CONFLICT_KEY[conflict]].title}>
+          {copy.conflict[CONFLICT_KEY[conflict]].body}
         </Alert>
       ) : null}
 
       <p className="muted-text">
-        What each connection may issue, whether it goes first, and when. Only one connection may
-        go first across ALL of them, whatever it issues — the Primary column is a single choice,
-        not one per row. A connection with nothing set here is not a routing candidate at all.
+        {copy.intro}
       </p>
 
       <div className="data-table__container">
-        <table className="data-table" aria-label="Sales-document routing per connection">
+        <table className="data-table" aria-label={copy.table.label}>
           <caption className="sr-only">
-            Connections and the document each issues, with the single primary connection
+            {copy.table.caption}
           </caption>
           <thead>
             <tr>
-              <th scope="col">Provider</th>
-              <th scope="col">Status</th>
-              <th scope="col">Capability</th>
-              <th scope="col">Issues</th>
-              <th scope="col">Primary</th>
-              <th scope="col">Trigger</th>
+              <th scope="col">{copy.table.provider}</th>
+              <th scope="col">{copy.table.status}</th>
+              <th scope="col">{copy.table.capability}</th>
+              <th scope="col">{copy.table.issues}</th>
+              <th scope="col">{copy.table.primary}</th>
+              <th scope="col">{copy.table.trigger}</th>
             </tr>
           </thead>
           <tbody>
@@ -258,21 +247,21 @@ export function SalesDocumentsPanel(): ReactElement {
                   </td>
                   <td>
                     <StatusBadge tone={toStatusTone(row.status)} compact>
-                      {row.status}
+                      {statusLabels[row.status] ?? row.status}
                     </StatusBadge>
                     {row.status === 'needs_reauth' ? (
-                      <div className="muted-text">Cannot issue until reconnected</div>
+                      <div className="muted-text">{copy.needsReconnect}</div>
                     ) : null}
                   </td>
                   <td>
                     <StatusBadge tone="neutral" compact>
-                      {row.capability}
+                      {capabilityLabels[row.capability] ?? row.capability}
                     </StatusBadge>
                   </td>
                   <td>
-                    <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                    <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                       <Select
-                        aria-label={`Document ${row.name} issues`}
+                        aria-label={interpolate(copy.issuesLabel, { name: row.name })}
                         value={row.documentKind ?? ''}
                         disabled={rowDisabled}
                         onChange={(event) => handleIssuesChange(row, event)}
@@ -285,11 +274,11 @@ export function SalesDocumentsPanel(): ReactElement {
                       </Select>
                     </ReadOnlyLock>
                     {row.documentKind === null ? (
-                      <div className="muted-text">Not a routing candidate</div>
+                      <div className="muted-text">{copy.notCandidate}</div>
                     ) : null}
                   </td>
                   <td>
-                    <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                    <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                       <label className="data-table__radio">
                         <input
                           type="radio"
@@ -297,9 +286,9 @@ export function SalesDocumentsPanel(): ReactElement {
                           checked={row.isPrimary}
                           disabled={rowDisabled}
                           onChange={() => handleSelectPrimary(row)}
-                          aria-label={`Mark ${row.name} as the primary sales-document connection`}
+                          aria-label={interpolate(copy.primaryLabel, { name: row.name })}
                         />
-                        <span className="muted-text">{row.isPrimary ? 'Primary' : '—'}</span>
+                        <span className="muted-text">{row.isPrimary ? copy.primary : copy.notPrimary}</span>
                       </label>
                     </ReadOnlyLock>
                   </td>
@@ -315,9 +304,9 @@ export function SalesDocumentsPanel(): ReactElement {
                       <Link
                         className="sales-documents-panel__configure"
                         to={batchScreenPath(row.connectionId)}
-                        aria-label={`Configure batch issuing for ${row.name}`}
+                        aria-label={interpolate(copy.configureBatchLabel, { name: row.name })}
                       >
-                        Configure
+                        {copy.configureBatch}
                       </Link>
                     ) : null}
                   </td>
@@ -328,10 +317,7 @@ export function SalesDocumentsPanel(): ReactElement {
         </table>
       </div>
       <p className="muted-text">
-        Trigger is greyed out for a non-primary row since the timing choice does not matter until
-        a connection is actually the one issuing. A connection that issues both kinds has a
-        separate trigger for invoices and for receipts, so invoices can wait for a batch while
-        receipts go out at once.
+        {copy.triggerHint}
       </p>
     </div>
   );

@@ -10,8 +10,13 @@
  * documents at read time (ADR-065); nothing here infers whether a document was
  * issued.
  *
+ * Every function takes the `sales-documents` `batch` copy and a plural function
+ * (`BatchCopyContext`), so the words come from the locale files and a test can
+ * pin the language.
+ *
  * @module apps/web/src/features/sales-documents/lib
  */
+import { interpolate, type Messages, type PluralFn, type ResolvedCopy } from '../../../shared/i18n';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { SalesDocumentGateBlockReasonValue } from '../../orders';
 import type { BatchRun, BatchRunItem } from '../api/sales-document-batch.types';
@@ -22,28 +27,59 @@ export interface BatchBadgeView {
   tone: StatusBadgeTone;
 }
 
-const FAILURE_REASON_COPY: Record<string, string> = {
-  'connection-not-found': 'connection no longer exists',
-  'connection-needs-reauth': 'connection needs reconnecting',
-  'connection-not-active': 'connection is not active',
-  'queue-read-failed': 'the queue could not be read',
-};
+/** The `sales-documents` `batch` copy as resolved for the active language. */
+export type BatchCopy = ResolvedCopy<Messages['sales-documents']>['batch'];
 
-export function describeRunStatus(run: BatchRun): BatchBadgeView {
+export interface BatchCopyContext {
+  copy: BatchCopy;
+  plural: PluralFn;
+}
+
+/** What an empty table cell shows: a plain hyphen, never an em dash. */
+export const BATCH_EMPTY_CELL = '-';
+
+/** A document kind as the copy keys spell it, or `null` for a kind this build does not know. */
+export function batchKindKey(kind: string): 'invoice' | 'fiscalReceipt' | null {
+  if (kind === 'invoice') return 'invoice';
+  if (kind === 'fiscal-receipt') return 'fiscalReceipt';
+  return null;
+}
+
+/** Sentences that belong together, kept one per key in the locale files. */
+export function joinSentences(...sentences: string[]): string {
+  return sentences.join(' ');
+}
+
+function failureReasonCopy(copy: BatchCopy, reason: string | null): string | undefined {
+  switch (reason) {
+    case 'connection-not-found':
+      return copy.failureReason.connectionNotFound;
+    case 'connection-needs-reauth':
+      return copy.failureReason.connectionNeedsReauth;
+    case 'connection-not-active':
+      return copy.failureReason.connectionNotActive;
+    case 'queue-read-failed':
+      return copy.failureReason.queueReadFailed;
+    default:
+      return undefined;
+  }
+}
+
+export function describeRunStatus(run: BatchRun, { copy }: BatchCopyContext): BatchBadgeView {
   switch (run.status) {
     case 'running':
-      return { label: 'Running', tone: 'info' };
+      return { label: copy.runStatus.running, tone: 'info' };
     case 'completed':
       return run.blockedCount > 0
-        ? { label: 'Completed with issues', tone: 'warning' }
-        : { label: 'Completed', tone: 'success' };
+        ? { label: copy.runStatus.completedWithIssues, tone: 'warning' }
+        : { label: copy.runStatus.completed, tone: 'success' };
     case 'empty':
       // M15 note 9: a healthy run that found nothing, never a failure.
-      return { label: 'Nothing to issue', tone: 'neutral' };
+      return { label: copy.runStatus.empty, tone: 'neutral' };
     case 'failed-to-start':
-      return { label: 'Failed to start', tone: 'error' };
+      return { label: copy.runStatus.failedToStart, tone: 'error' };
     case 'interrupted':
-      return { label: 'Interrupted', tone: 'warning' };
+      return { label: copy.runStatus.interrupted, tone: 'warning' };
     default:
       return { label: run.status, tone: 'neutral' };
   }
@@ -54,21 +90,21 @@ export function describeRunStatus(run: BatchRun): BatchBadgeView {
  * each document was then issued is on the run's details, so the line says
  * "sent to issue" rather than claiming issuance.
  */
-export function describeRunResult(run: BatchRun): string {
+export function describeRunResult(run: BatchRun, { copy, plural }: BatchCopyContext): string {
   switch (run.status) {
     case 'running':
-      return 'in progress';
+      return copy.runResult.inProgress;
     case 'empty':
-      return 'nothing eligible';
+      return copy.runResult.nothingEligible;
     case 'failed-to-start':
-      return FAILURE_REASON_COPY[run.failureReason ?? ''] ?? 'could not start';
+      return failureReasonCopy(copy, run.failureReason) ?? copy.runResult.couldNotStart;
     case 'interrupted':
-      return 'stopped before it finished';
+      return copy.runResult.interrupted;
     default: {
-      const parts = [`${run.enqueuedCount} sent to issue`];
-      if (run.blockedCount > 0) parts.push(`${run.blockedCount} blocked`);
+      const parts = [plural(run.enqueuedCount, copy.runResult.sentToIssue)];
+      if (run.blockedCount > 0) parts.push(plural(run.blockedCount, copy.runResult.blocked));
       const other = run.eligibleCount - run.enqueuedCount - run.blockedCount;
-      if (other > 0) parts.push(`${other} not issued`);
+      if (other > 0) parts.push(plural(other, copy.runResult.notIssued));
       return parts.join(' · ');
     }
   }
@@ -89,64 +125,79 @@ export function formatElapsed(ms: number): string {
 }
 
 /** "in 3 h 12 min" until a future slot; "due now" once it has passed. */
-export function formatTimeUntil(iso: string, now: Date): string {
+export function formatTimeUntil(
+  iso: string,
+  now: Date,
+  { copy, plural }: BatchCopyContext
+): string {
   const minutes = Math.round((Date.parse(iso) - now.getTime()) / 60000);
-  if (!Number.isFinite(minutes) || minutes <= 0) return 'due now';
-  if (minutes < 60) return `in ${minutes} min`;
+  if (!Number.isFinite(minutes) || minutes <= 0) return copy.timeUntil.dueNow;
+  if (minutes < 60) return interpolate(copy.timeUntil.minutes, { minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 48) return `in ${hours} h ${minutes % 60} min`;
-  return `in ${Math.floor(hours / 24)} days`;
+  if (hours < 48) {
+    return interpolate(copy.timeUntil.hours, { hours, minutes: minutes % 60 });
+  }
+  return plural(Math.floor(hours / 24), copy.timeUntil.days);
 }
 
-export function describeItemOutcome(item: BatchRunItem): BatchBadgeView {
+export function describeItemOutcome(
+  item: BatchRunItem,
+  { copy }: BatchCopyContext
+): BatchBadgeView {
   switch (item.outcome) {
     case 'issued':
-      return { label: 'Issued', tone: 'success' };
+      return { label: copy.itemOutcome.issued, tone: 'success' };
     case 'pending':
-      return { label: 'Issuing', tone: 'info' };
+      return { label: copy.itemOutcome.pending, tone: 'info' };
     case 'in-doubt':
-      return { label: 'In doubt', tone: 'review' };
+      return { label: copy.itemOutcome.inDoubt, tone: 'review' };
     case 'failed':
-      return { label: 'Failed', tone: 'error' };
+      return { label: copy.itemOutcome.failed, tone: 'error' };
     case 'blocked':
-      return { label: 'Blocked', tone: 'warning' };
+      return { label: copy.itemOutcome.blocked, tone: 'warning' };
     case 'skipped':
-      return { label: 'Skipped', tone: 'neutral' };
+      return { label: copy.itemOutcome.skipped, tone: 'neutral' };
     case 'needs-attention':
-      return { label: 'Needs attention', tone: 'error' };
+      return { label: copy.itemOutcome.needsAttention, tone: 'error' };
     default:
       return { label: item.outcome, tone: 'neutral' };
   }
 }
 
-export function describeItemDetail(item: BatchRunItem, providerName: string): string {
+export function describeItemDetail(
+  item: BatchRunItem,
+  providerName: string,
+  { copy }: BatchCopyContext
+): string {
+  const detail = copy.itemDetail;
   switch (item.result) {
     case 'already-documented':
-      return 'Already has a document on another connection.';
+      return detail.alreadyDocumented;
     case 'not-routed-here':
-      return 'Routing no longer sends this order to this connection, so it was left alone.';
+      return detail.notRoutedHere;
     case 'indeterminate':
-      return 'Could not be checked during the run. It stays in the queue for the next one.';
+      return joinSentences(detail.indeterminate, detail.indeterminateStays);
     case 'blocked': {
-      const copy = resolveSalesDocumentReasonCopy(
+      const reason = resolveSalesDocumentReasonCopy(
         item.blockReason as SalesDocumentGateBlockReasonValue | null
       );
-      return copy?.detail ?? 'Blocked by the issuing rules.';
+      return reason?.detail ?? detail.blockedFallback;
     }
     default:
       break;
   }
+  const provider = { provider: providerName };
   switch (item.outcome) {
     case 'issued':
-      return item.documentNumber ?? 'Issued.';
+      return item.documentNumber ?? detail.issued;
     case 'pending':
-      return item.documentNumber ?? 'Sent to the provider, waiting for its answer.';
+      return item.documentNumber ?? detail.pending;
     case 'in-doubt':
-      return `${providerName} did not answer in time, so OpenLinker does not know whether the document was created. Retrying cannot create a duplicate.`;
+      return joinSentences(interpolate(detail.inDoubt, provider), detail.inDoubtRetry);
     case 'failed':
-      return `${providerName} refused the document. Open the order to see why.`;
+      return joinSentences(interpolate(detail.failed, provider), detail.openOrderWhy);
     case 'needs-attention':
-      return 'Sent to issue, but no document was recorded. Open the order to check.';
+      return joinSentences(detail.needsAttention, detail.openOrderCheck);
     default:
       return '';
   }

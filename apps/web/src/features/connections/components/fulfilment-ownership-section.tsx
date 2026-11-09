@@ -17,7 +17,7 @@
  */
 import type { ReactElement } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
-import { FULFILMENT_OWNERSHIP_COPY } from '../lib/fulfilment-ownership.copy';
+import { useMessages } from '../../../shared/i18n';
 import type { EditConnectionFormValues } from './edit-connection.schema';
 
 export interface FulfilmentOwnershipSectionProps {
@@ -33,6 +33,7 @@ export function FulfilmentOwnershipSection({
   configIsParseable,
   syncFulfilmentOwnershipToJson,
 }: FulfilmentOwnershipSectionProps): ReactElement {
+  const copy = useMessages('connections').fulfilmentOwnershipSection;
   const checked = form.watch('fulfilmentOwnedByDestination') === true;
 
   const handleChange = (next: boolean): void => {
@@ -42,7 +43,7 @@ export function FulfilmentOwnershipSection({
 
   return (
     <section className="rate-limit-section" data-testid="fulfilment-ownership-section">
-      <h3 className="rate-limit-section__title">{FULFILMENT_OWNERSHIP_COPY.heading}</h3>
+      <h3 className="rate-limit-section__title">{copy.heading}</h3>
       <label className="rate-limit-section__toggle">
         <input
           type="checkbox"
@@ -51,9 +52,9 @@ export function FulfilmentOwnershipSection({
           data-testid="fulfilment-owned-by-destination-checkbox"
           onChange={(event) => handleChange(event.target.checked)}
         />
-        <span>{FULFILMENT_OWNERSHIP_COPY.toggle}</span>
+        <span>{copy.toggle}</span>
       </label>
-      <p className="rate-limit-section__help">{FULFILMENT_OWNERSHIP_COPY.help}</p>
+      <p className="rate-limit-section__help">{copy.help}</p>
     </section>
   );
 }

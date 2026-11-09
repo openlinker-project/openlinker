@@ -10,19 +10,22 @@
  * @module apps/web/src/features/sales-documents/components
  */
 import { useState, type ReactElement } from 'react';
-import { formatDateTime } from '../../../shared/format/format-date';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { EmptyState, ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { MetricCard } from '../../../shared/ui/metric-card';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { BatchRun } from '../api/sales-document-batch.types';
+import { useBatchCopy } from '../hooks/use-batch-copy';
 import { useSalesDocumentBatchRunQuery } from '../hooks/use-sales-document-batch-run-query';
 import {
+  BATCH_EMPTY_CELL,
   describeItemDetail,
   describeItemOutcome,
   describeRunResult,
   describeRunStatus,
   formatRunDuration,
+  joinSentences,
   summarizeRunItems,
 } from '../lib/describe-batch-run';
 
@@ -37,47 +40,45 @@ export function BatchRunHistoryTab({
   providerName,
   runs,
 }: BatchRunHistoryTabProps): ReactElement {
+  const batch = useBatchCopy();
+  const copy = batch.copy.history;
+  const format = useFormat();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = runs.find((run) => run.id === selectedId) ?? runs[0] ?? null;
 
   if (runs.length === 0) {
-    return (
-      <EmptyState
-        title="No batch runs yet"
-        message="Runs appear here once a scheduled run starts or someone uses Run now."
-      />
-    );
+    return <EmptyState title={copy.emptyTitle} message={copy.emptyMessage} />;
   }
 
   return (
     <div className="batch-history">
       <div className="data-table__container">
         <table className="data-table" data-testid="batch-run-history-table">
-          <caption className="sr-only">Batch runs, newest first</caption>
+          <caption className="sr-only">{copy.caption}</caption>
           <thead>
             <tr>
-              <th scope="col">Started</th>
-              <th scope="col">Duration</th>
+              <th scope="col">{copy.columns.started}</th>
+              <th scope="col">{copy.columns.duration}</th>
               <th scope="col" className="data-table__cell--right">
-                Orders
+                {copy.columns.orders}
               </th>
-              <th scope="col">Result</th>
-              <th scope="col">Status</th>
+              <th scope="col">{copy.columns.result}</th>
+              <th scope="col">{copy.columns.status}</th>
               <th scope="col">
-                <span className="sr-only">Details</span>
+                <span className="sr-only">{copy.columns.details}</span>
               </th>
             </tr>
           </thead>
           <tbody>
             {runs.map((run) => {
-              const status = describeRunStatus(run);
+              const status = describeRunStatus(run, batch);
               const isSelected = selected?.id === run.id;
               return (
                 <tr key={run.id} className={isSelected ? 'batch-history__row--current' : undefined}>
-                  <td>{formatDateTime(run.startedAt)}</td>
-                  <td className="mono-text">{formatRunDuration(run) ?? '-'}</td>
-                  <td className="data-table__cell--right">{run.eligibleCount}</td>
-                  <td>{describeRunResult(run)}</td>
+                  <td>{format.dateTime(run.startedAt)}</td>
+                  <td className="mono-text">{formatRunDuration(run) ?? BATCH_EMPTY_CELL}</td>
+                  <td className="data-table__cell--right">{format.number(run.eligibleCount)}</td>
+                  <td>{describeRunResult(run, batch)}</td>
                   <td>
                     <StatusBadge tone={status.tone} compact>
                       {status.label}
@@ -90,7 +91,7 @@ export function BatchRunHistoryTab({
                       aria-pressed={isSelected}
                       onClick={() => setSelectedId(run.id)}
                     >
-                      Details
+                      {copy.detailsButton}
                     </Button>
                   </td>
                 </tr>
@@ -115,18 +116,23 @@ function BatchRunDetails({
   providerName: string;
   run: BatchRun;
 }): ReactElement {
+  const batch = useBatchCopy();
+  const { copy: batchCopy, plural } = batch;
+  const copy = batchCopy.history;
+  const retry = useMessages('ui').common.retry;
+  const format = useFormat();
   const detail = useSalesDocumentBatchRunQuery(connectionId, run.id);
-  const title = `${formatDateTime(run.startedAt)}: details`;
+  const title = interpolate(copy.detailsTitle, { started: format.dateTime(run.startedAt) });
 
   if (detail.isLoading) {
-    return <LoadingState title={title} message="Reading each order's outcome." />;
+    return <LoadingState title={title} message={copy.loadingDetail} />;
   }
   if (detail.error || detail.data === undefined) {
     return (
       <ErrorState
-        title="Unable to load this run"
-        message={detail.error?.message ?? 'The run could not be read.'}
-        action={<Button onClick={() => void detail.refetch()}>Retry</Button>}
+        title={copy.errorTitle}
+        message={detail.error?.message ?? copy.errorFallback}
+        action={<Button onClick={() => void detail.refetch()}>{retry}</Button>}
       />
     );
   }
@@ -138,48 +144,55 @@ function BatchRunDetails({
   return (
     <section
       className="panel batch-history__details"
-      aria-label="Run details"
+      aria-label={copy.detailsLabel}
       data-testid="batch-run-details"
     >
       <div className="panel__header">
         <h3>{title}</h3>
         <span className="panel__meta">
-          {items.length} {items.length === 1 ? 'order' : 'orders'}
-          {duration ? ` · ${duration}` : ''}
+          {plural(items.length, copy.orderCount)}
+          {duration ? ` · ${duration}` : null}
         </span>
       </div>
       {items.length === 0 ? (
         <p className="muted-text">
           {run.status === 'failed-to-start'
-            ? `This run did not start: ${describeRunResult(run)}. Nothing in the queue was touched.`
-            : 'This run had nothing to issue.'}
+            ? joinSentences(
+                interpolate(copy.didNotStart, { reason: describeRunResult(run, batch) }),
+                copy.nothingTouched
+              )
+            : copy.nothingToIssue}
         </p>
       ) : (
         <>
           <div className="batch-history__metrics">
-            <MetricCard label="Issued" value={summary.issued} tone="success" />
-            <MetricCard label="Blocked" value={summary.blocked} tone="warning" />
-            <MetricCard label="Needs attention" value={summary.attention} tone="error" />
+            <MetricCard label={copy.metrics.issued} value={summary.issued} tone="success" />
+            <MetricCard label={copy.metrics.blocked} value={summary.blocked} tone="warning" />
+            <MetricCard
+              label={copy.metrics.needsAttention}
+              value={summary.attention}
+              tone="error"
+            />
           </div>
           {summary.pending > 0 ? (
             <p className="muted-text">
-              {summary.pending} still waiting for {providerName} to answer.
+              {plural(summary.pending, copy.pending, { provider: providerName })}
             </p>
           ) : null}
           <div className="data-table__container">
             <table className="data-table">
-              <caption className="sr-only">Each order in this run and its outcome</caption>
+              <caption className="sr-only">{copy.itemsCaption}</caption>
               <thead>
                 <tr>
-                  <th scope="col">Order</th>
-                  <th scope="col">Buyer</th>
-                  <th scope="col">Outcome</th>
-                  <th scope="col">Detail</th>
+                  <th scope="col">{batchCopy.itemColumns.order}</th>
+                  <th scope="col">{batchCopy.itemColumns.buyer}</th>
+                  <th scope="col">{batchCopy.itemColumns.outcome}</th>
+                  <th scope="col">{batchCopy.itemColumns.detail}</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((item) => {
-                  const outcome = describeItemOutcome(item);
+                  const outcome = describeItemOutcome(item, batch);
                   return (
                     <tr
                       key={item.orderId}
@@ -188,7 +201,7 @@ function BatchRunDetails({
                       data-outcome={item.outcome}
                     >
                       <td className="mono-text">{item.orderNumber ?? item.orderId}</td>
-                      <td>{item.buyerName ?? '-'}</td>
+                      <td>{item.buyerName ?? BATCH_EMPTY_CELL}</td>
                       <td>
                         <StatusBadge tone={outcome.tone} compact>
                           {outcome.label}
@@ -196,12 +209,10 @@ function BatchRunDetails({
                       </td>
                       <td
                         className={
-                          item.documentNumber && outcome.label === 'Issued'
-                            ? 'mono-text'
-                            : undefined
+                          item.documentNumber && item.outcome === 'issued' ? 'mono-text' : undefined
                         }
                       >
-                        {describeItemDetail(item, providerName)}
+                        {describeItemDetail(item, providerName, batch)}
                       </td>
                     </tr>
                   );

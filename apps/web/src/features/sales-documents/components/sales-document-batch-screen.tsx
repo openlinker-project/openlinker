@@ -16,7 +16,7 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { formatDateTime } from '../../../shared/format/format-date';
+import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
@@ -27,6 +27,7 @@ import { useConnectionQuery, useConnectionsQuery, type Connection } from '../../
 import { useDemoMode } from '../../system';
 import type { BatchOverview, BatchRun } from '../api/sales-document-batch.types';
 import type { ConcreteDocumentKind } from '../api/sales-documents.types';
+import { useBatchCopy } from '../hooks/use-batch-copy';
 import {
   BATCH_RUNNING_POLL_MS,
   useSalesDocumentBatchOverviewQuery,
@@ -36,7 +37,13 @@ import { useSalesDocumentBatchRunQuery } from '../hooks/use-sales-document-batch
 import { useSalesDocumentBatchRunsQuery } from '../hooks/use-sales-document-batch-runs-query';
 import { buildBatchQueueRows } from '../lib/batch-queue-rows';
 import { resolveBatchScreenState, type BatchScreenTab } from '../lib/batch-screen-state';
-import { describeRunResult, describeRunStatus, formatTimeUntil } from '../lib/describe-batch-run';
+import {
+  describeRunResult,
+  describeRunStatus,
+  formatTimeUntil,
+  joinSentences,
+  type BatchCopy,
+} from '../lib/describe-batch-run';
 import { BatchQueueTab } from './batch-queue-tab';
 import { BatchRunHistoryTab } from './batch-run-history-tab';
 import { BatchScheduleForm } from './batch-schedule-form';
@@ -49,10 +56,10 @@ interface SalesDocumentBatchScreenProps {
 }
 
 /** Why a run cannot start on this connection, or `null` when it can. */
-export function batchUnavailableReason(connection: Connection): string | null {
+export function batchUnavailableReason(connection: Connection, copy: BatchCopy): string | null {
   if (connection.status === 'active') return null;
-  if (connection.status === 'needs_reauth') return 'Reconnect the connection first.';
-  return 'The connection is not active.';
+  if (connection.status === 'needs_reauth') return copy.unavailable.reconnectFirst;
+  return copy.unavailable.notActive;
 }
 
 function sumQueueCounts(counts: Record<string, number>): number {
@@ -76,6 +83,9 @@ function useTickingNow(active: boolean): Date {
 export function SalesDocumentBatchScreen({
   connectionId,
 }: SalesDocumentBatchScreenProps): ReactElement {
+  const { copy: batchCopy } = useBatchCopy();
+  const copy = batchCopy.screen;
+  const retry = useMessages('ui').common.retry;
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
   const connection = useConnectionQuery(connectionId);
@@ -120,15 +130,13 @@ export function SalesDocumentBatchScreen({
   );
 
   if (connection.isLoading || overview.isLoading) {
-    return <LoadingState title="Loading batch issuing" message="Reading the schedule and queue." />;
+    return <LoadingState title={copy.loadingTitle} message={copy.loadingMessage} />;
   }
   if (connection.error || overview.error || !connection.data || !overview.data) {
     return (
       <ErrorState
-        title="Unable to load batch issuing"
-        message={
-          (connection.error ?? overview.error)?.message ?? 'The connection could not be read.'
-        }
+        title={copy.errorTitle}
+        message={(connection.error ?? overview.error)?.message ?? copy.errorFallback}
         action={
           <Button
             onClick={() => {
@@ -136,7 +144,7 @@ export function SalesDocumentBatchScreen({
               void overview.refetch();
             }}
           >
-            Retry
+            {retry}
           </Button>
         }
       />
@@ -144,7 +152,7 @@ export function SalesDocumentBatchScreen({
   }
 
   const provider = connection.data;
-  const unavailable = batchUnavailableReason(provider);
+  const unavailable = batchUnavailableReason(provider, batchCopy);
   const queueTotal = sumQueueCounts(overview.data.queueCounts);
   const queueCount = queueTotal > 0 ? <span className="tabs__count">{queueTotal}</span> : null;
   const queueIsEmpty =
@@ -161,10 +169,12 @@ export function SalesDocumentBatchScreen({
     <div className="batch-screen" data-testid="batch-issuing-screen" data-mk-state={mkState}>
       {unavailable !== null ? <UnavailableAlert connection={provider} /> : null}
       <Tabs value={tab} onValueChange={(value) => setTab(value as BatchScreenTab)}>
-        <TabsList aria-label="Batch issuing">
-          <TabsTrigger value="schedule">Schedule</TabsTrigger>
-          <TabsTrigger value="queue">Next batch {queueCount}</TabsTrigger>
-          <TabsTrigger value="history">Run history</TabsTrigger>
+        <TabsList aria-label={copy.tabsLabel}>
+          <TabsTrigger value="schedule">{copy.tabs.schedule}</TabsTrigger>
+          <TabsTrigger value="queue">
+            {copy.tabs.nextBatch} {queueCount}
+          </TabsTrigger>
+          <TabsTrigger value="history">{copy.tabs.history}</TabsTrigger>
         </TabsList>
         <TabsContent value="schedule">
           <ScheduleTab
@@ -178,12 +188,12 @@ export function SalesDocumentBatchScreen({
         <TabsContent value="queue">
           {queue.error ? (
             <ErrorState
-              title="Unable to load the queue"
+              title={copy.queueErrorTitle}
               message={queue.error.message}
-              action={<Button onClick={() => void queue.refetch()}>Retry</Button>}
+              action={<Button onClick={() => void queue.refetch()}>{retry}</Button>}
             />
           ) : queue.isLoading ? (
-            <LoadingState title="Loading the queue" message="Reading the orders waiting." />
+            <LoadingState title={copy.queueLoadingTitle} message={copy.queueLoadingMessage} />
           ) : (
             <BatchQueueTab
               connectionId={connectionId}
@@ -193,7 +203,7 @@ export function SalesDocumentBatchScreen({
               lastRunItems={lastRunDetail.data?.items ?? []}
               runningRun={running}
               runningItems={runningDetail.data?.items ?? []}
-              sourceName={(id) => sourceNames.get(id) ?? 'Unknown source'}
+              sourceName={(id) => sourceNames.get(id) ?? copy.unknownSource}
               runDisabledReason={unavailable}
               canRun={write.canWrite}
               awaitingRun={awaitingRunSince !== null}
@@ -205,12 +215,12 @@ export function SalesDocumentBatchScreen({
         <TabsContent value="history">
           {runs.error ? (
             <ErrorState
-              title="Unable to load run history"
+              title={copy.historyErrorTitle}
               message={runs.error.message}
-              action={<Button onClick={() => void runs.refetch()}>Retry</Button>}
+              action={<Button onClick={() => void runs.refetch()}>{retry}</Button>}
             />
           ) : runs.isLoading ? (
-            <LoadingState title="Loading run history" message="Reading recent runs." />
+            <LoadingState title={copy.historyLoadingTitle} message={copy.historyLoadingMessage} />
           ) : (
             <BatchRunHistoryTab
               connectionId={connectionId}
@@ -225,24 +235,23 @@ export function SalesDocumentBatchScreen({
 }
 
 function UnavailableAlert({ connection }: { connection: Connection }): ReactElement {
+  const copy = useBatchCopy().copy.unavailable;
   const needsReauth = connection.status === 'needs_reauth';
+  const name = { name: connection.name };
   return (
     <Alert
       tone="error"
       data-testid="batch-unavailable-alert"
-      title={
-        needsReauth ? `${connection.name} needs reconnecting` : `${connection.name} is not active`
-      }
+      title={interpolate(needsReauth ? copy.titleNeedsReauth : copy.titleNotActive, name)}
       action={
         <Link className="button button--secondary button--sm" to={`/connections/${connection.id}`}>
-          Go to connection
+          {copy.goToConnection}
         </Link>
       }
     >
       {needsReauth
-        ? 'Its last request failed authentication. Scheduled runs will fail to start until it is reconnected; nothing is retried automatically for an authentication failure.'
-        : 'Scheduled runs will fail to start until the connection is active again.'}{' '}
-      The queue stays as it is.
+        ? joinSentences(copy.authFailed, copy.runsFailUntilReconnected, copy.queueUnchanged)
+        : joinSentences(copy.runsFailUntilActive, copy.queueUnchanged)}
     </Alert>
   );
 }
@@ -262,6 +271,10 @@ function ScheduleTab({
   queueTotal: number;
   disabled: boolean;
 }): ReactElement {
+  const batch = useBatchCopy();
+  const { plural } = batch;
+  const copy = batch.copy.scheduleTab;
+  const format = useFormat();
   const batchedKinds = KIND_ORDER.filter((kind) =>
     overview.schedules.some((schedule) => schedule.documentKind === kind && schedule.batched)
   );
@@ -273,45 +286,49 @@ function ScheduleTab({
 
   if (batchedKinds.length === 0) {
     return (
-      <Alert tone="info" title="Batch issuing is off for this connection">
-        None of its documents issue in batches. Set &quot;When it issues&quot; to Batch for a
-        document on <Link to="/settings/sales-documents">Sales documents routing</Link> to use a
-        schedule.
+      <Alert tone="info" title={copy.offTitle}>
+        {copy.offNone}{' '}
+        {renderRich(copy.offHowTo, {
+          link: (text) => <Link to="/settings/sales-documents">{text}</Link>,
+        })}
       </Alert>
     );
   }
 
-  const lastRunStatus = lastRun === null ? null : describeRunStatus(lastRun);
+  const lastRunStatus = lastRun === null ? null : describeRunStatus(lastRun, batch);
+  const queued = plural(queueTotal, copy.queued);
 
   return (
     <div className="batch-schedule">
-      <Alert tone="info" title="Batch issuing is on">
-        Orders wait in the queue and are issued together on the schedule below. OpenLinker still
-        decides invoice or fiscal receipt per order using the routing rules: batching only changes
-        when a document is created, never which kind.
+      <Alert tone="info" title={copy.onTitle}>
+        {joinSentences(copy.onQueue, copy.onRouting)}
       </Alert>
-      <section className="panel" aria-label="Last and next run">
+      <section className="panel" aria-label={copy.lastAndNext}>
         <div className="panel__header">
-          <h3>Last and next run</h3>
+          <h3>{copy.lastAndNext}</h3>
         </div>
         <KeyValueList
           items={[
             {
               id: 'next',
-              label: 'Next run',
+              label: copy.nextRun,
               value: nextSlot
-                ? `${formatDateTime(nextSlot)} (${formatTimeUntil(nextSlot, new Date())}) · ${queueTotal} queued`
-                : `No schedule set · ${queueTotal} queued`,
+                ? interpolate(copy.nextRunValue, {
+                    dateTime: format.dateTime(nextSlot),
+                    until: formatTimeUntil(nextSlot, new Date(), batch),
+                    queued,
+                  })
+                : interpolate(copy.noSchedule, { queued }),
             },
             {
               id: 'last',
-              label: 'Last run',
+              label: copy.lastRun,
               value:
                 lastRun === null || lastRunStatus === null ? (
-                  'None yet'
+                  copy.noneYet
                 ) : (
                   <>
-                    {formatDateTime(lastRun.startedAt)} · {describeRunResult(lastRun)}{' '}
+                    {format.dateTime(lastRun.startedAt)} · {describeRunResult(lastRun, batch)}{' '}
                     <StatusBadge tone={lastRunStatus.tone} compact>
                       {lastRunStatus.label}
                     </StatusBadge>
@@ -321,14 +338,11 @@ function ScheduleTab({
           ]}
         />
       </section>
-      <section className="panel" aria-label="Schedule">
+      <section className="panel" aria-label={copy.title}>
         <div className="panel__header">
-          <h3>Schedule</h3>
+          <h3>{copy.title}</h3>
         </div>
-        <p className="muted-text">
-          Each document this connection batches has its own schedule, so receipts can go out daily
-          while invoices wait for month end.
-        </p>
+        <p className="muted-text">{copy.intro}</p>
         <div className="batch-schedule__forms">
           {batchedKinds.map((kind) => (
             <BatchScheduleForm

@@ -25,18 +25,21 @@
  */
 import type { ReactElement, ReactNode } from 'react';
 
+import { interpolate, useMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { OrderDeliveryRider } from '../api/orders.types';
 import type { DeliveryOutcome } from '../lib/delivery-outcome';
 import type { DeliveryOwner } from '../lib/delivery-owner';
 import { ConnectionDot } from './connection-dot';
 
-const OUTCOME_LABEL: Record<DeliveryOutcome, string> = {
-  resolved: 'Labelled',
-  'awaiting-label': 'Awaiting label',
-  'shop-fulfilled': 'Not via OpenLinker',
-  'no-method': 'No delivery method',
-};
+type DeliveryChipCopy = ResolvedCopy<Messages['orders']>['deliveryChip'];
+
+const OUTCOME_COPY_KEY = {
+  resolved: 'resolved',
+  'awaiting-label': 'awaitingLabel',
+  'shop-fulfilled': 'shopFulfilled',
+  'no-method': 'noMethod',
+} as const satisfies Record<DeliveryOutcome, keyof DeliveryChipCopy['outcome']>;
 
 const OUTCOME_TONE: Record<DeliveryOutcome, StatusBadgeTone> = {
   resolved: 'success',
@@ -47,11 +50,49 @@ const OUTCOME_TONE: Record<DeliveryOutcome, StatusBadgeTone> = {
 
 type ActionableRider = 'unmapped' | 'not-connected' | 'disabled';
 
-const RIDER_LABEL: Record<ActionableRider, string> = {
-  unmapped: 'Unmapped',
-  'not-connected': 'Not connected',
-  disabled: 'Carrier disabled',
-};
+const RIDER_COPY_KEY = {
+  unmapped: 'unmapped',
+  'not-connected': 'notConnected',
+  disabled: 'disabled',
+} as const satisfies Record<ActionableRider, keyof DeliveryChipCopy['rider']>;
+
+/**
+ * The fix-it button label for a rider. Shared with `DeliveryRiderAction`, so
+ * the placeholder button and the real deep link read the same words.
+ */
+export function deliveryRiderActionLabel(
+  rider: ActionableRider,
+  carrier: string | null,
+  copy: DeliveryChipCopy['action'],
+): string {
+  switch (rider) {
+    case 'unmapped':
+      return copy.addMapping;
+    case 'not-connected':
+      return carrier ? interpolate(copy.connectCarrier, { carrier }) : copy.connect;
+    case 'disabled':
+      return carrier ? interpolate(copy.enableCarrier, { carrier }) : copy.enable;
+  }
+}
+
+// Banner copy branches on whether the heuristic could name the candidate
+// carrier (`carrier` is `null` when it couldn't). The `disabled` rider must
+// always render a usable sentence - never "the a carrier connection" - so each
+// rider has a separate sentence for the unnamed case rather than a fallback word.
+function riderBannerText(
+  rider: ActionableRider,
+  carrier: string | null,
+  copy: DeliveryChipCopy['banner'],
+): string {
+  switch (rider) {
+    case 'unmapped':
+      return carrier ? interpolate(copy.unmappedCarrier, { carrier }) : copy.unmapped;
+    case 'not-connected':
+      return carrier ? interpolate(copy.notConnectedCarrier, { carrier }) : copy.notConnected;
+    case 'disabled':
+      return carrier ? interpolate(copy.disabledCarrier, { carrier }) : copy.disabled;
+  }
+}
 
 /**
  * An actionable rider is one that renders a chip/banner (`unmapped` /
@@ -98,6 +139,7 @@ export function DeliveryOutcomeChip({
   switchable = false,
   className = '',
 }: DeliveryOutcomeChipProps): ReactElement {
+  const copy = useMessages('orders').deliveryChip;
   // No-method is an unresolved/attention state, not a physical outcome: mark it
   // with a warning triangle (in place of the tone dot) so it reads as distinct
   // from the shop-fulfilled neutral chip. It ignores the owner badge.
@@ -139,13 +181,16 @@ export function DeliveryOutcomeChip({
       {showOwner ? (
         <ConnectionDot name={owner.name} platformType={owner.platformType} variant={owner.variant} />
       ) : null}
-      {OUTCOME_LABEL[outcome]}
+      {copy.outcome[OUTCOME_COPY_KEY[outcome]]}
       {switchable ? (
         <>
           <span className="delivery-outcome-chip__caret" aria-hidden="true">
             ›
           </span>
-          <span className="sr-only"> - OpenLinker can take this over (see order)</span>
+          <span className="sr-only">
+            {' '}
+            {copy.switchableHint}
+          </span>
         </>
       ) : null}
     </StatusBadge>
@@ -161,6 +206,7 @@ export function DeliveryRiderChip({
   rider,
   className = '',
 }: DeliveryRiderChipProps): ReactElement | null {
+  const copy = useMessages('orders').deliveryChip;
   if (!isActionableRider(rider)) {
     return null;
   }
@@ -179,7 +225,7 @@ export function DeliveryRiderChip({
         className,
       )}
     >
-      {RIDER_LABEL[rider.rider]}
+      {copy.rider[RIDER_COPY_KEY[rider.rider]]}
     </StatusBadge>
   );
 }
@@ -204,27 +250,6 @@ export function DeliveryChip({
   );
 }
 
-// Banner copy branches on whether the heuristic could name the candidate
-// carrier (`carrier` is `null` when it couldn't). The `disabled` rider must
-// always render a usable sentence - never "the a carrier connection" - so it
-// switches structure on carrier presence rather than leaning on a fallback word.
-const RIDER_BANNER_TEXT: Record<ActionableRider, (carrier: string | null) => string> = {
-  unmapped: (carrier) =>
-    `This delivery method isn't mapped to a carrier. Map it to ${carrier ?? 'a carrier'} so OpenLinker generates the label.`,
-  'not-connected': (carrier) =>
-    `OpenLinker supports ${carrier ?? 'a carrier'}, but no ${carrier ?? 'carrier'} connection is set up. Connect one to fulfil this delivery.`,
-  disabled: (carrier) =>
-    carrier
-      ? `This delivery method routes to ${carrier}, but the ${carrier} connection is disabled. Enable it so OpenLinker can generate the label.`
-      : 'This delivery method routes to a disabled carrier connection. Enable it so OpenLinker can generate the label.',
-};
-
-const RIDER_ACTION_LABEL: Record<ActionableRider, (carrier: string | null) => string> = {
-  unmapped: () => 'Add mapping',
-  'not-connected': (carrier) => (carrier ? `Connect ${carrier}` : 'Connect'),
-  disabled: (carrier) => (carrier ? `Enable ${carrier}` : 'Enable'),
-};
-
 interface DeliveryRiderBannerProps {
   rider: OrderDeliveryRider;
   /**
@@ -240,6 +265,7 @@ export function DeliveryRiderBanner({
   actionSlot,
   className = '',
 }: DeliveryRiderBannerProps): ReactElement | null {
+  const copy = useMessages('orders').deliveryChip;
   if (!isActionableRider(rider)) {
     return null;
   }
@@ -254,7 +280,9 @@ export function DeliveryRiderBanner({
       )}
       role="note"
     >
-      <p className="delivery-rider-banner__text">{RIDER_BANNER_TEXT[rider.rider](carrier)}</p>
+      <p className="delivery-rider-banner__text">
+        {riderBannerText(rider.rider, carrier, copy.banner)}
+      </p>
       <div className="delivery-rider-banner__action">
         {actionSlot ?? (
           <button
@@ -262,9 +290,9 @@ export function DeliveryRiderBanner({
             className="delivery-rider-banner__button"
             disabled
             aria-disabled="true"
-            title="Coming soon"
+            title={copy.action.comingSoon}
           >
-            {RIDER_ACTION_LABEL[rider.rider](carrier)}
+            {deliveryRiderActionLabel(rider.rider, carrier, copy.action)}
           </button>
         )}
       </div>

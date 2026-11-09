@@ -13,6 +13,7 @@
  * @module apps/web/src/features/analytics/components
  */
 import type { ReactElement, ReactNode } from 'react';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '../../../shared/ui/dialog';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
@@ -52,9 +53,10 @@ export function CoverageDetailDialog<T>({
   onOffsetChange,
   renderRow,
   rowKey,
-  emptyMessage = 'Nothing here anymore.',
+  emptyMessage,
   footerAction,
 }: CoverageDetailDialogProps<T>): ReactElement {
+  const copy = useMessages('analytics').coverageDetailDialog;
   const from = total === 0 ? 0 : offset + 1;
   const to = Math.min(offset + limit, total);
   const hasPrev = offset > 0;
@@ -67,19 +69,19 @@ export function CoverageDetailDialog<T>({
         <DialogDescription>{description}</DialogDescription>
 
         {isLoading ? (
-          <LoadingState title="Loading" message="Fetching the affected orders…" />
+          <LoadingState title={copy.loading.title} message={copy.loading.message} />
         ) : error ? (
           <ErrorState
-            title="Unable to load orders"
+            title={copy.error.title}
             message={error.message}
             action={
               <Button type="button" onClick={onRetry}>
-                Retry
+                {copy.error.retry}
               </Button>
             }
           />
         ) : items.length === 0 ? (
-          <p className="text-muted">{emptyMessage}</p>
+          <p className="text-muted">{emptyMessage ?? copy.empty}</p>
         ) : (
           <>
             <div className="coverage-detail__table-wrap">
@@ -93,7 +95,7 @@ export function CoverageDetailDialog<T>({
             </div>
             <div className="pagination">
               <span className="text-muted mono-text">
-                Showing {from}–{to} of {total}
+                {interpolate(copy.range, { from, to, total })}
               </span>
               <div className="pagination__actions">
                 <Button
@@ -103,7 +105,7 @@ export function CoverageDetailDialog<T>({
                   disabled={!hasPrev}
                   onClick={() => onOffsetChange(Math.max(0, offset - limit))}
                 >
-                  Previous
+                  {copy.previous}
                 </Button>
                 <Button
                   type="button"
@@ -112,7 +114,7 @@ export function CoverageDetailDialog<T>({
                   disabled={!hasNext}
                   onClick={() => onOffsetChange(offset + limit)}
                 >
-                  Next
+                  {copy.next}
                 </Button>
               </div>
             </div>
@@ -121,7 +123,7 @@ export function CoverageDetailDialog<T>({
 
         <DialogFooter>
           <Button type="button" tone="secondary" onClick={() => onOpenChange(false)}>
-            Close
+            {copy.close}
           </Button>
           {footerAction}
         </DialogFooter>

@@ -28,18 +28,27 @@ import {
   type OrderTag,
   type SlaStateValue,
 } from '../api/orders.types';
-import { HOLD_REASON_COPY, isHoldReason, type HoldReason } from './order-hold.types';
-import {
-  ORDER_LIFECYCLE_PHASE_META,
-  isOrderLifecyclePhase,
-} from './order-lifecycle-phase';
+import { interpolate, type Messages, type ResolvedCopy } from '../../../shared/i18n';
+import { holdReasonLabel, isHoldReason, type HoldReason } from './order-hold.types';
+import { isOrderLifecyclePhase } from './order-lifecycle-phase';
 import type { OrderLifecyclePhaseValue } from './order-lifecycle-phase.types';
-import {
-  FULFILLMENT_FILTER_OPTIONS,
-  ORDER_HEALTH_LABELS,
-  ORDERS_LIST_FILTERS_COPY as COPY,
-  SLA_FILTER_OPTIONS,
-} from './orders-list-filters.copy';
+
+type OrdersCopy = ResolvedCopy<Messages['orders']>;
+
+/** Ship-by SLA buckets offered as a filter - `none` is not a triage state (#1108). */
+export const SLA_FILTER_VALUES: readonly Exclude<SlaStateValue, 'none'>[] = [
+  'overdue',
+  'at_risk',
+  'on_track',
+];
+
+/** Fulfilment rollup values offered as a filter (#1108), labelled from `listFilters.fulfilmentOptions`. */
+export const FULFILLMENT_FILTER_VALUES: readonly FulfillmentRollupStateValue[] = [
+  'not-shipped',
+  'dispatched',
+  'delivered',
+  'failed',
+];
 
 /**
  * Every `OrderFilters` key this list can narrow by.
@@ -108,6 +117,8 @@ export interface OrderFilterChipContext {
   tagById: (tagId: string) => OrderTag | undefined;
   /** `YYYY-MM-DD` → a short human date in the active locale. */
   formatDay: (ymd: string) => string;
+  /** The `orders` namespace in the active language - every chip word comes from it. */
+  copy: OrdersCopy;
 }
 
 export interface OrderFilterChipSpec {
@@ -145,23 +156,23 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
     group: 'search',
     analyticsName: 'search',
     isActive: (s) => s.search.trim().length > 0,
-    chip: (s) =>
-      single('search', COPY.chipSearch, s.search.trim() ? COPY.chipSearchValue(s.search.trim()) : null),
+    chip: (s, ctx) =>
+      single('search', ctx.copy.listFilters.chips.search, s.search.trim() ? interpolate(ctx.copy.listFilters.chips.searchValue, { query: s.search.trim() }) : null),
   },
   health: {
     param: 'health',
     group: 'health',
     analyticsName: 'health',
     isActive: (s) => s.health !== undefined,
-    chip: (s) => single('health', COPY.chipHealth, s.health ? ORDER_HEALTH_LABELS[s.health] : null),
+    chip: (s, ctx) => single('health', ctx.copy.listFilters.chips.health, s.health ? ctx.copy.listFilters.healthLabels[s.health] : null),
   },
   phase: {
     param: 'phase',
     group: 'phase',
     analyticsName: 'phase',
     isActive: (s) => s.phase !== undefined,
-    chip: (s) =>
-      single('phase', COPY.chipPhase, s.phase ? ORDER_LIFECYCLE_PHASE_META[s.phase].label : null),
+    chip: (s, ctx) =>
+      single('phase', ctx.copy.listFilters.chips.phase, s.phase ? ctx.copy.lifecyclePhase.labels[s.phase] : null),
   },
   sourceConnectionId: {
     param: 'sourceConnectionId',
@@ -172,8 +183,8 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
       s.sourceConnectionId
         ? single(
             'sourceConnectionId',
-            COPY.chipSource,
-            ctx.connectionName(s.sourceConnectionId) ?? COPY.chipUnknownSource,
+            ctx.copy.listFilters.chips.source,
+            ctx.connectionName(s.sourceConnectionId) ?? ctx.copy.listFilters.chips.unknownSource,
           )
         : null,
   },
@@ -188,9 +199,12 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
     chip: (s, ctx) => {
       if (!s.createdFrom) return null;
       const valueText = s.createdTo
-        ? `${ctx.formatDay(s.createdFrom)} – ${ctx.formatDay(s.createdTo)}`
-        : COPY.chipCreatedFrom(ctx.formatDay(s.createdFrom));
-      return { label: COPY.chipCreated, valueText, clears: ['createdFrom', 'createdTo'] };
+        ? interpolate(ctx.copy.listFilters.chips.createdRange, {
+            from: ctx.formatDay(s.createdFrom),
+            to: ctx.formatDay(s.createdTo),
+          })
+        : interpolate(ctx.copy.listFilters.chips.createdFrom, { date: ctx.formatDay(s.createdFrom) });
+      return { label: ctx.copy.listFilters.chips.created, valueText, clears: ['createdFrom', 'createdTo'] };
     },
   },
   createdTo: {
@@ -200,7 +214,7 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
     isActive: (s) => Boolean(s.createdTo),
     chip: (s, ctx) =>
       s.createdTo && !s.createdFrom
-        ? single('createdTo', COPY.chipCreated, COPY.chipCreatedTo(ctx.formatDay(s.createdTo)))
+        ? single('createdTo', ctx.copy.listFilters.chips.created, interpolate(ctx.copy.listFilters.chips.createdTo, { date: ctx.formatDay(s.createdTo) }))
         : null,
   },
   dueBefore: {
@@ -208,18 +222,22 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
     group: 'shipment',
     analyticsName: 'sla_breaching',
     isActive: (s) => s.breaching,
-    chip: (s) => single('dueBefore', COPY.chipDue, s.breaching ? COPY.chipDueValue : null),
+    chip: (s, ctx) => single('dueBefore', ctx.copy.listFilters.chips.due, s.breaching ? ctx.copy.listFilters.chips.dueValue : null),
   },
   slaState: {
     param: 'slaState',
     group: 'shipment',
     analyticsName: 'sla_state',
     isActive: (s) => s.slaState !== undefined,
-    chip: (s) =>
+    chip: (s, ctx) =>
       single(
         'slaState',
-        COPY.chipShipBy,
-        s.slaState ? (SLA_FILTER_OPTIONS.find((o) => o.value === s.slaState)?.label ?? s.slaState) : null,
+        ctx.copy.listFilters.chips.shipBy,
+        s.slaState === undefined
+          ? null
+          : s.slaState === 'none'
+            ? s.slaState
+            : ctx.copy.listFilters.slaOptions[s.slaState],
       ),
   },
   fulfillmentState: {
@@ -227,14 +245,11 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
     group: 'shipment',
     analyticsName: 'fulfillment_state',
     isActive: (s) => s.fulfillmentState !== undefined,
-    chip: (s) =>
+    chip: (s, ctx) =>
       single(
         'fulfillmentState',
-        COPY.chipFulfillment,
-        s.fulfillmentState
-          ? (FULFILLMENT_FILTER_OPTIONS.find((o) => o.value === s.fulfillmentState)?.label ??
-              s.fulfillmentState)
-          : null,
+        ctx.copy.listFilters.chips.fulfilment,
+        s.fulfillmentState ? ctx.copy.listFilters.fulfilmentOptions[s.fulfillmentState] : null,
       ),
   },
   packed: {
@@ -242,11 +257,11 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
     group: 'shipment',
     analyticsName: 'packed',
     isActive: (s) => s.packed !== undefined,
-    chip: (s) =>
+    chip: (s, ctx) =>
       single(
         'packed',
-        COPY.chipPacking,
-        s.packed === undefined ? null : s.packed ? COPY.packedYes : COPY.packedNo,
+        ctx.copy.listFilters.chips.packing,
+        s.packed === undefined ? null : s.packed ? ctx.copy.listFilters.packedYes : ctx.copy.listFilters.packedNo,
       ),
   },
   holdReason: {
@@ -254,68 +269,68 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
     group: 'exceptions',
     analyticsName: 'hold_reason',
     isActive: (s) => s.holdReason !== undefined,
-    chip: (s) =>
-      single('holdReason', COPY.chipHold, s.holdReason ? HOLD_REASON_COPY[s.holdReason].label : null),
+    chip: (s, ctx) =>
+      single('holdReason', ctx.copy.listFilters.chips.hold, s.holdReason ? holdReasonLabel(s.holdReason) : null),
   },
   salesDocumentBlocked: {
     param: 'invoicing',
     group: 'exceptions',
     analyticsName: 'invoicing_blocked',
     isActive: (s) => s.invoicingBlocked,
-    chip: (s) =>
-      single('salesDocumentBlocked', COPY.chipSalesDocs, s.invoicingBlocked ? COPY.chipBlocked : null),
+    chip: (s, ctx) =>
+      single('salesDocumentBlocked', ctx.copy.listFilters.chips.salesDocs, s.invoicingBlocked ? ctx.copy.listFilters.chips.blocked : null),
   },
   attention: {
     param: 'attention',
     group: 'exceptions',
     analyticsName: 'oms_attention',
     isActive: (s) => s.omsAttention,
-    chip: (s) => single('attention', COPY.chipOms, s.omsAttention ? COPY.chipStopped : null),
+    chip: (s, ctx) => single('attention', ctx.copy.listFilters.chips.oms, s.omsAttention ? ctx.copy.listFilters.chips.stopped : null),
   },
   waitingInOpenLinker: {
     param: 'waiting',
     group: 'exceptions',
     analyticsName: 'waiting_in_openlinker',
     isActive: (s) => s.waitingInOpenLinker,
-    chip: (s) =>
-      single('waitingInOpenLinker', COPY.chipWaiting, s.waitingInOpenLinker ? COPY.chipWaitingValue : null),
+    chip: (s, ctx) =>
+      single('waitingInOpenLinker', ctx.copy.listFilters.chips.waiting, s.waitingInOpenLinker ? ctx.copy.listFilters.chips.waitingValue : null),
   },
   onPackBench: {
     param: 'packBench',
     group: 'shipment',
     analyticsName: 'on_pack_bench',
     isActive: (s) => s.onPackBench,
-    chip: (s) => single('onPackBench', COPY.chipPackBench, s.onPackBench ? COPY.chipPackBenchValue : null),
+    chip: (s, ctx) => single('onPackBench', ctx.copy.listFilters.chips.packBench, s.onPackBench ? ctx.copy.listFilters.chips.packBenchValue : null),
   },
   destinationRoutingBlocked: {
     param: 'routing',
     group: 'exceptions',
     analyticsName: 'destination_routing_blocked',
     isActive: (s) => s.routingBlocked,
-    chip: (s) =>
-      single('destinationRoutingBlocked', COPY.chipRouting, s.routingBlocked ? COPY.chipBlocked : null),
+    chip: (s, ctx) =>
+      single('destinationRoutingBlocked', ctx.copy.listFilters.chips.routing, s.routingBlocked ? ctx.copy.listFilters.chips.blocked : null),
   },
   taxRateConflict: {
     param: 'taxRate',
     group: 'exceptions',
     analyticsName: 'tax_rate_conflict',
     isActive: (s) => s.rateConflict,
-    chip: (s) => single('taxRateConflict', COPY.chipTaxRate, s.rateConflict ? COPY.chipConflict : null),
+    chip: (s, ctx) => single('taxRateConflict', ctx.copy.listFilters.chips.taxRate, s.rateConflict ? ctx.copy.listFilters.chips.conflict : null),
   },
   openReturn: {
     param: 'openReturn',
     group: 'exceptions',
     analyticsName: 'open_return',
     isActive: (s) => s.openReturn,
-    chip: (s) => single('openReturn', COPY.chipReturn, s.openReturn ? COPY.chipOpen : null),
+    chip: (s, ctx) => single('openReturn', ctx.copy.listFilters.chips.return, s.openReturn ? ctx.copy.listFilters.chips.open : null),
   },
   hasBuyerNote: {
     param: 'hasBuyerNote',
     group: 'exceptions',
     analyticsName: 'has_buyer_note',
     isActive: (s) => s.hasBuyerNote,
-    chip: (s) =>
-      single('hasBuyerNote', COPY.chipBuyerNote, s.hasBuyerNote ? COPY.chipBuyerNoteValue : null),
+    chip: (s, ctx) =>
+      single('hasBuyerNote', ctx.copy.listFilters.chips.buyerNote, s.hasBuyerNote ? ctx.copy.listFilters.chips.buyerNoteValue : null),
   },
   // `tag` and `untagged` are mutually exclusive by convention; removing either
   // chip clears BOTH params in one write so a stale pair can never survive.
@@ -328,8 +343,8 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
       if (!s.tag) return null;
       const tag = ctx.tagById(s.tag);
       return {
-        label: COPY.chipTag,
-        valueText: tag?.name ?? COPY.chipUnknownTag,
+        label: ctx.copy.listFilters.chips.tag,
+        valueText: tag?.name ?? ctx.copy.listFilters.chips.unknownTag,
         tag,
         clears: ['tag', 'untagged'],
       };
@@ -340,9 +355,9 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
     group: 'tags',
     analyticsName: 'untagged',
     isActive: (s) => s.untagged,
-    chip: (s) =>
+    chip: (s, ctx) =>
       s.untagged && !s.tag
-        ? { label: COPY.chipTag, valueText: COPY.noTags, clears: ['tag', 'untagged'] }
+        ? { label: ctx.copy.listFilters.chips.tag, valueText: ctx.copy.listFilters.tags.none, clears: ['tag', 'untagged'] }
         : null,
   },
 };
@@ -481,7 +496,9 @@ export function describeOrderFilterScope(
   ctx: OrderFilterChipContext,
 ): string {
   return buildOrderFilterChips(state, ctx, { includeUncounted: true })
-    .map((chip) => `${chip.label} ${chip.valueText}`)
+    .map((chip) =>
+      interpolate(ctx.copy.listFilters.scopeItem, { label: chip.label, value: chip.valueText }),
+    )
     .join(' · ');
 }
 

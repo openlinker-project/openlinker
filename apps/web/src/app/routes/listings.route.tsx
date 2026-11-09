@@ -2,16 +2,16 @@ import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../nav-registry.types';
 
 const listingsListCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Listings' },
+  crumb: { group: 'operations', page: 'listings' },
 };
 const listingDetailCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Listing' },
+  crumb: { group: 'operations', page: 'listing' },
 };
 const bulkWizardCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Bulk listing' },
+  crumb: { group: 'operations', page: 'bulkListing' },
 };
 const bulkBatchCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Bulk batch' },
+  crumb: { group: 'operations', page: 'bulkBatch' },
 };
 
 export const listingsRoute: RouteObject = {

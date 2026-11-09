@@ -16,12 +16,13 @@
  * @module apps/web/src/features/sales-documents/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
-import type {
-  BatchQueueEntry,
-  BatchRunItem,
-  BatchRunRefusalCode,
+import {
+  BatchRunRefusalCodeValues,
+  type BatchQueueEntry,
+  type BatchRunItem,
+  type BatchRunRefusalCode,
 } from '../api/sales-document-batch.types';
-import { isNotSentToIssue } from './describe-batch-run';
+import { isNotSentToIssue, joinSentences, type BatchCopy } from './describe-batch-run';
 
 export const BatchQueueFilterValues = ['all', 'invoice', 'fiscal-receipt', 'blocked'] as const;
 export type BatchQueueFilter = (typeof BatchQueueFilterValues)[number];
@@ -79,22 +80,30 @@ export function countBatchQueueRows(
   return counts;
 }
 
-const RUN_NOW_REFUSAL_COPY: Record<BatchRunRefusalCode, string> = {
-  CONNECTION_NOT_BATCHED: 'This connection does not issue any document in batches any more.',
-  CONNECTION_NEEDS_REAUTH: 'Reconnect this connection before running a batch.',
-  CONNECTION_NOT_ACTIVE: 'This connection is not active, so it cannot issue a batch.',
-  BATCH_RUN_IN_PROGRESS: 'A batch run is already in progress. Wait for it to finish.',
-};
+function refusalCopy(copy: BatchCopy, code: BatchRunRefusalCode): string {
+  const refusals = copy.queue.refusals;
+  switch (code) {
+    case 'CONNECTION_NOT_BATCHED':
+      return refusals.connectionNotBatched;
+    case 'CONNECTION_NEEDS_REAUTH':
+      return refusals.connectionNeedsReauth;
+    case 'CONNECTION_NOT_ACTIVE':
+      return refusals.connectionNotActive;
+    case 'BATCH_RUN_IN_PROGRESS':
+      return joinSentences(refusals.runInProgress, refusals.waitForIt);
+  }
+}
 
 /** Why "Run now" was refused, in the operator's words. */
-export function describeRunNowError(error: unknown): string {
+export function describeRunNowError(error: unknown, copy: BatchCopy): string {
   if (error instanceof ApiError && typeof error.details === 'object' && error.details !== null) {
     const code = (error.details as { code?: unknown }).code;
-    if (typeof code === 'string' && code in RUN_NOW_REFUSAL_COPY) {
-      return RUN_NOW_REFUSAL_COPY[code as BatchRunRefusalCode];
+    if (
+      typeof code === 'string' &&
+      (BatchRunRefusalCodeValues as readonly string[]).includes(code)
+    ) {
+      return refusalCopy(copy, code as BatchRunRefusalCode);
     }
   }
-  return error instanceof Error && error.message.length > 0
-    ? error.message
-    : 'The batch run could not be started.';
+  return error instanceof Error && error.message.length > 0 ? error.message : copy.queue.runFailed;
 }

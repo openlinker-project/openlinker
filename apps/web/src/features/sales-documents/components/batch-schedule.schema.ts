@@ -10,6 +10,7 @@
  * @module apps/web/src/features/sales-documents/components
  */
 import { z } from 'zod';
+import { getMessages } from '../../../shared/i18n';
 import type { BatchScheduleConfig } from '../api/sales-documents.types';
 import type { BatchScheduleView } from '../api/sales-document-batch.types';
 
@@ -36,8 +37,10 @@ export const batchScheduleSchema = z
     timeZone: z.string().trim(),
   })
   .superRefine((values, ctx) => {
+    // Read at validation time, so the message follows the active language.
+    const messages = getMessages('sales-documents').batch.form.validation;
     if (values.frequency === 'daily' && !TIME_PATTERN.test(values.time)) {
-      ctx.addIssue({ code: 'custom', path: ['time'], message: 'Enter a time as HH:MM, 24-hour.' });
+      ctx.addIssue({ code: 'custom', path: ['time'], message: messages.time });
     }
     if (values.frequency === 'every-n-hours') {
       const hours = Number(values.everyHours);
@@ -45,7 +48,7 @@ export const batchScheduleSchema = z
         ctx.addIssue({
           code: 'custom',
           path: ['everyHours'],
-          message: 'Enter a whole number of hours from 1 to 24.',
+          message: messages.everyHours,
         });
       }
     }
@@ -53,7 +56,7 @@ export const batchScheduleSchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['timeZone'],
-        message: 'Enter a time zone such as Europe/Warsaw.',
+        message: messages.timeZone,
       });
     }
   });

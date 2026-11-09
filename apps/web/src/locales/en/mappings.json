@@ -1,0 +1,224 @@
+{
+  "allegroCategorySearch": {
+    "cancel": "Cancel",
+    "clear": "Clear mapping",
+    "save": "Save mapping",
+    "saving": "Saving…",
+    "searchLabel": "Search all categories",
+    "searchPlaceholder": "Search all categories...",
+    "selected": "Selected:"
+  },
+  "attributeRulesPanel": {
+    "description": "Deterministic, operator-authored rules that fill destination attributes across products. Rules apply in priority order (lower first); a later rule wins for the same attribute and rules override the base attribute mapping.",
+    "empty": "No rules configured yet. Add one below to auto-fill destination attributes.",
+    "errorTitle": "Unable to load attribute rules",
+    "errors": {
+      "destinationRequired": "Destination attribute name is required.",
+      "sourceRequired": "Source attribute key is required for a copy + remap rule."
+    },
+    "eyebrow": "Configuration",
+    "form": {
+      "add": "Add rule",
+      "adding": "Adding…",
+      "category": "Category id (optional)",
+      "categoryLabel": "Destination category id scope",
+      "destination": "Destination attribute",
+      "destinationLabel": "Destination attribute name",
+      "destinationPlaceholder": "e.g. Marka",
+      "fixedValue": "Fixed value",
+      "kind": "Kind",
+      "kindLabel": "Rule kind",
+      "manufacturer": "Manufacturer (optional)",
+      "manufacturerLabel": "Manufacturer scope",
+      "phrase": "Name contains (optional)",
+      "phraseLabel": "Product name phrase scope",
+      "placeValue": "Source metadata",
+      "placeValueLabel": "Place-value source",
+      "priority": "Priority",
+      "remap": "Value remap (src=dest)",
+      "remapLabel": "Value remap",
+      "remapPlaceholder": "36S=36, 38S=38",
+      "source": "Source attribute",
+      "sourceLabel": "Source attribute key",
+      "sourcePlaceholder": "e.g. Size"
+    },
+    "kinds": {
+      "copy-remap": "Copy + value remap",
+      "fixed": "Fixed value",
+      "place-value": "Place value"
+    },
+    "loading": {
+      "message": "Fetching configured rules…",
+      "title": "Loading attribute rules"
+    },
+    "placeValueSources": {
+      "ean": "EAN / barcode",
+      "manufacturer": "Manufacturer",
+      "name": "Product name",
+      "sku": "SKU",
+      "variant": "Variant name",
+      "weight": "Weight"
+    },
+    "remove": "Remove",
+    "removeLabel": "Remove rule for {attribute}",
+    "scope": {
+      "allProducts": "all products",
+      "category": "category {id}",
+      "manufacturer": "mfr \"{value}\"",
+      "phrase": "name~\"{value}\"",
+      "sourceScoped": "source-scoped"
+    },
+    "summary": {
+      "copy": "copy \"{key}\"",
+      "copyWithRemaps": {
+        "one": "copy \"{key}\" ({n} remap)",
+        "other": "copy \"{key}\" ({n} remaps)"
+      },
+      "fixed": "= \"{value}\"",
+      "placeValue": "from {source}"
+    },
+    "table": {
+      "actions": "Actions",
+      "attribute": "Attribute",
+      "fills": "Fills",
+      "kind": "Kind",
+      "label": "Attribute mapping rules",
+      "priority": "Priority",
+      "scope": "Scope"
+    },
+    "title": "Attribute Mapping Rules"
+  },
+  "categoryMappingRow": {
+    "notMapped": "Not mapped"
+  },
+  "categoryMappingTree": {
+    "collapse": "Collapse {name}",
+    "expand": "Expand {name}",
+    "treeLabel": "Shop categories"
+  },
+  "mappingPairingBar": {
+    "candidate": "{name} ({platform})",
+    "candidateDisabled": "{name} ({platform}) - disabled",
+    "configure": "Configure",
+    "destination": "Destination",
+    "groupLabel": "Connection pairing",
+    "noSource": "No marketplace paired",
+    "noSourceMeta": "Pairing is set on the marketplace connection.",
+    "notLinked": "Not linked",
+    "pickLabel": "Choose marketplace to configure",
+    "pickMeta": {
+      "one": "{n} marketplace is paired with {master}. Pick one and select Configure.",
+      "other": "{n} marketplaces are paired with {master}. Pick one and select Configure."
+    },
+    "pickPlaceholder": "Choose a marketplace…",
+    "readyMeta": "Determined by connection pairing. <link>Change pairing</link>",
+    "source": "Source",
+    "unsupportedMeta": "Pairing is set on the connection."
+  },
+  "mappingPanel": {
+    "actions": "Actions",
+    "add": "Add",
+    "allMapped": "All source values mapped.",
+    "dataErrorTitle": "Unable to load mappings",
+    "defaultDynamicSuffix": " - dynamic",
+    "defaultEmpty": "No mappings configured yet. Orders may sync with default values. Add one below.",
+    "derivedCue": " - reads as {value}",
+    "duplicateSource": "A mapping for this source value already exists.",
+    "eyebrow": "Configuration",
+    "focusHint": "Map <strong>{source}</strong> to a {target} below.",
+    "loading": {
+      "message": "Fetching available values…",
+      "title": "Loading {title} options"
+    },
+    "optionsErrorTitle": "Unable to load options",
+    "orphanedSource": "orphaned source",
+    "remove": "Remove",
+    "removeLabel": "Remove mapping for {source}",
+    "retry": "Retry",
+    "save": "Save mappings",
+    "saving": "Saving…",
+    "select": "Select {label}",
+    "tableLabel": "{title} mappings",
+    "tryAgain": "Try again",
+    "unsaved": "Unsaved changes"
+  },
+  "orderStatuses": {
+    "cancelled": "Cancelled",
+    "delivered": "Delivered",
+    "pending": "Pending",
+    "processing": "Processing",
+    "refunded": "Refunded",
+    "shipped": "Shipped"
+  },
+  "parcelProfile": {
+    "applyAction": "Apply",
+    "boxIncomplete": "Enter length, width and height together, or leave all three empty.",
+    "boxSummary": "Box {length} x {width} x {height} cm",
+    "cancelAction": "Cancel",
+    "clearAction": "Clear parcel",
+    "columnHeader": "Default parcel",
+    "customTemplateEmpty": "Enter the carrier size code, or pick a size from the list.",
+    "customTemplateLabel": "Carrier size code",
+    "editAction": "Edit parcel",
+    "heightLabel": "Height (cm)",
+    "lengthLabel": "Length (cm)",
+    "noneSet": "Not set",
+    "notPositive": "Values must be greater than zero.",
+    "sectionHintWithMethod": "{method}. Used to pre-fill the label form and bulk dispatch for orders shipped with this method. You can still change every value per order.",
+    "sectionTitle": "Default parcel for this delivery method",
+    "setAction": "Set parcel",
+    "sizeSummary": "Size {template}",
+    "templateLabel": "Size",
+    "templateNone": "No size",
+    "templateOther": "Other carrier code",
+    "templateTooLong": "The size code must be {max} characters or fewer.",
+    "tooLarge": "Length, width and height must each be {max} cm or less.",
+    "weightLabel": "Weight (kg)",
+    "weightSummary": "{kg} kg",
+    "weightTooLarge": "Weight must be {max} kg or less.",
+    "widthLabel": "Width (cm)"
+  },
+  "routingRulesPanel": {
+    "caption": "Fulfilment routing rules",
+    "columns": {
+      "change": "Change",
+      "method": "{source} delivery method",
+      "routed": "Routed to"
+    },
+    "defaultGeneric": "Default (order-management platform)",
+    "defaultNamed": "{name} - default",
+    "description": "Choose how each {source} delivery method is fulfilled. Methods stay with the default order-management platform unless you divert them to a connected carrier or marketplace-delivery processor.",
+    "divertOption": "{kind} · {name}",
+    "errorTitle": "Unable to load routing configuration",
+    "eyebrow": "Configuration",
+    "loading": {
+      "message": "Fetching delivery methods and compatible processors…",
+      "title": "Loading fulfilment routing"
+    },
+    "noMethods": "This connection reported no delivery methods to route. Routing becomes configurable once the source exposes delivery methods.",
+    "noProcessors": "No compatible fulfilment processors are connected yet. Every method stays with the default until you add a carrier-managed or marketplace-delivery connection.",
+    "processorKinds": {
+      "ol_managed_carrier": "OpenLinker-managed carrier",
+      "omp_fulfilled": "Order-management platform",
+      "source_brokered": "Marketplace-brokered"
+    },
+    "processorSelectLabel": "Fulfilment processor for {method}",
+    "save": "Save routing",
+    "saving": "Saving…",
+    "title": "Fulfilment Routing",
+    "tryAgain": "Try again",
+    "unavailableBucket": "{name} (unavailable)",
+    "unavailableOption": "{kind} · {name} (unavailable)",
+    "unsaved": "Unsaved changes"
+  },
+  "routingSplitBar": {
+    "legendLabel": "Delivery methods per fulfilment processor"
+  },
+  "useMappingPairing": {
+    "catalogMissing": "The linked catalog connection could not be found. Check this connection's catalog pairing.",
+    "notLinked": "This connection is not linked to a product catalog. Set its catalog on the connection page to configure mappings."
+  },
+  "usePrestashopCategories": {
+    "fallbackName": "Category {id}"
+  }
+}

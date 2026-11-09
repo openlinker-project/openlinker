@@ -11,6 +11,7 @@
  */
 import type { ReactElement, RefObject } from 'react';
 
+import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
@@ -18,6 +19,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../../../shared/ui/tool
 import type { PublishDestination, PublishDestinationKind } from '../lib/publish-destinations';
 import { PublishDestinationRail } from './publish-destination-rail';
 import type { RailGroup } from './offer-product-picker.types';
+import { serverErrorText } from '../lib/server-error-text';
 
 interface OfferProductPickerRailProps {
   railBackRef: RefObject<HTMLButtonElement | null>;
@@ -64,20 +66,23 @@ export function OfferProductPickerRail({
   onCancel,
   selectionSummary,
 }: OfferProductPickerRailProps): ReactElement {
+  const copy = useMessages('listings').offerProductPickerRail;
+  const common = useMessages('listings').common;
+  const plural = usePlural();
   return (
-    <aside className="offer-product-picker__rail" aria-label="Selection">
+    <aside className="offer-product-picker__rail" aria-label={copy.ariaLabel}>
       <div className="offer-product-picker__rail-head">
         <button
           ref={railBackRef}
           type="button"
           className="offer-product-picker__rail-back"
-          aria-label="Back to products"
+          aria-label={copy.backAria}
           onClick={onBack}
         >
           ‹
         </button>
         <div className="offer-product-picker__rail-titlebar">
-          <span className="offer-product-picker__rail-title">In this batch</span>
+          <span className="offer-product-picker__rail-title">{copy.title}</span>
           <Button
             tone="ghost"
             type="button"
@@ -85,7 +90,7 @@ export function OfferProductPickerRail({
             disabled={selectionSize === 0}
             onClick={onClearSelection}
           >
-            Clear all
+            {copy.clearAll}
           </Button>
         </div>
       </div>
@@ -94,25 +99,25 @@ export function OfferProductPickerRail({
         <div>
           <span className="offer-product-picker__rail-n tabular">{itemCount}</span>
           <span className="offer-product-picker__rail-lbl">
-            {resolvedKind === 'shop' ? 'listings' : 'offers'}
+            {resolvedKind === 'shop' ? copy.counts.listings : copy.counts.offers}
           </span>
         </div>
         <div>
           <span className="offer-product-picker__rail-n tabular">{selectionSize}</span>
-          <span className="offer-product-picker__rail-lbl">products</span>
+          <span className="offer-product-picker__rail-lbl">{copy.counts.products}</span>
         </div>
         <div>
           <span className="offer-product-picker__rail-n offer-product-picker__rail-n--warn tabular">
             {needEanCount}
           </span>
-          <span className="offer-product-picker__rail-lbl">need EAN</span>
+          <span className="offer-product-picker__rail-lbl">{copy.counts.needEan}</span>
         </div>
       </div>
 
       <div className="offer-product-picker__rail-body">
         {railGroups.length === 0 ? (
           <p className="offer-product-picker__rail-empty">
-            Nothing selected yet. Tick products or variants on the left.
+            {copy.empty}
           </p>
         ) : (
           railGroups.map((group) => {
@@ -127,34 +132,37 @@ export function OfferProductPickerRail({
                     group.wholeEan && !group.wholeEan.loaded ? (
                       <span className="bulk-chip bulk-chip--neutral">
                         <span className="bulk-chip__dot" />
-                        not checked
+                        {copy.chips.notChecked}
                       </span>
                     ) : group.wholeEan && group.wholeEan.needCount > 0 ? (
                       <span className="bulk-chip bulk-chip--warning">
                         <span className="bulk-chip__dot" />
-                        {group.wholeEan.needCount} need EAN
+                        {plural(group.wholeEan.needCount, copy.chips.needEan)}
                       </span>
                     ) : (
                       <span className="bulk-chip bulk-chip--success">
                         <span className="bulk-chip__dot" />
-                        ready
+                        {copy.chips.ready}
                       </span>
                     )
                   ) : isPartial ? (
                     <span className="bulk-chip bulk-chip--warning">
                       <span className="bulk-chip__dot" />
-                      {group.selected!.length} of {group.totalVariants}
+                      {interpolate(copy.chips.partial, {
+                        selected: group.selected!.length,
+                        total: group.totalVariants,
+                      })}
                     </span>
                   ) : (
                     <span className="bulk-chip bulk-chip--success">
                       <span className="bulk-chip__dot" />
-                      ready
+                      {copy.chips.ready}
                     </span>
                   )}
                   <button
                     type="button"
                     className="offer-product-picker__rm"
-                    aria-label={`Remove ${group.name}`}
+                    aria-label={interpolate(copy.removeAria, { name: group.name })}
                     onClick={() => onRemoveProduct(group.productId)}
                   >
                     ×
@@ -163,8 +171,7 @@ export function OfferProductPickerRail({
                 {group.whole ? (
                   <div className="offer-product-picker__seltag offer-product-picker__seltag--muted">
                     <span className="offer-product-picker__seltag-dot" />
-                    Whole product · {group.totalVariants}{' '}
-                    {group.totalVariants === 1 ? 'variant' : 'variants'}
+                    {plural(group.totalVariants, copy.wholeProduct)}
                   </div>
                 ) : (
                   group.selected!.map((variant) => (
@@ -174,13 +181,13 @@ export function OfferProductPickerRail({
                       {variant.hasBarcode ? null : (
                         <span className="bulk-chip bulk-chip--warning">
                           <span className="bulk-chip__dot" />
-                          no EAN
+                          {copy.chips.noEan}
                         </span>
                       )}
                       <button
                         type="button"
                         className="offer-product-picker__rm offer-product-picker__rm--tag"
-                        aria-label={`Remove ${variant.label}`}
+                        aria-label={interpolate(copy.removeAria, { name: variant.label })}
                         onClick={() => onRemoveVariant(group.productId, variant.id)}
                       >
                         ×
@@ -196,28 +203,27 @@ export function OfferProductPickerRail({
 
       <div className="offer-product-picker__rail-foot">
         {connectionsLoading ? (
-          <p className="muted-text">Loading destinations…</p>
+          <p className="muted-text">{copy.loadingDestinations}</p>
         ) : connectionsError ? (
           <Alert
             tone="error"
-            title="Unable to load connections"
+            title={copy.connectionsError}
             action={
               <Button tone="secondary" type="button" onClick={onRetryConnections}>
-                Retry
+                {copy.retry}
               </Button>
             }
           >
-            {connectionsError.message}
+            {serverErrorText(common.serverSaid, connectionsError.message, common.unknownError)}
           </Alert>
         ) : eligibleDestinations.length === 0 ? (
-          <Alert tone="warning" title="No publish destinations available">
-            Add an active marketplace (offer creation) or online shop (product publishing)
-            connection before publishing.
+          <Alert tone="warning" title={copy.noDestinations.title}>
+            {copy.noDestinations.body}
           </Alert>
         ) : (
           <div className="offer-product-picker__rail-conn">
             <span className="offer-product-picker__eyebrow" id="publishDestinationLabel">
-              Publish to <span className="offer-product-picker__req">*</span>
+              {copy.publishTo} <span className="offer-product-picker__req">*</span>
             </span>
             <div className="offer-product-picker__rail-conn-list">
               <PublishDestinationRail
@@ -236,11 +242,11 @@ export function OfferProductPickerRail({
 
         <div className="offer-product-picker__rail-actions">
           <Button tone="ghost" type="button" onClick={onCancel}>
-            Cancel
+            {copy.cancel}
           </Button>
           {canContinue ? (
             <Button type="button" onClick={onContinue}>
-              Continue →
+              {copy.continue} <span aria-hidden="true">→</span>
             </Button>
           ) : (
             // Disabled buttons swallow hover, so the span is the tooltip
@@ -249,16 +255,16 @@ export function OfferProductPickerRail({
               <TooltipTrigger asChild>
                 <span className="offer-product-picker__continue-wrap" tabIndex={0}>
                   <Button type="button" disabled>
-                    Continue →
+                    {copy.continue} <span aria-hidden="true">→</span>
                   </Button>
                 </span>
               </TooltipTrigger>
               <TooltipContent>
                 {selectionSize === 0
-                  ? 'Select at least one product, then choose a destination.'
+                  ? copy.continueHint.noSelection
                   : eligibleDestinations.length === 0
-                    ? 'Add an active marketplace or shop connection before publishing.'
-                    : 'Choose a destination to publish to first.'}
+                    ? copy.continueHint.noDestinations
+                    : copy.continueHint.noDestination}
               </TooltipContent>
             </Tooltip>
           )}

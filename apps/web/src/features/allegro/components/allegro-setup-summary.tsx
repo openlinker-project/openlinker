@@ -21,6 +21,7 @@ import {
 } from '../../delivery-on-documents';
 import { WizardSummaryRow } from '../../../shared/ui/wizard-summary-row';
 import type { AllegroSetupFormValues } from './allegro-setup.schema';
+import { useMessages } from '../../../shared/i18n';
 
 interface AllegroSetupSummaryProps {
   values: AllegroSetupFormValues;
@@ -38,21 +39,22 @@ export function AllegroSetupSummary({
   suggestions = [],
   values,
 }: AllegroSetupSummaryProps): ReactElement {
+  const copy = useMessages('allegro-core').allegroSetupSummary;
   const environmentLabel =
     values.environment === 'production'
-      ? 'Production'
+      ? copy.production
       : values.environment === 'sandbox'
-        ? 'Sandbox'
+        ? copy.sandbox
         : null;
 
   return (
     <>
       <section className="wizard-summary__section">
-        <h3 className="wizard-summary__section-title">Connection</h3>
+        <h3 className="wizard-summary__section-title">{copy.connection}</h3>
         <dl className="wizard-summary__rows">
-          <WizardSummaryRow label="Name" value={values.name?.trim() ? values.name : null} />
+          <WizardSummaryRow label={copy.name} value={values.name?.trim() ? values.name : null} />
           <WizardSummaryRow
-            label="Client ID"
+            label={copy.clientId}
             value={values.clientId?.trim() ? values.clientId : null}
             mono
           />
@@ -61,18 +63,18 @@ export function AllegroSetupSummary({
 
       {stepIndex >= 1 ? (
         <section className="wizard-summary__section">
-          <h3 className="wizard-summary__section-title">Environment</h3>
+          <h3 className="wizard-summary__section-title">{copy.environment}</h3>
           <dl className="wizard-summary__rows">
-            <WizardSummaryRow label="Target" value={environmentLabel} />
+            <WizardSummaryRow label={copy.target} value={environmentLabel} />
           </dl>
         </section>
       ) : null}
 
       {stepIndex >= 2 ? (
         <section className="wizard-summary__section">
-          <h3 className="wizard-summary__section-title">Product catalog</h3>
+          <h3 className="wizard-summary__section-title">{copy.productCatalogue}</h3>
           <dl className="wizard-summary__rows">
-            <WizardSummaryRow label="Linked to" value={selectedCatalogName ?? '— not linked —'} />
+            <WizardSummaryRow label={copy.linkedTo} value={selectedCatalogName ?? copy.notLinked} />
           </dl>
         </section>
       ) : null}

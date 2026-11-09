@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../../shared/api/api-error';
+import { messagesIn } from '../../../shared/i18n';
 import type { BatchQueueEntry, BatchRunItem } from '../api/sales-document-batch.types';
 import {
   buildBatchQueueRows,
@@ -75,15 +76,17 @@ describe('filtering and counts', () => {
   });
 });
 
+const COPY = messagesIn('sales-documents', 'en').batch;
+
 describe('describeRunNowError', () => {
   it('should word a refusal code', () => {
     const error = new ApiError('conflict', 409, { code: 'BATCH_RUN_IN_PROGRESS' });
-    expect(describeRunNowError(error)).toBe(
+    expect(describeRunNowError(error, COPY)).toBe(
       'A batch run is already in progress. Wait for it to finish.'
     );
   });
 
   it('should fall back to the error message for an unknown failure', () => {
-    expect(describeRunNowError(new Error('Network down'))).toBe('Network down');
+    expect(describeRunNowError(new Error('Network down'), COPY)).toBe('Network down');
   });
 });

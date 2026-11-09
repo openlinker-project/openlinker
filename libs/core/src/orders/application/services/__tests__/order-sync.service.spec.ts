@@ -67,6 +67,30 @@ describe('OrderSyncService', () => {
     );
   };
 
+  /**
+   * #3959 - `active` is what the destination listing returns; the counting
+   * read (`includeAllStatuses`) additionally sees `inactiveIds`, i.e.
+   * destinations that exist but are disabled or broken.
+   */
+  const registerTopology = (
+    active: Array<{ connectionId: string; adapter: OrderProcessorManagerPort }>,
+    inactiveIds: string[]
+  ): void => {
+    const entry = (connectionId: string, adapter?: OrderProcessorManagerPort) => ({
+      connectionId,
+      connection: { id: connectionId } as never,
+      adapter: adapter as never,
+      metadata: {} as never,
+    });
+    integrationsService.listCapabilityAdapters.mockImplementation(((filters: {
+      includeAllStatuses?: boolean;
+    }) =>
+      Promise.resolve([
+        ...active.map(({ connectionId, adapter }) => entry(connectionId, adapter)),
+        ...(filters.includeAllStatuses ? inactiveIds.map((id) => entry(id)) : []),
+      ])) as never);
+  };
+
   const createOrder = (): Order => ({
     id: 'ol_order_123',
     orderNumber: 'ORDER-001',
@@ -537,8 +561,23 @@ describe('OrderSyncService', () => {
       expect(results[0].destinationConnectionId).toBe('dest-other');
     });
 
-    it('should throw when no destinations are available', async () => {
+    it('should return no results, without throwing, when no other destination exists (#3959)', async () => {
       registerDestinations([]);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results).toEqual([]);
+      expect(orderRecordService.markDestinationRoutingBlock).toHaveBeenLastCalledWith(
+        createOrder().id,
+        { reason: 'no-destination-configured', detail: null }
+      );
+    });
+
+    it('should throw when destinations exist but none is active (#3959)', async () => {
+      registerTopology([], ['dest-disabled']);
 
       await expect(
         service.syncOrder({
@@ -546,10 +585,36 @@ describe('OrderSyncService', () => {
           sourceConnectionId: 'source-1',
         })
       ).rejects.toThrow(NoOrderDestinationsAvailableException);
+      expect(orderRecordService.markDestinationRoutingBlock).toHaveBeenLastCalledWith(
+        createOrder().id,
+        { reason: 'no-active-destination', detail: null }
+      );
+    });
+
+    it('should count other destinations lazily, across every status', async () => {
+      registerDestinations([]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(integrationsService.listCapabilityAdapters).toHaveBeenCalledWith({
+        capability: 'OrderProcessorManager',
+        includeAllStatuses: true,
+        lazy: true,
+      });
+    });
+
+    it('should not run the counting read when a destination resolved', async () => {
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(integrationsService.listCapabilityAdapters).not.toHaveBeenCalledWith(
+        expect.objectContaining({ includeAllStatuses: true })
+      );
     });
 
     it('should attach internalOrderId and sourceConnectionId to the thrown exception', async () => {
-      registerDestinations([]);
+      registerTopology([], ['dest-disabled']);
       const order = createOrder();
 
       let caught: unknown;
@@ -565,15 +630,21 @@ describe('OrderSyncService', () => {
       expect(exception.sourceConnectionId).toBe('source-1');
     });
 
-    it('should throw when the only available destination is the source connection', async () => {
-      registerDestinations([{ connectionId: 'source-1', adapter: makeAdapter() }]);
+    it('should treat a source that is its own only destination as nothing to mirror (#3959)', async () => {
+      const sourceAdapter = makeAdapter();
+      registerDestinations([{ connectionId: 'source-1', adapter: sourceAdapter }]);
 
-      await expect(
-        service.syncOrder({
-          order: createOrder(),
-          sourceConnectionId: 'source-1',
-        })
-      ).rejects.toThrow(NoOrderDestinationsAvailableException);
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results).toEqual([]);
+      expect(sourceAdapter.createOrder).not.toHaveBeenCalled();
+      expect(orderRecordService.markDestinationRoutingBlock).toHaveBeenLastCalledWith(
+        createOrder().id,
+        { reason: 'no-destination-configured', detail: null }
+      );
     });
 
     it('should use resolved status from mapping config when a mapping exists', async () => {
@@ -1100,10 +1171,10 @@ describe('OrderSyncService', () => {
       expect(adapter.createOrder).not.toHaveBeenCalled();
     });
 
-    // The guard sits AFTER the no-destinations throw, so a cancelled order with
-    // no destinations still reports the configuration problem.
-    it('should still throw NoOrderDestinationsAvailableException with zero destinations', async () => {
-      registerDestinations([]);
+    // The guard sits AFTER the no-destinations throw, so a cancelled order whose
+    // destinations are all inactive still reports the configuration problem.
+    it('should still throw NoOrderDestinationsAvailableException when no destination is active', async () => {
+      registerTopology([], ['dest-disabled']);
       orderRecordService.getOrderRecord.mockResolvedValue(cancelledRecord);
 
       await expect(
@@ -1407,8 +1478,8 @@ describe('OrderSyncService', () => {
       expect(exception.message).toContain('dest-offline');
     });
 
-    it('should keep the unfiltered throw unchanged when nothing is configured at all', async () => {
-      registerDestinations([]);
+    it('should keep the unfiltered throw when destinations exist but none is active', async () => {
+      registerTopology([], ['dest-disabled']);
 
       let caught: unknown;
       try {

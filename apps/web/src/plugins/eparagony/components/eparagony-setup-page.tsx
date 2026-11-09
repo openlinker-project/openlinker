@@ -12,17 +12,19 @@ import {
   type EparagonyDocumentCapability,
 } from './eparagony-setup.schema';
 import { PageLayout } from '../../../shared/ui/page-layout';
+import { useEparagonyMessages } from '../messages';
 
 export function EparagonySetupPage(): ReactElement {
+  const copy = useEparagonyMessages().eparagonySetupPage;
   const [capabilities, setCapabilities] = useState<EparagonyDocumentCapability[]>(
     () => EPARAGONY_SETUP_DEFAULT_VALUES.enabledCapabilities ?? []
   );
 
   return (
     <PageLayout
-      eyebrow="Integrations"
-      title="Connect eparagony.pl"
-      description="OpenLinker hands a sale to eparagony.pl, which issues a fiscal e-receipt on your own printer, an invoice, or both. Connecting does not issue anything by itself."
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
       summary={
         <div className="toolbar__group">
           {capabilities.map((capability) => (
@@ -30,7 +32,7 @@ export function EparagonySetupPage(): ReactElement {
               {capability}
             </span>
           ))}
-          <span className="toolbar-chip">Guided setup</span>
+          <span className="toolbar-chip">{copy.guidedSetup}</span>
         </div>
       }
     >

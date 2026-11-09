@@ -15,7 +15,7 @@ import { Button } from '../../../shared/ui/button';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { useSalesDocumentRulesQuery } from '../hooks/use-sales-document-rules-query';
 import { useDeleteSalesDocumentRuleMutation } from '../hooks/use-delete-sales-document-rule-mutation';
@@ -32,13 +32,14 @@ import {
   findSalesDocumentDestinationWarnings,
 } from '../lib/find-sales-document-destination-warnings';
 import type { SalesDocumentRule } from '../api/sales-document-rules.types';
+import { interpolate, useMessages } from '../../../shared/i18n';
 
 interface SalesDocumentRulesListProps {
   country: string;
 }
 
-function ruleResultLabel(rule: SalesDocumentRule): string {
-  return rule.documentKind === 'invoice' ? 'Invoice' : 'Receipt';
+function ruleResultLabel(rule: SalesDocumentRule, kind: { invoice: string; receipt: string }): string {
+  return rule.documentKind === 'invoice' ? kind.invoice : kind.receipt;
 }
 
 /** One place minting the row's DOM id, so the anchor and the lookup cannot drift. */
@@ -47,6 +48,8 @@ function ruleCardDomId(ruleId: string): string {
 }
 
 export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps): ReactElement {
+  const messages = useMessages('sales-documents');
+  const copy = messages.salesDocumentRulesList;
   const rulesQuery = useSalesDocumentRulesQuery(country);
   const connectionsQuery = useConnectionsQuery();
   const deleteRule = useDeleteSalesDocumentRuleMutation();
@@ -88,13 +91,13 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
   const write = useWriteAccess('connections:write', demoMode);
 
   if (rulesQuery.isLoading || connectionsQuery.isLoading) {
-    return <LoadingState title="Loading rules" message="Fetching rules for this country…" />;
+    return <LoadingState title={copy.loading.title} message={copy.loading.message} />;
   }
   if (rulesQuery.error || connectionsQuery.error) {
     return (
       <ErrorState
-        title="Unable to load rules"
-        message={(rulesQuery.error ?? connectionsQuery.error)?.message ?? 'Unknown error'}
+        title={copy.loadError}
+        message={(rulesQuery.error ?? connectionsQuery.error)?.message ?? copy.unknownError}
       />
     );
   }
@@ -108,31 +111,26 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
     <div className="page-section">
       <div className="detail-section__title-row">
         <p className="eyebrow" style={{ marginBottom: 2 }}>
-          Rules for {country === '*' ? '★ Rest of world' : country}
+          {interpolate(copy.heading, { country: country === '*' ? copy.restOfWorld : country })}
         </p>
-        <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+        <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
           <Button
             className="button--sm"
             data-testid="rules-add"
             disabled={!write.canWrite}
             onClick={() => setComposerOpen(true)}
           >
-            + Add rule
+            {copy.addRule}
           </Button>
         </ReadOnlyLock>
       </div>
       <p className="muted-text">
-        Exactly one rule must match an order. Rules have no order of priority — if two match, the
-        order is held instead of one winning.
+        {copy.intro}
       </p>
 
       {taxIdRuleCount > 0 ? (
         <Alert tone="warning" title={describeBuyerTaxIdRuleCount(taxIdRuleCount)}>
-          A buyer-tax-ID condition matches only an order whose source actually recorded that fact.
-          PrestaShop reports it only when the buyer filled in a VAT number on the address; Allegro
-          and Erli report it only when the buyer requested a VAT invoice; WooCommerce reports it
-          only if the store runs a supported VAT-number plugin. An order whose source didn&apos;t
-          assert a tax ID never matches this rule.
+          {copy.taxIdWarning}
         </Alert>
       ) : null}
 
@@ -173,32 +171,39 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
                 →
               </span>
               <span className="rule-card__result">
-                {ruleResultLabel(rule)} · {connectionName}
+                {interpolate(copy.result, {
+                  kind: ruleResultLabel(rule, messages.documentKind),
+                  connection: connectionName,
+                })}
               </span>
             </div>
             <div className="rule-card__meta">
               {rule.provenance ? (
-                <span className="provenance-tag">from: {rule.provenance}</span>
+                <span className="provenance-tag">
+                  {interpolate(copy.provenance, { provenance: rule.provenance })}
+                </span>
               ) : null}
               {usesBuyerTaxIdCondition(rule) ? (
                 <span
                   className="provenance-tag"
-                  title="Matches only when the order's source recorded a buyer tax ID — conditionally for every source (PrestaShop, Allegro, Erli, WooCommerce)"
+                  title={copy.taxIdTag.title}
                 >
-                  tax-ID-aware sources only
+                  {copy.taxIdTag.label}
                 </span>
               ) : null}
               <span className="rule-card__dates">
-                {rule.effectiveTo ? `ends ${rule.effectiveTo}` : 'no end date'}
+                {rule.effectiveTo
+                  ? interpolate(copy.endsOn, { date: rule.effectiveTo })
+                  : copy.noEndDate}
               </span>
-              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                 <Button
                   tone="secondary"
                   className="button--sm"
                   disabled={!write.canWrite || isDeletingThisRule}
                   onClick={() => deleteRule.mutate(rule.id)}
                 >
-                  {isDeletingThisRule ? 'Deleting…' : 'Delete'}
+                  {isDeletingThisRule ? copy.deleting : copy.delete}
                 </Button>
               </ReadOnlyLock>
             </div>
@@ -222,7 +227,7 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
         </div>
       ) : null}
 
-      {rules.length === 0 ? <p className="muted-text">No rules yet for this country.</p> : null}
+      {rules.length === 0 ? <p className="muted-text">{copy.empty}</p> : null}
 
       <SalesDocumentRuleComposerDialog
         country={country}

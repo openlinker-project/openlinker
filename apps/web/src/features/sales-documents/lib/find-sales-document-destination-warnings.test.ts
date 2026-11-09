@@ -242,7 +242,7 @@ describe('describeSalesDocumentDestinationWarning', () => {
     });
 
     expect(text).toBe(
-      'e-paragony Sandbox is disabled, so the rule naming it cannot route — auto-issuance only ever considers active connections. Enable it, or point it elsewhere.',
+      'e-paragony Sandbox is disabled, so the rule naming it cannot route - auto-issuance only ever considers active connections. Enable it, or point it elsewhere.',
     );
   });
 
@@ -268,7 +268,7 @@ describe('describeSalesDocumentDestinationWarning', () => {
     });
 
     expect(text).toBe(
-      'conn_deleted is not in your connections list, so the rule naming it cannot route. Refresh the page — if it stays, point it at a live provider.',
+      'conn_deleted is not in your connections list, so the rule naming it cannot route. Refresh the page - if it stays, point it at a live provider.',
     );
     expect(text).not.toContain('issue Nothing');
   });
