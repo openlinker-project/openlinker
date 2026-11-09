@@ -1,4 +1,66 @@
 {
+  "bench": {
+    "documents": {
+      "labelReady": "Label from {carrier} is ready"
+    },
+    "labelRoute": {
+      "buysLabelBadge": "Label on close",
+      "buysLabelBody": "{method} goes with {carrier}. Close the box when it is packed.",
+      "buysLabelBodyNoCarrier": "{method} gets a label from OpenLinker. Close the box when it is packed.",
+      "buysLabelClosedBody": "{method} goes with {carrier}. The label shows here when it is ready.",
+      "buysLabelClosedBodyNoCarrier": "{method} gets a label from OpenLinker. It shows here when it is ready.",
+      "buysLabelClosedTitle": "OpenLinker buys the label for this box",
+      "buysLabelTitle": "OpenLinker buys the label when you close the box",
+      "carrierOffBadge": "No label coming",
+      "carrierOffBody": "Close the box and leave it aside. An admin can turn the carrier back on or choose another in Shipping settings.",
+      "carrierOffTitle": "{carrier} is switched off, so no label is coming",
+      "carrierOffTitleNoCarrier": "The carrier for this box is switched off",
+      "methodFallback": "this delivery method",
+      "noCarrierBadge": "No carrier set",
+      "noCarrierBody": "Close the box and leave it aside. An admin can choose a carrier in Shipping settings.",
+      "noCarrierTitle": "Nobody has chosen who ships {method}",
+      "shopShipsBadge": "No OpenLinker label",
+      "shopShipsBody": "Close the box and put it with the shop’s parcels.",
+      "shopShipsTitle": "{shop} ships {method} orders",
+      "shopShipsTitleNoShop": "The shop ships {method} orders"
+    }
+  },
+  "connections": {
+    "shipping": {
+      "backToOmsSetup": "Back to OMS setup",
+      "createdAction": "Choose delivery methods",
+      "createdBody": "Next, choose which delivery methods {carrier} ships. Until then no order goes to it.",
+      "createdTitle": "{carrier} is connected.",
+      "rowChange": "Change",
+      "rowChoose": "Choose",
+      "rowLoading": "Loading delivery methods...",
+      "rowUnavailable": "Could not load who ships these delivery methods.",
+      "shippingAllLabelled": "Every delivery method gets a label from OpenLinker.",
+      "shippingChange": "Change who ships what",
+      "shippingCoverage": {
+        "one": "<count>{labelled} of {n}</count> delivery methods get an OpenLinker label",
+        "other": "<count>{labelled} of {n}</count> delivery methods get an OpenLinker label"
+      },
+      "shippingEyebrow": "Who ships it",
+      "shippingLoading": "Loading delivery methods...",
+      "shippingNoMethods": "This sales channel has no delivery methods yet.",
+      "shippingRestByShop": {
+        "one": "{n} delivery method is shipped by your shop, the way it was before OpenLinker.",
+        "other": "{n} delivery methods are shipped by your shop, the way they were before OpenLinker."
+      },
+      "shippingTitle": "Shipping",
+      "shippingUnlisted": "This sales channel cannot list its delivery methods, so there is nothing to route here.",
+      "shipsForEmpty": "No delivery method goes to {carrier} yet.",
+      "shipsForEyebrow": "Delivery methods",
+      "shipsForIntro": "The delivery methods {carrier} buys the labels for, per sales channel.",
+      "shipsForNoSources": "No sales channel is connected yet. Connect one first, then choose which of its delivery methods this carrier ships.",
+      "shipsForTitle": "Ships for",
+      "shipsForUnnamed": {
+        "one": "{n} delivery method (name not loaded)",
+        "other": "{n} delivery methods (names not loaded)"
+      }
+    }
+  },
   "format": {
     "compactDuration": {
       "days": {
@@ -27,6 +89,126 @@
       "dueNow": "due now",
       "left": "{duration} left",
       "overdue": "Overdue {duration}"
+    }
+  },
+  "mappings": {
+    "shippingRoute": {
+      "defaultOption": "{shop} ships it (default)",
+      "defaultOptionNoShop": "Your shop ships it (default)",
+      "defaultShort": "{shop} (default)",
+      "defaultShortNoShop": "Your shop (default)",
+      "dialogDescription": "A change applies to every {source} order from now on.",
+      "dialogDescriptionWithMethod": "The delivery method this order uses is first and marked. A change applies to every {source} order from now on.",
+      "dialogDone": "Done",
+      "dialogTitle": "Who ships {source} orders",
+      "discardCancel": "Keep editing",
+      "discardConfirm": "Close without saving",
+      "discardDescription": "You changed who ships some delivery methods and did not click Save routing.",
+      "discardTitle": "Close without saving?",
+      "groupLabel": {
+        "label": "OpenLinker buys the label",
+        "shop": "Your shop ships it"
+      },
+      "intro": "Pick who ships each {source} delivery method. Anything you leave unchanged is shipped by {shop}, the way it is today.",
+      "introNoShop": "Pick who ships each {source} delivery method. Anything you leave unchanged is shipped by your shop, the way it is today.",
+      "methodColumn": "{source} delivery method",
+      "noCarrier": "No carrier is connected yet, so every delivery method is shipped by your shop. Connect InPost or DPD to let OpenLinker buy the labels.",
+      "panelTitle": "Who ships each delivery method",
+      "route": {
+        "olManagedCarrier": "OpenLinker buys the label from {name}",
+        "ompFulfilled": "{name} ships it",
+        "sourceBrokered": "OpenLinker buys the label through {name} shipping"
+      },
+      "routeColumn": "Who ships it",
+      "sourceShipping": "{source} shipping",
+      "thisOrder": "This order",
+      "unavailable": "{label} (connection is off)"
+    }
+  },
+  "omsOnboarding": {
+    "shippingStatus": {
+      "change": "Change",
+      "none": "No delivery method goes to a carrier yet. You buy each label yourself.",
+      "off": {
+        "one": "{withCarrier} of {n} delivery methods go to a carrier. You buy each label yourself.",
+        "other": "{withCarrier} of {n} delivery methods go to a carrier. You buy each label yourself."
+      },
+      "on": {
+        "one": "Labels are bought when a parcel is accepted, for {withCarrier} of {n} delivery methods.",
+        "other": "Labels are bought when a parcel is accepted, for {withCarrier} of {n} delivery methods."
+      },
+      "start": "Buy labels automatically",
+      "stop": "Stop buying labels",
+      "stopBody": "Parcels accepted from now on reach the pack bench without a label. Labels already bought stay. Your routing and default parcel are kept.",
+      "stopCancel": "Keep buying",
+      "stopFailedTitle": "Could not stop buying labels",
+      "stopTitle": "Stop buying labels automatically?",
+      "stopping": "Stopping…",
+      "title": "Shipping",
+      "unknown": "Could not check this right now."
+    },
+    "shippingStep": {
+      "autoGroupLabel": "Buy labels automatically",
+      "autoLead": {
+        "one": "Available for {withCarrier} of {n} delivery methods. For the others you buy the label at the pack bench.",
+        "other": "Available for {withCarrier} of {n} delivery methods. For the others you buy the label at the pack bench."
+      },
+      "autoLocked": "Give at least one delivery method a carrier and save it first.",
+      "autoTitle": "Buy labels automatically",
+      "badge": {
+        "all": "All set",
+        "noLabels": "No labels",
+        "partly": "Partly set",
+        "todo": "To do"
+      },
+      "cannotList": "This connection does not report its delivery methods, so its orders cannot go to a carrier. You buy their labels at the pack bench.",
+      "checking": "Checking…",
+      "connectCarrier": "Connect a carrier",
+      "continueWithoutSaving": "Continue without saving",
+      "coverage": {
+        "one": "{withCarrier} of {n} delivery method goes to a carrier",
+        "other": "{withCarrier} of {n} delivery methods go to a carrier"
+      },
+      "coverageUnknown": "Could not read the routing for this connection right now.",
+      "defaultsLead": "Used when a delivery method has no default parcel of its own.",
+      "defaultsTitle": "Default parcel for every delivery method",
+      "expand": "Choose carriers for {name}",
+      "fromNow": {
+        "one": "From now on a label is bought for each parcel accepted on that delivery method{parcel}. Nothing is bought for an order on hold, unpaid or without an address, and orders already waiting are not changed.",
+        "other": "From now on a label is bought for each parcel accepted on those {n} delivery methods{parcel}. Nothing is bought for an order on hold, unpaid or without an address, and orders already waiting are not changed."
+      },
+      "fromNowParcel": ", with {parcel} unless the delivery method sets its own",
+      "goBackAndSave": "Go back and save",
+      "loadFailed": "Could not load this connection's delivery methods. Its routing is unchanged.",
+      "noBody": "At the pack bench or in Orders. Nothing is bought on its own.",
+      "noCarrierBody": "OpenLinker buys labels on your own carrier account, such as InPost or DPD. When the carrier is connected, you come back to this step.",
+      "noCarrierTitle": "Connect a carrier first",
+      "noSourcesBody": "No connection sends orders to OpenLinker yet, so there are no delivery methods to choose a carrier for.",
+      "noTitle": "No, I'll buy labels myself",
+      "retry": "Try again",
+      "routesLead": "The same routing as on each connection's mapping page. A change here is a change there.",
+      "routesTitle": "Carriers for your delivery methods",
+      "saveAndContinue": "Save and continue",
+      "saveFailedTitle": "Could not save the label settings",
+      "saving": "Saving…",
+      "unsavedBody": "You changed which carrier ships some delivery methods and did not click Save routing. If you go on, those changes are lost.",
+      "unsavedTitle": "Routing for {name} is not saved",
+      "weightDescription": "Per product, used only when a product has no weight. The parcel weight is the sum of its products.",
+      "weightRequired": "Enter a weight for products that have none.",
+      "why": "Choose which carrier ships each delivery method. Then OpenLinker can buy the label as soon as a parcel is accepted for packing, so the packer only prints it.",
+      "yesBody": "One label per parcel, on the carrier account its delivery method goes to.",
+      "yesTitle": "Yes, buy it when a parcel is accepted"
+    }
+  },
+  "orders": {
+    "shippingRouteOrigin": {
+      "aCarrier": "a carrier",
+      "changeAction": "Change who ships it",
+      "chooseAction": "Choose a carrier",
+      "default": "No carrier is set for this delivery method, so your shop ships it.",
+      "rule": "Set for every {source} order on this delivery method.",
+      "ruleNoSource": "Set for every order on this delivery method.",
+      "yourShop": "Your shop"
     }
   },
   "ui": {

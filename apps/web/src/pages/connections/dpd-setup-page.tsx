@@ -5,7 +5,7 @@
  */
 import type { ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { CONNECTION_SHIPPING_COPY } from '../../features/connections/lib/connection-shipping.copy';
+import { useMessages } from '../../shared/i18n';
 import {
   OMS_SETUP_RETURN_PATH,
   isFromOmsSetup,
@@ -15,11 +15,12 @@ import { PageLayout } from '../../shared/ui/page-layout';
 
 export function DpdSetupPage(): ReactElement {
   const [searchParams] = useSearchParams();
+  const shippingCopy = useMessages('connections').shipping;
   return (
     <PageLayout
       backTo={
         isFromOmsSetup(searchParams)
-          ? { to: OMS_SETUP_RETURN_PATH, label: CONNECTION_SHIPPING_COPY.backToOmsSetup }
+          ? { to: OMS_SETUP_RETURN_PATH, label: shippingCopy.backToOmsSetup }
           : undefined
       }
       eyebrow="Integrations"

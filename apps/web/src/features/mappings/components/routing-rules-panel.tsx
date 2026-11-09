@@ -32,7 +32,7 @@ import {
   type ParcelProfileDraft,
 } from '../lib/parcel-profile';
 import { PARCEL_COPY } from '../lib/parcel-profile.copy';
-import { SHIPPING_ROUTE_COPY } from '../lib/shipping-route.copy';
+import { useShippingRouteCopy } from '../hooks/use-shipping-route-copy';
 import { RoutingSplitBar, type RoutingSplitBucket } from './routing-split-bar';
 import {
   useRoutingRulesQuery,
@@ -131,6 +131,7 @@ export function RoutingRulesPanel({
   embedded = false,
   focusMethodId,
 }: RoutingRulesPanelProps): ReactElement {
+  const routeCopy = useShippingRouteCopy();
   const rulesQuery = useRoutingRulesQuery(connectionId);
   const candidatesQuery = useRoutingCandidatesQuery(connectionId);
   const connectionsQuery = useConnectionsQuery();
@@ -190,7 +191,7 @@ export function RoutingRulesPanel({
   // platform name) — falls back to a generic phrase when none is reported.
   const ompCandidate = candidates.find((c) => c.processorKind === 'omp_fulfilled') ?? null;
   const shopName = ompCandidate ? connName(ompCandidate.processorConnectionId) : null;
-  const defaultLabel = SHIPPING_ROUTE_COPY.defaultOption(shopName);
+  const defaultLabel = routeCopy.defaultOption(shopName);
 
   // Divert options exclude omp_fulfilled — that IS the default in v1; explicit
   // OMP pinning is the multi-OMP follow-up. Sorted by label so the divert menu
@@ -203,12 +204,12 @@ export function RoutingRulesPanel({
           key: `${c.processorKind}::${c.processorConnectionId}`,
           label:
             c.processorKind === 'source_brokered'
-              ? SHIPPING_ROUTE_COPY.sourceShipping(sourceLabel)
+              ? routeCopy.sourceShipping(sourceLabel)
               : connName(c.processorConnectionId),
           group: 'label' as const,
         }))
         .sort((a, b) => a.label.localeCompare(b.label)),
-    [candidates, connName, sourceLabel],
+    [candidates, connName, sourceLabel, routeCopy],
   );
 
   // Render a row per delivery method, plus any saved rule whose method the
@@ -264,7 +265,7 @@ export function RoutingRulesPanel({
         const key = `${c.processorKind}::${c.processorConnectionId}`;
         // Brokered shipping is the source's own service, so it is named after the
         // marketplace ("Allegro shipping"), not after the source connection.
-        const label = c.processorKind === 'source_brokered' ? SHIPPING_ROUTE_COPY.sourceShipping(sourceLabel) : nameFor(c.processorConnectionId);
+        const label = c.processorKind === 'source_brokered' ? routeCopy.sourceShipping(sourceLabel) : nameFor(c.processorConnectionId);
         return { key, label, count: counts.get(key) ?? 0 };
       });
 
@@ -273,7 +274,7 @@ export function RoutingRulesPanel({
       const parsed = parseSelectionKey(key);
       buckets.push({
         key,
-        label: parsed ? SHIPPING_ROUTE_COPY.unavailable(nameFor(parsed.connectionId)) : key,
+        label: parsed ? routeCopy.unavailable(nameFor(parsed.connectionId)) : key,
         count,
       });
     }
@@ -285,12 +286,12 @@ export function RoutingRulesPanel({
       isDefault: true,
     });
     return buckets;
-  }, [rowMethods, selections, candidates, defaultLabel, connectionNameById, sourceLabel]);
+  }, [rowMethods, selections, candidates, defaultLabel, connectionNameById, sourceLabel, routeCopy]);
 
   const optionsForRow = useCallback(
     (currentKey: string): DivertOption[] => {
       const base: DivertOption[] = [
-        { key: DEFAULT_KEY, label: SHIPPING_ROUTE_COPY.defaultShort(shopName), group: 'shop' },
+        { key: DEFAULT_KEY, label: routeCopy.defaultShort(shopName), group: 'shop' },
         ...divertOptions,
       ];
       // Keep a saved selection visible even when it is no longer a live candidate
@@ -299,13 +300,13 @@ export function RoutingRulesPanel({
         const parsed = parseSelectionKey(currentKey);
         base.push({
           key: currentKey,
-          label: parsed ? SHIPPING_ROUTE_COPY.unavailable(connName(parsed.connectionId)) : currentKey,
+          label: parsed ? routeCopy.unavailable(connName(parsed.connectionId)) : currentKey,
           group: 'label',
         });
       }
       return base;
     },
-    [shopName, divertOptions, connName],
+    [shopName, divertOptions, connName, routeCopy],
   );
 
   const handleSelect = useCallback((methodId: string, key: string): void => {
@@ -360,11 +361,11 @@ export function RoutingRulesPanel({
       return (
         <span className="routing-method" title={shortValue(method.value)}>
           {method.label}
-          {method.value === focusMethodId ? <span className="routing-method__mark">{SHIPPING_ROUTE_COPY.thisOrder}</span> : null}
+          {method.value === focusMethodId ? <span className="routing-method__mark">{routeCopy.thisOrder}</span> : null}
         </span>
       );
     },
-    [duplicateLabels, focusMethodId],
+    [duplicateLabels, focusMethodId, routeCopy],
   );
 
   // NOTE (#1784 I8): the per-row divert picker stays a native <select> routed
@@ -388,7 +389,7 @@ export function RoutingRulesPanel({
             const options = optionsForRow(currentKey).filter((o) => o.group === group);
             if (options.length === 0) return null;
             return (
-              <optgroup key={group} label={SHIPPING_ROUTE_COPY.groupLabel[group]}>
+              <optgroup key={group} label={routeCopy.groupLabel[group]}>
                 {options.map((o) => (
                   <option key={o.key} value={o.key}>
                     {o.label}
@@ -400,7 +401,7 @@ export function RoutingRulesPanel({
         </Select>
       );
     },
-    [selections, optionsForRow, handleSelect],
+    [selections, optionsForRow, handleSelect, routeCopy],
   );
 
   const renderParcel = useCallback(
@@ -437,12 +438,12 @@ export function RoutingRulesPanel({
     () => [
       {
         id: 'method',
-        header: SHIPPING_ROUTE_COPY.methodColumn(sourceLabel),
+        header: routeCopy.methodColumn(sourceLabel),
         cell: (m) => renderMethodLabel(m),
       },
       {
         id: 'route',
-        header: SHIPPING_ROUTE_COPY.routeColumn,
+        header: routeCopy.routeColumn,
         cell: (m) => (
           <div className="routing-route-cell">
             {renderProcessorSelect(m)}
@@ -451,7 +452,7 @@ export function RoutingRulesPanel({
         ),
       },
     ],
-    [sourceLabel, renderMethodLabel, renderProcessorSelect, renderParcel],
+    [sourceLabel, renderMethodLabel, renderProcessorSelect, renderParcel, routeCopy],
   );
 
   const cardView = useMemo<DataTableCardView<MappingOption>>(
@@ -501,10 +502,10 @@ export function RoutingRulesPanel({
       {embedded ? null : (
         <>
           <div className="panel__header">
-            <h3 className="section-title">{SHIPPING_ROUTE_COPY.panelTitle}</h3>
+            <h3 className="section-title">{routeCopy.panelTitle}</h3>
             {dirtyBadge}
           </div>
-          <p className="muted-text routing-panel__intro">{SHIPPING_ROUTE_COPY.intro(sourceLabel, shopName)}</p>
+          <p className="muted-text routing-panel__intro">{routeCopy.intro(sourceLabel, shopName)}</p>
         </>
       )}
 
@@ -515,7 +516,7 @@ export function RoutingRulesPanel({
           aria-live="polite"
           style={{ marginBottom: 'var(--space-3)' }}
         >
-          {SHIPPING_ROUTE_COPY.noCarrier}
+          {routeCopy.noCarrier}
         </p>
       )}
 

@@ -17,7 +17,6 @@ import { useState, type ReactElement } from 'react';
 import {
   RoutingDialog,
   RoutingSplitBar,
-  SHIPPING_ROUTE_COPY,
   resolvePlatformLabel,
   routeBuysLabel,
   useMappingOptions,
@@ -25,6 +24,8 @@ import {
   type MappingOption,
   type RoutingRule,
   type RoutingSplitBucket,
+  type ShippingRouteCopy,
+  useShippingRouteCopy,
 } from '../../mappings';
 import { useDemoMode } from '../../system';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
@@ -32,7 +33,7 @@ import { usePlatforms } from '../../../shared/plugins';
 import { Button } from '../../../shared/ui/button';
 import type { Connection } from '../api/connections.types';
 import { useConnectionsQuery } from '../hooks/use-connections-query';
-import { CONNECTION_SHIPPING_COPY } from '../lib/connection-shipping.copy';
+import { useConnectionShippingCopy } from '../hooks/use-connection-shipping-copy';
 import { DELIVERY_METHOD_OPTION_KEYS } from './connection-shipping-routes';
 
 const DEFAULT_BUCKET_KEY = '__default__';
@@ -51,7 +52,8 @@ function buildShippingSplit(
   methods: readonly MappingOption[],
   rules: readonly RoutingRule[],
   nameById: ReadonlyMap<string, string>,
-  sourceLabel: string
+  sourceLabel: string,
+  routeCopy: ShippingRouteCopy
 ): ShippingSplit {
   const ruleByMethod = new Map(rules.map((r) => [r.sourceDeliveryMethodId, r]));
   const buckets = new Map<string, RoutingSplitBucket>();
@@ -70,7 +72,7 @@ function buildShippingSplit(
     // marketplace's name, the same as in the routing editor.
     const label =
       rule.processorKind === 'source_brokered'
-        ? SHIPPING_ROUTE_COPY.sourceShipping(sourceLabel)
+        ? routeCopy.sourceShipping(sourceLabel)
         : nameById.get(rule.processorConnectionId) ?? rule.processorConnectionId;
     const existing = buckets.get(key);
     buckets.set(key, { key, label, count: (existing?.count ?? 0) + 1 });
@@ -81,7 +83,7 @@ function buildShippingSplit(
       ...buckets.values(),
       {
         key: DEFAULT_BUCKET_KEY,
-        label: SHIPPING_ROUTE_COPY.defaultOption(null),
+        label: routeCopy.defaultOption(null),
         count: defaults,
         isDefault: true,
       },
@@ -98,6 +100,8 @@ export interface OrderSourceShippingCardProps {
 export function OrderSourceShippingCard({
   connection,
 }: OrderSourceShippingCardProps): ReactElement {
+  const copy = useConnectionShippingCopy();
+  const routeCopy = useShippingRouteCopy();
   const platforms = usePlatforms();
   const connectionsQuery = useConnectionsQuery();
   const rulesQuery = useRoutingRulesQuery(connection.id);
@@ -114,7 +118,7 @@ export function OrderSourceShippingCard({
   // A source that cannot list delivery methods has nothing to route, so the
   // card would only show an empty bar; one line says why instead.
   if (errors.allegroDeliveryMethods) {
-    return <p className="muted-text">{CONNECTION_SHIPPING_COPY.shippingUnlisted}</p>;
+    return <p className="muted-text">{copy.shippingUnlisted}</p>;
   }
 
   const nameById = new Map((connectionsQuery.data ?? []).map((c) => [c.id, c.name]));
@@ -122,25 +126,26 @@ export function OrderSourceShippingCard({
 
   let body: ReactElement;
   if (isLoading || rulesQuery.isLoading) {
-    body = <p className="muted-text">{CONNECTION_SHIPPING_COPY.shippingLoading}</p>;
+    body = <p className="muted-text">{copy.shippingLoading}</p>;
   } else if (rulesQuery.error) {
-    body = <p className="muted-text">{CONNECTION_SHIPPING_COPY.rowUnavailable}</p>;
+    body = <p className="muted-text">{copy.rowUnavailable}</p>;
   } else if (methods.length === 0) {
-    body = <p className="muted-text">{CONNECTION_SHIPPING_COPY.shippingNoMethods}</p>;
+    body = <p className="muted-text">{copy.shippingNoMethods}</p>;
   } else {
-    const split = buildShippingSplit(methods, rulesQuery.data ?? [], nameById, sourceLabel);
+    const split = buildShippingSplit(methods, rulesQuery.data ?? [], nameById, sourceLabel, routeCopy);
     const rest = methods.length - split.labelled;
     body = (
       <>
         <p className="source-shipping__coverage">
-          <strong>{CONNECTION_SHIPPING_COPY.shippingCoverageLead(split.labelled, methods.length)}</strong>{' '}
-          {CONNECTION_SHIPPING_COPY.shippingCoverageTail}
+          {copy.shippingCoverage(split.labelled, methods.length, (chunk) => (
+            <strong>{chunk}</strong>
+          ))}
         </p>
         <RoutingSplitBar buckets={split.buckets} />
         <p className="muted-text">
           {rest > 0
-            ? CONNECTION_SHIPPING_COPY.shippingRestByShop(rest)
-            : CONNECTION_SHIPPING_COPY.shippingAllLabelled}
+            ? copy.shippingRestByShop(rest)
+            : copy.shippingAllLabelled}
         </p>
       </>
     );
@@ -150,15 +155,15 @@ export function OrderSourceShippingCard({
     <section className="panel panel--dense" aria-labelledby="order-source-shipping-title">
       <div className="panel__header">
         <div>
-          <p className="eyebrow">{CONNECTION_SHIPPING_COPY.shippingEyebrow}</p>
+          <p className="eyebrow">{copy.shippingEyebrow}</p>
           <h3 className="section-title" id="order-source-shipping-title">
-            {CONNECTION_SHIPPING_COPY.shippingTitle}
+            {copy.shippingTitle}
           </h3>
         </div>
         {/* The one action sits with the title, where the other connection cards keep theirs. */}
         {write.visible && methods.length > 0 ? (
           <Button tone="secondary" className="button--sm" onClick={() => setOpen(true)}>
-            {CONNECTION_SHIPPING_COPY.shippingChange}
+            {copy.shippingChange}
           </Button>
         ) : null}
       </div>

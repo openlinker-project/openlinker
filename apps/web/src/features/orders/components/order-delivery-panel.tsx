@@ -26,6 +26,7 @@
  */
 import type { ReactElement } from 'react';
 
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
 import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-list';
 import type {
@@ -33,10 +34,9 @@ import type {
   ParsedOrderPickupPoint,
   ParsedOrderShipping,
 } from '../api/order-snapshot.schema';
-import { SHIPPING_ROUTE_COPY, describeShippingRoute } from '../../mappings';
+import { useShippingRouteCopy } from '../../mappings';
 import type { OrderDeliveryResolution, OrderDeliveryRider } from '../api/orders.types';
 import type { OrderEditsView } from '../api/order-edit.types';
-import { SHIPPING_ROUTE_ORIGIN_COPY } from '../lib/delivery-copy';
 import type { DeliveryOutcome } from '../lib/delivery-outcome';
 import type { DeliveryOwner } from '../lib/delivery-owner';
 import { ConnectionDot } from './connection-dot';
@@ -160,6 +160,8 @@ export function OrderDeliveryPanel({
 }: OrderDeliveryPanelProps): ReactElement {
   // Resolved unconditionally (never inside a branch) — see #893.
   const sourcePlatform = usePlatform(sourcePlatformType ?? undefined);
+  const routeCopy = useShippingRouteCopy();
+  const routeOrigin = useMessages('orders').shippingRouteOrigin;
 
   const items: KeyValueItem[] = [];
   const methodLabel =
@@ -175,13 +177,13 @@ export function OrderDeliveryPanel({
     const ownerName =
       deliveryOwner.name ??
       (deliveryOwner.variant === 'carrier'
-        ? SHIPPING_ROUTE_ORIGIN_COPY.aCarrier
-        : SHIPPING_ROUTE_ORIGIN_COPY.yourShop);
-    const route = describeShippingRoute(routeKind, ownerName);
+        ? routeOrigin.aCarrier
+        : routeOrigin.yourShop);
+    const route = routeCopy.describe(routeKind, ownerName);
     // A rule to a switched-off connection still matches (#1799); say so rather
     // than present a dead route as the one that will ship the order.
     const routeText =
-      deliveryResolution?.processorAvailable === false ? SHIPPING_ROUTE_COPY.unavailable(route) : route;
+      deliveryResolution?.processorAvailable === false ? routeCopy.unavailable(route) : route;
     const fromRule = deliveryResolution?.source === 'rule';
     items.push({
       id: 'shipped-by',
@@ -199,7 +201,11 @@ export function OrderDeliveryPanel({
           {deliveryResolution ? (
             <span className="order-delivery__route-origin" data-testid="order-delivery-route-origin">
               <span className="text-muted">
-                {fromRule ? SHIPPING_ROUTE_ORIGIN_COPY.rule(channelName ?? null) : SHIPPING_ROUTE_ORIGIN_COPY.default}
+                {fromRule
+                  ? channelName
+                    ? interpolate(routeOrigin.rule, { source: channelName })
+                    : routeOrigin.ruleNoSource
+                  : routeOrigin.default}
               </span>
               {/* An unmapped rider below already offers this same dialog; one button per action. */}
               {sourceConnectionId && deliveryRider?.rider !== 'unmapped' ? (
@@ -208,7 +214,7 @@ export function OrderDeliveryPanel({
                   sourceName={channelName}
                   methodLabel={methodLabel}
                   methodId={shipping?.methodId ?? sourceDeliveryMethodId ?? null}
-                  label={fromRule ? SHIPPING_ROUTE_ORIGIN_COPY.changeAction : SHIPPING_ROUTE_ORIGIN_COPY.chooseAction}
+                  label={fromRule ? routeOrigin.changeAction : routeOrigin.chooseAction}
                 />
               ) : null}
             </span>

@@ -21,7 +21,7 @@ import {
   CARRIER_CAPABILITY,
   ORDER_SOURCE_CAPABILITY,
 } from '../../features/connections/components/connection-shipping-routes';
-import { CONNECTION_SHIPPING_COPY } from '../../features/connections/lib/connection-shipping.copy';
+import { useMessages } from '../../shared/i18n';
 import {
   CONNECTION_CREATED_PARAM,
   OMS_SETUP_RETURN_PATH,
@@ -292,6 +292,7 @@ function ConnectionStatusBadge({ connection }: { connection: Connection }): Reac
 const PACKING_SETTINGS_PATH = '/settings/packing';
 
 export function ConnectionDetailPage(): ReactElement {
+  const shippingCopy = useMessages('connections').shipping;
   const { connectionId = '' } = useParams();
   const connectionQuery = useConnectionQuery(connectionId);
   // The plugin registry is what turns a `platformType` slug into the product
@@ -336,7 +337,7 @@ export function ConnectionDetailPage(): ReactElement {
   // An operator who left the OMS setup to connect a carrier gets the way back
   // to that step. The param is never used as a URL; the target is fixed.
   const backTo = isFromOmsSetup(searchParams)
-    ? { to: OMS_SETUP_RETURN_PATH, label: CONNECTION_SHIPPING_COPY.backToOmsSetup }
+    ? { to: OMS_SETUP_RETURN_PATH, label: shippingCopy.backToOmsSetup }
     : { to: '/connections', label: 'Connections' };
 
   return (

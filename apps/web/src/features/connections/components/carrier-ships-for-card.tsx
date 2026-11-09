@@ -28,7 +28,7 @@ import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import type { Connection } from '../api/connections.types';
 import { useConnectionsQuery } from '../hooks/use-connections-query';
-import { CONNECTION_SHIPPING_COPY } from '../lib/connection-shipping.copy';
+import { useConnectionShippingCopy } from '../hooks/use-connection-shipping-copy';
 import {
   DELIVERY_METHOD_OPTION_KEYS,
   activeOrderSources,
@@ -48,6 +48,7 @@ function CarrierSourceRow({
   canChange,
   onOpen,
 }: CarrierSourceRowProps): ReactElement {
+  const copy = useConnectionShippingCopy();
   const rulesQuery = useRoutingRulesQuery(source.id);
   const { options } = useMappingOptions(source.id, DELIVERY_METHOD_OPTION_KEYS);
   const routed = rulesRoutedTo(rulesQuery.data, carrier.id);
@@ -57,18 +58,18 @@ function CarrierSourceRow({
 
   let body: ReactElement;
   if (rulesQuery.isLoading) {
-    body = <span className="muted-text">{CONNECTION_SHIPPING_COPY.rowLoading}</span>;
+    body = <span className="muted-text">{copy.rowLoading}</span>;
   } else if (rulesQuery.error) {
-    body = <span className="muted-text">{CONNECTION_SHIPPING_COPY.rowUnavailable}</span>;
+    body = <span className="muted-text">{copy.rowUnavailable}</span>;
   } else if (routed.length === 0) {
-    body = <span className="muted-text">{CONNECTION_SHIPPING_COPY.shipsForEmpty(carrier.name)}</span>;
+    body = <span className="muted-text">{copy.shipsForEmpty(carrier.name)}</span>;
   } else {
     body = (
       <ul className="ships-for__methods">
         {names.map((name) => (
           <li key={name} className="ships-for__method">{name}</li>
         ))}
-        {unnamed > 0 ? <li className="ships-for__method ships-for__method--muted">{CONNECTION_SHIPPING_COPY.shipsForUnnamed(unnamed)}</li> : null}
+        {unnamed > 0 ? <li className="ships-for__method ships-for__method--muted">{copy.shipsForUnnamed(unnamed)}</li> : null}
       </ul>
     );
   }
@@ -81,7 +82,7 @@ function CarrierSourceRow({
       </div>
       {canChange ? (
         <Button tone="secondary" className="button--sm" onClick={() => onOpen(source)}>
-          {routed.length > 0 ? CONNECTION_SHIPPING_COPY.rowChange : CONNECTION_SHIPPING_COPY.rowChoose}
+          {routed.length > 0 ? copy.rowChange : copy.rowChoose}
         </Button>
       ) : null}
     </li>
@@ -94,6 +95,7 @@ export interface CarrierShipsForCardProps {
 }
 
 export function CarrierShipsForCard({ connection }: CarrierShipsForCardProps): ReactElement {
+  const copy = useConnectionShippingCopy();
   const connectionsQuery = useConnectionsQuery();
   const sources = activeOrderSources(connectionsQuery.data, connection.id);
   const demoMode = useDemoMode();
@@ -104,17 +106,17 @@ export function CarrierShipsForCard({ connection }: CarrierShipsForCardProps): R
     <section className="panel panel--dense" aria-labelledby="carrier-ships-for-title">
       <div className="panel__header">
         <div>
-          <p className="eyebrow">{CONNECTION_SHIPPING_COPY.shipsForEyebrow}</p>
+          <p className="eyebrow">{copy.shipsForEyebrow}</p>
           <h3 className="section-title" id="carrier-ships-for-title">
-            {CONNECTION_SHIPPING_COPY.shipsForTitle}
+            {copy.shipsForTitle}
           </h3>
         </div>
       </div>
-      <p className="muted-text">{CONNECTION_SHIPPING_COPY.shipsForIntro(connection.name)}</p>
+      <p className="muted-text">{copy.shipsForIntro(connection.name)}</p>
       {connectionsQuery.isLoading ? (
-        <p className="muted-text">{CONNECTION_SHIPPING_COPY.rowLoading}</p>
+        <p className="muted-text">{copy.rowLoading}</p>
       ) : sources.length === 0 ? (
-        <p className="muted-text">{CONNECTION_SHIPPING_COPY.shipsForNoSources}</p>
+        <p className="muted-text">{copy.shipsForNoSources}</p>
       ) : (
         <ul className="ships-for">
           {sources.map((source) => (
@@ -153,6 +155,7 @@ export interface CarrierCreatedNoticeProps {
  * source there is nothing left to choose, so the notice carries no action.
  */
 export function CarrierCreatedNotice({ connection }: CarrierCreatedNoticeProps): ReactElement {
+  const copy = useConnectionShippingCopy();
   const connectionsQuery = useConnectionsQuery();
   const sources = activeOrderSources(connectionsQuery.data, connection.id);
   const rulesBySource = useRoutingRulesForConnections(sources.map((s) => s.id));
@@ -173,16 +176,16 @@ export function CarrierCreatedNotice({ connection }: CarrierCreatedNoticeProps):
     <>
       <Alert
         tone="success"
-        title={CONNECTION_SHIPPING_COPY.createdTitle(connection.name)}
+        title={copy.createdTitle(connection.name)}
         action={
           target && write.visible ? (
             <Button tone="secondary" className="button--sm" onClick={() => setDialogSource(target)}>
-              {CONNECTION_SHIPPING_COPY.createdAction}
+              {copy.createdAction}
             </Button>
           ) : undefined
         }
       >
-        {CONNECTION_SHIPPING_COPY.createdBody(connection.name)}
+        {copy.createdBody(connection.name)}
       </Alert>
       {dialogSource ? (
         <RoutingDialog

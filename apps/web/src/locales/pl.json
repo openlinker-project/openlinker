@@ -1,4 +1,72 @@
 {
+  "bench": {
+    "documents": {
+      "labelReady": "Etykieta od {carrier} jest gotowa"
+    },
+    "labelRoute": {
+      "buysLabelBadge": "Etykieta przy zamknięciu",
+      "buysLabelBody": "{method} - wysyłka przez {carrier}. Zamknij karton, gdy będzie spakowany.",
+      "buysLabelBodyNoCarrier": "{method} - etykietę kupuje OpenLinker. Zamknij karton, gdy będzie spakowany.",
+      "buysLabelClosedBody": "{method} - wysyłka przez {carrier}. Etykieta pojawi się tutaj, gdy będzie gotowa.",
+      "buysLabelClosedBodyNoCarrier": "{method} - etykietę kupuje OpenLinker. Pojawi się tutaj, gdy będzie gotowa.",
+      "buysLabelClosedTitle": "OpenLinker kupi etykietę dla tego kartonu",
+      "buysLabelTitle": "OpenLinker kupi etykietę, gdy zamkniesz karton",
+      "carrierOffBadge": "Etykiety nie będzie",
+      "carrierOffBody": "Zamknij karton i odłóż go na bok. Administrator może ponownie włączyć przewoźnika albo wybrać innego w ustawieniach wysyłki.",
+      "carrierOffTitle": "Połączenie {carrier} jest wyłączone, więc etykiety nie będzie",
+      "carrierOffTitleNoCarrier": "Przewoźnik dla tego kartonu jest wyłączony",
+      "methodFallback": "Ta metoda dostawy",
+      "noCarrierBadge": "Brak przewoźnika",
+      "noCarrierBody": "Zamknij karton i odłóż go na bok. Administrator może wybrać przewoźnika w ustawieniach wysyłki.",
+      "noCarrierTitle": "{method} - nikt nie wybrał, kto wysyła te zamówienia",
+      "shopShipsBadge": "Bez etykiety OpenLinker",
+      "shopShipsBody": "Zamknij karton i odłóż go do paczek sklepu.",
+      "shopShipsTitle": "{method} - zamówienia wysyła {shop}",
+      "shopShipsTitleNoShop": "{method} - zamówienia wysyła sklep"
+    }
+  },
+  "connections": {
+    "shipping": {
+      "backToOmsSetup": "Wróć do konfiguracji OMS",
+      "createdAction": "Wybierz metody dostawy",
+      "createdBody": "Teraz wybierz, które metody dostawy wysyła {carrier}. Do tego czasu nie trafi tam żadne zamówienie.",
+      "createdTitle": "Połączono {carrier}.",
+      "rowChange": "Zmień",
+      "rowChoose": "Wybierz",
+      "rowLoading": "Wczytywanie metod dostawy...",
+      "rowUnavailable": "Nie udało się wczytać, kto wysyła te metody dostawy.",
+      "shippingAllLabelled": "Każda metoda dostawy dostaje etykietę z OpenLinker.",
+      "shippingChange": "Zmień, kto co wysyła",
+      "shippingCoverage": {
+        "few": "<count>{labelled} z {n}</count> metod dostawy dostaje etykietę z OpenLinker",
+        "many": "<count>{labelled} z {n}</count> metod dostawy dostaje etykietę z OpenLinker",
+        "one": "<count>{labelled} z {n}</count> metody dostawy dostaje etykietę z OpenLinker",
+        "other": "<count>{labelled} z {n}</count> metody dostawy dostaje etykietę z OpenLinker"
+      },
+      "shippingEyebrow": "Kto wysyła",
+      "shippingLoading": "Wczytywanie metod dostawy...",
+      "shippingNoMethods": "Ten kanał sprzedaży nie ma jeszcze metod dostawy.",
+      "shippingRestByShop": {
+        "few": "{n} metody dostawy wysyła twój sklep, tak jak przed OpenLinker.",
+        "many": "{n} metod dostawy wysyła twój sklep, tak jak przed OpenLinker.",
+        "one": "{n} metodę dostawy wysyła twój sklep, tak jak przed OpenLinker.",
+        "other": "{n} metody dostawy wysyła twój sklep, tak jak przed OpenLinker."
+      },
+      "shippingTitle": "Wysyłka",
+      "shippingUnlisted": "Ten kanał sprzedaży nie udostępnia listy metod dostawy, więc nie ma tu czego przypisać.",
+      "shipsForEmpty": "Żadna metoda dostawy nie trafia jeszcze do {carrier}.",
+      "shipsForEyebrow": "Metody dostawy",
+      "shipsForIntro": "Metody dostawy, dla których etykiety są kupowane u {carrier}, według kanału sprzedaży.",
+      "shipsForNoSources": "Nie połączono jeszcze żadnego kanału sprzedaży. Najpierw połącz kanał, a potem wybierz, które jego metody dostawy wysyła ten przewoźnik.",
+      "shipsForTitle": "Wysyła dla",
+      "shipsForUnnamed": {
+        "few": "{n} metody dostawy (nie wczytano nazw)",
+        "many": "{n} metod dostawy (nie wczytano nazw)",
+        "one": "{n} metoda dostawy (nie wczytano nazwy)",
+        "other": "{n} metody dostawy (nie wczytano nazw)"
+      }
+    }
+  },
   "format": {
     "compactDuration": {
       "days": {
@@ -31,6 +99,136 @@
       "dueNow": "termin teraz",
       "left": "{duration} do terminu",
       "overdue": "Po terminie {duration}"
+    }
+  },
+  "mappings": {
+    "shippingRoute": {
+      "defaultOption": "Wysyła {shop} (domyślnie)",
+      "defaultOptionNoShop": "Wysyła twój sklep (domyślnie)",
+      "defaultShort": "{shop} (domyślnie)",
+      "defaultShortNoShop": "Twój sklep (domyślnie)",
+      "dialogDescription": "Zmiana dotyczy od teraz wszystkich zamówień z {source}.",
+      "dialogDescriptionWithMethod": "Metoda dostawy tego zamówienia jest na górze listy i jest oznaczona. Zmiana dotyczy od teraz wszystkich zamówień z {source}.",
+      "dialogDone": "Gotowe",
+      "dialogTitle": "Kto wysyła zamówienia z {source}",
+      "discardCancel": "Edytuj dalej",
+      "discardConfirm": "Zamknij bez zapisywania",
+      "discardDescription": "Zmieniono, kto wysyła niektóre metody dostawy, ale tych zmian nie zapisano.",
+      "discardTitle": "Zamknąć bez zapisywania?",
+      "groupLabel": {
+        "label": "OpenLinker kupuje etykietę",
+        "shop": "Wysyła twój sklep"
+      },
+      "intro": "Wybierz, kto wysyła każdą metodę dostawy {source}. To, czego nie zmienisz, nadal wysyła {shop}, tak jak dotąd.",
+      "introNoShop": "Wybierz, kto wysyła każdą metodę dostawy {source}. To, czego nie zmienisz, nadal wysyła twój sklep, tak jak dotąd.",
+      "methodColumn": "Metoda dostawy {source}",
+      "noCarrier": "Nie połączono jeszcze żadnego przewoźnika, więc każdą metodę dostawy wysyła twój sklep. Połącz InPost lub DPD, aby OpenLinker kupował etykiety.",
+      "panelTitle": "Kto wysyła każdą metodę dostawy",
+      "route": {
+        "olManagedCarrier": "OpenLinker kupuje etykietę u {name}",
+        "ompFulfilled": "Wysyła {name}",
+        "sourceBrokered": "OpenLinker kupuje etykietę przez wysyłkę {name}"
+      },
+      "routeColumn": "Kto wysyła",
+      "sourceShipping": "Wysyłka {source}",
+      "thisOrder": "To zamówienie",
+      "unavailable": "{label} (połączenie wyłączone)"
+    }
+  },
+  "omsOnboarding": {
+    "shippingStatus": {
+      "change": "Zmień",
+      "none": "Żadna metoda dostawy nie trafia jeszcze do przewoźnika. Każdą etykietę kupujesz sam.",
+      "off": {
+        "few": "{withCarrier} z {n} metod dostawy trafia do przewoźnika. Każdą etykietę kupujesz sam.",
+        "many": "{withCarrier} z {n} metod dostawy trafia do przewoźnika. Każdą etykietę kupujesz sam.",
+        "one": "{withCarrier} z {n} metody dostawy trafia do przewoźnika. Każdą etykietę kupujesz sam.",
+        "other": "{withCarrier} z {n} metody dostawy trafia do przewoźnika. Każdą etykietę kupujesz sam."
+      },
+      "on": {
+        "few": "Etykiety są kupowane po przyjęciu paczki, dla {withCarrier} z {n} metod dostawy.",
+        "many": "Etykiety są kupowane po przyjęciu paczki, dla {withCarrier} z {n} metod dostawy.",
+        "one": "Etykiety są kupowane po przyjęciu paczki, dla {withCarrier} z {n} metody dostawy.",
+        "other": "Etykiety są kupowane po przyjęciu paczki, dla {withCarrier} z {n} metody dostawy."
+      },
+      "start": "Kupuj etykiety automatycznie",
+      "stop": "Przestań kupować etykiety",
+      "stopBody": "Paczki przyjęte od teraz trafią na stanowisko pakowania bez etykiety. Kupione etykiety zostają. Przypisania przewoźników i domyślna paczka pozostają bez zmian.",
+      "stopCancel": "Kupuj dalej",
+      "stopFailedTitle": "Nie udało się wyłączyć kupowania etykiet",
+      "stopTitle": "Przestać kupować etykiety automatycznie?",
+      "stopping": "Wyłączanie…",
+      "title": "Wysyłka",
+      "unknown": "Nie udało się teraz tego sprawdzić."
+    },
+    "shippingStep": {
+      "autoGroupLabel": "Kupuj etykiety automatycznie",
+      "autoLead": {
+        "few": "Dostępne dla {withCarrier} z {n} metod dostawy. Dla pozostałych etykietę kupujesz na stanowisku pakowania.",
+        "many": "Dostępne dla {withCarrier} z {n} metod dostawy. Dla pozostałych etykietę kupujesz na stanowisku pakowania.",
+        "one": "Dostępne dla {withCarrier} z {n} metody dostawy. Dla pozostałych etykietę kupujesz na stanowisku pakowania.",
+        "other": "Dostępne dla {withCarrier} z {n} metody dostawy. Dla pozostałych etykietę kupujesz na stanowisku pakowania."
+      },
+      "autoLocked": "Najpierw przypisz przewoźnika co najmniej jednej metodzie dostawy i zapisz zmiany.",
+      "autoTitle": "Kupuj etykiety automatycznie",
+      "badge": {
+        "all": "Gotowe",
+        "noLabels": "Bez etykiet",
+        "partly": "Częściowo",
+        "todo": "Do zrobienia"
+      },
+      "cannotList": "To połączenie nie udostępnia swoich metod dostawy, więc jego zamówienia nie mogą trafić do przewoźnika. Etykiety dla nich kupujesz na stanowisku pakowania.",
+      "checking": "Sprawdzanie…",
+      "connectCarrier": "Połącz przewoźnika",
+      "continueWithoutSaving": "Kontynuuj bez zapisywania",
+      "coverage": {
+        "few": "{withCarrier} z {n} metod dostawy trafia do przewoźnika",
+        "many": "{withCarrier} z {n} metod dostawy trafia do przewoźnika",
+        "one": "{withCarrier} z {n} metody dostawy trafia do przewoźnika",
+        "other": "{withCarrier} z {n} metody dostawy trafia do przewoźnika"
+      },
+      "coverageUnknown": "Nie udało się teraz odczytać przypisań przewoźników dla tego połączenia.",
+      "defaultsLead": "Używana, gdy metoda dostawy nie ma własnej domyślnej paczki.",
+      "defaultsTitle": "Domyślna paczka dla każdej metody dostawy",
+      "expand": "Wybierz przewoźników dla {name}",
+      "fromNow": {
+        "few": "Od teraz etykieta jest kupowana dla każdej paczki przyjętej w tych {n} metodach dostawy{parcel}. Nic nie jest kupowane dla zamówienia wstrzymanego, nieopłaconego lub bez adresu, a zamówienia, które już czekają, pozostają bez zmian.",
+        "many": "Od teraz etykieta jest kupowana dla każdej paczki przyjętej w tych {n} metodach dostawy{parcel}. Nic nie jest kupowane dla zamówienia wstrzymanego, nieopłaconego lub bez adresu, a zamówienia, które już czekają, pozostają bez zmian.",
+        "one": "Od teraz etykieta jest kupowana dla każdej paczki przyjętej w tej metodzie dostawy{parcel}. Nic nie jest kupowane dla zamówienia wstrzymanego, nieopłaconego lub bez adresu, a zamówienia, które już czekają, pozostają bez zmian.",
+        "other": "Od teraz etykieta jest kupowana dla każdej paczki przyjętej w tych {n} metodach dostawy{parcel}. Nic nie jest kupowane dla zamówienia wstrzymanego, nieopłaconego lub bez adresu, a zamówienia, które już czekają, pozostają bez zmian."
+      },
+      "fromNowParcel": " (domyślna paczka: {parcel}, chyba że metoda dostawy ma własną)",
+      "goBackAndSave": "Wróć i zapisz",
+      "loadFailed": "Nie udało się wczytać metod dostawy tego połączenia. Jego przypisania pozostają bez zmian.",
+      "noBody": "Na stanowisku pakowania albo w zamówieniach. Nic nie jest kupowane samo.",
+      "noCarrierBody": "OpenLinker kupuje etykiety na twoim koncie u przewoźnika, na przykład InPost lub DPD. Po połączeniu przewoźnika wrócisz do tego kroku.",
+      "noCarrierTitle": "Najpierw połącz przewoźnika",
+      "noSourcesBody": "Żadne połączenie nie przesyła jeszcze zamówień do OpenLinker, więc nie ma metod dostawy, dla których można wybrać przewoźnika.",
+      "noTitle": "Nie, kupię etykiety sam",
+      "retry": "Spróbuj ponownie",
+      "routesLead": "Te same przypisania co na stronie mapowań każdego połączenia. Zmiana tutaj jest zmianą tam.",
+      "routesTitle": "Przewoźnicy dla twoich metod dostawy",
+      "saveAndContinue": "Zapisz i kontynuuj",
+      "saveFailedTitle": "Nie udało się zapisać ustawień etykiet",
+      "saving": "Zapisywanie…",
+      "unsavedBody": "Zmieniono przewoźnika dla niektórych metod dostawy, ale tych zmian nie zapisano. Jeśli przejdziesz dalej, zostaną utracone.",
+      "unsavedTitle": "Przypisania dla {name} nie są zapisane",
+      "weightDescription": "Na produkt, używana tylko wtedy, gdy produkt nie ma wagi. Waga paczki to suma wag jej produktów.",
+      "weightRequired": "Podaj wagę dla produktów, które jej nie mają.",
+      "why": "Wybierz, który przewoźnik wysyła każdą metodę dostawy. Wtedy OpenLinker może kupić etykietę od razu po przyjęciu paczki do pakowania, a pakowacz tylko ją drukuje.",
+      "yesBody": "Jedna etykieta na paczkę, na koncie przewoźnika, do którego trafia jej metoda dostawy.",
+      "yesTitle": "Tak, kupuj po przyjęciu paczki"
+    }
+  },
+  "orders": {
+    "shippingRouteOrigin": {
+      "aCarrier": "przewoźnika",
+      "changeAction": "Zmień, kto wysyła",
+      "chooseAction": "Wybierz przewoźnika",
+      "default": "Dla tej metody dostawy nie ustawiono przewoźnika, więc wysyła twój sklep.",
+      "rule": "Ustawione dla wszystkich zamówień z {source} z tą metodą dostawy.",
+      "ruleNoSource": "Ustawione dla wszystkich zamówień z tą metodą dostawy.",
+      "yourShop": "twój sklep"
     }
   },
   "ui": {

@@ -8,7 +8,7 @@
 import type { ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PlatformPicker } from '../../features/connections/components/platform-picker';
-import { CONNECTION_SHIPPING_COPY } from '../../features/connections/lib/connection-shipping.copy';
+import { useMessages } from '../../shared/i18n';
 import {
   OMS_SETUP_RETURN_PATH,
   isFromOmsSetup,
@@ -17,10 +17,11 @@ import { PageLayout } from '../../shared/ui/page-layout';
 
 export function NewConnectionPage(): ReactElement {
   const [searchParams] = useSearchParams();
+  const shippingCopy = useMessages('connections').shipping;
   // The OMS setup's Shipping step sends operators here to connect a carrier;
   // the way back is to that step, not to the connections list (#3958).
   const backTo = isFromOmsSetup(searchParams)
-    ? { to: OMS_SETUP_RETURN_PATH, label: CONNECTION_SHIPPING_COPY.backToOmsSetup }
+    ? { to: OMS_SETUP_RETURN_PATH, label: shippingCopy.backToOmsSetup }
     : { to: '/connections', label: 'Connections' };
   return (
     <PageLayout

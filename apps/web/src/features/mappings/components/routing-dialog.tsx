@@ -16,7 +16,7 @@ import { useState, type ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '../../../shared/ui/dialog';
-import { SHIPPING_ROUTE_COPY } from '../lib/shipping-route.copy';
+import { useShippingRouteCopy } from '../hooks/use-shipping-route-copy';
 import { FulfillmentRoutingSection } from './fulfillment-routing-section';
 
 export interface RoutingDialogProps {
@@ -39,6 +39,7 @@ export function RoutingDialog({
   methodLabel,
   methodId,
 }: RoutingDialogProps): ReactElement {
+  const routeCopy = useShippingRouteCopy();
   const [dirty, setDirty] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
 
@@ -54,9 +55,9 @@ export function RoutingDialog({
     <>
       <Dialog open={open} onOpenChange={requestOpenChange}>
         <DialogContent className="routing-dialog" aria-describedby="routing-dialog-desc">
-          <DialogTitle>{SHIPPING_ROUTE_COPY.dialogTitle(sourceName)}</DialogTitle>
+          <DialogTitle>{routeCopy.dialogTitle(sourceName)}</DialogTitle>
           <DialogDescription id="routing-dialog-desc">
-            {SHIPPING_ROUTE_COPY.dialogDescription(sourceName, methodLabel ?? null, methodId ?? null)}
+            {routeCopy.dialogDescription(sourceName, methodLabel ?? null, methodId ?? null)}
           </DialogDescription>
           {open ? (
             <FulfillmentRoutingSection
@@ -68,7 +69,7 @@ export function RoutingDialog({
           ) : null}
           <DialogFooter>
             <Button tone="secondary" onClick={() => requestOpenChange(false)}>
-              {SHIPPING_ROUTE_COPY.dialogDone}
+              {routeCopy.dialogDone}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -76,10 +77,10 @@ export function RoutingDialog({
       <ConfirmDialog
         open={confirmClose}
         onOpenChange={setConfirmClose}
-        title={SHIPPING_ROUTE_COPY.discardTitle}
-        description={SHIPPING_ROUTE_COPY.discardDescription}
-        confirmLabel={SHIPPING_ROUTE_COPY.discardConfirm}
-        cancelLabel={SHIPPING_ROUTE_COPY.discardCancel}
+        title={routeCopy.discardTitle}
+        description={routeCopy.discardDescription}
+        confirmLabel={routeCopy.discardConfirm}
+        cancelLabel={routeCopy.discardCancel}
         tone="danger"
         onConfirm={() => {
           setConfirmClose(false);

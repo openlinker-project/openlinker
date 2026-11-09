@@ -37,10 +37,11 @@ export { ParcelProfileForm } from './components/parcel-profile-form';
 export { RoutingDialog } from './components/routing-dialog';
 export { RoutingSplitBar, type RoutingSplitBucket } from './components/routing-split-bar';
 export {
-  SHIPPING_ROUTE_COPY,
-  describeShippingRoute,
   routeBuysLabel,
-} from './lib/shipping-route.copy';
+  shippingRouteCopyIn,
+  type ShippingRouteCopy,
+} from './lib/shipping-route';
+export { useShippingRouteCopy } from './hooks/use-shipping-route-copy';
 export {
   EMPTY_PARCEL_DRAFT,
   draftFromFields,

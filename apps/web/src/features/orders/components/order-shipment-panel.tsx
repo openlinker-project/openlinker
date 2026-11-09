@@ -31,6 +31,7 @@ import {
   type Shipment,
 } from '../../shipments';
 import { usePermission } from '../../../shared/auth/use-permission';
+import { useMessages } from '../../../shared/i18n';
 import { usePlatform, type Platform } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
 import { LoadingState, ErrorState, EmptyState } from '../../../shared/ui/feedback-state';
@@ -42,7 +43,7 @@ import { TimeDisplay } from '../../../shared/ui/time-display';
 import type { OrderDeliveryRider, OrderRecord } from '../api/orders.types';
 import { parseOrderSnapshot, type PaymentStatus } from '../api/order-snapshot.schema';
 import { hasLiveOlCarrierRoute } from '../lib/delivery-outcome';
-import { SHIPPING_ROUTE_ORIGIN_COPY, SHOP_FULFILLED_NO_DUP_LABEL } from '../lib/delivery-copy';
+import { SHOP_FULFILLED_NO_DUP_LABEL } from '../lib/delivery-copy';
 import { DeliveryRiderAction } from './delivery-rider-action';
 import { GenerateLabelForm } from './generate-label-form';
 import {
@@ -115,6 +116,7 @@ export function OrderShipmentPanel({
   order,
   autoOpenForShipmentId,
 }: OrderShipmentPanelProps): ReactElement | null {
+  const routeOrigin = useMessages('orders').shippingRouteOrigin;
   const connectionsQuery = useConnectionsQuery();
   const shipmentsQuery = useOrderShipmentsQuery(order.internalOrderId);
   const [formOpen, setFormOpen] = useState(false);
@@ -362,7 +364,7 @@ export function OrderShipmentPanel({
                   sourceConnectionId={order.sourceConnectionId}
                   methodLabel={order.sourceDeliveryMethodName ?? order.sourceDeliveryMethodId}
                   methodId={order.sourceDeliveryMethodId}
-                  label={SHIPPING_ROUTE_ORIGIN_COPY.chooseAction}
+                  label={routeOrigin.chooseAction}
                 />
               ) : undefined
             }
