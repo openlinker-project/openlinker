@@ -12,6 +12,7 @@ describe('parseShopifyConfig', () => {
         locationGid: null,
         unmanagedStockQuantity: null,
         salesCountryIso2: null,
+        refundsThroughShopify: false,
       },
     });
   });
@@ -64,6 +65,15 @@ describe('parseShopifyConfig', () => {
     const result = parseShopifyConfig({ storeDomain: 'a.myshopify.com', salesCountryIso2 });
 
     expect(!result.ok && result.issues.map((i) => i.path)).toEqual(['salesCountryIso2']);
+  });
+
+  it('should read the refund opt-in and refuse a value that is not a boolean', () => {
+    expect(parseShopifyConfig({ storeDomain: 'a.myshopify.com', refundsThroughShopify: true })).toMatchObject({
+      ok: true,
+      config: { refundsThroughShopify: true },
+    });
+    const refused = parseShopifyConfig({ storeDomain: 'a.myshopify.com', refundsThroughShopify: 'yes' });
+    expect(!refused.ok && refused.issues.map((i) => i.path)).toEqual(['refundsThroughShopify']);
   });
 
   it('should report every bad field at once when several are wrong', () => {

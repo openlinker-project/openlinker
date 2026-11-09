@@ -31,6 +31,12 @@ export interface ShopifyConnectionConfig {
    * (`ProductTaxRateReader`). Absent means the shop's own billing country.
    */
   readonly salesCountryIso2?: string;
+  /**
+   * Opt-in (#3977, C20): a refund OpenLinker confirms is sent to Shopify as a
+   * `refundCreate`, which moves the buyer's money on Shopify Payments. Absent
+   * or false: a confirmed refund is only recorded, as made outside OpenLinker.
+   */
+  readonly refundsThroughShopify?: boolean;
 }
 
 /** `ShopifyConnectionConfig` after validation and normalisation. */
@@ -41,4 +47,5 @@ export interface ShopifyResolvedConfig {
   readonly locationGid: string | null;
   readonly unmanagedStockQuantity: number | null;
   readonly salesCountryIso2: string | null;
+  readonly refundsThroughShopify: boolean;
 }

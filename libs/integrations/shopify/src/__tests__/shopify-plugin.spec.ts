@@ -11,11 +11,12 @@ import {
 import { createShopifyPlugin, shopifyAdapterManifest } from '../shopify-plugin';
 
 describe('createShopifyPlugin', () => {
-  it('should advertise and enable by default the two master capabilities', () => {
+  it('should advertise its capabilities and enable only the two masters by default', () => {
     expect(shopifyAdapterManifest).toMatchObject({
       adapterKey: 'shopify.admin.v1',
       platformType: 'shopify',
-      supportedCapabilities: ['ProductMaster', 'InventoryMaster'],
+      supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource', 'ReturnSourceReader', 'ReturnDecliner'],
+      // OrderSource is opt-in: ingesting orders creates them in every destination.
       defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
     });
     expect(createShopifyPlugin().manifest).toBe(shopifyAdapterManifest);
@@ -32,8 +33,8 @@ describe('createShopifyPlugin', () => {
 
   it('should refuse a capability it has no adapter for, before resolving anything', async () => {
     await expect(
-      createShopifyPlugin().createCapabilityAdapter({ id: 'c1' } as Connection, 'OrderSource', {} as never),
-    ).rejects.toThrow(/does not support capability: OrderSource/);
+      createShopifyPlugin().createCapabilityAdapter({ id: 'c1' } as Connection, 'OfferManager', {} as never),
+    ).rejects.toThrow(/does not support capability: OfferManager/);
   });
 
   it('should build the ProductMaster with every guard-only rung', async () => {

@@ -150,3 +150,103 @@ export interface ShopifyInventoryProduct {
   readonly status: string;
   readonly variants: ShopifyConnection<ShopifyInventoryVariant>;
 }
+
+/** Money in the shop's currency, as a decimal string. */
+export interface ShopifyMoney {
+  readonly amount: string;
+  readonly currencyCode?: string;
+}
+
+export interface ShopifyMoneyBag {
+  readonly shopMoney: ShopifyMoney;
+}
+
+export interface ShopifyMailingAddress {
+  readonly firstName: string | null;
+  readonly lastName: string | null;
+  readonly company: string | null;
+  readonly address1: string | null;
+  readonly address2: string | null;
+  readonly city: string | null;
+  readonly provinceCode: string | null;
+  readonly zip: string | null;
+  readonly countryCodeV2: string | null;
+  readonly phone: string | null;
+}
+
+export interface ShopifyLineItem {
+  readonly id: string;
+  readonly name: string;
+  readonly sku: string | null;
+  readonly quantity: number;
+  /** Quantity after order edits and removals; `quantity` is the original. */
+  readonly currentQuantity: number;
+  readonly variant: { readonly id: string } | null;
+  readonly product: { readonly id: string } | null;
+  readonly originalUnitPriceSet: ShopifyMoneyBag;
+  readonly discountedUnitPriceSet: ShopifyMoneyBag;
+  readonly taxLines: readonly ShopifyTaxLine[];
+}
+
+export interface ShopifyShippingLine {
+  readonly title: string;
+  readonly code: string | null;
+  readonly originalPriceSet: ShopifyMoneyBag;
+  readonly taxLines: readonly ShopifyTaxLine[];
+}
+
+export interface ShopifyFulfillmentOrderLineItem {
+  readonly id: string;
+  readonly remainingQuantity: number;
+}
+
+export interface ShopifyFulfillmentOrder {
+  readonly id: string;
+  readonly status: string;
+  readonly assignedLocation: { readonly location: { readonly id: string } | null } | null;
+  readonly lineItems?: ShopifyConnection<ShopifyFulfillmentOrderLineItem>;
+}
+
+export type ShopifyPurchasingEntity =
+  | { readonly __typename: 'Customer' }
+  | {
+      readonly __typename: 'PurchasingCompany';
+      readonly location: {
+        readonly taxSettings: { readonly taxRegistrationId: string | null } | null;
+      } | null;
+    };
+
+export interface ShopifyOrder {
+  readonly id: string;
+  readonly name: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly processedAt: string | null;
+  readonly cancelledAt: string | null;
+  readonly displayFinancialStatus: string | null;
+  readonly displayFulfillmentStatus: string;
+  readonly paymentGatewayNames: readonly string[];
+  readonly email: string | null;
+  readonly phone: string | null;
+  readonly note: string | null;
+  readonly taxesIncluded: boolean;
+  readonly currencyCode: string;
+  readonly customer: { readonly id: string } | null;
+  readonly currentTotalPriceSet: ShopifyMoneyBag;
+  readonly currentSubtotalPriceSet: ShopifyMoneyBag;
+  readonly currentTotalTaxSet: ShopifyMoneyBag;
+  readonly totalShippingPriceSet: ShopifyMoneyBag;
+  readonly purchasingEntity: ShopifyPurchasingEntity | null;
+  readonly shippingAddress: ShopifyMailingAddress | null;
+  readonly billingAddress: ShopifyMailingAddress | null;
+  readonly shippingLines: ShopifyConnection<ShopifyShippingLine>;
+  readonly lineItems: ShopifyConnection<ShopifyLineItem>;
+}
+
+/** A row of the order feed: just enough to order, filter and key the events. */
+export interface ShopifyOrderFeedRow {
+  readonly id: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly cancelledAt: string | null;
+}

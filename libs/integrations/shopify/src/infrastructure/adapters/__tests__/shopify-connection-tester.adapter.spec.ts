@@ -80,7 +80,10 @@ describe('ShopifyConnectionTesterAdapter', () => {
     const result = await tester.test(connection(), resolver);
 
     expect(result.success).toBe(true);
-    expect(result.message).toContain('optional scope write_draft_orders');
+    expect(result.message).toContain(
+      'write_draft_orders (product tax rates are not read, and a store whose prices exclude tax reports no prices)',
+    );
+    expect(result.message).toContain('read_shipping (delivery methods are offered only as seen on recent orders)');
   });
 
   it('should report the configured location when one is set', async () => {

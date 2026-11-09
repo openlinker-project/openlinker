@@ -10,6 +10,7 @@
  */
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { InventoryMasterPort } from '@openlinker/core/inventory';
+import type { OrderSourcePort } from '@openlinker/core/orders';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { CachePort } from '@openlinker/shared';
@@ -47,4 +48,10 @@ export interface IShopifyAdapterFactory {
     identifierMapping: IdentifierMappingPort,
     cache?: CachePort,
   ): InventoryMasterPort;
+
+  /**
+   * The OrderSource of one resolution: orders, returns, mapping options and
+   * the status writeback, plus `RefundExecutor` when the connection opts in.
+   */
+  createOrderSource(resolution: ShopifyResolution): OrderSourcePort;
 }

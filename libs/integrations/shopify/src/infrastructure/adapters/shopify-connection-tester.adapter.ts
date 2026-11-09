@@ -39,6 +39,7 @@ import {
 import { resolveShopifyRateLimitBucketKey } from '../../domain/policies/shopify-rate-limit-bucket.policy';
 import { buildShopifyClient, type ShopifyClientRuntime } from '../http/shopify-client.builder';
 import { ShopifyShopContextProvider } from '../shop-context/shopify-shop-context.provider';
+import { SHOPIFY_OPTIONAL_SCOPE_EFFECTS } from '../../shopify.constants';
 
 const SCOPES_QUERY = `query OlConnectionTestScopes {
   currentAppInstallation { accessScopes { handle } }
@@ -73,10 +74,11 @@ function describeMissingOptionalScopes(missing: readonly string[]): string {
   if (missing.length === 0) {
     return '';
   }
-  return (
-    `. The app lacks the optional scope ${missing.join(', ')}: product tax rates are not read, ` +
-    'and a store whose prices exclude tax reports no prices, until it is granted'
+  const effects = missing.map(
+    (scope) =>
+      `${scope} (${SHOPIFY_OPTIONAL_SCOPE_EFFECTS[scope as keyof typeof SHOPIFY_OPTIONAL_SCOPE_EFFECTS] ?? 'optional'})`,
   );
+  return `. The app lacks optional scopes until granted: ${effects.join('; ')}`;
 }
 
 export class ShopifyConnectionTesterAdapter implements ConnectionTesterPort {

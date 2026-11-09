@@ -2,9 +2,10 @@
 
 OpenLinker adapter for [Shopify](https://shopify.dev/docs/api/admin-graphql), Admin GraphQL API **2026-10**.
 
-**Status:** plugin foundation (#3974), **ProductMaster** (#3975) and **InventoryMaster** (#3976). The plugin registers the connection, the
+**Status:** plugin foundation (#3974), **ProductMaster** (#3975), **InventoryMaster** (#3976) and **OrderSource**
+with returns (#3977). The plugin registers the connection, the
 token handling, the GraphQL client, the connection tester and the retry / auth-failure classifiers. Further
-capabilities (OrderSource, OrderProcessorManager, ProductPublisher, ...) enter
+capabilities (OrderProcessorManager, ProductPublisher, ...) enter
 `supportedCapabilities` together with the adapter that delivers them, in the follow-up issues of the
 "Shopify integration" milestone. Evidence base: spike #3928 (`SPIKE-3928-shopify-capabilities.md`) and the first
 spike #2879 (`docs/plans/analysis/SPIKE-2879-shopify-admin-api.md`).
@@ -34,9 +35,12 @@ track; 1000 when absent, the WooCommerce convention),
 when absent).
 
 App scopes: `SHOPIFY_REQUIRED_SCOPES` (the connection test fails when one is missing) and `SHOPIFY_OPTIONAL_SCOPES`
-(asked for at install; the connection test passes and names it when missing). The one optional scope is
-`write_draft_orders`, for the tax rate read only: `draftOrderCalculate` computes a rate without creating anything, but
-Shopify gates it behind that scope. Without it the catalogue syncs and every product's rate stays "not checked".
+(asked for at install; the connection test passes and names each missing one with what it switches off):
+`write_draft_orders` for the tax rate read (`draftOrderCalculate` computes a rate without creating anything, but Shopify
+gates it behind that scope; without it every product's rate stays "not checked"), and `read_shipping` for the
+delivery-profile method names in the mapping UI (without it only methods seen on recent orders are offered).
+
+`refundsThroughShopify` (optional, boolean): a refund confirmed in OpenLinker is sent to Shopify (see OrderSource).
 
 `salesCountryIso2` is not on the setup form yet: set it in the connection's config (JSON) when the tax rate should be
 computed for a country other than the shop's own.
@@ -123,6 +127,36 @@ Read-only: product writes are refused (`ShopifyNotSupportedException`).
 - **Refusals before anything is written** (variant not named on a multi-variant product, untracked, not stocked at
   the location) are `ShopifyNotSupportedException`, which core records as refused rather than in doubt.
 - **Batched sweep** (`BulkInventoryReader`): one `nodes(ids:)` read warms a batch.
+
+## OrderSource (#3977)
+
+Opt-in: not on by default, because ingesting a shop's orders creates them in every destination.
+
+- **Feed.** `orders(query: "updated_at:>=...", sortKey: UPDATED_AT)` with an opaque `(updatedAt, id)` keyset cursor
+  under `shopify.orders.cursor`, polled every 5 minutes (`OL_SHOPIFY_POLL_SCHEDULER_ENABLED`). Orders updated in the
+  last 30 s wait for the next poll: the search index lags writes by seconds (L-M1, L-S2j). With no cursor yet, the
+  first poll reads the shop's whole order history, as every other source does.
+- **Order.** Line prices are what the buyer paid per unit after line discounts, gross on a tax-inclusive shop; the
+  quantity is `currentQuantity` (after order edits), and a line edited down to 0 is dropped. The line's own tax line
+  gives the rate. A B2B order carries the company location's tax registration id (C08); a consumer order asserts none.
+  Payment method: only Shopify's built-in `Cash on Delivery (COD)` and `Bank Deposit` are recognised; a pending COD
+  order is `cod`, not awaiting payment. The buyer's note is carried verbatim.
+- **Mapping options** (C13): delivery methods from the delivery profiles (by name, which is what an order carries) plus
+  codes seen on recent orders; payment gateways from Shopify's built-ins plus those seen on recent orders (the Admin
+  API lists no gateways); neutral order statuses.
+- **Status writeback** (L-S3c): `dispatched` fulfils the open fulfillment orders at the configured location with
+  tracking number, carrier and URL (the URL is always sent: without it Shopify guessed FedEx for an InPost parcel,
+  L-F3). Work Shopify routed to another location is moved to the configured one first (C24). `cancelled` cancels the
+  order, restocking and keeping the payment. `delivered` and `in-progress` are declined (not verified live).
+- **Returns.** The return feed walks the orders that carry a return in laps (a return does not bump the order's
+  `updatedAt`), and the re-read sweep observes status changes; both passes are off by default
+  (`OL_SHOPIFY_RETURNS_POLL_SCHEDULER_ENABLED`, `OL_SHOPIFY_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED`). Reasons come from
+  `returnReasonDefinition` (`returnReason` is deprecated in 2026-10, C16). A `REQUESTED` return can be declined from
+  OpenLinker (`returnDeclineRequest`); an already declined one counts as done.
+- **Refunds** (C20): with `refundsThroughShopify: true` a refund confirmed in OpenLinker becomes a `refundCreate` of
+  money only, against the order's own transactions, with `@idempotent` and an `[ol:<hash>]` marker in the note so a
+  retry after a lost answer finds the first refund. Without the flag a refund is only recorded, as made outside
+  OpenLinker.
 
 ## Known gaps
 

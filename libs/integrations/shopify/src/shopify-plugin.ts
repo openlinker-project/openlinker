@@ -7,8 +7,9 @@
  * and auth-failure classifiers, and the OAuth completion adapter (a store in
  * another organization installs the app through the authorization-code
  * grant). Capabilities enter `supportedCapabilities` together with the adapter
- * that delivers them (the #980 rule); ProductMaster arrived with #3975 and
- * InventoryMaster with #3976. Their rungs (`ModifiedProductLister`,
+ * that delivers them (the #980 rule); ProductMaster arrived with #3975,
+ * InventoryMaster with #3976 and OrderSource with #3977 (with its scheduler
+ * tasks: the orders poll, and the two returns passes, off by default). Their rungs (`ModifiedProductLister`,
  * `BulkProductReader`, `ProductTaxRateReader`, `BulkInventoryReader`) are
  * guard-only (never in the manifest), narrowed off the dispatched adapter.
  *
@@ -46,6 +47,7 @@ import { ShopifyConnectionCredentialsShapeValidatorAdapter } from './infrastruct
 import { ShopifyConnectionTesterAdapter } from './infrastructure/adapters/shopify-connection-tester.adapter';
 import { ShopifyOAuthCompletionAdapter } from './infrastructure/adapters/shopify-oauth-completion.adapter';
 import { ShopifyRetryClassifierAdapter } from './infrastructure/adapters/shopify-retry-classifier.adapter';
+import { buildShopifySchedulerTasks } from './infrastructure/scheduler/shopify-scheduler-tasks';
 
 /**
  * Static plugin manifest (#575); `createShopifyPlugin().manifest` returns this
@@ -55,10 +57,20 @@ export const shopifyAdapterManifest: AdapterMetadata = {
   adapterKey: SHOPIFY_ADAPTER_KEY,
   platformType: SHOPIFY_PLATFORM_TYPE,
   // A capability name enters this list together with the adapter that delivers it.
-  supportedCapabilities: ['ProductMaster', 'InventoryMaster'],
-  // Stated rather than left to "every supported capability": each later
-  // capability (publisher, order source, ...) must be an operator's choice,
-  // not something every new connection starts doing.
+  supportedCapabilities: [
+    'ProductMaster',
+    'InventoryMaster',
+    'OrderSource',
+    // Advertised-without-dispatch sub-capabilities of the order source, for
+    // host discovery only; resolved by narrowing the dispatched `OrderSource`
+    // adapter with their guards, never through `getCapabilityAdapter`.
+    'ReturnSourceReader',
+    'ReturnDecliner',
+  ],
+  // Stated rather than left to "every supported capability": `OrderSource` is
+  // opt-in, because ingesting a shop's orders is polling load against the
+  // store's request budget and creates those orders in every destination - a
+  // connection meant only as a catalogue and stock master must not start it.
   defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
   defaultRateLimit: SHOPIFY_DEFAULT_RATE_LIMIT,
   // Shopify's budget is per app and store, so connections to one store share one bucket.
@@ -103,6 +115,9 @@ export function createShopifyPlugin(deps: CreateShopifyPluginDeps = {}): Adapter
       );
       host.retryClassifierRegistry.register(SHOPIFY_ADAPTER_KEY, new ShopifyRetryClassifierAdapter());
       host.oauthCompletionRegistry.register(SHOPIFY_ADAPTER_KEY, new ShopifyOAuthCompletionAdapter());
+      for (const task of buildShopifySchedulerTasks()) {
+        host.schedulerTaskRegistry.register(task);
+      }
     },
 
     createCapabilityAdapter<T>(connection: Connection, capability: string, host: HostServices): Promise<T> {
@@ -126,6 +141,7 @@ export function createShopifyPlugin(deps: CreateShopifyPluginDeps = {}): Adapter
               factory.createProductMaster(await resolve(), host.identifierMapping, host.cache) as T,
             InventoryMaster: async () =>
               factory.createInventoryMaster(await resolve(), host.identifierMapping, host.cache) as T,
+            OrderSource: async () => factory.createOrderSource(await resolve()) as T,
           },
           SHOPIFY_BRAND,
         );

@@ -72,8 +72,18 @@ export const SHOPIFY_REQUIRED_SCOPES = [
  * but Shopify gates it behind this scope. Without it the catalogue syncs and
  * every product's rate stays "not checked", and a store whose prices exclude
  * tax reports no prices (they cannot be stated gross, ADR-077).
+ *
+ * `read_shipping` - the delivery-profile method names offered as delivery
+ * methods in the mapping UI (#3977, C13). Without it only the methods seen on
+ * recent orders are listed.
  */
-export const SHOPIFY_OPTIONAL_SCOPES = ['write_draft_orders'] as const;
+export const SHOPIFY_OPTIONAL_SCOPES = ['write_draft_orders', 'read_shipping'] as const;
+
+/** What each optional scope switches off when it is missing, for the connection test. */
+export const SHOPIFY_OPTIONAL_SCOPE_EFFECTS: Readonly<Record<(typeof SHOPIFY_OPTIONAL_SCOPES)[number], string>> = {
+  write_draft_orders: 'product tax rates are not read, and a store whose prices exclude tax reports no prices',
+  read_shipping: 'delivery methods are offered only as seen on recent orders',
+};
 
 /**
  * Quantity reported for an untracked variant when the connection sets no
@@ -82,3 +92,9 @@ export const SHOPIFY_OPTIONAL_SCOPES = ['write_draft_orders'] as const;
  * job per such product on every tick (L-I1).
  */
 export const SHOPIFY_DEFAULT_UNMANAGED_STOCK_QUANTITY = 1000;
+
+/** Gateway name of Shopify's built-in cash-on-delivery manual method (live, L-O2). */
+export const SHOPIFY_COD_GATEWAY = 'Cash on Delivery (COD)';
+
+/** Gateway name of Shopify's built-in bank-deposit manual method. */
+export const SHOPIFY_BANK_DEPOSIT_GATEWAY = 'Bank Deposit';
