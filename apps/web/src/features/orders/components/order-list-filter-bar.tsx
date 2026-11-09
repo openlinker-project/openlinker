@@ -168,6 +168,7 @@ export function OrderListFilterBar({
   const { state } = filtersApi;
   const orders = useMessages('orders');
   const COPY = orders.listFilters;
+  const paymentCopy = orders.paymentWriteback;
   const plural = usePlural();
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const panelId = useId();
@@ -394,6 +395,23 @@ export function OrderListFilterBar({
         count={summary?.omsAttention}
         onChange={() => {
           filtersApi.toggle('attention');
+        }}
+      />
+      <FilterCheck
+        label={COPY.checks.shopChanged}
+        tone="warning"
+        checked={state.shopChanged}
+        onChange={() => {
+          filtersApi.toggle('attentionReason');
+        }}
+      />
+      <FilterCheck
+        label={paymentCopy.filterCheck}
+        tone="warning"
+        checked={state.paymentNotSent}
+        count={summary?.paymentNotSent}
+        onChange={() => {
+          filtersApi.toggle('paymentNotSent');
         }}
       />
       <FilterCheck
@@ -802,6 +820,31 @@ export function OrderListFilterBar({
             {COPY.quick.omsStopped}
             {summary?.omsAttention === undefined ? null : (
               <span className="chip__count">{summary.omsAttention}</span>
+            )}
+          </Chip>
+        ) : null}
+        {/* #3961 - orders the shop changed after packing started that wait for a
+            decision. No count: the summary aggregate does not split reasons. */}
+        <Chip
+          tone="warning"
+          active={state.shopChanged}
+          onClick={() => {
+            filtersApi.toggle('attentionReason');
+          }}
+        >
+          {COPY.quick.shopChanged}
+        </Chip>
+        {state.paymentNotSent || summary?.paymentNotSent ? (
+          <Chip
+            tone="warning"
+            active={state.paymentNotSent}
+            onClick={() => {
+              filtersApi.toggle('paymentNotSent');
+            }}
+          >
+            {paymentCopy.filterQuick}
+            {summary?.paymentNotSent === undefined ? null : (
+              <span className="chip__count">{summary.paymentNotSent}</span>
             )}
           </Chip>
         ) : null}

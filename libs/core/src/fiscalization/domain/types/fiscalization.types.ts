@@ -576,6 +576,10 @@ export interface CreateFiscalRegistrationRecordInput {
   /** Never null - the exactly-once guarantee has no keyless mode. */
   idempotencyKey: string;
   status: FiscalRegistrationStatus;
+  /** 0-based attempt number (#3960). Omitted means a first attempt. */
+  attempt?: number;
+  /** The refused attempt this one follows (#3960). Omitted means none. */
+  previousAttemptId?: string | null;
 }
 
 /** Partial update applied to a record once an attempt terminates. */

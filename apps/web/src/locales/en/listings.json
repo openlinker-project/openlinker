@@ -30,6 +30,82 @@
   "alreadyListedChip": {
     "label": "already on {destination}"
   },
+  "attributeRules": {
+    "chip": {
+      "fromRules": {
+        "one": "{n} from rules",
+        "other": "{n} from rules"
+      },
+      "notOnList": "“{value}” not on {destination}’s list",
+      "rejectedCount": {
+        "one": "{n} rule value rejected",
+        "other": "{n} rule values rejected"
+      },
+      "rejectedOne": "{parameter} rejected"
+    },
+    "coverageLabel": "Parameters filled by rules",
+    "editor": {
+      "badgeRejected": "rule value rejected",
+      "badgeRule": "from rule",
+      "baseNote": "Left empty, these are filled by your attribute rules: {names}.",
+      "baseNotePerVariant": "Left empty, these are filled by your attribute rules for each variant: {names}.",
+      "context": "Parameters from your attribute rules: {filled} of {total}.",
+      "inheritFromRule": "From rule ({value})",
+      "partial": {
+        "one": "Rules fill this for {filled} of {n} variant.",
+        "other": "Rules fill this for {filled} of {n} variants."
+      },
+      "rejectedHint": "{destination} does not accept “{value}” from your rules. Pick a value.",
+      "rejectedSome": {
+        "one": "{destination} does not accept the rule value for {rejected} of {n} variant.",
+        "other": "{destination} does not accept the rule value for {rejected} of {n} variants."
+      },
+      "replacesHint": "Replaces the rule value “{value}”",
+      "ruleValue": "Rule value: {value}"
+    },
+    "failed": {
+      "one": "Could not check the rules for {n} variant. Its required parameters count as empty until the check succeeds.",
+      "other": "Could not check the rules for {n} variants. Their required parameters count as empty until the check succeeds."
+    },
+    "fix": "Fix",
+    "fixLabel": "Fix {parameter} for {variant}",
+    "lede": "Filled in when the offers are created. A value you set yourself wins.",
+    "ledePerVariant": "Filled in when the offers are created, per variant. A value you set yourself wins.",
+    "manage": "Manage rules",
+    "more": {
+      "one": "and {n} more value",
+      "other": "and {n} more values"
+    },
+    "notChecked": "Not checked yet.",
+    "origin": {
+      "copied": "Copied from \"{attribute}\" by your attribute rules",
+      "copiedTranslated": "Copied from \"{attribute}\" and translated by your attribute rules",
+      "fixed": "Fixed value from your attribute rules",
+      "mapping": "From your attribute mapping",
+      "placeSource": {
+        "ean": "EAN",
+        "manufacturer": "manufacturer",
+        "name": "product name",
+        "sku": "SKU",
+        "variant": "variant name",
+        "weight": "weight"
+      },
+      "placed": "Product {field}, placed by your attribute rules",
+      "placedUnknown": "Product field, placed by your attribute rules",
+      "rule": "From your attribute rules"
+    },
+    "parameterList": {
+      "one": "{names} and {n} more",
+      "other": "{names} and {n} more"
+    },
+    "pill": "{name}: filled for {filled} of {total}",
+    "pillRejected": "{name}: filled for {filled} of {total}, {rejected} not accepted",
+    "rejectedLabel": "Values {destination} does not accept",
+    "rejectedRowLabel": "Fix: {names} not accepted by {destination}",
+    "rejectedValue": "{destination} does not accept “{value}”",
+    "retry": "Try again",
+    "title": "Attribute rules"
+  },
   "autoPrefillParameters": {
     "unmatchedBrand": "Variant brand \"{brand}\" - no exact match in the marketplace's brand list; pick manually."
   },
@@ -163,6 +239,7 @@
   "bulkBlockers": {
     "chips": {
       "alreadyListed": "Already listed",
+      "cardCategoryDiffers": "catalog ≠ mapping",
       "categoryNotSet": "Category not set",
       "currencyMismatch": "Currency mismatch",
       "invalidBarcode": "Invalid barcode",
@@ -180,6 +257,10 @@
       "unknownCategoryResult": "Unknown result"
     },
     "describe": {
+      "cardCategoryDiffers": {
+        "detail": "Your mapping is used and the catalog product is not linked. Open it to compare the two.",
+        "title": "Barcode {ean} matched a {destination} catalog product in a different category than your category mapping."
+      },
       "currencyMismatch": {
         "detail": "Set an explicit {currency} price for this variant, or change the batch currency.",
         "title": "The master price is not in {currency}."
@@ -230,6 +311,25 @@
         "title": "{destination} returned a category result this version doesn't recognise."
       }
     }
+  },
+  "bulkCardCategoryDialog": {
+    "adoptNote": "Switch only if this barcode really belongs to this product. The offer then links the catalog product and takes its name, parameters and photos.",
+    "barcodeMatch": "Barcode match",
+    "catalogProduct": "{destination} catalog product",
+    "categoryFallback": "Category {id}",
+    "editProduct": "Edit product",
+    "inUse": "In use",
+    "keepMapping": "Keep my mapping",
+    "leafId": "ID {id}",
+    "lede": "<subject>{subject}</subject> (barcode <ean>{ean}</ean>) matched a catalog product on {destination} that sits in another category. Your mapping is used and the catalog product is not linked.",
+    "ledeNoEan": "<subject>{subject}</subject> matched a catalog product on {destination} that sits in another category. Your mapping is used and the catalog product is not linked.",
+    "loading": "Loading categories…",
+    "noSharedBranch": "No shared branch: these are different parts of the catalog",
+    "notSynced": "Category paths not synced yet",
+    "siblingNote": "All variants of this product list under one category, so this variant cannot switch on its own. To move the whole product, change its category in the editor.",
+    "title": "Your mapping and the barcode disagree",
+    "useCard": "Use catalog category",
+    "yourMapping": "Your category mapping"
   },
   "bulkCategoryChooseModal": {
     "browse": "Browse ›",
@@ -750,6 +850,34 @@
     "retry": "Retry resolve",
     "stopAndReview": "Stop and review {n}"
   },
+  "bulkReviewCategoryCell": {
+    "barcodeMatched": "Barcode matched {category}",
+    "barcodeMatchedUnknown": "Barcode matched another category",
+    "categoryFallback": "Category {id}",
+    "compareAria": "{label}. Compare with your mapping",
+    "loading": "Loading…",
+    "notSet": "Not set",
+    "pathNotSynced": "Path not synced yet",
+    "resolvedAtSubmit": "Resolved at submit",
+    "siblingConflicts": {
+      "one": "Barcode disagrees on {n} variant",
+      "other": "Barcode disagrees on {n} variants"
+    },
+    "sourceHint": {
+      "card": "Matched by barcode to a catalog product. No category mapping covers this product.",
+      "cardAgrees": "Matched by barcode to a catalog product that sits in the category your mapping names.",
+      "mapping": "Resolved from your category mapping.",
+      "picked": "You picked this category in this wizard.",
+      "shared": "All variants of a product list under one category, so this variant uses the product category."
+    },
+    "sourceLabel": {
+      "card": "Catalog",
+      "cardAgrees": "Catalog + mapping",
+      "mapping": "Mapping",
+      "picked": "Set here",
+      "shared": "Shared"
+    }
+  },
   "bulkReviewStep": {
     "alreadyOn": "already on {destination}",
     "backToConfig": "Back to Config",
@@ -809,6 +937,7 @@
       }
     },
     "columns": {
+      "category": "Category",
       "priceGross": "Price (gross)",
       "product": "Product",
       "status": "Status",

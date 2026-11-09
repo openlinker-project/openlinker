@@ -280,6 +280,15 @@ export interface LineEditOutcome<T extends EditableLine> {
 }
 
 /**
+ * The per-order lock every writer of an order's line quantities takes: the
+ * operator edit (#3542) and the source-change reconcile (#3961). One key, so the
+ * two can never narrow the same work or give back the same stock concurrently.
+ */
+export function orderEditLockKey(internalOrderId: string): string {
+  return `order:edit:${internalOrderId}`;
+}
+
+/**
  * The effective quantity of one line: `min(overlay, channel)`. Pure and shared so
  * the preview, the view and the merge cannot disagree.
  */

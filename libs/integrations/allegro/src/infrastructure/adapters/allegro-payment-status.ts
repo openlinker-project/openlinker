@@ -12,6 +12,7 @@
  * The discriminator is therefore `payment.type` first:
  *
  * - `type === 'CASH_ON_DELIVERY'`                 → `cod`  (dispatch permitted, paid on receipt)
+ * - else a `paidAmount` below the stated total     → `awaiting` (a partial payment is not a payment, #3963)
  * - else a positive `paidAmount`                   → `paid` (prepaid; dispatch permitted)
  * - else form `READY_FOR_PROCESSING` + `finishedAt` → `paid` (settled, nothing left to pay)
  * - else                                           → `awaiting` (payment not completed; blocked)
@@ -44,8 +45,16 @@ import type { AllegroCheckoutForm } from '../../domain/types/allegro-api.types';
 const ALLEGRO_COD_PAYMENT_TYPE = 'CASH_ON_DELIVERY';
 const ALLEGRO_READY_FOR_PROCESSING = 'READY_FOR_PROCESSING';
 
-/** The two parts of a checkout form the payment rule reads. */
-export type AllegroCheckoutPaymentFacts = Pick<AllegroCheckoutForm, 'payment' | 'status'>;
+/**
+ * The parts of a checkout form the payment rule reads. `summary` is optional
+ * here so a caller holding only payment and status still gets the pre-#3963
+ * answer; without a stated total, a positive `paidAmount` reads as paid.
+ */
+export type AllegroCheckoutPaymentFacts = Pick<AllegroCheckoutForm, 'payment' | 'status'> &
+  Partial<Pick<AllegroCheckoutForm, 'summary'>>;
+
+/** Cents of slack, so a rounding difference never reads as a partial payment. */
+const PARTIAL_PAYMENT_TOLERANCE = 0.005;
 
 export function deriveAllegroPaymentStatus(form: AllegroCheckoutPaymentFacts): PaymentStatus {
   const { payment } = form;
@@ -53,7 +62,9 @@ export function deriveAllegroPaymentStatus(form: AllegroCheckoutPaymentFacts): P
     return PAYMENT_STATUS.Cod;
   }
   if (hasPositivePaidAmount(payment)) {
-    return PAYMENT_STATUS.Paid;
+    // #3963: a payment below the order total is not "paid". Marking it paid
+    // would unlock dispatch and tell every destination shop the order is paid.
+    return isPartialPayment(form) ? PAYMENT_STATUS.Awaiting : PAYMENT_STATUS.Paid;
   }
   return form.status === ALLEGRO_READY_FOR_PROCESSING && Boolean(payment.finishedAt)
     ? PAYMENT_STATUS.Paid
@@ -74,4 +85,10 @@ export function isAllegroCheckoutSettled(form: AllegroCheckoutPaymentFacts): boo
 function hasPositivePaidAmount(payment: AllegroCheckoutForm['payment']): boolean {
   const amount = Number(payment.paidAmount?.amount);
   return Number.isFinite(amount) && amount > 0;
+}
+
+function isPartialPayment(form: AllegroCheckoutPaymentFacts): boolean {
+  const total = Number(form.summary?.totalToPay?.amount);
+  const paid = Number(form.payment.paidAmount?.amount);
+  return Number.isFinite(total) && Number.isFinite(paid) && paid + PARTIAL_PAYMENT_TOLERANCE < total;
 }

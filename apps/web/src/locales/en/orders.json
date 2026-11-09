@@ -971,6 +971,7 @@
       "rateConflict": "Rate conflict",
       "routingBlocked": "Routing blocked",
       "salesDocsBlocked": "Sales documents blocked",
+      "shopChanged": "Changed by the shop",
       "waiting": "Waiting in OpenLinker"
     },
     "chips": {
@@ -999,6 +1000,8 @@
       "search": "Search",
       "searchValue": "“{query}”",
       "shipBy": "Ship-by",
+      "shopChanged": "Shop",
+      "shopChangedValue": "Changed",
       "source": "Source",
       "stopped": "Stopped",
       "tag": "Tag",
@@ -1078,6 +1081,7 @@
         "one": "{n} more is issued on request - waiting for you by configuration, not blocked.",
         "other": "{n} more are issued on request - waiting for you by configuration, not blocked."
       },
+      "shopChanged": "Changed by the shop",
       "waiting": "Waiting in OpenLinker"
     },
     "results": {
@@ -2468,6 +2472,76 @@
     "cashOnDelivery": "Cash on delivery",
     "online": "Online payment"
   },
+  "paymentWriteback": {
+    "bulkRegionLabel": "Payment not sent to shop",
+    "bulkSummary": {
+      "one": "{n} order. Its shop still shows it as unpaid.",
+      "other": "{n} orders. Their shops still show them as unpaid."
+    },
+    "cancelledBody": "The order stays cancelled and the shops were not changed. Check the refund in the marketplace.",
+    "cancelledTitle": "The buyer paid a cancelled order",
+    "cashOnDelivery": "Cash on delivery",
+    "chipLabel": "Payment",
+    "chipValue": "Not sent to shop",
+    "filterCheck": "Payment not sent to shop",
+    "filterQuick": "Payment not sent to shop",
+    "handledDone": {
+      "one": "Marked {n} order as handled",
+      "other": "Marked {n} orders as handled"
+    },
+    "handledDoneDetail": "These orders no longer show under \"Payment not sent to shop\".",
+    "listMarker": "Payment not in <shop></shop>",
+    "listMarkerGeneric": "Payment not sent to shop",
+    "markHandled": "Mark as handled",
+    "markHandledFailed": "Could not mark as handled",
+    "notPaidYet": "Not paid yet",
+    "notTracked": {
+      "one": "<shops></shops> doesn't track payment.",
+      "other": "<shops></shops> don't track payment."
+    },
+    "paidAfterCancellation": "Paid after cancellation",
+    "paidOn": "Paid on {source}",
+    "paidOnUnknown": "Paid",
+    "panelTitle": "Payment",
+    "problemBody": "Retry, or mark the order paid in the shop yourself.",
+    "problemTitleMany": {
+      "one": "{n} shop still shows this order as unpaid",
+      "other": "{n} shops still show this order as unpaid"
+    },
+    "problemTitleOne": "<shop></shop> still shows this order as unpaid",
+    "progress": "{done} of {total} shops updated",
+    "retryDone": {
+      "one": "Queued {n} shop update",
+      "other": "Queued {n} shop updates"
+    },
+    "retryDoneDetail": "OpenLinker will mark the order paid in the shop in a moment.",
+    "retryFailed": "Retry failed",
+    "retryNow": "Retry now",
+    "retrying": "Retrying…",
+    "row": {
+      "awaiting": "Waiting for payment",
+      "cod": "Cash on delivery",
+      "codHelper": "Not marked paid",
+      "createdPaid": "Paid at creation",
+      "handled": "Handled",
+      "handledHelper": "Marked as handled",
+      "notSent": "Not sent",
+      "notSentCancelled": "Order cancelled",
+      "notSentNoTotal": "Order total unknown",
+      "notSentRefunded": "Order refunded",
+      "notSentRejected": "The shop refused it",
+      "notSentStopped": "Retries stopped",
+      "notTracked": "Not tracked here",
+      "paidInShop": "Paid in shop",
+      "retrying": "Retrying",
+      "retryingHelper": "The shop did not answer",
+      "sending": "Updating",
+      "skippedBySetting": "Left to you",
+      "skippedBySettingHelper": "Set to leave payment as it is",
+      "unknown": "Unknown state"
+    },
+    "shopsLabel": "Payment in each shop"
+  },
   "refundConfirmation": {
     "amountHint": "What you actually sent back. OpenLinker does not calculate this for you.",
     "amountInvalid": "Enter an amount like 12.50.",
@@ -2824,6 +2898,55 @@
   "shipmentTrackingLink": {
     "track": "Track shipment (opens in new tab)",
     "trackOn": "Track shipment on {carrier} (opens in new tab)"
+  },
+  "sourceChange": {
+    "action": {
+      "handled": "Mark as handled",
+      "keep": "Keep the box as it is",
+      "recheck": "Check again",
+      "retry": "Try again"
+    },
+    "effect": {
+      "alreadyPacked": "More units were already reported packed",
+      "boxClosedBefore": "The box was closed before the change",
+      "boxHoldsMore": "The box already holds more",
+      "couldNotUpdate": "Packing or stock could not be updated",
+      "noAutoAdd": "OpenLinker does not add items to a box on its own",
+      "noLongerMatches": "The box no longer matches the order",
+      "packedElsewhere": "This order is packed outside OpenLinker",
+      "packerTold": "The packer is told what to take out",
+      "packingAsksNew": "Packing asks for the new quantity",
+      "packingOnHold": "Packing is on hold",
+      "parcelLeftOld": "The parcel left with the old quantity",
+      "settleWithBuyer": "Settle the difference with the buyer in the shop",
+      "stockChangesWhenMatches": "Stock changes once the box matches",
+      "stockFollows": "Stock and reservation follow it",
+      "stockUnchanged": "Stock is unchanged",
+      "tellWarehouse": "Tell the warehouse, then decide here",
+      "triesAgain": "OpenLinker tries again with the next update"
+    },
+    "line": {
+      "added": "new",
+      "quantityChange": "{from} to {to}",
+      "removed": "removed",
+      "sku": "SKU {sku}"
+    },
+    "outcome": {
+      "accepted": "Kept as it is, and the box is released.",
+      "applied": "Packing, stock and reservation now match the order.",
+      "contended": "Someone else is changing this order right now, so try again in a moment.",
+      "failed": "This did not finish, so try again.",
+      "held": "The box still does not match, so it stays on hold.",
+      "nothingToDo": "The order and its packing already match.",
+      "shipped": "The parcel already left, so nothing was changed."
+    },
+    "status": {
+      "applied": "Applied",
+      "decision": "Needs a decision",
+      "failed": "Not finished",
+      "shipped": "Already shipped"
+    },
+    "title": "Changed by the shop"
   },
   "stockAtRisk": {
     "badgeTitle": "{title}. {body}",

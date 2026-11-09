@@ -55,6 +55,7 @@ import type {
   FulfillmentWorkTransaction,
 } from '../../domain/ports/fulfillment-work-repository.port';
 import {
+  isParcelComplete,
   requiredUnitsForLine,
   type CompleteInput,
   type CompleteResult,
@@ -67,6 +68,8 @@ import {
   type UndoCompletionResult,
   type UndoLastVerificationInput,
   type UndoLastVerificationResult,
+  type VoidSurplusOnLineInput,
+  type VoidSurplusOnLineResult,
   type VerifyUnitInput,
   type VerifyUnitResult,
 } from '../../domain/types/fulfillment-verification.types';
@@ -277,6 +280,50 @@ export class FulfillmentVerificationService implements IFulfillmentVerificationS
     });
   }
 
+  async voidSurplusOnLine(input: VoidSurplusOnLineInput): Promise<VoidSurplusOnLineResult> {
+    if (!Number.isInteger(input.keep) || input.keep < 0) {
+      throw new RangeError(`keep must be a non-negative integer, got ${String(input.keep)}`);
+    }
+    return this.works.runInTransaction(async (transaction) => {
+      // The same row lock every verification takes, so a scan racing this
+      // cannot be counted against a stale total.
+      const work = await this.works.lockWorkForVerification(input.workId, transaction);
+      if (work === null) throw new FulfillmentWorkNotFoundError(input.workId);
+
+      if (work.parcelClosedAt !== null) {
+        const counts = await this.works.countParcelVerifications(input.workId, transaction);
+        return { outcome: 'refused', reason: 'parcel-closed', state: this.toState(work, counts) } as const;
+      }
+
+      const countFor = async (): Promise<number> =>
+        (await this.works.countParcelVerifications(input.workId, transaction)).find(
+          (count) => count.workLineId === input.workLineId
+        )?.verifiedQuantity ?? 0;
+
+      let voided = 0;
+      const voidedAt = new Date();
+      // Bounded by the line's own count: each pass voids one active row or stops.
+      for (let active = await countFor(); active > input.keep; active -= 1) {
+        const latest = await this.works.findLatestActiveVerificationForLine(
+          input.workId,
+          input.workLineId,
+          transaction
+        );
+        if (latest === null) break;
+        const done = await this.works.voidVerificationById(
+          latest.id,
+          { workId: input.workId, voidedByUserId: input.actorUserId, voidedAt },
+          transaction
+        );
+        if (!done) break;
+        voided += 1;
+      }
+
+      const counts = await this.works.countParcelVerifications(input.workId, transaction);
+      return { outcome: 'voided', voided, state: this.toState(work, counts) } as const;
+    });
+  }
+
   async listVerifications(workId: string): Promise<readonly ParcelVerificationEvent[]> {
     return this.works.listVerifications(workId);
   }
@@ -352,22 +399,12 @@ export class FulfillmentVerificationService implements IFulfillmentVerificationS
     work: FulfillmentWork,
     counts: readonly { readonly workLineId: string; readonly verifiedQuantity: number }[]
   ): boolean {
-    // A work with no lines, or one whose every line requires zero units, must
-    // never close on a verification — there is nothing to have verified, and
-    // `every` over an empty array is vacuously true, so without this such a
-    // parcel would shut on a scan that recorded nothing.
-    //
-    // It is reachable only when every line is fully cancelled while the work
-    // itself is not, which is a routing fault rather than a packing one. The
-    // bench renders it as "0 of 0" and it can never close; NOTHING reports it
-    // as a fault today, and that gap is stated here rather than implied away.
-    const outstanding = work.lines.filter((line) => requiredUnitsForLine(line) > 0);
-    if (outstanding.length === 0) return false;
-
-    return outstanding.every((line) => {
-      const verified = counts.find((c) => c.workLineId === line.id)?.verifiedQuantity ?? 0;
-      return verified >= requiredUnitsForLine(line);
-    });
+    // The rule lives in `isParcelComplete` so a lowered quantity (#3961) closes
+    // a box on exactly the condition a scan does. An empty work never closes:
+    // reachable only when every line is fully cancelled while the work itself
+    // is not, a routing fault the bench renders as "0 of 0". NOTHING reports
+    // it as a fault today, and that gap is stated here rather than implied away.
+    return isParcelComplete(work.lines, counts);
   }
 
   private toState(
