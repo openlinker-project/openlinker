@@ -70,7 +70,8 @@ describe('ReturnsExceptionFilter', () => {
     expect(captured.status).toHaveBeenCalledWith(404);
     expect(captured.body).toMatchObject({
       statusCode: 404,
-      code: 'HTTP_404',
+      code: 'RETURN_NOT_FOUND',
+      params: { returnId: 'ol_return_1' },
       error: 'ReturnNotFoundError',
     });
   });
@@ -83,6 +84,8 @@ describe('ReturnsExceptionFilter', () => {
     expect(captured.status).toHaveBeenCalledWith(409);
     expect(captured.body).toMatchObject({
       statusCode: 409,
+      code: 'RETURN_NOT_ATTRIBUTED',
+      params: { trigger: 'decline' },
       error: 'ReturnNotAttributedError',
       trigger: 'decline',
     });

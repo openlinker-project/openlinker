@@ -2207,7 +2207,9 @@ describe('OrdersController', () => {
     });
 
     it('should map a foreign or unknown change to 404', async () => {
-      orderCancellation.confirmChange.mockRejectedValue(new OrderCancellationNotFoundError('nope'));
+      orderCancellation.confirmChange.mockRejectedValue(
+        new OrderCancellationNotFoundError('nope', { orderId: 'ol_order_1' })
+      );
 
       await expect(controller.confirmChange('ol_order_001', 'x', {}, USER)).rejects.toBeInstanceOf(
         NotFoundException

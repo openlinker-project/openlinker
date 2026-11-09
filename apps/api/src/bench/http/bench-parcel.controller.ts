@@ -41,16 +41,7 @@
  *
  * @module apps/api/src/bench/http
  */
-import {
-  Body,
-  Controller,
-  Get,
-  Inject,
-  NotFoundException,
-  Param,
-  Post,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { FulfillmentWorkNotFoundError } from '@openlinker/core/fulfillment';
 
@@ -95,6 +86,7 @@ import {
   BenchUndoResultResponseDto,
   BenchVerificationResultResponseDto,
 } from './dto/bench-parcel-response.dto';
+import { benchPackerUnidentified, benchParcelNotFound } from './bench-errors';
 
 @ApiBearerAuth()
 @ApiTags('bench')
@@ -159,7 +151,7 @@ export class BenchParcelController {
     // decorator returns `request.user` unchecked, so the TYPE is an assertion
     // about the guard rather than about the request. Do not delete it.
     if (!user?.id) {
-      throw new UnauthorizedException('A verification must name the packer');
+      throw benchPackerUnidentified('A verification must name the packer');
     }
 
     const result = await this.run(() =>
@@ -226,7 +218,7 @@ export class BenchParcelController {
     @CurrentUser() user: AuthenticatedUser
   ): Promise<BenchClaimResultResponseDto> {
     if (!user?.id) {
-      throw new UnauthorizedException('A claim must name the packer');
+      throw benchPackerUnidentified('A claim must name the packer');
     }
     const result = await this.run(() => this.parcels.claimParcel(workId, user.id));
     return this.toClaimDto(result);
@@ -251,7 +243,7 @@ export class BenchParcelController {
     @CurrentUser() user: AuthenticatedUser
   ): Promise<BenchBuyerNoteAcknowledgementResultResponseDto> {
     if (!user?.id) {
-      throw new UnauthorizedException('An acknowledgement must name the packer');
+      throw benchPackerUnidentified('An acknowledgement must name the packer');
     }
     const result = await this.run(() => this.parcels.acknowledgeBuyerNote(workId, user.id));
     return this.toBuyerNoteAcknowledgementDto(result);
@@ -280,7 +272,7 @@ export class BenchParcelController {
     // The #2890 F1 discipline verbatim: this write records who finished the
     // parcel, so it must not be reachable without a principal.
     if (!user?.id) {
-      throw new UnauthorizedException('A completion must name the packer');
+      throw benchPackerUnidentified('A completion must name the packer');
     }
 
     const result = await this.run(() =>
@@ -320,7 +312,7 @@ export class BenchParcelController {
     // took the completion back, so it must not be reachable without a
     // principal.
     if (!user?.id) {
-      throw new UnauthorizedException('Taking back a completion must name the packer');
+      throw benchPackerUnidentified('Taking back a completion must name the packer');
     }
 
     const result = await this.run(() =>
@@ -397,7 +389,7 @@ export class BenchParcelController {
     // Same discipline as `verifyUnit` (#2890 F1): an undo records who reversed
     // the scan, so it must not be reachable without a principal.
     if (!user?.id) {
-      throw new UnauthorizedException('An undo must name the packer');
+      throw benchPackerUnidentified('An undo must name the packer');
     }
 
     const result = await this.run(() =>
@@ -425,7 +417,7 @@ export class BenchParcelController {
     @CurrentUser() user: AuthenticatedUser
   ): Promise<BenchPresenceResponseDto> {
     if (!user?.id) {
-      throw new UnauthorizedException('A presence ping must name the packer');
+      throw benchPackerUnidentified('A presence ping must name the packer');
     }
     // Scoping check only — the result is discarded. Presence must never be
     // readable for a work id outside this bench's own eligibility, exactly as
@@ -461,7 +453,7 @@ export class BenchParcelController {
         error instanceof FulfillmentWorkNotFoundError ||
         error instanceof BenchParcelNotAtThisBenchError
       ) {
-        throw new NotFoundException('No such parcel at this bench');
+        throw benchParcelNotFound();
       }
       throw error;
     }
