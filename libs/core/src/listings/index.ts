@@ -321,6 +321,7 @@ export type {
   EanMatchMethod,
   EanMatchResult,
   EanMatchCandidate,
+  EanMatchCardRef,
   BatchCategoryByEanInput,
 } from './domain/types/ean-category-match.types';
 export {
