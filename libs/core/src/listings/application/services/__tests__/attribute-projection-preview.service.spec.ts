@@ -100,7 +100,7 @@ describe('AttributeProjectionPreviewService', () => {
       items: [{ internalVariantId: 'v1', categoryId: 'cat-1', ean: '4006381333931' }],
     });
 
-    expect(projection.project.mock.calls[0][0].metadata.ean).toBe('4006381333931');
+    expect(projection.project.mock.calls[0][0].metadata?.ean).toBe('4006381333931');
   });
 
   it('should thread the borrowed taxonomy of a borrowing destination', async () => {
