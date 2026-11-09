@@ -170,7 +170,8 @@ describe('SalesDocumentBatchScreen', () => {
 
     expect(await screen.findByText('WC-1204')).toBeInTheDocument();
     expect(await screen.findByText('ALG-24933')).toBeInTheDocument();
-    expect(screen.getByText('Allegro', { selector: 'td' })).toBeInTheDocument();
+    // Both queued orders came in through the same connection.
+    expect(screen.getAllByText('Allegro', { selector: 'td' })).toHaveLength(2);
 
     await user.click(screen.getByRole('button', { name: 'Blocked · 1' }));
     expect(screen.queryByText('WC-1204')).not.toBeInTheDocument();

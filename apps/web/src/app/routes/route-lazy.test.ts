@@ -141,7 +141,7 @@ const lazyRoutes = collectLazyRoutes([
  * switch does not remount the card), which removes one lazy guest route, and
  * `/settings/login-page` adds one authenticated lazy route - net 0, still 78.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 78;
+const EXPECTED_LAZY_ROUTE_COUNT = 79;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

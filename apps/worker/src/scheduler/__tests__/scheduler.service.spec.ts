@@ -373,6 +373,7 @@ describe('SchedulerService', () => {
         // #2349 — same global scope and same reason.
         'reservation-shortfall-sweep',
         'returns-orphan-reconcile',
+        'sales-document-batch-tick',
         'stale-offer-pause-sweep',
       ]);
     });
