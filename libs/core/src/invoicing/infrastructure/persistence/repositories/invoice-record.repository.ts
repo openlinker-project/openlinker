@@ -98,6 +98,7 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
+  // Unlocked by design: callers hold the per-order issuance lock (see the port).
   async findSuccessorAttempt(recordId: string): Promise<InvoiceRecord | null> {
     const entity = await this.repository.findOne({ where: { previousAttemptId: recordId } });
     return entity ? this.toDomain(entity) : null;

@@ -40,15 +40,16 @@ import type { FiscalProviderFailureDetails } from '../../../domain/types/fiscal-
 @Index('IDX_fiscal_registration_records_connectionId', ['connectionId'])
 @Index('IDX_fiscal_registration_records_status', ['status'])
 // Exactly-once guard. PLAIN unique (not partial): `idempotencyKey` is NOT NULL.
-@Index('UQ_fiscal_registration_records_previous_attempt', ['previousAttemptId'], {
-  unique: true,
-  where: '"previousAttemptId" IS NOT NULL',
-})
 @Index(
   'UQ_fiscal_registration_records_connection_idempotency',
   ['connectionId', 'idempotencyKey'],
   { unique: true },
 )
+// One successor per refused attempt (#3960). Partial: a first attempt has none.
+@Index('UQ_fiscal_registration_records_previous_attempt', ['previousAttemptId'], {
+  unique: true,
+  where: '"previousAttemptId" IS NOT NULL',
+})
 export class FiscalRegistrationRecordOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

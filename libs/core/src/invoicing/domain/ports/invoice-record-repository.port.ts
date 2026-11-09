@@ -64,6 +64,10 @@ export interface InvoiceRecordRepositoryPort {
   /**
    * The attempt that follows a refused invoice record, or `null` (#3960).
    * At most one exists: `previousAttemptId` is unique.
+   *
+   * Unlocked read. Call it only under the per-order issuance lock
+   * (`invoiceIssueLockKey`), where no peer can create a successor between this
+   * read and the create that follows it; the unique index is the backstop.
    */
   findSuccessorAttempt(recordId: string): Promise<InvoiceRecord | null>;
 

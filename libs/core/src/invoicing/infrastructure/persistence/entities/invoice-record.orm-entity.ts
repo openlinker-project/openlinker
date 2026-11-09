@@ -42,13 +42,14 @@ import { InvoiceStatus, PaymentStatus, RegulatoryStatus } from '../../../domain/
 })
 // Fiscal-dedup guard — exactly-once issuance on retry (ADR-026). Partial so
 // rows without a key (manual one-off issues) don't collide on NULL.
-@Index('UQ_invoice_records_previous_attempt', ['previousAttemptId'], {
-  unique: true,
-  where: '"previousAttemptId" IS NOT NULL',
-})
 @Index('UQ_invoice_records_connection_idempotency', ['connectionId', 'idempotencyKey'], {
   unique: true,
   where: '"idempotencyKey" IS NOT NULL',
+})
+// One successor per refused attempt (#3960). Partial: a first attempt has none.
+@Index('UQ_invoice_records_previous_attempt', ['previousAttemptId'], {
+  unique: true,
+  where: '"previousAttemptId" IS NOT NULL',
 })
 // Reconciliation scan (#1121): issued + non-terminal regulatory status, ordered
 // `updatedAt ASC, id ASC`, connection-scoped. Partial so terminal/receipt rows
