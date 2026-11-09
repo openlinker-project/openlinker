@@ -117,7 +117,10 @@ export class FulfillmentOrderEditService implements IFulfillmentOrderEditService
       await this.works.placeHold({
         workId: work.id,
         reason: 'awaiting-amendment',
-        note: input.note,
+        // No note: a hold note is operator-authored text rendered verbatim, and
+        // a system-written English sentence would reach every surface
+        // untranslated. The `awaiting-amendment` reason names the hold.
+        note: null,
         placedByUserId: null,
         placedByService: SOURCE_CHANGE_HOLD_ACTOR,
         placedAt: new Date(),

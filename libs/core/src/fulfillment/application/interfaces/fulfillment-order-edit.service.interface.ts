@@ -43,8 +43,6 @@ export interface OrderWorkEditAssessment {
 
 export interface HoldForSourceChangeInput {
   readonly orderId: string;
-  /** Operator-facing note stored on the hold; the bench may show it. */
-  readonly note: string;
 }
 
 export interface HoldForSourceChangeResult {

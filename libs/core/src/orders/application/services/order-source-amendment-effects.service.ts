@@ -60,7 +60,6 @@ import { IOrderChangeService } from './order-change.service.interface';
 const SOURCE_AMENDMENT_LOCK_TTL_MS = 30_000;
 
 /** Stored on the hold; the bench shows held boxes and the order page names the cause. */
-const SOURCE_CHANGE_HOLD_NOTE = 'The shop changed this order after packing started.';
 
 const PRODUCER = 'source-amendment';
 const ACCEPT_KIND = 'order.source_change_accept';
@@ -153,7 +152,11 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
       );
       return { outcome: 'failed', lines: [], cause: null, closedParcels: [] };
     } finally {
-      await this.lock.release(key, token).catch(() => undefined);
+      await this.lock.release(key, token).catch((error: unknown) => {
+        // Not fatal - the lock expires on its own TTL - but until it does the
+        // next ingestion or "Check again" answers `contended`, so say why.
+        this.logger.warn(`source_amendment_lock_release_failed order=${orderId}: ${describe(error)}`);
+      });
     }
   }
 
@@ -195,8 +198,12 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
     plan: SourceAmendmentPlan
   ): Promise<SourceAmendmentReconcileResult> {
     switch (plan.kind) {
-      case 'no-work':
       case 'in-sync':
+        if (hasUnfinishedApply(record)) return this.finishEarlierApply(orderId, record);
+        await this.settle(orderId, record);
+        return NOTHING;
+
+      case 'no-work':
         await this.settle(orderId, record);
         return NOTHING;
 
@@ -212,7 +219,7 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
 
       case 'hold':
         if (await this.isAccepted(orderId, plan.lines)) return this.accepted(orderId, record, plan.lines);
-        await this.fulfillmentEdit.holdForSourceChange({ orderId, note: SOURCE_CHANGE_HOLD_NOTE });
+        await this.fulfillmentEdit.holdForSourceChange({ orderId });
         await this.markAttention(orderId, plan.cause);
         this.logger.warn(
           `source_change_held order=${orderId} cause=${plan.cause} lines=${describeLines(plan.lines)}`
@@ -252,14 +259,36 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
       }
     }
 
+    if (await this.followUp(orderId, lines)) failed = true;
+
+    if (failed) {
+      // Leave (or raise) the attention entry so the order is visible until a
+      // later ingestion finishes the job.
+      await this.markAttention(orderId, 'apply-failed');
+      return { outcome: 'failed', lines, cause: null, closedParcels };
+    }
+
+    await this.settle(orderId, record);
+    this.logger.log(`source_change_applied order=${orderId} lines=${describeLines(lines)}`);
+    return { outcome: 'applied', lines, cause: null, closedParcels };
+  }
+
+  /**
+   * The reservation, then the master stock, each moved to an absolute target.
+   * Answers whether either failed. A failed reservation counts the same as a
+   * failed stock reversal: the work is already lower, so leaving the hold at the
+   * old quantity under-publishes availability until something repairs it.
+   */
+  private async followUp(orderId: string, lines: readonly SourceAmendmentLine[]): Promise<boolean> {
+    let failed = false;
     try {
       await this.reservations.narrowForOrder({
         orderRecordId: orderId,
         lines: lines.map((line) => ({ orderLineId: line.orderLineId, quantity: line.to })),
       });
     } catch (error) {
-      // The next ingestion re-reserves from the order and repairs the hold.
-      this.logger.warn(`source_change_reservation_not_narrowed order=${orderId}: ${describe(error)}`);
+      failed = true;
+      this.logger.error(`source_change_reservation_not_narrowed order=${orderId}: ${describe(error)}`);
     }
 
     for (const line of lines) {
@@ -282,17 +311,31 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
         );
       }
     }
+    return failed;
+  }
 
-    if (failed) {
-      // Leave (or raise) the attention entry so the order is visible until a
-      // later ingestion finishes the job.
+  /**
+   * The work already matches the order, but an earlier apply did not finish its
+   * reservation or stock step. Comparing work alone would call this in sync and
+   * drop the flag with those steps still undone, so they run again here, toward
+   * the order's current quantities - both are idempotent toward a target.
+   */
+  private async finishEarlierApply(
+    orderId: string,
+    record: OrderRecord
+  ): Promise<SourceAmendmentReconcileResult> {
+    const lines = Object.entries(effectiveQuantities(record.orderItems)).map(([orderLineId, quantity]) => ({
+      orderLineId,
+      from: quantity,
+      to: quantity,
+    }));
+    if (await this.followUp(orderId, lines)) {
       await this.markAttention(orderId, 'apply-failed');
-      return { outcome: 'failed', lines, cause: null, closedParcels };
+      return { outcome: 'failed', lines: [], cause: null, closedParcels: [] };
     }
-
     await this.settle(orderId, record);
-    this.logger.log(`source_change_applied order=${orderId} lines=${describeLines(lines)}`);
-    return { outcome: 'applied', lines, cause: null, closedParcels };
+    this.logger.log(`source_change_finished order=${orderId}`);
+    return { outcome: 'applied', lines: [], cause: null, closedParcels: [] };
   }
 
   /** The order and its work agree: drop this producer's entry and its own holds, if any. */
@@ -355,6 +398,13 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
     return false;
   }
 
+  /**
+   * `requiresCredentials: false` stands in for "this holder runs inside
+   * OpenLinker". That is true today only because ADR-055 makes the OL-OMS the
+   * one credential-less executor. A future third-party executor that also needs
+   * no credentials would be read as in-process, and its work narrowed without it
+   * ever hearing of the change - revisit this test before shipping one.
+   */
   private async isInProcessHolder(connectionId: string): Promise<boolean> {
     try {
       const connection = await this.connections.get(connectionId);
@@ -376,6 +426,11 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
  * Effective quantity per line. The overlay drops a line lowered to zero, and a
  * line the source removed is simply absent; both read as `0` in the planner.
  */
+/** An earlier apply left its reservation or stock step undone (see `finishEarlierApply`). */
+function hasUnfinishedApply(record: OrderRecord): boolean {
+  return record.omsAttention.some((entry) => entry.producer === PRODUCER && entry.detail === 'apply-failed');
+}
+
 function effectiveQuantities(items: OrderRecord['orderItems']): Record<string, number> {
   const out: Record<string, number> = {};
   for (const item of items) out[item.id] = (out[item.id] ?? 0) + item.quantity;

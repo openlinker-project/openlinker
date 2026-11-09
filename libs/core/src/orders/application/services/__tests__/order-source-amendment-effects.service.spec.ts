@@ -172,6 +172,76 @@ describe('OrderSourceAmendmentEffectsService (#3961)', () => {
       expect(calls).toEqual(['work', 'reservation', 'stock', 'release', 'attention:none']);
     });
 
+    it('should report a failed reservation step as not finished, like a failed stock step', async () => {
+      reservations.narrowForOrder.mockRejectedValue(new Error('db down'));
+
+      const result = await service.reconcile({ internalOrderId: ORDER_ID });
+
+      expect(result.outcome).toBe('failed');
+      expect(orderRecords.markOmsAttention).toHaveBeenCalledWith(ORDER_ID, 'source-amendment', {
+        kind: 'blocked',
+        reason: 'source-change-unapplied',
+        detail: 'apply-failed',
+      });
+    });
+
+    it('should finish an earlier unfinished apply even though the work already matches', async () => {
+      const unfinished = record({
+        omsAttention: [{ producer: 'source-amendment', reason: 'source-change-unapplied', detail: 'apply-failed' }],
+      });
+      orderRecords.getOrderRecord.mockResolvedValue(unfinished);
+      fulfillmentEdit.assessForEdit.mockResolvedValue(assessment({ requiredByLine: { li_1: 1, li_2: 1 } }));
+
+      const result = await service.reconcile({ internalOrderId: ORDER_ID });
+
+      expect(result.outcome).toBe('applied');
+      expect(reservations.narrowForOrder).toHaveBeenCalledWith({
+        orderRecordId: ORDER_ID,
+        lines: [
+          { orderLineId: 'li_1', quantity: 1 },
+          { orderLineId: 'li_2', quantity: 1 },
+        ],
+      });
+      expect(saleReversal.reverseLineToTarget).toHaveBeenCalledWith({
+        internalOrderId: ORDER_ID,
+        orderLineId: 'li_1',
+        targetUnits: 1,
+      });
+      expect(fulfillmentEdit.lowerLineQuantity).not.toHaveBeenCalled();
+      expect(calls.slice(-2)).toEqual(['release', 'attention:none']);
+    });
+
+    it('should keep the flag when finishing the earlier apply fails again', async () => {
+      orderRecords.getOrderRecord.mockResolvedValue(
+        record({
+          omsAttention: [{ producer: 'source-amendment', reason: 'source-change-unapplied', detail: 'apply-failed' }],
+        })
+      );
+      fulfillmentEdit.assessForEdit.mockResolvedValue(assessment({ requiredByLine: { li_1: 1, li_2: 1 } }));
+      saleReversal.reverseLineToTarget.mockResolvedValue({ status: 'failed', units: 0, detail: 'master down' });
+
+      const result = await service.reconcile({ internalOrderId: ORDER_ID });
+
+      expect(result.outcome).toBe('failed');
+      expect(fulfillmentEdit.releaseSourceChangeHolds).not.toHaveBeenCalled();
+    });
+
+    it('should hold without writing an English note onto the hold', async () => {
+      fulfillmentEdit.assessForEdit.mockResolvedValue(assessment({ verifiedByLine: { li_1: 2 } }));
+
+      await service.reconcile({ internalOrderId: ORDER_ID });
+
+      expect(fulfillmentEdit.holdForSourceChange).toHaveBeenCalledWith({ orderId: ORDER_ID });
+    });
+
+    it('should still answer when releasing the lock fails', async () => {
+      lock.release.mockRejectedValue(new Error('redis down'));
+
+      await expect(service.reconcile({ internalOrderId: ORDER_ID })).resolves.toMatchObject({
+        outcome: 'applied',
+      });
+    });
+
     it('should write nothing when the order already agrees with its work', async () => {
       fulfillmentEdit.assessForEdit.mockResolvedValue(assessment({ requiredByLine: { li_1: 1, li_2: 1 } }));
 

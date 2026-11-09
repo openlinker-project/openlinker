@@ -321,14 +321,14 @@ describe('FulfillmentOrderEditService (#3542)', () => {
         work('w2', [{ orderLineId: 'l1', total: 1 }], { status: 'closed' }),
       ] as never);
 
-      const result = await service.holdForSourceChange({ orderId: 'o1', note: 'changed' });
+      const result = await service.holdForSourceChange({ orderId: 'o1' });
 
       expect(result).toEqual({ heldWorkIds: ['w1'] });
       expect(works.placeHold).toHaveBeenCalledWith(
         expect.objectContaining({
           workId: 'w1',
           reason: 'awaiting-amendment',
-          note: 'changed',
+          note: null,
           placedByUserId: null,
           placedByService: 'source-amendment',
         })
@@ -341,7 +341,7 @@ describe('FulfillmentOrderEditService (#3542)', () => {
         new Map([['w1', [{ id: 'h1', fulfillmentWorkId: 'w1', placedByService: 'source-amendment' }]]]) as never
       );
 
-      const result = await service.holdForSourceChange({ orderId: 'o1', note: 'changed' });
+      const result = await service.holdForSourceChange({ orderId: 'o1' });
 
       expect(result).toEqual({ heldWorkIds: [] });
       expect(works.placeHold).not.toHaveBeenCalled();
