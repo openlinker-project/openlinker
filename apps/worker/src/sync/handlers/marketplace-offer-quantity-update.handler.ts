@@ -143,6 +143,11 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
       ...(typeof payload.productVariantId === 'string' && payload.productVariantId !== ''
         ? { productVariantId: payload.productVariantId }
         : {}),
+      // #3962 - the variation's parent. Dropping it here sends a variation write
+      // to the simple-product path, which 404s and deletes a live mapping.
+      ...(typeof payload.externalParentId === 'string' && payload.externalParentId !== ''
+        ? { externalParentId: payload.externalParentId }
+        : {}),
     };
   }
 }

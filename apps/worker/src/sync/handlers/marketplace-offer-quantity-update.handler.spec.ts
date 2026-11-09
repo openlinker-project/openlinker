@@ -61,6 +61,22 @@ describe('MarketplaceOfferQuantityUpdateHandler', () => {
     );
   });
 
+  it('should thread externalParentId into the core command when the payload names a parent', async () => {
+    await handler.execute(job({ schemaVersion: 1, offerId: 'o1', quantity: 0, externalParentId: '64' }));
+
+    expect(inventorySync.updateOfferQuantity).toHaveBeenCalledWith(
+      'conn-1',
+      expect.objectContaining({ offerId: 'o1', externalParentId: '64' })
+    );
+  });
+
+  it('should send no externalParentId when the payload names no parent', async () => {
+    await handler.execute(job({ schemaVersion: 1, offerId: 'o1', quantity: 0 }));
+
+    const command = inventorySync.updateOfferQuantity.mock.calls[0][1];
+    expect(command).not.toHaveProperty('externalParentId');
+  });
+
   it('should execute a payload carrying no observedAt', async () => {
     const result = await handler.execute(job({ schemaVersion: 1, offerId: 'o1', quantity: 4 }));
 
