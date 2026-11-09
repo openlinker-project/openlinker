@@ -19,6 +19,7 @@ import { OfferBuilderService } from '../offer-builder.service';
 import {
   ATTRIBUTE_PROJECTION_SERVICE_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
+  OFFER_MAPPING_REPOSITORY_TOKEN,
 } from '../../../listings.tokens';
 import type { ICategoryResolutionService } from '../../interfaces/category-resolution.service.interface';
 import type { IAttributeProjectionService } from '../../interfaces/attribute-projection.service.interface';
@@ -37,6 +38,11 @@ describe('OfferBuilderService', () => {
   let categoryResolution: jest.Mocked<Pick<ICategoryResolutionService, 'resolveCategory'>>;
   let attributeProjection: jest.Mocked<IAttributeProjectionService>;
   let bundleDefinitions: jest.Mocked<Pick<IBundleDefinitionService, 'get'>>;
+  let offerMappings: {
+    countByConnectionAndVariants: jest.Mock;
+    findMappingPage: jest.Mock;
+    findDeadFailedCreationOfferIds: jest.Mock;
+  };
   let productMaster: { getProduct: jest.Mock; resolveCategoriesForBatchByEan: jest.Mock };
 
   const emptyProjection: AttributeProjectionResult = {
@@ -116,12 +122,18 @@ describe('OfferBuilderService', () => {
     };
 
     bundleDefinitions = { get: jest.fn().mockResolvedValue(null) };
+    offerMappings = {
+      countByConnectionAndVariants: jest.fn().mockResolvedValue(new Map()),
+      findMappingPage: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+      findDeadFailedCreationOfferIds: jest.fn().mockResolvedValue([]),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OfferBuilderService,
         { provide: PRODUCTS_SERVICE_TOKEN, useValue: productsService },
         { provide: BUNDLE_DEFINITION_SERVICE_TOKEN, useValue: bundleDefinitions },
+        { provide: OFFER_MAPPING_REPOSITORY_TOKEN, useValue: offerMappings },
         { provide: CONNECTION_PORT_TOKEN, useValue: connectionPort },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrationsService },
         { provide: CATEGORY_RESOLUTION_SERVICE_TOKEN, useValue: categoryResolution },
@@ -324,6 +336,7 @@ describe('OfferBuilderService', () => {
           name: 'Name p-b',
           barcode: '222',
           imageUrls: ['https://x/p-b.jpg'],
+          categoryId: 'allegro-cat-999',
         },
         {
           variantId: 'v-a',
@@ -333,8 +346,53 @@ describe('OfferBuilderService', () => {
           name: 'Name p-a',
           barcode: '111',
           imageUrls: ['https://x/a.jpg', 'https://x/p-a.jpg'],
+          categoryId: 'allegro-cat-999',
         },
       ]);
+    });
+
+    it('gives a component with a live offer its offer id, and one without its own category and product parameters', async () => {
+      bundleDefinitions.get.mockResolvedValue({
+        variantId: VARIANT_ID,
+        version: 1,
+        components: [
+          { variantId: 'v-a', productId: 'p-a', quantity: 1 },
+          { variantId: 'v-b', productId: 'p-b', quantity: 1 },
+        ],
+      });
+      offerMappings.countByConnectionAndVariants.mockResolvedValue(new Map([['v-a', 1]]));
+      offerMappings.findMappingPage.mockResolvedValue({
+        items: [{ externalId: 'offer-dead' }, { externalId: 'offer-live' }],
+        total: 2,
+      });
+      offerMappings.findDeadFailedCreationOfferIds.mockResolvedValue(['offer-dead']);
+      attributeProjection.project.mockResolvedValue({
+        ...emptyProjection,
+        parameters: [
+          { id: '248811', values: ['Acme'], section: 'product' },
+          { id: '11323', values: ['new'], section: 'offer' },
+        ],
+      });
+      productsService.getVariant.mockImplementation((id: string) =>
+        Promise.resolve(
+          (id === VARIANT_ID
+            ? defaultVariant
+            : { id, productId: `p-${id.slice(2)}`, ean: '5901234123457', gtin: null }) as ProductVariant
+        )
+      );
+      productsService.getVariantsByProductId.mockResolvedValue([]);
+      productsService.getProduct.mockImplementation((id: string) =>
+        Promise.resolve({ id, name: `Name ${id}`, images: [] } as never)
+      );
+
+      const result = await service.buildCreateOfferCommand(input);
+      const [a, b] = result.productSet ?? [];
+
+      expect(a.existingOfferExternalId).toBe('offer-live');
+      expect(a.categoryId).toBeUndefined();
+      expect(b.existingOfferExternalId).toBeUndefined();
+      expect(b.categoryId).toBe('allegro-cat-999');
+      expect(b.parameters).toEqual([{ id: '248811', values: ['Acme'], section: 'product' }]);
     });
 
     it('refuses a bundle whose component no longer exists', async () => {
