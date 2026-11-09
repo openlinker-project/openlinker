@@ -1130,6 +1130,19 @@
     "title": "Dodaj połączenie",
     "wizardsChip": "Kreatory dla każdej platformy"
   },
+  "paymentWriteback": {
+    "factCod": "Zamówienia za pobraniem i anulowane nigdy nie są oznaczane jako opłacone.",
+    "factFailure": "Jeśli sklep tego nie przyjmie, zamówienie pojawi się w Zamówieniach pod filtrem „Płatność nie trafiła do sklepu”.",
+    "factFromNow": "Dotyczy płatności od tej chwili.",
+    "heading": "Gdy kupujący zapłaci później",
+    "leave": "Zostaw bez zmian",
+    "leaveHelp": "Płatność w sklepie aktualizujesz samodzielnie.",
+    "markPaid": "Oznacz zamówienie jako opłacone",
+    "recommended": "Zalecane",
+    "stateDefault": "Domyślny status opłacenia w sklepie",
+    "stateHelp": "Używany przez sklepy, które oznaczają płatność statusem zamówienia.",
+    "stateLabel": "Status w sklepie"
+  },
   "pickBankAccount": {
     "errorDescription": "Wybór nie został zapisany - {hint} {message}",
     "errorTitle": "Nie udało się zapisać konta bankowego"

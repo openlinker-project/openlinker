@@ -1102,6 +1102,19 @@
     "title": "Add a connection",
     "wizardsChip": "Per-platform wizards"
   },
+  "paymentWriteback": {
+    "factCod": "Cash on delivery and cancelled orders are never marked paid.",
+    "factFailure": "If the shop doesn't accept it, the order shows under Orders, Payment not sent to shop.",
+    "factFromNow": "Applies to payments from now on.",
+    "heading": "When the buyer pays later",
+    "leave": "Leave it as it is",
+    "leaveHelp": "You update payment in the shop yourself.",
+    "markPaid": "Mark the order as paid",
+    "recommended": "Recommended",
+    "stateDefault": "The shop's default paid status",
+    "stateHelp": "Used by shops that track payment as an order status.",
+    "stateLabel": "Status in the shop"
+  },
   "pickBankAccount": {
     "errorDescription": "The selection was not persisted - {hint} {message}",
     "errorTitle": "Could not save the bank account"

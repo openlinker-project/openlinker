@@ -39,12 +39,13 @@ import { Alert, Button } from '../../../../shared/ui';
 import { useApiClient } from '../../../../app/api/api-client-provider';
 import { inventoryQueryKeys } from '../../../inventory';
 import type { OfferRowValidationInput } from '../../../../shared/plugins';
-import type { EanMatchCandidate, EanMatchResult } from '../../api/listings.types';
+import type { EanMatchCandidate, EanMatchCardRef, EanMatchResult } from '../../api/listings.types';
 import {
   computeBlockers,
   effectiveVariantEan,
   imageCountForVariant,
   isValidGtin,
+  operatorPickedCategory,
   productCategoryIdOf,
   siblingStockBlockers,
   titleForVariant,
@@ -75,6 +76,8 @@ export interface BulkResolveVariantOutcome {
   resolvedCategoryId: string | null;
   resolvedProductCardId: string | null;
   resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | null;
+  overriddenCard: EanMatchCardRef | null;
+  mappingAgrees: boolean;
   masterPrice: number | null;
   masterStock: number | null;
   masterCurrency: string | null;
@@ -321,6 +324,10 @@ export function BulkResolveStep({
           effectiveTitle: titleForVariant(row, variant),
           platformValidate,
           destinationResolvesCategoryAtSubmit: categoryResolvesAtSubmit,
+          cardInOtherCategory:
+            categoryResult.kind === 'matched' &&
+            categoryResult.overriddenCard !== undefined &&
+            !operatorPickedCategory(row, variant),
         });
         if (isMulti) blockers = siblingStockBlockers(blockers, masterStock);
         // A supplied-but-invalid barcode is a hard GS1 gate (plan §10.1 / B5) and
@@ -347,6 +354,9 @@ export function BulkResolveStep({
               : null,
           resolutionMethod:
             categoryResult.kind === 'matched' ? (categoryResult.method ?? 'auto_detect') : null,
+          overriddenCard:
+            categoryResult.kind === 'matched' ? (categoryResult.overriddenCard ?? null) : null,
+          mappingAgrees: categoryResult.kind === 'matched' && categoryResult.mappingAgrees === true,
           masterPrice,
           masterStock,
           masterCurrency,

@@ -445,6 +445,22 @@ describe('SubiektOrderProcessorAdapter', () => {
         expect(called).toBe(false);
       },
     );
+
+    it('should decline a paid event without calling the bridge, since a ZK has no payment status (#3963)', async () => {
+      let called = false;
+      const adapter = buildAdapter(() => (called = true));
+
+      const result = await adapter.write({
+        type: 'paid',
+        externalOrderId: '7',
+        amount: 389,
+        currency: 'PLN',
+        paidOn: 'Allegro',
+      });
+
+      expect(result).toEqual({ outcome: 'unsupported', detail: 'Subiekt GT sales orders have no payment status' });
+      expect(called).toBe(false);
+    });
   });
 
   describe('buyer country (adr__Ewid.adr_IdPanstwo)', () => {

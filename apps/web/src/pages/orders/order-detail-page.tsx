@@ -73,6 +73,7 @@ import { OrderDetailHeader, isChannelStatusStale } from '../../features/orders/c
 import { DestinationRoutingCallout } from '../../features/orders/components/destination-routing-callout';
 import { OrderHealthSummary } from '../../features/orders/components/order-health-summary';
 import { OrderPricingPanel } from '../../features/orders/components/order-pricing-panel';
+import { OrderPaymentPanel } from '../../features/orders/components/order-payment-panel';
 import { OrderDeliveryPanel } from '../../features/orders/components/order-delivery-panel';
 import { deriveFulfillment } from '../../features/orders/lib/order-health';
 import { deriveDeliveryOutcome } from '../../features/orders/lib/delivery-outcome';
@@ -789,6 +790,14 @@ export function OrderDetailPage(): ReactElement {
             key={order.internalOrderId}
             internalOrderId={internalOrderId}
             channelNames={orderChannelNames}
+          />
+
+          {/* #3963 - did a payment that arrived after the shops got the order reach them? */}
+          <OrderPaymentPanel
+            internalOrderId={order.internalOrderId}
+            entries={order.paymentWriteback ?? []}
+            sourceName={cancelSourceName}
+            amountLabel={cancelTotalLabel}
           />
 
           <section className="detail-section">

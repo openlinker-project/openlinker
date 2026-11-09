@@ -38,6 +38,7 @@ import type { SyncLockPort } from '@openlinker/core/sync';
 import { WooCommerceCustomerProvisioner } from '../../../provisioners/woocommerce-customer-provisioner';
 import { WooCommerceAddressProvisioner } from '../../../provisioners/woocommerce-address-provisioner';
 import { WooCommerceResourceNotFoundException } from '../../../../domain/exceptions/woocommerce-resource-not-found.exception';
+import { WooCommerceNetworkException } from '../../../../domain/exceptions/woocommerce-network.exception';
 import { WooCommerceInvalidIdentifierException } from '../../../../domain/exceptions/woocommerce-invalid-identifier.exception';
 import { WooCommerceOrderProcessingException } from '../../../../domain/exceptions/woocommerce-order-processing.exception';
 import { WooCommerceOrderCreateAmbiguousException } from '../../../../domain/exceptions/woocommerce-order-create-ambiguous.exception';
@@ -1782,5 +1783,78 @@ describe('WooCommerceOrderProcessorAdapter - OrderCreateStockEffect', () => {
     await expect(adapter.createOrder(makeOrder())).rejects.toThrow();
 
     expect(await lowersStockOnOrderCreate(adapter)).toBe(false);
+  });
+});
+
+// #3963 - a payment that arrived after the shop got the order unpaid.
+describe('WooCommerceOrderProcessorAdapter — write paid (#3963)', () => {
+  const paid = {
+    type: 'paid' as const,
+    externalOrderId: '55',
+    amount: 389,
+    currency: 'PLN',
+    paidOn: 'Allegro',
+  };
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('should set_paid and leave a private note for an unpaid pending order', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.get.mockResolvedValue({ id: 55, status: 'pending', date_paid_gmt: null });
+    httpClient.put.mockResolvedValue({ id: 55, status: 'processing' });
+    httpClient.post.mockResolvedValue({ id: 1 });
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write(paid);
+
+    expect(result).toEqual({ outcome: 'applied' });
+    expect(httpClient.put).toHaveBeenCalledWith('/wp-json/wc/v3/orders/55', { set_paid: true });
+    expect(httpClient.post).toHaveBeenCalledWith('/wp-json/wc/v3/orders/55/notes', {
+      note: 'Marked paid by OpenLinker. Allegro payment 389.00 PLN.',
+      customer_note: false,
+    });
+  });
+
+  it('should report applied without a write when WC already shows the order paid', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.get.mockResolvedValue({ id: 55, status: 'processing', date_paid_gmt: '2026-11-04T13:07:00' });
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write(paid);
+
+    expect(result).toEqual({ outcome: 'applied', detail: 'already paid in the shop' });
+    expect(httpClient.put).not.toHaveBeenCalled();
+  });
+
+  it.each(['cancelled', 'refunded', 'failed'])('should refuse an order that is already %s', async (status) => {
+    const httpClient = makeHttpClient();
+    httpClient.get.mockResolvedValue({ id: 55, status, date_paid_gmt: null });
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write(paid);
+
+    expect(result.outcome).toBe('rejected');
+    expect(result.transient).toBeUndefined();
+    expect(httpClient.put).not.toHaveBeenCalled();
+  });
+
+  it('should still report applied when only the note fails', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.get.mockResolvedValue({ id: 55, status: 'pending', date_paid_gmt: null });
+    httpClient.put.mockResolvedValue({ id: 55, status: 'processing' });
+    httpClient.post.mockRejectedValue(new Error('notes disabled'));
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    await expect(adapter.write(paid)).resolves.toEqual({ outcome: 'applied' });
+  });
+
+  it('should report a network failure as transient', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.get.mockRejectedValue(new WooCommerceNetworkException('WooCommerce request timed out'));
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write(paid);
+
+    expect(result).toEqual(expect.objectContaining({ outcome: 'rejected', transient: true }));
   });
 });
