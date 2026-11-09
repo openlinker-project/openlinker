@@ -459,6 +459,7 @@ describe('Packer exclusion (#2413)', () => {
       lines: [],
       otherParcelBuyerNoteAcknowledgements: [],
       packerNotes: [],
+      sourceChange: null,
       route: {
         processorKind: 'ol_managed_carrier',
         processorName: 'InPost',

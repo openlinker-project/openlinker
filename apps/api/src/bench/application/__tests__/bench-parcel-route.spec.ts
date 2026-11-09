@@ -208,6 +208,7 @@ describe('toParcelResponseDto route', () => {
     lines: [],
     otherParcelBuyerNoteAcknowledgements: [],
     packerNotes: [],
+    sourceChange: null,
   };
 
   it('should map the route field by field when it is resolved', () => {
