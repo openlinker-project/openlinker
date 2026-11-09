@@ -1,0 +1,180 @@
+{
+  "checkName": {
+    "empty": "Wpisz nazwę.",
+    "hasRate": "Nie wpisuj stawki VAT. Paragony dopisują ją same.",
+    "tooLong": "Użyj najwyżej {max} znaków, żeby stawka VAT zmieściła się w tym, co odczytują drukarki fiskalne."
+  },
+  "common": {
+    "addCountryButton": "+ Dodaj kraj",
+    "allOtherCountries": "Wszystkie pozostałe kraje",
+    "exampleOrderFrom": "Przykładowe zamówienie z kraju",
+    "noLine": "Bez linii dostawy",
+    "orderFrom": "Zamówienie z kraju {country}",
+    "rateTag": "+ stawka VAT",
+    "suggestionBasis": "Na czym opiera się sugestia"
+  },
+  "editor": {
+    "addCountry": "Dodaj kraj",
+    "addTitle": "Dodaj kraj",
+    "cancel": "Anuluj",
+    "chooseCountry": "Wybierz kraj, aby zobaczyć jego ustawienia.",
+    "country": {
+      "alreadyListed": "Już jest w tabeli",
+      "description": "Dowolny kraj. Kraje, z których już masz zamówienia, są na górze.",
+      "label": "Kraj kupującego",
+      "orders": {
+        "few": "{n} zamówienia w 30 dni",
+        "many": "{n} zamówień w 30 dni",
+        "one": "{n} zamówienie w 30 dni",
+        "other": "{n} zamówienia w 30 dni"
+      },
+      "placeholder": "Szukaj kraju…",
+      "suggestionAvailable": "dostępna sugestia"
+    },
+    "descriptionCountry": "Zamówienia dostarczane do tego kraju korzystają z tych ustawień.",
+    "descriptionOther": "Dotyczy każdego kraju kupującego, którego nie ma w tabeli.",
+    "fewerOptions": "Mniej opcji",
+    "fill": {
+      "description": "Wypełnia pola poniżej. Potem możesz zmienić dowolne z nich.",
+      "label": "Wypełnij na podstawie",
+      "noSuggestion": "OpenLinker nie ma jeszcze sugestii dla kraju {country}. Sprawdź VAT od dostawy ze swoją księgową.",
+      "openLinkerDefault": "Domyślne ustawienia OpenLinker ({name})",
+      "ownSettings": "Własne ustawienia",
+      "sameAsOther": "Takie same jak „Wszystkie pozostałe kraje”",
+      "suggestedFor": "Sugerowane dla kraju {country}"
+    },
+    "fixedRate": {
+      "label": "Stała stawka w %",
+      "placeholder": "Na przykład 21",
+      "seen": "Stawki w Twoich zamówieniach z kraju {country}"
+    },
+    "free": {
+      "label": "Gdy dostawa jest darmowa",
+      "omit": "Pomiń linię dostawy",
+      "show": "Pokaż linię z kwotą 0"
+    },
+    "invoiceName": {
+      "label": "Nazwa na fakturach",
+      "toggle": "Inna nazwa na fakturach"
+    },
+    "methods": {
+      "addLabel": "Dodaj metodę dostawy",
+      "addOption": "+ Dodaj metodę dostawy…",
+      "nameFor": "Nazwa dla: {method}",
+      "remove": "Usuń",
+      "title": "Własna nazwa dla metody dostawy"
+    },
+    "moreOptions": "Więcej opcji",
+    "name": {
+      "description": "Wybierz jedną albo wpisz własną, w dowolnym języku.",
+      "label": "Nazwa linii dostawy"
+    },
+    "preview": {
+      "empty": "Na razie nie ma czego pokazać.",
+      "label": "Podgląd",
+      "suggestedFrom": "Sugestia na podstawie praktyki VAT w kraju {country}"
+    },
+    "rate": {
+      "fixed": "Jedna stała stawka",
+      "goods": "Taka jak produktów",
+      "label": "Stawka VAT dostawy",
+      "spread": "Dolicz dostawę do cen produktów"
+    },
+    "rateFormatLabel": "Jak paragony zapisują stawkę",
+    "removeCountry": "Usuń: {country}",
+    "save": "Zapisz"
+  },
+  "nameInput": {
+    "characters": "{count} z {max} znaków",
+    "ownLabel": "{label}, własna",
+    "placeholder": "Na przykład: Doprava, Versand, Envío",
+    "typeOwn": "Wpiszę własną…",
+    "useName": "Użyj tej nazwy"
+  },
+  "panel": {
+    "countryRemoved": "Usunięto: {country}. Te zamówienia używają teraz „Wszystkie pozostałe kraje”.",
+    "countrySaved": "Zapisano: {country}.",
+    "description": "Jak dostawa wygląda na paragonach i fakturach, osobno dla każdego kraju kupującego.",
+    "errorFallback": "Nie udało się wczytać połączenia.",
+    "errorTitle": "Nie udało się wczytać ustawień dostawy",
+    "loadingMessage": "Pobieranie tego połączenia.",
+    "loadingTitle": "Wczytywanie ustawień dostawy",
+    "otherSaved": "Zapisano pozostałe kraje.",
+    "saveFailedFallback": "Nie udało się zapisać ustawień dostawy.",
+    "saveFailedTitle": "Zmiany nie zostały zapisane",
+    "suggest": {
+      "body": "Dla tego kraju są dostępne sugerowane ustawienia.",
+      "review": "Przejrzyj",
+      "title": "Większość Twoich zamówień trafia do kraju {country}.",
+      "use": "Zastosuj"
+    },
+    "title": "Dostawa na dokumentach"
+  },
+  "preview": {
+    "deliveryPaid": "Dostawa opłacona przez kupującego",
+    "exampleFrom": "Przykładowe zamówienie z kraju {country}",
+    "exampleSummary": "Zobacz na przykładowym paragonie i fakturze",
+    "includedInPrices": "Bez linii dostawy. Zawierają ją ceny produktów.",
+    "noOrders": "Nie ma jeszcze zamówień z kraju {country}, więc nie ma przykładowego zamówienia do pokazania.",
+    "onInvoice": "Na fakturze",
+    "onReceipt": "Na paragonie",
+    "rateFromProducts": "Stawka pochodzi z produktów w każdym zamówieniu."
+  },
+  "rateText": {
+    "fixed": "Zawsze {rate}",
+    "fixedNotSet": "Stała, nieustawiona",
+    "goods": "Taka jak produktów",
+    "spread": "Doliczona do cen produktów"
+  },
+  "table": {
+    "aboutLabel": "Informacje: {label}",
+    "actions": "Akcje",
+    "buyerCountry": "Kraj kupującego",
+    "caption": "Linia dostawy według kraju kupującego",
+    "deliveryLine": "Linia dostawy",
+    "edit": "Edytuj",
+    "editLabel": "Edytuj: {who}",
+    "editOtherLabel": "Edytuj wszystkie pozostałe kraje",
+    "invoiceHint": "Faktury: {name}",
+    "methodsHint": {
+      "few": "{n} metody dostawy z osobną nazwą",
+      "many": "{n} metod dostawy z osobną nazwą",
+      "one": "{n} metoda dostawy z osobną nazwą",
+      "other": "{n} metody dostawy z osobną nazwą"
+    },
+    "vatRate": "Stawka VAT"
+  },
+  "tips": {
+    "line": {
+      "term": "Linia dostawy",
+      "text": "Pozycja dostawy na paragonie i fakturze. Paragony dopisują do jej nazwy stawkę VAT, na przykład „Koszt dostawy 23%”.",
+      "whyTerm": "Dlaczego stawka jest w nazwie",
+      "whyText": "Drukarki fiskalne przypisują jednej nazwie pozycji jedną stawkę VAT i odrzucają nazwę, której stawka rośnie. Nazwa zawierająca stawkę nigdy jej nie zmienia."
+    },
+    "rate": {
+      "fixedTerm": "Jedna stała stawka",
+      "fixedText": "Dostawa zawsze dostaje wybraną przez Ciebie stawkę.",
+      "goodsTerm": "Taka jak produktów",
+      "goodsText": "Dostawa dostaje stawkę VAT produktów. Jeśli zamówienie zawiera produkty z różnymi stawkami, dostawa jest dzielona między nie proporcjonalnie do wartości.",
+      "spreadTerm": "Dolicz do cen produktów",
+      "spreadText": "Nie ma linii dostawy. Jej koszt jest doliczany do cen produktów na dokumencie."
+    }
+  },
+  "wizard": {
+    "groupLabel": "Dostawa na dokumentach",
+    "intro": "Wybierz jedną opcję. Możesz ją później zmienić w dowolnym momencie.",
+    "later": "Możesz to później zmienić w połączeniu, w zakładce Mapowania, Dostawa na dokumentach.",
+    "ownText": "Wybierz nazwy i stawkę VAT dla każdego kraju kupującego.",
+    "ownTitle": "Skonfiguruję samodzielnie",
+    "receiptFor": "Paragon dla zamówienia z kraju {country}",
+    "recommended": "Zalecane",
+    "suggestedCountry": "zamówienia do kraju {country} - „{name}”",
+    "suggestedLead": "Dostawa dostaje tę samą stawkę VAT co produkty.",
+    "suggestedNames": "Nazwa linii: {list}, pozostałe kraje - „{name}”.",
+    "suggestedNone": "Dostawa dostaje tę samą stawkę VAT co produkty i nazywa się „{name}”.",
+    "suggestedTitle": "Użyj sugerowanych ustawień",
+    "summarySpread": "W cenach produktów",
+    "summaryTitle": "Dostawa na dokumentach",
+    "title": "Jak dostawa ma wyglądać na paragonach i fakturach?"
+  }
+}
