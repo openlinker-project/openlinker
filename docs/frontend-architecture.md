@@ -506,7 +506,7 @@ Initial variables:
 
 - `VITE_API_BASE_URL`
 - `VITE_APP_ENV`
-- `VITE_DEFAULT_UI_LOCALE` - the language a session opens in when the operator has not chosen one (`pl` or `en`; a blank or unsupported value counts as unset; see § Internationalization). Available from #3856.
+- `VITE_DEFAULT_UI_LOCALE` - the language a session opens in when the operator has not chosen one and the browser asks for no language the app ships (`pl` or `en`; a blank or unsupported value counts as unset, which means `en`; see § Internationalization). Available from #3856.
 
 Rules:
 
@@ -592,7 +592,7 @@ Rules:
 
 > This section describes the target state of the #3855-#3859 stack. The hooks, the provider, the `locale` prop and `VITE_DEFAULT_UI_LOCALE` exist from #3856; the formatters from #3857; the language switch and translated primitives from #3858; the lint and copy checks from #3859. Merge the stack as one unit.
 
-The app ships English and Polish. English is the default today; #3890 makes Polish the default once the daily screens are translated. Every user-facing word is owned by the frontend; the API never sends translated text. Everything lives behind `apps/web/src/shared/i18n/`, the only import path a component uses.
+The app ships English and Polish. A session opens in the browser's language when the app ships it, and in English otherwise (#3890). Every user-facing word is owned by the frontend; the API never sends translated text. Everything lives behind `apps/web/src/shared/i18n/`, the only import path a component uses.
 
 `LocaleProvider` is mounted once, at the app root in `app/providers/app-providers.tsx`. Tests pin it with `<LocaleProvider locale="en">`.
 
@@ -692,9 +692,12 @@ The pre-existing `useTranslation()` / `t(key, fallback)` (#612) stays as a compa
 
 1. `?lang=pl|en` on any URL - switches and saves, then the parameter is removed from the address bar so a reload cannot overwrite a later choice (support, screenshots, Playwright). In a development build `?lang=xx` turns on the pseudo-language for the session (see Guardrails).
 2. `localStorage` - the operator's last choice.
-3. `VITE_DEFAULT_UI_LOCALE` - the deployment default, read in `shared/config/env.ts`. Build-time, like every `VITE_*` variable. Unset, blank or a language the app does not support all mean the same thing: `en` today; #3890 changes that default to `pl`. A mistyped value therefore never silently picks the other language.
+3. The browser - the first entry of `navigator.languages` (or `navigator.language` when the list is empty) that the app ships, matched on the primary subtag, so `pl-PL` is `pl` and `en-GB` is `en`. A language the app does not ship (`de`) is skipped, not taken as an answer. The detected language is never stored: only the switch stores, so a changed browser language shows on the next session (#3890).
+4. `VITE_DEFAULT_UI_LOCALE` - the deployment default, read in `shared/config/env.ts`, used only when the browser asks for no shipped language. Build-time, like every `VITE_*` variable. Unset, blank or a language the app does not support all fall through to the same last resort, `en`. A mistyped value therefore never silently picks the other language.
 
-There is no locale prefix in the URL: this is a signed-in app with no SEO need, and a link shared between colleagues must open in each reader's own language. The browser's `navigator.language` is deliberately not consulted. A later step stores the choice on the user profile.
+The whole order is one pure function, `resolveLocale` in `shared/i18n/resolve-locale.ts`, which takes the browser's languages as an input so it is testable without a DOM.
+
+There is no locale prefix in the URL: this is a signed-in app with no SEO need, and a link shared between colleagues must open in each reader's own language. A later step stores the choice on the user profile.
 
 ### Server text
 
@@ -720,7 +723,7 @@ The language switch appears on every page as soon as #3858 lands, while only the
 
 ### Tests
 
-Unit tests and Playwright run in English. `src/test/setup.ts` resets the active language to English and clears the stored choice before every test, the vitest config pins `VITE_DEFAULT_UI_LOCALE=en`, the shared render helper pins `<LocaleProvider locale="en">`, and the e2e fixture stores `en` when nothing is stored yet. The existing text queries keep working whatever the deployment default becomes; Polish gets its own targeted tests.
+Unit tests and Playwright run in English. `src/test/setup.ts` resets the active language to English and clears the stored choice before every test, the vitest config pins `VITE_DEFAULT_UI_LOCALE=en`, happy-dom reports `en-US` as the browser language (a test about detection stubs `navigator.languages` itself), the shared render helper pins `<LocaleProvider locale="en">`, and the e2e fixture stores `en` when nothing is stored yet. The existing text queries keep working whatever the deployment default becomes; Polish gets its own targeted tests.
 
 ### Guardrails
 
