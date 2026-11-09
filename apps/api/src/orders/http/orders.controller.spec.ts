@@ -986,7 +986,7 @@ describe('OrdersController', () => {
       expect(result.attention).toEqual({ lateToShip: 3, stuck: 0, toHandle: 2 });
     });
 
-    it('should still answer with an empty open-return list when the returns read fails (#4025)', async () => {
+    it('should omit the open-return counts, not report 0, when the returns read fails (#4025)', async () => {
       listOpenReturnOrderIds.mockRejectedValue(new Error('returns down'));
       repository.countByHealth.mockResolvedValue({
         total: 0, sourceDeleted: 0, awaitingMapping: 0, needsAttention: 0, synced: 0, awaitingDispatch: 0,
@@ -995,10 +995,16 @@ describe('OrdersController', () => {
         openReturn: 0, hasBuyerNote: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
       });
 
-      await expect(controller.statusSummary({})).resolves.toBeDefined();
+      const result = await controller.statusSummary({});
+
       expect(repository.countByHealth).toHaveBeenCalledWith(
         expect.objectContaining({ openReturnOrderIds: [] })
       );
+      // Both counts built on the id list are unknown, so they are absent rather
+      // than a 0 the operator would read as "no open returns".
+      expect(result).not.toHaveProperty('openReturn');
+      expect(result.attention).toEqual({ lateToShip: 0, stuck: 0 });
+      expect(result.hasBuyerNote).toBe(0);
     });
   });
 
