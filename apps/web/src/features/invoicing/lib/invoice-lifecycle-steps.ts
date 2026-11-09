@@ -13,19 +13,7 @@ import { getMessages } from '../../../shared/i18n';
 import type { DocumentLifecycleStep } from '../../../shared/ui/document-lifecycle';
 import type { InvoiceRecord } from '../api/invoicing.types';
 
-/**
- * Taken as a PARAMETER, mirroring `HeadlineTranslate` in the sibling
- * `sales-document-headline.ts` — so this module isn't the one place in the
- * pair that hardcodes English.
- */
-export type LifecycleStepTranslate = (key: string, fallback: string) => string;
-
-export function resolveInvoiceLifecycleSteps(
-  invoice: InvoiceRecord,
-  // Kept for callers that still pass a translator; copy is read from the
-  // `invoicing` namespace at call time.
-  _t?: LifecycleStepTranslate,
-): DocumentLifecycleStep[] {
+export function resolveInvoiceLifecycleSteps(invoice: InvoiceRecord): DocumentLifecycleStep[] {
   const copy = getMessages('invoicing').salesDocument.lifecycle;
   const issuedStep: DocumentLifecycleStep = {
     id: 'issued',
