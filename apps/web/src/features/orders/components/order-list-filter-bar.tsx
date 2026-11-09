@@ -168,6 +168,7 @@ export function OrderListFilterBar({
   const { state } = filtersApi;
   const orders = useMessages('orders');
   const COPY = orders.listFilters;
+  const paymentCopy = orders.paymentWriteback;
   const plural = usePlural();
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const panelId = useId();
@@ -394,6 +395,15 @@ export function OrderListFilterBar({
         count={summary?.omsAttention}
         onChange={() => {
           filtersApi.toggle('attention');
+        }}
+      />
+      <FilterCheck
+        label={paymentCopy.filterCheck}
+        tone="warning"
+        checked={state.paymentNotSent}
+        count={summary?.paymentNotSent}
+        onChange={() => {
+          filtersApi.toggle('paymentNotSent');
         }}
       />
       <FilterCheck
@@ -802,6 +812,20 @@ export function OrderListFilterBar({
             {COPY.quick.omsStopped}
             {summary?.omsAttention === undefined ? null : (
               <span className="chip__count">{summary.omsAttention}</span>
+            )}
+          </Chip>
+        ) : null}
+        {state.paymentNotSent || summary?.paymentNotSent ? (
+          <Chip
+            tone="warning"
+            active={state.paymentNotSent}
+            onClick={() => {
+              filtersApi.toggle('paymentNotSent');
+            }}
+          >
+            {paymentCopy.filterQuick}
+            {summary?.paymentNotSent === undefined ? null : (
+              <span className="chip__count">{summary.paymentNotSent}</span>
             )}
           </Chip>
         ) : null}

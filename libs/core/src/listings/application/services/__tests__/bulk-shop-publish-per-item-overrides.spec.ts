@@ -142,7 +142,7 @@ describe('Bulk shop publish per-item overrides (end-to-end, #1831)', () => {
       project: jest.fn().mockResolvedValue({
         parameters: [{ id: 'Brand', values: ['Acme'], section: 'product' }],
         unmappedSourceKeys: [],
-        unresolvedRequired: [], restrictionIssues: [],
+        unresolvedRequired: [], restrictionIssues: [], origins: [],
       }),
     };
     const identifierMapping = {

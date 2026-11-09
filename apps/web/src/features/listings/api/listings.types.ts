@@ -892,8 +892,23 @@ export interface EanMatchCandidate {
  */
 export type EanMatchMethod = 'auto_detect' | 'category_mapping';
 
+/** A catalogue card the resolver found but did not use (#3994). */
+export interface EanMatchCardRef {
+  allegroCategoryId: string;
+  productCardId: string;
+}
+
 export type EanMatchResult =
-  | { kind: 'matched'; allegroCategoryId: string; productCardId: string; method?: EanMatchMethod }
+  | {
+      kind: 'matched';
+      allegroCategoryId: string;
+      productCardId: string;
+      method?: EanMatchMethod;
+      /** The card sits in the category the operator's mapping names (#3994). Absent = not compared. */
+      mappingAgrees?: true;
+      /** A card matched in a different category than the mapping; the mapping won (#3994). */
+      overriddenCard?: EanMatchCardRef;
+    }
   | { kind: 'multi-match'; candidates: EanMatchCandidate[] }
   | { kind: 'no-ean' }
   | { kind: 'no-match' };
@@ -952,3 +967,72 @@ export interface EanCategoryMatchStreamDoneEvent {
 export type EanCategoryMatchStreamEvent =
   | EanCategoryMatchStreamResultEvent
   | EanCategoryMatchStreamDoneEvent;
+
+// ── Attribute projection preview (#3995) ─────────────────────────────────────
+
+/** One variant to preview, under the category it will be submitted with. */
+export interface AttributeProjectionPreviewItem {
+  variantId: string;
+  categoryId: string;
+  /** The operator's per-offer EAN override, when set. */
+  ean?: string;
+}
+
+export interface AttributeProjectionPreviewRequest {
+  items: AttributeProjectionPreviewItem[];
+}
+
+/** The rule that produced a value - mirrors the backend `ProjectedParameterRuleRef`. */
+export interface ProjectedParameterRuleRef {
+  id: string;
+  kind: 'fixed' | 'copy-remap' | 'place-value';
+  sourceAttributeKey?: string;
+  remapped?: boolean;
+  placeSource?: 'name' | 'variant' | 'manufacturer' | 'ean' | 'sku' | 'weight';
+}
+
+/**
+ * Where one projected value came from. `rejected` means the destination's
+ * dictionary has no such entry, so the value is dropped at publish and the
+ * parameter still needs one.
+ */
+export interface ProjectedParameterOrigin {
+  parameterId: string;
+  parameterName: string;
+  section: CategoryParameterSection;
+  source: 'rule' | 'mapping';
+  rawValue: string;
+  outcome: 'accepted' | 'rejected';
+  rule?: ProjectedParameterRuleRef;
+}
+
+export interface ProjectedParameterRestrictionIssue {
+  code: string;
+  severity: 'block' | 'warn';
+  parameterId: string;
+  parameterName: string;
+  message: string;
+}
+
+export type AttributeProjectionPreviewEntry =
+  | {
+      variantId: string;
+      categoryId: string;
+      status: 'ok';
+      /** What the publish will send from mappings and rules. */
+      parameters: OfferParameter[];
+      unresolvedRequired: { id: string; name: string; section: CategoryParameterSection }[];
+      restrictionIssues: ProjectedParameterRestrictionIssue[];
+      origins: ProjectedParameterOrigin[];
+    }
+  | {
+      variantId: string;
+      categoryId: string;
+      status: 'failed';
+      /** `variant-not-found` / `projection-failed`; open so a newer server reason still renders as a failure. */
+      reason: string;
+    };
+
+export interface AttributeProjectionPreviewResponse {
+  entries: AttributeProjectionPreviewEntry[];
+}

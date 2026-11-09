@@ -48,7 +48,9 @@ import {
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
   ORDER_CHANGE_SERVICE_TOKEN,
   ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
+  PAYMENT_WRITEBACK_SERVICE_TOKEN,
 } from '../../orders.tokens';
+import { IPaymentWritebackService } from '../interfaces/payment-writeback.service.interface';
 import { IOrderCancellationEffectsService } from '../interfaces/order-cancellation-effects.service.interface';
 import { IOrderChangeService } from './order-change.service.interface';
 import type { OrderChange } from '../../domain/entities/order-change.entity';
@@ -277,7 +279,11 @@ export class OrderIngestionService implements IOrderIngestionService {
     // confirmation of an operator cancel request exactly as the operator path
     // runs it. Same module, no cycle.
     @Inject(ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN)
-    private readonly cancellationEffects: IOrderCancellationEffectsService
+    private readonly cancellationEffects: IOrderCancellationEffectsService,
+    // #3963: mirrors a payment that arrived after a shop got the order. Same
+    // module, no cycle. Appended last.
+    @Inject(PAYMENT_WRITEBACK_SERVICE_TOKEN)
+    private readonly paymentWriteback: IPaymentWritebackService
   ) {}
 
   async ingestOrders(
@@ -936,6 +942,17 @@ export class OrderIngestionService implements IOrderIngestionService {
         this.logger.warn('Failed to update order record sync status', settlement.reason);
       }
     }
+
+    // #3963: a payment that arrived after a shop got the order never reaches it
+    // through the create path above (an existing mapping skips the create).
+    // Decided here, after the sync settled, so `created` is known per shop;
+    // the send itself runs in its own job. Best-effort - never fails ingestion.
+    await this.paymentWriteback.planAfterSync({
+      order,
+      existing,
+      sourceConnectionId: connectionId,
+      results,
+    });
 
     await this.decideSalesDocument(
       order,

@@ -38,12 +38,22 @@ import type { DispatchCarrierHint } from './dispatch-carrier-hint.types';
  * the same thing for its `'picked'` event): the natural future caller is
  * #2400's fulfilment-progress ingestion the day it needs to relay picking
  * status outward, which is a decision for that slice, not this one.
+ *
+ * `'paid'` (#3963) tells a destination shop that an order it holds as unpaid
+ * has since been paid at the source. It is a payment fact, not a fulfilment
+ * one, so it never reuses `'in-progress'`: on PrestaShop that event maps to a
+ * paid order state, and firing it for a cash-on-delivery order would book money
+ * nobody received. Core decides WHETHER to send it (cash on delivery,
+ * cancellation, refunds, created-paid) in `payment-writeback.types.ts`; the
+ * adapter only decides HOW its platform expresses paid, and declines a state it
+ * must not move backwards from.
  */
 export const OrderLifecycleEventTypeValues = [
   'dispatched',
   'cancelled',
   'delivered',
   'in-progress',
+  'paid',
 ] as const;
 export type OrderLifecycleEventType = (typeof OrderLifecycleEventTypeValues)[number];
 
@@ -94,6 +104,17 @@ export type OrderLifecycleEvent =
   | {
       type: 'in-progress';
       externalOrderId: string;
+    }
+  | {
+      type: 'paid';
+      externalOrderId: string;
+      /** Amount the buyer paid at the source, in `currency`. Used for the shop note and payment record. */
+      amount: number;
+      currency: string;
+      /** The source's own payment instant, when known - never OL's clock (#2336). */
+      paidAt?: Date;
+      /** Display name of the channel the money was paid on, e.g. "Allegro". For an operator-readable note. */
+      paidOn: string;
     };
 
 /**

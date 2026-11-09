@@ -126,6 +126,13 @@ export class OrderHealthSummaryResponseDto {
   omsAttention!: number;
 
   @ApiProperty({
+    description:
+      'Orders where a shop still shows the order unpaid and OpenLinker gave up sending the payment ' +
+      '(#3963). Its own axis, never inside the health partition.',
+  })
+  paymentNotSent!: number;
+
+  @ApiProperty({
     nullable: true,
     description:
       'When the OLDEST still-held order was held (ISO 8601), or null when nothing is held ' +
