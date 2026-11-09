@@ -8,10 +8,10 @@
  *
  * Two modes, resolved from props OR from the in-dialog picker when the
  * top-level "Publish to shop" CTA opens with no variant context at all:
- *   - **single** — one product. Optional Review step before submit. Submits
+ *   - **single** - one product. Optional Review step before submit. Submits
  *     via `useShopPublishMutation`, reports `{ recordId }`.
- *   - **bulk** — 2+ products, one per variant. Each product gets its own
- *     Stock + Price override row in Configure (#1414 — these are independent
+ *   - **bulk** - 2+ products, one per variant. Each product gets its own
+ *     Stock + Price override row in Configure (#1414 - these are independent
  *     publish decisions, not one shared value for the batch). Submits via
  *     `useBulkShopPublishMutation`, reports `{ batchId }`.
  *
@@ -23,7 +23,7 @@
  *
  * Category placement, attributes, and images are resolved server-side from
  * the master product at publish time (the #1042 builder), so the wizard is
- * deliberately light — only visibility, stock, and an optional price
+ * deliberately light - only visibility, stock, and an optional price
  * override are operator-editable.
  *
  * Retry-safe: a stable `x-idempotency-key` is generated once per mount
@@ -36,6 +36,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
@@ -46,7 +47,7 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { captureDemoEvent } from '../../demo';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import type { Connection } from '../../connections';
@@ -65,10 +66,11 @@ import type {
 import {
   WOOCOMMERCE_PUBLISH_BULK_DEFAULTS,
   WOOCOMMERCE_PUBLISH_SINGLE_DEFAULTS,
-  woocommercePublishWizardSchema,
+  createWoocommercePublishWizardSchema,
   type WoocommercePublishWizardSubmission,
   type WoocommercePublishWizardValues,
 } from './woocommerce-publish-wizard.schema';
+import { serverErrorText } from '../lib/server-error-text';
 
 interface WoocommercePublishWizardProps {
   connection: Connection;
@@ -95,7 +97,7 @@ function variantLabel(product: Product, variant: ProductVariant): string {
 }
 
 /** Ids supplied directly by props (row-level "Publish"/bulk actions). Empty
- *  when the top-level CTA opened with no variant context — the operator picks
+ *  when the top-level CTA opened with no variant context - the operator picks
  *  via the in-dialog selection step instead. */
 function resolvePropsIds(defaultVariantId?: string, defaultVariantIds?: string[]): string[] {
   const bulkIds = (defaultVariantIds ?? []).filter(Boolean);
@@ -128,6 +130,10 @@ export function WoocommercePublishWizard({
   onCancel,
   onSubmitted,
 }: WoocommercePublishWizardProps): ReactElement {
+  const copy = useMessages('listings').woocommercePublishWizard;
+  const common = useMessages('listings').common;
+  const plural = usePlural();
+  const schema = useMemo(() => createWoocommercePublishWizardSchema(copy.validation), [copy]);
   const propsIds = useMemo(
     () => resolvePropsIds(defaultVariantId, defaultVariantIds),
     [defaultVariantId, defaultVariantIds],
@@ -138,7 +144,7 @@ export function WoocommercePublishWizard({
   // rendering blank.
   const needsVariantPicker = propsIds.length === 0;
 
-  // Multi-select tray state — only used during the selection step. Map
+  // Multi-select tray state - only used during the selection step. Map
   // preserves insertion order, matching the tray's expected chip order.
   // Carries master price alongside the label so Configure can prefill the
   // price override field with the real current value instead of leaving it
@@ -230,7 +236,7 @@ export function WoocommercePublishWizard({
     WoocommercePublishWizardSubmission
   >({
     defaultValues: initialDefaults,
-    resolver: zodResolver(woocommercePublishWizardSchema),
+    resolver: zodResolver(schema),
     mode: 'onBlur',
   });
 
@@ -281,7 +287,7 @@ export function WoocommercePublishWizard({
 
   // Master stock, fetched once per row set so Configure can prefill the
   // stock field with the real current value instead of leaving it blank
-  // behind a "master" placeholder (#1414 follow-up — mirrors the price
+  // behind a "master" placeholder (#1414 follow-up - mirrors the price
   // prefill, which comes from the picker's already-loaded Product/Variant
   // instead of a dedicated query).
   const relevantVariantIds = useMemo(() => {
@@ -301,7 +307,7 @@ export function WoocommercePublishWizard({
     [selectedVariants],
   );
 
-  // Prefill stock once master availability resolves — only for fields the
+  // Prefill stock once master availability resolves - only for fields the
   // operator hasn't already touched, so a slow/refetching query never
   // clobbers a manual edit.
   useEffect(() => {
@@ -338,9 +344,7 @@ export function WoocommercePublishWizard({
     showToast({
       tone: 'success',
       description:
-        field === 'stock'
-          ? "Stock reset to each product's current master stock."
-          : "Price reset to each product's current master price.",
+        field === 'stock' ? copy.toast.stockReset : copy.toast.priceReset,
     });
   }
 
@@ -376,8 +380,10 @@ export function WoocommercePublishWizard({
         const result = await bulkMutation.mutateAsync({ request });
         showToast({
           tone: 'success',
-          title: 'Bulk publish started',
-          description: `Publishing ${items.length} products to ${connection.name}.`,
+          title: copy.toast.bulkStartedTitle,
+          description: plural(items.length, copy.toast.bulkStartedBody, {
+            shop: connection.name,
+          }),
         });
         onSubmitted({ batchId: result.batchId }, connection.id);
       } else {
@@ -400,8 +406,8 @@ export function WoocommercePublishWizard({
         });
         showToast({
           tone: 'success',
-          title: 'Publish started',
-          description: `Publishing to ${connection.name}.`,
+          title: copy.toast.startedTitle,
+          description: interpolate(copy.toast.startedBody, { shop: connection.name }),
         });
         onSubmitted({ recordId: result.listingCreationRecordId }, connection.id);
       }
@@ -411,7 +417,7 @@ export function WoocommercePublishWizard({
   });
 
   const visibilitySegmented = (
-    <div className="segmented" role="group" aria-label="Visibility">
+    <div className="segmented" role="group" aria-label={copy.visibility.label}>
       <button
         type="button"
         className={status === 'draft' ? 'segmented__opt segmented__opt--active' : 'segmented__opt'}
@@ -419,7 +425,7 @@ export function WoocommercePublishWizard({
         onClick={() => form.setValue('status', 'draft', { shouldDirty: true })}
       >
         <span className="segmented__dot segmented__dot--draft" aria-hidden="true" />
-        Draft
+        {copy.visibility.draft}
       </button>
       <button
         type="button"
@@ -430,7 +436,7 @@ export function WoocommercePublishWizard({
         onClick={() => form.setValue('status', 'published', { shouldDirty: true })}
       >
         <span className="segmented__dot segmented__dot--pub" aria-hidden="true" />
-        Published
+        {copy.visibility.published}
       </button>
     </div>
   );
@@ -441,9 +447,9 @@ export function WoocommercePublishWizard({
     return (
       <div className="wizard-card">
         <FormField
-          label="Search products"
+          label={copy.picker.searchLabel}
           name="productSearch"
-          description="Search by product name, SKU, or EAN. Check one or more variants — they all publish together."
+          description={copy.picker.searchDescription}
         >
           <Input
             value={productSearchInput}
@@ -451,15 +457,15 @@ export function WoocommercePublishWizard({
               setProductSearchInput(e.target.value);
               setProductOffset(0);
             }}
-            placeholder="e.g. T-shirt, SKU-123, 5901234567890"
+            placeholder={copy.picker.searchPlaceholder}
           />
         </FormField>
 
         <div className="shop-publish-picker">
           {productsQuery.isLoading ? (
-            <p className="muted-text">Loading products…</p>
+            <p className="muted-text">{copy.picker.loadingProducts}</p>
           ) : (productsQuery.data?.items.length ?? 0) === 0 ? (
-            <p className="muted-text">No products match.</p>
+            <p className="muted-text">{copy.picker.noProducts}</p>
           ) : (
             <ul className="create-offer-variant-picker__list">
               {(productsQuery.data?.items ?? []).map((product) => {
@@ -483,9 +489,9 @@ export function WoocommercePublishWizard({
                     {isExpanded ? (
                       <ul className="create-offer-variant-picker__variants">
                         {productDetailQuery.isLoading ? (
-                          <li className="muted-text">Loading variants…</li>
+                          <li className="muted-text">{copy.picker.loadingVariants}</li>
                         ) : (productDetailQuery.data?.variants ?? []).length === 0 ? (
-                          <li className="muted-text">No variants on this product.</li>
+                          <li className="muted-text">{copy.picker.noVariants}</li>
                         ) : (
                           (productDetailQuery.data?.variants ?? []).map((variant) => {
                             const label = variantLabel(productDetailQuery.data ?? product, variant);
@@ -517,7 +523,10 @@ export function WoocommercePublishWizard({
                                     {label}
                                   </span>
                                   <span className="mono-text muted-text shop-publish-picker__code">
-                                    SKU {variant.sku ?? '-'} · EAN {variant.ean ?? '-'}
+                                    {interpolate(copy.picker.variantCodes, {
+                                      sku: variant.sku ?? '-',
+                                      ean: variant.ean ?? '-',
+                                    })}
                                   </span>
                                 </label>
                               </li>
@@ -538,28 +547,32 @@ export function WoocommercePublishWizard({
             return (
               <div className="create-offer-variant-picker__pagination">
                 <span className="muted-text">
-                  {productOffset + 1}-{pageEnd} of {total}
+                  {interpolate(copy.picker.pageRange, {
+                    start: productOffset + 1,
+                    end: pageEnd,
+                    total,
+                  })}
                 </span>
                 <div className="create-offer-variant-picker__pagination-actions">
                   <Button
                     tone="secondary"
                     type="button"
-                    aria-label="Previous page of products"
+                    aria-label={copy.picker.previousAria}
                     disabled={productOffset === 0}
                     onClick={() =>
                       setProductOffset((o) => Math.max(0, o - VARIANT_PICKER_PAGE_SIZE))
                     }
                   >
-                    Previous
+                    {copy.picker.previous}
                   </Button>
                   <Button
                     tone="secondary"
                     type="button"
-                    aria-label="Next page of products"
+                    aria-label={copy.picker.nextAria}
                     disabled={productOffset + VARIANT_PICKER_PAGE_SIZE >= total}
                     onClick={() => setProductOffset((o) => o + VARIANT_PICKER_PAGE_SIZE)}
                   >
-                    Next
+                    {copy.picker.next}
                   </Button>
                 </div>
               </div>
@@ -570,7 +583,8 @@ export function WoocommercePublishWizard({
         <div className="shop-publish-tray">
           <div className="shop-publish-tray__head">
             <span className="shop-publish-tray__count">
-              Selected for this batch: <span className="mono-text">{selectedList.length}</span>
+              {copy.tray.selectedLabel}{' '}
+              <span className="mono-text">{selectedList.length}</span>
             </span>
             {selectedList.length > 0 ? (
               <Button
@@ -579,7 +593,7 @@ export function WoocommercePublishWizard({
                 className="button--sm"
                 onClick={() => setSelectedVariants(new Map())}
               >
-                Clear all
+                {copy.tray.clearAll}
               </Button>
             ) : null}
           </div>
@@ -590,7 +604,7 @@ export function WoocommercePublishWizard({
                   <span title={label}>{label}</span>
                   <button
                     type="button"
-                    aria-label={`Remove ${label} from batch`}
+                    aria-label={interpolate(copy.removeFromBatchAria, { name: label })}
                     onClick={() => removeFromTray(variantId)}
                   >
                     ×
@@ -600,7 +614,7 @@ export function WoocommercePublishWizard({
             </div>
           ) : (
             <p className="shop-publish-tray__empty-hint muted-text">
-              Check one or more variants above to add them here.
+              {copy.tray.empty}
             </p>
           )}
         </div>
@@ -608,12 +622,12 @@ export function WoocommercePublishWizard({
         <div className="wizard-actions">
           <div className="wizard-actions__group">
             <Button type="button" tone="ghost" onClick={onCancel}>
-              Cancel
+              {copy.actions.cancel}
             </Button>
           </div>
           <div className="wizard-actions__group">
             <Button type="button" disabled={selectedList.length === 0} onClick={handleContinue}>
-              Continue with {selectedList.length} product{selectedList.length === 1 ? '' : 's'}
+              {plural(selectedList.length, copy.continueWith)}
             </Button>
           </div>
         </div>
@@ -625,7 +639,12 @@ export function WoocommercePublishWizard({
   if (mode === 'single' && reviewing) {
     const values = form.getValues();
     const priceLabel =
-      values.priceAmount === '' ? 'from master' : `${values.priceAmount} ${values.priceCurrency}`;
+      values.priceAmount === ''
+        ? copy.review.priceFromMaster
+        : interpolate(copy.review.priceValue, {
+            amount: values.priceAmount,
+            currency: values.priceCurrency,
+          });
     return (
       <form onSubmit={(e) => void submit(e)} noValidate className="wizard-card">
         <Button
@@ -634,48 +653,48 @@ export function WoocommercePublishWizard({
           className="button--sm wizard-card__back"
           onClick={() => setReviewing(false)}
         >
-          ← Back
+          <span aria-hidden="true">←</span> {copy.actions.back}
         </Button>
-        {mutationError ? <Alert tone="error">{mutationError.message}</Alert> : null}
+        {mutationError ? <Alert tone="error">{serverErrorText(common.serverSaid, mutationError.message, common.unknownError)}</Alert> : null}
         <dl className="shop-publish-kv">
           <div className="shop-publish-kv__row">
-            <dt>Shop</dt>
+            <dt>{copy.review.shop}</dt>
             <dd>{connection.name}</dd>
           </div>
           <div className="shop-publish-kv__row">
-            <dt>Variant</dt>
+            <dt>{copy.review.variant}</dt>
             <dd>
               {singleVariantLabel ? <div>{singleVariantLabel}</div> : null}
               <span className="mono-text muted-text">{singleId}</span>
             </dd>
           </div>
           <div className="shop-publish-kv__row">
-            <dt>Visibility</dt>
+            <dt>{copy.visibility.label}</dt>
             <dd>
               <StatusBadge tone={values.status === 'published' ? 'success' : 'neutral'} withDot>
-                {values.status === 'published' ? 'Published' : 'Draft'}
+                {values.status === 'published' ? copy.visibility.published : copy.visibility.draft}
               </StatusBadge>
             </dd>
           </div>
           <div className="shop-publish-kv__row">
-            <dt>Stock</dt>
+            <dt>{copy.fields.stock}</dt>
             <dd className="mono-text">{values.stock === '' ? '0' : values.stock}</dd>
           </div>
           <div className="shop-publish-kv__row">
-            <dt>Price</dt>
+            <dt>{copy.review.price}</dt>
             <dd className="mono-text">{priceLabel}</dd>
           </div>
         </dl>
         <div className="wizard-actions">
           <div className="wizard-actions__group">
             <Button type="button" tone="ghost" onClick={onCancel}>
-              Cancel
+              {copy.actions.cancel}
             </Button>
           </div>
           <div className="wizard-actions__group">
             <ReadOnlyLock
               active={write.demoReadOnly}
-              message={DEMO_READ_ONLY_ACTION_MESSAGE}
+              message={demoReadOnlyActionMessage()}
               onLockedClick={() =>
                 captureDemoEvent('demo_offer_create_attempted', {
                   platform: 'woocommerce',
@@ -684,7 +703,7 @@ export function WoocommercePublishWizard({
               }
             >
               <Button type="submit" disabled={isPending || write.demoReadOnly}>
-                {isPending ? 'Publishing…' : 'Confirm & publish'}
+                {isPending ? copy.actions.publishing : copy.actions.confirmPublish}
               </Button>
             </ReadOnlyLock>
           </div>
@@ -696,28 +715,28 @@ export function WoocommercePublishWizard({
   // ── Configure step (single + bulk share the field layout) ─────────────
   return (
     <form onSubmit={(e) => void submit(e)} noValidate className="wizard-card">
-      {mutationError ? <Alert tone="error">{mutationError.message}</Alert> : null}
+      {mutationError ? <Alert tone="error">{serverErrorText(common.serverSaid, mutationError.message, common.unknownError)}</Alert> : null}
       {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
         <FormErrorSummary errors={validationMessages} />
       ) : null}
 
       <div className="form-field">
         <span className="form-field__label">
-          Visibility{' '}
-          {mode === 'bulk' ? <span className="shop-publish-hint">applies to all</span> : null}
+          {copy.visibility.label}{' '}
+          {mode === 'bulk' ? <span className="shop-publish-hint">{copy.appliesToAll}</span> : null}
         </span>
         {visibilitySegmented}
         {mode === 'single' ? (
           <p className="form-field__description">
-            Draft creates the product hidden; Published lists it live on the storefront.
+            {copy.visibility.description}
           </p>
         ) : null}
       </div>
 
       <div className="form-field">
         <span className="form-field__label">
-          Description{' '}
-          {mode === 'bulk' ? <span className="shop-publish-hint">applies to all</span> : null}
+          {copy.description.label}{' '}
+          {mode === 'bulk' ? <span className="shop-publish-hint">{copy.appliesToAll}</span> : null}
         </span>
         <label className="shop-publish-ai-toggle">
           <input
@@ -727,15 +746,15 @@ export function WoocommercePublishWizard({
               form.setValue('generateDescription', e.target.checked, { shouldDirty: true })
             }
           />
-          <span>Generate {mode === 'bulk' ? 'descriptions' : 'a description'} with AI</span>
+          <span>{mode === 'bulk' ? copy.description.generateBulk : copy.description.generateSingle}</span>
         </label>
         <p className="form-field__description">
           {mode === 'bulk'
-            ? 'Each product gets an AI-written description from its master data. Products you have already given a description keep it.'
-            : "Writes the description from the product's master data at publish time. Leave off to use the master description."}
+            ? copy.description.helpBulk
+            : copy.description.helpSingle}
         </p>
         {generateDescription ? (
-          <FormField label="Tone" name="descriptionTone">
+          <FormField label={copy.description.tone} name="descriptionTone">
             <select
               className="input"
               value={form.watch('descriptionTone')}
@@ -745,8 +764,8 @@ export function WoocommercePublishWizard({
                 })
               }
             >
-              <option value="concise">Concise</option>
-              <option value="detailed">Detailed</option>
+              <option value="concise">{copy.description.toneConcise}</option>
+              <option value="detailed">{copy.description.toneDetailed}</option>
             </select>
           </FormField>
         ) : null}
@@ -762,9 +781,11 @@ export function WoocommercePublishWizard({
       {mode === 'bulk' ? (
         <div className="form-field">
           <span className="form-field__label">
-            Products{' '}
-            <span className="shop-publish-hint">{itemsFieldArray.fields.length} selected</span>{' '}
-            <span className="shop-publish-hint">— stock &amp; price set per product</span>
+            {copy.bulk.label}{' '}
+            <span className="shop-publish-hint">
+              {plural(itemsFieldArray.fields.length, copy.bulk.selected)}
+            </span>{' '}
+            <span className="shop-publish-hint">{copy.bulk.perProductHint}</span>
           </span>
           <div className="shop-publish-config-table">
             <div className="shop-publish-config-table__body">
@@ -777,7 +798,7 @@ export function WoocommercePublishWizard({
                     <button
                       type="button"
                       className="shop-publish-config-row__remove"
-                      aria-label={`Remove ${field.label} from batch`}
+                      aria-label={interpolate(copy.removeFromBatchAria, { name: field.label })}
                       onClick={() => itemsFieldArray.remove(index)}
                     >
                       ×
@@ -785,19 +806,19 @@ export function WoocommercePublishWizard({
                   </div>
                   <div className="shop-publish-config-row__fields">
                     <FormField
-                      label="Stock"
+                      label={copy.fields.stock}
                       name={`items.${index}.stock`}
                       error={form.formState.errors.items?.[index]?.stock?.message}
                     >
                       <Input
                         inputMode="numeric"
                         className="input--mono"
-                        placeholder="master"
+                        placeholder={copy.fields.masterPlaceholder}
                         {...form.register(`items.${index}.stock`)}
                       />
                     </FormField>
                     <FormField
-                      label="Price override"
+                      label={copy.fields.priceOverride}
                       name={`items.${index}.priceAmount`}
                       error={form.formState.errors.items?.[index]?.priceAmount?.message}
                     >
@@ -808,7 +829,7 @@ export function WoocommercePublishWizard({
                         <Input
                           inputMode="decimal"
                           className="input--mono shop-publish-affix__input"
-                          placeholder="master"
+                          placeholder={copy.fields.masterPlaceholder}
                           {...form.register(`items.${index}.priceAmount`)}
                         />
                       </div>
@@ -819,7 +840,7 @@ export function WoocommercePublishWizard({
             </div>
             <div className="shop-publish-config-table__foot">
               <span className="form-field__description">
-                Blank stock/price falls back to the master product's value at publish time.
+                {copy.bulk.blankFallback}
               </span>
               <div className="shop-publish-config-table__foot-actions">
                 <Button
@@ -828,7 +849,7 @@ export function WoocommercePublishWizard({
                   className="button--sm"
                   onClick={() => resetColumn('stock')}
                 >
-                  Use master stock for all
+                  {copy.bulk.useMasterStock}
                 </Button>
                 <Button
                   tone="ghost"
@@ -836,7 +857,7 @@ export function WoocommercePublishWizard({
                   className="button--sm"
                   onClick={() => resetColumn('priceAmount')}
                 >
-                  Use master price for all
+                  {copy.bulk.useMasterPrice}
                 </Button>
               </div>
             </div>
@@ -845,7 +866,7 @@ export function WoocommercePublishWizard({
       ) : (
         <>
           <div className="form-field">
-            <span className="form-field__label">Variant</span>
+            <span className="form-field__label">{copy.review.variant}</span>
             <div className="shop-publish-variant-line">
               {singleVariantLabel ? <span>{singleVariantLabel}</span> : null}
               <span className="mono-text muted-text" title={singleId ?? ''}>
@@ -853,25 +874,26 @@ export function WoocommercePublishWizard({
               </span>
               {needsVariantPicker ? (
                 <Button type="button" tone="ghost" className="button--sm" onClick={backToSelection}>
-                  Change
+                  {copy.actions.change}
                 </Button>
               ) : null}
             </div>
           </div>
 
           <div className="shop-publish-field-row">
-            <FormField label="Stock" name="stock" error={form.formState.errors.stock?.message}>
+            <FormField label={copy.fields.stock} name="stock" error={form.formState.errors.stock?.message}>
               <Input
                 inputMode="numeric"
                 className="input--mono"
-                placeholder="master"
+                placeholder={copy.fields.masterPlaceholder}
                 {...form.register('stock')}
               />
             </FormField>
             <FormField
               label={
                 <>
-                  Price override <span className="shop-publish-hint">optional</span>
+                  {copy.fields.priceOverride}{' '}
+                  <span className="shop-publish-hint">{copy.fields.optional}</span>
                 </>
               }
               name="priceAmount"
@@ -884,7 +906,7 @@ export function WoocommercePublishWizard({
                 <Input
                   inputMode="decimal"
                   className="input--mono shop-publish-affix__input"
-                  placeholder="from master"
+                  placeholder={copy.fields.fromMasterPlaceholder}
                   {...form.register('priceAmount')}
                 />
               </div>
@@ -895,15 +917,11 @@ export function WoocommercePublishWizard({
 
       {mode === 'bulk' ? (
         <Alert tone="info">
-          Each product publishes independently — one can list at a different price or stock level
-          than the rest of the batch. Out-of-stock variants list with their master stock (0 is
-          honored).
+          {copy.bulk.independentNote}
         </Alert>
       ) : (
         <div className="shop-publish-callout">
-          Category placement, attributes &amp; images are resolved from the master product at
-          publish time — nothing to pick here. Provisioned to the mirrored WooCommerce category
-          tree.
+          {interpolate(copy.singleCallout, { shop: connection.name })}
         </div>
       )}
 
@@ -911,11 +929,11 @@ export function WoocommercePublishWizard({
         <div className="wizard-actions__group">
           {needsVariantPicker ? (
             <Button type="button" tone="ghost" onClick={backToSelection}>
-              ← Back
+              <span aria-hidden="true">←</span> {copy.actions.back}
             </Button>
           ) : null}
           <Button type="button" tone="ghost" onClick={onCancel}>
-            Cancel
+            {copy.actions.cancel}
           </Button>
         </div>
         <div className="wizard-actions__group">
@@ -935,12 +953,12 @@ export function WoocommercePublishWizard({
                 });
               }}
             >
-              Review
+              {copy.actions.review}
             </Button>
           ) : null}
           <ReadOnlyLock
             active={write.demoReadOnly}
-            message={DEMO_READ_ONLY_ACTION_MESSAGE}
+            message={demoReadOnlyActionMessage()}
             onLockedClick={() =>
               captureDemoEvent('demo_offer_create_attempted', {
                 platform: 'woocommerce',
@@ -957,10 +975,10 @@ export function WoocommercePublishWizard({
               }
             >
               {isPending
-                ? 'Publishing…'
+                ? copy.actions.publishing
                 : mode === 'bulk'
-                  ? `Publish ${itemsFieldArray.fields.length} products`
-                  : 'Publish'}
+                  ? plural(itemsFieldArray.fields.length, copy.actions.publishBulk)
+                  : copy.actions.publish}
             </Button>
           </ReadOnlyLock>
         </div>

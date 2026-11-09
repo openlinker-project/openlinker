@@ -19,27 +19,27 @@ import {
   type OrderExportFormatValue,
 } from '../api/orders.types';
 
+/** A group's heading is `orders.orderExport.columnGroups[id]`. */
 export interface OrderExportColumnGroup {
   id: 'order' | 'money' | 'delivery' | 'items' | 'buyer';
-  label: string;
   columns: readonly OrderExportColumnIdValue[];
 }
 
 export const ORDER_EXPORT_COLUMN_GROUPS: readonly OrderExportColumnGroup[] = [
   {
     id: 'order',
-    label: 'Order',
     columns: ['orderNumber', 'internalOrderId', 'sourceConnectionId', 'placedAt', 'createdAt', 'recordStatus'],
   },
-  { id: 'money', label: 'Money', columns: ['currency', 'totalAmount'] },
-  { id: 'delivery', label: 'Delivery', columns: ['fulfillmentState', 'packed'] },
-  { id: 'items', label: 'Items', columns: ['itemCount', 'skus'] },
-  { id: 'buyer', label: 'Buyer', columns: ['customerName', 'customerEmail', 'country'] },
+  { id: 'money', columns: ['currency', 'totalAmount'] },
+  { id: 'delivery', columns: ['fulfillmentState', 'packed'] },
+  { id: 'items', columns: ['itemCount', 'skus'] },
+  { id: 'buyer', columns: ['customerName', 'customerEmail', 'country'] },
 ];
 
+/** A built-in preset's name is `orders.orderExport.presets[labelKey]`. */
 export interface OrderExportBuiltInPreset {
   id: string;
-  label: string;
+  labelKey: 'default' | 'accounting' | 'warehouse' | 'all';
   columns: readonly OrderExportColumnIdValue[];
 }
 
@@ -48,18 +48,18 @@ export interface OrderExportBuiltInPreset {
  * writes when no columns are sent, so picking it never surprises anyone.
  */
 export const ORDER_EXPORT_BUILT_IN_PRESETS: readonly OrderExportBuiltInPreset[] = [
-  { id: 'builtin:default', label: 'Default', columns: ORDER_EXPORT_DEFAULT_COLUMNS },
+  { id: 'builtin:default', labelKey: 'default', columns: ORDER_EXPORT_DEFAULT_COLUMNS },
   {
     id: 'builtin:accounting',
-    label: 'Accounting',
+    labelKey: 'accounting',
     columns: ['orderNumber', 'placedAt', 'sourceConnectionId', 'totalAmount', 'currency', 'customerName', 'country'],
   },
   {
     id: 'builtin:warehouse',
-    label: 'Warehouse',
+    labelKey: 'warehouse',
     columns: ['orderNumber', 'createdAt', 'fulfillmentState', 'packed', 'itemCount', 'skus'],
   },
-  { id: 'builtin:all', label: 'All columns', columns: ORDER_EXPORT_COLUMN_IDS },
+  { id: 'builtin:all', labelKey: 'all', columns: ORDER_EXPORT_COLUMN_IDS },
 ];
 
 const EXPORT_IDS = new Set<string>(ORDER_EXPORT_COLUMN_IDS);
@@ -90,9 +90,4 @@ export function orderExportFileName(
 ): string {
   const date = run.createdAt.slice(0, 10);
   return `orders-export-${date}-${run.id.slice(-8)}.${format}`;
-}
-
-/** `1284` → `1 284` (a no-break space, so a count never wraps mid-number). */
-export function formatExportCount(value: number): string {
-  return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }

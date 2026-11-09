@@ -1,0 +1,273 @@
+{
+  "jobTypes": {
+    "analyticsCurrencyRecalculate": "Recalculate report currency",
+    "automationTriggerDeadlineSweep": "Check automation deadlines",
+    "destinationTaxonomySync": "Refresh destination categories",
+    "fiscalizationRegister": "Register sales document",
+    "fulfillmentRoutingReapSweep": "Close stuck routing decisions",
+    "fulfillmentWorkAutoDispatch": "Buy shipping label automatically",
+    "fulfillmentWorkDispatch": "Offer fulfilment task to warehouse",
+    "fulfillmentWorkRelaySweep": "Resend missed dispatch notices",
+    "fulfillmentWorkRerouteSweep": "Re-route orders waiting for stock",
+    "fulfillmentWorkRoute": "Route order",
+    "fulfillmentWorkStatusSync": "Read fulfilment progress",
+    "fulfillmentWorkTimeoutSweep": "Release unanswered fulfilment tasks",
+    "inventoryPropagateToMarketplaces": "Send stock to channels",
+    "inventoryProvenanceBackfill": "Fill in stock sources",
+    "inventoryReservationsConsume": "Close reservations of shipped orders",
+    "inventoryReservationsExpire": "Expire reservations",
+    "inventoryReservationsShortfall": "Check orders at risk from stock drops",
+    "inventorySaleDecrement": "Lower stock after a sale",
+    "inventorySaleDecrementReconcileSweep": "Recover missed stock decreases",
+    "invoicingIssue": "Issue invoice",
+    "invoicingMarketplaceUpload": "Attach invoice to marketplace order",
+    "invoicingOfflineSubmissionResubmit": "Resubmit offline invoices",
+    "invoicingPaymentStatusRefreshByExternalId": "Refresh invoice payment status",
+    "invoicingPendingRecoverySweep": "Recover invoices stuck mid-issue",
+    "invoicingRegulatoryStatusReconcile": "Check tax office clearance",
+    "marketplaceFulfillmentStatusSync": "Read marketplace fulfilment status",
+    "marketplaceOfferCreate": "Create offer",
+    "marketplaceOfferPauseStale": "Pause offers of deleted products",
+    "marketplaceOfferPauseStaleSweep": "Check offers of deleted products",
+    "marketplaceOfferPollCreationStatus": "Check offer creation result",
+    "marketplaceOfferQuantityReconcile": "Confirm offer quantity updates",
+    "marketplaceOfferQuantityUpdate": "Update offer quantity",
+    "marketplaceOfferRefreshSnapshot": "Refresh offer snapshot",
+    "marketplaceOfferStatusSync": "Sync offer status",
+    "marketplaceOfferStockRestore": "Restore offer stock",
+    "marketplaceOfferUpdateFields": "Update offer details",
+    "marketplaceOffersSync": "Sync marketplace offers",
+    "marketplaceOrderFxStamp": "Convert order to report currency",
+    "marketplaceOrderFxStampSweep": "Convert unconverted orders",
+    "marketplaceOrderSync": "Sync order",
+    "marketplaceOrdersPoll": "Fetch new orders",
+    "marketplaceReturnSync": "Sync return",
+    "marketplaceReturnsPoll": "Fetch new returns",
+    "marketplaceReturnsStatusSync": "Refresh open returns",
+    "marketplaceShipmentStatusSync": "Sync shipment status",
+    "marketplaceShipmentSyncByExternalId": "Sync shipment",
+    "marketplaceSourceFulfillmentStatusSync": "Read shipments made in the source",
+    "masterInventorySyncAll": "Sync all inventory",
+    "masterInventorySyncBatch": "Sync inventory batch",
+    "masterInventorySyncByExternalId": "Sync inventory for one product",
+    "masterInventorySyncFromSweep": "Sync inventory for one product (scheduled)",
+    "masterProductReconcile": "Check for deleted products",
+    "masterProductSyncAll": "Sync all products",
+    "masterProductSyncBatch": "Sync product batch",
+    "masterProductSyncByExternalId": "Sync one product",
+    "masterProductSyncDelta": "Sync changed products",
+    "masterProductSyncFromSweep": "Sync one product (scheduled)",
+    "masterVariantsAutoMatch": "Match variants to offers",
+    "ordersExport": "Export orders",
+    "ordersHoldsReconcile": "Repair order holds",
+    "ordersTaxRateBackfill": "Fill in order tax rates",
+    "pricingPropagateToMarketplaces": "Send price change to channels",
+    "returnsOrphanReconcile": "Match returns to orders",
+    "shippingPickupPointRefreshFrequent": "Refresh pickup points",
+    "shippingShipmentNotifyDispatched": "Tell marketplace parcel was sent",
+    "shopProductPublish": "Publish product to shop",
+    "shopProductStatusSync": "Sync shop product status",
+    "subiektBridgeReachabilitySweep": "Check accounting connection"
+  },
+  "syncJobDetailPage": {
+    "backTo": "Jobs & Logs",
+    "error": {
+      "notFound": "Job not found",
+      "title": "Unable to load job"
+    },
+    "eyebrow": "Sync Jobs",
+    "failedAfter": {
+      "one": "Job failed after {n} attempt",
+      "other": "Job failed after {n} attempts"
+    },
+    "fallbackTitle": "Job detail",
+    "fields": {
+      "attempts": "Attempts",
+      "attemptsValue": "{attempts} / {max}",
+      "connection": "Connection",
+      "created": "Created",
+      "deferredTotal": "Deferred so far",
+      "deferredValue": "{duration} (waiting on the destination, no attempt consumed)",
+      "idempotencyKey": "Idempotency key",
+      "jobId": "Job ID",
+      "jobType": "Job type",
+      "lastAttemptDuration": "Last attempt duration",
+      "lockedAt": "Locked at",
+      "lockedBy": "Locked by",
+      "nextRun": "Next run at",
+      "outcomeReason": "Outcome reason",
+      "status": "Status",
+      "updated": "Updated"
+    },
+    "loading": {
+      "message": "Fetching job details…",
+      "title": "Loading job"
+    },
+    "noError": "No error message was recorded for this job.",
+    "panels": {
+      "lastError": "Last error",
+      "payload": "Payload"
+    },
+    "retry": "Retry",
+    "retrying": "Retrying…",
+    "toast": {
+      "requeued": "Job {id}… requeued.",
+      "retryFailed": "Retry failed",
+      "retrying": "Retrying"
+    }
+  },
+  "syncJobStatusBadge": {
+    "businessFailure": "business failure",
+    "outcomeReasons": {
+      "auto_dispatch_no_address": "no address",
+      "auto_dispatch_no_delivery_method": "no delivery method",
+      "auto_dispatch_no_dimensions": "no dimensions",
+      "auto_dispatch_no_weight": "no weight",
+      "auto_dispatch_not_enabled": "auto-label off",
+      "auto_dispatch_payload_invalid": "malformed job",
+      "auto_dispatch_shipment_claimed_by_sibling_work": "other parcel has label",
+      "auto_dispatch_work_not_eligible": "order not ready",
+      "master_deleted": "source deleted"
+    },
+    "statuses": {
+      "dead": "dead",
+      "queued": "queued",
+      "running": "running",
+      "succeeded": "succeeded"
+    }
+  },
+  "syncJobsPage": {
+    "caption": "Sync jobs",
+    "columns": {
+      "attempts": "Attempts",
+      "connection": "Connection",
+      "created": "Created",
+      "deferred": "deferred",
+      "deferredTitle": "Deferred for {duration} so far",
+      "duration": "Duration",
+      "jobType": "Job type",
+      "lastError": "Last error",
+      "status": "Status"
+    },
+    "deadLetters": {
+      "columns": {
+        "attempts": "Attempts",
+        "consumerGroup": "Consumer group",
+        "entryId": "Entry ID",
+        "lastError": "Last error",
+        "lastSeen": "Last seen",
+        "stream": "Stream"
+      },
+      "description": "Background events that failed repeatedly and were recorded here instead of being retried forever. They cannot be replayed yet - investigate the raw fields below.",
+      "errorTitle": "Unable to load poison stream entries",
+      "loading": "Loading poison stream entries…",
+      "none": "None recorded",
+      "pagination": {
+        "next": "Next",
+        "previous": "Previous",
+        "range": "Showing {from}-{to} of {total}"
+      },
+      "retry": "Retry",
+      "title": "Poison stream entries"
+    },
+    "description": "Background work OpenLinker runs for your connections. Filter to find what stopped.",
+    "empty": {
+      "clearFilters": "Clear filters",
+      "filtered": "No jobs match the current filters.",
+      "none": "No sync jobs have been enqueued yet.",
+      "title": "No jobs found"
+    },
+    "errorTitle": "Unable to load sync jobs",
+    "errorToggle": {
+      "showFull": "Show full error",
+      "showLess": "Show less"
+    },
+    "eyebrow": "Diagnostics",
+    "filters": {
+      "allConnections": "All connections",
+      "allJobTypes": "All job types",
+      "allOutcomes": "All outcomes",
+      "allStatuses": "All statuses",
+      "connection": "Connection",
+      "group": "Filter sync jobs",
+      "jobType": "Job type",
+      "outcome": "Outcome",
+      "status": "Status"
+    },
+    "loading": "Loading sync jobs…",
+    "outcomes": {
+      "business_failure": "business failure",
+      "ok": "ok"
+    },
+    "pagination": {
+      "next": "Next",
+      "previous": "Previous",
+      "range": "Showing {from}-{to} of {total}"
+    },
+    "retry": "Retry",
+    "title": "Sync Jobs"
+  },
+  "triggerSyncDialog": {
+    "cancel": "Cancel",
+    "description": "Manually enqueue a sync job for <strong>{connection}</strong>.",
+    "enqueueFailed": "Failed to enqueue job",
+    "enqueuing": "Enqueuing…",
+    "fieldRequired": "{field} is required",
+    "fields": {
+      "cursorKey": "Cursor key",
+      "externalId": "External ID",
+      "maxInvoices": "Max invoices",
+      "objectType": "Object type",
+      "pageLimit": "Page limit",
+      "productId": "Product ID"
+    },
+    "jobType": "Job type",
+    "jobs": {
+      "autoMatchVariants": {
+        "description": "Match product variants to marketplace offers by barcode.",
+        "label": "Auto-match variants"
+      },
+      "pollOrders": {
+        "description": "Fetch new orders from the marketplace event stream.",
+        "label": "Poll marketplace orders"
+      },
+      "propagateInventory": {
+        "description": "Push current inventory levels to all connected marketplaces.",
+        "label": "Propagate inventory to marketplaces"
+      },
+      "reconcileRegulatoryStatus": {
+        "description": "Ask the tax office for the clearance status of submitted invoices.",
+        "label": "Reconcile regulatory status"
+      },
+      "syncAllInventory": {
+        "description": "Enumerate and sync inventory levels for every product.",
+        "label": "Sync all inventory"
+      },
+      "syncAllProducts": {
+        "description": "Enumerate and sync every product from the source catalog.",
+        "label": "Sync all products"
+      },
+      "syncInventoryById": {
+        "description": "Sync inventory for a single item using its external ID.",
+        "label": "Sync inventory by ID"
+      },
+      "syncOffers": {
+        "description": "Pull offer listings from the marketplace.",
+        "label": "Sync marketplace offers"
+      },
+      "syncProductById": {
+        "description": "Sync a single product using its external platform ID.",
+        "label": "Sync product by ID"
+      }
+    },
+    "noTriggers": "No sync triggers available for this connection.",
+    "requiredField": "{field} *",
+    "title": "Trigger sync",
+    "toast": {
+      "description": "\"{job}\" started for \"{connection}\". Job ID: {jobId}",
+      "title": "Sync job enqueued"
+    },
+    "trigger": "Trigger",
+    "viewAllJobs": "View all jobs"
+  }
+}

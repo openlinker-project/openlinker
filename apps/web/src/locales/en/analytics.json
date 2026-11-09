@@ -1,0 +1,1132 @@
+{
+  "analyticsConvertNote": {
+    "convertedCurrentRate": "<strong>Current rate:</strong> converted to {currency} - today's live rate applied to each order's own native currency, then summed. Preview only, nothing saved.",
+    "convertedOrderDate": "<strong>Rate on order date:</strong> converted to {currency} - today's live rate applied once to the already-summed reporting-currency total. Preview only, nothing saved.",
+    "converting": "Converting to {currency}…",
+    "recalculating": "A currency recalculation is running for this range - the {currency} conversion will reflect the updated figures once it completes.",
+    "switchBack": "Switch back",
+    "tryAgain": "Try again",
+    "unavailable": "Couldn’t get today’s {currency} rate. Showing the reporting currency instead.",
+    "unresolved": "Couldn’t convert orders in {currencies} - excluded from this total."
+  },
+  "analyticsCoverageAlert": {
+    "dismiss": "Dismiss",
+    "sub": "The real exchange rate from each order’s own date, saved for good. Logged in Jobs & Logs with who ran it and when.",
+    "title": {
+      "one": "Recalculation finished for the {n} order you selected",
+      "other": "Recalculation finished for the {n} orders you selected"
+    }
+  },
+  "analyticsCoverageAlertBadge": {
+    "badge": "Needs attention",
+    "body": "Some Data Coverage checks need action - reporting figures on this page may be incomplete.",
+    "goTo": "Go to Data Coverage"
+  },
+  "analyticsCurrencyPicker": {
+    "convertTo": "Convert to {currency}",
+    "label": "Display currency",
+    "noConversion": "No conversion · {currency}",
+    "reportingCurrency": "Reporting currency"
+  },
+  "analyticsDataCoveragePanel": {
+    "catalogueSynced": {
+      "description": {
+        "one": "{updated} of {n} rate-less line resolved.",
+        "other": "{updated} of {n} rate-less lines resolved."
+      },
+      "title": "Catalogue sync ran"
+    },
+    "clear": {
+      "badge": "Clear",
+      "headline": "Nothing to do",
+      "sub": "{n} checks · currency, tax rates, product matching, cost"
+    },
+    "currencyRow": {
+      "notConverted": "not converted yet",
+      "oldCurrency": "{currency} · old"
+    },
+    "error": {
+      "retry": "Retry",
+      "title": "Unable to check data coverage"
+    },
+    "lineRate": {
+      "noRate": "no rate",
+      "notChecked": "not checked yet",
+      "percent": "{rate}%",
+      "unknown": "unknown"
+    },
+    "lineRateReason": {
+      "ambiguous": "Catalogue reports several candidate rates - resolve which one is right in the shop.",
+      "notConfigured": "Shop has no tax configuration for this product.",
+      "unreadable": "The catalogue read did not state a tax status."
+    },
+    "loading": {
+      "message": "Looking at currency, tax rates, product matching…",
+      "title": "Checking data coverage"
+    },
+    "phases": {
+      "failed": {
+        "action": "Try again",
+        "badge": "Failed",
+        "sub": "The recalculation could not complete - see Jobs & Logs for detail."
+      },
+      "inProgress": {
+        "action": "Recalculating…",
+        "badge": "In progress",
+        "sub": "Recalculating in the background - this can take a minute. Safe to navigate away."
+      },
+      "resolved": {
+        "action": "Fixed",
+        "badge": "Fixed",
+        "sub": "Recalculated and saved - closing…"
+      },
+      "unknown": {
+        "action": "Try again",
+        "badge": "Status unknown",
+        "sub": "Couldn't check the recalculation's status - see Jobs & Logs, or try again."
+      }
+    },
+    "recalculateAll": "Recalculate all {n} now",
+    "starting": "Starting…",
+    "stuckRun": {
+      "body": "A currency recalculation is already marked as in progress for this range, but nothing is moving it forward - most likely a previous attempt never finished. Cancel it below, then try again.",
+      "cancel": "Cancel stuck run",
+      "cancelled": "Stuck recalculation cancelled - you can try again.",
+      "cancelling": "Cancelling…",
+      "title": "Recalculation didn't start"
+    },
+    "syncCatalogue": {
+      "one": "Sync the catalogue for this {n} now",
+      "other": "Sync the catalogue for these {n} now"
+    },
+    "syncing": "Syncing…",
+    "title": "Data coverage",
+    "turnOnSetting": "Turn on this setting ›"
+  },
+  "analyticsDateRangeToolbar": {
+    "apply": "Apply",
+    "dateRange": "Date range",
+    "from": "From",
+    "fromAria": "Order date from",
+    "orderDate": "Order date",
+    "orderDateCaveat": "This range doesn't filter results yet - coming soon",
+    "orderDateCaveatAria": "Order date. This range doesn't filter results yet - coming soon",
+    "presets": {
+      "custom": "Custom",
+      "last30Days": "30d",
+      "last7Days": "7d",
+      "last90Days": "90d"
+    },
+    "to": "To",
+    "toAria": "Order date to"
+  },
+  "analyticsDegradationBanner": {
+    "body": "This is a gap in imported orders, not a drop in sales.",
+    "neverPolled": "{connection} has never been polled",
+    "notPolledSince": "{connection} has not been polled since {date}",
+    "viewSync": "View sync"
+  },
+  "analyticsKpiCard": {
+    "defaultDeltaGap": "Period-over-period needs a full previous-period range covered by order history.",
+    "planned": "Planned",
+    "vsPreviousPeriod": "vs previous period"
+  },
+  "analyticsKpiStrip": {
+    "aboutConversion": "About this conversion",
+    "ariaLabel": "Key sales figures",
+    "cards": {
+      "cancellations": {
+        "cancelledOrders": "Cancelled orders",
+        "cancelledTerm": "Cancelled orders",
+        "cancelledText": "Orders placed in the selected period that were subsequently cancelled - excluded from every revenue figure on this page.",
+        "cancelledValue": "Cancelled value",
+        "infotip": "About the Cancellations figures",
+        "label": "Cancellations",
+        "metric": "Cancellation rate",
+        "rateTerm": "Cancellation rate",
+        "rateText": "Cancelled orders divided by all orders placed in the period, including the cancelled ones themselves."
+      },
+      "orderValue": {
+        "averageTerm": "Average order value (AOV)",
+        "averageTextGross": "The gross value of every converted order placed in the period, divided by the number of those orders - the same orders as the order count, minus the ones not converted yet.",
+        "averageTextNet": "The VAT-exclusive value of every order eligible for net sales placed in the period, divided by the number of such orders - fewer orders than the order count (see the caveat below).",
+        "infotip": "About the Order value figures",
+        "label": "Order value",
+        "median": "Median",
+        "medianTerm": "Median order value",
+        "medianTextGross": "The middle gross value of every converted order in the range - less skewed by a handful of very large or very small orders than the average.",
+        "medianTextNet": "The middle VAT-exclusive value of every order eligible for net sales in the range - less skewed by a handful of very large or very small orders than the average.",
+        "metric": "Average"
+      },
+      "orders": {
+        "avgDaily": "Avg. daily",
+        "avgDailyTerm": "Avg. daily orders",
+        "avgDailyText": "Orders divided by the number of days in the selected range.",
+        "infotip": "About the Orders figures",
+        "label": "Orders",
+        "metric": "Placed orders",
+        "ordersTerm": "Orders",
+        "ordersText": "Every non-cancelled order placed during the selected period, across every connected channel."
+      },
+      "returns": {
+        "empty": "Returns are not tracked yet",
+        "infotip": "About Returns & refunds",
+        "label": "Returns & refunds",
+        "metric": "Return rate",
+        "term": "Returns & refunds",
+        "text": "Returns and refunds are not tracked for analytics yet - this card has nothing to report."
+      },
+      "revenue": {
+        "gmv": {
+          "caveat": "Cancelled orders and cancelled items are excluded. Returned and refunded items remain included.",
+          "caveatUnconverted": "Cancelled orders and cancelled items are excluded. {unconverted} of {total} placed orders are not converted to the reporting currency yet and are left out of this figure.",
+          "term": "GMV (Gross Merchandise Value)",
+          "text": "The value of non-cancelled product items in orders placed during the selected period, converted to the reporting currency."
+        },
+        "infotip": "About the Revenue figures",
+        "label": "Revenue",
+        "netSales": {
+          "formula": "Net order value (after discounts, excluding VAT) − Refunded value",
+          "text": "The value of product sales after discounts and after customer refunds, excluding VAT. Shown here as the net order value, before returns are subtracted - it becomes full net sales once returns are counted."
+        }
+      },
+      "units": {
+        "infotip": "About the Units figures",
+        "label": "Units",
+        "metric": "Units sold",
+        "perOrder": "Per order",
+        "perOrderTerm": "Units per order",
+        "perOrderText": "Units sold divided by placed orders.",
+        "unitsSoldTerm": "Units sold",
+        "unitsSoldText": "Total item quantity across every non-cancelled order line in the selected period."
+      }
+    },
+    "delta": {
+      "basis": {
+        "one": "vs the previous day",
+        "other": "vs previous {n} days"
+      },
+      "currencyMismatch": "The two periods are not in the same reporting currency - a percentage between them would not be a real number.",
+      "noHistory": "No order history yet - nothing to compare against.",
+      "notEnoughHistory": "Not enough order history to compare a full previous period - data starts {date}.",
+      "percent": "{value}%",
+      "points": "{value} pp",
+      "previousFailed": "Unable to load the previous period for comparison.",
+      "spoken": {
+        "downPercent": "down {value} percent versus the previous period",
+        "downPoints": "down {value} percentage points versus the previous period",
+        "flat": "unchanged versus the previous period",
+        "upPercent": "up {value} percent versus the previous period",
+        "upPoints": "up {value} percentage points versus the previous period"
+      }
+    },
+    "error": {
+      "noData": "The server returned no data for this range.",
+      "retry": "Retry",
+      "title": "Unable to load sales figures"
+    },
+    "gaps": {
+      "cancelledNetExcluded": {
+        "one": "{n} cancelled order carries a line with an unresolvable tax rate and is excluded from this VAT-exclusive value.",
+        "other": "{n} cancelled orders carry a line with an unresolvable tax rate and are excluded from this VAT-exclusive value."
+      },
+      "cancelledUnconverted": {
+        "one": "{n} cancelled order is not converted to the current reporting currency and is not reflected in this value.",
+        "other": "{n} cancelled orders are not converted to the current reporting currency and are not reflected in this value."
+      },
+      "netExcluded": {
+        "one": "{n} order predates per-line tax rates or carries a line with an unresolvable rate, and is excluded from the net order value.",
+        "other": "{n} orders predate per-line tax rates or carry a line with an unresolvable rate, and are excluded from the net order value."
+      },
+      "netSalesReturns": "Net sales should also subtract the value of returns, but returns and refunds are not counted here yet - this figure is the net order value, before returns.",
+      "returnRate": "Returns and refunds are not recorded for analytics yet, so there is no return rate to show.",
+      "unconverted": "Order value counts only orders already converted to the reporting currency - recently imported orders are left out until they are converted."
+    },
+    "loading": {
+      "eyebrow": "Loading",
+      "message": "Fetching revenue, orders and units for the selected range…",
+      "title": "Loading sales figures"
+    },
+    "todaysRates": "today's rate(s)",
+    "trend": {
+      "gmv": {
+        "one": "GMV trend, the selected day",
+        "other": "GMV trend, the last {n} days"
+      },
+      "orders": {
+        "one": "Order count trend, the selected day",
+        "other": "Order count trend, the last {n} days"
+      }
+    }
+  },
+  "analyticsNeedsAttention": {
+    "badges": {
+      "action": "Action",
+      "stuck": "Stuck"
+    },
+    "checked": "checked <time>{time}</time>",
+    "clear": {
+      "badge": "Clear",
+      "headline": "Nothing needs attention",
+      "sub": "{n} checks · coverage, stock, destination syncs"
+    },
+    "error": {
+      "retry": "Retry",
+      "title": "Unable to check for open items"
+    },
+    "links": {
+      "publishNow": "Publish now",
+      "reviewOrders": "Review orders",
+      "reviewStock": "Review stock"
+    },
+    "loading": {
+      "message": "Looking at coverage, stock, and failed syncs…",
+      "title": "Checking for open items"
+    },
+    "partialSample": "{sub} - showing the first {shown} of {total}",
+    "title": "Needs attention"
+  },
+  "analyticsNetGrossToggle": {
+    "gross": "Gross",
+    "label": "VAT basis",
+    "net": "Net"
+  },
+  "analyticsPage": {
+    "basisLoading": {
+      "message": "Resolving your saved VAT basis…",
+      "title": "Loading sales figures"
+    },
+    "description": "Sales across connected channels, with clear data coverage.",
+    "eyebrow": "Operations",
+    "firstOrders": {
+      "action": "View sync progress",
+      "message": "Nothing is missing; it is not here yet. Figures will appear as orders land.",
+      "title": "First orders are still arriving"
+    },
+    "noConnections": {
+      "action": "Add a connection",
+      "message": "This page reports the orders OpenLinker has ingested. Once a marketplace or shop is connected and its first orders arrive, figures appear here without further setup.",
+      "title": "Connect a sales channel to see figures here"
+    },
+    "settings": "Analytics settings",
+    "title": "Analytics",
+    "trustDenied": {
+      "message": "Ask an administrator if you need to see ingestion coverage.",
+      "title": "Data coverage is not available to your role"
+    },
+    "trustError": {
+      "retry": "Retry",
+      "title": "Unable to load data coverage"
+    },
+    "trustLoading": {
+      "message": "Checking ingestion status…",
+      "title": "Loading data coverage"
+    }
+  },
+  "analyticsSettingsDialog": {
+    "apply": "Apply",
+    "cancel": "Cancel",
+    "currency": {
+      "autoToggle": "Automatically recalculate outstanding orders when the reporting currency changes",
+      "checking": "Checking for outstanding orders…",
+      "notAvailable": "Not available yet.",
+      "pending": {
+        "one": "{n} order waiting to be recalculated",
+        "other": "{n} orders waiting to be recalculated"
+      },
+      "recalculateNow": "Recalculate now",
+      "recalculating": "Recalculating…",
+      "starting": "Starting…",
+      "title": "Currency - recalculation",
+      "upToDate": "Everything’s up to date",
+      "warning": "This section writes data permanently: “Recalculate now” saves the real exchange rate from each order’s date to the database - this isn’t a preview."
+    },
+    "description": "Display currency and rate basis (below) only change what you see on this screen - nothing is saved. Actions further down can write data permanently - each one says so plainly.",
+    "margin": {
+      "description": "Off: the Margin panel, the cost reminders on Products, Analytics and Operations overview, and the “No cost price” chip are hidden. Cost prices you already entered stay saved and keep being copied onto new orders, so turning this back on shows margin straight away.",
+      "offAdminOnly": "Margin is off for everyone on this account. Only an admin can change this.",
+      "onAdminOnly": "Margin is on for everyone on this account. Only an admin can change this.",
+      "title": "Margin",
+      "toggle": "Track margin and remind about missing cost prices"
+    },
+    "rateBasis": {
+      "current": {
+        "description": "What it’s worth today - sums each order’s real amount and converts it at today’s rate.",
+        "title": "Current rate"
+      },
+      "legend": "Rate basis",
+      "orderDate": {
+        "description": "Keeps each order at its own order-date rate. Showing a different currency converts that total at today’s rate - analytics only, not a figure for tax filings.",
+        "title": "Rate on order date"
+      }
+    },
+    "recalculateConfirm": {
+      "confirm": "Recalculate",
+      "description": "This saves the real exchange rate from each order's own date to the database, for good - this is not a preview and cannot be undone from here.",
+      "title": "Recalculate now?"
+    },
+    "reportingCurrency": "Reporting currency",
+    "reportingCurrencyNamed": "{currency} · reporting currency",
+    "showAmountsIn": "Show amounts in",
+    "tax": {
+      "checking": "Checking tax-rate coverage…",
+      "consequence": "Trust a tax rate found retroactively in the catalogue and include such orders in Net sales automatically. This applies to everyone and to every date range, not just the one you’re viewing - turning it off removes these orders from Net sales again the next time the figures are queried.",
+      "foundIncluded": {
+        "one": "{n} order - rate found, included automatically",
+        "other": "{n} orders - rate found, included automatically"
+      },
+      "foundWaiting": {
+        "one": "{n} order - rate found, waiting for confirmation",
+        "other": "{n} orders - rate found, waiting for confirmation"
+      },
+      "loadError": "Couldn’t load tax-rate coverage - the counts and setting state below may be wrong.",
+      "noRate": {
+        "one": "{n} order - no rate at the source (needs fixing at the source)",
+        "other": "{n} orders - no rate at the source (needs fixing at the source)"
+      },
+      "title": "Tax rates",
+      "toggle": "Use the rate found in the product catalogue",
+      "unresolved": {
+        "one": "{n} order - product added after launch, rate still unresolved",
+        "other": "{n} orders - product added after launch, rate still unresolved"
+      }
+    },
+    "taxConfirm": {
+      "affects": {
+        "one": "Affects {n} order.",
+        "other": "Affects {n} orders."
+      },
+      "checking": "Checking how many orders are affected…",
+      "confirm": "Turn on",
+      "countUnknown": "Affects an unknown number of orders - we couldn’t load the count.",
+      "title": "Turn on including orders with a guessed tax rate?",
+      "warning": "These tax rates come from today’s catalogue, not the order date. If any of them changed since, Net sales for those orders will be less accurate."
+    },
+    "title": "Analytics settings",
+    "toast": {
+      "recalculationStarted": {
+        "description": "Affected orders are being restated in the background.",
+        "title": "Recalculation started"
+      }
+    },
+    "vatBasis": {
+      "gross": {
+        "description": "VAT-inclusive figures, by default.",
+        "title": "Gross"
+      },
+      "net": {
+        "description": "VAT-exclusive figures, by default.",
+        "title": "Net"
+      },
+      "status": "Saved immediately and applies to every future visit that doesn’t pick its own basis via the toolbar toggle.",
+      "title": "Default VAT basis"
+    }
+  },
+  "analyticsTrustHeader": {
+    "aboutDates": "About these dates",
+    "aboutDatesBody": "Dates are the earliest order stored for each channel, not a guarantee of completeness. Some later orders may also be missing.",
+    "dataFrom": "data from <date>{date}</date>",
+    "neverPolled": "never polled",
+    "noOrders": "no orders yet",
+    "status": {
+      "disconnected": "Disconnected",
+      "fresh": "Up to date",
+      "neverIngested": "Never ingested",
+      "stalled": "Stalled",
+      "unknown": "Unknown"
+    },
+    "synced": "synced <time>{time}</time>",
+    "title": "Synchronisation"
+  },
+  "channelPublishAction": {
+    "label": "Publish {product} on this channel - it already sells elsewhere",
+    "publish": "Publish"
+  },
+  "channelSalesTable": {
+    "awaitingFx": {
+      "label": "Awaiting FX stamp",
+      "title": {
+        "one": "{n} order in this channel has no reporting-currency FX stamp yet and is excluded from Net sales/Orders/AOV here.",
+        "other": "{n} orders in this channel have no reporting-currency FX stamp yet and are excluded from Net sales/Orders/AOV here."
+      }
+    },
+    "caption": "Sales by channel",
+    "columns": {
+      "aov": "AOV",
+      "channel": "Channel",
+      "orders": "Orders",
+      "share": "Share",
+      "trend": "Trend",
+      "units": "Units"
+    },
+    "empty": "No channel has any orders in this range",
+    "error": {
+      "retry": "Retry",
+      "title": "Unable to load by-channel figures"
+    },
+    "loading": {
+      "eyebrow": "Loading",
+      "message": "Fetching revenue, orders and units per connected channel…",
+      "title": "Loading by-channel figures"
+    },
+    "noAov": "No AOV figure can be given for this channel in range",
+    "noRevenue": "No {revenue} figure can be given for this channel in range",
+    "noTrend": "Not enough data for a trend",
+    "partialHistory": {
+      "label": "Partial history",
+      "title": "This channel's earliest ingested order postdates the start of the selected range - its figures cover less than the full period."
+    },
+    "total": "Total · {currency}",
+    "trendAria": "Channel revenue trend",
+    "unconverted": {
+      "one": "{n} order not yet converted to the reporting currency - excluded from the figures above.",
+      "other": "{n} orders not yet converted to the reporting currency - excluded from the figures above."
+    }
+  },
+  "common": {
+    "gmv": "GMV",
+    "netSales": "Net sales",
+    "notListed": "Not listed"
+  },
+  "coverageDetailDialog": {
+    "close": "Close",
+    "empty": "Nothing here anymore.",
+    "error": {
+      "retry": "Retry",
+      "title": "Unable to load orders"
+    },
+    "loading": {
+      "message": "Fetching the affected orders…",
+      "title": "Loading"
+    },
+    "next": "Next",
+    "previous": "Previous",
+    "range": "Showing {from}-{to} of {total}"
+  },
+  "dataCoverage": {
+    "badge": {
+      "action": "Action",
+      "info": "Info"
+    },
+    "categories": {
+      "currency": {
+        "actionLabel": "Recalculate now",
+        "headline": {
+          "lines": {
+            "one": "{n} line counted in an outdated currency",
+            "other": "{n} lines counted in an outdated currency"
+          },
+          "orders": {
+            "one": "{n} order counted in an outdated currency",
+            "other": "{n} orders counted in an outdated currency"
+          }
+        },
+        "modalDescription": "These orders are still tagged with a currency that is no longer the reporting currency.",
+        "sub": "The reporting currency changed - these orders are still tagged with the old one."
+      },
+      "noCost": {
+        "actionLabel": "See in margin",
+        "headline": {
+          "lines": {
+            "one": "{n} line is not in margin",
+            "other": "{n} lines are not in margin"
+          },
+          "orders": {
+            "one": "{n} order is not in margin",
+            "other": "{n} orders are not in margin"
+          }
+        },
+        "modalDescription": "Margin leaves these lines out because the cost is missing, was entered after the sale, the product is unmatched, or the cost currency differs from the order.",
+        "sub": "Margin counts only lines with a usable cost: a missing cost, a cost entered after the sale, an unmatched product or a different currency leaves a line out."
+      },
+      "productMatching": {
+        "actionLabel": "View orders",
+        "headline": {
+          "lines": {
+            "one": "{n} line with a product-matching error",
+            "other": "{n} lines with a product-matching error"
+          },
+          "orders": {
+            "one": "{n} order with a product-matching error",
+            "other": "{n} orders with a product-matching error"
+          }
+        },
+        "modalDescription": "The product was removed at the source, or matching failed - open the order to match it manually.",
+        "sub": "The product was removed at the source, or matching failed."
+      },
+      "taxA": {
+        "actionLabel": "Include anyway",
+        "headline": {
+          "lines": {
+            "one": "{n} line has an unconfirmed tax rate",
+            "other": "{n} lines have an unconfirmed tax rate"
+          },
+          "orders": {
+            "one": "{n} order has an unconfirmed tax rate",
+            "other": "{n} orders have an unconfirmed tax rate"
+          }
+        },
+        "modalDescription": "The rate came from today’s product catalogue - not confirmed for the order date.",
+        "sub": "The rate came from today’s product catalogue, not the order date - that’s why they’re excluded from Net sales."
+      },
+      "taxB": {
+        "actionLabel": "View products",
+        "headline": {
+          "lines": {
+            "one": "{n} line has no tax rate at all",
+            "other": "{n} lines have no tax rate at all"
+          },
+          "orders": {
+            "one": "{n} order has no tax rate at all",
+            "other": "{n} orders have no tax rate at all"
+          }
+        },
+        "modalDescription": "The product has no tax rate set at the source. This needs fixing there - it can’t be guessed here.",
+        "sub": "The product has no tax rate set at the source - fix it there, not here."
+      },
+      "taxC": {
+        "actionLabel": "View orders",
+        "headline": {
+          "lines": {
+            "one": "{n} line - rate not yet resolved",
+            "other": "{n} lines - rate not yet resolved"
+          },
+          "orders": {
+            "one": "{n} order - rate not yet resolved",
+            "other": "{n} orders - rate not yet resolved"
+          }
+        },
+        "modalDescription": "These products were added after per-line tax rates went live - the catalogue has not answered for them yet, so this is a current gap, not an old issue.",
+        "modalTitle": {
+          "lines": {
+            "one": "{n} line - rate still unresolved",
+            "other": "{n} lines - rate still unresolved"
+          },
+          "orders": {
+            "one": "{n} order - rate still unresolved",
+            "other": "{n} orders - rate still unresolved"
+          }
+        },
+        "sub": "Product was added after per-line tax rates went live - the catalogue hasn’t answered yet."
+      }
+    },
+    "matchingRecordStatus": {
+      "awaitingMapping": "Matching in progress",
+      "sourceDeleted": "Removed at the source"
+    }
+  },
+  "displayCurrency": {
+    "currentRate": {
+      "term": "Current rate",
+      "text": "Today's rate applied to each order's own native currency, then summed."
+    },
+    "derivation": {
+      "inverted": "inverted",
+      "pivot": "via another currency"
+    },
+    "derived": "Derived ({derivation})",
+    "derivedWithReference": "Derived ({derivation}) - {reference}",
+    "notInvoiceRate": {
+      "term": "Not an invoice rate",
+      "text": "This is an analytics-only conversion for viewing the dashboard - never the statutory rate used on an invoice."
+    },
+    "pair": "{from} → {to}",
+    "periodRate": {
+      "term": "Period rate (order-date mode)",
+      "text": "One current rate applied to the whole period's total - not each order's own historical rate."
+    },
+    "rateLine": "1 {from} = {rate} {to} ({source}, {date})"
+  },
+  "exportCsvButton": {
+    "changeRange": "Change range",
+    "currencyNote": "File is in {reporting}, the reporting currency.",
+    "currencyTitle": "The file is in {reporting}, the reporting currency, not {display}.",
+    "export": "Export CSV",
+    "preparing": "Preparing CSV…",
+    "refused": "Export refused",
+    "status": "Preparing “{report}”. The download starts when it is ready; you can keep working.",
+    "tryAgain": "Try again"
+  },
+  "insightsPage": {
+    "activity": {
+      "caption": "Recent sync jobs",
+      "empty": "No sync jobs recorded yet.",
+      "errorTitle": "Unable to load sync jobs",
+      "eyebrow": "Activity",
+      "loadingMessage": "Fetching recent activity…",
+      "loadingTitle": "Loading sync jobs",
+      "title": "Recent sync jobs",
+      "total": "{n} total"
+    },
+    "allChannelsActive": "All channels active",
+    "attempts": "{attempts}/{max}",
+    "checkingDependencies": "Checking dependencies…",
+    "columns": {
+      "actions": "Actions",
+      "attempts": "Attempts",
+      "connection": "Connection",
+      "failures": "Failures",
+      "jobType": "Job type",
+      "lastError": "Last error",
+      "latest": "Latest",
+      "status": "Status",
+      "updated": "Updated"
+    },
+    "connectionHealth": {
+      "caption": "Connection health",
+      "columns": {
+        "connection": "Connection",
+        "failedJobs": "Failed jobs",
+        "platform": "Platform",
+        "status": "Status"
+      },
+      "failedJobs": {
+        "one": "{n} failed job",
+        "other": "{n} failed jobs"
+      },
+      "failedJobsOn": {
+        "one": "{n} failed job on {name}",
+        "other": "{n} failed jobs on {name}"
+      },
+      "legend": {
+        "attention": {
+          "one": "{n} needs attention",
+          "other": "{n} need attention"
+        },
+        "disabled": {
+          "one": "{n} disabled",
+          "other": "{n} disabled"
+        },
+        "healthy": {
+          "one": "{n} healthy",
+          "other": "{n} healthy"
+        }
+      },
+      "none": "None",
+      "status": {
+        "active": "Active",
+        "archived": "Archived",
+        "disabled": "Disabled",
+        "error": "Error",
+        "needsReauth": "Needs re-auth"
+      },
+      "summary": {
+        "cannotReach": {
+          "one": "No failed jobs, but {attention} of {n} connection cannot reach its platform.",
+          "other": "No failed jobs, but {attention} of {n} connections cannot reach their platform."
+        },
+        "noFailedJobs": {
+          "one": "No failed jobs on your {n} connection.",
+          "other": "No failed jobs on any of your {n} connections."
+        },
+        "onlyConnectionFailed": "Your only connection has jobs that stopped retrying.",
+        "withFailedJobs": {
+          "one": "{n} of {total} connections has jobs that stopped retrying.",
+          "other": "{n} of {total} connections have jobs that stopped retrying."
+        }
+      }
+    },
+    "connections": {
+      "configured": "{n} configured",
+      "errorTitle": "Unable to load connections",
+      "eyebrow": "Integrations",
+      "loadingMessage": "Fetching connection status…",
+      "loadingTitle": "Loading connections",
+      "title": "Connection health"
+    },
+    "connectionsFailing": {
+      "one": "{n} connection with failing jobs",
+      "other": "{n} connections with failing jobs"
+    },
+    "connectionsInError": {
+      "one": "{n} connection in error",
+      "other": "{n} connections in error"
+    },
+    "description": "Monitor integration health, dependency status, and connection activity from one command surface.",
+    "eyebrow": "Overview",
+    "health": {
+      "degraded": "Degraded",
+      "error": "Error",
+      "ok": "OK",
+      "unknown": "Unknown",
+      "unreachable": "Unreachable"
+    },
+    "incidents": {
+      "caption": "Failed sync jobs grouped by connection and job type",
+      "cardSubtitle": {
+        "one": "{connection} · {n} failure",
+        "other": "{connection} · {n} failures"
+      },
+      "empty": "No failed jobs. All clear.",
+      "errorTitle": "Unable to load failures",
+      "eyebrow": "Incidents",
+      "loadingMessage": "Collecting dead jobs…",
+      "loadingTitle": "Loading failures",
+      "signatures": {
+        "one": "{n} unique signature",
+        "other": "{n} unique signatures"
+      },
+      "title": "What’s broken right now",
+      "totalFailures": {
+        "one": "{n} total failure",
+        "other": "{n} total failures"
+      }
+    },
+    "infraNodeWithName": "{platform} ({name})",
+    "infrastructure": {
+      "checked": "Checked",
+      "errorTitle": "Health check failed",
+      "eyebrow": "Infrastructure",
+      "loadingMessage": "Pinging dependencies…",
+      "loadingTitle": "Checking system health",
+      "title": "System health"
+    },
+    "kpis": {
+      "activeOfTotal": "{active} / {total}",
+      "failedJobs": "Failed jobs",
+      "integrationHealth": "Integration health",
+      "needAttention": {
+        "one": "{n} job needs attention",
+        "other": "{n} jobs need attention"
+      },
+      "noFailures": "No failures",
+      "queueEmpty": "Queue empty",
+      "queuedJobs": "Queued jobs",
+      "systemHealth": "System health",
+      "waiting": {
+        "one": "{n} job waiting",
+        "other": "{n} jobs waiting"
+      }
+    },
+    "noConnections": "No connections configured. <link>Add the first connection.</link>",
+    "noInfraNodes": "No infrastructure nodes detected",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing…",
+    "retry": "Retry",
+    "retryAria": "Retry - {signature}",
+    "retrying": "Retrying…",
+    "setup": {
+      "addCostPrices": "Add cost prices",
+      "eyebrow": "Setup",
+      "leftOut": "{amount} of net sales left out of margin.",
+      "margin": "Margin",
+      "meta": "Not errors. Nothing is blocked.",
+      "title": "Data to fill in",
+      "topThree": "3 of them make up {pct} of that.",
+      "variantsWithoutCost": {
+        "one": "{n} variant you sold in the last {days} days has no cost price",
+        "other": "{n} variants you sold in the last {days} days have no cost price"
+      }
+    },
+    "signature": "{jobType} on {connection}",
+    "status": {
+      "active": "active",
+      "archived": "archived",
+      "dead": "dead",
+      "degraded": "degraded",
+      "disabled": "disabled",
+      "error": "error",
+      "needsReauth": "needs reauth",
+      "ok": "ok",
+      "queued": "queued",
+      "running": "running",
+      "succeeded": "succeeded",
+      "warning": "warning"
+    },
+    "systemHealth": {
+      "connectedSystems": "Connected systems",
+      "coreServices": "Core services",
+      "legend": {
+        "failing": {
+          "one": "{n} failing",
+          "other": "{n} failing"
+        },
+        "ok": {
+          "one": "{n} OK",
+          "other": "{n} OK"
+        },
+        "warning": {
+          "one": "{n} warning",
+          "other": "{n} warnings"
+        }
+      },
+      "status": {
+        "error": "Error",
+        "ok": "OK",
+        "warning": "Warning"
+      },
+      "summary": {
+        "allPassing": {
+          "one": "{n} check passing.",
+          "other": "All {n} checks passing."
+        },
+        "failing": {
+          "one": "{failing} of {n} check failing.",
+          "other": "{failing} of {n} checks failing."
+        },
+        "failingWithWarnings": {
+          "one": "{failing} of {n} check failing, {warning} with a warning.",
+          "other": "{failing} of {n} checks failing, {warning} with a warning."
+        },
+        "warnings": {
+          "one": "{warning} of {n} check with a warning.",
+          "other": "{warning} of {n} checks with a warning."
+        }
+      }
+    },
+    "title": "Operations overview",
+    "toast": {
+      "noDeadJobs": "{jobType} - no dead jobs remain ({skipped} already running).",
+      "nothingRequeued": "Nothing re-queued",
+      "requeued": {
+        "one": "Re-queued {n} job",
+        "other": "Re-queued {n} jobs"
+      },
+      "requeuedSkipped": "{jobType} - re-queued {count}, skipped {skipped} already running.",
+      "retryFailed": "Retry failed",
+      "unknownError": "Unknown error",
+      "willRerun": "{jobType} will re-run."
+    },
+    "truncated": "{text}…",
+    "viewJobs": "View jobs",
+    "viewJobsAria": "View jobs - {signature}"
+  },
+  "marginCopy": {
+    "gaps": {
+      "costEnteredAfterSale": {
+        "action": "Nothing; new orders are covered.",
+        "reason": "Ordered before the cost was entered"
+      },
+      "currencyMismatch": {
+        "action": "Enter the cost in the currency the order was placed in.",
+        "reason": "Cost currency differs from the order currency"
+      },
+      "noCost": {
+        "action": "Enter the cost on the product page.",
+        "reason": "No cost recorded for the variant"
+      },
+      "noVariant": {
+        "action": "Match the order line to a product.",
+        "reason": "Order line not matched to a product variant"
+      }
+    }
+  },
+  "marginCoverageBanner": {
+    "addCostPrices": "Add cost prices",
+    "goToMargin": "Go to Margin",
+    "leftOut": "{amount} is left out. Margin and margin % are calculated only from the covered part.",
+    "leftOutWithReasons": "{amount} is left out: {reasons}. Margin and margin % are calculated only from the covered part.",
+    "reasons": {
+      "afterSale": "some orders came in before their cost was entered ({amount})",
+      "noCost": "some variants have no cost price ({amount})",
+      "other": "other lines cannot take a cost ({amount})"
+    },
+    "title": "Margin covers {ratio} of net sales in this range"
+  },
+  "marginCoverageNote": {
+    "caption": "Why lines are left out of margin",
+    "columns": {
+      "lines": "Lines",
+      "netRevenue": "Net revenue",
+      "reason": "Reason",
+      "whatToDo": "What to do"
+    },
+    "toggle": {
+      "one": "{n} line is not in margin · {amount} of net revenue left out",
+      "other": "{n} lines are not in margin · {amount} of net revenue left out"
+    }
+  },
+  "marginPanel": {
+    "basis": "Margin always uses net revenue because costs are entered net. Cancelled orders excluded.",
+    "basisChip": "Net revenue · VAT-exclusive",
+    "basisGross": "Margin always uses net revenue because costs are entered net, even though this page is set to Gross. Cancelled orders excluded.",
+    "byChannel": "Margin by channel",
+    "byChannelFootnote": "Gross margin and margin % are over lines with a cost only. Cost coverage is the share of net revenue those lines carry.",
+    "byProduct": "Margin by product",
+    "byProductError": "Unable to load margin by product",
+    "byProductFootnote": "Top {n} by net revenue.",
+    "currency": "Amounts in {currency}, the reporting currency.",
+    "error": {
+      "message": "Margin figures are not available.",
+      "retry": "Retry",
+      "title": "Unable to load margin"
+    },
+    "exportDisabled": "Nothing to export: no line in this range has a cost",
+    "eyebrow": "Profitability",
+    "figuresAria": "Margin figures",
+    "kpis": {
+      "cost": {
+        "absent": "No net revenue in this range",
+        "label": "Cost of goods",
+        "metric": "Lines with a cost",
+        "qualifier": "Covered revenue"
+      },
+      "margin": {
+        "label": "Gross margin",
+        "metric": "Covered revenue − cost"
+      },
+      "marginPct": {
+        "absent": "Margin % needs at least one line with a cost",
+        "label": "Margin %",
+        "metric": "Of covered revenue"
+      },
+      "netRevenue": {
+        "label": "Net revenue",
+        "metric": "All non-cancelled lines, VAT-exclusive"
+      }
+    },
+    "loading": {
+      "eyebrow": "Loading",
+      "message": "Working out margin over lines with a recorded cost…",
+      "title": "Loading margin"
+    },
+    "missingCost": {
+      "addCost": "Add cost",
+      "bestSellers": "<strong>Best sellers without a cost</strong> · by net revenue",
+      "body": "Margin needs the net cost you paid for each variant. OpenLinker never guesses it and never treats a missing cost as zero. Enter costs on the product page; orders placed after that count toward margin.",
+      "footnote": {
+        "one": "{n} product sold in this range, none with a cost recorded.",
+        "other": "{n} products sold in this range, none with a cost recorded."
+      },
+      "skuAndAmount": "{sku} · {amount}",
+      "title": "No margin yet: no variant has a cost price",
+      "unknownProduct": "Unknown product"
+    },
+    "noFigure": "No figure for this range",
+    "title": "Margin",
+    "trendTitle": "<strong>Gross margin by week</strong> · label is margin %"
+  },
+  "marginTables": {
+    "addCost": "Add cost",
+    "byChannelCaption": "Margin by channel",
+    "byChannelRegion": "Margin by channel (scrollable)",
+    "byProductCaption": "Top products by net revenue with margin",
+    "byProductRegion": "Margin by product (scrollable)",
+    "columns": {
+      "channel": "Channel",
+      "costCoverage": "Cost coverage",
+      "costOfGoods": "Cost of goods",
+      "grossMargin": "Gross margin",
+      "marginPct": "Margin %",
+      "netRevenue": "Net revenue",
+      "product": "Product"
+    },
+    "marginPctNeedsCost": "Margin % needs a line with a cost",
+    "noCostRecorded": "No cost recorded",
+    "noNetRevenue": "No net revenue in this range",
+    "total": "Total",
+    "unknownProduct": "Unknown product"
+  },
+  "marginTrendChart": {
+    "ariaLabel": "Gross margin per bucket. {summary}",
+    "bucket": "{date}: {amount} {currency}",
+    "noMargin": "-"
+  },
+  "needsAttention": {
+    "coverage": {
+      "generic": {
+        "headline": {
+          "one": "{n} variant with a listing gap on at least one channel",
+          "other": "{n} variants with a listing gap on at least one channel"
+        },
+        "sub": "open the listing flow to see which channel is missing each one"
+      },
+      "named": {
+        "headline": {
+          "one": "{n} variant missing from {connection}",
+          "other": "{n} variants missing from {connection}"
+        },
+        "sub": "listed elsewhere, not yet published on this channel"
+      }
+    },
+    "failedSync": {
+      "headline": {
+        "one": "{n} order never reached a destination",
+        "other": "{n} orders never reached a destination"
+      },
+      "sub": "open the list to see which orders and destinations",
+      "subMixedCurrency": "affected orders span multiple currencies"
+    },
+    "stock": {
+      "generic": {
+        "headline": {
+          "one": "{n} variant is publishing no stock to its channel",
+          "other": "{n} variants are publishing no stock to their channel"
+        },
+        "sub": "each channel has its own buffer and low-stock floor - open a variant to see the arithmetic"
+      },
+      "named": {
+        "headline": {
+          "one": "{n} variant publishing no stock on {connection}",
+          "other": "{n} variants publishing no stock on {connection}"
+        },
+        "subBufferOnly": "buffer {buffer} - published stock is master stock minus the buffer",
+        "subWithFloor": "buffer {buffer}, low-stock floor {floor} - below the floor the channel is told 0"
+      }
+    }
+  },
+  "productSalesTable": {
+    "caption": "Top products with per-channel split",
+    "cardUnits": {
+      "one": "{n} unit",
+      "other": "{n} units"
+    },
+    "collapse": "Collapse details for {product}",
+    "columns": {
+      "product": "Product",
+      "sku": "SKU",
+      "sorted": "{column} ↓",
+      "units": "Units"
+    },
+    "coverageUnavailable": "Listing-coverage check unavailable - channel columns show sales only, never \"Not listed\".",
+    "empty": "No orders in this range",
+    "error": {
+      "retry": "Retry",
+      "title": "Unable to load top products"
+    },
+    "expand": "Expand details for {product}",
+    "loading": {
+      "eyebrow": "Loading",
+      "message": "Fetching net sales and units per product, split by channel…",
+      "title": "Loading top products"
+    },
+    "noRevenue": "No {revenue} figure for this product in range",
+    "noSku": "No SKU",
+    "sort": {
+      "aria": "Rank products by",
+      "revenue": "By net sales",
+      "units": "By units"
+    },
+    "title": "Top products",
+    "unresolved": {
+      "one": "{n} product on this page could not be resolved to a catalogue entry.",
+      "other": "{n} products on this page could not be resolved to a catalogue entry."
+    }
+  },
+  "recalculatingValue": {
+    "label": "Recalculating…",
+    "title": "A currency recalculation is running in the background for this range - figures will update once it completes. Safe to navigate away."
+  },
+  "variantChannelMatrix": {
+    "attribute": "{name}: {value}",
+    "caption": "Net sales and units per variant, per channel",
+    "empty": "No variant sales in this range",
+    "error": {
+      "message": "No data returned",
+      "title": "Unable to load variant sales"
+    },
+    "footnoteMany": "Adds up to the Net sales, Units and channel figures shown above.",
+    "footnoteOne": "Matches the Net sales, Units and channel figures shown above - one variant, so nothing to sum.",
+    "label": "Net sales by variant, per channel",
+    "loading": {
+      "message": "Fetching net sales and units per variant, per channel…",
+      "title": "Loading variant sales"
+    },
+    "noNetSales": "No Net sales figure in range",
+    "notListedOnChannel": "Not listed on this channel",
+    "total": "Total",
+    "unassigned": "Unassigned",
+    "unresolved": "Unresolved variant",
+    "variant": "Variant"
+  }
+}

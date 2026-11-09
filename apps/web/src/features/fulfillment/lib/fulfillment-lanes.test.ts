@@ -9,8 +9,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { groupTasksIntoLanes, summariseLaneLines } from './fulfillment-lanes';
-import { FULFILLMENT_WORKLIST_COPY } from './fulfillment-worklist.copy';
+import { getMessages } from '../../../shared/i18n';
 import type { FulfillmentTask } from '../api/fulfillment.types';
+
+const FULFILLMENT_WORKLIST_COPY = getMessages('fulfillment').worklist;
 
 function task(overrides: Partial<FulfillmentTask> = {}): FulfillmentTask {
   return {

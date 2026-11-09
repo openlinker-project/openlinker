@@ -61,20 +61,16 @@ const FE_UNION_FILE = join(
   'api',
   'connections.types.ts'
 );
-const FE_HELP_FILE = join(
-  'apps',
-  'web',
-  'src',
-  'features',
-  'connections',
-  'lib',
-  'capability-metadata.ts'
-);
+// #3877: the help text lives in the core locale file (ADR-081) under
+// `connections.capabilityHelp`. The file sorts its keys, so this mirror is
+// compared as a SET; the order is still enforced on the union and the docs table.
+const FE_HELP_FILE = join('apps', 'web', 'src', 'locales', 'en', 'connections.json');
+const HELP_KEY_PATH = ['capabilityHelp'];
 const DOCS_FILE = join('docs', 'capabilities.md');
 
 const CORE_DECLARATION = 'CoreCapabilityValues';
 const FE_DECLARATION = 'CORE_CAPABILITY_VALUES';
-const HELP_DECLARATION = 'CAPABILITY_HELP';
+const HELP_DECLARATION = 'capabilityHelp';
 
 const DOCS_FENCE_START = '<!-- core-capabilities:start -->';
 const DOCS_FENCE_END = '<!-- core-capabilities:end -->';
@@ -119,6 +115,21 @@ export function parseCapabilityValues(content, name) {
   }
 
   return { line: content.slice(0, declMatch.index).split('\n').length, values };
+}
+
+/** Keys of `connections.capabilityHelp` in the locale file, in `parseHelpKeys`' shape. */
+export function readHelpKeysFromJson(content) {
+  let node;
+  try {
+    node = JSON.parse(content);
+  } catch {
+    return null;
+  }
+  for (const key of HELP_KEY_PATH) {
+    if (node === null || typeof node !== 'object' || !Object.hasOwn(node, key)) return null;
+    node = node[key];
+  }
+  return node !== null && typeof node === 'object' ? { line: 1, keys: Object.keys(node) } : null;
 }
 
 /**
@@ -296,9 +307,9 @@ async function main() {
     );
   }
 
-  const help = parseHelpKeys(feHelpContent, HELP_DECLARATION);
+  const help = readHelpKeysFromJson(feHelpContent);
   if (!help || help.keys.length === 0) {
-    fatal.push(`${FE_HELP_FILE}: no '${HELP_DECLARATION} = { … }' object literal found`);
+    fatal.push(`${FE_HELP_FILE}: no '${HELP_DECLARATION}' object found`);
   }
 
   const docs = parseDocsCapabilities(docsContent, DOCS_FENCE_START, DOCS_FENCE_END);
@@ -328,7 +339,8 @@ async function main() {
       values: help.keys,
       line: help.line,
       file: FE_HELP_FILE,
-      rule: `${HELP_DECLARATION} must carry exactly one entry per ${CORE_DECLARATION} member, in the same order`,
+      rule: `${HELP_DECLARATION} must carry exactly one entry per ${CORE_DECLARATION} member`,
+      unordered: true,
     },
     {
       label: `${DOCS_FILE} capability table`,
@@ -340,7 +352,9 @@ async function main() {
   ];
 
   for (const mirror of mirrors) {
-    const diff = diffCapabilities(core.values, mirror.values, mirror.label);
+    const diff = mirror.unordered
+      ? diffCapabilities([...core.values].sort(), [...mirror.values].sort(), mirror.label)
+      : diffCapabilities(core.values, mirror.values, mirror.label);
     if (!diff.ok) {
       drifts.push({
         rule: mirror.rule,

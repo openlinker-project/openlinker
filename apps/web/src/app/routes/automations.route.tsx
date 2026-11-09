@@ -19,15 +19,15 @@ import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../nav-registry.types';
 
 const automationsIndexCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Automations' },
+  crumb: { group: 'operations', page: 'automations' },
 };
 
 const automationActivityCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Run log' },
+  crumb: { group: 'operations', page: 'runLog' },
 };
 
 const automationTriggerCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Automation rules' },
+  crumb: { group: 'operations', page: 'automationRules' },
 };
 
 export const automationsRoute: RouteObject = {

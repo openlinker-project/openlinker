@@ -17,6 +17,7 @@
 import { useConnectionQuery, useConnectionsQuery, type Connection } from '../../connections';
 import { isSupportedSourcePlatform } from '../lib/supported-source-platforms';
 import type { MappingPairing } from './use-mapping-pairing.types';
+import { getMessages } from '../../../shared/i18n';
 
 /** Read the single pairing key off a connection's `config`; empty/non-string -> undefined. */
 function readMasterCatalogConnectionId(connection: Connection): string | undefined {
@@ -49,18 +50,14 @@ export function resolveMappingPairing(
     if (!masterId) {
       return {
         status: 'error',
-        error: new Error(
-          'This connection is not linked to a product catalog. Set its catalog on the connection page to configure mappings.',
-        ),
+        error: new Error(getMessages('mappings').useMappingPairing.notLinked),
       };
     }
     const destination = allConnections.find((c) => c.id === masterId);
     if (!destination) {
       return {
         status: 'error',
-        error: new Error(
-          "The linked catalog connection could not be found. Check this connection's catalog pairing.",
-        ),
+        error: new Error(getMessages('mappings').useMappingPairing.catalogMissing),
       };
     }
     return { status: 'ready', source: urlConnection, destination };

@@ -611,4 +611,72 @@ describe('InventorySaleReversalService', () => {
       expect(result.status).toBe('failed');
     });
   });
+
+  describe('reverseLineToTarget (#3961)', () => {
+    it('should give back what the line took beyond the target', async () => {
+      seedAppliedDecrement({ quantity: 2 });
+
+      const result = await service.reverseLineToTarget({
+        internalOrderId: 'ol_order_1',
+        orderLineId: 'line-1',
+        targetUnits: 1,
+      });
+
+      expect(shop().adjustInventory).toHaveBeenCalledWith(
+        expect.objectContaining({ quantity: 1, idempotencyKey: 'edit:source-target-1:line-1' })
+      );
+      expect(result).toEqual({ status: 'restored', units: 1, detail: null });
+    });
+
+    it('should give back nothing when an operator edit already returned the extra unit', async () => {
+      seedAppliedDecrement({ quantity: 2 });
+      await service.reverseLineQuantity({
+        internalOrderId: 'ol_order_1',
+        orderLineId: 'line-1',
+        units: 1,
+        changeId: 'chg-1',
+      });
+
+      const result = await service.reverseLineToTarget({
+        internalOrderId: 'ol_order_1',
+        orderLineId: 'line-1',
+        targetUnits: 1,
+      });
+
+      expect(shop().adjustInventory).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ status: 'not-applicable', units: 0, detail: null });
+    });
+
+    it('should replay, not give back again, when the same target is reconciled twice', async () => {
+      seedAppliedDecrement({ quantity: 3 });
+      const input = { internalOrderId: 'ol_order_1', orderLineId: 'line-1', targetUnits: 1 };
+
+      await service.reverseLineToTarget(input);
+      const replay = await service.reverseLineToTarget(input);
+
+      expect(shop().adjustInventory).toHaveBeenCalledTimes(1);
+      expect(replay).toEqual({ status: 'restored', units: 2, detail: null });
+    });
+
+    it('should give back only the further difference for a later, lower target', async () => {
+      seedAppliedDecrement({ quantity: 3 });
+      await service.reverseLineToTarget({ internalOrderId: 'ol_order_1', orderLineId: 'line-1', targetUnits: 2 });
+
+      await service.reverseLineToTarget({ internalOrderId: 'ol_order_1', orderLineId: 'line-1', targetUnits: 0 });
+
+      expect(shop().adjustInventory).toHaveBeenLastCalledWith(
+        expect.objectContaining({ quantity: 2, idempotencyKey: 'edit:source-target-0:line-1' })
+      );
+    });
+
+    it('should be not-applicable when nothing was decremented yet', async () => {
+      const result = await service.reverseLineToTarget({
+        internalOrderId: 'ol_order_1',
+        orderLineId: 'line-1',
+        targetUnits: 1,
+      });
+
+      expect(result).toEqual({ status: 'not-applicable', units: 0, detail: null });
+    });
+  });
 });

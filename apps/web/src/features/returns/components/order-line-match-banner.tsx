@@ -39,7 +39,7 @@ export function OrderLineMatchBanner({
   currency,
   canWrite,
 }: OrderLineMatchBannerProps): ReactElement | null {
-  const copy = useMessages('bundleReturns').match;
+  const copy = useMessages('bundle-returns').match;
   const format = useFormat();
   const { showToast } = useToast();
   const unresolved = line.resolvedOrderLineId === null;

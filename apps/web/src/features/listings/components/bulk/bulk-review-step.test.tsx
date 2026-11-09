@@ -93,6 +93,8 @@ function variantRow(id: string, blockers: BulkRowBlocker[] = [], over: Partial<B
     resolvedCategoryId: 'cat-1',
     resolvedProductCardId: 'card-1',
     resolutionMethod: 'auto_detect',
+    overriddenCard: null,
+    mappingAgrees: false,
     categoryCandidates: [],
     override: {},
     ...over,
@@ -179,7 +181,7 @@ describe('BulkReviewStep', () => {
     // Single-variant product renders flat; its blocker chip is a fix button.
     // The accessible name carries the human variant label (distinguishing attr),
     // never the raw ol_variant id (#1741 review).
-    expect(screen.getByRole('button', { name: /Fix: no barcode - Rozmiar: v1/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Fix: No barcode - Rozmiar: v1/ })).toBeInTheDocument();
   });
 
   it('carries the cause sentence on the chip so one chip can explain itself (#2240)', () => {
@@ -188,12 +190,12 @@ describe('BulkReviewStep', () => {
     );
     // One chip per cause in the table - the sentence rides in the title/accessible
     // name rather than in a second, always-present "category not set" chip.
-    const chip = screen.getByRole('button', { name: /Fix: no catalog match - Rozmiar: v1/ });
+    const chip = screen.getByRole('button', { name: /Fix: No catalog match - Rozmiar: v1/ });
     expect(chip).toHaveAttribute(
       'title',
       expect.stringContaining("isn't in the Test Marketplace catalog"),
     );
-    expect(screen.queryByText('category not set')).not.toBeInTheDocument();
+    expect(screen.queryByText('Category not set')).not.toBeInTheDocument();
   });
 
   it('LOCKS the submit while a batch-level precondition is unmet (#2240 review)', () => {
@@ -266,5 +268,73 @@ describe('BulkReviewStep', () => {
     const chip = screen.getByText(/already on Test Marketplace/);
     const dot = chip.parentElement?.querySelector('.bulk-chip__dot');
     expect(dot).toHaveAttribute('aria-hidden', 'true');
+  });
+  describe('catalogue card vs category mapping (#3994)', () => {
+    const card = { allegroCategoryId: 'cat-powerbanki', productCardId: 'card-power' };
+    const setAside = (id: string): BulkVariantRow =>
+      variantRow(id, ['card-category-differs'], {
+        resolvedCategoryId: 'cat-tshirty',
+        resolvedProductCardId: null,
+        resolutionMethod: 'category_mapping',
+        overriddenCard: card,
+      });
+
+    it('should show a Category column header', () => {
+      renderWithProviders(<BulkReviewStep {...baseProps()} rows={[makeRow('p1', [variantRow('v1')])]} />);
+      expect(screen.getByText('Category', { selector: '.bulk-review__head span' })).toBeInTheDocument();
+    });
+
+    it('should show the disagreement on the category, not as a status chip', () => {
+      renderWithProviders(
+        <BulkReviewStep {...baseProps()} rows={[makeRow('p1', [setAside('v1')])]} />,
+      );
+      expect(screen.queryByText('catalog ≠ mapping')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Compare with your mapping/ })).toBeInTheDocument();
+    });
+
+    it('should keep the row ready, since the disagreement is advisory', () => {
+      renderWithProviders(
+        <BulkReviewStep {...baseProps()} rows={[makeRow('p1', [setAside('v1')])]} />,
+      );
+      const create = screen.getAllByRole('button', { name: /Create offers \(1\)/ });
+      expect(create.length).toBeGreaterThan(0);
+      create.forEach((btn) => expect(btn).not.toBeDisabled());
+    });
+
+    it('should open the comparison and adopt the card for a single-variant product', async () => {
+      const onUseCardCategory = vi.fn();
+      renderWithProviders(
+        <BulkReviewStep
+          {...baseProps()}
+          rows={[makeRow('p1', [setAside('v1')])]}
+          onUseCardCategory={onUseCardCategory}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /Compare with your mapping/ }));
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Use catalog category' }));
+
+      expect(onUseCardCategory).toHaveBeenCalledWith('p1');
+    });
+
+    it('should not offer to adopt a sibling card on a multi-variant product', async () => {
+      const onUseCardCategory = vi.fn();
+      renderWithProviders(
+        <BulkReviewStep
+          {...baseProps()}
+          rows={[makeRow('p1', [setAside('v1'), variantRow('v2')])]}
+          onUseCardCategory={onUseCardCategory}
+        />,
+      );
+
+      // Collapsed, the product row says a variant disagrees; that line expands it.
+      fireEvent.click(screen.getByRole('button', { name: 'Barcode disagrees on 1 variant' }));
+      fireEvent.click(screen.getByRole('button', { name: /Compare with your mapping/ }));
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+
+      expect(screen.queryByRole('button', { name: 'Use catalog category' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Edit product' })).toBeInTheDocument();
+    });
   });
 });

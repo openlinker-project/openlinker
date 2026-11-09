@@ -6,6 +6,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '../../../shared/ui/dialog';
+import { interpolate, useMessages } from '../../../shared/i18n';
 
 interface ProductGalleryProps {
   images: string[];
@@ -13,6 +14,7 @@ interface ProductGalleryProps {
 }
 
 export function ProductGallery({ images, name }: ProductGalleryProps): ReactElement {
+  const copy = useMessages('products').productGallery;
   const [activeIndex, setActiveIndex] = useState(0);
   const [isLightboxOpen, setLightboxOpen] = useState(false);
   const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
@@ -44,7 +46,7 @@ export function ProductGallery({ images, name }: ProductGalleryProps): ReactElem
   const isActiveBroken = Boolean(brokenImages[activeImage]);
 
   return (
-    <div className="product-gallery" role="group" aria-label="Product photos">
+    <div className="product-gallery" role="group" aria-label={copy.groupLabel}>
       {/* Dialog gives the lightbox focus trap, initial focus, focus
           restoration to the trigger button, background scroll-lock, and a
           portal — for free, matching the a11y bar every other modal in this
@@ -53,7 +55,7 @@ export function ProductGallery({ images, name }: ProductGalleryProps): ReactElem
           track it and return focus to it on close. */}
       <Dialog open={isLightboxOpen} onOpenChange={setLightboxOpen}>
         <DialogTrigger asChild>
-          <button type="button" className="product-gallery__main" aria-label="Open photo viewer">
+          <button type="button" className="product-gallery__main" aria-label={copy.openViewer}>
             <span className="product-gallery__placeholder" aria-hidden="true">
               {initial}
             </span>
@@ -78,7 +80,10 @@ export function ProductGallery({ images, name }: ProductGalleryProps): ReactElem
                 type="button"
                 className={`product-gallery__thumb${index === activeIndex ? ' is-active' : ''}`}
                 onClick={() => setActiveIndex(index)}
-                aria-label={`Photo ${index + 1} of ${images.length}`}
+                aria-label={interpolate(copy.thumbLabel, {
+                  index: index + 1,
+                  total: images.length,
+                })}
               >
                 <img
                   src={image}
@@ -100,27 +105,33 @@ export function ProductGallery({ images, name }: ProductGalleryProps): ReactElem
             if (event.key === 'ArrowRight') navigate(1);
           }}
         >
-          <DialogTitle className="sr-only">{name} photo viewer</DialogTitle>
+          <DialogTitle className="sr-only">
+            {interpolate(copy.viewerTitle, { name })}
+          </DialogTitle>
           <DialogDescription className="sr-only">
-            Use the arrow keys or the on-screen controls to browse photos. Press Escape to close.
+            {copy.viewerDescriptionBrowse} {copy.viewerDescriptionClose}
           </DialogDescription>
           <div className="lightbox">
             <button
               type="button"
               className="lightbox__close"
-              aria-label="Close"
+              aria-label={copy.close}
               onClick={() => setLightboxOpen(false)}
             >
               ✕
             </button>
             <div className="lightbox__frame">
-              <img src={activeImage} alt={`${name} — photo ${activeIndex + 1} of ${images.length}`} />
+              <img src={activeImage} alt={interpolate(copy.lightboxAlt, {
+                  name,
+                  index: activeIndex + 1,
+                  total: images.length,
+                })} />
               {images.length > 1 ? (
                 <>
                   <button
                     type="button"
                     className="lightbox__nav lightbox__nav--prev"
-                    aria-label="Previous photo"
+                    aria-label={copy.previous}
                     onClick={() => navigate(-1)}
                   >
                     ‹
@@ -128,7 +139,7 @@ export function ProductGallery({ images, name }: ProductGalleryProps): ReactElem
                   <button
                     type="button"
                     className="lightbox__nav lightbox__nav--next"
-                    aria-label="Next photo"
+                    aria-label={copy.next}
                     onClick={() => navigate(1)}
                   >
                     ›

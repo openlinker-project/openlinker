@@ -6,7 +6,6 @@ import { changePasswordRoute } from './routes/change-password.route';
 import { consentRoute } from './routes/consent.route';
 import { forgotPasswordRoute } from './routes/forgot-password.route';
 import { loginRoute } from './routes/login.route';
-import { registerRoute } from './routes/register.route';
 import { resetPasswordRoute } from './routes/reset-password.route';
 import { rootRoute } from './routes/root.route';
 
@@ -18,7 +17,6 @@ import { rootRoute } from './routes/root.route';
  */
 export const guestRoutes: RouteObject[] = [
   loginRoute,
-  registerRoute,
   forgotPasswordRoute,
   resetPasswordRoute,
   confirmEmailRoute,

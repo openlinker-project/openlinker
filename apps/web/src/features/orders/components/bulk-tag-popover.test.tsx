@@ -129,7 +129,7 @@ describe('BulkTagPopover (#3532/#3533)', () => {
     await user.click(screen.getByRole('menuitem', { name: /Fragile/ }));
 
     expect(await findToastTitle('Tag not added')).toBeInTheDocument();
-    expect(await findToastDescription('Tag not found')).toBeInTheDocument();
+    expect(await findToastDescription('The server said: Tag not found')).toBeInTheDocument();
   });
 
   it('should offer "Manage tags" only when the caller is an admin', async () => {

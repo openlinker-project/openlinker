@@ -36,6 +36,7 @@ import {
   ConnectionNotFoundException,
   FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY,
   isPresentButInvalidFulfilmentOwnedByDestination,
+  describeInvalidPaymentWritebackConfig,
   ConnectionInUseException,
   BUYER_EMAILS_CONFIG_KEY,
   buyerEmailChannelKindOf,
@@ -435,6 +436,19 @@ export class ConnectionService implements IConnectionService {
       throw new BadRequestException(
         `config.${FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY} must be true or false`
       );
+    }
+  }
+
+  /**
+   * Refuse a malformed `config.paymentWriteback` (#3963) instead of storing a
+   * setting the coercer would silently read as the default - an operator who
+   * chose "leave it" must not get "mark paid". `null` (a cleared knob) and an
+   * absent key are accepted and read as the default.
+   */
+  private validatePaymentWritebackConfig(config: Record<string, unknown>): void {
+    const problem = describeInvalidPaymentWritebackConfig(config);
+    if (problem !== null) {
+      throw new BadRequestException(`config.${problem}`);
     }
   }
 
@@ -1045,6 +1059,7 @@ export class ConnectionService implements IConnectionService {
         this.validateRateLimitConfig(rest.config);
         this.validateStockAndPricingConfig(rest.config);
         this.validateFulfilmentOwnedByDestinationConfig(rest.config);
+        this.validatePaymentWritebackConfig(rest.config);
         this.validateAutoDispatchConfig(rest.config);
         await this.validateDeliveryOnDocumentsConfig(rest.config);
         this.validateGiftOnDocumentsConfig(rest.config);
@@ -1344,6 +1359,7 @@ export class ConnectionService implements IConnectionService {
         this.validateRateLimitConfig(patch.config);
         this.validateStockAndPricingConfig(patch.config);
         this.validateFulfilmentOwnedByDestinationConfig(patch.config);
+        this.validatePaymentWritebackConfig(patch.config);
         this.validateAutoDispatchConfig(patch.config);
         await this.validateDeliveryOnDocumentsConfig(patch.config);
         this.validateGiftOnDocumentsConfig(patch.config);

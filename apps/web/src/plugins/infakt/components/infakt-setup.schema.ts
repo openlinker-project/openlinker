@@ -16,6 +16,9 @@
  */
 import { z } from 'zod';
 import type { CreateConnectionInput } from '../../../features/connections';
+import type { getInfaktMessages } from '../messages';
+
+type InfaktSetupSchemaCopy = ReturnType<typeof getInfaktMessages>['infaktSetupSchema'];
 
 export const INFAKT_ADAPTER_KEY = 'infakt.accounting.v1';
 
@@ -30,15 +33,18 @@ export const INFAKT_ENVIRONMENT_VALUES = ['sandbox', 'production'] as const;
 // `environment` select).
 export const INFAKT_PAYMENT_METHOD_VALUES = ['cash', 'transfer'] as const;
 
-export const infaktSetupSchema = z.object({
-  name: z.string().trim().min(1, 'Connection name is required'),
-  apiKey: z.string().trim().min(1, 'API key is required'),
-  environment: z.enum(INFAKT_ENVIRONMENT_VALUES),
-  defaultPaymentMethod: z.enum(INFAKT_PAYMENT_METHOD_VALUES),
-});
+export function createInfaktSetupSchema(copy: InfaktSetupSchemaCopy) {
+  return z.object({
+    name: z.string().trim().min(1, copy.nameRequired),
+    apiKey: z.string().trim().min(1, copy.apiKeyRequired),
+    environment: z.enum(INFAKT_ENVIRONMENT_VALUES),
+    defaultPaymentMethod: z.enum(INFAKT_PAYMENT_METHOD_VALUES),
+  });
+}
 
-export type InfaktSetupFormValues = z.input<typeof infaktSetupSchema>;
-export type InfaktSetupFormSubmission = z.output<typeof infaktSetupSchema>;
+type InfaktSetupSchema = ReturnType<typeof createInfaktSetupSchema>;
+export type InfaktSetupFormValues = z.input<InfaktSetupSchema>;
+export type InfaktSetupFormSubmission = z.output<InfaktSetupSchema>;
 
 export const INFAKT_SETUP_DEFAULT_VALUES: InfaktSetupFormValues = {
   name: '',

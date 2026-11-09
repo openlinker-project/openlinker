@@ -24,7 +24,7 @@ describe('AnalyticsSettingsDialog', () => {
 
     const description = screen.getByText(/Display currency and rate basis/);
     expect(description).toHaveTextContent(
-      'Display currency and rate basis (below) only change what you see on this screen — nothing is saved. Actions further down can write data permanently — each one says so plainly.'
+      'Display currency and rate basis (below) only change what you see on this screen - nothing is saved. Actions further down can write data permanently - each one says so plainly.'
     );
     // Regression guard (#2473): the blanket claim must not appear stripped of
     // its "Actions further down..." qualifier anywhere else in the dialog —
@@ -51,7 +51,7 @@ describe('AnalyticsSettingsDialog', () => {
     // it is a query-time gate, so reverting removes those orders from Net
     // Sales again at the next query.
     expect(toggleDescription).not.toHaveTextContent(/does not undo/);
-    expect(toggleDescription).toHaveTextContent(/removes these orders from Net Sales again/);
+    expect(toggleDescription).toHaveTextContent(/removes these orders from Net sales again/);
     // Must state the change is org-wide and applies to every date range, not
     // just the one currently being viewed.
     expect(toggleDescription).toHaveTextContent(/everyone/);

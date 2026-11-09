@@ -57,6 +57,14 @@
  *
  * @module apps/web/src/features/connections/components
  */
+import {
+  interpolate,
+  useFormat,
+  useMessages,
+  usePlural,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 import { useEffect, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../../../shared/ui/button';
@@ -67,7 +75,7 @@ import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import {
   useConnectionPricingSyncQuery,
@@ -119,15 +127,9 @@ export interface PricingAndSyncSectionProps {
   initialCreateOverrideForSourceId?: string;
 }
 
-const MODE_HINT: Record<PriceSyncMode, string> = {
-  manual: 'New prices wait for your OK on the Price changes page before they go live.',
-  automatic: 'New prices go live the moment they change in your shop — no review, no waiting.',
-};
+type PricingSyncCopy = ResolvedCopy<Messages['connections']>['pricingAndSyncSection'];
 
-const MODE_OPTIONS: readonly { value: PriceSyncMode; label: string }[] = [
-  { value: 'manual', label: 'Manual review' },
-  { value: 'automatic', label: 'Automatic' },
-];
+const MODE_VALUES: readonly PriceSyncMode[] = ['manual', 'automatic'];
 
 /**
  * The draft's own rule shape keeps `percent` a STRING, never `number`
@@ -264,13 +266,13 @@ const PERCENT_PATTERN = /^\d+(\.\d*)?$/;
  * `PricingRuleMarginCeilingConstraint` is the authoritative gate this
  * mirrors, not replaces.
  */
-function validateRule(rule: DraftPricingRule | null): string | null {
+function validateRule(copy: PricingSyncCopy, rule: DraftPricingRule | null): string | null {
   if (rule === null || rule.type === 'passthrough') return null;
   if (!PERCENT_PATTERN.test(rule.percent)) {
-    return 'Enter a percentage, 0 or more.';
+    return copy.errors.percentInvalid;
   }
   if (rule.type === 'margin' && Number(rule.percent) >= 100) {
-    return 'A margin must be below 100%. To add more than the catalogue price, use a markup instead.';
+    return copy.errors.marginTooHigh;
   }
   return null;
 }
@@ -298,8 +300,8 @@ function toWireSetting(setting: DraftPricingSyncSetting): PricingSyncSetting {
 }
 
 /** Presentational only — `ruleSentenceFor` takes the wire (numeric) shape. */
-function sentenceForDraftRule(rule: DraftPricingRule | null): string {
-  if (rule === null) return 'No pricing rule is set - the shop price is sent unchanged.';
+function sentenceForDraftRule(copy: PricingSyncCopy, rule: DraftPricingRule | null): string {
+  if (rule === null) return copy.noRule;
   return ruleSentenceFor(toWireRule(rule));
 }
 
@@ -326,6 +328,14 @@ export function PricingAndSyncSection({
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
   const readOnly = !write.canWrite;
+  const copy = useMessages('connections').pricingAndSyncSection;
+  const format = useFormat();
+  const plural = usePlural();
+  const modeOptions = MODE_VALUES.map((value) => ({
+    value,
+    label: copy.modes[value],
+    disabled: readOnly,
+  }));
 
   const [draft, setDraft] = useState<DraftView | null>(null);
   const [modeOverrides, setModeOverrides] = useState<Set<string>>(new Set());
@@ -455,13 +465,13 @@ export function PricingAndSyncSection({
   if (query.error) {
     return (
       <ErrorState
-        title="Couldn't load pricing & sync settings"
+        title={copy.loadErrorTitle}
         message={query.error.message}
       />
     );
   }
   if (query.isLoading || !draft) {
-    return <LoadingState title="Pricing & sync" message="Loading settings…" />;
+    return <LoadingState title={copy.loadingTitle} message={copy.loadingMessage} />;
   }
 
   // Diffed against `baseline`, NOT the raw server read — see `DraftBaseline`.
@@ -476,10 +486,10 @@ export function PricingAndSyncSection({
     : false;
   const hasUnsavedChanges = isDirty || isCustomSourcesDirty;
 
-  const defaultRuleError = validateRule(draft.default.rule);
+  const defaultRuleError = validateRule(copy, draft.default.rule);
   const activeSourceErrors = draft.sources
     .filter((s) => ruleOverrides.has(s.sourceConnectionId))
-    .map((s) => validateRule(s.effective.rule));
+    .map((s) => validateRule(copy, s.effective.rule));
   const firstSourceError = activeSourceErrors.find((e) => e !== null) ?? null;
   const hasInvalidRule = defaultRuleError !== null || firstSourceError !== null;
   /**
@@ -500,9 +510,9 @@ export function PricingAndSyncSection({
   // ever be invalid WITHOUT a pending change (a server-side rule that stops
   // validating, say), the reason needs its own home outside the bar.
   const saveBlockedReason = defaultRuleError
-    ? `Can't save yet. Default rule: ${defaultRuleError}`
+    ? interpolate(copy.blocked.defaultRule, { error: defaultRuleError })
     : firstSourceError
-      ? `Can't save yet. Source override: ${firstSourceError}`
+      ? interpolate(copy.blocked.sourceOverride, { error: firstSourceError })
       : null;
 
   function updateDefault(mode?: PriceSyncMode, rulePatch?: RulePatch): void {
@@ -619,14 +629,14 @@ export function PricingAndSyncSection({
       await updateMutation.mutateAsync({ default: toWireSetting(draft.default), sourceOverrides });
       showToast({
         tone: 'success',
-        title: 'Saved',
-        description: 'Pricing & sync settings updated.',
+        title: copy.savedTitle,
+        description: copy.savedDescription,
       });
     } catch (error) {
       showToast({
         tone: 'error',
         description:
-          error instanceof Error ? error.message : 'Failed to save pricing & sync settings.',
+          error instanceof Error ? error.message : copy.saveFailed,
       });
     }
   }
@@ -665,27 +675,27 @@ export function PricingAndSyncSection({
       <div className="pricing-sync__section pricing-sync__section--first">
         <div className="pricing-sync__section-head">
           <div>
-            <h3 className="pricing-sync__section-title">Default pricing rule</h3>
+            <h3 className="pricing-sync__section-title">{copy.defaultRule.title}</h3>
             <p className="pricing-sync__section-desc">
-              Used for every source below, unless you give one its own rule.
+              {copy.defaultRule.description}
             </p>
           </div>
         </div>
 
         <SegmentedControl
           id="conn-mode-switch"
-          aria-label="Default price sync mode"
-          options={MODE_OPTIONS.map((option) => ({ ...option, disabled: readOnly }))}
+          aria-label={copy.defaultRule.modeLabel}
+          options={modeOptions}
           value={draft.default.mode}
           onChange={(mode) => updateDefault(mode)}
         />
         <div className="pricing-sync__mode-hint" id="conn-mode-hint">
-          {MODE_HINT[draft.default.mode]}
+          {copy.modeHints[draft.default.mode]}
         </div>
 
         <div className="pricing-sync__rule-row">
           <div className="pricing-sync__section-desc pricing-sync__section-desc--wide" id="conn-rule-note">
-            {sentenceForDraftRule(draft.default.rule)}
+            {sentenceForDraftRule(copy, draft.default.rule)}
           </div>
           <Button
             tone="secondary"
@@ -695,7 +705,7 @@ export function PricingAndSyncSection({
             disabled={readOnly}
             onClick={() => setRuleFormOpen((v) => !v)}
           >
-            Edit default rule
+            {copy.defaultRule.edit}
           </Button>
         </div>
 
@@ -721,9 +731,9 @@ export function PricingAndSyncSection({
               }
               role={saveBlockedReason ? 'alert' : undefined}
             >
-              {saveBlockedReason ?? "You've changed something and haven't saved it yet."}
+              {saveBlockedReason ?? copy.unsaved}
             </span>
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
               <div className="pricing-sync__unsaved-bar-actions">
                 <Button
                   tone="secondary"
@@ -732,7 +742,7 @@ export function PricingAndSyncSection({
                   id="conn-discard"
                   onClick={handleDiscard}
                 >
-                  Discard
+                  {copy.discard}
                 </Button>
                 <Button
                   className="button--sm"
@@ -741,7 +751,7 @@ export function PricingAndSyncSection({
                   disabled={updateMutation.isPending || readOnly || hasInvalidRule}
                   onClick={() => void handleSave()}
                 >
-                  {updateMutation.isPending ? 'Saving…' : 'Save changes'}
+                  {updateMutation.isPending ? copy.saving : copy.save}
                 </Button>
               </div>
             </ReadOnlyLock>
@@ -750,15 +760,13 @@ export function PricingAndSyncSection({
       </div>
 
       <div className="pricing-sync__section">
-        <h3 className="pricing-sync__section-title">Give one source its own settings</h3>
+        <h3 className="pricing-sync__section-title">{copy.sources.title}</h3>
         <p className="pricing-sync__section-desc pricing-sync__section-desc--spaced">
-          Use this when one supplier or warehouse should be priced differently — for example, a
-          second warehouse with its own margin.
+          {copy.sources.description}
         </p>
         {notFoundSourceId ? (
           <p className="pricing-sync__notice" id="conn-source-not-found" role="status">
-            The linked source isn&apos;t one of this connection&apos;s current sources, so there
-            was nothing to show you below.
+            {copy.sources.notFound}
           </p>
         ) : null}
         <div className="pricing-sync__source-list" id="conn-source-list">
@@ -772,10 +780,10 @@ export function PricingAndSyncSection({
             // asserted a value Save is about to discard.
             const displayedRule = hasOwnRule ? source.effective.rule : draft.default.rule;
             const displayedMode = hasOwnMode ? source.effective.mode : draft.default.mode;
-            const sourceError = hasOwnRule ? validateRule(source.effective.rule) : null;
+            const sourceError = hasOwnRule ? validateRule(copy, source.effective.rule) : null;
             const inherited = [
-              !hasOwnMode ? 'sync mode' : null,
-              !hasOwnRule ? 'rule' : null,
+              !hasOwnMode ? copy.sources.inheritedMode : null,
+              !hasOwnRule ? copy.sources.inheritedRule : null,
             ].filter((part): part is string => part !== null);
             return (
               <div className="pricing-sync__source-row" key={id}>
@@ -792,7 +800,7 @@ export function PricingAndSyncSection({
                       disabled={readOnly}
                       onChange={(e) => toggleSourceOverride(id, 'mode', e.target.checked)}
                     />
-                    Use a different sync mode for this source
+                    {copy.sources.ownMode}
                   </label>
                   <label className="pricing-sync__source-row-toggle">
                     <input
@@ -803,21 +811,23 @@ export function PricingAndSyncSection({
                       disabled={readOnly}
                       onChange={(e) => toggleSourceOverride(id, 'rule', e.target.checked)}
                     />
-                    Use a different rule for this source
+                    {copy.sources.ownRule}
                   </label>
                 </div>
                 <div className="pricing-sync__source-row-summary" id={`source-row-summary-${id}`}>
-                  {MODE_OPTIONS.find((o) => o.value === displayedMode)?.label}
+                  {copy.modes[displayedMode]}
                   {' · '}
-                  {sentenceForDraftRule(displayedRule)}
-                  {inherited.length > 0 ? ` (using the default ${inherited.join(' and ')})` : ''}
+                  {sentenceForDraftRule(copy, displayedRule)}
+                  {inherited.length > 0
+                    ? ` ${interpolate(copy.sources.usingDefault, { parts: format.list(inherited) })}`
+                    : ''}
                 </div>
                 {hasOwnMode || hasOwnRule ? (
                   <div className="pricing-sync__source-row-body" id={`source-row-body-${id}`}>
                     {hasOwnMode ? (
                       <SegmentedControl
-                        aria-label={`Price sync mode for ${source.sourceLabel}`}
-                        options={MODE_OPTIONS.map((option) => ({ ...option, disabled: readOnly }))}
+                        aria-label={interpolate(copy.sources.modeLabel, { source: source.sourceLabel })}
+                        options={modeOptions}
                         value={source.effective.mode}
                         onChange={(mode) => updateSource(id, mode)}
                       />
@@ -844,28 +854,30 @@ export function PricingAndSyncSection({
           {totalPendingChanges > 0 ? (
             <>
               <span id="conn-pending-text">
-                {totalPendingChanges} change{totalPendingChanges === 1 ? '' : 's'} waiting
+                {plural(totalPendingChanges, copy.pending.count, {
+                  n: format.number(totalPendingChanges),
+                })}
               </span>{' '}
-              —{' '}
+              -{' '}
               {/* `queueConn`, not `connectionId` — the queue table's own
                   channel filter is namespaced separately from the "All
                   listings" tab's `?connectionId` selector (#3164 review) so
                   neither silently pre-filters the other; this link must
                   target the queue's own param to actually pre-filter it. */}
               <Link id="conn-pending-link" to={`/listings?view=queue&queueConn=${connectionId}`}>
-                review them
+                {copy.pending.review}
               </Link>
             </>
           ) : (
-            <span id="conn-pending-text">No price changes waiting on this connection.</span>
+            <span id="conn-pending-text">{copy.pending.none}</span>
           )}
         </div>
       </div>
 
       <div className="pricing-sync__section">
-        <h3 className="pricing-sync__section-title">Recent activity</h3>
+        <h3 className="pricing-sync__section-title">{copy.activity.title}</h3>
         <p className="pricing-sync__section-desc pricing-sync__section-desc--spaced">
-          The last price decisions made on this connection.
+          {copy.activity.description}
         </p>
         {/*
          * Gap, flagged rather than fabricated (issue's own stated
@@ -876,7 +888,7 @@ export function PricingAndSyncSection({
          * once such an endpoint exists.
          */}
         <div className="pricing-sync__activity-list" id="conn-activity">
-          <p className="pricing-sync__section-desc">Activity history isn&apos;t available yet.</p>
+          <p className="pricing-sync__section-desc">{copy.activity.unavailable}</p>
         </div>
       </div>
 
@@ -885,14 +897,18 @@ export function PricingAndSyncSection({
         onOpenChange={(open) => {
           if (!open) setDropOverrideConfirm(null);
         }}
-        title="Remove this source's own settings?"
+        title={copy.drop.title}
         tone="danger"
-        confirmLabel="Discard and save"
+        confirmLabel={copy.drop.confirm}
         description={
           dropOverrideConfirm
-            ? `Saving will permanently remove: ${dropOverrideConfirm.dropped
-                .map((d) => `${d.label} (${d.parts.join(' and ')})`)
-                .join('; ')}. ${dropOverrideConfirm.dropped.length === 1 ? 'It' : 'They'} will go back to the default.`
+            ? plural(dropOverrideConfirm.dropped.length, copy.drop.description, {
+                items: format.list(
+                  dropOverrideConfirm.dropped.map((d) =>
+                    interpolate(copy.drop.item, { label: d.label, parts: format.list(d.parts) }),
+                  ),
+                ),
+              })
             : ''
         }
         isConfirming={updateMutation.isPending}
@@ -917,12 +933,13 @@ function RuleFields({
 }): ReactElement {
   // A connection with no rule shows the neutral starting values; the draft
   // stays `null` until the operator actually changes a field.
+  const copy = useMessages('connections').pricingAndSyncSection.ruleFields;
   const rule = ruleProp ?? EMPTY_DRAFT_RULE;
   return (
     <>
       <div className="field">
         <label className="field__label" htmlFor={`${idPrefix}-type`}>
-          Pricing rule
+          {copy.type}
         </label>
         <Select
           id={`${idPrefix}-type`}
@@ -930,15 +947,15 @@ function RuleFields({
           disabled={disabled}
           onChange={(e) => onChange({ type: e.target.value as PricingRuleType })}
         >
-          <option value="passthrough">Use shop price as-is</option>
-          <option value="markup">Add a percentage</option>
-          <option value="margin">Keep a percentage margin</option>
+          <option value="passthrough">{copy.types.passthrough}</option>
+          <option value="markup">{copy.types.markup}</option>
+          <option value="margin">{copy.types.margin}</option>
         </Select>
       </div>
       {rule.type !== 'passthrough' ? (
         <div className="field">
           <label className="field__label" htmlFor={`${idPrefix}-pct`}>
-            Percent
+            {copy.percent}
           </label>
           <div className="field__price-input">
             <Input
@@ -962,7 +979,7 @@ function RuleFields({
       ) : null}
       <div className="field">
         <label className="field__label" htmlFor={`${idPrefix}-rounding`}>
-          Rounding
+          {copy.rounding}
         </label>
         <Select
           id={`${idPrefix}-rounding`}
@@ -970,9 +987,9 @@ function RuleFields({
           disabled={disabled}
           onChange={(e) => onChange({ rounding: e.target.value as PriceRoundingMode })}
         >
-          <option value="none">No rounding</option>
-          <option value="nearestWhole">Round to a whole number</option>
-          <option value="endingIn99">Round to end in .99</option>
+          <option value="none">{copy.roundings.none}</option>
+          <option value="nearestWhole">{copy.roundings.nearestWhole}</option>
+          <option value="endingIn99">{copy.roundings.endingIn99}</option>
         </Select>
       </div>
     </>

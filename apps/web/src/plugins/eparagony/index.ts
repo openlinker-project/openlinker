@@ -39,6 +39,7 @@
  */
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
+import { eparagonyMessages, getEparagonyMessages } from './messages';
 import { EparagonyInvoiceCorrectionFlow } from './components/eparagony-invoice-correction-flow';
 import { EparagonyInvoiceDetailSection } from './components/eparagony-invoice-detail-section';
 import { EparagonyStructuredSection } from './components/eparagony-structured-section';
@@ -47,17 +48,24 @@ import { eparagonySetupRoute } from './eparagony-setup.route';
 
 export const eparagonyPlugin: OpenLinkerPlugin = definePlugin({
   id: 'eparagony',
+  messages: eparagonyMessages,
   platformType: 'eparagony',
   build: {
     routes: [eparagonySetupRoute],
   },
   platform: {
     displayName: 'eparagony.pl',
+    // Getters, not values: the card is read at render, so the copy follows
+    // the active language instead of freezing at module load.
     setupCard: {
       title: 'eparagony.pl',
-      description: 'Issue Polish fiscal e-receipts on your own printer, invoices, or both.',
+      get description(): string {
+        return getEparagonyMessages().plugin.setupCard.description;
+      },
       to: '/connections/new/eparagony',
-      badge: 'Fiscalization',
+      get badge(): string {
+        return getEparagonyMessages().plugin.setupCard.badge;
+      },
     },
     StructuredConfigSection: EparagonyStructuredSection,
     connectionConfig: eparagonyConnectionConfig,

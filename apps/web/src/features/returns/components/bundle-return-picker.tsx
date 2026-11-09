@@ -43,7 +43,7 @@ export function BundleReturnPicker({
   onSelectionChange,
   onBlockedChange,
 }: BundleReturnPickerProps): ReactElement | null {
-  const copy = useMessages('bundleReturns').picker;
+  const copy = useMessages('bundle-returns').picker;
   const format = useFormat();
   const [selected, setSelected] = useState<string[] | null>(null);
 

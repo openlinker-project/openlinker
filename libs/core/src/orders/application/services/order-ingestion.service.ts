@@ -49,9 +49,13 @@ import {
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
   ORDER_CHANGE_SERVICE_TOKEN,
   ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
+  ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
+  PAYMENT_WRITEBACK_SERVICE_TOKEN,
 } from '../../orders.tokens';
 import { IOrderBundleDocumentService } from './order-bundle-document.service.interface';
+import { IPaymentWritebackService } from '../interfaces/payment-writeback.service.interface';
 import { IOrderCancellationEffectsService } from '../interfaces/order-cancellation-effects.service.interface';
+import { IOrderSourceAmendmentEffectsService } from '../interfaces/order-source-amendment-effects.service.interface';
 import { IOrderChangeService } from './order-change.service.interface';
 import type { OrderChange } from '../../domain/entities/order-change.entity';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
@@ -137,6 +141,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { diffOrderAmendment } from '../../domain/order-amendment-diff';
 import { applyOrderEditsToOrder } from '../../domain/types/order-edits.types';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
+import { NoOrderDestinationsAvailableException } from '../../domain/exceptions/no-order-destinations-available.exception';
 
 /**
  * What the #2396 intercept decided for one order.
@@ -295,7 +300,15 @@ export class OrderIngestionService implements IOrderIngestionService {
     // #3934: the components a document shows for a bundle line when the source
     // connection asks for the `components` form. Same module, no cycle.
     @Inject(ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN)
-    private readonly bundleDocuments: IOrderBundleDocumentService
+    private readonly bundleDocuments: IOrderBundleDocumentService,
+    // #3961: carries a line change the source reports AFTER routing into the
+    // packing work (or holds the box). Same module, no cycle; appended last.
+    @Inject(ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN)
+    private readonly sourceAmendmentEffects: IOrderSourceAmendmentEffectsService,
+    // #3963: mirrors a payment that arrived after a shop got the order. Same
+    // module, no cycle. Appended last.
+    @Inject(PAYMENT_WRITEBACK_SERVICE_TOKEN)
+    private readonly paymentWriteback: IPaymentWritebackService
   ) {}
 
   async ingestOrders(
@@ -830,6 +843,15 @@ export class OrderIngestionService implements IOrderIngestionService {
     );
     await this.persistFulfillmentOutcome(order.id, routing);
 
+    // #3961: a re-ingested order may carry a line the source changed after it
+    // was routed. Routing answers `already-routed` and touches no work, so the
+    // difference is reconciled here - level-triggered, from the stored record,
+    // so a failed or skipped attempt is simply repeated by the next ingestion.
+    // A first ingestion cannot be an amendment. Never throws.
+    if (existing != null && order.status !== 'cancelled' && !cancelledFromEarlySignal) {
+      await this.sourceAmendmentEffects.reconcile({ internalOrderId: order.id });
+    }
+
     let results: Awaited<ReturnType<IOrderSyncService['syncOrder']>> = [];
 
     if (routing.held) {
@@ -853,16 +875,34 @@ export class OrderIngestionService implements IOrderIngestionService {
       // until the next run - a bounded display fault, not a correctness one.
       await this.persistDestinationRoutingCleared(order.id);
     } else {
-      results = await this.orderSyncService.syncOrder({
-        order,
-        sourceConnectionId: connectionId,
-        sourceEventId,
-        // Only when a bundle expanded anything, so an order without one sends
-        // the byte-identical request it always did.
-        ...(physicalItems.some((item) => 'parentLineId' in item && item.parentLineId !== undefined)
-          ? { physicalProductIds: physicalItems.map((item) => item.productId) }
-          : {}),
-      });
+      try {
+        results = await this.orderSyncService.syncOrder({
+          order,
+          sourceConnectionId: connectionId,
+          sourceEventId,
+          // Only when a bundle expanded anything, so an order without one sends
+          // the byte-identical request it always did.
+          ...(physicalItems.some(
+            (item) => 'parentLineId' in item && item.parentLineId !== undefined
+          )
+            ? { physicalProductIds: physicalItems.map((item) => item.productId) }
+            : {}),
+        });
+      } catch (error) {
+        // #3959 - no reachable destination is a fact about MIRRORING, not
+        // about the sale. Decide the sales document before the throw takes the
+        // job onto its retry ladder, or the order never gets its invoice.
+        if (error instanceof NoOrderDestinationsAvailableException) {
+          await this.decideSalesDocument(
+            order,
+            connectionId,
+            sourceEventId,
+            existing?.taxRateEra ?? null,
+            persisted
+          );
+        }
+        throw error;
+      }
     }
 
     // Update per-destination sync status; allSettled — one failure doesn't block others
@@ -978,6 +1018,46 @@ export class OrderIngestionService implements IOrderIngestionService {
       }
     }
 
+    // #3963: a payment that arrived after a shop got the order never reaches it
+    // through the create path above (an existing mapping skips the create).
+    // Decided here, after the sync settled, so `created` is known per shop;
+    // the send itself runs in its own job. Best-effort - never fails ingestion.
+    await this.paymentWriteback.planAfterSync({
+      order,
+      existing,
+      sourceConnectionId: connectionId,
+      results,
+    });
+
+    await this.decideSalesDocument(
+      order,
+      connectionId,
+      sourceEventId,
+      existing?.taxRateEra ?? null,
+      persisted
+    );
+
+    return results;
+  }
+
+  /**
+   * The sales-document step (OL #1120, #2100): ask the auto-issue gate what this
+   * transition means for the order's invoice or receipt, and persist its answer.
+   *
+   * Runs at the end of every source ingestion, and ALSO before a
+   * `NoOrderDestinationsAvailableException` propagates (#3959): whether the
+   * order could be copied to a destination says nothing about whether the buyer
+   * is owed a document, so a missing or disabled destination must not cost the
+   * order its invoice. The gate is idempotent per order, so a retried job asks
+   * again without issuing a second document.
+   */
+  private async decideSalesDocument(
+    order: Order,
+    connectionId: string,
+    sourceEventId: string | undefined,
+    taxRateEra: OrderRecord['taxRateEra'] | null,
+    persisted: OrderRecord
+  ): Promise<void> {
     // OL #1120 — auto-issue trigger (EV→SVC edge, ADR-026 §3). Fires STRICTLY at
     // the end of the authoritative source poll, AFTER per-destination status is
     // settled.
@@ -988,9 +1068,9 @@ export class OrderIngestionService implements IOrderIngestionService {
     // destination shop or from a routed holder. Skipping it under a hold would
     // silently stop invoicing for exactly the orders a router took over, which
     // is a fiscal regression disguised as a fulfilment change. `results` is
-    // empty on that path, so the settlement loop above simply did nothing.
+    // empty on that path, so the settlement loop in `syncOrderFromSource` did nothing.
     //
-    // The destination-echo early-return (`return []`) above is the
+    // The destination-echo early-return (`return []`) in `syncOrderFromSource` is the
     // INTENDED gate: issuance fires only on the real source ingestion, never on a
     // destination re-read. Threads the in-scope `sourceEventId` as the trace token
     // (D10 — no `correlationId` exists). Wrapped so an enqueue/compose failure
@@ -1009,7 +1089,7 @@ export class OrderIngestionService implements IOrderIngestionService {
         // the feature. Without this the marker was write-only and every
         // already-ingested uninvoiced order became un-issuable under strict
         // enforcement.
-        existing?.taxRateEra ?? null,
+        taxRateEra,
         // #3187, ADR-073 decision 1: the OPPOSITE read from taxRateEra above -
         // `persisted`, not `existing`. `buyerTaxId` is computed fresh by
         // `persistOrder` from THIS transition's order, so a first-seen order
@@ -1038,8 +1118,6 @@ export class OrderIngestionService implements IOrderIngestionService {
         `Auto-issue trigger failed (swallowed): error=${errorName} connectionId=${connectionId} orderId=${order.id} sourceEventId=${sourceEventId ?? 'n/a'}`
       );
     }
-
-    return results;
   }
 
   /**

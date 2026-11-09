@@ -26,6 +26,7 @@
  * @module apps/web/src/features/oms/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 
 export interface SourcingRuleConflict {
   /** Operator-facing sentence — the server's own. */
@@ -87,10 +88,10 @@ export function describeSourcingRuleError(error: unknown, fallback: string): str
     return error.message;
   }
   if (error instanceof ApiError && error.isForbidden()) {
-    return 'You do not have permission to change sourcing rules.';
+    return getMessages('oms-core').sourcingRuleConflict.forbidden;
   }
   if (error instanceof ApiError && error.isNotFound()) {
-    return 'This sourcing rule no longer exists.';
+    return getMessages('oms-core').sourcingRuleConflict.notFound;
   }
   return fallback;
 }

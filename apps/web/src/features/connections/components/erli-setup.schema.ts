@@ -24,14 +24,17 @@ import {
   type DeliveryLineSuggestion,
   type DeliveryWizardValue,
 } from '../../delivery-on-documents';
+import { schemaMessage } from '../lib/schema-message';
+
+const msg = schemaMessage('erliSetupSchema');
 
 export const ERLI_ADAPTER_KEY = 'erli.shopapi.v1';
 
 export const ErliEnvironmentValues = ['sandbox', 'production'] as const;
 
 export const erliSetupSchema = z.object({
-  name: z.string().trim().min(1, 'Connection name is required'),
-  apiKey: z.string().trim().min(1, 'API key is required'),
+  name: z.string().trim().min(1, msg('nameRequired')),
+  apiKey: z.string().trim().min(1, msg('apiKeyRequired')),
   environment: z.enum(ErliEnvironmentValues),
   // The answer to the "Sales documents" step; set through `setValue` (#3911).
   deliveryOnDocuments: z.custom<DeliveryWizardValue>().optional(),

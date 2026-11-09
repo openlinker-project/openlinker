@@ -18,7 +18,7 @@
  * @module features/invoicing/components
  */
 import { type ReactElement, useState } from 'react';
-import { useTranslation } from '../../../shared/i18n';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { FormField } from '../../../shared/ui/form-field';
 import { Textarea } from '../../../shared/ui/textarea';
 
@@ -91,14 +91,11 @@ export function CorrectionReasonField({
   disabled = false,
   className,
 }: CorrectionReasonFieldProps): ReactElement {
-  const { t } = useTranslation();
+  const copy = useMessages('invoicing').invoice.correction;
   const length = countCodePoints(state.reason.replace(/\s+/g, ' ').trim());
 
   const error = state.tooLong
-    ? t(
-        'invoice.correction.reasonTooLong',
-        `The reason can be at most ${CORRECTION_REASON_MAX_LENGTH} characters.`,
-      )
+    ? interpolate(copy.reasonTooLong, { max: CORRECTION_REASON_MAX_LENGTH })
     : undefined;
 
   return (
@@ -107,20 +104,20 @@ export function CorrectionReasonField({
         name={`${name}-reason`}
         label={
           <>
-            {t('invoice.correction.reasonLabel', 'Reason for correction')}{' '}
+            {copy.reasonLabel}{' '}
             <span className="correction-reason__hint">
-              {t('invoice.correction.reasonRecommended', '(recommended)')}
+              {copy.reasonRecommended}
             </span>
           </>
         }
-        description={t(
-          'invoice.correction.reasonCounter',
-          `${length} / ${CORRECTION_REASON_MAX_LENGTH}`,
-        )}
+        description={interpolate(copy.reasonCounter, {
+          length,
+          max: CORRECTION_REASON_MAX_LENGTH,
+        })}
         error={error}
       >
         <Textarea
-          placeholder={t('invoice.correction.reasonPlaceholder', 'e.g. Partial return of the order')}
+          placeholder={copy.reasonPlaceholder}
           value={state.reason}
           onChange={(e) => state.setReason(e.target.value)}
           disabled={disabled}
@@ -129,10 +126,7 @@ export function CorrectionReasonField({
       </FormField>
       {state.missingWarned ? (
         <p className="correction-reason__warning" role="status">
-          {t(
-            'invoice.correction.reasonMissingWarning',
-            'Most corrections state why they were made, and your provider or the tax authority may expect it. Add a reason, or submit again to issue the correction without one.',
-          )}
+          {copy.reasonMissingWarning}
         </p>
       ) : null}
     </div>

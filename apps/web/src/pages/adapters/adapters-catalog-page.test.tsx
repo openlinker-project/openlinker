@@ -41,7 +41,7 @@ describe('AdaptersCatalogPage', () => {
 
   it('renders the page heading', () => {
     renderWithProviders(<AdaptersCatalogPage />);
-    expect(screen.getByRole('heading', { name: 'Adapter catalog' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Adapter catalogue' })).toBeInTheDocument();
   });
 
   it('displays adapters returned by the API', async () => {

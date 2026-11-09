@@ -1,0 +1,78 @@
+{
+  "statuses": {
+    "deadlettered": "deadlettered",
+    "failed": "failed",
+    "job_enqueued": "job enqueued",
+    "published": "published",
+    "received": "received",
+    "rejected": "rejected"
+  },
+  "webhookDeliveriesPage": {
+    "caption": "Webhook deliveries",
+    "columns": {
+      "connection": "Connection",
+      "eventType": "Event type",
+      "provider": "Provider",
+      "reason": "Reason",
+      "received": "Received",
+      "status": "Status"
+    },
+    "description": "Inbound webhook visibility - signature, dedup, publish, and downstream job linkage.",
+    "empty": {
+      "filtered": "No deliveries match the current filters. Try clearing some filters.",
+      "none": "No webhook deliveries have been recorded yet.",
+      "title": "No deliveries found"
+    },
+    "errorTitle": "Unable to load webhook deliveries",
+    "eyebrow": "Diagnostics",
+    "filters": {
+      "allConnections": "All connections",
+      "allStatuses": "All statuses",
+      "connection": "Filter by connection",
+      "provider": "Filter by provider",
+      "providerPlaceholder": "Provider",
+      "status": "Filter by status"
+    },
+    "pagination": {
+      "next": "Next",
+      "previous": "Previous",
+      "range": "Showing {from}-{to} of {total}"
+    },
+    "retry": "Retry",
+    "title": "Webhook Deliveries"
+  },
+  "webhookDeliveryDetailPage": {
+    "backTo": "Webhooks",
+    "error": {
+      "notFound": "Delivery not found",
+      "title": "Unable to load delivery"
+    },
+    "eyebrow": "Webhook Deliveries",
+    "fallbackTitle": "Delivery detail",
+    "fields": {
+      "connection": "Connection",
+      "dedup": "Dedup",
+      "downstreamJob": "Downstream job",
+      "eventId": "Event ID",
+      "externalId": "External ID",
+      "no": "no",
+      "objectType": "Object type",
+      "provider": "Provider",
+      "publishedMessage": "Published message",
+      "received": "Received",
+      "signatureValid": "Signature valid",
+      "status": "Status",
+      "yes": "yes"
+    },
+    "loading": {
+      "message": "Fetching delivery details…",
+      "title": "Loading delivery"
+    },
+    "panels": {
+      "dlqReason": "DLQ reason",
+      "payload": "Payload",
+      "rejectionReason": "Rejection reason"
+    },
+    "retry": "Retry"
+  }
+}

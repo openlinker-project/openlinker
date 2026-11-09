@@ -8,8 +8,8 @@
  * @module apps/web/src/features/bench/lib
  */
 import { formatAbsoluteTime, formatDateTime } from '../../../shared/format/format-date';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import type { BenchPackerNote } from '../api/bench-parcel.types';
-import { benchParcelCopy } from './bench-parcel.copy';
 
 export interface BenchNoteTime {
   /** What the meta line shows: `today 12:40`, `yesterday 11:31`, or a full date. */
@@ -47,12 +47,13 @@ export function describeBenchNoteTime(iso: string, now: Date = new Date()): Benc
   if (Number.isNaN(at.getTime())) return { label: iso, full: iso };
 
   const full = formatDateTime(iso);
+  const copy = getMessages('bench').parcel.officeNotes;
   const days = calendarDaysBetween(at, now);
   if (days === 0 && at.getTime() <= now.getTime()) {
-    return { label: benchParcelCopy.officeNotes.today(formatAbsoluteTime(iso)), full };
+    return { label: interpolate(copy.today, { time: formatAbsoluteTime(iso) }), full };
   }
   if (days === 1) {
-    return { label: benchParcelCopy.officeNotes.yesterday(formatAbsoluteTime(iso)), full };
+    return { label: interpolate(copy.yesterday, { time: formatAbsoluteTime(iso) }), full };
   }
   return { label: full, full };
 }

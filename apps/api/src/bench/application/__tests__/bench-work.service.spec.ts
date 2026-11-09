@@ -395,7 +395,7 @@ describe('BenchWorkService (#2416)', () => {
             workView({
               status: 'open',
               activeHolds: [
-                { id: 'h-1', reason: 'address-invalid', note: null, placedAt: new Date('2026-09-04T09:12:00Z') },
+                { id: 'h-1', reason: 'address-invalid', note: null, placedAt: new Date('2026-09-04T09:12:00Z'), fromSourceChange: false },
               ],
             }),
           ],
@@ -633,6 +633,7 @@ describe('BenchWorkService (#2416)', () => {
                   reason: 'address-invalid' as const,
                   note: null,
                   placedAt: new Date('2026-09-04T09:00:00Z'),
+                  fromSourceChange: false,
                 })),
               }),
             ],
@@ -702,6 +703,7 @@ describe('BenchWorkService (#2416)', () => {
                   reason: 'address-invalid' as const,
                   note: null,
                   placedAt: new Date('2026-09-04T09:00:00Z'),
+                  fromSourceChange: false,
                 },
               ],
               supportedActions: ['release_hold'],

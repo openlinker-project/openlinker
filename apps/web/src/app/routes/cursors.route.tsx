@@ -2,7 +2,7 @@ import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../nav-registry.types';
 
 const cursorsListCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Diagnostics', title: 'Cursors' },
+  crumb: { group: 'diagnostics', page: 'cursors' },
 };
 
 export const cursorsRoute: RouteObject = {

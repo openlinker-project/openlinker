@@ -1,0 +1,267 @@
+{
+  "infaktCredentialsPanel": {
+    "cancel": "Cancel",
+    "description": "Stored securely on the server. Rotate to replace the key without restarting the API.",
+    "envBacked": "Environment variable (not editable via UI)",
+    "label": "API Key",
+    "newKeyPlaceholder": "New API key",
+    "rotate": "Rotate API key",
+    "rotating": "Rotating...",
+    "save": "Save new API key",
+    "toast": {
+      "description": "The new inFakt API key is now in use.",
+      "title": "Credentials rotated"
+    }
+  },
+  "infaktInvoiceCorrectionFlow": {
+    "addLine": "+ Add line",
+    "cancel": "Cancel",
+    "col": {
+      "lp": "Lp",
+      "newPrice": "New gross",
+      "newQty": "New qty",
+      "remove": "Remove"
+    },
+    "correcting": "Correcting <strong>{reference}</strong>",
+    "emptyCell": "-",
+    "failed": "KOR failed",
+    "gridLinesRequired": "Change at least one line’s quantity or price before issuing a correction.",
+    "issued": "KOR issued",
+    "issuedBody": "The correcting document was submitted to KSeF via inFakt.",
+    "issuedOn": "Issued <strong>{date}</strong>",
+    "ksefRef": "KSeF <strong>{reference}</strong>",
+    "lineDeltaRequired": "Each line must specify a new quantity and/or a new price.",
+    "lineNum": "Line number {n}",
+    "linesRequired": "At least one line with a line number is required.",
+    "loadingLines": "Loading invoice lines…",
+    "newPrice": "New gross, line {n}",
+    "newQty": "New qty, line {n}",
+    "note": "A KOR document corrects quantity and/or price per line. inFakt submits it to KSeF; OpenLinker reconciles the status automatically.",
+    "providerTag": "Issued through inFakt",
+    "removeLine": "Remove line {n}",
+    "submit": "Issue KOR",
+    "submitting": "Issuing…",
+    "title": "Issue KOR correction"
+  },
+  "infaktInvoiceDetailSection": {
+    "numberPending": "KSeF number pending",
+    "pdfDownload": "Download PDF",
+    "pdfDownloadFailed": "PDF download failed",
+    "pdfDownloadFailedDesc": "Could not fetch the invoice PDF.",
+    "pdfDownloading": "Downloading…",
+    "pending": "inFakt is submitting this invoice to KSeF. Clearance usually completes within a minute or two.",
+    "rejectedFallback": "KSeF rejected this invoice.",
+    "resend": "Resend to KSeF",
+    "resendFailed": "Re-send failed",
+    "resendFailedDesc": "Could not re-send the invoice to KSeF.",
+    "resendSuccess": "Re-sent to KSeF",
+    "resendSuccessDesc": "inFakt is submitting this invoice to KSeF again. Its clearance status will refresh shortly.",
+    "resending": "Re-sending…",
+    "title": "KSeF clearance (via inFakt)"
+  },
+  "infaktSetupForm": {
+    "apiKey": {
+      "description": "Your inFakt API key - generated in your inFakt account settings.",
+      "label": "API key"
+    },
+    "back": "Connections",
+    "bankAccount": {
+      "checking": "Checking inFakt for bank accounts…",
+      "label": "Bank account for Transfer invoices",
+      "option": "{bank} - {number}",
+      "optionDefault": "{bank} - {number} (default in inFakt)",
+      "placeholder": "Select a bank account…",
+      "unreachable": "Couldn't reach inFakt to list bank accounts. This connection stays on <strong>Transfer</strong>, so invoices will keep being issued as Transfer and may be rejected by inFakt until you pick a bank account from the connection's edit screen."
+    },
+    "beforeYouStart": {
+      "body": "In your inFakt account settings, generate an <strong>API key</strong>. OpenLinker uses it to issue invoices and read KSeF clearance status through inFakt's native integration. The key is stored securely on the server and only shown once.",
+      "title": "Before you start"
+    },
+    "configureWebhooks": "Configure webhooks…",
+    "connect": "Connect inFakt",
+    "connecting": "Connecting…",
+    "createError": "Unable to create connection",
+    "created": {
+      "description": "inFakt connection \"{name}\" was created.",
+      "title": "Connection created"
+    },
+    "done": "Done",
+    "environment": {
+      "description": "Choose Sandbox to test against inFakt's sandbox before switching to production.",
+      "label": "Environment",
+      "production": "Production - {url}",
+      "sandbox": "Sandbox - {url}"
+    },
+    "forcedCash": "No bank account is configured on this inFakt account, so <strong>Transfer</strong> isn't available yet - invoices will use <strong>Cash</strong>. Add a bank account in your inFakt settings, then switch the payment method from the connection's edit screen.",
+    "forcedCashFailed": {
+      "description": "inFakt has no bank account for Transfer invoices, but switching this connection to Cash didn't save - change the payment method from the connection's edit screen. {error}",
+      "title": "Could not switch the payment method to Cash"
+    },
+    "name": {
+      "description": "A label to identify this inFakt account in OpenLinker.",
+      "label": "Connection name",
+      "placeholder": "My inFakt Account"
+    },
+    "paymentMethod": {
+      "cash": "Cash",
+      "descriptionBefore": "Transfer needs a bank account on your inFakt account - without one, inFakt rejects the invoice. You can pick which account after connecting; we start with the one marked default in inFakt, or fall back to Cash if there is none.",
+      "descriptionLocked": "Locked now that the connection is created - change the payment method from the connection's edit screen (post-create changes here would not be saved).",
+      "label": "Default payment method",
+      "transfer": "Transfer"
+    },
+    "persistErrorHint": "re-pick it from the connection's edit screen.",
+    "test": {
+      "failed": "Connection test failed",
+      "latency": "{message} ({ms}ms)",
+      "passed": "Connection test passed",
+      "run": "Test connection",
+      "running": "Testing…",
+      "unable": "Unable to test connection"
+    },
+    "webhookPrompt": {
+      "configure": "Configure webhooks",
+      "description": "Webhooks let inFakt tell OpenLinker the moment an invoice clears KSeF, instead of waiting for the next poll. It's optional and takes a minute in the inFakt dashboard. You can always set this up later from the connection's Actions tab.",
+      "notNow": "Not now",
+      "ready": {
+        "description": "Configure webhooks anytime from the connection Actions tab.",
+        "title": "Connection ready"
+      },
+      "title": "Set up delivery webhooks now?"
+    },
+    "webhooks": {
+      "body": "Get KSeF clearance updates from inFakt in real time.",
+      "title": "Delivery webhooks (optional)"
+    }
+  },
+  "infaktSetupPage": {
+    "chips": {
+      "apiKey": "API key",
+      "guided": "Guided setup"
+    },
+    "description": "Provide your inFakt API key. OpenLinker uses it to issue invoices and read KSeF clearance status through inFakt's native e-invoicing integration.",
+    "eyebrow": "Integrations",
+    "title": "Connect inFakt"
+  },
+  "infaktSetupRoute": {
+    "crumb": "Connect inFakt"
+  },
+  "infaktSetupSchema": {
+    "apiKeyRequired": "API key is required",
+    "nameRequired": "Connection name is required"
+  },
+  "infaktStructuredSection": {
+    "bankAccount": {
+      "checkFailed": "Couldn't check inFakt for bank accounts - invoices will use whatever was last saved.",
+      "checking": "Checking inFakt for bank accounts…",
+      "label": "Bank account for Transfer invoices",
+      "none": "No bank account is configured on this inFakt account, so <strong>Transfer</strong> isn't viable yet. This connection's saved payment method is still Transfer, so invoices may be rejected by inFakt - switch the payment method to Cash above, or add a bank account in your inFakt settings and reload this page to pick it.",
+      "option": "{bank} - {number}",
+      "optionDefault": "{bank} - {number} (default in inFakt)",
+      "placeholder": "Select a bank account…",
+      "stale": "The saved account ({number}) no longer exists in inFakt - invoices keep stamping the saved snapshot until you pick a current account."
+    },
+    "environment": {
+      "description": "inFakt API environment. Use Sandbox to test before switching to Production. Leaving this not set falls back to Production.",
+      "label": "Environment",
+      "production": "Production",
+      "sandbox": "Sandbox",
+      "unset": "- not set -"
+    },
+    "legacyOverride": {
+      "body": "This connection has a legacy Base URL override (<code>{url}</code>) that takes precedence over Environment below - invoices keep going to that host until it's cleared, even after picking a different Environment and saving.",
+      "clear": "Clear override",
+      "clearKeep": "Clear override (keep {environment})",
+      "clearUse": "Clear override (use {environment})",
+      "keeps": "Clearing it keeps this connection on {environment}, the environment that host already points at.",
+      "switches": "Clearing it switches this connection to {environment}, the Environment picked below.",
+      "title": "Legacy Base URL override in effect",
+      "unknownHost": "That host isn't one of inFakt's two API environments, so clearing it would fall back to Production and start issuing real invoices. Pick an Environment below first."
+    },
+    "paymentMethod": {
+      "cash": "Cash",
+      "description": "Transfer needs a bank account on your inFakt account - without one, inFakt rejects the invoice. Stay on Cash until you have added one in inFakt.",
+      "disclosure": "Payment method for invoice:",
+      "label": "Default payment method",
+      "transfer": "Transfer"
+    },
+    "persistErrorHint": "pick it again or use Save changes."
+  },
+  "infaktWebhookConfig": {
+    "activation": {
+      "authFailing": "Deliveries failing · check secret",
+      "awaiting": "Awaiting first event",
+      "verified": "Active · deliveries seen"
+    },
+    "authFailing": {
+      "body": "OpenLinker is receiving deliveries but rejecting every one because the signature doesn't match. Re-copy the HMAC signing secret from inFakt below - the stored secret is missing or out of date.",
+      "title": "inFakt deliveries are being rejected"
+    },
+    "deliveryEndpoint": "Delivery endpoint",
+    "dialog": {
+      "done": "Done",
+      "title": "Configure webhooks"
+    },
+    "enableEvents": "Enable these events in inFakt",
+    "fromInfakt": "From inFakt",
+    "intro": "inFakt signs each delivery and mints the secret itself, so OpenLinker can't register the webhook for you. Register the endpoint in inFakt, then paste the secret it shows you.",
+    "optionalNote": "optional · payment sync",
+    "overwrite": {
+      "confirm": "Replace secret",
+      "description": "This breaks deliveries until inFakt is updated to match.",
+      "title": "Replace signing secret?"
+    },
+    "pasteBack": "You paste back",
+    "register": "You register",
+    "registerHint": "Create the webhook, then open its details and click <strong>Weryfikuj</strong> (status <em>Do weryfikacji</em> → <em>Aktywny</em>). inFakt POSTs a <code>verification_code</code>; OpenLinker echoes it back automatically.",
+    "save": {
+      "error": "Could not save the signing secret",
+      "saving": "Saving…",
+      "submit": "Save secret",
+      "toastDescription": "OpenLinker will now verify inFakt delivery signatures.",
+      "toastTitle": "Signing secret saved"
+    },
+    "secret": {
+      "hint": "A signing secret is required for OpenLinker to accept deliveries: open the webhook's details in inFakt → <em>Sekretny klucz do HMAC</em> and paste that value here. OpenLinker then verifies <code>X-Infakt-Signature</code> and rejects mismatches with 401.",
+      "label": "Signing secret",
+      "lane": "HMAC signing secret",
+      "placeholder": "Paste secret from inFakt…"
+    },
+    "signature": {
+      "configured": "Configured",
+      "notConfigured": "Not configured"
+    },
+    "status": {
+      "activation": "Activation",
+      "checking": "Checking webhook status…",
+      "lastDelivery": "Last delivery",
+      "lastDeliveryValue": "{event} · {result}",
+      "loadFailed": "Couldn't load webhook status.",
+      "retry": "Retry",
+      "signature": "Signature",
+      "unknownEvent": "event",
+      "unknownResult": "unknown"
+    },
+    "toInfakt": "To inFakt",
+    "why": {
+      "body": "inFakt has no webhook-provisioning API and its form has no secret field: it generates one per subscription, shown only in that subscription's details. So the secret can only travel inFakt → OpenLinker. Don't rotate the secret from OpenLinker: that mints a new server-side value inFakt would never know, breaking every delivery.",
+      "summary": "Why can't OpenLinker set this up for me?"
+    }
+  },
+  "infaktWebhookConnectionActions": {
+    "activation": "Activation: {value}",
+    "configure": "Configure webhooks…",
+    "description": "Deliver KSeF clearance events from inFakt in real time. Register the endpoint and, optionally, verify delivery signatures.",
+    "signature": "Signature: {value}",
+    "title": "Webhook setup"
+  },
+  "infaktWebhookSecretSchema": {
+    "tooLong": "Secret must be at most 512 characters",
+    "tooShort": "Secret must be at least 8 characters"
+  },
+  "plugin": {
+    "setupCard": {
+      "badge": "API key",
+      "description": "Polish accounting platform with native KSeF integration"
+    }
+  }
+}

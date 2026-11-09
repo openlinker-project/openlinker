@@ -1,5 +1,5 @@
 /**
- * KSeF numbering — display constants + KSeF-specific document routing
+ * KSeF numbering - display constants + KSeF-specific document routing
  *
  * KSeF-owned presentation for the neutral numbering surface: document-type
  * labels, the reset-policy labels, the pattern-variable legend, the sequence
@@ -12,13 +12,17 @@
  * @module plugins/ksef/components
  */
 import {
+  DocumentTypeValues,
   NumberingPatternVariableValues,
+  NumberingSeqStatusValues,
+  ResetPolicyValues,
   type DocumentType,
   type NumberingPatternVariable,
   type NumberingSeqStatus,
   type ResetPolicy,
 } from '../../../features/invoicing';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
+import { getKsefMessages } from '../messages';
 
 /**
  * Seller timezone KSeF documents are dated in. The preview resolves date
@@ -33,42 +37,69 @@ export const KSEF_TIME_ZONE = 'Europe/Warsaw';
  */
 export const FA3_P2_MAX_LENGTH = 256;
 
-export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
-  invoice: 'Invoice',
-  receipt: 'Receipt',
-  'credit-note': 'Credit note',
-  corrected: 'Correction',
-  proforma: 'Proforma',
-  prepayment: 'Advance',
-};
+type LibCopy = ReturnType<typeof getKsefMessages>['ksefNumberingLib'];
 
-export const RESET_POLICY_LABELS: Record<ResetPolicy, string> = {
-  none: 'Never',
-  daily: 'Daily',
-  monthly: 'Monthly',
-  quarterly: 'Quarterly',
-  yearly: 'Yearly',
-};
+/**
+ * A label map whose values are read from the `ksef` namespace on every access,
+ * so a module-level map still follows the active language.
+ */
+function labelMap<K extends string>(
+  keys: readonly K[],
+  read: (copy: LibCopy, key: K) => string,
+): Record<K, string> {
+  const map = {} as Record<K, string>;
+  for (const key of keys) {
+    Object.defineProperty(map, key, {
+      enumerable: true,
+      get: () => read(getKsefMessages().ksefNumberingLib, key),
+    });
+  }
+  return map;
+}
+
+/** Copy key per document type (copy keys are camelCase; the values are not). */
+const DOCUMENT_TYPE_COPY_KEYS = {
+  invoice: 'invoice',
+  receipt: 'receipt',
+  'credit-note': 'creditNote',
+  corrected: 'corrected',
+  proforma: 'proforma',
+  prepayment: 'prepayment',
+} as const satisfies Record<DocumentType, string>;
+
+export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = labelMap(
+  DocumentTypeValues,
+  (copy, key) => copy.documentTypes[DOCUMENT_TYPE_COPY_KEYS[key]],
+);
+
+export const RESET_POLICY_LABELS: Record<ResetPolicy, string> = labelMap(
+  ResetPolicyValues,
+  (copy, key) => copy.resetPolicies[key],
+);
 
 /** Clickable pattern-variable chips in the editor (includes {DD} and {FY}). */
 export const NUMBERING_VARIABLE_CHIPS = NumberingPatternVariableValues;
 
-export const VARIABLE_LEGEND: Record<NumberingPatternVariable, string> = {
-  '{seq}': 'Sequence number',
-  '{YYYY}': '4-digit year',
-  '{YY}': '2-digit year',
-  '{FY}': 'Fiscal year',
-  '{MM}': 'Month 01-12',
-  '{QQ}': 'Quarter 1-4',
-  '{DD}': 'Day 01-31',
-};
+/** Copy key per pattern variable: the variable itself is a token, not a key. */
+const VARIABLE_COPY_KEYS = {
+  '{seq}': 'seq',
+  '{YYYY}': 'yyyy',
+  '{YY}': 'yy',
+  '{FY}': 'fy',
+  '{MM}': 'mm',
+  '{QQ}': 'qq',
+  '{DD}': 'dd',
+} as const satisfies Record<NumberingPatternVariable, string>;
 
-export const SEQ_STATUS_LABELS: Record<NumberingSeqStatus, string> = {
-  issued: 'Issued',
-  pending: 'Pending',
-  abandoned: 'Abandoned',
-  skipped: 'Skipped',
-};
+export const VARIABLE_LEGEND: Record<NumberingPatternVariable, string> = labelMap(
+  NumberingPatternVariableValues,
+  (copy, key) => copy.variables[VARIABLE_COPY_KEYS[key]],
+);
+
+export const SEQ_STATUS_LABELS: Record<NumberingSeqStatus, string> = labelMap(
+  NumberingSeqStatusValues,
+  (copy, key) => copy.seqStatuses[key],
+);
 
 export const SEQ_STATUS_TONES: Record<NumberingSeqStatus, StatusBadgeTone> = {
   issued: 'success',
@@ -89,56 +120,61 @@ export interface KsefRoutedDocumentType {
   hint: string;
 }
 
+type RoutedCopyKey = keyof LibCopy['routedDocumentTypes'];
+
+function routedDocumentType(
+  documentType: DocumentType,
+  code: string,
+  copyKey: RoutedCopyKey,
+): KsefRoutedDocumentType {
+  return {
+    documentType,
+    code,
+    get label(): string {
+      return getKsefMessages().ksefNumberingLib.routedDocumentTypes[copyKey].label;
+    },
+    get hint(): string {
+      return getKsefMessages().ksefNumberingLib.routedDocumentTypes[copyKey].hint;
+    },
+  };
+}
+
 export const KSEF_ROUTED_DOCUMENT_TYPES: readonly KsefRoutedDocumentType[] = [
-  {
-    documentType: 'invoice',
-    code: 'VAT',
-    label: 'Standard invoice',
-    hint: 'Regular sales invoices (FA VAT).',
-  },
-  {
-    documentType: 'corrected',
-    code: 'KOR',
-    label: 'Correction',
-    hint: 'Correcting invoices — kept on their own series so a correction never reuses the original number.',
-  },
-  {
-    documentType: 'prepayment',
-    code: 'ZAL',
-    label: 'Advance',
-    hint: 'Advance / prepayment invoices (FA ZAL).',
-  },
-  {
-    documentType: 'proforma',
-    code: 'PRO',
-    label: 'Proforma',
-    hint: 'Proforma documents (no legal numbering requirement).',
-  },
+  routedDocumentType('invoice', 'VAT', 'invoice'),
+  routedDocumentType('corrected', 'KOR', 'corrected'),
+  routedDocumentType('prepayment', 'ZAL', 'prepayment'),
+  routedDocumentType('proforma', 'PRO', 'proforma'),
 ];
+
+const MONTH_KEYS = [
+  'january',
+  'february',
+  'march',
+  'april',
+  'may',
+  'june',
+  'july',
+  'august',
+  'september',
+  'october',
+  'november',
+  'december',
+] as const;
 
 /**
  * Month options for the "fiscal year starts in" picker (#1692), shown only when
  * the pattern uses `{FY}`. Value is the 1-12 calendar month; label is its name.
  */
-export const FISCAL_YEAR_START_MONTHS: readonly { value: number; label: string }[] = [
-  { value: 1, label: 'January' },
-  { value: 2, label: 'February' },
-  { value: 3, label: 'March' },
-  { value: 4, label: 'April' },
-  { value: 5, label: 'May' },
-  { value: 6, label: 'June' },
-  { value: 7, label: 'July' },
-  { value: 8, label: 'August' },
-  { value: 9, label: 'September' },
-  { value: 10, label: 'October' },
-  { value: 11, label: 'November' },
-  { value: 12, label: 'December' },
-];
+export const FISCAL_YEAR_START_MONTHS: readonly { value: number; label: string }[] =
+  MONTH_KEYS.map((key, index) => ({
+    value: index + 1,
+    get label(): string {
+      return getKsefMessages().ksefNumberingLib.months[key];
+    },
+  }));
 
 export function resetCaption(resetPolicy: ResetPolicy): string {
-  return resetPolicy === 'none'
-    ? 'never resets'
-    : `resets ${RESET_POLICY_LABELS[resetPolicy].toLowerCase()}`;
+  return getKsefMessages().ksefNumberingLib.resetCaptions[resetPolicy];
 }
 
 export function documentTypeLabel(documentType: string): string {

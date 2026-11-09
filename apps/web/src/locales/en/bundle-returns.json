@@ -1,0 +1,43 @@
+{
+  "correction": {
+    "componentCredit": "Credited for returned components: {amount} ({units} set(s)). The set stays one invoice line; the quantity is not reduced."
+  },
+  "hint": {
+    "calcKept": "Stays with the customer, full price: {amount}",
+    "calcPaid": "Paid for the set: {amount}",
+    "calcResult": "The formula gives paid minus what the customer keeps, and never less than 0.",
+    "calcTitle": "How this is calculated",
+    "label": "According to the Allegro formula: {amount}.",
+    "notApplied": "This is a suggestion. Nothing is filled in until you press Use.",
+    "unavailable": "The Allegro formula cannot be calculated: a component the customer keeps has no price of its own.",
+    "use": "Use"
+  },
+  "match": {
+    "alreadyResolved": "This line was already matched; nothing was changed.",
+    "basisHighestPrice": "Suggested because it is the line with the highest price. This is a guess: check it.",
+    "basisPriceMatch": "Suggested because its price matches the price in the return.",
+    "body": "The same offer appears {n} times on the order. Check which line this return is about, then confirm it.",
+    "confirm": "Confirm line",
+    "confirmed": "Order line confirmed.",
+    "failed": "The line could not be confirmed.",
+    "noSuggestion": "OpenLinker has no suggestion. Pick the line.",
+    "option": "{price} x {qty}",
+    "selectLabel": "Order line",
+    "title": "This line could be one of several on the order"
+  },
+  "picker": {
+    "backInWarehouse": "Back in the warehouse",
+    "componentLine": "{name} x {n}",
+    "noSplitSkus": "{skus} has no price and no cost, so OpenLinker cannot say what the returned part is worth. Add a price or a cost to the component, or return the whole bundle.",
+    "noSplitTitle": "The set price cannot be split",
+    "noSplitTotal": "The price paid for this set is not known, so it cannot be split. Return the whole bundle instead.",
+    "noneSelected": "Pick at least one component.",
+    "partialHint": "Only the components you tick go back to stock.",
+    "previewFailed": "The components of this bundle could not be loaded, so it cannot be restocked yet. Try again.",
+    "share": "Worth {amount} of the set price",
+    "staysWithCustomer": "Stays with the customer",
+    "title": "What is coming back",
+    "whole": "Whole bundle",
+    "wholeHint": "Every component goes back to stock."
+  }
+}

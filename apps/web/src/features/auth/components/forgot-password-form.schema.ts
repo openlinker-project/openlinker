@@ -1,7 +1,10 @@
 import { z } from 'zod';
+import type { AuthValidationCopy } from './auth-form.types';
 
-export const forgotPasswordFormSchema = z.object({
-  email: z.string().trim().email('Enter a valid email address'),
-});
+export function createForgotPasswordFormSchema(copy: AuthValidationCopy) {
+  return z.object({
+    email: z.string().trim().email(copy.email),
+  });
+}
 
-export type ForgotPasswordFormValues = z.input<typeof forgotPasswordFormSchema>;
+export type ForgotPasswordFormValues = z.input<ReturnType<typeof createForgotPasswordFormSchema>>;

@@ -23,6 +23,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { ApiError } from '../../../shared/api/api-error';
+import { interpolate, useFormat, useMessages, type Formatters } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -52,18 +53,20 @@ import {
   type CorrectionPreview,
 } from '../lib/stock-correction-preview';
 import {
-  INLINE_ERROR_COPY,
+  createStockCorrectionSchema,
+  inlineErrorText,
   isTargetRefusalCode,
   NOTE_MAX_LENGTH,
   readEntry,
-  REASON_LABEL,
+  reasonLabel,
   STOCK_CORRECTION_DEFAULT_VALUES,
-  stockCorrectionSchema,
-  TARGET_REFUSAL_COPY,
+  targetRefusalCopy,
   toCorrectStockInput,
+  type StockCorrectionCopy,
   type StockCorrectionFormValues,
 } from './stock-correction-dialog.schema';
-import { presentRefusalText } from '../lib/stock-movement-copy';
+import type { CorrectionTargetRefusalReason } from '../api/inventory-correction.types';
+import { presentRefusalText } from '../lib/stock-movement-presentation';
 import { stockRowKey, type StockAdjustTarget } from '../lib/stock-row';
 
 export interface StockCorrectionDialogProps {
@@ -133,16 +136,20 @@ function formatSigned(value: number): string {
   return value > 0 ? `+${value}` : value < 0 ? `−${Math.abs(value)}` : '0';
 }
 
-function variantLabel(target: StockAdjustTarget): { name: string; sku: string | null } {
+function variantLabel(
+  copy: StockCorrectionCopy,
+  target: StockAdjustTarget,
+): { name: string; sku: string | null } {
   const attributes = target.variant.attributes ? Object.values(target.variant.attributes).join(' / ') : '';
-  return { name: attributes.length > 0 ? attributes : (target.variant.sku ?? 'Variant'), sku: target.variant.sku };
+  return { name: attributes.length > 0 ? attributes : (target.variant.sku ?? copy.variant), sku: target.variant.sku };
 }
 
 function DialogTitleFor({ target }: { target: StockAdjustTarget }): ReactElement {
-  const { name, sku } = variantLabel(target);
+  const copy = useMessages('inventory').stockCorrectionDialog;
+  const { name, sku } = variantLabel(copy, target);
   return (
     <DialogTitle>
-      Adjust stock - {name}{' '}
+      {interpolate(copy.title, { name })}{' '}
       {sku && sku !== name ? <span className="text-muted mono-text" style={{ fontWeight: 400 }}>{sku}</span> : null}
     </DialogTitle>
   );
@@ -181,10 +188,10 @@ function errorCurrentQuantity(error: Error | null): number | null {
   return numberOrNull(record.currentQuantity);
 }
 
-function insufficientStockCopy(masterName: string, count: number | null): string {
+function insufficientStockCopy(copy: StockCorrectionCopy, masterName: string, count: number | null): string {
   return count === null
-    ? `${masterName} doesn't have enough stock for this removal, so nothing changed.`
-    : `${masterName} has only ${count}, so nothing changed.`;
+    ? interpolate(copy.insufficientStockUnknown, { master: masterName })
+    : interpolate(copy.insufficientStockKnown, { master: masterName, n: count });
 }
 
 function numberOrNull(value: unknown): number | null {
@@ -213,6 +220,9 @@ function DialogBody({
   onClose: () => void;
   onLockChange: (locked: boolean) => void;
 }): ReactElement {
+  const copy = useMessages('inventory').stockCorrectionDialog;
+  const format = useFormat();
+  const schema = useMemo(() => createStockCorrectionSchema(copy), [copy]);
   // One key for the dialog's lifetime: the body is keyed by variant, so a new
   // open is a new key and a retry inside one open is the same one.
   const [idempotencyKey] = useState(() => crypto.randomUUID());
@@ -226,14 +236,14 @@ function DialogBody({
 
   const form = useForm<StockCorrectionFormValues>({
     defaultValues: STOCK_CORRECTION_DEFAULT_VALUES,
-    resolver: zodResolver(stockCorrectionSchema),
+    resolver: zodResolver(schema),
   });
   const values = form.watch();
 
   const correctionTarget = targetQuery.data ?? null;
   const ready = correctionTarget !== null && correctionTarget.kind === 'ready' ? correctionTarget : null;
   const current = ready?.currentQuantity ?? null;
-  const masterName = ready?.connectionName ?? 'the master';
+  const masterName = ready?.connectionName ?? copy.theMaster;
 
   const entry = readEntry(values);
   // Advisory only: `current` is OpenLinker's mirror, which can lag the master,
@@ -243,7 +253,7 @@ function DialogBody({
   const removalTooLarge =
     values.mode === 'delta' && entry !== null && current !== null && entry < 0 && -entry > current;
   const removalWarning = removalTooLarge
-    ? `OpenLinker shows only ${current} in ${masterName}. ${masterName} checks its own count when you save and refuses the change if there isn't enough.`
+    ? interpolate(copy.removalWarning, { n: current, master: masterName })
     : undefined;
   const entryValid = entry !== null && (values.mode === 'delta' ? entry !== 0 : entry >= 0);
   const delta = current !== null && entry !== null && entryValid ? correctionDelta(values.mode, entry, current) : null;
@@ -292,18 +302,23 @@ function DialogBody({
       <div data-testid="stock-correction-applying">
         <DialogTitleFor target={target} />
         <DialogDescription>
-          {current ?? '?'} → {newQuantity ?? '?'} · {REASON_LABEL[values.reason]}
+          {interpolate(copy.transition, {
+            from: current ?? '?',
+            to: newQuantity ?? '?',
+            reason: reasonLabel(copy, values.reason),
+          })}
         </DialogDescription>
         <dl className="key-value-list">
-          <dt className="key-value-list__label">Writes to</dt>
-          <dd className="key-value-list__value">{ready?.connectionName ?? 'the master connection'}</dd>
+          <dt className="key-value-list__label">{copy.writesTo}</dt>
+          <dd className="key-value-list__value">{ready?.connectionName ?? copy.theMasterConnection}</dd>
         </dl>
         <DialogFooter>
           <Button tone="secondary" disabled>
-            Cancel
+            {copy.cancel}
           </Button>
           <Button disabled>
-            <span className="button__spinner" aria-hidden="true"></span>Saving to {masterName}…
+            <span className="button__spinner" aria-hidden="true"></span>
+            {interpolate(copy.savingTo, { master: masterName })}
           </Button>
         </DialogFooter>
       </div>
@@ -329,7 +344,7 @@ function DialogBody({
     return (
       <>
         <DialogTitleFor target={target} />
-        <DialogDescription>Checking which connection owns this stock…</DialogDescription>
+        <DialogDescription>{copy.checkingTarget}</DialogDescription>
       </>
     );
   }
@@ -338,14 +353,14 @@ function DialogBody({
     return (
       <>
         <DialogTitleFor target={target} />
-        <Alert tone="error" title="Could not check where this stock lives" data-testid="stock-correction-target-error">
-          {targetQuery.error?.message ?? 'The request failed.'}
+        <Alert tone="error" title={copy.targetError.title} data-testid="stock-correction-target-error">
+          {targetQuery.error?.message ?? copy.targetError.fallback}
         </Alert>
         <DialogFooter>
           <DialogClose asChild>
-            <Button tone="secondary">Close</Button>
+            <Button tone="secondary">{copy.close}</Button>
           </DialogClose>
-          <Button onClick={() => { void targetQuery.refetch(); }}>Retry</Button>
+          <Button onClick={() => { void targetQuery.refetch(); }}>{copy.retry}</Button>
         </DialogFooter>
       </>
     );
@@ -361,54 +376,55 @@ function DialogBody({
     code === 'confirmation-required' || mutation.error === null
       ? null
       : code === 'insufficient-stock'
-        ? insufficientStockCopy(masterName, errorCurrentQuantity(mutation.error))
-        : (INLINE_ERROR_COPY[code ?? ''] ?? mutation.error.message).replace(/\{master\}/g, masterName);
+        ? insufficientStockCopy(copy, masterName, errorCurrentQuantity(mutation.error))
+        : (inlineErrorText(copy, code, masterName) ?? mutation.error.message);
 
   return (
     <div data-testid="stock-correction-dialog">
       <DialogTitleFor target={target} />
       <DialogDescription>
-        This writes to {ready?.connectionName ?? 'the master'}, the master connection for this product. Channels
-        update on their own once it confirms.
+        {interpolate(copy.description, { master: ready?.connectionName ?? copy.theMaster })}
       </DialogDescription>
 
       <form onSubmit={(event) => { void submit(event); }} noValidate className="sc-form">
         {inlineError ? (
-          <Alert tone="error" title="Could not save the correction" data-testid="stock-correction-error">
+          <Alert tone="error" title={copy.saveError} data-testid="stock-correction-error">
             {inlineError}
           </Alert>
         ) : null}
 
         <div className="form-field">
           <span className="form-field__label" id="sc-mode-label">
-            How do you want to enter it?
+            {copy.modeLabel}
           </span>
           <SegmentedControl
             aria-labelledby="sc-mode-label"
             value={values.mode}
             onChange={(mode) => form.setValue('mode', mode, { shouldValidate: form.formState.submitCount > 0 })}
             options={[
-              { value: 'set', label: 'Set new quantity', 'data-testid': 'stock-correction-mode-set' },
-              { value: 'delta', label: 'Adjust by amount', 'data-testid': 'stock-correction-mode-delta' },
+              { value: 'set', label: copy.modeSet, 'data-testid': 'stock-correction-mode-set' },
+              { value: 'delta', label: copy.modeDelta, 'data-testid': 'stock-correction-mode-delta' },
             ]}
           />
         </div>
 
         {values.mode === 'set' ? (
           <FormField
-            label="New quantity"
+            label={copy.newQuantity}
             name="quantity"
             error={form.formState.errors.quantity?.message}
-            description={`Currently ${current ?? '?'} in ${masterName}.${heldSentence(target)}`}
+            description={[interpolate(copy.currently, { n: current ?? '?', master: masterName }), heldSentence(copy, target)]
+              .filter((part) => part !== '')
+              .join(' ')}
           >
             <Input type="number" min={0} step={1} inputMode="numeric" data-testid="stock-correction-quantity" {...form.register('quantity')} />
           </FormField>
         ) : (
           <FormField
-            label="Change by"
+            label={copy.changeBy}
             name="delta"
             error={form.formState.errors.delta?.message}
-            description={removalWarning ?? 'Use a minus sign to reduce stock, e.g. -2.'}
+            description={removalWarning ?? copy.deltaHint}
           >
             <Input type="text" inputMode="numeric" data-testid="stock-correction-delta" {...form.register('delta')} />
           </FormField>
@@ -419,10 +435,10 @@ function DialogBody({
         </p>
 
         {needsConfirmation ? (
-          <Alert tone="warning" title="This is a large change" data-testid="stock-correction-large-change">
+          <Alert tone="warning" title={copy.largeChange.title} data-testid="stock-correction-large-change">
             {serverConfirm !== null && serverConfirm.sentDelta === delta
-              ? serverLargeChangeSentence(serverConfirm)
-              : 'It changes stock by more than 50 units or more than half of the current count. Check the number before saving.'}
+              ? serverLargeChangeSentence(copy, format, serverConfirm)
+              : copy.largeChange.default}
             <label className="sc-check">
               <input
                 type="checkbox"
@@ -430,34 +446,34 @@ function DialogBody({
                 onChange={(event) => setAckedDelta(event.target.checked ? delta : null)}
                 data-testid="stock-correction-large-change-confirm"
               />{' '}
-              I checked this number
+              {copy.largeChange.confirm}
             </label>
           </Alert>
         ) : null}
 
-        <FormField label="Reason" name="reason">
+        <FormField label={copy.reason} name="reason">
           <Select data-testid="stock-correction-reason" {...form.register('reason')}>
             {CorrectionReasonValues.map((reason) => (
               <option key={reason} value={reason}>
-                {REASON_LABEL[reason]}
+                {reasonLabel(copy, reason)}
               </option>
             ))}
           </Select>
         </FormField>
 
         <FormField
-          label={values.reason === 'other' ? 'Note (required for Other)' : 'Note (optional)'}
+          label={values.reason === 'other' ? copy.noteRequired : copy.noteOptional}
           name="note"
           error={form.formState.errors.note?.message}
-          description={`For your team - ${masterName} doesn't receive this note.`}
+          description={interpolate(copy.noteHint, { master: masterName })}
         >
           <Textarea rows={2} maxLength={NOTE_MAX_LENGTH} data-testid="stock-correction-note" {...form.register('note')} />
         </FormField>
 
         <dl className="key-value-list">
-          <dt className="key-value-list__label">Writes to</dt>
+          <dt className="key-value-list__label">{copy.writesTo}</dt>
           <dd className="key-value-list__value" data-testid="stock-correction-target">
-            {ready?.connectionName} <span className="text-muted">(this product&apos;s master connection)</span>
+            {ready?.connectionName} <span className="text-muted">{copy.masterConnectionSuffix}</span>
           </dd>
         </dl>
 
@@ -470,10 +486,10 @@ function DialogBody({
 
         <DialogFooter>
           <Button type="button" tone="secondary" onClick={onClose} data-testid="stock-correction-cancel">
-            Cancel
+            {copy.cancel}
           </Button>
           <Button type="submit" disabled={submitDisabled} data-testid="stock-correction-submit">
-            Save correction
+            {copy.save}
           </Button>
         </DialogFooter>
       </form>
@@ -481,37 +497,53 @@ function DialogBody({
   );
 }
 
-function serverLargeChangeSentence(confirm: ServerConfirmation): string {
-  const change = `${confirm.requestedDelta > 0 ? '+' : ''}${confirm.requestedDelta} units`;
-  const from = confirm.currentQuantity === null ? '' : ` against a current count of ${confirm.currentQuantity}`;
+function serverLargeChangeSentence(
+  copy: StockCorrectionCopy,
+  format: Formatters,
+  confirm: ServerConfirmation,
+): string {
+  const large = copy.largeChange;
+  const change = `${confirm.requestedDelta > 0 ? '+' : ''}${format.number(confirm.requestedDelta)}`;
+  const head =
+    confirm.currentQuantity === null
+      ? interpolate(large.change, { change })
+      : interpolate(large.changeFrom, { change, current: confirm.currentQuantity });
   const limits: string[] = [];
-  if (confirm.absoluteThresholdUnits !== null) limits.push(`more than ${confirm.absoluteThresholdUnits} units`);
-  if (confirm.relativeThreshold !== null) limits.push(`more than ${Math.round(confirm.relativeThreshold * 100)}% of the current count`);
-  const rule = limits.length > 0 ? ` Changes of ${limits.join(' or ')} need a second look.` : '';
-  return `This changes stock by ${change}${from}.${rule} Check the number before saving.`;
+  if (confirm.absoluteThresholdUnits !== null) {
+    limits.push(interpolate(large.absolute, { n: confirm.absoluteThresholdUnits }));
+  }
+  if (confirm.relativeThreshold !== null) {
+    limits.push(
+      interpolate(large.relative, {
+        percent: format.percent(Math.round(confirm.relativeThreshold * 100) / 100),
+      }),
+    );
+  }
+  const rule = limits.length > 0 ? interpolate(large.rule, { limits: format.list(limits, 'disjunction') }) : null;
+  return [head, rule, large.check].filter((part): part is string => part !== null).join(' ');
 }
 
-function heldSentence(target: StockAdjustTarget): string {
+function heldSentence(copy: StockCorrectionCopy, target: StockAdjustTarget): string {
   const held = target.stock?.heldCounted;
   if (held === null || held === undefined) return '';
-  return held > 0 ? ` ${held} of them are reserved for open orders.` : '';
+  return held > 0 ? interpolate(copy.heldSentence, { n: held }) : '';
 }
 
-function channelHow(channel: ChannelPreview): string {
+function channelHow(copy: StockCorrectionCopy, channel: ChannelPreview): string {
   const parts: string[] = [];
   parts.push(
     channel.stockSafetyBuffer > 0
-      ? `Publishes what you can sell minus a ${channel.stockSafetyBuffer}-unit buffer for this connection.`
-      : 'Publishes what you can sell as-is.',
+      ? interpolate(copy.channelHow.buffer, { n: channel.stockSafetyBuffer })
+      : copy.channelHow.asIs,
   );
   if (channel.stockZeroThreshold > 0) {
-    parts.push(`Anything under ${channel.stockZeroThreshold} units is shown as sold out.`);
+    parts.push(interpolate(copy.channelHow.zeroThreshold, { n: channel.stockZeroThreshold }));
   }
   return parts.join(' ');
 }
 
-function qty(value: number | null): ReactNode {
-  return value === null ? 'Not known' : value;
+function qty(copy: StockCorrectionCopy, value: number | null): ReactNode {
+  return value === null ? copy.notKnown : value;
 }
 
 function PreviewSection({
@@ -525,38 +557,40 @@ function PreviewSection({
   stockKnown: boolean;
   hasChannels: boolean;
 }): ReactElement {
+  const copy = useMessages('inventory').stockCorrectionDialog;
+  const preview_ = copy.preview;
   return (
     <>
-      <p className="sc-section-head">What channels will publish after this</p>
+      <p className="sc-section-head">{preview_.heading}</p>
       {preview === null ? (
         <p className="sc-footnote" data-testid="stock-correction-preview">
-          Enter a quantity to see what each channel will publish.
+          {preview_.enterQuantity}
         </p>
       ) : !stockKnown ? (
         <p className="sc-footnote" data-testid="stock-correction-preview">
-          Channel figures are unavailable right now, so no preview is shown. The correction itself is not affected.
+          {preview_.unavailable}
         </p>
       ) : (
         <ul className="sc-impact" data-testid="stock-correction-preview">
           <li className="sc-impact__row" data-testid="stock-correction-preview-master">
             <span className="sc-impact__what">
               {masterName}
-              <span className="sc-impact__sub">master</span>
+              <span className="sc-impact__sub">{preview_.master}</span>
             </span>
-            <span className="sc-impact__how">Shows the corrected count directly.</span>
+            <span className="sc-impact__how">{preview_.masterHow}</span>
             <span className="sc-impact__qty">{preview.masterQuantity}</span>
           </li>
           <li className="sc-impact__row" data-testid="stock-correction-preview-atp">
             <span className="sc-impact__what">
-              To sell
-              <span className="sc-impact__sub">what channels start from</span>
+              {preview_.toSell}
+              <span className="sc-impact__sub">{preview_.toSellSub}</span>
             </span>
             <span className="sc-impact__how">
               {preview.heldCounted === null
-                ? "OpenLinker couldn't read the reserved count, so this is not known."
-                : `New count minus the ${preview.heldCounted} units reserved for open orders.`}
+                ? preview_.heldUnknown
+                : interpolate(preview_.heldKnown, { n: preview.heldCounted })}
             </span>
-            <span className="sc-impact__qty">{qty(preview.availableToPromise)}</span>
+            <span className="sc-impact__qty">{qty(copy, preview.availableToPromise)}</span>
           </li>
           {preview.channels.map((channel) => (
             <li
@@ -568,14 +602,14 @@ function PreviewSection({
                 {channel.connectionName}
                 <span className="sc-impact__sub">{channel.platformType}</span>
               </span>
-              <span className="sc-impact__how">{channelHow(channel)}</span>
-              <span className="sc-impact__qty">{qty(channel.quantity)}</span>
+              <span className="sc-impact__how">{channelHow(copy, channel)}</span>
+              <span className="sc-impact__qty">{qty(copy, channel.quantity)}</span>
             </li>
           ))}
         </ul>
       )}
       {hasChannels ? (
-        <p className="sc-footnote">Marketplaces usually catch up within a minute of the master confirming.</p>
+        <p className="sc-footnote">{preview_.catchUp}</p>
       ) : null}
     </>
   );
@@ -587,10 +621,11 @@ function TargetRefusedView({
   onClose,
 }: {
   target: StockAdjustTarget;
-  reason: keyof typeof TARGET_REFUSAL_COPY;
+  reason: CorrectionTargetRefusalReason;
   onClose: () => void;
 }): ReactElement {
-  const copy = TARGET_REFUSAL_COPY[reason];
+  const dialogCopy = useMessages('inventory').stockCorrectionDialog;
+  const copy = targetRefusalCopy(dialogCopy, reason);
   return (
     <div data-testid="stock-correction-target-refused">
       <DialogTitleFor target={target} />
@@ -599,7 +634,7 @@ function TargetRefusedView({
       </Alert>
       <DialogFooter>
         <Button tone="secondary" onClick={onClose} data-testid="stock-correction-close">
-          Close
+          {dialogCopy.close}
         </Button>
       </DialogFooter>
     </div>
@@ -622,6 +657,7 @@ function ResultView({
   onClose: () => void;
   previewFor: (quantity: number) => CorrectionPreview;
 }): ReactElement {
+  const copy = useMessages('inventory').stockCorrectionDialog;
   const master = result.master.connectionName;
   const before = result.quantityBefore ?? sent.before;
   // Set mode shows the operator's own target. The server's delta was worked out
@@ -630,9 +666,10 @@ function ResultView({
     sent.mode === 'set' ? sent.entry : sent.before === null ? null : sent.before + sent.entry;
   const attempt =
     attemptedTo === null
-      ? `change of ${formatSigned(sent.entry)}`
+      ? interpolate(copy.attemptChange, { delta: formatSigned(sent.entry) })
       : `${sent.before ?? '?'} → ${attemptedTo}`;
-  const { name, sku } = variantLabel(target);
+  const { name, sku } = variantLabel(copy, target);
+  const reasonText = reasonLabel(copy, reason);
 
   if (result.status === 'applied') {
     const after = result.quantityAfter ?? attemptedTo;
@@ -641,29 +678,29 @@ function ResultView({
     return (
       <div data-testid="stock-correction-applied">
         <DialogTitle>
-          Stock updated{' '}
+          {copy.applied.title}{' '}
           <StatusBadge tone="success" data-testid="stock-correction-confirmed">
-            Confirmed
+            {copy.applied.confirmed}
           </StatusBadge>
         </DialogTitle>
         <DialogDescription>
-          {master} confirmed the new count for {name}.
-          {result.deduplicated ? ' This correction had already been recorded, so nothing was sent again.' : ''}
+          {interpolate(copy.applied.description, { master, name })}
+          {result.deduplicated ? ` ${copy.applied.deduplicated}` : ''}
         </DialogDescription>
         <dl className="key-value-list">
-          <dt className="key-value-list__label">Variant</dt>
+          <dt className="key-value-list__label">{copy.applied.variant}</dt>
           <dd className="key-value-list__value mono-text">{sku ?? name} · {name}</dd>
-          <dt className="key-value-list__label">Quantity</dt>
+          <dt className="key-value-list__label">{copy.applied.quantity}</dt>
           <dd className="key-value-list__value">
             {before ?? '?'} → <ins>{after ?? '?'}</ins>
           </dd>
-          <dt className="key-value-list__label">Reason</dt>
-          <dd className="key-value-list__value">{REASON_LABEL[reason]}</dd>
-          <dt className="key-value-list__label">Master</dt>
+          <dt className="key-value-list__label">{copy.applied.reason}</dt>
+          <dd className="key-value-list__value">{reasonText}</dd>
+          <dt className="key-value-list__label">{copy.applied.master}</dt>
           <dd className="key-value-list__value">{master}</dd>
           {appliedAt ? (
             <>
-              <dt className="key-value-list__label">Confirmed at</dt>
+              <dt className="key-value-list__label">{copy.applied.confirmedAt}</dt>
               <dd className="key-value-list__value" data-testid="stock-correction-applied-at">
                 <TimeDisplay iso={appliedAt} />
               </dd>
@@ -671,17 +708,25 @@ function ResultView({
           ) : null}
           {channels.length > 0 ? (
             <>
-              <dt className="key-value-list__label">Channels</dt>
+              <dt className="key-value-list__label">{copy.applied.channels}</dt>
               <dd className="key-value-list__value" data-testid="stock-correction-applied-channels">
-                {channels.map((channel) => `${channel.connectionName} will publish ${channel.quantity ?? 'an unknown amount'}`).join(', ')}
-                {' - '}usually within a minute.
+                {interpolate(copy.applied.withinMinute, {
+                  channels: channels
+                    .map((channel) =>
+                      interpolate(copy.applied.channelPublishes, {
+                        channel: channel.connectionName,
+                        n: channel.quantity ?? copy.applied.unknownAmount,
+                      }),
+                    )
+                    .join(', '),
+                })}
               </dd>
             </>
           ) : null}
         </dl>
         <DialogFooter>
           <Button onClick={onClose} data-testid="stock-correction-done">
-            Done
+            {copy.applied.done}
           </Button>
         </DialogFooter>
       </div>
@@ -693,16 +738,20 @@ function ResultView({
       <div data-testid="stock-correction-refused">
         <DialogTitleFor target={target} />
         <p className="sc-attempt">
-          Attempted: {attempt} · {REASON_LABEL[reason]}{' '}
-          <StatusBadge tone="error">Not applied</StatusBadge>
+          {interpolate(copy.refused.attempted, { attempt, reason: reasonText })}{' '}
+          <StatusBadge tone="error">{copy.refused.notApplied}</StatusBadge>
         </p>
-        <Alert tone="error" title={`${master} refused this change`} data-testid="stock-correction-refused-reason">
+        <Alert
+          tone="error"
+          title={interpolate(copy.refused.title, { master })}
+          data-testid="stock-correction-refused-reason"
+        >
           {presentRefusalText(result.refusal?.reason ?? null, result.refusal?.detail ?? null, master) ??
-            'The master did not accept the change and gave no reason.'}
+            copy.refused.noReason}
         </Alert>
         <DialogFooter>
           <Button tone="secondary" onClick={onClose} data-testid="stock-correction-close">
-            Close
+            {copy.close}
           </Button>
         </DialogFooter>
       </div>
@@ -713,18 +762,17 @@ function ResultView({
     <div data-testid="stock-correction-in-doubt">
       <DialogTitleFor target={target} />
       <p className="sc-attempt">
-        Sent: {attempt} · {REASON_LABEL[reason]}
+        {interpolate(copy.inDoubt.sent, { attempt, reason: reasonText })}
       </p>
-      <Alert tone="warning" title={`We couldn't confirm this reached ${master}`}>
-        OpenLinker lost contact right after sending this correction. It may already be applied.
+      <Alert tone="warning" title={interpolate(copy.inDoubt.title, { master })}>
+        {copy.inDoubt.body}
       </Alert>
       <p className="form-field__description" style={{ marginTop: 'var(--space-2)' }}>
-        Check {master}&apos;s own stock number before deciding what to do next. Filling in this form again would
-        start a brand-new correction, which could double the change if the first one did land.
+        {interpolate(copy.inDoubt.hint, { master })}
       </p>
       <DialogFooter>
         <Button tone="secondary" onClick={onClose} data-testid="stock-correction-close">
-          Close
+          {copy.close}
         </Button>
       </DialogFooter>
     </div>

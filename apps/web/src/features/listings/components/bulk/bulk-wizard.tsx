@@ -15,6 +15,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { interpolate, renderRich, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
 import { Alert, Button, ConfirmDialog, PageLayout, SetupStepper } from '../../../../shared/ui';
 import type { StatusBadgeTone } from '../../../../shared/ui';
 import { useToast } from '../../../../shared/ui/toast-provider';
@@ -31,6 +32,8 @@ import { captureDemoEvent } from '../../../demo';
 import { useBulkSubmitMutation } from '../../hooks/use-bulk-submit-mutation';
 import { useBulkShopPublishMutation } from '../../hooks/use-bulk-shop-publish-mutation';
 import { useBulkRequiredProductParams } from '../../hooks/use-bulk-required-product-params';
+import { useAttributeProjectionPreview } from '../../hooks/use-attribute-projection-preview';
+import type { AttributeProjectionPreviewItem, OfferParameter } from '../../api/listings.types';
 import { usePublishedVariantsQuery } from '../../hooks/use-published-variants-query';
 import { publishDestinationKind } from '../../lib/publish-destinations';
 import { DuplicateGuardModal } from '../duplicate-guard-modal';
@@ -64,6 +67,7 @@ import {
   effectiveStockPolicy,
   effectiveVariantEan,
   productCategoryIdOf,
+  submitCategoryIdOf,
   recomputeVariantBlockers,
   type PreflightContext,
 } from './bulk-policy';
@@ -103,22 +107,20 @@ interface BulkWizardProps {
   resumedFromBatchId?: string;
 }
 
-const WIZARD_STEPS: { id: BulkWizardStep; label: string }[] = [
-  { id: 'config', label: 'Config' },
-  { id: 'resolve', label: 'Resolving' },
-  { id: 'review', label: 'Review' },
-  { id: 'confirm', label: 'Confirm' },
+const WIZARD_STEPS: { id: BulkWizardStep }[] = [
+  { id: 'config' },
+  { id: 'resolve' },
+  { id: 'review' },
+  { id: 'confirm' },
 ];
 
 // Shops (#1829) skip the marketplace Resolve step (no category/EAN matching)
 // and publish straight from Review: Config -> Review.
-const SHOP_WIZARD_STEPS: { id: BulkWizardStep; label: string }[] = [
-  { id: 'config', label: 'Config' },
-  { id: 'review', label: 'Review' },
-];
+const SHOP_WIZARD_STEPS: { id: BulkWizardStep }[] = [{ id: 'config' }, { id: 'review' }];
 
 /** Stable empty list so a param-schema opt-out platform keeps a constant deps identity. */
 const EMPTY_CATEGORY_IDS: readonly string[] = [];
+const EMPTY_PROJECTION_ITEMS: AttributeProjectionPreviewItem[] = [];
 
 /** Stable empty set so a render without published-variant data keeps a constant ref. */
 const EMPTY_ALREADY_LISTED: ReadonlySet<string> = new Set<string>();
@@ -132,6 +134,9 @@ export function BulkWizard({
 }: BulkWizardProps): ReactElement {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const copy = useMessages('listings').bulkWizard;
+  const plural = usePlural();
+  const format = useFormat();
   const mutation = useBulkSubmitMutation();
   const shopMutation = useBulkShopPublishMutation();
   const platforms = usePlatforms();
@@ -185,11 +190,13 @@ export function BulkWizard({
   useEffect(() => {
     if (!activeConnection) return;
     const previousTitle = document.title;
-    document.title = `${isShop ? 'Bulk publish' : 'Bulk offers'} · ${activeConnection.name}`;
+    document.title = interpolate(isShop ? copy.documentTitle.shop : copy.documentTitle.marketplace, {
+      connection: activeConnection.name,
+    });
     return () => {
       document.title = previousTitle;
     };
-  }, [activeConnection, isShop]);
+  }, [activeConnection, isShop, copy]);
 
   // #1837 duplicate guard: soft-warn when included variants are already
   // published on the destination (a duplicate offer on a marketplace, an
@@ -266,6 +273,37 @@ export function BulkWizard({
     isResolving: paramsResolving,
   } = useBulkRequiredProductParams(config?.connectionId, categoryIdsForParamSchema);
 
+  // What the connection's attribute mappings and rules will fill (#3995). Asked
+  // for every included variant that has a submit category, under that category
+  // and its EAN override - the same inputs the publish projects with. Only on
+  // Review: earlier steps have no settled category to ask about.
+  const projectionItems = useMemo<AttributeProjectionPreviewItem[]>(() => {
+    if (step !== 'review' || isShop || !batchPlatform?.offerValidation?.needsCategoryParameterSchema) {
+      return EMPTY_PROJECTION_ITEMS;
+    }
+    const items: AttributeProjectionPreviewItem[] = [];
+    for (const row of rows) {
+      for (const variant of row.variants) {
+        if (!variant.included) continue;
+        const categoryId = submitCategoryIdOf(row, variant);
+        if (!categoryId) continue;
+        const ean = variant.override.overrides?.ean?.trim();
+        items.push({ variantId: variant.variantId, categoryId, ...(ean ? { ean } : {}) });
+      }
+    }
+    return items;
+  }, [rows, step, isShop, batchPlatform]);
+  const projectionPreview = useAttributeProjectionPreview(config?.connectionId, projectionItems);
+  const projectedByVariant = useMemo(() => {
+    const map = new Map<string, { categoryId: string; parameters: readonly OfferParameter[] }>();
+    for (const [variantId, entry] of projectionPreview.byVariant) {
+      if (entry.status === 'ok') {
+        map.set(variantId, { categoryId: entry.categoryId, parameters: entry.parameters });
+      }
+    }
+    return map;
+  }, [projectionPreview.byVariant]);
+
   const platformValidate = useMemo<
     ((input: OfferRowValidationInput) => string[]) | undefined
   >(() => batchPlatform?.offerValidation?.validateRow, [batchPlatform]);
@@ -336,8 +374,9 @@ export function BulkWizard({
       schemaByCategory,
       failedCategoryIds,
       catalogueConsulted: catalogueLookupPerformed === true,
+      projectedByVariant,
     }),
-    [schemaByCategory, failedCategoryIds, catalogueLookupPerformed],
+    [schemaByCategory, failedCategoryIds, catalogueLookupPerformed, projectedByVariant],
   );
 
   // Reconcile per-variant `needs-product-parameters` (and any policy-derived)
@@ -491,6 +530,43 @@ export function BulkWizard({
     [config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit],
   );
 
+  // #3994 - the operator chose the catalogue card the resolver set aside in
+  // favour of their mapping. Only offered for a single-variant product: a
+  // multi-variant family shares ONE category (the server strips a per-variant
+  // one), so a sibling's card cannot be adopted on its own. The card and its
+  // category travel together - a card is only linkable in its own category.
+  const handleUseCardCategory = useCallback(
+    (productId: string) => {
+      if (!config) return;
+      setHasEdits(true);
+      setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, preflightContext, (row) => {
+        if (row.productId !== productId || row.variants.length !== 1) return row;
+        const card = row.variants[0].overriddenCard;
+        if (!card) return row;
+        const override: BulkPerProductOverride = {
+          ...row.override,
+          overrides: {
+            ...(row.override.overrides ?? {}),
+            categoryId: card.allegroCategoryId,
+            productCardId: card.productCardId,
+          },
+        };
+        return {
+          ...row,
+          override,
+          variants: row.variants.map((v) => ({
+            ...v,
+            override: {
+              ...v.override,
+              overrides: { ...(v.override.overrides ?? {}), ...override.overrides },
+            },
+          })),
+        };
+      }));
+    },
+    [config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit],
+  );
+
   const handleSubmit = useCallback(
     async (publishImmediately: boolean) => {
       if (!config) return;
@@ -579,7 +655,7 @@ export function BulkWizard({
       if (productIds.length === 0) {
         showToast({
           tone: 'error',
-          description: 'No variants are ready to submit. Resolve the flagged variants first.',
+          description: copy.toast.nothingReady,
         });
         return;
       }
@@ -615,7 +691,7 @@ export function BulkWizard({
         const selectedCount = Object.keys(perVariantOverrides).length;
         showToast({
           tone: 'success',
-          title: 'Batch submitted',
+          title: copy.toast.batchSubmitted,
           description: describeBulkSubmitOutcome(selectedCount, result),
         });
         leaveGuardReleasedRef.current = true;
@@ -650,8 +726,8 @@ export function BulkWizard({
         });
         showToast({
           tone: 'success',
-          title: 'Bulk publish started',
-          description: `${items.length.toLocaleString()} product ${items.length === 1 ? 'listing' : 'listings'} queued.`,
+          title: copy.toast.publishStarted,
+          description: plural(items.length, copy.toast.listingsQueued),
         });
         setShopBatchId(result.batchId);
       } catch {
@@ -668,7 +744,7 @@ export function BulkWizard({
   // word (#2088).
   const marketplaceName = batchConnection
     ? resolvePlatformLabel(platforms, batchConnection)
-    : 'marketplace';
+    : copy.marketplaceFallback;
 
   // Every seeded variant id, checked against the destination in one call.
   const allSeededVariantIds = useMemo(() => {
@@ -767,20 +843,25 @@ export function BulkWizard({
   // destination is still being chosen, and the picker itself carries the name.
   // The action verb matches the step's primary button ("Create offers" /
   // "Publish"), so the flow keeps one vocabulary.
-  const baseTitle = isShop ? 'Bulk shop product publishing' : 'Bulk marketplace offer creation';
+  const baseTitle = isShop ? copy.title.shop : copy.title.marketplace;
   const pageTitle =
     step !== 'config' && activeConnection !== null
-      ? `${isShop ? 'Publish products to' : 'Create offers on'} ${activeConnection.name}`
+      ? interpolate(isShop ? copy.title.shopTo : copy.title.marketplaceOn, {
+          connection: activeConnection.name,
+        })
       : baseTitle;
+  const productCount = plural(rows.length, copy.description.productCount);
+  const variantCount = plural(counts.totalVariants, copy.description.variantCount);
 
   return (
     <PageLayout
-      eyebrow="Operations · Listings"
+      eyebrow={copy.eyebrow}
       title={pageTitle}
       description={
-        isShop
-          ? `Publishing ${rows.length} ${rows.length === 1 ? 'product' : 'products'} · ${counts.totalVariants} variants to a shop.`
-          : `Creating offers for ${rows.length} ${rows.length === 1 ? 'product' : 'products'} · ${counts.totalVariants} variants.`
+        interpolate(isShop ? copy.description.shop : copy.description.marketplace, {
+          products: productCount,
+          variants: variantCount,
+        })
       }
     >
       <div className="bulk-wizard">
@@ -806,7 +887,7 @@ export function BulkWizard({
 
         <div className="bulk-wizard__stepper">
           <SetupStepper
-            steps={wizardSteps.map((s) => s.label)}
+            steps={wizardSteps.map((s) => copy.steps[s.id])}
             currentStep={stepperCurrent}
             completedSteps={new Set(Array.from({ length: stepperCurrent }, (_, i) => i))}
           />
@@ -814,16 +895,21 @@ export function BulkWizard({
 
         {resumedFromBatchId !== undefined && resumedFromBatchId !== '' ? (
           <Alert tone="info">
-            Resuming from batch <span className="mono-text">{resumedFromBatchId.slice(0, 8)}</span>
-            {' - '}the variants that failed there are pre-selected. Offers already live
-            are not included.
+            {renderRich(
+              copy.resumed,
+              { batch: (text) => <span className="mono-text">{text}</span> },
+              { batch: resumedFromBatchId.slice(0, 8) },
+            )}{' '}
+            {copy.resumedLiveExcluded}
           </Alert>
         ) : null}
 
         {counts.noVariants > 0 ? (
           <Alert tone="warning">
-            {counts.noVariants} of {rows.length} products have no variants and cannot be listed.
-            They'll be skipped on submit.
+            {plural(counts.noVariants, copy.noVariantsWarning.title, {
+              total: format.number(rows.length),
+            })}{' '}
+            {copy.noVariantsWarning.detail}
           </Alert>
         ) : null}
 
@@ -833,7 +919,7 @@ export function BulkWizard({
             <div className="bulk-wizard__footer">
               <div className="bulk-wizard__footer-spacer" />
               <Button tone="primary" onClick={() => { void navigate('/listings'); }}>
-                Done
+                {copy.done}
               </Button>
             </div>
           </div>
@@ -899,8 +985,11 @@ export function BulkWizard({
                 onSetVariantIncluded={setVariantIncluded}
                 onSetProductIncluded={setProductIncluded}
                 onSaveEditor={handleSaveEditor}
+                onUseCardCategory={handleUseCardCategory}
+                destinationResolvesCategoryAtSubmit={destinationResolvesCategoryAtSubmit}
                 onApproveAll={handleApproveAll}
                 onBack={() => { setStep('config'); }}
+                projection={projectionItems.length > 0 ? projectionPreview : undefined}
               />
             )}
           </div>
@@ -931,14 +1020,16 @@ export function BulkWizard({
         <ConfirmDialog
           open={changeDestOpen}
           onOpenChange={setChangeDestOpen}
-          title="Change destination?"
+          title={copy.changeDestination.title}
           description={
             activeConnection
-              ? `This batch has matched categories and row edits that only apply to ${activeConnection.name}. Going back to step 1 discards them.`
-              : 'Going back to step 1 discards the matched categories and row edits for this batch.'
+              ? interpolate(copy.changeDestination.descriptionNamed, {
+                  connection: activeConnection.name,
+                })
+              : copy.changeDestination.description
           }
-          confirmLabel="Change destination"
-          cancelLabel="Keep this batch"
+          confirmLabel={copy.changeDestination.confirm}
+          cancelLabel={copy.changeDestination.cancel}
           tone="danger"
           onConfirm={() => {
             setChangeDestOpen(false);
@@ -1170,6 +1261,8 @@ export function mergeResolveOutcomes(
           resolvedCategoryId: vo.resolvedCategoryId,
           resolvedProductCardId: vo.resolvedProductCardId,
           resolutionMethod: vo.resolutionMethod,
+          overriddenCard: vo.overriddenCard,
+          mappingAgrees: vo.mappingAgrees,
           masterStock: vo.masterStock,
           masterPrice: vo.masterPrice,
           masterCurrency: vo.masterCurrency,
@@ -1207,6 +1300,8 @@ function seedVariantRow(
     resolvedCategoryId: null,
     resolvedProductCardId: null,
     resolutionMethod: null,
+    overriddenCard: null,
+    mappingAgrees: false,
     categoryCandidates: [],
     override: {},
   };

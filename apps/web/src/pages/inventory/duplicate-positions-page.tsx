@@ -43,7 +43,16 @@ import { StatusBadge } from '../../shared/ui/status-badge';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../shared/ui/tooltip';
-import { formatDateTime } from '../../shared/format/format-date';
+import {
+  interpolate,
+  renderRich,
+  selectPluralForm,
+  useActiveLocale,
+  useFormat,
+  useMessages,
+  usePlural,
+  type Formatters,
+} from '../../shared/i18n';
 import { useSession } from '../../shared/auth/use-session';
 import { useIsAdmin } from '../../shared/auth/use-permission';
 import { useDuplicatePositionsQuery } from '../../features/inventory/hooks/use-duplicate-positions-query';
@@ -75,6 +84,8 @@ import { DuplicatePositionsRemediationModal } from './duplicate-positions-remedi
  */
 const DEFAULT_MAX_GROUPS = 100;
 const MAX_GROUPS_CEILING = 500;
+
+type PageCopy = ReturnType<typeof useMessages<'inventory'>>['duplicatePositionsPage'];
 
 function IdCell({ value }: { value: string | null }): ReactElement {
   if (value === null) {
@@ -111,18 +122,16 @@ function ProductCell({ group }: { group: DuplicatePositionGroup }): ReactElement
  * than fabricating a name.
  */
 function LocationCell({ id, name }: { id: string | null; name: string | null }): ReactElement {
+  const copy = useMessages('inventory').duplicatePositionsPage;
   if (id === null) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
           <span className="duplicate-positions-provenance-flag" tabIndex={0}>
-            — unlocated —
+            {copy.unlocated}
           </span>
         </TooltipTrigger>
-        <TooltipContent>
-          Master does not report a location for this stock (ADR-058 decision 2). Not missing
-          data — treat as a real &lsquo;unlocated&rsquo; value.
-        </TooltipContent>
+        <TooltipContent>{copy.unlocatedTip}</TooltipContent>
       </Tooltip>
     );
   }
@@ -137,18 +146,16 @@ function LocationCell({ id, name }: { id: string | null; name: string | null }):
  * a `connectionName` (#3239).
  */
 function ConnectionCell({ id, name }: { id: string | null; name: string | null }): ReactElement {
+  const copy = useMessages('inventory').duplicatePositionsPage;
   if (id === null) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
           <span className="duplicate-positions-provenance-flag" tabIndex={0}>
-            — not backfilled —
+            {copy.notBackfilled}
           </span>
         </TooltipTrigger>
-        <TooltipContent>
-          No source connection recorded yet — this row predates the provenance backfill. Grouped
-          together with &lsquo;legacy&rsquo; rows; both mean the same thing.
-        </TooltipContent>
+        <TooltipContent>{copy.notBackfilledTip}</TooltipContent>
       </Tooltip>
     );
   }
@@ -157,50 +164,46 @@ function ConnectionCell({ id, name }: { id: string | null; name: string | null }
       <Tooltip>
         <TooltipTrigger asChild>
           <span className="duplicate-positions-provenance-flag" tabIndex={0}>
-            legacy
+            {copy.legacy}
           </span>
         </TooltipTrigger>
-        <TooltipContent>
-          Sentinel the provenance backfill writes for a row whose owning connection is unknown.
-          Grouped together with unbackfilled rows — both mean the same thing.
-        </TooltipContent>
+        <TooltipContent>{copy.legacyTip}</TooltipContent>
       </Tooltip>
     );
   }
   return name !== null ? <span>{name}</span> : <span className="mono-text">{id}</span>;
 }
 
-function buildGroupColumns(): DataTableColumn<DuplicatePositionGroup>[] {
+function buildGroupColumns(page: PageCopy, format: Formatters): DataTableColumn<DuplicatePositionGroup>[] {
+  const copy = page.columns;
   return [
     {
       id: 'productId',
-      header: 'Product',
+      header: copy.product,
       cell: (g) => <ProductCell group={g} />,
     },
     {
       id: 'productVariantId',
-      header: 'Variant',
+      header: copy.variant,
       cell: (g) => <IdCell value={g.productVariantId} />,
       hideBelow: 1024,
     },
     {
       id: 'locationId',
-      header: 'Location',
+      header: copy.location,
       cell: (g) => <LocationCell id={g.locationId} name={g.locationName} />,
       hideBelow: 768,
     },
     {
       id: 'sourceConnectionId',
-      header: 'Source connection',
+      header: copy.sourceConnection,
       cell: (g) => <ConnectionCell id={g.sourceConnectionId} name={g.connectionName} />,
       hideBelow: 768,
     },
     {
       id: 'rowCount',
       header: (
-        <span title="Sorts only this truncated page — groups is capped by maxGroups, largest first">
-          Rows
-        </span>
+        <span title={copy.sortHint}>{copy.rows}</span>
       ),
       accessor: (g) => g.rowCount,
       cell: (g) => <span className="mono-text tabular">{g.rowCount}</span>,
@@ -211,15 +214,9 @@ function buildGroupColumns(): DataTableColumn<DuplicatePositionGroup>[] {
       header: (
         <Tooltip>
           <TooltipTrigger asChild>
-            <span tabIndex={0}>Live qty at risk</span>
+            <span tabIndex={0}>{copy.liveQty}</span>
           </TooltipTrigger>
-          <TooltipContent>
-            Sum of availableQuantity across this group&rsquo;s LIVE (non-stale) rows, when two or
-            more live rows exist — what&rsquo;s currently over-counted for this position. A single
-            live row is never at risk (its own figure is already correct), so it shows as
-            unaffected here. Sorts only this truncated page — groups is capped by maxGroups,
-            largest first.
-          </TooltipContent>
+          <TooltipContent>{copy.liveQtyTip}</TooltipContent>
         </Tooltip>
       ),
       accessor: (g) => atRiskExposureQuantity(g),
@@ -227,7 +224,7 @@ function buildGroupColumns(): DataTableColumn<DuplicatePositionGroup>[] {
         const exposure = atRiskExposureQuantity(g);
         return (
           <span className="mono-text tabular">
-            {exposure > 0 ? exposure.toLocaleString('en-US') : '—'}
+            {exposure > 0 ? format.number(exposure) : '—'}
           </span>
         );
       },
@@ -236,19 +233,17 @@ function buildGroupColumns(): DataTableColumn<DuplicatePositionGroup>[] {
     {
       id: 'liveRowCount',
       header: (
-        <span title="Sorts only this truncated page — groups is capped by maxGroups, largest first">
-          Live rows
-        </span>
+        <span title={copy.sortHint}>{copy.liveRows}</span>
       ),
       accessor: (g) => g.liveRowCount,
       cell: (g) =>
         hasOversellRisk(g) ? (
           <StatusBadge tone="warning" withDot compact>
-            {g.liveRowCount} live
+            {interpolate(copy.nLive, { n: g.liveRowCount })}
           </StatusBadge>
         ) : (
           <StatusBadge tone="neutral" withDot compact>
-            {g.liveRowCount === 1 ? '1 live' : 'all stale'}
+            {g.liveRowCount === 1 ? copy.oneLive : copy.allStale}
           </StatusBadge>
         ),
       sortable: true,
@@ -263,6 +258,11 @@ function GroupRowDetail({
   group: DuplicatePositionGroup;
   onOpenRemediation: (group: DuplicatePositionGroup) => void;
 }): ReactElement {
+  const page = useMessages('inventory').duplicatePositionsPage;
+  const copy = page.detail;
+  const format = useFormat();
+  const plural = usePlural();
+  const strong = { strong: (text: string) => <strong>{text}</strong> };
   const survivorId = findSurvivorId(group);
   const exposure = liveExposureQuantity(group);
   const riskyRows = reservationRiskRows(group, survivorId);
@@ -272,49 +272,29 @@ function GroupRowDetail({
     <div className="duplicate-positions-detail">
       {oldest ? (
         <p className="duplicate-positions-detail__hint">
-          Default survivor rule: newest live row (marked below), colliding since{' '}
-          {formatDateTime(oldest.updatedAt)}.
-          {survivorId === null ? ' No live row in this group — see step 2 of the remediation guide.' : ''}
+          {interpolate(copy.survivorHint, { date: format.dateTime(oldest.updatedAt) })}
+          {survivorId === null ? ` ${copy.noLiveRow}` : ''}
         </p>
       ) : null}
 
       {hasOversellRisk(group) ? (
         <Alert tone="info">
-          <strong>Currently distorting available-to-promise.</strong> This position&rsquo;s live
-          rows sum to <strong>{exposure.toLocaleString('en-US')}</strong> available — the
-          availability read has no way to know only one row is real, so it publishes{' '}
-          {exposure.toLocaleString('en-US')} where the true figure is whichever row survives.
-          Never sum the duplicated quantities when reconciling; re-read the survivor&rsquo;s figure
-          from the master after cleanup.
+          {renderRich(copy.distorting, strong, { n: format.number(exposure) })}
         </Alert>
       ) : (
         <p className="duplicate-positions-detail__neutral-note">
-          {group.liveRowCount === 1 ? (
-            <>
-              <strong>One live row — no oversell risk today.</strong> Its own figure is already
-              the correct, undistorted quantity; only the stale rows in this group remain to be
-              deleted before the #2325 uniqueness index can build.
-            </>
-          ) : (
-            <>
-              <strong>No live rows — no oversell risk today.</strong> Every row here is already
-              stale, so the normal availability read already excludes this position. This group
-              only blocks the stricter uniqueness migration; it is not an active stock-accuracy
-              problem.
-            </>
-          )}
+          {renderRich(group.liveRowCount === 1 ? copy.oneLive : copy.noLive, strong)}
         </p>
       )}
 
       {riskyRows.length > 0 ? (
         <Alert tone="error">
-          <strong>Reservation risk — do not blindly follow the survivor badge.</strong>{' '}
-          {riskyRows
-            .map((r) => `${r.id} holds ${r.reservedQuantity} reserved unit${r.reservedQuantity === 1 ? '' : 's'}`)
-            .join(', ')}
-          , but the default survivor rule picks the newest row regardless of reservations. Confirm
-          no open order depends on this stock before deleting it — check Orders for this variant
-          first.
+          <strong>{copy.reservationRiskTitle}</strong>{' '}
+          {interpolate(copy.reservationRiskBody, {
+            rows: riskyRows
+              .map((r) => plural(r.reservedQuantity, copy.reservationRiskRow, { id: r.id }))
+              .join(', '),
+          })}
         </Alert>
       ) : null}
 
@@ -327,17 +307,17 @@ function GroupRowDetail({
         className="duplicate-positions-detail-table__scroll"
         tabIndex={0}
         role="region"
-        aria-label="Individual inventory_items rows for this position key (scrollable)"
+        aria-label={copy.rowsRegion}
       >
         <table className="duplicate-positions-detail-table">
-          <caption className="sr-only">Individual inventory_items rows for this position key</caption>
+          <caption className="sr-only">{copy.rowsCaption}</caption>
           <thead>
             <tr>
-              <th scope="col">Row ID</th>
-              <th scope="col">Available</th>
-              <th scope="col">Reserved</th>
-              <th scope="col">Status</th>
-              <th scope="col">Updated</th>
+              <th scope="col">{copy.rowId}</th>
+              <th scope="col">{copy.available}</th>
+              <th scope="col">{copy.reserved}</th>
+              <th scope="col">{copy.status}</th>
+              <th scope="col">{copy.updated}</th>
             </tr>
           </thead>
           <tbody>
@@ -350,12 +330,12 @@ function GroupRowDetail({
                   <span className="mono-text duplicate-positions-detail__row-id">{row.id}</span>
                   {row.id === survivorId ? (
                     <span className="duplicate-positions-survivor-badge">
-                      <span aria-hidden="true">✓</span> likely survivor
+                      <span aria-hidden="true">✓</span> {copy.likelySurvivor}
                     </span>
                   ) : null}
                   {row.id !== survivorId && row.reservedQuantity > 0 ? (
                     <span className="duplicate-positions-reserved-badge">
-                      <span aria-hidden="true">⛔</span> reserved
+                      <span aria-hidden="true">⛔</span> {copy.reservedBadge}
                     </span>
                   ) : null}
                 </td>
@@ -364,15 +344,15 @@ function GroupRowDetail({
                 <td>
                   {row.isStale ? (
                     <StatusBadge tone="neutral" withDot>
-                      Stale
+                      {copy.stale}
                     </StatusBadge>
                   ) : (
                     <StatusBadge tone="success" withDot>
-                      Live
+                      {copy.live}
                     </StatusBadge>
                   )}
                 </td>
-                <td title={row.updatedAt}>{formatDateTime(row.updatedAt)}</td>
+                <td title={row.updatedAt}>{format.dateTime(row.updatedAt)}</td>
               </tr>
             ))}
           </tbody>
@@ -381,7 +361,7 @@ function GroupRowDetail({
 
       <p className="duplicate-positions-detail__remediation-link">
         <Button tone="ghost" className="button--sm" onClick={() => onOpenRemediation(group)}>
-          Remediation guide: how to pick the survivor and delete the rest →
+          {page.remediationLink}
         </Button>
       </p>
     </div>
@@ -393,6 +373,10 @@ function clampMaxGroups(value: number): number {
 }
 
 export function DuplicatePositionsPage(): ReactElement {
+  const copy = useMessages('inventory').duplicatePositionsPage;
+  const format = useFormat();
+  const plural = usePlural();
+  const locale = useActiveLocale();
   const { isReady: isSessionReady } = useSession();
   const isAdmin = useIsAdmin();
   const maxGroupsInputId = useId();
@@ -478,7 +462,7 @@ export function DuplicatePositionsPage(): ReactElement {
     return [...report.groups].sort((a, b) => atRiskExposureQuantity(b) - atRiskExposureQuantity(a));
   }, [report]);
 
-  const groupColumns = useMemo(() => buildGroupColumns(), []);
+  const groupColumns = useMemo(() => buildGroupColumns(copy, format), [copy, format]);
 
   const openRemediation = (group: DuplicatePositionGroup | null): void => {
     setRemediationGroup(group);
@@ -519,45 +503,31 @@ export function DuplicatePositionsPage(): ReactElement {
 
   if (isSessionReady && !isAdmin) {
     return (
-      <PageLayout
-        eyebrow="Diagnostics"
-        title="Duplicate stock positions"
-        description="Admin-only access."
-      >
-        <ErrorState
-          title="Admin role required"
-          message="This diagnostic reads inventory_items directly — it requires an admin session."
-        />
+      <PageLayout eyebrow={copy.eyebrow} title={copy.title} description={copy.adminOnly}>
+        <ErrorState title={copy.adminRequiredTitle} message={copy.adminRequiredMessage} />
       </PageLayout>
     );
   }
 
   return (
     <PageLayout
-      eyebrow="Diagnostics"
-      title="Duplicate stock positions"
-      description={
-        'Stock rows that collide on the same product, variant, location and source. ' +
-        'This is a report, not a repair tool — it detects, it never writes. ' +
-        "It's the gate before a stricter uniqueness rule can be turned on for the whole install."
-      }
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
       summary={
         report ? (
           <div className="duplicate-positions-meta-row">
             <span className="duplicate-positions-meta-row__timestamp">
-              Generated {formatDateTime(report.generatedAt)}
+              {interpolate(copy.generated, { date: format.dateTime(report.generatedAt) })}
             </span>
-            <p className="duplicate-positions-meta-row__caution">
-              Positions can change between this scan and a manual fix performed elsewhere — re-run
-              the report immediately before acting on it, never from a page you loaded a while ago.
-            </p>
+            <p className="duplicate-positions-meta-row__caution">{copy.caution}</p>
           </div>
         ) : undefined
       }
       actions={
         <>
           <Button tone="secondary" className="button--sm" onClick={handleExportCsv} disabled={!report}>
-            Export CSV
+            {copy.exportCsv}
           </Button>
           <Button
             tone="secondary"
@@ -565,40 +535,37 @@ export function DuplicatePositionsPage(): ReactElement {
             onClick={retry}
             disabled={isLoading || isFetching}
           >
-            {isFetching ? 'Refreshing…' : 'Refresh'}
+            {isFetching ? copy.refreshing : copy.refresh}
           </Button>
         </>
       }
     >
       {!isSessionReady || isLoading ? (
         <LoadingState
-          title="Loading duplicate-position report"
-          message="Scanning inventory_items for colliding position keys and checking the provenance backfill..."
+          title={copy.loadingTitle}
+          message={copy.loadingMessage}
         />
       ) : initialLoadError ? (
         <ErrorState
-          title="Unable to load the duplicate-position report"
+          title={copy.errorTitle}
           message={initialLoadError.message}
-          action={<Button onClick={retry}>Retry</Button>}
+          action={<Button onClick={retry}>{copy.retry}</Button>}
         />
       ) : report && provenance ? (
         <>
           {refreshError ? (
-            <Alert tone="error" title="Refresh failed">
-              {refreshError.message} — showing the last successful scan below.
+            <Alert tone="error" title={copy.refreshFailedTitle}>
+              {interpolate(copy.refreshFailedBody, { error: refreshError.message })}
             </Alert>
           ) : null}
-          <Alert tone={isReady ? 'success' : 'warning'} title={isReady ? 'Ready' : 'Not ready'}>
+          <Alert tone={isReady ? 'success' : 'warning'} title={isReady ? copy.ready : copy.notReady}>
             <ul className="duplicate-positions-checklist">
               <li>
                 <StatusBadge tone={noDuplicateGroups ? 'success' : 'error'} withDot>
-                  {noDuplicateGroups ? 'Done' : 'Pending'}
+                  {noDuplicateGroups ? copy.done : copy.pending}
                 </StatusBadge>
                 <span>
-                  {noDuplicateGroups
-                    ? 'No duplicate position groups'
-                    : `${String(report.groupCount)} duplicate position ` +
-                      `${report.groupCount === 1 ? 'group' : 'groups'} must be resolved`}
+                  {noDuplicateGroups ? copy.noGroups : plural(report.groupCount, copy.groupsToResolve)}
                 </span>
               </li>
               <li>
@@ -606,78 +573,73 @@ export function DuplicatePositionsPage(): ReactElement {
                   tone={backfillComplete ? 'success' : provenanceLatchedAndStuck ? 'error' : 'warning'}
                   withDot
                 >
-                  {backfillComplete ? 'Done' : provenanceLatchedAndStuck ? 'Stuck' : 'Pending'}
+                  {backfillComplete ? copy.done : provenanceLatchedAndStuck ? copy.stuck : copy.pending}
                 </StatusBadge>
                 <span>
                   {backfillComplete
-                    ? 'Provenance backfill complete'
+                    ? copy.backfillComplete
                     : stuckSinceLatchedAt !== null
-                      ? `${String(provenance.remainingNull)} row(s) still missing provenance — the backfill ` +
-                        `latched on ${formatDateTime(stuckSinceLatchedAt)} and has stopped running. ` +
-                        'It will not resume on its own — ask an engineer to re-arm it.'
-                      : `${String(provenance.remainingNull)} row(s) still missing provenance`}
+                      ? interpolate(copy.backfillStuck, {
+                          n: provenance.remainingNull,
+                          date: format.dateTime(stuckSinceLatchedAt),
+                        })
+                      : interpolate(copy.backfillRemaining, { n: provenance.remainingNull })}
                 </span>
               </li>
             </ul>
             {!noDuplicateGroups ? (
               <p className="duplicate-positions-checklist__footnote">
-                Provenance is part of the key — two rows differing only by source connection are
-                legitimate coexisting mirrors, not duplicates, and are already excluded from this
-                count.
+                {copy.provenanceFootnote}
               </p>
             ) : null}
             {!isReady ? (
               <p className="duplicate-positions-checklist__footnote">
-                Both conditions must hold before the stricter uniqueness index can be built.
-                Resolving duplicate groups is a manual database operation — ask an engineer to run
-                the remediation procedure, then refresh this page to re-check.
+                {copy.notReadyFootnote}
               </p>
             ) : null}
             {!isReady ? (
               <Button tone="ghost" className="button--sm" onClick={() => openRemediation(null)}>
-                Remediation guide: how to pick the survivor and delete the rest →
+                {copy.remediationLink}
               </Button>
             ) : null}
           </Alert>
 
           <div className="ds-grid ds-grid--4">
             <KpiCard
-              label="Duplicate groups"
+              label={copy.kpis.groups}
               value={report.groupCount}
               tone={noDuplicateGroups ? 'success' : 'error'}
             />
-            <KpiCard label="Total rows in duplicate groups" value={report.rowCount} tone="neutral" />
+            <KpiCard label={copy.kpis.totalRows} value={report.rowCount} tone="neutral" />
             <KpiCard
-              label="Excess rows"
+              label={copy.kpis.excessRows}
               value={report.excessRowCount}
               tone={report.excessRowCount === 0 ? 'success' : 'warning'}
-              description="Rows that must be removed before the index can build — one row per group survives."
+              description={copy.kpis.excessRowsHint}
             />
             <KpiCard
-              label="Provenance rows remaining"
+              label={copy.kpis.provenanceRemaining}
               value={provenance.remainingNull}
               tone={backfillComplete ? 'success' : provenanceLatchedAndStuck ? 'error' : 'warning'}
               description={
                 provenanceLatchedAndStuck
-                  ? 'inventory_items rows still missing sourceConnectionId — backfill latched, needs re-arming.'
-                  : 'inventory_items rows still missing sourceConnectionId.'
+                  ? copy.kpis.provenanceStuckHint
+                  : copy.kpis.provenanceHint
               }
             />
           </div>
 
           {report.truncated ? (
-            <Alert tone="info" title="Detail truncated">
+            <Alert tone="info" title={copy.truncated.title}>
               <p>
-                The KPI totals above count every duplicate position in the database. The server
-                caps the table below to the {report.groups.length} of {report.groupCount} duplicate{' '}
-                {report.groupCount === 1 ? 'group' : 'groups'} with the most{' '}
-                <span className="mono-text">inventory_items</span> rows — row count, not exposure.
-                What&rsquo;s shown is then re-ranked by live stock quantity at risk, so a
-                low-row-count group carrying more exposure could still exist below this cap and not
-                appear here.
+                {renderRich(
+                  selectPluralForm(report.groupCount, copy.truncated.body, locale),
+                  { code: (text: string) => <span className="mono-text">{text}</span> },
+                  { shown: report.groups.length, n: report.groupCount },
+                )}
               </p>
               <div className="duplicate-positions-maxgroups-form">
-                <label htmlFor={maxGroupsInputId}>Groups to show</label>
+                <label htmlFor={maxGroupsInputId}>{copy.truncated.groupsToShow}</label>
                 <Input
                   id={maxGroupsInputId}
                   type="number"
@@ -687,7 +649,7 @@ export function DuplicatePositionsPage(): ReactElement {
                   onChange={(e) => setMaxGroupsInput(e.target.value)}
                 />
                 <Button tone="secondary" className="button--sm" onClick={applyMaxGroups}>
-                  Apply
+                  {copy.truncated.apply}
                 </Button>
               </div>
             </Alert>
@@ -699,12 +661,12 @@ export function DuplicatePositionsPage(): ReactElement {
             // so the all-clear should announce like the loading state that
             // preceded it, not go silent (#3255 review).
             <EmptyState
-              title="No duplicate positions"
-              message="Every inventory position key is unique. Nothing to review."
+              title={copy.empty.title}
+              message={copy.empty.message}
             />
           ) : (
             <DataTable
-              caption="Duplicate inventory positions"
+              caption={copy.caption}
               columns={groupColumns}
               rows={rankedGroups}
               rowKey={(g) =>
@@ -714,13 +676,13 @@ export function DuplicatePositionsPage(): ReactElement {
                 renderDetail: (g) => <GroupRowDetail group={g} onOpenRemediation={openRemediation} />,
                 toggleLabel: (g, expanded) =>
                   expanded
-                    ? `Collapse rows for product ${g.productName ?? g.productId}`
-                    : `Expand rows for product ${g.productName ?? g.productId}`,
+                    ? interpolate(copy.collapseRows, { product: g.productName ?? g.productId })
+                    : interpolate(copy.expandRows, { product: g.productName ?? g.productId }),
               }}
               cardView={{
                 title: (g) => g.productName ?? g.productId,
                 subtitle: (g) => g.sku ?? g.productVariantId ?? undefined,
-                meta: (g) => `${g.rowCount} rows (${g.liveRowCount} live)`,
+                meta: (g) => interpolate(copy.cardMeta, { rows: g.rowCount, live: g.liveRowCount }),
                 collapsibleDetail: true,
                 detail: (g) => <GroupRowDetail group={g} onOpenRemediation={openRemediation} />,
               }}

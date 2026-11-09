@@ -75,7 +75,6 @@
  * @module apps/web/src/features/bench/components
  */
 import { Fragment, useEffect, useRef, useState, type ReactElement } from 'react';
-import { interpolate, useMessages } from '../../../shared/i18n';
 import { bundleBlockingClose, bundleGroups, clusterBundleLines } from '../lib/bench-bundle-groups';
 
 import { Alert } from '../../../shared/ui/alert';
@@ -107,7 +106,7 @@ import {
   parcelTotals,
 } from '../lib/bench-parcel-presentation';
 import { distinguishingAttributeKeys } from '../../../shared/lib/variant-attributes';
-import { benchParcelCopy } from '../lib/bench-parcel.copy';
+import { interpolate, useFormat, useMessages, usePlural } from '../../../shared/i18n';
 import {
   isBenchAudioMuted,
   playScanSound,
@@ -124,6 +123,8 @@ import { BenchDocumentsPanel } from './bench-documents';
 import { BenchBuyerNote } from './bench-buyer-note';
 import { BenchOfficeNotes } from './bench-office-notes';
 import { BenchParcelHero } from './bench-parcel-hero';
+import { BenchSourceChange } from './bench-source-change';
+import { useBenchSourceChangeTakenOutMutation } from '../hooks/use-bench-source-change-taken-out-mutation';
 import { BenchParcelLineRow } from './bench-parcel-line';
 import { BenchScanDock } from './bench-scan-dock';
 
@@ -158,6 +159,9 @@ export function BenchParcelView({
   onClose,
   onSwitchParcel,
 }: BenchParcelProps): ReactElement {
+  const copy = useMessages('bench').parcel;
+  const plural = usePlural();
+  const format = useFormat();
   const query = useBenchParcelQuery(workId);
   const verify = useBenchVerifyMutation();
   const reopen = useBenchReopenMutation();
@@ -188,6 +192,10 @@ export function BenchParcelView({
   // to advertise capabilities, not to dress a preview as a working station. Do
   // not "fix" it in either direction without revisiting that.
   const canWrite = usePermission('bench:write');
+  // #3961 - "Done, I took it out" on a box the shop lowered.
+  const takeOut = useBenchSourceChangeTakenOutMutation();
+  const [takeOutFailed, setTakeOutFailed] = useState(false);
+  const sourceChangeCopy = useMessages('bench').sourceChange;
   const presence = useBenchPresenceQuery(workId, { enabled: useBenchInteractive() && canWrite });
   // A3. False while the idle lock covers the bench.
   const interactive = useBenchInteractive();
@@ -318,7 +326,10 @@ export function BenchParcelView({
     playScanSound(sound);
   };
 
-  const lineName = (line: BenchParcelLine): string => line.name ?? benchParcelCopy.lines.unnamed;
+  const lineName = (line: BenchParcelLine): string => line.name ?? copy.lines.unnamed;
+  /** Who else has this box open: one name is singular, several are joined for the language. */
+  const collisionBody = (names: readonly string[]): string =>
+    plural(names.length, copy.collision.body, { who: format.list(names) });
 
   const adjustInFlight = (workLineId: string, by: number): void => {
     setInFlight((current) => {
@@ -352,7 +363,7 @@ export function BenchParcelView({
     // packer's act and the screen acknowledging it.
     adjustInFlight(line.workLineId, 1);
     announcedSeq.current = seq;
-    setAnnouncement(benchParcelCopy.inFlight.sentAnnouncement(lineName(line)));
+    setAnnouncement(interpolate(copy.inFlight.sentAnnouncement, { name: lineName(line) }));
 
     verify
       .mutateAsync({ workId, workLineId: line.workLineId, gestureId })
@@ -390,7 +401,7 @@ export function BenchParcelView({
         if (seq >= announcedSeq.current) {
           announcedSeq.current = seq;
           setAnnouncement(
-            benchParcelCopy.inFlight.recordedAnnouncement({
+            interpolate(copy.inFlight.recordedAnnouncement, {
               name: lineName(line),
               verified: answered?.verifiedQuantity ?? 0,
               required: answered?.requiredQuantity ?? 0,
@@ -456,7 +467,7 @@ export function BenchParcelView({
         {
           seq,
           kind: 'refused',
-          message: benchParcelCopy.verify.overPacked({
+          message: interpolate(copy.verify.overPacked, {
             required: match.line.requiredQuantity,
             kept: match.line.verifiedQuantity,
           }),
@@ -578,14 +589,14 @@ export function BenchParcelView({
 
   if (parcel === undefined && query.isPending) {
     return (
-      <LoadingState title={benchParcelCopy.loading.title} message={benchParcelCopy.loading.body} />
+      <LoadingState title={copy.loading.title} message={copy.loading.body} />
     );
   }
 
   if (parcel === undefined) {
     return (
       <ErrorState
-        title={benchParcelCopy.errors.loadTitle}
+        title={copy.errors.loadTitle}
         message={query.error?.message ?? ''}
         action={
           <Button
@@ -594,7 +605,7 @@ export function BenchParcelView({
               void query.refetch();
             }}
           >
-            {benchParcelCopy.errors.retryAction}
+            {copy.errors.retryAction}
           </Button>
         }
       />
@@ -620,14 +631,16 @@ export function BenchParcelView({
         if (result.outcome === 'refused') {
           setUndoNotice(
             result.reason === 'parcel-closed'
-              ? benchParcelCopy.undo.parcelClosed
-              : benchParcelCopy.undo.nothingToUndo
+              ? copy.undo.parcelClosed
+              : copy.undo.nothingToUndo
           );
           return;
         }
         const lineName =
           result.parcel.lines.find((l) => l.workLineId === result.workLineId)?.name ?? null;
-        setUndoNotice(benchParcelCopy.undo.voidedNotice(lineName));
+        setUndoNotice(lineName === null
+            ? copy.undo.voidedNotice.unnamed
+            : interpolate(copy.undo.voidedNotice.named, { name: lineName }));
       },
     });
   };
@@ -681,24 +694,24 @@ export function BenchParcelView({
       data-work-id={parcel.workId}
     >
       {canWrite ? null : (
-        <Alert tone="info" title={benchParcelCopy.preview.title} data-testid="bench-preview">
-          {benchParcelCopy.preview.body}
+        <Alert tone="info" title={copy.preview.title} data-testid="bench-preview">
+          {copy.preview.body}
         </Alert>
       )}
       <header className="bench-parcel__header">
         <div className="bench-parcel__identity">
-          <span className="bench-parcel__field-label">{benchParcelCopy.header.orderLabel}</span>
+          <span className="bench-parcel__field-label">{copy.header.orderLabel}</span>
           <span className="bench-parcel__reference">
             {parcel.orderReference}
             <BenchCopyButton
               value={parcel.orderReference}
-              what={benchParcelCopy.copy.orderReference}
+              what={copy.copy.orderReference}
             />
           </span>
         </div>
         {parcel.buyerName === null ? null : (
           <div className="bench-parcel__identity">
-            <span className="bench-parcel__field-label">{benchParcelCopy.header.buyerLabel}</span>
+            <span className="bench-parcel__field-label">{copy.header.buyerLabel}</span>
             <span className="bench-parcel__buyer">{parcel.buyerName}</span>
           </div>
         )}
@@ -708,13 +721,13 @@ export function BenchParcelView({
             than the badge it was before; the parcel-index STATUS pill is the
             state signal now, so a badge here would duplicate that role. */}
         <div className="bench-parcel__identity">
-          <span className="bench-parcel__field-label">{benchParcelCopy.header.parcelLabel}</span>
-          <span>{benchParcelCopy.header.parcelOf(parcel.parcelIndex, parcel.parcelTotal)}</span>
+          <span className="bench-parcel__field-label">{copy.header.parcelLabel}</span>
+          <span>{interpolate(copy.header.parcelOf, { index: parcel.parcelIndex, total: parcel.parcelTotal })}</span>
         </div>
         {/* #3409 (epic #3401) — a deliberate PII-exclusion reversal. */}
         {parcel.totalAmount === null ? null : (
           <div className="bench-parcel__identity">
-            <span className="bench-parcel__field-label">{benchParcelCopy.header.totalLabel}</span>
+            <span className="bench-parcel__field-label">{copy.header.totalLabel}</span>
             <span className="bench-parcel__total">
               {formatAmount(parcel.totalAmount, parcel.currency ?? undefined)}
             </span>
@@ -722,14 +735,14 @@ export function BenchParcelView({
         )}
         {parcel.carrierName === null ? null : (
           <div className="bench-parcel__identity">
-            <span className="bench-parcel__field-label">{benchParcelCopy.header.carrierLabel}</span>
+            <span className="bench-parcel__field-label">{copy.header.carrierLabel}</span>
             <span>{parcel.carrierName}</span>
           </div>
         )}
         {parcel.dispatchByAt === null ? null : (
           <div className="bench-parcel__identity">
             <span className="bench-parcel__field-label">
-              {benchParcelCopy.header.dispatchByLabel}
+              {copy.header.dispatchByLabel}
             </span>
             {/* The CLOCK TIME, as the mockup shows it — a packer reads this
                 against the clock on the wall — AND how long is left, which
@@ -764,38 +777,36 @@ export function BenchParcelView({
             fact, not something happening right now. */}
           {parcel.refusal === 'held' ? (
             <StatusBadge tone="error" withDot>
-              {benchParcelCopy.header.statusHeld}
+              {copy.header.statusHeld}
             </StatusBadge>
           ) : parcel.refusal === 'cancelled' ? (
             <StatusBadge tone="neutral" withDot>
-              {benchParcelCopy.header.statusCancelled}
+              {copy.header.statusCancelled}
             </StatusBadge>
           ) : closed ? (
             <StatusBadge tone="success" withDot>
-              {benchParcelCopy.header.statusPacked}
+              {copy.header.statusPacked}
             </StatusBadge>
           ) : (
             <StatusBadge tone="warning" pulse>
-              {benchParcelCopy.header.statusInProgress}
+              {copy.header.statusInProgress}
             </StatusBadge>
           )}
           <Button tone="ghost" onClick={onClose}>
-            {benchParcelCopy.header.backAction}
+            {copy.header.backAction}
           </Button>
         </div>
       </header>
 
-      <p className="bench-parcel__scope">{benchParcelCopy.header.thisBoxOnly}</p>
+      <p className="bench-parcel__scope">{copy.header.thisBoxOnly}</p>
 
       {/* #3406 — advisory, and deliberately `info` rather than `warning`: two
           packers on one box is a normal, supported situation, and a tone that
           reads as a problem would make them stop, which is the wrong move.
           Absent while the read has not answered or failed — see the hook. */}
       {(presence.data?.others.length ?? 0) === 0 ? null : (
-        <Alert tone="info" title={benchParcelCopy.collision.title} data-testid="bench-collision">
-          {benchParcelCopy.collision.body(
-            (presence.data?.others ?? []).map((viewer) => viewer.displayName)
-          )}
+        <Alert tone="info" title={copy.collision.title} data-testid="bench-collision">
+          {collisionBody((presence.data?.others ?? []).map((viewer) => viewer.displayName))}
         </Alert>
       )}
 
@@ -839,8 +850,8 @@ export function BenchParcelView({
           leaves the count on screen and the surface correct. */}
       <div className="bench-parcel__progress-block">
         <div className="bench-parcel__progress-top">
-          <span>{benchParcelCopy.header.progress(totals.verified, totals.required)}</span>
-          <span className="mono">{benchParcelCopy.hero.percent(progressPercent)}</span>
+          <span>{interpolate(copy.header.progress, { verified: totals.verified, required: totals.required })}</span>
+          <span className="mono">{format.percent(progressPercent / 100)}</span>
         </div>
         <div
           className="bench-parcel__progress-track"
@@ -848,7 +859,7 @@ export function BenchParcelView({
           aria-valuemin={0}
           aria-valuemax={totals.required}
           aria-valuenow={totals.verified}
-          aria-label={benchParcelCopy.header.progress(totals.verified, totals.required)}
+          aria-label={interpolate(copy.header.progress, { verified: totals.verified, required: totals.required })}
         >
           <div
             className="bench-parcel__progress-fill"
@@ -877,10 +888,10 @@ export function BenchParcelView({
       {/* H1. Above the lines and never dismissible: the packer must not be able
           to clear it and go on scanning into a bench that cannot record. */}
       {reachability.unreachable ? (
-        <Alert tone="warning" title={benchParcelCopy.unreachable.title}>
-          {benchParcelCopy.unreachable.body}{' '}
+        <Alert tone="warning" title={copy.unreachable.title}>
+          {copy.unreachable.body}{' '}
           <span className="bench-parcel__unreachable-next">
-            {benchParcelCopy.unreachable.whatToDo}
+            {copy.unreachable.whatToDo}
           </span>
         </Alert>
       ) : null}
@@ -899,22 +910,63 @@ export function BenchParcelView({
                 onClose();
               }}
             >
-              {benchParcelCopy.interrupt.acknowledgeAction}
+              {copy.interrupt.acknowledgeAction}
             </Button>
           }
         >
-          {benchParcelCopy.interrupt.body}
+          {copy.interrupt.body}
         </Alert>
       )}
 
       {/* D2 — the same eligibility rule the list uses, so the two never disagree. */}
-      {refusalCopy === null ? null : (
+      {/* #3961 - a box held because the shop lowered a line: name what comes
+          out instead of the generic "put the tote back". */}
+      {parcel.sourceChange !== null && parcel.sourceChange.takeOut.length > 0 ? (
+        <BenchSourceChange
+          sourceChange={parcel.sourceChange}
+          lines={parcel.lines}
+          pending={takeOut.isPending}
+          onTakenOut={
+            canWrite
+              ? (workLineId) => {
+                  setTakeOutFailed(false);
+                  takeOut.mutate(
+                    { workId, workLineId },
+                    {
+                      // A box whose change was already settled (a second tap,
+                      // or the office deciding first) is not a failure: the
+                      // refreshed parcel shows it as it now stands.
+                      onSuccess: (result) => {
+                        if (result.outcome === 'refused' && result.reason !== 'not-held-for-source-change') {
+                          setTakeOutFailed(true);
+                        }
+                      },
+                      onError: () => {
+                        setTakeOutFailed(true);
+                      },
+                    },
+                  );
+                }
+              : undefined
+          }
+        />
+      ) : null}
+      {takeOutFailed ? (
+        <Alert tone="error">{sourceChangeCopy.takenOutFailed}</Alert>
+      ) : null}
+
+      {refusalCopy === null ||
+      (parcel.sourceChange !== null && parcel.sourceChange.takeOut.length > 0) ? null : parcel.sourceChange !== null ? (
+        <Alert tone="error" title={refusalCopy.title}>
+          {sourceChangeCopy.heldBody}
+        </Alert>
+      ) : (
         <Alert tone="error" title={refusalCopy.title}>
           {refusalCopy.body}
           {parcel.holdReason === null ? null : (
             <span className="bench-parcel__hold-reason">
               {' '}
-              {benchParcelCopy.refusal.reasonLabel}: {parcel.holdReason}
+              {copy.refusal.reasonLabel}: {parcel.holdReason}
             </span>
           )}
         </Alert>
@@ -925,12 +977,12 @@ export function BenchParcelView({
           tone="error"
           title={
             notice.kind === 'wrong-item'
-              ? benchParcelCopy.verify.wrongItemTitle
+              ? copy.verify.wrongItemTitle
               : notice.kind === 'failed'
-                ? benchParcelCopy.inFlight.unresolvedTitle
+                ? copy.inFlight.unresolvedTitle
                 : notice.kind === 'unreachable'
-                  ? benchParcelCopy.unreachable.refusedTitle
-                  : benchParcelCopy.verify.overPackedBadge
+                  ? copy.unreachable.refusedTitle
+                  : copy.verify.overPackedBadge
           }
           action={
             <Button
@@ -939,27 +991,29 @@ export function BenchParcelView({
                 setNotice(null);
               }}
             >
-              {benchParcelCopy.verify.dismissAction}
+              {copy.verify.dismissAction}
             </Button>
           }
         >
           {notice.kind === 'wrong-item' ? (
             <>
-              {benchParcelCopy.verify.wrongItemBody({
-                scanned: notice.scanned,
-                expected: notice.expected,
-              })}{' '}
+              {notice.expected.length === 0
+                ? interpolate(copy.verify.wrongItemBody.nothingLeft, { scanned: notice.scanned })
+                : interpolate(copy.verify.wrongItemBody.waiting, {
+                    scanned: notice.scanned,
+                    expected: format.list(notice.expected, 'unit'),
+                  })}{' '}
               <span className="bench-parcel__scanned">
-                {benchParcelCopy.verify.scannedLabel}: <code>{notice.scanned}</code>
+                {copy.verify.scannedLabel}: <code>{notice.scanned}</code>
               </span>
             </>
           ) : notice.kind === 'failed' ? (
             // Names WHICH scan, because with several gestures in flight a bare
             // "that did not go through" leaves the packer unable to tell which
             // one — the state H2 forbids.
-            benchParcelCopy.inFlight.unresolved(notice.lineName)
+            interpolate(copy.inFlight.unresolved, { name: notice.lineName })
           ) : notice.kind === 'unreachable' ? (
-            benchParcelCopy.unreachable.refusedBody
+            copy.unreachable.refusedBody
           ) : (
             notice.message
           )}
@@ -968,16 +1022,16 @@ export function BenchParcelView({
 
       {closed ? (
         <div className="bench-parcel__closed" data-testid="bench-parcel-closed">
-          <h2 className="bench-parcel__closed-title">{benchParcelCopy.closed.title}</h2>
+          <h2 className="bench-parcel__closed-title">{copy.closed.title}</h2>
           <p className="bench-parcel__closed-summary">
-            {benchParcelCopy.closed.summary({
+            {interpolate(copy.closed.summary, {
               orderReference: parcel.orderReference,
               index: parcel.parcelIndex,
               total: parcel.parcelTotal,
             })}
           </p>
-          <p>{benchParcelCopy.closed.body(totals.verified)}</p>
-          <p className="bench-parcel__closed-next">{benchParcelCopy.closed.next}</p>
+          <p>{plural(totals.verified, copy.closed.body)}</p>
+          <p className="bench-parcel__closed-next">{copy.closed.next}</p>
 
           {/* Pack-bench completion — the second, explicit act after a box
               closes. See `BenchCompletionPanel`'s own docblock: this is a
@@ -1003,21 +1057,21 @@ export function BenchParcelView({
                       setReopenNotice(
                         result.outcome === 'refused'
                           ? describeReopenRefusal(result.reason)
-                          : benchParcelCopy.closed.reopenedNotice
+                          : copy.closed.reopenedNotice
                       );
                     },
                     onError: () => {
-                      setReopenNotice(benchParcelCopy.closed.reopenFailed);
+                      setReopenNotice(copy.closed.reopenFailed);
                     },
                   }
                 );
               }}
             >
-              {benchParcelCopy.closed.reopenAction}
+              {copy.closed.reopenAction}
             </Button>
           ) : null}
           {canWrite ? (
-            <p className="bench-parcel__reopen-hint">{benchParcelCopy.closed.reopenHint}</p>
+            <p className="bench-parcel__reopen-hint">{copy.closed.reopenHint}</p>
           ) : null}
         </div>
       ) : (
@@ -1027,7 +1081,7 @@ export function BenchParcelView({
               screen reader reading six column headings before every line
               would say each fact twice. */}
           <div className="bench-parcel__lines-caption">
-            <span>{benchParcelCopy.lines.allItemsCaption}</span>
+            <span>{copy.lines.allItemsCaption}</span>
             {hasBins ? (
               <label className="bench-parcel__group-by">
                 <input
@@ -1037,26 +1091,26 @@ export function BenchParcelView({
                     setGroupByBin(event.target.checked);
                   }}
                 />
-                {benchParcelCopy.lines.groupByLocationLabel}
+                {copy.lines.groupByLocationLabel}
               </label>
             ) : null}
           </div>
           {hasBins ? (
-            <p className="bench-parcel__lines-note">{benchParcelCopy.lines.groupByLocationNote}</p>
+            <p className="bench-parcel__lines-note">{copy.lines.groupByLocationNote}</p>
           ) : null}
           <div
             className={`bench-parcel__lines-head${hasBins ? '' : ' bench-parcel__lines-head--no-bins'}`}
             aria-hidden="true"
           >
             <span />
-            <span>{benchParcelCopy.lines.colItem}</span>
-            <span>{benchParcelCopy.lines.colIdentifiers}</span>
-            {hasBins ? <span>{benchParcelCopy.lines.colLocation}</span> : <span />}
+            <span>{copy.lines.colItem}</span>
+            <span>{copy.lines.colIdentifiers}</span>
+            {hasBins ? <span>{copy.lines.colLocation}</span> : <span />}
             <span className="bench-parcel__lines-head-right">
-              {benchParcelCopy.lines.colScanned}
+              {copy.lines.colScanned}
             </span>
             <span className="bench-parcel__lines-head-right">
-              {benchParcelCopy.lines.colStatus}
+              {copy.lines.colStatus}
             </span>
             <span />
           </div>
@@ -1142,7 +1196,7 @@ export function BenchParcelView({
       {/* E5's promise. Rendered while verifying, where the missing button is. */}
       {closed || !canWrite ? null : (
         <footer className="bench-parcel__footer">
-          <span>{benchParcelCopy.footer.noCommit}</span>
+          <span>{copy.footer.noCommit}</span>
           <span className="bench-parcel__footer-right">
             {/* C4. Silencing the bench must not silence the screen — the mute
                 reaches `bench-scan-sound` and nothing else, so every refusal
@@ -1162,13 +1216,13 @@ export function BenchParcelView({
                 if (!next) playScanSound('confirm');
               }}
             >
-              {muted ? benchParcelCopy.audio.unmuteAction : benchParcelCopy.audio.muteAction}
+              {muted ? copy.audio.unmuteAction : copy.audio.muteAction}
             </Button>
             <span className="bench-parcel__audio-state">
-              {muted ? benchParcelCopy.audio.offLabel : benchParcelCopy.audio.onLabel}
+              {muted ? copy.audio.offLabel : copy.audio.onLabel}
             </span>
-            <span>{benchParcelCopy.footer.scannerReady}</span>
-            <span>{benchParcelCopy.footer.keyboardHint}</span>
+            <span>{copy.footer.scannerReady}</span>
+            <span>{copy.footer.keyboardHint}</span>
           </span>
         </footer>
       )}

@@ -75,6 +75,7 @@
  *
  * @module features/connections/components
  */
+import { interpolate, renderRich, useFormat, useMessages, usePlural } from '../../../shared/i18n';
 import { useState, type ReactElement } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import { Link } from 'react-router-dom';
@@ -163,9 +164,6 @@ function toUnits(value: string | undefined): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
-function formatPrice(value: number): string {
-  return value.toFixed(2);
-}
 
 export function StockAndPricingSection({
   form,
@@ -176,6 +174,12 @@ export function StockAndPricingSection({
   stockLocationOverrideCapable,
   pricingRuleManagedElsewhere,
 }: StockAndPricingSectionProps): ReactElement {
+  const copy = useMessages('connections').stockAndPricingSection;
+  const format = useFormat();
+  const plural = usePlural();
+  const formatPrice = (value: number): string =>
+    format.number(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const strong = { strong: (text: string) => <strong>{text}</strong> };
   const stockErrors = form.formState.errors.stockPolicy;
   const priceErrors = form.formState.errors.pricingRule;
   const locationOverrideError = form.formState.errors.stockLocationOverride;
@@ -303,12 +307,11 @@ export function StockAndPricingSection({
   return (
     <section className="rate-limit-section">
       <div className="section-title__with-help">
-        <h3 className="rate-limit-section__title">Stock and price on this destination</h3>
+        <h3 className="rate-limit-section__title">{copy.title}</h3>
         <HelpLink surfaceKey="connection-stock-and-pricing" />
       </div>
       <p className="rate-limit-section__help">
-        By default this destination is told your catalogue quantity and your catalogue price,
-        unchanged. Catalogue prices are gross: what a buyer pays, VAT included.
+        {copy.intro}
       </p>
 
       <label className="rate-limit-section__toggle">
@@ -318,27 +321,33 @@ export function StockAndPricingSection({
           disabled={!configIsParseable}
           onChange={(event) => handleStockOpenChange(event.target.checked)}
         />
-        <span>Publish less stock than you hold</span>
+        <span>{copy.stock.toggle}</span>
       </label>
 
       {stockOpen ? (
         <>
           <p className="rate-limit-section__help">
-            With <strong>{EXAMPLE_STOCK} units</strong> in your catalogue, this destination is told{' '}
-            <strong>{examplePublishedStock}</strong>.
+            {renderRich(
+              plural(EXAMPLE_STOCK, copy.stock.example),
+              strong,
+              { n: format.number(EXAMPLE_STOCK), published: format.number(examplePublishedStock) },
+            )}
             {lowStockExample !== null && lowStockExample >= 1 ? (
               <>
                 {' '}
-                With <strong>{lowStockExample} units</strong> it is told <strong>0</strong>.
+                {renderRich(plural(lowStockExample, copy.stock.lowExample), strong, {
+                  n: format.number(lowStockExample),
+                  zero: format.number(0),
+                })}
               </>
             ) : null}
           </p>
 
           <FormField
-            label="Units to hold back"
+            label={copy.stock.safetyBuffer.label}
             name="stockPolicy.safetyBuffer"
             error={stockErrors?.safetyBuffer?.message}
-            description="Keeps a cushion so a fast-moving item cannot oversell between syncs. Leave blank or enter 0 to publish the full quantity."
+            description={copy.stock.safetyBuffer.description}
           >
             <Input
               value={safetyBuffer}
@@ -351,10 +360,10 @@ export function StockAndPricingSection({
           </FormField>
 
           <FormField
-            label="Stop selling below"
+            label={copy.stock.zeroThreshold.label}
             name="stockPolicy.zeroThreshold"
             error={stockErrors?.zeroThreshold?.message}
-            description="When the quantity to publish falls below this many units, publish 0 instead. Use it for slow-moving stock you would rather hold than risk. Leave blank or enter 0 to never stop early."
+            description={copy.stock.zeroThreshold.description}
           >
             <Input
               value={zeroThreshold}
@@ -370,9 +379,9 @@ export function StockAndPricingSection({
 
       {pricingRuleManagedElsewhere ? (
         <p className="rate-limit-section__help" id="pricing-rule-managed-elsewhere">
-          The price published to this destination — a default rule plus any per-source overrides
-          — is managed on its own page.{' '}
-          <Link to={pricingRuleManagedElsewhere.href}>Manage pricing &amp; sync</Link>.
+          {renderRich(copy.price.managedElsewhere, {
+            link: (text) => <Link to={pricingRuleManagedElsewhere.href}>{text}</Link>,
+          })}
         </p>
       ) : (
         <>
@@ -383,22 +392,23 @@ export function StockAndPricingSection({
               disabled={!configIsParseable}
               onChange={(event) => handlePriceOpenChange(event.target.checked)}
             />
-            <span>Publish a different price than your catalogue</span>
+            <span>{copy.price.toggle}</span>
           </label>
 
           {priceOpen ? (
             <>
               <p className="rate-limit-section__help">
-                A catalogue price of <strong>{formatPrice(EXAMPLE_PRICE)}</strong> is published as{' '}
-                <strong>{formatPrice(examplePublishedPrice)}</strong>. A price set on an individual
-                item always wins and is never adjusted here.
+                {renderRich(copy.price.example, strong, {
+                  price: formatPrice(EXAMPLE_PRICE),
+                  published: formatPrice(examplePublishedPrice),
+                })}
               </p>
 
               <FormField
-                label="How to set the price"
+                label={copy.price.type.label}
                 name="pricingRule.type"
                 error={priceErrors?.type?.message}
-                description="A markup adds a percentage on top of your price. A margin sets the price so that the percentage you enter is the share of the final price you keep."
+                description={copy.price.type.description}
               >
                 <Select
                   value={ruleType}
@@ -413,21 +423,21 @@ export function StockAndPricingSection({
                     syncPricingRuleToJson();
                   }}
                 >
-                  <option value="passthrough">Use my catalogue price</option>
-                  <option value="markup">Add a markup</option>
-                  <option value="margin">Target a margin</option>
+                  <option value="passthrough">{copy.price.type.options.passthrough}</option>
+                  <option value="markup">{copy.price.type.options.markup}</option>
+                  <option value="margin">{copy.price.type.options.margin}</option>
                 </Select>
               </FormField>
 
               {ruleType === 'markup' || ruleType === 'margin' ? (
                 <FormField
-                  label="Percentage"
+                  label={copy.price.percent.label}
                   name="pricingRule.percent"
                   error={priceErrors?.percent?.message}
                   description={
                     ruleType === 'margin'
-                      ? 'Must be below 100. A margin of 100 or more has no answer, so it would be ignored and your catalogue price published instead.'
-                      : 'Added on top of your catalogue price.'
+                      ? copy.price.percent.marginHint
+                      : copy.price.percent.markupHint
                   }
                 >
                   <Input
@@ -447,10 +457,10 @@ export function StockAndPricingSection({
               ) : null}
 
               <FormField
-                label="Rounding"
+                label={copy.price.rounding.label}
                 name="pricingRule.rounding"
                 error={priceErrors?.rounding?.message}
-                description="Applied after the percentage."
+                description={copy.price.rounding.description}
               >
                 <Select
                   value={rounding === '' ? 'none' : rounding}
@@ -463,9 +473,9 @@ export function StockAndPricingSection({
                     syncPricingRuleToJson();
                   }}
                 >
-                  <option value="none">Keep two decimal places</option>
-                  <option value="nearestWhole">Round to a whole number</option>
-                  <option value="endingIn99">End in .99</option>
+                  <option value="none">{copy.price.rounding.options.none}</option>
+                  <option value="nearestWhole">{copy.price.rounding.options.nearestWhole}</option>
+                  <option value="endingIn99">{copy.price.rounding.options.endingIn99}</option>
                 </Select>
               </FormField>
             </>
@@ -482,35 +492,30 @@ export function StockAndPricingSection({
               disabled={!configIsParseable}
               onChange={(event) => handleLocationOverrideOpenChange(event.target.checked)}
             />
-            <span>Assign a location to this connection&apos;s stock</span>
+            <span>{copy.location.toggle}</span>
           </label>
 
           {locationOverrideOpen ? (
             <>
               <p className="rate-limit-section__help">
-                This is an <strong>assertion</strong>, not a detection: by picking a location you are
-                attesting that all of this connection&apos;s currently un-located stock physically
-                lives there. Only use this if everything behind this connection ships from one
-                place — if you operate more than one physical warehouse behind this connection,
-                leave this off, since setting it would misattribute stock to the wrong location for
-                fulfilment.
+                {renderRich(copy.location.assertion, strong)}
               </p>
 
               {storedOverrideIsUnknown ? (
                 <p className="rate-limit-section__help" role="status">
                   {locationsQuery.isLoading
-                    ? 'Loading the location list…'
+                    ? copy.location.loading
                     : locationsQuery.isError
-                      ? "The stored location couldn't be loaded right now, so it can't be shown by name below — it is still saved and unchanged."
-                      : "The stored location isn't in the current list (it may have been deleted, or removed from stock routing). It is still saved and unchanged until you pick a different one."}
+                      ? copy.location.loadError
+                      : copy.location.unknownStored}
                 </p>
               ) : null}
 
               <FormField
-                label="Location"
+                label={copy.location.label}
                 name="stockLocationOverride"
                 error={locationOverrideError?.message}
-                description="Neither PrestaShop nor WooCommerce can report where their stock physically is, so without this the fulfilment router treats it as unlocated and skips it. This does not move or verify anything — it only tells OpenLinker where to assume it already is."
+                description={copy.location.description}
               >
                 <Select
                   value={stockLocationOverride}
@@ -518,10 +523,10 @@ export function StockAndPricingSection({
                   invalid={Boolean(locationOverrideError)}
                   onChange={(event) => handleLocationOverrideChange(event.target.value)}
                 >
-                  <option value="">Select a location</option>
+                  <option value="">{copy.location.placeholder}</option>
                   {storedOverrideIsUnknown ? (
                     <option value={stockLocationOverride}>
-                      Currently set to: {stockLocationOverride} (not in this list)
+                      {interpolate(copy.location.currentlySet, { id: stockLocationOverride })}
                     </option>
                   ) : null}
                   {/* A non-active location is listed so a stored value keeps its real
@@ -534,8 +539,12 @@ export function StockAndPricingSection({
                       value={location.id}
                       disabled={location.status !== 'active' && location.id !== stockLocationOverride}
                     >
-                      {location.name} ({location.code})
-                      {location.status !== 'active' ? ' — inactive' : ''}
+                      {interpolate(
+                        location.status !== 'active'
+                          ? copy.location.optionInactive
+                          : copy.location.option,
+                        { name: location.name, code: location.code },
+                      )}
                     </option>
                   ))}
                 </Select>

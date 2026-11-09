@@ -31,6 +31,7 @@ import type { Connection } from '../../features/connections';
 import { usePlatforms } from '../../shared/plugins';
 import { BundleComposition, ProductUsedInBundles } from '../../features/bundles';
 import { findPlatformDisplayName } from '../../features/mappings';
+import { interpolate, useFormat, useMessages } from '../../shared/i18n';
 
 export interface ProductRowDetailProps {
   product: Product;
@@ -47,6 +48,8 @@ export function ProductRowDetail({
   canCreateOffers,
   onCreateOffers,
 }: ProductRowDetailProps): ReactElement {
+  const copy = useMessages('products').productRowDetail;
+  const format = useFormat();
   const productQuery = useProductQuery(product.id);
   const inventoryQuery = useInventoryQuery({ productId: product.id });
 
@@ -57,7 +60,7 @@ export function ProductRowDetail({
     return (
       <div className="products-row-detail">
         {linksStrip}
-        <LoadingState liveRegion="off" title="Loading variants" message="Fetching variant stock..." />
+        <LoadingState liveRegion="off" title={copy.loading.title} message={copy.loading.message} />
       </div>
     );
   }
@@ -67,8 +70,8 @@ export function ProductRowDetail({
       <div className="products-row-detail">
         {linksStrip}
         <ErrorState
-          title="Unable to load variants"
-          message={productQuery.error?.message ?? 'Product not found'}
+          title={copy.variantsError.title}
+          message={productQuery.error?.message ?? copy.variantsError.notFound}
         />
       </div>
     );
@@ -78,7 +81,7 @@ export function ProductRowDetail({
     return (
       <div className="products-row-detail">
         {linksStrip}
-        <ErrorState title="Unable to load stock" message={inventoryQuery.error.message} />
+        <ErrorState title={copy.stockError} message={inventoryQuery.error.message} />
       </div>
     );
   }
@@ -97,10 +100,12 @@ export function ProductRowDetail({
       {fieldsGrid}
       <div className="products-detail-variants">
         <div className="products-detail-field__label">
-          Variants &amp; stock{variants.length > 0 ? ` (${variants.length})` : ''}
+          {variants.length > 0
+            ? interpolate(copy.variantsHeadingWithCount, { n: format.number(variants.length) })
+            : copy.variantsHeading}
         </div>
         {variants.length === 0 ? (
-          <p className="text-muted">No variants found for this product.</p>
+          <p className="text-muted">{copy.noVariants}</p>
         ) : (
           <div className="products-variant-list">
             {variants.map((variant) => (
@@ -126,7 +131,7 @@ export function ProductRowDetail({
       {/* #3624 - the bundles this product is a component of. */}
       <ProductUsedInBundles variantIds={variants.map((variant) => variant.id)} />
       <div className="products-detail-publication-status">
-        <div className="products-detail-field__label">Live marketplace status</div>
+        <div className="products-detail-field__label">{copy.liveMarketplaceStatus}</div>
         <OfferPublicationStatusPanel productId={product.id} />
       </div>
     </div>
@@ -146,6 +151,8 @@ function ProductVariantRow({
   canCreateOffers: boolean;
   onCreateOffer: () => void;
 }): ReactElement {
+  const copy = useMessages('products').productRowDetail;
+  const format = useFormat();
   const platforms = usePlatforms();
   // A variant realistically has a handful of listings (one per connection) -
   // 50 comfortably covers every real install without pagination.
@@ -164,7 +171,7 @@ function ProductVariantRow({
     : (variant.sku ?? variant.id);
 
   const metaParts = [
-    variant.ean ? `EAN ${variant.ean}` : null,
+    variant.ean ? interpolate(copy.ean, { ean: variant.ean }) : null,
     variant.sku,
   ].filter((part): part is string => Boolean(part));
 
@@ -180,7 +187,7 @@ function ProductVariantRow({
           auto-paused (#1689), so stock/listings below are historical. */}
       {variant.isStale ? (
         <StatusBadge tone="error" withDot compact>
-          Deleted at source
+          {copy.deletedAtSource}
         </StatusBadge>
       ) : (
         <StatusBadge tone={STOCK_STATUS_BADGE_TONE[status]} withDot compact>
@@ -189,7 +196,9 @@ function ProductVariantRow({
       )}
       <span className="products-variant-row__stock mono tabular">
         {available}
-        <span className="products-variant-row__stock-reserved">/ res {reserved}</span>
+        <span className="products-variant-row__stock-reserved">
+          {interpolate(copy.reservedShort, { n: format.number(reserved) })}
+        </span>
       </span>
       <div className="products-variant-row__listings">
         {connections
@@ -215,7 +224,7 @@ function ProductVariantRow({
             not one per gap (#1720 review). */}
         {canCreateOffers && connections.some((c) => !listedConnectionIds.has(c.id)) ? (
           <button type="button" className="products-row-cta" onClick={onCreateOffer}>
-            + Create offer
+            {copy.createOffer}
           </button>
         ) : null}
       </div>

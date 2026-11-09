@@ -23,13 +23,11 @@
  * @module features/analytics/components
  */
 import type { ReactElement, ReactNode } from 'react';
+import { useMessages } from '../../../shared/i18n';
 import { Sparkline, type SparklineTone } from '../../../shared/ui/sparkline';
 import type { DeltaGlyphDirection, TrendTone } from '../lib/sales-analytics-view-model';
 import { AnalyticsInfotip, type AnalyticsInfotipDefinition } from './analytics-infotip';
 import { GapMark } from './gap-mark';
-
-const DEFAULT_DELTA_GAP_REASON =
-  'Period-over-period needs a full previous-period range covered by order history.';
 
 /** aria-hidden — the direction is also stated in `AnalyticsKpiDelta.spokenText` for a screen reader. */
 const DELTA_GLYPH: Record<DeltaGlyphDirection, string> = {
@@ -84,7 +82,7 @@ interface AnalyticsKpiCardProps {
 export function AnalyticsKpiCard({
   definitions,
   delta,
-  deltaGapReason = DEFAULT_DELTA_GAP_REASON,
+  deltaGapReason,
   headlineUnavailable = false,
   infotipAlign = 'start',
   infotipLabel,
@@ -96,6 +94,7 @@ export function AnalyticsKpiCard({
   value,
   valueSuffix,
 }: AnalyticsKpiCardProps): ReactElement {
+  const copy = useMessages('analytics').analyticsKpiCard;
   const classes = [
     'kpi-card',
     planned ? 'kpi-card--planned' : '',
@@ -112,7 +111,7 @@ export function AnalyticsKpiCard({
           <AnalyticsInfotip ariaLabel={infotipLabel} definitions={definitions} align={infotipAlign} />
         </span>
         {planned ? (
-          <span className="kpi-card__planned-tag">Planned</span>
+          <span className="kpi-card__planned-tag">{copy.planned}</span>
         ) : trend && trend.values.length >= 2 ? (
           <Sparkline
             values={trend.values}
@@ -144,8 +143,10 @@ export function AnalyticsKpiCard({
             </>
           ) : (
             <>
-              <span className="kpi-card__delta-basis">— vs previous period</span>
-              <GapMark title={deltaGapReason} />
+              <span className="kpi-card__delta-basis">
+                {'\u2014'} {copy.vsPreviousPeriod}
+              </span>
+              <GapMark title={deltaGapReason ?? copy.defaultDeltaGap} />
             </>
           )}
         </span>

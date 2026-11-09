@@ -90,6 +90,7 @@ import type { IOfferBuilderService } from '../interfaces/offer-builder.service.i
 import type { BuildCreateOfferCommandInput } from '../types/offer-builder.types';
 import type { AttributeProjectionMetadata } from '../types/attribute-projection.types';
 import { buildProjectionMetadata } from './build-projection-metadata';
+import { readMasterCatalogConnectionId } from './read-master-catalog-connection-id';
 import {
   formatDescriptionForDestination,
   resolveOfferDescriptionFormat,
@@ -135,7 +136,7 @@ export class OfferBuilderService implements IOfferBuilderService {
     }
 
     const connection = await this.connectionPort.get(input.connectionId);
-    const masterConnectionId = this.readMasterCatalogConnectionId(connection.config);
+    const masterConnectionId = readMasterCatalogConnectionId(connection.config);
     if (!masterConnectionId) {
       throw new MasterCatalogConnectionNotConfiguredException(input.connectionId);
     }
@@ -822,13 +823,6 @@ export class OfferBuilderService implements IOfferBuilderService {
     return { amount: resolvedAmount, currency };
   }
 
-  private readMasterCatalogConnectionId(
-    config: Record<string, unknown> | null | undefined
-  ): string | null {
-    if (!config) return null;
-    const value = config['masterCatalogConnectionId'];
-    return typeof value === 'string' && value.length > 0 ? value : null;
-  }
 
 }
 

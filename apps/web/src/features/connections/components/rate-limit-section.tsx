@@ -33,6 +33,13 @@
  *
  * @module features/connections/components
  */
+import {
+  interpolate,
+  renderRich,
+  useMessages,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 import { useState, type ReactElement } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import { FormField } from '../../../shared/ui/form-field';
@@ -41,6 +48,8 @@ import { Input } from '../../../shared/ui/input';
 import { useRateLimitStatusQuery } from '../hooks/use-rate-limit-status-query';
 import type { EditConnectionFormValues } from './edit-connection.schema';
 import type { ConnectionRateLimit, ResolveConcurrencyCeiling } from '../api/connections.types';
+
+type RateLimitCopy = ResolvedCopy<Messages['connections']>['rateLimitSection'];
 
 export interface RateLimitSectionProps {
   /** Reads the adapter-declared resolve ceiling (#2229). */
@@ -67,23 +76,29 @@ export interface RateLimitSectionProps {
  * the ceiling and whether they set it, and the third value only earns its
  * place when it explains a clamp.
  */
-function describeResolveCeiling(ceiling: ResolveConcurrencyCeiling): string {
-  const provenance =
-    ceiling.source === 'connection-config'
-      ? `from your max-concurrent setting, below this adapter's default of ${ceiling.adapterDefault}`
-      : 'adapter default';
-  return `${ceiling.maxInFlight} requests in flight (${provenance})`;
+function describeResolveCeiling(copy: RateLimitCopy, ceiling: ResolveConcurrencyCeiling): string {
+  return ceiling.source === 'connection-config'
+    ? interpolate(copy.ceiling.fromSetting, {
+        n: ceiling.maxInFlight,
+        adapterDefault: ceiling.adapterDefault,
+      })
+    : interpolate(copy.ceiling.adapterDefault, { n: ceiling.maxInFlight });
 }
 
-function formatRateLimit(limit: ConnectionRateLimit): string {
-  const parts: string[] = [];
+function formatRateLimit(copy: RateLimitCopy, limit: ConnectionRateLimit): string {
+  if (limit.requestsPerMinute !== undefined && limit.maxConcurrent !== undefined) {
+    return interpolate(copy.defaultLimit.both, {
+      perMinute: limit.requestsPerMinute,
+      concurrent: limit.maxConcurrent,
+    });
+  }
   if (limit.requestsPerMinute !== undefined) {
-    parts.push(`${limit.requestsPerMinute} requests/min`);
+    return interpolate(copy.defaultLimit.perMinute, { perMinute: limit.requestsPerMinute });
   }
   if (limit.maxConcurrent !== undefined) {
-    parts.push(`${limit.maxConcurrent} concurrent`);
+    return interpolate(copy.defaultLimit.concurrent, { concurrent: limit.maxConcurrent });
   }
-  return parts.join(', ');
+  return '';
 }
 
 export function RateLimitSection({
@@ -93,6 +108,7 @@ export function RateLimitSection({
   syncRateLimitToJson,
   defaultRateLimit,
 }: RateLimitSectionProps): ReactElement {
+  const copy = useMessages('connections').rateLimitSection;
   const errors = form.formState.errors.rateLimit;
   // Absent while loading, on error, and when no adapter declares one. All
   // three render nothing rather than a placeholder: an unstated ceiling is
@@ -143,36 +159,31 @@ export function RateLimitSection({
   return (
     <section className="rate-limit-section">
       <div className="section-title__with-help">
-        <h3 className="rate-limit-section__title">Outbound rate limit</h3>
+        <h3 className="rate-limit-section__title">{copy.title}</h3>
         <HelpLink surfaceKey="connection-rate-limit" />
       </div>
       <p className="rate-limit-section__help">
-        OpenLinker spaces requests evenly rather than sending them in bursts.{' '}
-        {defaultRateLimit ? (
-          <>
-            Leave rate limiting off to use this connection&apos;s adapter default —{' '}
-            <strong>{formatRateLimit(defaultRateLimit)}</strong>.
-          </>
-        ) : (
-          <>
-            Leave rate limiting off and this adapter applies no per-minute or concurrency cap of
-            its own here.
-          </>
-        )}
+        {copy.intro}{' '}
+        {defaultRateLimit
+          ? renderRich(copy.withDefault, {
+              strong: (text) => <strong>{text}</strong>,
+            }, { limit: formatRateLimit(copy, defaultRateLimit) })
+          : copy.withoutDefault}
       </p>
 
       {sharedBucket ? (
         <p className="rate-limit-section__help">
-          This limit is shared with other connections to the same shop, so the values below can
-          only tighten it.
+          {copy.shared}
         </p>
       ) : null}
 
       {resolveCeiling ? (
         <p className="rate-limit-section__help">
-          Category matching on this connection runs at most{' '}
-          <strong>{describeResolveCeiling(resolveCeiling)}</strong>, at every batch size. That
-          ceiling is applied by the adapter itself, separately from the cap below.
+          {renderRich(
+            copy.ceiling.sentence,
+            { strong: (text) => <strong>{text}</strong> },
+            { ceiling: describeResolveCeiling(copy, resolveCeiling) },
+          )}
         </p>
       ) : null}
 
@@ -183,28 +194,20 @@ export function RateLimitSection({
           disabled={!configIsParseable}
           onChange={(event) => handleEnabledChange(event.target.checked)}
         />
-        <span>Enable rate limiting</span>
+        <span>{copy.enable}</span>
       </label>
 
       {enabled ? (
         <>
           <p className="rate-limit-section__help">
-            {sharedBucket
-              ? 'Each field below can only lower the shared limit; a field you leave empty keeps the shared default.'
-              : 'Setting either field below replaces the adapter default entirely; the other field is then genuinely unlimited, not still capped by the default.'}{' '}
-            Enforcement is rolling out
-            sync path by sync path — setting a cap here has no effect until this connection&apos;s
-            outbound traffic has been migrated onto it. If you run multiple API/worker replicas
-            (<code>OL_WORKER_REPLICAS</code>), each value is divided evenly across them, so the
-            real aggregate throughput matches what you configure below rather than multiplying it
-            per replica.
+            {sharedBucket ? copy.fieldsShared : copy.fieldsReplace} {copy.rollout}
           </p>
 
           <FormField
-            label="Requests per minute"
+            label={copy.requestsPerMinute.label}
             name="rateLimit.requestsPerMinute"
             error={errors?.requestsPerMinute?.message}
-            description="Smooth-paced cap, split evenly across replicas — e.g. 60 with 1 replica spaces requests roughly one per second."
+            description={copy.requestsPerMinute.description}
           >
             <Input
               value={form.watch('rateLimit.requestsPerMinute') ?? ''}
@@ -212,8 +215,8 @@ export function RateLimitSection({
               disabled={!configIsParseable}
               placeholder={
                 defaultRateLimit?.requestsPerMinute !== undefined
-                  ? `Default: ${defaultRateLimit.requestsPerMinute}`
-                  : 'Unlimited'
+                  ? interpolate(copy.defaultPlaceholder, { value: defaultRateLimit.requestsPerMinute })
+                  : copy.unlimited
               }
               inputMode="numeric"
               invalid={Boolean(errors?.requestsPerMinute)}
@@ -221,10 +224,10 @@ export function RateLimitSection({
           </FormField>
 
           <FormField
-            label="Max concurrent requests"
+            label={copy.maxConcurrent.label}
             name="rateLimit.maxConcurrent"
             error={errors?.maxConcurrent?.message}
-            description="Caps simultaneous in-flight requests to this connection, split evenly across replicas. These two caps are independent — whichever one binds first wins."
+            description={copy.maxConcurrent.description}
           >
             <Input
               value={form.watch('rateLimit.maxConcurrent') ?? ''}
@@ -232,8 +235,8 @@ export function RateLimitSection({
               disabled={!configIsParseable}
               placeholder={
                 defaultRateLimit?.maxConcurrent !== undefined
-                  ? `Default: ${defaultRateLimit.maxConcurrent}`
-                  : 'Unlimited'
+                  ? interpolate(copy.defaultPlaceholder, { value: defaultRateLimit.maxConcurrent })
+                  : copy.unlimited
               }
               inputMode="numeric"
               invalid={Boolean(errors?.maxConcurrent)}

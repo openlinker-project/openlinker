@@ -15,6 +15,7 @@ import {
   Max,
   IsDateString,
   IsBoolean,
+  IsIn,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
@@ -41,6 +42,10 @@ import {
   OrderLifecyclePhaseValues,
   type OrderLifecyclePhase,
 } from '@openlinker/core/order-lifecycle';
+import {
+  AuthorityAttentionReasonValues,
+  type AuthorityAttentionReason,
+} from '@openlinker/core/fulfillment-authority';
 import { PaginatedReadQueryDto } from '../../../common/dto/paginated-read-query.dto';
 
 export class ListOrdersQueryDto extends PaginatedReadQueryDto {
@@ -183,11 +188,12 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
     description:
       'Destination-routing filter (#2703/#2704): true keeps only orders whose routing decision ' +
       'narrowed the destination fan-out in an ATTENTION-WORTHY way, false keeps only the rest, ' +
-      'omitted does not filter. Attention-worthy EXCLUDES "routed-to-no-destination" — a working ' +
-      'router deciding an order goes nowhere is a decision, not a fault — so true does not return ' +
-      'those and false does. Same subset the destinationRoutingBlocked count reports, so the two ' +
-      'always agree. An INDEPENDENT axis that composes with `health`: such an order is usually ' +
-      'also needs_attention, so folding them would hide one behind the other.',
+      'omitted does not filter. Attention-worthy EXCLUDES "routed-to-no-destination" (a working ' +
+      'router deciding an order goes nowhere is a decision, not a fault) and ' +
+      '"no-destination-configured" (#3959, a shop with nothing to copy its orders to), so true ' +
+      'does not return those and false does. Same subset the destinationRoutingBlocked count ' +
+      'reports, so the two always agree. An INDEPENDENT axis that composes with `health`: such ' +
+      'an order is usually also needs_attention, so folding them would hide one behind the other.',
   })
   @IsOptional()
   // Same string-literal mapping + pass-through-to-400 posture as
@@ -294,6 +300,29 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
   @IsBoolean()
   attention?: boolean;
+
+  @ApiPropertyOptional({
+    enum: AuthorityAttentionReasonValues,
+    name: 'attentionReason',
+    description:
+      'Keep only orders carrying an attention entry with exactly this reason (#3961). ' +
+      '`source-change-unapplied` lists the orders the shop changed after packing started that wait for a decision.',
+  })
+  @IsOptional()
+  @IsIn(AuthorityAttentionReasonValues)
+  attentionReason?: AuthorityAttentionReason;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Orders where a shop still shows the order unpaid and OpenLinker gave up sending the payment ' +
+      '(#3963). Composes with `health` like `attention`. true keeps only those, false keeps the ' +
+      'rest, omitted does not filter.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  paymentNotSent?: boolean;
 
   @ApiPropertyOptional({ default: 0, minimum: 0, description: 'Number of items to skip' })
   @IsOptional()

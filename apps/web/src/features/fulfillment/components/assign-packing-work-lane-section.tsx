@@ -61,7 +61,8 @@ import {
   UNASSIGNED_LANE_ID,
   type AssignPackingWorkLane,
 } from '../lib/assign-packing-work-lanes';
-import { ASSIGN_PACKING_WORK_COPY } from '../lib/assign-packing-work.copy';
+import { getMessages, useMessages } from '../../../shared/i18n';
+import { formatPackerSubtitle } from '../lib/assign-packing-work-labels';
 import { AssignPackingWorkCard } from './assign-packing-work-card';
 
 export interface AssignPackingWorkLaneSectionProps {
@@ -85,9 +86,10 @@ function laneTitle(lane: AssignPackingWorkLane): string {
   // nothing to derive one from. Checked FIRST so a lane whose id happens to
   // collide with the pinned one cannot borrow its title.
   if (lane.title !== undefined) return lane.title;
-  if (lane.id === UNASSIGNED_LANE_ID) return ASSIGN_PACKING_WORK_COPY.lane.unassignedTitle;
+  const laneCopy = getMessages('fulfillment').assignPackingWork.lane;
+  if (lane.id === UNASSIGNED_LANE_ID) return laneCopy.unassignedTitle;
   if (lane.packer) return lane.packer.username;
-  return ASSIGN_PACKING_WORK_COPY.lane.offRosterTitle;
+  return laneCopy.offRosterTitle;
 }
 
 export function AssignPackingWorkLaneSection({
@@ -100,6 +102,7 @@ export function AssignPackingWorkLaneSection({
   detailHref,
   showLocation = false,
 }: AssignPackingWorkLaneSectionProps): ReactElement {
+  const laneCopy = useMessages('fulfillment').assignPackingWork.lane;
   const title = laneTitle(lane);
   const isUnassignedLane = lane.id === UNASSIGNED_LANE_ID;
   const [dragOver, setDragOver] = useState(false);
@@ -170,14 +173,14 @@ export function AssignPackingWorkLaneSection({
                 compact
                 className="assign-packing-work-lane__lightest-tag"
               >
-                {ASSIGN_PACKING_WORK_COPY.lane.lightestLoadTag}
+                {laneCopy.lightestLoadTag}
               </StatusBadge>
             ) : null}
           </h3>
           {/* #3429 — static copy, needs no presence signal (see the module docblock). */}
           {isUnassignedLane ? (
             <p className="assign-packing-work-lane__subtitle">
-              {ASSIGN_PACKING_WORK_COPY.lane.unassignedSubtitle}
+              {laneCopy.unassignedSubtitle}
             </p>
           ) : null}
           {/* #3424 — a real roster packer's station + presence. See the
@@ -185,7 +188,7 @@ export function AssignPackingWorkLaneSection({
               not the pinned lane) gets neither this nor the line above. */}
           {!isUnassignedLane && lane.packer ? (
             <p className="assign-packing-work-lane__subtitle">
-              {ASSIGN_PACKING_WORK_COPY.lane.packerSubtitle(lane.packer)}
+              {formatPackerSubtitle(lane.packer)}
             </p>
           ) : null}
         </div>
@@ -211,7 +214,7 @@ export function AssignPackingWorkLaneSection({
       </header>
 
       {lane.tasks.length === 0 ? (
-        <p className="text-muted">{ASSIGN_PACKING_WORK_COPY.lane.empty}</p>
+        <p className="text-muted">{laneCopy.empty}</p>
       ) : (
         // The lane's rows, flush inside the lane's own border — no gap, no
         // second box. The wrapper survives the column heads it was added for

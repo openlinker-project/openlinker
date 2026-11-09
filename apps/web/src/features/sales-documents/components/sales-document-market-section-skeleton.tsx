@@ -15,13 +15,15 @@
  * @module apps/web/src/features/sales-documents/components
  */
 import type { ReactElement } from 'react';
+import { useMessages } from '../../../shared/i18n';
 
 const SKELETON_ROW_COUNT = 3;
 
 export function SalesDocumentMarketSectionSkeleton(): ReactElement {
+  const copy = useMessages('sales-documents').salesDocumentMarketSectionSkeleton;
   return (
     <div className="page-section sales-document-market-section" role="status" aria-live="polite">
-      <span className="sr-only">Loading markets…</span>
+      <span className="sr-only">{copy.loading}</span>
       <span
         className="sales-document-market-section__summary-skeleton"
         aria-hidden="true"

@@ -21,18 +21,28 @@ describe('SystemController', () => {
   });
 
   it('should return the system config', async () => {
-    systemService.getConfig.mockResolvedValue({ demoMode: true, storesPersonalData: true });
+    systemService.getConfig.mockResolvedValue({
+      demoMode: true,
+      storesPersonalData: true,
+      registrationEnabled: false,
+    });
     await expect(controller.getConfig()).resolves.toEqual({
       demoMode: true,
       storesPersonalData: true,
+      registrationEnabled: false,
     });
   });
 
   it('should return demoMode: false when demo mode is off', async () => {
-    systemService.getConfig.mockResolvedValue({ demoMode: false, storesPersonalData: false });
+    systemService.getConfig.mockResolvedValue({
+      demoMode: false,
+      storesPersonalData: false,
+      registrationEnabled: false,
+    });
     await expect(controller.getConfig()).resolves.toEqual({
       demoMode: false,
       storesPersonalData: false,
+      registrationEnabled: false,
     });
   });
 });

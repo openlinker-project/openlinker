@@ -39,10 +39,11 @@
  * @module apps/web/src/features/orders/components
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import type { ReactElement, ReactNode } from 'react';
+import { useMemo, type ReactElement, type ReactNode } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { z } from 'zod/v4';
 
+import { interpolate, useMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
@@ -51,11 +52,15 @@ import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { Textarea } from '../../../shared/ui/textarea';
 import {
-  REFUND_REASON_LABELS,
   REFUND_REASON_VALUES,
+  describeRefundReason,
   type RefundReason,
 } from '../lib/refund-reason';
-import { REFUND_CONFIRMATION_COPY } from '../lib/refund-confirmation.copy';
+
+type RefundConfirmationCopy = ResolvedCopy<Messages['orders']>['refundConfirmation'];
+
+/** The longest note the API accepts. */
+const NOTE_MAX_LENGTH = 500;
 
 export interface RefundConfirmationSubmission {
   amount: string;
@@ -85,19 +90,28 @@ interface RefundConfirmationFormProps {
   renderAmountSuggestion?: (apply: (amount: string) => void) => ReactNode;
 }
 
-const schema = z.object({
-  // A decimal STRING, never a number: `RefundRecord.amount` is `numeric(12,2)`
-  // and round-tripping money through a float is how cents disappear.
-  amount: z
-    .string()
-    .trim()
-    .min(1, REFUND_CONFIRMATION_COPY.amountRequired)
-    .regex(/^\d+(\.\d{1,2})?$/, REFUND_CONFIRMATION_COPY.amountInvalid),
-  reason: z.enum(REFUND_REASON_VALUES),
-  note: z.string().max(500).optional(),
-});
+/**
+ * A factory rather than a module-level schema: the messages are read when the
+ * form builds its resolver, so they follow the active language.
+ */
+function createRefundConfirmationSchema(copy: RefundConfirmationCopy) {
+  return z.object({
+    // A decimal STRING, never a number: `RefundRecord.amount` is `numeric(12,2)`
+    // and round-tripping money through a float is how cents disappear.
+    amount: z
+      .string()
+      .trim()
+      .min(1, copy.amountRequired)
+      .regex(/^\d+(\.\d{1,2})?$/, copy.amountInvalid),
+    reason: z.enum(REFUND_REASON_VALUES),
+    note: z
+      .string()
+      .max(NOTE_MAX_LENGTH, interpolate(copy.noteTooLong, { max: NOTE_MAX_LENGTH }))
+      .optional(),
+  });
+}
 
-type RefundFormValues = z.infer<typeof schema>;
+type RefundFormValues = z.infer<ReturnType<typeof createRefundConfirmationSchema>>;
 
 export function RefundConfirmationForm({
   currency,
@@ -108,6 +122,8 @@ export function RefundConfirmationForm({
   onCancel,
   renderAmountSuggestion,
 }: RefundConfirmationFormProps): ReactElement {
+  const copy = useMessages('orders').refundConfirmation;
+  const schema = useMemo(() => createRefundConfirmationSchema(copy), [copy]);
   const {
     formState: { errors },
     handleSubmit,
@@ -134,7 +150,7 @@ export function RefundConfirmationForm({
     // Refused, not degraded to a typed input: nothing downstream would catch a
     // wrong currency, so accepting one here is how a RefundRecord ends up
     // disagreeing with the money that actually moved.
-    return <Alert tone="warning">{REFUND_CONFIRMATION_COPY.noCurrency}</Alert>;
+    return <Alert tone="warning">{copy.noCurrency}</Alert>;
   }
 
   return (
@@ -148,16 +164,16 @@ export function RefundConfirmationForm({
       }}
     >
       <p className="refund-confirmation-form__preamble">
-        {REFUND_CONFIRMATION_COPY.preamble}
+        {copy.preamble}
       </p>
 
-      <FormErrorSummary errors={messages} title={REFUND_CONFIRMATION_COPY.heading} />
+      <FormErrorSummary errors={messages} title={copy.heading} />
 
       <fieldset className="refund-confirmation-form__fields" disabled={pending}>
         <FormField
-          description={REFUND_CONFIRMATION_COPY.amountHint}
+          description={copy.amountHint}
           error={errors.amount?.message}
-          label={`${REFUND_CONFIRMATION_COPY.amountLabel} (${currency})`}
+          label={interpolate(copy.amountLabel, { currency })}
           name="amount"
         >
           <Input inputMode="decimal" placeholder="0.00" {...register('amount')} />
@@ -171,19 +187,19 @@ export function RefundConfirmationForm({
             cannot be misread as an amount OpenLinker computed for this refund. */}
         {orderTotal !== null ? (
           <p className="refund-confirmation-form__context text-muted">
-            {REFUND_CONFIRMATION_COPY.orderTotalLabel} {orderTotal} {currency}
+            {interpolate(copy.orderTotal, { total: orderTotal, currency })}
           </p>
         ) : null}
 
         <FormField
           error={errors.reason?.message}
-          label={REFUND_CONFIRMATION_COPY.reasonLabel}
+          label={copy.reasonLabel}
           name="reason"
         >
           <Select {...register('reason')}>
             {REFUND_REASON_VALUES.map((reason) => (
               <option key={reason} value={reason}>
-                {REFUND_REASON_LABELS[reason]}
+                {describeRefundReason(reason)}
               </option>
             ))}
           </Select>
@@ -191,7 +207,7 @@ export function RefundConfirmationForm({
 
         <FormField
           error={errors.note?.message}
-          label={REFUND_CONFIRMATION_COPY.noteLabel}
+          label={copy.noteLabel}
           name="note"
         >
           <Textarea rows={2} {...register('note')} />
@@ -200,12 +216,12 @@ export function RefundConfirmationForm({
         <div className="refund-confirmation-form__actions">
           <Button type="submit">
             {pending
-              ? REFUND_CONFIRMATION_COPY.pending
-              : REFUND_CONFIRMATION_COPY.submit}
+              ? copy.pending
+              : copy.submit}
           </Button>
           {onCancel !== undefined ? (
             <Button onClick={onCancel} tone="secondary" type="button">
-              {REFUND_CONFIRMATION_COPY.cancel}
+              {copy.cancel}
             </Button>
           ) : null}
         </div>

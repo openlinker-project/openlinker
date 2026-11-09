@@ -139,6 +139,10 @@ const lazyRoutes = collectLazyRoutes([
  *
  * #3624 adds the bundle form twice (`products/bundles/new` and
  * `products/bundles/:variantId`, one page), from 78 to 80.
+ *
+ * #4029: `/register` joins `/login` under one eager layout route (so a tab
+ * switch does not remount the card), which removes one lazy guest route, and
+ * `/settings/login-page` adds one authenticated lazy route - net 0, still 78.
  */
 const EXPECTED_LAZY_ROUTE_COUNT = 80;
 

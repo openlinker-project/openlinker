@@ -200,8 +200,8 @@ describe('ConnectionDetailPage', () => {
       const apiClient = apiClientForBanner(sampleConnection, [candidatePrestashop]);
       await renderDetailPage(sampleConnection, apiClient);
 
-      expect(screen.queryByText('Product catalog auto-linked')).toBeNull();
-      expect(screen.queryByText('Product catalog not linked')).toBeNull();
+      expect(screen.queryByText('Product catalogue auto-linked')).toBeNull();
+      expect(screen.queryByText('Product catalogue not linked')).toBeNull();
       expect(screen.queryByText('Barcode linking disabled')).toBeNull();
     });
 
@@ -212,8 +212,8 @@ describe('ConnectionDetailPage', () => {
       const apiClient = apiClientForBanner(connection, [candidatePrestashop]);
       await renderDetailPage(connection, apiClient);
 
-      expect(screen.queryByText('Product catalog auto-linked')).toBeNull();
-      expect(screen.queryByText('Product catalog not linked')).toBeNull();
+      expect(screen.queryByText('Product catalogue auto-linked')).toBeNull();
+      expect(screen.queryByText('Product catalogue not linked')).toBeNull();
       expect(screen.queryByText('Barcode linking disabled')).toBeNull();
     });
 
@@ -225,7 +225,7 @@ describe('ConnectionDetailPage', () => {
       await renderDetailPage(connection, apiClient);
 
       expect(await screen.findByText('Barcode linking disabled')).toBeInTheDocument();
-      expect(screen.queryByText('Product catalog auto-linked')).toBeNull();
+      expect(screen.queryByText('Product catalogue auto-linked')).toBeNull();
     });
 
     it('renders the auto-linked info banner when exactly one ProductMaster candidate exists', async () => {
@@ -233,12 +233,12 @@ describe('ConnectionDetailPage', () => {
       const apiClient = apiClientForBanner(connection, [candidatePrestashop]);
       await renderDetailPage(connection, apiClient);
 
-      const banner = await screen.findByText('Product catalog auto-linked');
+      const banner = await screen.findByText('Product catalogue auto-linked');
       expect(banner).toBeInTheDocument();
       // Candidate name is surfaced in the banner body.
       expect(screen.getByText(candidatePrestashop.name)).toBeInTheDocument();
       // Linked-state banners should NOT appear simultaneously.
-      expect(screen.queryByText('Product catalog not linked')).toBeNull();
+      expect(screen.queryByText('Product catalogue not linked')).toBeNull();
     });
 
     it('renders the ambiguous warning when 2+ candidates exist', async () => {
@@ -246,11 +246,11 @@ describe('ConnectionDetailPage', () => {
       const apiClient = apiClientForBanner(connection, [candidatePrestashop, secondPrestashop]);
       await renderDetailPage(connection, apiClient);
 
-      expect(await screen.findByText('Product catalog not linked')).toBeInTheDocument();
+      expect(await screen.findByText('Product catalogue not linked')).toBeInTheDocument();
       expect(
-        screen.getByText(/Multiple ProductMaster connections exist/i),
+        screen.getByText(/Multiple product catalogue connections exist/i),
       ).toBeInTheDocument();
-      expect(screen.queryByText('Product catalog auto-linked')).toBeNull();
+      expect(screen.queryByText('Product catalogue auto-linked')).toBeNull();
     });
 
     it('renders the no-candidates warning with a "create PrestaShop" CTA when 0 candidates exist', async () => {
@@ -258,8 +258,8 @@ describe('ConnectionDetailPage', () => {
       const apiClient = apiClientForBanner(connection, []);
       await renderDetailPage(connection, apiClient);
 
-      expect(await screen.findByText('Product catalog not linked')).toBeInTheDocument();
-      const cta = screen.getByRole('link', { name: /add a prestashop connection/i });
+      expect(await screen.findByText('Product catalogue not linked')).toBeInTheDocument();
+      const cta = screen.getByRole('link', { name: /add a shop connection/i });
       expect(cta).toHaveAttribute('href', '/connections/new?platform=prestashop');
     });
 
@@ -282,8 +282,8 @@ describe('ConnectionDetailPage', () => {
       await screen.findByRole('heading', { name: 'Overview' });
 
       // Neither auto-resolved nor ambiguous banner should flash during loading.
-      expect(screen.queryByText('Product catalog auto-linked')).toBeNull();
-      expect(screen.queryByText('Product catalog not linked')).toBeNull();
+      expect(screen.queryByText('Product catalogue auto-linked')).toBeNull();
+      expect(screen.queryByText('Product catalogue not linked')).toBeNull();
     });
 
     it('stays silent when the candidates query errors out (advisory, not blocking)', async () => {
@@ -306,8 +306,8 @@ describe('ConnectionDetailPage', () => {
       await waitFor(() => {
         expect((apiClient.connections.list as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0);
       });
-      expect(screen.queryByText('Product catalog auto-linked')).toBeNull();
-      expect(screen.queryByText('Product catalog not linked')).toBeNull();
+      expect(screen.queryByText('Product catalogue auto-linked')).toBeNull();
+      expect(screen.queryByText('Product catalogue not linked')).toBeNull();
     });
 
     it('excludes the connection under test from its own candidate list', async () => {
@@ -321,8 +321,8 @@ describe('ConnectionDetailPage', () => {
       await renderDetailPage(dualCap, apiClient);
 
       // After filtering self, candidates = 0 → no-candidates warning, not auto-linked.
-      expect(await screen.findByText('Product catalog not linked')).toBeInTheDocument();
-      expect(screen.queryByText('Product catalog auto-linked')).toBeNull();
+      expect(await screen.findByText('Product catalogue not linked')).toBeInTheDocument();
+      expect(screen.queryByText('Product catalogue auto-linked')).toBeNull();
     });
   });
 

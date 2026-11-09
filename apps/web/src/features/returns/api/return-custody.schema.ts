@@ -18,6 +18,7 @@
  * @module apps/web/src/features/returns/api
  */
 import { z } from 'zod/v4';
+import { getMessages } from '../../../shared/i18n';
 import type {
   BundleRefundHint,
   BundleReturnPreview,
@@ -33,7 +34,7 @@ import type {
 /** A custody write's response could not be read. */
 export class ReturnCustodyResultUnreadableError extends Error {
   constructor() {
-    super('The server accepted the change but sent a result this build could not read.');
+    super(getMessages('returns').apiErrors.resultUnreadable);
     this.name = 'ReturnCustodyResultUnreadableError';
   }
 }

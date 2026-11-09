@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { getMessages } from '../../../shared/i18n';
 import type { OrderTag } from '../api/orders.types';
 import {
   NARROWING_ORDER_FILTER_KEYS,
@@ -27,6 +28,7 @@ const ctx: OrderFilterChipContext = {
   connectionName: (id) => (id === 'conn-1' ? 'Allegro – Sklep główny' : undefined),
   tagById: (id) => (id === VIP.id ? VIP : undefined),
   formatDay: (ymd) => ymd,
+  copy: getMessages('orders'),
 };
 
 const parse = (qs: string) => parseOrderListFilterState(new URLSearchParams(qs));
@@ -40,6 +42,8 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
     expect([...ORDER_FILTER_PARAMS].sort()).toEqual(
       [
         'attention',
+        // #3961 - the "Changed by the shop" filter.
+        'attentionReason',
         'createdFrom',
         'createdTo',
         'due',
@@ -51,6 +55,7 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
         'openReturn',
         'packBench',
         'packed',
+        'paymentNotSent',
         'phase',
         'routing',
         'search',
@@ -89,11 +94,13 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
       waitingInOpenLinker: 'waiting=true',
       onPackBench: 'packBench=true',
       attention: 'attention=true',
+      attentionReason: 'attentionReason=source-change-unapplied',
       taxRateConflict: 'taxRate=conflict',
       openReturn: 'openReturn=true',
       hasBuyerNote: 'hasBuyerNote=true',
       tag: 'tag=tag-vip',
       untagged: 'untagged=true',
+      paymentNotSent: 'paymentNotSent=true',
     };
     for (const key of NARROWING_ORDER_FILTER_KEYS) {
       const qs = qsByKey[key];
@@ -162,7 +169,7 @@ describe('buildOrderFilterChips', () => {
     expect(chips).toHaveLength(1);
     expect(chips[0]).toMatchObject({
       label: 'Created',
-      valueText: '2026-09-01 – 2026-09-25',
+      valueText: '2026-09-01 - 2026-09-25',
       clears: ['createdFrom', 'createdTo'],
     });
   });

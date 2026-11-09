@@ -45,6 +45,8 @@ import type {
   BulkShopPublishBatchResponse,
   PublishedVariantsRequest,
   PublishedVariantsResponse,
+  AttributeProjectionPreviewRequest,
+  AttributeProjectionPreviewResponse,
   UpdateOfferFieldsPayload,
   UpdateOfferFieldsResult,
 } from './listings.types';
@@ -55,6 +57,7 @@ import type {
   BulkListingRetryResponse,
 } from './bulk-listings.types';
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages, interpolate } from '../../../shared/i18n';
 
 export interface CreateOfferOptions {
   /**
@@ -227,6 +230,14 @@ export interface ListingsApi {
     connectionId: string,
     body: ResolveCategoriesBatchRequest,
   ) => Promise<ResolveCategoriesBatchResponse>;
+  /**
+   * What the connection's attribute mappings and rules will fill, per variant
+   * (#3995). The same projection an offer publish runs, without publishing.
+   */
+  previewAttributeProjection: (
+    connectionId: string,
+    body: AttributeProjectionPreviewRequest,
+  ) => Promise<AttributeProjectionPreviewResponse>;
   /**
    * Streaming sibling of {@link ListingsApi.resolveCategoriesBatch} (#2211).
    * Same request body and same resolution, delivered one variant at a time so
@@ -422,7 +433,9 @@ async function readWithIdleCeiling(
     timer = setTimeout(() => {
       reject(
         new ApiError(
-          `No response from the category lookup for ${Math.round(idleTimeoutMs / 1000)}s.`,
+          interpolate(getMessages('listings').categoryLookup.idleTimeout, {
+            seconds: Math.round(idleTimeoutMs / 1000),
+          }),
           408,
           { idleTimeoutMs },
         ),
@@ -655,6 +668,16 @@ export function createListingsApi(
     resolveCategory(connectionId, body): Promise<ResolveCategoryResponse> {
       return request<ResolveCategoryResponse>(
         `/listings/connections/${connectionId}/categories/resolve`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+      );
+    },
+    previewAttributeProjection(connectionId, body): Promise<AttributeProjectionPreviewResponse> {
+      return request<AttributeProjectionPreviewResponse>(
+        `/listings/connections/${connectionId}/attribute-projection/preview`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

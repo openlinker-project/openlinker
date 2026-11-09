@@ -35,13 +35,14 @@ import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { formatDurationMs } from '../../../shared/format/format-duration-ms';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { useConnectionQuery } from '../../connections';
 import { useDemoMode } from '../../system';
 import { useRetryOrderRoutingMutation } from '../hooks/use-retry-order-routing-mutation';
 import { useRoutingDecisionQuery } from '../hooks/use-routing-decision-query';
-import { ROUTING_DECISION_COPY, describeRetryRoutingError } from '../lib/routing-decision.copy';
+import { describeRetryRoutingError } from '../lib/routing-decision-retry-error';
 import { canRetryRouting, resolveRoutingDecisionState } from '../lib/routing-decision-state';
 
 export interface RoutingDecisionPanelProps {
@@ -57,6 +58,9 @@ export function RoutingDecisionPanel({
   orderBlockReason,
   enabled,
 }: RoutingDecisionPanelProps): ReactElement | null {
+  const messages = useMessages('fulfillment');
+  const routingCopy = messages.routingDecision;
+  const panelCopy = messages.routingDecisionPanel;
   const { showToast } = useToast();
   const demoMode = useDemoMode();
   const write = useWriteAccess('orders:write', demoMode);
@@ -79,11 +83,11 @@ export function RoutingDecisionPanel({
         data-testid="routing-decision-panel"
         action={
           <Button tone="secondary" className="button--sm" onClick={() => void query.refetch()}>
-            Retry
+            {panelCopy.retry}
           </Button>
         }
       >
-        {ROUTING_DECISION_COPY.readFailed}
+        {routingCopy.readFailed}
       </Alert>
     );
   }
@@ -91,12 +95,12 @@ export function RoutingDecisionPanel({
   const state = resolveRoutingDecisionState(decision);
   if (decision === null || state === null) return null;
 
-  const routerName = router.data?.name ?? 'the connection that decides where orders are packed';
+  const routerName = router.data?.name ?? panelCopy.routerFallback;
 
   if (state === 'healthy') {
     return (
       <p className="text-muted" data-testid="routing-decision-panel" data-mk-state="healthy">
-        {ROUTING_DECISION_COPY.healthy.title}
+        {routingCopy.healthy.title}
       </p>
     );
   }
@@ -106,11 +110,16 @@ export function RoutingDecisionPanel({
     const limit = formatDurationMs(decision.ttlMs);
     return (
       <div data-testid="routing-decision-panel" data-mk-state="stuck">
-        <Alert tone="warning" title={ROUTING_DECISION_COPY.stuck.title}>
-          <p>{ROUTING_DECISION_COPY.stuck.body}</p>
+        <Alert tone="warning" title={routingCopy.stuck.title}>
+          <p>{routingCopy.stuck.body}</p>
           <p className="mono-text">
-            {age !== null ? `Waiting for ${age}` : 'Waiting'}
-            {limit !== null ? ` · time limit ${limit}` : ''} · Router: {routerName}
+            {[
+              age !== null ? interpolate(panelCopy.waitingFor, { age }) : panelCopy.waiting,
+              limit !== null ? interpolate(panelCopy.timeLimit, { limit }) : null,
+              interpolate(panelCopy.router, { name: routerName }),
+            ]
+              .filter((part): part is string => part !== null)
+              .join(' · ')}
           </p>
         </Alert>
       </div>
@@ -121,7 +130,7 @@ export function RoutingDecisionPanel({
   const handleRetry = (): void => {
     retry.mutate(internalOrderId, {
       onSuccess: () => {
-        showToast({ tone: 'success', description: ROUTING_DECISION_COPY.retry.started });
+        showToast({ tone: 'success', description: routingCopy.retry.started });
       },
     });
   };
@@ -130,10 +139,10 @@ export function RoutingDecisionPanel({
     <div data-testid="routing-decision-panel" data-mk-state="resolved">
     <Alert
       tone="info"
-      title={ROUTING_DECISION_COPY.resolved.title}
+      title={routingCopy.resolved.title}
       action={
         offerRetry ? (
-          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
             <Button
               tone="secondary"
               className="button--sm"
@@ -142,8 +151,8 @@ export function RoutingDecisionPanel({
               onClick={handleRetry}
             >
               {retry.isPending
-                ? ROUTING_DECISION_COPY.retry.pending
-                : ROUTING_DECISION_COPY.retry.action}
+                ? routingCopy.retry.pending
+                : routingCopy.retry.action}
             </Button>
           </ReadOnlyLock>
         ) : undefined
@@ -151,8 +160,8 @@ export function RoutingDecisionPanel({
     >
       <p>
         {orderBlockReason === 'routing-failed'
-          ? ROUTING_DECISION_COPY.resolved.bodyNotRestarted
-          : ROUTING_DECISION_COPY.resolved.body}
+          ? routingCopy.resolved.bodyNotRestarted
+          : routingCopy.resolved.body}
       </p>
       {retry.error ? (
         <p role="alert" data-testid="routing-decision-retry-error">

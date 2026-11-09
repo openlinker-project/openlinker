@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { stockVariantFixture } from '../testing/stock-view-fixtures';
-import { buildStockRows, deriveRowStatus, VIEWER_STOCK_HINT, type BuildStockRowsInput, type StockRowModel } from './stock-row';
+import { getMessages } from '../../../shared/i18n';
+import { buildStockRows, deriveRowStatus, type BuildStockRowsInput, type StockRowModel } from './stock-row';
 
 const variant = { id: 'v1', sku: 'KCN-WHT', attributes: null };
 
@@ -82,7 +83,7 @@ describe('buildStockRows', () => {
 
   it('should give a session without write access the viewer hint first', () => {
     const row = build({ canAdjust: false, stock: stockVariantFixture({ productVariantId: 'v1', sku: 'KCN-WHT' }) });
-    expect(row.adjustHint).toBe(VIEWER_STOCK_HINT);
+    expect(row.adjustHint).toBe(getMessages('inventory').stockRow.adjustHints.viewer);
   });
 });
 

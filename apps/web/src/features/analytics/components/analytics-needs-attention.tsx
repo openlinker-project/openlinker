@@ -11,6 +11,7 @@
  */
 import { useMemo, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
 import {
   Button,
   ErrorState,
@@ -26,7 +27,7 @@ import {
   deriveFailedSyncHeadline,
   deriveStockHeadline,
   type AttentionRowCopy,
-} from '../lib/needs-attention.copy';
+} from '../lib/needs-attention.lib';
 
 interface AttentionRow extends AttentionRowCopy {
   key: string;
@@ -41,6 +42,7 @@ function uniqueValues<T>(values: T[]): T[] {
 }
 
 export function AnalyticsNeedsAttention(): ReactElement {
+  const copy = useMessages('analytics').analyticsNeedsAttention;
   const needsAttentionQuery = useNeedsAttentionQuery();
   const connectionsQuery = useConnectionsQuery();
 
@@ -53,9 +55,9 @@ export function AnalyticsNeedsAttention(): ReactElement {
     return (
       <article className="panel panel--dense">
         <div className="panel__header">
-          <h3 className="section-title">Needs attention</h3>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
-        <LoadingState title="Checking for open items" message="Looking at coverage, stock, and failed syncs…" />
+        <LoadingState title={copy.loading.title} message={copy.loading.message} />
       </article>
     );
   }
@@ -64,14 +66,14 @@ export function AnalyticsNeedsAttention(): ReactElement {
     return (
       <article className="panel panel--dense">
         <div className="panel__header">
-          <h3 className="section-title">Needs attention</h3>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
         <ErrorState
-          title="Unable to check for open items"
+          title={copy.error.title}
           message={needsAttentionQuery.error.message}
           action={
             <Button type="button" onClick={() => void needsAttentionQuery.refetch()}>
-              Retry
+              {copy.error.retry}
             </Button>
           }
         />
@@ -84,7 +86,7 @@ export function AnalyticsNeedsAttention(): ReactElement {
     return (
       <article className="panel panel--dense">
         <div className="panel__header">
-          <h3 className="section-title">Needs attention</h3>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
       </article>
     );
@@ -93,7 +95,7 @@ export function AnalyticsNeedsAttention(): ReactElement {
   const rows: AttentionRow[] = [];
 
   if (summary.coverageGapsTotalCount > 0) {
-    const { connectionId, ...copy } = deriveCoverageHeadline(
+    const { connectionId, ...coverageCopy } = deriveCoverageHeadline(
       summary.coverageGaps,
       summary.coverageGapsTotalCount,
       connectionName
@@ -121,44 +123,52 @@ export function AnalyticsNeedsAttention(): ReactElement {
     rows.push({
       key: 'coverage-gaps',
       tone: 'warning',
-      badgeLabel: 'Action',
+      badgeLabel: copy.badges.action,
       linkTo: `/listings/bulk-create/wizard?${params.toString()}`,
-      linkLabel: 'Publish now',
-      ...copy,
+      linkLabel: copy.links.publishNow,
+      ...coverageCopy,
       // "Publish now" only seeds the sampled variants when the row's own
       // total exceeds the preview — say so, since a partial sample can
       // otherwise be reviewed and submitted while the headline still
       // reports the full total (#2120 review, IMPORTANT).
       sub: isPartialSample
-        ? `${copy.sub} — showing the first ${summary.coverageGaps.length} of ${summary.coverageGapsTotalCount}`
-        : copy.sub,
+        ? interpolate(copy.partialSample, {
+            sub: coverageCopy.sub,
+            shown: summary.coverageGaps.length,
+            total: summary.coverageGapsTotalCount,
+          })
+        : coverageCopy.sub,
     });
   }
 
   if (summary.stockAtRiskTotalCount > 0) {
-    const copy = deriveStockHeadline(summary.stockAtRisk, summary.stockAtRiskTotalCount, connectionName);
+    const stockCopy = deriveStockHeadline(
+      summary.stockAtRisk,
+      summary.stockAtRiskTotalCount,
+      connectionName
+    );
     const firstProductId = summary.stockAtRisk[0]?.productId;
 
     rows.push({
       key: 'stock-at-risk',
       tone: 'warning',
-      badgeLabel: 'Action',
+      badgeLabel: copy.badges.action,
       linkTo: firstProductId ? `/products/${firstProductId}` : '/products',
-      linkLabel: 'Review stock',
-      ...copy,
+      linkLabel: copy.links.reviewStock,
+      ...stockCopy,
     });
   }
 
   if (summary.failedSyncValue.count > 0) {
-    const copy = deriveFailedSyncHeadline(summary.failedSyncValue);
+    const failedSyncCopy = deriveFailedSyncHeadline(summary.failedSyncValue);
 
     rows.push({
       key: 'failed-sync-value',
       tone: 'error',
-      badgeLabel: 'Stuck',
+      badgeLabel: copy.badges.stuck,
       linkTo: '/orders?health=needs_attention',
-      linkLabel: 'Review orders',
-      ...copy,
+      linkLabel: copy.links.reviewOrders,
+      ...failedSyncCopy,
     });
   }
 
@@ -167,10 +177,14 @@ export function AnalyticsNeedsAttention(): ReactElement {
   return (
     <article className="panel panel--dense">
       <div className="panel__header">
-        <h3 className="section-title">Needs attention</h3>
+        <h3 className="section-title">{copy.title}</h3>
         {needsAttentionQuery.dataUpdatedAt > 0 && (
           <span className="text-muted mono-text">
-            checked <TimeDisplay iso={new Date(needsAttentionQuery.dataUpdatedAt).toISOString()} />
+            {renderRich(copy.checked, {
+              time: () => (
+                <TimeDisplay iso={new Date(needsAttentionQuery.dataUpdatedAt).toISOString()} />
+              ),
+            })}
           </span>
         )}
       </div>
@@ -178,12 +192,12 @@ export function AnalyticsNeedsAttention(): ReactElement {
         {rows.length === 0 ? (
           <li className="attention-list__item attention-list__item--resolved">
             <StatusBadge tone="neutral" withDot>
-              Clear
+              {copy.clear.badge}
             </StatusBadge>
             <div className="attention-list__body">
-              <span className="attention-list__headline">Nothing needs attention</span>
+              <span className="attention-list__headline">{copy.clear.headline}</span>
               <span className="attention-list__sub">
-                {checkedCount} checks · coverage, stock, destination syncs
+                {interpolate(copy.clear.sub, { n: checkedCount })}
               </span>
             </div>
           </li>

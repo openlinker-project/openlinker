@@ -80,11 +80,11 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const repoRoot = join(__dirname, '..');
 
 const RETURNS_SPEC = join('docs', 'specs', 'product-spec-oms-returns-operator-ux.md');
-const RESTOCK_COPY = join('apps', 'web', 'src', 'features', 'returns', 'lib', 'restock-blocked.copy.ts');
-const DETAIL_COPY = join('apps', 'web', 'src', 'features', 'returns', 'lib', 'return-detail.copy.ts');
-const ATTENTION_COPY = join(
-  'apps', 'web', 'src', 'features', 'fulfillment-authority', 'lib', 'attention-reason.copy.ts',
-);
+// #3874 moved the returns copy into the `returns` namespace of the core locale
+// file (ADR-081); a JSON owner names a dotted key path as its `declaration`.
+const RESTOCK_COPY = join('apps', 'web', 'src', 'locales', 'en', 'returns.json');
+const DETAIL_COPY = join('apps', 'web', 'src', 'locales', 'en', 'returns.json');
+const ATTENTION_COPY = join('apps', 'web', 'src', 'locales', 'en', 'fulfillment-authority.json');
 
 /**
  * The strings a spec explicitly claims ownership of. EVERY pair is live and compared;
@@ -96,38 +96,38 @@ const ATTENTION_COPY = join(
 const SPEC_OWNED_COPY = [
   // --- returns spec § 5.4: restock_blocked ---------------------------------
   { id: 'restock-blocked / title', spec: RETURNS_SPEC, section: '### 5.4 ', kind: 'bold',
-    code: { file: RESTOCK_COPY, declaration: 'RETURN_RESTOCK_BLOCKED_COPY', path: ['title'] } },
+    code: { file: RESTOCK_COPY, declaration: 'restockBlocked', path: ['title'] } },
   // `Restock blocked` appears as a code run five times in § 5.4 (list row, segment,
   // table cells). Only the FIRST run on the "error badge" line is the badge itself.
   { id: 'restock-blocked / list badge', spec: RETURNS_SPEC, section: '### 5.4 ', kind: 'code',
     lineContains: 'error badge', occurrence: 1,
-    code: { file: RESTOCK_COPY, declaration: 'RETURN_RESTOCK_BLOCKED_COPY', path: ['badge'] } },
+    code: { file: RESTOCK_COPY, declaration: 'restockBlocked', path: ['badge'] } },
   { id: 'restock-blocked / attest action', spec: RETURNS_SPEC, section: '### 5.4 ', kind: 'button',
-    code: { file: RESTOCK_COPY, declaration: 'RETURN_RESTOCK_BLOCKED_COPY', path: ['attest'] } },
+    code: { file: RESTOCK_COPY, declaration: 'restockBlocked', path: ['attest'] } },
   // `[Why did this happen?]` is also named in the explainer's own heading line; the
   // action row is the one carrying the three buttons.
   { id: 'restock-blocked / why action', spec: RETURNS_SPEC, section: '### 5.4 ', kind: 'button',
     lineContains: 'Mark stock handled manually',
-    code: { file: RESTOCK_COPY, declaration: 'RETURN_RESTOCK_BLOCKED_COPY', path: ['why'] } },
+    code: { file: RESTOCK_COPY, declaration: 'restockBlocked', path: ['why'] } },
   { id: 'restock-blocked / explainer heading', spec: RETURNS_SPEC, section: '### 5.4 ', kind: 'bold',
-    code: { file: RESTOCK_COPY, declaration: 'RETURN_RESTOCK_BLOCKED_EXPLAINER', path: ['heading'] } },
+    code: { file: RESTOCK_COPY, declaration: 'restockBlockedExplainer', path: ['heading'] } },
   // The RB-L attention state restates the title (it cannot import it: a
   // barrel-to-barrel edge would close a cycle). Held to the SPEC, not only to its
   // code twin, which is what M6 of check-attention-reason-mirror already does.
   { id: 'attention RB-L / title', spec: RETURNS_SPEC, section: '### 5.4 ', kind: 'bold',
-    code: { file: ATTENTION_COPY, declaration: 'ATTENTION_REASON_COPY', path: ['restock-blocked', 'title'] } },
+    code: { file: ATTENTION_COPY, declaration: 'attention.reasons', path: ['restock-blocked', 'title'] } },
   { id: 'attention RB-L / titleFallback', spec: RETURNS_SPEC, section: '### 5.4 ', kind: 'bold',
-    code: { file: ATTENTION_COPY, declaration: 'ATTENTION_REASON_COPY', path: ['restock-blocked', 'titleFallback'] } },
+    code: { file: ATTENTION_COPY, declaration: 'attention.reasons', path: ['restock-blocked', 'titleFallback'] } },
 
   // --- returns spec § 5.5: orphan returns ----------------------------------
   { id: 'orphan / banner title', spec: RETURNS_SPEC, section: '### 5.5 ', kind: 'bold',
-    code: { file: DETAIL_COPY, declaration: 'RETURN_ORPHAN_BANNER_COPY', path: ['title'] } },
+    code: { file: DETAIL_COPY, declaration: 'detail.orphanBanner', path: ['title'] } },
   { id: 'orphan / match action', spec: RETURNS_SPEC, section: '### 5.5 ', kind: 'button',
-    code: { file: DETAIL_COPY, declaration: 'RETURN_ORPHAN_BANNER_COPY', path: ['matchAction'] } },
+    code: { file: DETAIL_COPY, declaration: 'detail.orphanBanner', path: ['matchAction'] } },
   { id: 'attention OR-P / title', spec: RETURNS_SPEC, section: '### 5.5 ', kind: 'bold',
-    code: { file: ATTENTION_COPY, declaration: 'ATTENTION_REASON_COPY', path: ['return-unmatched', 'title'] } },
+    code: { file: ATTENTION_COPY, declaration: 'attention.reasons', path: ['return-unmatched', 'title'] } },
   { id: 'attention OR-P / titleFallback', spec: RETURNS_SPEC, section: '### 5.5 ', kind: 'bold',
-    code: { file: ATTENTION_COPY, declaration: 'ATTENTION_REASON_COPY', path: ['return-unmatched', 'titleFallback'] } },
+    code: { file: ATTENTION_COPY, declaration: 'attention.reasons', path: ['return-unmatched', 'titleFallback'] } },
 ];
 
 // ---------------------------------------------------------------------------
@@ -369,6 +369,27 @@ function readLiteralAt(text, index) {
 }
 
 /**
+ * Read the string at `keyPath` (dotted) + `path` of a JSON locale file - the
+ * JSON counterpart of `readCodeString`, with the same `{ ok, value | reason }`.
+ */
+function readJsonString(source, keyPath, path) {
+  let node;
+  try {
+    node = JSON.parse(source);
+  } catch {
+    return { ok: false, reason: 'the file is not valid JSON' };
+  }
+  const keys = [...keyPath.split('.'), ...path];
+  for (const [step, key] of keys.entries()) {
+    if (node === null || typeof node !== 'object' || !Object.hasOwn(node, key)) {
+      return { ok: false, reason: `key ${JSON.stringify(key)} not found at ${keys.slice(0, step).join('.') || '(root)'}` };
+    }
+    node = node[key];
+  }
+  return typeof node === 'string' ? { ok: true, value: node } : { ok: false, reason: `${keys.join('.')} is not a string` };
+}
+
+/**
  * Read the plain string at `path` inside the object literal bound to `declaration`.
  *
  * @returns {{ ok: true, value: string } | { ok: false, reason: string }}
@@ -511,7 +532,9 @@ function evaluatePairs(pairs, readFileText) {
       failures.push(`${label} spec ${pair.spec}: ${section.reason}`);
       continue;
     }
-    const code = readCodeString(codeText, pair.code.declaration, pair.code.path);
+    const code = pair.code.file.endsWith('.json')
+      ? readJsonString(codeText, pair.code.declaration, pair.code.path)
+      : readCodeString(codeText, pair.code.declaration, pair.code.path);
     if (!code.ok) {
       failures.push(`${label} code ${pair.code.file}: ${code.reason}`);
       continue;

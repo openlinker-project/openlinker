@@ -484,7 +484,7 @@ describe('OrderActivityTimeline — order holds (#2342)', () => {
   it('narrates a hold with its reason and its note', () => {
     renderTimeline({ ...base, holds: [hold({ note: 'Supplier is late' })] });
 
-    expect(screen.getByText('Put on hold — Held by operator')).toBeInTheDocument();
+    expect(screen.getByText('Put on hold - Held by operator')).toBeInTheDocument();
     expect(screen.getByText(/Supplier is late/)).toBeInTheDocument();
   });
 
@@ -509,7 +509,7 @@ describe('OrderActivityTimeline — order holds (#2342)', () => {
       ],
     });
 
-    expect(screen.getByText('Put on hold — Held by operator')).toBeInTheDocument();
+    expect(screen.getByText('Put on hold - Held by operator')).toBeInTheDocument();
     expect(screen.getByText('Hold released')).toBeInTheDocument();
     expect(screen.getByText(/Stock arrived/)).toBeInTheDocument();
   });
@@ -518,7 +518,7 @@ describe('OrderActivityTimeline — order holds (#2342)', () => {
     // A hold the operator cannot see is worse than one labelled awkwardly.
     renderTimeline({ ...base, holds: [hold({ reason: 'reason-from-a-newer-build' as never })] });
 
-    expect(screen.getByText('Put on hold — reason-from-a-newer-build')).toBeInTheDocument();
+    expect(screen.getByText('Put on hold - reason-from-a-newer-build')).toBeInTheDocument();
   });
 
   it('does NOT claim a person held the order when the payload names no placer', () => {
@@ -532,7 +532,7 @@ describe('OrderActivityTimeline — order holds (#2342)', () => {
       holds: [hold({ placedByUserId: null, placedByService: null })],
     });
 
-    const title = screen.getByText('Put on hold — Held by operator');
+    const title = screen.getByText('Put on hold - Held by operator');
     // The actor eyebrow lives inside the entry's own title element, so scope the
     // assertion there — the ingestion entry above legitimately carries one.
     expect(title.querySelector('.order-activity__by')).toBeNull();

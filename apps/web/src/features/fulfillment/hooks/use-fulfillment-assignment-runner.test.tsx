@@ -18,9 +18,9 @@ import {
 import { ApiError } from '../../../shared/api/api-error';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import type { FulfillmentTask } from '../api/fulfillment.types';
-import { ASSIGN_PACKING_WORK_COPY } from '../lib/assign-packing-work.copy';
+import { getMessages } from '../../../shared/i18n';
 
-const ROW = ASSIGN_PACKING_WORK_COPY.row;
+const ROW = getMessages('fulfillment').assignPackingWork.row;
 
 describe('staffingFailureMessage', () => {
   it('should tell a refused session it may not reassign when the API answers 403', () => {

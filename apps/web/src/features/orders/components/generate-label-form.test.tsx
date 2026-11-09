@@ -74,7 +74,7 @@ describe('GenerateLabelForm — pre-flight gate (tech-review BLOCKING fix)', () 
     );
 
     expect(
-      await screen.findByText(/Missing recipient data — cannot generate label:/i),
+      await screen.findByText(/Missing recipient data - cannot generate label:/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/Buyer email is missing/i)).toBeInTheDocument();
 
@@ -1186,7 +1186,7 @@ describe('GenerateLabelForm — #1806 carrier field-error breakdown', () => {
     );
     fillParcelAndSubmit();
 
-    expect(await screen.findByText('Carrier is unreachable')).toBeInTheDocument();
+    expect(await screen.findByText('The server said: Carrier is unreachable')).toBeInTheDocument();
     // No structured list renders — no empty/broken Alert artefact.
     expect(document.querySelector('.structured-error-list')).toBeNull();
   });
@@ -1245,7 +1245,7 @@ describe('GenerateLabelForm — #1800 carrier support reference', () => {
     );
     fillParcelAndSubmit();
 
-    expect(await screen.findByText('Carrier is unreachable')).toBeInTheDocument();
+    expect(await screen.findByText('The server said: Carrier is unreachable')).toBeInTheDocument();
     expect(screen.queryByText(/Reference for carrier support/i)).toBeNull();
   });
 });

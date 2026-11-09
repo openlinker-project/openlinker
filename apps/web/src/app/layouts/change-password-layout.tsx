@@ -16,16 +16,18 @@ import type { ReactElement } from 'react';
 import { Navigate, Outlet, useSearchParams } from 'react-router-dom';
 import { useSession } from '../../shared/auth/use-session';
 import { LoadingState } from '../../shared/ui/feedback-state';
+import { useMessages } from '../../shared/i18n';
 import { resolveNextPath } from '../../shared/lib/resolve-next-path';
 
 export function ChangePasswordLayout(): ReactElement {
+  const copy = useMessages('app');
   const { isReady, session } = useSession();
   const [searchParams] = useSearchParams();
 
   if (!isReady) {
     return (
-      <div className="guest-layout">
-        <LoadingState title="Loading" message="Checking session state..." />
+      <div className="guest-layout guest-layout--pending">
+        <LoadingState title={copy.loading.loading} message={copy.loading.checkingSession} />
       </div>
     );
   }
@@ -42,8 +44,8 @@ export function ChangePasswordLayout(): ReactElement {
     <div className="guest-layout">
       <div className="guest-card">
         <div className="guest-brand">
-          <strong className="guest-brand__title">OpenLinker</strong>
-          <span className="guest-brand__subtitle">Commerce operations platform</span>
+          <strong className="guest-brand__title">{copy.brand.name}</strong>
+          <span className="guest-brand__subtitle">{copy.brand.tagline}</span>
         </div>
         <Outlet />
       </div>

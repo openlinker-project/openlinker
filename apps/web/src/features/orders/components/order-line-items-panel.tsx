@@ -24,8 +24,16 @@ import { Link } from 'react-router-dom';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { EmptyState } from '../../../shared/ui/feedback-state';
 import { OrderLineItemIdentity } from './order-line-item-identity';
-import { formatAmount } from '../../../shared/format/format-amount';
 import { formatTaxRate } from '../../../shared/format/format-tax-rate';
+import {
+  interpolate,
+  useFormat,
+  useMessages,
+  usePlural,
+  type Messages,
+  type PluralFn,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 import { AbsentValue } from '../../../shared/ui/absent-value';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
@@ -36,8 +44,9 @@ import type {
   OrderGiftSlotCost,
   OrderLineCost,
 } from '../api/orders.types';
-import { interpolate, useMessages } from '../../../shared/i18n';
 import { useOrderLineCosts, type OrderLineCostsState } from '../hooks/use-order-line-costs';
+
+type LineItemsCopy = ResolvedCopy<Messages['orders']>['orderLineItems'];
 
 interface OrderLineItemsPanelProps {
   items: ParsedOrderItem[];
@@ -82,6 +91,8 @@ export function OrderLineItemsPanel({
 }: OrderLineItemsPanelProps): ReactElement {
   const bundleCopy = useMessages('bundles');
   const currency = totals?.currency;
+  const copy = useMessages('orders').orderLineItems;
+  const format = useFormat();
   const costs = useOrderLineCosts(internalOrderId);
   // Borrowed from the bulk review step rather than invented: a 200-line order
   // gets an alert naming the offending lines and then leaves the operator to
@@ -120,7 +131,7 @@ export function OrderLineItemsPanel({
   const lineColumns: DataTableColumn<ParsedOrderItem>[] = [
     {
       id: 'product',
-      header: 'Product',
+      header: copy.columns.product,
       cell: (item) => (
         <OrderLineItemIdentity
           name={item.name}
@@ -138,21 +149,21 @@ export function OrderLineItemsPanel({
     },
     {
       id: 'taxRate',
-      header: 'Tax rate',
+      header: copy.columns.taxRate,
       cell: (item) => <TaxRateCell item={item} />,
     },
     {
       id: 'qty',
-      header: 'Qty',
+      header: copy.columns.qty,
       align: 'right',
       cell: (item) => {
         const channelQuantity = channelQuantities?.get(item.id);
         return (
           <span>
-            {item.quantity}
+            {format.number(item.quantity)}
             {channelQuantity !== undefined && channelQuantity !== item.quantity ? (
               <span className="order-edit-was" data-testid="order-edit-line-was">
-                {` was ${channelQuantity}`}
+                {` ${interpolate(copy.qtyWas, { quantity: format.number(channelQuantity) })}`}
               </span>
             ) : null}
           </span>
@@ -161,21 +172,21 @@ export function OrderLineItemsPanel({
     },
     {
       id: 'unitPrice',
-      header: 'Unit price',
+      header: copy.columns.unitPrice,
       align: 'right',
       cell: (item) => (
-        <span className="mono-text">{formatAmount(item.price, currency)}</span>
+        <span className="mono-text">{format.money(item.price, currency)}</span>
       ),
     },
     {
       id: 'lineTotal',
-      header: 'Total',
+      header: copy.columns.total,
       align: 'right',
       cell: (item) => (
-        <span className="mono-text">{formatAmount(item.price * item.quantity, currency)}</span>
+        <span className="mono-text">{format.money(item.price * item.quantity, currency)}</span>
       ),
     },
-    ...(costs.enabled ? buildCostColumns(items, costs) : []),
+    ...(costs.enabled ? buildCostColumns(items, costs, copy) : []),
   ];
 
   // Components sit under their bundle line and carry only what is theirs: a
@@ -217,7 +228,7 @@ export function OrderLineItemsPanel({
       if (column.id === 'unitPrice') {
         // The gift slot is shown at what the buyer pays for it, not as part of the set price.
         return row.component.giftSlot === true ? (
-          <span className="mono-text">{formatAmount(0, currency)}</span>
+          <span className="mono-text">{format.money(0, currency)}</span>
         ) : (
           <span className="text-muted">{bundleCopy.order.inBundlePrice}</span>
         );
@@ -230,8 +241,8 @@ export function OrderLineItemsPanel({
     return (
       <EmptyState
         liveRegion="off"
-        title="No line items"
-        message="The order snapshot does not contain item details."
+        title={copy.emptyTitle}
+        message={copy.emptyMessage}
       />
     );
   }
@@ -245,16 +256,16 @@ export function OrderLineItemsPanel({
             aria-pressed={onlyFlagged}
             onClick={() => { setOnlyFlagged((v) => !v); }}
           >
-            Only flagged
+            {copy.onlyFlagged}
           </Button>
           <Button tone="ghost" onClick={jumpToNextFlagged}>
-            Jump to next flagged
+            {copy.jumpToNextFlagged}
           </Button>
         </div>
       ) : null}
       <div data-testid={costs.enabled ? 'order-items-cost-table' : undefined}>
         <DataTable
-          caption="Order line items"
+          caption={copy.caption}
           columns={columns}
           rows={displayRows}
           rowKey={displayRowKey}
@@ -293,14 +304,15 @@ function GiftSlotNote({
   cost: OrderGiftSlotCost | null;
 }): ReactElement {
   const copy = useMessages('bundles');
+  const format = useFormat();
   const key = component.sku ?? component.variantId;
   return (
     <div className="text-muted">
       <span data-testid={`order-bundle-gift-mark-${key}`}>{copy.order.giftMark}</span>{' '}
       <span role="note" data-testid={`order-bundle-gift-cost-${key}`}>
-        {interpolate(copy.order.giftPays, { price: formatAmount(0, currency) })}
+        {interpolate(copy.order.giftPays, { price: format.money(0, currency) })}
         {cost !== null && cost.totalCostNet !== null
-          ? ` · ${interpolate(copy.order.giftCosts, { cost: formatAmount(cost.totalCostNet, currency) })}`
+          ? ` · ${interpolate(copy.order.giftCosts, { cost: format.money(cost.totalCostNet, currency) })}`
           : ''}
       </span>
     </div>
@@ -342,13 +354,15 @@ function isFlaggedLine(item: ParsedOrderItem): boolean {
  * and a disagreement are exceptions and get a badge.
  */
 function TaxRateCell({ item }: { item: ParsedOrderItem }): ReactElement {
+  const copy = useMessages('orders').orderLineItems.taxRate;
+  const plural = usePlural();
   if (!item.taxRate) {
     return (
       <span className="order-line-item__product-info" data-line-id={item.id} tabIndex={-1}>
         <StatusBadge tone="error" withDot compact>
-          No tax rate
+          {copy.missing}
         </StatusBadge>
-        <span className="order-line-item__sku text-muted">set it in the shop</span>
+        <span className="order-line-item__sku text-muted">{copy.missingHint}</span>
       </span>
     );
   }
@@ -358,10 +372,13 @@ function TaxRateCell({ item }: { item: ParsedOrderItem }): ReactElement {
       <span className="order-line-item__product-info" data-line-id={item.id} tabIndex={-1}>
         <span className="mono-text">{formatTaxRate(item.taxRate)}</span>
         <StatusBadge tone="conflict" withDot compact>
-          Rate conflict
+          {copy.conflict}
         </StatusBadge>
         <span className="order-line-item__sku text-muted">
-          shop {formatTaxRate(item.taxRate)}, channel {formatTaxRate(item.taxRateChannel)}
+          {interpolate(copy.conflictDetail, {
+            shopRate: formatTaxRate(item.taxRate),
+            channelRate: formatTaxRate(item.taxRateChannel),
+          })}
         </span>
       </span>
     );
@@ -370,7 +387,7 @@ function TaxRateCell({ item }: { item: ParsedOrderItem }): ReactElement {
   return (
     <span className="order-line-item__product-info">
       <span className="mono-text">{formatTaxRate(item.taxRate)}</span>
-      <span className="order-line-item__sku text-muted">{provenanceCaption(item)}</span>
+      <span className="order-line-item__sku text-muted">{provenanceCaption(item, copy, plural)}</span>
     </span>
   );
 }
@@ -380,21 +397,26 @@ function TaxRateCell({ item }: { item: ParsedOrderItem }): ReactElement {
  * there is no freshness rule, because rate changes are announced ahead and do
  * not apply retroactively.
  */
-function provenanceCaption(item: ParsedOrderItem): ReactElement | string {
+function provenanceCaption(
+  item: ParsedOrderItem,
+  copy: LineItemsCopy['taxRate'],
+  plural: PluralFn,
+): ReactElement | string {
   const from =
     item.taxSource === 'shop'
-      ? 'from the shop'
+      ? copy.fromShop
       : item.taxSource === 'channel'
-        ? 'from the channel'
+        ? copy.fromChannel
         : item.taxSource === 'backfill'
-          ? 'estimated from catalogue'
+          ? copy.fromBackfill
           : null;
-  if (!from) return <AbsentValue label="source not recorded" />;
+  if (!from) return <AbsentValue label={copy.sourceNotRecorded} />;
   if (!item.taxRateReadAt) return from;
   const readAt = new Date(item.taxRateReadAt);
   if (!Number.isFinite(readAt.getTime())) return from;
   const days = Math.floor((Date.now() - readAt.getTime()) / 86_400_000);
-  return days >= 1 ? `${from} \u00b7 read ${String(days)} d ago` : `${from} \u00b7 read today`;
+  const read = days >= 1 ? plural(days, copy.readDaysAgo) : copy.readToday;
+  return `${from} \u00b7 ${read}`;
 }
 
 /**
@@ -419,18 +441,19 @@ function costForItem(
 function buildCostColumns(
   items: ParsedOrderItem[],
   costs: OrderLineCostsState,
+  copy: LineItemsCopy,
 ): DataTableColumn<ParsedOrderItem>[] {
   return [
     {
       id: 'costAtOrderTime',
-      header: 'Cost at order time',
+      header: copy.columns.costAtOrderTime,
       align: 'right',
       hideBelow: 768,
       cell: (item) => <CostCell line={costForItem(items, costs, item)} />,
     },
     {
       id: 'lineMargin',
-      header: 'Margin',
+      header: copy.columns.margin,
       align: 'right',
       cell: (item) => <MarginCell line={costForItem(items, costs, item)} currency={costs.currency} />,
     },
@@ -438,35 +461,37 @@ function buildCostColumns(
 }
 
 function CostCell({ line }: { line: OrderLineCost | null }): ReactElement {
-  if (!line) return <AbsentValue label="cost not available" />;
+  const copy = useMessages('orders').orderLineItems.cost;
+  const format = useFormat();
+  if (!line) return <AbsentValue label={copy.notAvailable} />;
   if (line.costOfGoods !== null) {
-    return <span className="mono-text">{formatAmount(line.costOfGoods, line.unitCostCurrency ?? undefined)}</span>;
+    return <span className="mono-text">{format.money(line.costOfGoods, line.unitCostCurrency ?? undefined)}</span>;
   }
   if (line.gapReason === 'currency-mismatch' && line.unitCostNet !== null) {
     return (
       <span
         className="mono-text"
-        title="The cost is in a different currency than the order, so it is not used in margin."
+        title={copy.currencyMismatchTitle}
       >
-        {formatAmount(Number(line.unitCostNet) * line.quantity, line.unitCostCurrency ?? undefined)}
+        {format.money(Number(line.unitCostNet) * line.quantity, line.unitCostCurrency ?? undefined)}
       </span>
     );
   }
   if (line.gapReason === 'no-variant') {
-    return <AbsentValue label="no variant" />;
+    return <AbsentValue label={copy.noVariant} />;
   }
   if (line.gapReason === 'cost-entered-after-sale') {
     return (
-      <span title="Ordered before the cost was entered">
+      <span title={copy.enteredAfterSaleTitle}>
         <StatusBadge tone="neutral" compact>
-          Not recorded
+          {copy.notRecorded}
         </StatusBadge>
       </span>
     );
   }
   return (
     <StatusBadge tone="warning" withDot compact>
-      Not recorded
+      {copy.notRecorded}
     </StatusBadge>
   );
 }
@@ -478,14 +503,18 @@ function MarginCell({
   line: OrderLineCost | null;
   currency: string | null;
 }): ReactElement {
-  if (!line) return <AbsentValue label="margin not available" />;
+  const copy = useMessages('orders').orderLineItems.cost;
+  const format = useFormat();
+  if (!line) return <AbsentValue label={copy.marginNotAvailable} />;
   if (line.margin !== null) {
-    return <span className="mono-text">{formatAmount(line.margin, currency ?? undefined)}</span>;
+    return <span className="mono-text">{format.money(line.margin, currency ?? undefined)}</span>;
   }
-  return <span className="text-muted">Not in margin</span>;
+  return <span className="text-muted">{copy.notInMargin}</span>;
 }
 
 function CostFootnote({ lines }: { lines: OrderLineCost[] }): ReactElement {
+  const copy = useMessages('orders').orderLineItems.cost;
+  const plural = usePlural();
   const missing = new Set(
     lines
       .filter((line) => line.gapReason === 'no-cost' && line.variantId !== null)
@@ -493,13 +522,12 @@ function CostFootnote({ lines }: { lines: OrderLineCost[] }): ReactElement {
   ).size;
   return (
     <p className="data-table__footnote" data-testid="order-line-cost-note">
-      Cost is taken from the product when the order arrives and never changes afterwards. Adding a
-      cost now will not change this order; it counts from the next one.
+      {copy.footnoteFrozen} {copy.footnoteNextOrder}
       {missing > 0 ? (
         <>
           {' '}
           <Link to="/products/cost-prices" data-testid="order-line-add-cost">
-            Add cost for {missing} {missing === 1 ? 'variant' : 'variants'}
+            {plural(missing, copy.addCost)}
           </Link>
         </>
       ) : null}

@@ -22,17 +22,22 @@
  */
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
+import { getOmsMessages, omsMessages } from './messages';
 
 export const omsPlugin: OpenLinkerPlugin = definePlugin({
   id: 'openlinker',
+  messages: omsMessages,
   platformType: 'openlinker',
   platform: {
     displayName: 'OpenLinker OMS',
     hideFromCreateConnection: true,
     setupCard: {
       title: 'OpenLinker OMS',
-      description:
-        'Pack and ship orders in OpenLinker instead of your shop. There is no account to connect: the setup creates it for you.',
+      // Getters, not values: the card is read at render, so the copy follows
+      // the active language instead of freezing at module load.
+      get description(): string {
+        return getOmsMessages().plugin.setupCard.description;
+      },
       to: '/settings/packing',
       badge: 'OMS',
       featured: true,

@@ -93,8 +93,8 @@ describe('AllegroSetupForm', () => {
     await advanceOneStep(container, 'Environment');
     expect(within(container).getByLabelText(/environment/i)).toBeInTheDocument();
 
-    await advanceOneStep(container, 'Product catalog');
-    expect(within(container).getByLabelText(/product catalog connection/i)).toBeInTheDocument();
+    await advanceOneStep(container, 'Product catalogue');
+    expect(within(container).getByLabelText(/product catalogue connection/i)).toBeInTheDocument();
 
     await advanceOneStep(container, 'Sales documents');
     expect(
@@ -115,7 +115,7 @@ describe('AllegroSetupForm', () => {
 
     fillCredentialsStep(container);
     await advanceOneStep(container, 'Environment');
-    await advanceOneStep(container, 'Product catalog');
+    await advanceOneStep(container, 'Product catalogue');
     await advanceOneStep(container, 'Sales documents');
     await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
@@ -131,7 +131,7 @@ describe('AllegroSetupForm', () => {
 
     fillCredentialsStep(container);
     await advanceOneStep(container, 'Environment');
-    await advanceOneStep(container, 'Product catalog');
+    await advanceOneStep(container, 'Product catalogue');
     await advanceOneStep(container, 'Sales documents');
     await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
@@ -150,7 +150,7 @@ describe('AllegroSetupForm', () => {
     const { container } = renderWithProviders(<AllegroSetupForm />, { apiClient });
     fillCredentialsStep(container);
     await advanceOneStep(container, 'Environment');
-    await advanceOneStep(container, 'Product catalog');
+    await advanceOneStep(container, 'Product catalogue');
     await advanceOneStep(container, 'Sales documents');
     await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
@@ -196,7 +196,7 @@ describe('AllegroSetupForm', () => {
     async function reachSalesDocuments(container: HTMLElement): Promise<void> {
       fillCredentialsStep(container);
       await advanceOneStep(container, 'Environment');
-      await advanceOneStep(container, 'Product catalog');
+      await advanceOneStep(container, 'Product catalogue');
       await advanceOneStep(container, 'Sales documents');
     }
 
@@ -276,7 +276,7 @@ describe('AllegroSetupForm', () => {
 
       fillCredentialsStep(container);
       await advanceOneStep(container, 'Environment');
-      await advanceOneStep(container, 'Product catalog');
+      await advanceOneStep(container, 'Product catalogue');
       await advanceOneStep(container, 'Review & connect');
       fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 
@@ -323,7 +323,7 @@ describe('AllegroSetupForm', () => {
     const { container } = renderWithProviders(<AllegroSetupForm />, { apiClient });
     fillCredentialsStep(container);
     await advanceOneStep(container, 'Environment');
-    await advanceOneStep(container, 'Product catalog');
+    await advanceOneStep(container, 'Product catalogue');
     await advanceOneStep(container, 'Sales documents');
     await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));

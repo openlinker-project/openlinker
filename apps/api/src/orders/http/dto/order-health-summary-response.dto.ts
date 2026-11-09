@@ -50,7 +50,8 @@ export class OrderHealthSummaryResponseDto {
       'attention-worthy way (#2703/#2704). ORTHOGONAL to the five health buckets and NOT part of ' +
       'the partition — such an order is also counted in exactly one of them — so this number must ' +
       'never be added to their sum. Counts the attention-worthy subset only: a deliberate ' +
-      '"routed-to-no-destination" decision is badged neutrally per order and never aggregated.',
+      '"routed-to-no-destination" decision and the "no-destination-configured" fact (#3959) are ' +
+      'badged neutrally per order and never aggregated.',
   })
   destinationRoutingBlocked!: number;
 
@@ -96,6 +97,13 @@ export class OrderHealthSummaryResponseDto {
       'returns side. A reason this build does not recognise is never counted.',
   })
   omsAttention!: number;
+
+  @ApiProperty({
+    description:
+      'Orders where a shop still shows the order unpaid and OpenLinker gave up sending the payment ' +
+      '(#3963). Its own axis, never inside the health partition.',
+  })
+  paymentNotSent!: number;
 
   @ApiProperty({
     nullable: true,

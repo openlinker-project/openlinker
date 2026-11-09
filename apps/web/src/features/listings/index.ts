@@ -14,8 +14,8 @@ export type { BulkBatchSummary, BulkBatchStatus } from './api/bulk-listings.type
 export {
   selectPublishDestinations,
   publishDestinationKind,
-  PUBLISH_DESTINATION_KIND_HINT,
-  PUBLISH_DESTINATION_GROUP_LABEL,
+  publishDestinationKindHint,
+  publishDestinationGroupLabel,
   PUBLISH_DESTINATION_KIND_ORDER,
   MARKETPLACE_PUBLISH_CAPABILITY,
   SHOP_PUBLISH_CAPABILITY,

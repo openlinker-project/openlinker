@@ -1,0 +1,631 @@
+{
+  "connectionRoleGap": "{name} has no role set under Connected providers yet. This rule will still route on its own, but {name} will show up on the destination-warnings list here until it has one.",
+  "countryReset": {
+    "acknowledgment": "the no-document acknowledgment",
+    "bothDefaults": "both country defaults",
+    "invoiceDefault": "the Invoice default",
+    "nothing": "nothing",
+    "receiptDefault": "the Receipt default",
+    "rules": {
+      "one": "{n} rule",
+      "other": "{n} rules"
+    },
+    "sentence": "This deletes {items} for {country}. This can't be undone."
+  },
+  "describeCondition": {
+    "hasTaxId": "customer has a tax ID",
+    "noTaxId": "customer has no tax ID",
+    "orderCountry": "order country is {country}",
+    "totalAtLeast": "total ≥ {amount}",
+    "totalAtLeastWithCurrency": "total ≥ {amount} {currency}",
+    "totalBelow": "total < {amount}",
+    "totalBelowWithCurrency": "total < {amount} {currency}"
+  },
+  "destinationWarnings": {
+    "issuesNothing": {
+      "one": "{name} is set to issue Nothing under Connected providers, so the rule naming it cannot route. Give it a role, or point it elsewhere.",
+      "other": "{name} is set to issue Nothing under Connected providers, so {n} rules naming it cannot route. Give it a role, or point them elsewhere."
+    },
+    "notActive": {
+      "archived": {
+        "one": "{name} is archived, so the rule naming it cannot route - auto-issuance only ever considers active connections. Restore it, or point it elsewhere.",
+        "other": "{name} is archived, so {n} rules naming it cannot route - auto-issuance only ever considers active connections. Restore it, or point them elsewhere."
+      },
+      "disabled": {
+        "one": "{name} is disabled, so the rule naming it cannot route - auto-issuance only ever considers active connections. Enable it, or point it elsewhere.",
+        "other": "{name} is disabled, so {n} rules naming it cannot route - auto-issuance only ever considers active connections. Enable it, or point them elsewhere."
+      },
+      "error": {
+        "one": "{name} is in an error state, so the rule naming it cannot route - auto-issuance only ever considers active connections. Fix the connection, or point it elsewhere.",
+        "other": "{name} is in an error state, so {n} rules naming it cannot route - auto-issuance only ever considers active connections. Fix the connection, or point them elsewhere."
+      },
+      "needsReauth": {
+        "one": "{name} needs reconnecting, so the rule naming it cannot route - auto-issuance only ever considers active connections. Reconnect it, or point it elsewhere.",
+        "other": "{name} needs reconnecting, so {n} rules naming it cannot route - auto-issuance only ever considers active connections. Reconnect it, or point them elsewhere."
+      }
+    },
+    "title": {
+      "one": "One destination cannot route",
+      "other": "{n} destinations cannot route"
+    },
+    "unknownConnection": {
+      "one": "{name} is not in your connections list, so the rule naming it cannot route. Refresh the page - if it stays, point it at a live provider.",
+      "other": "{name} is not in your connections list, so {n} rules naming it cannot route. Refresh the page - if it stays, point them at a live provider."
+    }
+  },
+  "documentKind": {
+    "both": "Both",
+    "fiscalReceipt": "Fiscal receipt",
+    "invoice": "Invoice",
+    "invoices": "Invoices",
+    "nothing": "Nothing",
+    "receipt": "Receipt",
+    "receipts": "Receipts"
+  },
+  "dryRun": {
+    "aggregate": "This order would be collected into a periodic batch, not issued a document immediately.",
+    "held": "This order would be held - nothing could decide a document for it.",
+    "kind": {
+      "destinationDecides": "a document its own destination decides",
+      "document": "a document",
+      "fiscalReceipt": "a fiscal receipt",
+      "invoice": "an invoice",
+      "other": "a {kind}"
+    },
+    "routeCandidate": "This order would get {kind} through {where} - via the rule you are drafting.",
+    "routeCountryDefault": "This order would get {kind} through {where} - via the country default at {where}.",
+    "routeSavedRule": "This order would get {kind} through {where} - via an already-saved rule at {where}.",
+    "unknownConnection": "(unknown)"
+  },
+  "fiscalReceiptDetailPage": {
+    "empty": "-",
+    "eyebrow": "Operations",
+    "fields": {
+      "connection": "Connection",
+      "documentReference": "Document reference",
+      "provider": "Provider",
+      "providerReference": "Provider reference",
+      "registered": "Registered"
+    },
+    "loadError": "Unable to load this fiscal receipt",
+    "loading": "Loading…",
+    "notFound": {
+      "back": "Back to sales documents",
+      "message": "This record does not exist, or you don't have access to it.",
+      "title": "Fiscal receipt not found"
+    },
+    "openOrder": "Open order",
+    "retry": "Retry",
+    "title": "Fiscal receipt"
+  },
+  "gateReasons": {
+    "bundle-split-unknown": {
+      "detail": "A set in this order contains items with different tax rates, but a rate or a price needed to split it is unknown, so nothing was issued. Fix the rate or price in the shop; the order is retried on its next update.",
+      "short": "Set cannot be split"
+    },
+    "line-total-mismatch": {
+      "detail": "The order's items do not add up to the total it reports, so no document can be issued automatically. A discount the marketplace applied to the whole order is the usual cause.",
+      "short": "Amounts do not add up"
+    },
+    "missing-required-tax-id": {
+      "detail": "This document needs the buyer tax ID, and the order does not have one.",
+      "short": "No buyer tax ID"
+    },
+    "missing-tax-rate": {
+      "detail": "Something on this order has no tax rate. Nothing is guessed here, so the document is held. Set the rate in your shop catalogue.",
+      "short": "Tax rate missing"
+    },
+    "tax-rate-conflict": {
+      "detail": "Your shop and the sales channel give different tax rates for a line. The shop rate is the one used.",
+      "short": "Tax rate conflict"
+    },
+    "trigger-model-batched": {
+      "detail": "This connection is set to issue in batches, and batched issuing is not available yet, so nothing was issued. Issue it by hand, or switch the connection to issue on payment.",
+      "short": "Batched"
+    },
+    "trigger-model-manual": {
+      "detail": "This provider only issues when you ask it to, so nothing was issued automatically.",
+      "short": "Issued on request"
+    },
+    "unresolved-routing": {
+      "detail": "Routing could not decide which document this order gets. Check the rules for its country.",
+      "short": "No routing"
+    }
+  },
+  "marketOutcome": {
+    "acknowledged": "No document, by choice",
+    "aggregate": "Collected, not yet issued",
+    "notSetUp": "Not set up",
+    "nothingIssued": "Nothing issued"
+  },
+  "marketSummary": {
+    "allSet": {
+      "one": "This market is issuing its documents.",
+      "other": "All {n} markets are issuing their documents."
+    },
+    "attention": {
+      "one": "{n} of {total} markets - {names} - issues nothing right now. Nothing is lost while it's unconfigured - set up routing to start issuing.",
+      "other": "{n} of {total} markets - {names} - issue nothing right now. Nothing is lost while they're unconfigured - set up routing to start issuing."
+    },
+    "freshInstall": {
+      "one": "Orders are arriving from {names}, and it has not been set up yet. Nothing is lost while it waits - set up routing when you're ready.",
+      "other": "Orders are arriving from {n} markets - {names} - and none has been set up yet. Nothing is lost while they wait - set up routing when you're ready."
+    },
+    "namesAndMore": "{names}, and {count} more",
+    "restOfWorld": "Rest of world"
+  },
+  "overlap": {
+    "clear": {
+      "amountRange": "This rule cannot match the same order as {rule} - no order total satisfies both.",
+      "buyerTaxId": "This rule cannot match the same order as {rule} - one wants a customer with a tax ID and the other a customer without one.",
+      "currency": "This rule cannot match the same order as {rule} - their currencies differ, and an amount is compared rather than converted.",
+      "effectiveWindow": "This rule cannot match the same order as {rule} - their effective periods never coincide.",
+      "generic": "This rule cannot match the same order as {rule}.",
+      "orderCountry": "This rule cannot match the same order as {rule} - they are scoped to different delivery countries."
+    },
+    "conflictRival": "{rule} can match the same order as this one.",
+    "consequence": "Two matching rules hold the order instead of one winning. Narrow one of them.",
+    "ruleByConditions": "\"{conditions}\"",
+    "ruleById": "rule {ruleId}",
+    "undecided": {
+      "generic": "We could not tell whether this rule collides with {rule} - this version could not compare the two.",
+      "multiCurrencyRule": "We could not tell whether this rule collides with {rule} - one of the two bounds the total in more than one currency, which matches no order at all.",
+      "unreadableCondition": "We could not tell whether this rule collides with {rule} - it carries a condition this version does not understand. Open it and check what it says."
+    }
+  },
+  "recordWord": {
+    "atClearance": "At clearance",
+    "clearanceRejected": "Rejected at clearance",
+    "failed": "Failed",
+    "issued": "Issued",
+    "issuing": "Issuing",
+    "needsReview": "Needs review",
+    "queued": "Queued",
+    "registered": "Registered",
+    "registering": "Registering",
+    "rejected": "Rejected",
+    "unconfirmed": "Unconfirmed",
+    "unrecognised": "Unrecognised status"
+  },
+  "ruleDraft": {
+    "conditionsBetween": "an order where {conditions} gets {kind} through {where}, between {from} and {to}.",
+    "conditionsOpen": "an order where {conditions} gets {kind} through {where}, from {from} onwards.",
+    "everyOrderBetween": "every order gets {kind} through {where}, between {from} and {to}.",
+    "everyOrderOpen": "every order gets {kind} through {where}, from {from} onwards.",
+    "kind": {
+      "invoice": "an invoice",
+      "other": "a {kind}",
+      "receipt": "a receipt"
+    },
+    "noConnection": "(no integration selected)"
+  },
+  "salesDocumentCountryDefaults": {
+    "eyebrow": "If no rule matched",
+    "eyebrowSaving": "If no rule matched - Saving…",
+    "loadError": "Unable to load default",
+    "loading": {
+      "message": "Fetching the country default…",
+      "title": "Loading default"
+    },
+    "noCandidates": "No connection has a role here yet - give one under Connected providers.",
+    "nothingOption": "Nothing - hold the order",
+    "option": "{kind} · {name}",
+    "optionStale": "{kind} · {name} (no longer eligible)",
+    "optionsHint": "Options: <b>Nothing - hold the order</b>, or any one connection with a role.",
+    "readback": {
+      "heading": "Which means",
+      "held": "An order in <b>{country}</b> matching none of the rules above has no fallback here and is <b>held</b>.",
+      "invoice": "An order in <b>{country}</b> matching none of the rules above gets an <b>{kind}</b> through <b>{connection}</b>.",
+      "receipt": "An order in <b>{country}</b> matching none of the rules above gets a <b>{kind}</b> through <b>{connection}</b>."
+    },
+    "restOfWorld": "★ Rest of world",
+    "unknownError": "Unknown error"
+  },
+  "salesDocumentCountryRoutingDialog": {
+    "acknowledged": {
+      "body": "Acknowledged - <time></time>.",
+      "title": "No sales document, by design",
+      "undo": "Undo"
+    },
+    "back": "← Back to {country}",
+    "done": "Done",
+    "leave": {
+      "cancel": "Go back",
+      "confirm": "Confirm - nothing needed here",
+      "description": "No rule or default is set for this market, so every {country} order is held with nothing issued. If that's intentional - for example the marketplace already fiscalizes on your behalf - confirm it below. OpenLinker still won't decide what's legally required; this only stops flagging {country} as something to review.",
+      "title": "Leave {country} unconfigured?"
+    },
+    "reset": {
+      "button": "Reset country",
+      "confirm": "Yes, reset",
+      "title": "Reset {country}?",
+      "warning": "Resetting deletes every rule and default configured for {country} here in OpenLinker. It does not touch anything at the provider - no invoice or receipt already issued is affected."
+    },
+    "resetFailed": "Failed to reset country",
+    "restOfWorld": "★ Rest of world",
+    "saveNote": "Every control here saves as you change it - there is nothing to submit.",
+    "tiers": {
+      "countryDefault": "Country default",
+      "fallsThrough": "Falls through to ★ Rest of world",
+      "rules": "Rules",
+      "unmatchedHeld": "An unmatched order is held",
+      "unmatchedLoading": "What happens to an unmatched order",
+      "unresolved": "Unresolved"
+    },
+    "title": "Sales-document routing · {country}",
+    "unmatched": {
+      "fallsThrough": "{country} has no rules and no default, so an order delivered here goes to <mono>★ Rest of world</mono>'s own rules and defaults.",
+      "held": "{country} has its own routing, so an order that matches nothing here is <strong>held</strong>. It does <strong>not</strong> go to <mono>★ Rest of world</mono> - only a market with no rules and no default at all falls through there.",
+      "loading": "Reading this market's rules and defaults…",
+      "openRestOfWorld": "Open ★ Rest of world's routing →"
+    },
+    "unresolved": {
+      "fallsThrough": "If ★ Rest of world also has no matching rule or default, the order is reported unresolved.",
+      "held": "The order is held, as stated above - it is never passed to ★ Rest of world once this country has any rule or default of its own.",
+      "loading": "What happens here depends on whether this market has any routing of its own - reading that now.",
+      "restOfWorld": "If nothing above matches, the order has no configured fallback left and is reported unresolved."
+    }
+  },
+  "salesDocumentListCell": {
+    "clearance": "Clearance",
+    "dupeMany": {
+      "one": "{n} document exists for this order",
+      "other": "{n} documents exist for this order"
+    },
+    "dupeSecond": "A second document exists for this order",
+    "dupeWarn": "{dupe}.",
+    "headline": "{kind} · {word}",
+    "number": "Number",
+    "openOrder": "Open order",
+    "provider": "Provider",
+    "providerWithType": "{name} ({type})",
+    "regulatory": {
+      "accepted": "Accepted",
+      "cleared": "Clearing",
+      "not-applicable": "N/A",
+      "pending-submission": "Awaiting submission",
+      "rejected": "Rejected",
+      "submitted": "Submitted"
+    },
+    "spokenState": "{kind}: {word}",
+    "spokenWithDupe": "{state}. {dupe}",
+    "viewDocument": "View document →"
+  },
+  "salesDocumentMarketRow": {
+    "configure": "Configure",
+    "meta": "{orders}, {rules}",
+    "needsAttention": "Needs attention",
+    "orders": {
+      "one": "{n} order",
+      "other": "{n} orders"
+    },
+    "ordersInWindow": {
+      "one": "{n} order in the last {days} days",
+      "other": "{n} orders in the last {days} days"
+    },
+    "reasonWithTemplate": "{reason} · Starter setup available",
+    "restOfWorld": "★ Rest of world",
+    "rulesConfigured": {
+      "one": "{n} rule configured",
+      "other": "{n} rules configured"
+    },
+    "setUp": "Set up"
+  },
+  "salesDocumentMarketSection": {
+    "empty": {
+      "message": "Markets appear here on their own as orders arrive from a new country. There's nothing to configure until then.",
+      "title": "No markets yet"
+    },
+    "filters": {
+      "active": "Recent orders",
+      "all": "All markets",
+      "attention": "Needs a decision",
+      "configured": "Configured, no recent orders",
+      "label": "Filter markets"
+    },
+    "listLabel": "Sales-document markets",
+    "loadError": "Unable to load markets",
+    "noMatches": "No markets match this filter.",
+    "refreshing": "Refreshing markets…",
+    "retry": "Retry"
+  },
+  "salesDocumentMarketSectionSkeleton": {
+    "loading": "Loading markets…"
+  },
+  "salesDocumentRuleComposerDialog": {
+    "cancel": "Cancel",
+    "checking": "Checking…",
+    "conditions": {
+      "add": "+ Add condition",
+      "amountLabel": "Order total amount",
+      "atLeast": "≥",
+      "below": "<",
+      "comparisonLabel": "Order total comparison",
+      "countryValueLabel": "Order country value",
+      "currencyLabel": "Order total currency",
+      "fieldLabel": "Condition field",
+      "fields": {
+        "buyerHasTaxId": "Buyer has a tax ID",
+        "orderCountry": "Order country is",
+        "orderTotalGross": "Order total (gross)"
+      },
+      "heading": "Conditions",
+      "intro": "Every added condition must ALL be true for this rule to match (AND).",
+      "no": "no",
+      "taxIdValueLabel": "Buyer has a tax ID value",
+      "yes": "yes"
+    },
+    "conflict": {
+      "showRule": "Show that rule",
+      "title": "This could match the same order as an existing rule"
+    },
+    "destination": {
+      "documentType": "Document type",
+      "heading": "Document & destination",
+      "integration": "Integration",
+      "roleGapTitle": "This connection has no role yet",
+      "selectConnection": "Select a connection…"
+    },
+    "footnote": "The underlying <mono>field</mono> is one closed, cross-country vocabulary - never a country-specific string.",
+    "overlapUnavailable": {
+      "body": "This rule has not been compared against the others in this market. Saving is still allowed, and an order matched by two rules is held rather than given the wrong document.",
+      "title": "We could not run the overlap check"
+    },
+    "placeholders": {
+      "amount": "450.00",
+      "country": "e.g. PL",
+      "currency": "PLN"
+    },
+    "readback": {
+      "currencyHint": "Orders priced in another currency do not match this rule.",
+      "heading": "This rule says"
+    },
+    "sample": {
+      "amountLabel": "Sample order total amount",
+      "countryLabel": "Sample order delivery country",
+      "currencyLabel": "Sample order currency",
+      "gross": "Gross-priced (VAT included)",
+      "heading": "Sample order",
+      "ignoresWindow": "This test ignores the effective window above and checks the rule's conditions only.",
+      "net": "Net-priced (VAT excluded)",
+      "pricingHint": "An amount-threshold condition can only be compared against a gross-priced order - pick net-priced to see how the rule holds an order it cannot evaluate.",
+      "pricingLabel": "Sample order pricing",
+      "run": "Run test",
+      "taxIdLabel": "Sample order buyer has a tax ID",
+      "taxIdNone": "Buyer tax ID: none",
+      "taxIdPresent": "Buyer tax ID: present",
+      "taxIdUnknown": "Buyer tax ID: unknown",
+      "testing": "Testing…",
+      "toggle": "Test with a sample order"
+    },
+    "save": "Save rule",
+    "saveHint": {
+      "checking": "Checking this draft against the other rules in this market…",
+      "incomplete": "Finish every condition before saving - an amount needs a number and a three-letter currency, and a country needs a code.",
+      "mixedCurrencies": "This rule bounds the order total in more than one currency, so it would never match an order. Use one currency."
+    },
+    "saving": "Saving…",
+    "taxIdCaveat": "Only some sources report this today: an order from a shop that records the buyer's VAT number carries a real tax-ID status (present, or explicitly none). Orders from other sources report neither - this condition will never match those, and the order falls through to the next tier instead.",
+    "taxIdCaveatLabel": "Coverage caveat for this condition",
+    "title": "Add rule",
+    "undecidedTitle": "We could not check every rule",
+    "window": {
+      "from": "Effective from",
+      "heading": "Effective window",
+      "to": "Effective to <muted>(optional)</muted>"
+    }
+  },
+  "salesDocumentRuleEnginePanel": {
+    "addMarket": "Add a market",
+    "alreadyListed": "Already in the list above",
+    "description": "Legal responsibility for what a sale requires stays with the operator - OpenLinker executes the configured routing, it doesn't decide tax obligations.",
+    "eyebrow": "Sales documents routing",
+    "newMarketLabel": "New market country",
+    "restOfWorld": {
+      "configure": "Configure →",
+      "description": "The catch-all every unconfigured market above falls through to.",
+      "title": "★ Rest of world"
+    },
+    "searchPlaceholder": "Search a country…",
+    "title": "What each market issues"
+  },
+  "salesDocumentRulesList": {
+    "addRule": "+ Add rule",
+    "delete": "Delete",
+    "deleting": "Deleting…",
+    "empty": "No rules yet for this country.",
+    "endsOn": "ends {date}",
+    "heading": "Rules for {country}",
+    "intro": "Exactly one rule must match an order. Rules have no order of priority - if two match, the order is held instead of one winning.",
+    "loadError": "Unable to load rules",
+    "loading": {
+      "message": "Fetching rules for this country…",
+      "title": "Loading rules"
+    },
+    "noEndDate": "no end date",
+    "provenance": "from: {provenance}",
+    "restOfWorld": "★ Rest of world",
+    "result": "{kind} · {connection}",
+    "taxIdTag": {
+      "label": "tax-ID-aware sources only",
+      "title": "Matches only when the order's source recorded a buyer tax ID - conditionally for every source"
+    },
+    "taxIdWarning": "A buyer-tax-ID condition matches only an order whose source actually recorded that fact. A shop reports it only when the buyer filled in a VAT number on the address; a marketplace reports it only when the buyer requested a VAT invoice; some shops report it only if they run a supported VAT-number plugin. An order whose source didn't assert a tax ID never matches this rule.",
+    "unknownError": "Unknown error"
+  },
+  "salesDocumentTemplateScreen": {
+    "adopt": "Review & adopt",
+    "adopting": "Adopting…",
+    "badge": "Suggested starter template",
+    "connectionFor": "Connection for {rule}",
+    "dismiss": "Start from scratch instead",
+    "hint": "A ready-made rule set for {country} - click to review",
+    "loading": "Checking for a starter template",
+    "selectFiscalization": "Select a fiscal receipt connection…",
+    "selectInvoicing": "Select an invoicing connection…",
+    "source": "Sourced from public guidance - <link>{source}</link>",
+    "taxIdWarning": "Every rule above keys off whether the buyer has a tax ID - a fact only some sources report. A shop reports it only when the buyer filled in a VAT number on the address; a marketplace reports it only when the buyer requested a VAT invoice; some shops report it only if they run a supported VAT-number plugin. An order whose source didn't assert a tax ID never matches these rules."
+  },
+  "salesDocumentsListPage": {
+    "columns": {
+      "amount": "Amount",
+      "connection": "Connection",
+      "created": "Created",
+      "kind": "Kind",
+      "order": "Order",
+      "status": "Status"
+    },
+    "description": "Every issued invoice and registered fiscal receipt across connections, in one place.",
+    "empty": {
+      "filtered": "No documents match the current filters. Try clearing some filters.",
+      "none": "No invoices or fiscal receipts have been issued yet.",
+      "title": "No sales documents found"
+    },
+    "end": {
+      "back": "Back",
+      "message": "You've reached the end of this list.",
+      "title": "No more documents"
+    },
+    "eyebrow": "Operations",
+    "filters": {
+      "allConnections": "All connections",
+      "allKinds": "All kinds",
+      "allStatuses": "All statuses",
+      "allTaxIds": "All buyer tax IDs",
+      "connection": "Filter by connection",
+      "issuedFrom": "Issued from",
+      "issuedTo": "Issued to",
+      "kind": "Filter by kind",
+      "search": "Search",
+      "searchPlaceholder": "Order id, document number…",
+      "status": "Filter by status",
+      "taxId": "Filter by buyer tax ID",
+      "withTaxId": "With tax ID",
+      "withoutTaxId": "Without tax ID"
+    },
+    "loadError": "Unable to load sales documents",
+    "loading": "Loading sales documents…",
+    "manageInvoices": "Manage invoices",
+    "manageRouting": "Manage routing",
+    "next": "Next",
+    "previous": "Previous",
+    "retry": "Retry",
+    "showing": "Showing {count}",
+    "status": {
+      "failed": "Failed",
+      "issued": "Issued",
+      "issuing": "Issuing",
+      "pending": "Pending",
+      "registered": "Registered",
+      "registering": "Registering"
+    },
+    "title": "Sales documents"
+  },
+  "salesDocumentsPanel": {
+    "capability": {
+      "Both": "Both",
+      "Fiscalization": "Fiscalization",
+      "Invoicing": "Invoicing"
+    },
+    "conflict": {
+      "ambiguousNoPrimary": {
+        "body": "Several connections issue a sales document but none is primary, so OpenLinker issues nothing for new orders. Pick exactly one below.",
+        "title": "No connection is marked primary"
+      },
+      "multiplePrimaries": {
+        "body": "Until you pick one, OpenLinker issues nothing for new orders. Picking for you would mean guessing, and a wrong document is a legal problem, not a data problem.",
+        "title": "Two or more connections are set to issue"
+      }
+    },
+    "empty": {
+      "message": "Turn on invoicing or fiscal receipts for a connection to configure what it issues here.",
+      "title": "No sales-document connections yet"
+    },
+    "intro": "What each connection may issue, whether it goes first, and when. Only one connection may go first across ALL of them, whatever it issues - the Primary column is a single choice, not one per row. A connection with nothing set here is not a routing candidate at all.",
+    "issuesLabel": "Document {name} issues",
+    "loadError": "Unable to load connections",
+    "loading": {
+      "message": "Fetching invoicing and fiscal receipt connections…",
+      "title": "Loading connections"
+    },
+    "needsReconnect": "Cannot issue until reconnected",
+    "notCandidate": "Not a routing candidate",
+    "notPrimary": "-",
+    "primary": "Primary",
+    "primaryLabel": "Mark {name} as the primary sales-document connection",
+    "retry": "Retry",
+    "status": {
+      "active": "Active",
+      "archived": "Archived",
+      "disabled": "Disabled",
+      "error": "Error",
+      "needs_reauth": "Needs reconnecting"
+    },
+    "table": {
+      "capability": "Capability",
+      "caption": "Connections and the document each issues, with the single primary connection",
+      "issues": "Issues",
+      "label": "Sales-document routing per connection",
+      "primary": "Primary",
+      "provider": "Provider",
+      "status": "Status",
+      "trigger": "Trigger"
+    },
+    "title": "Connected providers",
+    "triggerHint": "Trigger is greyed out for a non-primary row since the timing choice does not matter until a connection is actually the one issuing.",
+    "triggerLabel": "When {name} issues"
+  },
+  "salesDocumentsTile": {
+    "adminOnly": "Admin only",
+    "conflict": "Conflicting primary configuration - needs attention.",
+    "connections": "Connections",
+    "description": "Which connection issues invoices or fiscal receipts, and which one issues first.",
+    "eyebrow": "Fiscal",
+    "manage": "Manage routing",
+    "title": "Sales documents routing"
+  },
+  "taxIdCoverage": {
+    "ruleCount": {
+      "one": "{n} rule reads the buyer's tax ID",
+      "other": "{n} rules read the buyer's tax ID"
+    }
+  },
+  "unresolvedReasons": {
+    "ambiguous-connection-no-primary": {
+      "detail": "More than one setup could issue this document and nothing chooses between them: either this country has both an invoice default and a receipt default, or several providers can issue and none is marked to go first. Keep one of them, or add a rule that decides.",
+      "short": "Two setups apply"
+    },
+    "conflicting-rules-equal-priority": {
+      "detail": "Two or more rules matched this order. Rules have no order of priority, so nothing picks a winner and the order is held. Narrow the conditions until only one rule can match.",
+      "short": "Two rules matched"
+    },
+    "net-priced-order": {
+      "detail": "A rule compares the order total, but this order is priced net. The comparison cannot be made, so the order is held.",
+      "short": "Order is net-priced"
+    },
+    "no-configuration-for-country": {
+      "detail": "Neither this country nor Rest of world has a rule or a default. Nothing is issued here, and nothing will be until you set routing.",
+      "short": "No routing anywhere"
+    },
+    "no-connection-declares-document-kind": {
+      "detail": "This system can issue documents, but no connection says which kind it should issue. Pick one in Settings, Sales documents routing, and orders start getting invoices.",
+      "short": "No document kind set"
+    },
+    "no-matching-rule": {
+      "detail": "No rule here matched this order, and there is no single default to fall back on. The order is held. It does not pass to Rest of world.",
+      "short": "No rule matched"
+    },
+    "routed-connection-unavailable": {
+      "detail": "Your routing sends this order to a connection that is turned off, has been removed, or can no longer issue this document, so nothing was issued. Turn that connection back on, or point the rule at another connection.",
+      "short": "Connection unavailable"
+    },
+    "threshold-currency-mismatch": {
+      "detail": "A rule sets its limit in a different currency from this order. Amounts are never converted when routing decides, so the order is held.",
+      "short": "Currency does not match"
+    },
+    "unsupported-document-kind-on-connection": {
+      "detail": "Routing picked a document this provider cannot issue. Choose a provider that issues this kind.",
+      "short": "Provider cannot issue this"
+    }
+  }
+}

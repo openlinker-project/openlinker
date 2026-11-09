@@ -18,8 +18,9 @@ import type {
   OfferRowValidationInput,
   SuppliedParameterLike,
 } from '../../../../shared/plugins';
+import { getMessages, interpolate } from '../../../../shared/i18n';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
-import type { EanMatchResult } from '../../api/listings.types';
+import type { EanMatchResult, OfferParameter } from '../../api/listings.types';
 import { collapseToInvalidBarcode } from './bulk-blockers';
 import type {
   BulkRowBlocker,
@@ -174,6 +175,12 @@ export function stockPolicyEquals(a: StockPolicy, b: StockPolicy): boolean {
 export interface ComputeBlockersInput {
   hasVariant: boolean;
   /**
+   * A catalogue card matched in a different category than the operator's
+   * mapping and the operator has not picked a category since (#3994). Emits the
+   * advisory `card-category-differs` chip; never gates the row.
+   */
+  cardInOtherCategory?: boolean;
+  /**
    * Per-variant category outcome. The Resolve step synthesizes `{ kind: 'no-ean' }`
    * for variant rows without a barcode (no BE call); `undefined` is treated
    * defensively as `no-match`.
@@ -247,10 +254,22 @@ export interface ComputeBlockersInput {
   categoryParameters?: readonly CategoryParameterLike[];
   /** Parameters the OPERATOR supplied for this row (#2243). */
   suppliedParameters?: readonly SuppliedParameterLike[];
+  /**
+   * Parameters the connection's attribute mappings and rules will fill at
+   * publish (#3995), from the server-side projection preview - only values the
+   * destination accepts, never a dictionary miss. They satisfy the
+   * required-parameter check exactly like an operator value: the publish sends
+   * them unless the operator set the same parameter, in which case the operator
+   * value wins. Absent = no preview (not loaded, or failed), which counts as
+   * nothing filled - a preview we do not have must never clear the check.
+   */
+  projectedParameters?: readonly OfferParameter[];
   /** Effective barcode for the row - operator override, else the master's (#2243). */
   barcode?: string | null;
   /** Whether a catalogue lookup actually ran for this batch (#2211/#2243). */
   catalogueConsulted?: boolean;
+  /** The barcode matched a catalogue product that was set aside for the mapping (#3994). */
+  barcodeMatchedCatalogue?: boolean;
   /** Included siblings of this row's product that would create their own card (#2243). */
   siblingsWithoutCatalogueCard?: number;
   /** Included sibling count for the row's product; 1 ⇒ nothing to group (#2243). */
@@ -272,6 +291,9 @@ export interface ComputeBlockersInput {
 export function computeNeedsProductParameters(input: ComputeBlockersInput): boolean {
   if (input.willLinkProductCard || !input.requiredProductParamIds?.length) return false;
   const supplied = suppliedProductParamIds(input.override);
+  for (const p of input.projectedParameters ?? []) {
+    if (p.section === 'product') supplied.add(p.id);
+  }
   return input.requiredProductParamIds.some((id) => !supplied.has(id));
 }
 
@@ -311,6 +333,13 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
     }
   }
 
+  // Advisory, independent of `hasCategoryOverride`: a multi-variant sibling
+  // always carries the product-tier category, which would otherwise hide the
+  // disagreement on exactly the rows where a card was set aside (#3994).
+  if (input.cardInOtherCategory) {
+    blockers.push('card-category-differs');
+  }
+
   // Platform-specific blockers (#1096) - declared once per marketplace via its
   // `offerValidation` contribution and emitted as open-world namespaced ids
   // (e.g. `allegro:needs-product-parameters` (#810), `erli:missing-image`). The
@@ -325,9 +354,13 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
         willLinkProductCard: input.willLinkProductCard ?? false,
         title: input.effectiveTitle ?? '',
         categoryParameters: input.categoryParameters,
-        suppliedParameters: input.suppliedParameters,
+        suppliedParameters: effectiveSuppliedParameters(
+          input.suppliedParameters,
+          input.projectedParameters,
+        ),
         barcode: input.barcode,
         catalogueConsulted: input.catalogueConsulted,
+        barcodeMatchedCatalogue: input.barcodeMatchedCatalogue,
         siblingsWithoutCatalogueCard: input.siblingsWithoutCatalogueCard,
         includedSiblingCount: input.includedSiblingCount,
       }),
@@ -360,6 +393,23 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
   }
 
   return blockers;
+}
+
+/**
+ * The parameters the publish will actually send for a row (#3995): projected
+ * values from mappings and rules, with the operator's own value winning per
+ * parameter id - the same merge `OfferBuilderService` performs. The platform's
+ * value checks read this so a bound a rule's value breaks is caught here too.
+ */
+function effectiveSuppliedParameters(
+  supplied: readonly SuppliedParameterLike[] | undefined,
+  projected: readonly OfferParameter[] | undefined,
+): readonly SuppliedParameterLike[] | undefined {
+  if (!projected?.length) return supplied;
+  const byId = new Map<string, SuppliedParameterLike>();
+  for (const p of projected) byId.set(p.id, p);
+  for (const p of supplied ?? []) byId.set(p.id, p);
+  return Array.from(byId.values());
 }
 
 /**
@@ -479,6 +529,13 @@ export interface PreflightContext {
   schemaByCategory?: Map<string, readonly CategoryParameterLike[]>;
   failedCategoryIds?: readonly string[];
   catalogueConsulted?: boolean;
+  /**
+   * Accepted projected parameters per variant id, from the attribute rule
+   * preview (#3995). Keyed by variant AND checked against the category the
+   * preview ran for, so a variant whose category changed since is not credited
+   * with values computed for the old one.
+   */
+  projectedByVariant?: ReadonlyMap<string, { categoryId: string; parameters: readonly OfferParameter[] }>;
 }
 
 /**
@@ -599,14 +656,15 @@ export function effectiveVariantEan(variant: BulkVariantRow): string | null {
  * usable distinguishing attribute (never the raw variant id - plan §8).
  */
 export function distinguishingLabel(variant: BulkVariantRow, index: number): string {
+  const copy = getMessages('listings').bulkPolicy;
   const attrs = variant.distinguishingAttributes;
   if (attrs) {
     const parts = Object.entries(attrs)
       .filter(([, v]) => typeof v === 'string' && v.trim() !== '')
-      .map(([k, v]) => `${k}: ${String(v)}`);
+      .map(([k, v]) => interpolate(copy.attributePair, { name: k, value: String(v) }));
     if (parts.length > 0) return parts.join(' · ');
   }
-  return `Variant ${index + 1}`;
+  return interpolate(copy.variantFallback, { n: index + 1 });
 }
 
 /**
@@ -673,6 +731,42 @@ export function productCategoryIdOf(row: BulkWizardRow): string | null {
 }
 
 /**
+ * The category one sibling would actually submit under (#2240): a per-variant
+ * override wins, then the product-tier value the family pin uses, then the
+ * variant's own resolution. Shared by the readiness check and the Review step's
+ * Category column (#3994), so what the row shows is what the submit sends.
+ */
+export function submitCategoryIdOf(row: BulkWizardRow, variant: BulkVariantRow): string | null {
+  return variant.override.overrides?.categoryId ?? productCategoryIdOf(row) ?? variant.resolvedCategoryId;
+}
+
+/**
+ * Whether the operator picked this variant's category in the wizard (#3994) -
+ * on the variant itself or at the product tier. Deliberately NOT
+ * `productCategoryIdOf`, which also returns the RESOLVED category: a resolved
+ * value is what the chip questions, so it cannot also be what silences it.
+ */
+export function operatorPickedCategory(row: BulkWizardRow, variant: BulkVariantRow): boolean {
+  return Boolean(variant.override.overrides?.categoryId || row.override.overrides?.categoryId);
+}
+
+/**
+ * The projected parameters a variant may be credited with (#3995): only when
+ * the preview ran for the category the variant will actually submit under.
+ * A preview for a stale category answers a different question - a rule scoped
+ * to the old category may not apply to the new one.
+ */
+export function projectedFor(
+  context: PreflightContext,
+  variantId: string,
+  submitCategoryId: string | null,
+): readonly OfferParameter[] | undefined {
+  const entry = context.projectedByVariant?.get(variantId);
+  if (!entry || submitCategoryId === null || entry.categoryId !== submitCategoryId) return undefined;
+  return entry.parameters;
+}
+
+/**
  * Recompute one sibling's blocker set from its own EAN + master values + the
  * batch policies (#1741). Mirrors `recomputeRowBlockers` but keyed on the
  * per-variant row. `no-master-stock` is downgraded for multi-variant siblings -
@@ -696,12 +790,12 @@ export function recomputeVariantBlockers(
   // did before #2240 - made the shared category unable to clear a sibling's
   // blocker even though the submit was about to pin it.
   const productCategoryId = productCategoryIdOf(row);
-  const submitCategoryId =
-    variant.override.overrides?.categoryId ?? productCategoryId ?? variant.resolvedCategoryId;
+  const submitCategoryId = submitCategoryIdOf(row, variant);
   const coverage = siblingCardCoverage(row);
   const blockers = computeBlockers({
     hasVariant: true,
     categoryResult: variantCategoryResult(variant, submitCategoryId),
+    cardInOtherCategory: variant.overriddenCard !== null && !operatorPickedCategory(row, variant),
     productCategoryId,
     // Per-product policy (on the shared-base override) wins over the batch (#1741).
     pricingPolicy: effectivePricingPolicy(row.override, config.pricingPolicy),
@@ -724,8 +818,10 @@ export function recomputeVariantBlockers(
       ? context.schemaByCategory?.get(submitCategoryId)
       : undefined,
     suppliedParameters: variant.override.overrides?.parameters,
+    projectedParameters: projectedFor(context, variant.variantId, submitCategoryId),
     barcode: effectiveVariantEan(variant),
     catalogueConsulted: context.catalogueConsulted,
+    barcodeMatchedCatalogue: variant.overriddenCard !== null,
     siblingsWithoutCatalogueCard: coverage.withoutCard,
     includedSiblingCount: coverage.included,
     categorySchemaUnavailable:

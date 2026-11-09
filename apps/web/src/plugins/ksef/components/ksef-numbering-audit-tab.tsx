@@ -1,5 +1,5 @@
 /**
- * KSeF numbering — Number audit tab
+ * KSeF numbering - Number audit tab
  *
  * A read model of a series' allocated-vs-issued sequence, with gap rows
  * highlighted. For an unexplained gap the operator can record a written
@@ -28,7 +28,9 @@ import { Textarea } from '../../../shared/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '../../../shared/ui/dialog';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
+import { interpolate, renderRich, useFormat } from '../../../shared/i18n';
+import { useKsefMessages } from '../messages';
 import { SEQ_STATUS_LABELS, SEQ_STATUS_TONES } from './ksef-numbering.lib';
 import { KsefOswiadczenieDocument } from './ksef-oswiadczenie-document';
 import { readKsefSellerProfile, type KsefOswiadczenieContent } from '../lib/ksef-oswiadczenie';
@@ -58,6 +60,8 @@ export function KsefNumberingAuditTab({
   connectionId,
   readOnly,
 }: KsefNumberingAuditTabProps): ReactElement {
+  const copy = useKsefMessages().ksefNumberingAuditTab;
+  const format = useFormat();
   const seriesQuery = useNumberingSeriesListQuery();
   const connectionQuery = useConnectionQuery(connectionId);
   const [seriesId, setSeriesId] = useState<string>('');
@@ -75,14 +79,14 @@ export function KsefNumberingAuditTab({
   }, [seriesId, seriesQuery.data]);
 
   if (seriesQuery.isLoading) {
-    return <LoadingState title="Loading series" message="Fetching numbering series…" />;
+    return <LoadingState title={copy.loadingSeries.title} message={copy.loadingSeries.message} />;
   }
   const series = seriesQuery.data ?? [];
   if (series.length === 0) {
     return (
       <EmptyState
-        title="No series to audit"
-        message="Create a numbering series first — the audit shows its allocated-vs-issued sequence."
+        title={copy.empty.title}
+        message={copy.empty.message}
       />
     );
   }
@@ -100,7 +104,7 @@ export function KsefNumberingAuditTab({
       <div className="numbering-audit__toolbar">
         <div className="numbering-audit__picker">
           <label className="sr-only" htmlFor="numbering-audit-series">
-            Series to audit
+            {copy.seriesPickerLabel}
           </label>
           <Select
             id="numbering-audit-series"
@@ -109,7 +113,7 @@ export function KsefNumberingAuditTab({
           >
             {series.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.name} — {s.pattern}
+                {interpolate(copy.seriesOption, { name: s.name, pattern: s.pattern })}
               </option>
             ))}
           </Select>
@@ -120,53 +124,55 @@ export function KsefNumberingAuditTab({
             checked={onlyGaps}
             onChange={(event) => setOnlyGaps(event.target.checked)}
           />
-          <span>Only gaps</span>
+          <span>{copy.onlyGaps}</span>
         </label>
       </div>
 
       {auditQuery.isLoading ? (
-        <LoadingState title="Loading audit" message="Building the sequence audit…" />
+        <LoadingState title={copy.loadingAudit.title} message={copy.loadingAudit.message} />
       ) : auditQuery.error ? (
         <ErrorState
-          title="Unable to load the audit"
+          title={copy.loadError}
           message={auditQuery.error.message}
           action={
             <Button tone="secondary" onClick={() => void auditQuery.refetch()}>
-              Retry
+              {copy.retry}
             </Button>
           }
         />
       ) : audit ? (
         <>
           <p className="numbering-audit__summary">
-            <span className="mono-text tabular">{audit.summary.issuedCount}</span> issued ·{' '}
-            <span className="mono-text tabular">{audit.summary.gapCount}</span> gaps (
-            <span className="mono-text tabular">{audit.summary.explainedGapCount}</span> explained) ·{' '}
-            <span className="mono-text tabular">{audit.summary.abandonedCount}</span> abandoned ·{' '}
-            <span className="mono-text tabular">{audit.summary.skippedCount}</span> skipped ·{' '}
-            <span className="mono-text tabular">{audit.summary.pendingCount}</span> pending
+            {renderRich(
+              copy.summary,
+              { num: (text) => <span className="mono-text tabular">{text}</span> },
+              {
+                issued: format.number(audit.summary.issuedCount),
+                gaps: format.number(audit.summary.gapCount),
+                explained: format.number(audit.summary.explainedGapCount),
+                abandoned: format.number(audit.summary.abandonedCount),
+                skipped: format.number(audit.summary.skippedCount),
+                pending: format.number(audit.summary.pendingCount),
+              },
+            )}
           </p>
 
           {audit.entries.length === 0 ? (
             <EmptyState
-              title={onlyGaps ? 'No gaps' : 'No entries'}
-              message={
-                onlyGaps
-                  ? 'This series has no numbering gaps.'
-                  : 'This series has not allocated any numbers yet.'
-              }
+              title={onlyGaps ? copy.noGaps.title : copy.noEntries.title}
+              message={onlyGaps ? copy.noGaps.message : copy.noEntries.message}
             />
           ) : (
             <div className="numbering-table-wrap">
               <table className="numbering-table numbering-audit__table">
                 <thead>
                   <tr>
-                    <th scope="col">Seq</th>
-                    <th scope="col">Number</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Explanation</th>
+                    <th scope="col">{copy.columns.seq}</th>
+                    <th scope="col">{copy.columns.number}</th>
+                    <th scope="col">{copy.columns.status}</th>
+                    <th scope="col">{copy.columns.explanation}</th>
                     <th scope="col">
-                      <span className="sr-only">Actions</span>
+                      <span className="sr-only">{copy.columns.actions}</span>
                     </th>
                   </tr>
                 </thead>
@@ -189,20 +195,20 @@ export function KsefNumberingAuditTab({
                         {entry.note ? (
                           <span className="numbering-audit__note">{entry.note.reason}</span>
                         ) : entry.isGap ? (
-                          <span className="muted-text">Not explained</span>
+                          <span className="muted-text">{copy.notExplained}</span>
                         ) : (
                           <span className="muted-text">—</span>
                         )}
                       </td>
                       <td className="numbering-table__actions">
                         {entry.isGap && !entry.note ? (
-                          <ReadOnlyLock active={readOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                          <ReadOnlyLock active={readOnly} message={demoReadOnlyActionMessage()}>
                             <Button
                               tone="secondary"
                               onClick={() => setGapTarget(entry)}
                               disabled={readOnly}
                             >
-                              Explain gap
+                              {copy.explainGap}
                             </Button>
                           </ReadOnlyLock>
                         ) : entry.isGap && entry.note ? (
@@ -210,7 +216,7 @@ export function KsefNumberingAuditTab({
                             tone="secondary"
                             onClick={() => openPrint(entry, entry.note?.reason ?? '')}
                           >
-                            Print oświadczenie
+                            {copy.printOswiadczenie}
                           </Button>
                         ) : null}
                       </td>
@@ -258,6 +264,7 @@ function ExplainGapDialog({
   onClose,
   onSaveAndPrint,
 }: ExplainGapDialogProps): ReactElement {
+  const copy = useKsefMessages().ksefNumberingAuditTab.dialog;
   const recordNote = useRecordGapNoteMutation();
   const { showToast } = useToast();
   const [reason, setReason] = useState('');
@@ -270,7 +277,7 @@ function ExplainGapDialog({
     setError(null);
     const trimmed = reason.trim();
     if (trimmed.length === 0) {
-      setError('Enter a reason before recording the explanation.');
+      setError(copy.reasonRequired);
       textareaRef.current?.focus();
       return null;
     }
@@ -281,7 +288,7 @@ function ExplainGapDialog({
       });
       return trimmed;
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not record the explanation.');
+      setError(caught instanceof Error ? caught.message : copy.recordFallback);
       return null;
     }
   }
@@ -291,8 +298,8 @@ function ExplainGapDialog({
     if (recorded === null) return;
     showToast({
       tone: 'success',
-      title: 'Explanation recorded',
-      description: `The oświadczenie for number ${entry.seq} was saved.`,
+      title: copy.toast.title,
+      description: interpolate(copy.toast.description, { seq: entry.seq }),
     });
     onClose();
   }
@@ -302,8 +309,8 @@ function ExplainGapDialog({
     if (recorded === null) return;
     showToast({
       tone: 'success',
-      title: 'Explanation recorded',
-      description: `The oświadczenie for number ${entry.seq} was saved.`,
+      title: copy.toast.title,
+      description: interpolate(copy.toast.description, { seq: entry.seq }),
     });
     onSaveAndPrint(entry, recorded);
   }
@@ -316,21 +323,23 @@ function ExplainGapDialog({
           textareaRef.current?.focus();
         }}
       >
-        <DialogTitle>Explain numbering gap</DialogTitle>
+        <DialogTitle>{copy.title}</DialogTitle>
         <DialogDescription>
-          Record the written explanation (oświadczenie o pominięciu numeru) for sequence{' '}
-          <span className="mono-text tabular">{entry.seq}</span>. This is kept with the numbering
-          audit for your tax records.
+          {renderRich(
+            copy.description,
+            { num: (text) => <span className="mono-text tabular">{text}</span> },
+            { seq: entry.seq },
+          )}
         </DialogDescription>
 
         {error ? (
-          <Alert tone="error" title="Could not record">
+          <Alert tone="error" title={copy.errorTitle}>
             {error}
           </Alert>
         ) : null}
 
         <label className="form-field__label" htmlFor="numbering-gap-reason">
-          Reason
+          {copy.reasonLabel}
         </label>
         <Textarea
           id="numbering-gap-reason"
@@ -338,26 +347,26 @@ function ExplainGapDialog({
           value={reason}
           onChange={(event) => setReason(event.target.value)}
           rows={4}
-          placeholder="e.g. Draft abandoned before submission; number never issued."
+          placeholder={copy.reasonPlaceholder}
         />
 
         <DialogFooter>
           <Button tone="secondary" onClick={onClose} disabled={recordNote.isPending}>
-            Cancel
+            {copy.cancel}
           </Button>
           <Button
             tone="secondary"
             onClick={() => void submit()}
             disabled={recordNote.isPending || readOnly}
           >
-            {recordNote.isPending ? 'Saving…' : 'Record explanation'}
+            {recordNote.isPending ? copy.saving : copy.record}
           </Button>
           <Button
             tone="primary"
             onClick={() => void saveAndPrint()}
             disabled={recordNote.isPending || readOnly}
           >
-            Save &amp; print oświadczenie
+            {copy.saveAndPrint}
           </Button>
         </DialogFooter>
       </DialogContent>

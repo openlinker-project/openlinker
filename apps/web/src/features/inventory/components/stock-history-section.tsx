@@ -17,6 +17,7 @@
 import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../../shared/api/api-error';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { usePermission } from '../../../shared/auth/use-permission';
 import { Select } from '../../../shared/ui/select';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
@@ -25,7 +26,7 @@ import { TimeDisplay } from '../../../shared/ui/time-display';
 import { useInventoryQuery } from '../hooks/use-inventory-query';
 import { useInventoryMovementsQuery } from '../hooks/use-inventory-movements-query';
 import { useConnectionNames } from '../hooks/use-connection-names';
-import { presentMovementStatus } from '../lib/stock-movement-copy';
+import { presentMovementStatus } from '../lib/stock-movement-presentation';
 import { StockMovementsTable } from './stock-movements-table';
 
 export interface StockHistoryVariant {
@@ -46,10 +47,10 @@ export interface StockHistorySectionProps {
 const HISTORY_PAGE_SIZE = 10;
 const PROMISED_SCAN_LIMIT = 100;
 
-function variantLabel(variant: StockHistoryVariant): string {
+function variantLabel(template: string, variant: StockHistoryVariant): string {
   const attributes = Object.values(variant.attributes ?? {}).join(', ');
-  const parts = [attributes, variant.sku].filter((part): part is string => !!part);
-  return parts.length > 0 ? parts.join(' — ') : variant.id;
+  if (attributes && variant.sku) return interpolate(template, { attributes, sku: variant.sku });
+  return attributes || variant.sku || variant.id;
 }
 
 export function StockHistorySection({
@@ -59,6 +60,7 @@ export function StockHistorySection({
   selectedVariantId = null,
   onSelectedVariantChange,
 }: StockHistorySectionProps): ReactElement | null {
+  const copy = useMessages('inventory').stockHistorySection;
   const [localSelectedId, setLocalSelectedId] = useState<string | null>(null);
   const selectedId = selectedVariantId ?? localSelectedId;
   const variant = variants.find((v) => v.id === selectedId) ?? variants[0];
@@ -98,10 +100,10 @@ export function StockHistorySection({
     return (
       <div className="panel" id="stock-history" data-testid="stock-history">
         <div className="panel__header">
-          <h3 style={{ margin: 0 }}>Stock history</h3>
+          <h3 style={{ margin: 0 }}>{copy.title}</h3>
         </div>
         <p className="muted-text" data-testid="stock-history-restricted">
-          Stock history is visible to admins, operators and viewers. Ask an administrator if you need it.
+          {copy.restricted}
         </p>
       </div>
     );
@@ -130,10 +132,10 @@ export function StockHistorySection({
               {productName}
             </p>
           ) : null}
-          <h3 style={{ margin: 0 }}>Stock history</h3>
+          <h3 style={{ margin: 0 }}>{copy.title}</h3>
         </div>
         <Select
-          aria-label="Choose variant"
+          aria-label={copy.chooseVariant}
           data-testid="stock-history-variant"
           value={variant.id}
           onChange={(event) => {
@@ -143,7 +145,7 @@ export function StockHistorySection({
         >
           {variants.map((v) => (
             <option key={v.id} value={v.id}>
-              {variantLabel(v)}
+              {variantLabel(copy.variantLabel, v)}
             </option>
           ))}
         </Select>
@@ -151,15 +153,15 @@ export function StockHistorySection({
 
       <dl className="stock-history__summary" data-testid="stock-history-summary">
         <div>
-          <dt>Available now</dt>
+          <dt>{copy.availableNow}</dt>
           <dd className="mono-text tabular">{availableNow ?? '—'}</dd>
         </div>
         <div>
-          <dt>Reserved</dt>
+          <dt>{copy.reserved}</dt>
           <dd className="mono-text tabular">{promisedHeld ?? '—'}</dd>
         </div>
         <div>
-          <dt>Last change</dt>
+          <dt>{copy.lastChange}</dt>
           <dd className="mono-text">
             {lastChange ? <TimeDisplay iso={lastChange.occurredAt} /> : '—'}
             {lastChange && lastChange.status !== 'applied' ? (
@@ -171,16 +173,16 @@ export function StockHistorySection({
           </dd>
         </div>
         <div>
-          <dt>Stock source</dt>
+          <dt>{copy.stockSource}</dt>
           <dd>{masterId ? (connectionNames.get(masterId) ?? masterId) : '—'}</dd>
         </div>
       </dl>
 
       {rows.isLoading ? (
-        <LoadingState liveRegion="off" title="Loading stock history" message="Fetching movements…" />
+        <LoadingState liveRegion="off" title={copy.loadingTitle} message={copy.loadingMessage} />
       ) : rows.error ? (
         <ErrorState
-          title="Unable to load stock history"
+          title={copy.errorTitle}
           message={rows.error.message}
           action={
             <Button
@@ -188,20 +190,20 @@ export function StockHistorySection({
                 void rows.refetch();
               }}
             >
-              Retry
+              {copy.retry}
             </Button>
           }
         />
       ) : items.length === 0 ? (
         <p className="muted-text" data-testid="stock-history-empty">
-          No stock movements recorded for this variant yet.
+          {copy.empty}
         </p>
       ) : (
         <StockMovementsTable
           rows={items}
           connectionNames={connectionNames}
           layout="variant"
-          caption={`Stock history for ${variant.sku ?? variant.id}`}
+          caption={interpolate(copy.caption, { variant: variant.sku ?? variant.id })}
         />
       )}
 
@@ -211,7 +213,7 @@ export function StockHistorySection({
           to={viewAllHref}
           data-testid="stock-history-view-all"
         >
-          View all stock movements for this SKU
+          {copy.viewAll}
         </Link>
       </div>
     </div>

@@ -2,9 +2,10 @@
  * Messages
  *
  * The translation registry (ADR-081). The application core keeps its copy in
- * one JSON file per language - `locales/en.json`, `locales/pl.json` - whose
- * top-level keys are namespaces (`ui`, `format`, `orders` ...). A plugin
- * brings its own namespace in its own folder through `definePluginMessages`.
+ * one JSON file per language AND namespace - `locales/en/<namespace>.json`,
+ * `locales/pl/<namespace>.json` - named after the feature folder (`ui`,
+ * `format`, `orders` ...); `locales/en/index.ts` lists them. A plugin brings
+ * its own namespace in its own folder through `definePluginMessages`.
  *
  * Each namespace has exactly one home, so nothing is looked up across files.
  * The only fallback is within a namespace: the active language first, then
@@ -12,17 +13,18 @@
  * which is complete by construction.
  *
  * The base language ships in the main bundle; every other language is a
- * dynamic import, loaded by `loadMessages` before it is shown.
+ * dynamic import of that namespace's file alone, loaded by `loadMessages`
+ * before it is shown.
  *
  * @module shared/i18n
  */
-import en from '../../locales/en.json';
+import { en } from '../../locales/en';
 import { mergeOverEnglish } from './merge';
 import { pseudoTree } from './pseudo';
 import { SOURCE_LOCALE, type SupportedLocale } from './i18n.types';
 import type { ResolvedCopy } from './copy.types';
 
-/** The core dictionary, typed from en.json. */
+/** The core dictionary, typed from the English files listed in `locales/en/index.ts`. */
 export type Messages = typeof en;
 export type Namespace = keyof Messages;
 
@@ -43,20 +45,16 @@ function cacheKey(locale: SupportedLocale, namespace: string): string {
   return `${locale}:${namespace}`;
 }
 
-// One request for the whole core file, shared by every core namespace.
-let corePolish: Promise<Record<string, unknown>> | null = null;
-function loadCorePolish(): Promise<Record<string, unknown>> {
-  corePolish ??= import('../../locales/pl.json').then(
-    (module) => module.default as Record<string, unknown>,
-  );
-  return corePolish;
-}
+// One lazy chunk per Polish file, so a language switch fetches each core
+// namespace on its own; a namespace with no Polish file keeps its English.
+const corePolishFiles = import.meta.glob<{ default: unknown }>('../../locales/pl/*.json');
 
 for (const [namespace, base] of Object.entries(en as Record<string, Record<string, unknown>>)) {
+  const loadPolish = corePolishFiles[`../../locales/pl/${namespace}.json`];
   registry.set(namespace, {
     baseLocale: SOURCE_LOCALE,
     base,
-    loaders: { pl: () => loadCorePolish().then((all) => all[namespace]) },
+    loaders: loadPolish ? { pl: () => loadPolish().then((module) => module.default) } : {},
   });
 }
 
@@ -121,7 +119,7 @@ export function namespaceFor(locale: SupportedLocale, namespace: string): unknow
 }
 
 /**
- * One core namespace for an explicit language, typed from en.json. For code
+ * One core namespace for an explicit language, typed from its English file. For code
  * that already holds the language it formats in - the shared formatters take
  * it as a parameter so a test can pin it.
  */

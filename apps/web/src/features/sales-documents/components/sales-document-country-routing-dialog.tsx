@@ -67,7 +67,7 @@ import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { useSalesDocumentRulesQuery } from '../hooks/use-sales-document-rules-query';
 import { useSalesDocumentCountryDefaultsQuery } from '../hooks/use-sales-document-country-defaults-query';
@@ -82,6 +82,7 @@ import { SalesDocumentTemplateScreen } from './sales-document-template-screen';
 import { salesDocumentRulesQueryKeys } from '../api/sales-document-rules.query-keys';
 import { SALES_DOCUMENT_REST_OF_WORLD_COUNTRY } from '../api/sales-document-rules.types';
 import { describeSalesDocumentCountryReset } from '../lib/describe-sales-document-country-reset';
+import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
 
 export interface SalesDocumentCountryRoutingDialogProps {
   open: boolean;
@@ -109,8 +110,12 @@ interface RoutingTier {
   content: ReactNode;
 }
 
-function countryDisplayName(country: string): string {
-  return country === SALES_DOCUMENT_REST_OF_WORLD_COUNTRY ? '★ Rest of world' : country;
+function strong(text: string): ReactNode {
+  return <strong>{text}</strong>;
+}
+
+function mono(text: string): ReactNode {
+  return <span className="mono-text">{text}</span>;
 }
 
 export function SalesDocumentCountryRoutingDialog({
@@ -120,6 +125,7 @@ export function SalesDocumentCountryRoutingDialog({
   onOpenChange,
   onNavigate,
 }: SalesDocumentCountryRoutingDialogProps): ReactElement {
+  const copy = useMessages('sales-documents').salesDocumentCountryRoutingDialog;
   const isRestOfWorld = country === SALES_DOCUMENT_REST_OF_WORLD_COUNTRY;
   const queryClient = useQueryClient();
   const demoMode = useDemoMode();
@@ -155,7 +161,7 @@ export function SalesDocumentCountryRoutingDialog({
   const isEmptyCountry = !isSummaryLoading && rules.length === 0 && defaults.length === 0;
   const hasNothingToReset = rules.length === 0 && defaults.length === 0 && acknowledgedAt === null;
 
-  const displayName = countryDisplayName(country);
+  const displayName = isRestOfWorld ? copy.restOfWorld : country;
 
   async function handleConfirmReset(): Promise<void> {
     setResetError(null);
@@ -173,7 +179,7 @@ export function SalesDocumentCountryRoutingDialog({
       await queryClient.invalidateQueries({ queryKey: salesDocumentRulesQueryKeys.all });
       setConfirmResetOpen(false);
     } catch (error) {
-      setResetError(error instanceof Error ? error.message : 'Failed to reset country');
+      setResetError(error instanceof Error ? error.message : copy.resetFailed);
     } finally {
       setIsResetting(false);
     }
@@ -201,12 +207,12 @@ export function SalesDocumentCountryRoutingDialog({
   const tiers: RoutingTier[] = [
     {
       key: 'rules',
-      title: 'Rules',
+      title: copy.tiers.rules,
       content: <SalesDocumentRulesList country={country} />,
     },
     {
       key: 'country-default',
-      title: 'Country default',
+      title: copy.tiers.countryDefault,
       content: <SalesDocumentCountryDefaults country={country} />,
     },
   ];
@@ -236,32 +242,27 @@ export function SalesDocumentCountryRoutingDialog({
       key: 'rest-of-world',
       title:
         isCountryConfigured === null
-          ? 'What happens to an unmatched order'
+          ? copy.tiers.unmatchedLoading
           : isCountryConfigured
-            ? 'An unmatched order is held'
-            : 'Falls through to ★ Rest of world',
+            ? copy.tiers.unmatchedHeld
+            : copy.tiers.fallsThrough,
       content: isCountryConfigured === null ? (
-        <p className="muted-text">Reading this market&apos;s rules and defaults…</p>
+        <p className="muted-text">{copy.unmatched.loading}</p>
       ) : isCountryConfigured ? (
         <p className="muted-text">
-          {displayName} has its own routing, so an order that matches nothing here is{' '}
-          <strong>held</strong>. It does <strong>not</strong> go to{' '}
-          <span className="mono-text">★ Rest of world</span> — only a market with no rules and no
-          default at all falls through there.
+          {renderRich(copy.unmatched.held, { strong, mono }, { country: displayName })}
         </p>
       ) : (
         <div>
           <p className="muted-text">
-            {displayName} has no rules and no default, so an order delivered here goes to{' '}
-            <span className="mono-text">★ Rest of world</span>
-            &apos;s own rules and defaults.
+            {renderRich(copy.unmatched.fallsThrough, { mono }, { country: displayName })}
           </p>
           <Button
             tone="secondary"
             className="button--sm"
             onClick={() => onNavigate(SALES_DOCUMENT_REST_OF_WORLD_COUNTRY, country)}
           >
-            Open ★ Rest of world&apos;s routing →
+            {copy.unmatched.openRestOfWorld}
           </Button>
         </div>
       ),
@@ -270,16 +271,16 @@ export function SalesDocumentCountryRoutingDialog({
 
   tiers.push({
     key: 'unresolved',
-    title: 'Unresolved',
+    title: copy.tiers.unresolved,
     content: (
       <p className="muted-text">
         {isRestOfWorld
-          ? 'If nothing above matches, the order has no configured fallback left and is reported unresolved.'
+          ? copy.unresolved.restOfWorld
           : isCountryConfigured === null
-            ? 'What happens here depends on whether this market has any routing of its own — reading that now.'
+            ? copy.unresolved.loading
             : isCountryConfigured
-              ? 'The order is held, as stated above — it is never passed to ★ Rest of world once this country has any rule or default of its own.'
-              : 'If ★ Rest of world also has no matching rule or default, the order is reported unresolved.'}
+              ? copy.unresolved.held
+              : copy.unresolved.fallsThrough}
       </p>
     ),
   });
@@ -294,13 +295,13 @@ export function SalesDocumentCountryRoutingDialog({
               className="button--sm sales-document-country-routing-dialog__back"
               onClick={() => onNavigate(cameFrom, null)}
             >
-              ← Back to {cameFrom}
+              {interpolate(copy.back, { country: cameFrom })}
             </Button>
           ) : null}
 
-          <DialogTitle>Sales-document routing · {displayName}</DialogTitle>
+          <DialogTitle>{interpolate(copy.title, { country: displayName })}</DialogTitle>
           <p className="muted-text sales-document-country-routing-dialog__save-note">
-            Every control here saves as you change it — there is nothing to submit.
+            {copy.saveNote}
           </p>
 
           <div className="sales-document-country-routing-dialog__body">
@@ -316,21 +317,23 @@ export function SalesDocumentCountryRoutingDialog({
             {isEmptyCountry && acknowledgedAt !== null ? (
               <Alert
                 tone="success"
-                title="No sales document, by design"
+                title={copy.acknowledged.title}
                 action={
-                  <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                  <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                     <Button
                       tone="secondary"
                       className="button--sm"
                       disabled={!write.canWrite || clearAcknowledgmentMutation.isPending}
                       onClick={() => void clearAcknowledgmentMutation.mutateAsync(country)}
                     >
-                      Undo
+                      {copy.acknowledged.undo}
                     </Button>
                   </ReadOnlyLock>
                 }
               >
-                Acknowledged - <TimeDisplay iso={acknowledgedAt} />.
+                {renderRich(copy.acknowledged.body, {
+                  time: () => <TimeDisplay iso={acknowledgedAt} />,
+                })}
               </Alert>
             ) : null}
             {acknowledgeMutation.error ? (
@@ -360,17 +363,15 @@ export function SalesDocumentCountryRoutingDialog({
             {write.visible ? (
               <div className="sales-document-country-routing-dialog__danger-zone">
                 <p className="muted-text">
-                  Resetting deletes every rule and default configured for {displayName} here in
-                  OpenLinker. It does not touch anything at the provider — no invoice or receipt
-                  already issued is affected.
+                  {interpolate(copy.reset.warning, { country: displayName })}
                 </p>
-                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                   <Button
                     tone="danger"
                     disabled={!write.canWrite || isSummaryLoading || hasNothingToReset || isResetting}
                     onClick={() => setConfirmResetOpen(true)}
                   >
-                    Reset country
+                    {copy.reset.button}
                   </Button>
                 </ReadOnlyLock>
               </div>
@@ -379,7 +380,7 @@ export function SalesDocumentCountryRoutingDialog({
 
           <DialogFooter>
             <DialogClose asChild>
-              <Button tone="primary">Done</Button>
+              <Button tone="primary">{copy.done}</Button>
             </DialogClose>
           </DialogFooter>
         </DialogContent>
@@ -399,10 +400,10 @@ export function SalesDocumentCountryRoutingDialog({
         className="dialog__content--elevated"
         overlayClassName="dialog__overlay--elevated"
         tone="default"
-        title={`Leave ${displayName} unconfigured?`}
-        description={`No rule or default is set for this market, so every ${displayName} order is held with nothing issued. If that's intentional — for example the marketplace already fiscalizes on your behalf — confirm it below. OpenLinker still won't decide what's legally required; this only stops flagging ${displayName} as something to review.`}
-        confirmLabel="Confirm - nothing needed here"
-        cancelLabel="Go back"
+        title={interpolate(copy.leave.title, { country: displayName })}
+        description={interpolate(copy.leave.description, { country: displayName })}
+        confirmLabel={copy.leave.confirm}
+        cancelLabel={copy.leave.cancel}
         isConfirming={acknowledgeMutation.isPending}
         onConfirm={() =>
           void acknowledgeMutation.mutateAsync(country).then(() => {
@@ -418,14 +419,14 @@ export function SalesDocumentCountryRoutingDialog({
         className="dialog__content--elevated"
         overlayClassName="dialog__overlay--elevated"
         tone="danger"
-        title={`Reset ${displayName}?`}
+        title={interpolate(copy.reset.title, { country: displayName })}
         description={describeSalesDocumentCountryReset(displayName, {
           ruleCount: rules.length,
           hasInvoiceDefault,
           hasReceiptDefault,
           acknowledged: acknowledgedAt !== null,
         })}
-        confirmLabel="Yes, reset"
+        confirmLabel={copy.reset.confirm}
         isConfirming={isResetting}
         onConfirm={() => void handleConfirmReset()}
       />

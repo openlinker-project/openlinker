@@ -173,7 +173,7 @@ describe('OrderTagPicker (#3532/#3533, D34)', () => {
     await user.type(screen.getByPlaceholderText('Find or create a tag'), 'New');
     await user.click(screen.getByRole('button', { name: '+ Create “New”' }));
 
-    expect(await screen.findByText('The workspace already has 50 tags.')).toBeInTheDocument();
+    expect(await screen.findByText('The server said: The workspace already has 50 tags.')).toBeInTheDocument();
     expect(orders.assignTag).not.toHaveBeenCalled();
   });
 

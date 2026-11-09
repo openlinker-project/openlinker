@@ -1,0 +1,3121 @@
+{
+  "activityTimeline": {
+    "amended": {
+      "aLine": "pozycja",
+      "lineAdded": "dodano pozycję {line}",
+      "lineQuantityChanged": "pozycja {line}, ilość {from} → {to}",
+      "lineRemoved": "usunięto pozycję {line}",
+      "noChanges": "Źródło zmieniło to zamówienie po jego pobraniu.",
+      "shippingAddressChanged": "zmieniono adres dostawy ({fields})",
+      "title": "Zamówienie zmienione w źródle",
+      "withChanges": "Źródło zmieniło to zamówienie po jego pobraniu: {changes}."
+    },
+    "ariaLabel": "Historia zdarzeń zamówienia",
+    "attempt": {
+      "externalOrder": "Zamówienie zewnętrzne <number>{number}</number>",
+      "failed": "Nie udało się zsynchronizować zamówienia z <connection></connection>",
+      "pending": "Zamówienie w kolejce do <connection></connection>",
+      "skipped_cancelled": "Pominięto zamówienie (anulowane w źródle) dla <connection></connection>",
+      "synced": "Zamówienie zsynchronizowane z <connection></connection>",
+      "syncing": "Synchronizacja zamówienia z <connection></connection>",
+      "unknown": "Zamówienie {status} <connection></connection>",
+      "viewAllAttempts": "Pokaż wszystkie próby"
+    },
+    "by": {
+      "attempt": "system · próba {n}",
+      "ingest": "system · pobieranie",
+      "invoicing": "system · fakturowanie",
+      "operator": "operator",
+      "orderCancelled": "OpenLinker (zamówienie anulowane)",
+      "service": "system · {service}"
+    },
+    "caption": {
+      "few": "Wyświetlono {n} z {n} zdarzeń · próby ograniczone do {cap} na kanał docelowy.",
+      "many": "Wyświetlono {n} z {n} zdarzeń · próby ograniczone do {cap} na kanał docelowy.",
+      "one": "Wyświetlono {n} z {n} zdarzenia · próby ograniczone do {cap} na kanał docelowy.",
+      "other": "Wyświetlono {n} z {n} zdarzenia · próby ograniczone do {cap} na kanał docelowy."
+    },
+    "emptyMessage": "Nie zapisano jeszcze żadnych zdarzeń.",
+    "emptyTitle": "Brak aktywności",
+    "hold": {
+      "placedNoNote": "OpenLinker przestał przekazywać i nadawać to zamówienie.",
+      "placedTitle": "Wstrzymano - {reason}",
+      "releasedNoNote": "OpenLinker znów przekazuje to zamówienie dalej.",
+      "releasedTitle": "Wstrzymanie zdjęte"
+    },
+    "inParens": "{text} ({detail})",
+    "invoicing": {
+      "blockedTitle": "Nie wystawiono faktury",
+      "releasedDescription": "Stawka VAT, na którą czekało to zamówienie, jest już znana, więc OpenLinker przestał wstrzymywać dokument.",
+      "releasedTitle": "Stawki są znane, faktura zwolniona"
+    },
+    "packed": {
+      "by": "Oznaczone jako spakowane przez {user}.",
+      "byUnknown": "Oznaczone jako spakowane przez operatora.",
+      "title": "Zamówienie spakowane"
+    },
+    "received": {
+      "awaitingMapping": "Oczekuje na mapowanie produktów - części pozycji nie udało się jeszcze dopasować.",
+      "ready": "Pobrane i gotowe do synchronizacji.",
+      "sourceDeleted": "Produkt usunięty w źródle - to zamówienie wskazuje produkt, który usunięto w systemie głównym.",
+      "sourceDeletedRemedy": "Nie można go zrealizować, dopóki produkt nie wróci albo pozycja nie zostanie anulowana.",
+      "title": "Zamówienie otrzymane"
+    }
+  },
+  "afterIssueAttention": {
+    "cancelled": {
+      "detail": "To zamówienie anulowano po wystawieniu dokumentu. Sprawdź, czy wymaga korekty.",
+      "short": "Zamówienie anulowane"
+    },
+    "fullRefund": {
+      "detail": "Po wystawieniu dokumentu zwrócono pieniądze za całe zamówienie. Sprawdź, czy wymaga korekty.",
+      "short": "Pełny zwrot pieniędzy"
+    },
+    "partialRefund": {
+      "detail": "Po wystawieniu dokumentu zwrócono pieniądze za część zamówienia. Sprawdź, czy wymaga korekty.",
+      "short": "Częściowy zwrot pieniędzy"
+    }
+  },
+  "automationTimeline": {
+    "actions": {
+      "dispatch-shipment": "Kupiono etykietę nadawczą",
+      "issue-sales-document": "Wystawiono dokument sprzedaży",
+      "place-hold": "Wstrzymano zamówienie",
+      "relay-status-to-source": "Poinformowano marketplace o wysyłce zamówienia",
+      "release-hold": "Zdjęto wstrzymanie",
+      "send-email": "Wysłano e-mail"
+    },
+    "by": "Automatyzacja · {rule}",
+    "nothingToDo": "nic do zrobienia",
+    "ranBecause": "Uruchomiono, bo: {trigger}",
+    "skipped": "Pominięto: {action}",
+    "stoppedAfterFailure": "Automatyzacja zatrzymała się po kroku, który się nie powiódł."
+  },
+  "bulkActions": {
+    "cancel": {
+      "ackHelp": "Zamówienia na stanowisku pakowania zostaną odrzucone, jeśli tego nie zaznaczysz.",
+      "ackLabel": "Pakowacze zostali powiadomieni, aby przerwali pracę nad zamówieniami, które są już na stanowisku pakowania",
+      "close": "Zamknij",
+      "correctionLink": "Sprawdź korektę",
+      "description": "OpenLinker prosi każdy kanał sprzedaży o anulowanie jego zamówienia. Każde zamówienie jest obsługiwane osobno, więc jedna odmowa nie zatrzymuje pozostałych.",
+      "failedCount": {
+        "few": "{n} nieudane",
+        "many": "{n} nieudanych",
+        "one": "{n} nieudane",
+        "other": "{n} nieudanego"
+      },
+      "keep": "Zachowaj zamówienia",
+      "noteHelp": "Wszystko, co powinna wiedzieć kolejna osoba. Nigdy dane kupującego.",
+      "noteLabel": "Notatka",
+      "noteOptionalLabel": "Notatka (opcjonalnie)",
+      "pendingCount": {
+        "few": "{n} czekają na kanał",
+        "many": "{n} czeka na kanał",
+        "one": "{n} czeka na kanał",
+        "other": "{n} czeka na kanał"
+      },
+      "reasonHelp": "Jeden powód dla całej partii. Kanały sprzedaży otrzymują tylko kod powodu, nigdy Twoją notatkę.",
+      "reasonLabel": "Powód",
+      "refusedCount": {
+        "few": "{n} odrzucone",
+        "many": "{n} odrzuconych",
+        "one": "{n} odrzucone",
+        "other": "{n} odrzuconego"
+      },
+      "requestError": "OpenLinker nie mógł rozpocząć anulowania. Nic nie zostało anulowane.",
+      "resultSummary": "Obsłużono {done} z {total}",
+      "resultTitle": "Anulowanie zakończone",
+      "submit": {
+        "few": "Anuluj {n} zamówienia",
+        "many": "Anuluj {n} zamówień",
+        "one": "Anuluj {n} zamówienie",
+        "other": "Anuluj {n} zamówienia"
+      },
+      "submitting": "Anulowanie…",
+      "title": {
+        "few": "Anulować {n} zamówienia?",
+        "many": "Anulować {n} zamówień?",
+        "one": "Anulować {n} zamówienie?",
+        "other": "Anulować {n} zamówienia?"
+      },
+      "trigger": "Anuluj ({count})",
+      "unconfirmedBody": "Część zamówień mogła zostać anulowana - odśwież listę, aby zobaczyć ich stan.",
+      "unconfirmedError": "Nie udało się potwierdzić wyniku.",
+      "validation": {
+        "noteTooLong": "Notatka może mieć najwyżej {max} znaków",
+        "otherNeedsNote": "Podaj, jaki to inny powód",
+        "reasonRequired": "Wybierz, dlaczego te zamówienia są anulowane"
+      }
+    },
+    "dispatchDefaultHint": "Nadanie: maks. {cap} na źródło",
+    "dispatchHint": "Nadaj {dispatchable} z {selected}: {reasons}",
+    "dispatchHintOverCap": {
+      "few": "{n} ponad limit {cap} na źródło",
+      "many": "{n} ponad limit {cap} na źródło",
+      "one": "{n} ponad limit {cap} na źródło",
+      "other": "{n} ponad limit {cap} na źródło"
+    },
+    "dispatchHintShipped": {
+      "few": "{n} już wysłane",
+      "many": "{n} już wysłanych",
+      "one": "{n} już wysłane",
+      "other": "{n} już wysłanego"
+    },
+    "read": {
+      "cancel": "Anuluj",
+      "close": "Zamknij",
+      "description": "Zmienione zostaną tylko zamówienia z nieprzeczytaną wiadomością od kupującego. Pozostałe pojawią się potem jako pominięte.",
+      "failedCount": {
+        "few": "{n} nieudane",
+        "many": "{n} nieudanych",
+        "one": "{n} nieudane",
+        "other": "{n} nieudanego"
+      },
+      "markedCount": {
+        "few": "{n} oznaczone jako przeczytane",
+        "many": "{n} oznaczonych jako przeczytane",
+        "one": "{n} oznaczone jako przeczytane",
+        "other": "{n} oznaczonego jako przeczytane"
+      },
+      "nothingToDo": "Żadne z zaznaczonych zamówień nie ma nieprzeczytanej wiadomości od kupującego.",
+      "requestError": "OpenLinker nie mógł oznaczyć wiadomości jako przeczytanych. Spróbuj ponownie.",
+      "resultTitle": "Wiadomości od kupujących zaktualizowane",
+      "skippedCount": {
+        "few": "{n} pominięte",
+        "many": "{n} pominiętych",
+        "one": "{n} pominięte",
+        "other": "{n} pominiętego"
+      },
+      "submit": "Oznacz jako przeczytane",
+      "submitting": "Oznaczanie…",
+      "summary": {
+        "few": "{n} zamówienia mają nieprzeczytaną wiadomość.",
+        "many": "{n} zamówień ma nieprzeczytaną wiadomość.",
+        "one": "{n} zamówienie ma nieprzeczytaną wiadomość.",
+        "other": "{n} zamówienia ma nieprzeczytaną wiadomość."
+      },
+      "summaryWithSkips": {
+        "few": "{n} zamówienia mają nieprzeczytaną wiadomość, pominięte zostaną: {skipped}.",
+        "many": "{n} zamówień ma nieprzeczytaną wiadomość, pominięte zostaną: {skipped}.",
+        "one": "{n} zamówienie ma nieprzeczytaną wiadomość, pominięte zostaną: {skipped}.",
+        "other": "{n} zamówienia ma nieprzeczytaną wiadomość, pominięte zostaną: {skipped}."
+      },
+      "title": {
+        "few": "Oznaczyć wiadomości od kupujących jako przeczytane w {n} zamówieniach?",
+        "many": "Oznaczyć wiadomości od kupujących jako przeczytane w {n} zamówieniach?",
+        "one": "Oznaczyć wiadomość od kupującego jako przeczytaną w {n} zamówieniu?",
+        "other": "Oznaczyć wiadomości od kupujących jako przeczytane w {n} zamówienia?"
+      },
+      "trigger": "Oznacz wiadomość jako przeczytaną"
+    },
+    "rows": {
+      "cancel": {
+        "cancelled": "Anulowane",
+        "correction-proposed": "Anulowane, korekta do sprawdzenia",
+        "failed": "Nieudane",
+        "pending": "Czeka na kanał",
+        "refused": "Odrzucone"
+      },
+      "note": {
+        "already-read": "Pominięto: już przeczytana",
+        "failed": "Nieudane",
+        "marked": "Oznaczono jako przeczytaną",
+        "no-note": "Pominięto: brak wiadomości od kupującego",
+        "not-found": "Nie znaleziono zamówienia"
+      },
+      "tag": {
+        "added": "Dodano tag",
+        "already-tagged": "Tag był już przypisany",
+        "failed": "Nieudane",
+        "not-tagged": "Tag nie był przypisany",
+        "removed": "Usunięto tag"
+      }
+    },
+    "selectionCap": "Do tej akcji zaznacz najwyżej {max} zamówień.",
+    "selectionCapTooltip": "Maks. {max} zaznaczonych",
+    "tags": {
+      "detailsClose": "Zamknij",
+      "detailsDescription": "Zaktualizowano: {ok}, nieudane: {failed}.",
+      "detailsTitle": "Tag {name}",
+      "orderNotFound": "Nie znaleziono zamówienia",
+      "partialDescription": {
+        "few": "Nie udało się zaktualizować {n} zamówień. Zobacz szczegóły.",
+        "many": "Nie udało się zaktualizować {n} zamówień. Zobacz szczegóły.",
+        "one": "Nie udało się zaktualizować {n} zamówienia. Zobacz szczegóły.",
+        "other": "Nie udało się zaktualizować {n} zamówienia. Zobacz szczegóły."
+      },
+      "partialTitle": "{name}: części zamówień nie zaktualizowano",
+      "removeBack": "Wróć do dodawania tagów",
+      "removeErrorFallback": "OpenLinker nie mógł usunąć tagu. Spróbuj ponownie.",
+      "removeErrorTitle": "Nie usunięto tagu",
+      "removeHeading": {
+        "few": "Usuń tag z {n} zamówień",
+        "many": "Usuń tag z {n} zamówień",
+        "one": "Usuń tag z {n} zamówienia",
+        "other": "Usuń tag z {n} zamówienia"
+      },
+      "removeNone": "Żadne z zaznaczonych zamówień nie ma tagu.",
+      "removeNotTagged": {
+        "few": "{n} nie miały tego tagu.",
+        "many": "{n} nie miało tego tagu.",
+        "one": "{n} nie miało tego tagu.",
+        "other": "{n} nie miało tego tagu."
+      },
+      "removeOpen": {
+        "few": "Usuń tag z {n} zamówień…",
+        "many": "Usuń tag z {n} zamówień…",
+        "one": "Usuń tag z {n} zamówienia…",
+        "other": "Usuń tag z {n} zamówienia…"
+      },
+      "removeResultDescription": {
+        "few": "Usunięto {name} z {n} zamówień.",
+        "many": "Usunięto {name} z {n} zamówień.",
+        "one": "Usunięto {name} z {n} zamówienia.",
+        "other": "Usunięto {name} z {n} zamówienia."
+      },
+      "removeResultTitle": "Tag usunięty"
+    },
+    "warnings": {
+      "correctionUnavailable": "Nie udało się przygotować faktury korygującej.",
+      "correctionUnavailableReason": "Nie udało się przygotować faktury korygującej ({reason}).",
+      "destinationNotNotified": "Sklep docelowy nie został powiadomiony o anulowaniu.",
+      "participantNotInformed": "{channel} nie może zostać powiadomiony o anulowaniu, więc anuluj zamówienie tam ręcznie.",
+      "participantNotInformedUnknown": "Jednego z kanałów nie można powiadomić o anulowaniu, więc anuluj zamówienie tam ręcznie.",
+      "stockRestoreNotQueued": "Nie zlecono przywrócenia stanu magazynowego.",
+      "stockRestoredOnly": "Stan magazynowy przywrócono tylko w {channel}.",
+      "stockRestoredOnlyUnknown": "Stan magazynowy przywrócono tylko w jednym kanale."
+    }
+  },
+  "bulkDispatchDialog": {
+    "cancel": "Anuluj",
+    "description": "Wygeneruj etykiety dla zaznaczonych zamówień - nadawane w partiach według źródła.",
+    "dispatchFailed": "Nadanie nie powiodło się",
+    "dispatching": "Nadawanie…",
+    "invalidParcel": "Nieprawidłowa paczka",
+    "needAttention": {
+      "few": "{n} wymagają uwagi - popraw w źródle albo nadaj osobno",
+      "many": "{n} wymaga uwagi - popraw w źródle albo nadaj osobno",
+      "one": "{n} wymaga uwagi - popraw w źródle albo nadaj osobno",
+      "other": "{n} wymaga uwagi - popraw w źródle albo nadaj osobno"
+    },
+    "noneEligible": "Żadnego z zaznaczonych zamówień nie można nadać zbiorczo. Nadaj je osobno z poziomu każdego zamówienia.",
+    "onlyReady": {
+      "few": "Nadane zostaną tylko {n} gotowe zamówienia.",
+      "many": "Nadanych zostanie tylko {n} gotowych zamówień.",
+      "one": "Nadane zostanie tylko {n} gotowe zamówienie.",
+      "other": "Nadane zostanie tylko {n} gotowego zamówienia."
+    },
+    "profile": {
+      "applyAll": "Zastosuj do wszystkich wierszy",
+      "defaultHeightAria": "Domyślna wysokość w milimetrach",
+      "defaultLengthAria": "Domyślna długość w milimetrach",
+      "defaultWeightAria": "Domyślna waga w gramach",
+      "defaultWidthAria": "Domyślna szerokość w milimetrach",
+      "dimensions": "Wymiary (mm)",
+      "weight": "Waga (g)"
+    },
+    "ready": "Gotowe: {n}",
+    "result": {
+      "close": "Zamknij",
+      "dispatched": "Nadane: {n}",
+      "failed": "Nieudane: {n}",
+      "fulfilledByStore": "Zrealizowane przez sklep: {n}",
+      "protocolButton": "{carrier} ({n})",
+      "protocolCarrierFallback": "Przewoźnik",
+      "protocolLabel": "Protokół przekazania:",
+      "status": {
+        "dispatched": "Nadane",
+        "failed": "Nieudane",
+        "ompFulfilled": "Zrealizowane przez sklep"
+      },
+      "title": "Partia zakończona",
+      "trackingSoon": "numer przesyłki pojawi się w ciągu ok. 5 min"
+    },
+    "row": {
+      "courier": "Kurier",
+      "dispatchIndividually": "nadaj osobno",
+      "heightFor": "Wysokość dla {ref}",
+      "lengthFor": "Długość dla {ref}",
+      "notDispatchable": "Nie można nadać",
+      "paczkomat": "Paczkomat",
+      "ready": "Gotowe",
+      "weightFor": "Waga dla {ref}",
+      "widthFor": "Szerokość dla {ref}"
+    },
+    "submit": {
+      "few": "Nadaj {n} zamówienia",
+      "many": "Nadaj {n} zamówień",
+      "one": "Nadaj {n} zamówienie",
+      "other": "Nadaj {n} zamówienia"
+    },
+    "title": {
+      "few": "Nadaj {n} zamówienia",
+      "many": "Nadaj {n} zamówień",
+      "one": "Nadaj {n} zamówienie",
+      "other": "Nadaj {n} zamówienia"
+    },
+    "titlePartial": {
+      "few": "Nadaj {count} z {n} zamówień",
+      "many": "Nadaj {count} z {n} zamówień",
+      "one": "Nadaj {count} z {n} zamówienia",
+      "other": "Nadaj {count} z {n} zamówienia"
+    },
+    "toast": {
+      "summary": "Nadane: {dispatched}.",
+      "summaryWithFailed": "Nadane: {dispatched} · nieudane: {failed}.",
+      "title": "Partia zakończona"
+    }
+  },
+  "buyerNote": {
+    "aPacker": "pakowacz",
+    "benchReadsUnavailable": "Nie udało się wczytać odczytów ze stanowiska pakowania.",
+    "copied": "Skopiowano",
+    "copy": "Kopiuj",
+    "copyAria": "Kopiuj notatkę kupującego",
+    "copyFailedHint": "Nie udało się skopiować. Notatka jest zaznaczona - naciśnij Ctrl+C, aby ją skopiować.",
+    "listIndicator": "Notatka kupującego",
+    "listIndicatorSrPrefix": "Notatka kupującego:",
+    "listIndicatorTitle": "Kupujący zostawił notatkę dla sprzedawcy - otwórz zamówienie, aby ją przeczytać.",
+    "listUnknownHint": "Kanał nie podał, czy kupujący zostawił notatkę.",
+    "markRead": "Oznacz jako przeczytaną",
+    "markReadFailed": "Nie udało się zapisać. Notatka nadal jest nieprzeczytana - kliknij ponownie.",
+    "markingRead": "Zapisywanie...",
+    "meta": "Napisana przez kupującego przy składaniu zamówienia",
+    "notReadAtBench": "Jeszcze nie oznaczona jako przeczytana na stanowisku pakowania.",
+    "read": "Przeczytana",
+    "readAtBench": "Przeczytana na stanowisku pakowania",
+    "readBy": "Przeczytał(a): {who}",
+    "rowFieldLabel": "Notatka kupującego",
+    "rowLoading": "Wczytywanie notatki...",
+    "rowUnreadable": "Nie udało się wczytać notatki. Otwórz zamówienie, aby ją przeczytać.",
+    "showAll": "Pokaż całą notatkę (znaki: {characters})",
+    "showLess": "Pokaż mniej",
+    "textNotStored": "Kupujący zostawił notatkę, ale ta instalacja nie przechowuje jej treści.",
+    "timeline": {
+      "by": "stanowisko pakowania",
+      "changedAfterReadBy": "kupujący",
+      "changedAfterReadDescription": "Treść notatki zmieniła się po tym, jak pakowacz oznaczył ją jako przeczytaną. Pakowacze, którzy przeczytali wcześniejszą treść, nie widzieli tej.",
+      "changedAfterReadTitle": "Notatka kupującego zmieniła się po przeczytaniu na stanowisku pakowania",
+      "description": "Przeczytał(a): {who}.",
+      "descriptionUnknown": "Przeczytana przez pakowacza.",
+      "title": "Notatka kupującego przeczytana na stanowisku pakowania"
+    },
+    "title": "Notatka kupującego",
+    "unread": "Jeszcze nieprzeczytana"
+  },
+  "buyerTaxId": {
+    "none": "Brak - potwierdzone przez źródło",
+    "unknown": "Źródło tego nie podało",
+    "unknownExplanation": "Źródło nie podało NIP dla tego zamówienia.",
+    "unknownPiiExplanation": "Tak samo wygląda to, gdy ta instalacja nie przechowuje danych osobowych - wtedy nie da się wystawić faktury uproszczonej, bo NIP, na który się ją wystawia, nigdy nie jest zapisywany."
+  },
+  "cancelOrderDialog": {
+    "ack": {
+      "body": "Ktoś przejął to zamówienie na stanowisku pakowania i może już je kompletować. Anulowanie zdejmie je ze stanowiska.",
+      "label": "Pakowacz został powiadomiony, aby przerwał pracę",
+      "title": "To zamówienie jest na stanowisku pakowania"
+    },
+    "cancelling": "Anulowanie…",
+    "channelFallback": "kanał sprzedaży",
+    "confirm": {
+      "description": "OpenLinker poprosi {channel} o anulowanie. Gdy {channel} potwierdzi, reszta stanie się automatycznie - poza zwrotem pieniędzy, który robisz sam.",
+      "errorFallback": "Nie udało się anulować tego zamówienia.",
+      "errorTitle": "Nie udało się anulować tego zamówienia",
+      "title": "Anulować zamówienie {order}?"
+    },
+    "impact": {
+      "channelBody": "Zamówienie zostanie oznaczone jako anulowane w {channel}. Jeśli kanał nie obsługuje anulowania, OpenLinker tylko przywróci stan magazynowy i poinformuje Cię o tym.",
+      "channelFallback": "Kanał sprzedaży",
+      "channelStatus": "Wysłane",
+      "invoice": "Faktura",
+      "invoiceBody": "Wystawionej faktury nie można wycofać. OpenLinker przygotuje propozycję korekty do sprawdzenia i potwierdzenia.",
+      "invoiceStatus": "Do sprawdzenia",
+      "money": "Pieniądze",
+      "moneyBody": "OpenLinker nie zwraca pieniędzy. Zwróć pieniądze kupującemu samodzielnie w {channel}. Płatność pozostaje opłacona, dopóki zwrot pieniędzy nie zostanie potwierdzony.",
+      "moneyStatus": "Twoje działanie",
+      "stock": "Stan magazynowy",
+      "stockBody": "Zarezerwowane sztuki zostaną zwolnione, otwarte zadania realizacji anulowane, a kupiona etykieta nadawcza unieważniona, jeśli przewoźnik na to pozwala.",
+      "stockStatus": "Automatycznie",
+      "title": "Co się stanie",
+      "units": {
+        "few": "{n} sztuki",
+        "many": "{n} sztuk",
+        "one": "{n} sztuka",
+        "other": "{n} sztuki"
+      }
+    },
+    "keepOrder": "Zachowaj zamówienie",
+    "label": {
+      "fallback": "Dla tego zamówienia istnieje etykieta nadawcza, więc OpenLinker jeszcze go nie anuluje.",
+      "goToShipment": "Przejdź do przesyłki",
+      "note": "Jeśli paczka jest już u kuriera, etykiety nie można unieważnić. Zajrzyj do paczki zamiast anulować.",
+      "stepCancelAgain": "Ponownie anuluj zamówienie.",
+      "stepCancelShipment": "Anuluj przesyłkę. Spowoduje to unieważnienie etykiety u przewoźnika.",
+      "title": "Najpierw anuluj przesyłkę",
+      "whatToDo": "Co zrobić"
+    },
+    "note": "Notatka",
+    "noteHint": "Wszystko, co powinna wiedzieć kolejna osoba. Nigdy dane kupującego.",
+    "noteOptional": "Notatka (opcjonalnie)",
+    "progress": {
+      "afterConfirm": "Rozpocznie się po potwierdzeniu przez kanał.",
+      "askChannel": "Poproś {channel} o anulowanie",
+      "close": "Zamknij",
+      "connectedShops": "Anuluj zamówienie w połączonych sklepach",
+      "description": "Czekamy na potwierdzenie od {channel}. Możesz zamknąć to okno - anulowanie będzie kontynuowane i pojawi się w Aktywności.",
+      "draftCorrection": "Przygotuj fakturę korygującą",
+      "draftCorrectionHint": "Gotowa do sprawdzenia.",
+      "label": "Postęp anulowania",
+      "refund": "Zwróć pieniądze kupującemu",
+      "refundHint": "Twoje działanie. OpenLinker nie przesyła pieniędzy.",
+      "releaseUnits": "Zwolnij zarezerwowane sztuki",
+      "title": "Anulowanie zamówienia {order}",
+      "waiting": "Czekamy na {channel}"
+    },
+    "reason": "Powód",
+    "reasonHint": "Dla Twojego zespołu. {channel} otrzymuje tylko kod powodu, nigdy Twoją notatkę.",
+    "shipped": {
+      "alertTitle": "Paczka jest już w drodze",
+      "close": "Zamknij",
+      "fallback": "To zamówienie zostało już wysłane.",
+      "insteadTitle": "Co możesz zrobić zamiast tego",
+      "stepInvoice": "Faktura pozostaje wystawiona. Zwrot zaproponuje fakturę korygującą.",
+      "stepRefund": "Gdy towar wróci, zwróć pieniądze kupującemu i potwierdź zwrot pieniędzy tutaj.",
+      "stepReturn": "Poproś kupującego o odmowę przyjęcia paczki albo odesłanie jej po doręczeniu. Zwrot pojawi się przy tym zamówieniu, gdy kupujący go zgłosi.",
+      "title": "Tego zamówienia nie można anulować"
+    },
+    "submit": "Anuluj zamówienie",
+    "validation": {
+      "noteTooLong": "Notatka może mieć najwyżej {max} znaków",
+      "otherNeedsNote": "Podaj, jaki to inny powód",
+      "reason": "Wybierz, dlaczego to zamówienie jest anulowane"
+    }
+  },
+  "combinedDiscount": {
+    "channelFallback": "kanał",
+    "channelPart": "{amount} w {channel}",
+    "combined": "Rabat: {parts} = {total}",
+    "ownOnly": "Rabat: {amount} w OpenLinker",
+    "ownPart": "{amount} w OpenLinker"
+  },
+  "common": {
+    "serverSaid": "Serwer odpowiedział: {message}"
+  },
+  "confirmOrderRefund": {
+    "action": "Potwierdź zwrot pieniędzy",
+    "ceiling": {
+      "acknowledge": "Zapisz mimo to",
+      "entered": "Wpisano {requested} {currency}, co przekroczyłoby kwotę {ceiling} {currency} zapłaconą przez kupującego.",
+      "recorded": "Dotychczas zapisane zwroty pieniędzy: {amount} {currency}.",
+      "title": "To więcej niż wartość zamówienia"
+    },
+    "description": "Zapisz zwrot pieniędzy, który wykonałeś dla kupującego. OpenLinker nie przesyła pieniędzy.",
+    "failed": "Nie udało się zapisać zwrotu pieniędzy.",
+    "recorded": "Zwrot pieniędzy zapisany.",
+    "title": "Potwierdź zwrot pieniędzy"
+  },
+  "connectionDot": {
+    "genericCarrier": "przewoźnik",
+    "genericShop": "sklep docelowy"
+  },
+  "deliveryChip": {
+    "action": {
+      "addMapping": "Dodaj mapowanie",
+      "comingSoon": "Wkrótce",
+      "connect": "Połącz",
+      "connectCarrier": "Połącz {carrier}",
+      "enable": "Włącz",
+      "enableCarrier": "Włącz {carrier}"
+    },
+    "banner": {
+      "disabled": "Ta metoda dostawy prowadzi do wyłączonego połączenia z przewoźnikiem. Włącz je, aby OpenLinker mógł wygenerować etykietę.",
+      "disabledCarrier": "Ta metoda dostawy prowadzi do {carrier}, ale połączenie {carrier} jest wyłączone. Włącz je, aby OpenLinker mógł wygenerować etykietę.",
+      "notConnected": "OpenLinker obsługuje tego przewoźnika, ale nie skonfigurowano połączenia z nim. Połącz go, aby zrealizować tę dostawę.",
+      "notConnectedCarrier": "OpenLinker obsługuje {carrier}, ale nie skonfigurowano połączenia {carrier}. Połącz je, aby zrealizować tę dostawę.",
+      "unmapped": "Ta metoda dostawy nie jest zmapowana na przewoźnika. Zmapuj ją, aby OpenLinker wygenerował etykietę.",
+      "unmappedCarrier": "Ta metoda dostawy nie jest zmapowana na przewoźnika. Zmapuj ją na {carrier}, aby OpenLinker wygenerował etykietę."
+    },
+    "outcome": {
+      "awaitingLabel": "Czeka na etykietę",
+      "noMethod": "Brak metody dostawy",
+      "resolved": "Z etykietą",
+      "shopFulfilled": "Poza OpenLinker"
+    },
+    "rider": {
+      "disabled": "Przewoźnik wyłączony",
+      "notConnected": "Niepołączony",
+      "unmapped": "Niezmapowana"
+    },
+    "switchableHint": "- OpenLinker może to przejąć (zobacz zamówienie)"
+  },
+  "destinationRouting": {
+    "attentionSyncHint": "Kierowanie wymaga uwagi",
+    "partialSyncHint": "Nie dotarto do części wybranych kanałów docelowych",
+    "reasons": {
+      "no-active-destination": {
+        "hint": "Każde połączenie, które może przyjąć to zamówienie, jest wyłączone lub wymaga uwagi. Zamówienie zostanie skopiowane automatycznie, gdy któreś z nich znów będzie aktywne. Dokument sprzedaży jest ustalany mimo to.",
+        "label": "Brak aktywnego kanału docelowego"
+      },
+      "no-destination-configured": {
+        "hint": "Żadne inne połączenie nie tworzy zamówień, więc nie ma dokąd skopiować tego zamówienia. Dokument sprzedaży i tak zostanie wystawiony. Jeśli zamówienia mają trafiać także gdzie indziej, dodaj kanał docelowy dla zamówień w sekcji Połączenia.",
+        "label": "Zostaje w sklepie źródłowym"
+      },
+      "routed-destinations-partially-unavailable": {
+        "hint": "To zamówienie dotarło do części kanałów docelowych wybranych przez kierowanie, ale nie do wszystkich. Pozostałe są wyłączone, nieznane albo nie mogą tworzyć zamówień.",
+        "label": "Część wybranych kanałów docelowych niedostępna"
+      },
+      "routed-destinations-unavailable": {
+        "hint": "Kierowanie realizacji wybrało kanał docelowy, do którego OpenLinker nie mógł dotrzeć - jest wyłączony, nieznany albo nie może tworzyć zamówień. Włącz go ponownie, a zamówienie zostanie ponowione automatycznie.",
+        "label": "Wybrany kanał docelowy niedostępny"
+      },
+      "routed-to-no-destination": {
+        "hint": "Kierowanie realizacji uznało, że to zamówienie nie potrzebuje sklepu docelowego. To decyzja kierowania, a nie błąd - nic nie czeka na Ciebie.",
+        "label": "Bez kanału docelowego"
+      },
+      "routed-to-source-only": {
+        "hint": "Kierowanie realizacji wskazało tylko kanał, z którego przyszło to zamówienie, więc nie było dokąd go wysłać. Sprawdź reguły kierowania dla tego połączenia.",
+        "label": "Skierowane z powrotem do własnego kanału"
+      }
+    }
+  },
+  "dispatchInput": {
+    "ineligibleHint": {
+      "alreadyShipped": "Dla tego zamówienia istnieje już przesyłka.",
+      "cod": "Potrzebna kwota pobrania - nadaj osobno.",
+      "missingRecipient": "Niepełne dane odbiorcy - popraw je w źródle, a potem nadaj osobno.",
+      "needsPaczkomat": "Nie ustalono Paczkomatu kupującego - nadaj osobno.",
+      "notReady": "Zamówienie wciąż czeka na mapowanie.",
+      "paymentBlocked": "Płatność nie jest rozliczona - rozlicz płatność, a potem nadaj.",
+      "sourceDeleted": "Produkt usunięto w źródle - nie można go nadać."
+    },
+    "ineligibleLabel": {
+      "alreadyShipped": "Już wysłane",
+      "cod": "Pobranie - podaj kwotę",
+      "missingRecipient": "Brak odbiorcy",
+      "needsPaczkomat": "Wymaga Paczkomatu",
+      "notReady": "Czeka na mapowanie",
+      "paymentBlocked": "Płatność nierozliczona",
+      "sourceDeleted": "Usunięte w źródle"
+    },
+    "missingField": {
+      "city": "Brak miasta dostawy.",
+      "country": "Kraj dostawy musi być 2-literowym kodem ISO (np. PL).",
+      "email": "W danych zamówienia brakuje adresu e-mail kupującego.",
+      "phone": "W adresie dostawy brakuje telefonu kupującego.",
+      "postCode": "Brak kodu pocztowego dostawy.",
+      "street": "Brak ulicy dostawy."
+    }
+  },
+  "dispatchRiskPage": {
+    "allConnections": "Wszystkie połączenia",
+    "backToOrders": "Zamówienia",
+    "buckets": {
+      "atRisk": {
+        "caption": "Zamówienia z bliskim terminem, od najbliższego terminu",
+        "empty": "Nic z bliskim terminem",
+        "label": "Bliski termin"
+      },
+      "onTrack": {
+        "caption": "Zamówienia w terminie, od najbliższego terminu",
+        "empty": "Nic w terminie",
+        "label": "W terminie"
+      },
+      "overdue": {
+        "caption": "Zamówienia po terminie, od najbliższego terminu",
+        "empty": "Nic po terminie",
+        "label": "Po terminie"
+      }
+    },
+    "columns": {
+      "fulfilment": "Realizacja",
+      "items": "Pozycje",
+      "order": "Zamówienie",
+      "shipBy": "Wyślij do",
+      "source": "Źródło"
+    },
+    "description": "Zamówienia uszeregowane według tego, jak szybko przekroczą termin wysyłki. Nadane, doręczone i anulowane zamówienia są pominięte.",
+    "emptyBucket": "W tej grupie nie ma teraz żadnego otwartego zamówienia.",
+    "error": {
+      "message": "Nie udało się pobrać listy zamówień.",
+      "retry": "Spróbuj ponownie",
+      "title": "Nie udało się wczytać ryzyka nadania"
+    },
+    "estimate": {
+      "abbr": "szac.",
+      "title": "Szacunek OpenLinker - termin niepotwierdzony przez marketplace"
+    },
+    "eyebrow": "Operacje",
+    "filterByConnection": "Filtruj według połączenia",
+    "loading": {
+      "message": "Pobieranie zamówień uszeregowanych według terminu wysyłki.",
+      "title": "Wczytywanie ryzyka nadania"
+    },
+    "noDeadlines": {
+      "message": "Żadne otwarte zamówienie nie ma terminu wysyłki, więc nie ma czego szeregować. Terminy pochodzą z okna nadania marketplace.",
+      "title": "Brak terminów wysyłki"
+    },
+    "pagination": {
+      "next": "Dalej",
+      "previous": "Wstecz",
+      "showing": "Wyświetlono {from}-{to} z {total}"
+    },
+    "title": "Ryzyko nadania"
+  },
+  "documentEmailTimeline": {
+    "byMailer": "poczta OpenLinker",
+    "byProvider": "dostawca fakturowania",
+    "failed": "Nie udało się wysłać e-maila do kupującego",
+    "sentDocument": "Dokument wysłany e-mailem do kupującego",
+    "sentInvoice": "Faktura wysłana e-mailem do kupującego",
+    "sentReceipt": "Paragon wysłany e-mailem do kupującego"
+  },
+  "failedOrdersPage": {
+    "allConnections": "Wszystkie połączenia",
+    "awaitingCount": "Czeka na mapowanie: {n}",
+    "backToOrders": "Zamówienia",
+    "caption": "Zamówienia czekające na mapowanie oferta→wariant",
+    "columns": {
+      "connection": "Połączenie",
+      "firstSeen": "Pierwszy raz",
+      "items": "Pozycje",
+      "orderId": "ID zamówienia"
+    },
+    "description": "Zamówienia z nierozwiązanym mapowaniem oferta→wariant. Zostaną ponowione automatycznie po utworzeniu mapowania.",
+    "empty": {
+      "all": "Wszystkie zamówienia zostały w pełni rozwiązane. Nie wykryto problemów z mapowaniem.",
+      "forConnection": "Brak zamówień z brakującym mapowaniem dla wybranego połączenia.",
+      "title": "Brak zamówień czekających na mapowanie"
+    },
+    "error": {
+      "retry": "Spróbuj ponownie",
+      "title": "Nie udało się wczytać zamówień"
+    },
+    "eyebrow": "Operacje",
+    "filterByConnection": "Filtruj według połączenia",
+    "itemCount": {
+      "few": "{n} pozycje",
+      "many": "{n} pozycji",
+      "one": "{n} pozycja",
+      "other": "{n} pozycji"
+    },
+    "loading": {
+      "message": "Pobieranie zamówień czekających na mapowanie…",
+      "title": "Wczytywanie zamówień"
+    },
+    "pagination": {
+      "next": "Dalej",
+      "previous": "Wstecz",
+      "showing": "Wyświetlono {from}-{to} z {total}"
+    },
+    "title": "Czeka na mapowanie"
+  },
+  "generateLabelForm": {
+    "cancel": "Anuluj",
+    "cod": {
+      "amountAria": "Kwota pobrania",
+      "amountAriaIn": "Kwota pobrania w {currency}",
+      "badge": "Za pobraniem",
+      "captionFromOrder": "Ustawiono na podstawie waluty zamówienia ({currency}). Zmień ją, jeśli przewoźnik wymaga innej.",
+      "captionMismatch": "Zamówienie jest w {orderCurrency}, ale ten przewoźnik pobiera należność w {currency} - kwota zostanie pobrana w {currency}.",
+      "captionOnly": "Ten przewoźnik pobiera należność tylko w {currency}.",
+      "currencyAria": "Waluta pobrania",
+      "fromOrder": "z zamówienia",
+      "manualCodOrder": "To zamówienie jest za pobraniem, ale źródło nie podało kwoty do pobrania. Wpisz kwotę do pobrania.",
+      "manualOptional": "Kwota do pobrania przy doręczeniu. Zostaw puste dla przesyłki opłaconej z góry.",
+      "sourcedAmount": "{amount} {currency}",
+      "sourcedNote": "Pobierane przy doręczeniu - ustalone przez zamówienie, nie można tu edytować."
+    },
+    "dimensions": {
+      "description": "Długość × szerokość × wysokość",
+      "heightAria": "Wysokość w milimetrach",
+      "heightPlaceholder": "W",
+      "label": "Wymiary (mm)",
+      "lengthAria": "Długość w milimetrach",
+      "lengthPlaceholder": "D",
+      "widthAria": "Szerokość w milimetrach",
+      "widthPlaceholder": "S"
+    },
+    "heading": "Wygeneruj etykietę",
+    "insurance": {
+      "amountAria": "Deklarowana wartość do ubezpieczenia",
+      "badge": "Ubezpieczenie",
+      "currencyAria": "Waluta ubezpieczenia",
+      "note": "Deklarowana wartość, na jaką ubezpieczyć paczkę. Zostaw puste, aby użyć wartości domyślnej przewoźnika."
+    },
+    "lockerSize": {
+      "description": "Gabaryt skrytki - wymagany dla przesyłki do automatu paczkowego.",
+      "label": "Gabaryt skrytki",
+      "options": {
+        "large": "duża",
+        "medium": "średnia",
+        "small": "mała"
+      }
+    },
+    "missing": {
+      "hint": "Otwórz to zamówienie na platformie źródłowej, popraw dane kupującego, a potem pobierz zamówienie ponownie.",
+      "title": "Brakuje danych odbiorcy - nie można wygenerować etykiety:"
+    },
+    "pickup": {
+      "buyerSelected": "Wybrane przez kupującego - tylko do odczytu.",
+      "buyerSelectedVia": "Wybrane przez kupującego w {provider} - tylko do odczytu.",
+      "typeCode": "Wpisz kod {pointKind} (np. POZ08A)."
+    },
+    "pickupRemoved": {
+      "body": "Usunięto punkt odbioru kupującego z tego zamówienia, więc nie ma dokąd dostarczyć. Zmień metodę dostawy, aby dodać punkt, albo wyślij kurierem.",
+      "title": "Punkt odbioru usunięty w OpenLinker"
+    },
+    "pickupRetry": {
+      "body": "{provider} nie przekazał jeszcze punktu odbioru kupującego dla tego zamówienia. Zwykle pojawia się w ciągu kilku godzin od złożenia zamówienia - uzupełni go kolejne pobranie. Możesz spróbować teraz albo wysłać kurierem.",
+      "retry": "Ponów wyszukanie punktu odbioru",
+      "retrying": "Ponawianie…",
+      "title": "Punkt odbioru jeszcze niedostępny"
+    },
+    "recipient": {
+      "city": "Miasto",
+      "email": "E-mail",
+      "method": "Metoda",
+      "name": "Imię i nazwisko",
+      "noPrefill": "Nie udało się odczytać z zamówienia - operator musi skontaktować się z kupującym.",
+      "phone": "Telefon",
+      "sectionLabel": "Odbiorca",
+      "street": "Ulica"
+    },
+    "slowNotice": "Etykieta jest przetwarzana. Zwykle trwa to 10-30 sekund.",
+    "submit": "Wygeneruj etykietę",
+    "submitting": "Generowanie etykiety… (~30 s)",
+    "toast": {
+      "destinationBody": "To zamówienie realizuje sklep docelowy - OpenLinker nie wystawia etykiety.",
+      "destinationTitle": "Realizuje sklep docelowy",
+      "downloadFailed": "Nie udało się pobrać pliku etykiety",
+      "generatedBody": "Numer przesyłki pojawi się w ciągu ok. 5 minut.",
+      "generatedTitle": "Etykieta wygenerowana"
+    },
+    "traceReference": "Numer referencyjny dla obsługi przewoźnika:",
+    "validation": {
+      "codAmount": "Podaj prawidłową kwotę, np. 129.90",
+      "height": "Wysokość musi być dodatnią liczbą całkowitą",
+      "insuredAmount": "Podaj prawidłową kwotę, np. 150.00",
+      "length": "Długość musi być dodatnią liczbą całkowitą",
+      "weight": "Waga musi być dodatnią liczbą całkowitą",
+      "width": "Szerokość musi być dodatnią liczbą całkowitą"
+    },
+    "weight": "Waga (g)"
+  },
+  "handledInOpenLinker": {
+    "assignedUnknown": "Przypisane",
+    "channelDestination": "OpenLinker",
+    "severalPackers": "Kilku pakowaczy",
+    "syncHint": "Obsługiwane w OpenLinker",
+    "syncLabel": "W OpenLinker",
+    "unassigned": "Nieprzypisane",
+    "waitingOnFact": "Czeka na",
+    "waitingReasons": {
+      "routing-failed": {
+        "fact": "Błąd kierowania",
+        "hint": "OpenLinker wstrzymuje to zamówienie: nie udało się go skierować. Próba zostanie ponowiona automatycznie.",
+        "label": "Czeka: kierowanie"
+      },
+      "routing-no-shipping-address": {
+        "fact": "Adres dostawy",
+        "hint": "OpenLinker wstrzymuje to zamówienie: brak adresu dostawy. Będzie kontynuowane, gdy kanał go przekaże.",
+        "label": "Czeka: adres"
+      },
+      "routing-refused": {
+        "fact": "Stan magazynowy",
+        "hint": "OpenLinker wstrzymuje to zamówienie: jednej z pozycji brakuje we wszystkich lokalizacjach. Zostanie skierowane ponownie automatycznie, gdy towar wróci.",
+        "label": "Czeka: stan"
+      }
+    },
+    "workStages": {
+      "packed": {
+        "hint": "Spakowane w OpenLinker",
+        "label": "Spakowane"
+      },
+      "packing": {
+        "hint": "Właśnie pakowane na stanowisku pakowania",
+        "label": "Pakowanie"
+      },
+      "to-pack": {
+        "hint": "Czeka na spakowanie w OpenLinker",
+        "label": "Do spakowania"
+      }
+    }
+  },
+  "healthSummary": {
+    "allReconciled": "Wszystkie kanały docelowe uzgodnione",
+    "ariaLabel": "Kondycja zamówienia",
+    "awaitingDispatch": "Czeka na nadanie",
+    "blockedUntilSync": "Zablokowane do udanej synchronizacji",
+    "checking": "Sprawdzanie…",
+    "fulfilment": "Realizacja",
+    "items": {
+      "few": "{n} pozycje · ceny ze źródła",
+      "many": "{n} pozycji · ceny ze źródła",
+      "one": "{n} pozycja · ceny ze źródła",
+      "other": "{n} pozycji · ceny ze źródła"
+    },
+    "noDestinationsConfigured": "Nie skonfigurowano kanałów docelowych",
+    "noLineItems": "Brak pozycji",
+    "noShippingDestination": "Brak celu wysyłki",
+    "sync": "Synchro.",
+    "total": "Razem"
+  },
+  "holds": {
+    "errors": {
+      "alreadyOnHold": "To zamówienie jest już wstrzymane. Trwa wczytywanie otwartego wstrzymania.",
+      "alreadyReleased": "To wstrzymanie zostało już zdjęte. Trwa ponowne wczytywanie zamówienia."
+    },
+    "onHold": "Wstrzymane - {reason}",
+    "panel": {
+      "activeSince": "od <time></time>",
+      "activeSinceBy": "od <time></time>, przez <actor>{actor}</actor>",
+      "historyHeld": "wstrzymano <time></time>",
+      "historyHeldBy": "wstrzymano <time></time>, przez <actor>{actor}</actor>",
+      "historyReleased": "zdjęto <time></time>",
+      "historyReleasedBy": "zdjęto <time></time>, przez <actor>{actor}</actor>",
+      "historyReleasedByCancel": "zdjęto <time></time>, przez OpenLinker (zamówienie anulowane)",
+      "notOnHold": "Niewstrzymane.",
+      "place": "Wstrzymaj",
+      "release": "Zdejmij wstrzymanie",
+      "resumeFailed": "Wstrzymanie zdjęto, ale zamówienie nie ruszyło dalej. Użyj <strong>Spróbuj ponownie</strong> przy jego kanale docelowym poniżej, aby je przekazać.",
+      "title": "Wstrzymanie"
+    },
+    "placeDialog": {
+      "cancel": "Anuluj",
+      "description": "OpenLinker przestanie przekazywać to zamówienie do kanału docelowego i nadawać je, dopóki wstrzymanie nie zostanie zdjęte.",
+      "errorFallback": "Nie udało się wstrzymać tego zamówienia.",
+      "noteDescription": "Wszystko, co powinna wiedzieć kolejna osoba. Nigdy dane kupującego.",
+      "noteLabel": "Notatka (opcjonalnie)",
+      "placedToast": "Zamówienie wstrzymane.",
+      "placedWhileDispatchingToast": "Zamówienie wstrzymane, ale w tej chwili było nadawane - etykieta nadawcza mogła już powstać. Sprawdź jego przesyłkę, zanim uznasz, że zostało zatrzymane.",
+      "reasonDescription": "Wybrany powód zobaczy każdy, kto później otworzy to zamówienie.",
+      "reasonLabel": "Powód",
+      "submit": "Wstrzymaj",
+      "submitting": "Wstrzymywanie...",
+      "title": "Wstrzymaj to zamówienie"
+    },
+    "reasons": {
+      "address-invalid": {
+        "hint": "Adres dostawy nie przeszedł weryfikacji, więc nie można wysłać tego zamówienia.",
+        "label": "Błędny adres"
+      },
+      "awaiting-amendment": {
+        "hint": "Zmiana tego zamówienia czeka na rozpatrzenie i nie została jeszcze wprowadzona.",
+        "label": "Czeka na zmianę"
+      },
+      "awaiting-customer-confirmation": {
+        "hint": "To zamówienie czeka na kupującego, a nie na sklep.",
+        "label": "Czeka na kupującego"
+      },
+      "external": {
+        "hint": "Kanał sprzedaży wstrzymuje to zamówienie z powodu, którego OpenLinker nie potrafi rozpoznać.",
+        "label": "Wstrzymane przez kanał"
+      },
+      "fraud-review": {
+        "hint": "Weryfikacja ryzyka dla tego zamówienia wciąż trwa.",
+        "label": "Weryfikacja nadużyć"
+      },
+      "operator": {
+        "hint": "Ktoś celowo wstrzymał to zamówienie. Powód znajdziesz w notatce.",
+        "label": "Wstrzymane przez operatora"
+      },
+      "payment-review": {
+        "hint": "Płatność jest weryfikowana, zanim zamówienie pójdzie dalej.",
+        "label": "Weryfikacja płatności"
+      },
+      "stock-shortfall": {
+        "hint": "Ilość potrzebna do tego zamówienia nie jest faktycznie dostępna do skompletowania.",
+        "label": "Brak towaru"
+      }
+    },
+    "releaseDialog": {
+      "cancel": "Anuluj",
+      "description": "OpenLinker znów zacznie przekazywać to zamówienie do kanału docelowego.",
+      "errorFallback": "Nie udało się zdjąć tego wstrzymania.",
+      "noteDescriptionOptional": "Wszystko, co powinna wiedzieć kolejna osoba. Nigdy dane kupującego.",
+      "noteDescriptionPlacerUnknown": "Nie zapisano, kto wstrzymał to zamówienie, więc wyjaśnij, dlaczego można bezpiecznie zdjąć wstrzymanie.",
+      "noteDescriptionRequired": "OpenLinker sam wstrzymał to zamówienie, więc wyjaśnij, dlaczego można bezpiecznie zdjąć wstrzymanie.",
+      "noteLabel": "Notatka",
+      "noteOptionalLabel": "Notatka (opcjonalnie)",
+      "placedAtBy": "<time></time>, przez <actor>{actor}</actor>",
+      "placedLabel": "Wstrzymano",
+      "reasonLabel": "Powód",
+      "submit": "Zdejmij wstrzymanie",
+      "submitting": "Zdejmowanie...",
+      "title": "Zdejmij to wstrzymanie"
+    },
+    "resume": {
+      "enqueued": "Wstrzymanie zdjęte. Przekazanie zamówienia dalej jest w kolejce.",
+      "failed": "Wstrzymanie zdjęte, ale zamówienie nie ruszyło ponownie. Użyj Spróbuj ponownie przy jego kanale docelowym, aby je przekazać.",
+      "released": "Wstrzymanie zdjęte.",
+      "skippedEnqueueFailed": "Wstrzymanie zdjęte. Nic nie wznowiono - OpenLinker nie mógł go wznowić.",
+      "skippedGeneric": "Wstrzymanie zdjęte. Nie było czego wznawiać.",
+      "skippedMissingSourceExternalId": "Wstrzymanie zdjęte. Nic nie wznowiono - to zamówienie nie ma odniesienia do kanału, z którego można je ponownie zsynchronizować.",
+      "skippedOrderNotFound": "Wstrzymanie zdjęte. Nic nie wznowiono - brak rekordu źródłowego do ponownej synchronizacji."
+    },
+    "unrecognisedHint": "To zamówienie jest wstrzymane z powodu, którego ta wersja OpenLinker nie rozpoznaje. Otwórz zamówienie, aby go zobaczyć.",
+    "validation": {
+      "noteTooLong": "Notatka może mieć najwyżej {max} znaków",
+      "reasonRequired": "Wybierz, dlaczego to zamówienie jest wstrzymywane",
+      "releaseNoteRequired": "Aby zdjąć wstrzymanie założone automatycznie przez OpenLinker, potrzebna jest notatka"
+    }
+  },
+  "identityCell": {
+    "copiedForId": "Skopiowano wewnętrzne ID zamówienia {id}",
+    "copiedForNumber": "Skopiowano wewnętrzne ID zamówienia {number}",
+    "copyForId": "Kopiuj wewnętrzne ID zamówienia {id}",
+    "copyForNumber": "Kopiuj wewnętrzne ID zamówienia {number}",
+    "lineItems": {
+      "few": "{n} pozycje",
+      "many": "{n} pozycji",
+      "one": "{n} pozycja",
+      "other": "{n} pozycji"
+    },
+    "moreLineItems": {
+      "few": "Jeszcze {n} pozycje ({total} w tym zamówieniu)",
+      "many": "Jeszcze {n} pozycji ({total} w tym zamówieniu)",
+      "one": "Jeszcze {n} pozycja ({total} w tym zamówieniu)",
+      "other": "Jeszcze {n} pozycji ({total} w tym zamówieniu)"
+    }
+  },
+  "lifecyclePhase": {
+    "attribution": "według kanału sprzedaży",
+    "labels": {
+      "amending": "Zmiana w toku",
+      "blocked": "Zablokowane",
+      "cancelled": "Anulowane",
+      "delivered": "Doręczone",
+      "fulfillment_failed": "Nadanie nieudane",
+      "held": "Wstrzymane",
+      "in_transit": "U przewoźnika",
+      "ready": "Gotowe",
+      "vendor_authoritative": "Status kanału"
+    },
+    "waitingOn": {
+      "amending": "Zmiana czeka na potwierdzenie przez kanał.",
+      "blocked": "Czeka na OpenLinker - zamówienia nie da się jeszcze dopasować.",
+      "cancelled": "To zamówienie zostało anulowane.",
+      "delivered": "Doręczone - nic nie czeka.",
+      "fulfillment_failed": "Nadanie nieudane - przesyłka wymaga uwagi.",
+      "held": "Wstrzymane - ktoś je zatrzymał; zdejmij wstrzymanie, aby kontynuować.",
+      "in_transit": "U przewoźnika, czeka na doręczenie.",
+      "ready": "Gotowe - czeka na nadanie.",
+      "vendor_authoritative": "Status tego zamówienia podaje kanał sprzedaży."
+    }
+  },
+  "listColumns": {
+    "channel": "Kanał",
+    "customer": "Klient",
+    "money": "Kwoty",
+    "shipment": "Przesyłka",
+    "status": "Status"
+  },
+  "listFilters": {
+    "allSources": "Wszystkie źródła",
+    "anyFulfilment": "Dowolna realizacja",
+    "anyHold": "Dowolny powód wstrzymania",
+    "anyPacking": "Dowolne pakowanie",
+    "anyPhase": "Dowolny etap",
+    "anySla": "Dowolny",
+    "atRisk": {
+      "few": "{n} zagrożone",
+      "many": "{n} zagrożonych",
+      "one": "{n} zagrożone",
+      "other": "{n} zagrożonego"
+    },
+    "checks": {
+      "buyerNote": "Z notatką kupującego",
+      "omsStopped": "Zatrzymane przez OpenLinker",
+      "openReturn": "Otwarty zwrot",
+      "packBench": "Na stanowisku pakowania",
+      "rateConflict": "Konflikt stawki",
+      "routingBlocked": "Kierowanie zablokowane",
+      "salesDocsBlocked": "Dokumenty sprzedaży zablokowane",
+      "shopChanged": "Zmienione w sklepie",
+      "waiting": "Czeka w OpenLinker"
+    },
+    "chips": {
+      "blocked": "Zablokowane",
+      "buyerNote": "Notatka klienta",
+      "buyerNoteValue": "Jest",
+      "conflict": "Konflikt",
+      "created": "Utworzono",
+      "createdFrom": "od {date}",
+      "createdRange": "{from} - {to}",
+      "createdTo": "do {date}",
+      "due": "Termin",
+      "dueValue": "≤ 24 godz. lub po terminie",
+      "fulfilment": "Realizacja",
+      "health": "Status",
+      "hold": "Wstrzym.",
+      "oms": "OpenLinker",
+      "open": "Otwarty",
+      "packBench": "Pakowanie",
+      "packBenchValue": "Do spakowania lub pakowane",
+      "packing": "Pakowanie",
+      "phase": "Etap",
+      "return": "Zwrot",
+      "routing": "Kierowanie",
+      "salesDocs": "Dokumenty sprzedaży",
+      "search": "Szukaj",
+      "searchValue": "„{query}”",
+      "shipBy": "Wyślij do",
+      "shopChanged": "Sklep",
+      "shopChangedValue": "Zmienione",
+      "source": "Źródło",
+      "stopped": "Zatrzymane",
+      "tag": "Tag",
+      "taxRate": "Stawka VAT",
+      "unknownSource": "Nieznane źródło",
+      "unknownTag": "Nieznany tag",
+      "waiting": "OpenLinker",
+      "waitingValue": "Czeka"
+    },
+    "clearAll": "Wyczyść wszystko",
+    "dispatchRiskOverview": "Ryzyko nadania",
+    "fields": {
+      "created": "Utworzono",
+      "createdFrom": "Od",
+      "createdFromAria": "Utworzono od",
+      "createdTo": "Do",
+      "createdToAria": "Utworzono do",
+      "fulfilment": "Realizacja",
+      "hold": "Powód wstrzymania",
+      "packing": "Pakowanie",
+      "shipBy": "Termin wysyłki",
+      "source": "Źródło"
+    },
+    "fulfilmentOptions": {
+      "delivered": "Doręczone",
+      "dispatched": "Nadane",
+      "failed": "Nadanie nieudane",
+      "not-shipped": "Niewysłane"
+    },
+    "groups": {
+      "exceptions": "Wyjątki",
+      "phase": "Etap",
+      "shipment": "Przesyłka",
+      "source": "Źródło i daty",
+      "tags": "Tagi"
+    },
+    "healthLabels": {
+      "awaiting_dispatch": "Czeka na nadanie",
+      "awaiting_mapping": "Czeka na mapowanie",
+      "needs_attention": "Wymaga uwagi",
+      "source_deleted": "Usunięte w źródle",
+      "synced": "Zsynchr."
+    },
+    "hideFilters": "Ukryj filtry",
+    "noFilterResults": {
+      "clearFilters": "Wyczyść filtry",
+      "message": "Żadne zamówienie nie pasuje do: {summary}. Wyczyść filtry, aby zobaczyć wszystko.",
+      "messageNoSummary": "Żadne zamówienie nie pasuje do bieżących filtrów. Wyczyść je, aby zobaczyć wszystko.",
+      "title": "Brak zamówień w tym widoku"
+    },
+    "noResults": {
+      "clearSearch": "Wyczyść wyszukiwanie",
+      "message": "Przeszukaliśmy numery zamówień, nazwiska i e-maile kupujących, SKU oraz numery przesyłek. Numer przesyłki można wyszukać dopiero, gdy istnieje etykieta.",
+      "messageNoPii": "Przeszukaliśmy numery zamówień, SKU oraz numery przesyłek. Numer przesyłki można wyszukać dopiero, gdy istnieje etykieta.",
+      "title": "Żadne zamówienie nie pasuje do „{query}”"
+    },
+    "overdue": {
+      "few": "{n} po terminie",
+      "many": "{n} po terminie",
+      "one": "{n} po terminie",
+      "other": "{n} po terminie"
+    },
+    "packedNo": "Jeszcze niespakowane",
+    "packedYes": "Spakowane",
+    "panelHint": "Filtry działają od razu po zmianie i zostają w pasku adresu.",
+    "quick": {
+      "aria": "Szybkie filtry",
+      "breaching": "Termin wysyłki ≤ 24 godz.",
+      "buyerNote": "Z notatką kupującego",
+      "needsLook": "Do sprawdzenia",
+      "omsStopped": "Zatrzymane przez OpenLinker",
+      "openReturn": "Otwarty zwrot",
+      "packBench": "Na stanowisku pakowania",
+      "phase": "Etap",
+      "rateConflict": "Konflikt stawki",
+      "routingBlocked": "Kierowanie zablokowane",
+      "salesDocs": "Dokumenty zablokowane",
+      "salesDocsTitle": {
+        "few": "Jeszcze {n} są wystawiane na żądanie - czekają na Ciebie zgodnie z konfiguracją, nie są zablokowane.",
+        "many": "Jeszcze {n} jest wystawianych na żądanie - czekają na Ciebie zgodnie z konfiguracją, nie są zablokowane.",
+        "one": "Jeszcze {n} jest wystawiany na żądanie - czeka na Ciebie zgodnie z konfiguracją, nie jest zablokowany.",
+        "other": "Jeszcze {n} jest wystawiane na żądanie - czekają na Ciebie zgodnie z konfiguracją, nie są zablokowane."
+      },
+      "shopChanged": "Zmienione w sklepie",
+      "waiting": "Czeka w OpenLinker"
+    },
+    "results": {
+      "few": "{n} wyniki",
+      "many": "{n} wyników",
+      "one": "{n} wynik",
+      "other": "{n} wyniku"
+    },
+    "resultsAtLeast": {
+      "few": "{n}+ wyniki",
+      "many": "{n}+ wyników",
+      "one": "{n}+ wynik",
+      "other": "{n}+ wyniku"
+    },
+    "reviewDispatchRisk": "Sprawdź ryzyko nadania",
+    "scopeItem": "{label} {value}",
+    "search": {
+      "label": "Szukaj zamówień",
+      "placeholderNoPii": "Szukaj po numerze zamówienia, SKU lub numerze przesyłki…",
+      "placeholderWithPii": "Szukaj po numerze zamówienia, kupującym, e-mailu, SKU lub numerze przesyłki…"
+    },
+    "sectionAny": "Dowolne",
+    "sectionNone": "Brak",
+    "sheetTitle": "Filtry",
+    "showOrders": {
+      "few": "Pokaż {n} zamówienia",
+      "many": "Pokaż {n} zamówień",
+      "one": "Pokaż {n} zamówienie",
+      "other": "Pokaż {n} zamówienia"
+    },
+    "showOrdersAtLeast": {
+      "few": "Pokaż {n}+ zamówienia",
+      "many": "Pokaż {n}+ zamówień",
+      "one": "Pokaż {n}+ zamówienie",
+      "other": "Pokaż {n}+ zamówienia"
+    },
+    "showOrdersUnknown": "Pokaż zamówienia",
+    "slaOptions": {
+      "at_risk": "Zagrożone",
+      "on_track": "W terminie",
+      "overdue": "Po terminie"
+    },
+    "tags": {
+      "any": "Dowolny tag",
+      "find": "Znajdź tag",
+      "groupAria": "Tag",
+      "none": "Bez tagów",
+      "noneYet": "Nie ma jeszcze tagów."
+    },
+    "toggleTitle": "Pokaż lub ukryj filtry (F)"
+  },
+  "listPage": {
+    "allOrders": "Wszystkie zamówienia",
+    "bulk": {
+      "clear": "Wyczyść",
+      "dispatch": "Nadaj ({count})",
+      "multiSourceHint": {
+        "few": "{n} źródła · {hint}",
+        "many": "{n} źródeł · {hint}",
+        "one": "{n} źródło · {hint}",
+        "other": "{n} źródła · {hint}"
+      },
+      "noUnreadNote": "Żadne z zaznaczonych zamówień nie ma nieprzeczytanej wiadomości od kupującego",
+      "noneDispatchable": "Żadnego z zaznaczonych zamówień nie można nadać",
+      "selected": {
+        "few": "Zaznaczono {n} zamówienia",
+        "many": "Zaznaczono {n} zamówień",
+        "one": "Zaznaczono {n} zamówienie",
+        "other": "Zaznaczono {n} zamówienia"
+      }
+    },
+    "cardFacts": {
+      "buyerNote": "Notatka kupującego",
+      "customer": "Klient",
+      "document": "Dokument",
+      "packed": "Spakowane",
+      "packing": "Pakowanie",
+      "payment": "Płatność",
+      "return": "Zwrot",
+      "shipment": "Przesyłka",
+      "stock": "Stan magazynowy",
+      "total": "Razem"
+    },
+    "columns": {
+      "channel": "Kanał",
+      "created": "Utworzono",
+      "customer": "Klient",
+      "order": "Zamówienie",
+      "payment": "Płatność",
+      "shipBy": "Wyślij do",
+      "shipment": "Przesyłka",
+      "status": "Status",
+      "total": "Razem"
+    },
+    "empty": {
+      "allClear": {
+        "action": "Pokaż wszystkie zamówienia",
+        "message": "Brak nieudanych synchronizacji i niezmapowanych zamówień. Nowe problemy pojawią się tutaj od razu.",
+        "title": "Wszystko w porządku - nic nie wymaga Twojej uwagi"
+      },
+      "invoicingBlocked": {
+        "action": "Pokaż wszystkie zamówienia",
+        "message": "Żaden dokument sprzedaży nie czeka teraz na decyzję o wyborze dokumentu.",
+        "title": "Nic nie jest zablokowane"
+      },
+      "noOrders": {
+        "action": "Zarządzaj połączeniami",
+        "message": "Nie zsynchronizowano jeszcze żadnych zamówień.",
+        "title": "Nie znaleziono zamówień"
+      },
+      "packBench": {
+        "action": "Wyczyść filtry",
+        "message": "Żadne zamówienie tutaj nie czeka na spakowanie ani nie jest pakowane. Inne filtry nadal działają.",
+        "title": "W tym widoku nic nie ma na stanowisku pakowania"
+      },
+      "rateConflict": {
+        "action": "Wyczyść filtry",
+        "message": "Inne filtry nadal działają. Wyczyść je, aby sprawdzić całą listę.",
+        "title": "Brak konfliktów stawek w tym widoku"
+      },
+      "routingBlocked": {
+        "action": "Wyczyść filtry",
+        "message": "Żadne zamówienie tutaj nie zostało skierowane do kanału docelowego, do którego OpenLinker nie mógł dotrzeć. Inne filtry nadal działają.",
+        "title": "Brak problemów z kierowaniem w tym widoku"
+      },
+      "waiting": {
+        "action": "Wyczyść filtry",
+        "message": "Żadne zamówienie tutaj nie jest wstrzymane z powodu braku towaru, adresu albo błędu kierowania. Inne filtry nadal działają.",
+        "title": "W tym widoku nic nie czeka w OpenLinker"
+      }
+    },
+    "estimated": {
+      "aria": "Szacowany",
+      "mark": "szac.",
+      "title": "Szacunek OpenLinker - termin niepotwierdzony przez marketplace"
+    },
+    "export": "Eksportuj",
+    "exportSelected": "Eksportuj ({count})",
+    "eyebrow": "Operacje",
+    "freshness": "Zsynchronizowano {time}",
+    "generateLabel": "Wygeneruj etykietę",
+    "loadError": "Nie udało się wczytać zamówień",
+    "loading": "Wczytywanie zamówień…",
+    "refresh": "Odśwież",
+    "retry": {
+      "action": "Spróbuj ponownie",
+      "failedTitle": "Ponowienie nie powiodło się",
+      "queuedDescription": "Synchronizacja została ponownie dodana do kolejki.",
+      "queuedTitle": "Ponowienie w kolejce",
+      "retrying": "Ponawianie…"
+    },
+    "row": {
+      "collapseDetails": "Zwiń szczegóły zamówienia {id}",
+      "expandDetails": "Rozwiń szczegóły zamówienia {id}",
+      "select": "Zaznacz {id}",
+      "selectAll": "Zaznacz wszystkie widoczne zamówienia",
+      "unselect": "Odznacz {id}",
+      "unselectAll": "Odznacz wszystkie widoczne zamówienia"
+    },
+    "sort": {
+      "sortAscending": "{label}, sortowanie rosnąco",
+      "sortDescending": "{label}, sortowanie malejąco",
+      "unsorted": "{label}, sortuj"
+    },
+    "sourceFallback": "Źródło",
+    "tableCaption": "Zamówienia",
+    "title": "Zamówienia"
+  },
+  "matchedSalesDocumentRule": {
+    "amountWithCurrency": "{amount} {currency}",
+    "hasTaxId": "ma NIP",
+    "kind": {
+      "invoice": "fakturę",
+      "receipt": "paragon fiskalny"
+    },
+    "noTaxId": "nie ma NIP",
+    "restOfWorld": "Reszta świata",
+    "sentence": "Pasuje do reguły {market} {conditions}, która rejestruje {kind} przez {connection}.",
+    "shipsTo": "wysyłka do {country}",
+    "totalAtLeast": "wartość równa lub wyższa od skonfigurowanego progu",
+    "totalAtLeastAmount": "wartość co najmniej {amount}",
+    "totalUnder": "wartość poniżej skonfigurowanego progu",
+    "totalUnderAmount": "wartość poniżej {amount}"
+  },
+  "noteActor": {
+    "anotherUser": "inny użytkownik",
+    "you": "Ty"
+  },
+  "openReturnBadge": {
+    "label": "Otwarty zwrot",
+    "labelMany": "Otwarty zwrot ×{count}",
+    "stages": {
+      "awaiting_parcel": "czeka na paczkę",
+      "declined": "odrzucony",
+      "disposed": "rozliczony",
+      "not_returned": "nie odesłano",
+      "partially_received": "przyjęty częściowo",
+      "received_awaiting_disposition": "czeka na decyzję"
+    },
+    "title": "{label} - {stage}"
+  },
+  "orderCancel": {
+    "abandon": {
+      "correctionSuperseded": {
+        "description": "Fakturę skorygował inny dokument, więc tę propozycję zamknięto.",
+        "documentFallback": "inny dokument",
+        "title": "Korekta niepotrzebna: {document} już skorygował fakturę"
+      },
+      "labelNotVoidable": {
+        "description": "Zamówienia nie anulowano. Unieważnij etykietę u przewoźnika, a potem ponownie anuluj zamówienie.",
+        "title": "Prośba wycofana: przewoźnik nie unieważnił etykiety"
+      }
+    },
+    "confirmCorrectionErrors": {
+      "CHANGE_ALREADY_CONFIRMED": "Ta korekta została już potwierdzona",
+      "CHANGE_EXPIRED": "Ta propozycja korekty wygasła",
+      "CHANGE_KIND_NOT_CONFIRMABLE": "Tej zmiany nie można potwierdzić w tym miejscu",
+      "CHANGE_NOT_OPEN": "Ta propozycja korekty nie jest już otwarta",
+      "CORRECTION_FAILED": "Dostawca fakturowania odrzucił korektę",
+      "CORRECTION_IN_PROGRESS": "Korekta jest już wystawiana",
+      "CORRECTION_NEEDS_RECONCILIATION": "Korektę trzeba sprawdzić u dostawcy",
+      "CORRECTION_SUPERSEDED": "Faktura została już skorygowana albo zamówienie anulowano"
+    },
+    "correctionUnavailable": {
+      "no-line-snapshot": "OpenLinker nie ma zapisu pozycji z oryginalnej faktury, więc nie może przygotować korekty. Wystaw korektę w panelu faktury.",
+      "not-fully-issued": "Faktura nie została jeszcze w pełni wystawiona, więc nie można jej jeszcze skorygować. Wystaw korektę, gdy proces się zakończy.",
+      "proposal-failed": "OpenLinker nie mógł przygotować faktury korygującej. Wystaw korektę w panelu faktury."
+    },
+    "inlineTitles": {
+      "CHANNEL_REFUSED_CANCEL": "Kanał sprzedaży odmówił anulowania",
+      "INVOICE_NOT_SETTLED": "Faktura nie została jeszcze w pełni wystawiona",
+      "ORDER_ALREADY_CANCELLED": "To zamówienie jest już anulowane",
+      "ORDER_CANCEL_CONTENDED": "Ktoś inny właśnie anuluje to zamówienie",
+      "ORDER_CANCEL_IN_FLIGHT": "Anulowanie już trwa",
+      "ORDER_HAS_FISCAL_RECEIPT": "Paragon fiskalny blokuje anulowanie"
+    },
+    "participantEffects": {
+      "not-supported": {
+        "description": "Ten system nie obsługuje anulowania, więc nic nie wysłano.",
+        "label": "Nieobsługiwane"
+      },
+      "notified": {
+        "description": "Anulowanie wysłano i przyjęto.",
+        "label": "Anulowane tam"
+      },
+      "refused": {
+        "description": "Kanał odmówił anulowania. Anuluj tam zamówienie ręcznie.",
+        "label": "Odmowa"
+      },
+      "stock-restored-only": {
+        "description": "Ten kanał nie ma potwierdzonej obsługi anulowania. OpenLinker przywrócił stan magazynowy, ale zamówienie pozostaje tam otwarte, dopóki go nie anulujesz.",
+        "label": "Tylko przywrócono stan"
+      },
+      "unreachable": {
+        "description": "Nie udało się połączyć. Anuluj tam zamówienie ręcznie.",
+        "label": "Brak połączenia"
+      }
+    },
+    "reasons": {
+      "buyer-request": "Kupujący poprosił o anulowanie",
+      "duplicate": "Zdublowane zamówienie",
+      "fraud": "Podejrzenie oszustwa lub problem z płatnością",
+      "other": "Inny",
+      "out-of-stock": "Brak towaru"
+    }
+  },
+  "orderCancelAction": {
+    "amendingTitle": "Zmiana tego zamówienia już czeka na kanał.",
+    "button": "Anuluj zamówienie"
+  },
+  "orderCancelResultNotice": {
+    "channelFallback": "kanał sprzedaży",
+    "correction": "Sprawdź i potwierdź fakturę korygującą do {document}. Nic nie zostanie wystawione, dopóki jej nie potwierdzisz.",
+    "correctionConfirmed": "Korekta do {document} została potwierdzona.",
+    "documentFallback": "faktury",
+    "done": "Zamówienie anulowane",
+    "doneWithLeft": {
+      "few": "Zamówienie anulowane: zostały Ci {n} rzeczy do zrobienia",
+      "many": "Zamówienie anulowane: zostało Ci {n} rzeczy do zrobienia",
+      "one": "Zamówienie anulowane: została Ci {n} rzecz do zrobienia",
+      "other": "Zamówienie anulowane: zostało Ci {n} rzeczy do zrobienia"
+    },
+    "pendingAsked": "OpenLinker poprosił {channel} o anulowanie tego zamówienia. Stan magazynowy, połączone sklepy i faktura korygująca zostaną obsłużone po potwierdzeniu.",
+    "pendingTitle": "Anulowanie: czekamy na {channel}",
+    "pendingUnreachable": "Nie udało się połączyć z {channel}; OpenLinker ponawia prośbę. Stan magazynowy, połączone sklepy i faktura korygująca zostaną obsłużone po potwierdzeniu.",
+    "refund": "Zwróć pieniądze kupującemu samodzielnie. OpenLinker nie przesyła pieniędzy, więc płatność pozostaje opłacona, dopóki nie zapiszesz zwrotu przyciskiem Potwierdź zwrot pieniędzy.",
+    "refundAmount": "Zwróć kupującemu {amount} samodzielnie. OpenLinker nie przesyła pieniędzy, więc płatność pozostaje opłacona, dopóki nie zapiszesz zwrotu przyciskiem Potwierdź zwrot pieniędzy.",
+    "relayFailed": "OpenLinker nie mógł powiadomić połączonych sklepów o anulowaniu. Anuluj tam zamówienie ręcznie.",
+    "reviewCorrection": "Sprawdź korektę"
+  },
+  "orderCancelTimeline": {
+    "byOperator": "operator",
+    "bySystem": "system",
+    "bySystemInvoicing": "system · fakturowanie",
+    "bySystemShipping": "system · wysyłka",
+    "bySystemStock": "system · stany magazynowe",
+    "bySystemWriteback": "system · odesłanie statusu",
+    "byWaitingOnYou": "czeka na Ciebie",
+    "cancelled": "Zamówienie anulowane",
+    "cancelledDescription": "Anulowanie zostało wprowadzone.",
+    "channelFallback": "kanał sprzedaży",
+    "correctionConfirmed": "Faktura korygująca potwierdzona",
+    "correctionConfirmedFor": "Potwierdzono fakturę korygującą do {document}",
+    "correctionDrafted": "Przygotowano fakturę korygującą",
+    "correctionDraftedFor": "Przygotowano fakturę korygującą do {document}",
+    "correctionWaiting": "Czeka, aż ją sprawdzisz i potwierdzisz.",
+    "declined": "Kanał sprzedaży odmówił anulowania",
+    "expired": "Prośba o anulowanie wygasła",
+    "expiredDescription": "Kanał nie odpowiedział. Anuluj zamówienie ponownie, jeśli nadal powinno być anulowane.",
+    "refundConfirmed": "Zwrot pieniędzy potwierdzony: {amount}",
+    "refundConfirmedDescription": "Zapisano, że zwrócono pieniądze kupującemu.",
+    "refundPending": "Zwrot pieniędzy jeszcze niepotwierdzony",
+    "refundPendingDescription": "Zwróć pieniądze kupującemu samodzielnie, a potem użyj Potwierdź zwrot pieniędzy. OpenLinker nie przesyła pieniędzy.",
+    "requested": "Poproszono o anulowanie: {reason}",
+    "shipmentsCancelled": {
+      "few": "Anulowano {n} przesyłki. Kupiona etykieta zostaje unieważniona u przewoźnika.",
+      "many": "Anulowano {n} przesyłek. Kupiona etykieta zostaje unieważniona u przewoźnika.",
+      "one": "Anulowano {n} przesyłkę. Kupiona etykieta zostaje unieważniona u przewoźnika.",
+      "other": "Anulowano {n} przesyłki. Kupiona etykieta zostaje unieważniona u przewoźnika."
+    },
+    "shipmentsCancelledTitle": "Przesyłka anulowana",
+    "stockReleased": "Zwolniono zarezerwowany towar",
+    "stockReleasedDescription": "Towar jest przywracany na stan, a oferty są aktualizowane.",
+    "waitingForChannel": "Czekamy na potwierdzenie od {channel}."
+  },
+  "orderColumnsPanel": {
+    "cancel": "Anuluj",
+    "deleteConfirm": "Usuń ustawienie",
+    "deleteDescription": "Ustawienie „{name}” zostanie usunięte dla Ciebie. Kolumny, które są teraz widoczne, pozostaną bez zmian.",
+    "deletePreset": "Usuń ustawienie",
+    "deleteTitle": "Usunąć to ustawienie?",
+    "footHint": "Zmiany działają od razu",
+    "listLabel": "Kolumny w kolejności tabeli",
+    "moveDown": "Przesuń {label} w dół",
+    "moveUp": "Przesuń {label} w górę",
+    "panelLabel": "Kolumny tabeli",
+    "preset": "Ustawienie",
+    "presetCustom": "Własne",
+    "presetName": "Nazwa ustawienia",
+    "presetsLoadError": "Nie udało się wczytać zapisanych ustawień.",
+    "save": "Zapisz",
+    "saveAsPreset": "Zapisz jako ustawienie",
+    "saveError": "Nie udało się zapisać ustawienia. Spróbuj ponownie.",
+    "setWorkspaceDefault": "Ustaw jako domyślne dla wszystkich",
+    "trigger": "Kolumny",
+    "workspaceDefaultSaved": "Zapisano jako domyślne dla wszystkich."
+  },
+  "orderCorrectionProposal": {
+    "cancelReason": "Zamówienie anulowano, więc wszystkie pozycje faktury są zerowane.",
+    "close": "Zamknij",
+    "column": {
+      "line": "Pozycja",
+      "product": "Produkt",
+      "quantity": "Ilość",
+      "unitPrice": "Cena jednostkowa"
+    },
+    "confirm": "Potwierdź korektę",
+    "confirmed": "Korekta potwierdzona.",
+    "confirming": "Potwierdzanie…",
+    "discountReason": "Zamówienie objęto rabatem, więc faktura jest korygowana do cen po rabacie.",
+    "errorBody": "Nie udało się potwierdzić korekty.",
+    "errorTitle": "Nie udało się potwierdzić korekty",
+    "irreversible": "Potwierdzenie wystawia fakturę korygującą, a wystawionej korekty nie można wycofać.",
+    "title": "Faktura korygująca",
+    "titleForDocument": "Korekta do {document}"
+  },
+  "orderCustomerCard": {
+    "ariaLabel": "Klient",
+    "label": "Klient",
+    "lastSeen": "Ostatnio widziany",
+    "loadError": "Nie udało się wczytać danych klienta.",
+    "noCustomer": "Brak powiązanego klienta - to może być zakup bez konta albo nie udało się ustalić klienta.",
+    "notFound": "Nie znaleziono rekordu klienta.",
+    "previousOrders": "Poprzednie zamówienia",
+    "retry": "Spróbuj ponownie",
+    "unknownName": "Nieznane imię i nazwisko",
+    "viewCustomer": "Pokaż klienta",
+    "viewFailedOrders": "Pokaż nieudane zamówienia"
+  },
+  "orderDeliveryPanel": {
+    "carrier": "Przewoźnik",
+    "edited": {
+      "address": "Zmieniono w OpenLinker · {channel} pokazuje {address}",
+      "differentAddress": "inny adres",
+      "method": "Zmieniono w OpenLinker · {channel} pokazuje {method}",
+      "noMethod": "brak metody",
+      "theChannel": "kanał"
+    },
+    "method": "Metoda",
+    "pickup": {
+      "buyerSelectedVia": "wybrane przez kupującego w {provider}",
+      "operatorSelected": "wybrane przez operatora"
+    },
+    "shipTo": "Wysyłka do",
+    "shippedBy": {
+      "carrierFallback": "przewoźnik",
+      "carrierNote": "· etykietę generuje OpenLinker",
+      "label": "Wysyła",
+      "shopFallback": "Sklep docelowy",
+      "shopNote": "· własnym przewoźnikiem"
+    },
+    "title": "Dostawa"
+  },
+  "orderDetailHeader": {
+    "items": {
+      "few": "{n} pozycje",
+      "many": "{n} pozycji",
+      "one": "{n} pozycja",
+      "other": "{n} pozycji"
+    },
+    "moreItems": "+{count} więcej",
+    "noDestination": "brak kanału docelowego",
+    "payment": {
+      "awaiting": "Czeka na płatność",
+      "cod": "Za pobraniem",
+      "paid": "Opłacone",
+      "refunded": "Zwrócono pieniądze"
+    },
+    "placed": "Złożone",
+    "received": "Otrzymane",
+    "routeDestination": "kanał docelowy",
+    "routeSource": "źródło",
+    "title": "Zamówienie {number}",
+    "units": {
+      "few": "{n} sztuki",
+      "many": "{n} sztuk",
+      "one": "{n} sztuka",
+      "other": "{n} sztuki"
+    }
+  },
+  "orderDetailPage": {
+    "activityTitle": "Aktywność",
+    "backToOrders": "Zamówienia",
+    "backToShipments": "Przesyłki",
+    "eyebrow": "Zamówienia",
+    "failedDestinations": {
+      "few": "{n} kanały docelowe z błędem",
+      "many": "{n} kanałów docelowych z błędem",
+      "one": "{n} kanał docelowy z błędem",
+      "other": "{n} kanału docelowego z błędem"
+    },
+    "loadErrorTitle": "Nie udało się wczytać zamówienia",
+    "loadingMessage": "Pobieranie szczegółów zamówienia…",
+    "loadingTitle": "Wczytywanie zamówienia",
+    "notFound": "Nie znaleziono zamówienia",
+    "parseWarnings": {
+      "label": {
+        "few": "Nie udało się odczytać {n} pól · pokaż surowe dane",
+        "many": "Nie udało się odczytać {n} pól · pokaż surowe dane",
+        "one": "Nie udało się odczytać {n} pola · pokaż surowe dane",
+        "other": "Nie udało się odczytać {n} pola · pokaż surowe dane"
+      },
+      "title": "Niektórych pól nie udało się odczytać - zobacz surowe dane"
+    },
+    "pricingTitle": "Ceny i podatek",
+    "rawSnapshotTitle": "Surowe dane zamówienia",
+    "retry": "Spróbuj ponownie",
+    "retryFailedTitle": "Ponowienie nie powiodło się",
+    "retryQueuedDescription": "Synchronizacja z kanałem docelowym z błędem jest w kolejce.",
+    "retryQueuedTitle": "Ponowienie w kolejce",
+    "retrying": "Ponawianie…",
+    "summary": {
+      "buyerTaxId": "NIP kupującego",
+      "orderNumber": "Nr zamówienia",
+      "placed": "Złożone",
+      "receivedOl": "Otrzymane (OL)",
+      "shipBy": "Termin wysyłki",
+      "source": "Źródło",
+      "sourceEventId": "ID zdarzenia źródła",
+      "status": "Status",
+      "statusAtChannel": "Status w {channel}",
+      "statusAtUnknownChannel": "Status w kanale",
+      "title": "Podsumowanie",
+      "updatedOl": "Zaktualizowane (OL)"
+    },
+    "syncStatus": {
+      "noDestinationOrderId": "jeszcze brak ID zamówienia w kanale docelowym",
+      "noDestinations": "Nie skonfigurowano kanałów docelowych synchronizacji.",
+      "note": "Ponowienie nigdy nie tworzy zamówienia dwa razy; zsynchronizowany wiersz pokazuje ID zamówienia w kanale docelowym.",
+      "statuses": {
+        "failed": "błąd",
+        "pending": "oczekuje",
+        "skipped_cancelled": "pominięte (anulowane)",
+        "synced": "zsynchronizowane",
+        "syncing": "synchronizacja"
+      },
+      "title": "Status synchronizacji",
+      "titleWithCount": "Status synchronizacji ({count})"
+    },
+    "title": "Szczegóły zamówienia",
+    "viewFailedOrders": "Pokaż nieudane zamówienia",
+    "viewRaw": "pokaż surowe dane"
+  },
+  "orderDiscountRefund": {
+    "ceiling": {
+      "acknowledge": "Zapisz mimo to",
+      "body": "Ten zwrot pieniędzy wynosi {requested} {currency}, ale w tym zamówieniu można jeszcze zwrócić tylko {remaining} {currency} (zwrócono już {refunded} {currency}).",
+      "title": "Więcej, niż można jeszcze zwrócić"
+    },
+    "channelFallback": "kanał sprzedaży",
+    "close": "Zamknij",
+    "confirm": "Potwierdź zwrot pieniędzy",
+    "confirming": "Potwierdzanie…",
+    "discountLowered": "Rabat obniżył kwotę należną od kupującego.",
+    "errorBody": "Nie udało się potwierdzić zwrotu pieniędzy.",
+    "errorTitle": "Nie udało się potwierdzić zwrotu pieniędzy",
+    "recorded": "Zwrot pieniędzy zapisany.",
+    "refundFirst": "OpenLinker nie przesyła pieniędzy: najpierw zwróć różnicę w {channel}, a potem potwierdź to tutaj, aby dokumenty zgadzały się z tym, co zapłacił kupujący.",
+    "title": "Potwierdź wykonanie zwrotu pieniędzy",
+    "titleWithAmount": "Potwierdź wykonanie zwrotu pieniędzy w kwocie {amount}"
+  },
+  "orderEdit": {
+    "ceiling": {
+      "exceeded": "Więcej, niż można jeszcze zwrócić w tym zamówieniu: żądano {requested}, zostało {remaining} po zwróceniu {refunded}.",
+      "unknown": "OpenLinker nie mógł sprawdzić, ile jeszcze można zwrócić w tym zamówieniu.",
+      "within": "W granicach tego, co można jeszcze zwrócić w tym zamówieniu (zostało {remaining})."
+    },
+    "correctionUnavailable": {
+      "fiscal-receipt": "Dla tego zamówienia zarejestrowano paragon fiskalny. OpenLinker nie może go skorygować, więc skoryguj go tam, gdzie został zarejestrowany.",
+      "no-line-snapshot": "OpenLinker nie ma zapisu pozycji z wystawionej faktury, więc nie może przygotować korekty. Wystaw korektę w panelu faktury.",
+      "not-fully-issued": "Faktura nie została jeszcze w pełni wystawiona, więc nie można jej jeszcze skorygować. Wystaw korektę, gdy proces się zakończy.",
+      "proposal-failed": "OpenLinker nie mógł przygotować korekty. Wystaw korektę w panelu faktury.",
+      "unmatched-lines": "Nie udało się dopasować pozycji faktury do zamówienia, więc OpenLinker nie może przygotować korekty. Wystaw ją w panelu faktury."
+    },
+    "discountBranches": {
+      "cod": "Za pobraniem",
+      "paid": "Kupujący już zapłacił",
+      "unknown": "Nieznany status płatności",
+      "unpaid": "Jeszcze nieopłacone"
+    },
+    "history": {
+      "addressChange": "Zmieniono adres dostawy",
+      "deliveryMethodChange": "Zmieniono metodę dostawy",
+      "discountChange": "Zmieniono rabat",
+      "fallback": "Zamówienie zmienione",
+      "lineQuantityChange": "Zmniejszono ilości pozycji"
+    },
+    "refusals": {
+      "ADDRESS_EDIT_NEEDS_PII_STORAGE": {
+        "fallbackReason": "OpenLinker jest skonfigurowany tak, aby nie przechowywać adresów kupujących.",
+        "title": "Adresu nie można tu zmienić"
+      },
+      "DISCOUNT_BELOW_REFUNDED": {
+        "fallbackReason": "Zwrot pieniędzy za rabat został już potwierdzony, więc rabat nie może być niższy.",
+        "title": "Rabat jest niższy niż zwrócona kwota"
+      },
+      "DISCOUNT_EXCEEDS_TOTAL": {
+        "fallbackReason": "Rabat nie może obniżyć wartości zamówienia poniżej zera.",
+        "title": "Rabat przekracza wartość zamówienia"
+      },
+      "EDIT_AFTER_HANDOFF": {
+        "fallbackReason": "Nie można powiadomić magazynu o zmianie.",
+        "steps": {
+          "1": "Poproś magazyn o zmianę albo anuluj zamówienie i skieruj je ponownie."
+        },
+        "title": "Zamówienie jest w zewnętrznym magazynie"
+      },
+      "INVOICE_NOT_SETTLED": {
+        "fallbackReason": "Nie można jej skorygować, dopóki proces się nie zakończy.",
+        "steps": {
+          "1": "Poczekaj, aż faktura zostanie wystawiona, a potem dodaj rabat."
+        },
+        "title": "Faktura nie została jeszcze w pełni wystawiona"
+      },
+      "LABEL_ALREADY_BOUGHT": {
+        "fallbackReason": "Etykieta zawiera obecny adres i metodę dostawy.",
+        "steps": {
+          "1": "Anuluj przesyłkę. Spowoduje to unieważnienie etykiety u przewoźnika.",
+          "2": "Zmień zamówienie."
+        },
+        "title": "Etykieta nadawcza jest już kupiona"
+      },
+      "LINE_PRICE_NOT_RESOLVABLE": {
+        "fallbackReason": "OpenLinker nie potrafi ustalić ceny brutto tej pozycji, więc nie może jej obniżyć.",
+        "steps": {
+          "1": "Anuluj zamówienie i poproś kupującego o ponowne zamówienie."
+        },
+        "title": "Pozycji nie można zmienić"
+      },
+      "NOTHING_CHANGED": {
+        "fallbackReason": "Zamówienie już tak wygląda.",
+        "title": "Nic do zmiany"
+      },
+      "ORDER_ALREADY_CANCELLED": {
+        "fallbackReason": "Anulowanego zamówienia nie można zmieniać.",
+        "title": "To zamówienie jest anulowane"
+      },
+      "ORDER_ALREADY_SHIPPED": {
+        "fallbackReason": "To zamówienie zostało już wysłane, więc nie można już zmienić adresu, metody dostawy ani pozycji. Rabat nadal można dodać.",
+        "steps": {
+          "1": "Gdy paczka wróci, użyj obsługi zwrotów."
+        },
+        "title": "Paczka jest już w drodze"
+      },
+      "ORDER_AMENDMENT_IN_FLIGHT": {
+        "fallbackReason": "Anulowanie tego zamówienia czeka na odpowiedź kanału sprzedaży.",
+        "steps": {
+          "1": "Poczekaj na odpowiedź kanału, a potem zmień zamówienie."
+        },
+        "title": "Anulowanie czeka na kanał"
+      },
+      "ORDER_EDIT_CONTENDED": {
+        "fallbackReason": "Spróbuj ponownie za chwilę.",
+        "title": "Ktoś inny właśnie zmienia to zamówienie"
+      },
+      "ORDER_HAS_FISCAL_RECEIPT": {
+        "fallbackReason": "OpenLinker nie może skorygować paragonu fiskalnego.",
+        "steps": {
+          "1": "Skoryguj paragon na kasie lub u dostawcy paragonów."
+        },
+        "title": "Paragon fiskalny blokuje rabat"
+      },
+      "ORDER_NOT_READY": {
+        "fallbackReason": "Jego produkty nie są jeszcze dopasowane.",
+        "steps": {
+          "1": "Popraw mapowanie produktów, a potem zmień zamówienie."
+        },
+        "title": "Import tego zamówienia nie został zakończony"
+      },
+      "ORDER_PACKED": {
+        "fallbackReason": "Najpierw cofnij spakowanie, aby otworzyć paczkę ponownie, a potem zmień zamówienie.",
+        "steps": {
+          "1": "Oznacz zamówienie jako niespakowane.",
+          "2": "Zmień zamówienie."
+        },
+        "title": "To zamówienie jest już spakowane"
+      },
+      "ORDER_WORK_ACCEPTED_NEEDS_ACK": {
+        "fallbackReason": "Ktoś zaczął już je kompletować.",
+        "title": "To zamówienie jest na stanowisku pakowania"
+      },
+      "ORDER_WOULD_BE_EMPTY": {
+        "fallbackReason": "Aby usunąć wszystko, anuluj zamówienie.",
+        "title": "Zamówienie musi mieć co najmniej jedną pozycję"
+      },
+      "QUANTITY_BELOW_FULFILLED": {
+        "fallbackReason": "Część sztuk tej pozycji została już zrealizowana.",
+        "title": "To mniej, niż już wysłano"
+      },
+      "QUANTITY_ONLY_DECREASES": {
+        "fallbackReason": "Zwiększenie ilości byłoby nową sprzedażą. Poproś kupującego o ponowne zamówienie.",
+        "title": "Ilość można tylko zmniejszyć"
+      },
+      "SALES_DOCUMENT_ISSUED": {
+        "fallbackReason": "Dla tego zamówienia wystawiono już dokument sprzedaży.",
+        "steps": {
+          "1": "Wystaw korektę w sekcji Dokument sprzedaży na tej stronie."
+        },
+        "title": "Pozycji nie można zmienić"
+      }
+    },
+    "remedies": {
+      "invoicing": "Przejdź do dokumentu sprzedaży",
+      "packing": "Przejdź do pakowania",
+      "shipment": "Przejdź do przesyłki"
+    },
+    "sections": {
+      "address": "Adres dostawy",
+      "delivery": "Metoda dostawy",
+      "discount": "Rabat",
+      "lines": "Pozycje"
+    },
+    "stock": {
+      "notRestored": {
+        "few": "Nie przywrócono stanu magazynowego dla {n} pozycji. OpenLinker spróbuje ponownie.",
+        "many": "Nie przywrócono stanu magazynowego dla {n} pozycji. OpenLinker spróbuje ponownie.",
+        "one": "Nie przywrócono stanu magazynowego dla jednej pozycji. OpenLinker spróbuje ponownie.",
+        "other": "Nie przywrócono stanu magazynowego dla {n} pozycji. OpenLinker spróbuje ponownie."
+      },
+      "notRestoredWithReasons": {
+        "few": "Nie przywrócono stanu magazynowego dla {n} pozycji ({reasons}). OpenLinker spróbuje ponownie.",
+        "many": "Nie przywrócono stanu magazynowego dla {n} pozycji ({reasons}). OpenLinker spróbuje ponownie.",
+        "one": "Nie przywrócono stanu magazynowego dla jednej pozycji ({reasons}). OpenLinker spróbuje ponownie.",
+        "other": "Nie przywrócono stanu magazynowego dla {n} pozycji ({reasons}). OpenLinker spróbuje ponownie."
+      },
+      "restored": {
+        "few": "Przywrócono stan magazynowy dla {n} pozycji.",
+        "many": "Przywrócono stan magazynowy dla {n} pozycji.",
+        "one": "Przywrócono stan magazynowy dla jednej pozycji.",
+        "other": "Przywrócono stan magazynowy dla {n} pozycji."
+      },
+      "unchanged": "Stan magazynowy bez zmian: w tym zamówieniu nie było czego przywracać."
+    }
+  },
+  "orderEditAction": {
+    "amendingTitle": "Zmiana tego zamówienia już czeka na kanał.",
+    "button": "Edytuj zamów."
+  },
+  "orderEditDialog": {
+    "ack": {
+      "body": "Ktoś przejął to zamówienie na stanowisku pakowania i może już je kompletować. Zmniejszenie ilości zmieni jego zadanie w trakcie pracy.",
+      "label": "Pakowacz został powiadomiony",
+      "title": "To zamówienie jest na stanowisku pakowania"
+    },
+    "address": {
+      "address1": "Ulica i numer",
+      "address1Changed": "Zmieniono. {channel} ma {original}.",
+      "address2": "Mieszkanie lub druga linia adresu",
+      "city": "Miasto",
+      "country": "Kraj",
+      "firstName": "Imię",
+      "lastName": "Nazwisko",
+      "postalCode": "Kod pocztowy"
+    },
+    "back": "Wróć do edycji",
+    "cancel": "Anuluj",
+    "ceiling": {
+      "ack": "Zachowaj rabat mimo to i zapisz zwrot pieniędzy w tej kwocie",
+      "body": "Zwrot pieniędzy za ten rabat wynosi {requested}, ale w tym zamówieniu można jeszcze zwrócić tylko {remaining} (zwrócono już {refunded}).",
+      "title": "Więcej, niż można jeszcze zwrócić"
+    },
+    "channelFallback": "kanał sprzedaży",
+    "checking": "Sprawdzanie…",
+    "delivery": {
+      "methodId": "ID metody",
+      "methodIdHint": "ID, do którego pasują reguły mapowania przewoźników. Decyduje, u którego przewoźnika OpenLinker kupi etykietę. Cena dostawy nie zmienia się.",
+      "methodName": "Nazwa metody (opcjonalnie)",
+      "pickupId": "Kod punktu odbioru (opcjonalnie)",
+      "pickupIdHint": "Zostaw puste dla dostawy do domu.",
+      "pickupName": "Nazwa punktu odbioru (opcjonalnie)"
+    },
+    "description": "Zmiany zostają w OpenLinker i są używane do etykiety nadawczej, faktury i na stanowisku pakowania. {channel} zachowuje zamówienie tak, jak złożył je kupujący.",
+    "discard": "Odrzuć",
+    "discount": {
+      "as": "Jako",
+      "current": "To zamówienie ma rabat {amount}. Nowy rabat go zastąpi, a 0 go usunie.",
+      "hint": "Obniża wartość zamówienia. Jeden rabat na zamówienie. OpenLinker nie zwraca pieniędzy kupującemu: zwrot robisz w kanale.",
+      "label": "Rabat",
+      "modeAmount": "Kwota brutto",
+      "modePercent": "Procent wartości towarów"
+    },
+    "failure": {
+      "fallback": "Nie udało się zapisać tej zmiany.",
+      "title": "Nie udało się zapisać tej zmiany"
+    },
+    "lines": {
+      "hint": "Możesz zmniejszyć ilość lub ustawić 0. Zwiększenie ilości lub dodanie produktów byłoby nową sprzedażą. Poproś kupującego o ponowne zamówienie.",
+      "of": "z {max}",
+      "ofWithChannel": "z {max} ({channel} ma {channelQuantity})",
+      "product": "Produkt",
+      "quantity": "Ilość",
+      "quantityLabel": "Ilość, {item}"
+    },
+    "locked": "{section} · zablokowane",
+    "paidNote": "Kupujący zapłacił {amount} w {channel}. Podsumowanie pokazuje wartość po Twoich zmianach.",
+    "paidNoteUnknown": "Podsumowanie pokazuje wartość po Twoich zmianach.",
+    "quantitiesSaved": {
+      "body": "Rabat jest nadal wpisany poniżej. Sprawdź go teraz.",
+      "title": "Ilości zapisane"
+    },
+    "review": "Sprawdź zmiany",
+    "reviewDescription": "Przed zapisaniem sprawdź, co się zmienia i gdzie jest to używane.",
+    "reviewTitle": "Sprawdź zmiany w {order}",
+    "save": "Zapisz zmiany",
+    "saving": "Zapisywanie…",
+    "title": "Edytuj zamówienie {order}",
+    "validation": {
+      "address1": "Podaj ulicę i numer",
+      "city": "Podaj miasto",
+      "country": "Użyj dwuliterowego kodu kraju, np. PL",
+      "discountAmount": "Podaj zwykłą kwotę, np. 12.50, albo 0, aby usunąć rabat",
+      "discountPercent": "Podaj procent od 0 do 100",
+      "linesEmpty": "Zamówienie musi mieć co najmniej jedną pozycję. Aby usunąć wszystko, anuluj zamówienie.",
+      "methodId": "Podaj ID metody dostawy",
+      "pickupId": "Punkt odbioru wymaga kodu",
+      "postalCode": "Podaj kod pocztowy",
+      "quantityMax": "Można tylko zmniejszyć: najwyżej {max}",
+      "quantityWhole": "Podaj liczbę całkowitą, 0 lub więcej"
+    }
+  },
+  "orderEditRefusal": {
+    "alreadySaved": "Już zapisano: {sections}.",
+    "orCancel": "Możesz też anulować zamówienie i poprosić kupującego o ponowne zamówienie."
+  },
+  "orderEditReview": {
+    "changes": "Zmiany",
+    "channelFallback": "kanał sprzedaży",
+    "channelHas": "{channel} ma",
+    "columnAfter": "Po zmianie",
+    "columnWhat": "Co",
+    "deferred": {
+      "body": "Najpierw zapisz zmianę ilości, a potem zastosuj rabat. Rabat pozostanie wpisany, więc od razu go sprawdzisz.",
+      "title": "Rabat jest sprawdzany osobno"
+    },
+    "discount": "Rabat",
+    "discountNone": "brak",
+    "discountRemoved": "usunięty",
+    "impact": {
+      "channelBody": "{channel} zachowuje zamówienie tak, jak złożył je kupujący. Nic nie jest odsyłane.",
+      "channelFallback": "Kanał sprzedaży",
+      "channelStatus": "Nie wysłano",
+      "documentsBody": "Od teraz korzystają ze zmienionego zamówienia. Istniejąca etykieta lub faktura zachowuje dane, z którymi została wystawiona.",
+      "documentsStatus": "Użyją zmiany",
+      "documentsWhat": "Etykieta nadawcza, faktura i stanowisko pakowania",
+      "title": "Gdzie ta zmiana jest używana"
+    },
+    "money": {
+      "ceilingCheck": "Sprawdź",
+      "ceilingWithin": "W granicach limitu",
+      "codBody": "{branch}. Kupujący płaci teraz {amount}.",
+      "codBodyNoAmount": "{branch}.",
+      "codCorrection": "Zostanie przygotowana korekta do {document} do sprawdzenia.",
+      "codNoDocument": "Faktura zostanie wystawiona na podstawie zamówienia po rabacie.",
+      "codTitle": "Kwota do pobrania",
+      "documentFallback": "wystawionej faktury",
+      "nothingToRefund": "Nic do zwrotu",
+      "paidBody": "{branch}. OpenLinker nie przesyła pieniędzy. Gdy zwrócisz pieniądze w {channel}, potwierdź zwrot pieniędzy w tym zamówieniu, aby dokumenty zgadzały się z tym, co zapłacił kupujący.",
+      "paidCorrection": "Zostanie przygotowana korekta do {document} do sprawdzenia. Nic nie zostanie wystawione, dopóki jej nie potwierdzisz.",
+      "paidNoDocument": "Nie wystawiono jeszcze dokumentu, więc nie ma czego korygować. Faktura zostanie wystawiona na podstawie zamówienia po rabacie.",
+      "refundTitle": "Zwróć {amount} w {channel}",
+      "unknownBody": "Rabat obniża wartość zamówienia. Sprawdź w {channel}, czy kupujący zapłacił, a jeśli tak, zwróć tam różnicę.",
+      "unknownTitle": "OpenLinker nie wie, czy to zamówienie jest opłacone"
+    },
+    "orderTotal": "Wartość zamówienia"
+  },
+  "orderEditTimeline": {
+    "byOperator": "operator",
+    "bySystemInvoicing": "system · fakturowanie",
+    "byWaitingOnYou": "czeka na Ciebie",
+    "changed": "Zmieniono tylko w OpenLinker - {channel} zachowuje oryginał.",
+    "channelFallback": "Kanał sprzedaży",
+    "correctionDescription": "Czeka, aż ją sprawdzisz i potwierdzisz.",
+    "correctionTitle": "Przygotowano fakturę korygującą dla rabatu",
+    "refundDifference": "różnicę",
+    "refundPendingDescription": "Zwróć {amount} w {channel}, a potem użyj Potwierdź zwrot pieniędzy.",
+    "refundPendingTitle": "Zwrot pieniędzy jeszcze niepotwierdzony"
+  },
+  "orderEditedBadge": {
+    "attention": "Zmienione w OpenLinker - wymaga uwagi",
+    "attentionTitle": "Kanał sprzedaży zmienił pozycje tego zamówienia, więc zmiana wprowadzona w OpenLinker już nie obowiązuje.",
+    "edited": "Zmienione w OpenLinker",
+    "editedTitle": "Operator zmienił to zamówienie w OpenLinker. Kanał sprzedaży zachowuje oryginał."
+  },
+  "orderEditedNotice": {
+    "channelFallback": "kanał sprzedaży",
+    "cod": "Za pobraniem: pobierz {amount} ({channel} ma {channelAmount}).",
+    "confirmRefund": "Potwierdź zwrot pieniędzy",
+    "correctionPending": "Sprawdź i wystaw fakturę korygującą dla rabatu. Nic nie zostanie wystawione, dopóki jej nie potwierdzisz.",
+    "orderHere": "Tutaj zamówienie ma wartość {amount}.",
+    "refundDifference": "różnicę",
+    "refundIntentFailed": "Rabat zapisano, ale OpenLinker nie mógł otworzyć dla niego zwrotu pieniędzy. Wyślij ten sam rabat ponownie, aby go otworzyć, a potem zwróć różnicę w {channel}.",
+    "refundPending": "Zwróć {amount} w {channel}, a potem potwierdź tutaj zwrot pieniędzy.",
+    "resend": "Wyślij rabat ponownie",
+    "resendFailed": "Nie udało się ponownie wysłać rabatu.",
+    "resending": "Wysyłanie…",
+    "reviewCorrection": "Sprawdź korektę",
+    "stillShows": "{channel} nadal pokazuje zamówienie tak, jak złożył je kupujący.",
+    "stillShowsLowered": {
+      "few": "{channel} nadal pokazuje zamówienie tak, jak złożył je kupujący, z {n} pozycjami zmniejszonymi tutaj.",
+      "many": "{channel} nadal pokazuje zamówienie tak, jak złożył je kupujący, z {n} pozycjami zmniejszonymi tutaj.",
+      "one": "{channel} nadal pokazuje zamówienie tak, jak złożył je kupujący, z jedną pozycją zmniejszoną tutaj.",
+      "other": "{channel} nadal pokazuje zamówienie tak, jak złożył je kupujący, z {n} pozycji zmniejszonymi tutaj."
+    },
+    "stillShowsTotal": "{channel} nadal pokazuje zamówienie tak, jak złożył je kupujący: {total}.",
+    "stillShowsTotalLowered": {
+      "few": "{channel} nadal pokazuje zamówienie tak, jak złożył je kupujący: {total}, z {n} pozycjami zmniejszonymi tutaj.",
+      "many": "{channel} nadal pokazuje zamówienie tak, jak złożył je kupujący: {total}, z {n} pozycjami zmniejszonymi tutaj.",
+      "one": "{channel} nadal pokazuje zamówienie tak, jak złożył je kupujący: {total}, z jedną pozycją zmniejszoną tutaj.",
+      "other": "{channel} nadal pokazuje zamówienie tak, jak złożył je kupujący: {total}, z {n} pozycji zmniejszonymi tutaj."
+    },
+    "stockFailedTitle": "Nie przywrócono stanu magazynowego",
+    "title": "To zamówienie zmieniono w OpenLinker",
+    "unmatched": {
+      "body": {
+        "few": "{channel} zmienił pozycje tego zamówienia, więc zmiany wprowadzone tutaj już nie obowiązują. Sprawdź pozycje przed wysyłką.",
+        "many": "{channel} zmienił pozycje tego zamówienia, więc zmiany wprowadzone tutaj już nie obowiązują. Sprawdź pozycje przed wysyłką.",
+        "one": "{channel} zmienił pozycje tego zamówienia, więc zmiana wprowadzona tutaj już nie obowiązuje. Sprawdź pozycje przed wysyłką.",
+        "other": "{channel} zmienił pozycje tego zamówienia, więc zmiany wprowadzone tutaj już nie obowiązują. Sprawdź pozycje przed wysyłką."
+      },
+      "line": "Pozycja {line}: zmniejszono do {quantity} dnia {date}",
+      "title": "Zmienione w OpenLinker - wymaga uwagi"
+    },
+    "workFailed": {
+      "body": {
+        "few": "Nie udało się zaktualizować zadania pakowania dla {n} pozycji. Ponów zmianę.",
+        "many": "Nie udało się zaktualizować zadania pakowania dla {n} pozycji. Ponów zmianę.",
+        "one": "Nie udało się zaktualizować zadania pakowania dla {n} pozycji. Ponów zmianę.",
+        "other": "Nie udało się zaktualizować zadania pakowania dla {n} pozycji. Ponów zmianę."
+      },
+      "title": "Zadanie pakowania nie zostało w pełni zaktualizowane"
+    }
+  },
+  "orderExport": {
+    "cancel": "Anuluj",
+    "changeSettings": "Zmień ustawienia",
+    "close": "Zamknij",
+    "columnGroups": {
+      "buyer": "Kupujący",
+      "delivery": "Dostawa",
+      "items": "Pozycje",
+      "money": "Kwoty",
+      "order": "Zamówienie"
+    },
+    "columnsCount": "{n} z {total}",
+    "columnsHead": "Kolumny",
+    "counting": "Liczenie…",
+    "description": "Pobierz zamówienia jako plik arkusza kalkulacyjnego. Nic w OpenLinker ani w Twoich kanałach się nie zmienia.",
+    "download": "Pobierz plik",
+    "downloadFailed": "Nie udało się pobrać pliku. Spróbuj ponownie albo pobierz go z sekcji Zadania w tle i logi.",
+    "downloading": "Pobieranie…",
+    "errorAlertTitle": "Nie udało się wygenerować eksportu",
+    "errorFallback": "Nieoczekiwany błąd przerwał eksport. Nie utworzono pliku.",
+    "errorJob": "Zadanie w tle i jego błąd pozostają w sekcji <link>Zadania w tle i logi</link>.",
+    "errorTitle": "Eksport nie powiódł się",
+    "fileHead": "Plik",
+    "format": "Format",
+    "formatCsv": "CSV",
+    "formatXlsx": "Excel (XLSX)",
+    "groupCount": "{on}/{total}",
+    "kvAvailableUntil": "Dostępny do",
+    "kvColumns": "Kolumny",
+    "kvColumnsValue": "{n}, ustawienie {preset}",
+    "kvFile": "Plik",
+    "kvPersonalData": "Dane osobowe",
+    "kvRows": "Wiersze",
+    "largeBody": "{count} zamówień to więcej, niż można tu przygotować (do {limit}). Możesz dalej pracować. Pobierz plik z sekcji Zadania w tle i logi, gdy będzie gotowy; pozostanie tam przez 7 dni.",
+    "largeTitle": "Ten eksport działa w tle",
+    "noColumns": "Wybierz co najmniej jedną kolumnę.",
+    "ordersGroupLabel": "Zamówienia do eksportu",
+    "ordersHead": "Zamówienia",
+    "piiDisabledHint": "Włącz Dołącz dane osobowe, aby je dodać.",
+    "piiHead": "Dane osobowe",
+    "piiIncluded": "Dołączone",
+    "piiNotIncluded": "Niedołączone",
+    "piiToggle": "Dołącz dane osobowe",
+    "piiToggleHint": "Imiona i nazwiska oraz adresy e-mail kupujących.",
+    "piiWarningBody": "Przechowuj go bezpiecznie i usuń, gdy nie będzie już potrzebny. Każdy, komu go wyślesz, otrzyma te same dane. Zamówienia otrzymane, gdy przechowywanie danych osobowych było wyłączone, mają puste kolumny kupującego.",
+    "piiWarningTitle": "Ten plik będzie zawierał dane osobowe",
+    "placedFrom": "Złożone od",
+    "placedTo": "Złożone do",
+    "preparingClose": "Możesz zamknąć to okno. Eksport będzie kontynuowany, a plik pojawi się w sekcji Zadania w tle i logi, gdy będzie gotowy.",
+    "preparingProgressLabel": "Postęp eksportu",
+    "preparingRows": {
+      "few": "{n} zamówienia",
+      "many": "{n} zamówień",
+      "one": "{n} zamówienie",
+      "other": "{n} zamówienia"
+    },
+    "preparingStatus": "Zapisywanie wierszy",
+    "preparingTitle": "Przygotowywanie eksportu",
+    "preset": "Ustawienie",
+    "presetBuiltIn": "{label} (wbudowane)",
+    "presetEdited": "{label}, zmienione",
+    "presetName": "Nazwa ustawienia",
+    "presets": {
+      "accounting": "Księgowość",
+      "all": "Wszystkie kolumny",
+      "default": "Domyślne",
+      "warehouse": "Magazyn"
+    },
+    "presetsLoadError": "Nie udało się wczytać zapisanych ustawień.",
+    "readyAgain": "Do tego czasu możesz go pobrać ponownie z sekcji <link>Zadania w tle i logi</link>.",
+    "readyBadge": "gotowy",
+    "readyDescription": {
+      "range": {
+        "few": "{n} zamówienia z zakresu dat, jeden wiersz na zamówienie.",
+        "many": "{n} zamówień z zakresu dat, jeden wiersz na zamówienie.",
+        "one": "{n} zamówienie z zakresu dat, jeden wiersz na zamówienie.",
+        "other": "{n} zamówienia z zakresu dat, jeden wiersz na zamówienie."
+      },
+      "selected": {
+        "few": "{n} zamówienia z zaznaczenia, jeden wiersz na zamówienie.",
+        "many": "{n} zamówień z zaznaczenia, jeden wiersz na zamówienie.",
+        "one": "{n} zamówienie z zaznaczenia, jeden wiersz na zamówienie.",
+        "other": "{n} zamówienia z zaznaczenia, jeden wiersz na zamówienie."
+      },
+      "view": {
+        "few": "{n} zamówienia z bieżącego widoku, jeden wiersz na zamówienie.",
+        "many": "{n} zamówień z bieżącego widoku, jeden wiersz na zamówienie.",
+        "one": "{n} zamówienie z bieżącego widoku, jeden wiersz na zamówienie.",
+        "other": "{n} zamówienia z bieżącego widoku, jeden wiersz na zamówienie."
+      }
+    },
+    "readyTitle": "Eksport gotowy",
+    "saveAsPreset": "Zapisz jako ustawienie",
+    "savePreset": "Zapisz ustawienie",
+    "savePresetError": "Nie udało się zapisać ustawienia. Spróbuj ponownie.",
+    "scopeRange": "Zakres dat",
+    "scopeRangeHint": "Wszystkie źródła, według daty złożenia",
+    "scopeSelected": "Zaznaczone zamówienia",
+    "scopeSelectedHint": {
+      "few": "{n} zamówienia zaznaczone w tabeli",
+      "many": "{n} zamówień zaznaczonych w tabeli",
+      "one": "Zamówienie zaznaczone w tabeli",
+      "other": "{n} zamówienia zaznaczonego w tabeli"
+    },
+    "scopeSelectedHintNone": "Najpierw zaznacz zamówienia w tabeli",
+    "scopeView": "Bieżący widok",
+    "scopeViewHintFallback": "Zamówienia pasujące do bieżących filtrów i sortowania",
+    "separator": "Separator",
+    "separatorHint": "UTF-8, otwiera się bezpośrednio w Excelu.",
+    "separatorValue": "Średnik (;), Excel w języku polskim",
+    "startFailed": "Nie udało się rozpocząć eksportu. Spróbuj ponownie.",
+    "submitBackground": "Uruchom eksport w tle",
+    "submitCount": {
+      "few": "Eksportuj {n} zamówienia",
+      "many": "Eksportuj {n} zamówień",
+      "one": "Eksportuj {n} zamówienie",
+      "other": "Eksportuj {n} zamówienia"
+    },
+    "submitUnknown": "Eksportuj zamówienia",
+    "submitting": "Uruchamianie…",
+    "summary": "{rows} · {columns} · {format}",
+    "summaryColumns": {
+      "few": "{n} kolumny",
+      "many": "{n} kolumn",
+      "one": "{n} kolumna",
+      "other": "{n} kolumny"
+    },
+    "summaryFormatCsv": "CSV",
+    "summaryFormatXlsx": "Excel",
+    "summaryRows": {
+      "few": "{n} wiersze",
+      "many": "{n} wierszy",
+      "one": "{n} wiersz",
+      "other": "{n} wiersza"
+    },
+    "summaryRowsUnknown": "Wszystkie pasujące zamówienia",
+    "title": "Eksportuj zamówienia",
+    "toastDownload": "Pobierz",
+    "toastFailedBody": "Eksport zatrzymał się przed zapisaniem pliku.",
+    "toastFailedTitle": "Eksport nie powiódł się",
+    "toastReadyBody": {
+      "few": "{n} zamówienia w {fileName}.",
+      "many": "{n} zamówień w {fileName}.",
+      "one": "{n} zamówienie w {fileName}.",
+      "other": "{n} zamówienia w {fileName}."
+    },
+    "toastReadyTitle": "Eksport gotowy",
+    "toastViewJob": "Pokaż zadanie w tle",
+    "tryAgain": "Spróbuj ponownie"
+  },
+  "orderHealth": {
+    "badges": {
+      "awaiting_dispatch": "Czeka na nadanie",
+      "awaiting_mapping": "Czeka na mapowanie",
+      "needs_attention": "Synchronizacja nieudana",
+      "source_deleted": "Usunięte w źródle",
+      "synced": "Zsynchronizowane"
+    },
+    "fulfilment": {
+      "delivered": "Doręczone",
+      "dispatched": "Nadane",
+      "failed": "Nadanie nieudane",
+      "not-shipped": "Niewysłane",
+      "unavailable": "Nieśledzone"
+    },
+    "levels": {
+      "attention": "Wymaga uwagi",
+      "healthy": "Zsynchronizowane",
+      "noDestinations": "Brak kanałów docelowych",
+      "pending": "W toku"
+    },
+    "sla": {
+      "at_risk": "Zagrożone",
+      "on_track": "W terminie",
+      "overdue": "Po terminie"
+    },
+    "syncCell": {
+      "failed": "Nieudane: {failed} z {total}",
+      "synced": "Zsynchronizowane: {synced} z {total}",
+      "syncedSkipped": "Zsynchronizowane: {synced} z {total} (pominięte: {skipped})"
+    },
+    "unknown": "Nieznane",
+    "unknownValue": "Nieznane ({value})"
+  },
+  "orderLineItems": {
+    "caption": "Pozycje zamówienia",
+    "columns": {
+      "costAtOrderTime": "Koszt w chwili zamówienia",
+      "margin": "Marża",
+      "product": "Produkt",
+      "qty": "Ilość",
+      "taxRate": "Stawka VAT",
+      "total": "Razem",
+      "unitPrice": "Cena jednostkowa"
+    },
+    "cost": {
+      "addCost": {
+        "few": "Dodaj koszt dla {n} wariantów",
+        "many": "Dodaj koszt dla {n} wariantów",
+        "one": "Dodaj koszt dla {n} wariantu",
+        "other": "Dodaj koszt dla {n} wariantu"
+      },
+      "currencyMismatchTitle": "Koszt jest w innej walucie niż zamówienie, więc nie jest uwzględniany w marży.",
+      "enteredAfterSaleTitle": "Zamówione przed wpisaniem kosztu",
+      "footnoteFrozen": "Koszt jest pobierany z produktu w chwili otrzymania zamówienia i później się nie zmienia.",
+      "footnoteNextOrder": "Dodanie kosztu teraz nie zmieni tego zamówienia; będzie liczony od następnego.",
+      "marginNotAvailable": "marża niedostępna",
+      "noVariant": "brak wariantu",
+      "notAvailable": "koszt niedostępny",
+      "notInMargin": "Poza marżą",
+      "notRecorded": "Nie zapisano"
+    },
+    "emptyMessage": "Dane zamówienia nie zawierają szczegółów pozycji.",
+    "emptyTitle": "Brak pozycji",
+    "jumpToNextFlagged": "Przejdź do następnej oznaczonej",
+    "onlyFlagged": "Tylko oznaczone",
+    "qtyWas": "było {quantity}",
+    "taxRate": {
+      "conflict": "Konflikt stawki",
+      "conflictDetail": "sklep {shopRate}, kanał {channelRate}",
+      "fromBackfill": "oszacowana na podstawie katalogu",
+      "fromChannel": "z kanału",
+      "fromShop": "ze sklepu",
+      "missing": "Brak stawki VAT",
+      "missingHint": "ustaw ją w sklepie",
+      "readDaysAgo": {
+        "few": "odczytano {n} d temu",
+        "many": "odczytano {n} d temu",
+        "one": "odczytano {n} d temu",
+        "other": "odczytano {n} d temu"
+      },
+      "readToday": "odczytano dzisiaj",
+      "sourceNotRecorded": "nie zapisano źródła"
+    }
+  },
+  "orderNotes": {
+    "composer": {
+      "counter": "{length} / {max}",
+      "label": "Nowa notatka",
+      "packerWarning": "Pakowacze widzą ten tekst na stanowisku pakowania. Nie wpisuj numerów telefonów, e-maili ani adresów.",
+      "pinErrorFallback": "OpenLinker nie mógł przypiąć notatki. Przypnij ją z listy.",
+      "pinErrorTitle": "Notatkę dodano, ale nie przypięto",
+      "pinToTop": "Przypnij na górze",
+      "placeholder": "Dodaj notatkę dla zespołu",
+      "retry": "Spróbuj ponownie",
+      "saveErrorFallback": "OpenLinker nie mógł połączyć się z serwerem.",
+      "saveErrorTail": "Tekst nadal jest w polu powyżej.",
+      "saveErrorTitle": "Nie zapisano notatki",
+      "showToPacker": "Pokaż pakowaczowi na stanowisku pakowania",
+      "submit": "Dodaj notatkę"
+    },
+    "deleteDialog": {
+      "confirm": "Usuń notatkę",
+      "descriptionRemoved": "Tekst zostanie usunięty dla wszystkich, także na stanowisku pakowania.",
+      "descriptionTimeline": "W historii aktywności pozostanie wpis, że notatka autorstwa <strong>{author}</strong> została usunięta, bez jej treści.",
+      "errorFallback": "OpenLinker nie mógł usunąć notatki. Spróbuj ponownie.",
+      "errorTitle": "Nie usunięto notatki",
+      "keep": "Zachowaj notatkę",
+      "title": "Usunąć tę notatkę?"
+    },
+    "emptyMessage": "Zapisz wszystko, co powinna wiedzieć kolejna osoba obsługująca to zamówienie: prośbę kupującego, rozmowę telefoniczną, instrukcję pakowania.",
+    "emptyTitle": "Nie ma jeszcze notatek",
+    "heading": "Notatki",
+    "headingWithCount": "Notatki ({count})",
+    "listLabel": "Notatki",
+    "loadErrorMessage": "OpenLinker nie mógł wczytać notatek do tego zamówienia.",
+    "loadErrorTitle": "Nie wczytano notatek",
+    "loadingMessage": "Pobieranie notatek do tego zamówienia...",
+    "loadingTitle": "Wczytywanie notatek",
+    "pinned": {
+      "allNotes": "Wszystkie notatki ({count})",
+      "label": "Przypięta notatka"
+    },
+    "privacy": "Widzi je tylko Twój zespół. Nigdy nie są wysyłane do {channels}.",
+    "privacyNoChannels": "Widzi je tylko Twój zespół. Nigdy nie są wysyłane do Twoich kanałów sprzedaży.",
+    "privacyShort": "Widzi je tylko Twój zespół.",
+    "readOnly": "Możesz czytać notatki. Dodawanie i zmienianie ich wymaga roli operatora lub administratora.",
+    "retry": "Spróbuj ponownie",
+    "row": {
+      "actionErrorFallback": "OpenLinker nie mógł zmienić notatki. Spróbuj ponownie.",
+      "actionErrorTitle": "Nie zmieniono notatki",
+      "cancel": "Anuluj",
+      "delete": "Usuń",
+      "edit": "Edytuj",
+      "editErrorFallback": "OpenLinker nie mógł zapisać zmiany. Spróbuj ponownie.",
+      "editErrorTitle": "Nie zapisano zmiany",
+      "editHint": "Wszyscy zobaczą, że notatka była edytowana.",
+      "editLabel": "Edytuj notatkę",
+      "edited": "edytowana",
+      "pin": "Przypnij",
+      "pinned": "Przypięta",
+      "save": "Zapisz",
+      "shownToPacker": "Widoczna dla pakowacza",
+      "unpin": "Odepnij"
+    },
+    "timeline": {
+      "created": "Dodano notatkę",
+      "deleted": "Usunięto notatkę",
+      "deletedDescription": "Tekst został usunięty.",
+      "edited": "Edytowano notatkę",
+      "hiddenFromPacker": "Notatka ukryta przed pakowaczem",
+      "packerFooter": "Widoczna dla pakowacza na stanowisku pakowania",
+      "quotedBody": "„{body}”",
+      "shownToPacker": "Notatka widoczna dla pakowacza",
+      "unknown": "Zmieniono notatkę ({kind})"
+    }
+  },
+  "orderPricing": {
+    "buyerPaidOnChannel": "Kupujący zapłacił <b>{paid}</b> w {channel}; etykieta, faktura i stanowisko pakowania korzystają ze zmienionego zamówienia (<b>{total}</b>).",
+    "buyerPaidOnSalesChannel": "Kupujący zapłacił <b>{paid}</b> w kanale sprzedaży; etykieta, faktura i stanowisko pakowania korzystają ze zmienionego zamówienia (<b>{total}</b>).",
+    "editedOn": "Zmieniono w OpenLinker <time></time>.",
+    "pinsBuyerPaidPrice": "OpenLinker przenosi do kanału docelowego <b>cenę zapłaconą przez kupującego ({treatment})</b> - nie używa ceny z katalogu kanału docelowego.",
+    "treatment": {
+      "gross": "brutto",
+      "net": "netto"
+    },
+    "treatmentBadge": "{treatment} · według źródła"
+  },
+  "orderRow": {
+    "invoice": {
+      "cleared": "Przyjęta",
+      "correction": "Korekta · {label}",
+      "failed": "Błąd",
+      "issued": "Wystawiona",
+      "issuing": "Wystawianie",
+      "rejected": "Odrzucona",
+      "submitted": "Przesłana"
+    },
+    "payment": {
+      "awaiting": "Czeka",
+      "cod": "Pobranie",
+      "paid": "Opłacone",
+      "refunded": "Zwrócono"
+    },
+    "taxRateConflict": {
+      "hint": "Faktura użyła stawki ze sklepu; kanał podał inną.",
+      "label": "Konflikt stawki"
+    },
+    "unlinkedLines": {
+      "hint": "Dokument wystawiono, ale te pozycje nie pasowały do żadnego produktu w systemie księgowym, więc nie trafiły do magazynu i stan nie został zmniejszony. Zmapuj produkt, a potem popraw stan ręcznie.",
+      "label": {
+        "few": "{n} pozycje spoza katalogu",
+        "many": "{n} pozycji spoza katalogu",
+        "one": "{n} pozycja spoza katalogu",
+        "other": "{n} pozycji spoza katalogu"
+      }
+    },
+    "warehouseRelease": {
+      "hint": "Dokument wystawiono, ale system księgowy nie utworzył dla niego wydania z magazynu, więc towar nadal figuruje na stanie. Sprawdź dokument w systemie księgowym i wydaj go tam.",
+      "label": "nie wydano z magazynu"
+    }
+  },
+  "orderRowDetail": {
+    "estimated": {
+      "ariaLabel": "Szacowany",
+      "label": "szac.",
+      "title": "Szacunek OpenLinker - termin niepotwierdzony przez marketplace"
+    },
+    "fields": {
+      "billingAddress": "Adres rozliczeniowy",
+      "destination": "Kanał docelowy",
+      "internalId": "Wewnętrzne ID",
+      "invoice": "Faktura",
+      "items": "Pozycje",
+      "itemsWithCount": "Pozycje ({count})",
+      "orderReference": "Numer zamówienia",
+      "placed": "Złożone",
+      "shipBy": "Termin wysyłki",
+      "shippingAddress": "Adres dostawy"
+    },
+    "orderDetailsLink": "Szczegóły zamówienia",
+    "viewOn": "Zobacz w {channel}",
+    "viewOnMarketplace": "Zobacz w marketplace"
+  },
+  "orderShipmentPanel": {
+    "deepLinkGone": "Ta przesyłka nie należy już do tego zamówienia.",
+    "failed": "Błąd",
+    "fields": {
+      "awaiting": "(oczekuje)",
+      "buyerSelectedVia": "(wybrane przez kupującego w {provider})",
+      "carrier": "Przewoźnik",
+      "cod": "Za pobraniem",
+      "codNote": "pobranie przy doręczeniu",
+      "dispatchedAt": "Nadano",
+      "operatorSelected": "(wybrane przez operatora)",
+      "paczkomat": "Paczkomat",
+      "payment": "Płatność",
+      "pickupPoint": "Punkt odbioru",
+      "tracking": "Numer przesyłki"
+    },
+    "loadError": {
+      "retry": "Spróbuj ponownie",
+      "title": "Nie udało się wczytać przesyłki"
+    },
+    "loading": {
+      "message": "Pobieranie aktualnego stanu nadania.",
+      "title": "Wczytywanie przesyłki"
+    },
+    "noShipment": {
+      "action": "Wygeneruj etykietę",
+      "message": "Wygeneruj etykietę, aby nadać to zamówienie.",
+      "title": "Brak przesyłki"
+    },
+    "outsideOpenLinker": {
+      "message": "Nadane poza OpenLinker - nie ma tu etykiety do wygenerowania.",
+      "title": "Nadane poza OpenLinker"
+    },
+    "shopFulfilled": {
+      "generic": "Sklep docelowy wysyła to zamówienie własnym przewoźnikiem. OpenLinker nie utworzy tu drugiej etykiety i aktualizuje status nadania i doręczenia na podstawie informacji ze sklepu.",
+      "named": "{shop} wysyła to zamówienie własnym przewoźnikiem. OpenLinker nie utworzy tu drugiej etykiety i aktualizuje status nadania i doręczenia na podstawie informacji ze sklepu.",
+      "title": "Wysyła sklep"
+    },
+    "takeover": {
+      "carrierFallback": "przewoźnik",
+      "disabled": "Ta metoda dostawy prowadzi do {carrier}, ale to połączenie jest wyłączone. Włącz je, aby OpenLinker mógł wygenerować etykietę.",
+      "notConnected": "OpenLinker obsługuje {carrier}, ale nie jest jeszcze z nim połączony. Połącz go, aby wysyłać to i kolejne zamówienia z tą metodą przez OpenLinker.",
+      "title": "OpenLinker może to wysłać",
+      "unmapped": "Ta metoda dostawy nie jest jeszcze zmapowana na przewoźnika. Zmapuj ją na {carrier}, a OpenLinker wygeneruje etykietę dla tego i kolejnych zamówień z tą metodą."
+    },
+    "title": "Przesyłka"
+  },
+  "orderTags": {
+    "addTag": "+ Dodaj tag",
+    "bulk": {
+      "allHaveIt": "Wszystkie go mają",
+      "emptyVocabulary": "Nie ma jeszcze tagów.",
+      "errorFallback": "OpenLinker nie mógł dodać tagu. Spróbuj ponownie.",
+      "errorTitle": "Nie dodano tagu",
+      "hasIt": {
+        "few": "Mają go {n} z {total}",
+        "many": "Ma go {n} z {total}",
+        "one": "Ma go {n} z {total}",
+        "other": "Ma go {n} z {total}"
+      },
+      "heading": {
+        "few": "Dodaj tag do {n} zamówień",
+        "many": "Dodaj tag do {n} zamówień",
+        "one": "Dodaj tag do {n} zamówienia",
+        "other": "Dodaj tag do {n} zamówienia"
+      },
+      "manageTags": "Zarządzaj tagami",
+      "menuLabel": "Tagi zaznaczonych zamówień",
+      "resultAlreadyHad": {
+        "few": "Miały go już: {n}.",
+        "many": "Miało go już: {n}.",
+        "one": "Miało go już: {n}.",
+        "other": "Miało go już: {n}."
+      },
+      "resultDescription": {
+        "few": "Dodano {name} do {n} zamówień.",
+        "many": "Dodano {name} do {n} zamówień.",
+        "one": "Dodano {name} do {n} zamówienia.",
+        "other": "Dodano {name} do {n} zamówienia."
+      },
+      "resultTitle": "Tag dodany",
+      "trigger": "Tagi"
+    },
+    "colours": {
+      "amber": "Bursztynowy",
+      "blue": "Niebieski",
+      "green": "Zielony",
+      "grey": "Szary",
+      "orange": "Pomarańczowy",
+      "pink": "Różowy",
+      "teal": "Morski",
+      "violet": "Fioletowy"
+    },
+    "headerLabel": "Tagi",
+    "manager": {
+      "adminOnly": "Ta strona wymaga roli administratora.",
+      "backToSettings": "Ustawienia",
+      "cancel": "Anuluj",
+      "colourLegend": "Kolor",
+      "columnActions": "Akcje",
+      "columnColour": "Kolor",
+      "columnCreated": "Utworzono",
+      "columnOrders": "Zamówienia",
+      "columnTag": "Tag",
+      "create": "Utwórz tag",
+      "createErrorTitle": "Nie utworzono tagu",
+      "createdToastDescription": "{name} jest gotowy do użycia w zamówieniach.",
+      "createdToastTitle": "Tag utworzony",
+      "delete": "Usuń",
+      "deleteDescription": {
+        "few": "Zostanie zdjęty z <strong>{n}</strong> zamówień. Same zamówienia się nie zmienią i nic nie zostanie wysłane do Twoich kanałów sprzedaży. Tej operacji nie można cofnąć.",
+        "many": "Zostanie zdjęty z <strong>{n}</strong> zamówień. Same zamówienia się nie zmienią i nic nie zostanie wysłane do Twoich kanałów sprzedaży. Tej operacji nie można cofnąć.",
+        "one": "Zostanie zdjęty z <strong>{n}</strong> zamówienia. Same zamówienia się nie zmienią i nic nie zostanie wysłane do Twoich kanałów sprzedaży. Tej operacji nie można cofnąć.",
+        "other": "Zostanie zdjęty z <strong>{n}</strong> zamówienia. Same zamówienia się nie zmienią i nic nie zostanie wysłane do Twoich kanałów sprzedaży. Tej operacji nie można cofnąć."
+      },
+      "deleteErrorTitle": "Nie usunięto tagu",
+      "deleteTag": "Usuń tag",
+      "deleteTitle": "Usunąć tag „{name}”?",
+      "description": "Etykiety, które zespół nadaje zamówieniom. Używaj ich do filtrowania listy zamówień i zbiorczego oznaczania zamówień. Tagi zostają w OpenLinker i nigdy nie są wysyłane do Twoich kanałów sprzedaży.",
+      "edit": "Edytuj",
+      "emptyMessage": "Utwórz pierwszy tag tutaj albo z wyboru tagów w dowolnym zamówieniu.",
+      "emptyTitle": "Nie ma jeszcze tagów",
+      "eyebrow": "Ustawienia",
+      "keepTag": "Zachowaj tag",
+      "loading": "Wczytywanie tagów",
+      "loadingMessage": "Pobieranie tagów obszaru roboczego…",
+      "nameCounter": "{length} / {max}",
+      "nameHint": "Do {max} znaków. Nazwa musi być unikalna.",
+      "nameLabel": "Nazwa",
+      "newTag": "Nowy tag",
+      "newTagMeta": "Tylko administratorzy",
+      "preview": "Podgląd",
+      "previewPlaceholder": "Nazwa tagu",
+      "save": "Zapisz",
+      "saveErrorTitle": "Nie zapisano tagu",
+      "tableCaption": "Tagi zamówień",
+      "title": "Tagi zamówień",
+      "usage": "Użyto {n} z {limit} tagów."
+    },
+    "moreTags": {
+      "few": "Jeszcze {n} tagi: {names}",
+      "many": "Jeszcze {n} tagów: {names}",
+      "one": "Jeszcze {n} tag: {names}",
+      "other": "Jeszcze {n} tagu: {names}"
+    },
+    "noTags": "Brak tagów",
+    "picker": {
+      "createErrorFallback": "OpenLinker nie mógł utworzyć tagu. Spróbuj ponownie.",
+      "createErrorTitle": "Nie utworzono tagu",
+      "createRow": "+ Utwórz „{name}”",
+      "createdToastDescription": "{name} jest już w tym zamówieniu.",
+      "createdToastTitle": "Tag utworzony i dodany",
+      "dialogLabel": "Dodaj tag",
+      "done": "Gotowe",
+      "emptyVocabulary": "Nie ma jeszcze tagów. Wpisz nazwę, aby utworzyć pierwszy.",
+      "listLabel": "Tagi",
+      "loading": "Wczytywanie tagów…",
+      "manageTags": "Zarządzaj tagami",
+      "orderCountUnit": {
+        "few": "zamówienia",
+        "many": "zamówień",
+        "one": "zamówienie",
+        "other": "zamówienia"
+      },
+      "saveErrorFallback": "OpenLinker nie mógł zapisać zmiany. Spróbuj ponownie.",
+      "saveErrorTitle": "Nie zapisano tagu",
+      "savedHint": "Zmiany zapisują się od razu",
+      "searchPlaceholder": "Znajdź lub utwórz tag"
+    },
+    "removeTag": "Usuń tag {name}"
+  },
+  "orderTagsSettingsTile": {
+    "description": "Zmieniaj kolory, nazwy i usuwaj tagi zamówień w obszarze roboczym. Do {limit}, tworzone z wyboru tagów w dowolnym zamówieniu.",
+    "eyebrow": "Zamówienia",
+    "manageTags": "Zarządzaj tagami",
+    "title": "Tagi zamówień"
+  },
+  "orderTotals": {
+    "asReportedByChannel": "według kanału",
+    "discount": "Rabat",
+    "discountInOpenLinker": "Rabat w OpenLinker",
+    "shipping": "Dostawa",
+    "subtotal": "Suma częściowa",
+    "tax": "Podatek",
+    "total": "Razem"
+  },
+  "packedControl": {
+    "clearing": "Usuwanie…",
+    "markPacked": "Oznacz jako spakowane",
+    "marking": "Oznaczanie…",
+    "notPacked": "Jeszcze niespakowane.",
+    "packedAt": "Spakowano <time></time>",
+    "packedAtBy": "Spakowano <time></time>, <user></user>",
+    "title": "Pakowanie",
+    "toasts": {
+      "cleared": "Usunięto oznaczenie spakowania.",
+      "failed": "Nie udało się zaktualizować oznaczenia spakowania.",
+      "marked": "Zamówienie oznaczone jako spakowane."
+    },
+    "undo": "Cofnij"
+  },
+  "packedTick": {
+    "label": "Spakowane",
+    "title": "Spakowano {time}"
+  },
+  "paymentMethod": {
+    "bankTransfer": "Przelew bankowy",
+    "cashOnDelivery": "Za pobraniem",
+    "online": "Płatność online"
+  },
+  "paymentWriteback": {
+    "bulkRegionLabel": "Płatność nie trafiła do sklepu",
+    "bulkSummary": {
+      "few": "{n} zamówienia. Ich sklepy nadal pokazują je jako nieopłacone.",
+      "many": "{n} zamówień. Ich sklepy nadal pokazują je jako nieopłacone.",
+      "one": "{n} zamówienie. Jego sklep nadal pokazuje je jako nieopłacone.",
+      "other": "{n} zamówienia. Ich sklepy nadal pokazują je jako nieopłacone."
+    },
+    "cancelledBody": "Zamówienie pozostaje anulowane, a sklepy nie zostały zmienione. Sprawdź zwrot pieniędzy na marketplace.",
+    "cancelledTitle": "Kupujący opłacił anulowane zamówienie",
+    "cashOnDelivery": "Za pobraniem",
+    "chipLabel": "Płatność",
+    "chipValue": "Nie trafiła do sklepu",
+    "filterCheck": "Płatność nie trafiła do sklepu",
+    "filterQuick": "Płatność nie trafiła do sklepu",
+    "handledDone": {
+      "few": "Oznaczono {n} zamówienia jako obsłużone",
+      "many": "Oznaczono {n} zamówień jako obsłużone",
+      "one": "Oznaczono {n} zamówienie jako obsłużone",
+      "other": "Oznaczono {n} zamówienia jako obsłużone"
+    },
+    "handledDoneDetail": "Te zamówienia nie są już widoczne w filtrze „Płatność nie trafiła do sklepu”.",
+    "listMarker": "Płatność nie trafiła do <shop></shop>",
+    "listMarkerGeneric": "Płatność nie trafiła do sklepu",
+    "markHandled": "Oznacz jako obsłużone",
+    "markHandledFailed": "Nie udało się oznaczyć jako obsłużone",
+    "notPaidYet": "Jeszcze nieopłacone",
+    "notTracked": {
+      "few": "<shops></shops> nie śledzą płatności.",
+      "many": "<shops></shops> nie śledzą płatności.",
+      "one": "<shops></shops> nie śledzi płatności.",
+      "other": "<shops></shops> nie śledzą płatności."
+    },
+    "paidAfterCancellation": "Opłacone po anulowaniu",
+    "paidOn": "Opłacone w {source}",
+    "paidOnUnknown": "Opłacone",
+    "panelTitle": "Płatność",
+    "problemBody": "Ponów próbę albo sam oznacz zamówienie w sklepie jako opłacone.",
+    "problemTitleMany": {
+      "few": "{n} sklepy nadal pokazują to zamówienie jako nieopłacone",
+      "many": "{n} sklepów nadal pokazuje to zamówienie jako nieopłacone",
+      "one": "{n} sklep nadal pokazuje to zamówienie jako nieopłacone",
+      "other": "{n} sklepu nadal pokazuje to zamówienie jako nieopłacone"
+    },
+    "problemTitleOne": "<shop></shop> nadal pokazuje to zamówienie jako nieopłacone",
+    "progress": "Zaktualizowane sklepy: {done} z {total}",
+    "retryDone": {
+      "few": "Dodano do kolejki {n} aktualizacje sklepów",
+      "many": "Dodano do kolejki {n} aktualizacji sklepów",
+      "one": "Dodano do kolejki {n} aktualizację sklepu",
+      "other": "Dodano do kolejki {n} aktualizacji sklepów"
+    },
+    "retryDoneDetail": "OpenLinker za chwilę oznaczy zamówienie w sklepie jako opłacone.",
+    "retryFailed": "Nie udało się ponowić",
+    "retryNow": "Ponów teraz",
+    "retrying": "Ponawianie…",
+    "row": {
+      "awaiting": "Czeka na płatność",
+      "cod": "Za pobraniem",
+      "codHelper": "Nie oznaczono jako opłacone",
+      "createdPaid": "Opłacone przy utworzeniu",
+      "handled": "Obsłużone",
+      "handledHelper": "Oznaczono jako obsłużone",
+      "notSent": "Nie wysłano",
+      "notSentCancelled": "Zamówienie anulowane",
+      "notSentNoTotal": "Nieznana kwota zamówienia",
+      "notSentRefunded": "Pieniądze zwrócone",
+      "notSentRejected": "Sklep to odrzucił",
+      "notSentStopped": "Ponawianie zatrzymane",
+      "notTracked": "Bez śledzenia płatności",
+      "paidInShop": "Opłacone w sklepie",
+      "retrying": "Ponawianie",
+      "retryingHelper": "Sklep nie odpowiedział",
+      "sending": "Aktualizowanie",
+      "skippedBySetting": "Po Twojej stronie",
+      "skippedBySettingHelper": "Ustawiono, by nie zmieniać płatności",
+      "unknown": "Nieznany stan"
+    },
+    "shopsLabel": "Płatność w każdym sklepie"
+  },
+  "refundConfirmation": {
+    "amountHint": "Kwota, którą faktycznie zwrócono. OpenLinker jej nie oblicza.",
+    "amountInvalid": "Podaj kwotę, np. 12.50.",
+    "amountLabel": "Zwrócona kwota ({currency})",
+    "amountRequired": "Podaj zwróconą kwotę.",
+    "cancel": "Anuluj",
+    "heading": "Potwierdź zwrot pieniędzy",
+    "noCurrency": "OpenLinker nie wie, w jakiej walucie opłacono to zamówienie, więc nie może jeszcze zapisać zwrotu pieniędzy. Najpierw dopasuj zwrot do zamówienia.",
+    "noteLabel": "Notatka (opcjonalnie)",
+    "noteTooLong": "Notatka może mieć najwyżej {max} znaków.",
+    "orderTotal": "Wartość zamówienia: {total} {currency}",
+    "pending": "Zapisywanie…",
+    "preamble": "OpenLinker nie przesyła pieniędzy. Potwierdź, że zwrócono pieniądze kupującemu, a OpenLinker zapisze to przy tym zwrocie i tym zamówieniu.",
+    "reasonLabel": "Powód",
+    "submit": "Potwierdź zwrot pieniędzy"
+  },
+  "refundReason": {
+    "defective": "Towar był wadliwy",
+    "notAsDescribed": "Towar nie zgadzał się z ofertą",
+    "other": "Inny powód",
+    "withdrawal": "Kupujący zmienił zdanie",
+    "wrongItem": "Wysłano niewłaściwy towar"
+  },
+  "salesDocumentCell": {
+    "action": {
+      "fiscalReceipt": "Zarejestruj paragon",
+      "invoice": "Wystaw fakturę",
+      "open": "Otwórz"
+    },
+    "dupe": {
+      "alsoHold": {
+        "few": "{connections} też mają dokument dla tej sprzedaży.",
+        "many": "{connections} też mają dokument dla tej sprzedaży.",
+        "one": "{connections} też ma dokument dla tej sprzedaży.",
+        "other": "{connections} też mają dokument dla tej sprzedaży."
+      },
+      "many": {
+        "few": "Dla tego zamówienia istnieją {n} dokumenty",
+        "many": "Dla tego zamówienia istnieje {n} dokumentów",
+        "one": "Dla tego zamówienia istnieje {n} dokument",
+        "other": "Dla tego zamówienia istnieje {n} dokumentu"
+      },
+      "oneSaleOneDocument": "Jedna sprzedaż powinna mieć jeden dokument.",
+      "second": "Dla tego zamówienia istnieje drugi dokument"
+    },
+    "fact": {
+      "clearance": "Rozliczenie",
+      "number": "Numer",
+      "provider": "Dostawca",
+      "providerWithType": "{name} ({type})"
+    },
+    "headline": "{kind} · {word}",
+    "kind": {
+      "fiscalReceipt": "Paragon fiskalny",
+      "invoice": "Faktura"
+    },
+    "noDocument": "Brak dokumentu",
+    "notIssued": "Niewystawiony",
+    "openOrder": "Otwórz zamówienie",
+    "regulatory": {
+      "accepted": "Przyjęty",
+      "cleared": "W rozliczeniu",
+      "notApplicable": "Nie dotyczy",
+      "pendingSubmission": "Czeka na przesłanie",
+      "rejected": "Odrzucony",
+      "submitted": "Przesłany"
+    },
+    "setRouting": "Ustaw wybór dokumentu",
+    "spokenState": "{kind}: {word}",
+    "spokenWithDupe": "{state}. {dupe}"
+  },
+  "salesDocumentHeadline": {
+    "awaitingClearance": "Czeka na przyjęcie",
+    "cleared": "Przyjęty",
+    "inProgressElsewhere": "W toku w innym miejscu",
+    "issued": "Wystawiony",
+    "issuing": "Wystawianie",
+    "notIssued": "Niewystawiony",
+    "notRegistered": "Niezarejestrowany",
+    "registered": "Zarejestrowany",
+    "registering": "Rejestrowanie",
+    "rejected": "Odrzucony",
+    "rejectedByAuthority": "Odrzucony przy przesłaniu",
+    "stalled": "Zatrzymany",
+    "unconfirmed": "Niepotwierdzony"
+  },
+  "salesDocumentPanel": {
+    "email": {
+      "notCleared": "Dostępne po przyjęciu faktury."
+    },
+    "fiscalReceipt": {
+      "action": {
+        "lookUp": "Sprawdź",
+        "register": "Zarejestruj paragon",
+        "registerFailed": "Nie udało się zarejestrować paragonu",
+        "registerFailedBody": "Nie udało się wysłać żądania. Nic nie zostało zarejestrowane.",
+        "retry": "Zarejestruj paragon"
+      },
+      "announce": {
+        "contended": "Inna próba już trwa.",
+        "registerFailed": "Nie udało się wysłać żądania.",
+        "registered": "Zarejestrowano.",
+        "registering": "Rejestrowanie u dostawcy."
+      },
+      "blockNoRateBody": "Dodaj stawkę w katalogu sklepu i ponownie zsynchronizuj produkt. Litera podatkowa połączenia nie jest używana do uzupełnienia braku.",
+      "blockNoRateShippingBody": "Każda pozycja produktu ma stawkę, ale nic w tym zamówieniu nie ma kwoty, za którą mógłby podążać koszt dostawy. Sprawdź pozycje i koszt dostawy zamówienia.",
+      "blockNoRateShippingTitle": "Niezarejestrowany: koszt dostawy nie ma stawki VAT.",
+      "blockNoRateTitle": {
+        "few": "Niezarejestrowany: {n} pozycje nie mają stawki VAT.",
+        "many": "Niezarejestrowany: {n} pozycji nie ma stawki VAT.",
+        "one": "Niezarejestrowany: {n} pozycja nie ma stawki VAT.",
+        "other": "Niezarejestrowany: {n} pozycji nie ma stawki VAT."
+      },
+      "contended": {
+        "body": "Rejestracja dla tego zamówienia już trwa. Poczekaj, aż się zakończy - zamknięcie tej karty jej nie zatrzyma, a rozpoczęcie drugiej nie jest możliwe.",
+        "title": "Inna próba już trwa"
+      },
+      "email": {
+        "summaryNote": "E-mail zawiera podsumowanie OpenLinker i link do prawnie wiążącego e-paragonu u dostawcy."
+      },
+      "field": {
+        "documentReference": "Nr paragonu",
+        "notReported": "Nie podano",
+        "registeredAt": "Zarejestrowano",
+        "signingIdentity": "Tożsamość podpisującego"
+      },
+      "inDoubt": {
+        "noRetry": "Ponowna rejestracja mogłaby utworzyć drugi paragon fiskalny, więc OpenLinker nie zrobi tego samodzielnie.",
+        "title": "Ta sprzedaż może być już zarejestrowana"
+      },
+      "interrupted": {
+        "body": "Próba już się rozpoczęła, więc OpenLinker nie wie, czy dostawca zarejestrował tę sprzedaż. Ponowne zapytanie wznowi tę samą rejestrację zamiast rozpoczynać nową.",
+        "title": "Próba zatrzymała się bez odpowiedzi"
+      },
+      "notRegistered": {
+        "body": "Dla tego zamówienia nie zarejestrowano paragonu. To Ty decydujesz, czy ta sprzedaż go wymaga, a nie OpenLinker."
+      },
+      "panel": {
+        "registerOnLabel": "Zarejestruj w"
+      },
+      "pending": {
+        "body": "Rejestrowanie u dostawcy. Trwa nawet po opuszczeniu strony, a wynik będzie tutaj po powrocie."
+      },
+      "query": {
+        "error": "Nie udało się wczytać statusu paragonu.",
+        "retry": "Spróbuj ponownie"
+      },
+      "reconcile": {
+        "notFound": "Nie znaleziono rejestracji",
+        "notFoundBody": "Dostawca nie ma rejestracji tej sprzedaży. Nic tu się nie zmieniło, a OpenLinker nie zarejestruje jej ponownie samodzielnie.",
+        "resolved": "Rejestracja potwierdzona",
+        "resolvedBody": "Dostawca potwierdził, że ta sprzedaż została zarejestrowana.",
+        "stillUnknown": "Nadal niepotwierdzone",
+        "stillUnknownBody": "Sprawdzenie nie potwierdziło rejestracji ani nie wykazało, że jej brakuje. Nic tu się nie zmieniło. Możesz sprawdzić ponownie.",
+        "unsupported": "Nie można sprawdzić automatycznie",
+        "unsupportedBody": "OpenLinker nie może odpytać tego dostawcy. Sprawdź bezpośrednio w jego panelu."
+      },
+      "registered": {
+        "final": "Ta rejestracja jest ostateczna i nie można jej tu skorygować.",
+        "noArtefact": "Zarejestrowano, bez dokumentu do przekazania. Ten dostawca zgłasza tylko samą rejestrację."
+      },
+      "rejected": {
+        "readOnly": "Dostawca odrzucił tę sprzedaż i nic nie zostało zarejestrowane. Użytkownik z prawem zapisu zamówień zobaczy szczegóły i może zarejestrować ją ponownie.",
+        "retrySafe": "Nic nie zostało utworzone, więc ponowna rejestracja jest bezpieczna."
+      },
+      "stalled": {
+        "body": "Rejestrację zlecono, ale zatrzymała się, zanim dotarła do dostawcy, więc nic nie zostało zarejestrowane. Ponowne zlecenie ją wznowi.",
+        "title": "Nic się nie dzieje z tym paragonem"
+      }
+    },
+    "headlineNone": "Niewystawiony",
+    "invoice": {
+      "action": {
+        "issue": "Wystaw fakturę",
+        "issueCorrection": "Wystaw korektę",
+        "issueFailed": "Nie udało się wystawić faktury",
+        "issued": "Faktura wystawiona",
+        "issuedBody": "Faktura została wystawiona.",
+        "retry": "Spróbuj ponownie"
+      },
+      "announce": {
+        "connectionSettingRejected": "Dostawca odrzucił ustawienie tego połączenia.",
+        "connectionSetupIncomplete": "W połączeniu brakuje ustawienia.",
+        "issueFailed": "Nie udało się wystawić faktury.",
+        "issued": "Faktura wystawiona.",
+        "issuing": "Wystawianie faktury.",
+        "needsConfirmation": "Faktura wymaga Twojego potwierdzenia.",
+        "numberingMissing": "Numeracja nie jest skonfigurowana."
+      },
+      "clearance": {
+        "rejectedBody": "Dokument został wystawiony; nie powiodło się tylko jego przesłanie. Sprawdź konfigurację tego połączenia, a potem wyślij ponownie ten sam dokument - nic nowego nie zostanie wystawione.",
+        "rejectedTitle": "Przesłanie zostało odrzucone",
+        "resend": "Wyślij ponownie",
+        "resendFailed": "Nie udało się ponownie wysłać.",
+        "resendFailedTitle": "Ponowne wysłanie nie powiodło się",
+        "resendUnsupported": "Ten dostawca nie może ponownie wysłać dokumentu; wystaw korektę.",
+        "resendUnsupportedTitle": "Nie można wysłać ponownie",
+        "resending": "Ponowne wysyłanie do przyjęcia.",
+        "resent": "Wysłano ponownie do przyjęcia.",
+        "resentTitle": "Wysłano ponownie"
+      },
+      "correction": {
+        "dialogTitle": "Wystaw korektę",
+        "explainer": "Korekta to nowy dokument powiązany z tym - nie zastępuje go i nie zmienia tego, co już wystawiono."
+      },
+      "failed": {
+        "retryHint": "Odrzucona - nic nie wystawiono, więc po usunięciu przyczyny można bezpiecznie ponowić.",
+        "switchCancel": "Anuluj",
+        "switchConfirm": "Wystaw tutaj",
+        "switchLabel": "Przenieś do",
+        "switchOpen": "Wystaw w innym połączeniu",
+        "switchWarnBody": "Obecny dostawca odrzucił dokument i nic nie wystawił, więc to bezpieczne - ale zamówienie zostanie przypisane do nowego połączenia, a jego numer będzie pochodził z serii tego dostawcy.",
+        "switchWarnTitle": "Przenosisz to zamówienie do innego dostawcy."
+      },
+      "field": {
+        "clearance": "Przyjęcie",
+        "document": "Dokument",
+        "issued": "Wystawiono",
+        "number": "Numer"
+      },
+      "inDoubt": {
+        "checkBody": "Otwórz portal dostawcy i sprawdź, czy dla tego zamówienia istnieje faktura.",
+        "checkTitle": "Sprawdź u dostawcy",
+        "providerResponse": "Odpowiedź dostawcy: {reason}"
+      },
+      "issuing": {
+        "body": "Trwa próba wystawienia, a faktura jest w tym czasie zablokowana. Zakończy się lub zwolni automatycznie - nic nie musisz robić."
+      },
+      "lock": {
+        "reconnectHint": "Połącz ponownie to połączenie, aby znów działać na tej fakturze.",
+        "tagDisconnected": "rozłączone"
+      },
+      "numbering": {
+        "configure": "Skonfiguruj numerację",
+        "missingBody": "To połączenie nie ma skonfigurowanej serii numeracji faktur. Ustaw ją przed wystawianiem faktur.",
+        "missingTitle": "Numeracja nie jest skonfigurowana"
+      },
+      "panel": {
+        "conflictLine": "{line}: sklep {shopRate}, kanał {channelRate}",
+        "conflictLines": "{lines}.",
+        "conflictTitle": "Wystawiono według stawki ze sklepu. Kanał podaje inną.",
+        "connectionPlaceholder": "Wybierz połączenie…",
+        "duplicateAdvice": "Sprawdź obu dostawców i skoryguj dokument, który nie powinien był zostać wystawiony.",
+        "duplicateBody": "Jedna sprzedaż powinna mieć jedną fakturę. Poniżej jest najnowszy zapis; inny istnieje w {connections}.",
+        "duplicateTitle": "To zamówienie ma dokumenty w więcej niż jednym połączeniu.",
+        "fixAndRecheck": "Stawki są odczytywane podczas synchronizacji produktów, więc poprawka w sklepie pojawi się przy następnej.",
+        "fixAndRecheckAction": "Popraw i sprawdź ponownie",
+        "issueOnLabel": "Wystaw w",
+        "issueRefusedLines": {
+          "few": "brak stawki VAT w {n} pozycjach",
+          "many": "brak stawki VAT w {n} pozycjach",
+          "one": "brak stawki VAT w {n} pozycji",
+          "other": "brak stawki VAT w {n} pozycji"
+        },
+        "issueRefusedShipping": "brak stawki VAT dla kosztu dostawy",
+        "primaryOption": "{name} - główne",
+        "reauth": "Uwierzytelnij ponownie",
+        "reauthBody": "Dostęp wygasł, więc nie można wystawiać faktur, dopóki ponownie nie uwierzytelnisz tego połączenia.",
+        "reauthTitle": "Połączenie wymaga ponownego połączenia.",
+        "setPrimary": "Ustaw główne",
+        "shippingLine": "{name}: {amount} według stawki {rate}",
+        "shippingSplit": "Koszt dostawy jest rozdzielony między stawki w tym koszyku: {parts}.",
+        "shippingSplitWaiting": "Koszt dostawy czeka razem z dokumentem: jest rozdzielany między stawki w koszyku, a jedna pozycja nie ma jeszcze stawki.",
+        "shippingSpread": "Koszt dostawy jest wliczony w pozycje produktów; dokument nie ma osobnej pozycji dostawy."
+      },
+      "pending": {
+        "body": "Trwa wystawianie. Odświeży się automatycznie, gdy dostawca odpowie."
+      },
+      "query": {
+        "error": "Nie udało się wczytać statusu faktury.",
+        "retry": "Spróbuj ponownie"
+      },
+      "settingRejected": {
+        "title": "{connection} odrzucił ustawienie tego połączenia"
+      },
+      "setupIncomplete": {
+        "openSettings": "Otwórz ustawienia połączenia",
+        "retryHint": "Nic nie zostało wysłane do dostawcy, więc nic nie wystawiono. Spróbuj ponownie po zapisaniu połączenia.",
+        "thisConnection": "To połączenie",
+        "title": "{connection} nie jest skonfigurowane do wystawiania faktur"
+      }
+    },
+    "kind": {
+      "invoice": "faktura",
+      "none": "nic nie wystawiono",
+      "receipt": "paragon fiskalny"
+    },
+    "override": {
+      "scopeNote": "Dotyczy tylko tego zamówienia."
+    },
+    "panel": {
+      "fixRouting": "Popraw ustawienia wyboru dokumentu",
+      "manualOverride": "Wystaw lub zarejestruj ręcznie",
+      "title": "Dokument sprzedaży",
+      "whyThisKind": "Dlaczego ten rodzaj?"
+    }
+  },
+  "sendDocumentEmail": {
+    "failed": "Nie udało się wysłać dokumentu e-mailem do kupującego.",
+    "language": "Język e-maila",
+    "lastSentVia": "{when} · {via}",
+    "recipient": "Odbiorca",
+    "recipientHint": "Zostaw puste, aby użyć adresu kupującego z zamówienia. Na inny adres wysyła OpenLinker, a nie dostawca fakturowania.",
+    "recipientPlaceholder": "Adres kupującego z zamówienia",
+    "send": "Wyślij e-mail",
+    "sendAgain": "Wyślij ponownie",
+    "sending": "Wysyłanie…",
+    "sent": "Dokument wysłany e-mailem do kupującego",
+    "sentDesc": "Kupujący wkrótce go otrzyma.",
+    "sentViaOpenLinker": "Wysłano pocztą OpenLinker.",
+    "sentViaProvider": "Wysłano przez dostawcę fakturowania.",
+    "statusFailed": "Ostatnia próba nie powiodła się",
+    "statusNone": "Jeszcze nie wysłano",
+    "statusSent": "Wysłano",
+    "title": "E-mail do kupującego",
+    "viaOpenLinker": "przez OpenLinker",
+    "viaProvider": "przez dostawcę fakturowania"
+  },
+  "shipmentActionButtons": {
+    "blockReason": {
+      "payment": "Nie można jeszcze wygenerować ponownie - czeka na płatność.",
+      "permission": "Generowanie etykiety wymaga uprawnienia do zarządzania przesyłkami.",
+      "postWaybill": "Ta przesyłka ma już list przewozowy przewoźnika - ponowne generowanie oznaczałoby zakup drugiej etykiety. Najpierw anuluj ją u przewoźnika.",
+      "route": "Wybrany przewoźnik nie jest dostępny do nadania - najpierw rozwiąż kierowanie dostawy.",
+      "state": "Generowanie etykiety nie jest dostępne w tym stanie przesyłki."
+    },
+    "cancel": "Anuluj",
+    "cancelDialog": {
+      "confirm": "Anuluj przesyłkę",
+      "confirming": "Anulowanie…",
+      "keep": "Zachowaj",
+      "title": "Anulować tę przesyłkę?"
+    },
+    "carrierFallback": "przewoźnik",
+    "download": "Pobierz etykietę",
+    "downloadAria": "Pobierz etykietę nadawczą",
+    "downloadUnavailable": "Pobranie etykiety nie jest dostępne w tym stanie",
+    "downloading": "Pobieranie…",
+    "fulfilledByDestination": "Realizuje kanał docelowy",
+    "generate": "Wygeneruj etykietę",
+    "generateAria": "Wygeneruj etykietę nadawczą",
+    "markDispatched": "Oznacz jako nadane",
+    "notifyDialog": {
+      "cancel": "Anuluj",
+      "confirm": "Oznacz jako nadane",
+      "confirming": "Powiadamianie…",
+      "description": "Wysyła powiadomienie do marketplace źródłowego i aktualizuje stan realizacji w kanale docelowym. Używaj tylko wtedy, gdy automatyczne nadanie się zatrzymało - zwykle dzieje się to automatycznie dzięki synchronizacji statusu przewoźnika.",
+      "title": "Ręcznie oznaczyć jako nadane?"
+    }
+  },
+  "shipmentLifecycleRail": {
+    "aria": "Etapy przesyłki",
+    "cancelled": "Anulowana",
+    "labelFailed": "Błąd etykiety",
+    "stages": {
+      "delivered": "Doręczona",
+      "dispatched": "Nadana",
+      "inTransit": "W drodze",
+      "labelReady": "Etykieta gotowa"
+    }
+  },
+  "shipmentTrackingLink": {
+    "track": "Śledź przesyłkę (otwiera nową kartę)",
+    "trackOn": "Śledź przesyłkę w {carrier} (otwiera nową kartę)"
+  },
+  "sourceChange": {
+    "action": {
+      "handled": "Oznacz jako załatwione",
+      "keep": "Zostaw karton bez zmian",
+      "recheck": "Sprawdź ponownie",
+      "retry": "Spróbuj ponownie"
+    },
+    "effect": {
+      "alreadyPacked": "Zgłoszono już spakowanie większej liczby sztuk",
+      "boxClosedBefore": "Karton zamknięto przed zmianą",
+      "boxHoldsMore": "W kartonie jest już więcej",
+      "couldNotUpdate": "Nie udało się zaktualizować pakowania ani stanu magazynowego",
+      "noAutoAdd": "OpenLinker nie dokłada produktów do kartonu samodzielnie",
+      "noLongerMatches": "Karton nie zgadza się już z zamówieniem",
+      "packedElsewhere": "To zamówienie jest pakowane poza OpenLinker",
+      "packerTold": "Pakowacz widzi, co wyjąć",
+      "packingAsksNew": "Pakowanie pyta o nową ilość",
+      "packingOnHold": "Pakowanie jest wstrzymane",
+      "parcelLeftOld": "Paczka wyszła ze starą ilością",
+      "settleWithBuyer": "Rozlicz różnicę z kupującym w sklepie",
+      "stockChangesWhenMatches": "Stan magazynowy zmieni się, gdy karton będzie zgodny",
+      "stockFollows": "Stan magazynowy i rezerwacja zostały dopasowane",
+      "stockUnchanged": "Stan magazynowy bez zmian",
+      "tellWarehouse": "Daj znać magazynowi, a potem zdecyduj tutaj",
+      "triesAgain": "OpenLinker spróbuje ponownie przy następnej aktualizacji"
+    },
+    "line": {
+      "added": "nowa",
+      "quantityChange": "{from} na {to}",
+      "removed": "usunięto",
+      "sku": "SKU {sku}"
+    },
+    "outcome": {
+      "accepted": "Zostawiono bez zmian, a karton został zwolniony.",
+      "applied": "Pakowanie, stan magazynowy i rezerwacja zgadzają się teraz z zamówieniem.",
+      "contended": "Ktoś inny zmienia teraz to zamówienie, więc spróbuj ponownie za chwilę.",
+      "failed": "Nie udało się tego dokończyć, więc spróbuj ponownie.",
+      "held": "Karton nadal się nie zgadza, więc pozostaje wstrzymany.",
+      "nothingToDo": "Zamówienie i pakowanie już się zgadzają.",
+      "shipped": "Paczka już wyszła, więc nic nie zmieniono."
+    },
+    "status": {
+      "applied": "Zastosowano",
+      "decision": "Wymaga decyzji",
+      "failed": "Nie dokończono",
+      "shipped": "Już wysłane"
+    },
+    "title": "Zmienione w sklepie"
+  },
+  "stockAtRisk": {
+    "badgeTitle": "{title}. {body}",
+    "body": "Stan w systemie głównym spadł poniżej ilości obiecanej temu zamówieniu. Nic nie zostało po cichu zmniejszone - zagrożone jest właśnie to zamówienie.",
+    "line": "{item} - brakuje {short} z {total} we wszystkich zamówieniach",
+    "titleOne": "Brakuje {quantity} × {item}",
+    "titleSeveral": {
+      "few": "Brak towaru dla {n} pozycji",
+      "many": "Brak towaru dla {n} pozycji",
+      "one": "Brak towaru dla {n} pozycji",
+      "other": "Brak towaru dla {n} pozycji"
+    }
+  }
+}

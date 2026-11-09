@@ -11,10 +11,11 @@
 import type { ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useConfigureWebhooksMutation } from '../../../features/connections';
 import type { Connection } from '../../../features/connections';
+import { usePrestashopMessages } from '../messages';
 
 interface PrestashopConnectionActionsProps {
   connection: Connection;
@@ -25,6 +26,7 @@ export function PrestashopConnectionActions({
   connection,
   readOnly = false,
 }: PrestashopConnectionActionsProps): ReactElement {
+  const copy = usePrestashopMessages().prestashopConnectionActions;
   const configureWebhooks = useConfigureWebhooksMutation();
   const { showToast } = useToast();
 
@@ -39,27 +41,26 @@ export function PrestashopConnectionActions({
       if (result.webhooksConfigured && result.testPingTriggered) {
         showToast({
           tone: 'success',
-          title: 'Webhooks configured',
-          description: "PrestaShop module updated and verified by a test ping. You're done.",
+          title: copy.toast.configured.title,
+          description: copy.toast.configured.description,
         });
       } else if (result.webhooksConfigured) {
         showToast({
           tone: 'warning',
-          title: 'Webhooks configured (ping not received)',
-          description:
-            'Configuration is in place but the test ping did not arrive. Click again to retry, or wait for the next real event.',
+          title: copy.toast.pingMissing.title,
+          description: copy.toast.pingMissing.description,
         });
       } else {
         showToast({
           tone: 'error',
-          title: 'Configuration push failed',
-          description: result.warning ?? 'PrestaShop did not accept the configuration push.',
+          title: copy.toast.failed.title,
+          description: result.warning ?? copy.toast.failed.notAccepted,
         });
       }
     } catch (error) {
       showToast({
         tone: 'error',
-        title: 'Configuration push failed',
+        title: copy.toast.failed.title,
         description: (error as Error).message,
       });
     }
@@ -68,24 +69,23 @@ export function PrestashopConnectionActions({
   return (
     <div className="action-list__item">
       <div>
-        <strong>Configure webhooks</strong>
+        <strong>{copy.title}</strong>
         <p className="muted-text">
-          Push Base URL, Connection ID, and a freshly-rotated Webhook Secret to the PrestaShop
-          module via WS. Verifies with a synchronous test ping.
-          {webhooksConfigured ? ' Currently configured ✓' : ''}
+          {copy.description}
+          {webhooksConfigured ? ` ${copy.currentlyConfigured}` : ''}
         </p>
       </div>
-      <ReadOnlyLock active={readOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+      <ReadOnlyLock active={readOnly} message={demoReadOnlyActionMessage()}>
         <Button
           tone={webhooksConfigured ? 'secondary' : 'primary'}
           disabled={configureWebhooks.isPending || readOnly}
           onClick={() => void handleConfigureWebhooks()}
         >
           {configureWebhooks.isPending
-            ? 'Configuring...'
+            ? copy.configuring
             : webhooksConfigured
-              ? 'Re-configure webhooks'
-              : 'Configure webhooks'}
+              ? copy.reconfigure
+              : copy.configure}
         </Button>
       </ReadOnlyLock>
     </div>

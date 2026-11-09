@@ -1,0 +1,429 @@
+{
+  "invoice": {
+    "acknowledge": {
+      "cancel": "Wróć",
+      "confirm": "Kontynuuj mimo to",
+      "note": "OpenLinker zgłasza to na podstawie własnej interpretacji przepisów, która może nie pasować do Twojej sytuacji. To Ty decydujesz, czy kontynuować.",
+      "title": "Sprawdź przed kontynuowaniem"
+    },
+    "action": {
+      "issued": "Faktura wystawiona",
+      "issuedBody": "Faktura została wystawiona ponownie.",
+      "retry": "Ponów",
+      "retryFailed": "Ponowienie nie powiodło się"
+    },
+    "bulk": {
+      "clear": "Wyczyść zaznaczenie",
+      "dismiss": "Zamknij",
+      "hint": "Ponowione zostaną tylko odrzucone faktury z błędem; pozostałe zostaną pominięte.",
+      "issue": "Wystaw faktury",
+      "issueCancel": "Anuluj",
+      "issueConfirmAction": "Wystaw",
+      "issueConfirmBody": {
+        "few": "Wystawić faktury dla {n} zaznaczonych zamówień? Zamówienia, które mają już wystawioną fakturę (lub fakturę w toku), zostaną pominięte, więc żadne zamówienie nie dostanie dwóch faktur.",
+        "many": "Wystawić faktury dla {n} zaznaczonych zamówień? Zamówienia, które mają już wystawioną fakturę (lub fakturę w toku), zostaną pominięte, więc żadne zamówienie nie dostanie dwóch faktur.",
+        "one": "Wystawić fakturę dla {n} zaznaczonego zamówienia? Zamówienia, które mają już wystawioną fakturę (lub fakturę w toku), zostaną pominięte, więc żadne zamówienie nie dostanie dwóch faktur.",
+        "other": "Wystawić faktury dla {n} zaznaczonego zamówienia? Zamówienia, które mają już wystawioną fakturę (lub fakturę w toku), zostaną pominięte, więc żadne zamówienie nie dostanie dwóch faktur."
+      },
+      "issueConfirmTitle": "Wystaw faktury",
+      "issueError": "Wystawianie zbiorcze nie powiodło się: {message}",
+      "issueFailed": {
+        "few": "{n} nie powiodły się.",
+        "many": "{n} nie powiodło się.",
+        "one": "{n} nie powiodła się.",
+        "other": "{n} nie powiodło się."
+      },
+      "issueResult": "Wystawianie zbiorcze zakończone.",
+      "issueSkipped": {
+        "few": "{n} pominięte (już wystawione lub w toku).",
+        "many": "{n} pominiętych (już wystawione lub w toku).",
+        "one": "{n} pominięta (już wystawiona lub w toku).",
+        "other": "{n} pominiętej (już wystawione lub w toku)."
+      },
+      "issueUnaccounted": "Nie wszystkie zamówienia zwróciły wynik; odśwież listę przed ponowieniem.",
+      "issuedOfTotal": "Wystawiono {issued} z {total}.",
+      "retried": {
+        "few": "{n} ponowione.",
+        "many": "{n} ponowionych.",
+        "one": "{n} ponowiona.",
+        "other": "{n} ponowionej."
+      },
+      "retry": "Ponów zaznaczone",
+      "retryCancel": "Anuluj",
+      "retryConfirmAction": "Ponów",
+      "retryConfirmBody": {
+        "few": "Ponowić {n} zaznaczone faktury? Naprawdę ponowione zostaną tylko odrzucone faktury z błędem; pozostałe zostaną pominięte.",
+        "many": "Ponowić {n} zaznaczonych faktur? Naprawdę ponowione zostaną tylko odrzucone faktury z błędem; pozostałe zostaną pominięte.",
+        "one": "Ponowić {n} zaznaczoną fakturę? Naprawdę ponowione zostaną tylko odrzucone faktury z błędem; pozostałe zostaną pominięte.",
+        "other": "Ponowić {n} zaznaczonej faktury? Naprawdę ponowione zostaną tylko odrzucone faktury z błędem; pozostałe zostaną pominięte."
+      },
+      "retryConfirmTitle": "Ponów faktury",
+      "retryError": "Ponowienie zbiorcze nie powiodło się: {message}",
+      "retryResult": "Ponowienie zbiorcze zakończone.",
+      "selectedLabel": {
+        "few": "Zaznaczono {n} faktury",
+        "many": "Zaznaczono {n} faktur",
+        "one": "Zaznaczono {n} fakturę",
+        "other": "Zaznaczono {n} faktury"
+      },
+      "skipped": {
+        "few": "{n} pominięte (nie kwalifikują się).",
+        "many": "{n} pominiętych (nie kwalifikują się).",
+        "one": "{n} pominięta (nie kwalifikuje się).",
+        "other": "{n} pominiętej (nie kwalifikuje się)."
+      }
+    },
+    "chip": {
+      "awaitingSubmission": "Czeka na przesłanie",
+      "awaitingSubmissionScope": "Liczy tylko faktury na tej stronie, a nie w całej instalacji"
+    },
+    "column": {
+      "buyerTaxId": "NIP kupującego",
+      "clearanceRef": "Nr rozliczenia",
+      "connection": "Połączenie",
+      "documentType": "Typ dokumentu",
+      "issuedAt": "Wystawiono",
+      "orderId": "Zamów.",
+      "regulatory": "Rozliczenie",
+      "select": "Zaznacz fakturę",
+      "status": "Status"
+    },
+    "copyNumber": "Kopiuj numer dokumentu {number}",
+    "correction": {
+      "reasonCounter": "{length} / {max}",
+      "reasonLabel": "Przyczyna korekty",
+      "reasonMissingWarning": "Większość korekt podaje przyczynę, a dostawca lub urząd skarbowy może jej oczekiwać. Dodaj przyczynę albo zatwierdź ponownie, aby wystawić korektę bez niej.",
+      "reasonPlaceholder": "np. Częściowy zwrot zamówienia",
+      "reasonRecommended": "(zalecane)",
+      "reasonTooLong": "Przyczyna może mieć najwyżej {max} znaków."
+    },
+    "detail": {
+      "backToList": "Wróć do dokumentów sprzedaży",
+      "error": "Błąd wczytywania faktury",
+      "eyebrow": "Operacje",
+      "loading": "Wczytywanie faktury…",
+      "notFound": "Nie znaleziono faktury",
+      "notFoundMessage": "Ta faktura nie istnieje lub nie masz do niej dostępu.",
+      "orderLabel": "Zamówienie <link>{orderId}</link>",
+      "providerRegion": "Region dostawcy",
+      "retry": "Ponów",
+      "sectionDocument": "Dokument",
+      "titleFallback": "Faktura"
+    },
+    "documentType": {
+      "corrected": "Faktura korygująca",
+      "credit-note": "Nota kredytowa",
+      "invoice": "Faktura",
+      "label": "Typ dokumentu",
+      "prepayment": "Faktura zaliczkowa",
+      "proforma": "Faktura pro forma",
+      "receipt": "Paragon",
+      "unknown": "Jeszcze nie wystawiono"
+    },
+    "error": {
+      "alreadyIssued": "To zamówienie ma już wystawioną fakturę.",
+      "capabilityDisabled": "Fakturowanie nie jest włączone dla tego połączenia.",
+      "forbidden": "Nie masz uprawnień do wystawiania faktur - ta akcja wymaga konta administratora.",
+      "generic": "Nie udało się wystawić faktury. Spróbuj ponownie."
+    },
+    "failed": {
+      "retryHint": "Odrzucona - nic nie zostało wystawione, można bezpiecznie ponowić po usunięciu przyczyny."
+    },
+    "failureCode": {
+      "acknowledgement-required": "Ten dokument wymaga Twojej decyzji przed wystawieniem. Przeczytaj ostrzeżenie, a potem wystaw ponownie i potwierdź. Nic nie zostało wystawione.",
+      "buyer-tax-id-invalid": "Dostawca odrzucił NIP kupującego. Sprawdź NIP klienta w zamówieniu i ponów. Nic nie zostało wystawione.",
+      "connection-setting-rejected": "Dostawca odrzucił ustawienie tego połączenia. Popraw je w ustawieniach połączenia i ponów. Nic nie zostało wystawione.",
+      "connection-setup-incomplete": "W tym połączeniu brakuje ustawienia potrzebnego do wystawiania faktur. Uzupełnij ustawienia połączenia i ponów. Nic nie zostało wystawione.",
+      "invalid-currency": "Waluta rozliczenia dokumentu jest pusta, ma błędny format albo nie jest akceptowana dla tego dokumentu. Popraw walutę w zamówieniu źródłowym i ponów. Nic nie zostało wystawione.",
+      "provider-answer-inconclusive": "Dostawca odpowiedział, ale z odpowiedzi nie wynika, czy dokument u niego istnieje. Sprawdź u dostawcy przed ponownym wystawieniem - ponowienie w ciemno może utworzyć duplikat.",
+      "provider-error": "Dostawca zwrócił błąd. Sprawdź dane zamówienia i ponów. Nic nie zostało wystawione.",
+      "provider-rejected": "Dostawca odrzucił dokument. Sprawdź dane zamówienia i ponów. Nic nie zostało wystawione.",
+      "sale-classification-required": "To połączenie wymaga ustawienia klasyfikacji sprzedaży (towary czy usługi), zanim będzie mogło wystawiać faktury. Ustaw ją w konfiguracji połączenia i ponów. Nic nie zostało wystawione.",
+      "transport-timeout": "Upłynął limit czasu żądania do dostawcy, więc dokument może już u niego istnieć. Sprawdź u dostawcy przed ponownym wystawieniem - ponowienie w ciemno może utworzyć duplikat.",
+      "unknown": "Nie udało się potwierdzić, czy ta faktura została wystawiona. Sprawdź u dostawcy przed ponownym wystawieniem - ponowienie w ciemno może utworzyć duplikat."
+    },
+    "field": {
+      "clearance": "Rozliczenie w urzędzie skarbowym",
+      "clearanceRef": "Numer referencyjny",
+      "document": "Typ dokumentu",
+      "issued": "Data wystawienia",
+      "number": "Numer",
+      "via": "Wystawiono przez"
+    },
+    "filter": {
+      "connection": {
+        "all": "Wszystkie połączenia",
+        "label": "Filtruj według połączenia"
+      },
+      "issuedFrom": "Wystawione od",
+      "issuedTo": "Wystawione do",
+      "regulatory": {
+        "all": "Wszystkie statusy rozliczenia",
+        "label": "Filtruj według statusu rozliczenia"
+      },
+      "status": {
+        "all": "Wszystkie statusy",
+        "label": "Filtruj według statusu"
+      },
+      "taxId": {
+        "all": "Wszystkie NIP kupujących",
+        "label": "Filtruj według NIP kupującego",
+        "with": "Z NIP",
+        "without": "Bez NIP"
+      }
+    },
+    "inDoubt": {
+      "causeInconclusive": "{connection} odpowiedział, ale nie w sposób, z którego wynika, czy faktura została utworzona.",
+      "causeTimeout": "{connection} nie odpowiedział na czas.",
+      "causeUnknown": "{connection} nie potwierdził wyniku.",
+      "check": "Sprawdź u dostawcy",
+      "checkBody": "Otwórz portal dostawcy i sprawdź, czy istnieje faktura dla tego zamówienia.",
+      "checkTitle": "Sprawdź u dostawcy",
+      "confirmBody": "Zrób to dopiero po sprawdzeniu w {connection}. OpenLinker nie może tego sprawdzić za Ciebie.",
+      "confirmCancel": "Jeszcze nie",
+      "confirmTitle": "Oznaczyć tę fakturę jako rozwiązaną?",
+      "maybe": "Faktura może tam istnieć, ale nie musi.",
+      "paused": "Do tego czasu ponowienie i zmiana dostawcy są wyłączone, aby ta sprzedaż nie dostała dwóch faktur.",
+      "providerResponse": "Odpowiedź dostawcy",
+      "resolve": "Oznacz jako rozwiązane",
+      "resolvedBody": "Oznaczanie jako rozwiązane nie jest jeszcze dostępne.",
+      "resolvedTitle": "Oznaczono jako rozwiązane",
+      "step1": "Poszukaj faktury tego zamówienia w <b>{connection}</b>.",
+      "step2": "Oznacz ją jako rozwiązaną, gdy będziesz wiedzieć.",
+      "stepsLabel": "Aby zakończyć to zamówienie",
+      "title": "Nie wiadomo, czy ta faktura została wystawiona"
+    },
+    "list": {
+      "caption": "Faktury",
+      "description": "Wystawione, oczekujące i nieudane faktury ze wszystkich połączeń, ze statusem rozliczenia.",
+      "empty": {
+        "filtered": "Żadna faktura nie pasuje do bieżących filtrów. Spróbuj wyczyścić część filtrów.",
+        "none": "Nie wystawiono jeszcze żadnej faktury.",
+        "title": "Nie znaleziono faktur"
+      },
+      "error": "Nie udało się wczytać faktur",
+      "loading": "Wczytywanie faktur…",
+      "next": "Dalej",
+      "pagination": "Wyświetlono {from}-{to} z {total}",
+      "prev": "Wstecz",
+      "retry": "Ponów",
+      "title": "Faktury"
+    },
+    "lock": {
+      "hintFailed": "Ponowienie używa tego samego połączenia, więc seria numeracji pozostaje ciągła.",
+      "hintInDoubt": "Dopóki wynik jest nieznany, nie można zmienić dostawcy ani ponowić jednym kliknięciem.",
+      "hintIssued": "Wystawiona przez {connection}. Każda dalsza akcja - korekta, ponowne wysłanie, e-mail, oznaczenie jako opłacona - trafia do tego połączenia. Jedna sprzedaż ma jeden dokument, więc do tej faktury nie można dodać paragonu.",
+      "hintIssuing": "Trwa próba, która blokuje tę fakturę. Druga próba nie ruszy, dopóki ta się nie zakończy lub nie zwolni blokady.",
+      "hintPending": "Już przypisana do tego połączenia. Numer dokumentu pojawi się tutaj, gdy dostawca odpowie.",
+      "hintStale": "To połączenie nie jest już aktywne, więc korekty i ponowne wysłanie są tu niedostępne. Sama faktura pozostaje ważna.",
+      "issuedBy": "Wystawił",
+      "issuingOn": "Wystawianie w",
+      "retryGoesTo": "Ponowienie trafi do",
+      "stillAssignedTo": "Nadal przypisana do"
+    },
+    "marketplaceUpload": {
+      "explanation": {
+        "failed": "Nie udało się dołączyć dokumentu do zamówienia w marketplace.",
+        "no-file": "Ten dokument nie ma pliku PDF, który OpenLinker mógłby wysłać - jest tylko link albo jeszcze nic. Ponowna próba sprawdzi, czy plik się pojawił.",
+        "pending": "Dokument jest dołączany do zamówienia w marketplace.",
+        "unsupported": "Ten marketplace nie przyjmuje dokumentów przez OpenLinker.",
+        "uploaded": "Kupujący widzi ten dokument w zamówieniu w marketplace."
+      },
+      "failure": {
+        "adapter-unresolved": "OpenLinker nie mógł połączyć się z połączeniem marketplace. Sprawdź, czy jest aktywne, i spróbuj ponownie.",
+        "order-unmapped": "OpenLinker jeszcze nie zna tego zamówienia w połączeniu marketplace.",
+        "rejected": "Marketplace odrzucił plik, więc ponowna próba nie pomoże.",
+        "transient": "Marketplace tym razem nie przyjął pliku. Ponowna próba może się udać."
+      },
+      "retry": "Spróbuj ponownie",
+      "retryFailed": "Nie udało się zlecić kolejnej próby.",
+      "retrying": "Zlecanie…",
+      "status": {
+        "failed": "Nie dostarczono do marketplace",
+        "no-file": "Brak pliku do wysłania",
+        "pending": "Wysyłanie do marketplace",
+        "unsupported": "Marketplace tego nie obsługuje",
+        "uploaded": "W zamówieniu w marketplace"
+      },
+      "unknown": {
+        "explanation": "Ta wersja nie rozpoznaje stanu przesyłania zgłoszonego przez serwer.",
+        "label": "Nieznany stan przesyłania"
+      },
+      "unreadable": "Nie udało się odczytać, czy dokument dotarł do marketplace."
+    },
+    "panel": {
+      "blockNoRateBody": "{list} nie mają stawki w sklepie, a kanał jej nie przekazał. Stawki przychodzą z synchronizacją produktów.",
+      "blockNoRateTitle": {
+        "few": "Nie zafakturowano: {n} pozycje nie mają stawki VAT.",
+        "many": "Nie zafakturowano: {n} pozycji nie ma stawki VAT.",
+        "one": "Nie zafakturowano: {n} pozycja nie ma stawki VAT.",
+        "other": "Nie zafakturowano: {n} pozycji nie ma stawki VAT."
+      },
+      "blockNoRateUncataloguedBody": "Kanał nie przekazał stawki przy zakupie, a poprawienie oferty teraz nie zwolni tego zamówienia. Dodaj produkt do sklepu, aby je zwolnić.",
+      "blockNoRateUncataloguedTitle": "Nie zafakturowano: {subject} nie ma w Twoim katalogu.",
+      "blockNoRateUncataloguedTitlePlural": {
+        "few": "Nie zafakturowano: {n} produkty nie są w Twoim katalogu.",
+        "many": "Nie zafakturowano: {n} produktów nie ma w Twoim katalogu.",
+        "one": "Nie zafakturowano: {n} produktu nie ma w Twoim katalogu.",
+        "other": "Nie zafakturowano: {n} produktu nie ma w Twoim katalogu."
+      },
+      "someLines": "Niektóre pozycje"
+    },
+    "pdf": {
+      "aria": "Otwórz PDF faktury {invoiceNumber} (otwiera się w nowej karcie)"
+    },
+    "regulatory": {
+      "accepted": "Przyjęta",
+      "cleared": "W rozliczeniu",
+      "not-applicable": "Nie dot.",
+      "pending-submission": "Czeka na przesłanie",
+      "rejected": "Odrzucona",
+      "submitted": "Przesłana"
+    },
+    "status": {
+      "failed": "Błąd",
+      "in-doubt": "Do sprawdzenia",
+      "issued": "Wystawiona",
+      "issuing": "Wystawianie…",
+      "not-issued": "Niewystawiona",
+      "pending": "Oczekuje"
+    },
+    "tl": {
+      "accepted": "Przyjęta",
+      "clearanceLane": "Rozliczenie w urzędzie skarbowym",
+      "clearancePending": "Czeka na przyjęcie",
+      "clearanceRejected": "Odrzucona przez urząd skarbowy",
+      "created": "Utworzona",
+      "failed": "Błąd",
+      "failedHint": "Odrzucona - można bezpiecznie ponowić",
+      "inDoubt": "Niepewne",
+      "inDoubtHint": "Sprawdź u dostawcy przed ponowieniem",
+      "issuanceLane": "Wystawienie",
+      "issued": "Wystawiona",
+      "issuing": "Wystawianie",
+      "issuingHint": "W toku - zablokowana",
+      "pending": "Oczekuje",
+      "pendingSubmission": "Czeka na przesłanie",
+      "pendingSubmissionHint": "Wystawiona offline - jeszcze nie przesłana do rozliczenia",
+      "submitted": "Przesłana"
+    }
+  },
+  "invoicing": {
+    "correction": {
+      "afterPrice": "Cena jednostkowa po korekcie, pozycja {position}",
+      "afterQty": "Ilość po korekcie, pozycja {position}",
+      "col": {
+        "after": "Po korekcie",
+        "credit": "Uznanie",
+        "invoiced": "Jak na fakturze",
+        "item": "Pozycja",
+        "lp": "Lp."
+      },
+      "gridCaption": "Pozycje faktury w kolejności z wystawionego dokumentu",
+      "gridNote": "Wpisz ilość i cenę jednostkową, które powinny być na fakturze - ilość 0 koryguje całą pozycję, a niższa cena koryguje różnicę bez zwrotu towaru. Kwoty są podglądem; ostateczne kwoty na dokumencie wylicza dostawca fakturowania.",
+      "lineClearedOutOfRange": "Pozycja {n} nie istnieje na tej fakturze - wybierz wiersz poniżej.",
+      "linesFetchFailed": "Nie udało się wczytać pozycji tej faktury. Wpisz numer pozycji ręcznie albo otwórz formularz ponownie.",
+      "linesNotAuthoritative": "Pozycji tej faktury nie da się dopasować do zapisanej kopii, z której korzysta korekta - wpisz numer pozycji z wystawionego dokumentu.",
+      "linesUnavailable": "Lista pozycji dla tej faktury jest niedostępna - przed zatwierdzeniem sprawdź numer pozycji na wystawionym dokumencie.",
+      "selectLine": "Wybierz pozycję…",
+      "totalCredit": "Łączna kwota korekty",
+      "vat": "VAT {rate}"
+    }
+  },
+  "numberingPattern": {
+    "dailyResetNeeds": "Zerowanie dzienne wymaga we wzorcu {DD}, {MM} i roku ({YYYY}, {YY} lub {FY}), inaczej numery się powtórzą.",
+    "monthlyResetNeeds": "Zerowanie miesięczne wymaga we wzorcu {MM} i roku ({YYYY}, {YY} lub {FY}), inaczej numery się powtórzą.",
+    "quarterlyResetNeeds": "Zerowanie kwartalne wymaga we wzorcu {QQ} i roku ({YYYY}, {YY} lub {FY}), inaczej numery się powtórzą.",
+    "seqMissing": "Dodaj zmienną {seq} - seria bez numeru kolejnego jest nieprawidłowa.",
+    "yearlyResetNeeds": "Zerowanie roczne wymaga we wzorcu roku ({YYYY}, {YY} lub {FY}), inaczej numery się powtórzą."
+  },
+  "salesDocument": {
+    "lifecycle": {
+      "awaitingAuthority": "Czeka na urząd skarbowy",
+      "cleared": "Przyjęty",
+      "issued": "Wystawiony",
+      "rejectedByAuthority": "Odrzucony przez urząd skarbowy"
+    },
+    "panel": {
+      "fiscalReceipt": {
+        "blockBatchedBody": "OpenLinker nie może dołączyć tego zamówienia do partii, więc nic nie wystawił. Zarejestruj je ręcznie albo przełącz połączenie na wystawianie po opłaceniu.",
+        "blockBatchedTitle": "Nie zarejestrowano: rejestracja fiskalna w partiach nie jest jeszcze dostępna.",
+        "blockCurrencyMismatchBody": "Pasująca reguła porównuje sumę tego zamówienia z kwotą określoną w innej walucie. OpenLinker nigdy nie przelicza walut przy decyzji fiskalnej, więc nic nie zostało zarejestrowane automatycznie. Zarejestruj je ręcznie albo popraw próg reguły.",
+        "blockCurrencyMismatchTitle": "Nie zarejestrowano: waluta zamówienia nie pasuje do progu reguły.",
+        "blockManualBody": "Wszystko jest w porządku - tutaj paragon nie jest wystawiany automatycznie. Zarejestruj go, kiedy zechcesz.",
+        "blockManualTitle": "To połączenie rejestruje paragony ręcznie.",
+        "blockNoCountryConfigBody": "Ani kraj tego zamówienia, ani \"★ Reszta świata\" nie ma żadnej reguły ani ustawienia domyślnego dla dokumentów sprzedaży. Ustaw reguły dla tego kraju (albo ustawienie domyślne dla reszty świata) w Ustawienia → Kierowanie dokumentów sprzedaży albo zarejestruj ten paragon ręcznie.",
+        "blockNoCountryConfigTitle": "Nie zarejestrowano: brak reguł dla tego kraju.",
+        "blockNoPrimaryBody": "Kilka połączeń może rejestrować paragony i żadne nie jest ustawione na wystawianie automatyczne, więc OpenLinker nic nie wystawił, zamiast wystawić dwa razy. Ustaw połączenie główne albo wybierz połączenie powyżej i zarejestruj ten paragon ręcznie.",
+        "blockNoPrimaryTitle": "Nie zarejestrowano: brak połączenia głównego.",
+        "blockNoRateShippingBody": "Każda pozycja produktowa ma stawkę, ale w tym zamówieniu nic nie niesie kwoty, za którą mogłaby pójść opłata za dostawę. Sprawdź pozycje zamówienia i opłatę za dostawę albo zarejestruj ten paragon poza OpenLinker.",
+        "blockNoRateShippingTitle": "Nie zarejestrowano: opłata za dostawę nie ma stawki VAT.",
+        "blockRoutedConnectionUnavailableBody": "Kierowanie wysyła ten paragon do połączenia, które jest wyłączone, zostało usunięte albo nie może go już zarejestrować, więc nic nie zostało zarejestrowane. Włącz to połączenie ponownie albo skieruj regułę na inne połączenie. Możesz też wybrać połączenie powyżej i zarejestrować ten paragon ręcznie.",
+        "blockRoutedConnectionUnavailableTitle": "Nie zarejestrowano: wskazane połączenie nie może go zarejestrować.",
+        "blockTaxIdBody": "Tego paragonu nie można wystawić bez NIP kupującego, którego wymaga kanał docelowy.",
+        "blockTaxIdTitle": "Nie zarejestrowano: brak NIP kupującego.",
+        "blockTaxRateBody": "Stawka VAT z kanału nie zgadza się z katalogiem głównym, więc OpenLinker nie wystawił paragonu, za który nie mógłby ręczyć.",
+        "blockTaxRateTitle": "Nie zarejestrowano: stawki VAT się nie zgadzają.",
+        "blockUnknownBody": "OpenLinker nie wystawił paragonu dla tego zamówienia. Zarejestruj go ręcznie, jeśli jest potrzebny.",
+        "blockUnknownTitle": "Nie zarejestrowano.",
+        "blockUnroutedBody": "OpenLinker nie mógł ustalić, gdzie zarejestrować ten paragon. Wybierz połączenie powyżej, aby zarejestrować go ręcznie.",
+        "blockUnroutedTitle": "Nie zarejestrowano: brak kierowania dla tego paragonu.",
+        "noPrimaryBody": "Kilka połączeń może rejestrować paragony i żadne nie jest oznaczone jako główne, więc OpenLinker nic nie wystawił, zamiast wystawić dwa razy. Wybierz połączenie powyżej, aby zarejestrować ten paragon ręcznie, albo ustaw połączenie główne, aby działo się to samo.",
+        "noPrimaryTitle": "Automatyczna rejestracja fiskalna jest wyłączona dla tego zamówienia."
+      },
+      "invoice": {
+        "blockBatchedBody": "OpenLinker nie może dołączyć tego zamówienia do partii, więc nic nie wystawił. Wystaw fakturę ręcznie albo przełącz połączenie na wystawianie po opłaceniu.",
+        "blockBatchedTitle": "Nie zafakturowano: fakturowanie w partiach nie jest jeszcze dostępne.",
+        "blockCurrencyMismatchBody": "Pasująca reguła porównuje sumę tego zamówienia z kwotą określoną w innej walucie. OpenLinker nigdy nie przelicza walut przy decyzji fiskalnej, więc nic nie zostało zafakturowane automatycznie. Wystaw fakturę ręcznie albo popraw próg reguły.",
+        "blockCurrencyMismatchTitle": "Nie zafakturowano: waluta zamówienia nie pasuje do progu reguły.",
+        "blockManualBody": "Wszystko jest w porządku - tutaj faktura nie jest wystawiana automatycznie. Wystaw ją, kiedy zechcesz.",
+        "blockManualTitle": "To połączenie wystawia faktury ręcznie.",
+        "blockNoCountryConfigBody": "Ani kraj tego zamówienia, ani \"★ Reszta świata\" nie ma żadnej reguły ani ustawienia domyślnego dla dokumentów sprzedaży. Ustaw reguły dla tego kraju (albo ustawienie domyślne dla reszty świata) w Ustawienia → Kierowanie dokumentów sprzedaży albo wystaw tę fakturę ręcznie.",
+        "blockNoCountryConfigTitle": "Nie zafakturowano: brak reguł dla tego kraju.",
+        "blockNoPrimaryBody": "Kilka połączeń może wystawiać faktury i żadne nie jest ustawione na wystawianie automatyczne, więc OpenLinker nic nie wystawił, zamiast wystawić dwa razy. Ustaw połączenie główne albo wybierz połączenie powyżej i wystaw tę fakturę ręcznie.",
+        "blockNoPrimaryTitle": "Nie zafakturowano: brak połączenia głównego.",
+        "blockNoRateShippingBody": "Każda pozycja produktowa ma stawkę, ale w tym zamówieniu nic nie niesie kwoty, za którą mogłaby pójść opłata za dostawę. Sprawdź pozycje zamówienia i opłatę za dostawę albo wystaw tę fakturę poza OpenLinker.",
+        "blockNoRateShippingTitle": "Nie zafakturowano: opłata za dostawę nie ma stawki VAT.",
+        "blockRoutedConnectionUnavailableBody": "Kierowanie wysyła tę fakturę do połączenia, które jest wyłączone, zostało usunięte albo nie może jej już wystawić, więc nic nie zostało zafakturowane. Włącz to połączenie ponownie albo skieruj regułę na inne połączenie. Możesz też wybrać połączenie powyżej i wystawić tę fakturę ręcznie.",
+        "blockRoutedConnectionUnavailableTitle": "Nie zafakturowano: wskazane połączenie nie może jej wystawić.",
+        "blockTaxIdBody": "Tej faktury nie można wystawić bez NIP kupującego, którego wymaga kanał docelowy.",
+        "blockTaxIdTitle": "Nie zafakturowano: brak NIP kupującego.",
+        "blockTaxRateBody": "Stawka VAT z kanału nie zgadza się z katalogiem głównym, więc OpenLinker nie wystawił faktury, za którą nie mógłby ręczyć.",
+        "blockTaxRateTitle": "Nie zafakturowano: stawki VAT się nie zgadzają.",
+        "blockUnknownBody": "OpenLinker nie wystawił faktury dla tego zamówienia. Wystaw ją ręcznie, jeśli jest potrzebna.",
+        "blockUnknownTitle": "Nie zafakturowano.",
+        "blockUnroutedBody": "OpenLinker nie mógł ustalić, gdzie wystawić tę fakturę. Wybierz połączenie powyżej, aby wystawić ją ręcznie.",
+        "blockUnroutedTitle": "Nie zafakturowano: brak kierowania dla tej faktury.",
+        "noPrimaryBody": "Kilka połączeń może wystawiać faktury i żadne nie jest oznaczone jako główne, więc OpenLinker nic nie wystawił, zamiast wystawić dwa razy. Wybierz połączenie powyżej, aby wystawić tę fakturę ręcznie, albo ustaw połączenie główne, aby działo się to samo.",
+        "noPrimaryTitle": "Automatyczne fakturowanie jest wyłączone dla tego zamówienia."
+      },
+      "mixed": {
+        "blockBatchedBody": "OpenLinker nie może dołączyć tego zamówienia do partii, więc nic nie wystawił. Wystaw dokument ręcznie albo przełącz połączenie na wystawianie po opłaceniu.",
+        "blockBatchedTitle": "Nie wystawiono: wystawianie dokumentów sprzedaży w partiach nie jest jeszcze dostępne.",
+        "blockCurrencyMismatchBody": "Pasująca reguła porównuje sumę tego zamówienia z kwotą określoną w innej walucie. OpenLinker nigdy nie przelicza walut przy decyzji fiskalnej, więc nic nie zostało wystawione automatycznie. Wystaw dokument ręcznie albo popraw próg reguły.",
+        "blockCurrencyMismatchTitle": "Nie wystawiono: waluta zamówienia nie pasuje do progu reguły.",
+        "blockManualBody": "Wszystko jest w porządku - tutaj dokument nie jest wystawiany automatycznie. Wystaw go, kiedy zechcesz.",
+        "blockManualTitle": "To połączenie wystawia dokumenty sprzedaży ręcznie.",
+        "blockNoCountryConfigBody": "Ani kraj tego zamówienia, ani \"★ Reszta świata\" nie ma żadnej reguły ani ustawienia domyślnego dla dokumentów sprzedaży. Ustaw reguły dla tego kraju (albo ustawienie domyślne dla reszty świata) w Ustawienia → Kierowanie dokumentów sprzedaży albo wystaw ten dokument ręcznie.",
+        "blockNoCountryConfigTitle": "Nie wystawiono: brak reguł dla tego kraju.",
+        "blockNoPrimaryBody": "Kilka połączeń może wystawić dokument sprzedaży i żadne nie jest ustawione na wystawianie automatyczne, więc OpenLinker nic nie wystawił, zamiast wystawić dwa razy. Ustaw połączenie główne albo wybierz połączenie powyżej i wystaw ten dokument ręcznie.",
+        "blockNoPrimaryTitle": "Nie wystawiono: brak połączenia głównego.",
+        "blockNoRateShippingBody": "Każda pozycja produktowa ma stawkę, ale w tym zamówieniu nic nie niesie kwoty, za którą mogłaby pójść opłata za dostawę. Sprawdź pozycje zamówienia i opłatę za dostawę albo wystaw ten dokument poza OpenLinker.",
+        "blockNoRateShippingTitle": "Nie wystawiono: opłata za dostawę nie ma stawki VAT.",
+        "blockRoutedConnectionUnavailableBody": "Kierowanie wysyła ten dokument do połączenia, które jest wyłączone, zostało usunięte albo nie może go już wystawić, więc nic nie zostało wystawione. Włącz to połączenie ponownie albo skieruj regułę na inne połączenie. Możesz też wybrać połączenie powyżej i wystawić ten dokument ręcznie.",
+        "blockRoutedConnectionUnavailableTitle": "Nie wystawiono: wskazane połączenie nie może go wystawić.",
+        "blockTaxIdBody": "Tego dokumentu nie można wystawić bez NIP kupującego, którego wymaga kanał docelowy.",
+        "blockTaxIdTitle": "Nie wystawiono: brak NIP kupującego.",
+        "blockTaxRateBody": "Stawka VAT z kanału nie zgadza się z katalogiem głównym, więc OpenLinker nie wystawił dokumentu, za który nie mógłby ręczyć.",
+        "blockTaxRateTitle": "Nie wystawiono: stawki VAT się nie zgadzają.",
+        "blockUnknownBody": "OpenLinker nie wystawił dokumentu dla tego zamówienia. Wystaw go ręcznie, jeśli jest potrzebny.",
+        "blockUnknownTitle": "Nie wystawiono.",
+        "blockUnroutedBody": "OpenLinker nie mógł ustalić, gdzie wystawić ten dokument. Wybierz połączenie powyżej, aby wystawić go ręcznie.",
+        "blockUnroutedTitle": "Nie wystawiono: brak kierowania dla tego dokumentu.",
+        "noPrimaryBody": "Kilka połączeń może wystawić dokument sprzedaży i żadne nie jest oznaczone jako główne, więc OpenLinker nic nie wystawił, zamiast wystawić dwa razy. Wybierz połączenie powyżej, aby wystawić ten dokument ręcznie, albo ustaw połączenie główne, aby działo się to samo.",
+        "noPrimaryTitle": "Automatyczne wystawianie dokumentów sprzedaży jest wyłączone dla tego zamówienia."
+      },
+      "whyThisDocument": "Dlaczego ten dokument?"
+    }
+  }
+}
