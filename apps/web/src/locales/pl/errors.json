@@ -172,6 +172,7 @@
     "MARKETPLACE_CATEGORY_NOT_FOUND": "Marketplace nie ma tej kategorii.",
     "MARKETPLACE_OFFER_NOT_FOUND": "Marketplace nie ma tej oferty.",
     "MARKETPLACE_UPLOAD_NOT_QUEUED": "Nie udało się rozpocząć wysyłki dokumentu do marketplace. Spróbuj ponownie.",
+    "MASTER_CATALOG_CONNECTION_NOT_CONFIGURED": "To połączenie marketplace nie ma ustawionego katalogu głównego, więc nie można odczytać danych produktu. Wybierz go w ustawieniach połączenia.",
     "MCP_TOKEN_NOT_FOUND": "Ten klucz dostępu już nie istnieje.",
     "MISSING_NUMBERING_SERIES": "To połączenie nie ma serii numeracji dla tego typu dokumentu.",
     "MISSING_TAX_RATE": "Pozycje bez stawki VAT: {missingCount} z {lineCount}. Uzupełnij stawki w katalogu produktów.",

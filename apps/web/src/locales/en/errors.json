@@ -172,6 +172,7 @@
     "MARKETPLACE_CATEGORY_NOT_FOUND": "The marketplace does not have this category.",
     "MARKETPLACE_OFFER_NOT_FOUND": "The marketplace does not have this offer.",
     "MARKETPLACE_UPLOAD_NOT_QUEUED": "Sending the document to the marketplace could not be started. Try again.",
+    "MASTER_CATALOG_CONNECTION_NOT_CONFIGURED": "This marketplace connection has no master catalogue set, so product data cannot be read. Choose one in the connection settings.",
     "MCP_TOKEN_NOT_FOUND": "This access key no longer exists.",
     "MISSING_NUMBERING_SERIES": "This connection has no numbering series for this document type.",
     "MISSING_TAX_RATE": "Lines without a VAT rate: {missingCount} of {lineCount}. Set the rates in the product catalogue.",
