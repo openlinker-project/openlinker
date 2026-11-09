@@ -7,6 +7,7 @@
  *
  * @module apps/api/src/orders/application/errors
  */
+import type { KnownApiErrorCode } from '@openlinker/shared/errors';
 
 export const OrderCancellationRefusalCodeValues = [
   'ORDER_ALREADY_CANCELLED',
@@ -25,7 +26,7 @@ export const OrderCancellationRefusalCodeValues = [
   'CORRECTION_SUPERSEDED',
   'CORRECTION_IN_PROGRESS',
   'CORRECTION_NEEDS_RECONCILIATION',
-] as const;
+] as const satisfies readonly KnownApiErrorCode[];
 export type OrderCancellationRefusalCode = (typeof OrderCancellationRefusalCodeValues)[number];
 
 /** A 409: the request was well formed and the order or change is in a state that refuses it. */
