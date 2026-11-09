@@ -2,6 +2,7 @@
  * `resolveDestinationRoutingCopy` unit tests (#2703 / #2704).
  */
 import { describe, expect, it } from 'vitest';
+import en from '../../../locales/en.json';
 import {
   DESTINATION_ROUTING_ATTENTION_REASONS,
   DESTINATION_ROUTING_ATTENTION_SYNC_HINT,
@@ -56,6 +57,16 @@ describe('own-only destination reasons', () => {
     expect(resolveDestinationRoutingSyncHint('no-destination-configured', false)).toBe(
       resolveDestinationRoutingCopy('no-destination-configured')?.hint
     );
+  });
+
+  // ADR-081: these two labels are read from the locale file, not written into
+  // the table, so the badge renders whatever the active language provides.
+  it.each([
+    ['no-destination-configured', en.orders.destinationRouting.noDestinationConfigured],
+    ['no-active-destination', en.orders.destinationRouting.noActiveDestination],
+  ] as const)('should read the %s label and hint from the orders namespace', (reason, copy) => {
+    expect(resolveDestinationRoutingCopy(reason)?.label).toBe(copy.label);
+    expect(resolveDestinationRoutingCopy(reason)?.hint).toBe(copy.hint);
   });
 
   it('should count no-active-destination as outstanding work', () => {

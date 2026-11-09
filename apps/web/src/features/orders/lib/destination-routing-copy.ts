@@ -19,6 +19,7 @@
  * a draft that inferred it got wrong by printing a cause the backend had not
  * recorded.
  */
+import { getMessages } from '../../../shared/i18n';
 import {
   DestinationRoutingBlockReasonValues,
   type DestinationRoutingBlockReasonValue,
@@ -64,14 +65,27 @@ export const DESTINATION_ROUTING_REASON_COPY = {
   },
   // #3959 - true of every order on a single-shop install, so it must stay
   // neutral; a warning here would sit on every row of a healthy install.
+  //
+  // These two entries are translated (ADR-081) while the older four above are
+  // not yet: the getters read the active language on every access, so the
+  // table's shape and its callers stay unchanged, and `LocaleKeyed` remounts
+  // the routed tree on a language switch so no rendered label goes stale.
   'no-destination-configured': {
-    label: 'Kept in source shop',
-    hint: 'No other connection creates orders, so there is nothing to copy this order to. Its sales document is still issued. Add an order destination in Connections if orders should be copied elsewhere.',
+    get label(): string {
+      return getMessages('orders').destinationRouting.noDestinationConfigured.label;
+    },
+    get hint(): string {
+      return getMessages('orders').destinationRouting.noDestinationConfigured.hint;
+    },
     tone: 'decision',
   },
   'no-active-destination': {
-    label: 'No active destination',
-    hint: 'Every connection that can receive this order is disabled or needs attention. The order is copied automatically once one of them is active again. Its sales document is decided anyway.',
+    get label(): string {
+      return getMessages('orders').destinationRouting.noActiveDestination.label;
+    },
+    get hint(): string {
+      return getMessages('orders').destinationRouting.noActiveDestination.hint;
+    },
     tone: 'attention',
   },
 } as const satisfies Record<DestinationRoutingBlockReasonValue, DestinationRoutingCopy>;

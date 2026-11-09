@@ -29,6 +29,18 @@
       "overdue": "Overdue {duration}"
     }
   },
+  "orders": {
+    "destinationRouting": {
+      "noActiveDestination": {
+        "hint": "Every connection that can receive this order is disabled or needs attention. The order is copied automatically once one of them is active again. Its sales document is decided anyway.",
+        "label": "No active destination"
+      },
+      "noDestinationConfigured": {
+        "hint": "No other connection creates orders, so there is nothing to copy this order to. Its sales document is still issued. Add an order destination in Connections if orders should be copied elsewhere.",
+        "label": "Kept in source shop"
+      }
+    }
+  },
   "ui": {
     "accessDenied": {
       "eyebrow": "No access",
