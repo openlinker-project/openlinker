@@ -730,7 +730,8 @@ describe('OrderCancellationService (#3540)', () => {
 
     it('should not treat the correction this proposal itself issued as superseding it (crash-retry)', async () => {
       // The first confirm issued FK/1 under this proposal's key, then died before
-      // the confirm landed; the retry must replay, not withdraw the proposal.
+      // the confirm landed; the retry must confirm with that credit, not withdraw
+      // the proposal, and must not ask the provider for it a second time.
       invoices.listInvoicesForOrders.mockResolvedValue([
         invoice({
           id: 'inv-2',
@@ -744,9 +745,7 @@ describe('OrderCancellationService (#3540)', () => {
       const result = await service.confirmChange(confirmInput);
 
       expect(changes.abandon).not.toHaveBeenCalled();
-      expect(invoices.issueCorrection).toHaveBeenCalledWith(
-        expect.objectContaining({ idempotencyKey: 'cancel-correction:change-2' })
-      );
+      expect(invoices.issueCorrection).not.toHaveBeenCalled();
       expect(result).toMatchObject({ status: 'confirmed', documentNumber: 'FK/1' });
     });
 

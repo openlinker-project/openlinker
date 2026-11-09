@@ -130,7 +130,10 @@ describe('OrderLineItemRepository cost work list', () => {
 
     expect(wheres(outer)).toContain('s."variant_id" IS NOT NULL');
     const channelScope = inner.find(
-      (c) => typeof c.args[0] === 'string' && c.args[0].includes('sourceConnectionId')
+      (c) =>
+        c.method === 'andWhere' &&
+        typeof c.args[0] === 'string' &&
+        c.args[0].includes('sourceConnectionId')
     );
     expect(channelScope?.args[1]).toEqual({ salesConnectionId: 'conn-1' });
     const from = inner.find((c) => String(c.args[0]).includes(':salesFrom'));

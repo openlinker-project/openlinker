@@ -689,7 +689,8 @@ describe('InventoryCorrectionService', () => {
           { id: 'x', productId: PRODUCT_ID, variantId: VARIANT_ID, quantity: 10, reserved: 1, available: 10 },
         ]);
       });
-      await h.service.correctStock({ ...baseInput, mode: 'set', quantity: 4 });
+      // 10 -> 8 stays under the large-change threshold, so the case is about lock order alone.
+      await h.service.correctStock({ ...baseInput, mode: 'set', quantity: 8 });
       expect(calls.slice(0, 2)).toEqual(['acquire', 'read']);
     });
 

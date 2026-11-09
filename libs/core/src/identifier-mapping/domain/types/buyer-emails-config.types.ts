@@ -73,6 +73,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * The sender configured for one template, whether or not the connection or the
+ * template is switched on: a test send previews a template BEFORE it is enabled
+ * (#3555). Malformed addresses are dropped, as in {@link readBuyerEmailsConfig}.
+ */
+export function readBuyerEmailTemplateSender(
+  config: ConnectionConfig | null | undefined,
+  templateKey: BuyerEmailTemplate
+): { fromAddress?: string; replyTo?: string } {
+  const raw = config?.[BUYER_EMAILS_CONFIG_KEY];
+  const template = isRecord(raw) && isRecord(raw.templates) ? raw.templates[templateKey] : undefined;
+  if (!isRecord(template)) return {};
+  return {
+    ...(isSingleEmailAddress(template.fromAddress) ? { fromAddress: template.fromAddress } : {}),
+    ...(isSingleEmailAddress(template.replyTo) ? { replyTo: template.replyTo } : {}),
+  };
+}
+
+/**
  * Coerce `config.buyerEmails` defensively. Anything but an explicit
  * `enabled: true` reads as off; an unknown template key or a malformed sender
  * is dropped rather than honoured.

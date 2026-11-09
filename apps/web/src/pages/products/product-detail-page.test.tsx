@@ -810,7 +810,15 @@ describe('ProductDetailPage', () => {
       .getAllByRole('columnheader')
       .map((header) => header.textContent);
     // The leading expand column is aria-hidden, so it is not a column header to a reader.
-    expect(headers).toEqual(['Variant', 'Tax rate', 'Stock', 'Listings', 'Price']);
+    expect(headers).toEqual([
+      'Photo',
+      'Variant',
+      'Tax rate',
+      'Stock',
+      'Listings',
+      'Cost (net)',
+      'Price',
+    ]);
   });
 
   it('should show what can be sold with a badge and the shop count behind it only when something is reserved', async () => {

@@ -45,3 +45,17 @@ export function isRecipientRejectedError(error: unknown): boolean {
   const code = typeof e.responseCode === 'number' ? e.responseCode : NaN;
   return code >= 550 && code <= 553 && (e.command === undefined || e.command === 'RCPT TO');
 }
+
+/** Test sends one actor may make within one window (#3555). */
+export const BUYER_EMAIL_TEST_SEND_LIMIT = 10;
+/** Length of the test-send rate-limit window, in seconds (#3555). */
+export const BUYER_EMAIL_TEST_SEND_WINDOW_SECONDS = 600;
+
+/** Why a test send was refused before anything reached a mail server (#3555). */
+export const BuyerEmailTestRefusalReasonValues = [
+  'invalid-address',
+  'connection-not-found',
+  'template-not-allowed',
+  'rate-limited',
+] as const;
+export type BuyerEmailTestRefusalReason = (typeof BuyerEmailTestRefusalReasonValues)[number];

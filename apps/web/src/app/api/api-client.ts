@@ -143,6 +143,7 @@ import {
 } from '../../features/posthog-settings/api/posthog-settings.api';
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
 import { createAutomationsApi, type AutomationsApi } from '../../features/automation';
+import { createBuyerEmailsApi, type BuyerEmailsApi } from '../../features/buyer-emails/api/buyer-emails.api';
 import { createReturnsApi, type ReturnsApi } from '../../features/returns';
 import { createShipmentsApi, type ShipmentsApi } from '../../features/shipments/api/shipments.api';
 import {
@@ -161,6 +162,10 @@ import {
 } from '../../features/webhook-deliveries/api/webhook-deliveries.api';
 import { createUsersApi, type UsersApi } from '../../features/users/api/users.api';
 import { createSystemApi, type SystemApi } from '../../features/system/api/system.api';
+import {
+  createLoginPageSettingsApi,
+  type LoginPageSettingsApi,
+} from '../../features/login-page-settings/api/login-page-settings.api';
 import { plugins } from '../../plugins';
 import { ApiError } from '../../shared/api/api-error';
 import type { SessionAdapter } from '../../shared/auth/session-adapter';
@@ -275,6 +280,7 @@ export interface CoreApiClient {
   pricingSync: PricingSyncApi;
   mailerSettings: MailerSettingsApi;
   automations: AutomationsApi;
+  buyerEmails: BuyerEmailsApi;
   mcpTokens: McpTokensApi;
   operationalSettings: OperationalSettingsApi;
   orders: OrdersApi;
@@ -300,6 +306,7 @@ export interface CoreApiClient {
   syncJobs: SyncJobsApi;
   streamDeadLetters: StreamDeadLettersApi;
   system: SystemApi;
+  loginPageSettings: LoginPageSettingsApi;
   users: UsersApi;
   webhookDeliveries: WebhookDeliveriesApi;
 }
@@ -553,6 +560,7 @@ export function createApiClient({
     sourcingRules: createSourcingRulesApi(request),
     routingDryRun: createRoutingDryRunApi(request),
     automations: createAutomationsApi(request),
+    buyerEmails: createBuyerEmailsApi(request),
     fulfillmentAuthority: createFulfillmentAuthorityApi(request),
     fulfillment: createFulfillmentApi(request),
     bench: createBenchApi(request, requestBlob),
@@ -561,6 +569,7 @@ export function createApiClient({
     syncJobs: createSyncJobsApi(request),
     streamDeadLetters: createStreamDeadLettersApi(request),
     system: createSystemApi(request),
+    loginPageSettings: createLoginPageSettingsApi(request),
     users: createUsersApi(request),
     webhookDeliveries: createWebhookDeliveriesApi(request),
   };

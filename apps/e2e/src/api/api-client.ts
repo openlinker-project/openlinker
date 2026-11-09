@@ -19,6 +19,7 @@ import type {
   AutomationRuleView,
   AutomationRuleWriteInput,
   BuyerEmailDeliveryView,
+  DocumentEmailDeliveryView,
   AnalyticsCoverageView,
   AnalyticsRangeQuery,
   AnalyticsRemediationRun,
@@ -479,6 +480,9 @@ export class ApiClient {
 
   // ── Automations + buyer emails (#3554) ──────────────────────────────────
   automations = {
+    /** `GET /automations?trigger=` — the rules on one trigger. */
+    listByTrigger: (trigger: string): Promise<AutomationRuleView[]> =>
+      this.request<AutomationRuleView[]>(`/automations?trigger=${encodeURIComponent(trigger)}`),
     /** `GET /automations/:id` — one rule, its full definition included. */
     getById: (ruleId: string): Promise<AutomationRuleView> =>
       this.request<AutomationRuleView>(`/automations/${ruleId}`),
@@ -491,6 +495,12 @@ export class ApiClient {
   };
 
   buyerEmails = {
+    /** `GET /orders/:id/document-emails` — the order's manual sales-document emails (#3550). */
+    documentEmailsForOrder: (internalOrderId: string): Promise<DocumentEmailDeliveryView[]> =>
+      this.request<DocumentEmailDeliveryView[]>(`/orders/${internalOrderId}/document-emails`),
+    /** `GET /invoices/:id/attachment` — what can be attached for the document (#3548). */
+    invoiceAttachment: (invoiceId: string): Promise<{ state: string }> =>
+      this.request<{ state: string }>(`/invoices/${invoiceId}/attachment`),
     /** `GET /orders/:id/buyer-emails` — the order's automatic buyer emails, newest first. */
     forOrder: (internalOrderId: string): Promise<BuyerEmailDeliveryView[]> =>
       this.request<BuyerEmailDeliveryView[]>(`/orders/${internalOrderId}/buyer-emails`),

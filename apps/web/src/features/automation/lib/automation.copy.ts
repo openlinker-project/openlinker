@@ -83,7 +83,7 @@ export const AUTOMATION_TRIGGER_COPY = {
     label: 'An order is shipped',
     description:
       'Fires once the order\'s parcels are with the carrier and the tracking number is known, ' +
-      'or 30 minutes after dispatch if none arrives.',
+      'or 30 minutes after the carrier takes the parcel if none arrives.',
   },
   'order.document_issued': {
     label: 'An invoice or receipt is issued',

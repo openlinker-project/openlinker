@@ -29,6 +29,7 @@ import { OrderColumnPresetsController } from './http/order-column-presets.contro
 import { OrderNotesController } from './http/order-notes.controller';
 import { OrderLineCostsController } from './http/order-line-costs.controller';
 import { OrderBuyerEmailsController } from './http/order-buyer-emails.controller';
+import { BuyerEmailsController } from './http/buyer-emails.controller';
 import { OrderTagsController } from './http/order-tags.controller';
 import { OrderTagAssignmentsController } from './http/order-tag-assignments.controller';
 import { OrderExportsController } from './http/order-exports.controller';
@@ -112,6 +113,7 @@ import { IntegrationsModule } from '../integrations/integrations.module';
     OrderNotesController,
     OrderLineCostsController,
     OrderBuyerEmailsController,
+    BuyerEmailsController,
     OrderTagsController,
     OrderTagAssignmentsController,
   ],

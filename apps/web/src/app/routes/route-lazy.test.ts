@@ -132,8 +132,16 @@ const lazyRoutes = collectLazyRoutes([
  * more authenticated lazy route, from 74 to 75.
  *
  * #3586 (G11, epic #3516) adds the missing-cost work list `/products/cost-prices`, from 75 to 76.
+ *
+ * #3555 adds the buyer-email settings list (`settings/buyer-emails`) and its
+ * template editor (`settings/buyer-emails/:connectionId/:template`), two lazy
+ * routes, from 76 to 78.
+ *
+ * #4029: `/register` joins `/login` under one eager layout route (so a tab
+ * switch does not remount the card), which removes one lazy guest route, and
+ * `/settings/login-page` adds one authenticated lazy route - net 0, still 78.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 76;
+const EXPECTED_LAZY_ROUTE_COUNT = 78;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

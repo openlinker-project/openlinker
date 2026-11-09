@@ -435,6 +435,17 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
     },
     {
+      // G06 sales documents and buyer emails (#3556). Mutating: arms seeded
+      // automation rules, edits a connection's `config.buyerEmails` and buys
+      // labels, restoring what it changed in `finally` - so `retries: 0`, a
+      // retry would re-dispatch. Screenshots land in `screenshots/g06/`.
+      name: 'oms-mvp-g06',
+      testMatch: /oms-mvp\/g06\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
       // Pack bench + Assign Packing Work (#3342/#3343) — mockup parity for
       // both OMS staffing screens. MUTATING: seeds `fulfillment_works` rows
       // directly via Postgres (see `support/bench-seed.ts`'s header for why)

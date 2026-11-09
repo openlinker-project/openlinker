@@ -1,8 +1,14 @@
 import type { ModuleRef } from '@nestjs/core';
-import type { Connection, ConnectionPort } from '@openlinker/core/identifier-mapping';
+import {
+  ConnectionNotFoundException,
+  type Connection,
+  type ConnectionPort,
+} from '@openlinker/core/identifier-mapping';
 import type { MailerPort } from '@openlinker/core/users';
+import { InMemoryCacheAdapter } from '@openlinker/shared/cache/testing';
 import type { BuyerEmailDeliveryRepositoryPort } from '../../domain/ports/buyer-email-delivery-repository.port';
 import { BuyerEmailDelivery } from '../../domain/entities/buyer-email-delivery.entity';
+import { BUYER_EMAIL_TEST_SEND_LIMIT } from '../../domain/types/buyer-email-delivery.types';
 import { BuyerEmailNotificationService } from './buyer-email-notification.service';
 
 const connection = (config: Record<string, unknown>, enabledCapabilities: string[]): Connection =>
@@ -65,7 +71,8 @@ describe('BuyerEmailNotificationService', () => {
     service = new BuyerEmailNotificationService(
       repository,
       connections as unknown as ConnectionPort,
-      moduleRef
+      moduleRef,
+      new InMemoryCacheAdapter()
     );
   });
 
@@ -142,5 +149,126 @@ describe('BuyerEmailNotificationService', () => {
     const result = await service.send(input);
 
     expect(result).toEqual({ status: 'sent', deliveryId: 'd-1' });
+  });
+});
+
+describe('BuyerEmailNotificationService.sendTest (#3555)', () => {
+  const testInput = {
+    actorUserId: 'user-1',
+    connectionId: 'conn-1',
+    templateKey: 'shipped' as const,
+    to: 'me@shop.pl',
+    subject: 'Test',
+    text: 'Body',
+  };
+  let connections: jest.Mocked<Pick<ConnectionPort, 'get'>>;
+  let mailer: jest.Mocked<MailerPort>;
+  let repository: jest.Mocked<BuyerEmailDeliveryRepositoryPort>;
+  let service: BuyerEmailNotificationService;
+
+  beforeEach(() => {
+    connections = { get: jest.fn() };
+    mailer = { sendEmail: jest.fn() };
+    repository = {
+      recordSuppression: jest.fn(),
+      claimSend: jest.fn(),
+      settleClaim: jest.fn(),
+      releaseClaim: jest.fn(),
+      listByOrder: jest.fn(),
+    };
+    service = new BuyerEmailNotificationService(
+      repository,
+      connections as unknown as ConnectionPort,
+      { get: jest.fn(() => mailer) } as unknown as ModuleRef,
+      new InMemoryCacheAdapter()
+    );
+  });
+
+  it('should send with the template sender even when the connection has not opted in', async () => {
+    connections.get.mockResolvedValue(
+      connection(
+        {
+          buyerEmails: {
+            enabled: false,
+            templates: { shipped: { enabled: false, fromAddress: 'shop@x.pl' } },
+          },
+        },
+        ['ProductMaster']
+      )
+    );
+
+    const result = await service.sendTest(testInput);
+
+    expect(result).toEqual({ status: 'sent' });
+    expect(mailer.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'me@shop.pl', from: 'shop@x.pl' })
+    );
+    expect(repository.claimSend).not.toHaveBeenCalled();
+    expect(repository.recordSuppression).not.toHaveBeenCalled();
+  });
+
+  it('should answer connection-not-found only when the connection is missing', async () => {
+    connections.get.mockRejectedValue(new ConnectionNotFoundException('conn-1'));
+
+    const result = await service.sendTest(testInput);
+
+    expect(result).toMatchObject({ status: 'refused', reason: 'connection-not-found' });
+  });
+
+  it('should let any other connection read failure propagate', async () => {
+    connections.get.mockRejectedValue(new Error('connection terminated'));
+
+    await expect(service.sendTest(testInput)).rejects.toThrow('connection terminated');
+    expect(mailer.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('should refuse order-confirmed on a marketplace connection, without sending', async () => {
+    connections.get.mockResolvedValue(connection({}, ['OfferManager', 'OrderSource']));
+
+    const result = await service.sendTest({ ...testInput, templateKey: 'order-confirmed' });
+
+    expect(result).toMatchObject({ status: 'refused', reason: 'template-not-allowed' });
+    expect(mailer.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('should refuse an address that is not a single email', async () => {
+    const result = await service.sendTest({ ...testInput, to: 'a@b.pl, c@d.pl' });
+
+    expect(result).toMatchObject({ status: 'refused', reason: 'invalid-address' });
+    expect(mailer.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('should answer failed without the transport message when the send throws', async () => {
+    connections.get.mockResolvedValue(connection({}, ['ProductMaster']));
+    mailer.sendEmail.mockRejectedValue(new Error('connect ECONNREFUSED 10.0.0.5:587'));
+
+    const result = await service.sendTest(testInput);
+
+    expect(result.status).toBe('failed');
+    expect(JSON.stringify(result)).not.toContain('10.0.0.5');
+  });
+
+  it('should refuse with rate-limited once an actor exceeds the test-send limit, without sending', async () => {
+    connections.get.mockResolvedValue(connection({}, ['ProductMaster']));
+    for (let i = 0; i < BUYER_EMAIL_TEST_SEND_LIMIT; i += 1) {
+      await service.sendTest(testInput);
+    }
+    mailer.sendEmail.mockClear();
+
+    const result = await service.sendTest(testInput);
+
+    expect(result).toMatchObject({ status: 'refused', reason: 'rate-limited' });
+    expect(mailer.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('should count the test-send limit per actor', async () => {
+    connections.get.mockResolvedValue(connection({}, ['ProductMaster']));
+    for (let i = 0; i < BUYER_EMAIL_TEST_SEND_LIMIT; i += 1) {
+      await service.sendTest(testInput);
+    }
+
+    await expect(service.sendTest({ ...testInput, actorUserId: 'user-2' })).resolves.toEqual({
+      status: 'sent',
+    });
   });
 });

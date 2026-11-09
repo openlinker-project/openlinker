@@ -51,6 +51,11 @@ import { OrderTagsHeaderRow } from '../../features/orders/components/order-tags-
 import { useOrderNotesTimelineQuery } from '../../features/orders/hooks/use-order-notes-timeline-query';
 import { useOrderDocumentEmailsQuery } from '../../features/orders/hooks/use-order-document-emails-query';
 import { mapDocumentEmailsToEvents } from '../../features/orders/lib/document-email-timeline-events';
+import {
+  OrderBuyerEmailsPanel,
+  mapBuyerEmailsToEvents,
+  useOrderBuyerEmailsQuery,
+} from '../../features/buyer-emails';
 import { mapNoteTimelineToEvents } from '../../features/orders/lib/order-note-timeline-events';
 import {
   mapBuyerNoteAcknowledgementsToEvents,
@@ -138,6 +143,7 @@ export function OrderDetailPage(): ReactElement {
   // unreadable answer contributes no rows rather than failing the timeline.
   const noteTimelineQuery = useOrderNotesTimelineQuery(internalOrderId);
   const documentEmailsQuery = useOrderDocumentEmailsQuery(internalOrderId);
+  const buyerEmailsQuery = useOrderBuyerEmailsQuery(internalOrderId);
   const platforms = usePlatforms();
   // #3505 — whether fulfilment routing is on decides whether an order with no
   // fulfilment tasks gets a section saying so.
@@ -309,6 +315,7 @@ export function OrderDetailPage(): ReactElement {
     order.buyerNoteAcknowledgements,
   );
   const documentEmailEvents = mapDocumentEmailsToEvents(documentEmailsQuery.data ?? []);
+  const buyerEmailEvents = mapBuyerEmailsToEvents(buyerEmailsQuery.data ?? []);
   const failedDestinations = order.syncStatus.filter((s) => s.status === 'failed');
 
   // #3541 - cancel action inputs. All derived from data the page already holds.
@@ -845,6 +852,7 @@ export function OrderDetailPage(): ReactElement {
             <WarehouseReleaseBadge invoice={snapshot.invoice} />
           </div>
           <OrderCustomerCard customerId={order.customerId} sourceConnectionId={order.sourceConnectionId} />
+          <OrderBuyerEmailsPanel internalOrderId={order.internalOrderId} />
         </div>
       </div>
 
@@ -922,6 +930,7 @@ export function OrderDetailPage(): ReactElement {
             ...buyerNoteTimelineEvents,
             ...buyerNoteChangeEvents,
             ...documentEmailEvents,
+            ...buyerEmailEvents,
             ...editTimeline.dated,
           ]}
           holds={order.holdHistory}

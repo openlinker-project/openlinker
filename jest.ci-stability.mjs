@@ -53,6 +53,11 @@ const { resolveUnitTestWorkers } = createRequire(import.meta.url)('./jest.unit-w
  * along with a measured one, which is the exact mistake `docs/lessons.md`
  * records from the '512MB' episode.
  *
+ * Briefly lowered to 6 during #3918, then put back: the OOM kills in that
+ * run came from fifteen OTHER packages that set no worker cap at all (jest
+ * counts the host's cores inside the container). With those capped at the
+ * shared count, these two can keep their measured 8.
+ *
  * It is passed as an argument rather than written as a bare number so the
  * departure is visible to anyone reading the resolver, and so the local rule,
  * the override env var and the ceiling still come from one place.
