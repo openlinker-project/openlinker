@@ -20,6 +20,7 @@ import { useCategorySearchQuery, isSearchableCategoryQuery } from '../hooks/use-
 import { toCategorySearchResultHits, isTaxonomyUnsynced } from '../lib/category-search-hits';
 import { Button, Input } from '../../../shared/ui';
 import { useMessages } from '../../../shared/i18n';
+import { CategoryPathText } from './category-path-text';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import {
   buildCategoryPath,
@@ -195,28 +196,5 @@ export function AllegroCategorySearch({
         />
       )}
     </div>
-  );
-}
-
-/**
- * A category path ("Moda > Obuwie > Sneakersy") as breadcrumb text: the
- * ancestors quiet, the category itself in full weight, so the eye lands on
- * where the products actually go.
- */
-function CategoryPathText({ path }: { path: string }): ReactElement {
-  const parts = path.split(' > ').filter(Boolean);
-  const leaf = parts.pop() ?? path;
-  return (
-    <span className="category-path-text" title={path}>
-      {parts.map((part, index) => (
-        <span key={`${part}-${index}`} className="category-path-text__ancestor">
-          {part}
-          <span className="category-path-text__sep" aria-hidden="true">
-            /
-          </span>
-        </span>
-      ))}
-      <span className="category-path-text__leaf">{leaf}</span>
-    </span>
   );
 }

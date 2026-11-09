@@ -1,10 +1,11 @@
 /**
  * CategoryMappingTree
  *
- * The master's category tree, one row per category with the marketplace
- * category it is mapped to. Opens fully expanded: a catalogue tree is small
- * enough to read whole, and mapping is a pass over every row, so collapsed
- * branches only hide work.
+ * The category map: every category of the catalogue in tree order, each
+ * beside the marketplace category it goes to. It is an overview first - the
+ * editing happens in a side panel opened from a row - so it opens fully
+ * expanded: a catalogue tree is small enough to read whole, and mapping is a
+ * pass over every row, so collapsed branches only hide work.
  *
  * `filter` narrows to matching names (their ancestors stay, so a match is
  * never shown without its place in the tree) and `unmappedOnly` to the rows
@@ -28,10 +29,11 @@ interface TreeCategory {
 interface CategoryMappingTreeProps {
   categories: TreeCategory[];
   mappings: CategoryMapping[];
-  selectedCategoryId: string | null;
-  onSelect: (categoryId: string) => void;
-  /** Accessible name of the tree, naming the platform it lists. */
-  label: string;
+  /** Category whose mapping is open in the editor, highlighted in the map. */
+  editingCategoryId: string | null;
+  onEdit: (categoryId: string) => void;
+  sourceHeader: string;
+  targetHeader: string;
   filter?: string;
   unmappedOnly?: boolean;
 }
@@ -71,9 +73,10 @@ function normalise(value: string): string {
 export function CategoryMappingTree({
   categories,
   mappings,
-  selectedCategoryId,
-  onSelect,
-  label,
+  editingCategoryId,
+  onEdit,
+  sourceHeader,
+  targetHeader,
   filter = '',
   unmappedOnly = false,
 }: CategoryMappingTreeProps): ReactElement {
@@ -137,57 +140,35 @@ export function CategoryMappingTree({
     });
   }
 
-  if (visible.length === 0) {
-    return (
-      <p className="category-tree__empty" role="status">
-        {query !== ''
-          ? interpolate(copy.treeNoMatch, { query: filter.trim() })
-          : copy.treeAllMapped}
-      </p>
-    );
-  }
-
   return (
-    <div className="category-tree" role="tree" aria-label={label}>
-      {visible.map(({ node, level }) => {
-        const hasChildren = node.children.length > 0;
-        const isOpen = isNarrowed || !collapsed.has(node.id);
-        return (
-          <div
+    <div className="category-map" role="table" aria-label={sourceHeader}>
+      <div className="category-map__head" role="row">
+        <span role="columnheader">{sourceHeader}</span>
+        <span role="columnheader">{targetHeader}</span>
+      </div>
+      {visible.length === 0 ? (
+        <p className="category-map__empty" role="status">
+          {query !== ''
+            ? interpolate(copy.treeNoMatch, { query: filter.trim() })
+            : copy.treeAllMapped}
+        </p>
+      ) : (
+        visible.map(({ node, level }) => (
+          <CategoryMappingRow
             key={node.id}
-            role="treeitem"
-            aria-level={level + 1}
-            aria-selected={selectedCategoryId === node.id}
-            aria-expanded={hasChildren ? isOpen : undefined}
-            className="category-tree__item"
-            style={{ ['--tree-level' as string]: level }}
-          >
-            {hasChildren ? (
-              <button
-                type="button"
-                className="category-tree__toggle"
-                onClick={() => { toggle(node.id); }}
-                disabled={isNarrowed}
-                aria-label={interpolate(isOpen ? copy.collapse : copy.expand, { name: node.name })}
-              >
-                <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" className={isOpen ? 'is-open' : undefined}>
-                  <path d="M4 2.5 7.5 6 4 9.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-            ) : (
-              <span className="category-tree__toggle-placeholder" />
-            )}
-            <CategoryMappingRow
-              id={node.id}
-              name={node.name}
-              mapping={mappingIndex.get(node.id)}
-              isSelected={selectedCategoryId === node.id}
-              hasChildren={hasChildren}
-              onSelect={onSelect}
-            />
-          </div>
-        );
-      })}
+            id={node.id}
+            name={node.name}
+            level={level}
+            mapping={mappingIndex.get(node.id)}
+            isEditing={editingCategoryId === node.id}
+            hasChildren={node.children.length > 0}
+            isExpanded={isNarrowed || !collapsed.has(node.id)}
+            canToggle={!isNarrowed}
+            onToggle={toggle}
+            onEdit={onEdit}
+          />
+        ))
+      )}
     </div>
   );
 }

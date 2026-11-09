@@ -112,7 +112,8 @@ describe('ConnectionCategoryMappingsPage', () => {
       }),
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: /Men/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Choose a category for Men' }));
+    expect(await screen.findByRole('dialog', { name: 'Men' })).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: /^select$/i }));
     fireEvent.click(await screen.findByRole('button', { name: /save mapping/i }));
 
@@ -141,9 +142,9 @@ describe('ConnectionCategoryMappingsPage', () => {
   it('should name the master platform in the category column and show progress for the marketplace', async () => {
     renderPage(apiWith([sampleConnection, ALLEGRO_CONNECTION]));
 
-    expect(await screen.findByRole('heading', { name: 'PrestaShop categories' })).toBeInTheDocument();
+    expect(await screen.findByRole('columnheader', { name: 'PrestaShop categories' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Allegro store category' })).toBeInTheDocument();
     expect(await screen.findByText('0 of 1 mapped')).toBeInTheDocument();
-    expect(screen.getByText('Used when you list offers on Allegro store.')).toBeInTheDocument();
   });
 
   it('should show only the categories still missing a mapping when "Not mapped" is chosen', async () => {
@@ -161,13 +162,14 @@ describe('ConnectionCategoryMappingsPage', () => {
       }),
     );
 
-    await screen.findByRole('button', { name: /Women/ });
+    await screen.findByRole('button', { name: 'Choose a category for Women' });
+    expect(screen.getByRole('button', { name: 'Change the category for Men' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: /Not mapped/ }));
 
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /Men/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Change the category for Men' })).not.toBeInTheDocument();
     });
-    expect(screen.getByRole('button', { name: /Women/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Choose a category for Women' })).toBeInTheDocument();
   });
 
   it('shows an empty state when no marketplace connection exists', async () => {

@@ -1,58 +1,101 @@
 /**
  * CategoryMappingRow
  *
- * One category of the master's tree: its name, and where it goes on the
- * selected marketplace - the mapped category's name with its full path on
- * hover, or a quiet "Not mapped" so the rows still needing work stand out
- * without turning the list into a wall of status badges.
+ * One correspondence in the category map: a category of the catalogue, and
+ * the marketplace category it goes to. The right-hand cell is the control -
+ * it opens the picker for this row - and its look carries the row's state:
+ * a mapped row shows its target, a category still to map shows an open slot,
+ * and a parent without a mapping of its own stays quiet, because its
+ * subcategories usually carry the products.
  *
  * @module apps/web/src/features/mappings/components
  */
 
-import type { ReactElement } from 'react';
-import { useMessages } from '../../../shared/i18n';
+import type { CSSProperties, ReactElement } from 'react';
+import { interpolate, useMessages } from '../../../shared/i18n';
+import { CategoryPathText } from './category-path-text';
 import type { CategoryMapping } from '../api/mappings.types';
 
 interface CategoryMappingRowProps {
   id: string;
   name: string;
+  level: number;
   mapping: CategoryMapping | undefined;
-  isSelected: boolean;
-  /**
-   * A parent category often needs no mapping of its own (its children carry
-   * the products), so an unmapped parent stays quiet instead of repeating
-   * "Not mapped" down every branch.
-   */
-  hasChildren?: boolean;
-  onSelect: (id: string) => void;
+  isEditing: boolean;
+  hasChildren: boolean;
+  isExpanded: boolean;
+  canToggle: boolean;
+  onToggle: (id: string) => void;
+  onEdit: (id: string) => void;
+}
+
+function ChevronIcon({ open }: { open: boolean }): ReactElement {
+  return (
+    <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" className={open ? 'is-open' : undefined}>
+      <path d="M4 2.5 7.5 6 4 9.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 export function CategoryMappingRow({
   id,
   name,
+  level,
   mapping,
-  isSelected,
-  hasChildren = false,
-  onSelect,
+  isEditing,
+  hasChildren,
+  isExpanded,
+  canToggle,
+  onToggle,
+  onEdit,
 }: CategoryMappingRowProps): ReactElement {
   const copy = useMessages('mappings').categoryMappings;
+  const state = mapping ? 'mapped' : hasChildren ? 'parent' : 'open';
 
   return (
-    <button
-      type="button"
-      className={['category-row', isSelected ? 'category-row--selected' : ''].filter(Boolean).join(' ')}
-      onClick={() => { onSelect(id); }}
-      aria-pressed={isSelected}
-      data-mapped={mapping ? 'true' : 'false'}
+    <div
+      role="row"
+      className={['category-map__row', isEditing ? 'category-map__row--editing' : ''].filter(Boolean).join(' ')}
+      data-state={state}
+      aria-level={level + 1}
+      aria-expanded={hasChildren ? isExpanded : undefined}
+      style={{ '--tree-level': level } as CSSProperties}
     >
-      <span className="category-row__name">{name}</span>
-      {mapping ? (
-        <span className="category-row__target" title={mapping.allegroCategoryPath ?? mapping.allegroCategoryName}>
-          {mapping.allegroCategoryName}
-        </span>
-      ) : hasChildren ? null : (
-        <span className="category-row__target category-row__target--empty">{copy.notMapped}</span>
-      )}
-    </button>
+      <div role="cell" className="category-map__source">
+        {hasChildren ? (
+          <button
+            type="button"
+            className="category-map__toggle"
+            onClick={() => { onToggle(id); }}
+            disabled={!canToggle}
+            aria-label={interpolate(isExpanded ? copy.collapse : copy.expand, { name })}
+          >
+            <ChevronIcon open={isExpanded} />
+          </button>
+        ) : (
+          <span className="category-map__toggle-space" aria-hidden="true" />
+        )}
+        <span className="category-map__name">{name}</span>
+      </div>
+
+      <div role="cell" className="category-map__target">
+        <button
+          type="button"
+          className="category-map__slot"
+          onClick={() => { onEdit(id); }}
+          aria-haspopup="dialog"
+          aria-label={interpolate(mapping ? copy.changeFor : copy.chooseFor, { name })}
+        >
+          {mapping ? (
+            <>
+              <CategoryPathText path={mapping.allegroCategoryPath ?? mapping.allegroCategoryName} truncate />
+              <span className="category-map__slot-action" aria-hidden="true">{copy.change}</span>
+            </>
+          ) : (
+            <span className="category-map__placeholder">{copy.chooseCategory}</span>
+          )}
+        </button>
+      </div>
+    </div>
   );
 }

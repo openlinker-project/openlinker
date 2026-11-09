@@ -8,7 +8,7 @@
  *
  * @module apps/web/src/features/mappings/components
  */
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AllegroCategorySearch } from './AllegroCategorySearch';
@@ -119,10 +119,11 @@ describe('AllegroCategorySearch', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^select$/i }));
 
-    // Staged row renders with the "Map to" label and the full path. The path is
-    // drawn as breadcrumb spans, so the whole string lives in the title only.
-    expect(screen.getByText('Map to')).toBeInTheDocument();
-    expect(screen.getByTitle('Electronics > Phones')).toBeInTheDocument();
+    // The staged pick renders as a path: ancestors, then the category itself
+    const staged = screen.getByTestId('category-mapping-staged');
+    expect(within(staged).getByText('Map to')).toBeInTheDocument();
+    expect(within(staged).getByText('Electronics')).toBeInTheDocument();
+    expect(within(staged).getByText('Phones')).toBeInTheDocument();
     // Save + Cancel actions are available
     expect(screen.getByRole('button', { name: /save mapping/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
@@ -191,12 +192,12 @@ describe('AllegroCategorySearch', () => {
 
     await screen.findByText('Books');
     fireEvent.click(screen.getByRole('button', { name: /^select$/i }));
-    expect(screen.getByText('Map to')).toBeInTheDocument();
+    expect(screen.getByTestId('category-mapping-staged')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
 
     // Staged row is gone; onSelect was never called
-    expect(screen.queryByText('Map to')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('category-mapping-staged')).not.toBeInTheDocument();
     expect(onSelect).not.toHaveBeenCalled();
   });
   describe('whole-tree search (#2075)', () => {

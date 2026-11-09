@@ -31,11 +31,11 @@ import {
 } from '../../features/mappings/hooks/use-category-mappings';
 import { usePrestashopCategoriesQuery } from '../../features/mappings/hooks/use-prestashop-categories';
 import { resolvePlatformLabel } from '../../features/mappings/lib/platform-label';
-import { CategoryMappingPairStrip } from '../../features/mappings/components/category-mapping-pair-strip';
+import { CategoryMappingContextBar } from '../../features/mappings/components/category-mapping-context-bar';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import type { Connection } from '../../features/connections/api/connections.types';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
-import { DesktopOnlyBanner } from '../../shared/ui/desktop-only-banner';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { Chip } from '../../shared/ui/chip';
@@ -96,7 +96,7 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
   const platforms = usePlatforms();
   const { connectionId = '' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [isReassignOpen, setIsReassignOpen] = useState(false);
   const [treeFilter, setTreeFilter] = useState('');
   const [treeView, setTreeView] = useState<TreeView>('all');
@@ -157,8 +157,8 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
   }, [mappings, categories]);
 
   const selectedMapping = useMemo(
-    () => (selectedCategoryId ? mappings.find((m) => m.prestashopCategoryId === selectedCategoryId) : undefined),
-    [mappings, selectedCategoryId],
+    () => (editingCategoryId ? mappings.find((m) => m.prestashopCategoryId === editingCategoryId) : undefined),
+    [mappings, editingCategoryId],
   );
 
   const categoryName = (id: string): string => categories.find((c) => c.id === id)?.name ?? id;
@@ -200,21 +200,26 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
   }
 
   function handleAllegroSelect(category: AllegroCategory, path: string): void {
-    if (!selectedCategoryId) return;
+    if (!editingCategoryId) return;
     captureDemoEvent('demo_category_map_attempted', {});
     upsertMutation.mutate({
-      prestashopCategoryId: selectedCategoryId,
+      prestashopCategoryId: editingCategoryId,
       payload: {
         allegroCategoryId: category.id,
         allegroCategoryName: category.name,
         allegroCategoryPath: path,
       },
+    }, {
+      // The row now shows the new target, so the map is the confirmation.
+      onSuccess: () => { setEditingCategoryId(null); },
     });
   }
 
   function handleClear(): void {
-    if (!selectedCategoryId) return;
-    deleteMutation.mutate(selectedCategoryId);
+    if (!editingCategoryId) return;
+    deleteMutation.mutate(editingCategoryId, {
+      onSuccess: () => { setEditingCategoryId(null); },
+    });
   }
 
   function handleReassign(): void {
@@ -307,36 +312,35 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
 
   const reassignResult = reassignMutation.data;
   const unmappedCount = categories.length - mappedCount;
-  const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
-  const selectedAncestors = selectedCategory ? ancestorNames(categories, selectedCategory) : [];
-  const treeLabel = interpolate(copy.sourceColumn, { platform: masterPlatform });
+  const editingCategory = categories.find((c) => c.id === editingCategoryId);
+  const editingAncestors = editingCategory ? ancestorNames(categories, editingCategory) : [];
+  const sourceHeader = interpolate(copy.sourceColumn, { platform: masterPlatform });
 
   return (
     <PageLayout
       backTo={backTo}
       title={pageTitle}
-      description={interpolate(copy.intro, { platform: masterPlatform })}
-      actions={
-        marketplace ? (
-          <MappingProgress mapped={mappedCount} total={categories.length} label={copy.progressLabel} />
-        ) : undefined
+      description={
+        marketplace
+          ? interpolate(copy.introFor, { platform: masterPlatform, marketplace: marketplace.name })
+          : interpolate(copy.intro, { platform: masterPlatform })
       }
     >
-      <DesktopOnlyBanner title={copy.desktopTitle}>{copy.desktopBody}</DesktopOnlyBanner>
-
-      <CategoryMappingPairStrip
+      <CategoryMappingContextBar
         catalogue={master}
         cataloguePlatform={masterPlatform}
         marketplaces={marketplaceConnections}
         marketplaceConnectionId={marketplaceConnectionId}
         onMarketplaceChange={handleMarketplaceChange}
+        mapped={mappedCount}
+        total={categories.length}
       />
 
       {marketplace && legacyMappings.length > 0 ? (
         <Alert
           tone="warning"
           density="compact"
-          className="category-mappings-notice"
+          className="category-map-notice"
           data-testid="category-mappings-legacy-notice"
           title={plural(legacyMappings.length, copy.legacyTitle)}
           action={
@@ -358,7 +362,7 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
         <Alert
           tone="success"
           density="compact"
-          className="category-mappings-notice"
+          className="category-map-notice"
           data-testid="category-mappings-legacy-moved"
           title={plural(reassignResult.moved, copy.legacyMovedTitle, {
             marketplace: marketplace.name,
@@ -373,18 +377,29 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
       ) : null}
 
       {reassignMutation.isError ? (
-        <Alert tone="error" density="compact" className="category-mappings-notice" title={copy.legacyFailedTitle}>
+        <Alert tone="error" density="compact" className="category-map-notice" title={copy.legacyFailedTitle}>
           {reassignMutation.error.message}
         </Alert>
       ) : null}
 
-      <section className="category-mappings-workspace" aria-label={pageTitle}>
-        <div className="category-mappings-workspace__source">
-          <div className="category-mappings-pane-head">
-            <h3 className="category-mappings-pane-head__title">{treeLabel}</h3>
+      {!marketplace ? (
+        <EmptyState title={copy.selectMarketplaceTitle} message={copy.selectMarketplaceMessage} />
+      ) : mappingsQuery.error ? (
+        <ErrorState title={copy.errorTitle} message={mappingsQuery.error.message} />
+      ) : (
+        <>
+          <div className="category-map-toolbar">
+            <Input
+              type="search"
+              className="category-map-toolbar__filter"
+              value={treeFilter}
+              onChange={(e) => { setTreeFilter(e.target.value); }}
+              placeholder={copy.filterPlaceholder}
+              aria-label={copy.filterPlaceholder}
+              data-testid="category-mappings-filter"
+            />
             <SegmentedControl<TreeView>
               aria-label={copy.viewLabel}
-              className="category-mappings-pane-head__view"
               value={treeView}
               onChange={setTreeView}
               options={[
@@ -393,68 +408,60 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
               ]}
             />
           </div>
-          <Input
-            type="search"
-            className="category-mappings-workspace__filter"
-            value={treeFilter}
-            onChange={(e) => { setTreeFilter(e.target.value); }}
-            placeholder={copy.filterPlaceholder}
-            aria-label={copy.filterPlaceholder}
-            data-testid="category-mappings-filter"
-          />
-          <div className="category-mappings-workspace__scroll">
-            <CategoryMappingTree
-              categories={categories}
-              mappings={mappings}
-              selectedCategoryId={selectedCategoryId}
-              onSelect={setSelectedCategoryId}
-              label={treeLabel}
-              filter={treeFilter}
-              unmappedOnly={treeView === 'unmapped'}
-            />
-          </div>
-        </div>
 
-        <div className="category-mappings-workspace__target">
-          {!marketplace ? (
-            <div className="category-mappings-guide">
-              <p className="category-mappings-guide__title">{copy.selectMarketplaceTitle}</p>
-              <p className="category-mappings-guide__body">{copy.selectMarketplaceMessage}</p>
-            </div>
-          ) : mappingsQuery.error ? (
-            <ErrorState title={copy.errorTitle} message={mappingsQuery.error.message} />
-          ) : !selectedCategory ? (
-            <div className="category-mappings-guide">
-              <p className="category-mappings-guide__title">{copy.selectCategoryTitle}</p>
-              <p className="category-mappings-guide__body">
-                {interpolate(copy.selectCategoryMessage, {
-                  platform: masterPlatform,
-                  marketplace: marketplace.name,
-                })}
-              </p>
-            </div>
-          ) : (
-            <>
-              <div className="category-mappings-pane-head category-mappings-pane-head--detail">
-                <div className="category-mappings-detail">
-                  {selectedAncestors.length > 0 ? (
-                    <p className="category-mappings-detail__path">{selectedAncestors.join(' / ')}</p>
-                  ) : null}
-                  <h3 className="category-mappings-detail__title">{selectedCategory.name}</h3>
+          <CategoryMappingTree
+            categories={categories}
+            mappings={mappings}
+            editingCategoryId={editingCategoryId}
+            onEdit={setEditingCategoryId}
+            sourceHeader={sourceHeader}
+            targetHeader={interpolate(copy.targetColumn, { marketplace: marketplace.name })}
+            filter={treeFilter}
+            unmappedOnly={treeView === 'unmapped'}
+          />
+
+          <Dialog
+            open={editingCategory !== undefined}
+            onOpenChange={(open) => { if (!open) setEditingCategoryId(null); }}
+          >
+            {editingCategory ? (
+              <DialogContent className="dialog__content--side" data-testid="category-mapping-editor">
+                <div className="side-sheet__header">
+                  <div className="side-sheet__heading">
+                    {editingAncestors.length > 0 ? (
+                      <p className="side-sheet__eyebrow">{editingAncestors.join(' / ')}</p>
+                    ) : null}
+                    <DialogTitle className="side-sheet__title">{editingCategory.name}</DialogTitle>
+                    <DialogDescription className="side-sheet__description">
+                      {interpolate(copy.editorHint, { marketplace: marketplace.name })}
+                    </DialogDescription>
+                  </div>
+                  <Button
+                    tone="ghost"
+                    className="side-sheet__close"
+                    onClick={() => { setEditingCategoryId(null); }}
+                    aria-label={copy.closeEditor}
+                  >
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                      <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    </svg>
+                  </Button>
                 </div>
-              </div>
-              <AllegroCategorySearch
-                key={`${marketplaceConnectionId}:${selectedCategory.id}`}
-                marketplaceConnectionId={marketplaceConnectionId}
-                currentMapping={selectedMapping}
-                onSelect={handleAllegroSelect}
-                onClear={handleClear}
-                isSaving={upsertMutation.isPending || deleteMutation.isPending}
-              />
-            </>
-          )}
-        </div>
-      </section>
+                <div className="side-sheet__body">
+                  <AllegroCategorySearch
+                    key={`${marketplaceConnectionId}:${editingCategory.id}`}
+                    marketplaceConnectionId={marketplaceConnectionId}
+                    currentMapping={selectedMapping}
+                    onSelect={handleAllegroSelect}
+                    onClear={handleClear}
+                    isSaving={upsertMutation.isPending || deleteMutation.isPending}
+                  />
+                </div>
+              </DialogContent>
+            ) : null}
+          </Dialog>
+        </>
+      )}
 
       {marketplace ? (
         <ConfirmDialog
@@ -463,13 +470,13 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
           title={interpolate(copy.legacyConfirmTitle, { marketplace: marketplace.name })}
           description={interpolate(copy.legacyConfirmBody, { marketplace: marketplace.name })}
           body={
-            <ul className="category-mappings-legacy-list" data-testid="category-mappings-legacy-list">
+            <ul className="category-map-legacy-list" data-testid="category-mappings-legacy-list">
               {legacyMappings.map((m) => {
                 const alreadyMapped = mappings.some((x) => x.prestashopCategoryId === m.prestashopCategoryId);
                 return (
                   <li key={m.id}>
-                    <span className="category-mappings-legacy-list__source">{categoryName(m.prestashopCategoryId)}</span>
-                    <span className="category-mappings-legacy-list__arrow" aria-hidden="true">→</span>
+                    <span className="category-map-legacy-list__source">{categoryName(m.prestashopCategoryId)}</span>
+                    <span className="category-map-legacy-list__arrow" aria-hidden="true">→</span>
                     <span>{m.allegroCategoryName}</span>
                     {alreadyMapped ? <Chip tone="neutral">{copy.legacyAlreadyMapped}</Chip> : null}
                   </li>
@@ -500,31 +507,4 @@ function ancestorNames(
     parentId = parent.parentId;
   }
   return names;
-}
-
-interface MappingProgressProps {
-  mapped: number;
-  total: number;
-  label: string;
-}
-
-/** How much of the catalogue has a home on the selected marketplace. */
-function MappingProgress({ mapped, total, label }: MappingProgressProps): ReactElement {
-  const percent = total === 0 ? 0 : Math.round((mapped / total) * 100);
-  const valueText = interpolate(label, { mapped, total });
-  return (
-    <div className="category-mappings-progress" data-testid="category-mappings-progress">
-      <span className="category-mappings-progress__text">{valueText}</span>
-      <span
-        className="category-mappings-progress__bar"
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={total}
-        aria-valuenow={mapped}
-        aria-valuetext={valueText}
-      >
-        <span className="category-mappings-progress__fill" style={{ width: `${percent}%` }} />
-      </span>
-    </div>
-  );
 }
