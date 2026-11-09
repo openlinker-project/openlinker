@@ -128,7 +128,7 @@ It greps the **live repo** for reuse collisions (a port / service / DI token / O
 
 ---
 
-## Phase 4.5 — Documentation (required step)
+## Phase 4.5 - Documentation (required step)
 
 Reference docs drift because this step gets silently omitted. Before shipping, produce an explicit doc-impact statement - either edits, or a justified "no change". Treat the statement as a required part of the workflow, not an afterthought.
 
@@ -136,8 +136,8 @@ Reference docs drift because this step gets silently omitted. Before shipping, p
 
 **Don't over-document.** The counterpart to "don't skip" is "don't pad": update *intent and current state*, not a changelog of your diff, and do **not** add docs for things already covered. A statement of `None - <reason>` for a genuinely doc-neutral change is the correct, complete output - padding docs just to look compliant is as much a defect as skipping.
 
-1. **Start from the issue's `## Docs impact` section** (written by `/create-issue`). Treat it as the hypothesis, not the final answer — the real implementation may have touched more or less than predicted. The `## Docs` statement you produce below is the *realized version* of that `## Docs impact` prediction (same routing, confirmed against what you actually built).
-2. **Run the classifier** against what you actually built. Documentation lives at three levels — check **all three**, not just the central docs. The canonical routing map is the **Reference Documentation table in `CLAUDE.md`** (topic → doc); the table below mirrors it for convenience. If the two ever appear to diverge, `CLAUDE.md` is the single source of truth.
+1. **Start from the issue's `## Docs impact` section** (written by `/create-issue`). Treat it as the hypothesis, not the final answer - the real implementation may have touched more or less than predicted. The `## Docs` statement you produce below is the *realized version* of that `## Docs impact` prediction (same routing, confirmed against what you actually built).
+2. **Run the classifier** against what you actually built. Documentation lives at three levels - check **all three**, not just the central docs. The canonical routing map is the **Reference Documentation table in `CLAUDE.md`** (topic → doc); the table below mirrors it for convenience. If the two ever appear to diverge, `CLAUDE.md` is the single source of truth.
 
    **(a) Central reference docs** (`docs/`):
 
@@ -152,14 +152,14 @@ Reference docs drift because this step gets silently omitted. Before shipping, p
    | a new test harness or pattern | `docs/testing-guide.md` |
    | a recurring *empirical* pitfall / correction worth recording | `docs/lessons.md` - but if it's actually an architectural *rule*, record it in the canonical doc (e.g. `engineering-standards.md`) and leave only a pointer here; don't graduate a rule into the regression ledger (matches `lessons.md`'s own preamble) |
 
-   **(b) Package-local docs** — documentation lives closest to the code it describes, so **whatever package you touched, check its own docs too**: the package `README.md`, its `docs/` folder (`setup-guide.md`, `runbook.md`, `tutorial.md`, `manual-testing-guide.md`), and any in-tree implementation notes (e.g. `libs/integrations/ksef/src/**/*_NOTES.md`). Integration adapters (`libs/integrations/<plugin>/`), `apps/web/`, and the root `README.md` all carry docs that go stale when their code changes — an adapter that gains a capability, changes its wire contract, adds an env var, or changes setup steps must update its own README/setup-guide, not only `architecture-overview.md`.
+   **(b) Package-local docs** - documentation lives closest to the code it describes, so **whatever package you touched, check its own docs too**: the package `README.md`, its `docs/` folder (`setup-guide.md`, `runbook.md`, `tutorial.md`, `manual-testing-guide.md`), and any in-tree implementation notes (e.g. `libs/integrations/ksef/src/**/*_NOTES.md`). Integration adapters (`libs/integrations/<plugin>/`), `apps/web/`, and the root `README.md` all carry docs that go stale when their code changes - an adapter that gains a capability, changes its wire contract, adds an env var, or changes setup steps must update its own README/setup-guide, not only `architecture-overview.md`.
 
-   **(c) Architecture Decision Records** — if the change embodies a *decision with trade-offs* (a choice affecting multiple contexts or the plugin contract, where an alternative was seriously considered), add or supersede an ADR under `docs/architecture/adrs/` per `docs/architecture/adrs/README.md`. Skip for local refactors, bugfixes, and routine feature work.
+   **(c) Architecture Decision Records** - if the change embodies a *decision with trade-offs* (a choice affecting multiple contexts or the plugin contract, where an alternative was seriously considered), add or supersede an ADR under `docs/architecture/adrs/` per `docs/architecture/adrs/README.md`. Skip for local refactors, bugfixes, and routine feature work.
 
-   **(d) In-code comments** — a `why` comment sitting next to code you changed can become false or misleading. Scan the diff's surrounding comments and fix any that your change contradicts. (Never *add* comments that explain *what* the code does — but keeping existing `why` comments truthful is part of this step.)
+   **(d) In-code comments** - a `why` comment sitting next to code you changed can become false or misleading. Scan the diff's surrounding comments and fix any that your change contradicts. (Never *add* comments that explain *what* the code does - but keeping existing `why` comments truthful is part of this step.)
 
-3. **Edit everything that applies.** Match the existing style of each doc (e.g. architecture-overview.md and package docs annotate changes with the issue number — `(#NNN)`), keeping the "don't over-document" rule above in mind.
-4. **Write the doc-impact statement** — a short list of `path → what changed`, covering all levels touched (central docs, package docs, ADRs, corrected comments), or `None — <one-line reason>` for a genuinely doc-neutral change (e.g. an internal bugfix with no contract/pattern/setup change). This statement is carried into the PR body in Phase 5.
+3. **Edit everything that applies.** Match the existing style of each doc (e.g. architecture-overview.md and package docs annotate changes with the issue number - `(#NNN)`), keeping the "don't over-document" rule above in mind.
+4. **Write the doc-impact statement** - a short list of `path → what changed`, covering all levels touched (central docs, package docs, ADRs, corrected comments), or `None - <one-line reason>` for a genuinely doc-neutral change (e.g. an internal bugfix with no contract/pattern/setup change). This statement is carried into the PR body in Phase 5.
 
 No quality-gate rerun is needed for prose-only doc edits (`check:invariants` targets code, not docs). If you edited a script or config alongside the docs, re-run the relevant scoped check for that file.
 
@@ -178,7 +178,7 @@ No quality-gate rerun is needed for prose-only doc edits (`check:invariants` tar
 - Review the diff themselves
 
 If the user says to ship it:
-5. Push the branch and create a PR with `Closes #N` in the body. The body **must** include a `## Docs` section carrying the Phase 4.5 doc-impact statement (`path → what changed`, or `None — <reason>`) so the documentation decision is visible in review.
+5. Push the branch and create a PR with `Closes #N` in the body. The body **must** include a `## Docs` section carrying the Phase 4.5 doc-impact statement (`path → what changed`, or `None - <reason>`) so the documentation decision is visible in review.
 6. Output the PR URL
 7. **Release the claim**: remove the `in-progress` label (if it was applied) via `issue_write`. The PR's `Closes #N` handles closure on merge — never close the issue manually. If work is **abandoned** instead of shipped, also release the label so another session can pick the issue up.
 
