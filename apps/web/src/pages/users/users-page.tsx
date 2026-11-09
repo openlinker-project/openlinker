@@ -9,7 +9,7 @@
  */
 import type { ReactElement } from 'react';
 import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../shared/ui/tabs';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -26,7 +26,8 @@ import { useToast } from '../../shared/ui/toast-provider';
 import { useSession } from '../../shared/auth/use-session';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
-import { useDemoMode } from '../../features/system';
+import { useDemoMode, useSystemConfigQuery } from '../../features/system';
+import { renderRich, useMessages } from '../../shared/i18n';
 import { useUsersQuery } from '../../features/users/hooks/use-users-query';
 import { useApproveUserMutation } from '../../features/users/hooks/use-approve-user-mutation';
 import { useRejectUserMutation } from '../../features/users/hooks/use-reject-user-mutation';
@@ -58,6 +59,8 @@ interface UsersPageProps {
 }
 
 export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement {
+  const systemConfig = useSystemConfigQuery();
+  const loginCopy = useMessages('loginPageSettings');
   const [pendingRoles, setPendingRoles] = useState<Record<string, UserRole>>({});
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [labelDialogTarget, setLabelDialogTarget] = useState<UserSummary | null>(null);
@@ -482,6 +485,16 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
       description="Manage user accounts and pending registrations."
     >
       {anyError ? <Alert tone="error">{anyError.message}</Alert> : null}
+
+      {/* #4028 - where requests for access come from, and where they are switched on. */}
+      {systemConfig.data && !systemConfig.data.demoMode ? (
+        <Alert tone="info" density="compact">
+          {renderRich(
+            systemConfig.data.registrationEnabled ? loginCopy.usersOn : loginCopy.usersOff,
+            { link: (chunk) => <Link to="/settings/login-page">{chunk}</Link> }
+          )}
+        </Alert>
+      ) : null}
 
       <Tabs defaultValue={defaultTab}>
         <TabsList>
