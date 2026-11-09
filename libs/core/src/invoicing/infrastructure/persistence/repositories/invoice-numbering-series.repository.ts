@@ -31,6 +31,7 @@ import { InvoiceNumberingSeries } from '../../../domain/entities/invoice-numberi
 import { DuplicateDocumentNumberException } from '../../../domain/exceptions/duplicate-document-number.exception';
 import { InvoiceNumberingSeriesNotFoundException } from '../../../domain/exceptions/invoice-numbering-series-not-found.exception';
 import { InvoiceRecordNotFoundException } from '../../../domain/exceptions/invoice-record-not-found.exception';
+import { canInheritRefusedDocumentNumber } from '../../../domain/types/refused-number-inheritance.types';
 import type { InvoiceNumberingSeriesRepositoryPort } from '../../../domain/ports/invoice-numbering-series-repository.port';
 import {
   assertDocumentNumberWithinLength,
@@ -349,10 +350,15 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
         where: { id: input.fromRecordId },
         lock: { mode: 'pessimistic_write' },
       });
+      // The inheritance rule is applied HERE, under the predecessor's row lock,
+      // so the facts it reads cannot change between the decision and the move.
+      // It refuses unless the refused number provably never left OpenLinker:
+      // a number the provider saw may be recorded there, and reusing it risks a
+      // duplicate document number, whereas a fresh number only leaves an
+      // audited gap. See `canInheritRefusedDocumentNumber`.
       if (
         !predecessor ||
-        predecessor.status !== 'failed' ||
-        predecessor.failureMode !== 'rejected' ||
+        !canInheritRefusedDocumentNumber(predecessor) ||
         predecessor.documentNumber === null ||
         predecessor.allocatedSeq === null ||
         predecessor.numberingSeriesId !== input.seriesId

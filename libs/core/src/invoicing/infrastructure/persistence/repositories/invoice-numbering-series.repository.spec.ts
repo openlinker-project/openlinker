@@ -14,6 +14,7 @@ import type { DataSource, Repository } from 'typeorm';
 import { InvoiceNumberingSeries } from '../../../domain/entities/invoice-numbering-series.entity';
 import { InvoiceNumberingSeriesNotFoundException } from '../../../domain/exceptions/invoice-numbering-series-not-found.exception';
 import type { InvoiceNumberingRouteOrmEntity } from '../entities/invoice-numbering-route.orm-entity';
+import type { InvoiceRecordOrmEntity } from '../entities/invoice-record.orm-entity';
 import { InvoiceNumberingSeriesOrmEntity } from '../entities/invoice-numbering-series.orm-entity';
 import { InvoiceNumberingSeriesRepository } from './invoice-numbering-series.repository';
 
@@ -211,5 +212,86 @@ describe('InvoiceNumberingSeriesRepository', () => {
     expect(result).toEqual([
       expect.objectContaining({ documentType: 'corrected', seriesId: 'series-2' }),
     ]);
+  });
+
+  describe('inheritNumber (#3960)', () => {
+    function refusedRow(overrides: Partial<InvoiceRecordOrmEntity> = {}): InvoiceRecordOrmEntity {
+      return {
+        id: 'rec-1',
+        status: 'failed',
+        failureMode: 'rejected',
+        failureCode: 'connection-setup-incomplete',
+        documentNumber: 'FV/0007/06/2026',
+        allocatedSeq: 7,
+        numberingSeriesId: 'series-1',
+        ...overrides,
+      } as InvoiceRecordOrmEntity;
+    }
+
+    function withTransaction(predecessor: InvoiceRecordOrmEntity | null): {
+      update: { execute: jest.Mock };
+    } {
+      const execute = jest.fn().mockResolvedValue({ affected: 1 });
+      const qb = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        execute,
+      };
+      const manager = {
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(predecessor)
+          .mockResolvedValueOnce({ id: 'rec-2', documentNumber: null } as InvoiceRecordOrmEntity),
+        createQueryBuilder: jest.fn().mockReturnValue(qb),
+      };
+      (dataSource as unknown as { transaction: jest.Mock }).transaction = jest.fn(
+        (work: (m: typeof manager) => Promise<unknown>) => work(manager),
+      );
+      return { update: { execute } };
+    }
+
+    it('should move the number when the refusal was declared before the provider was contacted', async () => {
+      const { update } = withTransaction(refusedRow());
+
+      const moved = await repo.inheritNumber({
+        fromRecordId: 'rec-1',
+        toRecordId: 'rec-2',
+        seriesId: 'series-1',
+      });
+
+      expect(moved).toEqual({ documentNumber: 'FV/0007/06/2026', allocatedSeq: 7 });
+      expect(update.execute).toHaveBeenCalledTimes(2);
+    });
+
+    it('should NOT move a number the provider may have seen, leaving an audited gap instead', async () => {
+      // `provider-rejected` is also what a relay reports after it accepted the
+      // request and later answered "error" - the number was on the wire, and
+      // reusing it on a second document risks a duplicate number.
+      const { update } = withTransaction(refusedRow({ failureCode: 'provider-rejected' }));
+
+      const moved = await repo.inheritNumber({
+        fromRecordId: 'rec-1',
+        toRecordId: 'rec-2',
+        seriesId: 'series-1',
+      });
+
+      expect(moved).toBeNull();
+      expect(update.execute).not.toHaveBeenCalled();
+    });
+
+    it('should NOT move the number of an in-doubt failure', async () => {
+      const { update } = withTransaction(refusedRow({ failureMode: 'in-doubt' }));
+
+      const moved = await repo.inheritNumber({
+        fromRecordId: 'rec-1',
+        toRecordId: 'rec-2',
+        seriesId: 'series-1',
+      });
+
+      expect(moved).toBeNull();
+      expect(update.execute).not.toHaveBeenCalled();
+    });
   });
 });

@@ -109,6 +109,7 @@ import {
   classifyInvoiceFailureMode,
   readAcknowledgementWarningCode,
   buildOriginalDocumentFromIssuedRecord,
+  invoiceIdempotencyKey,
 } from '@openlinker/core/invoicing';
 import type {
   InvoiceRecord,
@@ -863,7 +864,7 @@ export class InvoicingController {
       // trigger uses. Threading it into the service's exactly-once dedup gate is
       // what makes a re-submitted batch idempotent (an already-issued row is
       // returned verbatim; an in-flight one is not double-attempted).
-      const idempotencyKey = `invoice:${connectionId}:${orderId}`;
+      const idempotencyKey = invoiceIdempotencyKey(connectionId, orderId);
       const command = toIssueInvoiceCommand({
         order,
         connectionId,

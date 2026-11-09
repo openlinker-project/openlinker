@@ -142,3 +142,5 @@ export type { INumberingSeriesService } from './application/services/numbering-s
 export { NumberingSeriesService } from './application/services/numbering-series.service';
 export * from './invoicing.tokens';
 export { InvoicingModule } from './invoicing.module';
+// #3960 - one derivation of the invoice exactly-once key and its retry root.
+export * from './domain/types/invoice-idempotency-key.types';

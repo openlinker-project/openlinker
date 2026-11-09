@@ -49,7 +49,9 @@ export class AcceptedFiscalRegistrationResponseDto {
       'What this request did (#3960). new-attempt: a new attempt was started and will reach the ' +
       'provider. joined: an attempt was already queued or running. redriven: a job that had given ' +
       'up was restarted. resumed: an unfinished attempt with no live job was picked up again. A ' +
-      'request that would do nothing is refused with 409 instead.',
+      'request that would do nothing is refused with 409 instead. Advisory under concurrency: ' +
+      'two simultaneous requests may both read new-attempt while only one job exists (both name ' +
+      'the same jobId).',
   })
   outcome!: DocumentRequestOutcome;
 

@@ -2027,8 +2027,8 @@ describe('InvoiceService', () => {
     });
 
     it('should root a keyless refused invoice on its connection and order', async () => {
-      // A provider that dedupes derives a keyless document's identity from the
-      // (connection, order) pair, so the next attempt must leave that pair.
+      // A keyless chain roots on the same derived key a keyed chain uses
+      // (`invoiceRetryRootKey`), so the two shapes cannot drift apart.
       repo.findById.mockResolvedValue(
         makeRecord({ id: 'rec-1', status: 'failed', failureMode: 'rejected', idempotencyKey: null }),
       );
@@ -2036,7 +2036,7 @@ describe('InvoiceService', () => {
       await service.issueInvoice(makeCmd(), { retryOf: 'rec-1' });
 
       expect(repo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ idempotencyKey: `${CONNECTION}:${ORDER}:r1`, attempt: 1 }),
+        expect.objectContaining({ idempotencyKey: `invoice:${CONNECTION}:${ORDER}:r1`, attempt: 1 }),
       );
     });
 

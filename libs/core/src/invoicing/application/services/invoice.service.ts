@@ -37,6 +37,7 @@ import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization'
 import type { FISCAL_REGISTRATION_SERVICE_TOKEN as FiscalRegistrationServiceTokenType } from '@openlinker/core/fiscalization';
 
 import type { IInvoiceService, IssueInvoiceOptions } from './invoice.service.interface';
+import { invoiceRetryRootKey } from '../../domain/types/invoice-idempotency-key.types';
 import {
   InvoiceRecordRepositoryPort,
   type InvoiceRecordKeysetPage,
@@ -71,7 +72,6 @@ import { deriveCorrectionFallbackKey } from '../../domain/idempotency/correction
 import { taxRatePercentToFraction } from '../../domain/types/tax-rate-notation.types';
 import { findMissingTaxRate } from '../../domain/types/order-tax-rate-gate.types';
 import {
-  attemptRootKey,
   isTaxRateEnforced,
   notifySalesDocumentIssued,
   withAttemptSuffix,
@@ -676,13 +676,8 @@ export class InvoiceService implements IInvoiceService {
     if (successor) {
       return { kind: 'resume', record: successor };
     }
-    // A keyless refused record still had a provider-side identity: a provider
-    // that dedupes derives it from (connection, order). The next attempt's root
-    // is that same pair, so attempt 1 is `{connection}:{order}:r1`.
-    const root = attemptRootKey(
-      refused.idempotencyKey ?? `${refused.connectionId}:${refused.orderId}`,
-      refused.attempt,
-    );
+    // One root shape for keyed and keyless chains (`invoiceRetryRootKey`).
+    const root = invoiceRetryRootKey(refused);
     return {
       kind: 'next',
       key: withAttemptSuffix(root, refused.attempt + 1),
@@ -989,8 +984,13 @@ export class InvoiceService implements IInvoiceService {
     }
 
     // #3960: a retry attempt takes over its refused predecessor's number, so
-    // the refused number is not left as a gap. `null` means nothing moved (no
-    // number, another series, already moved) and a fresh number is allocated.
+    // the refused number is not left as a gap - but ONLY when that number
+    // provably never reached the provider (`canInheritRefusedDocumentNumber`,
+    // applied by the repository under the predecessor's row lock). A number the
+    // provider saw may be recorded there, and sending it on a second document
+    // risks a duplicate number; a gap is the recoverable choice. `null` means
+    // nothing moved (not provably unsent, no number, another series, already
+    // moved) and a fresh number is allocated.
     if (record.previousAttemptId !== null) {
       const inherited = await this.numberingRepo.inheritNumber({
         fromRecordId: record.previousAttemptId,
