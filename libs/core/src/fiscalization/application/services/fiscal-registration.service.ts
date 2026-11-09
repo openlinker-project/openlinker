@@ -65,6 +65,7 @@ import {
 } from '@openlinker/core/sales-documents';
 import type { DocumentRequestOutcome, SalesDocumentInFlight } from '@openlinker/core/sales-documents';
 import { FiscalRegistrationNotRestartableException } from '../../domain/exceptions/fiscal-registration-not-restartable.exception';
+import { FiscalRegistrationAttemptClosedException } from '../../domain/exceptions/fiscal-registration-attempt-closed.exception';
 import { OrderAlreadyRegisteredException } from '../../domain/exceptions/order-already-registered.exception';
 import { OrderAlreadyHasInvoiceException } from '../../domain/exceptions/order-already-has-invoice.exception';
 import { FiscalRegistrationContendedException } from '../../domain/exceptions/fiscal-registration-contended.exception';
@@ -833,12 +834,28 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
       return existing;
     }
 
+    if (existing.isReattemptableFailure) {
+      // A refusal is final under its key (#3960): the provider keeps the refused
+      // document under it, and a NEW attempt record under a new key is how the
+      // sale is asked for again (see `requestRegistration`). Re-sending here
+      // would also resend an old attempt after a newer one registered.
+      //
+      // Thrown rather than returned, because the caller reaching this arm is a
+      // job enqueued under this key before #3960 (or a duplicate of the job that
+      // was refused). Returning the record would end that job as a plain `ok`,
+      // indistinguishable from one that did its work; the handler maps this to
+      // a terminal `business_failure` instead, and never to a retry.
+      this.logger.warn(
+        `Fiscal registration record ${existing.id} was refused and is final under its key; ` +
+          `not re-attempting (a new request starts the next attempt)`,
+      );
+      throw new FiscalRegistrationAttemptClosedException(cmd.orderId, existing.id);
+    }
+
     if (existing.status === 'failed') {
-      // Final either way (#3960). An in-doubt failure is surfaced for
-      // reconciliation. A refusal is final under its key: the provider keeps the
-      // refused document under it, and a NEW attempt record under a new key is
-      // how the sale is asked for again (see `requestRegistration`). Re-sending
-      // here would also resend an old attempt after a newer one registered.
+      // In doubt (or a mode this build cannot read): the sale may already be
+      // registered, so it is surfaced for reconciliation and never re-sent.
+      // Unchanged by #3960 - returned as before.
       this.logger.warn(
         `Fiscal registration record ${existing.id} failed ` +
           `(failureMode=${existing.failureMode ?? 'unknown'}); not re-attempting under its key`,

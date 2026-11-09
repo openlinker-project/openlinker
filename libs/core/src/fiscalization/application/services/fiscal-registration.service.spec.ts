@@ -28,6 +28,7 @@ import { FiscalRegistrationRecordNotFoundException } from '../../domain/exceptio
 import { MissingIdempotencyKeyException } from '../../domain/exceptions/missing-idempotency-key.exception';
 import { MissingFiscalTaxRateException } from '../../domain/exceptions/missing-tax-rate.exception';
 import { FiscalRegistrationNotRestartableException } from '../../domain/exceptions/fiscal-registration-not-restartable.exception';
+import { FiscalRegistrationAttemptClosedException } from '../../domain/exceptions/fiscal-registration-attempt-closed.exception';
 import { OrderAlreadyRegisteredException } from '../../domain/exceptions/order-already-registered.exception';
 import { OrderAlreadyHasInvoiceException } from '../../domain/exceptions/order-already-has-invoice.exception';
 import { FiscalRegistrationContendedException } from '../../domain/exceptions/fiscal-registration-contended.exception';
@@ -842,16 +843,23 @@ describe('FiscalRegistrationService', () => {
       expect(adapter.registerTransaction).not.toHaveBeenCalled();
     });
 
-    it('should not re-send a refused record under its own key', async () => {
+    it('should refuse, without sending, a job whose key names an already refused attempt', async () => {
       // #3960: a refusal is final under its key. The provider keeps the refused
       // document under that key, and a newer attempt may already have
-      // registered the sale; asking again goes through a NEW attempt key.
-      const refused = record('failed', { failureMode: 'rejected' });
+      // registered the sale; asking again goes through a NEW attempt key. A job
+      // still queued under the refused key from before #3960 lands here, and
+      // must end as a refusal rather than resolve like a job that did its work.
+      const refused = record('failed', { id: 'rec-0', failureMode: 'rejected' });
       repo.findByIdempotencyKey.mockResolvedValue(refused);
 
-      await expect(service.register(command())).resolves.toBe(refused);
+      const thrown = await service.register(command()).catch((error: unknown) => error);
+
+      expect(thrown).toBeInstanceOf(FiscalRegistrationAttemptClosedException);
+      expect((thrown as FiscalRegistrationAttemptClosedException).recordId).toBe('rec-0');
       expect(adapter.registerTransaction).not.toHaveBeenCalled();
       expect(repo.claimForRegistration).not.toHaveBeenCalled();
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(repo.updateOutcome).not.toHaveBeenCalled();
     });
 
     it('should create the next attempt linked to the refused one when registering under a new key', async () => {
@@ -1611,6 +1619,34 @@ describe('FiscalRegistrationService', () => {
         previousAttemptId: 'rec-0',
       });
     });
+
+    it.each(['queued', 'running', 'dead'] as const)(
+      'should start the next attempt, not join or restart a %s job still held under the refused key',
+      async (legacyStatus) => {
+        // A job enqueued under the refused attempt's key before #3960 may still
+        // be waiting. It will end as a refusal when it runs, so the order must
+        // not be stranded behind it: the request goes to the NEXT key and never
+        // looks at the stale job.
+        const refused = record('failed', { id: 'rec-0', failureMode: 'rejected' });
+        repo.findLatestAttempt.mockResolvedValue(refused);
+        repo.findAllByOrderId.mockResolvedValue([refused]);
+        syncJobs.findJobByIdempotencyKey.mockImplementation((key: string) =>
+          Promise.resolve(key === KEY ? ({ id: 'legacy-job', status: legacyStatus } as never) : null),
+        );
+        syncJobs.schedule.mockResolvedValue({ id: 'job-2', status: 'queued' } as never);
+
+        const accepted = await service.requestRegistration(command(), { sourceConnectionId: 'src' });
+
+        expect(accepted).toMatchObject({
+          idempotencyKey: `${KEY}:r1`,
+          jobId: 'job-2',
+          outcome: 'new-attempt',
+          attempt: 1,
+          previousAttemptId: 'rec-0',
+        });
+        expect(syncJobs.requeueDeadByIdempotencyKey).not.toHaveBeenCalled();
+      },
+    );
 
     it('should derive attempt three from attempt two, never mixing key roots', async () => {
       const refused = record('failed', {
