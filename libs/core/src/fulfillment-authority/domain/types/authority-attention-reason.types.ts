@@ -68,8 +68,8 @@ import type { FulfillmentAuthorityBlock } from './fulfillment-authority-outcome.
 
 /**
  * The eight inert states of spec §4.2, in the order that section tables them,
- * followed by #3453's `stock-decrement-blocked` and #2731's `routing-stuck`,
- * neither of which is a §4.2 row.
+ * followed by #3453's `stock-decrement-blocked`, #2731's `routing-stuck` and
+ * #3961's `source-change-unapplied`, none of which is a §4.2 row.
  *
  * One member per line, no computed keys and no spread: the repo's mirror scripts
  * read these arrays TEXTUALLY, and #2357's `check-attention-reason-mirror.mjs`
@@ -106,6 +106,14 @@ export const AuthorityAttentionReasonValues = [
    * the re-route's own outcome replaces or clears it.
    */
   'routing-stuck',
+  /**
+   * SC-U (#3961) - the order source changed a line after the order went to
+   * packing, and OpenLinker could not apply it on its own: the box already holds
+   * more units, the box is closed, the parcel shipped, an outside holder has the
+   * work, or the change adds units. Not a §4.2 row: §4.2 predates source edits
+   * reaching routed orders. Cleared once the order and its packing work agree.
+   */
+  'source-change-unapplied',
 ] as const;
 
 export type AuthorityAttentionReason = (typeof AuthorityAttentionReasonValues)[number];
@@ -181,6 +189,8 @@ export const AuthorityAttentionProducerValues = [
   'returns-restock',
   /** The routed-order sale decrement (SD-B, #3453). */
   'sale-decrement',
+  /** A line change reported by the order source after routing (SC-U, #3961). */
+  'source-amendment',
 ] as const;
 
 export type AuthorityAttentionProducer = (typeof AuthorityAttentionProducerValues)[number];
@@ -322,6 +332,17 @@ export const AUTHORITY_ATTENTION_REASON_DESCRIPTORS: Readonly<
     equivalentAuthorityKind: null,
     counted: true,
   }),
+  // #3961 - outside spec §4.2, hence an issue-numbered row label. `at-risk`
+  // rather than `stopped`: the order is not lost, it waits for one decision.
+  'source-change-unapplied': Object.freeze({
+    specRow: 'SC-U',
+    badge: 'at-risk',
+    surfaces: Object.freeze(['order'] as const),
+    origin: 'persisted',
+    producer: 'source-amendment',
+    equivalentAuthorityKind: null,
+    counted: true,
+  }),
 });
 
 /**
@@ -372,6 +393,7 @@ export const AUTHORITY_ATTENTION_PRODUCER_REASONS = Object.freeze({
   acceptance: ['fulfillment-unaccepted'],
   'returns-restock': ['restock-blocked'],
   'sale-decrement': ['stock-decrement-blocked'],
+  'source-amendment': ['source-change-unapplied'],
 } as const satisfies Record<AuthorityAttentionProducer, readonly AuthorityAttentionReason[]>);
 
 /** The state(s) `P` may persist. */

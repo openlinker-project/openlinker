@@ -41,7 +41,7 @@ import { FulfillmentWorkVersionConflictError } from '../../domain/exceptions/ful
 import { FulfillmentWorkVersionMismatchError } from '../../domain/exceptions/fulfillment-work-version-mismatch.error';
 import { UnsupportedFulfillmentWorkActionError } from '../../domain/exceptions/unsupported-fulfillment-work-action.error';
 import { FulfillmentWorkRepositoryPort } from '../../domain/ports/fulfillment-work-repository.port';
-import type { FulfillmentHold } from '../../domain/types/fulfillment-hold.types';
+import { SOURCE_CHANGE_HOLD_ACTOR, type FulfillmentHold } from '../../domain/types/fulfillment-hold.types';
 import { deriveSupportedActions } from '../../domain/types/fulfillment-supported-actions.types';
 import type { FulfillmentWorkAction } from '../../domain/types/fulfillment-work-action.types';
 import type { FulfillmentWork } from '../../domain/types/fulfillment-work.types';
@@ -485,6 +485,7 @@ export class FulfillmentWorklistService implements IFulfillmentWorklistService {
         reason: hold.reason,
         note: hold.note,
         placedAt: hold.placedAt,
+        fromSourceChange: hold.placedByService === SOURCE_CHANGE_HOLD_ACTOR,
       })),
       supportedActions: this.exposedActions(work, activeHolds),
       version: work.version,
