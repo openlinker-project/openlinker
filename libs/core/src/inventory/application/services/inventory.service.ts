@@ -189,6 +189,7 @@ export class InventoryService implements IInventoryService {
         sourceKind: movement?.sourceKind ?? 'master_sync',
         sourceRef: movement?.sourceRef ?? null,
         actorUserId: movement?.actorUserId ?? null,
+        syncRunId: movement?.syncRunId ?? null,
         occurredAt: upserted.updatedAt,
       });
     } catch (error) {

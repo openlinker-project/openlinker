@@ -86,6 +86,7 @@ export {
   MasterInventorySyncResult,
   MasterInventoryBatchSyncFailure,
   MasterInventoryBatchSyncResult,
+  MasterInventorySyncOptions,
 } from './application/services/master-inventory-sync.service.interface';
 export { MasterInventorySyncService } from './application/services/master-inventory-sync.service';
 export { IInventoryQueryService } from './application/services/inventory-query.service.interface';

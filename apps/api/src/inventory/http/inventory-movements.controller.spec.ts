@@ -37,6 +37,7 @@ const row = (overrides: Partial<InventoryHistoryRow> = {}): InventoryHistoryRow 
   refusalDetail: null,
   occurredAt: new Date('2026-01-01T10:00:00.000Z'),
   sourceLabel: 'ORD-1001',
+  syncRunId: null,
   ...overrides,
 });
 
@@ -70,6 +71,7 @@ describe('InventoryMovementsController', () => {
         quantityDelta: -2,
         occurredAt: '2026-01-01T10:00:00.000Z',
         sourceLabel: 'ORD-1001',
+        syncRunId: null,
       });
       expect(result).toMatchObject({ total: 1, limit: 20, offset: 0 });
     });
