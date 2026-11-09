@@ -12,8 +12,8 @@ import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { OfferManagerPort } from '@openlinker/core/listings';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { AVAILABILITY_SERVICE_TOKEN } from '@openlinker/core/inventory';
-import { PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
-import type { IProductsService, ProductVariant } from '@openlinker/core/products';
+import { BUNDLE_DEFINITION_SERVICE_TOKEN, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
+import type { IBundleDefinitionService, IProductsService, ProductVariant } from '@openlinker/core/products';
 
 import { OfferBuilderService } from '../offer-builder.service';
 import {
@@ -36,6 +36,7 @@ describe('OfferBuilderService', () => {
   let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
   let categoryResolution: jest.Mocked<Pick<ICategoryResolutionService, 'resolveCategory'>>;
   let attributeProjection: jest.Mocked<IAttributeProjectionService>;
+  let bundleDefinitions: jest.Mocked<Pick<IBundleDefinitionService, 'get'>>;
   let productMaster: { getProduct: jest.Mock; resolveCategoriesForBatchByEan: jest.Mock };
 
   const emptyProjection: AttributeProjectionResult = {
@@ -114,10 +115,13 @@ describe('OfferBuilderService', () => {
       project: jest.fn().mockResolvedValue(emptyProjection),
     };
 
+    bundleDefinitions = { get: jest.fn().mockResolvedValue(null) };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OfferBuilderService,
         { provide: PRODUCTS_SERVICE_TOKEN, useValue: productsService },
+        { provide: BUNDLE_DEFINITION_SERVICE_TOKEN, useValue: bundleDefinitions },
         { provide: CONNECTION_PORT_TOKEN, useValue: connectionPort },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrationsService },
         { provide: CATEGORY_RESOLUTION_SERVICE_TOKEN, useValue: categoryResolution },
@@ -270,6 +274,81 @@ describe('OfferBuilderService', () => {
       });
 
       expect(result.productCardId).toBeNull();
+    });
+  });
+
+  describe('bundle product set (#3520)', () => {
+    const input = {
+      internalVariantId: VARIANT_ID,
+      connectionId: MARKETPLACE_CONN_ID,
+      stock: 10,
+      publishImmediately: false,
+    };
+
+    it('omits productSet for an ordinary variant', async () => {
+      const result = await service.buildCreateOfferCommand(input);
+      expect(result.productSet).toBeUndefined();
+    });
+
+    it('fills productSet in component order with quantities when the variant is a bundle', async () => {
+      bundleDefinitions.get.mockResolvedValue({
+        variantId: VARIANT_ID,
+        version: 1,
+        components: [
+          { variantId: 'v-b', productId: 'p-b', quantity: 2 },
+          { variantId: 'v-a', productId: 'p-a', quantity: 1, giftSlot: true },
+        ],
+      });
+      const byId: Record<string, unknown> = {
+        'v-a': { id: 'v-a', productId: 'p-a', ean: '111', gtin: null, images: ['https://x/a.jpg'] },
+        'v-b': { id: 'v-b', productId: 'p-b', ean: null, gtin: '222', images: null },
+      };
+      productsService.getVariant.mockImplementation(
+        (id: string) => Promise.resolve((byId[id] ?? defaultVariant) as ProductVariant)
+      );
+      productsService.getVariantsByProductId.mockImplementation((pid: string) => {
+        const v = pid === 'p-a' ? byId['v-a'] : pid === 'p-b' ? byId['v-b'] : defaultVariant;
+        return Promise.resolve([v as ProductVariant]);
+      });
+      productsService.getProduct.mockImplementation((id: string) =>
+        Promise.resolve({ id, name: `Name ${id}`, images: [`https://x/${id}.jpg`] } as never)
+      );
+
+      const result = await service.buildCreateOfferCommand(input);
+
+      expect(result.productSet).toEqual([
+        {
+          variantId: 'v-b',
+          productId: 'p-b',
+          quantity: 2,
+          name: 'Name p-b',
+          barcode: '222',
+          imageUrls: ['https://x/p-b.jpg'],
+        },
+        {
+          variantId: 'v-a',
+          productId: 'p-a',
+          quantity: 1,
+          giftSlot: true,
+          name: 'Name p-a',
+          barcode: '111',
+          imageUrls: ['https://x/a.jpg', 'https://x/p-a.jpg'],
+        },
+      ]);
+    });
+
+    it('refuses a bundle whose component no longer exists', async () => {
+      bundleDefinitions.get.mockResolvedValue({
+        variantId: VARIANT_ID,
+        version: 1,
+        components: [{ variantId: 'gone', productId: 'p-gone', quantity: 1 }],
+      });
+      productsService.getVariant.mockImplementation((id: string) =>
+        Promise.resolve(id === VARIANT_ID ? defaultVariant : null)
+      );
+      await expect(service.buildCreateOfferCommand(input)).rejects.toBeInstanceOf(
+        OfferBuilderValidationException
+      );
     });
   });
 

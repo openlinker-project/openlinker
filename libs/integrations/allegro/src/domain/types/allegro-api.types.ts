@@ -382,8 +382,8 @@ export interface AllegroProductSetEntry {
   /**
    * How many units of the catalog product one offer item contains
    * (`quantity.value`, default 1 - Allegro uses it for bundles/sets).
-   * Read-side field consumed by `getOffer` (#1482); the create path never
-   * sets it.
+   * Read by `getOffer` (#1482); written on create only for a bundle's
+   * product-set entries (#3520).
    */
   quantity?: { value?: number };
   /**
