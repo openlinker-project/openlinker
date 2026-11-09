@@ -107,8 +107,9 @@ export function ConnectionHealthList({
             const { connection, deadJobCount } = row;
             const bucket = bucketOf(row);
             const failedText = plural(deadJobCount, copy.failedJobs);
-            const statusLabel =
-              copy.status[CONNECTION_STATUS_LABEL_KEY[connection.status]] ?? connection.status;
+            // CONNECTION_STATUS_LABEL_KEY is a Record over ConnectionStatus, so a
+            // status added later fails to compile instead of rendering raw.
+            const statusLabel = copy.status[CONNECTION_STATUS_LABEL_KEY[connection.status]];
             return (
               <tr key={connection.id} className={`conn-health__row conn-health__row--${bucket}`}>
                 <td className="conn-health__cell-name">
