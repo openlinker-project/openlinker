@@ -23,7 +23,7 @@
  * a "Not registered" word for a fiscal receipt with no document yet. The real
  * `resolveSalesDocumentCellState` is deliberately platform-neutral — its own
  * doc comment states "no platform name leaks into the word" — so the real
- * words are "Authority rejected", "At authority" and "Not issued". A provider
+ * words are "Rejected at clearance", "At clearance" and "Not issued". A provider
  * name appears only inside the popover's identity facts.
  *
  * VIEWPORT COVERAGE: every state is asserted and screenshotted at three
@@ -107,7 +107,7 @@ const STATES: readonly StateFixture[] = [
   {
     key: 'invoiceAuthorityRejected',
     slug: 'invoice-authority-rejected',
-    ariaLabel: 'Invoice: Authority rejected',
+    ariaLabel: 'Invoice: Rejected at clearance',
     tone: 'error',
     hasTick: false,
     hasLiveDot: false,
@@ -160,7 +160,7 @@ const STATES: readonly StateFixture[] = [
   {
     key: 'invoiceAtAuthorityDuplicate',
     slug: 'invoice-at-authority-duplicate',
-    ariaLabel: 'Invoice: At authority',
+    ariaLabel: 'Invoice: At clearance',
     tone: 'progress',
     hasTick: false,
     hasLiveDot: true,
@@ -355,8 +355,8 @@ test.describe('sales documents: /orders money-cluster document line (#2563 M10)'
     // pins that divergence as a regression guard, not just prose in a PR body.
     await loginAndGoToOrders(page);
 
-    await expect(triggerFor(page, SEED_ORDER_IDS.invoiceAuthorityRejected, 'Invoice: Authority rejected')).toBeVisible();
-    await expect(triggerFor(page, SEED_ORDER_IDS.invoiceAtAuthorityDuplicate, 'Invoice: At authority')).toBeVisible();
+    await expect(triggerFor(page, SEED_ORDER_IDS.invoiceAuthorityRejected, 'Invoice: Rejected at clearance')).toBeVisible();
+    await expect(triggerFor(page, SEED_ORDER_IDS.invoiceAtAuthorityDuplicate, 'Invoice: At clearance')).toBeVisible();
     await expect(page.getByText('KSeF rejected', { exact: true })).toHaveCount(0);
     await expect(page.getByText('At KSeF', { exact: true })).toHaveCount(0);
 
@@ -372,7 +372,7 @@ test.describe('sales documents: /orders money-cluster document line (#2563 M10)'
     page,
   }) => {
     await loginAndGoToOrders(page);
-    const trigger = triggerFor(page, SEED_ORDER_IDS.invoiceAtAuthorityDuplicate, 'Invoice: At authority');
+    const trigger = triggerFor(page, SEED_ORDER_IDS.invoiceAtAuthorityDuplicate, 'Invoice: At clearance');
 
     const popover = await openPopover(page, async () => {
       await trigger.focus();

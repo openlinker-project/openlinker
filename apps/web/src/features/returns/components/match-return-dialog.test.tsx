@@ -11,10 +11,12 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { MatchReturnDialog } from './match-return-dialog';
-import { MATCH_RETURN_DIALOG_COPY as COPY } from '../lib/match-return-dialog.copy';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import { ApiError } from '../../../shared/api/api-error';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import type { WriteAccess } from '../../../shared/auth/use-permission';
+
+const COPY = getMessages('returns').matchReturnDialog;
 
 const FULL_WRITE_ACCESS: WriteAccess = { canWrite: true, demoReadOnly: false, visible: true };
 
@@ -110,7 +112,7 @@ describe('MatchReturnDialog', () => {
 
     await typeAndSubmit('#ZZZ999');
 
-    expect(await screen.findByText(COPY.unknownOrder('#ZZZ999'))).toBeInTheDocument();
+    expect(await screen.findByText(interpolate(COPY.unknownOrder, { typed: '#ZZZ999' }))).toBeInTheDocument();
     // Never the generic sentence alongside the field error.
     expect(screen.queryByText(COPY.genericError)).not.toBeInTheDocument();
   });
@@ -162,7 +164,7 @@ describe('MatchReturnDialog', () => {
     const input = await screen.findByLabelText(COPY.fieldLabel);
     await userEvent.type(input, 'ol_order_1');
 
-    expect(await screen.findByText(COPY.resolvedOrder('#12345'))).toBeInTheDocument();
+    expect(await screen.findByText(interpolate(COPY.resolvedOrder, { orderNumber: '#12345' }))).toBeInTheDocument();
   });
 
   it('should NOT echo a resolved order for a value that does not exactly match a fetched order', async () => {
@@ -173,7 +175,7 @@ describe('MatchReturnDialog', () => {
     const input = await screen.findByLabelText(COPY.fieldLabel);
     await userEvent.type(input, 'ol_order_1_typo');
 
-    expect(screen.queryByText(COPY.resolvedOrder('#12345'))).not.toBeInTheDocument();
+    expect(screen.queryByText(interpolate(COPY.resolvedOrder, { orderNumber: '#12345' }))).not.toBeInTheDocument();
   });
 
   it('should clear a stale field error once the operator edits the value', async () => {
@@ -183,11 +185,11 @@ describe('MatchReturnDialog', () => {
     renderDialog({ matchOrder });
 
     await typeAndSubmit('#ZZZ999');
-    expect(await screen.findByText(COPY.unknownOrder('#ZZZ999'))).toBeInTheDocument();
+    expect(await screen.findByText(interpolate(COPY.unknownOrder, { typed: '#ZZZ999' }))).toBeInTheDocument();
 
     await userEvent.type(await screen.findByLabelText(COPY.fieldLabel), '1');
 
-    expect(screen.queryByText(COPY.unknownOrder('#ZZZ999'))).not.toBeInTheDocument();
+    expect(screen.queryByText(interpolate(COPY.unknownOrder, { typed: '#ZZZ999' }))).not.toBeInTheDocument();
   });
 
   it('should clear a leftover generic error on Cancel, so it does not survive into a reopen', async () => {

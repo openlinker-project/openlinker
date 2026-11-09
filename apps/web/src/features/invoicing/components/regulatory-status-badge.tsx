@@ -1,7 +1,7 @@
 /**
  * Regulatory Status Badge (#757, neutralized #3181)
  *
- * Maps a `RegulatoryStatus` to a `StatusBadge` tone + `t()` label. Rendered
+ * Maps a `RegulatoryStatus` to a `StatusBadge` tone + translated label. Rendered
  * ONLY by the panel's `regulatoryStatus !== 'not-applicable'` gate (plan §1.6),
  * so `not-applicable` never reaches here.
  *
@@ -13,14 +13,14 @@
  * provider whose own invoice-detail surface wants its own branded wording
  * (e.g. the KSeF plugin) supplies it via the optional `labelOverrides` prop
  * rather than baking it in here — see `KsefInvoiceDetailSection`. That
- * override outranks the translated `invoice.regulatory.*` catalog entry, which
+ * override outranks the label from the `invoicing` namespace, which
  * is neutral by design and would otherwise contradict it.
  *
  * @module apps/web/src/features/invoicing/components
  */
 import type { ReactElement } from 'react';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
-import { useTranslation } from '../../../shared/i18n';
+import { getMessages, useMessages } from '../../../shared/i18n';
 import type { RegulatoryStatus } from '../api/invoicing.types';
 
 const TONE: Record<RegulatoryStatus, StatusBadgeTone> = {
@@ -47,15 +47,25 @@ const TONE: Record<RegulatoryStatus, StatusBadgeTone> = {
  * provider-specific surface overrides via `labelOverrides` instead.
  */
 export const REGULATORY_STATUS_LABEL_FALLBACK: Record<RegulatoryStatus, string> = {
-  'not-applicable': 'N/A',
-  'pending-submission': 'Awaiting submission',
-  submitted: 'Submitted',
-  cleared: 'Clearing',
-  accepted: 'Accepted',
-  rejected: 'Rejected',
+  get 'not-applicable'() {
+    return getMessages('invoicing').invoice.regulatory['not-applicable'];
+  },
+  get 'pending-submission'() {
+    return getMessages('invoicing').invoice.regulatory['pending-submission'];
+  },
+  get submitted() {
+    return getMessages('invoicing').invoice.regulatory.submitted;
+  },
+  get cleared() {
+    return getMessages('invoicing').invoice.regulatory.cleared;
+  },
+  get accepted() {
+    return getMessages('invoicing').invoice.regulatory.accepted;
+  },
+  get rejected() {
+    return getMessages('invoicing').invoice.regulatory.rejected;
+  },
 };
-
-const LABEL_FALLBACK = REGULATORY_STATUS_LABEL_FALLBACK;
 
 /**
  * Test hook for the ONE state a document is waiting with its provider in
@@ -90,14 +100,10 @@ export function RegulatoryStatusBadge({
   status,
   labelOverrides,
 }: RegulatoryStatusBadgeProps): ReactElement {
-  const { t } = useTranslation();
-  // The override is resolved OUTSIDE `t()`, never handed to it as the fallback
-  // argument: `t(key, fallback)` returns the CATALOG hit and falls back only on
-  // a miss, and `invoice.regulatory.*` is by design the regulator-NEUTRAL key —
-  // so a provider override passed as the fallback would become unreachable the
-  // day anyone populates that key, silently and with no test failing.
-  const label =
-    labelOverrides?.[status] ?? t(`invoice.regulatory.${status}`, LABEL_FALLBACK[status]);
+  const labels = useMessages('invoicing').invoice.regulatory;
+  // The provider override outranks the regulator-NEUTRAL `invoice.regulatory.*`
+  // copy, so a branded label is never shadowed by the shared wording.
+  const label = labelOverrides?.[status] ?? labels[status];
   return (
     <StatusBadge
       tone={TONE[status]}

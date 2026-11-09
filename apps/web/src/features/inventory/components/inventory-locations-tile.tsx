@@ -17,20 +17,21 @@
  */
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
-import { INVENTORY_LOCATIONS_TILE_COPY } from '../lib/inventory-locations-tile.copy';
+import { useMessages } from '../../../shared/i18n';
 
 export function InventoryLocationsTile(): ReactElement {
+  const copy = useMessages('inventory').inventoryLocationsTile;
   return (
     <article className="panel panel--dense">
       <div className="panel__header">
         <div>
-          <p className="eyebrow">{INVENTORY_LOCATIONS_TILE_COPY.eyebrow}</p>
-          <h3 className="section-title">{INVENTORY_LOCATIONS_TILE_COPY.title}</h3>
+          <p className="eyebrow">{copy.eyebrow}</p>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
       </div>
-      <p className="muted-text">{INVENTORY_LOCATIONS_TILE_COPY.description}</p>
+      <p className="muted-text">{copy.description}</p>
       <Link className="button button--secondary button--sm" to="/inventory/locations">
-        {INVENTORY_LOCATIONS_TILE_COPY.linkLabel}
+        {copy.linkLabel}
       </Link>
     </article>
   );

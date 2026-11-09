@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react';
+import { renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import {
   useActiveLocationCountQuery,
   useBootstrapLocationsMutation,
@@ -6,7 +7,7 @@ import {
 import { useOmsRoutingState } from '../../fulfillment-authority';
 import { useWriteAccess, useIsAdmin } from '../../../shared/auth/use-permission';
 import { useDemoMode } from '../../system';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 
@@ -54,10 +55,9 @@ const READY_TONE: StatusBadgeTone = 'success';
 const DEGRADED_TONE: StatusBadgeTone = 'warning';
 const UNCONFIGURED_TONE: StatusBadgeTone = 'neutral';
 
-const ADMIN_ONLY_ACTION_MESSAGE =
-  'Creating an inventory location requires an administrator account.';
-
 export function RouterReadinessPanel(): ReactElement {
+  const copy = useMessages('connections').routerReadinessPanel;
+  const format = useFormat();
   const countQuery = useActiveLocationCountQuery();
   const omsRouting = useOmsRoutingState();
   const bootstrap = useBootstrapLocationsMutation();
@@ -74,8 +74,8 @@ export function RouterReadinessPanel(): ReactElement {
     return (
       <div className="panel panel--dense">
         <LoadingState
-          title="Loading routing readiness"
-          message="Checking whether this install has an inventory location."
+          title={copy.loadingTitle}
+          message={copy.loadingMessage}
         />
       </div>
     );
@@ -85,7 +85,7 @@ export function RouterReadinessPanel(): ReactElement {
     return (
       <div className="panel panel--dense">
         <ErrorState
-          title="Unable to check routing readiness"
+          title={copy.errorTitle}
           message={countQuery.error.message}
           action={
             <button
@@ -93,7 +93,7 @@ export function RouterReadinessPanel(): ReactElement {
               className="button button--secondary"
               onClick={() => void countQuery.refetch()}
             >
-              Retry
+              {copy.retry}
             </button>
           }
         />
@@ -127,8 +127,8 @@ export function RouterReadinessPanel(): ReactElement {
     <div className="panel panel--dense">
       <div className="panel__header">
         <div>
-          <p className="eyebrow">Health</p>
-          <h3 className="section-title">Fulfilment routing readiness</h3>
+          <p className="eyebrow">{copy.eyebrow}</p>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
         <StatusBadge
           tone={
@@ -139,40 +139,32 @@ export function RouterReadinessPanel(): ReactElement {
                 : UNCONFIGURED_TONE
           }
         >
-          {hasLocation ? 'Location ready' : 'No location yet'}
+          {hasLocation ? copy.locationReady : copy.noLocation}
         </StatusBadge>
       </div>
 
       <dl className="definition-list">
         <div>
-          <dt>Active inventory locations</dt>
-          <dd>{activeLocations}</dd>
+          <dt>{copy.activeLocations}</dt>
+          <dd>{format.number(activeLocations)}</dd>
         </div>
       </dl>
 
       {hasLocation ? (
         <p className="router-readiness-panel__note">
-          Fulfilment routing can be switched on. A location on its own holds no stock, so lines
-          still route only once stock is assigned to it — this check answers whether routing can be
-          enabled, not whether it will find somewhere to send an order.
+          {copy.notes.ready}
         </p>
       ) : routingClaimed === true ? (
         <p className="router-readiness-panel__note">
-          Fulfilment routing is switched on, and with no active location there is nowhere for it to
-          send an order — so it is currently deciding nothing and orders fall back to the usual
-          handling. This is a setup step that has not been done yet, not a fault: create a location
-          and routing starts deciding.
+          {copy.notes.onWithoutLocation}
         </p>
       ) : routingClaimed === false ? (
         <p className="router-readiness-panel__note">
-          Fulfilment routing cannot be switched on until this install has at least one active
-          inventory location — an attempt to enable it now is refused. Create one first.
+          {copy.notes.offWithoutLocation}
         </p>
       ) : (
         <p className="router-readiness-panel__note">
-          This install has no active inventory location, which fulfilment routing requires. Whether
-          routing is currently switched on is not known here — that read has not answered yet — so
-          this states only the part that is known.
+          {copy.notes.unknown}
         </p>
       )}
 
@@ -184,12 +176,12 @@ export function RouterReadinessPanel(): ReactElement {
             disabled={!canAct || bootstrap.isPending}
             title={
               write.demoReadOnly
-                ? DEMO_READ_ONLY_ACTION_MESSAGE
+                ? demoReadOnlyActionMessage()
                 : // The route is admin-only while `inventory:write` is also an
                   // operator permission, so this button can be disabled for a
                   // session that genuinely holds the permission. Say which.
                   !isAdmin
-                  ? ADMIN_ONLY_ACTION_MESSAGE
+                  ? copy.adminOnly
                   : undefined
             }
             onClick={() => {
@@ -197,19 +189,16 @@ export function RouterReadinessPanel(): ReactElement {
               bootstrap.mutate();
             }}
           >
-            {bootstrap.isPending ? 'Creating…' : 'Create default location'}
+            {bootstrap.isPending ? copy.creating : copy.createDefault}
           </button>
           <p className="router-readiness-panel__note">
-            Creates a single warehouse location, <code>MAIN</code>. Running it again creates
-            nothing. Country and region are left blank on purpose — the routing filters read them,
-            and a guessed country would be worse than an absent one, so fill them in on the
-            location once it exists.
+            {renderRich(copy.createHint, { code: (text) => <code>{text}</code> })}
           </p>
         </>
       ) : null}
 
       {bootstrap.error ? (
-        <ErrorState title="Could not create the location" message={bootstrap.error.message} />
+        <ErrorState title={copy.createErrorTitle} message={bootstrap.error.message} />
       ) : null}
     </div>
   );

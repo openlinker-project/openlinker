@@ -1,0 +1,294 @@
+{
+  "accessDenied": {
+    "eyebrow": "Brak dostępu",
+    "message": "Twoja rola nie obejmuje tego ekranu. Jeśli go potrzebujesz, poproś administratora.",
+    "title": "Nie masz dostępu do tego ekranu"
+  },
+  "apiError": {
+    "networkFailed": "Żądanie sieciowe nie powiodło się",
+    "noReadableBody": "Serwer zwrócił pustą odpowiedź.",
+    "requestFailed": "Żądanie nie powiodło się",
+    "timedOut": "Upłynął limit czasu żądania."
+  },
+  "bulkActionBar": {
+    "selected": {
+      "few": "zaznaczone",
+      "many": "zaznaczonych",
+      "one": "zaznaczony",
+      "other": "zaznaczonego"
+    },
+    "selectedCount": {
+      "few": "Zaznaczono {n} elementy",
+      "many": "Zaznaczono {n} elementów",
+      "one": "Zaznaczono {n} element",
+      "other": "Zaznaczono {n} elementu"
+    }
+  },
+  "categorySearch": {
+    "errorTitle": "Nie udało się wyszukać kategorii",
+    "found": {
+      "few": "Znaleziono {n} kategorie",
+      "many": "Znaleziono {n} kategorii",
+      "one": "Znaleziono {n} kategorię",
+      "other": "Znaleziono {n} kategorii"
+    },
+    "noMatchMessage": "Nic w tym drzewie nie pasuje do „{query}”. Spróbuj krótszej lub inaczej zapisanej frazy.",
+    "noMatchTitle": "Brak pasujących kategorii",
+    "notSelectable": "Nie można wybrać",
+    "searchingMessage": "Przeszukujemy całe drzewo…",
+    "searchingTitle": "Wyszukiwanie kategorii",
+    "selectNamed": "Wybierz {name}",
+    "topLevel": "Najwyższy poziom",
+    "unsyncedMessage": "Drzewo kategorii tego miejsca docelowego nie zostało jeszcze zsynchronizowane. Wyszukiwanie zadziała po pierwszej synchronizacji.",
+    "unsyncedTitle": "Kategorie nie są jeszcze zsynchronizowane"
+  },
+  "categoryTree": {
+    "browse": "Otwórz",
+    "browseInto": "Otwórz {name}",
+    "emptyMessage": "Ten poziom nie ma podkategorii. Wróć i wybierz inną gałąź.",
+    "emptyTitle": "Brak podkategorii",
+    "errorTitle": "Nie udało się wczytać kategorii",
+    "loadingMessage": "Pobieranie kategorii…",
+    "loadingTitle": "Ładowanie kategorii",
+    "path": "Ścieżka kategorii",
+    "root": "Wszystkie kategorie"
+  },
+  "combobox": {
+    "clearCustom": "Wyczyść własną wartość",
+    "close": "zamknij",
+    "customValueTitle": "Własna wartość (spoza listy)",
+    "filter": "Wpisz, aby filtrować…",
+    "more": "+{n} więcej",
+    "navigate": "przejdź",
+    "noMatch": "Brak opcji pasujących do „{query}”.",
+    "optionCount": {
+      "few": "{n} opcje",
+      "many": "{n} opcji",
+      "one": "{n} opcja",
+      "other": "{n} opcji"
+    },
+    "placeholder": "Wybierz…",
+    "remove": "Usuń {label}",
+    "searchCount": {
+      "few": "Wpisz, aby przeszukać {n} opcje…",
+      "many": "Wpisz, aby przeszukać {n} opcji…",
+      "one": "Wpisz, aby przeszukać {n} opcję…",
+      "other": "Wpisz, aby przeszukać {n} opcji…"
+    },
+    "searchCountHint": {
+      "few": "Wpisz, aby przeszukać {n} opcje.",
+      "many": "Wpisz, aby przeszukać {n} opcji.",
+      "one": "Wpisz, aby przeszukać {n} opcję.",
+      "other": "Wpisz, aby przeszukać {n} opcji."
+    },
+    "searchOrCustom": "Wpisz, aby wyszukać, lub podaj własną wartość…",
+    "select": "wybierz",
+    "selectedCount": {
+      "few": "Wybrano {n}",
+      "many": "Wybrano {n}",
+      "one": "Wybrano {n}",
+      "other": "Wybrano {n}"
+    },
+    "showing": "Wyświetlono {shown} z {total}",
+    "useCustom": "Użyj jako własnej wartości:"
+  },
+  "commandPalette": {
+    "label": "Paleta poleceń",
+    "noResults": "Brak wyników.",
+    "open": "Otwórz paletę poleceń (⌘K)",
+    "placeholder": "Szukaj…",
+    "results": "Wyniki",
+    "searching": "Wyszukiwanie…",
+    "startTyping": "Zacznij pisać, aby wyszukać.",
+    "trigger": "Szukaj zamówień, produktów, połączeń…"
+  },
+  "common": {
+    "copied": "Skopiowano",
+    "copiedId": "Skopiowano {id}",
+    "copy": "Kopiuj",
+    "copyId": "Kopiuj {id}",
+    "loading": "Ładowanie…",
+    "retry": "Spróbuj ponownie",
+    "select": "Wybierz",
+    "selected": "Wybrany",
+    "unknown": "Nieznane"
+  },
+  "confirmDialog": {
+    "cancel": "Anuluj",
+    "confirm": "Potwierdź"
+  },
+  "dataTable": {
+    "collapseRow": "Zwiń szczegóły wiersza",
+    "emptyMessage": "Ta tabela nie ma jeszcze danych.",
+    "emptyTitle": "Brak rekordów do wyświetlenia",
+    "expandRow": "Rozwiń szczegóły wiersza",
+    "expandRowShort": "Rozwiń wiersz",
+    "hideDetails": "Ukryj szczegóły",
+    "scrollable": "Przewijana tabela",
+    "scrollableNamed": "{caption} (przewijana)",
+    "viewDetails": "Pokaż wszystkie szczegóły"
+  },
+  "demo": {
+    "navRestricted": "Wymaga roli administratora.",
+    "readOnlyAction": "Tylko do odczytu w trybie demo."
+  },
+  "demoBanner": {
+    "body": "Możesz przeglądać wszystkie dane; zapisywanie jest wyłączone.",
+    "label": "Informacja o trybie demo",
+    "title": "Tryb demo - tylko do odczytu."
+  },
+  "density": {
+    "compact": "Widok zwarty",
+    "cozy": "Widok wygodny",
+    "group": "Gęstość wierszy"
+  },
+  "desktopOnly": {
+    "body": "Ten edytor potrzebuje szerszego ekranu, aby pokazać obie strony obok siebie. Poniższy widok jest na tym ekranie tylko do odczytu.",
+    "title": "Otwórz na komputerze, aby edytować"
+  },
+  "documentKind": {
+    "fiscalReceipt": "Paragon fiskalny",
+    "invoice": "Faktura",
+    "none": "Brak dokumentu"
+  },
+  "documentLifecycle": {
+    "active": "w toku",
+    "done": "gotowe",
+    "error": "błąd",
+    "label": "Etapy dokumentu",
+    "noTime": "Brak zapisanego czasu dla etapu {step}",
+    "todo": "jeszcze nie osiągnięto"
+  },
+  "emptyValue": {
+    "label": "Brak wartości"
+  },
+  "environment": {
+    "ariaLabel": "Środowisko {env}",
+    "ariaLabelVersion": "Środowisko {env}, wersja {version}",
+    "names": {
+      "custom": "Custom",
+      "development": "Development",
+      "developmentShort": "Dev",
+      "preview": "Preview",
+      "previewShort": "Prev",
+      "production": "Production",
+      "productionShort": "Prod",
+      "staging": "Staging",
+      "stagingShort": "Stg"
+    },
+    "version": "v{version}"
+  },
+  "feedback": {
+    "error": "Błąd",
+    "loading": "Ładowanie"
+  },
+  "fileUpload": {
+    "drop": "Upuść plik tutaj lub kliknij, aby wybrać",
+    "hint": "Akceptowane: {accept}. Maks. {max}.",
+    "release": "Upuść, aby przesłać",
+    "tooLarge": "Plik jest za duży ({size}). Maksymalny rozmiar: {max}.",
+    "uploading": "Przesyłanie…",
+    "wrongType": "Typ pliku „{type}” nie jest akceptowany. Dozwolone: {accept}."
+  },
+  "formErrorSummary": {
+    "title": "Popraw zaznaczone pola."
+  },
+  "inlineDisclosure": {
+    "change": "Zmień"
+  },
+  "languageSwitch": {
+    "beta": "Beta",
+    "betaHint": "Część zawartości może być jeszcze nieprzetłumaczona.",
+    "current": "Język: {name}",
+    "label": "Język"
+  },
+  "pagination": {
+    "countUnavailable": "(liczba niedostępna)",
+    "counting": "Liczenie wszystkich wyników",
+    "label": "Stronicowanie",
+    "next": "Następna",
+    "noResults": "Brak wyników",
+    "previous": "Poprzednia",
+    "showing": "Wyświetlono {start}-{end} z <total></total>",
+    "totalFailed": "Nie udało się wczytać pełnej liczby. Pasuje co najmniej tyle."
+  },
+  "rangeNumber": {
+    "clampOnBlur": "Po opuszczeniu pola zostanie ustawiona wartość {value}.",
+    "outOfRange": "Wpisz liczbę całkowitą od {min} do {max}."
+  },
+  "rawPayload": {
+    "collapse": "Zwiń",
+    "content": "Treść danych",
+    "copied": "Skopiowano dane",
+    "copy": "Kopiuj dane",
+    "expand": "Rozwiń",
+    "title": "Treść (payload)"
+  },
+  "richText": {
+    "bold": "Pogrubienie",
+    "bulletList": "Lista punktowana",
+    "bytes": {
+      "few": "{bytes} / {max} bajty",
+      "many": "{bytes} / {max} bajtów",
+      "one": "{bytes} / {max} bajt",
+      "other": "{bytes} / {max} bajta"
+    },
+    "bytesNearLimit": {
+      "few": "{bytes} / {max} bajty - blisko limitu",
+      "many": "{bytes} / {max} bajtów - blisko limitu",
+      "one": "{bytes} / {max} bajt - blisko limitu",
+      "other": "{bytes} / {max} bajta - blisko limitu"
+    },
+    "bytesOverLimit": {
+      "few": "{bytes} / {max} bajty - ponad limit miejsca docelowego",
+      "many": "{bytes} / {max} bajtów - ponad limit miejsca docelowego",
+      "one": "{bytes} / {max} bajt - ponad limit miejsca docelowego",
+      "other": "{bytes} / {max} bajta - ponad limit miejsca docelowego"
+    },
+    "heading": "Nagłówek {level}",
+    "htmlMode": "HTML",
+    "htmlSource": "Kod HTML",
+    "htmlSourceNamed": "{label} (kod HTML)",
+    "italic": "Kursywa",
+    "italicAsBold": "Kursywa - to miejsce docelowe nie ma kursywy, więc zostanie opublikowana jako pogrubienie",
+    "link": "Dodaj lub edytuj link",
+    "linkTarget": "Adres linku",
+    "loadingFormat": "Wczytywanie zasad formatowania miejsca docelowego…",
+    "numberedList": "Lista numerowana",
+    "placeholder": "Opisz produkt…",
+    "richMode": "Tekst sformatowany",
+    "strike": "Przekreślenie",
+    "toolbar": "Formatowanie",
+    "undeclared": "To miejsce docelowe nie określiło formatu opisu - pokazujemy bezpieczny podzbiór.",
+    "underline": "Podkreślenie"
+  },
+  "richTextView": {
+    "empty": "Brak opisu"
+  },
+  "setupStepper": {
+    "label": "Postęp konfiguracji",
+    "step": "Krok {current} z {total}"
+  },
+  "structuredErrors": {
+    "copied": "skopiowano",
+    "copiedPath": "Skopiowano {path}",
+    "copyPath": "Kopiuj ścieżkę pola {path}",
+    "label": "Błędy",
+    "original": "Oryginalny komunikat"
+  },
+  "theme": {
+    "current": "Motyw: {name}",
+    "dark": "Ciemny",
+    "label": "Motyw",
+    "light": "Jasny",
+    "system": "Auto"
+  },
+  "toast": {
+    "dismiss": "Zamknij",
+    "dismissNamed": "Zamknij: {title}",
+    "notification": "powiadomienie"
+  },
+  "wizard": {
+    "summary": "Podsumowanie konfiguracji"
+  }
+}

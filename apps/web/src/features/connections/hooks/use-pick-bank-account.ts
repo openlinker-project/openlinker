@@ -28,6 +28,7 @@ import { useCallback } from 'react';
 import { useUpdateConnectionMutation } from './use-update-connection-mutation';
 import { useSetDefaultBankAccountMutation } from './use-set-default-bank-account-mutation';
 import type { BankAccount } from '../api/connections.types';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { useToast } from '../../../shared/ui/toast-provider';
 
 interface UsePickBankAccountOptions {
@@ -57,6 +58,7 @@ export function usePickBankAccount(
   const updateConnection = useUpdateConnectionMutation();
   const setDefaultBankAccount = useSetDefaultBankAccountMutation();
   const { showToast } = useToast();
+  const copy = useMessages('connections').pickBankAccount;
 
   const pickAccount = useCallback(
     (account: BankAccount, baseConfig: Record<string, unknown>): void => {
@@ -81,14 +83,17 @@ export function usePickBankAccount(
           onError: (error) => {
             showToast({
               tone: 'error',
-              title: 'Could not save the bank account',
-              description: `The selection was not persisted - ${persistErrorHint} ${error.message}`,
+              title: copy.errorTitle,
+              description: interpolate(copy.errorDescription, {
+                hint: persistErrorHint,
+                message: error.message,
+              }),
             });
           },
         },
       );
     },
-    [connectionId, persistErrorHint, updateConnection, setDefaultBankAccount, showToast],
+    [connectionId, persistErrorHint, updateConnection, setDefaultBankAccount, showToast, copy],
   );
 
   return {

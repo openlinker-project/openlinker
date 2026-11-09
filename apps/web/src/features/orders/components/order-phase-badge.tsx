@@ -16,6 +16,7 @@
 import type { ReactElement } from 'react';
 
 import { StatusBadge } from '../../../shared/ui/status-badge';
+import { useMessages } from '../../../shared/i18n';
 import { phaseBadge } from '../lib/order-lifecycle-phase';
 
 interface OrderPhaseBadgeProps {
@@ -36,7 +37,8 @@ export function OrderPhaseBadge({
   vendorLabel,
   compact = false,
 }: OrderPhaseBadgeProps): ReactElement | null {
-  const badge = phaseBadge(phase, vendorLabel);
+  const copy = useMessages('orders');
+  const badge = phaseBadge(phase, vendorLabel, copy);
   if (!badge) return null;
   const element = (
     <StatusBadge tone={badge.tone} withDot compact={compact}>
@@ -50,7 +52,7 @@ export function OrderPhaseBadge({
   return (
     <span className="order-phase-badge" title={badge.attribution}>
       {element}
-      <span className="sr-only">{` — ${badge.attribution}`}</span>
+      <span className="sr-only">{` - ${badge.attribution}`}</span>
     </span>
   );
 }

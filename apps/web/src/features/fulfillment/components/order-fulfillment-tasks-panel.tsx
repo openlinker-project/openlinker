@@ -37,6 +37,7 @@ import type { ReactElement } from 'react';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { useDemoMode } from '../../system';
 import { useFulfillmentTaskActionRunner } from '../hooks/use-fulfillment-task-action-runner';
 import { useOrderFulfillmentTasksQuery } from '../hooks/use-order-fulfillment-tasks-query';
@@ -61,6 +62,7 @@ export function OrderFulfillmentTasksPanel({
   internalOrderId,
   hideWhenEmpty = false,
 }: OrderFulfillmentTasksPanelProps): ReactElement | null {
+  const copy = useMessages('fulfillment').orderFulfillmentTasksPanel;
   const query = useOrderFulfillmentTasksQuery(internalOrderId);
   // The 409 contract, the busy/pending state and the dialog submit all live in
   // the runner (#3257) — this panel was one of the two copies it replaced.
@@ -83,10 +85,10 @@ export function OrderFulfillmentTasksPanel({
       // leaves `isPending` and would report "Loading…" for ever — a fourth
       // state ("never asked") wearing the first one's clothes. Unreachable
       // from the order-detail page, and stated rather than left as a trap.
-      return <p className="text-muted">No order to look fulfilment tasks up for.</p>;
+      return <p className="text-muted">{copy.noOrder}</p>;
     }
     if (query.isPending) {
-      return <p className="text-muted">Loading fulfilment tasks…</p>;
+      return <p className="text-muted">{copy.loading}</p>;
     }
     if (query.isError) {
       // NEVER the empty state: a read that failed says nothing about whether
@@ -102,11 +104,11 @@ export function OrderFulfillmentTasksPanel({
                 void query.refetch();
               }}
             >
-              Retry
+              {copy.retry}
             </Button>
           }
         >
-          Could not load this order&rsquo;s fulfilment tasks.
+          {copy.loadFailed}
         </Alert>
       );
     }
@@ -116,10 +118,7 @@ export function OrderFulfillmentTasksPanel({
       // Only reachable with routing on (or its state unknown): with routing off
       // the caller passes `hideWhenEmpty` and this section is not rendered.
       return (
-        <p className="text-muted">
-          No fulfilment tasks &mdash; this order was not routed. Routing is on, so check the
-          order&rsquo;s shipping address and the sourcing rules.
-        </p>
+        <p className="text-muted">{copy.empty}</p>
       );
     }
 
@@ -155,7 +154,7 @@ export function OrderFulfillmentTasksPanel({
         </ul>
         {query.data && query.data.total > tasks.length ? (
           <p className="text-muted">
-            Showing {tasks.length} of {query.data.total} fulfilment tasks for this order.
+            {interpolate(copy.showing, { shown: tasks.length, total: query.data.total })}
           </p>
         ) : null}
       </>
@@ -171,7 +170,7 @@ export function OrderFulfillmentTasksPanel({
 
   return (
     <section className="detail-section" id="fulfilment-tasks" tabIndex={-1}>
-      <h3 className="detail-section__title">Fulfilment tasks</h3>
+      <h3 className="detail-section__title">{copy.title}</h3>
       {body}
 
       {actions.pendingForm ? (

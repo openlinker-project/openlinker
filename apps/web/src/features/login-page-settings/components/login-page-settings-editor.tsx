@@ -126,7 +126,7 @@ export function LoginPageSettingsEditor({
   view,
   initialLocale,
 }: LoginPageSettingsEditorProps): ReactElement {
-  const copy = useMessages('loginPageSettings');
+  const copy = useMessages('login-page-settings');
   const mutation = useUpdateLoginPageSettingsMutation();
   const [locale, setLocale] = useState<LoginPageLocale>(initialLocale);
   const [justSaved, setJustSaved] = useState(false);

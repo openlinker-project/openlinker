@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -30,150 +30,156 @@ import {
   SYNC_JOBS_MAX_LIMIT,
 } from '../../features/sync-jobs/api/sync-jobs.types';
 import type { StreamDeadLetter } from '../../features/sync-jobs/api/stream-dead-letters.types';
+import { jobTypeLabel } from '../../features/sync-jobs/lib/job-type-label';
+import { interpolate, useMessages, type Messages } from '../../shared/i18n';
+
+type SyncJobsPageCopy = Messages['sync-jobs']['syncJobsPage'];
 
 // Capped by the backend validator on GET /sync/jobs (@Max(100)).
 const PAGE_SIZE = SYNC_JOBS_MAX_LIMIT;
 
-const COLUMNS: DataTableColumn<SyncJob>[] = [
-  {
-    id: 'status',
-    header: 'Status',
-    cell: (job) => <SyncJobStatusBadge status={job.status} outcome={job.outcome} outcomeReason={job.outcomeReason} />,
-    accessor: (job) => job.status,
-    sortable: true,
-  },
-  {
-    id: 'jobType',
-    header: 'Job type',
-    cell: (job) => (
-      <span className="mono-text" title={job.jobType}>
-        {job.jobType}
-      </span>
-    ),
-    accessor: (job) => job.jobType,
-    sortable: true,
-  },
-  {
-    id: 'connectionId',
-    header: 'Connection',
-    cell: (job) => (
-      <ConnectionEntityLabel connectionId={job.connectionId} linkToDetail={false} showId />
-    ),
-    hideBelow: 1024,
-  },
-  {
-    id: 'attempts',
-    header: 'Attempts',
-    align: 'right',
-    cell: (job) => {
-      const deferred = formatDurationMs(job.deferredTotalMs);
-      return (
-        <>
-          {job.attempts} / {job.maxAttempts}
-          {deferred !== null ? (
-            // A deferred job consumes no attempt, so its counter stands still
-            // while it waits. Without this an operator reads a row parked on a
-            // throttling shop as simply stuck (#2613).
-            <span className="text-muted" title={`Deferred for ${deferred} so far`}>
-              {' '}
-              · deferred
-            </span>
-          ) : null}
-        </>
-      );
+function buildColumns(copy: SyncJobsPageCopy['columns']): DataTableColumn<SyncJob>[] {
+  return [
+    {
+      id: 'status',
+      header: copy.status,
+      cell: (job) => <SyncJobStatusBadge status={job.status} outcome={job.outcome} outcomeReason={job.outcomeReason} />,
+      accessor: (job) => job.status,
+      sortable: true,
     },
-    accessor: (job) => job.attempts,
-    sortable: true,
-    hideBelow: 768,
-  },
-  {
-    id: 'lastAttemptDurationMs',
-    header: 'Duration',
-    align: 'right',
-    // Unmeasured rows sort as -1, so they group together and land first on an
-    // ascending sort - ahead of a genuine 0 ms row. Stated rather than dressed
-    // up: the cell renders an em-dash, so the group is identifiable, and this
-    // page sorts only the visible page anyway.
-    cell: (job) => {
-      const formatted = formatDurationMs(job.lastAttemptDurationMs);
-      return formatted ?? <span className="text-muted">—</span>;
+    {
+      id: 'jobType',
+      header: copy.jobType,
+      cell: (job) => <span title={job.jobType}>{jobTypeLabel(job.jobType)}</span>,
+      accessor: (job) => job.jobType,
+      sortable: true,
     },
-    accessor: (job) => job.lastAttemptDurationMs ?? -1,
-    sortable: true,
-    hideBelow: 768,
-  },
-  {
-    id: 'lastError',
-    header: 'Last error',
-    cell: (job) =>
-      job.lastError ? (
-        <span className="mono-text" title={job.lastError}>
-          {job.lastError.length > 60 ? `${job.lastError.slice(0, 60)}…` : job.lastError}
-        </span>
-      ) : (
-        <span className="text-muted">—</span>
+    {
+      id: 'connectionId',
+      header: copy.connection,
+      cell: (job) => (
+        <ConnectionEntityLabel connectionId={job.connectionId} linkToDetail={false} showId />
       ),
-    hideBelow: 1024,
-  },
-  {
-    id: 'createdAt',
-    header: 'Created',
-    cell: (job) => <TimeDisplay iso={job.createdAt} />,
-    accessor: (job) => job.createdAt,
-    sortable: true,
-  },
-];
+      hideBelow: 1024,
+    },
+    {
+      id: 'attempts',
+      header: copy.attempts,
+      align: 'right',
+      cell: (job) => {
+        const deferred = formatDurationMs(job.deferredTotalMs);
+        return (
+          <>
+            {job.attempts} / {job.maxAttempts}
+            {deferred !== null ? (
+              // A deferred job consumes no attempt, so its counter stands still
+              // while it waits. Without this an operator reads a row parked on a
+              // throttling shop as simply stuck (#2613).
+              <span className="text-muted" title={interpolate(copy.deferredTitle, { duration: deferred })}>
+                {' '}
+                · {copy.deferred}
+              </span>
+            ) : null}
+          </>
+        );
+      },
+      accessor: (job) => job.attempts,
+      sortable: true,
+      hideBelow: 768,
+    },
+    {
+      id: 'lastAttemptDurationMs',
+      header: copy.duration,
+      align: 'right',
+      // Unmeasured rows sort as -1, so they group together and land first on an
+      // ascending sort - ahead of a genuine 0 ms row. Stated rather than dressed
+      // up: the cell renders an em-dash, so the group is identifiable, and this
+      // page sorts only the visible page anyway.
+      cell: (job) => {
+        const formatted = formatDurationMs(job.lastAttemptDurationMs);
+        return formatted ?? <span className="text-muted">—</span>;
+      },
+      accessor: (job) => job.lastAttemptDurationMs ?? -1,
+      sortable: true,
+      hideBelow: 768,
+    },
+    {
+      id: 'lastError',
+      header: copy.lastError,
+      cell: (job) =>
+        job.lastError ? (
+          <span className="mono-text" title={job.lastError}>
+            {job.lastError.length > 60 ? `${job.lastError.slice(0, 60)}…` : job.lastError}
+          </span>
+        ) : (
+          <span className="text-muted">—</span>
+        ),
+      hideBelow: 1024,
+    },
+    {
+      id: 'createdAt',
+      header: copy.created,
+      cell: (job) => <TimeDisplay iso={job.createdAt} />,
+      accessor: (job) => job.createdAt,
+      sortable: true,
+    },
+  ];
+}
 
 // Poison stream entries are rare (they only exist after MAX_RECOVERY_ATTEMPTS
 // consecutive failures); a small fixed page is plenty and keeps this
 // secondary table lightweight relative to the primary sync-jobs one.
 const DEAD_LETTER_PAGE_SIZE = 20;
 
-const DEAD_LETTER_COLUMNS: DataTableColumn<StreamDeadLetter>[] = [
-  {
-    id: 'stream',
-    header: 'Stream',
-    cell: (entry) => <span className="mono-text">{entry.stream}</span>,
-    accessor: (entry) => entry.stream,
-    sortable: true,
-  },
-  {
-    id: 'consumerGroup',
-    header: 'Consumer group',
-    cell: (entry) => <span className="mono-text">{entry.consumerGroup}</span>,
-    hideBelow: 1024,
-  },
-  {
-    id: 'entryId',
-    header: 'Entry ID',
-    cell: (entry) => <span className="mono-text">{entry.entryId}</span>,
-    hideBelow: 768,
-  },
-  {
-    id: 'attempts',
-    header: 'Attempts',
-    align: 'right',
-    cell: (entry) => entry.attempts,
-    accessor: (entry) => entry.attempts,
-    sortable: true,
-  },
-  {
-    id: 'lastError',
-    header: 'Last error',
-    cell: (entry) => (
-      <span className="mono-text" title={entry.lastError}>
-        {entry.lastError.length > 60 ? `${entry.lastError.slice(0, 60)}…` : entry.lastError}
-      </span>
-    ),
-  },
-  {
-    id: 'lastSeenAt',
-    header: 'Last seen',
-    cell: (entry) => <TimeDisplay iso={entry.lastSeenAt} />,
-    accessor: (entry) => entry.lastSeenAt,
-    sortable: true,
-  },
-];
+function buildDeadLetterColumns(
+  copy: SyncJobsPageCopy['deadLetters']['columns'],
+): DataTableColumn<StreamDeadLetter>[] {
+  return [
+    {
+      id: 'stream',
+      header: copy.stream,
+      cell: (entry) => <span className="mono-text">{entry.stream}</span>,
+      accessor: (entry) => entry.stream,
+      sortable: true,
+    },
+    {
+      id: 'consumerGroup',
+      header: copy.consumerGroup,
+      cell: (entry) => <span className="mono-text">{entry.consumerGroup}</span>,
+      hideBelow: 1024,
+    },
+    {
+      id: 'entryId',
+      header: copy.entryId,
+      cell: (entry) => <span className="mono-text">{entry.entryId}</span>,
+      hideBelow: 768,
+    },
+    {
+      id: 'attempts',
+      header: copy.attempts,
+      align: 'right',
+      cell: (entry) => entry.attempts,
+      accessor: (entry) => entry.attempts,
+      sortable: true,
+    },
+    {
+      id: 'lastError',
+      header: copy.lastError,
+      cell: (entry) => (
+        <span className="mono-text" title={entry.lastError}>
+          {entry.lastError.length > 60 ? `${entry.lastError.slice(0, 60)}…` : entry.lastError}
+        </span>
+      ),
+    },
+    {
+      id: 'lastSeenAt',
+      header: copy.lastSeen,
+      cell: (entry) => <TimeDisplay iso={entry.lastSeenAt} />,
+      accessor: (entry) => entry.lastSeenAt,
+      sortable: true,
+    },
+  ];
+}
 
 /**
  * Poison Redis Stream entries that exhausted recovery (#2301, D48) — a
@@ -182,6 +188,8 @@ const DEAD_LETTER_COLUMNS: DataTableColumn<StreamDeadLetter>[] = [
  * action in this pass.
  */
 function StreamDeadLettersSection(): ReactElement {
+  const copy = useMessages('sync-jobs').syncJobsPage.deadLetters;
+  const columns = useMemo(() => buildDeadLetterColumns(copy.columns), [copy]);
   const [offset, setOffset] = useState(0);
   const { sort, setSort } = useTableSort([{ id: 'lastSeenAt', desc: true }]);
 
@@ -198,30 +206,28 @@ function StreamDeadLettersSection(): ReactElement {
   return (
     <div className="page-section" aria-labelledby="stream-dead-letters-heading">
       <h2 id="stream-dead-letters-heading" className="section-title">
-        Poison stream entries
+        {copy.title}
         {countQuery.data ? <span className="text-muted"> ({countQuery.data.count})</span> : null}
       </h2>
       <p className="text-muted">
-        Redis Stream entries that failed recovery repeatedly and were durably recorded here
-        instead of being retried forever. No replay action yet — investigate the raw fields
-        below.
+        {copy.description}
       </p>
 
       {listQuery.isLoading ? (
-        <DataTableSkeleton columns={DEAD_LETTER_COLUMNS} label="Loading poison stream entries…" />
+        <DataTableSkeleton columns={columns} label={copy.loading} />
       ) : listQuery.error ? (
         <ErrorState
-          title="Unable to load poison stream entries"
+          title={copy.errorTitle}
           message={listQuery.error.message}
-          action={<Button onClick={() => { void listQuery.refetch(); }}>Retry</Button>}
+          action={<Button onClick={() => { void listQuery.refetch(); }}>{copy.retry}</Button>}
         />
       ) : (listQuery.data?.items.length ?? 0) === 0 ? (
-        <EmptyState liveRegion="off" title="No poison entries" message="Nothing dead-lettered." />
+        <EmptyState liveRegion="off" title={copy.empty.title} message={copy.empty.message} />
       ) : (
         <>
           <DataTable
-            caption="Poison stream entries"
-            columns={DEAD_LETTER_COLUMNS}
+            caption={copy.title}
+            columns={columns}
             rows={listQuery.data?.items ?? []}
             rowKey={(entry) => entry.id}
             sort={sort}
@@ -229,14 +235,18 @@ function StreamDeadLettersSection(): ReactElement {
           />
           <div className="pagination">
             <span className="text-muted">
-              Showing {offset + 1}–{Math.min(offset + DEAD_LETTER_PAGE_SIZE, total)} of {total}
+              {interpolate(copy.pagination.range, {
+                from: offset + 1,
+                to: Math.min(offset + DEAD_LETTER_PAGE_SIZE, total),
+                total,
+              })}
             </span>
             <div className="pagination__actions">
               <Button disabled={!hasPrev} onClick={() => { setOffset(offset - DEAD_LETTER_PAGE_SIZE); }}>
-                Previous
+                {copy.pagination.previous}
               </Button>
               <Button disabled={!hasNext} onClick={() => { setOffset(offset + DEAD_LETTER_PAGE_SIZE); }}>
-                Next
+                {copy.pagination.next}
               </Button>
             </div>
           </div>
@@ -247,6 +257,10 @@ function StreamDeadLettersSection(): ReactElement {
 }
 
 export function SyncJobsPage(): ReactElement {
+  const copy = useMessages('sync-jobs').syncJobsPage;
+  const statusLabels: Record<string, string | undefined> =
+    useMessages('sync-jobs').syncJobStatusBadge.statuses;
+  const columns = useMemo(() => buildColumns(copy.columns), [copy]);
   const [searchParams, setSearchParams] = useSearchParams();
   const { sort, setSort } = useTableSort([{ id: 'createdAt', desc: true }]);
 
@@ -307,57 +321,57 @@ export function SyncJobsPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow="Diagnostics"
-      title="Sync Jobs"
-      description="Background processing visibility — filter by status, job type, or connection."
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
     >
       {/* Filter bar */}
       <div className="toolbar">
         <Select
-          aria-label="Filter by status"
+          aria-label={copy.filters.status}
           value={status ?? ''}
           onChange={(e) => { setFilter('status', e.target.value); }}
         >
-          <option value="">All statuses</option>
+          <option value="">{copy.filters.allStatuses}</option>
           {JOB_STATUS_VALUES.map((s) => (
             <option key={s} value={s}>
-              {s}
+              {statusLabels[s] ?? s}
             </option>
           ))}
         </Select>
 
         <Select
-          aria-label="Filter by job type"
+          aria-label={copy.filters.jobType}
           value={jobType ?? ''}
           onChange={(e) => { setFilter('jobType', e.target.value); }}
         >
-          <option value="">All job types</option>
+          <option value="">{copy.filters.allJobTypes}</option>
           {JOB_TYPE_VALUES.map((t) => (
             <option key={t} value={t}>
-              {t}
+              {jobTypeLabel(t)}
             </option>
           ))}
         </Select>
 
         <Select
-          aria-label="Filter by outcome"
+          aria-label={copy.filters.outcome}
           value={outcome ?? ''}
           onChange={(e) => { setFilter('outcome', e.target.value); }}
         >
-          <option value="">All outcomes</option>
+          <option value="">{copy.filters.allOutcomes}</option>
           {JOB_OUTCOME_VALUES.map((o) => (
             <option key={o} value={o}>
-              {o === 'business_failure' ? 'business failure' : o}
+              {copy.outcomes[o]}
             </option>
           ))}
         </Select>
 
         <Select
-          aria-label="Filter by connection"
+          aria-label={copy.filters.connection}
           value={connectionId ?? ''}
           onChange={(e) => { setFilter('connectionId', e.target.value); }}
         >
-          <option value="">All connections</option>
+          <option value="">{copy.filters.allConnections}</option>
           {connections.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -368,35 +382,35 @@ export function SyncJobsPage(): ReactElement {
 
       {/* Table */}
       {query.isLoading ? (
-        <DataTableSkeleton columns={COLUMNS} label="Loading sync jobs…" />
+        <DataTableSkeleton columns={columns} label={copy.loading} />
       ) : query.error ? (
         <ErrorState
-          title="Unable to load sync jobs"
+          title={copy.errorTitle}
           message={query.error.message}
           action={
-            <Button onClick={() => { void query.refetch(); }}>Retry</Button>
+            <Button onClick={() => { void query.refetch(); }}>{copy.retry}</Button>
           }
         />
       ) : (query.data?.items.length ?? 0) === 0 ? (
         <EmptyState
           liveRegion="off"
-          title="No jobs found"
+          title={copy.empty.title}
           message={
             filtersActive
-              ? 'No jobs match the current filters.'
-              : 'No sync jobs have been enqueued yet.'
+              ? copy.empty.filtered
+              : copy.empty.none
           }
           action={
             filtersActive ? (
-              <Button onClick={clearFilters}>Clear filters</Button>
+              <Button onClick={clearFilters}>{copy.empty.clearFilters}</Button>
             ) : undefined
           }
         />
       ) : (
         <>
           <DataTable
-            caption="Sync jobs"
-            columns={COLUMNS}
+            caption={copy.caption}
+            columns={columns}
             rows={query.data?.items ?? []}
             rowKey={(job) => job.id}
             rowHref={(job) => job.id}
@@ -405,7 +419,7 @@ export function SyncJobsPage(): ReactElement {
             virtualize
             containerHeight={600}
             cardView={{
-              title: (job) => job.jobType,
+              title: (job) => jobTypeLabel(job.jobType),
               subtitle: (job) => (
                 <ConnectionEntityLabel
                   connectionId={job.connectionId}
@@ -420,20 +434,24 @@ export function SyncJobsPage(): ReactElement {
           {/* Pagination */}
           <div className="pagination">
             <span className="text-muted">
-              Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
+              {interpolate(copy.pagination.range, {
+                from: offset + 1,
+                to: Math.min(offset + PAGE_SIZE, total),
+                total,
+              })}
             </span>
             <div className="pagination__actions">
               <Button
                 disabled={!hasPrev}
                 onClick={() => { setOffset(offset - PAGE_SIZE); }}
               >
-                Previous
+                {copy.pagination.previous}
               </Button>
               <Button
                 disabled={!hasNext}
                 onClick={() => { setOffset(offset + PAGE_SIZE); }}
               >
-                Next
+                {copy.pagination.next}
               </Button>
             </div>
           </div>

@@ -48,11 +48,11 @@ import { Dialog, DialogContent, DialogTitle } from '../../../shared/ui/dialog';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { useConnectionsQuery, type Connection } from '../../connections';
-import { AUTOMATION_COMPOSER_COPY } from '../lib/automation.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { describeTrigger } from '../lib/automation-trigger-labels';
 import { describeAutomationWriteError } from '../lib/automation-write-error';
 import {
-  automationComposerSchema,
+  createAutomationComposerSchema,
   newActionDraft,
   newConditionDraft,
   toActionInput,
@@ -68,7 +68,6 @@ import {
   resolveDryRunGate,
 } from '../lib/dry-run-verdict';
 import { AutomationDryRunPanel } from './automation-dry-run-panel';
-import { AUTOMATION_DRY_RUN_COPY } from '../lib/automation.copy';
 import { AutomationConditionRow } from './automation-condition-row';
 import { AutomationActionRow } from './automation-action-row';
 import {
@@ -143,6 +142,13 @@ export function AutomationComposerDialog({
   vocabulary,
   prefillSuggested = false,
 }: AutomationComposerDialogProps): ReactElement {
+  const messages = useMessages('automation');
+  const composerCopy = messages.composer;
+  const copy = messages.composerDialog;
+  const schema = useMemo(
+    () => createAutomationComposerSchema(messages.composerSchema),
+    [messages.composerSchema],
+  );
   const connectionsQuery = useConnectionsQuery();
   const createRule = useCreateAutomationMutation();
 
@@ -153,7 +159,7 @@ export function AutomationComposerDialog({
   const configKey = triggerVocab?.configKey ?? null;
 
   const form = useForm<AutomationComposerValues>({
-    resolver: zodResolver(automationComposerSchema),
+    resolver: zodResolver(schema),
     defaultValues: {
       name: '',
       trigger,
@@ -279,10 +285,10 @@ export function AutomationComposerDialog({
         className="automation-composer"
         style={{ maxWidth: '40rem' }}
       >
-        <DialogTitle>{AUTOMATION_COMPOSER_COPY.createTitle}</DialogTitle>
+        <DialogTitle>{composerCopy.createTitle}</DialogTitle>
 
         {refusal === null ? null : (
-          <Alert tone="error" title={AUTOMATION_COMPOSER_COPY.saveFailed}>
+          <Alert tone="error" title={composerCopy.saveFailed}>
             {refusal.message}
           </Alert>
         )}
@@ -294,20 +300,20 @@ export function AutomationComposerDialog({
           }}
         >
           <FormField
-            label={AUTOMATION_COMPOSER_COPY.nameLabel}
+            label={composerCopy.nameLabel}
             name="automation-name"
             error={formState.errors.name?.message}
-            description={AUTOMATION_COMPOSER_COPY.nameHint}
+            description={composerCopy.nameHint}
           >
             <Input {...register('name')} />
           </FormField>
 
           <section className="automation-composer__section">
-            <p className="eyebrow">{AUTOMATION_COMPOSER_COPY.whenLabel}</p>
+            <p className="eyebrow">{composerCopy.whenLabel}</p>
             <p>{described.label}</p>
             {configKey === null ? null : (
               <FormField
-                label={AUTOMATION_COMPOSER_COPY.triggerConfigLabel}
+                label={composerCopy.triggerConfigLabel}
                 name="automation-trigger-config"
                 error={formState.errors.triggerConfigValue?.message}
               >
@@ -317,7 +323,7 @@ export function AutomationComposerDialog({
           </section>
 
           <section className="automation-composer__section">
-            <p className="eyebrow">{AUTOMATION_COMPOSER_COPY.onlyIfLabel}</p>
+            <p className="eyebrow">{composerCopy.onlyIfLabel}</p>
             {conditionArray.fields.map((field, index) => (
               <AutomationConditionRow
                 key={field.id}
@@ -343,13 +349,13 @@ export function AutomationComposerDialog({
               className="button--sm"
               onClick={() => conditionArray.append(newConditionDraft())}
             >
-              {AUTOMATION_COMPOSER_COPY.addCondition}
+              {composerCopy.addCondition}
             </Button>
-            <p className="muted-text">{AUTOMATION_COMPOSER_COPY.conditionsHint}</p>
+            <p className="muted-text">{composerCopy.conditionsHint}</p>
           </section>
 
           <section className="automation-composer__section">
-            <p className="eyebrow">{AUTOMATION_COMPOSER_COPY.thenLabel}</p>
+            <p className="eyebrow">{composerCopy.thenLabel}</p>
             {actionArray.fields.map((field, index) => (
               <AutomationActionRow
                 key={field.id}
@@ -385,27 +391,27 @@ export function AutomationComposerDialog({
               disabled={actionArray.fields.length >= maxSteps}
               onClick={() => actionArray.append(newActionDraft())}
             >
-              {AUTOMATION_COMPOSER_COPY.addAction}
+              {composerCopy.addAction}
             </Button>
             {formState.errors.actions?.root?.message ? (
               <p className="field-error">{formState.errors.actions.root.message}</p>
             ) : null}
             {/* Once, for the rule — never per step. */}
             <p className="muted-text">
-              {AUTOMATION_COMPOSER_COPY.stopOnFirstFailure(maxSteps)}
+              {interpolate(composerCopy.stopOnFirstFailure, { max: maxSteps })}
             </p>
           </section>
 
           <div className="automation-composer__dates">
             <FormField
-              label={AUTOMATION_COMPOSER_COPY.effectiveFromLabel}
+              label={composerCopy.effectiveFromLabel}
               name="automation-effective-from"
               error={formState.errors.effectiveFrom?.message}
             >
               <Input type="date" {...register('effectiveFrom')} />
             </FormField>
             <FormField
-              label={`${AUTOMATION_COMPOSER_COPY.effectiveToLabel} ${AUTOMATION_COMPOSER_COPY.effectiveToOptional}`}
+              label={copy.effectiveToOptionalLabel}
               name="automation-effective-to"
             >
               <Input type="date" {...register('effectiveTo')} />
@@ -415,9 +421,9 @@ export function AutomationComposerDialog({
           <label className="ack-row">
             <input type="checkbox" {...register('isActive')} />
             <span>
-              {AUTOMATION_COMPOSER_COPY.activeLabel}
+              {composerCopy.activeLabel}
               <span className="muted-text" style={{ display: 'block' }}>
-                {AUTOMATION_COMPOSER_COPY.activeHint}
+                {composerCopy.activeHint}
               </span>
             </span>
           </label>
@@ -430,7 +436,7 @@ export function AutomationComposerDialog({
           {needsMoneyAck ? (
             <label className="ack-row">
               <input type="checkbox" {...register('moneyAcknowledged')} />
-              <span>{AUTOMATION_COMPOSER_COPY.moneyAckLabel}</span>
+              <span>{composerCopy.moneyAckLabel}</span>
             </label>
           ) : null}
 
@@ -465,7 +471,7 @@ export function AutomationComposerDialog({
                       // Always the DRAFT arm: a draft has no id, and sending
                       // both `ruleId` and `rule` is a 400.
                       rule: {
-                        name: values.name.trim().length > 0 ? values.name.trim() : 'Untitled',
+                        name: values.name.trim().length > 0 ? values.name.trim() : copy.untitledName,
                         trigger,
                         triggerConfig:
                           configKey === null
@@ -488,27 +494,27 @@ export function AutomationComposerDialog({
                 }}
               />
               {gate === 'required' ? (
-                <Alert tone="warning">{AUTOMATION_DRY_RUN_COPY.gateLocked}</Alert>
+                <Alert tone="warning">{messages.dryRun.gateLocked}</Alert>
               ) : null}
               {/*
                 "Not tested" and "tested, then changed" are different operator
                 situations; one sentence for both reads as the gate being broken.
               */}
               {gate === 'stale' ? (
-                <Alert tone="warning">{AUTOMATION_DRY_RUN_COPY.gateStale}</Alert>
+                <Alert tone="warning">{messages.dryRun.gateStale}</Alert>
               ) : null}
               {gate === 'satisfied' ? (
-                <p className="muted-text">{AUTOMATION_DRY_RUN_COPY.gatePassed}</p>
+                <p className="muted-text">{messages.dryRun.gatePassed}</p>
               ) : null}
             </>
           ) : null}
 
           {/* Spec §5.5, verbatim — once, for the rule. */}
-          <p className="muted-text">{AUTOMATION_COMPOSER_COPY.nonRetroactivity}</p>
+          <p className="muted-text">{composerCopy.nonRetroactivity}</p>
 
           <div className="automation-composer__footer">
             <Button type="button" tone="secondary" onClick={() => onOpenChange(false)}>
-              {AUTOMATION_COMPOSER_COPY.cancel}
+              {composerCopy.cancel}
             </Button>
             <Button
               type="submit"
@@ -520,8 +526,8 @@ export function AutomationComposerDialog({
               }
             >
               {createRule.isPending
-                ? AUTOMATION_COMPOSER_COPY.saving
-                : AUTOMATION_COMPOSER_COPY.save}
+                ? composerCopy.saving
+                : composerCopy.save}
             </Button>
           </div>
         </form>

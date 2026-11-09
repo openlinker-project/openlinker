@@ -20,19 +20,19 @@
 import { useId, useState, type ReactElement } from 'react';
 import { Button, FieldError, Input } from '../../../../shared/ui';
 import { checkImageUrl, type ImageUrlProblem } from '../../lib/image-url';
+import { interpolate, useMessages, usePlural } from '../../../../shared/i18n';
 
-export const IMAGE_URL_PROBLEM_COPY: Record<ImageUrlProblem, string> = {
-  empty: 'Enter an image address, starting with https://.',
-  'not-a-url':
-    'This is not a web address. Enter a full image address starting with https:// or http://, for example https://example.com/photo.jpg.',
-  duplicate: 'This image is already in the list. Enter a different address.',
-};
+type ImageStripCopy = ReturnType<typeof useMessages<'listings'>>['bulkImageStrip'];
 
-export const BROKEN_IMAGE_BADGE = 'Not loading';
-
-export function brokenImagesNote(count: number): string {
-  const subject = count === 1 ? '1 image could not be loaded' : `${count} images could not be loaded`;
-  return `${subject}. The address may be wrong or may not point to an image. Remove it or use another address.`;
+function imageUrlProblemCopy(copy: ImageStripCopy, problem: ImageUrlProblem): string {
+  switch (problem) {
+    case 'empty':
+      return copy.problems.empty;
+    case 'not-a-url':
+      return copy.problems.notAUrl;
+    case 'duplicate':
+      return copy.problems.duplicate;
+  }
 }
 
 /**
@@ -50,12 +50,13 @@ function ThumbZoomButton({
   onZoom: (src: string) => void;
   onLoadResult: (url: string, loaded: boolean) => void;
 }): ReactElement {
+  const copy = useMessages('listings').bulkImageStrip;
   return (
     <span
       role="button"
       tabIndex={0}
       className="bulk-editor__thumb-btn"
-      aria-label="Zoom image"
+      aria-label={copy.zoom}
       onClick={(e) => {
         e.stopPropagation();
         onZoom(url);
@@ -94,6 +95,8 @@ export function BulkImageStrip({
   inherited = false,
   focusTarget = false,
 }: BulkImageStripProps): ReactElement {
+  const copy = useMessages('listings').bulkImageStrip;
+  const plural = usePlural();
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState('');
   const [problem, setProblem] = useState<ImageUrlProblem | null>(null);
@@ -151,14 +154,14 @@ export function BulkImageStrip({
               ]
                 .filter(Boolean)
                 .join(' ')}
-              title={broken ? `${BROKEN_IMAGE_BADGE}: ${url}` : undefined}
+              title={broken ? interpolate(copy.brokenTitle, { url }) : undefined}
             >
               <ThumbZoomButton url={url} onZoom={onZoom} onLoadResult={onLoadResult} />
-              {broken ? <span className="bulk-editor__img-broken">{BROKEN_IMAGE_BADGE}</span> : null}
+              {broken ? <span className="bulk-editor__img-broken">{copy.brokenBadge}</span> : null}
               <button
                 type="button"
                 className="bulk-editor__img-x"
-                aria-label="Remove image"
+                aria-label={copy.remove}
                 onClick={() => onImagesChange(images.filter((_, idx) => idx !== i))}
               >
                 ×
@@ -170,17 +173,17 @@ export function BulkImageStrip({
           <button
             type="button"
             className="bulk-editor__img-add"
-            aria-label="Add image"
+            aria-label={copy.addImage}
             onClick={() => setAdding(true)}
           >
-            ＋
+            {'＋'}
           </button>
         ) : null}
       </div>
       {/* Always mounted: a live region that appears together with its text is
           often not announced. */}
       <p className="bulk-editor__img-note" aria-live="polite">
-        {brokenCount > 0 ? brokenImagesNote(brokenCount) : null}
+        {brokenCount > 0 ? plural(brokenCount, copy.brokenNote) : null}
       </p>
       {adding ? (
         <>
@@ -204,17 +207,17 @@ export function BulkImageStrip({
                   submitDraft();
                 }
               }}
-              placeholder="https://example.com/image.jpg"
-              aria-label="New image URL"
+              placeholder={copy.urlPlaceholder}
+              aria-label={copy.urlLabel}
             />
             <Button tone="primary" type="button" className="button--sm" onClick={submitDraft}>
-              Add
+              {copy.add}
             </Button>
             <Button tone="ghost" type="button" className="button--sm" onClick={closeAdd}>
-              Cancel
+              {copy.cancel}
             </Button>
           </div>
-          <FieldError id={errorId} message={problem !== null ? IMAGE_URL_PROBLEM_COPY[problem] : undefined} />
+          <FieldError id={errorId} message={problem !== null ? imageUrlProblemCopy(copy, problem) : undefined} />
         </>
       ) : null}
     </>

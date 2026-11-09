@@ -1,0 +1,15 @@
+{
+  "subiektCredentialsPanel.cancel": 10,
+  "subiektCredentialsPanel.rotate": 32,
+  "subiektCredentialsPanel.save": 24,
+  "subiektInvoiceCorrectionFlow.addLine": 16,
+  "subiektInvoiceCorrectionFlow.cancel": 10,
+  "subiektInvoiceCorrectionFlow.col.lp": 6,
+  "subiektInvoiceCorrectionFlow.col.newPrice": 14,
+  "subiektInvoiceCorrectionFlow.col.newQty": 12,
+  "subiektInvoiceCorrectionFlow.providerTag": 20,
+  "subiektInvoiceCorrectionFlow.submit": 28,
+  "subiektInvoiceCorrectionFlow.submitting": 16,
+  "subiektInvoiceDetailSection.downloadPdf": 20,
+  "subiektInvoiceDetailSection.readFrom": 30
+}

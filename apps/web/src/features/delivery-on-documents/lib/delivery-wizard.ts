@@ -11,6 +11,7 @@
  *
  * @module apps/web/src/features/delivery-on-documents/lib
  */
+import { getMessages, interpolate } from '../../../shared/i18n';
 import type { DeliveryLineSuggestion } from '../api/delivery-on-documents.types';
 import type { DeliveryOnDocumentsConfig } from './delivery-line';
 import {
@@ -72,7 +73,7 @@ export function wizardConfig(
 /** Short summary of one row for the wizard's side panel. */
 export function summaryOf(settings: DeliveryFormSettings): string {
   return settings.rate === 'spread'
-    ? 'In product prices'
+    ? getMessages('delivery-on-documents').wizard.summarySpread
     : `${settings.name}, ${rateText(settings).toLowerCase()}`;
 }
 
@@ -86,19 +87,27 @@ export function wizardSummaryRows(rules: readonly DeliveryRule[]): DeliverySumma
   const other = rules.find((r) => r.country === null);
   return [
     ...listed.map((r) => ({ label: countryName(r.country ?? ''), value: summaryOf(r.settings) })),
-    ...(other ? [{ label: 'All other countries', value: summaryOf(other.settings) }] : []),
+    ...(other
+      ? [
+          {
+            label: getMessages('delivery-on-documents').common.allOtherCountries,
+            value: summaryOf(other.settings),
+          },
+        ]
+      : []),
   ];
 }
 
 /** The one-line description under "Use the suggested settings", built from the data. */
 export function suggestedText(suggestions: readonly DeliveryLineSuggestion[]): string {
+  const copy = getMessages('delivery-on-documents').wizard;
   const fallback = neutralSettings().name;
   if (suggestions.length === 0) {
-    return `Delivery gets the same VAT rate as the products and says “${fallback}”.`;
+    return interpolate(copy.suggestedNone, { name: fallback });
   }
-  const named = suggestions.map(
-    (s) => `orders to ${countryName(s.country)} say “${s.defaultName}”`,
+  const named = suggestions.map((s) =>
+    interpolate(copy.suggestedCountry, { country: countryName(s.country), name: s.defaultName }),
   );
-  const sentence = `${named.join(', ')}, other countries say “${fallback}”.`;
-  return `Delivery gets the same VAT rate as the products. ${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}`;
+  const sentence = interpolate(copy.suggestedNames, { list: named.join(', '), name: fallback });
+  return `${copy.suggestedLead} ${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}`;
 }

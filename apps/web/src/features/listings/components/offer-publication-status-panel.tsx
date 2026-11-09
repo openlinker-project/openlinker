@@ -26,6 +26,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { Button } from '../../../shared/ui/button';
+import { renderRich, useMessages } from '../../../shared/i18n';
 import { EmptyState, ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { listingsQueryKeys } from '../api/listings.query-keys';
@@ -35,6 +36,7 @@ import type {
 } from '../api/listings.types';
 import { useOfferPublicationStatusQuery } from '../hooks/use-offer-publication-status-query';
 import { OfferPublicationStatusBadge } from './offer-publication-status-badge';
+import { serverErrorText } from '../lib/server-error-text';
 
 interface OfferPublicationStatusPanelProps {
   productId: string;
@@ -46,6 +48,8 @@ export function OfferPublicationStatusPanel({
   productId,
   enabled = true,
 }: OfferPublicationStatusPanelProps): ReactElement | null {
+  const copy = useMessages('listings').offerPublicationStatusPanel;
+  const common = useMessages('listings').common;
   const apiClient = useApiClient();
   const queryClient = useQueryClient();
   const query = useOfferPublicationStatusQuery(productId, undefined, { enabled });
@@ -69,15 +73,15 @@ export function OfferPublicationStatusPanel({
   }
 
   if (query.isLoading) {
-    return <LoadingState title="Loading publication status" message="Fetching live offer status…" />;
+    return <LoadingState title={copy.loadingTitle} message={copy.loadingMessage} />;
   }
 
   if (query.error) {
     return (
       <ErrorState
-        title="Unable to load publication status"
-        message={query.error.message}
-        action={<Button onClick={() => void query.refetch()}>Retry</Button>}
+        title={copy.errorTitle}
+        message={serverErrorText(common.serverSaid, query.error.message, common.unknownError)}
+        action={<Button onClick={() => void query.refetch()}>{copy.retry}</Button>}
       />
     );
   }
@@ -88,8 +92,8 @@ export function OfferPublicationStatusPanel({
     // a snapshot comes back with a null status and renders a row below (#2039).
     return (
       <EmptyState
-        title="No offers on marketplaces"
-        message="This product isn't listed on any marketplace connection yet."
+        title={copy.emptyTitle}
+        message={copy.emptyMessage}
       />
     );
   }
@@ -103,18 +107,19 @@ export function OfferPublicationStatusPanel({
       <ul className="offer-publication-status__list">
         {offers.map((offer) => {
           const isRefreshing = pendingOfferId === offer.externalOfferId;
+          const syncedAt = offer.lastStatusSyncedAt;
           return (
             <li key={`${offer.connectionId}:${offer.externalOfferId}`} className="offer-publication-status__row">
               <OfferPublicationStatusBadge status={offer.publicationStatus} compact />
               <span className="offer-publication-status__id mono-text">{offer.externalOfferId}</span>
               <span className="sync-freshness">
                 <span className="sync-freshness__dot" aria-hidden="true" />
-                {offer.lastStatusSyncedAt === null ? (
-                  'Never synced'
+                {syncedAt === null ? (
+                  copy.neverSynced
                 ) : (
-                  <>
-                    Synced <TimeDisplay iso={offer.lastStatusSyncedAt} format="relative" />
-                  </>
+                  renderRich(copy.synced, {
+                    time: () => <TimeDisplay iso={syncedAt} format="relative" />,
+                  })
                 )}
               </span>
               <Button
@@ -123,10 +128,10 @@ export function OfferPublicationStatusPanel({
                 onClick={() => refresh.mutate(offer)}
               >
                 {isRefreshing
-                  ? 'Refreshing…'
+                  ? copy.refreshing
                   : offer.publicationStatus === null
-                    ? 'Check status'
-                    : 'Refresh'}
+                    ? copy.checkStatus
+                    : copy.refresh}
               </Button>
               <OfferProblemList offer={offer} />
             </li>

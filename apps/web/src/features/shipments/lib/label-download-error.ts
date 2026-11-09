@@ -68,9 +68,13 @@
  * on that branch notes it logs+returns the raw `error.message` unsanitised -
  * an unmodeled shape must never be echoed to the operator.
  *
+ * Every title and description reads the `shipments.labelDownloadError` copy
+ * at call time, so it follows the active language (ADR-081).
+ *
  * @module apps/web/src/features/shipments/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import type { AlertTone } from '../../../shared/ui/alert';
 import type { RetryabilityClass } from './shipment-retryability';
 
@@ -109,30 +113,29 @@ function withTone(result: UntonedLabelDownloadError): LabelDownloadError {
   return { ...result, tone: TONE_BY_RETRYABLE[result.retryable] };
 }
 
-const UNKNOWN_FALLBACK: UntonedLabelDownloadError = {
-  title: 'Something went wrong',
-  description: 'Try again in a moment. If it keeps happening, contact support with the order id.',
-  retryable: 'unknown',
-};
+function unknownFallback(): UntonedLabelDownloadError {
+  const copy = getMessages('shipments').labelDownloadError.unknown;
+  return { title: copy.title, description: copy.description, retryable: 'unknown' };
+}
 
 export function resolveLabelDownloadError(error: unknown): LabelDownloadError {
+  const copy = getMessages('shipments').labelDownloadError;
   if (!(error instanceof ApiError)) {
-    return withTone(UNKNOWN_FALLBACK);
+    return withTone(unknownFallback());
   }
 
   if (error.isNetworkError()) {
     return withTone({
-      title: 'Couldn’t reach OpenLinker',
-      description: 'Check your connection and try again.',
+      title: copy.network.title,
+      description: copy.network.description,
       retryable: 'transient',
     });
   }
 
   if (error.status === 404) {
     return withTone({
-      title: 'No shipment matches this id',
-      description:
-        'It may have been removed, or the link is stale. Refresh the order to see its current shipment.',
+      title: copy.notFound.title,
+      description: copy.notFound.description,
       retryable: 'permanent',
     });
   }
@@ -140,14 +143,14 @@ export function resolveLabelDownloadError(error: unknown): LabelDownloadError {
   if (error.status === 422) {
     if (error.message.includes('generate the label first')) {
       return withTone({
-        title: 'No label to download yet',
-        description: 'A label hasn’t been generated for this shipment. Generate one first.',
+        title: copy.noLabelYet.title,
+        description: copy.noLabelYet.description,
         retryable: 'permanent',
       });
     }
     return withTone({
-      title: 'This carrier doesn’t provide a downloadable label',
-      description: 'The label lives with the carrier directly - retrying here will never produce a file.',
+      title: copy.notSupported.title,
+      description: copy.notSupported.description,
       retryable: 'permanent',
     });
   }
@@ -158,18 +161,19 @@ export function resolveLabelDownloadError(error: unknown): LabelDownloadError {
       const code = body.providerCode;
       const message = body.message ?? error.message;
       return withTone({
-        title: 'The carrier rejected the request',
-        description: code ? `${message} (ref: ${code})` : message,
+        title: copy.providerRejected.title,
+        description: code
+          ? interpolate(copy.providerRejected.messageWithRef, { message, code })
+          : message,
         retryable: 'unknown',
       });
     }
     return withTone({
-      title: 'Our stored carrier credentials were rejected',
-      description:
-        'This is a connection problem, not something a retry fixes. Ask an admin to reconnect this carrier.',
+      title: copy.credentialsRejected.title,
+      description: copy.credentialsRejected.description,
       retryable: 'auth',
     });
   }
 
-  return withTone(UNKNOWN_FALLBACK);
+  return withTone(unknownFallback());
 }

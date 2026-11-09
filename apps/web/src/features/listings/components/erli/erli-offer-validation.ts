@@ -9,11 +9,21 @@
  *
  * @module features/listings/components/erli
  */
+import { getMessages } from '../../../../shared/i18n';
 import type { OfferValidationContribution } from '../../../../shared/plugins';
 
 export const ERLI_MISSING_IMAGE_BLOCKER = 'erli:missing-image';
 
 export const erliOfferValidation: OfferValidationContribution = {
-  blockers: [{ id: ERLI_MISSING_IMAGE_BLOCKER, tone: 'error', label: 'no image' }],
+  blockers: [
+    {
+      id: ERLI_MISSING_IMAGE_BLOCKER,
+      tone: 'error',
+      // A getter, so the label is read in the language active when the chip renders.
+      get label(): string {
+        return getMessages('listings').erliOfferValidation.blockers.noImage;
+      },
+    },
+  ],
   validateRow: (input) => (input.imageCount === 0 ? [ERLI_MISSING_IMAGE_BLOCKER] : []),
 };

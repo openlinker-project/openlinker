@@ -13,6 +13,7 @@
  *
  * @module apps/web/src/features/orders/components
  */
+import { getMessages, interpolate } from '../../../shared/i18n';
 import type { OrderEditsView } from '../api/order-edit.types';
 import { formatDecimalAmount, orderEditHistoryTitle } from '../lib/order-edit';
 import type { DatedTimelineEvent, TimelineEvent } from './order-activity-timeline';
@@ -29,7 +30,8 @@ export function buildOrderEditTimelineEvents(
   sourceName: string | null,
 ): OrderEditTimelineEvents {
   if (!edits) return { dated: [], trailing: [] };
-  const channel = sourceName ?? 'The sales channel';
+  const copy = getMessages('orders').orderEditTimeline;
+  const channel = sourceName ?? copy.channelFallback;
   const dated: DatedTimelineEvent[] = [];
   const trailing: TimelineEvent[] = [];
 
@@ -38,8 +40,8 @@ export function buildOrderEditTimelineEvents(
       id: `order-edit:${entry.changeId}`,
       timestamp: entry.at,
       title: orderEditHistoryTitle(entry),
-      by: 'operator',
-      description: `Changed in OpenLinker only - ${channel} keeps the original.`,
+      by: copy.byOperator,
+      description: interpolate(copy.changed, { channel }),
       tone: 'warning',
     });
   }
@@ -49,20 +51,23 @@ export function buildOrderEditTimelineEvents(
       trailing.push({
         id: `order-edit-refund-pending:${proposal.changeId}`,
         timestamp: null,
-        title: 'Refund not confirmed yet',
-        by: 'waiting on you',
-        description: `Refund ${
-          proposal.amount ? formatDecimalAmount(proposal.amount, proposal.currency) : 'the difference'
-        } on ${channel}, then use Confirm refund.`,
+        title: copy.refundPendingTitle,
+        by: copy.byWaitingOnYou,
+        description: interpolate(copy.refundPendingDescription, {
+          amount: proposal.amount
+            ? formatDecimalAmount(proposal.amount, proposal.currency)
+            : copy.refundDifference,
+          channel,
+        }),
         tone: 'warning',
       });
     } else {
       dated.push({
         id: `order-edit-correction:${proposal.changeId}`,
         timestamp: proposal.requestedAt,
-        title: 'Correction invoice drafted for the discount',
-        by: 'system · invoicing',
-        description: 'Waiting for you to review and confirm it.',
+        title: copy.correctionTitle,
+        by: copy.bySystemInvoicing,
+        description: copy.correctionDescription,
         tone: 'warning',
       });
     }

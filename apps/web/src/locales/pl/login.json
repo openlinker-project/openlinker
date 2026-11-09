@@ -1,0 +1,235 @@
+{
+  "backdrop": {
+    "ago": {
+      "hours": "{n} godz. temu",
+      "minutes": "{n} min temu",
+      "yesterday": "wczoraj"
+    },
+    "alerts": "Alerty",
+    "analytics": {
+      "aov": "Średnia wartość zamówienia",
+      "aovMetric": "Przychód na zamówienie",
+      "basis": "vs poprzednie 14 dni",
+      "cancelled": "Anulowane",
+      "cancelledMetric": "{share} zamówień",
+      "channel": "Kanał sprzedaży",
+      "description": "Sprzedaż we wszystkich połączonych kanałach, z jasnym pokryciem danych.",
+      "noChange": "Bez zmian",
+      "orders": "Zamówienia",
+      "ordersMetric": "Złożone w okresie",
+      "revenue": "Przychód",
+      "revenueMetric": "Brutto, wszystkie kanały",
+      "settings": "Ustawienia analityki",
+      "share": "Udział",
+      "sku": "SKU",
+      "topProducts": "Najlepsze produkty",
+      "units": "Sztuki",
+      "up": "Wzrost o {value}"
+    },
+    "customers": {
+      "c01": "Marta Wiśniewska",
+      "c02": "Tomasz Wójcik",
+      "c03": "Katarzyna Lis",
+      "c04": "Michał Zieliński",
+      "c05": "Agnieszka Kowalczyk",
+      "c06": "Paweł Kamiński",
+      "c07": "Ewa Szymańska",
+      "c08": "Jan Nowak",
+      "c09": "Anna Lewandowska",
+      "c10": "Piotr Dąbrowski",
+      "c11": "Monika Grabowska",
+      "c12": "Krzysztof Pawlak",
+      "c13": "Joanna Michalska",
+      "c14": "Łukasz Król",
+      "c15": "Magdalena Wieczorek",
+      "c16": "Rafał Jabłoński"
+    },
+    "nav": {
+      "adapters": "Adaptery",
+      "analytics": "Analityka",
+      "connections": "Połączenia",
+      "cursors": "Kursory",
+      "customers": "Klienci",
+      "diagnostics": "Diagnostyka",
+      "insights": "Kondycja systemu",
+      "jobs": "Zadania w tle",
+      "listings": "Oferty",
+      "operations": "Operacje",
+      "orders": "Zamówienia",
+      "platform": "Platforma",
+      "products": "Produkty",
+      "returns": "Zwroty",
+      "salesDocuments": "Dokumenty sprzedaży",
+      "settings": "Ustawienia",
+      "shipments": "Przesyłki",
+      "webhooks": "Webhooki"
+    },
+    "orders": {
+      "channel": "Kanał sprzedaży",
+      "customer": "Klient",
+      "order": "Zamówienie",
+      "shipment": "Przesyłka",
+      "status": "Status",
+      "total": "Razem"
+    },
+    "products": {
+      "p1": "Bluza z wełny merino",
+      "p2": "Buty do biegania Aero",
+      "p3": "Torba płócienna",
+      "p4": "Butelka termiczna 750 ml",
+      "p5": "Koszula lniana",
+      "p6": "Czapka z wełny",
+      "p7": "Skórzany portfel",
+      "p8": "Skarpety bawełniane, 3 pary"
+    },
+    "refresh": "Odśwież",
+    "shipments": {
+      "carrier": "Przewoźnik",
+      "description": "Etykiety nadawcze, numery przesyłek i status doręczenia u każdego przewoźnika.",
+      "order": "Zamówienie",
+      "status": "Status",
+      "tracking": "Numer przesyłki",
+      "updated": "Aktualizacja"
+    },
+    "status": {
+      "cancelled": "Anulowane",
+      "delivered": "Doręczone",
+      "dispatched": "Nadane",
+      "inTransit": "W drodze",
+      "labelReady": "Etykieta gotowa",
+      "new": "Nowe",
+      "notShipped": "Nienadane",
+      "pending": "Oczekuje",
+      "processing": "W realizacji",
+      "shipped": "Wysłane"
+    },
+    "user": "anna",
+    "workspace": "Domyślna organizacja"
+  },
+  "bar": {
+    "chip": "Demo",
+    "docs": "Dokumentacja",
+    "github": "GitHub",
+    "linksLabel": "Więcej o OpenLinkerze",
+    "site": "openlinker.io",
+    "text": "Demo z przykładowymi danymi tylko do odczytu."
+  },
+  "demo": {
+    "consent": {
+      "accept": "Zgadzam się",
+      "decline": "Wyloguj",
+      "errorTitle": "Nie udało się zapisać",
+      "fine": "Nagrywanie startuje po kliknięciu „Zgadzam się”.",
+      "lead": "Nagrywamy, co klikasz w demo, żeby wiedzieć, co poprawić. Haseł nie nagrywamy. Bez Twojej zgody demo się nie otworzy.",
+      "pending": "Zapisuję...",
+      "title": "Zgoda na nagrywanie sesji"
+    },
+    "headline": {
+      "line1": "Zobacz, jak OpenLinker",
+      "line2": "obsługuje zamówienia",
+      "rotate": {
+        "w1": "z Allegro.",
+        "w2": "z Erli.",
+        "w3": "z PrestaShopa.",
+        "w4": "z WooCommerce.",
+        "w5": "z Shopera."
+      }
+    },
+    "highlights": {
+      "h1": "Konto demo jest darmowe",
+      "h2": "Na własnym serwerze nie płacisz prowizji od zamówień",
+      "h3": "Cały kod jest na GitHubie, na licencji Apache 2.0"
+    },
+    "lead": "Załóż konto i przejrzyj prawdziwy panel z przykładowym sklepem: zamówienia, wysyłki i faktury.",
+    "login": {
+      "failed": "Nieprawidłowy login lub hasło. Upewnij się, że konto zostało aktywowane.",
+      "lead": "Użyj loginu lub e-maila i hasła z rejestracji.",
+      "pending": "Loguję...",
+      "submit": "Zaloguj się",
+      "title": "Zaloguj się do demo"
+    },
+    "recorded": {
+      "label": "Co nagrywamy",
+      "r1": "Strony, które otwierasz, i przyciski, które klikasz",
+      "r2": "Tekst, który wpisujesz, poza hasłami",
+      "r3": "Przeglądarkę, rozmiar ekranu i przybliżoną lokalizację z adresu IP",
+      "r4": "Same przykładowe dane, bo sklep, zamówienia i faktury w demo są wymyślone"
+    },
+    "register": {
+      "lead": "Po rejestracji przyślemy link aktywacyjny na Twój e-mail.",
+      "pending": "Zakładam konto...",
+      "recording": "Sesje w demo rejestrujemy (bez haseł), żeby wiedzieć, co poprawić. Zakładając konto, zgadzasz się na to.",
+      "sentAction": "Przejdź do logowania",
+      "sentLead": "Wysłaliśmy link na <b>{email}</b>. Kliknij go, a potem zaloguj się tutaj.",
+      "sentTitle": "Sprawdź skrzynkę",
+      "submit": "Załóż konto demo",
+      "title": "Darmowe konto demo"
+    },
+    "tabs": {
+      "login": "Zaloguj się",
+      "register": "Załóż konto"
+    }
+  },
+  "production": {
+    "headline": {
+      "accent": "OpenLinker",
+      "line1": "Zaloguj się do"
+    },
+    "lead": "Zamówienia, wysyłki i faktury ze wszystkich Twoich kanałów sprzedaży.",
+    "login": {
+      "failed": "Login albo hasło są nieprawidłowe.",
+      "lead": "W celu zalogowania się wypełnij formularz.",
+      "pending": "Loguję...",
+      "submit": "Zaloguj się",
+      "title": "Zaloguj się"
+    },
+    "register": {
+      "lead": "Administrator dostanie Twoją prośbę i aktywuje konto.",
+      "pending": "Wysyłam...",
+      "sentAction": "Wróć do logowania",
+      "sentLead": "Gdy aktywuje Twoje konto, zalogujesz się tutaj tym samym loginem i hasłem.",
+      "sentTitle": "Prośba trafiła do administratora",
+      "submit": "Wyślij prośbę",
+      "title": "Poproś o dostęp"
+    },
+    "support": "Masz problem? Sprawdź <link>dokumentację</link>.",
+    "tabs": {
+      "login": "Zaloguj się",
+      "register": "Poproś o dostęp"
+    }
+  },
+  "ui": {
+    "confirm": "Powtórz hasło",
+    "email": "E-mail",
+    "forgot": "Nie pamiętasz hasła?",
+    "hide": "Ukryj",
+    "hidePw": "Ukryj hasło",
+    "loading": "Sprawdzam sesję...",
+    "loginFailedTitle": "Nie udało się zalogować",
+    "min8": "min. 8 znaków",
+    "password": "Hasło",
+    "registerFailedTitle": "Nie udało się założyć konta",
+    "registrationOffBody": "Zaloguj się na swoje konto. Nowe konta zakłada administrator.",
+    "registrationOffTitle": "Rejestracja jest wyłączona",
+    "show": "Pokaż",
+    "showPw": "Pokaż hasło",
+    "signedInLead": "Otwieramy panel OpenLinker.",
+    "signedInTitle": "Zalogowano",
+    "tabsLabel": "Logowanie lub rejestracja",
+    "tracking": "Ta wizyta jest zapisywana w statystykach. Nie tworzymy na jej podstawie profilu osoby.",
+    "username": "Nazwa użytkownika",
+    "usernameOrEmail": "Nazwa użytkownika lub e-mail",
+    "v": {
+      "confirm": "Powtórz hasło.",
+      "email": "Wpisz adres e-mail.",
+      "emailBad": "Ten adres e-mail wygląda na niepełny.",
+      "mismatch": "Hasła się różnią.",
+      "password": "Wpisz hasło.",
+      "password8": "Hasło musi mieć co najmniej 8 znaków.",
+      "taken": "Ta nazwa użytkownika albo ten e-mail są już zajęte.",
+      "usernameLogin": "Wpisz nazwę użytkownika albo e-mail.",
+      "usernameRegister": "Wybierz nazwę użytkownika."
+    },
+    "yourAddress": "Twój adres"
+  }
+}

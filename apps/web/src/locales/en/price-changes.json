@@ -1,0 +1,258 @@
+{
+  "acceptPriceChangeDialog": {
+    "cancel": "Cancel",
+    "description": "{product} on {destination} - from {source}",
+    "liveNow": "Live now",
+    "optInDescription": "Next time this source's price changes, it'll go straight to this connection - no review needed.",
+    "optInTitle": "Also set {source} → {destination} to Automatic",
+    "ordersNote": "This changes the live listing's price only - orders already placed keep the price they were bought at.",
+    "publish": "Publish price",
+    "publishing": "Publishing…",
+    "ruleNote": "{rule} That comes to <b>{amount}</b>, VAT included.",
+    "title": "Publish new price",
+    "willPublish": "Will publish"
+  },
+  "autoAppliedDialog": {
+    "close": "Close",
+    "description": "These connections publish without asking, so nothing here needs a decision from you.",
+    "productNotFound": "Product not found",
+    "title": "Applied automatically recently"
+  },
+  "autoAppliedNote": {
+    "message": {
+      "one": "<count>{n}</count> price change went live automatically recently (<link>see them</link>)",
+      "other": "<count>{n}</count> price changes went live automatically recently (<link>see them</link>)"
+    }
+  },
+  "bulkAcceptPriceChangesDialog": {
+    "cancel": "Cancel",
+    "description": {
+      "one": "Going out to {n} connection.",
+      "other": "Going out to {n} connections."
+    },
+    "note": "We'll send these one at a time so we don't overwhelm any channel - you'll see progress once you confirm. This never touches the price of an order that's already been placed.",
+    "optInTitle": "Also set {source} → {destination} to Automatic",
+    "publish": "Publish prices",
+    "publishing": "Publishing…",
+    "title": {
+      "one": "Publish {n} price change",
+      "other": "Publish {n} price changes"
+    }
+  },
+  "bulkPublishProgress": {
+    "checking": "Checking on your price changes…",
+    "dismiss": "Dismiss",
+    "failed": "Couldn't check on this publish. It may still be running - try again, or reload this page.",
+    "published": "Published {succeeded} of {total} prices",
+    "publishedWithFailures": "Published {succeeded} of {total} - {failed} failed",
+    "sending": "Sending your price changes…",
+    "tryAgain": "Try again"
+  },
+  "describePriceChangeError": {
+    "blocked": "This price change is blocked and can't be published right now.",
+    "conflict": "This price changed again while you were reviewing - refresh and take another look.",
+    "currencyMismatch": "This price can't be published - the source and destination currencies don't match. Check the connection's currency settings.",
+    "fallback": "Something went wrong.",
+    "withServerMessage": "The server said: {message}"
+  },
+  "editPriceChangeDialog": {
+    "ambiguous": "This number is ambiguous - use a decimal point or comma with 2 decimal places (e.g. 399.50).",
+    "cancel": "Cancel",
+    "description": "{product} on {destination}",
+    "deviation": "{pct} vs. the rule price ({price}) - a large manual deviation.",
+    "enterPrice": "Enter a price greater than 0.",
+    "hint": "Left alone, the usual rule would set this to <amount>{amount}</amount>.",
+    "linkRow": "This only changes this one price. Want every future change from this source to use a different rule? <link>Manage this connection's pricing rules</link>.",
+    "priceLabel": "Price to publish",
+    "publish": "Publish this price",
+    "publishing": "Publishing…",
+    "sourceNote": "Source ({source}): <b>{oldAmount} → {newAmount}</b>.",
+    "title": "Enter your own price",
+    "useRulePrice": "Use that price"
+  },
+  "priceChangesQueueTable": {
+    "actions": {
+      "accept": "Accept",
+      "edit": "Edit",
+      "keepPrice": "Keep price",
+      "kept": "Kept the old price",
+      "needsRefresh": "This price changed again while you were deciding - refresh to see the latest.",
+      "published": "Published",
+      "publishedCustom": "Published · your price",
+      "refresh": "Refresh",
+      "undo": "Undo"
+    },
+    "automaticOptIn": {
+      "description": "Future price changes from {source} will publish without review.",
+      "descriptionMany": {
+        "one": "Future price changes from {n} source will publish without review.",
+        "other": "Future price changes from {n} sources will publish without review."
+      },
+      "fallbackSource": "this source",
+      "reverted": "Reverted {source} back to manual review.",
+      "title": "Set to Automatic",
+      "titleMany": {
+        "one": "Turned on automatic pricing for {n} source",
+        "other": "Turned on automatic pricing for {n} sources"
+      },
+      "undo": "Undo",
+      "undoFailed": "Couldn't undo automatic pricing for {source}. Try again from the connection's settings."
+    },
+    "bulk": {
+      "acceptSelected": "Accept selected",
+      "keepPrices": "Keep prices",
+      "selected": {
+        "one": "{n} price change selected",
+        "other": "{n} price changes selected"
+      }
+    },
+    "bulkIgnore": {
+      "allFailed": {
+        "one": "Couldn't keep any of the {n} selected price. Try again.",
+        "other": "Couldn't keep any of the {n} selected prices. Try again."
+      },
+      "keptDescription": "The old prices remain live.",
+      "keptTitle": {
+        "one": "Kept {n} price",
+        "other": "Kept {n} prices"
+      },
+      "partial": "Kept {succeeded}, but {failed} failed. Try again for the rest."
+    },
+    "caption": "Price changes",
+    "cardStatus": {
+      "needsRefresh": "Needs refresh",
+      "resolved": "Resolved"
+    },
+    "causeNote": {
+      "tooltip": "The shop used to send this price without VAT. The new price is what a buyer pays there, VAT included. It is never published automatically - accept, edit or ignore it here.",
+      "vatCorrection": "VAT correction",
+      "whyLabel": "Why did this price change?"
+    },
+    "columns": {
+      "action": "Action",
+      "changedIn": "Changed in",
+      "connection": "Connection",
+      "detected": "Detected",
+      "price": "Price on this connection",
+      "priceCard": "Price on this connection (incl. VAT)",
+      "priceSub": "incl. VAT",
+      "product": "Product"
+    },
+    "continuation": {
+      "helpLabel": "What does this mean?",
+      "label": "Also changes here",
+      "tooltip": "One price change, one more listing to update. You can accept, edit, or ignore each listing on its own."
+    },
+    "empty": {
+      "message": "Nothing needs your attention right now. We'll show new price changes here as soon as one happens in your shop.",
+      "title": "You're all caught up"
+    },
+    "error": {
+      "title": "Couldn't load price changes",
+      "tryAgain": "Try again"
+    },
+    "filters": {
+      "all": "All",
+      "bigChanges": "Big changes (10% or more)",
+      "connectionGroup": "Filter by connection",
+      "connectionLabel": "Connection",
+      "decreases": "↓ Decreases",
+      "directionGroup": "Filter by price direction",
+      "directionLabel": "Price change",
+      "increases": "↑ Increases"
+    },
+    "hiddenStale": {
+      "one": "{n} more change isn't shown here because that listing is paused.",
+      "other": "{n} more changes are not shown here because that listing is paused."
+    },
+    "loading": "Loading price changes…",
+    "queued": {
+      "description": "{product} will update on {destination} shortly.",
+      "title": "Price queued for publishing"
+    },
+    "refreshed": "Refreshed - showing the latest price for {product}.",
+    "rounded": "Rounded: {rounding}",
+    "selectAll": "Select all",
+    "selectRow": "Select {product} on {destination}",
+    "toolbar": {
+      "clearFilters": "Clear filters",
+      "intro": "One row per destination - a price that changed once at the source can produce a separate, independently-reviewable change on every marketplace or shop it's published to. Prices include VAT.",
+      "pricingRules": "Pricing rules"
+    }
+  },
+  "priceRuleLabels": {
+    "delta": {
+      "down": "-{n}%",
+      "flat": "0%",
+      "new": "New",
+      "up": "+{n}%"
+    },
+    "rounding": {
+      "endingIn99": "ending in .99",
+      "nearestWhole": "nearest whole"
+    },
+    "ruleLabel": {
+      "margin": "{percent}% margin",
+      "markup": "{percent}% markup",
+      "passthrough": "no adjustment"
+    },
+    "ruleSentence": {
+      "margin": {
+        "endingIn99": "Prices it so you keep a {percent}% margin, then rounds up so it ends in .99.",
+        "nearestWhole": "Prices it so you keep a {percent}% margin, then rounds to the nearest whole number.",
+        "none": "Prices it so you keep a {percent}% margin."
+      },
+      "markup": {
+        "endingIn99": "Prices it so you add a {percent}% markup, then rounds up so it ends in .99.",
+        "nearestWhole": "Prices it so you add a {percent}% markup, then rounds to the nearest whole number.",
+        "none": "Prices it so you add a {percent}% markup."
+      },
+      "passthrough": {
+        "endingIn99": "Uses the shop price as-is, then rounds up so it ends in .99.",
+        "nearestWhole": "Uses the shop price as-is, then rounds to the nearest whole number.",
+        "none": "Uses the shop price as-is."
+      }
+    },
+    "steepTooltip": "Big price change - worth a second look",
+    "syncMode": {
+      "automatic": "Automatic",
+      "manual": "Manual review"
+    }
+  },
+  "pricingRulesPickerDialog": {
+    "close": "Close",
+    "default": "Default: {mode} · {rule}",
+    "description": "Choose a connection to see how it prices your products.",
+    "empty": {
+      "message": "Turn on marketplace listing or shop publishing for a connection to give it its own pricing rule.",
+      "title": "No pricing destinations yet"
+    },
+    "loadError": "Couldn't load this connection's rule.",
+    "loading": "Loading…",
+    "open": "Open",
+    "overrides": {
+      "one": "{n} source with their own mode or rule",
+      "other": "{n} sources with their own mode or rule"
+    },
+    "title": "Pricing rules"
+  },
+  "pricingSyncOverrides": {
+    "both": "own mode and rule",
+    "mode": "own mode",
+    "rule": "own rule"
+  },
+  "sourceConnectionPricingRollup": {
+    "description": "Each place you sell can mark up or round your price differently. Manage a rule from where it's used.",
+    "empty": {
+      "message": "No destinations are adjusting your prices right now. A destination appears here once it has its own rule for this source, or a price change from it is waiting for review.",
+      "title": "Nothing to show yet"
+    },
+    "errorTitle": "Couldn't load pricing & sync settings",
+    "heading": "How your prices get adjusted",
+    "loadingMessage": "Loading how your prices get adjusted…",
+    "loadingTitle": "Pricing & sync",
+    "manage": "Manage",
+    "summaryDefault": "{mode} · {rule} - using {destination}'s default rule",
+    "summaryOverride": "{mode} · {rule} - {override} just for this source"
+  }
+}

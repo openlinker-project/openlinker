@@ -19,35 +19,36 @@ import { useMessages } from '../../shared/i18n';
 
 export function SettingsPage(): ReactElement {
   const { isReady, session } = useSession();
+  const copy = useMessages('settings').settingsPage;
   const isAdmin = isReady && session.status === 'authenticated' && session.user?.role === 'admin';
-  // #3634 — both OMS routing tiles are withheld unless the build opts in.
+  // #3634 - both OMS routing tiles are withheld unless the build opts in.
   const omsRoutingUi = isOmsRoutingUiEnabled();
-  const loginPageCopy = useMessages('loginPageSettings');
+  const loginPageCopy = useMessages('login-page-settings');
 
   return (
     <PageLayout
-      eyebrow="Settings"
-      title="Settings"
-      description="Platform configuration, session context, and upcoming operator preferences."
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
       summary={
         <div className="toolbar__group">
-          <span className="toolbar-chip">Environment</span>
-          <span className="toolbar-chip">Account</span>
-          {isAdmin ? <span className="toolbar-chip">Currency</span> : null}
-          {isAdmin ? <span className="toolbar-chip">Mailer</span> : null}
-          {isAdmin ? <span className="toolbar-chip">PostHog</span> : null}
-          {isAdmin ? <span className="toolbar-chip">MCP tokens</span> : null}
-          {isAdmin ? <span className="toolbar-chip">Sales documents routing</span> : null}
-          {/* Ungated, unlike its admin-gated neighbours — see `WhoDecidesTile`'s docblock. */}
-          <span className="toolbar-chip">Who decides what</span>
-          {omsRoutingUi && isAdmin ? <span className="toolbar-chip">Sourcing rules</span> : null}
-          {isAdmin ? <span className="toolbar-chip">Sync pacing</span> : null}
-          {isAdmin ? <span className="toolbar-chip">Order tags</span> : null}
-          {isAdmin ? <span className="toolbar-chip">Buyer emails</span> : null}
+          <span className="toolbar-chip">{copy.chips.environment}</span>
+          <span className="toolbar-chip">{copy.chips.account}</span>
+          {isAdmin ? <span className="toolbar-chip">{copy.chips.currency}</span> : null}
+          {isAdmin ? <span className="toolbar-chip">{copy.chips.mailer}</span> : null}
+          {isAdmin ? <span className="toolbar-chip">{copy.chips.posthog}</span> : null}
+          {isAdmin ? <span className="toolbar-chip">{copy.chips.mcpTokens}</span> : null}
+          {isAdmin ? <span className="toolbar-chip">{copy.chips.salesDocuments}</span> : null}
+          {/* Ungated, unlike its admin-gated neighbours - see `WhoDecidesTile`'s docblock. */}
+          <span className="toolbar-chip">{copy.chips.whoDecides}</span>
+          {omsRoutingUi && isAdmin ? <span className="toolbar-chip">{copy.chips.sourcingRules}</span> : null}
+          {isAdmin ? <span className="toolbar-chip">{copy.chips.syncPacing}</span> : null}
+          {isAdmin ? <span className="toolbar-chip">{copy.chips.orderTags}</span> : null}
+          {isAdmin ? <span className="toolbar-chip">{copy.chips.buyerEmails}</span> : null}
           {isAdmin ? <span className="toolbar-chip">{loginPageCopy.title}</span> : null}
           {/* Role-ungated — see `InventoryLocationsTile`'s docblock. */}
-          {omsRoutingUi ? <span className="toolbar-chip">Inventory locations</span> : null}
-          <span className="toolbar-chip">Upcoming</span>
+          {omsRoutingUi ? <span className="toolbar-chip">{copy.chips.inventoryLocations}</span> : null}
+          <span className="toolbar-chip">{copy.chips.upcoming}</span>
         </div>
       }
     >
@@ -56,18 +57,18 @@ export function SettingsPage(): ReactElement {
         <article className="panel panel--dense">
           <div className="panel__header">
             <div>
-              <p className="eyebrow">Runtime</p>
-              <h3 className="section-title">Environment</h3>
+              <p className="eyebrow">{copy.environment.eyebrow}</p>
+              <h3 className="section-title">{copy.environment.title}</h3>
             </div>
-            <span className="panel__meta">Build-time config</span>
+            <span className="panel__meta">{copy.environment.meta}</span>
           </div>
           <dl className="definition-list">
             <div>
-              <dt>Environment</dt>
+              <dt>{copy.environment.environment}</dt>
               <dd className="mono-text">{env.VITE_APP_ENV}</dd>
             </div>
             <div>
-              <dt>API base URL</dt>
+              <dt>{copy.environment.apiBaseUrl}</dt>
               <dd className="mono-text">{env.VITE_API_BASE_URL}</dd>
             </div>
           </dl>
@@ -77,34 +78,34 @@ export function SettingsPage(): ReactElement {
         <article className="panel panel--dense">
           <div className="panel__header">
             <div>
-              <p className="eyebrow">Session</p>
-              <h3 className="section-title">Account</h3>
+              <p className="eyebrow">{copy.account.eyebrow}</p>
+              <h3 className="section-title">{copy.account.title}</h3>
             </div>
-            <span className="panel__meta">Read-only</span>
+            <span className="panel__meta">{copy.account.meta}</span>
           </div>
 
           {!isReady && (
             <p className="muted-text" aria-live="polite">
-              Loading session…
+              {copy.account.loading}
             </p>
           )}
 
           {isReady && session.status === 'anonymous' && (
-            <p className="muted-text">No active session.</p>
+            <p className="muted-text">{copy.account.anonymous}</p>
           )}
 
           {isReady && session.status === 'authenticated' && session.user !== null && (
             <dl className="definition-list">
               <div>
-                <dt>Username</dt>
+                <dt>{copy.account.username}</dt>
                 <dd>{session.user.username}</dd>
               </div>
               <div>
-                <dt>Email</dt>
+                <dt>{copy.account.email}</dt>
                 <dd>{session.user.email ?? '—'}</dd>
               </div>
               <div>
-                <dt>Role</dt>
+                <dt>{copy.account.role}</dt>
                 <dd>{session.user.role}</dd>
               </div>
             </dl>
@@ -148,14 +149,13 @@ export function SettingsPage(): ReactElement {
         <article className="panel panel--dense">
           <div className="panel__header">
             <div>
-              <p className="eyebrow">Alerts</p>
-              <h3 className="section-title">Notifications</h3>
+              <p className="eyebrow">{copy.notifications.eyebrow}</p>
+              <h3 className="section-title">{copy.notifications.title}</h3>
             </div>
-            <span className="panel__meta">Coming soon</span>
+            <span className="panel__meta">{copy.comingSoon}</span>
           </div>
           <p className="muted-text panel-copy">
-            Sync failure alerts, manual-review triggers, and threshold notifications will be
-            configurable here.
+            {copy.notifications.body}
           </p>
         </article>
 
@@ -163,13 +163,13 @@ export function SettingsPage(): ReactElement {
         <article className="panel panel--dense">
           <div className="panel__header">
             <div>
-              <p className="eyebrow">Workspace</p>
-              <h3 className="section-title">Organization</h3>
+              <p className="eyebrow">{copy.organization.eyebrow}</p>
+              <h3 className="section-title">{copy.organization.title}</h3>
             </div>
-            <span className="panel__meta">Coming soon</span>
+            <span className="panel__meta">{copy.comingSoon}</span>
           </div>
           <p className="muted-text panel-copy">
-            Team members, roles, and workspace-level settings will be managed here.
+            {copy.organization.body}
           </p>
         </article>
 
@@ -177,13 +177,13 @@ export function SettingsPage(): ReactElement {
         <article className="panel panel--dense">
           <div className="panel__header">
             <div>
-              <p className="eyebrow">Display</p>
-              <h3 className="section-title">Preferences</h3>
+              <p className="eyebrow">{copy.preferences.eyebrow}</p>
+              <h3 className="section-title">{copy.preferences.title}</h3>
             </div>
-            <span className="panel__meta">Coming soon</span>
+            <span className="panel__meta">{copy.comingSoon}</span>
           </div>
           <p className="muted-text panel-copy">
-            Timezone, date format, and display density options will be available here.
+            {copy.preferences.body}
           </p>
         </article>
       </div>

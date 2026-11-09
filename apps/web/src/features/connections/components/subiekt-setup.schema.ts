@@ -16,6 +16,8 @@
  *
  * @module features/connections/components
  */
+import { getMessages, interpolate, type Messages, type ResolvedCopy } from '../../../shared/i18n';
+import { schemaMessage } from '../lib/schema-message';
 import { z } from 'zod';
 import type { CreateConnectionInput } from '../api/connections.types';
 
@@ -126,15 +128,20 @@ const startsWithHttpProtocol = (value: string): boolean =>
  * the wizard is where there is an operator to tell.
  */
 export function buildSubiektSetupSchema(identity: SubiektProductIdentity) {
+  const msg = schemaMessage('subiektSetupSchema');
+  const copy = (): ResolvedCopy<Messages['connections']>['subiektSetupSchema'] =>
+    getMessages('connections').subiektSetupSchema;
   return z
     .object({
-      name: z.string().trim().min(1, 'Connection name is required'),
+      name: z.string().trim().min(1, msg('nameRequired')),
       bridgeBaseUrl: z
         .string()
         .trim()
-        .min(1, 'Bridge URL is required')
-        .url(`Bridge URL must be a valid URL (e.g. ${identity.bridgeUrlExample})`)
-        .refine(startsWithHttpProtocol, 'Bridge URL must start with http:// or https://'),
+        .min(1, msg('bridgeUrlRequired'))
+        .url({
+          error: () => interpolate(copy().bridgeUrlInvalid, { example: identity.bridgeUrlExample }),
+        })
+        .refine(startsWithHttpProtocol, msg('bridgeUrlProtocol')),
       // RHF text inputs emit strings; the BE validates `@IsInt() @Min(1000) @Max(120000)`.
       // Blank → omitted; a typed value → coerced to a number (TR-IMPORTANT, #1199).
       timeoutMs: z
@@ -142,9 +149,9 @@ export function buildSubiektSetupSchema(identity: SubiektProductIdentity) {
           z.literal(''),
           z.coerce
             .number()
-            .int('Request timeout must be a whole number of milliseconds')
-            .min(1000, 'Request timeout must be at least 1000 ms')
-            .max(120000, 'Request timeout must be at most 120000 ms'),
+            .int(msg('timeoutWhole'))
+            .min(1000, msg('timeoutMin'))
+            .max(120000, msg('timeoutMax')),
         ])
         .optional(),
       bridgeToken: z.string().trim().optional(),
@@ -162,7 +169,7 @@ export function buildSubiektSetupSchema(identity: SubiektProductIdentity) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['bridgeToken'],
-        message: `Bridge token is required — ${identity.productName}'s bridge rejects every request without it.`,
+        message: interpolate(copy().tokenRequired, { product: identity.productName }),
       });
     });
 }

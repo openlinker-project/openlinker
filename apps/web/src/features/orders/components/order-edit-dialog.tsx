@@ -38,19 +38,21 @@ import {
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
-import { formatAmount } from '../../../shared/format/format-amount';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import type { ParsedOrderSnapshot } from '../api/order-snapshot.schema';
 import type { OrderEditsView } from '../api/order-edit.types';
+import { useEditOrderMutation, type EditOrderOutput } from '../hooks/use-edit-order-mutation';
 import {
-  useEditOrderMutation,
-  type EditOrderOutput,
-} from '../hooks/use-edit-order-mutation';
-import { readRefundCeilingFigures, readServerReason, remainingRefundable } from '../lib/order-cancel';
+  readRefundCeilingFigures,
+  readServerReason,
+  remainingRefundable,
+} from '../lib/order-cancel';
 import {
   classifyOrderEditRefusal,
+  formatDecimalAmount,
   lockedSectionsFor,
-  ORDER_EDIT_REFUSAL_COPY,
-  ORDER_EDIT_SECTION_LABELS,
+  orderEditRefusalCopy,
+  orderEditSectionLabel,
   readOrderEditErrorCode,
   type OrderEditErrorCode,
   type OrderEditRemedyTarget,
@@ -62,9 +64,8 @@ import {
   buildOrderEditSchema,
   detectChangedSections,
   planOrderEdits,
-  type OrderEditFormValues,
-  type PlannedOrderEdit,
 } from './order-edit-dialog.schema';
+import type { OrderEditFormValues, PlannedOrderEdit } from './order-form.types';
 import { OrderEditRefusal } from './order-edit-refusal';
 import { OrderEditReview, type OrderEditDryRun } from './order-edit-review';
 
@@ -113,6 +114,8 @@ export function OrderEditDialog({
   onSaved,
   onGoTo,
 }: OrderEditDialogProps): ReactElement {
+  const copy = useMessages('orders').orderEditDialog;
+  const format = useFormat();
   const mutation = useEditOrderMutation();
   const initial = useMemo(() => buildOrderEditInitialValues(snapshot, edits), [snapshot, edits]);
   const lineMeta = useMemo(() => buildOrderEditLineMeta(snapshot, edits), [snapshot, edits]);
@@ -121,8 +124,9 @@ export function OrderEditDialog({
       buildOrderEditSchema(
         initial,
         Object.fromEntries(lineMeta.map((meta) => [meta.orderLineId, meta.maxQuantity])),
+        copy.validation
       ),
-    [initial, lineMeta],
+    [initial, lineMeta, copy.validation]
   );
   const form = useForm<OrderEditFormValues>({
     defaultValues: initial,
@@ -165,7 +169,7 @@ export function OrderEditDialog({
       ? { amount: snapshot.totals.total, currency: snapshot.totals.currency }
       : null;
   const title = orderNumber ?? internalOrderId;
-  const channel = sourceName ?? 'the sales channel';
+  const channel = sourceName ?? copy.channelFallback;
   const values = form.watch();
   const changed = detectChangedSections(values, initial);
 
@@ -186,7 +190,7 @@ export function OrderEditDialog({
    */
   const planForNow = (
     submitted: OrderEditFormValues,
-    dryRun: boolean,
+    dryRun: boolean
   ): { plan: PlannedOrderEdit[]; deferred: boolean } => {
     const full = planOrderEdits(submitted, initial, { dryRun });
     const deferred =
@@ -258,6 +262,10 @@ export function OrderEditDialog({
   };
 
   const errors = form.formState.errors;
+  const sectionHead = (section: OrderEditSection): string =>
+    locked.has(section)
+      ? interpolate(copy.locked, { section: orderEditSectionLabel(section) })
+      : orderEditSectionLabel(section);
   const linesErrors = errors.lines as { root?: { message?: string }; message?: string } | undefined;
   const linesRootError = linesErrors?.root?.message ?? linesErrors?.message;
 
@@ -269,8 +277,8 @@ export function OrderEditDialog({
           className="dialog__content--wide order-hold-dialog"
           data-testid="order-edit-dialog"
         >
-          <DialogTitle>{`Review changes to ${title}`}</DialogTitle>
-          <DialogDescription>Check what changes and where it’s used before you save.</DialogDescription>
+          <DialogTitle>{interpolate(copy.reviewTitle, { order: title })}</DialogTitle>
+          <DialogDescription>{copy.reviewDescription}</DialogDescription>
           <OrderEditReview
             dryRuns={dryRuns}
             lineMeta={lineMeta}
@@ -287,7 +295,7 @@ export function OrderEditDialog({
                 setStep('form');
               }}
             >
-              Back to editing
+              {copy.back}
             </Button>
             <span className="dialog__footer-group">
               <DialogClose asChild>
@@ -297,7 +305,7 @@ export function OrderEditDialog({
                   disabled={busy === 'saving'}
                   data-testid="order-edit-discard"
                 >
-                  Discard
+                  {copy.discard}
                 </Button>
               </DialogClose>
               <Button
@@ -309,7 +317,7 @@ export function OrderEditDialog({
                   void save();
                 }}
               >
-                {busy === 'saving' ? 'Saving…' : 'Save changes'}
+                {busy === 'saving' ? copy.saving : copy.save}
               </Button>
             </span>
           </div>
@@ -325,16 +333,16 @@ export function OrderEditDialog({
         className="dialog__content--wide order-hold-dialog"
         data-testid="order-edit-dialog"
       >
-        <DialogTitle>{`Edit order ${title}`}</DialogTitle>
-        <DialogDescription>
-          {`Your changes stay in OpenLinker and are used for the shipping label, the invoice and the pack bench. ${channel} keeps the order as the buyer placed it.`}
-        </DialogDescription>
+        <DialogTitle>{interpolate(copy.title, { order: title })}</DialogTitle>
+        <DialogDescription>{interpolate(copy.description, { channel })}</DialogDescription>
 
         {refusalCode !== null ? (
           <OrderEditRefusal
             code={refusalCode}
-            reason={failure && failureView === 'blocked' ? readServerReason(failure.error, '') : null}
-            savedSectionLabels={(failure?.saved ?? []).map((section) => ORDER_EDIT_SECTION_LABELS[section])}
+            reason={
+              failure && failureView === 'blocked' ? readServerReason(failure.error, '') : null
+            }
+            savedSectionLabels={(failure?.saved ?? []).map(orderEditSectionLabel)}
             onGoTo={
               onGoTo
                 ? (target) => {
@@ -347,8 +355,12 @@ export function OrderEditDialog({
         ) : null}
         {failure && failureView !== 'blocked' ? <FailureAlert failure={failure} /> : null}
         {quantitiesSaved ? (
-          <Alert tone="success" title="Quantities saved" data-testid="order-edit-quantities-saved">
-            The discount is still filled in below. Review it now.
+          <Alert
+            tone="success"
+            title={copy.quantitiesSaved.title}
+            data-testid="order-edit-quantities-saved"
+          >
+            {copy.quantitiesSaved.body}
           </Alert>
         ) : null}
 
@@ -364,43 +376,52 @@ export function OrderEditDialog({
             disabled={locked.has('address')}
             data-testid={locked.has('address') ? 'order-edit-locked-address' : 'order-edit-address'}
           >
-            <legend className="dialog-section__head">
-              {locked.has('address') ? 'Shipping address · locked' : 'Shipping address'}
-            </legend>
+            <legend className="dialog-section__head">{sectionHead('address')}</legend>
             <div className="form-field-row">
-              <FormField name="firstName" label="First name">
+              <FormField name="firstName" label={copy.address.firstName}>
                 <Input {...form.register('firstName')} data-testid="order-edit-first-name" />
               </FormField>
-              <FormField name="lastName" label="Last name">
+              <FormField name="lastName" label={copy.address.lastName}>
                 <Input {...form.register('lastName')} data-testid="order-edit-last-name" />
               </FormField>
             </div>
             <div className="form-field-row">
               <FormField
                 name="address1"
-                label="Street and number"
+                label={copy.address.address1}
                 error={errors.address1?.message}
                 description={
                   values.address1.trim() !== initial.address1.trim() &&
                   edits?.address?.original?.address1 !== undefined
-                    ? `Changed. ${channel} has ${edits.address.original.address1}.`
+                    ? interpolate(copy.address.address1Changed, {
+                        channel,
+                        original: edits.address.original.address1,
+                      })
                     : undefined
                 }
               >
                 <Input {...form.register('address1')} data-testid="order-edit-street" />
               </FormField>
-              <FormField name="address2" label="Apartment or second line">
+              <FormField name="address2" label={copy.address.address2}>
                 <Input {...form.register('address2')} data-testid="order-edit-address2" />
               </FormField>
             </div>
             <div className="form-field-row form-field-row--cols-3">
-              <FormField name="postalCode" label="Postcode" error={errors.postalCode?.message}>
+              <FormField
+                name="postalCode"
+                label={copy.address.postalCode}
+                error={errors.postalCode?.message}
+              >
                 <Input {...form.register('postalCode')} data-testid="order-edit-postcode" />
               </FormField>
-              <FormField name="city" label="City" error={errors.city?.message}>
+              <FormField name="city" label={copy.address.city} error={errors.city?.message}>
                 <Input {...form.register('city')} data-testid="order-edit-city" />
               </FormField>
-              <FormField name="country" label="Country" error={errors.country?.message}>
+              <FormField
+                name="country"
+                label={copy.address.country}
+                error={errors.country?.message}
+              >
                 <Input
                   {...form.register('country')}
                   maxLength={2}
@@ -413,34 +434,34 @@ export function OrderEditDialog({
           <fieldset
             className={`dialog-section order-edit-section${locked.has('delivery') ? ' order-edit-locked' : ''}`}
             disabled={locked.has('delivery')}
-            data-testid={locked.has('delivery') ? 'order-edit-locked-delivery' : 'order-edit-delivery'}
+            data-testid={
+              locked.has('delivery') ? 'order-edit-locked-delivery' : 'order-edit-delivery'
+            }
           >
-            <legend className="dialog-section__head">
-              {locked.has('delivery') ? 'Delivery method · locked' : 'Delivery method'}
-            </legend>
+            <legend className="dialog-section__head">{sectionHead('delivery')}</legend>
             <div className="form-field-row">
               <FormField
                 name="methodId"
-                label="Method id"
+                label={copy.delivery.methodId}
                 error={errors.methodId?.message}
-                description="The id carrier mapping rules match on. Decides which carrier OpenLinker buys the label from. Delivery is not repriced."
+                description={copy.delivery.methodIdHint}
               >
                 <Input {...form.register('methodId')} data-testid="order-edit-method-id" />
               </FormField>
-              <FormField name="methodName" label="Method name (optional)">
+              <FormField name="methodName" label={copy.delivery.methodName}>
                 <Input {...form.register('methodName')} data-testid="order-edit-method-name" />
               </FormField>
             </div>
             <div className="form-field-row">
               <FormField
                 name="pickupId"
-                label="Pickup point code (optional)"
+                label={copy.delivery.pickupId}
                 error={errors.pickupId?.message}
-                description="Leave empty for home delivery."
+                description={copy.delivery.pickupIdHint}
               >
                 <Input {...form.register('pickupId')} data-testid="order-edit-pickup-id" />
               </FormField>
-              <FormField name="pickupName" label="Pickup point name (optional)">
+              <FormField name="pickupName" label={copy.delivery.pickupName}>
                 <Input {...form.register('pickupName')} data-testid="order-edit-pickup-name" />
               </FormField>
             </div>
@@ -451,15 +472,13 @@ export function OrderEditDialog({
             disabled={locked.has('lines')}
             data-testid={locked.has('lines') ? 'order-edit-locked-lines' : 'order-edit-lines'}
           >
-            <legend className="dialog-section__head">
-              {locked.has('lines') ? 'Items · locked' : 'Items'}
-            </legend>
+            <legend className="dialog-section__head">{sectionHead('lines')}</legend>
             <div className="data-table__container">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Product</th>
-                    <th className="order-edit-num">Qty</th>
+                    <th>{copy.lines.product}</th>
+                    <th className="order-edit-num">{copy.lines.quantity}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -483,15 +502,21 @@ export function OrderEditDialog({
                             max={meta.maxQuantity}
                             step={1}
                             className="order-edit-qty"
-                            aria-label={`Quantity, ${meta.name ?? meta.sku ?? meta.orderLineId}`}
+                            aria-label={interpolate(copy.lines.quantityLabel, {
+                              item: meta.name ?? meta.sku ?? meta.orderLineId,
+                            })}
                             invalid={Boolean(errors.lines?.[index]?.quantity)}
                             {...form.register(`lines.${index}.quantity`)}
                             data-testid="order-edit-line-quantity"
                           />
                           <span className="order-edit-was">
                             {meta.channelQuantity !== meta.maxQuantity
-                              ? `of ${meta.maxQuantity} (${channel} has ${meta.channelQuantity})`
-                              : `of ${meta.maxQuantity}`}
+                              ? interpolate(copy.lines.ofWithChannel, {
+                                  max: meta.maxQuantity,
+                                  channel,
+                                  channelQuantity: meta.channelQuantity,
+                                })
+                              : interpolate(copy.lines.of, { max: meta.maxQuantity })}
                           </span>
                         </span>
                         {errors.lines?.[index]?.quantity?.message ? (
@@ -510,22 +535,23 @@ export function OrderEditDialog({
                 {linesRootError}
               </p>
             ) : null}
-            <p className="form-field__description">
-              You can lower a quantity or set it to 0. Raising it or adding products would be a new
-              sale. Ask the buyer to order again.
-            </p>
+            <p className="form-field__description">{copy.lines.hint}</p>
           </fieldset>
 
           <fieldset
             className={`dialog-section order-edit-section${locked.has('discount') ? ' order-edit-locked' : ''}`}
             disabled={locked.has('discount')}
-            data-testid={locked.has('discount') ? 'order-edit-locked-discount' : 'order-edit-discount'}
+            data-testid={
+              locked.has('discount') ? 'order-edit-locked-discount' : 'order-edit-discount'
+            }
           >
-            <legend className="dialog-section__head">
-              {locked.has('discount') ? 'Discount · locked' : 'Discount'}
-            </legend>
+            <legend className="dialog-section__head">{sectionHead('discount')}</legend>
             <div className="form-field-row">
-              <FormField name="discountValue" label="Discount" error={errors.discountValue?.message}>
+              <FormField
+                name="discountValue"
+                label={copy.discount.label}
+                error={errors.discountValue?.message}
+              >
                 <Input
                   inputMode="decimal"
                   placeholder="0.00"
@@ -533,35 +559,32 @@ export function OrderEditDialog({
                   data-testid="order-edit-discount-amount"
                 />
               </FormField>
-              <FormField name="discountMode" label="As">
+              <FormField name="discountMode" label={copy.discount.as}>
                 <Select {...form.register('discountMode')} data-testid="order-edit-discount-mode">
-                  <option value="amount">Amount, gross</option>
-                  <option value="percent">Percent of the goods</option>
+                  <option value="amount">{copy.discount.modeAmount}</option>
+                  <option value="percent">{copy.discount.modePercent}</option>
                 </Select>
               </FormField>
             </div>
             <p className="form-field__description">
               {edits?.discount
-                ? `This order has a discount of ${edits.discount.amount} ${edits.discount.currency}. A new one replaces it, and 0 removes it.`
-                : 'Lowers the order total. One discount per order. OpenLinker doesn’t refund the buyer: you refund on the channel.'}
+                ? interpolate(copy.discount.current, {
+                    amount: formatDecimalAmount(edits.discount.amount, edits.discount.currency),
+                  })
+                : copy.discount.hint}
             </p>
           </fieldset>
 
           {needsAck ? (
-            <Alert
-              tone="warning"
-              title="This order is on the pack bench"
-              data-testid="order-edit-ack-alert"
-            >
-              Someone claimed this order at the pack bench and may already be picking it. Lowering a
-              quantity changes their task underneath them.
+            <Alert tone="warning" title={copy.ack.title} data-testid="order-edit-ack-alert">
+              {copy.ack.body}
               <label className="order-cancel-check">
                 <input
                   type="checkbox"
                   data-testid="order-edit-ack"
                   {...form.register('acknowledgeAcceptedWork')}
                 />
-                <span>I have told the packer</span>
+                <span>{copy.ack.label}</span>
               </label>
             </Alert>
           ) : null}
@@ -569,31 +592,41 @@ export function OrderEditDialog({
           {ceiling ? (
             <Alert
               tone="warning"
-              title="More than can still be refunded"
+              title={copy.ceiling.title}
               data-testid="order-edit-ceiling-refusal"
             >
-              {`The refund for this discount is ${ceiling.requested} ${ceiling.currency}, but only ${remainingRefundable(ceiling.ceiling, ceiling.alreadyRefunded)} ${ceiling.currency} can still be refunded on this order (${ceiling.alreadyRefunded} ${ceiling.currency} already refunded).`}
+              {interpolate(copy.ceiling.body, {
+                requested: formatDecimalAmount(ceiling.requested, ceiling.currency),
+                remaining: formatDecimalAmount(
+                  remainingRefundable(ceiling.ceiling, ceiling.alreadyRefunded),
+                  ceiling.currency
+                ),
+                refunded: formatDecimalAmount(ceiling.alreadyRefunded, ceiling.currency),
+              })}
               <label className="order-cancel-check">
                 <input
                   type="checkbox"
                   data-testid="order-edit-ceiling-ack"
                   {...form.register('acknowledgeAboveCeiling')}
                 />
-                <span>Keep the discount anyway and record the refund as it is</span>
+                <span>{copy.ceiling.ack}</span>
               </label>
             </Alert>
           ) : null}
 
           <p className="order-edit-totals-note" data-testid="order-edit-paid-note">
             {paidOnChannel
-              ? `The buyer paid ${formatAmount(paidOnChannel.amount, paidOnChannel.currency)} on ${channel}. The review shows the total after your changes.`
-              : 'The review shows the total after your changes.'}
+              ? interpolate(copy.paidNote, {
+                  amount: format.money(paidOnChannel.amount, paidOnChannel.currency),
+                  channel,
+                })
+              : copy.paidNoteUnknown}
           </p>
 
           <div className="dialog__footer">
             <DialogClose asChild>
               <Button type="button" tone="secondary" data-testid="order-edit-cancel">
-                Cancel
+                {copy.cancel}
               </Button>
             </DialogClose>
             <Button
@@ -602,7 +635,7 @@ export function OrderEditDialog({
               disabled={reviewDisabled}
               data-testid="order-edit-review-button"
             >
-              {busy === 'reviewing' ? 'Checking…' : 'Review changes'}
+              {busy === 'reviewing' ? copy.checking : copy.review}
             </Button>
           </div>
         </form>
@@ -613,6 +646,7 @@ export function OrderEditDialog({
 
 /** A refusal about what was typed or an unexpected failure, not the order's state. */
 function FailureAlert({ failure }: { failure: Failure }): ReactElement | null {
+  const copy = useMessages('orders').orderEditDialog.failure;
   const code = readOrderEditErrorCode(failure.error);
   // The soft gate and the ceiling render their own tick-boxes on the form.
   if (
@@ -624,10 +658,10 @@ function FailureAlert({ failure }: { failure: Failure }): ReactElement | null {
   return (
     <Alert
       tone="error"
-      title={code ? ORDER_EDIT_REFUSAL_COPY[code].title : 'Could not save this edit'}
+      title={code ? orderEditRefusalCopy(code).title : copy.title}
       data-testid="order-edit-error"
     >
-      {readServerReason(failure.error, 'Could not save this edit.')}
+      {readServerReason(failure.error, copy.fallback)}
     </Alert>
   );
 }

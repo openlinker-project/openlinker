@@ -14,7 +14,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { Alert } from '../../../shared/ui/alert';
 import { resolveBenchIdleTimeoutMs, useBenchIdentity } from '../hooks/use-bench-identity';
 import { BenchInteractiveContext } from '../hooks/use-bench-interactive';
-import { benchIdentityCopy } from '../lib/bench-identity.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { BenchIdentityOverlay } from './bench-identity-overlay';
 import { BenchConnectivityIndicator } from './bench-connectivity-indicator';
 import { BenchReachabilityContext } from '../hooks/bench-reachability-context';
@@ -32,6 +32,7 @@ export interface BenchSurfaceProps {
 }
 
 export function BenchSurface({ children, idleTimeoutMs }: BenchSurfaceProps): ReactElement {
+  const identityCopy = useMessages('bench').identity;
   const identity = useBenchIdentity({
     idleTimeoutMs:
       idleTimeoutMs ??
@@ -60,7 +61,7 @@ export function BenchSurface({ children, idleTimeoutMs }: BenchSurfaceProps): Re
           "tap anywhere to stay signed in" true without a dismiss button. */}
       {identity.warningSecondsRemaining === null ? null : (
         <Alert tone="warning" data-testid="bench-idle-warning">
-          {benchIdentityCopy.warning(identity.warningSecondsRemaining)}
+          {interpolate(identityCopy.warning, { seconds: identity.warningSecondsRemaining })}
         </Alert>
       )}
       <BenchIdentityOverlay state={identity.state}>

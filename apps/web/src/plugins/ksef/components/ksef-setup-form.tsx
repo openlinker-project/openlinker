@@ -38,19 +38,13 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
-
-const ENVIRONMENT_LABELS: Record<(typeof KSEF_ENVIRONMENT_VALUES)[number], string> = {
-  test: 'Test (sandbox)',
-  demo: 'Demo (pre-production)',
-  prod: 'Production (live clearance)',
-};
-
-const AUTH_TYPE_LABELS: Record<(typeof KSEF_AUTH_TYPE_VALUES)[number], string> = {
-  'ksef-token': 'KSeF authorization token',
-  'qualified-seal': 'Qualified electronic seal',
-};
+import { interpolate } from '../../../shared/i18n';
+import { useKsefMessages } from '../messages';
 
 export function KsefSetupForm(): ReactElement {
+  const messages = useKsefMessages();
+  const copy = messages.ksefSetupForm;
+  const fields = messages.common.fields;
   const createConnection = useCreateConnectionMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
@@ -87,8 +81,8 @@ export function KsefSetupForm(): ReactElement {
       form.reset(values, { keepValues: true, keepDirty: false });
       showToast({
         tone: 'success',
-        title: 'Connection created',
-        description: `KSeF connection "${created.name}" was created.`,
+        title: copy.created.title,
+        description: interpolate(copy.created.description, { name: created.name }),
       });
       if (created.warnings && created.warnings.length > 0) {
         setCreatedWithWarnings({ id: created.id, warnings: created.warnings });
@@ -102,24 +96,24 @@ export function KsefSetupForm(): ReactElement {
 
   return (
     <form className="wizard-card" onSubmit={(event) => void onSubmit(event)} noValidate>
-      <BackLink to="/connections/new" label="Connections" className="wizard-card__back" />
+      <BackLink to="/connections/new" label={copy.back} className="wizard-card__back" />
 
       {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
         <FormErrorSummary errors={validationMessages} />
       ) : null}
       {createConnection.error ? (
-        <Alert tone="error" title="Unable to create connection">
+        <Alert tone="error" title={copy.createError}>
           {createConnection.error.message}
         </Alert>
       ) : null}
       {createdWithWarnings ? (
         <Alert
           tone="warning"
-          title="Connection created, with something to check"
+          title={copy.createdWithWarnings.title}
           data-testid="connection-save-warnings"
           action={
             <Button tone="secondary" onClick={() => void navigate(`/connections/${createdWithWarnings.id}`)}>
-              Go to connection
+              {copy.createdWithWarnings.goToConnection}
             </Button>
           }
         >
@@ -129,31 +123,29 @@ export function KsefSetupForm(): ReactElement {
         </Alert>
       ) : null}
 
-      <Alert tone="info" title="Before you start">
-        Generate a KSeF authorization token (or register a qualified electronic seal) for your
-        seller context in the chosen KSeF environment. The secret is stored securely on the server
-        and shown only once below.
+      <Alert tone="info" title={copy.beforeYouStart.title}>
+        {copy.beforeYouStart.body}
       </Alert>
 
       <FormField
-        label="Connection name"
+        label={copy.name.label}
         name="name"
         error={form.formState.errors.name?.message}
-        description="A label to identify this e-invoicing connection in OpenLinker."
+        description={copy.name.description}
       >
         <Input
           {...form.register('name')}
-          placeholder="KSeF — main seller"
+          placeholder={copy.name.placeholder}
           autoComplete="off"
           invalid={Boolean(form.formState.errors.name)}
         />
       </FormField>
 
       <FormField
-        label="Environment"
+        label={fields.environment.label}
         name="environment"
         error={form.formState.errors.environment?.message}
-        description="KSeF target environment. Use Test/Demo for sandboxes; Production clears live invoices."
+        description={copy.environment.description}
       >
         <Select
           {...form.register('environment')}
@@ -161,21 +153,21 @@ export function KsefSetupForm(): ReactElement {
         >
           {KSEF_ENVIRONMENT_VALUES.map((env) => (
             <option key={env} value={env}>
-              {ENVIRONMENT_LABELS[env]}
+              {messages.common.environments[env]}
             </option>
           ))}
         </Select>
       </FormField>
 
       <FormField
-        label="Seller NIP"
+        label={fields.sellerNip.label}
         name="sellerNip"
         error={form.formState.errors.sellerNip?.message}
-        description="10-digit Polish tax identifier of the issuing seller. Required to issue invoices."
+        description={fields.sellerNip.description}
       >
         <Input
           {...form.register('sellerNip')}
-          placeholder="1234567890"
+          placeholder={fields.sellerNip.placeholder}
           inputMode="numeric"
           autoComplete="off"
           invalid={Boolean(form.formState.errors.sellerNip)}
@@ -183,113 +175,113 @@ export function KsefSetupForm(): ReactElement {
       </FormField>
 
       <FormField
-        label="Seller legal name"
+        label={fields.sellerName.label}
         name="sellerName"
         error={form.formState.errors.sellerName?.message}
-        description="Registered company name (Podmiot1) printed on the invoice. Required to issue."
+        description={fields.sellerName.description}
       >
         <Input
           {...form.register('sellerName')}
-          placeholder="ACME Sp. z o.o."
+          placeholder={fields.sellerName.placeholder}
           autoComplete="off"
           invalid={Boolean(form.formState.errors.sellerName)}
         />
       </FormField>
 
       <FormField
-        label="Address line 1"
+        label={fields.addressLine1.label}
         name="sellerAddressLine1"
         error={form.formState.errors.sellerAddressLine1?.message}
-        description="Street and building number. Required to issue."
+        description={fields.addressLine1.description}
       >
         <Input
           {...form.register('sellerAddressLine1')}
-          placeholder="ul. Przykładowa 1"
+          placeholder={fields.addressLine1.placeholder}
           autoComplete="off"
           invalid={Boolean(form.formState.errors.sellerAddressLine1)}
         />
       </FormField>
 
       <FormField
-        label="Address line 2"
+        label={fields.addressLine2.label}
         name="sellerAddressLine2"
         error={form.formState.errors.sellerAddressLine2?.message}
-        description="Apartment, suite, or unit. Optional."
+        description={fields.addressLine2.description}
       >
         <Input
           {...form.register('sellerAddressLine2')}
-          placeholder="(optional)"
+          placeholder={fields.optional}
           autoComplete="off"
           invalid={Boolean(form.formState.errors.sellerAddressLine2)}
         />
       </FormField>
 
       <FormField
-        label="City"
+        label={fields.city.label}
         name="sellerCity"
         error={form.formState.errors.sellerCity?.message}
-        description="Required to issue."
+        description={fields.city.description}
       >
         <Input
           {...form.register('sellerCity')}
-          placeholder="Warszawa"
+          placeholder={fields.city.placeholder}
           autoComplete="off"
           invalid={Boolean(form.formState.errors.sellerCity)}
         />
       </FormField>
 
       <FormField
-        label="Postal code"
+        label={fields.postalCode.label}
         name="sellerPostalCode"
         error={form.formState.errors.sellerPostalCode?.message}
-        description="Required to issue."
+        description={fields.postalCode.description}
       >
         <Input
           {...form.register('sellerPostalCode')}
-          placeholder="00-001"
+          placeholder={fields.postalCode.placeholder}
           autoComplete="off"
           invalid={Boolean(form.formState.errors.sellerPostalCode)}
         />
       </FormField>
 
       <FormField
-        label="Country"
+        label={fields.country.label}
         name="sellerCountryIso2"
         error={form.formState.errors.sellerCountryIso2?.message}
-        description="ISO 3166-1 alpha-2 code. Defaults to PL."
+        description={fields.country.description}
       >
         <Input
           {...form.register('sellerCountryIso2')}
-          placeholder="PL"
+          placeholder={fields.country.placeholder}
           autoComplete="off"
           invalid={Boolean(form.formState.errors.sellerCountryIso2)}
         />
       </FormField>
 
       <FormField
-        label="Context identifier"
+        label={fields.contextIdentifier.label}
         name="contextIdentifier"
         error={form.formState.errors.contextIdentifier?.message}
-        description="Optional KSeF subject/context identifier for display and future scoping. Does not affect authentication — sessions always authenticate in the seller NIP context."
+        description={copy.contextIdentifier.description}
       >
         <Input
           {...form.register('contextIdentifier')}
-          placeholder="(optional)"
+          placeholder={fields.optional}
           autoComplete="off"
           invalid={Boolean(form.formState.errors.contextIdentifier)}
         />
       </FormField>
 
       <FormField
-        label="Default line unit"
+        label={fields.lineUnit.label}
         name="invoiceDefaultLineUnit"
         error={form.formState.errors.invoiceDefaultLineUnit?.message}
-        description="Unit of measure stamped on issued-invoice lines. Clear it to omit the unit from documents."
+        description={copy.lineUnit.description}
       >
         <Input
           {...form.register('invoiceDefaultLineUnit')}
           list="ksef-line-unit-suggestions"
-          placeholder="szt."
+          placeholder={fields.lineUnit.placeholder}
           autoComplete="off"
           invalid={Boolean(form.formState.errors.invoiceDefaultLineUnit)}
         />
@@ -302,25 +294,25 @@ export function KsefSetupForm(): ReactElement {
       </datalist>
 
       <FormField
-        label="Authentication type"
+        label={copy.authType.label}
         name="authType"
         error={form.formState.errors.authType?.message}
-        description="How OpenLinker authenticates the KSeF session."
+        description={copy.authType.description}
       >
         <Select {...form.register('authType')} invalid={Boolean(form.formState.errors.authType)}>
           {KSEF_AUTH_TYPE_VALUES.map((authType) => (
             <option key={authType} value={authType}>
-              {AUTH_TYPE_LABELS[authType]}
+              {messages.common.authTypes[authType]}
             </option>
           ))}
         </Select>
       </FormField>
 
       <FormField
-        label="Authentication secret"
+        label={copy.secret.label}
         name="secret"
         error={form.formState.errors.secret?.message}
-        description="The KSeF authorization token or qualified-seal reference. Write-only — stored securely and never shown again."
+        description={copy.secret.description}
       >
         <Input
           {...form.register('secret')}
@@ -333,7 +325,7 @@ export function KsefSetupForm(): ReactElement {
 
       <div className="form-actions">
         <Button type="submit" disabled={createConnection.isPending}>
-          {createConnection.isPending ? 'Connecting…' : 'Connect KSeF'}
+          {createConnection.isPending ? copy.connecting : copy.connect}
         </Button>
       </div>
     </form>

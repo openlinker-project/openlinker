@@ -41,9 +41,7 @@
  */
 import type { ReactElement } from 'react';
 
-import { FULFILLMENT_WORK_DETAIL_COPY } from '../lib/fulfillment-work-detail.copy';
-
-const COPY = FULFILLMENT_WORK_DETAIL_COPY.vsOrders;
+import { useMessages } from '../../../shared/i18n';
 
 /**
  * No props, deliberately — see the module docblock. Kept as an exported type
@@ -59,16 +57,17 @@ export type FulfillmentVsOrdersExplainerProps = Record<string, never>;
  * entry in the copy table.
  */
 export function FulfillmentVsOrdersExplainer(): ReactElement {
+  const copy = useMessages('fulfillment').workDetail.vsOrders;
   return (
     <div className="fulfilment-work-detail__vs-orders">
       <dl className="fulfilment-work-detail__compare">
         <div className="fulfilment-work-detail__compare-col">
-          <dt className="fulfilment-work-detail__compare-label">{COPY.ordersLabel}</dt>
-          <dd className="fulfilment-work-detail__compare-text">{COPY.ordersText}</dd>
+          <dt className="fulfilment-work-detail__compare-label">{copy.ordersLabel}</dt>
+          <dd className="fulfilment-work-detail__compare-text">{copy.ordersText}</dd>
         </div>
         <div className="fulfilment-work-detail__compare-col fulfilment-work-detail__compare-col--this">
-          <dt className="fulfilment-work-detail__compare-label">{COPY.taskLabel}</dt>
-          <dd className="fulfilment-work-detail__compare-text">{COPY.taskText}</dd>
+          <dt className="fulfilment-work-detail__compare-label">{copy.taskLabel}</dt>
+          <dd className="fulfilment-work-detail__compare-text">{copy.taskText}</dd>
         </div>
       </dl>
     </div>

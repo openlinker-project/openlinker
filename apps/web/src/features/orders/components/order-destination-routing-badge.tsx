@@ -32,11 +32,12 @@
 import type { ReactElement } from 'react';
 
 import { StatusBadge } from '../../../shared/ui/status-badge';
+import { useMessages } from '../../../shared/i18n';
 import {
   DESTINATION_ROUTING_ATTENTION_REASONS,
   isDestinationRoutingBlockReason,
   resolveDestinationRoutingCopy,
-} from '../lib/destination-routing-copy';
+} from '../lib/destination-routing';
 
 interface OrderDestinationRoutingBadgeProps {
   /** The row's `destinationRoutingBlockReason`; absent or unknown renders nothing. */
@@ -49,7 +50,8 @@ export function OrderDestinationRoutingBadge({
   reason,
   compact = false,
 }: OrderDestinationRoutingBadgeProps): ReactElement | null {
-  const copy = resolveDestinationRoutingCopy(reason);
+  const orders = useMessages('orders');
+  const copy = resolveDestinationRoutingCopy(reason, orders);
   if (copy === null) return null;
 
   const needsAttention =

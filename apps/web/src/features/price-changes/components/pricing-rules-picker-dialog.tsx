@@ -28,7 +28,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } f
 import { Button } from '../../../shared/ui/button';
 import { EmptyState } from '../../../shared/ui/feedback-state';
 import { useDestinationPricingSyncSummaries } from '../hooks/use-destination-pricing-sync-summaries';
-import { ruleLabelFor, toRuleSummary } from '../lib/price-change-copy';
+import { ruleLabelFor, syncModeLabelFor, toRuleSummary } from '../lib/price-rule-labels';
+import { interpolate, usePlural, useMessages } from '../../../shared/i18n';
 import { hasOwnOverride } from '../lib/pricing-sync-overrides';
 import type { Connection } from '../../connections';
 
@@ -43,6 +44,8 @@ export function PricingRulesPickerDialog({
   onOpenChange,
   destinationConnections,
 }: PricingRulesPickerDialogProps): ReactElement {
+  const copy = useMessages('price-changes').pricingRulesPickerDialog;
+  const plural = usePlural();
   const connectionIds = destinationConnections.map((c) => c.id);
   // Gated on `open` (#3167 review, finding 3) — this dialog is mounted
   // unconditionally by the queue table, so without this every render of the
@@ -52,12 +55,12 @@ export function PricingRulesPickerDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogTitle>Pricing rules</DialogTitle>
-        <DialogDescription>Choose a connection to see how it prices your products.</DialogDescription>
+        <DialogTitle>{copy.title}</DialogTitle>
+        <DialogDescription>{copy.description}</DialogDescription>
         {destinationConnections.length === 0 ? (
           <EmptyState
-            title="No pricing destinations yet"
-            message="Enable OfferManager or ProductPublisher on a connection to give it its own pricing rule."
+            title={copy.empty.title}
+            message={copy.empty.message}
           />
         ) : (
           <div className="mini-list" id="dialog-picker-list">
@@ -72,19 +75,16 @@ export function PricingRulesPickerDialog({
                     <div className="mini-row__meta">
                       {summaryQuery?.status === 'success' && summaryQuery.data ? (
                         <>
-                          Default:{' '}
-                          {summaryQuery.data.default.mode === 'automatic'
-                            ? 'Automatic'
-                            : 'Manual review'}{' '}
-                          · {ruleLabelFor(toRuleSummary(summaryQuery.data.default.rule))}
-                          {overrideCount > 0
-                            ? ` · ${overrideCount} source${overrideCount === 1 ? '' : 's'} with their own mode or rule`
-                            : ''}
+                          {interpolate(copy.default, {
+                            mode: syncModeLabelFor(summaryQuery.data.default.mode),
+                            rule: ruleLabelFor(toRuleSummary(summaryQuery.data.default.rule)),
+                          })}
+                          {overrideCount > 0 ? ` · ${plural(overrideCount, copy.overrides)}` : ''}
                         </>
                       ) : summaryQuery?.status === 'error' ? (
-                        "Couldn't load this connection's rule."
+                        copy.loadError
                       ) : (
-                        'Loading…'
+                        copy.loading
                       )}
                     </div>
                   </div>
@@ -109,7 +109,7 @@ export function PricingRulesPickerDialog({
                       onOpenChange(false);
                     }}
                   >
-                    Open
+                    {copy.open}
                   </Link>
                 </div>
               );
@@ -118,7 +118,7 @@ export function PricingRulesPickerDialog({
         )}
         <DialogFooter>
           <Button tone="secondary" id="dialog-picker-cancel" onClick={() => onOpenChange(false)}>
-            Close
+            {copy.close}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -22,7 +22,8 @@
  * @module apps/web/src/features/sales-documents/lib
  */
 import { SALES_DOCUMENT_REST_OF_WORLD_COUNTRY } from '../api/sales-document-rules.types';
-import { describeSalesDocumentMarketOutcome } from './sales-document-market-outcome-copy';
+import { describeSalesDocumentMarketOutcome } from './sales-document-market-outcome';
+import { formatPlural, getLocale, getMessages, interpolate } from '../../../shared/i18n';
 import type { SalesDocumentMarketRow } from '../api/sales-document-markets.types';
 
 const MAX_NAMED_MARKETS = 3;
@@ -37,14 +38,18 @@ function isConfigured(row: SalesDocumentMarketRow): boolean {
 }
 
 function countryLabel(country: string): string {
-  return country === SALES_DOCUMENT_REST_OF_WORLD_COUNTRY ? 'Rest of world' : country;
+  return country === SALES_DOCUMENT_REST_OF_WORLD_COUNTRY
+    ? getMessages('sales-documents').marketSummary.restOfWorld
+    : country;
 }
 
 function namesSentenceFragment(rows: readonly SalesDocumentMarketRow[]): string {
   const names = rows.slice(0, MAX_NAMED_MARKETS).map((row) => countryLabel(row.country));
   const remaining = rows.length - names.length;
   const joined = names.join(', ');
-  return remaining > 0 ? `${joined}, and ${remaining} more` : joined;
+  return remaining > 0
+    ? interpolate(getMessages('sales-documents').marketSummary.namesAndMore, { names: joined, count: remaining })
+    : joined;
 }
 
 export interface SalesDocumentMarketSummary {
@@ -56,16 +61,15 @@ export function summarizeSalesDocumentMarkets(
   rows: readonly SalesDocumentMarketRow[],
 ): SalesDocumentMarketSummary | null {
   if (rows.length === 0) return null;
+  const copy = getMessages('sales-documents').marketSummary;
+  const locale = getLocale();
 
   const blocked = rows.filter((row) => describeSalesDocumentMarketOutcome(row.outcome).needsDecision);
 
   if (blocked.length === 0) {
     return {
       tone: 'all-set',
-      sentence:
-        rows.length === 1
-          ? 'This market is issuing its documents.'
-          : `All ${rows.length} markets are issuing their documents.`,
+      sentence: formatPlural(rows.length, copy.allSet, locale),
     };
   }
 
@@ -75,10 +79,9 @@ export function summarizeSalesDocumentMarkets(
   if (noneConfiguredAtAll && ordersArriving) {
     return {
       tone: 'fresh-install',
-      sentence:
-        blocked.length === 1
-          ? `Orders are arriving from ${namesSentenceFragment(blocked)}, and it has not been set up yet. Nothing is lost while it waits — set up routing when you're ready.`
-          : `Orders are arriving from ${blocked.length} markets — ${namesSentenceFragment(blocked)} — and none has been set up yet. Nothing is lost while they wait — set up routing when you're ready.`,
+      sentence: formatPlural(blocked.length, copy.freshInstall, locale, {
+        names: namesSentenceFragment(blocked),
+      }),
     };
   }
 
@@ -88,9 +91,9 @@ export function summarizeSalesDocumentMarkets(
   // whether that is most of their footprint or a small corner of it.
   return {
     tone: 'attention',
-    sentence:
-      blocked.length === 1
-        ? `1 of ${rows.length} markets — ${namesSentenceFragment(blocked)} — issues nothing right now. Nothing is lost while it's unconfigured — set up routing to start issuing.`
-        : `${blocked.length} of ${rows.length} markets — ${namesSentenceFragment(blocked)} — issue nothing right now. Nothing is lost while they're unconfigured — set up routing to start issuing.`,
+    sentence: formatPlural(blocked.length, copy.attention, locale, {
+      names: namesSentenceFragment(blocked),
+      total: rows.length,
+    }),
   };
 }

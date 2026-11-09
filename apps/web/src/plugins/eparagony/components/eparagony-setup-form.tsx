@@ -42,10 +42,10 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import { ApiError } from '../../../shared/api/api-error';
 import {
-  EPARAGONY_ADDRESS_PART_REQUIRED_MESSAGE,
   EPARAGONY_SELLER_ADDRESS_REQUIRED_FIELDS,
   EPARAGONY_SETUP_DEFAULT_VALUES,
   EparagonyDocumentCapabilityValues,
+  eparagonySetupMessage,
   eparagonySetupSchema,
   orderDocumentCapabilities,
   toCreateConnectionInput,
@@ -62,26 +62,14 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { StatusBadge } from '../../../shared/ui/status-badge';
+import { interpolate, renderRich } from '../../../shared/i18n';
+import { useEparagonyMessages } from '../messages';
 
-const DOCUMENT_CHOICES: readonly {
-  capability: EparagonyDocumentCapability;
-  label: string;
-  help: string;
-}[] = [
-  {
-    capability: 'Fiscalization',
-    label: 'Fiscal e-receipts',
-    help: 'Registers a sale on your own fiscal printer through eparagony.pl.',
-  },
-  {
-    capability: 'Invoicing',
-    label: 'Invoices',
-    help: 'Issues VAT invoices through eparagony.pl. eparagony.pl can also send them on to KSeF.',
-  },
-];
-
-/** One summary line for the whole address, rather than one "Required." per empty part. */
-const ADDRESS_SUMMARY_MESSAGE = 'Complete the seller address, or leave it empty.';
+/** Copy sub-key for each document lane's checkbox, in product order. */
+const DOCUMENT_CHOICE_KEYS = {
+  Fiscalization: 'fiscalization',
+  Invoicing: 'invoicing',
+} as const satisfies Record<EparagonyDocumentCapability, string>;
 
 const KNOWN_FIELDS = new Set([
   'name',
@@ -130,6 +118,7 @@ function resolveFieldErrors(error: unknown): Record<string, string> {
 export function EparagonySetupForm({
   onDocumentCapabilitiesChange,
 }: EparagonySetupFormProps = {}): ReactElement {
+  const copy = useEparagonyMessages().eparagonySetupForm;
   const createConnection = useCreateConnectionMutation();
   const testConnection = useTestConnectionMutation();
   const navigate = useNavigate();
@@ -171,13 +160,13 @@ export function EparagonySetupForm({
   const hasAddressError = EPARAGONY_SELLER_ADDRESS_REQUIRED_FIELDS.some(
     (field) => errors[field] !== undefined,
   );
+  const addressPartRequired = eparagonySetupMessage('addressPartRequired');
   const validationMessages = [
     ...Object.values(errors).flatMap((error) =>
-      error?.message && error.message !== EPARAGONY_ADDRESS_PART_REQUIRED_MESSAGE
-        ? [String(error.message)]
-        : [],
+      error?.message && error.message !== addressPartRequired ? [String(error.message)] : [],
     ),
-    ...(hasAddressError ? [ADDRESS_SUMMARY_MESSAGE] : []),
+    // One summary line for the whole address, rather than one "Required." per empty part.
+    ...(hasAddressError ? [copy.addressSummary] : []),
   ];
 
   // Server-side, per-field diagnosis (#1911 AC): a shape-validation 400 names
@@ -190,8 +179,8 @@ export function EparagonySetupForm({
     if (!(createConnection.error instanceof ApiError)) return [];
     return Object.entries(fieldErrors)
       .filter(([path]) => !KNOWN_FIELDS.has(path))
-      .map(([path, message]) => `${path}: ${message}`);
-  }, [createConnection.error, fieldErrors]);
+      .map(([path, message]) => interpolate(copy.serverFieldError, { path, message }));
+  }, [createConnection.error, fieldErrors, copy.serverFieldError]);
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
@@ -225,9 +214,10 @@ export function EparagonySetupForm({
     const createdBoth = createdCapabilities.length === EparagonyDocumentCapabilityValues.length;
     return (
       <div className="wizard-card" data-testid="eparagony-setup-created">
-        <Alert tone="success" title="Connection created">
-          eparagony.pl connection &ldquo;{form.getValues('name').trim()}&rdquo; was created
-          {createdInvoices ? ' with the seller details invoices need.' : '.'}
+        <Alert tone="success" title={copy.created.title}>
+          {interpolate(createdInvoices ? copy.created.bodyWithSeller : copy.created.body, {
+            name: form.getValues('name').trim(),
+          })}
         </Alert>
 
         {/*
@@ -237,19 +227,18 @@ export function EparagonySetupForm({
           the setup flow (#3769).
         */}
         {createdInvoices ? (
-          <Alert tone="warning" title="Before the first invoice">
+          <Alert tone="warning" title={copy.nextSteps.title}>
             <ul className="next-steps">
               <li>
-                <span>
-                  Set up an invoice numbering series. Without one, issuing an invoice stops and
-                  asks for it.
-                </span>
-                <Link to={`/connections/${createdConnectionId}/numbering`}>Set up numbering</Link>
+                <span>{copy.nextSteps.numbering}</span>
+                <Link to={`/connections/${createdConnectionId}/numbering`}>
+                  {copy.nextSteps.numberingLink}
+                </Link>
               </li>
               {createdBoth ? (
                 <li>
-                  <span>Add a sales-document rule: which orders get a receipt, which an invoice.</span>
-                  <Link to="/settings/sales-documents">Open sales documents</Link>
+                  <span>{copy.nextSteps.rule}</span>
+                  <Link to="/settings/sales-documents">{copy.nextSteps.ruleLink}</Link>
                 </li>
               ) : null}
             </ul>
@@ -259,23 +248,25 @@ export function EparagonySetupForm({
         {testResult ? (
           <Alert
             tone={testResult.success ? 'success' : 'error'}
-            title={testResult.success ? 'Connection test passed' : 'Connection test failed'}
+            title={testResult.success ? copy.test.passed : copy.test.failed}
           >
             {testResult.message}
-            {typeof testResult.latencyMs === 'number' ? ` (${testResult.latencyMs}ms)` : null}
+            {typeof testResult.latencyMs === 'number'
+              ? interpolate(copy.test.latency, { ms: testResult.latencyMs })
+              : null}
           </Alert>
         ) : null}
         {testConnection.error ? (
-          <Alert tone="error" title="Unable to test connection">
+          <Alert tone="error" title={copy.test.unableToTest}>
             {testConnection.error.message}
           </Alert>
         ) : null}
         <div className="form-actions">
           <Button type="button" onClick={() => void onTest()} disabled={testConnection.isPending}>
-            {testConnection.isPending ? 'Testing…' : 'Test connection'}
+            {testConnection.isPending ? copy.test.testing : copy.test.test}
           </Button>
           <Button tone="secondary" type="button" onClick={() => void navigate('/connections')}>
-            Done
+            {copy.done}
           </Button>
         </div>
       </div>
@@ -283,16 +274,17 @@ export function EparagonySetupForm({
   }
 
   const choiceError = errors.enabledCapabilities?.message;
+  const strong = { strong: (text: string) => <strong>{text}</strong> };
 
   return (
     <form className="wizard-card" onSubmit={(event) => void onSubmit(event)} noValidate>
-      <BackLink to="/connections/new" label="Connections" className="wizard-card__back" />
+      <BackLink to="/connections/new" label={copy.backLink} className="wizard-card__back" />
 
       {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
         <FormErrorSummary errors={validationMessages} />
       ) : null}
       {createConnection.error ? (
-        <Alert tone="error" title="Unable to create connection">
+        <Alert tone="error" title={copy.unableToCreate}>
           {createConnection.error.message}
           {unmatchedServerErrors.length > 0 ? (
             <ul>
@@ -312,24 +304,25 @@ export function EparagonySetupForm({
           choiceError ? 'eparagony-document-choice-help eparagony-document-choice-error' : 'eparagony-document-choice-help'
         }
       >
-        <legend className="capability-fieldset__legend">What should this connection issue?</legend>
+        <legend className="capability-fieldset__legend">{copy.documentChoice.legend}</legend>
         <p className="muted-text capability-fieldset__help" id="eparagony-document-choice-help">
-          Pick one or both. You can change this later on the connection&rsquo;s detail page.
+          {copy.documentChoice.help}
         </p>
         <ul className="capability-list">
-          {DOCUMENT_CHOICES.map((choice) => {
-            const id = `new-cap-${choice.capability}`;
+          {EparagonyDocumentCapabilityValues.map((capability) => {
+            const id = `new-cap-${capability}`;
+            const choice = copy.documentChoice[DOCUMENT_CHOICE_KEYS[capability]];
             return (
-              <li key={choice.capability} className="capability-list__item">
+              <li key={capability} className="capability-list__item">
                 <label htmlFor={id} className="capability-list__label">
                   <input
                     id={id}
                     type="checkbox"
-                    value={choice.capability}
+                    value={capability}
                     {...form.register('enabledCapabilities')}
                   />
                   <span className="capability-list__name">{choice.label}</span>
-                  <span className="capability-list__code">{choice.capability}</span>
+                  <span className="capability-list__code">{capability}</span>
                 </label>
                 <p className="capability-list__help muted-text">{choice.help}</p>
               </li>
@@ -341,45 +334,43 @@ export function EparagonySetupForm({
 
       {issuesReceipts && issuesInvoices ? (
         <Alert tone="info" density="compact">
-          An order gets one document, never both. After connecting, add a rule in Settings → Sales
-          documents that says which orders get a receipt and which get an invoice. Until then, orders
-          wait instead of getting a guessed document.
+          {copy.bothDocumentsNote}
         </Alert>
       ) : null}
 
       <div className="setup-lane">
-        <h3 className="setup-lane__title">eparagony.pl account</h3>
+        <h3 className="setup-lane__title">{copy.account.title}</h3>
         <FormField
-          label="Connection name"
+          label={copy.account.name.label}
           name="name"
           error={errors.name?.message ?? serverError('name')}
-          description="A label to identify this eparagony.pl account in OpenLinker."
+          description={copy.account.name.description}
         >
           <Input
             {...form.register('name')}
-            placeholder="My eparagony.pl account"
+            placeholder={copy.account.name.placeholder}
             autoComplete="off"
             invalid={Boolean(errors.name ?? serverError('name'))}
           />
         </FormField>
 
         <FormField
-          label="Environment"
+          label={copy.account.environment.label}
           name="environment"
           error={errors.environment?.message ?? serverError('environment')}
-          description="Sandbox has no fiscal device attached, so nothing prints or registers for real."
+          description={copy.account.environment.description}
         >
           <Select {...form.register('environment')}>
-            <option value="sandbox">Sandbox - https://sandbox.eparagony.pl</option>
-            <option value="production">Production - https://api.eparagony.pl</option>
+            <option value="sandbox">{copy.account.environment.sandbox}</option>
+            <option value="production">{copy.account.environment.production}</option>
           </Select>
         </FormField>
 
         <FormField
-          label="Client ID"
+          label={copy.account.clientId.label}
           name="clientId"
           error={errors.clientId?.message ?? serverError('clientId')}
-          description="Issued by eparagony.pl when your integration was approved."
+          description={copy.account.clientId.description}
         >
           <Input
             {...form.register('clientId')}
@@ -389,10 +380,10 @@ export function EparagonySetupForm({
         </FormField>
 
         <FormField
-          label="Client secret"
+          label={copy.account.clientSecret.label}
           name="clientSecret"
           error={errors.clientSecret?.message ?? serverError('clientSecret')}
-          description="Stored securely on the server and never shown again after saving."
+          description={copy.account.clientSecret.description}
         >
           <Input
             {...form.register('clientSecret')}
@@ -404,10 +395,10 @@ export function EparagonySetupForm({
         </FormField>
 
         <FormField
-          label="POS ID"
+          label={copy.account.posId.label}
           name="posId"
           error={errors.posId?.message ?? serverError('posId')}
-          description="The register or till identifier eparagony.pl stamps on every document."
+          description={copy.account.posId.description}
         >
           <Input
             {...form.register('posId')}
@@ -417,14 +408,14 @@ export function EparagonySetupForm({
         </FormField>
 
         <FormField
-          label="Integration ID (optional)"
+          label={copy.account.integrationId.label}
           name="integrationId"
           error={errors.integrationId?.message ?? serverError('integrationId')}
-          description="Of the form integration:secret. Leave blank if you were not given one."
+          description={copy.account.integrationId.description}
         >
           <Input
             {...form.register('integrationId')}
-            placeholder="openlinker:abc123"
+            placeholder={copy.account.integrationId.placeholder}
             autoComplete="off"
             invalid={Boolean(errors.integrationId ?? serverError('integrationId'))}
           />
@@ -437,37 +428,26 @@ export function EparagonySetupForm({
       */}
       {issuesReceipts ? (
         <div className="setup-lane">
-          <h3 className="setup-lane__title">Fiscal e-receipts</h3>
-          <Alert tone="info" title="Before you connect your printer">
-            <p>
-              eparagony.pl registers a sale with your own fiscal printer. Three things need to be set
-              up first, usually by your printer servicer:
-            </p>
+          <h3 className="setup-lane__title">{copy.receipts.title}</h3>
+          <Alert tone="info" title={copy.receipts.checklist.title}>
+            <p>{copy.receipts.checklist.intro}</p>
             <ul className="check-list">
               <li>
-                <span>
-                  <strong>An online fiscal printer</strong> - Posnet, Novitus or Elzab - connected to
-                  the internet.
-                </span>
+                <span>{renderRich(copy.receipts.checklist.printer, strong)}</span>
                 <StatusBadge tone="neutral" compact>
-                  Your equipment
+                  {copy.receipts.checklist.yourEquipment}
                 </StatusBadge>
               </li>
               <li>
-                <span>
-                  <strong>eparagony.pl&apos;s printer-control software</strong> running on the
-                  machine next to the printer.
-                </span>
+                <span>{renderRich(copy.receipts.checklist.software, strong)}</span>
                 <StatusBadge tone="neutral" compact>
-                  Your equipment
+                  {copy.receipts.checklist.yourEquipment}
                 </StatusBadge>
               </li>
               <li>
-                <span>
-                  <strong>The device set up for e-receipts</strong> by your printer servicer.
-                </span>
+                <span>{renderRich(copy.receipts.checklist.device, strong)}</span>
                 <StatusBadge tone="neutral" compact>
-                  Ask your servicer
+                  {copy.receipts.checklist.askServicer}
                 </StatusBadge>
               </li>
             </ul>
@@ -477,31 +457,29 @@ export function EparagonySetupForm({
 
       {issuesInvoices ? (
         <div className="setup-lane" data-testid="eparagony-setup-seller">
-          <h3 className="setup-lane__title">Seller on invoices</h3>
-          <p className="setup-lane__help">
-            eparagony.pl prints these on every invoice this connection issues, as the seller.
-          </p>
+          <h3 className="setup-lane__title">{copy.seller.title}</h3>
+          <p className="setup-lane__help">{copy.seller.help}</p>
 
           <FormField
-            label="Tax number (NIP)"
+            label={copy.seller.tin.label}
             name="merchantTIN"
             error={errors.merchantTIN?.message ?? serverError('merchantTIN')}
-            description="Must be the same NIP as on your eparagony.pl account. eparagony.pl refuses every invoice under a different number."
+            description={copy.seller.tin.description}
           >
             <Input
               {...form.register('merchantTIN')}
               inputMode="numeric"
-              placeholder="1234567890"
+              placeholder={copy.seller.tin.placeholder}
               autoComplete="off"
               invalid={Boolean(errors.merchantTIN ?? serverError('merchantTIN'))}
             />
           </FormField>
 
           <FormField
-            label="Seller name (optional)"
+            label={copy.seller.name.label}
             name="merchantName"
             error={errors.merchantName?.message ?? serverError('merchantName')}
-            description="The name as registered. Invoices work without it; a correction needs it."
+            description={copy.seller.name.description}
           >
             <Input
               {...form.register('merchantName')}
@@ -515,27 +493,35 @@ export function EparagonySetupForm({
             aria-labelledby="eparagony-setup-address-legend"
           >
             <legend className="form-field__label" id="eparagony-setup-address-legend">
-              Seller address (optional)
+              {copy.seller.address.legend}
             </legend>
             <div className="eparagony-seller__address-row eparagony-seller__address-row--street">
-              <FormField label="Street" name="merchantStreet" error={errors.merchantStreet?.message}>
+              <FormField
+                label={copy.seller.address.street.label}
+                name="merchantStreet"
+                error={errors.merchantStreet?.message}
+              >
                 <Input
                   {...form.register('merchantStreet')}
-                  placeholder="Prosta"
+                  placeholder={copy.seller.address.street.placeholder}
                   autoComplete="off"
                   invalid={Boolean(errors.merchantStreet)}
                 />
               </FormField>
-              <FormField label="Building" name="merchantNumber" error={errors.merchantNumber?.message}>
+              <FormField
+                label={copy.seller.address.number.label}
+                name="merchantNumber"
+                error={errors.merchantNumber?.message}
+              >
                 <Input
                   {...form.register('merchantNumber')}
-                  placeholder="51"
+                  placeholder={copy.seller.address.number.placeholder}
                   autoComplete="off"
                   invalid={Boolean(errors.merchantNumber)}
                 />
               </FormField>
               <FormField
-                label="Apartment"
+                label={copy.seller.address.apartment.label}
                 name="merchantApartment"
                 error={errors.merchantApartment?.message}
               >
@@ -548,38 +534,43 @@ export function EparagonySetupForm({
             </div>
             <div className="eparagony-seller__address-row eparagony-seller__address-row--city">
               <FormField
-                label="Postal code"
+                label={copy.seller.address.postalCode.label}
                 name="merchantPostalCode"
                 error={errors.merchantPostalCode?.message}
               >
                 <Input
                   {...form.register('merchantPostalCode')}
-                  placeholder="00-838"
+                  placeholder={copy.seller.address.postalCode.placeholder}
                   autoComplete="off"
                   invalid={Boolean(errors.merchantPostalCode)}
                 />
               </FormField>
-              <FormField label="City" name="merchantCity" error={errors.merchantCity?.message}>
+              <FormField
+                label={copy.seller.address.city.label}
+                name="merchantCity"
+                error={errors.merchantCity?.message}
+              >
                 <Input
                   {...form.register('merchantCity')}
-                  placeholder="Warszawa"
+                  placeholder={copy.seller.address.city.placeholder}
                   autoComplete="off"
                   invalid={Boolean(errors.merchantCity)}
                 />
               </FormField>
-              <FormField label="Country" name="merchantCountry" error={errors.merchantCountry?.message}>
+              <FormField
+                label={copy.seller.address.country.label}
+                name="merchantCountry"
+                error={errors.merchantCountry?.message}
+              >
                 <Input
                   {...form.register('merchantCountry')}
-                  placeholder="PL"
+                  placeholder={copy.seller.address.country.placeholder}
                   autoComplete="off"
                   invalid={Boolean(errors.merchantCountry)}
                 />
               </FormField>
             </div>
-            <p className="form-field__description">
-              Invoices work without it; a correction needs it. Leave it empty, or fill in every part
-              except the apartment.
-            </p>
+            <p className="form-field__description">{copy.seller.address.description}</p>
           </fieldset>
 
           <div className="setup-lane__toggle">
@@ -590,12 +581,10 @@ export function EparagonySetupForm({
                 aria-describedby="eparagony-einvoicing-hub-description"
                 {...form.register('eInvoicingHubEnabled')}
               />
-              <span>Send invoices on to KSeF</span>
+              <span>{copy.seller.hub.label}</span>
             </label>
             <p className="form-field__description" id="eparagony-einvoicing-hub-description">
-              {form.watch('eInvoicingHubEnabled')
-                ? 'Before the first invoice: give eparagony.pl permission to issue invoices in the KSeF taxpayer app, and switch KSeF on in panel.eparagony.pl. Without both, eparagony.pl refuses the invoice.'
-                : 'Off: invoices are issued outside KSeF, which is a complete result. Turn it on once eparagony.pl may send to KSeF for you.'}
+              {form.watch('eInvoicingHubEnabled') ? copy.seller.hub.on : copy.seller.hub.off}
             </p>
           </div>
         </div>
@@ -603,7 +592,7 @@ export function EparagonySetupForm({
 
       <div className="form-actions">
         <Button type="submit" disabled={createConnection.isPending}>
-          {createConnection.isPending ? 'Connecting…' : 'Connect eparagony.pl'}
+          {createConnection.isPending ? copy.connecting : copy.connect}
         </Button>
       </div>
     </form>

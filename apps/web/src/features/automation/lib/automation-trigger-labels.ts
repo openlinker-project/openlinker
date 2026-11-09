@@ -9,7 +9,7 @@
  *
  * @module apps/web/src/features/automation/lib
  */
-import { AUTOMATION_TRIGGER_COPY } from './automation.copy';
+import { getMessages } from '../../../shared/i18n';
 
 export interface TriggerLabel {
   label: string;
@@ -17,7 +17,7 @@ export interface TriggerLabel {
 }
 
 export function describeTrigger(trigger: string): TriggerLabel {
-  const entry = (AUTOMATION_TRIGGER_COPY as Record<string, { label: string; description: string }>)[
+  const entry = (getMessages('automation').triggers as Record<string, { label: string; description: string }>)[
     trigger
   ];
   return entry ? { ...entry } : { label: trigger, description: null };

@@ -1,10 +1,10 @@
-import { useState, type ReactElement } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
 import { useForgotPassword } from '../hooks/use-forgot-password';
 import {
-  forgotPasswordFormSchema,
+  createForgotPasswordFormSchema,
   type ForgotPasswordFormValues,
 } from './forgot-password-form.schema';
 import { Alert } from '../../../shared/ui/alert';
@@ -12,15 +12,19 @@ import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
+import { useMessages } from '../../../shared/i18n';
 
 const DEFAULT_VALUES: ForgotPasswordFormValues = { email: '' };
 
 export function ForgotPasswordForm(): ReactElement {
   const mutation = useForgotPassword();
+  const auth = useMessages('auth');
+  const copy = auth.forgotPassword;
+  const schema = useMemo(() => createForgotPasswordFormSchema(auth.validation), [auth]);
   const [submitted, setSubmitted] = useState(false);
   const form = useForm<ForgotPasswordFormValues>({
     defaultValues: DEFAULT_VALUES,
-    resolver: zodResolver(forgotPasswordFormSchema),
+    resolver: zodResolver(schema),
   });
 
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
@@ -39,13 +43,12 @@ export function ForgotPasswordForm(): ReactElement {
   if (submitted) {
     return (
       <div className="form-card guest-form">
-        <Alert tone="info" title="Check your email">
-          If an account exists for that email, you&apos;ll receive password reset instructions
-          shortly.
+        <Alert tone="info" title={copy.checkEmailTitle}>
+          {copy.checkEmail}
         </Alert>
         <div className="form-actions">
           <Link className="button" to="/login">
-            Back to sign in
+            {auth.common.backToSignIn}
           </Link>
         </div>
       </div>
@@ -60,12 +63,12 @@ export function ForgotPasswordForm(): ReactElement {
     >
       {form.formState.submitCount > 0 ? <FormErrorSummary errors={validationMessages} /> : null}
       {mutation.error ? (
-        <Alert tone="error" title="Request failed">
+        <Alert tone="error" title={copy.failed}>
           {mutation.error.message}
         </Alert>
       ) : null}
 
-      <FormField label="Email" name="email" error={form.formState.errors.email?.message}>
+      <FormField label={auth.common.email} name="email" error={form.formState.errors.email?.message}>
         <Input
           {...form.register('email')}
           type="email"
@@ -77,10 +80,10 @@ export function ForgotPasswordForm(): ReactElement {
 
       <div className="form-actions">
         <Button className="guest-form__submit" type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? 'Sending...' : 'Send reset link'}
+          {mutation.isPending ? copy.submitting : copy.submit}
         </Button>
         <Link className="guest-form__secondary" to="/login">
-          Back to sign in
+          {auth.common.backToSignIn}
         </Link>
       </div>
     </form>

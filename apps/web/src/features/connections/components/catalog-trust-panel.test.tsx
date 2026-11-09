@@ -78,7 +78,7 @@ describe('CatalogTrustPanel', () => {
       reconcileCycleOpen: true,
     });
 
-    expect(await screen.findByText('Open — resumes on the next hourly tick')).toBeInTheDocument();
+    expect(await screen.findByText('Open - resumes on the next hourly tick')).toBeInTheDocument();
     expect(screen.queryByText(/running/i)).not.toBeInTheDocument();
   });
 });

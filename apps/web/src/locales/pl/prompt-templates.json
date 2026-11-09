@@ -1,0 +1,226 @@
+{
+  "archivePromptTemplateDialog": {
+    "archive": "Archiwizuj",
+    "archivePublished": "Archiwizuj opublikowaną v{version}",
+    "archivePublishedForce": "Archiwizuj opublikowaną v{version} (wymuś)",
+    "archiveVersion": "Archiwizuj v{version}",
+    "archivedToastTitle": "Zarchiwizowano v{version}",
+    "archiving": "Archiwizowanie…",
+    "dangerBody": "Aktywne sugestie dla tej pary <code>(key, channel)</code> nie będą działać, dopóki nie zostanie opublikowany zamiennik.",
+    "dangerHeading": "Jedyna opublikowana wersja",
+    "description": "Wiersz zostanie ukryty na liście aktywnych, ale pozostanie w historii na potrzeby audytu i przywracania.",
+    "forceLabel": "Potwierdź: to jedyna opublikowana wersja",
+    "metadata": {
+      "channel": "Kanał",
+      "key": "Klucz",
+      "state": "Stan",
+      "updated": "Zmieniono",
+      "version": "Wersja"
+    },
+    "movedDescription": "{key} ({channel}) przeniesiono do archiwum.",
+    "stillActiveDescription": "Opublikowana v{published} jest nadal aktywna dla {key} ({channel}).",
+    "titleGeneric": "Archiwizuj szablon"
+  },
+  "common": {
+    "adminRequiredMessage": "Ta strona zarządza promptami wysyłanymi do modelu i wymaga sesji administratora.",
+    "adminRequiredTitle": "Wymagana rola administratora",
+    "cancel": "Anuluj",
+    "eyebrow": "Ustawienia",
+    "master": "główny",
+    "masterGeneric": "Główny (ogólny)",
+    "retry": "Ponów",
+    "states": {
+      "archived": "zarchiwizowany",
+      "draft": "szkic",
+      "published": "opublikowany"
+    },
+    "unknownError": "Nieznany błąd",
+    "versionTag": "v{version}"
+  },
+  "newPromptTemplateDialog": {
+    "create": "Utwórz szkic",
+    "createdToastDescription": "{key} v{version}",
+    "createdToastTitle": "Szkic utworzony",
+    "creating": "Tworzenie…",
+    "description": "Utwórz szkic szablonu dla nowej pary <code>(key, channel)</code>. Na następnej stronie dopracuj prompty w edytorze i opublikuj.",
+    "fields": {
+      "channel": {
+        "description": "Główny = ogólny szablon zapasowy dla każdej platformy. Opublikowane wersje dla konkretnego kanału mają pierwszeństwo.",
+        "label": "Kanał"
+      },
+      "key": {
+        "description": "Stały identyfikator, którego szuka usługa sugestii. Małe litery, rozdzielone kropkami lub myślnikami. Nie można go zmienić po publikacji.",
+        "label": "Klucz",
+        "placeholder": "offer.description.suggest"
+      },
+      "systemPrompt": {
+        "description": "Wysyłany jako komunikat systemowy modelu. Dla zmiennych używaj znaczników {{dotted.path}}.",
+        "label": "Prompt systemowy",
+        "placeholder": "Jesteś asystentem, który pisze opisy produktów do marketplace…"
+      },
+      "userPromptTemplate": {
+        "description": "Wysyłany jako wiadomość użytkownika. Dla zmiennych używaj znaczników {{dotted.path}}.",
+        "label": "Szablon promptu użytkownika",
+        "placeholder": "Napisz opis dla {{product.name}} ({{product.category}})…"
+      },
+      "variablesJson": {
+        "description": "Tablica JSON zadeklarowanych zmiennych. Użyj [], jeśli nie ma żadnych. Przykład: [{\"name\":\"product.name\",\"type\":\"string\",\"required\":true}]",
+        "label": "Zmienne (JSON)",
+        "placeholder": "[]"
+      }
+    },
+    "jsonStatus": {
+      "invalid": "✗ {message}",
+      "invalidSyntax": "niepoprawna składnia JSON",
+      "notArray": "musi być tablicą JSON",
+      "valid": {
+        "few": "✓ poprawny JSON · {n} zmienne",
+        "many": "✓ poprawny JSON · {n} zmiennych",
+        "one": "✓ poprawny JSON · {n} zmienna",
+        "other": "✓ poprawny JSON · {n} zmiennej"
+      }
+    },
+    "title": "Nowy szablon promptu"
+  },
+  "newPromptTemplateSchema": {
+    "channelInvalid": "Wybierz szablon główny albo zarejestrowaną platformę",
+    "invalidJson": "Niepoprawny JSON: {error}",
+    "invalidVariables": "Niepoprawne zmienne: {path}{message}",
+    "keyPattern": "Używaj tylko małych liter, cyfr, kropek i myślników (np. \"offer.description.suggest\")",
+    "keyRequired": "Klucz jest wymagany",
+    "notArray": "Zmienne muszą być tablicą JSON (użyj [], jeśli nie ma żadnych).",
+    "parseError": "błąd parsowania",
+    "systemPromptRequired": "Prompt systemowy jest wymagany",
+    "systemPromptTooLong": "Prompt systemowy może mieć najwyżej {max} znaków",
+    "tooManyVariables": "Dozwolonych jest najwyżej {max} zmiennych",
+    "userPromptRequired": "Prompt użytkownika jest wymagany",
+    "userPromptTooLong": "Prompt użytkownika może mieć najwyżej {max} znaków",
+    "variableNameRequired": "Nazwa zmiennej jest wymagana"
+  },
+  "promptTemplateDetailPage": {
+    "actions": {
+      "creating": "Tworzenie…",
+      "discardDraft": "Odrzuć szkic",
+      "newDraftFromVersion": "Nowy szkic z tej wersji",
+      "publish": "Opublikuj v{version}",
+      "saveDraft": "Zapisz szkic",
+      "saving": "Zapisywanie…"
+    },
+    "discardConfirm": {
+      "confirm": "Odrzuć",
+      "description": "Wszystkie zmiany w tym szkicu zostaną utracone. Tej operacji nie można cofnąć.",
+      "discarding": "Odrzucanie…",
+      "title": "Odrzucić szkic v{version}?"
+    },
+    "errorTitle": "Nie udało się wczytać szablonu promptu",
+    "errors": {
+      "invalidJson": "Niepoprawny JSON",
+      "missingRequired": "Brak wymaganej wartości dla `{name}`.",
+      "renderFailed": "Nie udało się wygenerować podglądu",
+      "sampleNotObject": "Przykładowe wartości muszą być obiektem JSON."
+    },
+    "history": {
+      "empty": "Brak historii wersji.",
+      "loading": "Wczytywanie wersji…",
+      "open": "Otwórz",
+      "revert": "Przywróć"
+    },
+    "historyEyebrow": "Historia",
+    "historyTitle": "Historia wersji",
+    "loadingMessage": "Pobieranie danych szablonu…",
+    "loadingTitle": "Wczytywanie szablonu promptu",
+    "metadata": {
+      "created": "Utworzono",
+      "createdBy": "{time} · {user}",
+      "key": "Klucz",
+      "published": "Opublikowano",
+      "updated": "Zmieniono"
+    },
+    "notFoundMessage": "Szablon mógł zostać usunięty.",
+    "notFoundTitle": "Nie znaleziono szablonu",
+    "pageDescription": "{channel} · v{version} · {state}",
+    "preview": {
+      "fillDemo": "Wypełnij przykładem",
+      "invalidJson": "Niepoprawny JSON: {error}",
+      "sampleValues": "Przykładowe wartości",
+      "size": {
+        "few": "{n} znaki · ≈{tokens} tok.",
+        "many": "{n} znaków · ≈{tokens} tok.",
+        "one": "{n} znak · ≈{tokens} tok.",
+        "other": "{n} znaku · ≈{tokens} tok."
+      },
+      "systemPrompt": "Prompt systemowy",
+      "unavailable": "Podgląd niedostępny.",
+      "undeclared": "Niezadeklarowane znaczniki są wyświetlane dosłownie:",
+      "userPrompt": "Prompt użytkownika"
+    },
+    "publishConfirm": {
+      "confirm": "Opublikuj v{version}",
+      "description": "Bieżąca opublikowana wersja zostanie zarchiwizowana. Nowy prompt zacznie działać od następnego żądania sugestii.",
+      "publishing": "Publikowanie…",
+      "title": "Opublikować v{version}?"
+    },
+    "tabs": {
+      "preview": "Podgląd",
+      "system": "Prompt systemowy",
+      "user": "Prompt użytkownika",
+      "variables": "Zmienne ({n})"
+    },
+    "title": "Szablon promptu",
+    "toasts": {
+      "created": "Utworzono szkic v{version}",
+      "discarded": "Szkic odrzucony",
+      "published": "Opublikowano v{version}",
+      "reverted": "Utworzono szkic v{draft} z v{version}",
+      "saved": "Szkic zapisany"
+    },
+    "variablesEditor": {
+      "add": "+ Dodaj zmienną",
+      "descriptionPlaceholder": "Opcjonalny opis",
+      "empty": "Brak zadeklarowanych zmiennych.",
+      "namePlaceholder": "product.name",
+      "remove": "Usuń",
+      "required": "wymagana",
+      "types": {
+        "array": "tablica",
+        "number": "liczba",
+        "object": "obiekt",
+        "string": "tekst"
+      }
+    }
+  },
+  "promptTemplatesListPage": {
+    "adminOnly": "Dostęp tylko dla administratorów.",
+    "archive": "Archiwizuj",
+    "archivedTag": "zarchiwizowany",
+    "cardDraft": "szkic v{version}",
+    "cardPublished": "opublikowany v{version}",
+    "columns": {
+      "channel": "Kanał",
+      "draft": "Szkic",
+      "key": "Klucz",
+      "published": "Opublikowany",
+      "rowActions": "Akcje wiersza",
+      "updated": "Zmieniono"
+    },
+    "description": "Twórz, wersjonuj i publikuj prompty, które proces sugestii AI wysyła do modelu.",
+    "emptyMessage": "Proces sugestii korzysta z tych promptów. Pierwsze wersje są zwykle dodawane podczas instalacji OpenLinker.",
+    "emptyTitle": "Nie ma jeszcze szablonów promptów",
+    "errorTitle": "Nie udało się wczytać szablonów promptów",
+    "filters": {
+      "all": "Wszystkie",
+      "channelDescription": "Filtruj według kanału docelowego",
+      "channelLabel": "Kanał",
+      "statusActive": "Aktywne",
+      "statusAll": "Wszystkie",
+      "statusArchived": "Zarchiwizowane",
+      "statusDescription": "Domyślnie ukrywaj w pełni zarchiwizowane wiersze",
+      "statusLabel": "Status"
+    },
+    "loadingMessage": "Pobieranie szablonów…",
+    "loadingTitle": "Wczytywanie szablonów promptów",
+    "neverPublished": "nigdy nieopublikowany",
+    "newTemplate": "Nowy szablon",
+    "title": "Szablony promptów"
+  }
+}

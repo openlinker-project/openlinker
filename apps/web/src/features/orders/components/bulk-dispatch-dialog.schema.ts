@@ -10,13 +10,22 @@
  */
 import { z } from 'zod';
 
-/** Parcel dimensions + weight, shared by the batch profile and per-order rows. */
-export const parcelSchema = z.object({
-  length: z.coerce.number().int().positive('Length must be a positive integer'),
-  width: z.coerce.number().int().positive('Width must be a positive integer'),
-  height: z.coerce.number().int().positive('Height must be a positive integer'),
-  weightGrams: z.coerce.number().int().positive('Weight must be a positive integer'),
-});
+import type { ParcelValidationCopy } from './order-form.types';
 
-export type ParcelFormValues = z.input<typeof parcelSchema>;
-export type ParcelSubmission = z.output<typeof parcelSchema>;
+/**
+ * Parcel dimensions + weight, shared by the batch profile and per-order rows.
+ * A factory so the messages follow the active language.
+ */
+export function createParcelSchema(copy: ParcelValidationCopy) {
+  return z.object({
+    length: z.coerce.number().int().positive(copy.length),
+    width: z.coerce.number().int().positive(copy.width),
+    height: z.coerce.number().int().positive(copy.height),
+    weightGrams: z.coerce.number().int().positive(copy.weight),
+  });
+}
+
+type ParcelSchema = ReturnType<typeof createParcelSchema>;
+
+export type ParcelFormValues = z.input<ParcelSchema>;
+export type ParcelSubmission = z.output<ParcelSchema>;

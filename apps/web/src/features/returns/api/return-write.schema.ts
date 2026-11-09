@@ -15,6 +15,7 @@
  * @module apps/web/src/features/returns/api
  */
 import { z } from 'zod/v4';
+import { getMessages } from '../../../shared/i18n';
 import type {
   AuthorizeReturnResult,
   MatchReturnToOrderResult,
@@ -24,7 +25,7 @@ import type {
 /** A write's response could not be read, though the write itself may have landed. */
 export class ReturnWriteResultUnreadableError extends Error {
   constructor() {
-    super('The server accepted the change but sent a result this build could not read.');
+    super(getMessages('returns').apiErrors.resultUnreadable);
     this.name = 'ReturnWriteResultUnreadableError';
   }
 }

@@ -22,7 +22,7 @@
  * @module apps/web/src/features/returns/lib
  */
 import type { MetricCardTone } from '../../../shared/ui/metric-card';
-import { RETURN_RESTOCK_BLOCKED_COPY } from './restock-blocked.copy';
+import { getMessages } from '../../../shared/i18n';
 
 export const RETURN_SEGMENT_VALUES = [
   'needs_receiving',
@@ -48,20 +48,34 @@ export function isReturnSegment(value: string | null | undefined): value is Retu
   );
 }
 
-/** Operator-facing labels, verbatim from spec § 4.1. */
+/**
+ * Operator-facing labels, verbatim from spec § 4.1, read from the `returns`
+ * namespace at access time so a language switch reaches them.
+ */
 export const RETURN_SEGMENT_LABELS = {
-  needs_receiving: 'Needs receiving',
-  needs_disposition: 'Needs disposition',
+  get needs_receiving(): string {
+    return getMessages('returns').returnSegments.label.needs_receiving;
+  },
+  get needs_disposition(): string {
+    return getMessages('returns').returnSegments.label.needs_disposition;
+  },
   // The one segment whose label is NOT authored here (#2645 review). It is the
-  // same sentence the row badge and the per-line notice render, so it lives in
-  // `restock-blocked.copy.ts` with them — a second literal is exactly the drift
-  // that module exists to prevent, and its own docblock already claims this
-  // segment as a consumer.
-  restock_blocked: RETURN_RESTOCK_BLOCKED_COPY.badge,
-  money_pending: 'Money pending',
-  orphans: 'Orphans',
-  all_open: 'All open',
-} as const satisfies Record<ReturnSegment, string>;
+  // same sentence the row badge and the per-line notice render, so it is read
+  // from `restockBlocked.badge` with them - a second key is exactly the drift
+  // that key exists to prevent.
+  get restock_blocked(): string {
+    return getMessages('returns').restockBlocked.badge;
+  },
+  get money_pending(): string {
+    return getMessages('returns').returnSegments.label.money_pending;
+  },
+  get orphans(): string {
+    return getMessages('returns').returnSegments.label.orphans;
+  },
+  get all_open(): string {
+    return getMessages('returns').returnSegments.label.all_open;
+  },
+} satisfies Record<ReturnSegment, string>;
 
 /**
  * Tones — keyed off `MetricCard`'s OWN prop type, never a local union.
