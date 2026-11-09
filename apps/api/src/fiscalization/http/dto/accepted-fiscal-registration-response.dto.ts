@@ -18,6 +18,8 @@
  * @module apps/api/src/fiscalization/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
+import { DocumentRequestOutcomeValues } from '@openlinker/core/sales-documents';
+import { DocumentRequestOutcome } from '@openlinker/core/sales-documents';
 
 export class AcceptedFiscalRegistrationResponseDto {
   @ApiProperty({ description: 'The order whose sale was accepted for registration' })
@@ -42,9 +44,36 @@ export class AcceptedFiscalRegistrationResponseDto {
   jobId!: string;
 
   @ApiProperty({
+    enum: DocumentRequestOutcomeValues,
     description:
-      'True when this request restarted a job that had exhausted its retries, rather than ' +
-      'enqueueing or joining a live one. Says nothing about whether the sale is registered.',
+      'What this request did (#3960). new-attempt: a new attempt was started and will reach the ' +
+      'provider. joined: an attempt was already queued or running. redriven: a job that had given ' +
+      'up was restarted. resumed: an unfinished attempt with no live job was picked up again. A ' +
+      'request that would do nothing is refused with 409 instead. Advisory under concurrency: ' +
+      'two simultaneous requests may both read new-attempt while only one job exists (both name ' +
+      'the same jobId).',
+  })
+  outcome!: DocumentRequestOutcome;
+
+  @ApiProperty({
+    description:
+      '0-based attempt this request works on (#3960). 0 is the first attempt; after a refusal ' +
+      'the next request starts attempt 1 under a new key.',
+  })
+  attempt!: number;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The refused attempt this one follows, or null for a first attempt (#3960).',
+  })
+  previousAttemptId!: string | null;
+
+  @ApiProperty({
+    deprecated: true,
+    description:
+      'Deprecated since #3960, read outcome === "redriven". True when this request restarted a ' +
+      'job that had exhausted its retries.',
   })
   redrivenFromDead!: boolean;
 }

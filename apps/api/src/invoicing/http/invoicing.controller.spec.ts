@@ -561,6 +561,24 @@ describe('InvoicingController', () => {
       expect(cmd.idempotencyKey).toBeUndefined();
     });
 
+    it('keyless re-issue over a REFUSED row starts its next attempt (#3960)', async () => {
+      // Re-sending under the refused key reaches a provider that answers it with
+      // the document it already refused, so the controller names the refused
+      // row and the service starts the next attempt under a new key.
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice.mockResolvedValue(
+        makeInvoiceRecord({
+          id: 'inv_refused',
+          status: 'failed',
+          failureMode: 'rejected',
+          idempotencyKey: 'prior-key',
+        }),
+      );
+      invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord());
+      await controller.issueInvoice(dto);
+      expect(invoiceService.issueInvoice.mock.calls[0][1]).toEqual({ retryOf: 'inv_refused' });
+    });
+
     it('caller-supplied idempotencyKey passes through to the mapper verbatim', async () => {
       orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
       invoiceService.getInvoice.mockResolvedValue(null);
@@ -1255,7 +1273,10 @@ describe('InvoicingController', () => {
   });
 
   describe('retryInvoices (#1245)', () => {
-    it('should retry only failed+rejected records and reuse the record idempotencyKey', async () => {
+    it('should retry a refused record as its next attempt rather than re-sending its key', async () => {
+      // #3960: re-sending under the refused key reaches a provider that answers
+      // it with the document it already refused, so the retry names the refused
+      // record and the service starts the next attempt under a new key.
       const eligible = makeInvoiceRecord({
         id: 'inv_fail',
         status: 'failed',
@@ -1264,21 +1285,20 @@ describe('InvoicingController', () => {
       });
       invoiceService.getInvoiceById.mockResolvedValue(eligible);
       orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
-      invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord({ status: 'issued' }));
+      invoiceService.issueInvoice.mockResolvedValue(
+        makeInvoiceRecord({ id: 'inv_next', status: 'issued' }),
+      );
 
       const res = await controller.retryInvoices({ invoiceIds: ['inv_fail'] });
 
       expect(res.retried).toBe(1);
       expect(res.skipped).toBe(0);
-      expect(res.results).toEqual([{ id: 'inv_fail', outcome: 'retried' }]);
-      // Reuses the record's OWN key so the service resumes THAT row (R2/R3). The
-      // command rebuilt from the order snapshot carries no scheme-tagged buyer tax
-      // id (the projection doesn't persist it) → buyer.taxId is null.
+      expect(res.results).toEqual([{ id: 'inv_fail', outcome: 'retried', recordId: 'inv_next' }]);
+      // The command rebuilt from the order snapshot carries no scheme-tagged
+      // buyer tax id (the projection doesn't persist it) -> buyer.taxId is null.
       expect(invoiceService.issueInvoice).toHaveBeenCalledWith(
-        expect.objectContaining({
-          idempotencyKey: 'key-fail',
-          buyer: expect.objectContaining({ taxId: null }),
-        }),
+        expect.objectContaining({ buyer: expect.objectContaining({ taxId: null }) }),
+        { retryOf: 'inv_fail' },
       );
     });
 
