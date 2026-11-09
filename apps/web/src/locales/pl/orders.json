@@ -552,6 +552,14 @@
     "attentionSyncHint": "Kierowanie wymaga uwagi",
     "partialSyncHint": "Nie dotarto do części wybranych kanałów docelowych",
     "reasons": {
+      "no-active-destination": {
+        "hint": "Każde połączenie, które może przyjąć to zamówienie, jest wyłączone lub wymaga uwagi. Zamówienie zostanie skopiowane automatycznie, gdy któreś z nich znów będzie aktywne. Dokument sprzedaży jest ustalany mimo to.",
+        "label": "Brak aktywnego kanału docelowego"
+      },
+      "no-destination-configured": {
+        "hint": "Żadne inne połączenie nie tworzy zamówień, więc nie ma dokąd skopiować tego zamówienia. Dokument sprzedaży i tak zostanie wystawiony. Jeśli zamówienia mają trafiać także gdzie indziej, dodaj kanał docelowy dla zamówień w sekcji Połączenia.",
+        "label": "Zostaje w sklepie źródłowym"
+      },
       "routed-destinations-partially-unavailable": {
         "hint": "To zamówienie dotarło do części kanałów docelowych wybranych przez kierowanie, ale nie do wszystkich. Pozostałe są wyłączone, nieznane albo nie mogą tworzyć zamówień.",
         "label": "Część wybranych kanałów docelowych niedostępna"
