@@ -308,7 +308,11 @@ describe('RoutingRulesPanel', () => {
           ],
         }),
       );
-      expect(await screen.findByText('Box 30 x 20 x 10 cm, 0.5 kg')).toBeInTheDocument();
+      // The summary shares one line with its "Default parcel" label, so the
+      // whole line is the text a single element carries.
+      expect(
+        await screen.findByText('Default parcel: Box 30 x 20 x 10 cm, 0.5 kg'),
+      ).toBeInTheDocument();
       expect(await screen.findByRole('button', { name: 'Edit parcel' })).toBeInTheDocument();
     });
 
