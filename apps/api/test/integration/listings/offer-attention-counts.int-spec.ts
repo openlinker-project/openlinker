@@ -193,6 +193,26 @@ describe('Offer Attention Counts API Integration (#4045)', () => {
     expect(b).toEqual({ connectionId: connectionB, count: 1, problems: [{ message: PAUSED.message }] });
   });
 
+  it('should keep at most five problems per connection, the most widespread first', async () => {
+    // Six distinct account problems on connection B, with PAUSED now on two
+    // listings so it must survive the cap at the top.
+    const extra = [1, 2, 3, 4, 5].map((n) => ({ code: `extra${n}`, message: `Extra problem ${n}.`, scope: 'account' }));
+    await seedOffer({
+      externalOfferId: 'many-b',
+      connection: connectionB,
+      statusDetails: { validationProblems: [PAUSED, ...extra] },
+    });
+
+    const counts = (await list('includeLifecycleCounts=true')).attentionCounts;
+    const b = counts?.shopBlockedByConnection.find((c) => c.connectionId === connectionB);
+
+    expect(b?.count).toBe(2);
+    expect(b?.problems).toHaveLength(5);
+    expect(b?.problems[0]).toEqual({ message: PAUSED.message });
+    // Count ties break on code, so the kept four are stable across reads.
+    expect(b?.problems.slice(1).map((p) => p.code)).toEqual(['extra1', 'extra2', 'extra3', 'extra4']);
+  });
+
   it('should keep each number readable while its own filter is applied', async () => {
     const blocked = (await list('shopBlocked=true&includeLifecycleCounts=true')).attentionCounts;
     const selling = (await list('staleSignal=selling&includeLifecycleCounts=true')).attentionCounts;
