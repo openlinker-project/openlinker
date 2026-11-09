@@ -9,8 +9,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddWebhookDeliveryDlqCode1938410000000 implements MigrationInterface {
-  name = 'AddWebhookDeliveryDlqCode1938410000000';
+export class AddWebhookDeliveryDlqCode1938760000000 implements MigrationInterface {
+  name = 'AddWebhookDeliveryDlqCode1938760000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`ALTER TABLE "webhook_deliveries" ADD COLUMN IF NOT EXISTS "dlqCode" text`);

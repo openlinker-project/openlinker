@@ -38,7 +38,7 @@
 **Warnings**
 
 1. **Migrations (2).** Next synthetic timestamps must sort above `origin/main`'s newest,
-   `1938400000000-add-login-page-settings` (e.g. `1938410000000`, `1938420000000`), class suffix matching
+   `1938400000000-add-login-page-settings` (e.g. `1938760000000`, `1938770000000`), class suffix matching
    (`check-migration-timestamps.mjs`). The dlqCode backfill must restrict to the five known prefixes; `down()`
    drops each column. Run `migration:show`.
 2. **Frontend mirrors need a mirror check.** The FE will hold copies of `WebhookDlqCode`, `ConnectionTestOutcome` and

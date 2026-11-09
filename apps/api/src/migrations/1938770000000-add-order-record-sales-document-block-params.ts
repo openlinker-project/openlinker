@@ -8,8 +8,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOrderRecordSalesDocumentBlockParams1938420000000 implements MigrationInterface {
-  name = 'AddOrderRecordSalesDocumentBlockParams1938420000000';
+export class AddOrderRecordSalesDocumentBlockParams1938770000000 implements MigrationInterface {
+  name = 'AddOrderRecordSalesDocumentBlockParams1938770000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
