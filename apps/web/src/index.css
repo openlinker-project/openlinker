@@ -16899,6 +16899,8 @@ input.bulk-dispatch__num--wide {
 .bulk-chip--warning .bulk-chip__dot { background: var(--status-warning); }
 .bulk-chip--neutral { background: var(--bg-muted); border-color: var(--border-default); color: var(--text-muted); }
 .bulk-chip--neutral .bulk-chip__dot { background: var(--text-disabled); }
+.bulk-chip--info { background: var(--status-info-soft); border-color: var(--status-info-border); color: var(--status-info-fg); }
+.bulk-chip--info .bulk-chip__dot { background: var(--status-info); }
 button.bulk-chip { cursor: pointer; }
 button.bulk-chip:hover { filter: brightness(0.97); }
 button.bulk-chip:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
@@ -17100,6 +17102,32 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .bulk-editor__prov--distinct { color: var(--text-secondary); background: var(--bg-muted); }
 .bulk-editor__prov--policy { color: var(--status-info-fg); background: var(--status-info-soft); }
 .bulk-editor__prov--defaults { color: var(--text-muted); background: var(--bg-muted); }
+.bulk-editor__prov--rule { color: var(--status-info-fg); background: var(--status-info-soft); }
+.bulk-editor__prov--rejected { color: var(--status-warning-fg); background: var(--status-warning-soft); }
+/* What the connection's attribute rules do with a parameter (#3995). The badge
+   carries the ordinary case; a line appears only for an exception. */
+.bulk-editor__prov--rule { cursor: help; }
+.bulk-editor__prov--rule:focus-visible, .rules-chip:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.bulk-editor__rule-hint { margin: 4px 0 0; font-size: 12px; line-height: 1.45; color: var(--text-muted); }
+.bulk-editor__rule-hint--warn { color: var(--status-warning-fg); }
+.bulk-editor__rule-hint--warn::before { content: '\25B2'; font-size: 9px; margin-right: 6px; vertical-align: 1px; }
+.bulk-editor__rules-line {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  margin: 0 0 var(--space-3);
+  padding: 6px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.bulk-editor__vparam { display: grid; align-content: start; min-width: 0; }
+.bulk-editor__rules-line a { font-weight: 500; }
+.bulk-editor__rules-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--status-info); align-self: center; }
 /* Grouping-param per-variant override consequence chip (#1741). */
 .bulk-editor__prov--split { color: var(--status-warning-fg); background: var(--status-warning-soft); }
 
@@ -34807,6 +34835,95 @@ legend.analytics-settings-dialog__label {
   min-height: 44px;
   font-weight: 600;
 }
+
+/* ── Attribute rules panel, bulk wizard Review step (#3995) ──────────────────
+   One quiet surface: what the rules fill, as a coverage strip per parameter,
+   and under it only what needs the operator. The bar is the one loud element. */
+.rules-panel {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.rules-panel__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.rules-panel__heading { display: grid; gap: 2px; min-width: 0; }
+.rules-panel__title { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.35; color: var(--text-primary); }
+.rules-panel__lede { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-secondary); max-width: 72ch; }
+.rules-panel__manage { flex: none; font-size: 13px; font-weight: 500; white-space: nowrap; }
+
+.rules-panel__coverage { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.rules-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--bg-canvas);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.rules-pill--rejected { border-color: var(--status-warning-border); background: var(--status-warning-soft); }
+.rules-pill__name { font-weight: 500; }
+.rules-pill__bar { display: inline-flex; gap: 2px; width: 44px; height: 6px; }
+.rules-pill__seg { flex: 1 1 0; min-width: 0; border-radius: 2px; background: var(--border-default); }
+.rules-pill__seg--filled { background: var(--status-info); }
+.rules-pill__seg--rejected { background: var(--status-warning); }
+.rules-pill__count { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.rules-pill--rejected .rules-pill__count { color: var(--status-warning-fg); }
+
+.rules-panel__issues { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--border-default); }
+.rules-panel__issue {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+.rules-panel__issues .rules-panel__issue + .rules-panel__issue { border-top: 1px solid var(--border-default); }
+.rules-panel__issue-text { min-width: 0; flex: 1 1 auto; }
+.rules-panel__issues .rules-panel__issue-text::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--status-warning);
+  vertical-align: 2px;
+}
+.rules-panel__issue-where { flex: 0 1 auto; min-width: 0; color: var(--text-muted); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rules-panel__issue--failed {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--status-warning-soft);
+  color: var(--status-warning-fg);
+}
+.rules-panel__more { padding: var(--space-2) 0 0; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border-default); }
+
+/* The per-variant chip, with its value list on hover. */
+.rules-chip { cursor: default; }
+.rules-chip-tip { display: grid; grid-template-columns: auto auto; gap: 2px 12px; margin: 0; font-size: 12px; }
+.rules-chip-tip dt { color: var(--text-muted); }
+.rules-chip-tip dd { margin: 0; font-weight: 500; }
+.rules-chip-tip__rejected { color: var(--status-warning-fg); }
+
+@media (max-width: 640px) {
+  .rules-panel { padding: var(--space-3); }
+  .rules-panel__head { flex-direction: column; gap: var(--space-1); }
+  .rules-panel__issue { flex-wrap: wrap; }
+  .rules-panel__issue-where { flex-basis: 100%; order: 3; text-align: left; white-space: normal; padding-left: 14px; }
+}
+.bulk-editor__vparam:has(.bulk-editor__rule-hint--warn) .bulk-editor__input,
+.bulk-editor__vparam:has(.bulk-editor__rule-hint--warn) .combobox__control { border-color: var(--status-warning-border); }
+/* A field with a hint under it must not push its row-mate's input down (#3995). */
+.bulk-editor__platform-slot .category-parameters-step__group > * { align-self: start; }
 
 /* ── Insights: Connection health (#4016) ─────────────────────────────────
    A fixed-layout table, so the platform, status and failed-jobs columns line

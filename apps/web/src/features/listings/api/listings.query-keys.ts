@@ -93,6 +93,13 @@ export const listingsQueryKeys = {
    */
   publishedVariants: (connectionId: string, variantIds: readonly string[]) =>
     ['listings', 'publishedVariants', connectionId, [...variantIds].sort()] as const,
+  /**
+   * #3995 - one chunk of the attribute projection preview. The signature folds
+   * in each item's category and EAN override, because a rule can be scoped to a
+   * category and a `place-value` rule can read the EAN.
+   */
+  attributeProjectionPreview: (connectionId: string, signature: string) =>
+    ['listings', 'attributeProjectionPreview', connectionId, signature] as const,
 };
 
 /**

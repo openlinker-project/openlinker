@@ -64,6 +64,7 @@ Add a row when a new domain term reaches the UI. Change a row only together with
 | Gross / net | Brutto / netto | |
 | Price change | Zmiana ceny | |
 | Pricing rule | Reguła cenowa | |
+| Attribute rule | Reguła atrybutów | an operator rule that fills a marketplace parameter |
 | Category | Kategoria | |
 | Attribute | Atrybut | |
 | Parameter | Parametr | marketplace category parameter |
