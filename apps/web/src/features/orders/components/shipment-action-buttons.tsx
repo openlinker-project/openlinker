@@ -269,7 +269,7 @@ export function ShipmentActionButtons({
                 <CancelShipmentErrorAlert error={cancelMutation.error} />
               ) : undefined
             }
-                        confirmLabel={
+            confirmLabel={
               cancelMutation.isPending ? copy.cancelDialog.confirming : copy.cancelDialog.confirm
             }
             cancelLabel={copy.cancelDialog.keep}

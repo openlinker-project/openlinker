@@ -3,8 +3,18 @@ import { ApiError } from '../../../shared/api/api-error';
 import { canRetryCancelShipment, classifyCancelShipmentError } from './cancel-shipment-error';
 
 describe('classifyCancelShipmentError', () => {
+  it('should classify a 502 carrying a providerCode as carrier-refused', () => {
+    const error = new ApiError('x', 502, { message: 'x', providerCode: 'shipx.invalid_action' });
+    expect(classifyCancelShipmentError(error)).toBe('carrier-refused');
+  });
+
+  it('should classify a 502 without a providerCode as failed', () => {
+    // Expired carrier credentials and a proxy 502 must not read as a refusal.
+    expect(classifyCancelShipmentError(new ApiError('x', 502, 'Unauthorized'))).toBe('failed');
+    expect(classifyCancelShipmentError(new ApiError('x', 502, null))).toBe('failed');
+  });
+
   it.each([
-    [502, 'carrier-refused'],
     [409, 'no-longer-active'],
     [422, 'not-supported'],
     [500, 'failed'],

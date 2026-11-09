@@ -202,7 +202,12 @@ describe('ShipmentActionButtons cancel failure', () => {
       shipments: {
         cancel: vi
           .fn()
-          .mockRejectedValue(new ApiError(SECRET_SERVER_TEXT, status, { message: SECRET_SERVER_TEXT })),
+          .mockRejectedValue(
+            new ApiError(SECRET_SERVER_TEXT, status, {
+              message: SECRET_SERVER_TEXT,
+              providerCode: 'shipx.invalid_action',
+            }),
+          ),
       },
     });
     renderWithProviders(

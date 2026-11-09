@@ -383,7 +383,7 @@ export function ShipmentRowDetail({
             <CancelShipmentErrorAlert error={cancelMutation.error} />
           ) : undefined
         }
-                confirmLabel={cancelMutation.isPending ? copy.cancelDialog.cancelling : copy.cancelDialog.confirm}
+        confirmLabel={cancelMutation.isPending ? copy.cancelDialog.cancelling : copy.cancelDialog.confirm}
         cancelLabel={copy.cancelDialog.cancelLabel}
         tone="danger"
         isConfirming={cancelMutation.isPending}
