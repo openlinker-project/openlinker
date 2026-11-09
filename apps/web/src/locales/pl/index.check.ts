@@ -15,10 +15,14 @@
 import type { PolishCopy } from '../../shared/i18n/copy.types';
 import type { Messages } from '../../shared/i18n/messages';
 import format from './format.json';
+import login from './login.json';
+import loginPageSettings from './login-page-settings.json';
 import ui from './ui.json';
 
 const polish: PolishCopy<Messages> = {
   format,
+  login,
+  'login-page-settings': loginPageSettings,
   ui,
 };
 void polish;
