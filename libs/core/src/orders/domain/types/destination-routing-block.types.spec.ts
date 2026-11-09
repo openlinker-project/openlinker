@@ -21,12 +21,17 @@ describe('destination-routing block vocabulary', () => {
       expect(DestinationRoutingAttentionReasonValues).not.toContain('routed-to-no-destination');
     });
 
+    it('should exclude no-destination-configured, which is true of every order on a single-shop install (#3959)', () => {
+      expect(DestinationRoutingAttentionReasonValues).not.toContain('no-destination-configured');
+    });
+
     it('should count every reason that names an unreachable destination', () => {
       expect([...DestinationRoutingAttentionReasonValues].sort()).toEqual(
         [
           'routed-destinations-partially-unavailable',
           'routed-destinations-unavailable',
           'routed-to-source-only',
+          'no-active-destination',
         ].sort()
       );
     });
@@ -100,6 +105,49 @@ describe('deriveDestinationRoutingBlock', () => {
         requestedDestinationIds: undefined,
         resolvedCount: 3,
         unresolvedRequestedIds: undefined,
+      })
+    ).toBeNull();
+  });
+
+  it('should return null for an unfiltered run when the caller did not count destinations', () => {
+    expect(
+      deriveDestinationRoutingBlock({
+        requestedDestinationIds: undefined,
+        resolvedCount: 0,
+        unresolvedRequestedIds: undefined,
+      })
+    ).toBeNull();
+  });
+
+  it('should report no-destination-configured when no other destination exists at all (#3959)', () => {
+    expect(
+      deriveDestinationRoutingBlock({
+        requestedDestinationIds: undefined,
+        resolvedCount: 0,
+        unresolvedRequestedIds: undefined,
+        configuredDestinationCount: 0,
+      })
+    ).toEqual({ reason: 'no-destination-configured', detail: null });
+  });
+
+  it('should report no-active-destination when destinations exist but none resolved (#3959)', () => {
+    expect(
+      deriveDestinationRoutingBlock({
+        requestedDestinationIds: undefined,
+        resolvedCount: 0,
+        unresolvedRequestedIds: undefined,
+        configuredDestinationCount: 2,
+      })
+    ).toEqual({ reason: 'no-active-destination', detail: null });
+  });
+
+  it('should ignore the configured count once a destination resolved', () => {
+    expect(
+      deriveDestinationRoutingBlock({
+        requestedDestinationIds: undefined,
+        resolvedCount: 1,
+        unresolvedRequestedIds: undefined,
+        configuredDestinationCount: 3,
       })
     ).toBeNull();
   });

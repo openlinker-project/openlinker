@@ -12,7 +12,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { describeUndoCompletionRefusal, describeVerificationRefusal } from './bench-parcel-presentation';
-import { benchWorkCopy } from './bench-work.copy';
+import { getMessages } from '../../../shared/i18n';
+
+const benchWorkCopy = getMessages('bench').work;
 
 describe('describeVerificationRefusal', () => {
   it('sends the packer back to the trolley only when the box really must not be packed', () => {

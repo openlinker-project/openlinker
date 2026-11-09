@@ -13,9 +13,10 @@
  * @module apps/web/src/features/orders/components
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useMemo, type ReactElement } from 'react';
+import { useEffect, useMemo, type ReactElement, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 
+import { renderRich, useMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -35,10 +36,8 @@ import { describeHoldWriteError } from '../lib/order-hold-errors';
 import { describeProvisioningResume, holdReasonLabel } from '../lib/order-hold.types';
 import { useReleaseOrderHoldMutation } from '../hooks/use-release-order-hold-mutation';
 import { HOLD_NOTE_MAX_LENGTH } from './place-order-hold-dialog.schema';
-import {
-  buildReleaseOrderHoldSchema,
-  type ReleaseOrderHoldFormValues,
-} from './release-order-hold-dialog.schema';
+import type { ReleaseOrderHoldFormValues } from './order-form.types';
+import { buildReleaseOrderHoldSchema } from './release-order-hold-dialog.schema';
 
 export interface ReleaseOrderHoldDialogProps {
   open: boolean;
@@ -52,6 +51,20 @@ export interface ReleaseOrderHoldDialogProps {
   onReleased: (resume: ProvisioningResume | undefined) => void;
 }
 
+type ReleaseDialogCopy = ResolvedCopy<Messages['orders']>['holds']['releaseDialog'];
+
+/** When the hold was placed and, when recorded, by whom. */
+function renderPlacedAt(hold: OrderHold, copy: ReleaseDialogCopy): ReactNode {
+  const actor = hold.placedByService ?? hold.placedByUserId;
+  const time = (): ReactNode => <TimeDisplay iso={hold.placedAt} format="relative" />;
+  if (!actor) return time();
+  return renderRich(
+    copy.placedAtBy,
+    { time, actor: (text) => <span className="mono-text">{text}</span> },
+    { actor }
+  );
+}
+
 export function ReleaseOrderHoldDialog({
   open,
   hold,
@@ -60,6 +73,8 @@ export function ReleaseOrderHoldDialog({
 }: ReleaseOrderHoldDialogProps): ReactElement {
   const { showToast } = useToast();
   const mutation = useReleaseOrderHoldMutation();
+  const holds = useMessages('orders').holds;
+  const copy = holds.releaseDialog;
 
   // §6.4: a note is mandatory when a USER releases a hold a SERVICE placed.
   //
@@ -70,7 +85,10 @@ export function ReleaseOrderHoldDialog({
   // below, which no longer says so.
   const placerUnknown = hold.placedByService == null && hold.placedByUserId == null;
   const noteRequired = hold.placedByService != null || placerUnknown;
-  const schema = useMemo(() => buildReleaseOrderHoldSchema(noteRequired), [noteRequired]);
+  const schema = useMemo(
+    () => buildReleaseOrderHoldSchema(noteRequired, holds.validation),
+    [noteRequired, holds]
+  );
 
   const form = useForm<ReleaseOrderHoldFormValues>({
     defaultValues: { note: '' },
@@ -95,14 +113,14 @@ export function ReleaseOrderHoldDialog({
       { internalOrderId: hold.internalOrderId, holdId: hold.id, note: note ? note : undefined },
       {
         onSuccess: (result) => {
-          const copy = describeProvisioningResume(result.provisioningResume);
-          showToast({ tone: copy.tone, description: copy.message });
+          const resume = describeProvisioningResume(result.provisioningResume);
+          showToast({ tone: resume.tone, description: resume.message });
           onReleased(result.provisioningResume);
           // Closed on every success, including a `failed` resume: the release
           // DID happen, so re-submitting would only answer 409.
           onOpenChange(false);
         },
-      },
+      }
     );
   });
 
@@ -111,38 +129,21 @@ export function ReleaseOrderHoldDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="order-hold-dialog">
-        <DialogTitle>Release this hold</DialogTitle>
-        <DialogDescription>
-          OpenLinker starts sending this order to its destination again.
-        </DialogDescription>
+        <DialogTitle>{copy.title}</DialogTitle>
+        <DialogDescription>{copy.description}</DialogDescription>
 
         {mutation.isError ? (
-          <Alert tone="error">
-            {describeHoldWriteError(mutation.error, 'Could not release this hold.')}
-          </Alert>
+          <Alert tone="error">{describeHoldWriteError(mutation.error, copy.errorFallback)}</Alert>
         ) : null}
 
         <dl className="order-hold-dialog__summary">
-          <dt>Reason</dt>
+          <dt>{copy.reasonLabel}</dt>
           <dd>{reasonLabel}</dd>
-          <dt>Put on hold</dt>
-          <dd>
-            <TimeDisplay iso={hold.placedAt} format="relative" />
-            {hold.placedByService ? (
-              <>
-                {' by '}
-                <span className="mono-text">{hold.placedByService}</span>
-              </>
-            ) : hold.placedByUserId ? (
-              <>
-                {' by '}
-                <span className="mono-text">{hold.placedByUserId}</span>
-              </>
-            ) : null}
-          </dd>
+          <dt>{copy.placedLabel}</dt>
+          <dd>{renderPlacedAt(hold, copy)}</dd>
           {hold.note ? (
             <>
-              <dt>Note</dt>
+              <dt>{copy.noteLabel}</dt>
               <dd>{hold.note}</dd>
             </>
           ) : null}
@@ -157,14 +158,14 @@ export function ReleaseOrderHoldDialog({
         >
           <FormField
             name="releaseNote"
-            label={noteRequired ? 'Note' : 'Note (optional)'}
+            label={noteRequired ? copy.noteLabel : copy.noteOptionalLabel}
             error={form.formState.errors.note?.message}
             description={
               placerUnknown
-                ? 'It is not recorded who put this order on hold, so say why it is safe to release.'
+                ? copy.noteDescriptionPlacerUnknown
                 : noteRequired
-                  ? 'OpenLinker put this order on hold by itself, so say why it is safe to release.'
-                  : 'Anything the next person needs to know. Never buyer details.'
+                  ? copy.noteDescriptionRequired
+                  : copy.noteDescriptionOptional
             }
           >
             <Textarea rows={3} maxLength={HOLD_NOTE_MAX_LENGTH} {...form.register('note')} />
@@ -173,11 +174,11 @@ export function ReleaseOrderHoldDialog({
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" tone="secondary" disabled={mutation.isPending}>
-                Cancel
+                {copy.cancel}
               </Button>
             </DialogClose>
             <Button type="submit" tone="primary" disabled={mutation.isPending}>
-              {mutation.isPending ? 'Releasing…' : 'Release hold'}
+              {mutation.isPending ? copy.submitting : copy.submit}
             </Button>
           </DialogFooter>
         </form>

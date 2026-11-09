@@ -14,6 +14,7 @@
  * @module apps/web/src/features/settings/hooks
  */
 import { useEffect, useState } from 'react';
+import { useMessages } from '../../../shared/i18n';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { OperationalSettingsView } from '../api/operational-settings.types';
 import {
@@ -47,6 +48,7 @@ export function useInventoryMovementRetentionDraft(
 ): InventoryMovementRetentionDraft {
   const mutation = useUpdateOperationalSettingsMutation();
   const { showToast } = useToast();
+  const copy = useMessages('settings').useInventoryMovementRetentionDraft;
   const [days, setDaysState] = useState<number | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
 
@@ -89,8 +91,8 @@ export function useInventoryMovementRetentionDraft(
           onSuccess: () => {
             showToast({
               tone: 'success',
-              title: 'History retention reset',
-              description: 'The default window applies from the next clean-up.',
+              title: copy.resetToast.title,
+              description: copy.resetToast.description,
             });
           },
         }
@@ -110,8 +112,8 @@ export function useInventoryMovementRetentionDraft(
           onSuccess: () => {
             showToast({
               tone: 'success',
-              title: 'History retention saved',
-              description: 'The next clean-up uses the new window.',
+              title: copy.savedToast.title,
+              description: copy.savedToast.description,
             });
           },
         }

@@ -12,7 +12,7 @@
  * @module apps/web/src/features/content/components
  */
 import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
-import { useFormat } from '../../../shared/i18n';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import {
   StructuredErrorList,
@@ -24,8 +24,6 @@ import { StatusBadge } from '../../../shared/ui/status-badge';
 import { RichTextEditor } from '../../../shared/ui/rich-text-editor';
 import { exceedsDescriptionCap } from '../../../shared/ui/rich-text-profiles';
 import type { DescriptionFormat } from '../../../shared/ui/rich-text.types';
-import { formatDateTime } from '../../../shared/format/format-date';
-import { formatRelativeTime } from '../../../shared/format/format-relative-time';
 import { translateAllegroError } from '../../allegro';
 
 const MAX_VALUE_LENGTH = 65_536;
@@ -90,7 +88,12 @@ export function ContentPanel({
   onDiscard,
   onPublish,
 }: ContentPanelProps): ReactElement {
-  const { number: formatNumber } = useFormat();
+  const copy = useMessages('content').contentPanel;
+  const {
+    number: formatNumber,
+    dateTime: formatDateTime,
+    relativeTime: formatRelativeTime,
+  } = useFormat();
   const hasStructuredErrors = errors !== null && errors !== undefined && errors.length > 0;
   const initialValue = computeEffectiveValue(draftValue, baseValue);
   const [value, setValue] = useState(initialValue);
@@ -130,28 +133,26 @@ export function ContentPanel({
       </header>
 
       {!isDesktop && (
-        <DesktopOnlyBanner title="Editing available on desktop only">
-          This editor is read-only below 1024 px. Open on a larger viewport to make changes.
+        <DesktopOnlyBanner title={copy.desktopOnly.title}>
+          {copy.desktopOnly.message}
         </DesktopOnlyBanner>
       )}
 
       {disabledReason && <Alert tone="info">{disabledReason}</Alert>}
       {overDestinationCap && (
         <Alert tone="warning">
-          This description is longer than the destination accepts ({destinationCapLabel}{' '}
-          bytes). Shorten it before saving — the platform would reject the publish.
+          {interpolate(copy.overDestinationCap, { cap: destinationCapLabel })}
         </Alert>
       )}
 
       {hasConflict && (
         <Alert tone="warning">
-          An external update was detected after your draft was saved. Review the base value and
-          re-save to acknowledge.
+          {copy.conflict}
         </Alert>
       )}
 
       {hasStructuredErrors ? (
-        <Alert tone="error" title="Channel publish rejected by Allegro">
+        <Alert tone="error" title={copy.publishRejected}>
           <StructuredErrorList errors={errors} translate={translateAllegroError} />
         </Alert>
       ) : error ? (
@@ -169,7 +170,7 @@ export function ContentPanel({
         value={value}
         onChange={setValue}
         disabled={readOnly}
-        aria-label={`${title} description`}
+        aria-label={interpolate(copy.editorAriaLabel, { title })}
         toolbarSlot={suggestSlot}
       />
 
@@ -183,7 +184,7 @@ export function ContentPanel({
       {overLimit && (
         <div className="content-panel__meta">
           <span className="text-danger">
-            Over the {formatNumber(MAX_VALUE_LENGTH)}-character storage limit
+            {interpolate(copy.overStorageLimit, { limit: formatNumber(MAX_VALUE_LENGTH) })}
           </span>
         </div>
       )}
@@ -191,11 +192,11 @@ export function ContentPanel({
       <div className="content-panel__footer">
         <div className="content-panel__footer-status">
           {hasDraft ? (
-            <StatusBadge tone="review">Draft pending</StatusBadge>
+            <StatusBadge tone="review">{copy.status.draftPending}</StatusBadge>
           ) : baseValue !== null ? (
-            <StatusBadge tone="success">Published</StatusBadge>
+            <StatusBadge tone="success">{copy.status.published}</StatusBadge>
           ) : (
-            <StatusBadge tone="neutral">Empty</StatusBadge>
+            <StatusBadge tone="neutral">{copy.status.empty}</StatusBadge>
           )}
           {updatedAt && (
             <span className="text-muted">
@@ -216,7 +217,7 @@ export function ContentPanel({
               onDiscard();
             }}
           >
-            Discard draft
+            {copy.actions.discard}
           </Button>
           <Button
             type="button"
@@ -226,7 +227,7 @@ export function ContentPanel({
               onSave(value);
             }}
           >
-            Save draft
+            {copy.actions.save}
           </Button>
           <Button
             type="button"
@@ -236,7 +237,7 @@ export function ContentPanel({
               onPublish();
             }}
           >
-            Publish
+            {copy.actions.publish}
           </Button>
         </div>
       </div>

@@ -16,7 +16,7 @@
  * @module features/invoicing/components
  */
 import { type ReactElement, useRef, useState } from 'react';
-import { useTranslation } from '../../../shared/i18n';
+import { useMessages } from '../../../shared/i18n';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { readAcknowledgementRequest, type AcknowledgementRequest } from '../lib/issue-error-message';
 
@@ -35,7 +35,7 @@ export interface WarningAcknowledgement {
 }
 
 export function useWarningAcknowledgement(isConfirming = false): WarningAcknowledgement {
-  const { t } = useTranslation();
+  const copy = useMessages('invoicing').invoice.acknowledge;
   const [request, setRequest] = useState<AcknowledgementRequest | null>(null);
   const acknowledgedRef = useRef<string[]>([]);
   const resubmitRef = useRef<((codes: string[]) => void) | null>(null);
@@ -74,18 +74,15 @@ export function useWarningAcknowledgement(isConfirming = false): WarningAcknowle
           setRequest(null);
         }
       }}
-      title={t('invoice.acknowledge.title', 'Check before you continue')}
+      title={copy.title}
       description={request?.message ?? ''}
       body={
         <p className="acknowledge-warning__note">
-          {t(
-            'invoice.acknowledge.note',
-            'OpenLinker flags this from its own reading of the rules, which may not fit your case. You decide whether to go ahead.',
-          )}
+          {copy.note}
         </p>
       }
-      confirmLabel={t('invoice.acknowledge.confirm', 'Continue anyway')}
-      cancelLabel={t('invoice.acknowledge.cancel', 'Go back')}
+      confirmLabel={copy.confirm}
+      cancelLabel={copy.cancel}
       isConfirming={isConfirming}
       onConfirm={confirm}
     />

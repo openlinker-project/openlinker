@@ -1,0 +1,94 @@
+{
+  "erliConnectionActions": {
+    "callbackUrlMissing": "Przed skonfigurowaniem webhooków ustaw w tym połączeniu pole <strong>Adres URL zwrotny</strong>. Otwórz <strong>Edytuj połączenie</strong>, uzupełnij adres URL zwrotny (publiczny adres OpenLinker, pod który Erli wysyła webhooki), zapisz i wróć tutaj.",
+    "configure": "Skonfiguruj webhooki",
+    "configuring": "Konfigurowanie...",
+    "currentlyConfigured": "Obecnie skonfigurowane ✓",
+    "description": "Zarejestruj subskrypcje webhooków Erli i wymień sekret webhooka.",
+    "reconfigure": "Skonfiguruj ponownie",
+    "title": "Skonfiguruj webhooki",
+    "toast": {
+      "configured": {
+        "description": "Subskrypcje webhooków Erli zostały zarejestrowane i zweryfikowane pingiem testowym.",
+        "title": "Webhooki skonfigurowane"
+      },
+      "failed": {
+        "notAccepted": "Erli nie przyjęło rejestracji webhooków.",
+        "title": "Nie udało się przesłać konfiguracji"
+      },
+      "pingMissing": {
+        "description": "Subskrypcje są zarejestrowane, ale testowy ping nie dotarł. Kliknij ponownie, aby spróbować jeszcze raz, albo poczekaj na następne rzeczywiste zdarzenie.",
+        "title": "Webhooki skonfigurowane (ping nie dotarł)"
+      }
+    }
+  },
+  "erliCredentialsPanel": {
+    "apiKey": {
+      "description": "Bezpiecznie przechowywany na serwerze. Wymień go, aby zastąpić klucz bez restartu API.",
+      "envBacked": "Zmienna środowiskowa (nie można edytować w interfejsie)",
+      "label": "Klucz API",
+      "newPlaceholder": "Nowy klucz API",
+      "rotate": "Wymień klucz API"
+    },
+    "cancel": "Anuluj",
+    "categoryAccess": {
+      "checking": "Sprawdzanie istniejących połączeń Allegro...",
+      "hint": "Włącz, aby wybierać kategorie i uzupełniać wymagane parametry z listy, tak jak w Allegro. Gdy jest wyłączone, ID kategorii wpisuje się ręcznie.",
+      "label": "Przeglądaj kategorie Allegro podczas tworzenia ofert Erli"
+    },
+    "configSaveFailed": "Nie udało się zapisać ustawienia przeglądania kategorii: {message}. Kliknij Zapisz ponownie, aby spróbować jeszcze raz.",
+    "manual": {
+      "clientIdHint": "Z aplikacji Allegro zarejestrowanej w apps.developer.allegro.pl. Służy tylko do odczytu publicznego katalogu kategorii - nigdy do logowania jako sprzedawca ani wystawiania ofert.",
+      "clientIdPlaceholder": "Allegro Client ID",
+      "clientSecretHint": "Przechowywany w postaci zaszyfrowanej. Po zapisaniu nie będzie już widoczny.",
+      "clientSecretPlaceholder": "Allegro Client Secret",
+      "environmentAriaLabel": "Środowisko aplikacji Allegro",
+      "environmentHint": "Aplikacje Allegro dla sandboxa i produkcji rejestruje się osobno - wybierz tę, do której należy ten Client ID/Secret, inaczej zapytania o kategorie nie przejdą uwierzytelnienia.",
+      "environments": {
+        "production": "Produkcja",
+        "sandbox": "Sandbox"
+      },
+      "hide": "Ukryj",
+      "hideSecretAriaLabel": "Ukryj Client Secret",
+      "hint": "Użyj innej aplikacji Allegro - np. przeznaczonej wyłącznie do przeglądania kategorii.",
+      "label": "Wpisz ręcznie dane uwierzytelniające aplikacji Allegro",
+      "noConnections": "Na tym koncie nie znaleziono połączenia Allegro. Wpisz poniżej dane uwierzytelniające własnej aplikacji Allegro, aby włączyć przeglądanie kategorii.",
+      "show": "Pokaż",
+      "showSecretAriaLabel": "Pokaż Client Secret"
+    },
+    "reuse": {
+      "environment": "Zostanie użyte środowisko tego połączenia: <strong>{environment}</strong>.",
+      "hint": "Zalecane - używa tych samych danych uwierzytelniających aplikacji, które są już skonfigurowane w tamtym połączeniu. Nie trzeba niczego nowego rejestrować.",
+      "label": "Użyj danych uwierzytelniających z istniejącego połączenia Allegro",
+      "readOnlyHint": "Używany jest tylko dostęp do odczytu publicznego katalogu kategorii - dane uwierzytelniające sprzedawcy z tego połączenia nie są w ogóle używane.",
+      "selectAriaLabel": "Połączenie Allegro do ponownego użycia",
+      "selectPlaceholder": "Wybierz połączenie Allegro..."
+    },
+    "save": "Zapisz dane logowania",
+    "saving": "Zapisywanie...",
+    "toast": {
+      "description": "Dane uwierzytelniające połączenia Erli są już w użyciu.",
+      "title": "Dane uwierzytelniające zapisane"
+    },
+    "validation": {
+      "bothOrNeither": "Wpisz zarówno Allegro Client ID, jak i Client Secret, albo zostaw oba pola puste.",
+      "required": "Wpisz Allegro Client ID i Client Secret, aby włączyć przeglądanie kategorii.",
+      "selectConnection": "Wybierz połączenie Allegro, aby użyć jego danych uwierzytelniających, albo przełącz na wpisywanie ręczne."
+    }
+  },
+  "erliSetupRoute": {
+    "crumb": "Połącz Erli"
+  },
+  "erliStructuredSection": {
+    "callbackUrl": {
+      "description": "Publiczny adres URL OpenLinker, pod który Erli wysyła zdarzenia webhooków (np. https://api.example.com).",
+      "label": "Adres URL zwrotny"
+    }
+  },
+  "plugin": {
+    "setupCard": {
+      "badge": "Klucz API",
+      "description": "Połącz konto sprzedawcy Erli za pomocą klucza Shop API."
+    }
+  }
+}

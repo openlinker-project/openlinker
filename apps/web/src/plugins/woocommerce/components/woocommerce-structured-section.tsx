@@ -14,33 +14,35 @@ import type { ReactElement } from 'react';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
+import { useWoocommerceMessages } from '../messages';
 
 export function WoocommerceStructuredSection({
   form,
   configIsParseable,
   syncStructuredToJson,
 }: StructuredConfigSectionProps): ReactElement {
+  const copy = useWoocommerceMessages().woocommerceStructuredSection;
   return (
     <>
       <FormField
-        label="Site URL"
+        label={copy.siteUrl.label}
         name="siteUrl"
         error={form.formState.errors.siteUrl?.message}
-        description="The root URL of the WooCommerce store. Must use HTTPS."
+        description={copy.siteUrl.description}
       >
         <Input
           value={form.watch('siteUrl') ?? ''}
           onChange={(event) => syncStructuredToJson('siteUrl', event.target.value)}
-          placeholder="https://shop.example.com"
+          placeholder={copy.siteUrl.placeholder}
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.siteUrl)}
         />
       </FormField>
       <FormField
-        label="Unmanaged stock quantity"
+        label={copy.unmanagedStockQuantity.label}
         name="unmanagedStockQuantity"
         error={form.formState.errors.unmanagedStockQuantity?.message}
-        description="Quantity reported for products with stock management disabled but in stock. Leave empty for the default (1000)."
+        description={copy.unmanagedStockQuantity.description}
       >
         <Input
           value={form.watch('unmanagedStockQuantity') ?? ''}

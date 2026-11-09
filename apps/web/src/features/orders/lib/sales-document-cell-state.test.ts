@@ -100,7 +100,7 @@ describe('resolveSalesDocumentCellState (#2552)', () => {
         },
       }),
     );
-    expect(state).toMatchObject({ word: 'Authority rejected', tone: 'error' });
+    expect(state).toMatchObject({ word: 'Rejected at clearance', tone: 'error' });
   });
 
   it('reports "Issued" for a fully cleared invoice, plain ink (done)', () => {
@@ -207,7 +207,7 @@ describe('resolveSalesDocumentCellState (#2552)', () => {
           afterIssueAttention: 'order-partially-refunded-after-issue',
         }),
       );
-      expect(state).toMatchObject({ word: 'Authority rejected', tone: 'error' });
+      expect(state).toMatchObject({ word: 'Rejected at clearance', tone: 'error' });
       expect(state.reasonDetail).toMatch(/Part of this order was refunded/);
     });
 

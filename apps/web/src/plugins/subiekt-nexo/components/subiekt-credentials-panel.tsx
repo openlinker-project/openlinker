@@ -22,7 +22,7 @@ import { Button } from '../../../shared/ui/button';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { useTranslation } from '../../../shared/i18n';
+import { useSubiektNexoMessages } from '../messages';
 
 /** Bearer bridge-token credential key — pinned to the Subiekt BE adapter (#753). */
 export const SUBIEKT_CREDENTIAL_KEY = 'bridgeToken';
@@ -36,18 +36,12 @@ export function SubiektCredentialsPanel({
   const [newToken, setNewToken] = useState('');
   const rotate = useUpdateConnectionCredentialsMutation();
   const { showToast } = useToast();
-  const { t } = useTranslation();
+  const copy = useSubiektNexoMessages().subiektCredentialsPanel;
 
   if (!connection.credentialsBacked) {
     return (
-      <FormField label={t('subiekt.settings.token.label', 'Bridge token')} name="credentials">
-        <Input
-          value={t(
-            'subiekt.settings.token.envManaged',
-            'Environment variable (not editable via UI)',
-          )}
-          disabled
-        />
+      <FormField label={copy.label} name="credentials">
+        <Input value={copy.envBacked} disabled />
       </FormField>
     );
   }
@@ -64,8 +58,8 @@ export function SubiektCredentialsPanel({
       });
       showToast({
         tone: 'success',
-        title: t('subiekt.settings.token.rotated', 'Credentials rotated'),
-        description: t('subiekt.settings.token.rotatedHint', 'The new bridge token is now in use.'),
+        title: copy.toast.title,
+        description: copy.toast.description,
       });
       setNewToken('');
       setShowRotate(false);
@@ -76,12 +70,9 @@ export function SubiektCredentialsPanel({
 
   return (
     <FormField
-      label={t('subiekt.settings.token.label', 'Bridge token')}
+      label={copy.label}
       name="credentials"
-      description={t(
-        'subiekt.settings.token.description',
-        'Stored securely on the server. Rotate to replace the bridge token without restarting the API.',
-      )}
+      description={copy.description}
     >
       {showRotate ? (
         <div className="form-grid">
@@ -89,7 +80,7 @@ export function SubiektCredentialsPanel({
           <Input
             type="password"
             autoComplete="off"
-            placeholder={t('subiekt.settings.token.placeholder', 'New bridge token')}
+            placeholder={copy.newTokenPlaceholder}
             value={newToken}
             onChange={(event) => setNewToken(event.target.value)}
           />
@@ -100,8 +91,8 @@ export function SubiektCredentialsPanel({
               disabled={rotate.isPending || newToken.trim().length === 0}
             >
               {rotate.isPending
-                ? t('subiekt.settings.token.rotating', 'Rotating...')
-                : t('subiekt.settings.token.save', 'Save new token')}
+                ? copy.rotating
+                : copy.save}
             </Button>
             <Button
               tone="secondary"
@@ -111,13 +102,13 @@ export function SubiektCredentialsPanel({
                 setNewToken('');
               }}
             >
-              {t('subiekt.settings.token.cancel', 'Cancel')}
+              {copy.cancel}
             </Button>
           </div>
         </div>
       ) : (
         <Button tone="secondary" type="button" onClick={() => setShowRotate(true)}>
-          {t('subiekt.settings.token.rotate', 'Rotate bridge token')}
+          {copy.rotate}
         </Button>
       )}
     </FormField>

@@ -9,6 +9,7 @@
  * @module apps/web/src/features/content/components
  */
 import { useCallback, useState, type ReactElement, type ReactNode } from 'react';
+import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { RichTextView } from '../../../shared/ui';
 import { Link } from 'react-router-dom';
 import { Alert } from '../../../shared/ui/alert';
@@ -27,7 +28,7 @@ import { Input } from '../../../shared/ui/input';
 import { Textarea } from '../../../shared/ui/textarea';
 import { ApiError } from '../../../shared/api/api-error';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { useDemoMode } from '../../system';
 import { captureDemoEvent } from '../../demo';
@@ -73,6 +74,8 @@ export function SuggestionDialog({
   onApply,
   scopeWarning,
 }: SuggestionDialogProps): ReactElement | null {
+  const copy = useMessages('content').suggestionDialog;
+  const { number: formatNumber } = useFormat();
   const mutation = useSuggestContentMutation();
   const demoMode = useDemoMode();
   const write = useWriteAccess('ai:suggest', demoMode);
@@ -123,6 +126,7 @@ export function SuggestionDialog({
   }, [resetMutation]);
 
   const channelLabel = channel === null ? 'master' : channel;
+  const channelDisplay = channel === null ? copy.masterChannel : channel;
 
   // `ai:suggest` is admin-only in every environment — invoking the endpoint
   // triggers a real LLM completion, so it's treated as a direct-write-adjacent
@@ -139,11 +143,11 @@ export function SuggestionDialog({
     return (
       <ReadOnlyLock
         active
-        message={DEMO_READ_ONLY_ACTION_MESSAGE}
+        message={demoReadOnlyActionMessage()}
         onLockedClick={() => captureDemoEvent('demo_ai_suggest_attempted', { channel: channelLabel })}
       >
         <Button type="button" tone="ghost" disabled>
-          ✨ Suggest with AI
+          {copy.trigger}
         </Button>
       </ReadOnlyLock>
     );
@@ -153,14 +157,17 @@ export function SuggestionDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button type="button" tone="ghost" disabled={disabled}>
-          ✨ Suggest with AI
+          {copy.trigger}
         </Button>
       </DialogTrigger>
       <DialogContent className="content-suggestion__dialog">
-        <DialogTitle>Suggest description</DialogTitle>
+        <DialogTitle>{copy.title}</DialogTitle>
         <DialogDescription>
-          Generate a draft for the <strong>{channelLabel}</strong> description. Review before
-          applying — the suggestion replaces the editor buffer but does not auto-save.
+          {renderRich(
+            copy.description,
+            { strong: (chunk) => <strong>{chunk}</strong> },
+            { channel: channelDisplay },
+          )}
         </DialogDescription>
 
         <div className="content-suggestion__body">
@@ -171,14 +178,14 @@ export function SuggestionDialog({
           ) : null}
 
           <FormField
-            label="Tone"
+            label={copy.tone.label}
             name="tone"
-            description={`Optional. Max ${MAX_TONE_LENGTH} chars.`}
+            description={interpolate(copy.tone.description, { max: formatNumber(MAX_TONE_LENGTH) })}
           >
             <Input
               value={tone}
               maxLength={MAX_TONE_LENGTH}
-              placeholder="e.g. confident, concise"
+              placeholder={copy.tone.placeholder}
               onChange={(e) => {
                 setTone(e.target.value);
               }}
@@ -186,15 +193,17 @@ export function SuggestionDialog({
           </FormField>
 
           <FormField
-            label="Extra instructions"
+            label={copy.extra.label}
             name="extra"
-            description={`Optional. Max ${MAX_EXTRA_LENGTH} chars.`}
+            description={interpolate(copy.extra.description, {
+              max: formatNumber(MAX_EXTRA_LENGTH),
+            })}
           >
             <Textarea
               value={extra}
               maxLength={MAX_EXTRA_LENGTH}
               rows={3}
-              placeholder="e.g. highlight warranty, mention free shipping"
+              placeholder={copy.extra.placeholder}
               onChange={(e) => {
                 setExtra(e.target.value);
               }}
@@ -206,7 +215,7 @@ export function SuggestionDialog({
               <Alert tone="error">
                 {mutation.error.message}{' '}
                 <Link to="/ai/prompt-templates" className="content-suggestion__alert-link">
-                  Open prompt templates →
+                  {copy.openPromptTemplates}
                 </Link>
               </Alert>
             ) : (
@@ -215,18 +224,18 @@ export function SuggestionDialog({
 
           {suggestion !== null && (
             <div className="content-suggestion__preview">
-              <h4 className="content-suggestion__preview-title">Suggested description</h4>
+              <h4 className="content-suggestion__preview-title">{copy.preview.title}</h4>
               {/* #2200: the prompt is explicitly instructed to return semantic
                   HTML, so a <pre> showed the operator angle brackets to
                   proofread instead of the copy they are about to publish. */}
               <RichTextView
                 html={suggestion}
                 className="content-suggestion__preview-body"
-                emptyLabel="The model returned nothing."
+                emptyLabel={copy.preview.empty}
               />
               {requestId && (
                 <p className="content-suggestion__preview-meta">
-                  Request ID <span className="mono-text">{requestId}</span>
+                  {copy.preview.requestId} <span className="mono-text">{requestId}</span>
                 </p>
               )}
             </div>
@@ -236,7 +245,7 @@ export function SuggestionDialog({
         <DialogFooter>
           <DialogClose asChild>
             <Button type="button" tone="ghost">
-              Cancel
+              {copy.actions.cancel}
             </Button>
           </DialogClose>
           {suggestion === null ? (
@@ -248,7 +257,7 @@ export function SuggestionDialog({
                 void handleGenerate();
               }}
             >
-              {mutation.isPending ? 'Generating…' : 'Generate'}
+              {mutation.isPending ? copy.actions.generating : copy.actions.generate}
             </Button>
           ) : (
             <>
@@ -260,10 +269,10 @@ export function SuggestionDialog({
                   void handleGenerate();
                 }}
               >
-                Regenerate
+                {copy.actions.regenerate}
               </Button>
               <Button type="button" tone="primary" onClick={handleApply}>
-                Apply to editor
+                {copy.actions.apply}
               </Button>
             </>
           )}

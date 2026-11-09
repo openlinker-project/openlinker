@@ -44,8 +44,11 @@ import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { captureDemoEvent } from '../../demo';
+import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
+import { usePlatform } from '../../../shared/plugins';
 
-const STEP_LABELS = [
+// Analytics step names, kept in English so events stay comparable across languages.
+const STEP_EVENT_IDS = [
   'Store details',
   'API credentials',
   'Capabilities',
@@ -65,6 +68,15 @@ function maskKey(key: string): string {
 }
 
 export function WoocommerceSetupForm(): ReactElement {
+  const copy = useMessages('connections').woocommerceSetupForm;
+  const setupCopy = useMessages('connections').setup;
+  const platform = usePlatform('woocommerce')?.displayName ?? copy.platformFallback;
+  const STEP_LABELS = [
+    copy.steps.store,
+    copy.steps.credentials,
+    copy.steps.capabilities,
+    copy.steps.review,
+  ];
   const createConnection = useCreateConnectionMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
@@ -113,7 +125,7 @@ export function WoocommerceSetupForm(): ReactElement {
     setCompletedSteps((prev) => new Set(prev).add(stepIndex));
     captureDemoEvent('demo_connection_wizard_step_advanced', {
       platform: 'woocommerce',
-      step: STEP_LABELS[stepIndex],
+      step: STEP_EVENT_IDS[stepIndex],
     });
     setStepIndex((i) => Math.min(i + 1, STEP_LABELS.length - 1));
   }
@@ -140,8 +152,8 @@ export function WoocommerceSetupForm(): ReactElement {
       form.reset(values, { keepValues: true, keepDirty: false });
       showToast({
         tone: 'success',
-        title: 'Connection created',
-        description: `WooCommerce connection "${created.name}" was created.`,
+        title: copy.createdTitle,
+        description: interpolate(copy.createdDescription, { platform, name: created.name }),
       });
       void navigate('/connections');
     } catch {
@@ -159,13 +171,13 @@ export function WoocommerceSetupForm(): ReactElement {
       }
     >
       <form className="wizard-card" onSubmit={handleFormSubmit} noValidate>
-        <BackLink to="/connections/new" label="Connections" className="wizard-card__back" />
+        <BackLink to="/connections/new" label={setupCopy.connections} className="wizard-card__back" />
 
         {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
           <FormErrorSummary errors={validationMessages} />
         ) : null}
         {createConnection.error ? (
-          <Alert tone="error" title="Unable to create connection">
+          <Alert tone="error" title={copy.createError}>
             {createConnection.error.message}
           </Alert>
         ) : null}
@@ -173,24 +185,24 @@ export function WoocommerceSetupForm(): ReactElement {
         {stepIndex === 0 ? (
           <>
             <FormField
-              label="Connection name"
+              label={copy.fields.name.label}
               name="name"
               error={form.formState.errors.name?.message}
-              description="A label to identify this store in OpenLinker."
+              description={copy.fields.name.description}
             >
               <Input
                 {...form.register('name')}
-                placeholder="My WooCommerce Store"
+                placeholder={interpolate(copy.fields.name.placeholder, { platform })}
                 autoComplete="off"
                 invalid={Boolean(form.formState.errors.name)}
               />
             </FormField>
 
             <FormField
-              label="Site URL"
+              label={copy.fields.siteUrl.label}
               name="siteUrl"
               error={form.formState.errors.siteUrl?.message}
-              description="The root URL of your WooCommerce store. Must use HTTPS."
+              description={interpolate(copy.fields.siteUrl.description, { platform })}
             >
               <Input
                 {...form.register('siteUrl')}
@@ -205,18 +217,19 @@ export function WoocommerceSetupForm(): ReactElement {
 
         {stepIndex === 1 ? (
           <>
-            <Alert tone="info" title="Before you start">
-              In your WooCommerce admin, go to{' '}
-              <strong>WooCommerce → Settings → Advanced → REST API</strong> and generate a key with{' '}
-              <strong>Read/Write</strong> permissions. Copy the consumer key and consumer secret
-              below — they are only shown once.
+            <Alert tone="info" title={copy.beforeYouStart.title}>
+              {renderRich(
+                copy.beforeYouStart.body,
+                { strong: (text) => <strong>{text}</strong> },
+                { platform },
+              )}
             </Alert>
 
             <FormField
-              label="Consumer key"
+              label={copy.fields.consumerKey.label}
               name="consumerKey"
               error={form.formState.errors.consumerKey?.message}
-              description="Starts with ck_ — generated in WooCommerce REST API settings."
+              description={interpolate(copy.fields.consumerKey.description, { platform })}
             >
               <Input
                 {...form.register('consumerKey')}
@@ -229,10 +242,10 @@ export function WoocommerceSetupForm(): ReactElement {
             </FormField>
 
             <FormField
-              label="Consumer secret"
+              label={copy.fields.consumerSecret.label}
               name="consumerSecret"
               error={form.formState.errors.consumerSecret?.message}
-              description="Starts with cs_ — generated alongside the consumer key."
+              description={copy.fields.consumerSecret.description}
             >
               <Input
                 {...form.register('consumerSecret')}
@@ -248,11 +261,8 @@ export function WoocommerceSetupForm(): ReactElement {
 
         {stepIndex === 2 ? (
           <fieldset className="capability-fieldset">
-            <legend className="capability-fieldset__legend">Capabilities</legend>
-            <p className="muted-text capability-fieldset__help">
-              Pick which roles this connection should fulfil. You can change this later on the
-              connection&rsquo;s detail page.
-            </p>
+            <legend className="capability-fieldset__legend">{copy.capabilities.legend}</legend>
+            <p className="muted-text capability-fieldset__help">{copy.capabilities.help}</p>
             <ul className="capability-list">
               {supportedCapabilities.map((capability) => {
                 const id = `new-cap-${capability}`;
@@ -284,15 +294,15 @@ export function WoocommerceSetupForm(): ReactElement {
 
         {stepIndex === 3 ? (
           <dl className="wizard-review-list">
-            <dt>Name</dt>
+            <dt>{copy.review.name}</dt>
             <dd>{values.name || '—'}</dd>
-            <dt>Site URL</dt>
+            <dt>{copy.fields.siteUrl.label}</dt>
             <dd className="mono-text">{values.siteUrl || '—'}</dd>
-            <dt>Consumer key</dt>
+            <dt>{copy.fields.consumerKey.label}</dt>
             <dd className="mono-text">{values.consumerKey ? maskKey(values.consumerKey) : '—'}</dd>
-            <dt>Capabilities</dt>
+            <dt>{copy.capabilities.legend}</dt>
             <dd>
-              {selectedCapabilities.length > 0 ? selectedCapabilities.join(', ') : 'None selected'}
+              {selectedCapabilities.length > 0 ? selectedCapabilities.join(', ') : copy.review.noneSelected}
             </dd>
           </dl>
         ) : null}
@@ -301,18 +311,18 @@ export function WoocommerceSetupForm(): ReactElement {
           <div className="wizard-actions__group">
             {stepIndex > 0 ? (
               <Button tone="secondary" type="button" onClick={goBack}>
-                Back
+                {setupCopy.back}
               </Button>
             ) : null}
           </div>
           <div className="wizard-actions__group">
             {stepIndex < STEP_LABELS.length - 1 ? (
               <Button key="next" type="button" onClick={() => void goNext()}>
-                Next
+                {setupCopy.next}
               </Button>
             ) : (
               <Button key="submit" type="submit" disabled={createConnection.isPending}>
-                {createConnection.isPending ? 'Creating...' : 'Create connection'}
+                {createConnection.isPending ? copy.creating : copy.create}
               </Button>
             )}
           </div>

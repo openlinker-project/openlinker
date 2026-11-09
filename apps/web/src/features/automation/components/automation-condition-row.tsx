@@ -30,10 +30,7 @@ import { Button } from '../../../shared/ui/button';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
-import {
-  AUTOMATION_COMPOSER_COPY,
-  AUTOMATION_CONDITION_FIELD_LABELS,
-} from '../lib/automation.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { AUTOMATION_AMOUNT_OP_VALUES } from '../api/automation.types';
 import type {
   AutomationComposerValues,
@@ -66,6 +63,9 @@ export function AutomationConditionRow({
   setValue,
   onRemove,
 }: AutomationConditionRowProps): ReactElement {
+  const messages = useMessages('automation');
+  const composerCopy = messages.composer;
+  const copy = messages.conditionRow;
   const fieldSelect = register(`conditions.${index}.field`);
 
   return (
@@ -76,7 +76,7 @@ export function AutomationConditionRow({
         than on a slot the selected field may not render.
       */}
       <FormField
-        label={AUTOMATION_COMPOSER_COPY.conditionFieldLabel}
+        label={composerCopy.conditionFieldLabel}
         name={`condition-${index}-field`}
         error={errors.field}
       >
@@ -91,7 +91,7 @@ export function AutomationConditionRow({
         >
           {legalFields.map((field) => (
             <option key={field} value={field}>
-              {AUTOMATION_CONDITION_FIELD_LABELS[field] ?? field}
+              {(messages.conditionFields as Record<string, string>)[field] ?? field}
             </option>
           ))}
         </Select>
@@ -99,12 +99,12 @@ export function AutomationConditionRow({
 
       {draft.field === 'sourceConnection' ? (
         <FormField
-          label={AUTOMATION_COMPOSER_COPY.conditionValueLabel}
+          label={composerCopy.conditionValueLabel}
           name={`condition-${index}-value`}
           error={errors.value}
         >
           <Select {...register(`conditions.${index}.value`)}>
-            <option value="">Select a connection…</option>
+            <option value="">{copy.selectConnection}</option>
             {connections.map((connection) => (
               <option key={connection.id} value={connection.id}>
                 {connection.name}
@@ -116,22 +116,22 @@ export function AutomationConditionRow({
 
       {draft.field === 'orderCountry' ? (
         <FormField
-          label={AUTOMATION_COMPOSER_COPY.conditionValueLabel}
+          label={composerCopy.conditionValueLabel}
           name={`condition-${index}-value`}
           error={errors.value}
         >
-          <Input placeholder="e.g. PL" maxLength={2} {...register(`conditions.${index}.value`)} />
+          <Input placeholder={copy.countryPlaceholder} maxLength={2} {...register(`conditions.${index}.value`)} />
         </FormField>
       ) : null}
 
       {draft.field === 'holdReason' ? (
         <FormField
-          label={AUTOMATION_COMPOSER_COPY.conditionValueLabel}
+          label={composerCopy.conditionValueLabel}
           name={`condition-${index}-value`}
           error={errors.value}
         >
           <Select {...register(`conditions.${index}.value`)}>
-            <option value="">Select a reason…</option>
+            <option value="">{copy.selectReason}</option>
             {holdReasons.map((reason) => (
               <option key={reason} value={reason}>
                 {reason}
@@ -143,27 +143,27 @@ export function AutomationConditionRow({
 
       {draft.field === 'orderTotalGross' ? (
         <>
-          <FormField label={AUTOMATION_COMPOSER_COPY.amountOpLabel} name={`condition-${index}-op`}>
+          <FormField label={composerCopy.amountOpLabel} name={`condition-${index}-op`}>
             <Select {...register(`conditions.${index}.op`)}>
               {AUTOMATION_AMOUNT_OP_VALUES.map((op) => (
                 <option key={op} value={op}>
-                  {op === 'gte' ? 'is at least' : 'is less than'}
+                  {op === 'gte' ? copy.amountOps.gte : copy.amountOps.lt}
                 </option>
               ))}
             </Select>
           </FormField>
           <FormField
-            label={AUTOMATION_COMPOSER_COPY.amountLabel}
+            label={composerCopy.amountLabel}
             name={`condition-${index}-amount`}
             error={errors.amount}
           >
             <Input inputMode="decimal" placeholder="2000" {...register(`conditions.${index}.amount`)} />
           </FormField>
           <FormField
-            label={AUTOMATION_COMPOSER_COPY.currencyLabel}
+            label={composerCopy.currencyLabel}
             name={`condition-${index}-currency`}
             error={errors.currency}
-            description={AUTOMATION_COMPOSER_COPY.currencyHint}
+            description={composerCopy.currencyHint}
           >
             <Input maxLength={3} {...register(`conditions.${index}.currency`)} />
           </FormField>
@@ -175,9 +175,9 @@ export function AutomationConditionRow({
         tone="ghost"
         className="button--sm automation-composer__remove"
         onClick={onRemove}
-        aria-label={`${AUTOMATION_COMPOSER_COPY.removeCondition} ${index + 1}`}
+        aria-label={interpolate(copy.removeAriaLabel, { n: index + 1 })}
       >
-        {AUTOMATION_COMPOSER_COPY.removeCondition}
+        {composerCopy.removeCondition}
       </Button>
     </div>
   );

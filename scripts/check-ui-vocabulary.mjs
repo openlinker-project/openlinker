@@ -25,7 +25,7 @@
  *     feature slice (`apps/web/src/features/*`, discovered at run time, #2737):
  *     JSX text and user-facing JSX attribute values in `.tsx`, and every string
  *     literal in a `*.copy.ts`. It also covers every English translation file
- *     (`apps/web/src/locales/en.json` and `apps/web/src/plugins/<id>/locales/en.json`),
+ *     (`apps/web/src/locales/en/<namespace>.json` and `apps/web/src/plugins/<id>/locales/en.json`),
  *     with its own floor. Only English files are read: the banned words are
  *     English, and the other languages would only add false positives.
  *
@@ -164,8 +164,8 @@ const MIN_SCANNED_SLICES = 15;
  */
 const MIN_ENGLISH_LOCALE_FILES = 1;
 
-/** The core English translation file. */
-const CORE_ENGLISH_LOCALE = join('apps', 'web', 'src', 'locales', 'en.json');
+/** The core English translation files: one per namespace in this folder. */
+const CORE_ENGLISH_LOCALE = join('apps', 'web', 'src', 'locales', 'en');
 
 /** Plugins keep their translations in `<plugin>/locales/en.json`. */
 const PLUGINS_ROOT = join('apps', 'web', 'src', 'plugins');
@@ -735,7 +735,11 @@ async function main() {
 
   // English translation files: the core file and one per plugin.
   const englishLocales = [];
-  if (await exists(join(repoRoot, CORE_ENGLISH_LOCALE))) englishLocales.push(CORE_ENGLISH_LOCALE);
+  if (await exists(join(repoRoot, CORE_ENGLISH_LOCALE))) {
+    for (const file of (await readdir(join(repoRoot, CORE_ENGLISH_LOCALE))).sort()) {
+      if (file.endsWith('.json')) englishLocales.push(join(CORE_ENGLISH_LOCALE, file));
+    }
+  }
   for (const plugin of await readdir(join(repoRoot, PLUGINS_ROOT))) {
     const file = join(PLUGINS_ROOT, plugin, 'locales', 'en.json');
     if (await exists(join(repoRoot, file))) englishLocales.push(file);

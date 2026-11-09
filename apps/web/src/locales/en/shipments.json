@@ -1,0 +1,228 @@
+{
+  "cancelShipment": {
+    "alsoOutstanding": "This shipment was already marked as dispatched, so the sales channel has been told the parcel is on its way. OpenLinker cannot take that back for you - tell the channel yourself after cancelling.",
+    "effect": "The label will be voided with {carrier}. This cannot be undone - to ship this order again you'll need to generate a new label."
+  },
+  "labelDownloadError": {
+    "credentialsRejected": {
+      "description": "This is a connection problem, not something a retry fixes. Ask an admin to reconnect this carrier.",
+      "title": "Our stored carrier credentials were rejected"
+    },
+    "network": {
+      "description": "Check your connection and try again.",
+      "title": "Couldn’t reach OpenLinker"
+    },
+    "noLabelYet": {
+      "description": "A label hasn’t been generated for this shipment. Generate one first.",
+      "title": "No label to download yet"
+    },
+    "notFound": {
+      "description": "It may have been removed, or the link is stale. Refresh the order to see its current shipment.",
+      "title": "No shipment matches this id"
+    },
+    "notSupported": {
+      "description": "The label lives with the carrier directly - retrying here will never produce a file.",
+      "title": "This carrier doesn’t provide a downloadable label"
+    },
+    "providerRejected": {
+      "messageWithRef": "{message} (ref: {code})",
+      "title": "The carrier rejected the request"
+    },
+    "unknown": {
+      "description": "Try again in a moment. If it keeps happening, contact support with the order id.",
+      "title": "Something went wrong"
+    }
+  },
+  "processor": {
+    "kinds": {
+      "carrier": "Carrier",
+      "omp": "OMP-fulfilled",
+      "pending": "Pending"
+    }
+  },
+  "shipmentRetryability": {
+    "labels": {
+      "auth": "Connection authentication problem",
+      "permanent": "Needs a fix before retrying",
+      "transient": "Transient - safe to just retry",
+      "unknown": "Cause not classified"
+    }
+  },
+  "shipmentRowDetail": {
+    "actions": {
+      "cancel": "Cancel",
+      "downloadLabel": "Download label",
+      "downloading": "Downloading…",
+      "generateLabel": "Generate label",
+      "markDispatched": "Mark dispatched",
+      "regenerateLabel": "Regenerate label",
+      "reviewConnection": "Review connection settings",
+      "trackParcel": "Track parcel"
+    },
+    "cancelDialog": {
+      "cancelLabel": "Keep",
+      "cancelling": "Cancelling…",
+      "confirm": "Cancel shipment",
+      "title": "Cancel this shipment?"
+    },
+    "carrierFallback": "the carrier",
+    "copiedOrderId": "Copied internal order ID {id}",
+    "copyOrderId": "Copy internal order ID {id}",
+    "fields": {
+      "carrierRejection": "Carrier rejection",
+      "failed": "Failed",
+      "method": "Method",
+      "order": "Order",
+      "paczkomat": "Paczkomat",
+      "provider": "Provider",
+      "rejectionCode": "Rejection code",
+      "requestedAs": "Requested as",
+      "shipmentFailed": "Shipment failed",
+      "tracking": "Tracking"
+    },
+    "noActionsReadOnly": "You do not have permission to act on this shipment.",
+    "noActionsYet": "No actions available for this shipment yet - check back once the carrier status sync catches up.",
+    "notifyDialog": {
+      "cancelLabel": "Cancel",
+      "confirm": "Mark dispatched",
+      "description": "This fires the source-marketplace notification and updates the destination fulfilment state. Use this only when the automatic dispatch flow has stalled - the normal path is automatic via the carrier's status sync.",
+      "notifying": "Notifying…",
+      "title": "Manually mark as dispatched?"
+    },
+    "ompNoTracking": "Fulfilled by the destination - no tracking yet.",
+    "postWaybill": {
+      "readOnly": "This parcel already has a live waybill, so it cannot be re-dispatched from here.",
+      "readOnlyWithWaybill": "This parcel already has a live waybill ({waybill}), so it cannot be re-dispatched from here.",
+      "writable": "This parcel already has a live waybill, so it cannot be re-dispatched from here - regenerating would purchase a second label. Void the existing waybill with {carrier} first, then generate a new one.",
+      "writableWithWaybill": "This parcel already has a live waybill ({waybill}), so it cannot be re-dispatched from here - regenerating would purchase a second label. Void the existing waybill with {carrier} first, then generate a new one."
+    },
+    "undeliveredFallback": "The carrier reported this parcel as undelivered or returned - check the tracker."
+  },
+  "shipmentSeverityLabel": {
+    "labels": {
+      "Finish": "Finish",
+      "Fix": "Fix",
+      "Send": "Send",
+      "View": "View"
+    },
+    "srPrefix": "Suggested action:"
+  },
+  "shipmentStatusBadge": {
+    "statuses": {
+      "cancelled": "cancelled",
+      "delivered": "delivered",
+      "dispatched": "dispatched",
+      "draft": "draft",
+      "failed": "failed",
+      "generated": "generated",
+      "in-transit": "in transit"
+    }
+  },
+  "shipmentTriageStrip": {
+    "coarseCode": "(carrier code <code>{code}</code> - {retryability})",
+    "exactCode": "- <code>{code}</code>",
+    "exactCodeWithClass": "- <code>{code}</code> ({retryability})",
+    "headingCode": {
+      "one": "{n} failed shipment on {connection} reports the same rejection code",
+      "other": "{n} failed shipments on {connection} report the same rejection code"
+    },
+    "headingMessage": {
+      "one": "{n} failed shipment on {connection} reports the same carrier message",
+      "other": "{n} failed shipments on {connection} report the same carrier message"
+    },
+    "pageScope": ". Counted across the shipments loaded on this page only. If the cause is a connection-level setting, fixing it once saves regenerating each one.",
+    "reviewConnection": "Review connection settings",
+    "sampleMessage": "- <message>{message}</message>",
+    "showAllFailed": "Show all failed on this connection",
+    "thisConnection": "this connection"
+  },
+  "shipmentsPage": {
+    "columns": {
+      "action": "Action",
+      "connection": "Connection",
+      "created": "Created",
+      "customer": "Customer",
+      "method": "Method",
+      "order": "Order",
+      "paczkomat": "Paczkomat",
+      "processor": "Processor",
+      "status": "Status",
+      "tracking": "Tracking"
+    },
+    "description": "Cross-order rollup of every shipment - filter by status, method, connection, or date.",
+    "empty": {
+      "clearFilters": "Clear filters",
+      "filtered": "No shipments match the current filters.",
+      "none": "No shipments have been created yet.",
+      "title": "No shipments found"
+    },
+    "error": {
+      "title": "Unable to load shipments"
+    },
+    "eyebrow": "Operations",
+    "filters": {
+      "allConnections": "All connections",
+      "allMethods": "All methods",
+      "allProcessors": "All processors",
+      "allStatuses": "All statuses",
+      "anyRelayState": "Any relay state",
+      "anyTracking": "Any tracking",
+      "byConnection": "Filter by connection",
+      "byMethod": "Filter by shipping method",
+      "byProcessor": "Filter by processor",
+      "byRelay": "Filter by tracking relay",
+      "byStatus": "Filter by status",
+      "byTracking": "Filter by tracking",
+      "createdFrom": "Created from",
+      "createdTo": "Created to",
+      "relayStuck": "Tracking not sent to channel",
+      "withTracking": "With tracking",
+      "withoutTracking": "Without tracking"
+    },
+    "loading": "Loading shipments…",
+    "pagination": {
+      "next": "Next",
+      "previous": "Previous",
+      "showing": "Showing {from}-{to} of {total}"
+    },
+    "tableCaption": "Shipments",
+    "title": "Shipments",
+    "toggle": {
+      "collapse": "Collapse details for shipment {id}",
+      "expand": "Expand details for shipment {id}"
+    },
+    "triageOverflow": {
+      "one": "+{n} more group with a shared carrier message.",
+      "other": "+{n} more groups with a shared carrier message."
+    }
+  },
+  "shipmentsTypes": {
+    "deliveryIntents": {
+      "address": "Doorstep address",
+      "pickup_point": "Pickup point"
+    },
+    "shippingMethods": {
+      "kurier": "Kurier",
+      "omp": "OMP-fulfilled",
+      "paczkomat": "Paczkomat",
+      "pickup": "Pickup point"
+    },
+    "waybillRelayReasons": {
+      "adapter-unresolved": "the connection could not be reached",
+      "rejected": "the channel refused the update",
+      "threw": "the order participants could not be resolved"
+    }
+  },
+  "waybillRelayStuckBadge": {
+    "badge": "Tracking not sent",
+    "srDescription": "- {description}",
+    "withCause": {
+      "one": "The tracking number has not reached the sales channel after {n} attempt - last failure: {cause}. The buyer has not been notified.",
+      "other": "The tracking number has not reached the sales channel after {n} attempts - last failure: {cause}. The buyer has not been notified."
+    },
+    "withoutCause": {
+      "one": "The tracking number has not reached the sales channel after {n} attempt. The buyer has not been notified.",
+      "other": "The tracking number has not reached the sales channel after {n} attempts. The buyer has not been notified."
+    }
+  }
+}

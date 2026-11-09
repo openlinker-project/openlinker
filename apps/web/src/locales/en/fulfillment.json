@@ -1,0 +1,388 @@
+{
+  "action": {
+    "close": {
+      "hint": "This task is finished.",
+      "label": "Close"
+    },
+    "expedite": {
+      "hint": "Pack this ahead of its deadline order. It stays marked as moved, and it can be moved back.",
+      "label": "Move to the front"
+    },
+    "force_cancel": {
+      "hint": "Cancel this task outright, without asking whoever holds it.",
+      "label": "Force cancel"
+    },
+    "hold": {
+      "hint": "Suspend this task until someone releases the hold.",
+      "label": "Put on hold"
+    },
+    "mark_in_progress": {
+      "hint": "Someone has started working this task.",
+      "label": "Mark in progress"
+    },
+    "release_expedite": {
+      "hint": "Stop moving this ahead of the queue. It returns to its place by dispatch deadline.",
+      "label": "Back to deadline order"
+    },
+    "release_hold": {
+      "hint": "Lift this hold so the task can move again.",
+      "label": "Release hold"
+    },
+    "schedule": {
+      "hint": "Plan this task for execution. It is not started yet.",
+      "label": "Schedule"
+    }
+  },
+  "actionAppliedToast": "{action} applied.",
+  "actionFailedFallback": "Could not {action} this fulfilment task.",
+  "actionMode": {
+    "force_cancel": {
+      "confirm": "Force cancel",
+      "description": "This cancels the task outright without asking whoever holds it, and cannot be undone. The order itself is not cancelled.",
+      "failure": "Could not cancel this fulfilment task.",
+      "title": "Force-cancel this fulfilment task"
+    },
+    "hold": {
+      "confirm": "Put on hold",
+      "description": "The task stops moving until someone releases the hold. The rest of the order is unaffected.",
+      "failure": "Could not put this fulfilment task on hold.",
+      "title": "Put this fulfilment task on hold"
+    },
+    "release_hold": {
+      "confirm": "Release hold",
+      "description": "The fulfilment task can move again. Any other hold on it stays in place.",
+      "failure": "Could not release this hold.",
+      "title": "Release this hold"
+    }
+  },
+  "assignPackingWork": {
+    "card": {
+      "heldBadge": "On hold",
+      "sitUnassignedBadge": "Sat unassigned {age}",
+      "summary": {
+        "products": {
+          "one": "{n} product",
+          "other": "{n} products"
+        },
+        "productsAndUnitsToScan": "{products}, {units} to scan",
+        "productsToScan": "{products} to scan",
+        "units": {
+          "one": "{n} unit",
+          "other": "{n} units"
+        }
+      }
+    },
+    "denied": {
+      "message": "Your role cannot assign or work fulfilment tasks. Ask an administrator if you need access.",
+      "title": "The fulfilment board is for supervisors"
+    },
+    "drag": {
+      "gripHint": "Drag to move to a packer"
+    },
+    "empty": {
+      "message": "Nothing is waiting to be packed. With fulfilment routing switched off, that is expected.",
+      "title": "Nothing to assign right now"
+    },
+    "error": {
+      "message": "The board could not be read just now. Nothing has been changed.",
+      "retry": "Retry",
+      "title": "Could not load packing work"
+    },
+    "groupBy": {
+      "dragUnavailable": "Drag moves a task between packers - switch to Packer to use it.",
+      "label": "Group by",
+      "location": "Location",
+      "packer": "Packer"
+    },
+    "lane": {
+      "empty": "Nothing here right now.",
+      "lightestLoadTag": "lightest load",
+      "offRosterTitle": "No longer a packer",
+      "packerSubtitle": {
+        "offline": "offline",
+        "online": "online",
+        "withStation": "{station} · {presence}"
+      },
+      "unassignedSubtitle": "Visible to every packer until claimed or assigned",
+      "unassignedTitle": "Unassigned"
+    },
+    "loading": {
+      "message": "Loading packing work…"
+    },
+    "metrics": {
+      "oldestUnassignedEmptyLabel": "No unassigned tasks with a known wait time",
+      "oldestUnassignedLabel": "Oldest unassigned",
+      "packersAtBenchesLabel": "Packers at their benches",
+      "packersAtBenchesUnknownLabel": "Not known",
+      "unassignedLabel": "Unassigned right now"
+    },
+    "page": {
+      "description": "The fulfilment tasks waiting to be worked. Assign one to a packer ahead of time, or leave it open for whoever picks it up first.",
+      "eyebrow": "Operations",
+      "title": "Fulfilment"
+    },
+    "rosterError": {
+      "message": "The packer roster could not be loaded, so tasks can only be held or left unassigned."
+    },
+    "row": {
+      "assignTo": "Assign to…",
+      "moreActionsLabel": "More actions",
+      "moveConflict": "Somebody changed this task first. The board has been refreshed.",
+      "moveFailed": "Could not move this task. Nothing has changed.",
+      "moveForbidden": "You are not allowed to reassign work.",
+      "moveNotFound": "That task is no longer here. The board has been refreshed.",
+      "moveSucceeded": "Task moved.",
+      "moveTo": "Move to…",
+      "moveUnknown": "That did not go through, and we could not tell whether it landed. Check the board.",
+      "noPackers": "No active packers to assign to",
+      "packerWithQueue": "{name} ({queued})",
+      "pullBack": "Pull back to Unassigned",
+      "selfServeAssignedLabel": "Anyone can still pick this up",
+      "selfServeFailed": "Could not change who may claim this. Nothing has changed.",
+      "selfServeLabel": "Anyone can pick this up",
+      "selfServeUpdated": "Self-serve eligibility updated."
+    }
+  },
+  "compactDuration": {
+    "days": "{n}d",
+    "hours": "{n}h",
+    "minutes": "{n}m"
+  },
+  "expeditedBadge": "Moved to the front",
+  "fulfillmentConflict": {
+    "actionNotLegal": "That is no longer possible for this fulfilment task. The available actions have been refreshed.",
+    "forbidden": "You do not have permission to change fulfilment tasks.",
+    "notFound": "This fulfilment task no longer exists.",
+    "versionConflict": "Somebody moved this fulfilment task while you were looking at it. It has been refreshed - check it and try again."
+  },
+  "fulfillmentTaskActionDialog": {
+    "cancel": "Cancel",
+    "noteLabel": "Note (optional)",
+    "reasonDescription": "Everyone who looks at this fulfilment task later sees the reason you choose.",
+    "reasonLabel": "Reason",
+    "working": "Working…"
+  },
+  "fulfillmentTaskActionSchema": {
+    "noteTooLong": "Keep the note under {max} characters",
+    "reasonRequired": "Choose why this fulfilment task is being held"
+  },
+  "fulfillmentTaskCard": {
+    "holdNote": "- {note}",
+    "holdSince": "{reason} · since",
+    "onHoldBadge": "On hold - {reason}"
+  },
+  "orderFulfillmentTasksPanel": {
+    "empty": "No fulfilment tasks - this order was not routed. Routing is on, so check the order's shipping address and the sourcing rules.",
+    "loadFailed": "Could not load this order's fulfilment tasks.",
+    "loading": "Loading fulfilment tasks…",
+    "noOrder": "No order to look fulfilment tasks up for.",
+    "retry": "Retry",
+    "showing": "Showing {shown} of {total} fulfilment tasks for this order.",
+    "title": "Fulfilment tasks"
+  },
+  "ownPackBenchName": "the pack bench",
+  "routingDecision": {
+    "healthy": {
+      "title": "Routed automatically"
+    },
+    "readFailed": "Could not load the routing status of this order.",
+    "resolved": {
+      "body": "The answer did not arrive in time, so OpenLinker closed the earlier attempt and is routing this order again. Nothing was packed or sent in the meantime.",
+      "bodyNotRestarted": "The answer did not arrive in time, so OpenLinker closed the earlier attempt, but could not start routing again. It tries again on its own later. Nothing was packed or sent in the meantime.",
+      "title": "OpenLinker stopped waiting"
+    },
+    "retry": {
+      "action": "Retry routing",
+      "pending": "Retrying…",
+      "started": "Routing was started again. The order updates when it finishes."
+    },
+    "stuck": {
+      "body": "OpenLinker asked where to pack this order and has not got a final answer yet. It is waiting for that answer rather than guessing, so it cannot ship the order twice. After the time limit it stops waiting and chooses again on its own.",
+      "title": "Routing is stuck"
+    }
+  },
+  "routingDecisionPanel": {
+    "retry": "Retry",
+    "router": "Router: {name}",
+    "routerFallback": "the connection that decides where orders are packed",
+    "timeLimit": "time limit {limit}",
+    "waiting": "Waiting",
+    "waitingFor": "Waiting for {age}"
+  },
+  "routingDecisionRetryError": {
+    "byCode": {
+      "ROUTING_RETRY_NOT_HELD": "This order is not waiting on routing any more, so there is nothing to retry.",
+      "ROUTING_RETRY_NOT_RETRYABLE": "Routing cannot be retried for this order yet. Its current wait ends on its own or needs a change to the order.",
+      "ROUTING_RETRY_NO_ROUTER": "No connection is set to decide where orders are packed, so routing cannot run."
+    },
+    "conflict": "Routing cannot be retried for this order right now.",
+    "fallback": "Could not retry routing. Try again in a moment.",
+    "notFound": "This order no longer exists.",
+    "unavailable": "Could not start routing. Try again in a moment."
+  },
+  "status": {
+    "cancelled": "Cancelled",
+    "closed": "Closed",
+    "in_progress": "In progress",
+    "incomplete": "Incomplete",
+    "on_hold": "On hold",
+    "open": "Open",
+    "scheduled": "Scheduled"
+  },
+  "taskAcceptance": {
+    "badge": "Not on {where}",
+    "cancellation": {
+      "cancellation_accepted": "cancellation accepted",
+      "cancellation_rejected": "cancellation refused",
+      "cancellation_requested": "cancellation requested"
+    },
+    "heroAttention": "Packers cannot see this task, because it is not on {where}.",
+    "heroPending": {
+      "withExecutor": "Sent to {executor}. It appears on {where} once accepted, usually within seconds.",
+      "withoutExecutor": "Sent for packing. It appears on {where} once accepted, usually within seconds."
+    },
+    "pendingNote": "On its way to {where}",
+    "refusedBody": "This task was turned down, or not answered in time, so it never reached {where}. OpenLinker does not retry this on its own.",
+    "refusedNote": "Turned down or not answered in time · sent",
+    "refusedTitle": "Not accepted",
+    "statusWithDetail": "{status} · {detail}",
+    "stuckBody": "This task was sent {age} ago and has not been accepted, so it is not on {where}. OpenLinker does not retry this on its own. A failed dispatch job in Jobs & Logs usually explains why.",
+    "stuckNote": "Not accepted yet · sent",
+    "stuckTitle": "Not accepted yet"
+  },
+  "workDetail": {
+    "actions": {
+      "nothingLeft": "Nothing left to do."
+    },
+    "backToWorklist": "Back to the worklist",
+    "executor": {
+      "externalLabel": "{name} · {externalPartner} - {platform}",
+      "externalPartner": "External partner",
+      "unassigned": "Not routed to anyone yet",
+      "unavailable": "Executor details unavailable"
+    },
+    "eyebrow": "Fulfilment task",
+    "facts": {
+      "channelNotYet": "Not yet - retried automatically",
+      "channelNotified": "Channel notified",
+      "completed": "Completed",
+      "delivery": "Delivery",
+      "externalReference": "External reference",
+      "location": "Location",
+      "noLocation": "No location yet",
+      "parcel": "Parcel",
+      "parcelClosed": "Parcel closed",
+      "parcelOpen": "Still open",
+      "started": "Started"
+    },
+    "holds": {
+      "since": "since"
+    },
+    "lines": {
+      "cancelledSuffix": "({cancelled} cancelled)",
+      "caveat": "Picked counts are reported by whoever is working the task and can be a little behind what you see here.",
+      "eanLabel": "EAN",
+      "empty": "This fulfilment task covers no lines.",
+      "skuLabel": "SKU"
+    },
+    "openOrder": "Open order",
+    "order": {
+      "retry": "Retry",
+      "unavailable": "The order behind this task could not be loaded, so its shipment, sales document and payment are not shown."
+    },
+    "orderTitle": "Order {reference}",
+    "packer": {
+      "rosterError": "The packer roster could not be loaded, so this task can only be left unassigned.",
+      "unassigned": "Unassigned",
+      "waiting": "waiting {age}",
+      "waitingUnknown": "waiting to be picked up"
+    },
+    "payment": {
+      "method": "Paid by",
+      "placedOn": "Placed on",
+      "unavailable": "This order's payment summary could not be loaded."
+    },
+    "sections": {
+      "actions": "What you can do",
+      "facts": "Details",
+      "holds": "Why it's stuck",
+      "lines": "What's in this task",
+      "packer": "Packer",
+      "payment": "Payment"
+    },
+    "states": {
+      "denied": {
+        "message": "Your role cannot open fulfilment tasks. Ask an administrator if you need access.",
+        "title": "Fulfilment tasks are for supervisors"
+      },
+      "deniedBench": {
+        "action": "Go to the pack bench",
+        "message": "This screen is for supervisors. Your parcels are waiting on the bench.",
+        "title": "Packing happens on the pack bench"
+      },
+      "error": {
+        "message": "The task could not be read just now. Nothing has been changed.",
+        "retry": "Retry",
+        "title": "Could not load this fulfilment task"
+      },
+      "loading": {
+        "message": "Fetching the task details.",
+        "title": "Loading this fulfilment task"
+      },
+      "notFound": {
+        "message": "No fulfilment task matches this address. It may have been removed.",
+        "title": "Task not found"
+      }
+    },
+    "summary": {
+      "acceptedWaiting": "{subject} accepted this and has not started picking yet.",
+      "awaitingAnswer": "Asked {subject} to take this. No answer yet.",
+      "cancellationRejected": "{subject} said no to the cancellation, so this is going ahead.",
+      "cancellationRequested": "Asked {subject} to stop. They have not answered, so packing may still be happening.",
+      "cancelledByOperator": "{subject} was told to stop.",
+      "cancelledGivenBack": "{subject} gave this back.",
+      "closed": "This task is finished.",
+      "executorFallback": "Whoever is working this task",
+      "inProgress": "{subject} is picking and packing this right now.",
+      "inProgressExpedited": "{subject} is picking and packing this right now, ahead of its usual place in the queue.",
+      "incomplete": "{subject} could only pack part of this. Needs re-sourcing or a manual decision.",
+      "onHold": {
+        "one": "One thing is stopping this. See below.",
+        "other": "{n} things are stopping this. See below."
+      },
+      "scheduled": "{subject} will start picking this soon.",
+      "unassigned": "Not yet assigned anywhere, so there is nothing to pick until it is routed."
+    },
+    "titleFallback": "Fulfilment task",
+    "vsOrders": {
+      "ordersLabel": "Orders",
+      "ordersText": "What was sold, and its overall status. One row per order, always.",
+      "taskLabel": "This task",
+      "taskText": "One physical packing job. An order becomes more than one of these only when it ships from more than one place."
+    }
+  },
+  "worklist": {
+    "empty": {
+      "filtered": {
+        "message": "Nothing on this page matches what you filtered for. Clear the filters to see everything.",
+        "title": "No fulfilment tasks match these filters"
+      },
+      "pastEnd": {
+        "action": "Back to the first page",
+        "message": "There are fulfilment tasks, but none this far down the list.",
+        "title": "Nothing on this page"
+      }
+    },
+    "filter": {
+      "clear": "Clear filters",
+      "groupLabel": "Fulfilment task filters",
+      "orderLabel": "Order",
+      "orderPlaceholder": "Filter by order id"
+    },
+    "lane": {
+      "noDeliveryMethod": "No delivery method yet",
+      "noLocation": "No location yet",
+      "pageScopeNote": "Grouped from the tasks on this page only."
+    }
+  }
+}

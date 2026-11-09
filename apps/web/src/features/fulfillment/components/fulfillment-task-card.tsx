@@ -67,6 +67,7 @@ import type { LiHTMLAttributes, ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
 import { usePermission } from '../../../shared/auth/use-permission';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { distinguishingAttributeKeys, narrowAttributes } from '../../../shared/lib/variant-attributes';
 import { shortenId } from '../../../shared/ui/entity-label';
 import { StatusBadge } from '../../../shared/ui/status-badge';
@@ -75,12 +76,7 @@ import { holdReasonLabel } from '../../orders';
 import type { FulfillmentTask } from '../api/fulfillment.types';
 import { useHasMultipleLocations } from '../hooks/use-has-multiple-locations';
 import { FulfillmentLineIdentity } from './fulfillment-line-identity';
-import {
-  FULFILLMENT_EXPEDITED_BADGE,
-  fulfillmentStatusLabel,
-  OWN_PACK_BENCH_NAME,
-  TASK_ACCEPTANCE_COPY,
-} from '../lib/fulfillment-task.copy';
+import { fulfillmentStatusLabel } from '../lib/fulfillment-task-labels';
 import {
   describeTaskAcceptance,
   needsAttention,
@@ -101,6 +97,12 @@ export function FulfillmentTaskCard({
   actions,
   rootProps,
 }: FulfillmentTaskCardProps): ReactElement {
+  const messages = useMessages('fulfillment');
+  const copy = messages.fulfillmentTaskCard;
+  const acceptanceCopy = messages.taskAcceptance;
+  const lineCopy = messages.workDetail.lines;
+  const factCopy = messages.workDetail.facts;
+  const where = messages.ownPackBenchName;
   const held = task.activeHolds.length > 0;
   const canOpenDetail = usePermission('fulfillment:read');
   const showLocation = useHasMultipleLocations();
@@ -129,7 +131,7 @@ export function FulfillmentTaskCard({
         <div className="fulfilment-task__badges">
           {task.activeHolds.map((hold) => (
             <StatusBadge key={hold.id} tone="warning" withDot compact>
-              {`On hold — ${holdReasonLabel(hold.reason)}`}
+              {interpolate(copy.onHoldBadge, { reason: holdReasonLabel(hold.reason) })}
             </StatusBadge>
           ))}
           <StatusBadge tone={attention ? 'warning' : 'info'} withDot={attention} compact>
@@ -137,7 +139,7 @@ export function FulfillmentTaskCard({
               fulfillmentStatusLabel(task.status),
               task.status,
               acceptance,
-              OWN_PACK_BENCH_NAME,
+              where,
               true
             )}
           </StatusBadge>
@@ -145,7 +147,7 @@ export function FulfillmentTaskCard({
               leads. Display only; see the module docblock. */}
           {(task.expeditedAt ?? null) !== null ? (
             <StatusBadge tone="warning" withDot compact>
-              {FULFILLMENT_EXPEDITED_BADGE}
+              {messages.expeditedBadge}
             </StatusBadge>
           ) : null}
         </div>
@@ -169,20 +171,20 @@ export function FulfillmentTaskCard({
 
       {held || attention || pending ? (
         <ul className="fulfilment-task__holds fulfilment-task__notes">
-          {pending ? <li>{TASK_ACCEPTANCE_COPY.pendingNote(OWN_PACK_BENCH_NAME)}</li> : null}
+          {pending ? <li>{interpolate(acceptanceCopy.pendingNote, { where })}</li> : null}
           {attention ? (
             <li>
               {acceptance.kind === 'refused'
-                ? TASK_ACCEPTANCE_COPY.refusedNote
-                : TASK_ACCEPTANCE_COPY.stuckNote}{' '}
+                ? acceptanceCopy.refusedNote
+                : acceptanceCopy.stuckNote}{' '}
               <TimeDisplay iso={task.createdAt} format="relative" />
             </li>
           ) : null}
           {task.activeHolds.map((hold) => (
             <li key={hold.id}>
-              {holdReasonLabel(hold.reason)} · since{' '}
+              {interpolate(copy.holdSince, { reason: holdReasonLabel(hold.reason) })}{' '}
               <TimeDisplay iso={hold.placedAt} format="relative" />
-              {hold.note ? ` — ${hold.note}` : ''}
+              {hold.note ? ` ${interpolate(copy.holdNote, { note: hold.note })}` : ''}
             </li>
           ))}
         </ul>
@@ -193,19 +195,19 @@ export function FulfillmentTaskCard({
             is more than one to tell apart, the delivery as its carrier name. */}
         {showLocation && task.locationName ? (
           <div>
-            <dt>Location</dt>
+            <dt>{factCopy.location}</dt>
             <dd>{task.locationName}</dd>
           </div>
         ) : null}
         {task.carrierName ? (
           <div>
-            <dt>Delivery</dt>
+            <dt>{factCopy.delivery}</dt>
             <dd>{task.carrierName}</dd>
           </div>
         ) : null}
         {task.externalWorkId ? (
           <div>
-            <dt>External reference</dt>
+            <dt>{factCopy.externalReference}</dt>
             <dd className="mono-text">{task.externalWorkId}</dd>
           </div>
         ) : null}
@@ -223,18 +225,17 @@ export function FulfillmentTaskCard({
                 />
                 <span className="fulfilment-task__count">
                   {line.fulfilledQuantity} / {line.totalQuantity}
-                  {line.cancelledQuantity > 0 ? ` (${line.cancelledQuantity} cancelled)` : ''}
+                  {line.cancelledQuantity > 0
+                    ? ` ${interpolate(lineCopy.cancelledSuffix, { cancelled: line.cancelledQuantity })}`
+                    : ''}
                 </span>
               </li>
             ))}
           </ul>
-          <p className="fulfilment-task__note text-muted">
-            Picked counts are reported by whoever is working the task and can be a little behind
-            what you see here.
-          </p>
+          <p className="fulfilment-task__note text-muted">{lineCopy.caveat}</p>
         </>
       ) : (
-        <p className="text-muted">This fulfilment task covers no lines.</p>
+        <p className="text-muted">{lineCopy.empty}</p>
       )}
 
       {actions}

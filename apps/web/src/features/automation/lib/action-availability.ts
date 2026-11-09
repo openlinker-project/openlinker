@@ -23,7 +23,7 @@
  *
  * @module apps/web/src/features/automation/lib
  */
-import { AUTOMATION_AVAILABILITY_COPY } from './automation.copy';
+import { getMessages } from '../../../shared/i18n';
 import type {
   AutomationActionAvailability,
   AutomationActionAvailabilityEntry,
@@ -51,13 +51,14 @@ export interface AvailabilityDescription {
 export function describeAvailability(
   availability: AutomationActionAvailability,
 ): AvailabilityDescription {
+  const copy = getMessages('automation').availability;
   switch (availability) {
     case 'available':
-      return { label: AUTOMATION_AVAILABILITY_COPY.available, tone: 'success', blocking: false };
+      return { label: copy.available, tone: 'success', blocking: false };
     case 'partial':
-      return { label: AUTOMATION_AVAILABILITY_COPY.partial, tone: 'warning', blocking: false };
+      return { label: copy.partial, tone: 'warning', blocking: false };
     case 'unavailable':
-      return { label: AUTOMATION_AVAILABILITY_COPY.unavailable, tone: 'error', blocking: true };
+      return { label: copy.unavailable, tone: 'error', blocking: true };
     default: {
       const exhaustive: never = availability;
       throw new Error(`Unhandled automation action availability: ${String(exhaustive)}`);

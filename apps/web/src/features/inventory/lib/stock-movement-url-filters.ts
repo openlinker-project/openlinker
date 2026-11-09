@@ -12,7 +12,7 @@ import {
   type InventoryMovementFilters,
   type InventoryMovementReason,
 } from '../api/inventory-movements.types';
-import { isMovementTypeFilterValue, type MovementTypeFilterValue } from './stock-movement-copy';
+import { isMovementTypeFilterValue, type MovementTypeFilterValue } from './stock-movement-presentation';
 
 export type MovementChip = 'all' | 'attention' | 'promised';
 

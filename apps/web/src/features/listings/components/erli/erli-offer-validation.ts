@@ -19,7 +19,10 @@ export const erliOfferValidation: OfferValidationContribution = {
     {
       id: ERLI_MISSING_IMAGE_BLOCKER,
       tone: 'error',
-      label: 'no image',
+      // A getter, so the label is read in the language active when the chip renders.
+      get label(): string {
+        return getMessages('listings').erliOfferValidation.blockers.noImage;
+      },
       field: 'images',
       describe: (): OfferBlockerCopy => {
         const copy = getMessages('listings').bulkBlockers.erli.missingImage;

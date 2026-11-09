@@ -32,6 +32,8 @@ import {
 } from '../../../shared/ui/category-search-results';
 import type { AllegroCategory, CategoryMapping } from '../api/mappings.types';
 
+import { useMessages } from '../../../shared/i18n';
+
 interface AllegroCategorySearchProps {
   marketplaceConnectionId: string;
   currentMapping: CategoryMapping | undefined;
@@ -55,6 +57,7 @@ export function AllegroCategorySearch({
   const [parentId, setParentId] = useState<string | undefined>(undefined);
   const [staged, setStaged] = useState<StagedPick | null>(null);
   const [search, setSearch] = useState('');
+  const copy = useMessages('mappings').allegroCategorySearch;
 
   const categoriesQuery = useAllegroCategoriesQuery(marketplaceConnectionId, parentId);
 
@@ -125,7 +128,7 @@ export function AllegroCategorySearch({
             </span>
           )}
           <Button className="button--ghost button--sm" onClick={onClear} disabled={isSaving}>
-            Clear mapping
+            {copy.clear}
           </Button>
         </div>
       )}
@@ -133,15 +136,15 @@ export function AllegroCategorySearch({
       {/* Staged (unsaved) pick */}
       {staged && (
         <div className="allegro-category-search__staged">
-          <span className="allegro-category-search__staged-label">Selected:</span>
+          <span className="allegro-category-search__staged-label">{copy.selected}</span>
           <span className="mono-text">{staged.category.name}</span>
           {staged.path && <span className="allegro-category-search__path">{staged.path}</span>}
           <span className="allegro-category-search__staged-actions">
             <Button className="button--primary button--sm" onClick={handleSave} disabled={isSaving}>
-              {isSaving ? 'Saving…' : 'Save mapping'}
+              {isSaving ? copy.saving : copy.save}
             </Button>
             <Button className="button--ghost button--sm" onClick={handleCancel} disabled={isSaving}>
-              Cancel
+              {copy.cancel}
             </Button>
           </span>
         </div>
@@ -151,8 +154,8 @@ export function AllegroCategorySearch({
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search all categories..."
-          aria-label="Search all categories"
+          placeholder={copy.searchPlaceholder}
+          aria-label={copy.searchLabel}
           aria-controls="mapping-catpick-search-results"
           disabled={isSaving}
         />

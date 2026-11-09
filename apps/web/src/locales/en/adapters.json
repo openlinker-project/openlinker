@@ -1,0 +1,26 @@
+{
+  "adaptersCatalogPage": {
+    "caption": "Available adapters",
+    "columns": {
+      "adapter": "Adapter",
+      "capabilities": "Capabilities",
+      "platform": "Platform",
+      "version": "Version"
+    },
+    "description": "Available integration adapters and their supported capabilities.",
+    "empty": {
+      "message": "No integration adapters are registered in the system.",
+      "title": "No adapters available"
+    },
+    "error": {
+      "title": "Unable to load adapters"
+    },
+    "eyebrow": "Platform",
+    "loading": {
+      "message": "Fetching the adapter registry…",
+      "title": "Loading adapters"
+    },
+    "noVersion": "-",
+    "title": "Adapter catalogue"
+  }
+}

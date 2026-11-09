@@ -20,6 +20,7 @@
  *
  * @module features/connections/components
  */
+import { interpolate, useMessages } from '../../../shared/i18n';
 import type { ReactElement } from 'react';
 import { useRateLimitStatusQuery } from '../hooks/use-rate-limit-status-query';
 import { Button } from '../../../shared/ui/button';
@@ -31,12 +32,13 @@ export interface PrestashopRateLimitReadoutProps {
 export function PrestashopRateLimitReadout({
   connectionId,
 }: PrestashopRateLimitReadoutProps): ReactElement {
+  const copy = useMessages('connections').prestashopRateLimitReadout;
   const statusQuery = useRateLimitStatusQuery(connectionId);
 
   if (statusQuery.isLoading) {
     return (
       <div className="prestashop-rate-limit" aria-live="polite">
-        <span className="muted-text">Checking rate-limit status…</span>
+        <span className="muted-text">{copy.checking}</span>
       </div>
     );
   }
@@ -44,9 +46,9 @@ export function PrestashopRateLimitReadout({
   if (statusQuery.isError || !statusQuery.data) {
     return (
       <div className="prestashop-rate-limit">
-        <span className="muted-text">Couldn&apos;t load rate-limit status.</span>
+        <span className="muted-text">{copy.loadError}</span>
         <Button tone="secondary" type="button" onClick={() => void statusQuery.refetch()}>
-          Retry
+          {copy.retry}
         </Button>
       </div>
     );
@@ -62,28 +64,31 @@ export function PrestashopRateLimitReadout({
     return (
       <div className="prestashop-rate-limit">
         <span className="muted-text">
-          No outbound limit configured — requests to this connection are not paced.
+          {copy.noLimit}
         </span>
       </div>
     );
   }
 
   const capLabel =
-    status.requestsPerMinute !== undefined ? `${status.requestsPerMinute}/min` : 'no per-minute cap';
-  const concurrencyLabel =
-    status.maxConcurrent !== undefined ? `, max ${status.maxConcurrent} concurrent` : '';
+    status.requestsPerMinute !== undefined
+      ? interpolate(copy.perMinute, { n: status.requestsPerMinute })
+      : copy.noPerMinuteCap;
+  const capLine =
+    status.maxConcurrent !== undefined
+      ? interpolate(copy.capWithConcurrency, { cap: capLabel, n: status.maxConcurrent })
+      : interpolate(copy.cap, { cap: capLabel });
 
   return (
     <div className="prestashop-rate-limit" aria-live="polite">
       <div className="prestashop-rate-limit__line">
         <span className="tabular">
-          Cap: {capLabel}
-          {concurrencyLabel}
+          {capLine}
         </span>
       </div>
       <div className="prestashop-rate-limit__line">
         <span className="tabular muted-text">
-          {status.inFlight ?? 0} in flight, {status.queued ?? 0} queued
+          {interpolate(copy.queue, { inFlight: status.inFlight ?? 0, queued: status.queued ?? 0 })}
         </span>
       </div>
       <Button
@@ -92,7 +97,7 @@ export function PrestashopRateLimitReadout({
         onClick={() => void statusQuery.refetch()}
         disabled={statusQuery.isFetching}
       >
-        {statusQuery.isFetching ? 'Refreshing…' : 'Refresh'}
+        {statusQuery.isFetching ? copy.refreshing : copy.refresh}
       </Button>
     </div>
   );

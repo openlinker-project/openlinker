@@ -38,7 +38,6 @@ export { InvoiceUnconfirmedNotice } from './components/invoice-unconfirmed-notic
 export {
   DocumentTypeSelect,
   DOCUMENT_TYPE_LABEL_FALLBACK,
-  DOCUMENT_TYPE_UNKNOWN_LABEL,
 } from './components/document-type-select';
 export { useOrderInvoiceQuery } from './hooks/use-order-invoice-query';
 export { useInvoiceQuery } from './hooks/use-invoice-query';
@@ -177,7 +176,7 @@ export {
   type SalesDocumentBlockCopy,
   type SalesDocumentBlockCopyKind,
   type RateLessLine,
-} from './lib/sales-document-block-copy';
+} from './lib/sales-document-block';
 export { resolveInvoiceLifecycleSteps } from './lib/invoice-lifecycle-steps';
 // #2254: the frontend mirror of core's `splitShippingAcrossRates`, guarded by
 // `scripts/check-shipping-tax-split-mirror.mjs`. Exported so the order-detail

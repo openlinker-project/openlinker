@@ -8,6 +8,7 @@
  *
  * @see {@link ErliSetupForm} for the form this summary is paired with.
  */
+import { useMessages } from '../../../shared/i18n';
 import type { ReactElement } from 'react';
 import { WizardSummaryRow } from '../../../shared/ui/wizard-summary-row';
 import {
@@ -28,20 +29,21 @@ export function ErliSetupSummary({
   suggestions = [],
   values,
 }: ErliSetupSummaryProps): ReactElement {
+  const copy = useMessages('connections').erliSetupSummary;
   const environmentLabel =
     values.environment === 'production'
-      ? 'Production'
+      ? copy.environments.production
       : values.environment === 'sandbox'
-        ? 'Sandbox'
+        ? copy.environments.sandbox
         : null;
 
   return (
     <>
       <section className="wizard-summary__section">
-        <h3 className="wizard-summary__section-title">Connection</h3>
+        <h3 className="wizard-summary__section-title">{copy.connection}</h3>
         <dl className="wizard-summary__rows">
-          <WizardSummaryRow label="Name" value={values.name?.trim() ? values.name : null} />
-          <WizardSummaryRow label="Environment" value={environmentLabel} />
+          <WizardSummaryRow label={copy.name} value={values.name?.trim() ? values.name : null} />
+          <WizardSummaryRow label={copy.environment} value={environmentLabel} />
         </dl>
       </section>
 

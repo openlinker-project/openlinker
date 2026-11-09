@@ -634,7 +634,7 @@ describe('BenchParcelView (#2418)', () => {
   it('should refuse a box that must not be packed, in the same words as the list', async () => {
     mount(parcel({ refusal: 'held', holdReason: 'payment_review' }));
 
-    expect(await screen.findByText(/On hold — do not pack this box/i)).toBeInTheDocument();
+    expect(await screen.findByText(/On hold - do not pack this box/i)).toBeInTheDocument();
     expect(screen.getByText(/payment_review/)).toBeInTheDocument();
     // And no confirm control while the box may not be packed.
     expect(screen.queryByRole('button', { name: /confirm this item/i })).toBeNull();
@@ -686,7 +686,7 @@ describe('BenchParcelView (#2418)', () => {
 
     expect(await screen.findByTestId('bench-parcel-closed')).toBeInTheDocument();
     expect(
-      screen.getByText(/The last scan closed it — there was nothing to press\./i)
+      screen.getByText(/The last scan closed it - there was nothing to press\./i)
     ).toBeInTheDocument();
   });
 

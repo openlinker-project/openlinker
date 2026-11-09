@@ -36,7 +36,7 @@
  * @module apps/web/src/features/fulfillment/lib
  */
 import { formatCompactDuration } from './assign-packing-work-duration';
-import { TASK_ACCEPTANCE_COPY } from './fulfillment-task.copy';
+import { getMessages, interpolate } from '../../../shared/i18n';
 
 export const TASK_ACCEPTANCE_STUCK_AFTER_MS = 15 * 60_000;
 
@@ -69,7 +69,12 @@ const NOT_YET_ACCEPTED = new Set(['unsubmitted', 'submitted']);
  * back is a false alarm.
  */
 export function describeTaskAcceptance(input: TaskAcceptanceInput, now: Date): TaskAcceptance {
-  const cancellation = TASK_ACCEPTANCE_COPY.cancellation[input.requestStatus];
+  const cancellations = getMessages('fulfillment').taskAcceptance.cancellation as Readonly<
+    Record<string, string>
+  >;
+  const cancellation = Object.prototype.hasOwnProperty.call(cancellations, input.requestStatus)
+    ? cancellations[input.requestStatus]
+    : undefined;
   if (cancellation !== undefined) return { kind: 'cancellation', label: cancellation };
 
   if (!input.assigned) return { kind: 'none' };
@@ -102,12 +107,20 @@ export function taskStatusText(
   where: string,
   withAttention: boolean,
 ): string {
+  const copy = getMessages('fulfillment').taskAcceptance;
   if (withAttention && needsAttention(acceptance)) {
-    return `${statusLabel} · ${TASK_ACCEPTANCE_COPY.badge(where)}`;
+    return interpolate(copy.statusWithDetail, {
+      status: statusLabel,
+      detail: interpolate(copy.badge, { where }),
+    });
   }
   if (acceptance.kind === 'cancellation') {
-    const repeatsStatus = status === 'cancelled' && acceptance.label === 'cancellation accepted';
-    return repeatsStatus ? statusLabel : `${statusLabel} · ${acceptance.label}`;
+    const repeatsStatus =
+      status === 'cancelled' &&
+      acceptance.label === copy.cancellation.cancellation_accepted;
+    return repeatsStatus
+      ? statusLabel
+      : interpolate(copy.statusWithDetail, { status: statusLabel, detail: acceptance.label });
   }
   return statusLabel;
 }

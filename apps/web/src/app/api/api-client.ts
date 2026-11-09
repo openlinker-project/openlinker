@@ -19,7 +19,7 @@
  * @see apps/web/src/shared/plugins/plugin.types.ts — the OpenLinkerPlugin contract (#702)
  */
 import { withApiVersion } from '../../shared/config/api-version';
-import { getBcp47Locale, getLocale } from '../../shared/i18n';
+import { getBcp47Locale, getLocale, getMessages } from '../../shared/i18n';
 import { createAdaptersApi, type AdaptersApi } from '../../features/adapters/api/adapters.api';
 import {
   createAiProviderSettingsApi,
@@ -503,7 +503,7 @@ export function createApiClient({
       // A 2xx with no body is not a stream the caller can read; surfacing it as
       // an `ApiError` keeps every failure on the one type callers already
       // branch on rather than adding a second null-shaped outcome.
-      throw new ApiError(`Response carried no readable body: ${path}`, response.status, null);
+      throw new ApiError(getMessages('ui').apiError.noReadableBody, response.status, { path });
     }
     return response.body;
   };

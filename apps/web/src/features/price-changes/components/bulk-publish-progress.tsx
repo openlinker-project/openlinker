@@ -38,6 +38,7 @@ import type { ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { useBulkBatchQuery, TERMINAL_BULK_BATCH_STATUSES } from '../../listings';
 import type { PriceChangeItem } from '../api/price-changes.types';
+import { interpolate, useMessages } from '../../../shared/i18n';
 
 interface BulkPublishProgressProps {
   batchId: string;
@@ -47,6 +48,7 @@ interface BulkPublishProgressProps {
 
 export function BulkPublishProgress({ batchId, items, onDismiss }: BulkPublishProgressProps): ReactElement {
   const query = useBulkBatchQuery(batchId);
+  const copy = useMessages('price-changes').bulkPublishProgress;
   const batch = query.data;
 
   const lanes: Array<{ connectionId: string; label: string; count: number }> = [];
@@ -64,7 +66,7 @@ export function BulkPublishProgress({ batchId, items, onDismiss }: BulkPublishPr
   if (query.isPending) {
     return (
       <div className="publish-progress is-active" data-state="bulk-publish-progress-loading">
-        <span className="publish-progress__title">Checking on your price changes…</span>
+        <span className="publish-progress__title">{copy.checking}</span>
       </div>
     );
   }
@@ -72,15 +74,13 @@ export function BulkPublishProgress({ batchId, items, onDismiss }: BulkPublishPr
   if (query.isError || !batch) {
     return (
       <div className="publish-progress publish-progress--error" data-state="bulk-publish-progress-failed">
-        <span className="publish-progress__title">
-          Couldn&apos;t check on this publish. It may still be running — try again, or reload this page.
-        </span>
+        <span className="publish-progress__title">{copy.failed}</span>
         <div className="publish-progress__actions">
           <Button tone="secondary" className="button--xs" onClick={() => void query.refetch()}>
-            Try again
+            {copy.tryAgain}
           </Button>
           <Button tone="ghost" className="button--xs" onClick={onDismiss}>
-            Dismiss
+            {copy.dismiss}
           </Button>
         </div>
       </div>
@@ -93,9 +93,13 @@ export function BulkPublishProgress({ batchId, items, onDismiss }: BulkPublishPr
 
   const title = isTerminal
     ? batch.failedCount > 0
-      ? `Published ${batch.succeededCount} of ${batch.totalCount} — ${batch.failedCount} failed`
-      : `Published ${batch.succeededCount} of ${batch.totalCount} prices`
-    : 'Sending your price changes…';
+      ? interpolate(copy.publishedWithFailures, {
+          succeeded: batch.succeededCount,
+          total: batch.totalCount,
+          failed: batch.failedCount,
+        })
+      : interpolate(copy.published, { succeeded: batch.succeededCount, total: batch.totalCount })
+    : copy.sending;
 
   return (
     <div className={`publish-progress ${isTerminal ? '' : 'is-active'}`} data-state="bulk-publish-progress">
@@ -121,7 +125,7 @@ export function BulkPublishProgress({ batchId, items, onDismiss }: BulkPublishPr
       {isTerminal ? (
         <div className="publish-progress__actions">
           <Button tone="ghost" className="button--xs" onClick={onDismiss}>
-            Dismiss
+            {copy.dismiss}
           </Button>
         </div>
       ) : null}

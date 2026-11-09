@@ -1,0 +1,2134 @@
+{
+  "allegroBulkConfigSection": {
+    "currencyLabel": "Waluta",
+    "loadError": "Nie udało się wczytać cenników dostaw dla tego połączenia.",
+    "loadingPolicies": "Wczytywanie cenników…",
+    "selectPlaceholder": "Wybierz cennik dostaw…",
+    "shippingLabel": "Cennik dostaw"
+  },
+  "allegroOfferValidation": {
+    "blockers": {
+      "addProductParams": "dodaj parametry produktu",
+      "eanNotInCatalogue": "EAN spoza katalogu",
+      "inStoreBarcode": "kod wewnętrzny sklepu",
+      "noPhoto": "brak zdjęcia",
+      "paramValueRejected": "odrzucona wartość parametru",
+      "siblingsShareOneCard": "warianty dzielą jedną kartę",
+      "titleTooLong": "za długi tytuł",
+      "titleTooShort": "za krótki tytuł"
+    },
+    "missingSellerDetails": {
+      "detail": "Ten marketplace wymaga ich w każdej ofercie, więc każda oferta z tej partii zostałaby odrzucona. Dodaj je w ustawieniach połączenia i wróć - wysyłka pozostanie zablokowana, dopóki nie zostaną ustawione.",
+      "items": {
+        "responsibleProducer": "producenta odpowiedzialnego",
+        "safetyInformation": "informacji o bezpieczeństwie",
+        "shipFromLocation": "miejsca wysyłki"
+      },
+      "title": "W tym połączeniu brakuje {items}."
+    }
+  },
+  "alreadyListedChip": {
+    "label": "już w {destination}"
+  },
+  "autoPrefillParameters": {
+    "unmatchedBrand": "Marka wariantu \"{brand}\" - brak dokładnego dopasowania na liście marek marketplace; wybierz ręcznie."
+  },
+  "batchRecovery": {
+    "blockers": {
+      "noProductLink": "Popraw i wyślij ponownie wymaga powiązania z produktem, którego ta partia nie zapisała. Ponowienie działa bez zmian.",
+      "overProductCap": "Popraw i wyślij ponownie obsługuje do {max} produktów naraz. Ponowienie działa bez zmian."
+    }
+  },
+  "bulkBatchProgressPage": {
+    "demoLock": "Demo tylko do odczytu - działania naprawcze są wyłączone.",
+    "errorTitle": "Nie udało się wczytać partii",
+    "eyebrow": "Operacje · Oferty",
+    "inProgressAlert": "<strong>Partia w toku.</strong> Sprawdzanie zmian co 5 sekund.",
+    "loadingMessage": "Pobieranie statusu partii…",
+    "loadingTitle": "Wczytywanie partii",
+    "metrics": {
+      "batchClosed": "Partia zamknięta",
+      "failed": "Błędy · {percent}",
+      "inProgress": "W toku",
+      "noFailures": "Brak błędów",
+      "polling": "Sprawdzanie co 5 s",
+      "recoveryAvailable": "Naprawa dostępna poniżej",
+      "recoveryNeedsWrite": "Naprawa wymaga uprawnień do zapisu",
+      "submitted": "Wysłano {when}",
+      "succeeded": "Sukces · {percent}",
+      "succeededDescription": "Oferty aktywne w marketplace",
+      "total": "Łącznie"
+    },
+    "missingIdMessage": "W adresie brakuje identyfikatora partii.",
+    "missingIdTitle": "Brak ID partii",
+    "notFoundMessage": "Nie znaleziono partii o ID \"{batchId}\".",
+    "notFoundTitle": "Nie znaleziono partii",
+    "openListings": "Otwórz w ofertach",
+    "recovery": {
+      "allFailed": {
+        "few": "{n} warianty zakończyły się błędem. Nic nie zostało opublikowane.",
+        "many": "{n} wariantów zakończyło się błędem. Nic nie zostało opublikowane.",
+        "one": "{n} wariant zakończył się błędem. Nic nie zostało opublikowane.",
+        "other": "{n} wariantu zakończyło się błędem. Nic nie zostało opublikowane."
+      },
+      "explanation": "Otwórz ponownie kreator z zaznaczonymi wariantami z błędem lub uruchom partię ponownie dokładnie tak, jak została zapisana.",
+      "fixAndResubmit": "Popraw i wyślij ponownie ({count})",
+      "retryUnchanged": "Ponów bez zmian ({count})",
+      "retrying": "Ponawianie…",
+      "someFailed": {
+        "few": "Błąd: {failed} z {n} wariantów.",
+        "many": "Błąd: {failed} z {n} wariantów.",
+        "one": "Błąd: {failed} z {n} wariantu.",
+        "other": "Błąd: {failed} z {n} wariantu."
+      },
+      "someLive": {
+        "few": "{n} oferty są aktywne.",
+        "many": "{n} ofert jest aktywnych.",
+        "one": "{n} oferta jest aktywna.",
+        "other": "{n} oferty jest aktywne."
+      }
+    },
+    "retry": "Ponów",
+    "statusLine": {
+      "few": "Status <status></status> · {connection} · {n} warianty",
+      "many": "Status <status></status> · {connection} · {n} wariantów",
+      "one": "Status <status></status> · {connection} · {n} wariant",
+      "other": "Status <status></status> · {connection} · {n} wariantu"
+    },
+    "statuses": {
+      "completed": "zakończona",
+      "failed": "błąd",
+      "partiallyFailed": "częściowy błąd",
+      "pending": "oczekuje",
+      "running": "w toku"
+    },
+    "summary": {
+      "completedIn": "Partia zakończona w {elapsed}",
+      "created": {
+        "few": "utworzono: {n}",
+        "many": "utworzono: {n}",
+        "one": "utworzono: {n}",
+        "other": "utworzono: {n}"
+      },
+      "endedIn": "Partia zakończyła się po {elapsed}",
+      "failed": {
+        "few": "błędy: {n}",
+        "many": "błędy: {n}",
+        "one": "błędy: {n}",
+        "other": "błędy: {n}"
+      }
+    },
+    "title": "Partia zbiorcza <id>{batchId}</id>",
+    "toasts": {
+      "retryDispatchedDescription": {
+        "few": "Ponownie zakolejkowano {n} rekordy.",
+        "many": "Ponownie zakolejkowano {n} rekordów.",
+        "one": "Ponownie zakolejkowano {n} rekord.",
+        "other": "Ponownie zakolejkowano {n} rekordu."
+      },
+      "retryDispatchedTitle": "Wysłano ponowienie",
+      "retryFailedTitle": "Ponowienie nie powiodło się"
+    }
+  },
+  "bulkBatchProgressTable": {
+    "caption": "Rekordy partii zbiorczej",
+    "chip": {
+      "complete": "kompletne",
+      "inProgress": "w toku",
+      "incomplete": "niekompletne"
+    },
+    "close": "Zamknij",
+    "columns": {
+      "offerOrFailure": "Oferta / błąd",
+      "status": "Status",
+      "updated": "Zmieniono",
+      "variant": "Wariant"
+    },
+    "detail": {
+      "description": "Wariant <mono>{id}</mono>",
+      "errors": "Błędy",
+      "noErrors": "Nie zapisano szczegółów błędu.",
+      "offer": "Oferta",
+      "status": "Status",
+      "title": "Szczegóły błędu rekordu",
+      "updated": "Zmieniono"
+    },
+    "details": "Szczegóły",
+    "detailsAria": "Szczegóły błędu dla {id}",
+    "failed": "Błąd",
+    "fix": "Popraw ten",
+    "fixAria": "Popraw i wyślij ponownie {id}",
+    "perProductAria": "Postęp dla każdego produktu",
+    "productFallback": "Produkt",
+    "queued": "W kolejce",
+    "retryHint": "Ponowienie uruchamia zapisane dane. Popraw i wyślij ponownie otwiera kreator z wariantami z błędem; aktywne już warianty są pomijane.",
+    "statusBadge": {
+      "alreadyExisted": "już istniała",
+      "draft": "szkic",
+      "failed": "błąd",
+      "pending": "oczekuje",
+      "running": "w toku",
+      "succeeded": "sukces"
+    },
+    "summaryIncomplete": "{live}/{total} aktywne · błędy: {failed} - oferta niekompletna",
+    "summaryLive": "{live} z {total} aktywnych",
+    "validating": "Walidacja w marketplace…"
+  },
+  "bulkBlockers": {
+    "allegro": {
+      "eanUnverified": {
+        "detail": "Kod może być poprawny. Możesz opublikować mimo to; sprawdź kod, jeśli to niespodziewane.",
+        "title": "Tego kodu kreskowego nie ma w katalogu Allegro."
+      },
+      "inStoreBarcode": {
+        "detail": "Takie kody służą do użytku wewnątrz jednego sklepu. Możesz opublikować mimo to.",
+        "title": "Ten kod wygląda na kod wewnętrzny sklepu, a nie kod produktu."
+      },
+      "needsProductParameters": {
+        "allFilledDetail": "Zapisz, żeby zdjąć tę blokadę.",
+        "allFilledTitle": "Każdy wymagany parametr produktu ma już wartość.",
+        "listDetail": "Wybierz parametr, żeby przejść do jego pola.",
+        "listTitle": {
+          "few": "Allegro potrzebuje {n} parametrów produktu, żeby utworzyć kartę produktu dla tego wariantu:",
+          "many": "Allegro potrzebuje {n} parametrów produktu, żeby utworzyć kartę produktu dla tego wariantu:",
+          "one": "Allegro potrzebuje {n} parametru produktu, żeby utworzyć kartę produktu dla tego wariantu:",
+          "other": "Allegro potrzebuje {n} parametru produktu, żeby utworzyć kartę produktu dla tego wariantu:"
+        },
+        "notCheckedDetail": "Lista pojawi się w edytorze, gdy wczytają się parametry kategorii.",
+        "notCheckedTitle": "Allegro potrzebuje parametrów produktu, żeby utworzyć kartę produktu dla tego wariantu.",
+        "notLoadedDetail": "Dlatego OpenLinker nie wie, których brakuje. Wczytaj parametry ponownie albo wybierz kategorię jeszcze raz.",
+        "notLoadedTitle": "Allegro wymaga parametrów produktu w tej kategorii, ale nie udało się wczytać ich listy."
+      },
+      "noPhoto": {
+        "detail": "Allegro wymaga co najmniej jednego. Dodaj je w sekcji zdjęć.",
+        "title": "Ta oferta nie ma zdjęcia."
+      },
+      "paramValueInvalid": {
+        "detail": "Sprawdź parametry poniżej z limitami podanymi obok nich.",
+        "title": "Wartość parametru przekracza limit tej kategorii Allegro."
+      },
+      "siblingsWithoutCard": {
+        "detail": "Allegro wiąże nową kartę produktu z pierwszym przyjętym wariantem i odrzuca pozostałe. Daj każdemu wariantowi kod kreskowy pasujący do produktu z katalogu.",
+        "title": "Wszystkie te warianty utworzyłyby jedną nową kartę produktu."
+      },
+      "titleTooLong": {
+        "detail": "Skróć go w polu tytułu.",
+        "title": "Tytuł oferty jest dłuższy, niż pozwala Allegro."
+      },
+      "titleTooShort": {
+        "detail": "Allegro wymaga co najmniej 12 znaków i 3 słów.",
+        "title": "Tytuł oferty jest za krótki dla Allegro."
+      }
+    },
+    "chips": {
+      "alreadyListed": "Już wystawiony",
+      "categoryNotSet": "Brak kategorii",
+      "currencyMismatch": "Niezgodna waluta",
+      "invalidBarcode": "Błędny kod kreskowy",
+      "multiMatch": "Kilka dopasowań",
+      "needsAttention": "Wymaga uwagi",
+      "noEan": "Brak kodu",
+      "noMasterPrice": "Brak ceny głównej",
+      "noMasterStock": "Brak stanu głównego",
+      "noMatch": "Brak w katalogu",
+      "noTaxRate": "Brak stawki VAT",
+      "noVariant": "Brak wariantu",
+      "paramsNotChecked": "Parametry niesprawdzone",
+      "stockUnknown": "Stan niezsynchronizowany",
+      "taxRateOnChannel": "Stawka zarządzana w kanale",
+      "unknownCategoryResult": "Nieznany wynik"
+    },
+    "describe": {
+      "currencyMismatch": {
+        "detail": "Ustaw jawną cenę w {currency} dla tego wariantu lub zmień walutę partii.",
+        "title": "Cena główna nie jest w {currency}."
+      },
+      "fallback": {
+        "detail": "Rozwiąż tę blokadę dla wariantu lub wyłącz wariant, aby go pominąć.",
+        "title": "{label}."
+      },
+      "invalidBarcode": {
+        "detail": "Ostatnia cyfra to cyfra kontrolna i się nie zgadza. Popraw ją w polach tego wariantu poniżej.",
+        "title": "{ean} nie jest poprawnym kodem kreskowym."
+      },
+      "multiMatch": {
+        "detail": "Wybierz kategorię, w której wystawić ofertę.",
+        "title": "Kilka produktów z katalogu {destination} ma kod kreskowy {ean}."
+      },
+      "noEan": {
+        "detail": "Dodaj go poniżej, aby {destination} mógł dopasować kategorię, lub wybierz kategorię teraz.",
+        "title": "Ten wariant nie ma kodu kreskowego."
+      },
+      "noMasterPrice": {
+        "detail": "Ustaw dla niego cenę poniżej lub go wyłącz, aby go pominąć. Jeśli sklep ma cenę, nie udało się dopasować jego ustawień podatkowych do kraju sprzedaży połączenia, więc cena płacona przez kupującego jest nieznana.",
+        "title": "Ten wariant nie ma ceny w katalogu głównym."
+      },
+      "noMasterStock": {
+        "detail": "Ustaw stan poniżej lub wyłącz wariant, aby go pominąć.",
+        "title": "Ten wariant nie ma stanu w katalogu głównym."
+      },
+      "noMatch": {
+        "detail": {
+          "few": "Nie wykryto kategorii, więc tego wariantu nie można jeszcze wystawić. Ustaw ją dla wszystkich {n} wariantów.",
+          "many": "Nie wykryto kategorii, więc tego wariantu nie można jeszcze wystawić. Ustaw ją dla wszystkich {n} wariantów.",
+          "one": "Nie wykryto kategorii, więc tego wariantu nie można jeszcze wystawić. Ustaw ją dla tego wariantu.",
+          "other": "Nie wykryto kategorii, więc tego wariantu nie można jeszcze wystawić. Ustaw ją dla wszystkich {n} wariantu."
+        },
+        "title": "Kodu kreskowego {ean} nie ma w katalogu {destination} i żadne mapowanie kategorii nie obejmuje tego produktu."
+      },
+      "noVariant": {
+        "detail": "Nie można go wystawić, dopóki katalog główny nie zgłosi co najmniej jednego.",
+        "title": "Ten produkt nie ma wariantów."
+      },
+      "stockUnknown": {
+        "detailMultiVariant": "Stan nie został zsynchronizowany z katalogu głównego. Poczekaj na synchronizację stanów lub wyłącz ten wariant, aby wystawić pozostałe.",
+        "detailSingleVariant": "Stan nie został zsynchronizowany z katalogu głównego. Poczekaj na synchronizację stanów lub ustaw stan ręcznie poniżej.",
+        "title": "OpenLinker nie ma jeszcze stanu dla tego wariantu."
+      },
+      "thisBarcode": "ten kod kreskowy",
+      "unknownCategoryResult": {
+        "detail": "Wybierz kategorię, aby kontynuować. Wynik wyszukiwania nie był pusty - nie udało się go odczytać, więc niczego nie wykluczono.",
+        "title": "{destination} zwrócił wynik kategorii, którego ta wersja nie rozpoznaje."
+      }
+    },
+    "erli": {
+      "missingImage": {
+        "detail": "Erli wymaga co najmniej jednego. Dodaj je w sekcji zdjęć.",
+        "title": "Ta oferta nie ma zdjęcia."
+      }
+    },
+    "panel": {
+      "advisoryNote": "Można opublikować",
+      "ariaLabel": "Co blokuje ten wariant",
+      "consequence": "Wynika z przyczyny powyżej",
+      "jumpTo": "Przejdź do pola {name}"
+    }
+  },
+  "bulkCategoryChooseModal": {
+    "browse": "Przeglądaj ›",
+    "browseLabel": "Przejdź do {name}",
+    "cancel": "Anuluj",
+    "closeLabel": "Zamknij wybór kategorii",
+    "description": "Wybierz kategorię marketplace wspólną dla wszystkich wariantów tego produktu.",
+    "empty": {
+      "noChildren": "Ten poziom nie ma podkategorii. Cofnij się i wybierz inną gałąź.",
+      "notSynced": "Dla tego kanału docelowego nie zsynchronizowano jeszcze kategorii. Wyszukiwanie zadziała po zakończeniu pierwszej synchronizacji."
+    },
+    "error": {
+      "retry": "Ponów",
+      "title": "Nie udało się wczytać kategorii"
+    },
+    "footer": {
+      "base": "Dotyczy wszystkich wariantów - marketplace grupuje warianty w jednej kategorii.",
+      "variant": "Dotyczy tylko tego wariantu - wypada on z grupowanej oferty."
+    },
+    "kind": {
+      "branch": "podkategoria",
+      "leaf": "kategoria do wyboru"
+    },
+    "loading": {
+      "message": "Pobieranie kategorii…",
+      "title": "Wczytywanie kategorii"
+    },
+    "pathLabel": "Ścieżka kategorii",
+    "root": "Główna",
+    "searchLabel": "Szukaj we wszystkich kategoriach",
+    "searchPlaceholder": "Szukaj we wszystkich kategoriach…",
+    "select": "Wybierz",
+    "selected": "Wybrano",
+    "title": "Wybierz kategorię <muted>- {product}</muted>"
+  },
+  "bulkConfigStep": {
+    "cancel": "Anuluj",
+    "destinationLabel": "Połączenie docelowe",
+    "generateDescription": {
+      "hint": "AI pisze w tle opis dla każdego wiersza. Przełącznik w edytorze wiersza ma pierwszeństwo.",
+      "label": "Domyślnie generuj opisy AI"
+    },
+    "intro": "Ustawienia domyślne dla całej partii, stosowane do wszystkich zaznaczonych produktów. Każde z nich - cenę, stan i pola platformy, np. czas wysyłki - możesz dopracować dla produktu w kolejnym kroku Przegląd (użyj <strong>Edytuj</strong> w wierszu).",
+    "loadingConnections": "Wczytywanie połączeń…",
+    "loadingMarketplaceOptions": "Wczytywanie opcji marketplace…",
+    "noDestinations": "Nie znaleziono aktywnych kanałów docelowych publikacji. Dodaj połączenie z marketplace lub sklepem internetowym w <link>Połączeniach</link>.",
+    "noMasterCatalogue": "<strong>{name}</strong> nie ma ustawionego katalogu głównego, więc nic nie odczyta danych produktów potrzebnych do tych ofert - każda oferta w partii zakończyłaby się błędem. Otwórz ustawienia połączenia, wybierz sklep będący właścicielem katalogu i wróć.",
+    "pricing": {
+      "flat": {
+        "fieldLabel": "Stała cena ({currency})",
+        "hint": "Ta sama cena brutto (w {currency}, z VAT) dla każdej oferty, bez względu na ceny główne.",
+        "label": "Stała cena dla wszystkich wierszy",
+        "placeholder": "79,00"
+      },
+      "legend": "Zasady cen",
+      "markup": {
+        "fieldLabel": "Narzut %",
+        "hint": "Zastosuj procent do każdej ceny głównej brutto (ujemny = rabat).",
+        "label": "Narzut na cenę główną",
+        "placeholder": "10"
+      },
+      "useMaster": {
+        "hint": "Każda oferta używa własnej ceny brutto produktu (z VAT). Wiersze bez ceny głównej są oznaczane.",
+        "label": "Użyj ceny głównej"
+      }
+    },
+    "proceed": "Dalej →",
+    "publishImmediately": {
+      "hint": "Odznacz, aby utworzyć wszystkie oferty jako szkice.",
+      "infoAria": "Informacje o natychmiastowej publikacji",
+      "label": "Opublikuj od razu",
+      "tooltip": "Wysyła żądanie publikacji każdej oferty. Decyzję podejmuje marketplace: może zostawić ofertę jako szkic, jeśli po jego stronie brakuje wymaganych parametrów lub są one niepoprawne."
+    },
+    "publishingAs": "Publikacja jako <strong>{name}</strong>.",
+    "sectionNotConfigured": "Zbiorcze tworzenie ofert nie jest jeszcze skonfigurowane dla tego marketplace.",
+    "shopCallout": "Publikacja w sklepie internetowym. Kategoria, atrybuty i zdjęcia są pobierane z produktu głównego w chwili publikacji - poniżej mają zastosowanie tylko widoczność, cena i zasady stanów.",
+    "stock": {
+      "cap": {
+        "fieldLabel": "Limit",
+        "hint": "Użyj ilości głównej, ograniczonej do N.",
+        "label": "Ogranicz stan główny"
+      },
+      "flat": {
+        "fieldLabel": "Stan",
+        "hint": "Ta sama ilość dla każdej oferty, bez względu na stan główny.",
+        "label": "Stały stan dla wszystkich wierszy"
+      },
+      "legend": "Zasady stanów",
+      "useMaster": {
+        "hint": "Każda oferta używa dostępnej ilości produktu. Wiersze z zerowym stanem są oznaczane.",
+        "label": "Użyj stanu głównego"
+      }
+    },
+    "title": "Skonfiguruj partię"
+  },
+  "bulkConfigSummary": {
+    "labels": {
+      "connectionId": "ID połączenia",
+      "currency": "Waluta oferty",
+      "description": "Opis",
+      "integration": "Integracja",
+      "onCreate": "Przy tworzeniu",
+      "price": "Cena",
+      "stock": "Stan"
+    },
+    "price": {
+      "flat": "Stała {amount} {currency}",
+      "master": "Cena główna",
+      "masterWithMarkup": "Cena główna {percent}"
+    },
+    "stock": {
+      "capped": "Stan główny, maks. {value}",
+      "flat": "Stały {value}",
+      "master": "Stan główny"
+    },
+    "values": {
+      "fromMasterCatalogue": "Z katalogu głównego",
+      "integration": "{platform} ({platformType})",
+      "notSet": "Nie ustawiono",
+      "publishImmediately": "Opublikuj od razu",
+      "saveAsDraft": "Zapisz jako szkic",
+      "writtenByAi": "Napisany przez AI"
+    }
+  },
+  "bulkConfirmModal": {
+    "cancel": "Anuluj",
+    "idempotency": "<strong>Ochrona przed duplikatami.</strong> Jeśli przypadkiem wyślesz formularz dwa razy, OpenLinker zwróci istniejącą partię zamiast tworzyć duplikat.",
+    "jobsNote": "Każda oferta to osobne zadanie w tle; postęp dla każdego produktu zobaczysz na następnej stronie.",
+    "mixedPublishWarning": "Oferta ma zarówno opublikowane warianty, jak i szkice, więc kupujący widzą niepełny wybór wariantów, dopóki pozostałe warianty nie zostaną uzupełnione w marketplace.",
+    "notListed": "Niewystawione: {reasons}.",
+    "nothingToCreate": {
+      "cannotList": {
+        "few": "Żadnego z {n} zaznaczonych wariantów nie można wystawić: {reasons}.",
+        "many": "Żadnego z {n} zaznaczonych wariantów nie można wystawić: {reasons}.",
+        "one": "Zaznaczonego wariantu nie można wystawić: {reasons}.",
+        "other": "Żadnego z {n} zaznaczonego wariantu nie można wystawić: {reasons}."
+      },
+      "goBack": "Wróć do Przeglądu, aby poprawić lub włączyć warianty do wystawienia.",
+      "noneSelected": "Nie zaznaczono żadnych wariantów."
+    },
+    "offerCount": {
+      "few": "{n} oferty",
+      "many": "{n} ofert",
+      "one": "{n} ofertę",
+      "other": "{n} oferty"
+    },
+    "productCount": {
+      "few": "{n} produktach",
+      "many": "{n} produktach",
+      "one": "{n} produkcie",
+      "other": "{n} produktu"
+    },
+    "publish": {
+      "hint": "Odznacz, aby utworzyć wszystko jako szkice.",
+      "infoLabel": "Informacje o natychmiastowej publikacji",
+      "label": "Opublikuj od razu",
+      "tooltip": "Wysyła żądanie publikacji. Marketplace może mimo to zostawić ofertę jako szkic, jeśli po jego stronie potrzebuje więcej lub poprawnych danych (częste w niektórych marketplace)."
+    },
+    "reasons": {
+      "alreadyListed": "{n} już w {connection}",
+      "needsAttention": {
+        "few": "{n} wciąż wymagają uwagi",
+        "many": "{n} wciąż wymaga uwagi",
+        "one": "{n} wciąż wymaga uwagi",
+        "other": "{n} wciąż wymaga uwagi"
+      },
+      "switchedOff": "{n} wyłączono"
+    },
+    "submit": "Utwórz oferty",
+    "submitting": "Tworzenie…",
+    "summary": "Utworzysz <strong>{offers}</strong> w <strong>{connection}</strong> ({marketplace}) w <strong>{products}</strong>.",
+    "title": {
+      "create": {
+        "few": "Utworzyć {n} oferty {marketplace} w {connection}?",
+        "many": "Utworzyć {n} ofert {marketplace} w {connection}?",
+        "one": "Utworzyć {n} ofertę {marketplace} w {connection}?",
+        "other": "Utworzyć {n} oferty {marketplace} w {connection}?"
+      },
+      "nothingToCreate": "Brak ofert do utworzenia w {connection}",
+      "partial": "Wystawić {offers} z {selected} zaznaczonych wariantów w {connection}?"
+    }
+  },
+  "bulkCreateWizardPage": {
+    "emptyMessage": "Nie znaleziono żadnego z zaznaczonych produktów. Wróć do listy produktów i spróbuj ponownie.",
+    "emptyTitle": "Nie znaleziono produktów",
+    "errorTitle": "Nie udało się wczytać zaznaczonych produktów",
+    "loadingMessage": {
+      "few": "Pobieranie szczegółów {n} zaznaczonych produktów…",
+      "many": "Pobieranie szczegółów {n} zaznaczonych produktów…",
+      "one": "Pobieranie szczegółów {n} zaznaczonego produktu…",
+      "other": "Pobieranie szczegółów {n} zaznaczonego produktu…"
+    },
+    "loadingTitle": "Wczytywanie produktów",
+    "redirectingMessage": "Powrót do strony Produkty.",
+    "redirectingTitle": "Przekierowywanie…",
+    "retry": "Ponów"
+  },
+  "bulkDestinationBar": {
+    "changeDestination": "Zmień kanał docelowy",
+    "changeEntry": "{label}: {value}",
+    "environment": {
+      "production": "Produkcja",
+      "sandbox": "Sandbox"
+    },
+    "hideSettings": "Ukryj ustawienia",
+    "settingsChanged": {
+      "few": "Zmieniono {n} ustawienia",
+      "many": "Zmieniono {n} ustawień",
+      "one": "Zmieniono {n} ustawienie",
+      "other": "Zmieniono {n} ustawienia"
+    },
+    "showSettings": "Pokaż ustawienia",
+    "status": {
+      "archived": "Archiwalne",
+      "disabled": "Wyłączone",
+      "error": "Błąd połączenia",
+      "needsReauth": "Wymaga autoryzacji"
+    }
+  },
+  "bulkEditModal": {
+    "attributes": {
+      "label": "Atrybuty",
+      "remove": "Usuń atrybut {id}",
+      "removeFor": "Usuń atrybut {id} dla {variant}",
+      "variantCustom": "Własny zestaw atrybutów dla tego wariantu.",
+      "variantInherits": "Dziedziczy atrybuty bazowe - dodaj lub usuń, aby nadpisać je dla tego wariantu."
+    },
+    "category": {
+      "changeAction": "zmień ↱",
+      "changeAria": "Zmień kategorię",
+      "eyebrow": "Kategoria",
+      "manualDescription": "Używa ustalonego ID kategorii marketplace. Zostaw puste, aby przy wysyłce ustalić kategorię ze skonfigurowanych mapowań kategorii.",
+      "manualLabel": "ID kategorii w serwisie {platform}",
+      "manualPlaceholder": "np. 12345",
+      "notSet": "Nieustawiona",
+      "requiredAria": "Kategoria jest wymagana",
+      "requiredTooltip": "Kategoria jest wymagana. Wybierz ją przyciskiem zmiany.",
+      "setAction": "ustaw kategorię ↱",
+      "suggested": "Proponowane kategorie (EAN pasuje do kilku)"
+    },
+    "currency": {
+      "description": "Dla całej partii - ustawiona w kroku Konfiguracja, dotyczy każdej oferty.",
+      "label": "Waluta"
+    },
+    "description": {
+      "baseHint": "AI pisze jeden opis wspólny dla wszystkich wariantów, chyba że wariant go nadpisze.",
+      "label": "Opis",
+      "shopHint": "Wspólny dla wszystkich wariantów, chyba że wariant go nadpisze."
+    },
+    "discard": {
+      "cancel": "Kontynuuj edycję",
+      "confirm": "Odrzuć zmiany",
+      "description": "W tym edytorze są niezapisane zmiany. Zamknięcie bez zapisu je odrzuci.",
+      "title": "Odrzucić zmiany?"
+    },
+    "ean": {
+      "acknowledge": "Potwierdzam, że ten EAN jest poprawny - wyślij mimo to.",
+      "duplicate": "Duplikat innego uwzględnionego wariantu - zostałyby połączone w jedną kartę {platform}.",
+      "invalidChecksum": "Błędna suma kontrolna GTIN - {platform} odrzuci ten EAN.",
+      "label": "EAN (GTIN)",
+      "placeholder": "np. 5901234567897",
+      "short": "EAN",
+      "simpleHint": "Kod kreskowy oferty dla tego produktu. Wstępnie wypełniony z głównego kodu kreskowego; wyczyszczenie wystawia ofertę bez karty katalogowej.",
+      "variantHint": "Wstępnie wypełniony z głównego EAN tego wariantu. Zmiany są sprawdzane pod kątem sumy kontrolnej i duplikatów; wyczyszczenie wystawia ofertę bez karty katalogowej."
+    },
+    "fields": {
+      "title": "Tytuł",
+      "titleLimit": "Maks. 75 znaków (limit {platform})."
+    },
+    "footer": {
+      "cancel": "Anuluj",
+      "editingBase": "Edycja wspólnej bazy - zmiany przechodzą na każdy wariant, który nie nadpisał danego pola.",
+      "editingSimple": "Produkt prosty - bez wariantów. Te pola dotyczą jednej oferty.",
+      "editingSimpleListing": "Produkt prosty - bez wariantów. Te pola dotyczą jednej oferty.",
+      "editingVariant": "Edycja jednego wariantu - od bazy różnią się tylko nadpisane pola.",
+      "saveAll": "Zapisz całość"
+    },
+    "header": {
+      "close": "Zamknij edytor",
+      "descriptionOffer": "Edytuj wspólną ofertę bazową i nadpisania dla poszczególnych wariantów tego produktu.",
+      "descriptionProduct": "Edytuj wspólny produkt bazowy i nadpisania dla poszczególnych wariantów tej oferty w sklepie.",
+      "simpleProduct": "Produkt prosty · bez wariantów",
+      "titleOffer": "Edytuj ofertę <name>- {name}</name>",
+      "titleProduct": "Edytuj produkt <name>- {name}</name>",
+      "variantCount": {
+        "few": "{n} warianty",
+        "many": "{n} wariantów",
+        "one": "{n} wariant",
+        "other": "{n} wariantu"
+      }
+    },
+    "images": {
+      "baseHint": "Domyślny zestaw zdjęć dla każdego wariantu. Dodaj lub usuń, aby nadpisać zestaw główny.",
+      "empty": "Brak zdjęć - dodaj adres URL zdjęcia, aby je uwzględnić.",
+      "label": "Zdjęcia",
+      "offerImageFallback": "Zdjęcie oferty",
+      "productImageFallback": "Zdjęcie produktu",
+      "shopHint": "Wspólny zestaw zdjęć dla każdego wariantu. Dodaj lub usuń, aby nadpisać zestaw główny.",
+      "simpleHint": "Główny zestaw zdjęć tej oferty. Dodaj lub usuń, aby go nadpisać.",
+      "variantCustom": "Własny zestaw zdjęć dla tego wariantu.",
+      "variantDefault": "Domyślnie dla tego wariantu: najpierw jego własne zdjęcia, bez zdjęć innych wariantów - dodaj lub usuń, aby nadpisać dla tego wariantu.",
+      "variantInherits": "Dziedziczy zdjęcia bazowe - dodaj lub usuń, aby nadpisać dla tego wariantu."
+    },
+    "include": {
+      "label": "Uwzględnij w tej partii"
+    },
+    "loading": "Wczytywanie…",
+    "parameters": {
+      "eyebrow": "Parametry kategorii",
+      "inheritHint": "Wszystko dziedziczy z bazy. Nadpisuj tylko parametry, które różnią się dla tego wariantu.",
+      "loadFailed": "Nie udało się wczytać parametrów kategorii. Nadal możesz zapisać - oferta może zostać odrzucona w tle, jeśli brakuje wymaganych parametrów.",
+      "loading": "Wczytywanie parametrów kategorii…",
+      "noneRequired": "Ta kategoria nie wymaga parametrów.",
+      "ownCategoryHint": "Ustalone z własnej kategorii tego wariantu.",
+      "prefilled": "Wypełniono z atrybutów wariantu - zapisz, aby zachować.",
+      "retry": "Ponów",
+      "showOptional": "Pokaż pola opcjonalne ({count})",
+      "variantLoadFailedDescription": "Jego parametrów nie można wypełnić ani zapisać, dopóki się nie wczytają. Ponów lub usuń nadpisanie kategorii, aby wrócić do wspólnej kategorii bazowej.",
+      "variantLoadFailedTitle": "Nie udało się wczytać parametrów kategorii tego wariantu"
+    },
+    "price": {
+      "flatAria": "Stała cena",
+      "flatLabel": "Stała cena ({currency})",
+      "inheritedHint": "Zostaw puste, aby wystawić za {price} {currency} według zasad cen.",
+      "label": "Cena",
+      "labelWithCurrency": "Cena ({currency})",
+      "markupAria": "Narzut procentowy",
+      "markupLabel": "Narzut %",
+      "modes": {
+        "flat": "Stała cena dla wszystkich wierszy",
+        "flatVariants": "Stała cena dla wszystkich wariantów",
+        "markup": "Narzut na cenę główną",
+        "useMaster": "Użyj ceny głównej"
+      },
+      "noMasterPrice": "Brak ceny głównej - wpisz cenę tej oferty.",
+      "placeholder": "79,00",
+      "policyDescription": "Nadpisanie zasad cen partii dla produktu.",
+      "policyLabel": "Zasady cen",
+      "shopBlankHint": "Zostaw puste, aby opublikować w cenie głównej."
+    },
+    "provenance": {
+      "defaults": "domyślne dla wszystkich wariantów",
+      "distinct": "wyróżniające",
+      "inherit": "dziedziczone",
+      "master": "z głównego",
+      "override": "nadpisane",
+      "policy": "zasada"
+    },
+    "publish": {
+      "aboutAria": "Informacje o natychmiastowej publikacji",
+      "draftHint": "Odznacz, aby utworzyć jako szkic.",
+      "label": "Opublikuj od razu",
+      "tooltip": "Wysyła żądanie publikacji. Decyzję podejmuje marketplace: jeśli po jego stronie brakuje wymaganych parametrów lub są niepoprawne, zostawia ofertę jako szkic do dokończenia we własnym panelu (częste w niektórych marketplace)."
+    },
+    "rail": {
+      "aria": "Wybór zakresu wariantów",
+      "scope": "Zakres",
+      "variants": "Warianty"
+    },
+    "reset": {
+      "toBase": "↺ przywróć bazę",
+      "toDefault": "↺ przywróć domyślne",
+      "toMaster": "↺ przywróć główne",
+      "toShared": "↺ przywróć wspólne"
+    },
+    "saveToast": {
+      "categoryMissingDescription": "{platform} wymaga kategorii dla każdej oferty. Użyj \"ustaw kategorię\" u góry tego panelu.",
+      "categoryMissingTitle": "Nie można jeszcze zapisać - wybierz kategorię",
+      "descriptionTooLongDescription": "Skróć go do {max} bajtów lub mniej - {platform} odrzuca dłuższy.",
+      "descriptionTooLongShop": "Skróć go do {max} bajtów lub mniej - sklep odrzuca dłuższy.",
+      "descriptionTooLongTitle": "Opis za długi dla tego kanału docelowego",
+      "invalidDescription": "Pod każdym polem wymagającym zmiany widać, co poprawić.",
+      "invalidTitle": "Nie można jeszcze zapisać - popraw wyróżnione pola",
+      "staleSchema": "Schemat parametrów kategorii jest nieaktualny. Zamknij kreator, otwórz go ponownie i spróbuj jeszcze raz.",
+      "variantSchemaFailedDescription": "Ponów w panelu wariantu poniżej lub usuń nadpisanie jego kategorii, a następnie zapisz ponownie.",
+      "variantSchemaFailedTitle": "Nie można jeszcze zapisać - nie udało się wczytać parametrów kategorii wariantu",
+      "variantSchemaLoadingDescription": "Zapisz ponownie za chwilę.",
+      "variantSchemaLoadingTitle": "Nie można jeszcze zapisać - parametry kategorii wariantu wciąż się wczytują"
+    },
+    "scope": {
+      "offerFields": "Pola oferty",
+      "productFields": "Pola produktu",
+      "sharedBase": "Wspólna baza"
+    },
+    "shop": {
+      "excludedNote": "Ten wariant jest wykluczony - nie zostanie opublikowany. Włącz go ponownie, aby go uwzględnić.",
+      "titleDescription": "Nazwa produktu widoczna w sklepie.",
+      "visibility": {
+        "draft": "Szkic",
+        "hint": "Szkic lub publikacja jest wybierana dla całej partii w kroku Przegląd.",
+        "label": "Widoczność",
+        "published": "Opublikowany"
+      }
+    },
+    "stock": {
+      "capLabel": "Limit",
+      "flatAria": "Stały stan",
+      "label": "Stan",
+      "modes": {
+        "cap": "Ogranicz stan główny",
+        "flat": "Stały stan dla wszystkich wierszy",
+        "flatVariants": "Stały stan dla wszystkich wariantów",
+        "useMaster": "Użyj stanu głównego"
+      },
+      "notSynced": "Nie zsynchronizowano jeszcze stanu z katalogu głównego. Wpisz stan, aby wystawić tę ofertę teraz.",
+      "policyDescription": "Nadpisanie zasad stanów partii dla produktu.",
+      "policyLabel": "Zasady stanów",
+      "policyMultiVariant": "Każdy wariant wystawia swój własny stan główny. Stałej ani ograniczonej ilości nie można zastosować dla poszczególnych wariantów.",
+      "shopVariantHint": "Wiążący stan z głównych stanów magazynowych.",
+      "variantHint": "Wiążący stan z głównych stanów magazynowych. Brak w magazynie wystawia się jako 0, nigdy nie jest uzupełniany."
+    },
+    "validation": {
+      "categoryRequired": "Kategoria jest wymagana",
+      "priceFormat": "Podaj cenę dziesiętną, np. 79,00",
+      "stockNegative": "Stan nie może być ujemny",
+      "titleRequired": "Tytuł jest wymagany"
+    },
+    "variant": {
+      "blankUsesBase": "Pozostawiony pusty wariant używa wartości bazowej: {value}",
+      "categoryInheritHint": "Wspólna dla wszystkich wariantów - nadpisanie wydziela ten wariant do osobnej oferty.",
+      "categoryModalName": "{variant} (wariant)",
+      "categoryOnParent": "Kategoria jest ustawiona w produkcie nadrzędnym - nie można jej tu nadpisać dla wariantu.",
+      "categorySplitWarning": "Własna kategoria wydzieli ten wariant do osobnej oferty {platform} - przestanie być grupowany z innymi wariantami.",
+      "excludedNote": "Ten wariant jest wykluczony - nie zostanie wysłany. Pozostałe warianty produktu nadal zostaną wystawione i zgrupowane, ale kupujący zobaczą o jedną opcję mniej. Włącz go ponownie, aby go uwzględnić.",
+      "fieldFor": "{field} dla {variant}",
+      "groupingParamHint": "Wspólny dla wszystkich wariantów - decyduje o grupowaniu, edytuj w bazie.",
+      "heading": "Wariant · {variant}",
+      "inherit": "Dziedzicz z bazy",
+      "inheritWithValue": "Dziedzicz z bazy ({value})",
+      "keepShared": "Zachowaj wspólne",
+      "notSetOnBase": "Nie ustawiono w bazie",
+      "openSharedBase": "Otwórz wspólną bazę",
+      "overrideAnyway": "Nadpisz mimo to",
+      "overrideForVariant": "Nadpisz dla tego wariantu",
+      "overrideTitleDescription": "Nadpisz tytuł / opis bazowy",
+      "ownListingHint": "Publikuje się jako osobna oferta, poza zgrupowaną kartą.",
+      "paramSplitWarning": "Nadpisanie {name} dla jednego wariantu wydziela go do osobnej oferty {platform} - przestanie być grupowany z innymi wariantami.",
+      "perVariant": "Dla wariantu",
+      "pickOrInherit": "Wybierz wartość lub dziedzicz z bazy",
+      "setCategoryForAll": {
+        "few": "Ustaw kategorię dla wszystkich {n} wariantów",
+        "many": "Ustaw kategorię dla wszystkich {n} wariantów",
+        "one": "Ustaw kategorię dla {n} wariantu",
+        "other": "Ustaw kategorię dla wszystkich {n} wariantu"
+      },
+      "setProductCategory": "Ustaw kategorię produktu",
+      "sharedAcrossVariants": "Wspólne dla wszystkich wariantów.",
+      "splitsListing": "dzieli ofertę"
+    }
+  },
+  "bulkImageLightbox": {
+    "close": "Zamknij zdjęcie",
+    "imageLabel": "Zdjęcie {name}"
+  },
+  "bulkImageStrip": {
+    "add": "Dodaj",
+    "addImage": "Dodaj zdjęcie",
+    "brokenBadge": "Nie wczytuje się",
+    "brokenNote": {
+      "few": "Nie udało się wczytać {n} zdjęć. Adresy mogą być błędne lub nie wskazywać zdjęć. Usuń je lub użyj innych adresów.",
+      "many": "Nie udało się wczytać {n} zdjęć. Adresy mogą być błędne lub nie wskazywać zdjęć. Usuń je lub użyj innych adresów.",
+      "one": "Nie udało się wczytać {n} zdjęcia. Adres może być błędny lub nie wskazywać zdjęcia. Usuń je lub użyj innego adresu.",
+      "other": "Nie udało się wczytać {n} zdjęcia. Adresy mogą być błędne lub nie wskazywać zdjęć. Usuń je lub użyj innych adresów."
+    },
+    "brokenTitle": "Nie wczytuje się: {url}",
+    "cancel": "Anuluj",
+    "problems": {
+      "duplicate": "To zdjęcie jest już na liście. Wpisz inny adres.",
+      "empty": "Wpisz adres zdjęcia zaczynający się od https://.",
+      "notAUrl": "To nie jest adres internetowy. Wpisz pełny adres zdjęcia zaczynający się od https:// lub http://, np. https://example.com/photo.jpg."
+    },
+    "remove": "Usuń zdjęcie",
+    "urlLabel": "URL nowego zdjęcia",
+    "urlPlaceholder": "https://example.com/image.jpg",
+    "zoom": "Powiększ zdjęcie"
+  },
+  "bulkPolicy": {
+    "attributePair": "{name}: {value}",
+    "variantFallback": "Wariant {n}"
+  },
+  "bulkResolveStep": {
+    "announcement": {
+      "few": "Ustalono {resolved} z {n} wariantów.",
+      "many": "Ustalono {resolved} z {n} wariantów.",
+      "one": "Ustalono {resolved} z {n} wariantu.",
+      "other": "Ustalono {resolved} z {n} wariantu."
+    },
+    "back": "Wstecz",
+    "batchProgressAria": "Warianty ustalone w tej partii",
+    "batchResolved": {
+      "few": "Ustalono {resolved} z {n} wariantów",
+      "many": "Ustalono {resolved} z {n} wariantów",
+      "one": "Ustalono {resolved} z {n} wariantu",
+      "other": "Ustalono {resolved} z {n} wariantu"
+    },
+    "continueWith": "Kontynuuj z {n} ustalonymi",
+    "currentAria": "Warianty ustalone dla {name}",
+    "currentVariants": {
+      "few": "{done} z {n} wariantów",
+      "many": "{done} z {n} wariantów",
+      "one": "{done} z {n} wariantu",
+      "other": "{done} z {n} wariantu"
+    },
+    "errorAlert": "Nie udało się ustalić kategorii i stanów dla tej partii. {message}",
+    "estimateMinutes": {
+      "few": "zostały około {n} minuty",
+      "many": "zostało około {n} minut",
+      "one": "zostało około {n} minuty",
+      "other": "zostało około {n} minuty"
+    },
+    "estimateSeconds": {
+      "few": "zostały około {n} sekundy",
+      "many": "zostało około {n} sekund",
+      "one": "została około {n} sekunda",
+      "other": "zostało około {n} sekundy"
+    },
+    "estimateSentence": "W przybliżeniu: {estimate}.",
+    "explainer": "Kod kreskowy każdego wariantu jest dopasowywany do katalogu marketplace, a następnie pobierane są ceny i stany główne wariantów. Produkty, które wymagają kategorii, są tu oznaczane, aby można je było poprawić w Przeglądzie przed wysłaniem.",
+    "feedVariant": "wariant {done} z {total}",
+    "firstBarcodeSub": "Wysyłanie zapytania o pierwszy kod kreskowy do katalogu marketplace. Wyniki pojawiają się po jednym produkcie w miarę napływania.",
+    "noBarcodeSub": "Żaden wariant w tej partii nie ma kodu kreskowego ani kategorii źródłowej, więc nie ma czego dopasować do katalogu.",
+    "noCatalogueSub": "Ten kanał docelowy nie ma katalogu produktów do dopasowania kodów kreskowych, więc kategorie wybiera się w Przeglądzie lub ustala przy wysyłce.",
+    "nothingToMatchTitle": "Nic do dopasowania w katalogu",
+    "outcome": {
+      "catalogue": "Dopasowano w katalogu",
+      "manual": "Wymaga kategorii",
+      "mapping": "Z mapowania kategorii",
+      "pending": "Sprawdzanie kodu"
+    },
+    "productsDone": {
+      "few": "Gotowe: {done} z {n} produktów",
+      "many": "Gotowe: {done} z {n} produktów",
+      "one": "Gotowe: {done} z {n} produktu",
+      "other": "Gotowe: {done} z {n} produktu"
+    },
+    "pullingTitle": "Pobieranie głównej ceny i stanu",
+    "resolutionFailed": "Ustalanie nie powiodło się.",
+    "resolvedSoFar": {
+      "few": "Ustalono już {resolved} z {n} wariantów. Ponowienie obsłuży pozostałe zamiast zaczynać od nowa.",
+      "many": "Ustalono już {resolved} z {n} wariantów. Ponowienie obsłuży pozostałe zamiast zaczynać od nowa.",
+      "one": "Ustalono już {resolved} z {n} wariantu. Ponowienie obsłuży pozostałe zamiast zaczynać od nowa.",
+      "other": "Ustalono już {resolved} z {n} wariantu. Ponowienie obsłuży pozostałe zamiast zaczynać od nowa."
+    },
+    "resolvingTitle": {
+      "few": "Ustalanie {n} wariantów",
+      "many": "Ustalanie {n} wariantów",
+      "one": "Ustalanie {n} wariantu",
+      "other": "Ustalanie {n} wariantu"
+    },
+    "resumedSub": {
+      "few": "Wznowienie od miejsca przerwania poprzedniej próby: ustalono już {resolved} z {n} wariantów.",
+      "many": "Wznowienie od miejsca przerwania poprzedniej próby: ustalono już {resolved} z {n} wariantów.",
+      "one": "Wznowienie od miejsca przerwania poprzedniej próby: ustalono już {resolved} z {n} wariantu.",
+      "other": "Wznowienie od miejsca przerwania poprzedniej próby: ustalono już {resolved} z {n} wariantu."
+    },
+    "retry": "Ponów ustalanie",
+    "stopAndReview": "Zatrzymaj i przejrzyj {n}"
+  },
+  "bulkReviewStep": {
+    "alreadyOn": "już w {destination}",
+    "backToConfig": "Wróć do konfiguracji",
+    "banner": {
+      "allReady": {
+        "detail": {
+          "few": "Zostaną utworzone {n} oferty; marketplace grupuje warianty każdego produktu w jedną ofertę.",
+          "many": "Zostanie utworzonych {n} ofert; marketplace grupuje warianty każdego produktu w jedną ofertę.",
+          "one": "Zostanie utworzona {n} oferta; marketplace grupuje warianty każdego produktu w jedną ofertę.",
+          "other": "Zostanie utworzone {n} oferty; marketplace grupuje warianty każdego produktu w jedną ofertę."
+        },
+        "title": "Wszystkie uwzględnione warianty są gotowe."
+      },
+      "batchIssue": {
+        "detail": "Każdy wariant poniżej zostałby odrzucony z tego samego powodu - popraw to powyżej, w połączeniu, a wysyłka zostanie odblokowana.",
+        "title": "To połączenie nie jest jeszcze skonfigurowane do tworzenia ofert, więc nie można niczego wysłać."
+      },
+      "duplicateEan": {
+        "detail": "Marketplace traktuje je jako jeden produkt i odrzuca całą wysyłkę - nadaj każdemu własny EAN lub wyłącz duplikaty.",
+        "title": {
+          "few": "{n} uwzględnione warianty mają ten sam kod kreskowy co inny wariant w tej partii.",
+          "many": "{n} uwzględnionych wariantów ma ten sam kod kreskowy co inny wariant w tej partii.",
+          "one": "{n} uwzględniony wariant ma ten sam kod kreskowy co inny wariant w tej partii.",
+          "other": "{n} uwzględnionego wariantu ma ten sam kod kreskowy co inny wariant w tej partii."
+        }
+      },
+      "needsAttention": {
+        "detail": "Usuń blokady lub wyłącz warianty, aby je pominąć - wtedy przycisk Utwórz oferty zostanie odblokowany.",
+        "title": {
+          "few": "{n} warianty wymagają uwagi.",
+          "many": "{n} wariantów wymaga uwagi.",
+          "one": "{n} wariant wymaga uwagi.",
+          "other": "{n} wariantu wymaga uwagi."
+        }
+      },
+      "overExclusion": {
+        "detail": "Zawęź wybór produktów zamiast wyłączać tak wiele wariantów.",
+        "title": {
+          "few": "Wyłączono {n} warianty, więcej niż limit {limit} dla jednej wysyłki.",
+          "many": "Wyłączono {n} wariantów, więcej niż limit {limit} dla jednej wysyłki.",
+          "one": "Wyłączono {n} wariant, więcej niż limit {limit} dla jednej wysyłki.",
+          "other": "Wyłączono {n} wariantu, więcej niż limit {limit} dla jednej wysyłki."
+        }
+      },
+      "overExpansion": {
+        "detail": "Wyłącz część wariantów lub podziel wybór na dwa uruchomienia.",
+        "title": "Ta partia utworzyłaby {count} ofert, więcej niż limit {limit} ofert na jedno uruchomienie."
+      }
+    },
+    "chips": {
+      "attentionCount": {
+        "few": "uwaga: {n}",
+        "many": "uwaga: {n}",
+        "one": "uwaga: {n}",
+        "other": "uwaga: {n}"
+      },
+      "excluded": "wykluczony",
+      "fixLabel": "Popraw: {chip} - {variant}. {cause}",
+      "offCount": {
+        "few": "wył.: {n}",
+        "many": "wył.: {n}",
+        "one": "wył.: {n}",
+        "other": "wył.: {n}"
+      },
+      "ready": "gotowy",
+      "readyCount": {
+        "few": "gotowe: {n}",
+        "many": "gotowe: {n}",
+        "one": "gotowe: {n}",
+        "other": "gotowe: {n}"
+      }
+    },
+    "columns": {
+      "priceGross": "Cena (brutto)",
+      "product": "Produkt",
+      "status": "Status",
+      "stock": "Stan"
+    },
+    "createOffers": "Utwórz oferty ({count})",
+    "emptyState": {
+      "chooseProducts": "Wybierz produkty",
+      "message": "Nie zaznaczono produktów. Wróć i wybierz produkty, dla których chcesz utworzyć oferty."
+    },
+    "filter": {
+      "ariaLabel": "Filtruj produkty po nazwie lub SKU",
+      "placeholder": "Filtruj produkty…"
+    },
+    "intro": "Rozwiń produkt, aby przejrzeć każdy wariant. Wyłącz wariant, aby go pominąć - pozostałe nadal zostaną wystawione i zgrupowane.",
+    "jumpToNextFlagged": "Następny oznaczony",
+    "onlyFlagged": "Tylko oznaczone",
+    "openConnectionSettings": "Otwórz ustawienia połączenia",
+    "pager": {
+      "next": "Dalej",
+      "page": "{page} / {pageCount}",
+      "previous": "Wstecz",
+      "showing": "Produkty od {from} do {to} z {total}"
+    },
+    "row": {
+      "collapseVariants": "Zwiń warianty {name}",
+      "edit": "Edytuj",
+      "expandVariants": "Rozwiń warianty {name}",
+      "includeAllVariants": "Uwzględnij wszystkie warianty {name}",
+      "includeVariant": "Uwzględnij {label}",
+      "loading": "Wczytywanie…",
+      "noEan": "brak EAN",
+      "noVariant": "Brak wariantu",
+      "noVariants": "brak wariantów",
+      "perVariant": "dla wariantu",
+      "productFallback": "produkt",
+      "variantCount": {
+        "few": "{n} warianty",
+        "many": "{n} wariantów",
+        "one": "{n} wariant",
+        "other": "{n} wariantu"
+      },
+      "zoomImage": "Powiększ zdjęcie {name}"
+    },
+    "summary": {
+      "excluded": "wykluczone",
+      "needAttention": "wymaga uwagi",
+      "ready": "gotowe"
+    },
+    "title": {
+      "few": "Przejrzyj {n} produkty",
+      "many": "Przejrzyj {n} produktów",
+      "one": "Przejrzyj {n} produkt",
+      "other": "Przejrzyj {n} produktu"
+    }
+  },
+  "bulkShopReviewStep": {
+    "alreadyOnUpdates": "już w {destination} - publikacja go zaktualizuje",
+    "back": "← Wstecz",
+    "banner": {
+      "allReady": {
+        "detail": {
+          "few": "Zostaną opublikowane {n} oferty.",
+          "many": "Zostanie opublikowanych {n} ofert.",
+          "one": "Zostanie opublikowana {n} oferta.",
+          "other": "Zostanie opublikowane {n} oferty."
+        },
+        "title": "Wszystkie uwzględnione oferty są gotowe."
+      },
+      "needsAttention": {
+        "detail": "Zostaną opublikowane, ale nie będzie można ich kupić do czasu uzupełnienia stanu - popraw stan przez Edytuj, wyklucz wiersz lub potwierdź poniżej, aby mimo to opublikować.",
+        "title": {
+          "few": "{n} oferty wymagają uwagi.",
+          "many": "{n} ofert wymaga uwagi.",
+          "one": "{n} oferta wymaga uwagi.",
+          "other": "{n} oferty wymaga uwagi."
+        }
+      }
+    },
+    "chips": {
+      "attentionCount": {
+        "few": "uwaga: {n}",
+        "many": "uwaga: {n}",
+        "one": "uwaga: {n}",
+        "other": "uwaga: {n}"
+      },
+      "excluded": "wykluczony",
+      "needsAttention": "wymaga uwagi",
+      "offCount": {
+        "few": "wył.: {n}",
+        "many": "wył.: {n}",
+        "one": "wył.: {n}",
+        "other": "wył.: {n}"
+      },
+      "outOfStockTitle": "Brak w magazynie - zostanie opublikowany, ale nie będzie można go kupić do czasu uzupełnienia stanu",
+      "ready": "gotowy",
+      "readyCount": {
+        "few": "gotowe: {n}",
+        "many": "gotowe: {n}",
+        "one": "gotowe: {n}",
+        "other": "gotowe: {n}"
+      }
+    },
+    "columns": {
+      "priceGross": "Cena (brutto)",
+      "product": "Produkt",
+      "status": "Status",
+      "stock": "Stan"
+    },
+    "description": {
+      "cleared": "Wyczyszczono - ta pozycja nie publikuje opisu.",
+      "fromMaster": "Z produktu głównego - brak nadpisania dla tej pozycji.",
+      "summary": "Opis"
+    },
+    "filter": {
+      "ariaLabel": "Filtruj produkty po nazwie lub SKU",
+      "placeholder": "Filtruj produkty…"
+    },
+    "intro": {
+      "few": "Publikacja {n} ofert produktów w <strong>{shop}</strong>.",
+      "many": "Publikacja {n} ofert produktów w <strong>{shop}</strong>.",
+      "one": "Publikacja {n} oferty produktu w <strong>{shop}</strong>.",
+      "other": "Publikacja {n} oferty produktów w <strong>{shop}</strong>."
+    },
+    "introSource": "Stan i cena pochodzą z głównych wartości każdego produktu i zasad partii.",
+    "noFilterMatches": "Żaden produkt nie pasuje do bieżącego filtra.",
+    "noVariantsIncluded": "Nie uwzględniono żadnych wariantów. Uwzględnij ponownie co najmniej jeden wariant, aby opublikować.",
+    "onlyFlagged": "Tylko oznaczone",
+    "outOfStock": {
+      "acknowledge": "Opublikuj mimo to - rozumiem, że tych ofert nie będzie w magazynie.",
+      "detail": "Zostaną opublikowane, ale nie będzie można ich kupić do czasu uzupełnienia stanu. Popraw stan przez Edytuj, wyklucz wiersz lub potwierdź, aby mimo to opublikować.",
+      "title": {
+        "few": "{n} ofert nie ma w magazynie.",
+        "many": "{n} ofert nie ma w magazynie.",
+        "one": "{n} oferty nie ma w magazynie.",
+        "other": "{n} oferty nie ma w magazynie."
+      }
+    },
+    "publishListings": {
+      "few": "Opublikuj {n} oferty",
+      "many": "Opublikuj {n} ofert",
+      "one": "Opublikuj {n} ofertę",
+      "other": "Opublikuj {n} oferty"
+    },
+    "publishing": "Publikowanie…",
+    "row": {
+      "collapseVariants": "Zwiń warianty {name}",
+      "edit": "Edytuj",
+      "editProduct": "Edytuj {name}",
+      "expandVariants": "Rozwiń warianty {name}",
+      "fromMaster": "z głównego",
+      "includeAllVariants": "Uwzględnij wszystkie warianty {name}",
+      "includeVariant": "Uwzględnij {name} - {variant}",
+      "perVariant": "dla wariantu",
+      "price": "{amount} {currency}",
+      "skuAndCount": "{sku} · {count}",
+      "variantCount": {
+        "few": "{n} warianty",
+        "many": "{n} wariantów",
+        "one": "{n} wariant",
+        "other": "{n} wariantu"
+      }
+    },
+    "selectedShopFallback": "wybranym sklepie",
+    "summary": {
+      "excluded": "wykluczone",
+      "needAttention": "wymaga uwagi",
+      "ready": "gotowe"
+    },
+    "title": "Przejrzyj oferty w sklepie",
+    "visibility": {
+      "draft": "Szkic",
+      "label": "Widoczność",
+      "published": "Opublikowany"
+    }
+  },
+  "bulkSubmitSummary": {
+    "alreadyListed": {
+      "few": "{n} już wystawione",
+      "many": "{n} już wystawionych",
+      "one": "{n} już wystawiony",
+      "other": "{n} już wystawionego"
+    },
+    "availabilityUnknown": {
+      "few": "{n} z nieznaną dostępnością (wyślij ponownie, aby spróbować jeszcze raz)",
+      "many": "{n} z nieznaną dostępnością (wyślij ponownie, aby spróbować jeszcze raz)",
+      "one": "{n} z nieznaną dostępnością (wyślij ponownie, aby spróbować jeszcze raz)",
+      "other": "{n} z nieznaną dostępnością (wyślij ponownie, aby spróbować jeszcze raz)"
+    },
+    "invalidEan": {
+      "few": "{n} z błędną sumą kontrolną EAN",
+      "many": "{n} z błędną sumą kontrolną EAN",
+      "one": "{n} z błędną sumą kontrolną EAN",
+      "other": "{n} z błędną sumą kontrolną EAN"
+    },
+    "queued": {
+      "few": "{n} oferty czekają w kolejce na utworzenie.",
+      "many": "{n} ofert czeka w kolejce na utworzenie.",
+      "one": "{n} oferta czeka w kolejce na utworzenie.",
+      "other": "{n} oferty czeka w kolejce na utworzenie."
+    },
+    "withSkips": "{queued} Pominięto: {reasons}."
+  },
+  "bulkWizard": {
+    "changeDestination": {
+      "cancel": "Zachowaj tę partię",
+      "confirm": "Zmień kanał docelowy",
+      "description": "Powrót do kroku 1 odrzuci dopasowane kategorie i zmiany wierszy w tej partii.",
+      "descriptionNamed": "Ta partia ma dopasowane kategorie i zmiany wierszy, które dotyczą tylko {connection}. Powrót do kroku 1 je odrzuci.",
+      "title": "Zmienić kanał docelowy?"
+    },
+    "description": {
+      "marketplace": "Tworzenie ofert dla: {products} · {variants}.",
+      "productCount": {
+        "few": "{n} produkty",
+        "many": "{n} produktów",
+        "one": "{n} produkt",
+        "other": "{n} produktu"
+      },
+      "shop": "Publikacja w sklepie: {products} · {variants}.",
+      "variantCount": {
+        "few": "{n} warianty",
+        "many": "{n} wariantów",
+        "one": "{n} wariant",
+        "other": "{n} wariantu"
+      }
+    },
+    "documentTitle": {
+      "marketplace": "Oferty zbiorczo · {connection}",
+      "shop": "Publikacja zbiorcza · {connection}"
+    },
+    "done": "Gotowe",
+    "eyebrow": "Operacje · Oferty",
+    "marketplaceFallback": "marketplace",
+    "noVariantsWarning": {
+      "detail": "Zostaną pominięte przy wysyłce.",
+      "title": {
+        "few": "{n} z {total} produktów nie mają wariantów i nie można ich wystawić.",
+        "many": "{n} z {total} produktów nie ma wariantów i nie można ich wystawić.",
+        "one": "{n} z {total} produktów nie ma wariantów i nie można go wystawić.",
+        "other": "{n} z {total} produktów nie ma wariantów i nie można ich wystawić."
+      }
+    },
+    "resumed": "Wznowienie z partii <batch>{batch}</batch> - warianty, które w niej zakończyły się błędem, są wstępnie zaznaczone.",
+    "resumedLiveExcluded": "Oferty już aktywne nie są uwzględnione.",
+    "steps": {
+      "config": "Ustawienia",
+      "confirm": "Potwierdź",
+      "resolve": "Ustalanie",
+      "review": "Przegląd"
+    },
+    "title": {
+      "marketplace": "Zbiorcze tworzenie ofert w marketplace",
+      "marketplaceOn": "Utwórz oferty w {connection}",
+      "shop": "Zbiorcza publikacja produktów w sklepie",
+      "shopTo": "Opublikuj produkty w {connection}"
+    },
+    "toast": {
+      "batchSubmitted": "Wysłano partię",
+      "listingsQueued": {
+        "few": "{n} oferty produktów czekają w kolejce.",
+        "many": "{n} ofert produktów czeka w kolejce.",
+        "one": "{n} oferta produktu czeka w kolejce.",
+        "other": "{n} oferty produktu czeka w kolejce."
+      },
+      "nothingReady": "Żaden wariant nie jest gotowy do wysyłki. Najpierw rozwiąż oznaczone warianty.",
+      "publishStarted": "Rozpoczęto publikację zbiorczą"
+    }
+  },
+  "bulkWizardLeaveGuard": {
+    "description": "W tej partii są niezapisane zmiany i nic nie zostało jeszcze wysłane. Wyjście teraz je odrzuci.",
+    "discardAndLeave": "Odrzuć i wyjdź",
+    "keepEditing": "Kontynuuj edycję",
+    "title": "Opuścić tę partię?"
+  },
+  "categoryLookup": {
+    "idleTimeout": "Brak odpowiedzi z wyszukiwania kategorii przez {seconds} s."
+  },
+  "categoryParametersStep": {
+    "autoFilled": "Wypełniono automatycznie z danych wariantu",
+    "filteredByParent": "Filtrowane według nadrzędnego: dostępne {visible} z {total} opcji",
+    "optional": "Opcjonalne",
+    "pickPlaceholder": "Wybierz: {name}",
+    "rangeFrom": "{name} od",
+    "rangeTo": "{name} do",
+    "required": "Wymagane",
+    "selectPlaceholder": "Wybierz…",
+    "showOptional": "Pokaż pola opcjonalne ({count})"
+  },
+  "common": {
+    "serverSaid": "Serwer odpowiedział: {message}",
+    "unknownError": "Coś poszło nie tak. Spróbuj ponownie."
+  },
+  "duplicateGuardModal": {
+    "cancel": "Wróć",
+    "confirmMarketplace": "Opublikuj pozostałe warianty",
+    "confirmShop": "Zaktualizuj istniejące",
+    "descriptionMarketplace": {
+      "few": "<strong>{n}</strong> wybrane warianty mają już ofertę w <strong>{destination}</strong>. Zostaną <strong>pominięte, a nie zduplikowane</strong> - opublikowane zostaną tylko warianty jeszcze tam niewystawione. Kontynuować?",
+      "many": "<strong>{n}</strong> wybranych wariantów ma już ofertę w <strong>{destination}</strong>. Zostaną <strong>pominięte, a nie zduplikowane</strong> - opublikowane zostaną tylko warianty jeszcze tam niewystawione. Kontynuować?",
+      "one": "<strong>{n}</strong> wybrany wariant ma już ofertę w <strong>{destination}</strong>. Zostanie <strong>pominięty, a nie zduplikowany</strong> - opublikowane zostaną tylko warianty jeszcze tam niewystawione. Kontynuować?",
+      "other": "<strong>{n}</strong> wybranego wariantu ma już ofertę w <strong>{destination}</strong>. Zostaną <strong>pominięte, a nie zduplikowane</strong> - opublikowane zostaną tylko warianty jeszcze tam niewystawione. Kontynuować?"
+    },
+    "descriptionShop": {
+      "few": "<strong>{n}</strong> wybrane warianty już istnieją w <strong>{destination}</strong>. Publikacja <strong>zaktualizuje istniejący produkt</strong> (upsert) zamiast tworzyć nowy. Kontynuować?",
+      "many": "<strong>{n}</strong> wybranych wariantów już istnieje w <strong>{destination}</strong>. Publikacja <strong>zaktualizuje istniejący produkt</strong> (upsert) zamiast tworzyć nowy. Kontynuować?",
+      "one": "<strong>{n}</strong> wybrany wariant już istnieje w <strong>{destination}</strong>. Publikacja <strong>zaktualizuje istniejący produkt</strong> (upsert) zamiast tworzyć nowy. Kontynuować?",
+      "other": "<strong>{n}</strong> wybranego wariantu już istnieje w <strong>{destination}</strong>. Publikacja <strong>zaktualizuje istniejący produkt</strong> (upsert) zamiast tworzyć nowy. Kontynuować?"
+    },
+    "title": {
+      "few": "{n} warianty już w {destination}",
+      "many": "{n} wariantów już w {destination}",
+      "one": "{n} wariant już w {destination}",
+      "other": "{n} wariantu już w {destination}"
+    }
+  },
+  "editOfferDrawer": {
+    "cancel": "Anuluj",
+    "closeAriaLabel": "Zamknij panel",
+    "fields": {
+      "currency": "Waluta",
+      "currencyReadOnly": "Waluta (tylko do odczytu)",
+      "description": "Opis",
+      "price": "Cena",
+      "pricePlaceholder": "np. 99,99",
+      "title": "Tytuł",
+      "titlePlaceholder": "Tytuł oferty (maks. 75 znaków)"
+    },
+    "overDescriptionCap": "Opis jest dłuższy, niż akceptuje kanał docelowy ({maxBytes} bajtów). Skróć go przed zapisaniem - platforma odrzuci aktualizację.",
+    "save": "Zapisz zmiany",
+    "saving": "Zapisywanie…",
+    "suggestionNeedsVariant": "Propozycje AI wymagają powiązanego wariantu - najpierw powiąż tę ofertę z wariantem produktu.",
+    "suggestionScopeWarning": "Propozycje powstają na podstawie głównej treści produktu. Wstawienie zastępuje opis <strong>tylko w tej ofercie</strong> - zapisanie nie aktualizuje produktu głównego ani innych powiązanych ofert.",
+    "title": "Edytuj ofertę",
+    "toasts": {
+      "dispatchedDescription": "Zmiany pojawią się po zakończeniu zadania w tle.",
+      "dispatchedTitle": "Wysłano aktualizację"
+    },
+    "updateFailed": "Aktualizacja nie powiodła się",
+    "validation": {
+      "priceInvalid": "Cena musi być liczbą dodatnią z maks. 2 miejscami po przecinku",
+      "titleTooLong": "Tytuł może mieć maks. {max} znaków"
+    }
+  },
+  "erliBulkConfigSection": {
+    "note": {
+      "currency": "Ceny są wysyłane w PLN.",
+      "images": "Zdjęcia są pobierane z każdego produktu (serwis {platform} wymaga co najmniej jednego), a krok Ustalanie oznacza każdy produkt, któremu go brakuje.",
+      "noPolicies": "Serwis {platform} nie ma zasad sprzedawcy ani dostaw, więc czas wysyłki zastępuje krok zasad.",
+      "producer": "Producent dotyczy każdego produktu w tej partii (możesz go nadpisać dla produktu w kroku Przegląd)."
+    }
+  },
+  "erliBulkRowSection": {
+    "customDispatchOff": "Wyłączone - ten produkt używa czasu wysyłki partii.",
+    "customDispatchTitle": "Własny czas wysyłki dla tego produktu",
+    "customProducerOff": "Wyłączone - ten produkt używa domyślnego producenta partii.",
+    "customProducerTitle": "Własny producent dla tego produktu",
+    "resetToBatchDefault": "Przywróć ustawienie partii"
+  },
+  "erliDeliveryPriceListField": {
+    "description": "Pobrany z serwisu {platform}. Wymagany, aby kupujący mogli kupić.",
+    "emptyBody": "Na Twoim koncie w serwisie {platform} nie ma cenników dostaw - dodaj cennik tam, a następnie odśwież.",
+    "emptyTitle": "Nie znaleziono cenników dostaw",
+    "label": "Cennik dostaw",
+    "loadErrorTitle": "Nie udało się wczytać cenników dostaw",
+    "loading": "Wczytywanie cenników dostaw…",
+    "placeholder": "Wybierz cennik dostaw…",
+    "refresh": "Odśwież",
+    "retry": "Ponów",
+    "tryAgain": "Spróbuj ponownie."
+  },
+  "erliDeliveryPriceListOverrideField": {
+    "batchDefault": "Ustawienie partii",
+    "batchDefaultNone": "brak",
+    "batchDefaultQuoted": "\"{name}\"",
+    "emptyBody": "Na Twoim koncie w serwisie {platform} nie ma cenników dostaw - dodaj cennik tam, a następnie odśwież.",
+    "emptyTitle": "Nie znaleziono cenników dostaw",
+    "inheriting": "Ustawienie partii ({batchDefault}). Zmień, aby nadpisać tylko dla tego produktu.",
+    "label": "Cennik dostaw",
+    "loadErrorTitle": "Nie udało się wczytać cenników dostaw",
+    "loading": "Wczytywanie cenników dostaw…",
+    "overridden": "Nadpisano",
+    "overriding": "Nadpisanie ustawienia partii ({batchDefault}) dla tego produktu.",
+    "placeholder": "Wybierz cennik dostaw…",
+    "refresh": "Odśwież",
+    "resetToBatchDefault": "Przywróć ustawienie partii",
+    "retry": "Ponów",
+    "tryAgain": "Spróbuj ponownie."
+  },
+  "erliDispatchTimeField": {
+    "fromDefault": "domyślne ustawienie połączenia",
+    "label": "Czas wysyłki",
+    "periodLabel": "Okres wysyłki",
+    "readout": "Kupujący widzą \"wysyłka w {dispatch}\".",
+    "readoutBatch": {
+      "few": "Zastosowano do wszystkich {n} ofert - kupujący widzą \"wysyłka w {dispatch}\".",
+      "many": "Zastosowano do wszystkich {n} ofert - kupujący widzą \"wysyłka w {dispatch}\".",
+      "one": "Zastosowano do {n} oferty - kupujący widzą \"wysyłka w {dispatch}\".",
+      "other": "Zastosowano do wszystkich {n} oferty - kupujący widzą \"wysyłka w {dispatch}\"."
+    },
+    "required": "· wymagane przez serwis {platform}",
+    "unitLabel": "Jednostka czasu wysyłki",
+    "units": {
+      "day": "dni robocze",
+      "hour": "godziny",
+      "month": "miesiące"
+    }
+  },
+  "erliOfferFields": {
+    "dispatch": {
+      "day": {
+        "few": "{n} dni robocze",
+        "many": "{n} dni roboczych",
+        "one": "{n} dzień roboczy",
+        "other": "{n} dnia roboczego"
+      },
+      "hour": {
+        "few": "{n} godziny",
+        "many": "{n} godzin",
+        "one": "{n} godzinę",
+        "other": "{n} godziny"
+      },
+      "month": {
+        "few": "{n} miesiące",
+        "many": "{n} miesięcy",
+        "one": "{n} miesiąc",
+        "other": "{n} miesiąca"
+      }
+    },
+    "validation": {
+      "periodMin": "Okres wysyłki musi wynosić 0 lub więcej",
+      "periodRequired": "Okres wysyłki jest wymagany",
+      "periodWholeNumber": "Okres wysyłki musi być liczbą całkowitą"
+    }
+  },
+  "erliOfferValidation": {
+    "blockers": {
+      "noImage": "brak zdjęcia"
+    }
+  },
+  "erliProducerField": {
+    "description": "Producent odpowiedzialny widoczny na karcie produktu w serwisie {platform}. Pobrany z serwisu {platform}.",
+    "emptyBody": "Na Twoim koncie w serwisie {platform} nie ma producentów - dodaj producenta tam, a następnie wczytaj ponownie.",
+    "emptyTitle": "Nie znaleziono producentów",
+    "label": "Producent",
+    "loadErrorTitle": "Nie udało się wczytać producentów",
+    "loading": "Wczytywanie producentów…",
+    "placeholder": "Wybierz producenta…",
+    "tryAgain": "Spróbuj ponownie."
+  },
+  "listingDetailPage": {
+    "contextTitle": "Kontekst",
+    "eanTag": "EAN {ean}",
+    "editOffer": "Edytuj ofertę",
+    "errorTitle": "Nie udało się wczytać mapowania oferty",
+    "eyebrow": "Oferty",
+    "fields": {
+      "connection": "Połączenie",
+      "created": "Utworzono",
+      "entityType": "Typ encji",
+      "externalId": "ID zewnętrzne",
+      "externalOfferId": "Zewnętrzne ID oferty",
+      "internalId": "ID wewnętrzne",
+      "mappingId": "ID mapowania",
+      "platformType": "Typ platformy",
+      "recordId": "ID rekordu",
+      "updated": "Zaktualizowano"
+    },
+    "loadingMessage": "Pobieranie szczegółów mapowania…",
+    "loadingTitle": "Wczytywanie mapowania oferty",
+    "mappingTitle": "Mapowanie - {externalId}",
+    "notFound": "Nie znaleziono mapowania oferty",
+    "offerCreation": "Tworzenie oferty",
+    "retry": "Ponów",
+    "skuTag": "SKU {sku}",
+    "title": "Mapowanie oferty"
+  },
+  "listingMarketplaceOfferSection": {
+    "descriptionPreview": "Podgląd opisu",
+    "errorTitle": "Nie udało się wczytać szczegółów oferty",
+    "fields": {
+      "availableQuantity": "Dostępna ilość",
+      "category": "Kategoria",
+      "endsAt": "Koniec",
+      "externalId": "ID zewnętrzne",
+      "marketplace": "Marketplace",
+      "price": "Cena"
+    },
+    "loadingMessage": "Pobieranie bieżącego stanu z marketplace…",
+    "loadingTitle": "Wczytywanie szczegółów oferty",
+    "openOnMarketplace": "Otwórz w marketplace",
+    "retry": "Ponów",
+    "title": "Szczegóły oferty",
+    "unavailable": "Bieżące dane są niedostępne dla tej integracji."
+  },
+  "listingRowState": {
+    "alert": {
+      "blockedByShop": "Zablokowana przez problem ze sklepem, a nie z tą ofertą",
+      "blockedByShopTitle": "Kanał zgłasza problem z kontem sprzedawcy, a nie z tą ofertą. Zobacz komunikat nad tabelą - rozwiązanie go tam odblokuje wszystkie oferty w tym połączeniu.",
+      "inactiveNoProblems": "Nieaktywna w kanale, bez zgłoszonych problemów",
+      "inactiveNoProblemsTitle": "Kanał zgłasza tę ofertę jako nieaktywną i nie wymienia żadnych problemów. Po naszej stronie nic nie czeka na działanie.",
+      "moreProblems": {
+        "few": "{first} · +{n} kolejne problemy",
+        "many": "{first} · +{n} kolejnych problemów",
+        "one": "{first} · +{n} kolejny problem",
+        "other": "{first} · +{n} kolejnego problemu"
+      },
+      "stillAvailableStale": {
+        "few": "Wciąż {n} sztuki dostępne w kanale - produkt główny już nie istnieje",
+        "many": "Wciąż {n} sztuk dostępnych w kanale - produkt główny już nie istnieje",
+        "one": "Wciąż {n} sztuka dostępna w kanale - produkt główny już nie istnieje",
+        "other": "Wciąż {n} sztuki dostępnej w kanale - produkt główny już nie istnieje"
+      },
+      "stillAvailableUnlinked": {
+        "few": "Wciąż {n} sztuki dostępne w kanale - z tą ofertą nie jest powiązany żaden produkt OpenLinker",
+        "many": "Wciąż {n} sztuk dostępnych w kanale - z tą ofertą nie jest powiązany żaden produkt OpenLinker",
+        "one": "Wciąż {n} sztuka dostępna w kanale - z tą ofertą nie jest powiązany żaden produkt OpenLinker",
+        "other": "Wciąż {n} sztuki dostępnej w kanale - z tą ofertą nie jest powiązany żaden produkt OpenLinker"
+      }
+    },
+    "badgeTitles": {
+      "draft": "W kanale, ale nieaktywna.",
+      "invalid": "Nieaktywna w kanale, z nierozwiązanymi błędami walidacji.",
+      "notSynced": "Nigdy nie odczytano statusu tej oferty w kanale."
+    },
+    "badges": {
+      "activating": "Aktywowanie",
+      "deactivating": "Dezaktywowanie",
+      "draft": "Szkic",
+      "ended": "Zakończona",
+      "invalid": "Błędna",
+      "notSynced": "Niezsynchronizowana",
+      "productDeleted": "Produkt usunięty",
+      "sellingDeleted": "Sprzedaje usunięty produkt",
+      "unlinked": "Niepowiązana"
+    },
+    "staleTitle": {
+      "paused": "Produktu głównego już nie ma, a kanał zgłasza brak stanu, więc wstrzymanie zadziałało.",
+      "selling": "Produktu głównego już nie ma, ale kanał wciąż zgłasza stan, więc ta oferta może nadal sprzedawać.",
+      "unknown": "Produktu głównego już nie ma. Nie odczytano ilości w kanale, więc nie wiadomo, czy ta oferta została wstrzymana."
+    },
+    "unlinkedTitle": {
+      "paused": "Z tą ofertą nie jest powiązany żaden wariant OpenLinker. Kanał zgłasza brak stanu.",
+      "selling": "Z tą ofertą nie jest powiązany żaden wariant OpenLinker, a kanał wciąż zgłasza stan - nie docierają do niej ani stany magazynowe, ani ceny.",
+      "unknown": "Z tą ofertą nie jest powiązany żaden wariant OpenLinker i nie odczytano ilości w kanale, więc nie wiadomo, czy nadal może sprzedawać."
+    }
+  },
+  "listingsListPage": {
+    "card": {
+      "channel": "Kanał",
+      "channelProblems": "Problemy w kanale",
+      "channelStatus": "Status w kanale",
+      "connection": "Połączenie",
+      "ean": "EAN/GTIN",
+      "lifecycle": "Cykl życia",
+      "noEan": "Brak EAN w powiązanym wariancie",
+      "noProblems": "Brak zgłoszonych problemów",
+      "offerId": "ID oferty",
+      "priceOnChannel": "Cena w kanale",
+      "quantityOnChannel": "Ilość w kanale",
+      "statusRead": "Odczyt statusu",
+      "variantId": "ID wariantu"
+    },
+    "cells": {
+      "noReadingYet": "Brak odczytu z kanału",
+      "outOfStock": "Brak w magazynie",
+      "priceNotReported": "Kanał nie zgłosił ceny",
+      "priceReadAt": "Cena i ilość w kanale, ostatni odczyt {readAt}",
+      "quantityNotReported": "Kanał nie zgłosił ilości",
+      "stale": "Nieaktualne",
+      "staleTitle": "Ten odczyt ceny jest starszy niż ostatni odczyt statusu w kanale",
+      "statusNeverRead": "Status w kanale nigdy nie odczytany"
+    },
+    "columns": {
+      "channel": "Kanał",
+      "connection": "Połączenie",
+      "listing": "Oferta",
+      "onChannel": "w kanale",
+      "price": "Cena",
+      "quantity": "Ilość",
+      "statusRead": "odczyt statusu",
+      "updated": "Zmieniono"
+    },
+    "connectionNotice": {
+      "affectedShown": {
+        "few": "Dotyczy to {n} z widocznych tu ofert.",
+        "many": "Dotyczy to {n} z widocznych tu ofert.",
+        "one": "Dotyczy to {n} z widocznych tu ofert.",
+        "other": "Dotyczy to {n} z widocznych tu ofert."
+      },
+      "summary": "{problems} - jest to zgłaszane dla każdej oferty w połączeniu, a nie dla którejś z nich.",
+      "title": "{connection} zgłasza blokadę na poziomie sklepu"
+    },
+    "description": "Wszystko, co sprzedajesz w połączonych kanałach, i w jakim stanie jest teraz.",
+    "empty": {
+      "clearFilters": "Wyczyść filtry",
+      "connectChannel": "Połącz kanał",
+      "filteredMessage": "Żadne mapowanie ofert nie pasuje do bieżących filtrów.",
+      "filteredTitle": "Nie znaleziono mapowań ofert",
+      "noChannelsMessage": "Oferty są publikowane w połączonych kanałach sprzedaży.",
+      "noChannelsTitle": "Brak połączonych kanałów",
+      "showUnsynced": "Pokaż niezsynchronizowane ({count})",
+      "unsyncedHint": {
+        "few": "Dla {n} mapowań nigdy nie odczytano statusu w kanale.",
+        "many": "Dla {n} mapowań nigdy nie odczytano statusu w kanale.",
+        "one": "Dla {n} mapowania nigdy nie odczytano statusu w kanale.",
+        "other": "Dla {n} mapowania nigdy nie odczytano statusu w kanale."
+      }
+    },
+    "errorTitle": "Nie udało się wczytać ofert",
+    "eyebrow": "Operacje",
+    "lifecycleAriaLabel": "Cykl życia oferty",
+    "lifecycleTabs": {
+      "active": {
+        "emptyMessage": "Nic tutaj nie jest teraz aktywne w kanale.",
+        "emptyTitle": "Brak aktywnych ofert",
+        "label": "Aktywne"
+      },
+      "draft": {
+        "emptyMessage": "Nic tutaj nie jest teraz aktywne i nic nie zostało odrzucone.",
+        "emptyTitle": "Brak szkiców ofert",
+        "label": "Szkice"
+      },
+      "ended": {
+        "emptyMessage": "Żaden kanał nie zakończył tu żadnej oferty.",
+        "emptyTitle": "Brak zakończonych ofert",
+        "label": "Zakończone"
+      },
+      "invalid": {
+        "emptyMessage": "Walidacja w kanale nie odrzuciła tu żadnej oferty.",
+        "emptyTitle": "Brak błędnych ofert",
+        "label": "Błędne"
+      },
+      "unsynced": {
+        "emptyMessage": "Dla każdego mapowania odczytano status w kanale co najmniej raz.",
+        "emptyTitle": "Brak niezsynchronizowanych ofert",
+        "label": "Niezsynchronizowane"
+      }
+    },
+    "listingCell": {
+      "eanLabel": "EAN:",
+      "eanTitle": "EAN: {ean}",
+      "noLinkedVariant": "Brak powiązanego wariantu",
+      "skuLabel": "SKU:",
+      "skuTitle": "SKU: {sku}",
+      "unnamedProduct": "Produkt bez nazwy"
+    },
+    "loading": "Wczytywanie ofert…",
+    "publishProducts": "Opublikuj produkty",
+    "retry": "Ponów",
+    "status": {
+      "countsLoaded": "Wczytano liczby ofert.",
+      "countsLoading": "Wczytywanie liczby ofert…",
+      "countsUnavailable": "Liczby ofert są niedostępne.",
+      "refreshing": "Odświeżanie ofert…"
+    },
+    "title": "Oferty",
+    "toolbar": {
+      "allChannels": "Wszystkie kanały",
+      "channelAriaLabel": "Filtruj po kanale",
+      "clear": "Wyczyść",
+      "searchAriaLabel": "Szukaj ofert po nazwie produktu, SKU, EAN lub ID zewnętrznym",
+      "searchPlaceholder": "Nazwa produktu, SKU, EAN lub ID zewnętrzne"
+    },
+    "views": {
+      "all": "Wszystkie oferty",
+      "ariaLabel": "Widoki ofert",
+      "priceChanges": "Zmiany cen"
+    }
+  },
+  "offerCreationStatusBadge": {
+    "labels": {
+      "active": "Aktywna",
+      "draft": "Szkic",
+      "failed": "Błąd",
+      "pending": "Oczekuje",
+      "reused": "Już istniała",
+      "validating": "Walidacja"
+    }
+  },
+  "offerCreationTracker": {
+    "dismiss": "Zamknij",
+    "draft": {
+      "anyPlatform": {
+        "noValidationIssues": "Brak błędów walidacji - opublikuj ręcznie w panelu sprzedawcy marketplace.",
+        "withId": "Oferta utworzona jako szkic w marketplace · ID zewnętrzne <id>{externalId}</id>.",
+        "withoutId": "Oferta utworzona jako szkic w marketplace."
+      },
+      "onPlatform": {
+        "noValidationIssues": "Brak błędów walidacji - opublikuj ręcznie w panelu sprzedawcy serwisu {platform}.",
+        "withId": "Oferta utworzona jako szkic w serwisie {platform} · ID zewnętrzne <id>{externalId}</id>.",
+        "withoutId": "Oferta utworzona jako szkic w serwisie {platform}."
+      },
+      "openSellerPanel": "Otwórz w panelu sprzedawcy serwisu {platform}",
+      "validationIssues": "Marketplace zgłosił błędy walidacji blokujące publikację:"
+    },
+    "failed": "Tworzenie oferty nie powiodło się. Sprawdź błędy poniżej i wyślij nową ofertę z poprawionymi wartościami.",
+    "label": "Tworzenie oferty",
+    "live": {
+      "withId": "Oferta jest aktywna · ID zewnętrzne <id>{externalId}</id>.",
+      "withoutId": "Oferta jest aktywna."
+    },
+    "loadFailed": "Nie udało się wczytać statusu: {message}",
+    "loading": "Wczytywanie statusu…",
+    "processing": "Wciąż w trakcie - status zaktualizuje się automatycznie.",
+    "reused": {
+      "anyPlatform": {
+        "withId": "Oferta już istniała w marketplace - użyto istniejącej oferty · ID zewnętrzne <id>{externalId}</id>.",
+        "withoutId": "Oferta już istniała w marketplace - użyto istniejącej oferty."
+      },
+      "onPlatform": {
+        "withId": "Oferta już istniała w serwisie {platform} - użyto istniejącej oferty · ID zewnętrzne <id>{externalId}</id>.",
+        "withoutId": "Oferta już istniała w serwisie {platform} - użyto istniejącej oferty."
+      }
+    }
+  },
+  "offerDescriptionEditor": {
+    "ariaLabel": "Opis oferty"
+  },
+  "offerProductPickerModal": {
+    "capReached": "Osiągnięto maksimum {max} produktów na partię - usuń produkt, aby dodać inny.",
+    "closeAria": "Zamknij",
+    "description": "Wybierz całe produkty lub pojedyncze warianty, łącz różne produkty, a następnie wybierz marketplace lub sklep do publikacji - wszystko stanie się jedną partią.",
+    "discard": {
+      "cancel": "Kontynuuj edycję",
+      "confirm": "Odrzuć zmiany",
+      "description": "Wybór produktów nie został zapisany. Zamknięcie teraz go odrzuci.",
+      "title": "Odrzucić zmiany?"
+    },
+    "empty": {
+      "noMatch": "Żaden produkt nie pasuje do \"{query}\".",
+      "noProducts": "Brak produktów."
+    },
+    "itemCount": {
+      "marketplace": {
+        "few": "{n} oferty",
+        "many": "{n} ofert",
+        "one": "{n} oferta",
+        "other": "{n} oferty"
+      },
+      "shop": {
+        "few": "{n} oferty produktów",
+        "many": "{n} ofert produktów",
+        "one": "{n} oferta produktu",
+        "other": "{n} oferty produktu"
+      }
+    },
+    "listAria": "Wybór produktów",
+    "loadError": "Nie udało się wczytać produktów",
+    "loadingProducts": "Wczytywanie produktów…",
+    "mobileCount": "{items} · {products}",
+    "pager": {
+      "next": "Dalej",
+      "nextAria": "Następna strona produktów",
+      "page": "{current} / {count}",
+      "previous": "Wstecz",
+      "previousAria": "Poprzednia strona produktów",
+      "range": "{start}-{end} z {total}"
+    },
+    "productCount": {
+      "few": "{n} produkty",
+      "many": "{n} produktów",
+      "one": "{n} produkt",
+      "other": "{n} produktu"
+    },
+    "retry": "Ponów",
+    "review": "Przejrzyj",
+    "search": {
+      "ariaLabel": "Szukaj produktów",
+      "hint": "Zaznacz produkt, aby dodać wszystkie warianty, lub rozwiń go, aby wybrać konkretne.",
+      "placeholder": "Szukaj po nazwie, SKU lub EAN"
+    },
+    "selectionSummary": "Zaznaczono {items} w: {products}",
+    "stepAnnouncement": {
+      "products": "Krok 1 z 2: wybierz produkty",
+      "review": "Krok 2 z 2: przejrzyj wybór"
+    },
+    "title": "Opublikuj produkty"
+  },
+  "offerProductPickerRail": {
+    "ariaLabel": "Wybór",
+    "backAria": "Wróć do produktów",
+    "cancel": "Anuluj",
+    "chips": {
+      "needEan": {
+        "few": "{n} wymagają EAN",
+        "many": "{n} wymaga EAN",
+        "one": "{n} wymaga EAN",
+        "other": "{n} wymaga EAN"
+      },
+      "noEan": "brak EAN",
+      "notChecked": "niesprawdzony",
+      "partial": "{selected} z {total}",
+      "ready": "gotowy"
+    },
+    "clearAll": "Wyczyść wszystko",
+    "connectionsError": "Nie udało się wczytać połączeń",
+    "continue": "Dalej",
+    "continueHint": {
+      "noDestination": "Najpierw wybierz kanał docelowy publikacji.",
+      "noDestinations": "Przed publikacją dodaj aktywne połączenie z marketplace lub sklepem.",
+      "noSelection": "Zaznacz co najmniej jeden produkt, a następnie wybierz kanał docelowy."
+    },
+    "counts": {
+      "listings": "oferty",
+      "needEan": "wymaga EAN",
+      "offers": "oferty",
+      "products": "produkty"
+    },
+    "empty": "Nic jeszcze nie zaznaczono. Zaznacz produkty lub warianty po lewej.",
+    "loadingDestinations": "Wczytywanie kanałów docelowych…",
+    "noDestinations": {
+      "body": "Przed publikacją dodaj aktywne połączenie z marketplace (tworzenie ofert) lub sklepem internetowym (publikacja produktów).",
+      "title": "Brak dostępnych kanałów docelowych publikacji"
+    },
+    "publishTo": "Opublikuj w",
+    "removeAria": "Usuń {name}",
+    "retry": "Ponów",
+    "title": "W tej partii",
+    "wholeProduct": {
+      "few": "Cały produkt · {n} warianty",
+      "many": "Cały produkt · {n} wariantów",
+      "one": "Cały produkt · {n} wariant",
+      "other": "Cały produkt · {n} wariantu"
+    }
+  },
+  "offerProductPickerRow": {
+    "capReached": "Osiągnięto maksimum {max} produktów na partię",
+    "collapseAria": "Zwiń {name}",
+    "expandAria": "Rozwiń {name}",
+    "loadError": "Nie udało się wczytać wariantów",
+    "loadingVariants": "Wczytywanie wariantów…",
+    "noVariants": "Ten produkt nie ma wariantów.",
+    "retry": "Ponów",
+    "selectAria": "Zaznacz {name}",
+    "variantCount": {
+      "few": "{n} warianty",
+      "many": "{n} wariantów",
+      "one": "{n} wariant",
+      "other": "{n} wariantu"
+    },
+    "variantEan": "EAN {ean}",
+    "variantNoEan": "brak EAN",
+    "variantSku": "SKU {sku}"
+  },
+  "offerPublicationStatusBadge": {
+    "labels": {
+      "activating": "Aktywowanie",
+      "active": "Aktywna",
+      "ended": "Zakończona",
+      "inactivating": "Dezaktywowanie",
+      "inactive": "Nieaktywna"
+    },
+    "notSyncedYet": "Niezsynchronizowana"
+  },
+  "offerPublicationStatusPanel": {
+    "checkStatus": "Sprawdź status",
+    "emptyMessage": "Ten produkt nie jest jeszcze wystawiony w żadnym połączeniu z marketplace.",
+    "emptyTitle": "Brak ofert w marketplace",
+    "errorTitle": "Nie udało się wczytać statusu publikacji",
+    "loadingMessage": "Pobieranie bieżącego statusu ofert…",
+    "loadingTitle": "Wczytywanie statusu publikacji",
+    "neverSynced": "Nigdy nie zsynchronizowano",
+    "refresh": "Odśwież",
+    "refreshing": "Odświeżanie…",
+    "retry": "Ponów",
+    "synced": "Zsynchronizowano <time></time>"
+  },
+  "parameterRestrictions": {
+    "aboveMax": "{name} może wynosić maks. {max}, a ta wartość to {value}.",
+    "belowMin": "{name} musi wynosić co najmniej {min}, a ta wartość to {value}.",
+    "notInDictionary": "\"{value}\" nie jest jedną z wartości, na które {name} pozwala w tej kategorii.",
+    "notNumeric": "{name} musi być liczbą, a \"{value}\" nią nie jest.",
+    "notWholeNumber": "{name} musi być liczbą całkowitą, a \"{value}\" nią nie jest.",
+    "precisionExceeded": {
+      "few": "{name} dopuszcza {n} miejsca po przecinku, a ta wartość ma {decimals}.",
+      "many": "{name} dopuszcza {n} miejsc po przecinku, a ta wartość ma {decimals}.",
+      "one": "{name} dopuszcza {n} miejsce po przecinku, a ta wartość ma {decimals}.",
+      "other": "{name} dopuszcza {n} miejsca po przecinku, a ta wartość ma {decimals}."
+    },
+    "tooLong": {
+      "few": "{name} dopuszcza maks. {n} znaki, a ta wartość ma {length}.",
+      "many": "{name} dopuszcza maks. {n} znaków, a ta wartość ma {length}.",
+      "one": "{name} dopuszcza maks. {n} znak, a ta wartość ma {length}.",
+      "other": "{name} dopuszcza maks. {n} znaku, a ta wartość ma {length}."
+    },
+    "tooManyValues": {
+      "few": "{name} przyjmuje maks. {n} wartości, podano {supplied}.",
+      "many": "{name} przyjmuje maks. {n} wartości, podano {supplied}.",
+      "one": "{name} przyjmuje maks. {n} wartość, podano {supplied}.",
+      "other": "{name} przyjmuje maks. {n} wartości, podano {supplied}."
+    },
+    "tooShort": {
+      "few": "{name} wymaga co najmniej {n} znaków, a \"{value}\" ma {length}.",
+      "many": "{name} wymaga co najmniej {n} znaków, a \"{value}\" ma {length}.",
+      "one": "{name} wymaga co najmniej {n} znaku, a \"{value}\" ma {length}.",
+      "other": "{name} wymaga co najmniej {n} znaku, a \"{value}\" ma {length}."
+    }
+  },
+  "parametersZodSchema": {
+    "invalidLength": "Nieprawidłowa długość",
+    "invalidRange": "Zakres musi być poprawny (od ≤ do)",
+    "lengthAtLeast": {
+      "few": "Musi mieć co najmniej {n} znaki",
+      "many": "Musi mieć co najmniej {n} znaków",
+      "one": "Musi mieć co najmniej {n} znak",
+      "other": "Musi mieć co najmniej {n} znaku"
+    },
+    "lengthAtMost": {
+      "few": "Może mieć maks. {n} znaki",
+      "many": "Może mieć maks. {n} znaków",
+      "one": "Może mieć maks. {n} znak",
+      "other": "Może mieć maks. {n} znaku"
+    },
+    "lengthBetween": "Musi mieć od {min} do {max} znaków",
+    "number": "Musi być liczbą",
+    "optionUnavailable": "{name}: wybrana opcja nie jest już dostępna dla bieżącej wartości nadrzędnej",
+    "required": "{name} jest wymagany",
+    "wholeNumber": "Musi być liczbą całkowitą"
+  },
+  "publishDestinationRail": {
+    "ariaLabel": "Kanał docelowy publikacji"
+  },
+  "publishDestinations": {
+    "groupLabel": {
+      "marketplace": "Marketplace",
+      "shop": "Sklepy internetowe"
+    },
+    "kindHint": {
+      "marketplace": "Marketplace z ofertami",
+      "shop": "Sklep internetowy"
+    }
+  },
+  "requiredToSell": {
+    "outOfStock": "Brak w magazynie - zostanie opublikowany, ale nie będzie można go kupić do czasu uzupełnienia stanu."
+  },
+  "shopAttributePicker": {
+    "add": "Dodaj atrybut",
+    "attributes": {
+      "empty": "Ten sklep nie ma atrybutów globalnych. Użyj zamiast tego atrybutu własnego.",
+      "error": {
+        "title": "Nie udało się wczytać atrybutów"
+      },
+      "label": "Atrybut",
+      "loading": {
+        "message": "Pobieranie atrybutów globalnych…",
+        "title": "Wczytywanie atrybutów"
+      },
+      "placeholder": "Wybierz atrybut…"
+    },
+    "custom": {
+      "nameLabel": "Nazwa",
+      "namePlaceholder": "np. Materiał",
+      "valuesHint": "Własny atrybut tekstowy - nie jest oparty na taksonomii sklepu, więc nie zadziała w filtrach sklepu.",
+      "valuesLabel": "Wartości",
+      "valuesPlaceholder": "Oddzielone przecinkami, np. Bawełna, Wełna"
+    },
+    "modes": {
+      "custom": "Własny",
+      "global": "Atrybut globalny",
+      "label": "Typ atrybutu"
+    },
+    "retry": "Ponów",
+    "terms": {
+      "empty": "Ten atrybut nie ma zdefiniowanych wartości.",
+      "error": {
+        "title": "Nie udało się wczytać wartości"
+      },
+      "legend": "Wartości",
+      "loading": {
+        "message": "Pobieranie wartości…",
+        "title": "Wczytywanie wartości"
+      }
+    }
+  },
+  "shopCategoryPickerModal": {
+    "browse": "Przeglądaj ›",
+    "browseLabel": "Przejdź do {name}",
+    "cancel": "Anuluj",
+    "closeLabel": "Zamknij wybór kategorii",
+    "description": "Wybierz kategorię w sklepie docelowym dla tego produktu. Możesz wybrać dowolną kategorię lub przejść do niej, aby zobaczyć podkategorie.",
+    "empty": {
+      "noChildren": "Ta kategoria nie ma podkategorii. Wybierz ją lub cofnij się do innej gałęzi.",
+      "notSynced": "Kategorie tego sklepu nie zostały jeszcze zsynchronizowane. Pojawią się tu po zakończeniu pierwszej synchronizacji."
+    },
+    "error": {
+      "retry": "Ponów",
+      "title": "Nie udało się wczytać kategorii"
+    },
+    "footer": "Wybierz kategorię sklepu, w której umieścić ten produkt.",
+    "loading": {
+      "message": "Pobieranie kategorii…",
+      "title": "Wczytywanie kategorii"
+    },
+    "pathLabel": "Ścieżka kategorii",
+    "root": "Główna",
+    "searchLabel": "Szukaj we wszystkich kategoriach",
+    "searchPlaceholder": "Szukaj we wszystkich kategoriach…",
+    "select": "Wybierz",
+    "selectLabel": "Wybierz {name}",
+    "selectableCategory": "kategoria do wyboru",
+    "selected": "Wybrano",
+    "title": "Wybierz kategorię <muted>- {product}</muted>"
+  },
+  "shopPublishLauncher": {
+    "cancel": "Anuluj",
+    "close": "Zamknij",
+    "continue": "Dalej",
+    "empty": {
+      "action": "Przejdź do integracji",
+      "message": "Połącz sklep internetowy i włącz dla niego publikację produktów, aby publikować produkty z OpenLinker.",
+      "title": "Brak połączenia ze sklepem"
+    },
+    "loading": "Wczytywanie…",
+    "loadingConnections": "Wczytywanie połączeń ze sklepami…",
+    "picker": {
+      "ariaLabel": "Połączenie ze sklepem",
+      "description": "Wybierz połączenie ze sklepem, w którym chcesz publikować.",
+      "label": "Połączenie",
+      "option": "{name} ({platform})",
+      "placeholder": "Wybierz połączenie…"
+    },
+    "title": "Opublikuj w sklepie",
+    "titleFor": "Opublikuj w {name}",
+    "unsupported": {
+      "body": "Platforma wybranego połączenia (<code>{platform}</code>) nie ma jeszcze kreatora publikacji.",
+      "title": "Brak kreatora publikacji dla tej platformy"
+    }
+  },
+  "shopPublishTracker": {
+    "batchStatus": {
+      "completed": "Zakończona",
+      "failed": "Błąd",
+      "partially-failed": "Częściowy błąd",
+      "pending": "Oczekuje",
+      "running": "W toku"
+    },
+    "bulk": {
+      "failed": {
+        "few": "błędy: {n}",
+        "many": "błędy: {n}",
+        "one": "błędy: {n}",
+        "other": "błędy: {n}"
+      },
+      "loadError": "Nie udało się wczytać partii: {message}",
+      "loading": "Wczytywanie partii…",
+      "none": "Brak dostępnej partii.",
+      "progress": "{done} / {total}",
+      "published": {
+        "few": "opublikowano: {n}",
+        "many": "opublikowano: {n}",
+        "one": "opublikowano: {n}",
+        "other": "opublikowano: {n}"
+      },
+      "running": {
+        "few": "w toku: {n}",
+        "many": "w toku: {n}",
+        "one": "w toku: {n}",
+        "other": "w toku: {n}"
+      },
+      "title": "Publikacja zbiorcza"
+    },
+    "single": {
+      "failedBody": "Publikacja nie powiodła się. W sklepie nie utworzono produktu.",
+      "failedTitle": "Publikacja nie powiodła się",
+      "loadError": "Nie udało się wczytać statusu: {message}",
+      "loading": "Wczytywanie statusu…",
+      "none": "Brak dostępnego statusu.",
+      "product": "Produkt",
+      "publishedTitle": "Opublikowano",
+      "publishingTitle": "Publikowanie…"
+    },
+    "status": {
+      "draft": "Szkic",
+      "failed": "Błąd",
+      "published": "Opublikowany",
+      "publishing": "Publikowanie"
+    },
+    "steps": {
+      "draft": "Utworzono jako szkic",
+      "live": "Widoczny w sklepie",
+      "publishing": "Publikowanie w sklepie",
+      "queued": "W kolejce"
+    }
+  },
+  "useResolveStream": {
+    "failed": "Dopasowywanie kategorii zgłosiło błąd w trakcie tej partii, więc wyniki są niekompletne.",
+    "resolutionFailed": "Ustalanie nie powiodło się.",
+    "truncated": "Dopasowywanie kategorii zatrzymało się przed sprawdzeniem wszystkich wariantów, więc wyniki są niekompletne."
+  },
+  "woocommercePublishWizard": {
+    "actions": {
+      "back": "Wstecz",
+      "cancel": "Anuluj",
+      "change": "Zmień",
+      "confirmPublish": "Potwierdź i opublikuj",
+      "publish": "Opublikuj",
+      "publishBulk": {
+        "few": "Opublikuj {n} produkty",
+        "many": "Opublikuj {n} produktów",
+        "one": "Opublikuj {n} produkt",
+        "other": "Opublikuj {n} produktu"
+      },
+      "publishing": "Publikowanie…",
+      "review": "Przejrzyj"
+    },
+    "appliesToAll": "dotyczy wszystkich",
+    "bulk": {
+      "blankFallback": "Pusty stan lub cena oznacza wartość z produktu głównego w chwili publikacji.",
+      "independentNote": "Każdy produkt jest publikowany niezależnie - może mieć inną cenę lub stan niż reszta partii. Warianty bez stanu są wystawiane ze stanem głównym (0 jest respektowane).",
+      "label": "Produkty",
+      "perProductHint": "- stan i cena ustawiane dla każdego produktu",
+      "selected": {
+        "few": "Zaznaczono: {n}",
+        "many": "Zaznaczono: {n}",
+        "one": "Zaznaczono: {n}",
+        "other": "Zaznaczono: {n}"
+      },
+      "useMasterPrice": "Użyj ceny głównej dla wszystkich",
+      "useMasterStock": "Użyj stanu głównego dla wszystkich"
+    },
+    "continueWith": {
+      "few": "Kontynuuj z {n} produktami",
+      "many": "Kontynuuj z {n} produktami",
+      "one": "Kontynuuj z {n} produktem",
+      "other": "Kontynuuj z {n} produktu"
+    },
+    "description": {
+      "generateBulk": "Generuj opisy z AI",
+      "generateSingle": "Generuj opis z AI",
+      "helpBulk": "Każdy produkt otrzyma opis napisany przez AI na podstawie danych głównych. Produkty, którym opis już nadano, go zachowają.",
+      "helpSingle": "Pisze opis na podstawie danych głównych produktu w chwili publikacji. Zostaw wyłączone, aby użyć opisu głównego.",
+      "label": "Opis",
+      "tone": "Ton",
+      "toneConcise": "Zwięzły",
+      "toneDetailed": "Szczegółowy"
+    },
+    "fields": {
+      "fromMasterPlaceholder": "z głównego",
+      "masterPlaceholder": "główny",
+      "optional": "opcjonalnie",
+      "priceOverride": "Nadpisanie ceny",
+      "stock": "Stan"
+    },
+    "picker": {
+      "loadingProducts": "Wczytywanie produktów…",
+      "loadingVariants": "Wczytywanie wariantów…",
+      "next": "Dalej",
+      "nextAria": "Następna strona produktów",
+      "noProducts": "Brak pasujących produktów.",
+      "noVariants": "Ten produkt nie ma wariantów.",
+      "pageRange": "{start}-{end} z {total}",
+      "previous": "Wstecz",
+      "previousAria": "Poprzednia strona produktów",
+      "searchDescription": "Szukaj po nazwie produktu, SKU lub EAN. Zaznacz jeden lub więcej wariantów - zostaną opublikowane razem.",
+      "searchLabel": "Szukaj produktów",
+      "searchPlaceholder": "np. T-shirt, SKU-123, 5901234567890",
+      "variantCodes": "SKU {sku} · EAN {ean}"
+    },
+    "removeFromBatchAria": "Usuń {name} z partii",
+    "review": {
+      "price": "Cena",
+      "priceFromMaster": "z głównego",
+      "priceValue": "{amount} {currency}",
+      "shop": "Sklep",
+      "variant": "Wariant"
+    },
+    "singleCallout": "Kategoria, atrybuty i zdjęcia są pobierane z produktu głównego w chwili publikacji - nie trzeba tu nic wybierać. Kategorie są tworzone w odwzorowanym drzewie kategorii {shop}.",
+    "toast": {
+      "bulkStartedBody": {
+        "few": "Publikacja {n} produktów w {shop}.",
+        "many": "Publikacja {n} produktów w {shop}.",
+        "one": "Publikacja {n} produktu w {shop}.",
+        "other": "Publikacja {n} produktu w {shop}."
+      },
+      "bulkStartedTitle": "Rozpoczęto publikację zbiorczą",
+      "priceReset": "Przywrócono cenę główną każdego produktu.",
+      "startedBody": "Publikacja w {shop}.",
+      "startedTitle": "Rozpoczęto publikację",
+      "stockReset": "Przywrócono stan główny każdego produktu."
+    },
+    "tray": {
+      "clearAll": "Wyczyść wszystko",
+      "empty": "Zaznacz jeden lub więcej wariantów powyżej, aby je tu dodać.",
+      "selectedLabel": "Zaznaczone do tej partii:"
+    },
+    "validation": {
+      "price": "Cena musi być liczbą dodatnią",
+      "stock": "Stan musi być liczbą całkowitą ≥ 0"
+    },
+    "visibility": {
+      "description": "Szkic tworzy ukryty produkt; Opublikowany wystawia go w sklepie.",
+      "draft": "Szkic",
+      "label": "Widoczność",
+      "published": "Opublikowany"
+    }
+  }
+}

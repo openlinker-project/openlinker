@@ -28,11 +28,11 @@ import { ApiError } from '../../../shared/api/api-error';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import type { ApiClient } from '../../../app/api/api-client';
 import type { FulfillmentTask, FulfillmentTaskLine } from '../api/fulfillment.types';
-import { FULFILLMENT_WORK_DETAIL_COPY } from '../lib/fulfillment-work-detail.copy';
+import { getMessages, interpolate } from '../../../shared/i18n';
 
 afterEach(cleanup);
 
-const COPY = FULFILLMENT_WORK_DETAIL_COPY;
+const COPY = getMessages('fulfillment').workDetail;
 
 function line(overrides: Partial<FulfillmentTaskLine> = {}): FulfillmentTaskLine {
   return {
@@ -429,7 +429,7 @@ describe('FulfillmentWorkDetailBody', () => {
       );
 
       const rows = within(card(COPY.sections.lines)).getAllByRole('listitem');
-      expect(rows[0].textContent).toContain(COPY.lines.cancelledSuffix(2));
+      expect(rows[0].textContent).toContain(interpolate(COPY.lines.cancelledSuffix, { cancelled: 2 }));
       expect(rows[1].textContent).not.toContain('cancelled');
     });
 

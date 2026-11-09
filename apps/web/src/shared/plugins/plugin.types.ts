@@ -47,8 +47,12 @@ import type { StructuredError } from '../types/structured-error.types';
  * that group; an unknown label creates a new group at the end of the sidebar.
  *
  * Soft contract: contributors should prefer matching one of the existing
- * groups ("Operations", "Diagnostics", "Platform"). Tightening to a closed
- * union is a follow-up if group sprawl becomes a problem.
+ * groups. Name a core group by its section key (`'operations'`,
+ * `'diagnostics'`, `'platform'`): the group's label follows the operator's
+ * language, so the key is the spelling that matches in every language. The
+ * English label (`'Operations'`) still matches too, for existing plugins.
+ * Tightening to a closed union is a follow-up if group sprawl becomes a
+ * problem.
  *
  * Note: `countKey` is intentionally omitted — count badges are wired to
  * internal queries via a closed key set (`NavCountKey`), not a plugin
@@ -720,6 +724,14 @@ export interface PlatformContribution {
    * its own name is detail - see `resolvePlatformShortLabel`.
    */
   shortLabel?: string;
+  /**
+   * The platform whose category IDs this destination accepts, when it takes
+   * another platform's category tree instead of its own (a borrowed
+   * taxonomy, #1045 - Erli uses Allegro category IDs). Surfaces that ask the
+   * operator to type a category ID name this platform, so the operator knows
+   * which ID to look up. Omitted, the destination's own name is used.
+   */
+  categoryIdSource?: string;
   /** Setup-card metadata for `PlatformPicker`. Omit if no guided wizard. */
   setupCard?: PlatformSetupCard;
   /**

@@ -158,7 +158,7 @@ describe('ConnectionSyncStatusPanel', () => {
     renderPanel({ status: 'growing', queuedCount: 20, runningCount: 2, drainRatePerHour: 0 });
 
     expect(
-      await screen.findByText(/the background worker stopped part-way through/)
+      await screen.findByText(/the background processing stopped part-way through/)
     ).toBeInTheDocument();
   });
 

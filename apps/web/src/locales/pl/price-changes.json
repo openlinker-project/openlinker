@@ -1,0 +1,278 @@
+{
+  "acceptPriceChangeDialog": {
+    "cancel": "Anuluj",
+    "description": "{product} w kanale {destination} - z {source}",
+    "liveNow": "Obecnie",
+    "optInDescription": "Gdy cena w tym źródle zmieni się następnym razem, trafi od razu do tego połączenia - bez przeglądu.",
+    "optInTitle": "Ustaw też {source} → {destination} na tryb automatyczny",
+    "ordersNote": "Zmienia się tylko cena aktywnej oferty - złożone już zamówienia zachowują cenę zakupu.",
+    "publish": "Opublikuj cenę",
+    "publishing": "Publikowanie…",
+    "ruleNote": "{rule} Daje to <b>{amount}</b> z VAT.",
+    "title": "Opublikuj nową cenę",
+    "willPublish": "Zostanie opublikowana"
+  },
+  "autoAppliedDialog": {
+    "close": "Zamknij",
+    "description": "Te połączenia publikują bez pytania, więc nic tutaj nie wymaga decyzji.",
+    "productNotFound": "Nie znaleziono produktu",
+    "title": "Ostatnio zastosowane automatycznie"
+  },
+  "autoAppliedNote": {
+    "message": {
+      "few": "<count>{n}</count> zmiany cen zostały ostatnio opublikowane automatycznie (<link>zobacz</link>)",
+      "many": "<count>{n}</count> zmian cen zostało ostatnio opublikowanych automatycznie (<link>zobacz</link>)",
+      "one": "<count>{n}</count> zmiana ceny została ostatnio opublikowana automatycznie (<link>zobacz</link>)",
+      "other": "<count>{n}</count> zmiany ceny zostało ostatnio opublikowane automatycznie (<link>zobacz</link>)"
+    }
+  },
+  "bulkAcceptPriceChangesDialog": {
+    "cancel": "Anuluj",
+    "description": {
+      "few": "Wysyłka do {n} połączeń.",
+      "many": "Wysyłka do {n} połączeń.",
+      "one": "Wysyłka do {n} połączenia.",
+      "other": "Wysyłka do {n} połączenia."
+    },
+    "note": "Ceny są wysyłane pojedynczo, aby nie przeciążyć żadnego kanału - postęp będzie widoczny po potwierdzeniu. Nie zmienia to ceny złożonych już zamówień.",
+    "optInTitle": "Ustaw też {source} → {destination} na tryb automatyczny",
+    "publish": "Opublikuj ceny",
+    "publishing": "Publikowanie…",
+    "title": {
+      "few": "Opublikuj {n} zmiany cen",
+      "many": "Opublikuj {n} zmian cen",
+      "one": "Opublikuj {n} zmianę ceny",
+      "other": "Opublikuj {n} zmiany ceny"
+    }
+  },
+  "bulkPublishProgress": {
+    "checking": "Sprawdzanie zmian cen…",
+    "dismiss": "Zamknij",
+    "failed": "Nie udało się sprawdzić tej publikacji. Może nadal trwać - spróbuj ponownie lub odśwież stronę.",
+    "published": "Opublikowano {succeeded} z {total} cen",
+    "publishedWithFailures": "Opublikowano {succeeded} z {total} - błędy: {failed}",
+    "sending": "Wysyłanie zmian cen…",
+    "tryAgain": "Spróbuj ponownie"
+  },
+  "describePriceChangeError": {
+    "blocked": "Ta zmiana ceny jest zablokowana i nie można jej teraz opublikować.",
+    "conflict": "Cena zmieniła się ponownie w trakcie przeglądu - odśwież i sprawdź jeszcze raz.",
+    "currencyMismatch": "Nie można opublikować tej ceny - waluta źródła i kanału docelowego się różnią. Sprawdź ustawienia waluty połączenia.",
+    "fallback": "Coś poszło nie tak.",
+    "withServerMessage": "Serwer odpowiedział: {message}"
+  },
+  "editPriceChangeDialog": {
+    "ambiguous": "Ta liczba jest niejednoznaczna - użyj kropki lub przecinka dziesiętnego z 2 miejscami po przecinku (np. 399,50).",
+    "cancel": "Anuluj",
+    "description": "{product} w kanale {destination}",
+    "deviation": "{pct} względem ceny z reguły ({price}) - duże ręczne odchylenie.",
+    "enterPrice": "Wpisz cenę większą od 0.",
+    "hint": "Bez zmian zwykła reguła ustawiłaby <amount>{amount}</amount>.",
+    "linkRow": "Zmieni się tylko ta jedna cena. Chcesz, aby wszystkie przyszłe zmiany z tego źródła używały innej reguły? <link>Zarządzaj regułami cenowymi tego połączenia</link>.",
+    "priceLabel": "Cena do publikacji",
+    "publish": "Opublikuj tę cenę",
+    "publishing": "Publikowanie…",
+    "sourceNote": "Źródło ({source}): <b>{oldAmount} → {newAmount}</b>.",
+    "title": "Wpisz własną cenę",
+    "useRulePrice": "Użyj tej ceny"
+  },
+  "priceChangesQueueTable": {
+    "actions": {
+      "accept": "Akceptuj",
+      "edit": "Edytuj",
+      "keepPrice": "Zachowaj cenę",
+      "kept": "Zachowano poprzednią cenę",
+      "needsRefresh": "Cena zmieniła się ponownie w trakcie decyzji - odśwież, aby zobaczyć najnowszą.",
+      "published": "Opublikowano",
+      "publishedCustom": "Opublikowano · własna cena",
+      "refresh": "Odśwież",
+      "undo": "Cofnij"
+    },
+    "automaticOptIn": {
+      "description": "Przyszłe zmiany cen z {source} będą publikowane bez przeglądu.",
+      "descriptionMany": {
+        "few": "Przyszłe zmiany cen z {n} źródeł będą publikowane bez przeglądu.",
+        "many": "Przyszłe zmiany cen z {n} źródeł będą publikowane bez przeglądu.",
+        "one": "Przyszłe zmiany cen z {n} źródła będą publikowane bez przeglądu.",
+        "other": "Przyszłe zmiany cen z {n} źródła będą publikowane bez przeglądu."
+      },
+      "fallbackSource": "tego źródła",
+      "reverted": "Przywrócono ręczny przegląd dla {source}.",
+      "title": "Ustawiono tryb automatyczny",
+      "titleMany": {
+        "few": "Włączono automatyczne ceny dla {n} źródeł",
+        "many": "Włączono automatyczne ceny dla {n} źródeł",
+        "one": "Włączono automatyczne ceny dla {n} źródła",
+        "other": "Włączono automatyczne ceny dla {n} źródła"
+      },
+      "undo": "Cofnij",
+      "undoFailed": "Nie udało się cofnąć automatycznych cen dla {source}. Spróbuj ponownie w ustawieniach połączenia."
+    },
+    "bulk": {
+      "acceptSelected": "Akceptuj zaznaczone",
+      "keepPrices": "Zachowaj ceny",
+      "selected": {
+        "few": "Zaznaczono {n} zmiany cen",
+        "many": "Zaznaczono {n} zmian cen",
+        "one": "Zaznaczono {n} zmianę ceny",
+        "other": "Zaznaczono {n} zmiany ceny"
+      }
+    },
+    "bulkIgnore": {
+      "allFailed": {
+        "few": "Nie udało się zachować żadnej z {n} zaznaczonych cen. Spróbuj ponownie.",
+        "many": "Nie udało się zachować żadnej z {n} zaznaczonych cen. Spróbuj ponownie.",
+        "one": "Nie udało się zachować {n} zaznaczonej ceny. Spróbuj ponownie.",
+        "other": "Nie udało się zachować żadnej z {n} zaznaczonej ceny. Spróbuj ponownie."
+      },
+      "keptDescription": "Poprzednie ceny pozostają aktywne.",
+      "keptTitle": {
+        "few": "Zachowano {n} ceny",
+        "many": "Zachowano {n} cen",
+        "one": "Zachowano {n} cenę",
+        "other": "Zachowano {n} ceny"
+      },
+      "partial": "Zachowano {succeeded}, ale błędy: {failed}. Spróbuj ponownie dla pozostałych."
+    },
+    "caption": "Zmiany cen",
+    "cardStatus": {
+      "needsRefresh": "Wymaga odświeżenia",
+      "resolved": "Rozwiązane"
+    },
+    "causeNote": {
+      "tooltip": "Sklep wysyłał wcześniej tę cenę bez VAT. Nowa cena to kwota, którą płaci tam kupujący, z VAT. Nigdy nie jest publikowana automatycznie - zaakceptuj, edytuj lub zignoruj ją tutaj.",
+      "vatCorrection": "Korekta VAT",
+      "whyLabel": "Dlaczego ta cena się zmieniła?"
+    },
+    "columns": {
+      "action": "Akcja",
+      "changedIn": "Zmiana w",
+      "connection": "Połączenie",
+      "detected": "Wykryto",
+      "price": "Cena w tym połączeniu",
+      "priceCard": "Cena w tym połączeniu (z VAT)",
+      "priceSub": "z VAT",
+      "product": "Produkt"
+    },
+    "continuation": {
+      "helpLabel": "Co to oznacza?",
+      "label": "Zmienia też tutaj",
+      "tooltip": "Jedna zmiana ceny, jeszcze jedna oferta do aktualizacji. Każdą ofertę możesz osobno zaakceptować, edytować lub zignorować."
+    },
+    "empty": {
+      "message": "Nic nie wymaga teraz uwagi. Nowe zmiany cen pojawią się tutaj, gdy tylko wystąpią w sklepie.",
+      "title": "Wszystko załatwione"
+    },
+    "error": {
+      "title": "Nie udało się wczytać zmian cen",
+      "tryAgain": "Spróbuj ponownie"
+    },
+    "filters": {
+      "all": "Wszystko",
+      "bigChanges": "Duże zmiany (10% lub więcej)",
+      "connectionGroup": "Filtruj po połączeniu",
+      "connectionLabel": "Połączenie",
+      "decreases": "↓ Obniżki",
+      "directionGroup": "Filtruj po kierunku zmiany ceny",
+      "directionLabel": "Zmiana ceny",
+      "increases": "↑ Podwyżki"
+    },
+    "hiddenStale": {
+      "few": "{n} kolejne zmiany nie są tu widoczne, bo ta oferta jest wstrzymana.",
+      "many": "{n} kolejnych zmian nie jest tu widocznych, bo ta oferta jest wstrzymana.",
+      "one": "{n} kolejna zmiana nie jest tu widoczna, bo ta oferta jest wstrzymana.",
+      "other": "{n} kolejnej zmiany nie jest tu widoczne, bo ta oferta jest wstrzymana."
+    },
+    "loading": "Wczytywanie zmian cen…",
+    "queued": {
+      "description": "{product} zostanie wkrótce zaktualizowany w kanale {destination}.",
+      "title": "Cena oczekuje na publikację"
+    },
+    "refreshed": "Odświeżono - widoczna jest najnowsza cena dla {product}.",
+    "rounded": "Zaokrąglenie: {rounding}",
+    "selectAll": "Zaznacz wszystkie",
+    "selectRow": "Zaznacz {product} w kanale {destination}",
+    "toolbar": {
+      "clearFilters": "Wyczyść filtry",
+      "intro": "Jeden wiersz na kanał docelowy - cena zmieniona raz w źródle może dać osobną, niezależnie przeglądaną zmianę w każdym marketplace lub sklepie, w którym jest opublikowana. Ceny zawierają VAT.",
+      "pricingRules": "Reguły cenowe"
+    }
+  },
+  "priceRuleLabels": {
+    "delta": {
+      "down": "-{n}%",
+      "flat": "0%",
+      "new": "Nowa",
+      "up": "+{n}%"
+    },
+    "rounding": {
+      "endingIn99": "końcówka ,99",
+      "nearestWhole": "do pełnych"
+    },
+    "ruleLabel": {
+      "margin": "marża {percent}%",
+      "markup": "narzut {percent}%",
+      "passthrough": "bez korekty"
+    },
+    "ruleSentence": {
+      "margin": {
+        "endingIn99": "Ustala cenę tak, by zachować marżę {percent}%, a następnie zaokrągla w górę do końcówki ,99.",
+        "nearestWhole": "Ustala cenę tak, by zachować marżę {percent}%, a następnie zaokrągla do pełnej kwoty.",
+        "none": "Ustala cenę tak, by zachować marżę {percent}%."
+      },
+      "markup": {
+        "endingIn99": "Ustala cenę z narzutem {percent}%, a następnie zaokrągla w górę do końcówki ,99.",
+        "nearestWhole": "Ustala cenę z narzutem {percent}%, a następnie zaokrągla do pełnej kwoty.",
+        "none": "Ustala cenę z narzutem {percent}%."
+      },
+      "passthrough": {
+        "endingIn99": "Używa ceny ze sklepu bez zmian, a następnie zaokrągla w górę do końcówki ,99.",
+        "nearestWhole": "Używa ceny ze sklepu bez zmian, a następnie zaokrągla do pełnej kwoty.",
+        "none": "Używa ceny ze sklepu bez zmian."
+      }
+    },
+    "steepTooltip": "Duża zmiana ceny - warto sprawdzić",
+    "syncMode": {
+      "automatic": "Automatycznie",
+      "manual": "Ręczny przegląd"
+    }
+  },
+  "pricingRulesPickerDialog": {
+    "close": "Zamknij",
+    "default": "Domyślnie: {mode} · {rule}",
+    "description": "Wybierz połączenie, aby zobaczyć, jak ustala ceny produktów.",
+    "empty": {
+      "message": "Włącz wystawianie ofert w marketplace lub publikację w sklepie dla połączenia, aby nadać mu własną regułę cenową.",
+      "title": "Brak kanałów docelowych z cenami"
+    },
+    "loadError": "Nie udało się wczytać reguły tego połączenia.",
+    "loading": "Wczytywanie…",
+    "open": "Otwórz",
+    "overrides": {
+      "few": "{n} źródła z własnym trybem lub regułą",
+      "many": "{n} źródeł z własnym trybem lub regułą",
+      "one": "{n} źródło z własnym trybem lub regułą",
+      "other": "{n} źródła z własnym trybem lub regułą"
+    },
+    "title": "Reguły cenowe"
+  },
+  "pricingSyncOverrides": {
+    "both": "własny tryb i reguła",
+    "mode": "własny tryb",
+    "rule": "własna reguła"
+  },
+  "sourceConnectionPricingRollup": {
+    "description": "Każde miejsce sprzedaży może inaczej narzucać lub zaokrąglać cenę. Zarządzaj regułą tam, gdzie jest używana.",
+    "empty": {
+      "message": "Żaden kanał docelowy nie koryguje teraz cen. Kanał pojawi się tutaj, gdy będzie miał własną regułę dla tego źródła lub gdy zmiana ceny z niego będzie czekać na przegląd.",
+      "title": "Na razie nic do pokazania"
+    },
+    "errorTitle": "Nie udało się wczytać ustawień cen i synchronizacji",
+    "heading": "Jak korygowane są ceny",
+    "loadingMessage": "Wczytywanie korekt cen…",
+    "loadingTitle": "Ceny i synchronizacja",
+    "manage": "Zarządzaj",
+    "summaryDefault": "{mode} · {rule} - domyślna reguła {destination}",
+    "summaryOverride": "{mode} · {rule} - {override} tylko dla tego źródła"
+  }
+}

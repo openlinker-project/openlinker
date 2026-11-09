@@ -36,11 +36,7 @@ import { EmptyState } from '../../../shared/ui/feedback-state';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { Link } from 'react-router-dom';
-import {
-  AUTOMATION_ACTIVITY_COPY,
-  AUTOMATION_RULES_COPY,
-  AUTOMATION_RUN_LOG_COPY,
-} from '../lib/automation.copy';
+import { useMessages } from '../../../shared/i18n';
 import { useAutomationRunsQuery } from '../hooks/use-automation-runs-query';
 import { AutomationRunLogPanel } from './automation-run-log';
 import { AutomationRuleAvailabilityNotice } from './automation-rule-availability-notice';
@@ -85,6 +81,8 @@ export function AutomationRulesList({
   pendingRuleId,
   writeError,
 }: AutomationRulesListProps): ReactElement {
+  const messages = useMessages('automation');
+  const copy = messages.rules;
   const [armingRule, setArmingRule] = useState<AutomationRule | null>(null);
   // One row open at a time: two open logs is two live queries for a read nobody
   // is comparing side by side.
@@ -93,8 +91,8 @@ export function AutomationRulesList({
   if (rules.length === 0) {
     return (
       <EmptyState
-        title={AUTOMATION_RULES_COPY.emptyTitle}
-        message={AUTOMATION_RULES_COPY.emptyMessage}
+        title={copy.emptyTitle}
+        message={copy.emptyMessage}
       />
     );
   }
@@ -112,11 +110,11 @@ export function AutomationRulesList({
   return (
     <div className="page-section automation-rules">
       {writeError === null ? null : (
-        <Alert tone="error" title={AUTOMATION_RULES_COPY.writeFailed}>
+        <Alert tone="error" title={copy.writeFailed}>
           {writeError}
         </Alert>
       )}
-      {canWrite ? null : <Alert tone="info">{AUTOMATION_RULES_COPY.readOnly}</Alert>}
+      {canWrite ? null : <Alert tone="info">{copy.readOnly}</Alert>}
 
       <ul className="automation-rules__list">
         {rules.map((rule) => (
@@ -130,11 +128,11 @@ export function AutomationRulesList({
               </div>
               <div className="automation-rules__state">
                 <StatusBadge tone={rule.isActive ? 'success' : 'neutral'} withDot compact>
-                  {rule.isActive ? AUTOMATION_RULES_COPY.active : AUTOMATION_RULES_COPY.inactive}
+                  {rule.isActive ? copy.active : copy.inactive}
                 </StatusBadge>
                 {rule.hasIrreversibleAction ? (
                   <StatusBadge tone="warning" compact>
-                    {AUTOMATION_RULES_COPY.moneyAckTitle}
+                    {copy.moneyAckTitle}
                   </StatusBadge>
                 ) : null}
                 {canWrite || readOnlyLocked ? (
@@ -145,8 +143,8 @@ export function AutomationRulesList({
                       onClick={() => requestToggle(rule)}
                     >
                       {rule.isActive
-                        ? AUTOMATION_RULES_COPY.turnOff
-                        : AUTOMATION_RULES_COPY.turnOn}
+                        ? copy.turnOff
+                        : copy.turnOn}
                     </Button>
                   </ReadOnlyLock>
                 ) : null}
@@ -155,7 +153,7 @@ export function AutomationRulesList({
 
             <AutomationRuleAvailabilityNotice actionAvailability={rule.actionAvailability} />
 
-            {rule.isActive ? <p className="muted-text">{AUTOMATION_RULES_COPY.turnOffHint}</p> : null}
+            {rule.isActive ? <p className="muted-text">{copy.turnOffHint}</p> : null}
 
             <Button
               type="button"
@@ -165,8 +163,8 @@ export function AutomationRulesList({
               onClick={() => setExpandedRuleId((prev) => (prev === rule.id ? null : rule.id))}
             >
               {expandedRuleId === rule.id
-                ? AUTOMATION_RUN_LOG_COPY.hide
-                : AUTOMATION_RUN_LOG_COPY.show}
+                ? messages.runLog.hide
+                : messages.runLog.show}
             </Button>
             {expandedRuleId === rule.id ? <AutomationRuleRunLog ruleId={rule.id} /> : null}
             {/* Opens the cross-rule log already narrowed to this rule (#2386). */}
@@ -174,7 +172,7 @@ export function AutomationRulesList({
               className="muted-text"
               to={`/automations/activity?ruleId=${encodeURIComponent(rule.id)}`}
             >
-              {AUTOMATION_ACTIVITY_COPY.seeAllForRule}
+              {messages.activity.seeAllForRule}
             </Link>
           </li>
         ))}
@@ -185,10 +183,10 @@ export function AutomationRulesList({
         onOpenChange={(open) => {
           if (!open) setArmingRule(null);
         }}
-        title={AUTOMATION_RULES_COPY.moneyAckTitle}
-        description={AUTOMATION_RULES_COPY.moneyAckBody}
-        confirmLabel={AUTOMATION_RULES_COPY.moneyAckConfirm}
-        cancelLabel={AUTOMATION_RULES_COPY.cancel}
+        title={copy.moneyAckTitle}
+        description={copy.moneyAckBody}
+        confirmLabel={copy.moneyAckConfirm}
+        cancelLabel={copy.cancel}
         tone="danger"
         onConfirm={() => {
           const rule = armingRule;

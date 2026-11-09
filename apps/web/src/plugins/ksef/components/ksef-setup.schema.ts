@@ -39,6 +39,7 @@ import { z } from 'zod';
 import type { CreateConnectionInput } from '../../../features/connections';
 import { normalizeNip, isValidNipChecksum } from '../lib/ksef-nip';
 import { buildKsefSellerConfig } from '../lib/ksef-seller-config';
+import { getKsefMessages } from '../messages';
 export type { KsefSellerProfileInput } from '../lib/ksef-seller-config';
 
 export const KSEF_ADAPTER_KEY = 'ksef.publicapi.v2';
@@ -77,9 +78,19 @@ const COUNTRY_ISO2 = /^[A-Z]{2}$/;
 // progress. Shared verbatim with the edit schema (`edit-connection.schema.ts`).
 export const POLISH_POSTAL_CODE = /^\d{2}-\d{3}$/;
 
+type KsefSetupSchemaKey = keyof ReturnType<typeof getKsefMessages>['ksefSetupSchema'];
+
+/**
+ * Zod `{ error }` parameter read when a value is validated, not when this
+ * module loads, so the schema below still speaks the active language.
+ */
+function msg(key: KsefSetupSchemaKey): { error: () => string } {
+  return { error: () => getKsefMessages().ksefSetupSchema[key] };
+}
+
 export const ksefSetupSchema = z
   .object({
-    name: z.string().trim().min(1, 'Connection name is required'),
+    name: z.string().trim().min(1, msg('nameRequired')),
     environment: z.enum(KSEF_ENVIRONMENT_VALUES),
     sellerNip: z
       .union([
@@ -90,10 +101,10 @@ export const ksefSetupSchema = z
           .pipe(
             z
               .string()
-              .regex(NIP_DIGITS, 'Seller NIP must be 10 digits')
+              .regex(NIP_DIGITS, msg('nipDigits'))
               // mod-11 check digit (#1595) - catches a mistyped-but-well-formed
               // NIP client-side before it round-trips to KSeF's own rejection.
-              .refine(isValidNipChecksum, 'Seller NIP has an invalid checksum'),
+              .refine(isValidNipChecksum, msg('nipChecksum')),
           ),
         z.literal(''),
       ])
@@ -109,7 +120,7 @@ export const ksefSetupSchema = z
           .string()
           .trim()
           .transform((value) => value.toUpperCase())
-          .pipe(z.string().regex(COUNTRY_ISO2, 'Country must be a 2-letter ISO code (e.g. PL)')),
+          .pipe(z.string().regex(COUNTRY_ISO2, msg('countryIso2'))),
         z.literal(''),
       ])
       .optional(),
@@ -120,11 +131,11 @@ export const ksefSetupSchema = z
     invoiceDefaultLineUnit: z
       .string()
       .trim()
-      .max(20, 'Default line unit must be at most 20 characters.')
+      .max(20, msg('lineUnitMax'))
       .optional(),
     authType: z.enum(KSEF_AUTH_TYPE_VALUES),
     // Write-only secret (KSeF authorization token / qualified-seal reference).
-    secret: z.string().trim().min(1, 'Authentication secret is required'),
+    secret: z.string().trim().min(1, msg('secretRequired')),
   })
   // Postal code is PL-format-gated (KSeF is PL-domestic). Empty stays allowed
   // for incremental save; the rule applies only when the seller country is PL
@@ -137,7 +148,7 @@ export const ksefSetupSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['sellerPostalCode'],
-        message: 'Postal code must use the PL format NN-NNN.',
+        message: getKsefMessages().ksefSetupSchema.postalCode,
       });
     }
   });

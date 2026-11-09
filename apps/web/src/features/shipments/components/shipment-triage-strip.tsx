@@ -50,6 +50,7 @@
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
+import { renderRich, useMessages, usePlural } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import {
   isExactProviderCode,
@@ -70,12 +71,15 @@ export function ShipmentTriageStrip({
   connectionName,
   canReviewConnection,
 }: ShipmentTriageStripProps): ReactElement {
+  const copy = useMessages('shipments').shipmentTriageStrip;
+  const plural = usePlural();
+  const mono = (t: string): ReactElement => <span className="mono-text">{t}</span>;
   const count = group.shipments.length;
   // The raw (non-normalised) message from any member — they're not
   // byte-identical (digits/punctuation differ), but they read as the same
   // message to an operator.
   const sampleReason = group.shipments[0].errorMessage;
-  const connectionLabel = connectionName ?? 'this connection';
+  const connectionLabel = connectionName ?? copy.thisConnection;
   // Whether the group was keyed on the code ALONE. A coarse code was composed
   // with the normalised message instead, so it is the message that held the
   // group together and the copy must say so.
@@ -97,34 +101,39 @@ export function ShipmentTriageStrip({
               to={`/connections/${group.connectionId}`}
               className="button button--secondary button--sm"
             >
-              Review connection settings
+              {copy.reviewConnection}
             </Link>
           ) : null}
           <Link
             to={`/shipments?status=failed&connectionId=${group.connectionId}`}
             className="button button--sm"
           >
-            Show all failed on this connection
+            {copy.showAllFailed}
           </Link>
         </>
       }
     >
       <strong>
-        {count} failed shipment{count === 1 ? '' : 's'} on {connectionLabel} report the same{' '}
-        {codeIsExact ? 'rejection code' : 'carrier message'}
+        {plural(count, codeIsExact ? copy.headingCode : copy.headingMessage, {
+          connection: connectionLabel,
+        })}
       </strong>
       {codeIsExact ? (
         <>
           {' '}
-          - <span className="mono-text">{group.providerCode}</span>
-          {retryabilityClass ? <> ({RETRYABILITY_LABEL[retryabilityClass]})</> : null}
+          {retryabilityClass
+            ? renderRich(copy.exactCodeWithClass, { code: mono }, {
+                code: group.providerCode ?? '',
+                retryability: RETRYABILITY_LABEL[retryabilityClass],
+              })
+            : renderRich(copy.exactCode, { code: mono }, { code: group.providerCode ?? '' })}
         </>
       ) : (
         <>
           {sampleReason ? (
             <>
               {' '}
-              - <span className="mono-text">{sampleReason}</span>
+              {renderRich(copy.sampleMessage, { message: mono }, { message: sampleReason })}
             </>
           ) : null}
           {/* On this branch `retryabilityClass` is always `'unknown'` by
@@ -133,14 +142,15 @@ export function ShipmentTriageStrip({
           {group.providerCode !== null ? (
             <>
               {' '}
-              (carrier code <span className="mono-text">{group.providerCode}</span> -{' '}
-              {RETRYABILITY_LABEL.unknown})
+              {renderRich(copy.coarseCode, { code: mono }, {
+                code: group.providerCode,
+                retryability: RETRYABILITY_LABEL.unknown,
+              })}
             </>
           ) : null}
         </>
       )}
-      . Counted across the shipments loaded on this page only. If the cause is a connection-level
-      setting, fixing it once saves regenerating each one.
+      {copy.pageScope}
     </Alert>
   );
 }

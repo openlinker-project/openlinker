@@ -7,11 +7,11 @@
  * cell and the mobile card the same way `order-row.ts`'s badge resolvers are.
  *
  * The word names the MOST ACTIONABLE fact, never merely the raw status — an
- * invoice the authority rejected reads "Authority rejected", not "Issued"
+ * invoice the authority rejected reads "Rejected at clearance", not "Issued"
  * beside a red dot, because colour is never the only carrier of a thing
  * needing work (mini-epic #2551 acceptance criteria).
  *
- * No platform name leaks into the word ("Authority rejected", not "KSeF
+ * No platform name leaks into the word ("Rejected at clearance", not "KSeF
  * rejected") — the vocabulary here is the SAME neutral one `libs/core`
  * enforces for the wire shape; a specific authority's name belongs on the
  * popover's identity facts (`providerType`), never on the row.
@@ -23,8 +23,9 @@ import {
   resolveSalesDocumentRecordWord,
 } from '../../sales-documents';
 import type { SalesDocumentReasonTone } from '../../sales-documents';
+import { getMessages } from '../../../shared/i18n';
 import type { SalesDocumentView } from '../api/orders.types';
-import { resolveAfterIssueAttentionCopy } from './after-issue-attention-copy';
+import { resolveAfterIssueAttentionCopy } from './after-issue-attention';
 
 export type SalesDocumentCellTone = 'idle' | 'progress' | 'done' | 'warning' | 'error';
 
@@ -82,6 +83,10 @@ function toneFromReasonTone(tone: SalesDocumentReasonTone): SalesDocumentCellTon
 export function resolveSalesDocumentCellState(
   view: SalesDocumentView | undefined,
 ): SalesDocumentCellState {
+  // Read on every call, never at module level, so the words follow the
+  // language the operator is reading in.
+  const ordersCopy = getMessages('orders');
+  const cellCopy = ordersCopy.salesDocumentCell;
   if (!view || view.documentKind === null) {
     const copy = view
       ? resolveSalesDocumentReasonCopy(view.blockReason, view.unresolvedReason)
@@ -89,7 +94,7 @@ export function resolveSalesDocumentCellState(
     if (!copy) {
       return {
         kind: null,
-        word: 'No document',
+        word: cellCopy.noDocument,
         tone: 'idle',
         reasonDetail: null,
         keepsAction: false,
@@ -111,7 +116,7 @@ export function resolveSalesDocumentCellState(
     if (!copy) {
       return {
         kind: view.documentKind,
-        word: 'Not issued',
+        word: cellCopy.notIssued,
         tone: 'idle',
         reasonDetail: null,
         keepsAction: true,
@@ -133,7 +138,10 @@ export function resolveSalesDocumentCellState(
   // DEF-26: a document made before the sale changed. The change is the most
   // actionable fact, unless the record itself already reads as an error,
   // which stays the word (the change rides along in the popover).
-  const attention = resolveAfterIssueAttentionCopy(view.afterIssueAttention);
+  const attention = resolveAfterIssueAttentionCopy(
+    view.afterIssueAttention,
+    ordersCopy.afterIssueAttention,
+  );
   if (attention) {
     return tone === 'error'
       ? { kind: view.documentKind, word, tone, reasonDetail: attention.detail, keepsAction: false }

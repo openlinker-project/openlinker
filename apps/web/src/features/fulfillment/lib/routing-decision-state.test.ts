@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { RoutingDecisionStatus } from '../api/fulfillment.types';
 import { ApiError } from '../../../shared/api/api-error';
-import { describeRetryRoutingError } from './routing-decision.copy';
+import { describeRetryRoutingError } from './routing-decision-retry-error';
 import { canRetryRouting, resolveRoutingDecisionState } from './routing-decision-state';
 
 function decision(overrides: Partial<RoutingDecisionStatus> = {}): RoutingDecisionStatus {

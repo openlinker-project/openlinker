@@ -10,13 +10,12 @@ import { createNoopSessionAdapter } from '../../shared/auth/noop-session-adapter
 import type { SessionAdapter } from '../../shared/auth/session-adapter';
 import { mockMobileViewport } from '../../test/viewport';
 import { ReturnsListPage } from './returns-list-page';
-import {
-  ORPHAN_RETURNS_WORKLIST_COPY,
-  RECORD_RETURN_DIALOG_COPY,
-  type ReturnListItem,
-  type ReturnListResult,
-} from '../../features/returns';
+import { getMessages } from '../../shared/i18n';
+import type { ReturnListItem, ReturnListResult } from '../../features/returns';
 import type { Connection } from '../../features/connections/api/connections.types';
+
+const ORPHAN_RETURNS_WORKLIST_COPY = getMessages('returns').orphanWorklist;
+const RECORD_RETURN_DIALOG_COPY = getMessages('returns').recordReturnDialog;
 
 function makeConnection(overrides: Partial<Connection> = {}): Connection {
   return {
@@ -188,7 +187,7 @@ describe('ReturnsListPage', () => {
         }),
       });
 
-      expect(await screen.findByText('Showing 1–3 of 3')).toBeInTheDocument();
+      expect(await screen.findByText('Showing 1-3 of 3')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
     });
 
@@ -213,7 +212,7 @@ describe('ReturnsListPage', () => {
         }),
       });
 
-      expect(await screen.findByText('Showing 1–20 of 47')).toBeInTheDocument();
+      expect(await screen.findByText('Showing 1-20 of 47')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled();
       expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
     });
@@ -230,7 +229,7 @@ describe('ReturnsListPage', () => {
         }),
       });
 
-      expect(await screen.findByText('Showing 1–5 of 47')).toBeInTheDocument();
+      expect(await screen.findByText('Showing 1-5 of 47')).toBeInTheDocument();
     });
   });
 

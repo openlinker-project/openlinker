@@ -3,13 +3,13 @@
  *
  * The browser mirror of core's `RefundReasonValues`
  * (`libs/core/src/orders/domain/types/refund-record.types.ts`), which the
- * frontend cannot import — `apps/web` has no `@openlinker/*` dependency (#591).
+ * frontend cannot import - `apps/web` has no `@openlinker/*` dependency (#591).
  *
  * **It lives in `orders`, not `returns`, and that placement is load-bearing.**
  * `refund_records` is an orders table and `IOrderRefundService` is an orders
  * service, so orders owns the concept; a return is merely the first surface to
- * render it. Two consumers are already in view — the return money panel and the
- * order-level capture path — and the whole point of one home is that they cannot
+ * render it. Two consumers are already in view - the return money panel and the
+ * order-level capture path - and the whole point of one home is that they cannot
  * spell the vocabulary two ways. Two lists agree right up until someone adds a
  * reason to one of them.
  *
@@ -22,6 +22,7 @@
  *
  * @module apps/web/src/features/orders/lib
  */
+import { getMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 
 export const REFUND_REASON_VALUES = [
   'withdrawal',
@@ -33,12 +34,14 @@ export const REFUND_REASON_VALUES = [
 
 export type RefundReason = (typeof REFUND_REASON_VALUES)[number];
 
-export const REFUND_REASON_LABELS: Record<RefundReason, string> = {
-  withdrawal: 'Buyer changed their mind',
-  defective: 'Item was faulty',
-  not_as_described: 'Item did not match the listing',
-  wrong_item: 'Wrong item was sent',
-  other: 'Something else',
+type RefundReasonCopy = ResolvedCopy<Messages['orders']>['refundReason'];
+
+const REFUND_REASON_KEY: Record<RefundReason, keyof RefundReasonCopy> = {
+  withdrawal: 'withdrawal',
+  defective: 'defective',
+  not_as_described: 'notAsDescribed',
+  wrong_item: 'wrongItem',
+  other: 'other',
 };
 
 /**
@@ -46,12 +49,12 @@ export const REFUND_REASON_LABELS: Record<RefundReason, string> = {
  *
  * A reason added to core after this build shipped renders as its raw value
  * rather than as a blank or a guessed label: the operator can still read what
- * was recorded and quote it, which a blank cell cannot do.
+ * was recorded and quote it, which a blank cell cannot do. The words are read
+ * from the `orders` namespace when called, so they follow the active language.
  */
 export function describeRefundReason(reason: string): string {
-  return reason in REFUND_REASON_LABELS
-    ? REFUND_REASON_LABELS[reason as RefundReason]
-    : reason;
+  if (!isRefundReason(reason)) return reason;
+  return getMessages('orders').refundReason[REFUND_REASON_KEY[reason]];
 }
 
 export function isRefundReason(value: string): value is RefundReason {

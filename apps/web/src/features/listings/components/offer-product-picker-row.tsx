@@ -11,6 +11,7 @@
  */
 import { useEffect, useMemo, type ReactElement } from 'react';
 
+import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { CheckboxCell } from '../../../shared/ui/checkbox-cell';
@@ -24,6 +25,7 @@ import {
   variantShortLabel,
 } from '../lib/offer-product-picker-selectors';
 import { OFFER_PICKER_PRODUCT_CAP, type SelectionEntry } from './offer-product-picker.types';
+import { serverErrorText } from '../lib/server-error-text';
 
 interface OfferProductPickerRowProps {
   product: Product;
@@ -48,6 +50,9 @@ export function OfferProductPickerRow({
   onToggleVariant,
   onVariantsLoaded,
 }: OfferProductPickerRowProps): ReactElement {
+  const copy = useMessages('listings').offerProductPickerRow;
+  const common = useMessages('listings').common;
+  const plural = usePlural();
   const detailQuery = useProductQuery(isExpanded ? product.id : '');
   const loadedVariants = useMemo(
     () => detailQuery.data?.variants ?? [],
@@ -101,10 +106,10 @@ export function OfferProductPickerRow({
             state={checkboxState}
             onToggle={handleToggleProduct}
             disabled={capBlocked}
-            ariaLabel={`Select ${product.name}`}
+            ariaLabel={interpolate(copy.selectAria, { name: product.name })}
             tooltip={
               capBlocked
-                ? `Maximum ${OFFER_PICKER_PRODUCT_CAP} products per batch reached`
+                ? interpolate(copy.capReached, { max: OFFER_PICKER_PRODUCT_CAP })
                 : undefined
             }
           />
@@ -114,7 +119,9 @@ export function OfferProductPickerRow({
           className="offer-product-picker__prow-toggle"
           onClick={onToggleExpand}
           aria-expanded={isExpanded}
-          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${product.name}`}
+          aria-label={interpolate(isExpanded ? copy.collapseAria : copy.expandAria, {
+            name: product.name,
+          })}
         >
           <ProductThumbnail name={product.name} src={firstImage(product.images)} size="md" />
           <span className="offer-product-picker__pname">
@@ -127,7 +134,7 @@ export function OfferProductPickerRow({
                 isSimple ? ' offer-product-picker__vcount--simple' : ''
               }`}
             >
-              {variantCount} {variantCount === 1 ? 'variant' : 'variants'}
+              {plural(variantCount, copy.variantCount)}
             </span>
           ) : null}
           <span className="offer-product-picker__chev" aria-hidden="true">
@@ -139,27 +146,27 @@ export function OfferProductPickerRow({
       {isExpanded ? (
         <ul className="offer-product-picker__vrows">
           {detailQuery.isLoading ? (
-            <li className="muted-text">Loading variants…</li>
+            <li className="muted-text">{copy.loadingVariants}</li>
           ) : detailQuery.error ? (
             <li>
               <Alert
                 tone="error"
-                title="Unable to load variants"
+                title={copy.loadError}
                 action={
                   <Button
                     tone="secondary"
                     type="button"
                     onClick={() => void detailQuery.refetch()}
                   >
-                    Retry
+                    {copy.retry}
                   </Button>
                 }
               >
-                {detailQuery.error.message}
+                {serverErrorText(common.serverSaid, detailQuery.error.message, common.unknownError)}
               </Alert>
             </li>
           ) : loadedVariants.length === 0 ? (
-            <li className="muted-text">No variants on this product.</li>
+            <li className="muted-text">{copy.noVariants}</li>
           ) : (
             loadedVariants.map((variant) => {
               const picked = entry === 'ALL' || (selectedVariantIds?.has(variant.id) ?? false);
@@ -184,7 +191,10 @@ export function OfferProductPickerRow({
                     <span className="offer-product-picker__vname">
                       <b>{variantLabel(detailQuery.data ?? product, variant)}</b>
                       <small className={`mono-text${hasBarcode ? '' : ' offer-product-picker__vname-bad'}`}>
-                        SKU {variant.sku ?? '—'} · {hasBarcode ? `EAN ${variant.ean ?? variant.gtin ?? '—'}` : 'no EAN'}
+                        {interpolate(copy.variantSku, { sku: variant.sku ?? '—' })} ·{' '}
+                        {hasBarcode
+                          ? interpolate(copy.variantEan, { ean: variant.ean ?? variant.gtin ?? '—' })
+                          : copy.variantNoEan}
                       </small>
                     </span>
                   </label>

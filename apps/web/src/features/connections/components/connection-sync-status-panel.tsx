@@ -7,11 +7,19 @@
  *
  * @module features/connections/components
  */
+import {
+  interpolate,
+  useFormat,
+  useMessages,
+  usePlural,
+  type Formatters,
+  type Messages,
+  type PluralFn,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 import type { ReactElement } from 'react';
 import { useConnectionSyncStatusQuery } from '../hooks/use-connection-sync-status-query';
 import type { ConnectionBacklogStatus, ConnectionSyncStatus } from '../api/connections.types';
-import { formatDateTime } from '../../../shared/format/format-date';
-import { formatDurationMs } from '../../../shared/format/format-duration-ms';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { Alert } from '../../../shared/ui/alert';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
@@ -43,15 +51,6 @@ interface ConnectionSyncStatusPanelProps {
   connectionId: string;
 }
 
-const STATUS_LABEL: Record<ConnectionBacklogStatus, string> = {
-  idle: 'Nothing waiting',
-  draining: 'Catching up',
-  growing: 'Falling behind',
-  failing: 'Tasks failing',
-  backlogged: 'Backlog',
-  unknown: 'Unknown',
-};
-
 const STATUS_TONE: Record<ConnectionBacklogStatus, StatusBadgeTone> = {
   idle: 'success',
   draining: 'success',
@@ -61,60 +60,84 @@ const STATUS_TONE: Record<ConnectionBacklogStatus, StatusBadgeTone> = {
   unknown: 'warning',
 };
 
-function formatCount(value: number): string {
-  return new Intl.NumberFormat('en-GB').format(Math.round(value));
+type SyncStatusCopy = ResolvedCopy<Messages['connections']>['connectionSyncStatusPanel'];
+
+interface SyncStatusFormatters {
+  copy: SyncStatusCopy;
+  format: Formatters;
+  plural: PluralFn;
 }
 
-function formatRate(perHour: number): string {
-  return `${new Intl.NumberFormat('en-GB', { maximumFractionDigits: 1 }).format(perHour)} an hour`;
+function formatCount(format: Formatters, value: number): string {
+  return format.number(Math.round(value));
+}
+
+function formatRate({ copy, format }: SyncStatusFormatters, perHour: number): string {
+  return interpolate(copy.perHour, {
+    rate: format.number(perHour, { maximumFractionDigits: 1 }),
+  });
 }
 
 /**
  * Waits here are routinely measured in days, which `formatDurationMs` would
  * render as three-figure hours.
  */
-function formatWait(ms: number): string {
+function formatWait({ copy, format, plural }: SyncStatusFormatters, ms: number): string {
   const hours = ms / (60 * 60 * 1000);
   if (hours < 1) {
-    return `${Math.max(1, Math.round(ms / 60000))} min`;
+    const minutes = Math.max(1, Math.round(ms / 60000));
+    return interpolate(copy.wait.minutes, { n: format.number(minutes) });
   }
   if (hours < 48) {
-    return `${Math.round(hours)} h`;
+    return interpolate(copy.wait.hours, { n: format.number(Math.round(hours)) });
   }
-  return `${Math.round(hours / 24)} days`;
+  const days = Math.round(hours / 24);
+  return plural(days, copy.wait.days, { n: format.number(days) });
 }
 
-function headline(status: ConnectionSyncStatus): string {
+function headline(f: SyncStatusFormatters, status: ConnectionSyncStatus): string {
+  const { copy, plural } = f;
   if (status.status === 'unknown') {
-    return 'The queue could not be read just now. Try again in a moment.';
+    return copy.headline.unknown;
   }
   if (status.status === 'failing') {
-    return 'Nothing has finished successfully in the last hour and tasks are failing. The queue may look empty because work is dying rather than getting done.';
+    return copy.headline.failing;
   }
   if (status.queuedCount === 0) {
-    return 'No work is waiting for this connection.';
+    return copy.headline.empty;
   }
-  const waiting = `${formatCount(status.queuedCount)} ${
-    status.queuedCount === 1 ? 'task is' : 'tasks are'
-  } waiting`;
-  const oldest =
-    status.oldestQueuedWaitMs === null
-      ? ''
-      : `, the oldest for ${formatWait(status.oldestQueuedWaitMs)}`;
+  const params = {
+    n: formatCount(f.format, status.queuedCount),
+    wait: status.oldestQueuedWaitMs === null ? '' : formatWait(f, status.oldestQueuedWaitMs),
+  };
+  const withOldest = status.oldestQueuedWaitMs !== null;
 
   if (status.status === 'draining') {
-    const clearance =
-      status.estimatedClearanceMs === null
-        ? ''
-        : ` About ${formatWait(status.estimatedClearanceMs)} to clear at the current pace.`;
-    return `${waiting}${oldest}, and the queue is shrinking.${clearance}`;
+    const sentence = plural(
+      status.queuedCount,
+      withOldest ? copy.headline.shrinkingOldest : copy.headline.shrinking,
+      params,
+    );
+    if (status.estimatedClearanceMs === null) return sentence;
+    const clearance = interpolate(copy.headline.clearance, {
+      wait: formatWait(f, status.estimatedClearanceMs),
+    });
+    return `${sentence} ${clearance}`;
   }
-  return `${waiting}${oldest}, and the queue is not shrinking.`;
+  return plural(
+    status.queuedCount,
+    withOldest ? copy.headline.notShrinkingOldest : copy.headline.notShrinking,
+    params,
+  );
 }
 
 export function ConnectionSyncStatusPanel({
   connectionId,
 }: ConnectionSyncStatusPanelProps): ReactElement {
+  const copy = useMessages('connections').connectionSyncStatusPanel;
+  const format = useFormat();
+  const plural = usePlural();
+  const f: SyncStatusFormatters = { copy, format, plural };
   const statusQuery = useConnectionSyncStatusQuery(connectionId);
   const data = statusQuery.data;
 
@@ -122,26 +145,26 @@ export function ConnectionSyncStatusPanel({
     <div className="panel panel--dense">
       <div className="panel__header">
         <div>
-          <p className="eyebrow">Health</p>
-          <h3 className="section-title">Sync queue</h3>
+          <p className="eyebrow">{copy.eyebrow}</p>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
         {data ? (
           <span className="panel__meta">
-            <StatusBadge tone={STATUS_TONE[data.status]}>{STATUS_LABEL[data.status]}</StatusBadge>
+            <StatusBadge tone={STATUS_TONE[data.status]}>{copy.statusLabels[data.status]}</StatusBadge>
           </span>
         ) : null}
       </div>
 
       {statusQuery.isLoading ? (
         <LoadingState
-          title="Loading sync queue"
-          message="Counting the work waiting for this connection."
+          title={copy.loadingTitle}
+          message={copy.loadingMessage}
         />
       ) : null}
 
       {statusQuery.error ? (
         <ErrorState
-          title="Unable to load the sync queue"
+          title={copy.errorTitle}
           message={statusQuery.error.message}
           action={
             <button
@@ -149,7 +172,7 @@ export function ConnectionSyncStatusPanel({
               className="button button--secondary"
               onClick={() => void statusQuery.refetch()}
             >
-              Retry
+              {copy.retry}
             </button>
           }
         />
@@ -158,89 +181,86 @@ export function ConnectionSyncStatusPanel({
       {data ? (
         <>
           {data.alerting ? (
-            <Alert tone="error" title="This connection is behind">
-              Work has been waiting more than a day and the queue is not shrinking. Orders and stock
-              for this connection are out of date until it catches up.
+            <Alert tone="error" title={copy.behindTitle}>
+              {copy.behindMessage}
             </Alert>
           ) : null}
 
-          <p className="connection-sync-status__headline">{headline(data)}</p>
+          <p className="connection-sync-status__headline">{headline(f, data)}</p>
 
           {data.deadCount > 0 ? (
             <p className="connection-sync-status__note">
-              {formatCount(data.deadCount)} {data.deadCount === 1 ? 'task has' : 'tasks have'} given
-              up after repeated failures in the last week. They will not run again on their own.
+              {plural(data.deadCount, copy.dead, { n: formatCount(format, data.deadCount) })}
             </p>
           ) : null}
 
           {data.runningCount > 0 && data.drainRatePerHour === 0 ? (
             <p className="connection-sync-status__note">
-              {formatCount(data.runningCount)} {data.runningCount === 1 ? 'task has' : 'tasks have'}{' '}
-              been picked up but nothing has finished in the last hour. That usually means the
-              background worker stopped part-way through.
+              {plural(data.runningCount, copy.stalled, {
+                n: formatCount(format, data.runningCount),
+              })}
             </p>
           ) : null}
 
           <details className="connection-sync-status__details">
-            <summary>Details</summary>
+            <summary>{copy.details.summary}</summary>
             <dl className="definition-list">
               <div>
-                <dt>Running now</dt>
-                <dd>{formatCount(data.runningCount)}</dd>
+                <dt>{copy.details.runningNow}</dt>
+                <dd>{formatCount(format, data.runningCount)}</dd>
               </div>
               <div>
-                <dt>Waiting to retry</dt>
-                <dd>{formatCount(data.deferredCount)}</dd>
+                <dt>{copy.details.waitingToRetry}</dt>
+                <dd>{formatCount(format, data.deferredCount)}</dd>
               </div>
               <div>
-                <dt>Last success</dt>
+                <dt>{copy.details.lastSuccess}</dt>
                 <dd>
                   {data.lastSucceededAt === null
-                    ? 'None in the last week'
-                    : formatDateTime(data.lastSucceededAt)}
+                    ? copy.details.noSuccess
+                    : format.dateTime(data.lastSucceededAt)}
                 </dd>
               </div>
               <div>
-                <dt>New work</dt>
-                <dd>{formatRate(data.arrivalRatePerHour)}</dd>
+                <dt>{copy.details.newWork}</dt>
+                <dd>{formatRate(f, data.arrivalRatePerHour)}</dd>
               </div>
               <div>
-                <dt>Finished work</dt>
-                <dd>{formatRate(data.drainRatePerHour)}</dd>
+                <dt>{copy.details.finishedWork}</dt>
+                <dd>{formatRate(f, data.drainRatePerHour)}</dd>
               </div>
               <div>
-                <dt>Alert above</dt>
+                <dt>{copy.details.alertAbove}</dt>
                 <dd>
                   {data.drainRatePerHour === 0
-                    ? 'Not measured yet - nothing finished in the last hour'
-                    : `${formatCount(data.alertThresholdJobs)} waiting`}
+                    ? copy.details.alertNotMeasured
+                    : interpolate(copy.details.alertWaiting, {
+                        n: formatCount(format, data.alertThresholdJobs),
+                      })}
                 </dd>
               </div>
               <div>
-                <dt>Typical task time</dt>
+                <dt>{copy.details.typicalTaskTime}</dt>
                 <dd>
                   {data.averageAttemptDurationMs === null
-                    ? 'Not measured yet'
-                    : `${formatDurationMs(data.averageAttemptDurationMs) ?? '-'} (over ${formatCount(
-                        data.attemptDurationSampleSize,
-                      )} ${data.attemptDurationSampleSize === 1 ? 'task' : 'tasks'})`}
+                    ? copy.details.notMeasured
+                    : plural(data.attemptDurationSampleSize, copy.details.taskTime, {
+                        duration: format.duration(data.averageAttemptDurationMs) ?? '-',
+                        n: formatCount(format, data.attemptDurationSampleSize),
+                      })}
                 </dd>
               </div>
               <div>
-                <dt>Sync position last moved</dt>
+                <dt>{copy.details.positionMoved}</dt>
                 <dd>
                   {data.lastCursorAdvanceAt === null
-                    ? 'No saved position - normal when the shop notifies us instead'
-                    : formatDateTime(data.lastCursorAdvanceAt)}
+                    ? copy.details.noPosition
+                    : format.dateTime(data.lastCursorAdvanceAt)}
                 </dd>
               </div>
             </dl>
             <p className="connection-sync-status__note">
-              New and finished work are measured over the last hour. Waiting counts only tasks
-              whose next attempt is due; a task backing off after a failure is counted under
-              "Waiting to retry" instead. The alert level is what this connection normally
-              finishes in a day, so it moves with the shop rather than being a fixed number, and it
-              only alerts once the oldest waiting task is more than a day old.
+              {copy.details.note}
             </p>
           </details>
         </>

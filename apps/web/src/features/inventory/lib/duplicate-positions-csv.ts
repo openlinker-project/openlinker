@@ -16,6 +16,7 @@
  *
  * @module apps/web/src/features/inventory/lib
  */
+import { getMessages } from '../../../shared/i18n';
 import type { DuplicatePositionGroup } from '../api/inventory.types';
 
 const CSV_COLUMNS = [
@@ -71,7 +72,8 @@ function csvCell(value: string | number | boolean | null): string {
  * fields per row.
  */
 export function buildDuplicatePositionsCsv(groups: readonly DuplicatePositionGroup[]): string {
-  const lines = [CSV_COLUMNS.join(',')];
+  const headers = getMessages('inventory').duplicatePositionsCsv.headers;
+  const lines = [CSV_COLUMNS.map((column) => csvCell(headers[column])).join(',')];
   for (const group of groups) {
     for (const row of group.rows) {
       lines.push(

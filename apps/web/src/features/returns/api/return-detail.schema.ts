@@ -31,6 +31,7 @@
  * @module apps/web/src/features/returns/api
  */
 import { z } from 'zod/v4';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import {
   RETURN_BUCKET_VALUES,
   RETURN_ORIGIN_VALUES,
@@ -53,7 +54,7 @@ export class ReturnDetailUnreadableError extends Error {
   readonly returnId: string;
 
   constructor(returnId: string) {
-    super(`Return ${returnId} could not be read`);
+    super(interpolate(getMessages('returns').apiErrors.detailUnreadable, { returnId }));
     this.name = 'ReturnDetailUnreadableError';
     this.returnId = returnId;
   }

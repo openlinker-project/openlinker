@@ -1,0 +1,562 @@
+{
+  "costCoverageBanner": {
+    "addCostPrices": "Add cost prices",
+    "bodyAddCosts": "Add costs and orders placed from now on count toward margin.",
+    "bodyNetSales": "They made {amount} of net sales, which is left out of margin.",
+    "bodyNothingElse": "Nothing else changes: orders, listings and invoices work the same with or without a cost.",
+    "dismiss": "Dismiss for this session",
+    "title": {
+      "one": "{n} variant you sold in the last {days} days has no cost price",
+      "other": "{n} variants you sold in the last {days} days have no cost price"
+    }
+  },
+  "costPricesPage": {
+    "amountError": "Enter 0 or more, with up to 2 decimals.",
+    "bulk": {
+      "appliesTo": "Applies to",
+      "cancel": "Cancel",
+      "clearSelection": "Clear selection",
+      "currencyLabel": "Cost currency",
+      "description": "Use this when the variants cost you the same, like two colours of one cup.",
+      "dialogLabel": "Set one cost",
+      "inputDescription": "Excluding VAT. Counts toward margin for orders placed after you save. Earlier orders keep no cost.",
+      "inputLabel": "Cost price, net per unit",
+      "neverOverwrites": "Variants that already have a cost are never selected here, so nothing gets overwritten.",
+      "open": "Set one cost for selected",
+      "preview": "no cost → {cost}",
+      "save": {
+        "one": "Save cost for {n} variant",
+        "other": "Save cost for {n} variants"
+      },
+      "selectedLabel": {
+        "one": "{n} variant selected",
+        "other": "{n} variants selected"
+      },
+      "title": {
+        "one": "Set one cost for {n} variant",
+        "other": "Set one cost for {n} variants"
+      }
+    },
+    "cost": {
+      "add": "Add cost",
+      "currencyLabel": "Currency",
+      "inputLabel": "Net cost for {variant}",
+      "notRecorded": "Not recorded",
+      "save": "Save",
+      "saved": "{cost} net · saved, counts from the next order"
+    },
+    "demoReadOnlyMessage": "This is a read-only demo, so cost prices cannot be changed.",
+    "doneEmpty": {
+      "message": "New orders count fully toward margin.",
+      "messageWithUnsold": {
+        "one": "New orders count fully toward margin. {n} variant has not sold in 30 days and has no cost; it shows up here as soon as it sells.",
+        "other": "New orders count fully toward margin. {n} variants have not sold in 30 days and have no cost; they show up here as soon as one sells."
+      },
+      "openMargin": "Open Margin",
+      "showUnsold": {
+        "one": "Show the {n} variant",
+        "other": "Show the {n} variants"
+      },
+      "title": "Every variant you sold has a cost"
+    },
+    "footnote": {
+      "enterSaves": "Enter saves a row and moves to the next.",
+      "sortedAll": "Sorted by net sales in the last 30 days, then by name.",
+      "sortedSold": "Sorted by net sales in the last 30 days.",
+      "topShare": {
+        "one": "The first {n} variant is {share} of the sales left out of margin.",
+        "other": "The first {n} variants are {share} of the sales left out of margin."
+      }
+    },
+    "header": {
+      "back": "Products",
+      "description": "What you pay for each variant, excluding VAT. Used only for margin on Analytics.",
+      "eyebrow": "Products",
+      "title": "Cost prices"
+    },
+    "kpis": {
+      "expected": {
+        "label": "Share of net sales with a cost",
+        "metric": "Last 30 days; a cost counts from the next order"
+      },
+      "gapAmount": {
+        "label": "Net sales not in margin",
+        "metric": "Last 30 days, these variants"
+      },
+      "regionLabel": "Cost coverage",
+      "soldMissing": {
+        "allCovered": "All sold variants have a cost",
+        "label": "Sold in 30 days, no cost",
+        "ofSold": {
+          "one": "Of {n} variant sold",
+          "other": "Of {n} variants sold"
+        }
+      },
+      "unsoldMissing": {
+        "label": "Never sold, no cost",
+        "metric": "Not urgent: they do not affect margin yet"
+      }
+    },
+    "loadError": "Unable to load the cost list",
+    "loading": {
+      "message": "Fetching the work list…",
+      "title": "Loading variants"
+    },
+    "meter": {
+      "ariaLabel": "With a cost: {share} of net sales",
+      "eyebrow": "Last 30 days",
+      "meta": "Costs count from the next order on, so past orders stay as they are.",
+      "notInMargin": "Not in margin: {share}",
+      "title": "Share of net sales with a cost",
+      "withCost": "With a cost: {share} of net sales"
+    },
+    "netSuffix": "net",
+    "noMatch": {
+      "emptyList": "There is nothing in this list.",
+      "filtered": "Nothing matches this search or channel. Clear a filter to see more.",
+      "title": "No variants match"
+    },
+    "readOnly": {
+      "message": "Only an admin can add or change a cost price. Send them this page: the list is already sorted by what matters most.",
+      "title": "You can see cost prices but not change them"
+    },
+    "retry": "Retry",
+    "table": {
+      "caption": "Variants by net sales in the last 30 days, with their cost price",
+      "columns": {
+        "cost": "Cost, net",
+        "netSales": "Net sales",
+        "netSalesWithCurrency": "Net sales, {currency}",
+        "runningShare": "Running share",
+        "soldOn": "Sold on",
+        "units": "Units, 30 d",
+        "variant": "Variant"
+      },
+      "regionLabel": "Variants (scrollable)",
+      "selectAll": "Select all on this page",
+      "selectRow": "Select {variant}"
+    },
+    "tabs": {
+      "all": "All without cost",
+      "hasCost": "Has cost",
+      "label": "Which variants",
+      "sold": "Sold, no cost"
+    },
+    "toasts": {
+      "bulkCountsFromNext": "It counts toward margin from the next order.",
+      "bulkSaveFailed": "The costs could not be saved.",
+      "bulkSaved": {
+        "one": "Cost saved for {n} variant",
+        "other": "Cost saved for {n} variants"
+      },
+      "bulkSkipped": {
+        "one": "{n} already had a cost and was left as it was.",
+        "other": "{n} already had a cost and were left as it was."
+      },
+      "saveFailed": "The cost could not be saved."
+    },
+    "toolbar": {
+      "allChannels": "All channels",
+      "channelLabel": "Channel",
+      "searchLabel": "Search variants",
+      "searchPlaceholder": "Search variant, SKU"
+    },
+    "trackingOff": "Margin tracking is off. Cost prices you enter here are still saved and copied onto new orders; the Margin panel and the reminders stay hidden until an admin turns tracking back on in Analytics settings."
+  },
+  "externalIdChips": {
+    "empty": "No external mappings",
+    "openConnection": "Open connection for {platform} {externalId}"
+  },
+  "listingsCoveragePills": {
+    "pillTitle": {
+      "one": "{label}: {listed} of {n} variant listed",
+      "other": "{label}: {listed} of {n} variants listed"
+    }
+  },
+  "marketplacePickerModal": {
+    "cancel": "Cancel",
+    "continue": "Continue →",
+    "description": {
+      "one": "Publishing <strong>{n}</strong> product. Pick the marketplace or shop to publish them to.",
+      "other": "Publishing <strong>{n}</strong> products. Pick the marketplace or shop to publish them to."
+    },
+    "railLabel": "Publish destination",
+    "title": "Where should these publish?"
+  },
+  "productDetailPage": {
+    "attributes": "Attributes",
+    "backToProducts": "Products",
+    "description": {
+      "editInContent": "Edit in Content →",
+      "empty": "No description synced from the source. Draft and publish one per channel in the Content tab.",
+      "readOnlyBadge": "Source · read-only",
+      "title": "Description"
+    },
+    "eyebrow": "Products",
+    "fallbackTitle": "Product detail",
+    "hero": {
+      "catalogueUpdated": "Catalogue updated",
+      "category": "Category",
+      "checkingStock": "Checking stock",
+      "created": "Created",
+      "label": "Product summary",
+      "listingCount": {
+        "one": "{n} listing",
+        "other": "{n} listings"
+      },
+      "sku": "SKU",
+      "stockNotKnown": "Stock not known",
+      "variantCount": {
+        "one": "{n} variant",
+        "other": "{n} variants"
+      }
+    },
+    "kpis": {
+      "acrossLocations": {
+        "one": "across {n} location",
+        "other": "across {n} locations"
+      },
+      "available": "Available",
+      "inMaster": "{n} in {source}",
+      "listings": "Listings",
+      "notKnown": "not known right now",
+      "price": "Price (gross)",
+      "reserved": "{n} reserved",
+      "short": "{n} short",
+      "theMaster": "the master",
+      "title": "At a glance",
+      "toSell": "to sell",
+      "variants": "Variants",
+      "workingOut": "working out what you can sell"
+    },
+    "loadError": {
+      "notFound": "Product not found",
+      "title": "Unable to load product"
+    },
+    "loading": {
+      "message": "Fetching product details…",
+      "title": "Loading product"
+    },
+    "retry": "Retry",
+    "source": "Source",
+    "tabs": {
+      "content": "Content",
+      "label": "Product views",
+      "overview": "Overview"
+    },
+    "variants": {
+      "empty": "No variants found for this product.",
+      "heading": "Variants & stock",
+      "headingWithCount": "Variants & stock ({n})",
+      "loadError": "Unable to load stock",
+      "loading": {
+        "message": "Fetching inventory data…",
+        "title": "Loading stock"
+      },
+      "stockSynced": "Stock synced"
+    }
+  },
+  "productDetailSummary": {
+    "fields": {
+      "currency": "Currency",
+      "currencyNotSet": "not set by source",
+      "internalId": "Internal ID",
+      "sourceExternalId": "Source external ID",
+      "stockSynced": "Stock synced"
+    },
+    "links": {
+      "editContent": "Edit content",
+      "editContentTitle": "Edit this product's description",
+      "productDetails": "Product details",
+      "productDetailsTitle": "Open the full product detail page"
+    }
+  },
+  "productGallery": {
+    "close": "Close",
+    "groupLabel": "Product photos",
+    "lightboxAlt": "{name} - photo {index} of {total}",
+    "next": "Next photo",
+    "openViewer": "Open photo viewer",
+    "previous": "Previous photo",
+    "thumbLabel": "Photo {index} of {total}",
+    "viewerDescriptionBrowse": "Use the arrow keys or the on-screen controls to browse photos.",
+    "viewerDescriptionClose": "Press Escape to close.",
+    "viewerTitle": "{name} photo viewer"
+  },
+  "productRowDetail": {
+    "createOffer": "+ Create offer",
+    "deletedAtSource": "Deleted at source",
+    "ean": "EAN {ean}",
+    "liveMarketplaceStatus": "Live marketplace status",
+    "loading": {
+      "message": "Fetching variant stock...",
+      "title": "Loading variants"
+    },
+    "noVariants": "No variants found for this product.",
+    "reservedShort": "/ res {n}",
+    "stockError": "Unable to load stock",
+    "variantsError": {
+      "notFound": "Product not found",
+      "title": "Unable to load variants"
+    },
+    "variantsHeading": "Variants & stock",
+    "variantsHeadingWithCount": "Variants & stock ({n})"
+  },
+  "productSourceSection": {
+    "alsoMappedOn": "Also mapped on",
+    "empty": "No source mapping",
+    "masterTag": "Master",
+    "openConnection": "Open connection for {platform} {externalId}",
+    "openMasterConnection": "Open the master connection for {platform}"
+  },
+  "productStaleness": {
+    "fullyStale": "Deleted at source",
+    "partlyStale": {
+      "one": "{stale} of {n} variant deleted at source",
+      "other": "{stale} of {n} variants deleted at source"
+    }
+  },
+  "productStockStatus": {
+    "inStock": "In stock",
+    "lowStock": "Low stock",
+    "outOfStock": "Out of stock",
+    "oversold": "Oversold"
+  },
+  "productsListPage": {
+    "availabilityUnknownLink": "Who decides what",
+    "bulk": {
+      "clear": "Clear",
+      "hint": "Max {max} per batch · {remaining} more available",
+      "hintAtCap": "Max {max} per batch",
+      "publish": "Publish products ({n})",
+      "publishTo": "Publish to {destination} ({n})",
+      "selected": {
+        "one": "{n} product selected",
+        "other": "{n} products selected"
+      }
+    },
+    "columns": {
+      "listings": "Listings",
+      "product": "Product",
+      "selectAll": "Select all visible products",
+      "source": "Source",
+      "stock": "Stock",
+      "unselectAll": "Unselect all visible products"
+    },
+    "costPrices": "Cost prices",
+    "description": "Catalogue cockpit - search, stock health, and per-channel listings coverage. Select up to {max} products to bulk-create offers.",
+    "empty": {
+      "filtered": "No products match the current filters.",
+      "manageConnections": "Manage connections",
+      "title": "No products found",
+      "unsynced": "No products have been synced yet."
+    },
+    "error": {
+      "retry": "Retry",
+      "title": "Unable to load products"
+    },
+    "eyebrow": "Operations",
+    "filters": {
+      "all": "All {total}",
+      "clear": "Clear filters",
+      "hideDeleted": "Hide deleted at source",
+      "noCostPrice": "No cost price",
+      "panel": {
+        "asc": "Asc",
+        "deletedAtSource": "Deleted at source",
+        "desc": "Desc",
+        "listings": "Listings",
+        "sort": "Sort",
+        "sortBy": "Sort by",
+        "source": "Source",
+        "stock": "Stock"
+      },
+      "results": {
+        "one": "{total} result",
+        "other": "{total} results"
+      },
+      "searchLabel": "Search products by name or SKU",
+      "searchPlaceholder": "Search by name or SKU…",
+      "sourceAll": "Source: All connections",
+      "sourceLabel": "Filter by source connection",
+      "stockChips": {
+        "low": "Low stock",
+        "out": "Out of stock",
+        "oversold": "Oversold"
+      },
+      "toggle": "Filters",
+      "unlistedOn": "Unlisted on {name}"
+    },
+    "kpi": {
+      "listingGaps": "Listing gaps",
+      "lowStock": "Low stock",
+      "noTaxRate": "No tax rate",
+      "outOfStock": "Out of stock",
+      "products": "Products"
+    },
+    "loading": "Loading products…",
+    "price": {
+      "currencyUnknown": "Currency unknown"
+    },
+    "row": {
+      "capReached": "Maximum {max} products per batch reached",
+      "capTooltip": "Max {max} per batch",
+      "cardVariants": {
+        "one": "{n} variant",
+        "other": "{n} variants"
+      },
+      "collapse": "Collapse variant stock for {name}",
+      "expand": "Expand variant stock for {name}",
+      "publish": "+ Publish",
+      "select": "Select {name}",
+      "sku": "SKU: <value>{sku}</value>",
+      "unselect": "Unselect {name}",
+      "updatedPrefix": "upd.",
+      "variantsBadge": {
+        "one": "{n} variant",
+        "other": "{n} variants"
+      }
+    },
+    "sortOptions": {
+      "createdAt": "Created",
+      "name": "Name",
+      "price": "Price",
+      "sku": "SKU",
+      "stock": "Stock",
+      "updatedAt": "Updated"
+    },
+    "stock": {
+      "master": "master {n}",
+      "notKnown": "Not known",
+      "notKnownTitle": "OpenLinker doesn't know. Not zero.",
+      "reserved": "reserved {n}",
+      "toSell": "to sell",
+      "toSellWithStatus": "{n} to sell · {status}"
+    },
+    "tableCaption": "Products",
+    "taxRateSuggestion": {
+      "body": "Rates arrive with the ordinary product sync. Run one to find out which items have a rate and which are missing it.",
+      "dismiss": "Dismiss for this session",
+      "title": {
+        "one": "{n} product has never been checked for a tax rate",
+        "other": "{n} products have never been checked for a tax rate"
+      }
+    },
+    "title": "Products"
+  },
+  "variantCost": {
+    "form": {
+      "amountError": "Enter a cost of 0 or more, with up to 2 decimals. Leave the field empty if you do not know it yet.",
+      "cancel": "Cancel",
+      "currencyLabel": "Cost currency",
+      "description": "What you pay for one unit, excluding VAT. Used for margin on orders placed from now on; earlier orders keep no cost.",
+      "label": "Cost price, net per unit",
+      "netSuffix": "net",
+      "save": "Save cost",
+      "saveFailed": "The cost could not be saved."
+    },
+    "notRecorded": "Not recorded",
+    "section": {
+      "add": "Add cost",
+      "clear": "Clear cost",
+      "clearFailed": "The cost could not be cleared.",
+      "clearHint": "Clearing a cost affects orders placed from now on only.",
+      "demoReadOnlyReason": "This is a read-only demo, so cost prices cannot be changed.",
+      "edit": "Edit cost",
+      "enteredInOpenLinker": "Entered in OpenLinker",
+      "missing": "No cost recorded. Orders for this variant are left out of margin.",
+      "readOnlyReason": "Only an admin can change cost prices.",
+      "syncNeverChanges": "The master sync never changes or clears this value.",
+      "syncNeverChangesNamed": "The {source} sync never changes or clears this value.",
+      "title": "Cost price",
+      "unavailable": "Cost is not available right now.",
+      "valueWithUnit": "{amount} <unit>net per unit</unit>"
+    }
+  },
+  "variantStockTable": {
+    "card": {
+      "category": "Category",
+      "lastCheck": "Last check",
+      "loadingLive": "Loading live marketplace data…",
+      "notChecked": "Not checked yet",
+      "offer": "Offer",
+      "offerUpdated": "Offer updated",
+      "qty": "Qty"
+    },
+    "channelsFailed": "Marketplace figures couldn’t be loaded right now. What OpenLinker sends is still correct.",
+    "channelsPartial": "Some marketplace figures couldn’t be loaded right now. What OpenLinker sends is still correct.",
+    "createOffer": "+ Create offer",
+    "currencyUnknown": "Currency unknown",
+    "gapCount": {
+      "one": "{n} gap",
+      "other": "{n} gaps"
+    },
+    "listings": {
+      "empty": "No marketplace listings reference this variant yet.",
+      "heading": "Listings",
+      "headingWithCount": "Listings ({n})",
+      "legend": "Sends = what OpenLinker publishes. Qty = what the offer shows now, read live when you open this row. Last check = the offer status sync, which goes through 100 offers an hour.",
+      "loadError": "Couldn’t load listings.",
+      "loading": "Loading listings…"
+    },
+    "meta": {
+      "ean": "EAN {ean}",
+      "sku": "SKU {sku}"
+    },
+    "metaGrid": {
+      "attributes": "Attributes",
+      "ean": "EAN / GTIN",
+      "taxRate": "Tax rate",
+      "variantId": "Variant ID"
+    },
+    "offerStatus": {
+      "activating": "Activating",
+      "active": "Active",
+      "bidding": "Bidding",
+      "ended": "Ended",
+      "inactive": "Inactive"
+    },
+    "openOn": "Open on {platform}",
+    "photos": {
+      "badge": {
+        "fromProduct": "From product",
+        "none": "No photos",
+        "own": "Variant photos ({n})"
+      },
+      "source": {
+        "fromProduct": "This variant has no photos of its own, so the product photos are used.",
+        "fromProductNamed": "This variant has no photos of its own in {source}, so the product photos are used.",
+        "none": "Neither this variant nor the product has a photo.",
+        "own": "Photos synced from the master for this variant.",
+        "ownNamed": "From {source}"
+      },
+      "title": "Photos"
+    },
+    "sends": {
+      "belowThreshold": "Sends 0 (0 below {threshold})",
+      "paused": "Paused",
+      "plain": "Sends {n}",
+      "withBuffer": "Sends {n} ({buffer} kept as buffer)"
+    },
+    "table": {
+      "caption": "Product variants, stock levels, and marketplace listings",
+      "columns": {
+        "cost": "Cost (net)",
+        "listings": "Listings",
+        "photo": "Photo",
+        "price": "Price",
+        "stock": "Stock",
+        "taxRate": "Tax rate",
+        "variant": "Variant"
+      }
+    },
+    "taxRate": {
+      "ambiguous": "product has several candidate rates - resolve which one is right in the shop",
+      "inherited": "inherited from the product",
+      "none": "No tax rate",
+      "override": "variant override",
+      "productHasNone": "product has none either"
+    },
+    "toggleDetails": "Toggle details for {variant}"
+  }
+}

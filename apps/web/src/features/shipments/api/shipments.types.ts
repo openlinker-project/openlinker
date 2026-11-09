@@ -8,7 +8,9 @@
  * @module apps/web/src/features/shipments/api
  */
 
+import { getMessages } from '../../../shared/i18n';
 import type { OrderSummary } from '../../../shared/types/order-summary.types';
+import { labelGetters } from '../lib/label-getters';
 
 /**
  * Maximum page size accepted by `GET /shipments` (backend `@Max(100)` on the
@@ -69,10 +71,10 @@ export type DeliveryIntent = (typeof DELIVERY_INTENT_VALUES)[number];
  * string>` (not `Partial<>`) so a new intent fails type-check until labelled —
  * same discipline as `SHIPPING_METHOD_LABEL`.
  */
-export const DELIVERY_INTENT_LABEL: Record<DeliveryIntent, string> = {
-  pickup_point: 'Pickup point',
-  address: 'Doorstep address',
-};
+export const DELIVERY_INTENT_LABEL: Record<DeliveryIntent, string> = labelGetters(
+  DELIVERY_INTENT_VALUES,
+  () => getMessages('shipments').shipmentsTypes.deliveryIntents,
+);
 
 /**
  * Operator-readable label per shipping method. Used by the `/shipments`
@@ -80,12 +82,10 @@ export const DELIVERY_INTENT_LABEL: Record<DeliveryIntent, string> = {
  * enum values. `Record<ShippingMethod, string>` (not `Partial<>`) so a new
  * method addition fails type-check until the label is supplied.
  */
-export const SHIPPING_METHOD_LABEL: Record<ShippingMethod, string> = {
-  paczkomat: 'Paczkomat',
-  kurier: 'Kurier',
-  pickup: 'Pickup point',
-  omp: 'OMP-fulfilled',
-};
+export const SHIPPING_METHOD_LABEL: Record<ShippingMethod, string> = labelGetters(
+  SHIPPING_METHOD_VALUES,
+  () => getMessages('shipments').shipmentsTypes.shippingMethods,
+);
 
 /**
  * Mirrors the API's REDACTED_ERROR_MESSAGE (apps/api/src/shipping/http/dto/shipment-response.dto.ts).
@@ -211,11 +211,10 @@ export type WaybillRelayFailureReason = (typeof WAYBILL_RELAY_FAILURE_REASON_VAL
  * `Partial<>`) so a new BE member fails type-check until labelled — the same
  * FE↔BE drift discipline as `SHIPPING_METHOD_LABEL`.
  */
-export const WAYBILL_RELAY_REASON_LABEL: Record<WaybillRelayFailureReason, string> = {
-  rejected: 'the channel refused the update',
-  'adapter-unresolved': 'the connection could not be reached',
-  threw: 'the order participants could not be resolved',
-};
+export const WAYBILL_RELAY_REASON_LABEL: Record<WaybillRelayFailureReason, string> = labelGetters(
+  WAYBILL_RELAY_FAILURE_REASON_VALUES,
+  () => getMessages('shipments').shipmentsTypes.waybillRelayReasons,
+);
 
 /**
  * Known carrier-of-record vocabulary (#769) — mirrors `KnownCarrierValues` in

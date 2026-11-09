@@ -18,7 +18,7 @@
 import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import type { PackerSummary } from '../../users';
@@ -151,7 +151,7 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
     }
   }
 
-  const disabledTitle = props.demoReadOnly ? DEMO_READ_ONLY_ACTION_MESSAGE : undefined;
+  const disabledTitle = props.demoReadOnly ? demoReadOnlyActionMessage() : undefined;
 
   return (
     <div className="oms-onboarding__stack">

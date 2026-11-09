@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../../shared/api/api-error';
 import { describeDeclineError, readBlockedTrigger } from './decline-error';
-import { RETURN_DECLINE_ERROR_COPY } from './return-detail.copy';
+import { getMessages } from '../../../shared/i18n';
+
+const RETURN_DECLINE_ERROR_COPY = getMessages('returns').detail.declineError;
 
 describe('readBlockedTrigger', () => {
   it('should read the trigger from the error body', () => {

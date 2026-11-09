@@ -47,6 +47,12 @@
  */
 import { useEffect, useState, type ReactElement } from 'react';
 
+import {
+  interpolate,
+  useMessages,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -62,7 +68,7 @@ import { useUpdateSourcingRuleMutation } from '../hooks/use-update-sourcing-rule
 import { resolveSplitCeiling } from '../lib/sourcing-rule-ceiling';
 import { describeSourcingRuleError } from '../lib/sourcing-rule-conflict';
 import { resolveSourcingRuleStatus } from '../lib/sourcing-rule-status';
-import { sourcingAfterActionLabel, sourcingRuleNameLabel } from '../lib/sourcing-rule.copy';
+import { sourcingAfterActionLabel, sourcingRuleNameLabel } from '../lib/sourcing-rule-labels';
 import { AFTER_ACTION_PERMISSIVENESS } from '../lib/sourcing-rule-vocabulary';
 
 export interface SourcingRuleDeleteDialogProps {
@@ -92,17 +98,21 @@ export interface SourcingRuleDeleteDialogProps {
  *   answers 400. This is the arm an operator is most likely to reach, since a
  *   rule that has not started is exactly the kind you change your mind about.
  */
-function retireUnavailableReason(rule: SourcingRule, now: Date): string | null {
+function retireUnavailableReason(
+  rule: SourcingRule,
+  now: Date,
+  copy: ResolvedCopy<Messages['oms-core']>['sourcingRuleDeleteDialog']
+): string | null {
   const { status } = resolveSourcingRuleStatus(rule, now);
 
   if (status === 'unrecognised') {
-    return 'This rule cannot be retired because this version of OpenLinker no longer recognises it - it is already being ignored. Deleting is the only way to remove it.';
+    return copy.retireUnrecognised;
   }
   if (status === 'retired') {
-    return 'This rule is already retired, so it is not being evaluated. Deleting removes it and its history for good.';
+    return copy.retireRetired;
   }
   if (status === 'scheduled') {
-    return 'This rule has not started yet, so there is nothing to retire: it is not deciding any orders, and an end date before its start date is refused. Delete it, or change its start date in Edit.';
+    return copy.retireScheduled;
   }
   return null;
 }
@@ -116,6 +126,7 @@ export function SourcingRuleDeleteDialog({
   onDone,
   now = new Date(),
 }: SourcingRuleDeleteDialogProps): ReactElement | null {
+  const copy = useMessages('oms-core').sourcingRuleDeleteDialog;
   const deleteMutation = useDeleteSourcingRuleMutation();
   const retireMutation = useUpdateSourcingRuleMutation();
   const [action, setAction] = useState<'delete' | 'retire' | null>(null);
@@ -139,7 +150,7 @@ export function SourcingRuleDeleteDialog({
   const removalLoosens =
     AFTER_ACTION_PERMISSIVENESS[ceilingAfter] > AFTER_ACTION_PERMISSIVENESS[ceilingBefore];
 
-  const retireBlockedReason = retireUnavailableReason(rule, now);
+  const retireBlockedReason = retireUnavailableReason(rule, now, copy);
   const error = deleteMutation.error ?? retireMutation.error;
   const isPending = deleteMutation.isPending || retireMutation.isPending;
 
@@ -171,9 +182,9 @@ export function SourcingRuleDeleteDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent aria-describedby="sourcing-rule-delete-description">
-        <DialogTitle>Delete &ldquo;{label}&rdquo;?</DialogTitle>
+        <DialogTitle>{interpolate(copy.title, { label })}</DialogTitle>
         <DialogDescription id="sourcing-rule-delete-description">
-          Every rule below it moves up one step.
+          {copy.description}
         </DialogDescription>
 
         <div className="dialog__body">
@@ -181,25 +192,22 @@ export function SourcingRuleDeleteDialog({
             <Alert tone="error">
               {describeSourcingRuleError(
                 error,
-                action === 'retire' ? 'The rule could not be retired.' : 'The rule could not be deleted.'
+                action === 'retire' ? copy.retireFailed : copy.deleteFailed
               )}
             </Alert>
           ) : null}
 
           {removalLoosens ? (
             <Alert tone="warning">
-              Removing this rule lifts your only limit on splitting: orders could start splitting
-              more than they do today (up to {sourcingAfterActionLabel(ceilingAfter)}). No other
-              active rule currently prevents that. Retiring has the same effect as deleting here,
-              because a retired rule is not evaluated either.
+              {interpolate(copy.removalLoosens, {
+                ceiling: sourcingAfterActionLabel(ceilingAfter),
+              })}
             </Alert>
           ) : null}
 
           <p className="muted-text">
-            This deletes the rule for good, including its history.
-            {retireBlockedReason === null
-              ? ' If you just want to stop using it, retire it instead — it stays on the list, keeps its history, and can coexist with a replacement.'
-              : ''}
+            {copy.deletesForGood}
+            {retireBlockedReason === null ? <> {copy.retireInsteadHint}</> : null}
           </p>
 
           {retireBlockedReason === null ? null : (
@@ -214,15 +222,15 @@ export function SourcingRuleDeleteDialog({
         <DialogFooter className={retireBlockedReason === null ? 'dialog__footer--split' : ''}>
           {retireBlockedReason === null ? (
             <Button tone="secondary" disabled={isPending} onClick={() => void run('retire')}>
-              {retireMutation.isPending ? 'Retiring…' : 'Retire instead'}
+              {retireMutation.isPending ? copy.retiring : copy.retireInstead}
             </Button>
           ) : null}
           <span className="dialog__footer-group">
             <Button tone="secondary" disabled={isPending} onClick={() => onOpenChange(false)}>
-              Cancel
+              {copy.cancel}
             </Button>
             <Button tone="danger" disabled={isPending} onClick={() => void run('delete')}>
-              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+              {deleteMutation.isPending ? copy.deleting : copy.delete}
             </Button>
           </span>
         </DialogFooter>

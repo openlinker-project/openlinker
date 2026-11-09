@@ -21,6 +21,7 @@
 import type { SalesDocumentConditionInput } from '../api/sales-document-rules.types';
 import type { SalesDocumentKind } from '../api/sales-documents.types';
 import { describeSalesDocumentCondition } from './describe-sales-document-condition';
+import { getBcp47Locale, getLocale, getMessages, interpolate } from '../../../shared/i18n';
 
 export interface SalesDocumentRuleDraftDescription {
   readonly conditions: readonly SalesDocumentConditionInput[];
@@ -33,29 +34,40 @@ export interface SalesDocumentRuleDraftDescription {
   readonly effectiveTo: string;
 }
 
-const DOCUMENT_KIND_LABEL: Record<string, string> = {
-  invoice: 'an invoice',
-  'fiscal-receipt': 'a receipt',
-};
-
 export function describeSalesDocumentRuleDraft(
   draft: SalesDocumentRuleDraftDescription,
 ): string {
-  const when =
-    draft.conditions.length === 0
-      ? 'every order'
-      : `an order where ${draft.conditions.map(describeSalesDocumentCondition).join(' and ')}`;
+  const copy = getMessages('sales-documents').ruleDraft;
 
   // An unrecognised kind prints the raw value rather than being dropped: the
   // union is open-world (ADR-041 decision 10), and silently omitting the
   // document from the sentence would make the readback claim less than the
   // rule does.
-  const kind = DOCUMENT_KIND_LABEL[draft.documentKind] ?? `a ${draft.documentKind}`;
-  const where = draft.connectionName ?? '(no integration selected)';
-  const window =
-    draft.effectiveTo === ''
-      ? `from ${draft.effectiveFrom} onwards`
-      : `between ${draft.effectiveFrom} and ${draft.effectiveTo}`;
+  const kind =
+    draft.documentKind === 'invoice'
+      ? copy.kind.invoice
+      : draft.documentKind === 'fiscal-receipt'
+        ? copy.kind.receipt
+        : interpolate(copy.kind.other, { kind: draft.documentKind });
+  const where = draft.connectionName ?? copy.noConnection;
+  const conditions = new Intl.ListFormat(getBcp47Locale(getLocale()), { type: 'conjunction' }).format(
+    draft.conditions.map(describeSalesDocumentCondition),
+  );
+  const open = draft.effectiveTo === '';
+  const template =
+    draft.conditions.length === 0
+      ? open
+        ? copy.everyOrderOpen
+        : copy.everyOrderBetween
+      : open
+        ? copy.conditionsOpen
+        : copy.conditionsBetween;
 
-  return `${when} gets ${kind} through ${where}, ${window}.`;
+  return interpolate(template, {
+    conditions,
+    kind,
+    where,
+    from: draft.effectiveFrom,
+    to: draft.effectiveTo,
+  });
 }

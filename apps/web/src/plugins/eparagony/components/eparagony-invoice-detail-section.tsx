@@ -36,7 +36,7 @@
  * @module plugins/eparagony/components
  */
 import type { ReactElement } from 'react';
-import { useTranslation } from '../../../shared/i18n';
+import { useEparagonyMessages } from '../messages';
 import { Alert } from '../../../shared/ui/alert';
 import { isSafeHttpUrl } from '../../../shared/lib/is-safe-http-url';
 import type { InvoiceDetailSectionProps } from '../../../shared/plugins';
@@ -45,7 +45,7 @@ import { regCardToneFor } from '../../../features/invoicing';
 export function EparagonyInvoiceDetailSection({
   invoice,
 }: InvoiceDetailSectionProps): ReactElement | null {
-  const { t } = useTranslation();
+  const copy = useEparagonyMessages().eparagonyInvoiceDetailSection;
 
   // The issued document, legally effective from issuance rather than from
   // clearance for this provider, so the link is offered in the waiting state
@@ -60,30 +60,23 @@ export function EparagonyInvoiceDetailSection({
   return (
     <section className={`invoice-detail-section reg-card ${tone}`.trim()}>
       <h4 className="invoice-detail-section__title">
-        {t('eparagony.invoice.detail.title', 'Provider document')}
+        {copy.title}
       </h4>
 
       {awaitingSubmission ? (
         <Alert
           tone="info"
           data-testid="clearance-cannot-retry"
-          title={t(
-            'eparagony.invoice.detail.cannotRetryTitle',
-            'Waiting on the provider - OpenLinker cannot push this',
-          )}
+          title={copy.cannotRetryTitle}
         >
-          {t(
-            'eparagony.invoice.detail.cannotRetryBody',
-            "The provider's API has no call that triggers or re-triggers submission. " +
-              'The document is with them, and only they can move it on.',
-          )}
+          {copy.cannotRetryBody}
         </Alert>
       ) : null}
 
       {visualisationUrl !== null ? (
         <>
           <div className="reg-card__summary">
-            <span>{t('eparagony.invoice.detail.visualisation', 'Invoice visualisation')}</span>
+            <span>{copy.visualisation}</span>
             <a
               href={visualisationUrl}
               target="_blank"
@@ -93,19 +86,13 @@ export function EparagonyInvoiceDetailSection({
               // Names what opens, because "Open" alone is meaningless in a
               // screen reader's link list, and names the VISUALISATION so
               // the accessible name does not promise a PDF either.
-              aria-label={t(
-                'eparagony.invoice.detail.visualisationAria',
-                'Open the invoice visualisation (opens in a new tab)',
-              )}
+              aria-label={copy.visualisationAria}
             >
-              {t('eparagony.invoice.detail.open', 'Open')}
+              {copy.open}
             </a>
           </div>
           <p className="text-muted reg-card__note">
-            {t(
-              'eparagony.invoice.detail.visualisationNote',
-              'An HTML view published by the provider, not a PDF.',
-            )}
+            {copy.visualisationNote}
           </p>
         </>
       ) : null}

@@ -524,7 +524,7 @@ describe('BulkEditModal', () => {
     expect(baseOverride.overrides?.productCardId).toBe('card-B');
   });
 
-  it('renders a manual category-id input instead of the tree picker when the destination cannot browse', () => {
+  it('renders a manual category-id input named after the destination when it cannot browse', () => {
     renderWithProviders(
       <BulkEditModal
         open
@@ -538,7 +538,29 @@ describe('BulkEditModal', () => {
       />,
     );
 
+    // The label names the platform whose category IDs the field takes - here
+    // the destination's own, since the Allegro fixture declares no other source.
     expect(screen.getByLabelText('Allegro category ID')).toBeInTheDocument();
+  });
+
+  it('names the borrowed taxonomy in the manual category label, not the destination (#1045)', () => {
+    // Erli takes Allegro category IDs (its plugin declares categoryIdSource), so
+    // the operator must be told to look up an Allegro ID, not an Erli one.
+    renderWithProviders(
+      <BulkEditModal
+        open
+        onOpenChange={() => undefined}
+        row={makeRow()}
+        connection={erliConnection}
+        canBrowseCategories={false}
+        currency="PLN"
+        defaults={DEFAULTS}
+        onSave={() => undefined}
+      />,
+    );
+
+    expect(screen.getByLabelText('Allegro category ID')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Erli category ID')).not.toBeInTheDocument();
   });
 
   it('omits a blank category from the saved base override so the backend resolves it at submit (#1096)', async () => {
@@ -980,7 +1002,7 @@ describe('BulkEditModal', () => {
           onSave={() => undefined}
         />,
       );
-      expect(screen.getByText('category not set')).toBeInTheDocument();
+      expect(screen.getByText('Category not set')).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('radio', { name: /Shared base/ }));
       fireEvent.change(screen.getByLabelText('Allegro category ID'), {
@@ -988,9 +1010,9 @@ describe('BulkEditModal', () => {
       });
       fireEvent.click(screen.getByRole('radio', { name: /Rozmiar: M/ }));
 
-      expect(screen.queryByText('category not set')).not.toBeInTheDocument();
+      expect(screen.queryByText('Category not set')).not.toBeInTheDocument();
       // The cause is still true - only its consequence went away.
-      expect(screen.getByText('no catalog match')).toBeInTheDocument();
+      expect(screen.getByText('No catalog match')).toBeInTheDocument();
     });
 
     // #4003: a plugin blocker used to fall to the nameless "needs attention".
@@ -1025,8 +1047,8 @@ describe('BulkEditModal', () => {
         ),
       ).toBeInTheDocument();
       // An id no descriptor knows still says which check it is.
-      expect(screen.getByText('needs attention: acme:unknown-check')).toBeInTheDocument();
-      expect(screen.queryByText('needs attention')).not.toBeInTheDocument();
+      expect(screen.getByText('Needs attention: acme:unknown-check')).toBeInTheDocument();
+      expect(screen.queryByText('Needs attention')).not.toBeInTheDocument();
     });
 
     it('shows the variant category without expanding the disclosure (#2240)', () => {

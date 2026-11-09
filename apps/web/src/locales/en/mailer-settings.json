@@ -1,0 +1,64 @@
+{
+  "mailerSettingsDialog": {
+    "cancel": "Cancel",
+    "clearErrorTitle": "Could not clear the password",
+    "clearPassword": "Clear stored password",
+    "clearedToastDescription": "The server falls back to env or none until a new password is set.",
+    "clearedToastTitle": "SMTP password cleared",
+    "clearing": "Clearing…",
+    "description": "Choose how outbound mail is sent. The SMTP password is write-only - it is never returned by the API.",
+    "fromDescription": "Also accepts a display name, e.g. \"OpenLinker <orders@example.com>\".",
+    "fromLabel": "From address",
+    "fromPlaceholder": "orders@example.com",
+    "hostLabel": "SMTP host",
+    "hostPlaceholder": "smtp.example.com",
+    "passwordConfigured": "Password configured. Leave blank to keep it, or enter a new value to rotate it.",
+    "passwordLabel": "SMTP password",
+    "passwordNotSet": "No password set. Enter a value to configure one.",
+    "passwordPlaceholder": "Leave blank to keep current password",
+    "portLabel": "SMTP port",
+    "portPlaceholder": "587",
+    "save": "Save changes",
+    "saveErrorTitle": "Could not save mailer settings",
+    "savedToastDescription": "Outbound mail will use the updated configuration.",
+    "savedToastTitle": "Mailer settings saved",
+    "saving": "Saving…",
+    "secureLabel": "Use implicit TLS (leave unchecked for STARTTLS/plain)",
+    "title": "Edit mailer settings",
+    "transport": {
+      "console": "Console (log only, no email sent)",
+      "smtp": "SMTP"
+    },
+    "transportLabel": "Transport",
+    "unknownError": "Unknown error"
+  },
+  "mailerSettingsFormSchema": {
+    "fromInvalid": "Enter a valid email address, optionally with a display name (e.g. \"OpenLinker <noreply@example.com>\")",
+    "fromRequired": "From address is required for SMTP transport",
+    "fromTooLong": "From address is too long (max {max} characters)",
+    "hostRequired": "Host is required for SMTP transport",
+    "hostTooLong": "Host is too long (max {max} characters)",
+    "passwordTooLong": "Password is too long (max {max} characters)",
+    "portRange": "Port must be an integer between {min} and {max}",
+    "portRequired": "Port is required for SMTP transport"
+  },
+  "mailerSettingsTile": {
+    "adminOnly": "Admin only",
+    "configured": "Configured",
+    "edit": "Edit",
+    "eyebrow": "Outbound mail",
+    "fromLabel": "From address",
+    "hostLabel": "Host",
+    "loadError": "Could not load mailer settings: {message}",
+    "loading": "Loading mailer settings…",
+    "notSet": "Not set",
+    "passwordLabel": "SMTP password",
+    "portLabel": "Port",
+    "title": "Mailer",
+    "transport": {
+      "console": "Console",
+      "smtp": "SMTP"
+    },
+    "transportLabel": "Transport"
+  }
+}

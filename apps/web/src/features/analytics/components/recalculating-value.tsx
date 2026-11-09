@@ -11,15 +11,17 @@
  * @module apps/web/src/features/analytics/components
  */
 import type { ReactElement } from 'react';
+import { useMessages } from '../../../shared/i18n';
 
 export function RecalculatingValue(): ReactElement {
+  const copy = useMessages('analytics').recalculatingValue;
   return (
     <span
       className="text-muted"
       role="status"
-      title="A currency recalculation is running in the background for this range — figures will update once it completes. Safe to navigate away."
+      title={copy.title}
     >
-      Recalculating…
+      {copy.label}
     </span>
   );
 }

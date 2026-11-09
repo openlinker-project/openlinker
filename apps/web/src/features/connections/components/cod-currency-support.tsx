@@ -8,6 +8,7 @@
  *
  * @module features/connections/components
  */
+import { useMessages } from '../../../shared/i18n';
 import type { ReactElement } from 'react';
 
 import { codCurrenciesForPlatform } from '../../../shared/shipping/cod-currencies';
@@ -18,13 +19,14 @@ interface CodCurrencySupportProps {
 }
 
 export function CodCurrencySupport({ platformType }: CodCurrencySupportProps): ReactElement {
+  const copy = useMessages('connections').codCurrencySupport;
   return (
     <div className="form-field">
-      <span className="form-field__label">Supported COD currencies</span>
+      <span className="form-field__label">{copy.label}</span>
       <p className="form-field__description">
-        The carrier collects cash on delivery in these currencies.
+        {copy.description}
       </p>
-      <div className="cod-currency-support" role="list" aria-label="Supported COD currencies">
+      <div className="cod-currency-support" role="list" aria-label={copy.label}>
         {codCurrenciesForPlatform(platformType).map((currency) => (
           <span key={currency} className="cod-currency-support__chip" role="listitem">
             {currency}

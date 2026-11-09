@@ -1,4 +1,5 @@
 import { useState, type ReactElement } from 'react';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { Link } from 'react-router-dom';
 import type { Connection } from '../api/connections.types';
 import { canArchive, hasMissingCredentials } from '../api/connections.types';
@@ -15,7 +16,7 @@ import { Alert } from '../../../shared/ui/alert';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { captureDemoEvent } from '../../demo';
 
@@ -26,6 +27,8 @@ interface ConnectionActionsPanelProps {
 }
 
 export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionActionsPanelProps): ReactElement {
+  const copy = useMessages('connections').connectionActionsPanel;
+  const format = useFormat();
   const disableConnection = useDisableConnectionMutation();
   const testConnection = useTestConnectionMutation();
   const { showToast } = useToast();
@@ -50,18 +53,20 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
       showToast({
         tone: result.success ? 'success' : 'error',
         title: result.success
-          ? `Connection OK (${result.latencyMs}ms)`
-          : 'Connection test failed',
-        description: result.success
-          ? result.message
-          : `${result.message}${
-              result.status !== undefined ? ` (HTTP ${result.status})` : ''
-            }`,
+          ? interpolate(copy.test.ok, { ms: format.number(result.latencyMs) })
+          : copy.test.failed,
+        description:
+          result.success || result.status === undefined
+            ? result.message
+            : interpolate(copy.test.failedWithStatus, {
+                message: result.message,
+                status: result.status,
+              }),
       });
     } catch (error) {
       showToast({
         tone: 'error',
-        title: 'Connection test failed',
+        title: copy.test.failed,
         description: (error as Error).message,
       });
     }
@@ -72,25 +77,24 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
       <div className="panel panel--dense">
         <div className="panel__header">
           <div>
-            <p className="eyebrow">Operator</p>
-            <h3 className="section-title">Actions</h3>
+            <p className="eyebrow">{copy.eyebrow}</p>
+            <h3 className="section-title">{copy.title}</h3>
           </div>
-          <span className="panel__meta">Manage connection</span>
+          <span className="panel__meta">{copy.meta}</span>
         </div>
         <div className="action-list">
           {write.visible ? (
             <div className="action-list__item">
               <div>
-                <strong>Restore connection</strong>
+                <strong>{copy.restore.title}</strong>
                 <p className="muted-text">
-                  Bring it back as a disabled connection. Its credentials were deleted when it was
-                  archived, so you will need to enter them again before enabling it.
+                  {copy.restore.help}
                 </p>
               </div>
               <RestoreConnectionButton connection={connection} />
             </div>
           ) : (
-            <p className="muted-text">This connection is archived.</p>
+            <p className="muted-text">{copy.archived}</p>
           )}
         </div>
       </div>
@@ -101,14 +105,14 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
     <div className="panel panel--dense">
       <div className="panel__header">
         <div>
-          <p className="eyebrow">Operator</p>
-          <h3 className="section-title">Actions</h3>
+          <p className="eyebrow">{copy.eyebrow}</p>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
-        <span className="panel__meta">Manage connection</span>
+        <span className="panel__meta">{copy.meta}</span>
       </div>
 
       {disableConnection.error ? (
-        <Alert tone="error" title="Unable to disable connection">
+        <Alert tone="error" title={copy.disable.errorTitle}>
           {disableConnection.error.message}
         </Alert>
       ) : null}
@@ -117,15 +121,14 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
         {write.visible ? (
           <div className="action-list__item">
             <div>
-              <strong>Test connection</strong>
+              <strong>{copy.test.title}</strong>
               <p className="muted-text">
-                Probe the integration using a cheap authenticated call. Verifies the base URL and
-                stored credentials.
+                {copy.test.help}
               </p>
             </div>
             <ReadOnlyLock
               active={write.demoReadOnly}
-              message={DEMO_READ_ONLY_ACTION_MESSAGE}
+              message={demoReadOnlyActionMessage()}
               onLockedClick={() =>
                 captureDemoEvent('demo_connection_test_attempted', { platform: connection.platformType })
               }
@@ -135,7 +138,7 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
                 disabled={testConnection.isPending || write.demoReadOnly}
                 onClick={() => void handleTest()}
               >
-                {testConnection.isPending ? 'Testing...' : 'Test connection'}
+                {testConnection.isPending ? copy.test.testing : copy.test.title}
               </Button>
             </ReadOnlyLock>
           </div>
@@ -145,10 +148,10 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
           <div className="action-list__item">
             <div>
               <strong>{settingsLink.label}</strong>
-              <p className="muted-text">This connection is configured from its own settings page.</p>
+              <p className="muted-text">{copy.settings.help}</p>
             </div>
             <Link className="button button--secondary" to={settingsLink.to}>
-              Open
+              {copy.settings.open}
             </Link>
           </div>
         ) : null}
@@ -156,11 +159,11 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
         {write.visible && !settingsLink ? (
           <div className="action-list__item">
             <div>
-              <strong>Edit connection</strong>
-              <p className="muted-text">Update name, config, or adapter settings.</p>
+              <strong>{copy.edit.title}</strong>
+              <p className="muted-text">{copy.edit.help}</p>
             </div>
             <Link className="button button--secondary" to={`/connections/${connection.id}/edit`}>
-              Edit
+              {copy.edit.action}
             </Link>
           </div>
         ) : null}
@@ -172,10 +175,9 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
         {sync.visible && !isDisabled ? (
           <div className="action-list__item">
             <div>
-              <strong>Trigger sync</strong>
+              <strong>{copy.sync.title}</strong>
               <p className="muted-text">
-                Manually enqueue a sync job for this connection. Choose job type and payload in the
-                next step.
+                {copy.sync.help}
               </p>
             </div>
             <Button
@@ -185,7 +187,7 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
                 setIsTriggerDialogOpen(true);
               }}
             >
-              Trigger sync…
+              {copy.sync.action}
             </Button>
           </div>
         ) : null}
@@ -193,16 +195,16 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
         {write.visible && !isDisabled ? (
           <div className="action-list__item">
             <div>
-              <strong>Disable connection</strong>
-              <p className="muted-text">Stop all sync activity for this connection. This can be reversed by re-enabling.</p>
+              <strong>{copy.disable.title}</strong>
+              <p className="muted-text">{copy.disable.help}</p>
             </div>
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
               <Button
                 tone="danger"
                 onClick={() => setIsDisableDialogOpen(true)}
                 disabled={disableConnection.isPending || write.demoReadOnly}
               >
-                {disableConnection.isPending ? 'Disabling...' : 'Disable'}
+                {disableConnection.isPending ? copy.disable.disabling : copy.disable.action}
               </Button>
             </ReadOnlyLock>
           </div>
@@ -211,10 +213,9 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
         {write.visible && isDisabled && !hasMissingCredentials(connection) ? (
           <div className="action-list__item">
             <div>
-              <strong>Enable connection</strong>
+              <strong>{copy.enable.title}</strong>
               <p className="muted-text">
-                Resume sync activity for this connection. Scheduled jobs start again on the next
-                run.
+                {copy.enable.help}
               </p>
             </div>
             <EnableConnectionButton connection={connection} />
@@ -224,11 +225,8 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
         {write.visible && isDisabled && !canArchive(connection) ? (
           <div className="action-list__item">
             <div>
-              <strong>Archive connection</strong>
-              <p className="muted-text">
-                This connection can be disabled but not archived. It holds settings other parts of
-                OpenLinker rely on, so it stays on your connections list.
-              </p>
+              <strong>{copy.archive.title}</strong>
+              <p className="muted-text">{copy.archive.notArchivable}</p>
             </div>
           </div>
         ) : null}
@@ -236,11 +234,8 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
         {write.visible && canArchive(connection) ? (
           <div className="action-list__item">
             <div>
-              <strong>Archive connection</strong>
-              <p className="muted-text">
-                Hide it from your connections and delete its saved credentials. Mappings and history
-                are kept, and it can be restored later.
-              </p>
+              <strong>{copy.archive.title}</strong>
+              <p className="muted-text">{copy.archive.help}</p>
             </div>
             <ArchiveConnectionButton connection={connection} />
           </div>
@@ -257,10 +252,10 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
       <ConfirmDialog
         open={isDisableDialogOpen}
         onOpenChange={setIsDisableDialogOpen}
-        title="Disable this connection?"
-        description={`This will stop all sync activity for "${connection.name}". You can re-enable it later.`}
-        confirmLabel="Disable connection"
-        cancelLabel="Keep active"
+        title={copy.disable.dialogTitle}
+        description={interpolate(copy.disable.dialogDescription, { name: connection.name })}
+        confirmLabel={copy.disable.title}
+        cancelLabel={copy.disable.cancel}
         tone="danger"
         onConfirm={async () => {
           try {
@@ -268,8 +263,8 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
             setIsDisableDialogOpen(false);
             showToast({
               tone: 'success',
-              title: 'Connection disabled',
-              description: `"${connection.name}" has been disabled.`,
+              title: copy.disable.doneTitle,
+              description: interpolate(copy.disable.doneDescription, { name: connection.name }),
             });
           } catch {
             setIsDisableDialogOpen(false);

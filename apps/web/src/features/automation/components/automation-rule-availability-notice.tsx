@@ -20,7 +20,7 @@
  */
 import type { ReactElement } from 'react';
 import { Alert } from '../../../shared/ui/alert';
-import { AUTOMATION_AVAILABILITY_COPY } from '../lib/automation.copy';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { readRuleAvailability } from '../lib/action-availability';
 import type { AutomationActionAvailabilityEntry } from '../api/automation.types';
 
@@ -28,14 +28,22 @@ interface AutomationRuleAvailabilityNoticeProps {
   actionAvailability: AutomationActionAvailabilityEntry[];
 }
 
-function reasonList(entries: AutomationActionAvailabilityEntry[]): ReactElement {
+function reasonList(
+  entries: AutomationActionAvailabilityEntry[],
+  reasonSuffix: string,
+): ReactElement {
   return (
     <ul className="automation-rule-notice__reasons">
       {entries.map((entry) => (
         <li key={entry.action}>
           <span className="mono-text">{entry.action}</span>
           {/* Verbatim, never paraphrased — see `action-availability.ts`. */}
-          {entry.reason === null ? null : <span> — {entry.reason}</span>}
+          {entry.reason === null ? null : (
+            <span>
+              {' '}
+              {interpolate(reasonSuffix, { reason: entry.reason })}
+            </span>
+          )}
         </li>
       ))}
     </ul>
@@ -45,26 +53,31 @@ function reasonList(entries: AutomationActionAvailabilityEntry[]): ReactElement 
 export function AutomationRuleAvailabilityNotice({
   actionAvailability,
 }: AutomationRuleAvailabilityNoticeProps): ReactElement | null {
+  const copy = useMessages('automation').availability;
+  const format = useFormat();
   const verdict = readRuleAvailability(actionAvailability);
   if (verdict.blocked.length === 0 && verdict.partial.length === 0) return null;
 
   return (
     <>
       {verdict.blocked.length > 0 ? (
-        <Alert tone="error" title={AUTOMATION_AVAILABILITY_COPY.ruleBlockedTitle}>
+        <Alert tone="error" title={copy.ruleBlockedTitle}>
           <p>
             {verdict.blocked.length === 1
-              ? AUTOMATION_AVAILABILITY_COPY.ruleBlockedOne(verdict.blocked[0].action)
-              : AUTOMATION_AVAILABILITY_COPY.ruleBlockedMany(
-                  verdict.blocked.map((entry) => entry.action).join(', '),
-                )}
+              ? interpolate(copy.ruleBlockedOne, { action: verdict.blocked[0].action })
+              : interpolate(copy.ruleBlockedMany, {
+                  actions: format.list(
+                    verdict.blocked.map((entry) => entry.action),
+                    'unit',
+                  ),
+                })}
           </p>
-          {reasonList(verdict.blocked)}
+          {reasonList(verdict.blocked, copy.reasonSuffix)}
         </Alert>
       ) : null}
       {verdict.partial.length > 0 ? (
-        <Alert tone="warning" title={AUTOMATION_AVAILABILITY_COPY.rulePartialTitle}>
-          {reasonList(verdict.partial)}
+        <Alert tone="warning" title={copy.rulePartialTitle}>
+          {reasonList(verdict.partial, copy.reasonSuffix)}
         </Alert>
       ) : null}
     </>
