@@ -102,6 +102,8 @@ export interface OrderListFilterState {
   omsAttention: boolean;
   /** #3961 - only orders the shop changed after packing started, waiting for a decision. */
   shopChanged: boolean;
+  /** #3963 - `?paymentNotSent=true`. */
+  paymentNotSent: boolean;
   /** `true` packed only, `false` not packed yet, `undefined` any. */
   packed?: boolean;
   openReturn: boolean;
@@ -301,6 +303,18 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
         s.shopChanged ? ctx.copy.listFilters.chips.shopChangedValue : null
       ),
   },
+  paymentNotSent: {
+    param: 'paymentNotSent',
+    group: 'exceptions',
+    analyticsName: 'payment_not_sent',
+    isActive: (s) => s.paymentNotSent,
+    chip: (s, ctx) =>
+      single(
+        'paymentNotSent',
+        ctx.copy.paymentWriteback.chipLabel,
+        s.paymentNotSent ? ctx.copy.paymentWriteback.chipValue : null,
+      ),
+  },
   waitingInOpenLinker: {
     param: 'waiting',
     group: 'exceptions',
@@ -423,6 +437,7 @@ export function parseOrderListFilterState(params: URLSearchParams): OrderListFil
     holdReason: isHoldReason(rawHold) ? rawHold : undefined,
     omsAttention: params.get('attention') === 'true',
     shopChanged: params.get('attentionReason') === SHOP_CHANGED_REASON,
+    paymentNotSent: params.get('paymentNotSent') === 'true',
     packed: rawPacked === 'true' ? true : rawPacked === 'false' ? false : undefined,
     openReturn: params.get('openReturn') === 'true',
     hasBuyerNote: params.get('hasBuyerNote') === 'true',
@@ -446,6 +461,7 @@ export const ORDER_TOGGLE_FILTER_VALUES = {
   taxRateConflict: 'conflict',
   attention: 'true',
   attentionReason: 'source-change-unapplied',
+  paymentNotSent: 'true',
   openReturn: 'true',
   hasBuyerNote: 'true',
 } as const satisfies Partial<Record<NarrowingOrderFilterKey, string>>;
@@ -476,6 +492,7 @@ export function toOrderQueryFilters(
     holdReason: state.holdReason,
     attention: state.omsAttention ? true : undefined,
     attentionReason: state.shopChanged ? SHOP_CHANGED_REASON : undefined,
+    paymentNotSent: state.paymentNotSent ? true : undefined,
     packed: state.packed,
     search: derived.search || undefined,
     openReturn: state.openReturn ? true : undefined,

@@ -103,6 +103,7 @@ export {
   MarketplaceOfferQuantityReconcilePayloadV1,
   MarketplaceOfferRefreshSnapshotPayloadV1,
   MarketplaceOfferStockRestorePayloadV1,
+  OrderPaymentWritebackPushPayloadV1,
   MarketplaceOfferPauseStalePayloadV1,
   MarketplaceOfferPauseStaleSweepPayloadV1,
   MarketplaceShipmentStatusSyncPayloadV1,

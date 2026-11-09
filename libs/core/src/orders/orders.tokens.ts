@@ -22,6 +22,8 @@ export const ORDER_PROVISIONING_RESUME_SERVICE_TOKEN = Symbol(
 export const ORDER_ROUTING_RETRY_SERVICE_TOKEN = Symbol('IOrderRoutingRetryService');
 export const ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN = Symbol('IOrderItemRefResolverService');
 export const ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN = Symbol('IOrderLifecycleRelayService');
+// Mirrors a late payment onto destination shops (#3963).
+export const PAYMENT_WRITEBACK_SERVICE_TOKEN = Symbol('IPaymentWritebackService');
 // Per-order reporting-currency stamp (#2125, ADR-040).
 export const ORDER_FX_STAMP_SERVICE_TOKEN = Symbol('IOrderFxStampService');
 export const ORDER_FX_RESTATEMENT_SERVICE_TOKEN = Symbol('IOrderFxRestatementService');

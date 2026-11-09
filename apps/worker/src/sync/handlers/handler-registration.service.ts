@@ -31,6 +31,7 @@ import { MarketplaceOffersSyncHandler } from './marketplace-offers-sync.handler'
 import { MarketplaceOfferStatusSyncHandler } from './marketplace-offer-status-sync.handler';
 import { MarketplaceOfferRefreshSnapshotHandler } from './marketplace-offer-refresh-snapshot.handler';
 import { MarketplaceOfferStockRestoreHandler } from './marketplace-offer-stock-restore.handler';
+import { OrderPaymentWritebackHandler } from './order-payment-writeback.handler';
 import { MarketplaceOfferPauseStaleHandler } from './marketplace-offer-pause-stale.handler';
 import { MarketplaceOfferPauseStaleSweepHandler } from './marketplace-offer-pause-stale-sweep.handler';
 import { SubiektBridgeReachabilitySweepHandler } from './subiekt-bridge-reachability-sweep.handler';
@@ -147,7 +148,9 @@ export class HandlerRegistrationService implements OnModuleInit {
     // Appended LAST so the positional construction in the registration spec
     // keeps every earlier handler in its slot.
     private readonly marketplaceSourceFulfillmentStatusSyncHandler: MarketplaceSourceFulfillmentStatusSyncHandler,
-    private readonly fulfillmentRoutingReapSweepHandler: FulfillmentRoutingReapSweepHandler
+    private readonly fulfillmentRoutingReapSweepHandler: FulfillmentRoutingReapSweepHandler,
+    // #3963. Appended LAST, like every handler above, for the positional spec.
+    private readonly orderPaymentWritebackHandler: OrderPaymentWritebackHandler
   ) {}
 
   onModuleInit(): void {
@@ -308,6 +311,14 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'marketplace.offer.stockRestore',
       this.marketplaceOfferStockRestoreHandler,
+      'realtime'
+    );
+    // #3963: a shop showing a paid order as unpaid holds up the warehouse, so
+    // the cost of starvation is a buyer's parcel - `realtime`, like the
+    // stock restore above.
+    this.handlerRegistry.register(
+      'order.paymentWriteback.push',
+      this.orderPaymentWritebackHandler,
       'realtime'
     );
     this.handlerRegistry.register(

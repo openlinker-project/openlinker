@@ -312,6 +312,18 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   @IsIn(AuthorityAttentionReasonValues)
   attentionReason?: AuthorityAttentionReason;
 
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Orders where a shop still shows the order unpaid and OpenLinker gave up sending the payment ' +
+      '(#3963). Composes with `health` like `attention`. true keeps only those, false keeps the ' +
+      'rest, omitted does not filter.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  paymentNotSent?: boolean;
+
   @ApiPropertyOptional({ default: 0, minimum: 0, description: 'Number of items to skip' })
   @IsOptional()
   @Type(() => Number)

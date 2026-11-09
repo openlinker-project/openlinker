@@ -28,6 +28,7 @@ import { FulfillmentDispatchRelayService } from './application/services/fulfillm
 import { OrderCancellationEffectsService } from './application/services/order-cancellation-effects.service';
 import { OrderSourceAmendmentEffectsService } from './application/services/order-source-amendment-effects.service';
 import { OrderLifecycleRelayService } from './application/services/order-lifecycle-relay.service';
+import { PaymentWritebackService } from './application/services/payment-writeback.service';
 import { OrderRecordRepository } from './infrastructure/persistence/repositories/order-record.repository';
 import { OrderLineItemRepository } from './infrastructure/persistence/repositories/order-line-item.repository';
 import { OrderRecordOrmEntity } from './infrastructure/persistence/entities/order-record.orm-entity';
@@ -76,6 +77,7 @@ import {
   INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN,
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
+  PAYMENT_WRITEBACK_SERVICE_TOKEN,
   ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
   ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
   ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
@@ -210,6 +212,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderDestinationRetryService,
     OrderProvisioningResumeService,
     OrderLifecycleRelayService,
+    PaymentWritebackService,
     OrderCancellationEffectsService,
     OrderSourceAmendmentEffectsService,
     FulfillmentDispatchRelayService,
@@ -299,6 +302,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     {
       provide: ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
       useExisting: OrderLifecycleRelayService,
+    },
+    {
+      provide: PAYMENT_WRITEBACK_SERVICE_TOKEN,
+      useExisting: PaymentWritebackService,
     },
     {
       provide: ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
@@ -441,6 +448,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // resolve it by token (#3549).
     INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN,
     ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
+    // Exported for the worker's writeback handler and the API's retry routes (#3963).
+    PAYMENT_WRITEBACK_SERVICE_TOKEN,
     ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
     // Exported so the API's "Check again" / "Keep as is" routes reach it (#3961).
     ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,

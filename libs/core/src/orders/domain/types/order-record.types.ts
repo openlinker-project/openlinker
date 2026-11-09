@@ -180,6 +180,12 @@ export interface OrderHealthSummary {
    */
   omsAttention: number;
   /**
+   * Orders where a shop still shows the order unpaid and OpenLinker gave up
+   * sending the payment (#3963). Its own axis, never a health bucket - the
+   * same shape as `salesDocumentBlocked`.
+   */
+  paymentNotSent: number;
+  /**
    * When the OLDEST still-held order was held (#2254), or `null` when nothing
    * is held. Lets the blocked chip carry an age inside its label rather than
    * adding a third dotted badge to a row that already has two SLA badges.
@@ -421,6 +427,12 @@ export interface OrderRecordFilters {
    * `undefined` means "don't filter".
    */
   omsAttentionReason?: AuthorityAttentionReason;
+  /**
+   * Restrict to orders where a shop still shows the order unpaid and
+   * OpenLinker gave up sending the payment (#3963). ANDed with `health`, never
+   * folded into it. Reads the denormalised `paymentWritebackProblem` flag.
+   */
+  paymentNotSent?: boolean;
   /**
    * Restrict to orders whose OPEN hold carries this reason (#2342).
    * `undefined` means "don't filter".

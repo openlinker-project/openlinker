@@ -115,6 +115,9 @@ import type {
 import {
   ISalesDocumentViewService,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+  PAYMENT_WRITEBACK_SERVICE_TOKEN,
+  isPaymentWritebackProblem,
+  type IPaymentWritebackService,
 } from '@openlinker/core/orders';
 import {
   INVOICE_SERVICE_TOKEN,
@@ -209,6 +212,11 @@ import { CountOrdersQueryDto } from './dto/count-orders-query.dto';
 import { PaginatedTotalResponseDto } from '../../common/dto/paginated-total-response.dto';
 import { OrderHealthSummaryQueryDto } from './dto/order-health-summary-query.dto';
 import { OrderHealthSummaryResponseDto } from './dto/order-health-summary-response.dto';
+import {
+  PaymentWritebackActionRequestDto,
+  PaymentWritebackHandledResponseDto,
+  PaymentWritebackRetryResponseDto,
+} from './dto/payment-writeback-action.dto';
 import { OrderSlaSummaryResponseDto } from './dto/order-sla-summary-response.dto';
 import { OrderSlaSummaryQueryDto } from './dto/order-sla-summary-query.dto';
 import { OrderLifecyclePhaseSummaryResponseDto } from './dto/order-lifecycle-phase-summary-response.dto';
@@ -287,6 +295,7 @@ export function toOrderRecordFilters(
     taxRateConflict: query.taxRateConflict,
     omsAttention: query.attention,
     omsAttentionReason: query.attentionReason,
+    paymentNotSent: query.paymentNotSent,
     activeHoldReason: query.hold,
     packed: query.packed,
     hasBuyerNote: query.hasBuyerNote,
@@ -469,7 +478,10 @@ export class OrdersController {
     @Inject(ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN)
     private readonly sourceAmendmentEffects: IOrderSourceAmendmentEffectsService,
     @Inject(FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN)
-    private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier
+    private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier,
+    // #3963 - Retry and Mark as handled for a payment that did not reach a shop.
+    @Inject(PAYMENT_WRITEBACK_SERVICE_TOKEN)
+    private readonly paymentWriteback: IPaymentWritebackService
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -957,6 +969,41 @@ export class OrdersController {
       }
       throw error;
     }
+  }
+
+  @Roles('admin', 'operator')
+  @Post('payment-writeback/retry')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'Send a late payment to the shops again',
+    description:
+      'For each order, re-opens every shop whose payment write failed for good or is still ' +
+      'retrying, and queues a fresh write (#3963). Shops that were never meant to get one ' +
+      '(cash on delivery, cancelled, refunded, left to the operator) are left alone.',
+  })
+  @ApiResponse({ status: 202, type: PaymentWritebackRetryResponseDto })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async retryPaymentWriteback(
+    @Body() body: PaymentWritebackActionRequestDto
+  ): Promise<PaymentWritebackRetryResponseDto> {
+    return { enqueued: await this.paymentWriteback.retry(body.internalOrderIds) };
+  }
+
+  @Roles('admin', 'operator')
+  @Post('payment-writeback/handled')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Mark a payment that did not reach a shop as handled',
+    description:
+      'The operator updated the payment in the shop by hand (#3963). Removes the orders from the ' +
+      '"payment not sent to shop" filter; nothing is written to any shop.',
+  })
+  @ApiResponse({ status: 200, type: PaymentWritebackHandledResponseDto })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async markPaymentWritebackHandled(
+    @Body() body: PaymentWritebackActionRequestDto
+  ): Promise<PaymentWritebackHandledResponseDto> {
+    return { updated: await this.paymentWriteback.markHandled(body.internalOrderIds) };
   }
 
   @Roles('admin', 'operator')
@@ -1884,6 +1931,16 @@ export class OrdersController {
       // the list AND the detail page, and the entity's own getter has already
       // coerced the jsonb through core's guard, so an unrecognised value is
       // absent here rather than unrenderable downstream.
+      // #3963 - on the shared toDto: the list marker and the detail panel read it.
+      paymentWriteback: Object.entries(order.paymentWriteback).map(([destinationConnectionId, entry]) => ({
+        destinationConnectionId,
+        state: entry.state,
+        at: entry.at,
+        attempts: entry.attempts,
+        reason: entry.reason ?? null,
+        detail: entry.detail ?? null,
+        problem: isPaymentWritebackProblem(entry),
+      })),
       omsAttention: order.omsAttention.map((entry) => ({
         producer: entry.producer,
         reason: entry.reason,
