@@ -35,7 +35,7 @@
     "fiscalReceipt": "Fiscal receipt",
     "fulfilment": "Fulfilment",
     "fulfilmentTask": "Fulfilment task",
-    "insights": "Insights",
+    "insights": "System health",
     "inventoryLocations": "Inventory locations",
     "invoice": "Invoice",
     "invoices": "Invoices",
@@ -108,6 +108,7 @@
   "userMenu": {
     "accountMenu": "Account menu for {username}",
     "density": "Density",
+    "language": "Language",
     "signOut": "Sign out",
     "theme": "Theme"
   }

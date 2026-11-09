@@ -8,7 +8,8 @@
  * Sidebar nav items carry count badges fed by `useNavCounts` (fanning out
  * existing list queries). The topbar hosts breadcrumbs, a live ⌘K command
  * palette trigger (CommandPaletteTrigger → CommandPaletteProvider, #333),
- * an alerts trigger, and a user chip dropdown with the theme toggle.
+ * an alerts trigger, and a user chip dropdown with the theme, density and
+ * language controls.
  *
  * @module shared/ui
  */
@@ -31,6 +32,7 @@ import { useOmsRoutingState } from '../features/fulfillment-authority';
 import type { NavGroup } from './nav-registry.types';
 import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
 import { Button } from '../shared/ui/button';
+import { LanguageMenuList, restoreFocusAfterLanguageChange } from '../features/language';
 import { EnvironmentBadge } from '../shared/ui/environment-badge';
 import {
   DropdownMenu,
@@ -41,7 +43,6 @@ import {
   DropdownMenuTrigger,
 } from '../shared/ui/dropdown-menu';
 import { ThemePicker } from '../features/appearance';
-import { LanguageSwitch } from '../features/language';
 import { DensityToggle, useDensity } from '../shared/ui/density-toggle';
 import { useToast } from '../shared/ui/toast-provider';
 import { CommandPaletteProvider, useCommandPalette } from './command-palette-provider';
@@ -183,7 +184,6 @@ function WorkspaceFooter({
     <div className="shell-workspace">
       <div className="shell-workspace__header">
         <strong className="shell-workspace__name">{copy.shell.organization}</strong>
-        <LanguageSwitch placement="up" />
       </div>
       {demoMode ? (
         <a
@@ -230,11 +230,17 @@ interface UserChipProps {
 
 function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
   const copy = useMessages('app').userMenu;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  // A language picked in this menu remounts the app; focus comes back here.
+  useEffect(() => {
+    restoreFocusAfterLanguageChange(triggerRef.current);
+  }, []);
   const themeCopy = useMessages('ui').theme;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
+          ref={triggerRef}
           type="button"
           className="shell-user-chip"
           aria-label={interpolate(copy.accountMenu, { username })}
@@ -251,6 +257,10 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
           {email ? <div className="shell-user-chip__menu-email">{email}</div> : null}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <div className="shell-user-chip__menu-section">
+          <div className="shell-user-chip__menu-section-label">{copy.language}</div>
+          <LanguageMenuList />
+        </div>
         <div className="shell-user-chip__menu-section">
           <div className="shell-user-chip__menu-section-label">{themeCopy.label}</div>
           <ThemePicker />
