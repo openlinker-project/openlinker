@@ -567,7 +567,7 @@ export class ProductsController {
       unlistedOnConnectionIds: this.parseUnlistedOn(query.unlistedOn),
       sourceConnectionId: query.connectionId,
       hideFullyStale: query.hideFullyStale,
-      bundlesOnly: query.bundles,
+      bundleFilter: query.bundles,
     };
   }
 

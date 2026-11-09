@@ -1022,7 +1022,7 @@ describe('ProductsController', () => {
         taxRateState: 'missing' as const,
         connectionId: '11111111-1111-4111-8111-111111111111',
         hideFullyStale: true,
-        bundles: true,
+        bundles: 'only' as const,
         unlistedOn: '22222222-2222-4222-8222-222222222222',
       };
 
@@ -1044,7 +1044,7 @@ describe('ProductsController', () => {
         stock: 'low',
         taxRateState: 'missing',
         hideFullyStale: true,
-        bundlesOnly: true,
+        bundleFilter: 'only',
         unlistedOnConnectionIds: ['22222222-2222-4222-8222-222222222222'],
       });
       expect(counted).toEqual({ total: 42 });

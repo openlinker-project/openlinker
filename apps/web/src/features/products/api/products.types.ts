@@ -191,8 +191,8 @@ export interface ProductFilters {
   taxRateState?: 'missing' | 'not-checked' | 'known';
   /** Hide products where every variant is deleted at the master (#1599/#2447). */
   hideFullyStale?: boolean;
-  /** Only bundles: products with a variant that has a current bundle definition (#3624). */
-  bundles?: boolean;
+  /** Bundle filter (#3624): only bundles, or everything except bundles. Absent = both. */
+  bundles?: 'only' | 'exclude';
 }
 
 /**

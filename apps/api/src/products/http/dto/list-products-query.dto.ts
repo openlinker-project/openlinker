@@ -21,11 +21,13 @@ import {
 import { Type, Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ProductBundleFilterValues,
   ProductListSortDirectionValues,
   ProductListSortFieldValues,
   ProductStockFilterValues,
 } from '@openlinker/core/products';
 import {
+  ProductBundleFilter,
   ProductListSortDirection,
   ProductListSortField,
   ProductStockFilter,
@@ -108,14 +110,17 @@ export class ListProductsQueryDto extends PaginatedReadQueryDto {
   hideFullyStale?: boolean;
 
   @ApiPropertyOptional({
-    type: Boolean,
+    enum: ProductBundleFilterValues,
     description:
-      'Show only bundles (#3624): products with a variant that has a current bundle definition.',
+      'Bundle filter (#3624): `only` shows products with a variant that has a current bundle ' +
+      'definition, `exclude` hides them. `true` is an alias for `only`; `false` or absent applies no filter.',
   })
   @IsOptional()
-  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
-  @IsBoolean()
-  bundles?: boolean;
+  @Transform(({ value }): unknown =>
+    value === 'true' ? 'only' : value === 'false' ? undefined : value
+  )
+  @IsIn(ProductBundleFilterValues)
+  bundles?: ProductBundleFilter;
 
   @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100, description: 'Page size' })
   @IsOptional()
