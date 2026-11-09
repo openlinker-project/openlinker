@@ -1,7 +1,7 @@
 import { OAuthCodeExchangeException } from '@openlinker/core/integrations';
 
 import { ShopifyNetworkError } from '../../../domain/exceptions/shopify-network.error';
-import { SHOPIFY_REQUIRED_SCOPES } from '../../../shopify.constants';
+import { SHOPIFY_OPTIONAL_SCOPES, SHOPIFY_REQUIRED_SCOPES } from '../../../shopify.constants';
 import { ShopifyOAuthCompletionAdapter } from '../shopify-oauth-completion.adapter';
 
 const CONFIG = { storeDomain: 'my-shop.myshopify.com' };
@@ -22,7 +22,7 @@ describe('ShopifyOAuthCompletionAdapter', () => {
     );
 
     expect(`${url.origin}${url.pathname}`).toBe('https://my-shop.myshopify.com/admin/oauth/authorize');
-    expect(url.searchParams.get('scope')).toBe(SHOPIFY_REQUIRED_SCOPES.join(','));
+    expect(url.searchParams.get('scope')).toBe([...SHOPIFY_REQUIRED_SCOPES, ...SHOPIFY_OPTIONAL_SCOPES].join(','));
     expect(url.searchParams.get('state')).toBe('st');
     expect(url.searchParams.has('grant_options[]')).toBe(false);
   });

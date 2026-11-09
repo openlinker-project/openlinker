@@ -361,7 +361,7 @@ export class ShopifyProductMasterAdapter
     if (first === undefined) {
       return { kind: 'unknown', reason: 'unreadable', detail: 'the product has no variant' };
     }
-    return this.taxRates.read({ variantId: first.id, productUpdatedAt: raw.updatedAt });
+    return this.taxRates.read({ variantId: first.id });
   }
 
   // ─── Not supported ─────────────────────────────────────────────────────────

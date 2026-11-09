@@ -63,7 +63,7 @@ paged API, per-instance memo, prefetch that never throws).
 | `ProductVariant.price` / `compareAtPrice` | `Money!` / `Money` | none |
 | weight | `inventoryItem.measurement.weight { value unit }`, `WeightUnit` GRAMS/KILOGRAMS/OUNCES/POUNDS; `variant.weight` removed | none |
 | search | `updated_at` on `products` and `productVariants` | none |
-| `draftOrderCalculate` | scope `write_draft_orders`; "without creating it"; `taxLines` on `CalculatedDraftOrder` only (per line item and shipping line, aggregated), `CalculatedDraftOrderLineItem` has only `taxable` | one variant per call, no shipping line, so every tax line belongs to that variant; `write_draft_orders` added to the required scopes |
+| `draftOrderCalculate` | scope `write_draft_orders`; "without creating it"; `taxLines` on `CalculatedDraftOrder` only (per line item and shipping line, aggregated), `CalculatedDraftOrderLineItem` has only `taxable` | one variant per call, no shipping line, so every tax line belongs to that variant; `write_draft_orders` is an OPTIONAL scope (tech review): without it the catalogue syncs and rates stay not checked |
 
 ## 3. Design
 
@@ -133,8 +133,9 @@ quantity 1, and a shipping address in the sales country (config
 when it is the shop's own country). One tax line -> `resolved` with its
 `ratePercentage` as the code and the country; no tax line -> `unknown /
 not-configured`; several lines -> `unknown / ambiguous`; unreadable answer ->
-`unknown / unreadable`; transport errors throw. Cached per product + country
-+ product `updatedAt`, so a product change re-reads it. Product-keyed
+`unknown / unreadable` (also for a missing `write_draft_orders`); transport errors
+throw. Cached per variant + country for a day - not per `updatedAt`, which a
+stock change bumps (L-M2, tech review). Product-keyed
 (`readsTaxRatePerVariant` absent).
 
 ## 4. Steps
@@ -150,8 +151,8 @@ not-configured`; several lines -> `unknown / ambiguous`; unreadable answer ->
 
 ## 5. Validation
 
-Hexagonal: everything in the plugin; core untouched. No `any`. Scopes: any new
-scope (`draftOrderCalculate`) added to `SHOPIFY_REQUIRED_SCOPES`.
+Hexagonal: everything in the plugin; core untouched. No `any`. Scopes: the one
+new scope (`write_draft_orders`) is optional, in `SHOPIFY_OPTIONAL_SCOPES`.
 
 ## Decisions (user, 2026-11-09)
 

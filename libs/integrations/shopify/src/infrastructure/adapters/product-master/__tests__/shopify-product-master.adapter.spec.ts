@@ -1,6 +1,7 @@
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 
+import { ShopifyGraphqlError } from '../../../../domain/exceptions/shopify-graphql.error';
 import { ShopifyNotMappedException } from '../../../../domain/exceptions/shopify-not-mapped.exception';
 import { ShopifyNotSupportedException } from '../../../../domain/exceptions/shopify-not-supported.exception';
 import type { ShopifyProduct } from '../../../../domain/types/shopify-api.types';
@@ -168,13 +169,76 @@ describe('ShopifyProductMasterAdapter', () => {
     await expect(
       build(query, mapping(), taxes as unknown as ShopifyTaxRateReader).readProductTaxRate({ productId: 'ol_7' }),
     ).resolves.toMatchObject({ code: '23' });
-    expect(taxes.read).toHaveBeenCalledWith({
-      variantId: 'gid://shopify/ProductVariant/71',
-      productUpdatedAt: '2026-11-02T00:00:00Z',
-    });
+    expect(taxes.read).toHaveBeenCalledWith({ variantId: 'gid://shopify/ProductVariant/71' });
   });
 
   it('should refuse product writes', async () => {
     await expect(build(jest.fn()).deleteProduct('ol_7')).rejects.toBeInstanceOf(ShopifyNotSupportedException);
+  });
+
+  it('should list the shop category directory without the gift cards categories', async () => {
+    const mugs = {
+      id: 'gid://shopify/TaxonomyCategory/hg-1',
+      name: 'Mugs',
+      fullName: 'Home > Mugs',
+      ancestorIds: ['gid://shopify/TaxonomyCategory/hg'],
+    };
+    const giftCards = {
+      id: 'gid://shopify/TaxonomyCategory/gc-1',
+      name: 'Gift Cards',
+      fullName: 'Gifts > Gift Cards',
+      ancestorIds: ['gid://shopify/TaxonomyCategory/gc'],
+    };
+    const query = jest.fn().mockResolvedValue({
+      products: {
+        nodes: [
+          { isGiftCard: false, category: mugs },
+          { isGiftCard: true, category: giftCards },
+          { isGiftCard: false, category: null },
+        ],
+        pageInfo: { hasNextPage: false, endCursor: null },
+      },
+    });
+
+    const directory = await build(query).getCategories();
+
+    expect(directory.map((c) => c.id)).toEqual(['hg', 'hg-1']);
+  });
+
+  it('should leave archived products out of a read by external ids', async () => {
+    const query = jest.fn().mockResolvedValue({ nodes: [product('1'), product('2', { status: 'ARCHIVED' }), null] });
+
+    const products = await build(query).getProducts({ externalIds: ['1', '2', '3'] });
+
+    expect(products.map((p) => p.id)).toEqual(['ol_1']);
+  });
+
+  it('should search by title and leave gift cards and archived products out', async () => {
+    const query = jest.fn().mockResolvedValue({
+      products: {
+        nodes: [product('1'), product('2', { isGiftCard: true }), product('3', { status: 'ARCHIVED' })],
+        pageInfo: { hasNextPage: false, endCursor: null },
+      },
+    });
+
+    const products = await build(query).searchProducts('mug "x"');
+
+    expect(products.map((p) => p.id)).toEqual(['ol_1']);
+    expect((query.mock.calls[0] as unknown[])[1]).toMatchObject({ query: 'title:*mug x*' });
+  });
+
+  it('should halve the bulk batch when Shopify refuses its cost, and still read every product', async () => {
+    const tooExpensive = new ShopifyGraphqlError(['MAX_COST_EXCEEDED'], ['Query cost exceeds 1000']);
+    const query = jest.fn((_document: string, variables: { ids: string[] }) =>
+      variables.ids.length > 5
+        ? Promise.reject(tooExpensive)
+        : Promise.resolve({ nodes: variables.ids.map((gid) => product(gid.split('/').pop() ?? '')) }),
+    );
+    const ids = Array.from({ length: 12 }, (_, i) => String(i + 1));
+
+    const products = await build(query).getProducts({ externalIds: ids });
+
+    expect(products).toHaveLength(12);
+    expect(query.mock.calls.map((call) => call[1].ids.length)).toEqual([10, 5, 5, 2]);
   });
 });

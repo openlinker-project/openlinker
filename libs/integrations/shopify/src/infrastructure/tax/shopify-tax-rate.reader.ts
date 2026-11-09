@@ -16,8 +16,11 @@
  *   - several tax lines (a US state + county split, for one) -> `unknown /
  *     ambiguous`: one code cannot state them;
  *   - Shopify refused the calculation or answered nothing -> `unknown /
- *     unreadable`, which core does not persist.
- * A transport, auth or scope failure throws, as the capability contract asks.
+ *     unreadable`, which core does not persist;
+ *   - the app lacks the optional `write_draft_orders` scope -> `unknown /
+ *     unreadable` too, warned once per resolution: the catalogue syncs and
+ *     every rate stays "not checked" until the scope is granted.
+ * A transport or auth failure throws, as the capability contract asks.
  *
  * Tax lines come per order, not per line item, which is why the read sends ONE
  * variant and no shipping line: every tax line then belongs to that variant.
@@ -26,16 +29,21 @@
  * country. When it is the shop's own country the shop's province and zip go
  * with it, which a US calculation needs.
  *
- * Cached per variant, country and the product's `updatedAt` for a day, so a
- * sweep does not spend a calculation per product per tick, while an edit to
- * the product reads the rate again. A change to a collection tax override does
- * not touch the product, so it is seen when the day runs out.
+ * Cached per variant and country for a day, so a sweep does not spend a
+ * calculation (a mutation, 10 cost points) per product per tick. The key holds
+ * no `updatedAt` on purpose: a stock change bumps the product's and the
+ * variant's `updatedAt` (L-M2), which would re-run the calculation on every
+ * stock change, while the things that do change the rate - a collection tax
+ * override, the variant's `taxable` flag - are seen when the day runs out.
  *
  * @module libs/integrations/shopify/src/infrastructure/tax
  */
 import type { TaxRateResolution } from '@openlinker/core/products';
 import type { CachePort } from '@openlinker/shared';
 
+import { Logger } from '@openlinker/shared/logging';
+
+import { ShopifyGraphqlError } from '../../domain/exceptions/shopify-graphql.error';
 import { ShopifyUserErrorsException } from '../../domain/exceptions/shopify-user-errors.exception';
 import { fromShopifyGid, toShopifyGid } from '../../domain/policies/shopify-gid.policy';
 import type { ShopifyTaxLine } from '../../domain/types/shopify-api.types';
@@ -55,8 +63,6 @@ interface DraftOrderTaxPayload {
 export interface ShopifyTaxRateRead {
   /** Variant GID or numeric id. */
   readonly variantId: string;
-  /** The product's `updatedAt`, part of the cache key. */
-  readonly productUpdatedAt: string;
 }
 
 /** A percentage as a rate code: `23` -> `'23'`, `5.5` -> `'5.5'`. */
@@ -74,6 +80,9 @@ export function shopifyRateCode(line: ShopifyTaxLine): string | null {
 }
 
 export class ShopifyTaxRateReader {
+  private readonly logger = new Logger(ShopifyTaxRateReader.name);
+  private scopeWarned = false;
+
   constructor(
     private readonly client: ShopifyGraphqlClient,
     private readonly shopContext: ShopifyShopContextProvider,
@@ -93,9 +102,7 @@ export class ShopifyTaxRateReader {
       };
     }
 
-    const key =
-      `shopify:tax-rate:${this.connectionId}:${fromShopifyGid(input.variantId)}:` +
-      `${country}:${input.productUpdatedAt}`;
+    const key = `shopify:tax-rate:${this.connectionId}:${fromShopifyGid(input.variantId)}:${country}`;
     const cached = await this.readCache(key);
     if (cached !== null) {
       return cached;
@@ -132,6 +139,16 @@ export class ShopifyTaxRateReader {
     } catch (error) {
       if (error instanceof ShopifyUserErrorsException) {
         return { kind: 'unknown', reason: 'unreadable', detail: error.message.slice(0, 200) };
+      }
+      if (error instanceof ShopifyGraphqlError && error.isAccessDenied()) {
+        if (!this.scopeWarned) {
+          this.scopeWarned = true;
+          this.logger.warn(
+            `Shopify tax rates are not read: the app lacks the optional write_draft_orders scope ` +
+              `(connection: ${this.connectionId})`,
+          );
+        }
+        return { kind: 'unknown', reason: 'unreadable', detail: 'the app lacks the write_draft_orders scope' };
       }
       throw error;
     }

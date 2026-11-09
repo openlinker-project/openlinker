@@ -1,5 +1,6 @@
 import type { CachePort } from '@openlinker/shared';
 
+import { ShopifyGraphqlError } from '../../../domain/exceptions/shopify-graphql.error';
 import type { ShopifyGraphqlClient } from '../../http/shopify-graphql-client';
 import { ShopifyIdPager, type ShopifyIdPagerSpec } from '../shopify-id-pager';
 
@@ -89,13 +90,26 @@ describe('ShopifyIdPager', () => {
     expect(second).toEqual(['8', '10', '11', '13', '14']);
   });
 
-  it('should walk from the start when the resumed cursor fails', async () => {
+  it('should walk from the start when Shopify rejects the resumed cursor', async () => {
     const graphql = catalogue(40);
-    const cache = memoryCache();
-    const pager = new ShopifyIdPager(graphql, cache, 'c1');
+    const pager = new ShopifyIdPager(graphql, memoryCache(), 'c1');
     await pager.window(SPEC, 0, 25);
-    graphql.query.mockImplementationOnce(() => Promise.reject(new Error('invalid cursor')));
+    graphql.query.mockImplementationOnce(() =>
+      Promise.reject(new ShopifyGraphqlError([''], ['Invalid cursor for current pagination sort.'])),
+    );
 
     await expect(pager.window(SPEC, 25, 5)).resolves.toEqual(['26', '27', '28', '29', '30']);
+  });
+
+  it('should let a throttle out instead of re-reading every page from the start', async () => {
+    const graphql = catalogue(40);
+    const pager = new ShopifyIdPager(graphql, memoryCache(), 'c1');
+    await pager.window(SPEC, 0, 25);
+    const throttled = new ShopifyGraphqlError(['THROTTLED'], ['Throttled']);
+    graphql.query.mockClear();
+    graphql.query.mockImplementationOnce(() => Promise.reject(throttled));
+
+    await expect(pager.window(SPEC, 25, 5)).rejects.toBe(throttled);
+    expect(graphql.query).toHaveBeenCalledTimes(1);
   });
 });

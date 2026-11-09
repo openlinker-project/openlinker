@@ -37,7 +37,6 @@ import type {
 import { OAuthCodeExchangeException } from '@openlinker/core/integrations';
 import type { FetchLike } from '@openlinker/shared/http';
 
-import { SHOPIFY_REQUIRED_SCOPES } from '../../shopify.constants';
 import { ShopifyApiError } from '../../domain/exceptions/shopify-api.error';
 import { ShopifyNetworkError } from '../../domain/exceptions/shopify-network.error';
 import {
@@ -46,7 +45,7 @@ import {
   parseShopifyConfig,
 } from '../../domain/policies/shopify-config.policy';
 import type { ShopifyCredentials } from '../../domain/types/shopify-credentials.types';
-import { findMissingShopifyScopes } from '../../domain/policies/shopify-scopes.policy';
+import { SHOPIFY_REQUESTED_SCOPES, findMissingShopifyScopes } from '../../domain/policies/shopify-scopes.policy';
 import { requestShopifyToken, shopifyAuthFetch } from '../http/shopify-token-endpoint';
 import { parseShopifyJson, readShopifyBody } from '../http/shopify-response-body';
 
@@ -63,7 +62,7 @@ export class ShopifyOAuthCompletionAdapter implements OAuthCompletionPort {
   buildAuthorizationUrl(input: BuildAuthorizationUrlInput): string {
     const url = new URL(`https://${this.readStoreDomain(input.config)}/admin/oauth/authorize`);
     url.searchParams.set('client_id', input.clientId);
-    url.searchParams.set('scope', SHOPIFY_REQUIRED_SCOPES.join(','));
+    url.searchParams.set('scope', SHOPIFY_REQUESTED_SCOPES.join(','));
     url.searchParams.set('redirect_uri', input.redirectUri);
     url.searchParams.set('state', input.state);
     return url.toString();

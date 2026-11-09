@@ -1,6 +1,7 @@
 import type { CachePort } from '@openlinker/shared';
 
 import { ShopifyApiError } from '../../../domain/exceptions/shopify-api.error';
+import { ShopifyGraphqlError } from '../../../domain/exceptions/shopify-graphql.error';
 import { ShopifyUserErrorsException } from '../../../domain/exceptions/shopify-user-errors.exception';
 import type { ShopifyShopAddress, ShopifyTaxLine } from '../../../domain/types/shopify-api.types';
 import type { ShopifyGraphqlClient } from '../../http/shopify-graphql-client';
@@ -8,7 +9,7 @@ import type { ShopifyShopContextProvider } from '../../shop-context/shopify-shop
 import { ShopifyTaxRateReader, shopifyRateCode } from '../shopify-tax-rate.reader';
 
 const PL_SHOP: ShopifyShopAddress = { countryCodeV2: 'PL', provinceCode: null, zip: '00-001' };
-const READ = { variantId: 'gid://shopify/ProductVariant/11', productUpdatedAt: '2026-11-02T00:00:00Z' };
+const READ = { variantId: 'gid://shopify/ProductVariant/11' };
 
 function shopContext(shopAddress: ShopifyShopAddress | null = PL_SHOP): ShopifyShopContextProvider {
   return { get: jest.fn().mockResolvedValue({ shopAddress }) } as unknown as ShopifyShopContextProvider;
@@ -105,7 +106,16 @@ describe('ShopifyTaxRateReader', () => {
     expect(graphql.mutate).not.toHaveBeenCalled();
   });
 
-  it('should serve a cached answer for the same variant, country and product version', async () => {
+  it('should answer unreadable, not throw, when the app lacks the optional scope', async () => {
+    const denied = new ShopifyGraphqlError(['ACCESS_DENIED'], ['Access denied for draftOrderCalculate field.']);
+
+    await expect(reader(client(denied)).read(READ)).resolves.toMatchObject({
+      kind: 'unknown',
+      reason: 'unreadable',
+    });
+  });
+
+  it('should serve a cached answer for the same variant and country, whatever moved on the product', async () => {
     const store = new Map<string, unknown>();
     const cache = {
       get: jest.fn((k: string) => Promise.resolve((store.get(k) ?? null) as never)),
@@ -120,7 +130,7 @@ describe('ShopifyTaxRateReader', () => {
 
     await taxes.read(READ);
     await taxes.read(READ);
-    await taxes.read({ ...READ, productUpdatedAt: '2026-11-03T00:00:00Z' });
+    await taxes.read({ variantId: 'gid://shopify/ProductVariant/12' });
 
     expect(graphql.mutate).toHaveBeenCalledTimes(2);
   });

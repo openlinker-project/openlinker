@@ -22,6 +22,7 @@
  */
 import type { CachePort } from '@openlinker/shared';
 
+import { ShopifyGraphqlError } from '../../domain/exceptions/shopify-graphql.error';
 import type { ShopifyConnection } from '../../domain/types/shopify-api.types';
 import type { ShopifyGraphqlClient } from '../http/shopify-graphql-client';
 
@@ -51,6 +52,21 @@ export interface ShopifyIdPagerSpec<N> {
   readonly idOf: (node: N) => string | null;
 }
 
+/**
+ * Shopify answers a cursor it does not accept with a GraphQL error on the
+ * document (no transport failure, no throttle, no auth code), so that shape is
+ * the one a stale checkpoint produces.
+ */
+function isRejectedCursor(error: unknown): boolean {
+  return (
+    error instanceof ShopifyGraphqlError &&
+    !error.isThrottled() &&
+    !error.isAccessDenied() &&
+    !error.isInvalidToken() &&
+    !error.isMaxCostExceeded()
+  );
+}
+
 export class ShopifyIdPager {
   constructor(
     private readonly client: ShopifyGraphqlClient,
@@ -67,9 +83,13 @@ export class ShopifyIdPager {
     if (checkpoint !== null && checkpoint.position <= offset) {
       try {
         return await this.walk(spec, key, checkpoint.position, checkpoint.cursor, offset, limit);
-      } catch {
-        // A stale cursor or any failure on the resumed walk: start over below.
-        // A real outage fails the walk from the start too, and surfaces there.
+      } catch (error) {
+        // Only a cursor Shopify no longer accepts starts over. A throttle, an
+        // auth failure or an outage would fail the walk from the start the same
+        // way, after paying for every page up to the checkpoint again.
+        if (!isRejectedCursor(error)) {
+          throw error;
+        }
       }
     }
     return this.walk(spec, key, 0, null, offset, limit);

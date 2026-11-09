@@ -32,9 +32,13 @@ must exist and be active, checked by the connection test), `unmanagedStockQuanti
 `salesCountryIso2` (optional, the country the catalogue's tax rate is computed for; the shop's own billing country
 when absent).
 
-Required app scopes: `SHOPIFY_REQUIRED_SCOPES` (the connection test lists any that are missing). `write_draft_orders`
-is there for the tax rate read only: `draftOrderCalculate` computes a rate without creating anything, but Shopify
-gates it behind that scope.
+App scopes: `SHOPIFY_REQUIRED_SCOPES` (the connection test fails when one is missing) and `SHOPIFY_OPTIONAL_SCOPES`
+(asked for at install; the connection test passes and names it when missing). The one optional scope is
+`write_draft_orders`, for the tax rate read only: `draftOrderCalculate` computes a rate without creating anything, but
+Shopify gates it behind that scope. Without it the catalogue syncs and every product's rate stays "not checked".
+
+`salesCountryIso2` is not on the setup form yet: set it in the connection's config (JSON) when the tax rate should be
+computed for a country other than the shop's own.
 
 The OAuth install is started from the web setup page (`/connections/new/shopify`) and lands on
 `/integrations/shopify/connect/callback`; register that URL as an allowed redirection URL on the app. The API checks
@@ -76,9 +80,13 @@ Read-only: product writes are refused (`ShopifyNotSupportedException`).
 - **Batched sweep** (`BulkProductReader`): `nodes(ids:)` warms a batch; enumeration resumes from a cursor checkpoint
   in the host cache instead of walking from the start on every window.
 - **Tax rate** (`ProductTaxRateReader`, L-T4): Shopify keeps no rate on a product, so it is computed with
-  `draftOrderCalculate` (one variant, quantity 1, an address in the sales country) and cached per variant, country
-  and product version for a day. One tax line is the rate; a non-taxable variant is `0`; no tax line, several tax
-  lines or a refused calculation is reported as unknown, never as zero.
+  `draftOrderCalculate` (one variant, quantity 1, an address in the sales country) and cached per variant and country
+  for a day. The cache key holds no `updatedAt`, because a stock change bumps it (L-M2) and would re-run the
+  calculation on every stock change. One tax line is the rate; a non-taxable variant is `0`; no tax line, several tax
+  lines, a refused calculation or a missing scope is reported as unknown, never as zero.
+- **Request budget.** A first sync costs about two requests per product (the product read and the tax calculation)
+  against the store's 240 requests a minute: about 8 minutes per 1000 products on top of the sweep. Later syncs read
+  the cached rate.
 - **Query cost.** One query may not exceed 1000 points and Shopify no longer publishes how a connection is costed,
   so a product reads its first 50 variants (one picture each) and pages the rest; batch reads start at 10 products
   and halve when Shopify answers `MAX_COST_EXCEEDED`.
@@ -88,10 +96,15 @@ Read-only: product writes are refused (`ShopifyNotSupportedException`).
 | Case | Decision |
 |---|---|
 | compareAtPrice (A05) | Not carried. `price` is what the buyer pays; `compareAtPrice` is the struck-through "was" price. |
-| DRAFT / ARCHIVED (A11) | ARCHIVED counts as removed from sale: left out of the enumeration, and a direct read raises `MasterProductNotFoundError`, so its offers are paused; back to ACTIVE, the next sync restores it. DRAFT and UNLISTED products sync normally. |
+| DRAFT / ARCHIVED (A11) | ARCHIVED counts as removed from sale: left out of the enumeration, and a direct read raises `MasterProductNotFoundError`, so its offers are paused; back to ACTIVE, the next sync restores it. DRAFT and UNLISTED products sync normally. The job list labels such a sync "deleted at the master" (`master_deleted`): core has one label for both. |
+| Non-taxable variant | `taxable: false` reads as the rate `0`, the shop's own "charge no tax" (the PrestaShop "No tax" precedent). Shopify does not tell 0% from exempt, so a Polish exempt (`zw`) product shows as `0`. |
 | Gift cards (A17) | Skipped: not a physical product and redeemable only at Shopify checkout. Left out of the enumeration, the delta pass and the category directory. |
 
 ## Known gaps
+
+- `defaultEnabledCapabilities` turns ProductMaster on for every new connection. One Shopify store is a master or a
+  publish target, never both (L-S2f): when ProductPublisher arrives, a publish-only connection must not get
+  ProductMaster by default, or the sweep imports the store's catalogue back.
 
 - `barcode` is deprecated in 2026-10 in favour of the `barcodes` connection; it still answers the first barcode and
   is used until the next API version.

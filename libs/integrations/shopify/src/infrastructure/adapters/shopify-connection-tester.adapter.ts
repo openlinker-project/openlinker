@@ -32,7 +32,10 @@ import { ShopifyApiError } from '../../domain/exceptions/shopify-api.error';
 import { ShopifyConfigException } from '../../domain/exceptions/shopify-config.exception';
 import { ShopifyGraphqlError } from '../../domain/exceptions/shopify-graphql.error';
 import { ShopifyNetworkError } from '../../domain/exceptions/shopify-network.error';
-import { findMissingShopifyScopes } from '../../domain/policies/shopify-scopes.policy';
+import {
+  findMissingOptionalShopifyScopes,
+  findMissingShopifyScopes,
+} from '../../domain/policies/shopify-scopes.policy';
 import { resolveShopifyRateLimitBucketKey } from '../../domain/policies/shopify-rate-limit-bucket.policy';
 import { buildShopifyClient, type ShopifyClientRuntime } from '../http/shopify-client.builder';
 import { ShopifyShopContextProvider } from '../shop-context/shopify-shop-context.provider';
@@ -63,6 +66,17 @@ export function describeShopifyTokenRefusal(grantError: string | null): string {
     default:
       return 'Shopify refused the token request - check the app client id and secret, and that the app is installed on the store';
   }
+}
+
+/** A passing test still names an optional scope the app lacks, and what it switches off. */
+function describeMissingOptionalScopes(missing: readonly string[]): string {
+  if (missing.length === 0) {
+    return '';
+  }
+  return (
+    `. The app lacks the optional scope ${missing.join(', ')}: product tax rates are not read ` +
+    'until it is granted'
+  );
 }
 
 export class ShopifyConnectionTesterAdapter implements ConnectionTesterPort {
@@ -97,9 +111,8 @@ export class ShopifyConnectionTesterAdapter implements ConnectionTesterPort {
         undefined,
       ).get();
       const scopes = await client.query<ScopesQuery>(SCOPES_QUERY);
-      const missing = findMissingShopifyScopes(
-        new Set(scopes.currentAppInstallation.accessScopes.map((s) => s.handle)),
-      );
+      const granted = new Set(scopes.currentAppInstallation.accessScopes.map((s) => s.handle));
+      const missing = findMissingShopifyScopes(granted);
       if (missing.length > 0) {
         return {
           success: false,
@@ -111,7 +124,8 @@ export class ShopifyConnectionTesterAdapter implements ConnectionTesterPort {
         success: true,
         message:
           `OK - ${context.shopName} (${context.currencyCode}, prices ` +
-          `${context.taxesIncluded ? 'include' : 'exclude'} tax, location ${context.locationName})`,
+          `${context.taxesIncluded ? 'include' : 'exclude'} tax, location ${context.locationName})` +
+          describeMissingOptionalScopes(findMissingOptionalShopifyScopes(granted)),
         latencyMs: elapsed(),
       };
     } catch (error) {
