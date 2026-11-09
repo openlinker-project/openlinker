@@ -159,12 +159,9 @@
         "stream": "Stream"
       },
       "description": "Background events that failed repeatedly and were recorded here instead of being retried forever. They cannot be replayed yet - investigate the raw fields below.",
-      "empty": {
-        "message": "Nothing dead-lettered.",
-        "title": "No poison entries"
-      },
       "errorTitle": "Unable to load poison stream entries",
       "loading": "Loading poison stream entries…",
+      "none": "None recorded",
       "pagination": {
         "next": "Next",
         "previous": "Previous",
@@ -173,7 +170,7 @@
       "retry": "Retry",
       "title": "Poison stream entries"
     },
-    "description": "Background processing visibility - filter by status, job type, or connection.",
+    "description": "Background work OpenLinker runs for your connections. Filter to find what stopped.",
     "empty": {
       "clearFilters": "Clear filters",
       "filtered": "No jobs match the current filters.",
@@ -181,16 +178,21 @@
       "title": "No jobs found"
     },
     "errorTitle": "Unable to load sync jobs",
+    "errorToggle": {
+      "showFull": "Show full error",
+      "showLess": "Show less"
+    },
     "eyebrow": "Diagnostics",
     "filters": {
       "allConnections": "All connections",
       "allJobTypes": "All job types",
       "allOutcomes": "All outcomes",
       "allStatuses": "All statuses",
-      "connection": "Filter by connection",
-      "jobType": "Filter by job type",
-      "outcome": "Filter by outcome",
-      "status": "Filter by status"
+      "connection": "Connection",
+      "group": "Filter sync jobs",
+      "jobType": "Job type",
+      "outcome": "Outcome",
+      "status": "Status"
     },
     "loading": "Loading sync jobs…",
     "outcomes": {
