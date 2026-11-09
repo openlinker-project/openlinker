@@ -76,7 +76,9 @@ export interface SyncAttemptJson {
 // `("placedAt" DESC NULLS LAST)`. TypeORM's `@Index` cannot express a sort order
 // and does not compare one, so the declaration here carries only the name and
 // column: it keeps a future `migration:generate` from dropping the index, and
-// gives the `synchronize`-built test schema an index of the same name.
+// gives the `synchronize`-built test schema an index of the same name. That
+// schema's index is therefore ASCENDING under this name: a migration-parity spec
+// on `order_records` must compare this index by name, not by definition.
 @Index('IDX_order_records_placedAt_desc', ['placedAt'])
 export class OrderRecordOrmEntity {
   @PrimaryColumn({ type: 'text' })

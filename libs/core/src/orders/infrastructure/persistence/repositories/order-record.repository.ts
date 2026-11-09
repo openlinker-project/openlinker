@@ -836,7 +836,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // SLA overdue OR at risk == not shipped with a deadline at or before the
     // at-risk cutoff - the union of `applySlaFilter`'s two arms.
     const slaLate = `${notShipped} AND rec."dispatchByAt" IS NOT NULL AND rec."dispatchByAt" <= :summarySlaCutoff`;
-    const dueSoon = OrderRecordRepository.DUE_BEFORE;
+    // Bound under its own name so a list-filter `:dueBefore` on a shared scope
+    // can never replace the summary's window.
+    const dueSoon = OrderRecordRepository.DUE_BEFORE.replace(':dueBefore', ':summaryDueBefore');
     const stuck = [
       OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED,
       OrderRecordRepository.HAS_OMS_ATTENTION,
@@ -860,46 +862,49 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .addSelect(`COUNT(*) FILTER (WHERE ${stuck})`, 'attention_stuck')
       .addSelect(`COUNT(*) FILTER (WHERE ${toHandle})`, 'attention_to_handle')
       .setParameters({
-        dueBefore: new Date(now.getTime() + DUE_WITHIN_WINDOW_MS),
+        summaryDueBefore: new Date(now.getTime() + DUE_WITHIN_WINDOW_MS),
         summarySlaCutoff: new Date(now.getTime() + SLA_AT_RISK_WINDOW_MS),
         ...(openReturnIds.length > 0 ? { summaryOpenReturnIds: openReturnIds } : {}),
       });
 
     OrderRecordRepository.applySummaryScope(qb, filters);
 
-    const raw = await qb.getRawOne<{
-      total: string;
-      source_deleted: string;
-      awaiting_mapping: string;
-      needs_attention: string;
-      synced: string;
-      awaiting_dispatch: string;
-      sales_document_blocked: string;
-      tax_rate_conflict: string;
-      oms_attention: string;
-      destination_routing_blocked: string;
-      waiting_in_openlinker: string;
-      waiting_in_openlinker_oldest_at: Date | null;
-      on_pack_bench: string;
-      sales_document_blocked_oldest_at: Date | null;
-      sales_document_issued_on_request: string;
-      open_return: string;
-      has_buyer_note: string;
-      due_within_24h: string;
-      attention_late_to_ship: string;
-      attention_stuck: string;
-      attention_to_handle: string;
-    }>();
-
     // #4025 - per-source counts with the source axis itself removed, so the
     // Source filter keeps a number beside every option while one is selected.
+    // Independent of the main aggregate, so the two scans run concurrently.
     const bySourceQb = this.repository
       .createQueryBuilder('rec')
       .select('rec."sourceConnectionId"', 'source_connection_id')
       .addSelect('COUNT(*)', 'count')
       .groupBy('rec."sourceConnectionId"');
     OrderRecordRepository.applySummaryScope(bySourceQb, { ...filters, sourceConnectionId: undefined });
-    const bySourceRows = await bySourceQb.getRawMany<{ source_connection_id: string; count: string }>();
+
+    const [raw, bySourceRows] = await Promise.all([
+      qb.getRawOne<{
+        total: string;
+        source_deleted: string;
+        awaiting_mapping: string;
+        needs_attention: string;
+        synced: string;
+        awaiting_dispatch: string;
+        sales_document_blocked: string;
+        tax_rate_conflict: string;
+        oms_attention: string;
+        destination_routing_blocked: string;
+        waiting_in_openlinker: string;
+        waiting_in_openlinker_oldest_at: Date | null;
+        on_pack_bench: string;
+        sales_document_blocked_oldest_at: Date | null;
+        sales_document_issued_on_request: string;
+        open_return: string;
+        has_buyer_note: string;
+        due_within_24h: string;
+        attention_late_to_ship: string;
+        attention_stuck: string;
+        attention_to_handle: string;
+      }>(),
+      bySourceQb.getRawMany<{ source_connection_id: string; count: string }>(),
+    ]);
     const bySource: Record<string, number> = {};
     for (const row of bySourceRows) {
       bySource[row.source_connection_id] = Number(row.count);
