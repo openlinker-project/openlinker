@@ -205,7 +205,9 @@ describe('CategoryResolutionService', () => {
       });
 
       it('should keep auto_detect when the barcode category equals the mapped category', async () => {
-        integrationsService.getCapabilityAdapter.mockResolvedValue(barcodeAdapter('allegro-cat-123'));
+        integrationsService.getCapabilityAdapter.mockResolvedValue(
+          barcodeAdapter('allegro-cat-123')
+        );
         mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-123');
 
         const result = await service.resolveCategory({
@@ -220,7 +222,9 @@ describe('CategoryResolutionService', () => {
 
       it('should resolve via category_mapping when the barcode category disagrees with the mapping', async () => {
         // An explicit mapping beats a barcode inference.
-        integrationsService.getCapabilityAdapter.mockResolvedValue(barcodeAdapter('allegro-powerbanki'));
+        integrationsService.getCapabilityAdapter.mockResolvedValue(
+          barcodeAdapter('allegro-powerbanki')
+        );
         mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-t-shirty');
 
         const result = await service.resolveCategory({
@@ -237,44 +241,50 @@ describe('CategoryResolutionService', () => {
       });
     });
 
-    it('should reuse a borrowed-taxonomy mapping and bear borrows provenance on the mapping path (#1045)', async () => {
-      mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-258066');
+    describe('borrowed taxonomy (#1045)', () => {
+      it('should reuse a borrowed-taxonomy mapping and bear borrows provenance on the mapping path (#1045)', async () => {
+        mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-258066');
 
-      const result = await service.resolveCategory({
-        connectionId: 'erli-conn',
-        sourceCategoryIds: ['ps-cat-1'],
-        borrowedTaxonomy: 'allegro',
-        sourceConnectionId: 'ps-master',
+        const result = await service.resolveCategory({
+          connectionId: 'erli-conn',
+          sourceCategoryIds: ['ps-cat-1'],
+          borrowedTaxonomy: 'allegro',
+          sourceConnectionId: 'ps-master',
+        });
+
+        expect(result).toEqual({
+          destinationCategoryId: 'allegro-cat-258066',
+          provenance: 'borrows',
+          method: 'category_mapping',
+        });
+        // Borrowed taxonomy + source store threaded into the mapping lookup.
+        expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith(
+          'erli-conn',
+          'ps-cat-1',
+          {
+            borrowedTaxonomy: 'allegro',
+            sourceConnectionId: 'ps-master',
+          }
+        );
+        // No adapter resolution on the mapping path (no extra I/O).
+        expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
       });
 
-      expect(result).toEqual({
-        destinationCategoryId: 'allegro-cat-258066',
-        provenance: 'borrows',
-        method: 'category_mapping',
-      });
-      // Borrowed taxonomy + source store threaded into the mapping lookup.
-      expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith('erli-conn', 'ps-cat-1', {
-        borrowedTaxonomy: 'allegro',
-        sourceConnectionId: 'ps-master',
-      });
-      // No adapter resolution on the mapping path (no extra I/O).
-      expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
-    });
+      it('should report borrows provenance even when a borrowed mapping is unresolved (#1045)', async () => {
+        mappingConfig.resolveDestinationCategory.mockResolvedValue(null);
 
-    it('should report borrows provenance even when a borrowed mapping is unresolved (#1045)', async () => {
-      mappingConfig.resolveDestinationCategory.mockResolvedValue(null);
+        const result = await service.resolveCategory({
+          connectionId: 'erli-conn',
+          sourceCategoryIds: ['ps-cat-1'],
+          borrowedTaxonomy: 'allegro',
+          sourceConnectionId: 'ps-master',
+        });
 
-      const result = await service.resolveCategory({
-        connectionId: 'erli-conn',
-        sourceCategoryIds: ['ps-cat-1'],
-        borrowedTaxonomy: 'allegro',
-        sourceConnectionId: 'ps-master',
-      });
-
-      expect(result).toEqual({
-        destinationCategoryId: null,
-        provenance: 'borrows',
-        method: 'manual',
+        expect(result).toEqual({
+          destinationCategoryId: null,
+          provenance: 'borrows',
+          method: 'manual',
+        });
       });
     });
 
@@ -294,8 +304,16 @@ describe('CategoryResolutionService', () => {
         method: 'category_mapping',
       });
       expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledTimes(2);
-      expect(mappingConfig.resolveDestinationCategory).toHaveBeenNthCalledWith(1, CONNECTION_ID, 'ps-cat-shallow');
-      expect(mappingConfig.resolveDestinationCategory).toHaveBeenNthCalledWith(2, CONNECTION_ID, 'ps-cat-deep');
+      expect(mappingConfig.resolveDestinationCategory).toHaveBeenNthCalledWith(
+        1,
+        CONNECTION_ID,
+        'ps-cat-shallow'
+      );
+      expect(mappingConfig.resolveDestinationCategory).toHaveBeenNthCalledWith(
+        2,
+        CONNECTION_ID,
+        'ps-cat-deep'
+      );
     });
 
     it('should return manual when there is neither a barcode nor a source category', async () => {
@@ -305,37 +323,43 @@ describe('CategoryResolutionService', () => {
       expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
     });
 
-    it('should fall back to the mapping when adapter resolution fails during auto-detect', async () => {
-      integrationsService.getCapabilityAdapter.mockRejectedValue(new Error('adapter unavailable'));
-      mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-fallback');
+    describe('when the barcode step cannot answer', () => {
+      it('should fall back to the mapping when adapter resolution fails during auto-detect', async () => {
+        integrationsService.getCapabilityAdapter.mockRejectedValue(
+          new Error('adapter unavailable')
+        );
+        mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-fallback');
 
-      const result = await service.resolveCategory({
-        connectionId: CONNECTION_ID,
-        barcode: '5901234123457',
-        sourceCategoryIds: ['ps-cat-1'],
+        const result = await service.resolveCategory({
+          connectionId: CONNECTION_ID,
+          barcode: '5901234123457',
+          sourceCategoryIds: ['ps-cat-1'],
+        });
+
+        expect(result).toEqual({
+          destinationCategoryId: 'allegro-cat-fallback',
+          provenance: null,
+          method: 'category_mapping',
+        });
       });
 
-      expect(result).toEqual({
-        destinationCategoryId: 'allegro-cat-fallback',
-        provenance: null,
-        method: 'category_mapping',
-      });
-    });
+      it('should fall back to the mapping when the adapter cannot match barcodes', async () => {
+        integrationsService.getCapabilityAdapter.mockResolvedValue({
+          updateOfferQuantity: jest.fn(),
+        });
+        mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-mapped');
 
-    it('should fall back to the mapping when the adapter cannot match barcodes', async () => {
-      integrationsService.getCapabilityAdapter.mockResolvedValue({ updateOfferQuantity: jest.fn() });
-      mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-mapped');
+        const result = await service.resolveCategory({
+          connectionId: CONNECTION_ID,
+          barcode: '5901234123457',
+          sourceCategoryIds: ['ps-cat-1'],
+        });
 
-      const result = await service.resolveCategory({
-        connectionId: CONNECTION_ID,
-        barcode: '5901234123457',
-        sourceCategoryIds: ['ps-cat-1'],
-      });
-
-      expect(result).toEqual({
-        destinationCategoryId: 'allegro-cat-mapped',
-        provenance: 'borrows',
-        method: 'category_mapping',
+        expect(result).toEqual({
+          destinationCategoryId: 'allegro-cat-mapped',
+          provenance: 'borrows',
+          method: 'category_mapping',
+        });
       });
     });
   });
