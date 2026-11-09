@@ -1285,6 +1285,10 @@ export interface CreateInvoiceRecordInput {
   sourceDocument?: StoredDocument | null;
   /** Issuance-time line snapshot (#1297); `null` when not captured. */
   issuedLineSnapshot?: IssuedLineSnapshot | null;
+  /** 0-based attempt number (#3960). Omitted means a first attempt. */
+  attempt?: number;
+  /** The refused attempt this one follows (#3960). Omitted means none. */
+  previousAttemptId?: string | null;
 }
 
 /**

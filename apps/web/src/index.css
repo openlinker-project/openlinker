@@ -3165,6 +3165,46 @@ textarea,
   color: inherit;
 }
 
+/* ── Fiscal earlier attempts (#3960) ──
+   Refused attempts kept on record under the current one, collapsed by default
+   so the receipt's own state stays the first thing read. */
+.fiscal-earlier-attempts {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-default);
+  font-size: 0.875rem;
+}
+
+.fiscal-earlier-attempts summary {
+  cursor: pointer;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.fiscal-earlier-attempts__list {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fiscal-earlier-attempts__item {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.fiscal-earlier-attempts__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.fiscal-earlier-attempts__name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
 /* ── Fiscal failure details (#3843) ──
    The provider's identifiers inside a failed-receipt alert, under its
    sentence. The rule above them takes the alert's own tone so they read as

@@ -36,6 +36,17 @@ describe('document-token.policy', () => {
     );
   });
 
+  it('should give a retry attempt key a new token, so the vendor sees a new document (#3960)', () => {
+    // Core asks again after a refusal under `{key}:r1`. The vendor keeps the
+    // refused document under the old token, so the retry must not reuse it.
+    const first = deriveDocumentToken('conn-1', 'fiscal:conn-1:ol_order_1');
+    const retry = deriveDocumentToken('conn-1', 'fiscal:conn-1:ol_order_1:r1');
+    expect(retry).not.toBe(first);
+    expect(deriveTransactionToken('conn-1', 'fiscal:conn-1:ol_order_1:r1')).not.toBe(
+      deriveTransactionToken('conn-1', 'fiscal:conn-1:ol_order_1'),
+    );
+  });
+
   it('should not collide when the concatenation of the parts is ambiguous', () => {
     // ('a', 'b c') and ('a b', 'c') concatenate identically without a separator.
     expect(deriveDocumentToken('a', 'b c')).not.toBe(deriveDocumentToken('a b', 'c'));
