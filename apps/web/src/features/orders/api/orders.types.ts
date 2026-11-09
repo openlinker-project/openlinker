@@ -1094,6 +1094,11 @@ export interface OrderFilters {
   /** #3963 - orders whose payment did not reach a shop (`?paymentNotSent=`). */
   paymentNotSent?: boolean;
   /**
+   * Narrow to orders carrying ONE attention reason (#3961), sent as
+   * `?attentionReason=`. Backs the "Changed by the shop" chip.
+   */
+  attentionReason?: string;
+  /**
    * Narrow to orders held for ONE reason (#2342), sent as `?hold=`.
    *
    * Deliberately reason-scoped with no "any" value: `?phase=held` (#2310)
@@ -1484,6 +1489,33 @@ export interface OrderDocumentEmailEntry {
   failureReason: string | null;
   failureMessage: string | null;
   createdAt: string;
+}
+
+/**
+ * What "Check again" / "Keep as is" did to an order the source changed after it
+ * went to packing (#3961). Codes only; the sentences live under `orders.sourceChange` in the locale files.
+ */
+export const SourceChangeOutcomeValues = [
+  'nothing-to-do',
+  'applied',
+  'held',
+  'shipped',
+  'accepted',
+  'contended',
+  'failed',
+] as const;
+export type SourceChangeOutcome = (typeof SourceChangeOutcomeValues)[number];
+
+export interface SourceChangeLine {
+  orderLineId: string;
+  from: number;
+  to: number;
+}
+
+export interface SourceChangeResult {
+  outcome: SourceChangeOutcome;
+  cause: string | null;
+  lines: SourceChangeLine[];
 }
 
 /**

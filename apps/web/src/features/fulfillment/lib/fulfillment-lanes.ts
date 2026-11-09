@@ -96,7 +96,8 @@ export function summariseLaneLines(lane: FulfillmentLane): { fulfilled: number; 
   for (const task of lane.tasks) {
     for (const line of task.lines) {
       fulfilled += line.fulfilledQuantity;
-      total += line.totalQuantity;
+      // #3961: a cancelled unit (a line the shop lowered) is never packed.
+      total += Math.max(0, line.totalQuantity - line.cancelledQuantity);
     }
   }
   return { fulfilled, total };

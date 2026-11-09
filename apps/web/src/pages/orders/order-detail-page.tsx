@@ -103,6 +103,7 @@ import { buildOrderCancelTimelineEvents } from '../../features/orders/components
 import type { CancelOrderResult } from '../../features/orders/api/order-cancel.types';
 import { OrderEditAction } from '../../features/orders/components/order-edit-action';
 import { OrderEditedNotice } from '../../features/orders/components/order-edited-notice';
+import { OrderSourceChangeCard } from '../../features/orders/components/order-source-change-card';
 import { buildOrderEditTimelineEvents } from '../../features/orders/components/order-edit-timeline-events';
 import type { OrderDiscountResult, OrderEditLineStock } from '../../features/orders/api/order-edit.types';
 import type { EditOrderOutput } from '../../features/orders/hooks/use-edit-order-mutation';
@@ -658,6 +659,20 @@ export function OrderDetailPage(): ReactElement {
         onConfirmed={() => {
           void queryClient.invalidateQueries({ queryKey: invoicingQueryKeys.all });
         }}
+      />
+
+      {/* #3961 - a line the shop changed after packing started: what changed,
+          what OpenLinker already did, and what is left to decide. */}
+      <OrderSourceChangeCard
+        key={`source-change:${order.internalOrderId}`}
+        internalOrderId={order.internalOrderId}
+        lastAmendmentChanges={order.lastAmendmentChanges}
+        lastAmendedAt={order.lastAmendedAt}
+        omsAttention={order.omsAttention}
+        itemNames={Object.fromEntries(snapshot.items.map((item) => [item.id, item.name ?? item.sku ?? item.id]))}
+        hasPackingWork={(fulfilmentTasksQuery.data?.total ?? 0) > 0}
+        sourceName={cancelSourceName}
+        sourcePlatform={sourcePlatformType}
       />
 
       {failedDestinations.length > 0 ? (

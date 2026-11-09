@@ -1031,6 +1031,7 @@
       "rateConflict": "Konflikt stawki",
       "routingBlocked": "Kierowanie zablokowane",
       "salesDocsBlocked": "Dokumenty sprzedaży zablokowane",
+      "shopChanged": "Zmienione w sklepie",
       "waiting": "Czeka w OpenLinker"
     },
     "chips": {
@@ -1059,6 +1060,8 @@
       "search": "Szukaj",
       "searchValue": "„{query}”",
       "shipBy": "Wyślij do",
+      "shopChanged": "Sklep",
+      "shopChangedValue": "Zmienione",
       "source": "Źródło",
       "stopped": "Zatrzymane",
       "tag": "Tag",
@@ -1142,6 +1145,7 @@
         "one": "Jeszcze {n} jest wystawiany na żądanie - czeka na Ciebie zgodnie z konfiguracją, nie jest zablokowany.",
         "other": "Jeszcze {n} jest wystawiane na żądanie - czekają na Ciebie zgodnie z konfiguracją, nie są zablokowane."
       },
+      "shopChanged": "Zmienione w sklepie",
       "waiting": "Czeka w OpenLinker"
     },
     "results": {
@@ -3061,6 +3065,55 @@
     "rule": "Ustawione dla wszystkich zamówień z {source} z tą metodą dostawy.",
     "ruleNoSource": "Ustawione dla wszystkich zamówień z tą metodą dostawy.",
     "yourShop": "twój sklep"
+  },
+  "sourceChange": {
+    "action": {
+      "handled": "Oznacz jako załatwione",
+      "keep": "Zostaw karton bez zmian",
+      "recheck": "Sprawdź ponownie",
+      "retry": "Spróbuj ponownie"
+    },
+    "effect": {
+      "alreadyPacked": "Zgłoszono już spakowanie większej liczby sztuk",
+      "boxClosedBefore": "Karton zamknięto przed zmianą",
+      "boxHoldsMore": "W kartonie jest już więcej",
+      "couldNotUpdate": "Nie udało się zaktualizować pakowania ani stanu magazynowego",
+      "noAutoAdd": "OpenLinker nie dokłada produktów do kartonu samodzielnie",
+      "noLongerMatches": "Karton nie zgadza się już z zamówieniem",
+      "packedElsewhere": "To zamówienie jest pakowane poza OpenLinker",
+      "packerTold": "Pakowacz widzi, co wyjąć",
+      "packingAsksNew": "Pakowanie pyta o nową ilość",
+      "packingOnHold": "Pakowanie jest wstrzymane",
+      "parcelLeftOld": "Paczka wyszła ze starą ilością",
+      "settleWithBuyer": "Rozlicz różnicę z kupującym w sklepie",
+      "stockChangesWhenMatches": "Stan magazynowy zmieni się, gdy karton będzie zgodny",
+      "stockFollows": "Stan magazynowy i rezerwacja zostały dopasowane",
+      "stockUnchanged": "Stan magazynowy bez zmian",
+      "tellWarehouse": "Daj znać magazynowi, a potem zdecyduj tutaj",
+      "triesAgain": "OpenLinker spróbuje ponownie przy następnej aktualizacji"
+    },
+    "line": {
+      "added": "nowa",
+      "quantityChange": "{from} na {to}",
+      "removed": "usunięto",
+      "sku": "SKU {sku}"
+    },
+    "outcome": {
+      "accepted": "Zostawiono bez zmian, a karton został zwolniony.",
+      "applied": "Pakowanie, stan magazynowy i rezerwacja zgadzają się teraz z zamówieniem.",
+      "contended": "Ktoś inny zmienia teraz to zamówienie, więc spróbuj ponownie za chwilę.",
+      "failed": "Nie udało się tego dokończyć, więc spróbuj ponownie.",
+      "held": "Karton nadal się nie zgadza, więc pozostaje wstrzymany.",
+      "nothingToDo": "Zamówienie i pakowanie już się zgadzają.",
+      "shipped": "Paczka już wyszła, więc nic nie zmieniono."
+    },
+    "status": {
+      "applied": "Zastosowano",
+      "decision": "Wymaga decyzji",
+      "failed": "Nie dokończono",
+      "shipped": "Już wysłane"
+    },
+    "title": "Zmienione w sklepie"
   },
   "stockAtRisk": {
     "badgeTitle": "{title}. {body}",

@@ -26,6 +26,7 @@ import type {
   BenchBuyerNoteAcknowledgementResult,
   BenchClaimNextResult,
   BenchClaimResult,
+  BenchSourceChangeTakenOutResult,
   BenchCompleteResult,
   BenchDocuments,
   BenchMetrics,
@@ -114,6 +115,14 @@ export const benchParcelSchema = z.object({
   // See the types module: never `z.enum` on a server-owned vocabulary.
   refusal: nullableString,
   holdReason: nullableString,
+  // #3961 - defaulted to null so an API that predates the field reads as
+  // "not held for a source change" rather than failing the parse.
+  sourceChange: z
+    .object({
+      takeOut: z.array(z.object({ workLineId: z.string(), units: z.number() })),
+    })
+    .nullish()
+    .transform((value) => value ?? null),
   closedAt: nullableString,
   packedByUserId: nullableString,
   assignedToUserId: nullableString,
@@ -351,6 +360,16 @@ export function parseBenchBuyerNoteAcknowledgementResult(
   payload: unknown
 ): BenchBuyerNoteAcknowledgementResult {
   return benchBuyerNoteAcknowledgementResultSchema.parse(payload);
+}
+
+export const benchSourceChangeTakenOutResultSchema = z.object({
+  outcome: z.string(),
+  reason: nullableString,
+  parcel: benchParcelSchema,
+});
+
+export function parseBenchSourceChangeTakenOutResult(payload: unknown): BenchSourceChangeTakenOutResult {
+  return benchSourceChangeTakenOutResultSchema.parse(payload);
 }
 
 export const benchClaimResultSchema = z.object({

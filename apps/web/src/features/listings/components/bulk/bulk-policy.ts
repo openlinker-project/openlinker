@@ -20,7 +20,7 @@ import type {
 } from '../../../../shared/plugins';
 import { getMessages, interpolate } from '../../../../shared/i18n';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
-import type { EanMatchResult } from '../../api/listings.types';
+import type { EanMatchResult, OfferParameter } from '../../api/listings.types';
 import { collapseToInvalidBarcode } from './bulk-blockers';
 import type {
   BulkRowBlocker,
@@ -254,6 +254,16 @@ export interface ComputeBlockersInput {
   categoryParameters?: readonly CategoryParameterLike[];
   /** Parameters the OPERATOR supplied for this row (#2243). */
   suppliedParameters?: readonly SuppliedParameterLike[];
+  /**
+   * Parameters the connection's attribute mappings and rules will fill at
+   * publish (#3995), from the server-side projection preview - only values the
+   * destination accepts, never a dictionary miss. They satisfy the
+   * required-parameter check exactly like an operator value: the publish sends
+   * them unless the operator set the same parameter, in which case the operator
+   * value wins. Absent = no preview (not loaded, or failed), which counts as
+   * nothing filled - a preview we do not have must never clear the check.
+   */
+  projectedParameters?: readonly OfferParameter[];
   /** Effective barcode for the row - operator override, else the master's (#2243). */
   barcode?: string | null;
   /** Whether a catalogue lookup actually ran for this batch (#2211/#2243). */
@@ -281,6 +291,9 @@ export interface ComputeBlockersInput {
 export function computeNeedsProductParameters(input: ComputeBlockersInput): boolean {
   if (input.willLinkProductCard || !input.requiredProductParamIds?.length) return false;
   const supplied = suppliedProductParamIds(input.override);
+  for (const p of input.projectedParameters ?? []) {
+    if (p.section === 'product') supplied.add(p.id);
+  }
   return input.requiredProductParamIds.some((id) => !supplied.has(id));
 }
 
@@ -341,7 +354,10 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
         willLinkProductCard: input.willLinkProductCard ?? false,
         title: input.effectiveTitle ?? '',
         categoryParameters: input.categoryParameters,
-        suppliedParameters: input.suppliedParameters,
+        suppliedParameters: effectiveSuppliedParameters(
+          input.suppliedParameters,
+          input.projectedParameters,
+        ),
         barcode: input.barcode,
         catalogueConsulted: input.catalogueConsulted,
         barcodeMatchedCatalogue: input.barcodeMatchedCatalogue,
@@ -377,6 +393,23 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
   }
 
   return blockers;
+}
+
+/**
+ * The parameters the publish will actually send for a row (#3995): projected
+ * values from mappings and rules, with the operator's own value winning per
+ * parameter id - the same merge `OfferBuilderService` performs. The platform's
+ * value checks read this so a bound a rule's value breaks is caught here too.
+ */
+function effectiveSuppliedParameters(
+  supplied: readonly SuppliedParameterLike[] | undefined,
+  projected: readonly OfferParameter[] | undefined,
+): readonly SuppliedParameterLike[] | undefined {
+  if (!projected?.length) return supplied;
+  const byId = new Map<string, SuppliedParameterLike>();
+  for (const p of projected) byId.set(p.id, p);
+  for (const p of supplied ?? []) byId.set(p.id, p);
+  return Array.from(byId.values());
 }
 
 /**
@@ -496,6 +529,13 @@ export interface PreflightContext {
   schemaByCategory?: Map<string, readonly CategoryParameterLike[]>;
   failedCategoryIds?: readonly string[];
   catalogueConsulted?: boolean;
+  /**
+   * Accepted projected parameters per variant id, from the attribute rule
+   * preview (#3995). Keyed by variant AND checked against the category the
+   * preview ran for, so a variant whose category changed since is not credited
+   * with values computed for the old one.
+   */
+  projectedByVariant?: ReadonlyMap<string, { categoryId: string; parameters: readonly OfferParameter[] }>;
 }
 
 /**
@@ -711,6 +751,22 @@ export function operatorPickedCategory(row: BulkWizardRow, variant: BulkVariantR
 }
 
 /**
+ * The projected parameters a variant may be credited with (#3995): only when
+ * the preview ran for the category the variant will actually submit under.
+ * A preview for a stale category answers a different question - a rule scoped
+ * to the old category may not apply to the new one.
+ */
+export function projectedFor(
+  context: PreflightContext,
+  variantId: string,
+  submitCategoryId: string | null,
+): readonly OfferParameter[] | undefined {
+  const entry = context.projectedByVariant?.get(variantId);
+  if (!entry || submitCategoryId === null || entry.categoryId !== submitCategoryId) return undefined;
+  return entry.parameters;
+}
+
+/**
  * Recompute one sibling's blocker set from its own EAN + master values + the
  * batch policies (#1741). Mirrors `recomputeRowBlockers` but keyed on the
  * per-variant row. `no-master-stock` is downgraded for multi-variant siblings -
@@ -762,6 +818,7 @@ export function recomputeVariantBlockers(
       ? context.schemaByCategory?.get(submitCategoryId)
       : undefined,
     suppliedParameters: variant.override.overrides?.parameters,
+    projectedParameters: projectedFor(context, variant.variantId, submitCategoryId),
     barcode: effectiveVariantEan(variant),
     catalogueConsulted: context.catalogueConsulted,
     barcodeMatchedCatalogue: variant.overriddenCard !== null,

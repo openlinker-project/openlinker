@@ -155,6 +155,7 @@ function harness() {
     complete: jest.fn(),
     undoCompletion: jest.fn(),
     acknowledgeBuyerNote: jest.fn(),
+    voidSurplusOnLine: jest.fn(),
   } as unknown as IFulfillmentVerificationService;
 
   const orders = {
@@ -204,6 +205,7 @@ function harness() {
       {
         listBuyerNoteAcknowledgements: jest.fn().mockResolvedValue([]),
       } as unknown as IFulfillmentWorkQueryService,
+      { reconcile: jest.fn().mockResolvedValue({ outcome: 'nothing-to-do', lines: [], cause: null }), accept: jest.fn() } as never,
       // #3958 - the route is a presentation fact this guard never reads.
       { resolve: jest.fn().mockResolvedValue(null) } as unknown as BenchRouteResolver
     ),
@@ -264,6 +266,7 @@ const GUARDED_MUTATIONS = [
   'completeParcel',
   'undoCompletion',
   'acknowledgeBuyerNote',
+  'confirmSourceChangeTakenOut',
 ] as const;
 
 interface GuardedMutationCase {
@@ -283,7 +286,7 @@ interface GuardedMutationCase {
    *
    * | method | reason |
    * |---|---|
-   * | `verifyUnit`, `completeParcel`, `undoCompletion` | `not-claimable-by-viewer` |
+   * | `verifyUnit`, `completeParcel`, `undoCompletion`, `confirmSourceChangeTakenOut` | `not-claimable-by-viewer` |
    * | `claimParcel` | `not-claimable` |
    * | `reopenParcel`, `undoLastScan` | `not-packable` |
    *
@@ -354,6 +357,13 @@ const CASES: readonly GuardedMutationCase[] = [
     expectedReason: 'not-claimable-by-viewer',
     verificationWriteMethod: 'acknowledgeBuyerNote',
     callAsExcludedViewer: (service) => service.acknowledgeBuyerNote('work-1', 'user-1'),
+  },
+  {
+    method: 'confirmSourceChangeTakenOut',
+    expectedReason: 'not-claimable-by-viewer',
+    verificationWriteMethod: 'voidSurplusOnLine',
+    callAsExcludedViewer: (service) =>
+      service.confirmSourceChangeTakenOut({ workId: 'work-1', workLineId: 'line-1', actorUserId: 'user-1' }),
   },
   {
     method: 'undoCompletion',

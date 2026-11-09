@@ -32,6 +32,10 @@ export function toParcelResponseDto(view: BenchParcelView): BenchParcelResponseD
     parcelTotal: view.parcelTotal,
     refusal: view.refusal,
     holdReason: view.holdReason,
+    sourceChange:
+      view.sourceChange === null
+        ? null
+        : { takeOut: view.sourceChange.takeOut.map((entry) => ({ ...entry })) },
     closedAt: view.closedAt,
     packedByUserId: view.packedByUserId,
     invoicePrintedAt: view.invoicePrintedAt,
