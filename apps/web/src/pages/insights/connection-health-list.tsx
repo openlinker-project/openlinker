@@ -16,8 +16,9 @@ import { Link } from 'react-router-dom';
 import { ConnectionChip, readConnectionEnvironment } from '../../features/connections';
 import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
+import { useMessages, usePlural } from '../../shared/i18n';
 import {
-  CONNECTION_STATUS_LABEL,
+  CONNECTION_STATUS_LABEL_KEY,
   bucketOf,
   describeConnectionHealth,
   sortConnectionHealthRows,
@@ -31,28 +32,33 @@ export function ConnectionHealthList({
   rows: readonly ConnectionHealthRow[];
 }): ReactElement {
   const platforms = usePlatforms();
+  const copy = useMessages('insights').connectionHealth;
+  const plural = usePlural();
   const sorted = useMemo(() => sortConnectionHealthRows(rows), [rows]);
   const summary = useMemo(() => summarizeConnectionHealth(rows), [rows]);
 
   if (rows.length === 0) {
     return (
       <p className="muted-text">
-        No connections configured. <Link to="/connections/new">Add the first connection.</Link>
+        {copy.empty} <Link to="/connections/new">{copy.emptyAction}</Link>
       </p>
     );
   }
 
+  const attentionText = plural(summary.attention, copy.legend.attention);
+  const healthyText = plural(summary.healthy, copy.legend.healthy);
+  const offText = plural(summary.off, copy.legend.disabled);
   const legend = [
-    summary.attention > 0 ? `${summary.attention} need attention` : null,
-    summary.healthy > 0 ? `${summary.healthy} healthy` : null,
-    summary.off > 0 ? `${summary.off} disabled` : null,
+    summary.attention > 0 ? attentionText : null,
+    summary.healthy > 0 ? healthyText : null,
+    summary.off > 0 ? offText : null,
   ].filter((part): part is string => part !== null);
 
   return (
     <div className="conn-health">
       <div className="conn-health__summary">
         <p className="conn-health__sentence" data-testid="connection-health-summary">
-          {describeConnectionHealth(summary)}
+          {describeConnectionHealth(summary, copy, plural)}
         </p>
         <div className="health-strip" role="img" aria-label={legend.join(', ')}>
           {sorted.map((row) => (
@@ -65,22 +71,22 @@ export function ConnectionHealthList({
         <ul className="health-legend" aria-hidden="true">
           {summary.attention > 0 ? (
             <li className="health-legend__item health-legend__item--attention">
-              {summary.attention} need attention
+              {attentionText}
             </li>
           ) : null}
           {summary.healthy > 0 ? (
             <li className="health-legend__item health-legend__item--healthy">
-              {summary.healthy} healthy
+              {healthyText}
             </li>
           ) : null}
           {summary.off > 0 ? (
-            <li className="health-legend__item health-legend__item--off">{summary.off} disabled</li>
+            <li className="health-legend__item health-legend__item--off">{offText}</li>
           ) : null}
         </ul>
       </div>
 
       <table className="conn-health__table">
-        <caption className="sr-only">Connection health</caption>
+        <caption className="sr-only">{copy.caption}</caption>
         <colgroup>
           <col />
           <col className="conn-health__col-platform" />
@@ -89,11 +95,11 @@ export function ConnectionHealthList({
         </colgroup>
         <thead>
           <tr>
-            <th scope="col">Connection</th>
-            <th scope="col">Platform</th>
-            <th scope="col">Status</th>
+            <th scope="col">{copy.columns.connection}</th>
+            <th scope="col">{copy.columns.platform}</th>
+            <th scope="col">{copy.columns.status}</th>
             <th scope="col" className="conn-health__num">
-              Failed jobs
+              {copy.columns.failedJobs}
             </th>
           </tr>
         </thead>
@@ -101,7 +107,9 @@ export function ConnectionHealthList({
           {sorted.map((row) => {
             const { connection, deadJobCount } = row;
             const bucket = bucketOf(row);
-            const failedText = `${deadJobCount} failed job${deadJobCount === 1 ? '' : 's'}`;
+            const failedText = plural(deadJobCount, copy.failedJobs);
+            const statusLabel =
+              copy.status[CONNECTION_STATUS_LABEL_KEY[connection.status]] ?? connection.status;
             return (
               <tr key={connection.id} className={`conn-health__row conn-health__row--${bucket}`}>
                 <td className="conn-health__cell-name">
@@ -125,14 +133,16 @@ export function ConnectionHealthList({
                   />
                 </td>
                 <td className={`conn-health__status conn-health__status--${connection.status}`}>
-                  {CONNECTION_STATUS_LABEL[connection.status] ?? connection.status}
+                  {statusLabel}
                 </td>
                 <td className="conn-health__num">
                   {deadJobCount > 0 ? (
                     <Link
                       className="conn-health__failed"
                       to={`/jobs-logs?status=dead&connectionId=${encodeURIComponent(connection.id)}`}
-                      aria-label={`${failedText} on ${connection.name}`}
+                      aria-label={plural(deadJobCount, copy.failedJobsOn, {
+                        name: connection.name,
+                      })}
                     >
                       {failedText}
                       <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
@@ -140,7 +150,7 @@ export function ConnectionHealthList({
                       </svg>
                     </Link>
                   ) : (
-                    <span className="conn-health__none">None</span>
+                    <span className="conn-health__none">{copy.none}</span>
                   )}
                 </td>
               </tr>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Connection, ConnectionStatus } from '../../features/connections';
+import { formatPlural, loadMessages, messagesIn, type PluralFn } from '../../shared/i18n';
 import {
   bucketOf,
   describeConnectionHealth,
@@ -27,6 +28,9 @@ function row(
   } as Connection;
   return { connection, deadJobCount };
 }
+
+const copy = messagesIn('insights', 'en').connectionHealth;
+const plural: PluralFn = (count, forms, params) => formatPlural(count, forms, 'en', params);
 
 describe('connection health (#4016)', () => {
   it('should put the most failed jobs first, then broken connections, then by name', () => {
@@ -63,14 +67,40 @@ describe('connection health (#4016)', () => {
       row('D', 0, 'disabled'),
     ]);
     expect(summary).toEqual({ total: 4, withFailedJobs: 2, attention: 2, healthy: 1, off: 1 });
-    expect(describeConnectionHealth(summary)).toBe(
+    expect(describeConnectionHealth(summary, copy, plural)).toBe(
       '2 of 4 connections have jobs that stopped retrying.'
     );
   });
 
   it('should say so when no connection has failed jobs', () => {
-    expect(describeConnectionHealth(summarizeConnectionHealth([row('A', 0), row('B', 0)]))).toBe(
-      'No failed jobs on any of your 2 connections.'
+    expect(
+      describeConnectionHealth(summarizeConnectionHealth([row('A', 0), row('B', 0)]), copy, plural)
+    ).toBe('No failed jobs on any of your 2 connections.');
+  });
+
+  it('should name the unreachable share when no connection has failed jobs', () => {
+    expect(
+      describeConnectionHealth(
+        summarizeConnectionHealth([row('A', 0), row('B', 0, 'needs_reauth')]),
+        copy,
+        plural
+      )
+    ).toBe('No failed jobs, but 1 of 2 connections cannot reach their platform.');
+  });
+
+  it('should read naturally when the only connection has failed jobs', () => {
+    expect(describeConnectionHealth(summarizeConnectionHealth([row('A', 3)]), copy, plural)).toBe(
+      'Your only connection has jobs that stopped retrying.'
+    );
+  });
+
+  it('should write the summary in Polish with the right plural form', async () => {
+    await loadMessages('pl');
+    const plCopy = messagesIn('insights', 'pl').connectionHealth;
+    const plPlural: PluralFn = (count, forms, params) => formatPlural(count, forms, 'pl', params);
+    const summary = summarizeConnectionHealth([row('A', 4), row('B', 1), row('C', 0), row('D', 0)]);
+    expect(describeConnectionHealth(summary, plCopy, plPlural)).toBe(
+      '2 z 4 połączeń mają zadania w tle, które przestały być ponawiane.'
     );
   });
 });

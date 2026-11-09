@@ -24,12 +24,15 @@ import type {
   ServiceStatus,
 } from '../../features/health/api/health.types';
 import { usePlatforms } from '../../shared/plugins';
+import {
+  useMessages,
+  usePlural,
+  type Messages,
+  type PluralFn,
+  type ResolvedCopy,
+} from '../../shared/i18n';
 
-const STATUS_LABEL: Record<ServiceStatus, string> = {
-  ok: 'OK',
-  warning: 'Warning',
-  error: 'Error',
-};
+export type SystemHealthCopy = ResolvedCopy<Messages['insights']>['systemHealth'];
 
 const SEVERITY: Record<ServiceStatus, number> = { error: 0, warning: 1, ok: 2 };
 
@@ -67,25 +70,35 @@ export function sortConnectedSystems(
   );
 }
 
-export function describeSystemHealth(statuses: readonly ServiceStatus[]): string {
+/**
+ * The one-sentence summary above the list. Takes the copy and the plural
+ * function as arguments so it stays a pure helper the tests can call
+ * without rendering.
+ */
+export function describeSystemHealth(
+  statuses: readonly ServiceStatus[],
+  copy: SystemHealthCopy,
+  plural: PluralFn
+): string {
   const failing = statuses.filter((s) => s === 'error').length;
   const warning = statuses.filter((s) => s === 'warning').length;
   const total = statuses.length;
-  const plural = total === 1 ? 'check' : 'checks';
-  if (failing === 0 && warning === 0) return `All ${total} ${plural} passing.`;
-  if (failing === 0) return `${warning} of ${total} ${plural} with a warning.`;
-  const tail = warning > 0 ? `, ${warning} with a warning` : '';
-  return `${failing} of ${total} ${plural} failing${tail}.`;
+  if (failing === 0 && warning === 0) return plural(total, copy.summary.allPassing);
+  if (failing === 0) return plural(total, copy.summary.warnings, { warning });
+  if (warning === 0) return plural(total, copy.summary.failing, { failing });
+  return plural(total, copy.summary.failingWithWarnings, { failing, warning });
 }
 
 function HealthRow({
   name,
   health,
   chip,
+  statusLabel,
 }: {
   name: string;
   health: ServiceHealth;
   chip?: ReactElement;
+  statusLabel: SystemHealthCopy['status'];
 }): ReactElement {
   return (
     <li className={`sys-health__row sys-health__row--${health.status}`}>
@@ -99,7 +112,7 @@ function HealthRow({
           <span className="sys-health__message">{health.message}</span>
         ) : null}
       </span>
-      <span className="sys-health__status">{STATUS_LABEL[health.status] ?? health.status}</span>
+      <span className="sys-health__status">{statusLabel[health.status] ?? health.status}</span>
     </li>
   );
 }
@@ -112,6 +125,8 @@ export function SystemHealthList({
   connectionById: ReadonlyMap<string, Connection>;
 }): ReactElement {
   const platforms = usePlatforms();
+  const copy = useMessages('insights').systemHealth;
+  const plural = usePlural();
   const core = coreServices(data);
   const connected = sortConnectedSystems(data.connections ?? []);
   const statuses: ServiceStatus[] = [
@@ -123,10 +138,13 @@ export function SystemHealthList({
     attention: statuses.filter((s) => s === 'warning').length,
     healthy: statuses.filter((s) => s === 'ok').length,
   };
+  const failingText = plural(counts.error, copy.legend.failing);
+  const warningText = plural(counts.attention, copy.legend.warning);
+  const okText = plural(counts.healthy, copy.legend.ok);
   const legend = [
-    counts.error > 0 ? `${counts.error} failing` : null,
-    counts.attention > 0 ? `${counts.attention} warning` : null,
-    counts.healthy > 0 ? `${counts.healthy} OK` : null,
+    counts.error > 0 ? failingText : null,
+    counts.attention > 0 ? warningText : null,
+    counts.healthy > 0 ? okText : null,
   ].filter((part): part is string => part !== null);
   const ordered = [...statuses].sort((a, b) => SEVERITY[a] - SEVERITY[b]);
 
@@ -134,7 +152,7 @@ export function SystemHealthList({
     <div className="sys-health">
       <div className="conn-health__summary">
         <p className="conn-health__sentence" data-testid="system-health-summary">
-          {describeSystemHealth(statuses)}
+          {describeSystemHealth(statuses, copy, plural)}
         </p>
         <div className="health-strip" role="img" aria-label={legend.join(', ')}>
           {ordered.map((status, i) => (
@@ -147,17 +165,17 @@ export function SystemHealthList({
         <ul className="health-legend" aria-hidden="true">
           {counts.error > 0 ? (
             <li className="health-legend__item health-legend__item--error">
-              {counts.error} failing
+              {failingText}
             </li>
           ) : null}
           {counts.attention > 0 ? (
             <li className="health-legend__item health-legend__item--attention">
-              {counts.attention} warning
+              {warningText}
             </li>
           ) : null}
           {counts.healthy > 0 ? (
             <li className="health-legend__item health-legend__item--healthy">
-              {counts.healthy} OK
+              {okText}
             </li>
           ) : null}
         </ul>
@@ -165,11 +183,16 @@ export function SystemHealthList({
 
       <section className="sys-health__group" aria-labelledby="sys-health-core">
         <h4 id="sys-health-core" className="sys-health__group-title">
-          Core services
+          {copy.coreServices}
         </h4>
         <ul className="sys-health__list">
           {core.map((service) => (
-            <HealthRow key={service.key} name={service.name} health={service.health} />
+            <HealthRow
+              key={service.key}
+              name={service.name}
+              health={service.health}
+              statusLabel={copy.status}
+            />
           ))}
         </ul>
       </section>
@@ -177,7 +200,7 @@ export function SystemHealthList({
       {connected.length > 0 ? (
         <section className="sys-health__group" aria-labelledby="sys-health-connected">
           <h4 id="sys-health-connected" className="sys-health__group-title">
-            Connected systems
+            {copy.connectedSystems}
           </h4>
           <ul className="sys-health__list">
             {connected.map((entry) => {
@@ -188,6 +211,7 @@ export function SystemHealthList({
                   key={entry.connectionId}
                   name={entry.name ?? platformLabel}
                   health={{ status: entry.status, message: entry.message }}
+                  statusLabel={copy.status}
                   chip={
                     <ConnectionChip
                       connectionId={entry.connectionId}

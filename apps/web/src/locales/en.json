@@ -29,6 +29,146 @@
       "overdue": "Overdue {duration}"
     }
   },
+  "insights": {
+    "connectionHealth": {
+      "caption": "Connection health",
+      "columns": {
+        "connection": "Connection",
+        "failedJobs": "Failed jobs",
+        "platform": "Platform",
+        "status": "Status"
+      },
+      "empty": "No connections configured.",
+      "emptyAction": "Add the first connection.",
+      "failedJobs": {
+        "one": "{n} failed job",
+        "other": "{n} failed jobs"
+      },
+      "failedJobsOn": {
+        "one": "{n} failed job on {name}",
+        "other": "{n} failed jobs on {name}"
+      },
+      "legend": {
+        "attention": {
+          "one": "{n} needs attention",
+          "other": "{n} need attention"
+        },
+        "disabled": {
+          "one": "{n} disabled",
+          "other": "{n} disabled"
+        },
+        "healthy": {
+          "one": "{n} healthy",
+          "other": "{n} healthy"
+        }
+      },
+      "none": "None",
+      "status": {
+        "active": "Active",
+        "archived": "Archived",
+        "disabled": "Disabled",
+        "error": "Error",
+        "needsReauth": "Needs re-auth"
+      },
+      "summary": {
+        "cannotReach": {
+          "one": "No failed jobs, but {attention} of {n} connection cannot reach its platform.",
+          "other": "No failed jobs, but {attention} of {n} connections cannot reach their platform."
+        },
+        "noFailedJobs": {
+          "one": "No failed jobs on your {n} connection.",
+          "other": "No failed jobs on any of your {n} connections."
+        },
+        "onlyConnectionFailed": "Your only connection has jobs that stopped retrying.",
+        "withFailedJobs": {
+          "one": "{n} of {total} connections has jobs that stopped retrying.",
+          "other": "{n} of {total} connections have jobs that stopped retrying."
+        }
+      }
+    },
+    "systemHealth": {
+      "connectedSystems": "Connected systems",
+      "coreServices": "Core services",
+      "legend": {
+        "failing": {
+          "one": "{n} failing",
+          "other": "{n} failing"
+        },
+        "ok": {
+          "one": "{n} OK",
+          "other": "{n} OK"
+        },
+        "warning": {
+          "one": "{n} warning",
+          "other": "{n} warnings"
+        }
+      },
+      "status": {
+        "error": "Error",
+        "ok": "OK",
+        "warning": "Warning"
+      },
+      "summary": {
+        "allPassing": {
+          "one": "{n} check passing.",
+          "other": "All {n} checks passing."
+        },
+        "failing": {
+          "one": "{failing} of {n} check failing.",
+          "other": "{failing} of {n} checks failing."
+        },
+        "failingWithWarnings": {
+          "one": "{failing} of {n} check failing, {warning} with a warning.",
+          "other": "{failing} of {n} checks failing, {warning} with a warning."
+        },
+        "warnings": {
+          "one": "{warning} of {n} check with a warning.",
+          "other": "{warning} of {n} checks with a warning."
+        }
+      }
+    }
+  },
+  "syncJobs": {
+    "clearFilters": "Clear filters",
+    "columns": {
+      "attempts": "Attempts",
+      "connection": "Connection",
+      "created": "Created",
+      "duration": "Duration",
+      "jobType": "Job type",
+      "lastError": "Last error",
+      "status": "Status"
+    },
+    "deferred": "deferred",
+    "deferredFor": "Deferred for {duration} so far",
+    "description": "Background work OpenLinker runs for your connections. Filter to find what stopped.",
+    "empty": {
+      "filtered": "No jobs match the current filters.",
+      "none": "No sync jobs have been enqueued yet.",
+      "title": "No jobs found"
+    },
+    "error": {
+      "showFull": "Show full error",
+      "showLess": "Show less"
+    },
+    "filters": {
+      "all": {
+        "connections": "All connections",
+        "jobTypes": "All job types",
+        "outcomes": "All outcomes",
+        "statuses": "All statuses"
+      },
+      "connection": "Connection",
+      "group": "Filter sync jobs",
+      "jobType": "Job type",
+      "outcome": "Outcome",
+      "status": "Status"
+    },
+    "poison": {
+      "hint": "Events that failed recovery repeatedly and were recorded here instead of retrying forever. There is no replay action yet, so read the raw fields to investigate.",
+      "none": "None recorded"
+    }
+  },
   "ui": {
     "accessDenied": {
       "eyebrow": "No access",

@@ -13,6 +13,9 @@
  * @module pages/insights
  */
 import type { Connection, ConnectionStatus } from '../../features/connections';
+import type { Messages, PluralFn, ResolvedCopy } from '../../shared/i18n';
+
+export type ConnectionHealthCopy = ResolvedCopy<Messages['insights']>['connectionHealth'];
 
 export interface ConnectionHealthRow {
   connection: Connection;
@@ -77,22 +80,33 @@ export function summarizeConnectionHealth(
   return summary;
 }
 
-/** The one-sentence summary above the list. */
-export function describeConnectionHealth(summary: ConnectionHealthSummary): string {
-  const plural = summary.total === 1 ? 'connection' : 'connections';
+/**
+ * The one-sentence summary above the list. Takes the copy and the plural
+ * function as arguments so it stays a pure helper the tests can call
+ * without rendering.
+ */
+export function describeConnectionHealth(
+  summary: ConnectionHealthSummary,
+  copy: ConnectionHealthCopy,
+  plural: PluralFn
+): string {
   if (summary.withFailedJobs === 0) {
     return summary.attention === 0
-      ? `No failed jobs on any of your ${summary.total} ${plural}.`
-      : `No failed jobs, but ${summary.attention} of ${summary.total} ${plural} cannot reach their platform.`;
+      ? plural(summary.total, copy.summary.noFailedJobs)
+      : plural(summary.total, copy.summary.cannotReach, { attention: summary.attention });
   }
-  const verb = summary.withFailedJobs === 1 ? 'has' : 'have';
-  return `${summary.withFailedJobs} of ${summary.total} ${plural} ${verb} jobs that stopped retrying.`;
+  if (summary.total === 1) return copy.summary.onlyConnectionFailed;
+  return plural(summary.withFailedJobs, copy.summary.withFailedJobs, { total: summary.total });
 }
 
-export const CONNECTION_STATUS_LABEL: Record<ConnectionStatus, string> = {
-  active: 'Active',
-  disabled: 'Disabled',
-  error: 'Error',
-  needs_reauth: 'Needs re-auth',
-  archived: 'Archived',
+/** Which `status` copy key labels a connection status. */
+export const CONNECTION_STATUS_LABEL_KEY: Record<
+  ConnectionStatus,
+  keyof ConnectionHealthCopy['status']
+> = {
+  active: 'active',
+  disabled: 'disabled',
+  error: 'error',
+  needs_reauth: 'needsReauth',
+  archived: 'archived',
 };

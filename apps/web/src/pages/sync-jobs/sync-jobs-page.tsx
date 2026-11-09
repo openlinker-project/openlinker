@@ -22,6 +22,12 @@ import {
 } from '../../features/connections';
 import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
 import { usePlatforms, type Platform } from '../../shared/plugins';
+import {
+  interpolate,
+  useMessages,
+  type Messages,
+  type ResolvedCopy,
+} from '../../shared/i18n';
 import type {
   SyncJob,
   SyncJobFilters,
@@ -39,6 +45,8 @@ import type { StreamDeadLetter } from '../../features/sync-jobs/api/stream-dead-
 
 // Capped by the backend validator on GET /sync/jobs (@Max(100)).
 const PAGE_SIZE = SYNC_JOBS_MAX_LIMIT;
+
+type SyncJobsCopy = ResolvedCopy<Messages['syncJobs']>;
 
 /**
  * Splits a dotted job type into the action an operator scans for (last
@@ -82,6 +90,7 @@ function JobTypeCell({ jobType }: { jobType: string }): ReactElement {
  * a clipped error with no way to read it on a narrower window.
  */
 function LastErrorCell({ error }: { error: string }): ReactElement {
+  const copy = useMessages('syncJobs').error;
   const [open, setOpen] = useState(false);
   const [clipped, setClipped] = useState(false);
   const textRef = useRef<HTMLSpanElement>(null);
@@ -118,7 +127,7 @@ function LastErrorCell({ error }: { error: string }): ReactElement {
             setOpen((value) => !value);
           }}
         >
-          {open ? 'Show less' : 'Show full error'}
+          {open ? copy.showLess : copy.showFull}
         </button>
       ) : null}
     </span>
@@ -160,12 +169,13 @@ function JobConnectionChip({
 }
 
 function buildColumns(
-  renderConnection: (connectionId: string) => ReactElement
+  renderConnection: (connectionId: string) => ReactElement,
+  copy: SyncJobsCopy
 ): DataTableColumn<SyncJob>[] {
   return [
     {
       id: 'status',
-      header: 'Status',
+      header: copy.columns.status,
       cell: (job) => (
         <SyncJobStatusBadge
           status={job.status}
@@ -178,20 +188,20 @@ function buildColumns(
     },
     {
       id: 'jobType',
-      header: 'Job type',
+      header: copy.columns.jobType,
       cell: (job) => <JobTypeCell jobType={job.jobType} />,
       accessor: (job) => job.jobType,
       sortable: true,
     },
     {
       id: 'connectionId',
-      header: 'Connection',
+      header: copy.columns.connection,
       cell: (job) => renderConnection(job.connectionId),
       hideBelow: 1024,
     },
     {
       id: 'attempts',
-      header: 'Attempts',
+      header: copy.columns.attempts,
       align: 'right',
       cell: (job) => {
         const deferred = formatDurationMs(job.deferredTotalMs);
@@ -202,9 +212,12 @@ function buildColumns(
               // A deferred job consumes no attempt, so its counter stands still
               // while it waits. Without this an operator reads a row parked on a
               // throttling shop as simply stuck (#2613).
-              <span className="text-muted" title={`Deferred for ${deferred} so far`}>
+              <span
+                className="text-muted"
+                title={interpolate(copy.deferredFor, { duration: deferred })}
+              >
                 {' '}
-                · deferred
+                · {copy.deferred}
               </span>
             ) : null}
           </>
@@ -216,7 +229,7 @@ function buildColumns(
     },
     {
       id: 'lastAttemptDurationMs',
-      header: 'Duration',
+      header: copy.columns.duration,
       align: 'right',
       // Unmeasured rows sort as -1, so they group together and land first on an
       // ascending sort - ahead of a genuine 0 ms row. Stated rather than dressed
@@ -233,7 +246,7 @@ function buildColumns(
     },
     {
       id: 'lastError',
-      header: 'Last error',
+      header: copy.columns.lastError,
       cell: (job) =>
         job.lastError ? (
           <LastErrorCell error={job.lastError} />
@@ -244,7 +257,7 @@ function buildColumns(
     },
     {
       id: 'createdAt',
-      header: 'Created',
+      header: copy.columns.created,
       cell: (job) => <TimeDisplay iso={job.createdAt} />,
       accessor: (job) => job.createdAt,
       sortable: true,
@@ -310,6 +323,7 @@ const DEAD_LETTER_COLUMNS: DataTableColumn<StreamDeadLetter>[] = [
  * action in this pass.
  */
 function StreamDeadLettersSection(): ReactElement {
+  const copy = useMessages('syncJobs').poison;
   const [offset, setOffset] = useState(0);
   const { sort, setSort } = useTableSort([{ id: 'lastSeenAt', desc: true }]);
 
@@ -337,17 +351,14 @@ function StreamDeadLettersSection(): ReactElement {
               <span className="text-muted"> ({countQuery.data.count})</span>
             ) : null}
           </h2>
-          <p className="poison-entries__hint">
-            Events that failed recovery repeatedly and were recorded here instead of retrying
-            forever. There is no replay action yet, so read the raw fields to investigate.
-          </p>
+          <p className="poison-entries__hint">{copy.hint}</p>
         </div>
         {isEmpty ? (
           <span className="poison-entries__none" data-testid="poison-entries-none">
             <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
               <path d="m3.5 8.5 3 3 6-7" />
             </svg>
-            None recorded
+            {copy.none}
           </span>
         ) : null}
       </div>
@@ -410,6 +421,7 @@ function StreamDeadLettersSection(): ReactElement {
 }
 
 export function SyncJobsPage(): ReactElement {
+  const copy = useMessages('syncJobs');
   const [searchParams, setSearchParams] = useSearchParams();
   const { sort, setSort } = useTableSort([{ id: 'createdAt', desc: true }]);
 
@@ -442,7 +454,7 @@ export function SyncJobsPage(): ReactElement {
     ),
     [connectionById, connectionsLoading, platforms]
   );
-  const columns = useMemo(() => buildColumns(renderConnection), [renderConnection]);
+  const columns = useMemo(() => buildColumns(renderConnection, copy), [renderConnection, copy]);
 
   function setFilter(key: string, value: string): void {
     setSearchParams((prev) => {
@@ -490,12 +502,12 @@ export function SyncJobsPage(): ReactElement {
     <PageLayout
       eyebrow="Diagnostics"
       title="Sync Jobs"
-      description="Background work OpenLinker runs for your connections. Filter to find what stopped."
+      description={copy.description}
     >
       {/* Filter bar - labelled, grouped on the left, wrapping (#4016). */}
-      <div className="sync-jobs-filters" role="group" aria-label="Filter sync jobs">
+      <div className="sync-jobs-filters" role="group" aria-label={copy.filters.group}>
         <div className="sync-jobs-filters__field">
-          <label htmlFor="sync-jobs-filter-status">Status</label>
+          <label htmlFor="sync-jobs-filter-status">{copy.filters.status}</label>
           <Select
             id="sync-jobs-filter-status"
             className={status ? 'control--active' : ''}
@@ -504,7 +516,7 @@ export function SyncJobsPage(): ReactElement {
               setFilter('status', e.target.value);
             }}
           >
-            <option value="">All statuses</option>
+            <option value="">{copy.filters.all.statuses}</option>
             {JOB_STATUS_VALUES.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -514,7 +526,7 @@ export function SyncJobsPage(): ReactElement {
         </div>
 
         <div className="sync-jobs-filters__field sync-jobs-filters__field--wide">
-          <label htmlFor="sync-jobs-filter-type">Job type</label>
+          <label htmlFor="sync-jobs-filter-type">{copy.filters.jobType}</label>
           <Select
             id="sync-jobs-filter-type"
             className={jobType ? 'control--active' : ''}
@@ -523,7 +535,7 @@ export function SyncJobsPage(): ReactElement {
               setFilter('jobType', e.target.value);
             }}
           >
-            <option value="">All job types</option>
+            <option value="">{copy.filters.all.jobTypes}</option>
             {JOB_TYPE_VALUES.map((t) => (
               <option key={t} value={t}>
                 {t}
@@ -533,7 +545,7 @@ export function SyncJobsPage(): ReactElement {
         </div>
 
         <div className="sync-jobs-filters__field">
-          <label htmlFor="sync-jobs-filter-outcome">Outcome</label>
+          <label htmlFor="sync-jobs-filter-outcome">{copy.filters.outcome}</label>
           <Select
             id="sync-jobs-filter-outcome"
             className={outcome ? 'control--active' : ''}
@@ -542,7 +554,7 @@ export function SyncJobsPage(): ReactElement {
               setFilter('outcome', e.target.value);
             }}
           >
-            <option value="">All outcomes</option>
+            <option value="">{copy.filters.all.outcomes}</option>
             {JOB_OUTCOME_VALUES.map((o) => (
               <option key={o} value={o}>
                 {o === 'business_failure' ? 'business failure' : o}
@@ -552,7 +564,7 @@ export function SyncJobsPage(): ReactElement {
         </div>
 
         <div className="sync-jobs-filters__field">
-          <label htmlFor="sync-jobs-filter-connection">Connection</label>
+          <label htmlFor="sync-jobs-filter-connection">{copy.filters.connection}</label>
           <Select
             id="sync-jobs-filter-connection"
             className={connectionId ? 'control--active' : ''}
@@ -561,7 +573,7 @@ export function SyncJobsPage(): ReactElement {
               setFilter('connectionId', e.target.value);
             }}
           >
-            <option value="">All connections</option>
+            <option value="">{copy.filters.all.connections}</option>
             {connections.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -572,7 +584,7 @@ export function SyncJobsPage(): ReactElement {
 
         {filtersActive ? (
           <Button tone="ghost" className="sync-jobs-filters__clear" onClick={clearFilters}>
-            Clear filters
+            {copy.clearFilters}
           </Button>
         ) : null}
       </div>
@@ -597,12 +609,8 @@ export function SyncJobsPage(): ReactElement {
       ) : (query.data?.items.length ?? 0) === 0 ? (
         <EmptyState
           liveRegion="off"
-          title="No jobs found"
-          message={
-            filtersActive
-              ? 'No jobs match the current filters.'
-              : 'No sync jobs have been enqueued yet.'
-          }
+          title={copy.empty.title}
+          message={filtersActive ? copy.empty.filtered : copy.empty.none}
           // No action here: the filter bar's Clear filters button is already on
           // screen whenever a filter is active, and a second button with the
           // same name read twice to a screen reader (#4016).
