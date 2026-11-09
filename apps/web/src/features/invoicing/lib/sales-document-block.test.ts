@@ -15,9 +15,6 @@ import {
 } from './sales-document-block';
 import type { OrderRecord } from '../../orders';
 
-/** `t(key, fallback)` behaves like the host's empty catalogue: always the fallback. */
-const t = (_key: string, fallback: string): string => fallback;
-
 function order(overrides: Partial<OrderRecord> = {}): OrderRecord {
   return {
     internalOrderId: 'ol_order_1',
@@ -36,13 +33,13 @@ function order(overrides: Partial<OrderRecord> = {}): OrderRecord {
 
 describe('resolveSalesDocumentBlockCopy — invoice kind (default, #2100 wording pinned)', () => {
   it('returns null when nothing is blocking and the browser sees no ambiguity', () => {
-    expect(resolveSalesDocumentBlockCopy(order(), false, t)).toBeNull();
+    expect(resolveSalesDocumentBlockCopy(order(), false)).toBeNull();
   });
 
   it('falls back to the derived ambiguity message for a row the gate has not re-evaluated', () => {
     // The columns are nullable with no backfill, so a pre-#2100 row carries no
     // reason. Dropping the message entirely would have been a regression.
-    const copy = resolveSalesDocumentBlockCopy(order(), true, t);
+    const copy = resolveSalesDocumentBlockCopy(order(), true);
     expect(copy).toMatchObject({ tone: 'warning', offerSetPrimary: true, detail: null });
     expect(copy?.title).toMatch(/Automatic invoicing is off/i);
   });
@@ -53,7 +50,6 @@ describe('resolveSalesDocumentBlockCopy — invoice kind (default, #2100 wording
     const copy = resolveSalesDocumentBlockCopy(
       order({ salesDocumentBlockReason: 'trigger-model-manual' }),
       true,
-      t,
     );
     expect(copy?.title).toMatch(/invoices by hand/i);
     expect(copy?.offerSetPrimary).toBe(false);
@@ -67,7 +63,6 @@ describe('resolveSalesDocumentBlockCopy — invoice kind (default, #2100 wording
         salesDocumentBlockDetail: '2 invoicing connections, none marked primary',
       }),
       false,
-      t,
     );
     expect(copy).toMatchObject({
       tone: 'error',
@@ -84,7 +79,6 @@ describe('resolveSalesDocumentBlockCopy — invoice kind (default, #2100 wording
         salesDocumentUnresolvedReason: 'no-matching-rule',
       }),
       false,
-      t,
     );
     expect(copy).toMatchObject({ tone: 'error', offerSetPrimary: false });
     expect(copy?.title).toMatch(/no route/i);
@@ -97,7 +91,6 @@ describe('resolveSalesDocumentBlockCopy — invoice kind (default, #2100 wording
         salesDocumentUnresolvedReason: 'no-configuration-for-country',
       }),
       false,
-      t,
     );
     expect(copy).toMatchObject({ tone: 'error', offerSetPrimary: false });
     expect(copy?.title).toMatch(/no rules configured for this country/i);
@@ -112,7 +105,6 @@ describe('resolveSalesDocumentBlockCopy — invoice kind (default, #2100 wording
           "Rule rule-1 routes this order's invoice to connection conn-1, which is disabled",
       }),
       false,
-      t,
     );
     expect(copy).toMatchObject({
       tone: 'error',
@@ -130,7 +122,6 @@ describe('resolveSalesDocumentBlockCopy — invoice kind (default, #2100 wording
         salesDocumentUnresolvedReason: 'threshold-currency-mismatch',
       }),
       false,
-      t,
     );
     expect(copy).toMatchObject({ tone: 'error', offerSetPrimary: false });
     expect(copy?.title).toMatch(/does not match the rule's threshold/i);
@@ -141,7 +132,6 @@ describe('resolveSalesDocumentBlockCopy — invoice kind (default, #2100 wording
     const copy = resolveSalesDocumentBlockCopy(
       order({ salesDocumentBlockReason: 'trigger-model-manual' }),
       false,
-      t,
     );
     // A deliberate operator setting must not be dressed as a fault, and a primary
     // is the wrong fix for it.
@@ -152,7 +142,6 @@ describe('resolveSalesDocumentBlockCopy — invoice kind (default, #2100 wording
     const copy = resolveSalesDocumentBlockCopy(
       order({ salesDocumentBlockReason: 'trigger-model-batched' }),
       false,
-      t,
     );
     expect(copy).toMatchObject({ tone: 'warning', offerSetPrimary: false });
     expect(copy?.title).toMatch(/batched invoicing is not available/i);
@@ -163,7 +152,6 @@ describe('resolveSalesDocumentBlockCopy — invoice kind (default, #2100 wording
       resolveSalesDocumentBlockCopy(
         order({ salesDocumentBlockReason: 'missing-required-tax-id' }),
         false,
-        t,
       ),
     ).toMatchObject({ tone: 'error' });
     // `tax-rate-conflict` carries the dedicated `conflict` tone (#2253): a
@@ -172,7 +160,6 @@ describe('resolveSalesDocumentBlockCopy — invoice kind (default, #2100 wording
       resolveSalesDocumentBlockCopy(
         order({ salesDocumentBlockReason: 'tax-rate-conflict' }),
         false,
-        t,
       ),
     ).toMatchObject({ tone: 'conflict' });
   });
@@ -183,7 +170,6 @@ describe('resolveSalesDocumentBlockCopy — invoice kind (default, #2100 wording
       // the operator with an uninvoiced order and no explanation at all.
       order({ salesDocumentBlockReason: 'some-future-reason' as never }),
       false,
-      t,
     );
     expect(copy).toMatchObject({ tone: 'warning', offerSetPrimary: false });
     expect(copy?.title).toMatch(/not invoiced/i);
@@ -196,7 +182,6 @@ describe('resolveSalesDocumentBlockCopy — invoice kind (default, #2100 wording
         salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
       }),
       false,
-      t,
     );
     const rendered = `${copy?.title ?? ''} ${copy?.body ?? ''}`;
     expect(rendered).not.toContain('unresolved-routing');
@@ -209,7 +194,6 @@ describe('resolveSalesDocumentBlockCopy — fiscal-receipt kind (#2156/#2160)', 
     const copy = resolveSalesDocumentBlockCopy(
       order({ salesDocumentBlockReason: 'trigger-model-manual' }),
       false,
-      t,
       'fiscal-receipt',
     );
     expect(copy?.title).toMatch(/registers receipts by hand/i);
@@ -224,7 +208,6 @@ describe('resolveSalesDocumentBlockCopy — fiscal-receipt kind (#2156/#2160)', 
         salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
       }),
       false,
-      t,
       'fiscal-receipt',
     );
     expect(copy).toMatchObject({ tone: 'error', offerSetPrimary: true });
@@ -233,7 +216,7 @@ describe('resolveSalesDocumentBlockCopy — fiscal-receipt kind (#2156/#2160)', 
   });
 
   it('the derived-ambiguity fallback also renders kind-aware copy', () => {
-    const copy = resolveSalesDocumentBlockCopy(order(), true, t, 'fiscal-receipt');
+    const copy = resolveSalesDocumentBlockCopy(order(), true, 'fiscal-receipt');
     expect(copy?.title).toMatch(/Automatic fiscal registration is off/i);
   });
 
@@ -241,7 +224,6 @@ describe('resolveSalesDocumentBlockCopy — fiscal-receipt kind (#2156/#2160)', 
     const copy = resolveSalesDocumentBlockCopy(
       order({ salesDocumentBlockReason: 'trigger-model-batched' }),
       false,
-      t,
       'fiscal-receipt',
     );
     expect(copy?.title).toMatch(/not registered/i);
@@ -254,7 +236,6 @@ describe('resolveSalesDocumentBlockCopy — mixed kind (candidate pool spans bot
     const copy = resolveSalesDocumentBlockCopy(
       order({ salesDocumentBlockReason: 'trigger-model-manual' }),
       false,
-      t,
       'mixed',
     );
     expect(copy?.title).not.toMatch(/invoice/i);
@@ -270,7 +251,6 @@ describe('resolveSalesDocumentBlockCopy — mixed kind (candidate pool spans bot
         salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
       }),
       false,
-      t,
       'mixed',
     );
     expect(copy).toMatchObject({ tone: 'error', offerSetPrimary: true });
@@ -281,7 +261,7 @@ describe('resolveSalesDocumentBlockCopy - missing tax rate (#2254)', () => {
   const blocked = order({ salesDocumentBlockReason: 'missing-tax-rate' });
 
   it('points at the shop for a line OpenLinker has in its catalogue', () => {
-    const copy = resolveSalesDocumentBlockCopy(blocked, false, t, 'invoice', [
+    const copy = resolveSalesDocumentBlockCopy(blocked, false, 'invoice', [
       { name: 'Blue mug', inCatalogue: true },
     ]);
     expect(copy?.title).toContain('1 line has no tax rate.');
@@ -290,7 +270,7 @@ describe('resolveSalesDocumentBlockCopy - missing tax rate (#2254)', () => {
   });
 
   it('says the fix will not release the order when nothing is in the catalogue', () => {
-    const copy = resolveSalesDocumentBlockCopy(blocked, false, t, 'invoice', [
+    const copy = resolveSalesDocumentBlockCopy(blocked, false, 'invoice', [
       { name: 'Marketplace-only widget', inCatalogue: false },
     ]);
     expect(copy?.title).toContain('is not in your catalogue.');
@@ -298,7 +278,7 @@ describe('resolveSalesDocumentBlockCopy - missing tax rate (#2254)', () => {
   });
 
   it('counts the lines rather than naming one product on a long order', () => {
-    const copy = resolveSalesDocumentBlockCopy(blocked, false, t, 'invoice', [
+    const copy = resolveSalesDocumentBlockCopy(blocked, false, 'invoice', [
       { name: 'A', inCatalogue: true },
       { name: 'B', inCatalogue: true },
       { name: 'C', inCatalogue: true },
@@ -310,7 +290,7 @@ describe('resolveSalesDocumentBlockCopy - missing tax rate (#2254)', () => {
     // The gate also blocks when every product line IS rated but the shipping
     // charge cannot be attributed to any of them. Claiming "1 line has no tax
     // rate" there is flatly false, and there is no count to report.
-    const copy = resolveSalesDocumentBlockCopy(blocked, false, t, 'invoice', []);
+    const copy = resolveSalesDocumentBlockCopy(blocked, false, 'invoice', []);
     expect(copy?.title).toBe('Not invoiced: the delivery charge has no tax rate.');
     expect(copy?.body).toContain('Every product line has a rate');
     expect(`${copy?.title ?? ''} ${copy?.body ?? ''}`).not.toMatch(/\d+ lines? has|Some lines/);
@@ -318,7 +298,7 @@ describe('resolveSalesDocumentBlockCopy - missing tax rate (#2254)', () => {
   });
 
   it('renders the delivery-charge block with receipt-flavored copy', () => {
-    const copy = resolveSalesDocumentBlockCopy(blocked, false, t, 'fiscal-receipt', []);
+    const copy = resolveSalesDocumentBlockCopy(blocked, false, 'fiscal-receipt', []);
     expect(copy?.title).toBe('Not registered: the delivery charge has no tax rate.');
     expect(copy?.body).toContain('register this one outside OpenLinker');
   });
@@ -338,7 +318,7 @@ describe('resolveSalesDocumentBlockCopy - missing tax rate (#2254)', () => {
       [{ name: 'A', inCatalogue: false }],
       [] as { name: string; inCatalogue: boolean }[],
     ]) {
-      const copy = resolveSalesDocumentBlockCopy(blocked, false, t, 'invoice', lines);
+      const copy = resolveSalesDocumentBlockCopy(blocked, false, 'invoice', lines);
       expect(`${copy?.title ?? ''} ${copy?.body ?? ''}`).not.toContain('ambiguous');
     }
   });

@@ -10,6 +10,7 @@
  * @module apps/web/src/features/delivery-on-documents/components
  */
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { Combobox, type ComboboxOption } from '../../../shared/ui/combobox';
 import {
@@ -36,8 +37,8 @@ import {
   countryName,
   maxName,
   neutralSettings,
-  RATE_LABEL,
   rateLabel,
+  receiptName,
   settingsFromSuggestion,
   stillEqualsSuggestion,
   type DeliveryFormSettings,
@@ -45,7 +46,7 @@ import {
 } from '../lib/delivery-line-ui';
 import { useDeliveryLineSuggestionsQuery } from '../hooks/use-delivery-on-documents-queries';
 import { DocumentsPreview } from './delivery-documents-preview';
-import { HeadWithTip, TIP_LINE, TIP_RATE } from './delivery-rules-table';
+import { HeadWithTip, useDeliveryTips } from './delivery-rules-table';
 
 export interface EditorTarget {
   mode: 'add' | 'edit';
@@ -56,6 +57,8 @@ export interface EditorTarget {
 const CUSTOM = '__custom';
 const FILL_OTHER = 'other';
 const FILL_NEUTRAL = 'neutral';
+/** The example rate the "How receipts write the rate" options are shown with. */
+const SAMPLE_RATE = '23';
 
 function NameInput({
   value,
@@ -72,6 +75,7 @@ function NameInput({
   label: string;
   id?: string;
 }): ReactElement {
+  const copy = useMessages('delivery-on-documents').nameInput;
   const all = options.includes(value) ? options : [value, ...options];
   const [own, setOwn] = useState(false);
   const [draft, setDraft] = useState('');
@@ -101,15 +105,15 @@ function NameInput({
             {o}
           </option>
         ))}
-        <option value={CUSTOM}>Type my own…</option>
+        <option value={CUSTOM}>{copy.typeOwn}</option>
       </Select>
       {own ? (
         <div className="dd-name__own">
           <Input
-            aria-label={`${label}, your own`}
+            aria-label={interpolate(copy.ownLabel, { label })}
             value={draft}
             invalid={Boolean(draft) && Boolean(check.error)}
-            placeholder="For example: Doprava, Versand, Envío"
+            placeholder={copy.placeholder}
             autoFocus
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -127,7 +131,10 @@ function NameInput({
             >
               {draft && check.error
                 ? check.error
-                : `${check.name.length} of ${maxName(format, receiptLineNameLength)} characters`}
+                : interpolate(copy.characters, {
+                    count: check.name.length,
+                    max: maxName(format, receiptLineNameLength),
+                  })}
             </p>
             <Button
               tone="secondary"
@@ -138,7 +145,7 @@ function NameInput({
                 setOwn(false);
               }}
             >
-              Use this name
+              {copy.useName}
             </Button>
           </div>
         </div>
@@ -183,6 +190,10 @@ function EditorForm({
   onRemove,
   onDirtyChange,
 }: EditorFormProps): ReactElement {
+  const copy = useMessages('delivery-on-documents');
+  const ed = copy.editor;
+  const plural = usePlural();
+  const tips = useDeliveryTips();
   const [s, setS] = useState<DeliveryFormSettings>(target.settings);
   const [country, setCountry] = useState<string | null>(target.country);
   const [marker, setMarker] = useState<string | null>(() => initialMarker(target, suggestions));
@@ -235,14 +246,14 @@ function EditorForm({
       label: countryName(c),
       hint:
         ordersFrom(c) > 0
-          ? `${ordersFrom(c)} orders in 30 days`
+          ? plural(ordersFrom(c), ed.country.orders)
           : suggestionByCountry.has(c)
-            ? 'suggestion available'
+            ? ed.country.suggestionAvailable
             : c,
       disabled: taken.includes(c) && c !== target.country,
-      disabledReason: 'Already in the table',
+      disabledReason: ed.country.alreadyListed,
     }));
-  }, [factByCountry, suggestionByCountry, taken, target.country]);
+  }, [factByCountry, suggestionByCountry, taken, target.country, plural, ed]);
 
   const suggestion = country ? suggestionByCountry.get(country) ?? null : null;
   const update = (patch: Partial<DeliveryFormSettings>): void =>
@@ -250,11 +261,19 @@ function EditorForm({
 
   const fillOptions = [
     ...(isOther
-      ? [{ value: FILL_NEUTRAL, label: `OpenLinker default (${neutralSettings().name})` }]
-      : [{ value: FILL_OTHER, label: 'The same as "All other countries"' }]),
+      ? [
+          {
+            value: FILL_NEUTRAL,
+            label: interpolate(ed.fill.openLinkerDefault, { name: neutralSettings().name }),
+          },
+        ]
+      : [{ value: FILL_OTHER, label: ed.fill.sameAsOther }]),
     ...suggestions
       .filter((x) => isOther || x.country === country)
-      .map((x) => ({ value: x.country, label: `Suggested for ${countryName(x.country)}` })),
+      .map((x) => ({
+        value: x.country,
+        label: interpolate(ed.fill.suggestedFor, { country: countryName(x.country) }),
+      })),
   ];
   const markerSuggestion = marker ? suggestionByCountry.get(marker) ?? null : null;
   const stillSuggested = markerSuggestion ? stillEqualsSuggestion(s, markerSuggestion) : false;
@@ -274,9 +293,9 @@ function EditorForm({
   const previewChoices = facts.filter((f) => f.example !== null && !taken.includes(f.country));
   const title =
     target.mode === 'add'
-      ? 'Add a country'
+      ? ed.addTitle
       : isOther
-        ? 'All other countries'
+        ? copy.common.allOtherCountries
         : countryName(target.country ?? '');
   const canSave =
     !busy &&
@@ -295,24 +314,22 @@ function EditorForm({
     <>
       <DialogTitle>{title}</DialogTitle>
       <DialogDescription>
-        {isOther
-          ? 'Used for every buyer country that is not listed in the table.'
-          : 'Orders delivered to this country use these settings.'}
+        {isOther ? ed.descriptionOther : ed.descriptionCountry}
       </DialogDescription>
 
       <div className="dd-editor__grid">
         <div className="dd-editor__form">
           {target.mode === 'add' ? (
             <FormField
-              label="Buyer country"
+              label={ed.country.label}
               name="dd-country"
-              description="Any country. Countries you already get orders from are at the top."
+              description={ed.country.description}
             >
               <Combobox
                 options={countryOptions}
                 value={country ? { kind: 'dictionary', ids: [country] } : null}
                 filterFirstThreshold={1000}
-                placeholder="Search for a country…"
+                placeholder={ed.country.placeholder}
                 onChange={(next) => {
                   const code = next?.kind === 'dictionary' ? next.ids[0] ?? null : null;
                   setCountry(code);
@@ -331,12 +348,12 @@ function EditorForm({
           {target.mode !== 'add' || country ? (
             <>
               <FormField
-                label="Fill in from"
+                label={ed.fill.label}
                 name="dd-fill"
                 description={
                   !isOther && country && !suggestion
-                    ? `OpenLinker has no suggestion for ${countryName(country)} yet. Check the VAT on delivery with your accountant.`
-                    : 'Fills the fields below. Change anything afterwards.'
+                    ? interpolate(ed.fill.noSuggestion, { country: countryName(country) })
+                    : ed.fill.description
                 }
               >
                 <Select
@@ -355,7 +372,7 @@ function EditorForm({
                     }
                   }}
                 >
-                  <option value="">{fillValue ? '' : 'Your own settings'}</option>
+                  <option value="">{fillValue ? '' : ed.fill.ownSettings}</option>
                   {fillOptions.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
@@ -365,13 +382,13 @@ function EditorForm({
               </FormField>
 
               <FormField
-                label={<HeadWithTip label="Name of the delivery line" tips={TIP_LINE} />}
+                label={<HeadWithTip label={ed.name.label} tips={tips.line} />}
                 name="dd-name"
-                description="Pick one or type your own, in any language."
+                description={ed.name.description}
               >
                 <NameInput
                   key={`${country}-${marker}`}
-                  label="Name of the delivery line"
+                  label={ed.name.label}
                   value={s.name}
                   options={nameOptions}
                   format={s.rateFormat}
@@ -380,25 +397,25 @@ function EditorForm({
               </FormField>
 
               <FormField
-                label={<HeadWithTip label="VAT rate of delivery" tips={TIP_RATE} />}
+                label={<HeadWithTip label={ed.rate.label} tips={tips.rate} />}
                 name="dd-rate"
               >
                 <Select
                   value={s.rate}
                   onChange={(e) => update({ rate: e.target.value as DeliveryFormSettings['rate'] })}
                 >
-                  <option value="goods">Same as the products</option>
-                  <option value="fixed">One fixed rate</option>
-                  <option value="spread">Add delivery to the product prices</option>
+                  <option value="goods">{ed.rate.goods}</option>
+                  <option value="fixed">{ed.rate.fixed}</option>
+                  <option value="spread">{ed.rate.spread}</option>
                 </Select>
               </FormField>
               {s.rate === 'fixed' ? (
                 <div className="dd-fixed">
-                  <FormField label="Fixed rate in %" name="dd-fixed-rate">
+                  <FormField label={ed.fixedRate.label} name="dd-fixed-rate">
                     <Input
                       inputMode="decimal"
                       value={s.fixedRate}
-                      placeholder="For example 21"
+                      placeholder={ed.fixedRate.placeholder}
                       onChange={(e) =>
                         update({ fixedRate: e.target.value.replace(/[^\d.,]/g, '') })
                       }
@@ -407,7 +424,9 @@ function EditorForm({
                   {ratesSeen.length ? (
                     <div className="dd-fixed__seen">
                       <span className="dd-hint">
-                        Rates in your {country ? countryName(country) : ''} orders
+                        {interpolate(ed.fixedRate.seen, {
+                          country: country ? countryName(country) : '',
+                        })}
                       </span>
                       <div className="dd-inline">
                         {ratesSeen.map((r) => (
@@ -426,15 +445,15 @@ function EditorForm({
                 </div>
               ) : null}
 
-              <FormField label="When delivery is free" name="dd-free">
+              <FormField label={ed.free.label} name="dd-free">
                 <Select
                   value={s.freeDelivery}
                   onChange={(e) =>
                     update({ freeDelivery: e.target.value as DeliveryFormSettings['freeDelivery'] })
                   }
                 >
-                  <option value="omit">Leave the delivery line out</option>
-                  <option value="show">Show the line with 0</option>
+                  <option value="omit">{ed.free.omit}</option>
+                  <option value="show">{ed.free.show}</option>
                 </Select>
               </FormField>
 
@@ -444,20 +463,26 @@ function EditorForm({
                 aria-expanded={more}
                 onClick={() => setMore((v) => !v)}
               >
-                {more ? 'Fewer options' : 'More options'}
+                {more ? ed.fewerOptions : ed.moreOptions}
               </button>
               {more ? (
                 <div className="dd-more__body">
-                  <FormField label="How receipts write the rate" name="dd-format">
+                  <FormField label={ed.rateFormatLabel} name="dd-format">
                     <Select
                       value={s.rateFormat}
                       onChange={(e) =>
                         update({ rateFormat: e.target.value as DeliveryLineRateFormat })
                       }
                     >
-                      <option value="plain">{`${s.name} 23%`}</option>
-                      <option value="brackets">{`${s.name} (23%)`}</option>
-                      <option value="labelled">{`${s.name} ${RATE_LABEL} 23%`}</option>
+                      <option value="plain">
+                        {receiptName({ ...s, rateFormat: 'plain' }, SAMPLE_RATE)}
+                      </option>
+                      <option value="brackets">
+                        {receiptName({ ...s, rateFormat: 'brackets' }, SAMPLE_RATE)}
+                      </option>
+                      <option value="labelled">
+                        {receiptName({ ...s, rateFormat: 'labelled' }, SAMPLE_RATE)}
+                      </option>
                     </Select>
                   </FormField>
                   <label className="rate-limit-section__toggle dd-check">
@@ -466,12 +491,12 @@ function EditorForm({
                       checked={s.invoiceName !== null}
                       onChange={(e) => update({ invoiceName: e.target.checked ? s.name : null })}
                     />
-                    <span>Different name on invoices</span>
+                    <span>{ed.invoiceName.toggle}</span>
                   </label>
                   {s.invoiceName !== null ? (
                     <NameInput
                       key="inv"
-                      label="Name on invoices"
+                      label={ed.invoiceName.label}
                       value={s.invoiceName}
                       options={nameOptions}
                       format="plain"
@@ -479,13 +504,13 @@ function EditorForm({
                     />
                   ) : null}
                   <div className="dd-methods">
-                    <span className="dd-methods__title">Own name for a delivery method</span>
+                    <span className="dd-methods__title">{ed.methods.title}</span>
                     {Object.entries(s.methodNames).map(([id, n]) => (
                       <div key={id} className="dd-methods__row">
                         <span className="dd-methods__method">{methodLabel(id)}</span>
                         <NameInput
                           key={id}
-                          label={`Name for ${methodLabel(id)}`}
+                          label={interpolate(ed.methods.nameFor, { method: methodLabel(id) })}
                           value={n}
                           options={nameOptions}
                           format={s.rateFormat}
@@ -502,20 +527,20 @@ function EditorForm({
                             update({ methodNames: rest });
                           }}
                         >
-                          Remove
+                          {ed.methods.remove}
                         </Button>
                       </div>
                     ))}
                     {unnamed.length ? (
                       <Select
-                        aria-label="Add a delivery method"
+                        aria-label={ed.methods.addLabel}
                         value=""
                         onChange={(e) =>
                           e.target.value &&
                           update({ methodNames: { ...s.methodNames, [e.target.value]: s.name } })
                         }
                       >
-                        <option value="">+ Add a delivery method…</option>
+                        <option value="">{ed.methods.addOption}</option>
                         {unnamed.map((m) => (
                           <option key={m.value} value={m.value}>
                             {m.label}
@@ -528,22 +553,22 @@ function EditorForm({
               ) : null}
             </>
           ) : (
-            <p className="dd-hint">Choose a country to see its settings.</p>
+            <p className="dd-hint">{ed.chooseCountry}</p>
           )}
         </div>
 
-        <aside className="dd-editor__preview" aria-label="Preview">
+        <aside className="dd-editor__preview" aria-label={ed.preview.label}>
           <div className="dd-editor__preview-head">
-            <span className="dd-preview-title">Preview</span>
+            <span className="dd-preview-title">{ed.preview.label}</span>
             {isOther && previewChoices.length && previewCountry ? (
               <Select
-                aria-label="Example order from"
+                aria-label={copy.common.exampleOrderFrom}
                 value={previewCountry}
                 onChange={(e) => setPreviewCountry(e.target.value)}
               >
                 {previewChoices.map((f) => (
                   <option key={f.country} value={f.country}>
-                    Order from {countryName(f.country)}
+                    {interpolate(copy.common.orderFrom, { country: countryName(f.country) })}
                   </option>
                 ))}
               </Select>
@@ -556,13 +581,15 @@ function EditorForm({
               fact={previewFor ? factByCountry.get(previewFor) ?? null : null}
             />
           ) : (
-            <p className="dd-hint">Nothing to show yet.</p>
+            <p className="dd-hint">{ed.preview.empty}</p>
           )}
           {markerSuggestion && stillSuggested ? (
             <p className="dd-hint dd-inline">
-              Suggested from {countryName(markerSuggestion.country)} VAT practice
+              {interpolate(ed.preview.suggestedFrom, {
+                country: countryName(markerSuggestion.country),
+              })}
               <Infotip
-                ariaLabel="What the suggestion is based on"
+                ariaLabel={copy.common.suggestionBasis}
                 definitions={markerSuggestion.sources}
                 align="end"
               />
@@ -581,17 +608,17 @@ function EditorForm({
             disabled={busy}
             onClick={() => target.country && onRemove(target.country)}
           >
-            Remove {countryName(target.country)}
+            {interpolate(ed.removeCountry, { country: countryName(target.country) })}
           </Button>
         ) : null}
         <Button tone="secondary" onClick={onClose}>
-          Cancel
+          {ed.cancel}
         </Button>
         <Button
           disabled={!canSave}
           onClick={() => onSave(target.mode === 'add' ? country : target.country, s)}
         >
-          {target.mode === 'add' ? 'Add country' : 'Save'}
+          {target.mode === 'add' ? ed.addCountry : ed.save}
         </Button>
       </DialogFooter>
     </>
