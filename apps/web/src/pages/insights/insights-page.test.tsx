@@ -102,19 +102,26 @@ describe('InsightsPage', () => {
           ]),
       },
     });
-    renderWithProviders(<InsightsPage />, { apiClient });
+    const { container } = renderWithProviders(<InsightsPage />, { apiClient });
 
     expect(await screen.findByText('1 / 2')).toBeInTheDocument();
-    expect(screen.getByText('Store A')).toBeInTheDocument();
-    expect(screen.getByText('Store B')).toBeInTheDocument();
+    // Each name renders twice by design - in the name cell and inside the
+    // ConnectionChip's slide-out - so read the name cells (#4016).
+    const names = [...container.querySelectorAll('.conn-health__name-text')].map(
+      (n) => n.textContent
+    );
+    expect(names).toEqual(expect.arrayContaining(['Store A', 'Store B']));
   });
 
   it('shows system health services from API', async () => {
-    const { container } = renderWithProviders(<InsightsPage />);
+    renderWithProviders(<InsightsPage />);
 
-    expect(await within(container).findByText('PostgreSQL')).toBeInTheDocument();
-    expect(within(container).getByText('Redis')).toBeInTheDocument();
-    expect(within(container).getByText('PrestaShop')).toBeInTheDocument();
+    // Scoped to Core services: a PrestaShop connection's chip also reads
+    // "PrestaShop" in the Connection health panel (#4016).
+    const core = await screen.findByRole('region', { name: 'Core services' });
+    expect(within(core).getByText('PostgreSQL')).toBeInTheDocument();
+    expect(within(core).getByText('Redis')).toBeInTheDocument();
+    expect(within(core).getByText('PrestaShop')).toBeInTheDocument();
   });
 
   it('lists an infra-bearing connection (e.g. WooCommerce) in the Infrastructure panel (#1619)', async () => {
@@ -151,10 +158,11 @@ describe('InsightsPage', () => {
     expect(names).toContain('My WooCommerce Shop');
     expect(container.querySelector('.sys-health .connection-chip')).not.toBeNull();
     // Fixed core services still render alongside the connection row.
-    expect(within(container).getByText('PostgreSQL')).toBeInTheDocument();
-    expect(within(container).getByText('Redis')).toBeInTheDocument();
-    expect(within(container).getByText('PrestaShop')).toBeInTheDocument();
-    expect(within(container).getByText('Worker')).toBeInTheDocument();
+    const core = screen.getByRole('region', { name: 'Core services' });
+    expect(within(core).getByText('PostgreSQL')).toBeInTheDocument();
+    expect(within(core).getByText('Redis')).toBeInTheDocument();
+    expect(within(core).getByText('PrestaShop')).toBeInTheDocument();
+    expect(within(core).getByText('Worker')).toBeInTheDocument();
   });
 
   it('surfaces an unhealthy infra-bearing connection with its message', async () => {

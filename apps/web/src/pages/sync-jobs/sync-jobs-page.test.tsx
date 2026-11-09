@@ -150,6 +150,9 @@ describe('SyncJobsPage', () => {
     });
 
     expect(await screen.findByText('No jobs match the current filters.')).toBeInTheDocument();
+    // One Clear filters control on screen, in the filter bar - not a second
+    // copy in the empty state (#4016).
+    expect(screen.getAllByRole('button', { name: 'Clear filters' })).toHaveLength(1);
     await user.click(screen.getByRole('button', { name: 'Clear filters' }));
 
     // After clearing, we're back to the informational empty state — no button.

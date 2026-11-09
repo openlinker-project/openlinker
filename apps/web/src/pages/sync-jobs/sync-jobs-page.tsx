@@ -603,7 +603,9 @@ export function SyncJobsPage(): ReactElement {
               ? 'No jobs match the current filters.'
               : 'No sync jobs have been enqueued yet.'
           }
-          action={filtersActive ? <Button onClick={clearFilters}>Clear filters</Button> : undefined}
+          // No action here: the filter bar's Clear filters button is already on
+          // screen whenever a filter is active, and a second button with the
+          // same name read twice to a screen reader (#4016).
         />
       ) : (
         <>
