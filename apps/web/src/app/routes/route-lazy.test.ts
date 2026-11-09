@@ -136,6 +136,10 @@ const lazyRoutes = collectLazyRoutes([
  * #3555 adds the buyer-email settings list (`settings/buyer-emails`) and its
  * template editor (`settings/buyer-emails/:connectionId/:template`), two lazy
  * routes, from 76 to 78.
+ *
+ * #4029: `/register` joins `/login` under one eager layout route (so a tab
+ * switch does not remount the card), which removes one lazy guest route, and
+ * `/settings/login-page` adds one authenticated lazy route - net 0, still 78.
  */
 const EXPECTED_LAZY_ROUTE_COUNT = 78;
 

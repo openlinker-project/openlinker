@@ -20,8 +20,6 @@ export interface FiscalFailureDetailRow {
 /** Rows for the identifiers the provider declared, in a fixed order. */
 export function buildFiscalFailureDetailRows(
   details: FiscalProviderFailureDetails | null,
-  /** Kept for callers that still pass a translator; copy is read at call time. */
-  _t?: (key: string, fallback: string) => string,
 ): FiscalFailureDetailRow[] {
   if (!details) return [];
   const copy = getMessages('fiscalization').fiscalReceipt.details;

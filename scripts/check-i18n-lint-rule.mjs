@@ -6,10 +6,11 @@
  * are meant to be, not just that their options are well formed. Three things
  * can switch the rule off while `pnpm lint` stays green, and each is checked:
  *
- *   1. A typo or an empty glob in the override's `files` (the docs tell
- *      authors to add a folder there in the same PR). Every glob must match at
- *      least one real file, and the rule must be on for a real
- *      `apps/web/src/shared/ui/*.tsx` file, resolved through the real config.
+ *   1. A typo or an empty glob in the override's `files`, or a scope that
+ *      shrank. Every glob must match at least one real file, the scope and the
+ *      exclusions must equal EXPECTED_SCOPE / EXPECTED_EXCLUDED, and the rule
+ *      must be on for a real component in each of `app`, `features`, `pages`,
+ *      `plugins` and `shared`, resolved through the real config.
  *   2. A later override turning the rule off. The rules are taken from
  *      `calculateConfigForFile` for that real path, so the FINAL resolved
  *      config is what gets exercised.
@@ -18,8 +19,9 @@
  *      `{...}` child, a ternary label and a template in a child must be
  *      reported, and copy read from a copy file or a bare glyph must not.
  *
- * It also asserts the rule is OFF for a test file and a `*.copy.ts` file, the
- * two places the override excludes.
+ * It also asserts the rule is OFF for a test file and a `*.copy.ts` file. The
+ * third exclusion, the developer-only `pages/dev-ui` route, is pinned by
+ * EXPECTED_EXCLUDED.
  *
  * Usage: node scripts/check-i18n-lint-rule.mjs
  */
@@ -46,97 +48,31 @@ if (!override) {
   process.exit(1);
 }
 
-// The folders the rule covers today. Widening the scope is a deliberate act:
-// edit this list in the same PR that adds the folder to the override's `files`,
-// so a glob that grows or shrinks by accident fails here instead of passing.
+// The folders the rule covers: every folder since #3891. Narrowing it is a
+// deliberate act: edit this list in the same PR as the override's `files`, so a
+// glob that shrinks by accident fails here instead of passing.
 const EXPECTED_SCOPE = [
   'apps/web/src/app/**/*.tsx',
-  'apps/web/src/features/listings/components/*.tsx',
-  'apps/web/src/features/listings/components/allegro/**/*.tsx',
-  'apps/web/src/features/listings/components/erli/**/*.tsx',
-  'apps/web/src/features/listings/components/bulk/**/*.tsx',
-  'apps/web/src/features/products/**/*.tsx',
-  'apps/web/src/features/customers/**/*.tsx',
-  'apps/web/src/features/price-changes/**/*.tsx',
-  'apps/web/src/features/content/**/*.tsx',
-  'apps/web/src/features/currency-settings/**/*.tsx',
-  'apps/web/src/pages/products/**/*.tsx',
-  'apps/web/src/pages/customers/**/*.tsx',
-  'apps/web/src/features/automation/**/*.tsx',
-  'apps/web/src/features/inventory/**/*.tsx',
-  'apps/web/src/features/shipments/**/*.tsx',
-  'apps/web/src/pages/automations/**/*.tsx',
-  'apps/web/src/pages/inventory/**/*.tsx',
-  'apps/web/src/pages/shipments/**/*.tsx',
-  'apps/web/src/features/connections/**/*.tsx',
-  'apps/web/src/features/allegro/**/*.tsx',
-  'apps/web/src/pages/connections/**/*.tsx',
-  'apps/web/src/pages/adapters/**/*.tsx',
-  'apps/web/src/pages/integrations/**/*.tsx',
-  'apps/web/src/features/sales-documents/**/*.tsx',
-  'apps/web/src/features/invoicing/**/*.tsx',
-  'apps/web/src/features/fiscalization/**/*.tsx',
-  'apps/web/src/pages/sales-documents/**/*.tsx',
-  'apps/web/src/pages/invoicing/**/*.tsx',
-  'apps/web/src/features/returns/**/*.tsx',
-  'apps/web/src/pages/returns/**/*.tsx',
-  'apps/web/src/features/bench/**/*.tsx',
-  'apps/web/src/features/fulfillment/**/*.tsx',
-  'apps/web/src/features/fulfillment-authority/**/*.tsx',
-  'apps/web/src/features/oms/**/*.tsx',
-  'apps/web/src/pages/bench/**/*.tsx',
-  'apps/web/src/pages/fulfillment/**/*.tsx',
-  'apps/web/src/pages/oms/**/*.tsx',
-  'apps/web/src/features/analytics/**/*.tsx',
-  'apps/web/src/pages/analytics/**/*.tsx',
-  'apps/web/src/pages/insights/**/*.tsx',
-  'apps/web/src/features/settings/**/*.tsx',
-  'apps/web/src/features/mappings/**/*.tsx',
-  'apps/web/src/features/sync-jobs/**/*.tsx',
-  'apps/web/src/features/buyer-emails/**/*.tsx',
-  'apps/web/src/pages/settings/**/*.tsx',
-  'apps/web/src/pages/sync-jobs/**/*.tsx',
-  'apps/web/src/pages/webhook-deliveries/**/*.tsx',
-  'apps/web/src/pages/cursors/**/*.tsx',
-  'apps/web/src/features/prompt-templates/**/*.tsx',
-  'apps/web/src/features/mcp-tokens/**/*.tsx',
-  'apps/web/src/features/ai-provider-settings/**/*.tsx',
-  'apps/web/src/features/posthog-settings/**/*.tsx',
-  'apps/web/src/features/mailer-settings/**/*.tsx',
-  'apps/web/src/pages/prompt-templates/**/*.tsx',
-  'apps/web/src/pages/mcp-tokens/**/*.tsx',
-  'apps/web/src/pages/ai-provider-settings/**/*.tsx',
-  'apps/web/src/plugins/ksef/**/*.tsx',
-  'apps/web/src/plugins/infakt/**/*.tsx',
-  'apps/web/src/plugins/eparagony/**/*.tsx',
-  'apps/web/src/plugins/subiekt-gt/**/*.tsx',
-  'apps/web/src/plugins/subiekt-nexo/**/*.tsx',
-  'apps/web/src/plugins/inpost/**/*.tsx',
-  'apps/web/src/plugins/erli/**/*.tsx',
-  'apps/web/src/plugins/prestashop/**/*.tsx',
-  'apps/web/src/plugins/woocommerce/**/*.tsx',
-  'apps/web/src/plugins/dpd/**/*.tsx',
-  'apps/web/src/plugins/allegro/**/*.tsx',
-  'apps/web/src/plugins/shoper/**/*.tsx',
-  'apps/web/src/pages/listings/**/*.tsx',
-  'apps/web/src/features/orders/**/*.tsx',
-  'apps/web/src/pages/orders/**/*.tsx',
-  'apps/web/src/features/auth/**/*.tsx',
-  'apps/web/src/features/demo/**/*.tsx',
-  'apps/web/src/features/users/**/*.tsx',
-  'apps/web/src/pages/auth/**/*.tsx',
-  'apps/web/src/pages/users/**/*.tsx',
-  'apps/web/src/shared/auth/**/*.tsx',
-  'apps/web/src/shared/i18n/**/*.tsx',
-  'apps/web/src/shared/plugins/**/*.tsx',
-  'apps/web/src/shared/theme/**/*.tsx',
-  'apps/web/src/shared/ui/**/*.tsx',
+  'apps/web/src/features/**/*.tsx',
+  'apps/web/src/pages/**/*.tsx',
+  'apps/web/src/plugins/**/*.tsx',
+  'apps/web/src/shared/**/*.tsx',
 ];
+// The only files left out: tests, copy files and the developer-only `/dev/ui`
+// route. A new entry here is a folder that operators read and nobody checks.
+const EXPECTED_EXCLUDED = ['**/*.test.tsx', '**/*.copy.ts', 'apps/web/src/pages/dev-ui/**'];
 const actualScope = globs(override.files);
 if (JSON.stringify([...actualScope].sort()) !== JSON.stringify([...EXPECTED_SCOPE].sort())) {
   fail(
     `the override's files are ${JSON.stringify(actualScope)} but EXPECTED_SCOPE is ` +
-      `${JSON.stringify(EXPECTED_SCOPE)}; update both together when a folder is migrated`
+      `${JSON.stringify(EXPECTED_SCOPE)}; update both together`
+  );
+}
+const actualExcluded = globs(override.excludedFiles);
+if (JSON.stringify([...actualExcluded].sort()) !== JSON.stringify([...EXPECTED_EXCLUDED].sort())) {
+  fail(
+    `the override's excludedFiles are ${JSON.stringify(actualExcluded)} but EXPECTED_EXCLUDED is ` +
+      `${JSON.stringify(EXPECTED_EXCLUDED)}; excluding a folder operators read needs a reason in both places`
   );
 }
 
@@ -187,6 +123,21 @@ if (realFile && testFile && copyFile) {
     const other = await eslint.calculateConfigForFile(join(ROOT, file));
     if (isOn(other.rules?.[LITERAL_RULE])) fail(`${LITERAL_RULE} should be off for a ${label} (${file})`);
   }
+}
+
+// The rule is on in every top-level folder operators read, not only in
+// shared/ui: one real component from each, resolved through the real config.
+for (const folder of ['app', 'features', 'pages', 'plugins', 'shared']) {
+  const prefix = `apps/web/src/${folder}/`;
+  const sample = webFiles.find(
+    (f) => f.startsWith(prefix) && f.endsWith('.tsx') && !f.endsWith('.test.tsx') && !f.startsWith('apps/web/src/pages/dev-ui/'),
+  );
+  if (!sample) {
+    fail(`found no real component under ${prefix} to check`);
+    continue;
+  }
+  const config = await eslint.calculateConfigForFile(join(ROOT, sample));
+  if (!isOn(config.rules?.[LITERAL_RULE])) fail(`${LITERAL_RULE} is not enabled for ${sample}`);
 }
 
 // 2 + 3. Behaviour, with the options resolved for the real path.

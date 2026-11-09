@@ -29,6 +29,11 @@
       "require": "./dist/currency/testing/index.js",
       "default": "./dist/currency/testing/index.js"
     },
+    "./login-page-settings": {
+      "types": "./dist/login-page-settings/index.d.ts",
+      "require": "./dist/login-page-settings/index.js",
+      "default": "./dist/login-page-settings/index.js"
+    },
     "./operational-settings": {
       "types": "./dist/operational-settings/index.d.ts",
       "require": "./dist/operational-settings/index.js",

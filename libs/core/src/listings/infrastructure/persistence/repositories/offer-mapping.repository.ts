@@ -227,9 +227,15 @@ const SELLING_DELETED_SQL = '(pv."isStale" = true AND ocs."availableQuantity" > 
  * page over one malformed snapshot); a missing snapshot reads as no problems.
  * Only entries with a string message count, matching `readValidationProblems`.
  */
-const ACCOUNT_PROBLEMS_FROM_SQL =
-  `jsonb_array_elements(CASE WHEN jsonb_typeof(oss."statusDetails" -> '${OFFER_VALIDATION_PROBLEMS_KEY}') = 'array' ` +
-  `THEN oss."statusDetails" -> '${OFFER_VALIDATION_PROBLEMS_KEY}' ELSE '[]'::jsonb END) AS vp`;
+function accountProblemsFromSql(problemsExpr: string): string {
+  return (
+    `jsonb_array_elements(CASE WHEN jsonb_typeof(${problemsExpr}) = 'array' ` +
+    `THEN ${problemsExpr} ELSE '[]'::jsonb END) AS vp`
+  );
+}
+const ACCOUNT_PROBLEMS_FROM_SQL = accountProblemsFromSql(
+  `oss."statusDetails" -> '${OFFER_VALIDATION_PROBLEMS_KEY}'`,
+);
 const ACCOUNT_PROBLEM_WHERE_SQL = `vp ->> 'scope' = 'account' AND jsonb_typeof(vp -> 'message') = 'string'`;
 
 /** The listing carries at least one account-scoped problem (#4045). */
@@ -486,21 +492,28 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       this.repository.manager.query<
         { connectionId: string; code: string | null; message: string; count: string }[]
       >(
-        `SELECT t."connectionId" AS "connectionId", vp ->> 'code' AS "code", vp ->> 'message' AS "message", ` +
-          `COUNT(DISTINCT t."id") AS "count" FROM (${blockedSql}) t, jsonb_array_elements(t."problems") AS vp ` +
-          `WHERE ${ACCOUNT_PROBLEM_WHERE_SQL} GROUP BY 1, 2, 3`,
+        // The guard is repeated even though the inner builder already keeps
+        // only array-shaped problems, so a later change to that predicate
+        // cannot turn one malformed snapshot into a 500. The cap is applied
+        // here rather than after the read so a connection with many distinct
+        // problems does not ship every group to the app; code and message
+        // break count ties so the kept five do not vary between reads.
+        `SELECT "connectionId", "code", "message", "count" FROM (` +
+          `SELECT g.*, ROW_NUMBER() OVER (PARTITION BY g."connectionId" ` +
+          `ORDER BY g."count" DESC, g."code" ASC NULLS LAST, g."message" ASC) AS rn FROM (` +
+          `SELECT t."connectionId" AS "connectionId", vp ->> 'code' AS "code", vp ->> 'message' AS "message", ` +
+          `COUNT(DISTINCT t."id") AS "count" FROM (${blockedSql}) t, ${accountProblemsFromSql('t."problems"')} ` +
+          `WHERE ${ACCOUNT_PROBLEM_WHERE_SQL} GROUP BY 1, 2, 3) g) ranked ` +
+          `WHERE rn <= ${SHOP_BLOCKED_PROBLEMS_PER_CONNECTION} ORDER BY "connectionId", rn`,
         blockedParams,
       ),
     ]);
 
-    const problemsByConnection = new Map<string, { problem: OfferAccountProblemSummary; count: number }[]>();
+    const problemsByConnection = new Map<string, OfferAccountProblemSummary[]>();
     for (const row of problemRows) {
       const code = row.code?.trim();
       const list = problemsByConnection.get(row.connectionId) ?? [];
-      list.push({
-        problem: { ...(code ? { code } : {}), message: row.message },
-        count: Number(row.count),
-      });
+      list.push({ ...(code ? { code } : {}), message: row.message });
       problemsByConnection.set(row.connectionId, list);
     }
 
@@ -508,15 +521,14 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       .map((row) => ({
         connectionId: row.connectionId,
         count: Number(row.count),
-        problems: (problemsByConnection.get(row.connectionId) ?? [])
-          .sort((a, b) => b.count - a.count)
-          .slice(0, SHOP_BLOCKED_PROBLEMS_PER_CONNECTION)
-          .map((entry) => entry.problem),
+        // Already ranked and capped in SQL; rows arrive in rank order.
+        problems: problemsByConnection.get(row.connectionId) ?? [],
       }))
       .sort((a, b) => b.count - a.count);
 
     return {
       sellingDeletedProduct: Number(sellingRow?.count ?? 0),
+      // Summing is exact only because a mapping belongs to exactly one connection.
       shopBlocked: shopBlockedByConnection.reduce((sum, c) => sum + c.count, 0),
       shopBlockedByConnection,
     };

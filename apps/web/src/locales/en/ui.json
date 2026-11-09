@@ -287,10 +287,11 @@
     "original": "Original message"
   },
   "theme": {
+    "current": "Theme: {name}",
     "dark": "Dark",
     "label": "Theme",
     "light": "Light",
-    "system": "System"
+    "system": "Auto"
   },
   "toast": {
     "dismiss": "Dismiss",

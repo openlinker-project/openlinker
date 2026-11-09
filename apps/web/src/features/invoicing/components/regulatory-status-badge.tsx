@@ -13,7 +13,7 @@
  * provider whose own invoice-detail surface wants its own branded wording
  * (e.g. the KSeF plugin) supplies it via the optional `labelOverrides` prop
  * rather than baking it in here — see `KsefInvoiceDetailSection`. That
- * override outranks the translated `invoice.regulatory.*` catalog entry, which
+ * override outranks the label from the `invoicing` namespace, which
  * is neutral by design and would otherwise contradict it.
  *
  * @module apps/web/src/features/invoicing/components

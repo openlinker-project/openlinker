@@ -16,11 +16,11 @@
  */
 import type { ReactElement } from 'react';
 import { useEffect, useState } from 'react';
-import { Navigate, Outlet, useSearchParams } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { useSession } from '../../shared/auth/use-session';
 import { LoadingState } from '../../shared/ui/feedback-state';
 import { resolveNextPath } from '../../shared/lib/resolve-next-path';
-import { LanguageSwitch } from '../../shared/ui/language-switch';
+import { LoginStageScreen } from './login-stage-layout';
 import { useMessages } from '../../shared/i18n';
 
 export function ConsentLayout(): ReactElement {
@@ -29,12 +29,24 @@ export function ConsentLayout(): ReactElement {
   const [searchParams] = useSearchParams();
   const [tokenRefreshed, setTokenRefreshed] = useState(false);
   const alreadyConsented = session.user?.analyticsConsent === true;
+  // #4029 - consent accepted ON this screen plays its own "signed in" step and
+  // navigates itself; only an account that ARRIVED consented is bounced here.
+  // Decided once, at the first READY render (before it, `session.user` is unknown).
+  const [arrivedConsentedState, setArrivedConsented] = useState<boolean | null>(null);
+  if (isReady && arrivedConsentedState === null) setArrivedConsented(alreadyConsented);
+  const arrivedConsented = arrivedConsentedState ?? alreadyConsented;
 
   // Consent is already on the account, so the only thing that can still be
   // stale is this browser's access token. Re-mint it, then fall through to the
   // redirect below.
   useEffect(() => {
-    if (!isReady || session.status !== 'authenticated' || !alreadyConsented || tokenRefreshed) {
+    if (
+      !isReady ||
+      session.status !== 'authenticated' ||
+      !alreadyConsented ||
+      !arrivedConsented ||
+      tokenRefreshed
+    ) {
       return;
     }
     void (async (): Promise<void> => {
@@ -42,11 +54,19 @@ export function ConsentLayout(): ReactElement {
       await refreshSession();
       setTokenRefreshed(true);
     })();
-  }, [isReady, session.status, alreadyConsented, tokenRefreshed, adapter, refreshSession]);
+  }, [
+    isReady,
+    session.status,
+    alreadyConsented,
+    arrivedConsented,
+    tokenRefreshed,
+    adapter,
+    refreshSession,
+  ]);
 
   if (!isReady) {
     return (
-      <div className="guest-layout">
+      <div className="guest-layout guest-layout--pending">
         <LoadingState title={copy.loading.loading} message={copy.loading.checkingSession} />
       </div>
     );
@@ -56,22 +76,9 @@ export function ConsentLayout(): ReactElement {
     return <Navigate to="/login" replace />;
   }
 
-  if (alreadyConsented && tokenRefreshed) {
+  if (arrivedConsented && alreadyConsented && tokenRefreshed) {
     return <Navigate to={resolveNextPath(searchParams.get('next'))} replace />;
   }
 
-  return (
-    <div className="guest-layout">
-      <div className="guest-layout__language">
-        <LanguageSwitch placement="down" />
-      </div>
-      <div className="guest-card">
-        <div className="guest-brand">
-          <strong className="guest-brand__title">{copy.brand.name}</strong>
-          <span className="guest-brand__subtitle">{copy.brand.tagline}</span>
-        </div>
-        <Outlet />
-      </div>
-    </div>
-  );
+  return <LoginStageScreen mode="consent" />;
 }

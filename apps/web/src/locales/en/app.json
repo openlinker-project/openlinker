@@ -35,7 +35,7 @@
     "fiscalReceipt": "Fiscal receipt",
     "fulfilment": "Fulfilment",
     "fulfilmentTask": "Fulfilment task",
-    "insights": "Insights",
+    "insights": "System health",
     "inventoryLocations": "Inventory locations",
     "invoice": "Invoice",
     "invoices": "Invoices",
@@ -43,6 +43,7 @@
     "jobsLogs": "Jobs & Logs",
     "listing": "Listing",
     "listings": "Listings",
+    "loginPage": "Login page",
     "mcpTokens": "MCP tokens",
     "newConnection": "New connection",
     "omsSetup": "OpenLinker OMS",
@@ -107,6 +108,7 @@
   "userMenu": {
     "accountMenu": "Account menu for {username}",
     "density": "Density",
+    "language": "Language",
     "signOut": "Sign out",
     "theme": "Theme"
   }

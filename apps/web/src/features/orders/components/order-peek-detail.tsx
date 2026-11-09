@@ -16,13 +16,12 @@ import { KeyValueList } from '../../../shared/ui/key-value-list';
 import { VariantThumbnail } from '../../products';
 import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
 import { TimeDisplay } from '../../../shared/ui/time-display';
-import { getBcp47Locale, useTranslation } from '../../../shared/i18n';
 import { parseOrderSnapshot, type ParsedAddress } from '../api/order-snapshot.schema';
 
 type ParsedItem = ReturnType<typeof parseOrderSnapshot>['items'][number];
 import type { OrderRecord } from '../api/orders.types';
 import { invoiceBadge } from '../lib/order-row';
-import { interpolate, useMessages } from '../../../shared/i18n';
+import { getBcp47Locale, interpolate, useLocale, useMessages } from '../../../shared/i18n';
 import { OrderRowBuyerNote } from './order-row-buyer-note';
 
 const EMPTY = '-';
@@ -60,7 +59,7 @@ export function OrderPeekDetail({ order, thumbLabel, onOpenProduct }: OrderPeekD
   const COPY = useMessages('orders').peek;
   const buyerNote = useMessages('orders').buyerNote;
   const parsed = parseOrderSnapshot(order.orderSnapshot);
-  const { locale } = useTranslation();
+  const { locale } = useLocale();
   const currency = parsed.totals?.currency;
   const money = (amount: number): string =>
     currency

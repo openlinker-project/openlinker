@@ -15,11 +15,9 @@
  */
 import type { RouteObject } from 'react-router-dom';
 
-import { ConsentGate } from '../../features/demo';
 import { ConsentLayout } from '../layouts/consent-layout';
 
 export const consentRoute: RouteObject = {
   path: '/consent',
   element: <ConsentLayout />,
-  children: [{ index: true, element: <ConsentGate /> }],
 };

@@ -158,6 +158,10 @@ import {
 } from '../../features/webhook-deliveries/api/webhook-deliveries.api';
 import { createUsersApi, type UsersApi } from '../../features/users/api/users.api';
 import { createSystemApi, type SystemApi } from '../../features/system/api/system.api';
+import {
+  createLoginPageSettingsApi,
+  type LoginPageSettingsApi,
+} from '../../features/login-page-settings/api/login-page-settings.api';
 import { plugins } from '../../plugins';
 import { ApiError } from '../../shared/api/api-error';
 import type { SessionAdapter } from '../../shared/auth/session-adapter';
@@ -297,6 +301,7 @@ export interface CoreApiClient {
   syncJobs: SyncJobsApi;
   streamDeadLetters: StreamDeadLettersApi;
   system: SystemApi;
+  loginPageSettings: LoginPageSettingsApi;
   users: UsersApi;
   webhookDeliveries: WebhookDeliveriesApi;
 }
@@ -558,6 +563,7 @@ export function createApiClient({
     syncJobs: createSyncJobsApi(request),
     streamDeadLetters: createStreamDeadLettersApi(request),
     system: createSystemApi(request),
+    loginPageSettings: createLoginPageSettingsApi(request),
     users: createUsersApi(request),
     webhookDeliveries: createWebhookDeliveriesApi(request),
   };

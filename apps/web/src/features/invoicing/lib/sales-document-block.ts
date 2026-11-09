@@ -75,8 +75,6 @@ type KindCopy = ReturnType<
 export function resolveSalesDocumentBlockCopy(
   order: OrderRecord,
   derivedAmbiguity: boolean,
-  /** Kept for callers that still pass a translator; copy is read at call time. */
-  _t?: (key: string, fallback: string) => string,
   kind: SalesDocumentBlockCopyKind = 'invoice',
   /**
    * The rate-less lines, when the reason is `missing-tax-rate` (#2254).

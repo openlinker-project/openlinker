@@ -89,8 +89,10 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: 'happy-dom',
-      // An unpinned provider in a test opens in English even after #3890 makes
-      // Polish the default, and whatever a developer's own `.env` says.
+      // An unpinned provider in a test opens in English whatever a developer's
+      // own `.env` says. happy-dom reports `en-US` as the browser language,
+      // which comes before this default since #3890; a test that cares stubs
+      // `navigator.languages` itself.
       // Absolute dates are asserted in tests; pin the zone so they do not move
       // with the machine running them.
       env: { TZ: 'UTC', VITE_DEFAULT_UI_LOCALE: 'en' },

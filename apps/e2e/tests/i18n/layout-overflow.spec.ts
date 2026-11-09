@@ -30,7 +30,7 @@ const MEASURED = [
   '.status-badge',
   '.chip',
   '.context-chip',
-  '.language-switch__trigger',
+  '.peek-button__trigger',
 ].join(', ');
 
 interface Measure {

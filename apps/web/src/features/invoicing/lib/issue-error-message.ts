@@ -28,7 +28,6 @@ import { ApiError } from '../../../shared/api/api-error';
 import { getMessages } from '../../../shared/i18n';
 import type { CapabilityErrorBody, FailureCode } from '../api/invoicing.types';
 
-type Translate = (key: string, fallback: string) => string;
 
 const CAPABILITY_EXCEPTION_NAMES = new Set([
   'CapabilityNotEnabledException',
@@ -145,7 +144,7 @@ export function isMissingNumberingSeriesError(error: unknown): boolean {
   return body?.error === 'MissingNumberingSeriesException';
 }
 
-export function resolveIssueErrorMessage(error: unknown, _t?: Translate): string {
+export function resolveIssueErrorMessage(error: unknown): string {
   const copy = getMessages('invoicing').invoice.error;
   // Branch order matters: the capability-disabled 400 (fixed copy, no PII echo)
   // MUST be tested before the generic 400 branch that surfaces `error.message`.

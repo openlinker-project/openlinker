@@ -11,7 +11,7 @@
  *
  * @module apps/api/src/orders/http/dto
  */
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
  * The three "Needs a look" group totals (#4025). Each is a count of DISTINCT
@@ -32,10 +32,12 @@ export class OrderAttentionSummaryResponseDto {
   })
   stuck!: number;
 
-  @ApiProperty({
-    description: 'Orders on the pack bench, with a buyer note, or with an open return (union, each order once)',
+  @ApiPropertyOptional({
+    description:
+      'Orders on the pack bench, with a buyer note, or with an open return (union, each order once). ' +
+      'Absent when the open returns could not be read: the count is unknown, never 0.',
   })
-  toHandle!: number;
+  toHandle?: number;
 }
 
 export class OrderHealthSummaryResponseDto {
@@ -75,7 +77,8 @@ export class OrderHealthSummaryResponseDto {
       'attention-worthy way (#2703/#2704). ORTHOGONAL to the five health buckets and NOT part of ' +
       'the partition — such an order is also counted in exactly one of them — so this number must ' +
       'never be added to their sum. Counts the attention-worthy subset only: a deliberate ' +
-      '"routed-to-no-destination" decision is badged neutrally per order and never aggregated.',
+      '"routed-to-no-destination" decision and the "no-destination-configured" fact (#3959) are ' +
+      'badged neutrally per order and never aggregated.',
   })
   destinationRoutingBlocked!: number;
 
@@ -139,12 +142,13 @@ export class OrderHealthSummaryResponseDto {
   })
   salesDocumentIssuedOnRequest!: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
       'Orders with an open return (#4025) - the same id list the ?openReturn=true filter uses. ' +
-      'Orthogonal to the health partition.',
+      'Orthogonal to the health partition. Absent when the open returns could not be read: ' +
+      'the count is unknown, never 0.',
   })
-  openReturn!: number;
+  openReturn?: number;
 
   @ApiProperty({
     description:

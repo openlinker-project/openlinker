@@ -184,9 +184,12 @@ export class OrderRecordResponseDto {
     nullable: true,
     description:
       'How a fulfilment routing decision narrowed this order\'s destination fan-out (#2703/#2704). ' +
-      'null when routing narrowed nothing — which is every order until a router is wired. ' +
-      '"routed-to-no-destination" is a working router making a DECISION and is rendered neutrally; ' +
-      'the other three name a destination the router asked for that OpenLinker could not reach. ' +
+      'null when routing narrowed nothing and at least one destination was reached. ' +
+      '"routed-to-no-destination" is a working router making a DECISION and is rendered neutrally. ' +
+      '"no-destination-configured" (#3959) means no connection other than the source can create ' +
+      'orders, so there is nothing to copy the order to; also neutral. "no-active-destination" ' +
+      'means such connections exist but none is active, and the order is copied once one is. ' +
+      'The routed-* rest name a destination the router asked for that OpenLinker could not reach. ' +
       'Independent of health and of salesDocumentBlockReason.',
   })
   destinationRoutingBlockReason!: DestinationRoutingBlockReason | null;
