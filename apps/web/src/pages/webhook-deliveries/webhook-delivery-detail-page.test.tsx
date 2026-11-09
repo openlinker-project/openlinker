@@ -21,6 +21,7 @@ const sampleDelivery: WebhookDeliveryDetail = {
   downstreamJobType: null,
   rejectionReason: null,
   dlqReason: 'handler threw: timeout after 5s',
+  dlqCode: null,
   receivedAt: '2026-04-20T10:00:00.000Z',
   payload: { orderId: 'ps_order_123', status: 'shipped' },
   createdAt: '2026-04-20T10:00:00.000Z',
@@ -50,10 +51,29 @@ describe('WebhookDeliveryDetailPage', () => {
     expect(screen.getByText('prestashop')).toBeInTheDocument();
     expect(screen.getByText('ps_order_123')).toBeInTheDocument();
 
-    expect(screen.getByText('DLQ reason')).toBeInTheDocument();
+    expect(screen.getByText('Dead-letter detail (not translated)')).toBeInTheDocument();
     expect(screen.getByText(/handler threw: timeout/)).toBeInTheDocument();
+    expect(screen.queryByText('Dead-letter reason')).not.toBeInTheDocument();
 
     expect(screen.getByText('Payload')).toBeInTheDocument();
+  });
+
+  it('should show the dead-letter reason in the active language when the delivery carries a code', async () => {
+    const api = createMockApiClient({
+      webhookDeliveries: {
+        getById: vi.fn().mockResolvedValue({
+          ...sampleDelivery,
+          dlqCode: 'ungated',
+          dlqReason: 'ungated: order requires OrderSource',
+        }),
+      },
+    });
+
+    renderDetail(api);
+
+    expect(await screen.findByText('Dead-letter reason')).toBeInTheDocument();
+    expect(screen.getByText('The connection lacks the feature this change needs')).toBeInTheDocument();
+    expect(screen.getByText(/order requires OrderSource/)).toBeInTheDocument();
   });
 
   it('resolves the connection name via ConnectionEntityLabel', async () => {

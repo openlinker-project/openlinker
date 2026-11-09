@@ -21,6 +21,7 @@ import {
   type WebhookDeliverySummary,
 } from '../../features/webhook-deliveries/api/webhook-deliveries.types';
 import { webhookDeliveryStatusLabel } from '../../features/webhook-deliveries/lib/webhook-delivery-status-label';
+import { webhookDlqCodeLabel } from '../../features/webhook-deliveries/lib/webhook-dlq-code-label';
 import { interpolate, useMessages, type Messages } from '../../shared/i18n';
 
 type DeliveriesPageCopy = Messages['webhook-deliveries']['webhookDeliveriesPage'];
@@ -89,6 +90,8 @@ function buildColumns(
       id: 'reason',
       header: copy.reason,
       cell: (d) => {
+        const dlqLabel = d.rejectionReason ? null : webhookDlqCodeLabel(d.dlqCode);
+        if (dlqLabel) return <span title={d.dlqReason ?? undefined}>{dlqLabel}</span>;
         const reason = d.rejectionReason ?? d.dlqReason;
         if (!reason) return <span className="text-muted">—</span>;
         return (

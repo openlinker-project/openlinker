@@ -19,6 +19,7 @@ import { useConnectionQuery } from '../../features/connections/hooks/use-connect
 import { useSyncJobLookupQuery } from '../../features/sync-jobs/hooks/use-sync-job-lookup-query';
 import { jobTypeLabel } from '../../features/sync-jobs/lib/job-type-label';
 import { webhookDeliveryStatusLabel } from '../../features/webhook-deliveries/lib/webhook-delivery-status-label';
+import { webhookDlqCodeLabel } from '../../features/webhook-deliveries/lib/webhook-dlq-code-label';
 import { useMessages, type Messages } from '../../shared/i18n';
 
 type DeliveryDetailCopy = Messages['webhook-deliveries']['webhookDeliveryDetailPage'];
@@ -78,6 +79,10 @@ function buildWebhookDeliveryItems(
       value: <ConnectionEntityLabel connectionId={d.connectionId} />,
     },
   ];
+  const dlqLabel = webhookDlqCodeLabel(d.dlqCode);
+  if (dlqLabel) {
+    items.push({ id: 'dlqCode', label: copy.dlqCode, value: dlqLabel });
+  }
   if (d.objectType) {
     items.push({ id: 'objectType', label: copy.objectType, value: d.objectType, mono: true });
   }
