@@ -28,7 +28,8 @@
  * was hit, 404'd, and the cleanup below deleted a perfectly live variation's
  * mapping. A command without a parent keeps the simple-product address and the
  * same 404 cleanup: this adapter cannot tell a variation id from a product id,
- * so naming the parent is the caller's job.
+ * so naming the parent is the caller's job. A 404 UNDER a parent never deletes
+ * the mapping - the stored parent can be the wrong one - it fails the write.
  *
  * No `OfferCreator` / `OfferLister` / other sub-capabilities: WooCommerce is
  * a destination shop, not a marketplace — offer creation flows stay gated to
@@ -94,13 +95,26 @@ export class WooCommerceOfferManagerAdapter implements OfferManagerPort {
     try {
       await this.httpClient.put(path, body);
     } catch (error) {
-      // With the parent named the variation address is the right one, so a 404
-      // there means the variation (or its parent) really is gone shop-side.
+      // Under a parent a 404 does not prove the variation is gone: the parent
+      // OpenLinker holds can be the wrong one (two siblings published at once
+      // used to create two parents, #3962), and deleting the mapping then
+      // unlinks a live variation for good. Keep the mapping and fail loudly.
+      if (
+        error instanceof WooCommerceHttpResponseException &&
+        error.statusCode === 404 &&
+        wcParentId !== undefined
+      ) {
+        this.logger.warn(
+          `WooCommerce variation ${wcProductId} not found under parent ${wcParentId} on connection ` +
+            `${this.connection.id}; keeping the ShopProduct mapping (the stored parent may be wrong). ` +
+            `quantity=${cmd.quantity} not propagated.`,
+        );
+        throw error;
+      }
+      // A simple product's own address 404ing means it really is gone shop-side.
       if (error instanceof WooCommerceHttpResponseException && error.statusCode === 404) {
         this.logger.warn(
-          `WooCommerce product ${wcProductId}` +
-            `${wcParentId !== undefined ? ` (variation of ${wcParentId})` : ''} ` +
-            `not found on connection ${this.connection.id} - ` +
+          `WooCommerce product ${wcProductId} not found on connection ${this.connection.id} - ` +
             `stale ShopProduct mapping (product removed shop-side?). Deleting the mapping so a ` +
             `future publish re-creates it (quantity=${cmd.quantity} not propagated this run).`,
         );

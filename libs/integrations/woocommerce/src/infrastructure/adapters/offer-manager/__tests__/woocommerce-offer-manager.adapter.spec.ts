@@ -73,14 +73,18 @@ describe('WooCommerceOfferManagerAdapter', () => {
       });
     });
 
-    it('should delete the variation mapping when the variations path 404s (#3962)', async () => {
+    it('should keep the variation mapping and fail when the variations path 404s (#3962)', async () => {
       httpClient.put.mockRejectedValue(
         new WooCommerceHttpResponseException(404, 'not found', 'woocommerce_rest_product_invalid_id'),
       );
 
-      await adapter.updateOfferQuantity({ offerId: '321', quantity: 4, externalParentId: '100' });
+      await expect(
+        adapter.updateOfferQuantity({ offerId: '321', quantity: 4, externalParentId: '100' }),
+      ).rejects.toBeInstanceOf(WooCommerceHttpResponseException);
 
-      expect(identifierMapping.deleteMapping).toHaveBeenCalledWith('ShopProduct', '321', 'conn-wc-1');
+      // The stored parent may be the wrong one, so a 404 there proves nothing
+      // about the variation itself.
+      expect(identifierMapping.deleteMapping).not.toHaveBeenCalled();
     });
 
     it('should throw before any HTTP call when externalParentId is not numeric (#3962)', async () => {

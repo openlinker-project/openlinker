@@ -168,6 +168,10 @@ describe('Bulk shop publish per-item overrides (end-to-end, #1831)', () => {
       listingRecords as never,
       identifierMapping as never,
       integrations as never,
+      {
+        acquire: jest.fn().mockResolvedValue('lock-token'),
+        release: jest.fn().mockResolvedValue(true),
+      } as never,
     );
     const enqueue = new ProductPublishEnqueueService(
       integrations as never,
