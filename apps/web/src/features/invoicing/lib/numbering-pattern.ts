@@ -14,6 +14,7 @@
  *
  * @module apps/web/src/features/invoicing/lib
  */
+import { getMessages } from '../../../shared/i18n';
 import type { ResetPolicy } from '../api/numbering.types';
 
 const SEQ_VAR = '{seq}';
@@ -111,9 +112,10 @@ export function renderInvoiceNumber(pattern: string, ctx: NumberRenderContext): 
  * Returns a flat list of human-readable issues; empty means valid. Pure.
  */
 export function validateNumberingPattern(pattern: string, resetPolicy: ResetPolicy): string[] {
+  const copy = getMessages('invoicing').numberingPattern;
   const errors: string[] = [];
   if (!pattern.includes(SEQ_VAR)) {
-    errors.push('Add the {seq} variable — a series without a sequence number is not valid.');
+    errors.push(copy.seqMissing);
   }
 
   const hasYear = YEAR_VARS.some((v) => pattern.includes(v));
@@ -124,30 +126,22 @@ export function validateNumberingPattern(pattern: string, resetPolicy: ResetPoli
   switch (resetPolicy) {
     case 'daily':
       if (!hasDay || !hasMonth || !hasYear) {
-        errors.push(
-          'Daily reset needs {DD}, {MM} and a year ({YYYY}, {YY} or {FY}) in the pattern, or numbers repeat.',
-        );
+        errors.push(copy.dailyResetNeeds);
       }
       break;
     case 'monthly':
       if (!hasMonth || !hasYear) {
-        errors.push(
-          'Monthly reset needs {MM} and a year ({YYYY}, {YY} or {FY}) in the pattern, or numbers repeat.',
-        );
+        errors.push(copy.monthlyResetNeeds);
       }
       break;
     case 'quarterly':
       if (!hasQuarter || !hasYear) {
-        errors.push(
-          'Quarterly reset needs {QQ} and a year ({YYYY}, {YY} or {FY}) in the pattern, or numbers repeat.',
-        );
+        errors.push(copy.quarterlyResetNeeds);
       }
       break;
     case 'yearly':
       if (!hasYear) {
-        errors.push(
-          'Yearly reset needs a year ({YYYY}, {YY} or {FY}) in the pattern, or numbers repeat.',
-        );
+        errors.push(copy.yearlyResetNeeds);
       }
       break;
     case 'none':

@@ -70,7 +70,7 @@ function demoModeApiClient(demoMode: boolean): ApiClient {
 }
 
 const indexCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Dashboard' },
+  crumb: { group: 'operations', title: 'Dashboard' },
 };
 
 function renderLayout(

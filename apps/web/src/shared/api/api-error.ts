@@ -1,3 +1,15 @@
+/**
+ * ApiError
+ *
+ * The error every API call rejects with. The message is the server's own text
+ * when it sent one (server text is not translated here; error codes, #3860,
+ * replace it), otherwise a fallback from the `ui.apiError` namespace in the
+ * language active when the request failed.
+ *
+ * @module shared/api
+ */
+import { getMessages } from '../i18n';
+
 export class ApiError extends Error {
   readonly status: number;
   readonly details: unknown;
@@ -43,16 +55,17 @@ export class ApiError extends Error {
       return new ApiError(details, response.status, details);
     }
 
-    return new ApiError(response.statusText || 'Request failed', response.status, details);
+    return new ApiError(response.statusText || getMessages('ui').apiError.requestFailed, response.status, details);
   }
 
   static fromNetworkFailure(cause: unknown): ApiError {
-    const message = cause instanceof Error ? cause.message : 'Network request failed';
+    const message = cause instanceof Error ? cause.message : getMessages('ui').apiError.networkFailed;
     return new ApiError(message, 0, cause);
   }
 
+  /** The path stays in `details` for diagnostics; the message is operator copy. */
   static fromTimeout(path: string): ApiError {
-    return new ApiError(`Request timed out: ${path}`, 0, { timeout: true, path });
+    return new ApiError(getMessages('ui').apiError.timedOut, 0, { timeout: true, path });
   }
 }
 

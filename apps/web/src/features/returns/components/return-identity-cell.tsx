@@ -17,7 +17,7 @@
 import type { ReactElement } from 'react';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { shortenId } from '../../../shared/ui/entity-label';
-import { RETURNS_ROW_COPY } from '../lib/returns-list.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import type { ReturnListItem } from '../api/returns.types';
 
 interface ReturnIdentityCellProps {
@@ -25,6 +25,7 @@ interface ReturnIdentityCellProps {
 }
 
 export function ReturnIdentityCell({ item }: ReturnIdentityCellProps): ReactElement {
+  const copy = useMessages('returns').list.row;
   return (
     <span className="returns-identity-cell">
       {item.externalReturnId !== null ? (
@@ -32,14 +33,14 @@ export function ReturnIdentityCell({ item }: ReturnIdentityCellProps): ReactElem
           {item.externalReturnId}
         </span>
       ) : (
-        <span className="mono-text text-muted" title={`${RETURNS_ROW_COPY.noExternalId}: ${item.id}`}>
+        <span className="mono-text text-muted" title={interpolate(copy.noExternalIdTitle, { id: item.id })}>
           {shortenId(item.id)}
         </span>
       )}
 
       {item.origin === 'operator_authored' ? (
         <StatusBadge tone="info" compact>
-          {RETURNS_ROW_COPY.recordedByYou}
+          {copy.recordedByYou}
         </StatusBadge>
       ) : null}
     </span>

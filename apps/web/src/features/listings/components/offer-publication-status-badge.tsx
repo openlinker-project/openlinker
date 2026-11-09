@@ -11,6 +11,7 @@
  */
 import type { ReactElement } from 'react';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
+import { useMessages } from '../../../shared/i18n';
 import type { OfferPublicationStatus } from '../api/listings.types';
 
 const STATUS_TONE: Record<OfferPublicationStatus, StatusBadgeTone> = {
@@ -19,14 +20,6 @@ const STATUS_TONE: Record<OfferPublicationStatus, StatusBadgeTone> = {
   inactivating: 'warning',
   inactive: 'review',
   ended: 'neutral',
-};
-
-const STATUS_LABEL: Record<OfferPublicationStatus, string> = {
-  active: 'Active',
-  activating: 'Activating',
-  inactivating: 'Deactivating',
-  inactive: 'Inactive',
-  ended: 'Ended',
 };
 
 /** Transient async states pulse the dot to read as "in flight". */
@@ -45,12 +38,13 @@ export function OfferPublicationStatusBadge({
   status,
   compact = false,
 }: OfferPublicationStatusBadgeProps): ReactElement {
+  const copy = useMessages('listings').offerPublicationStatusBadge;
   // Absence is its own state, not a status: say so instead of picking a
   // marketplace value the marketplace never reported.
   if (status === null) {
     return (
       <StatusBadge tone="neutral" compact={compact} withDot>
-        Not synced yet
+        {copy.notSyncedYet}
       </StatusBadge>
     );
   }
@@ -62,7 +56,7 @@ export function OfferPublicationStatusBadge({
       withDot
       pulse={PULSING_STATUSES.has(status)}
     >
-      {STATUS_LABEL[status]}
+      {copy.labels[status]}
     </StatusBadge>
   );
 }

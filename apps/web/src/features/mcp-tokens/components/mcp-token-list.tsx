@@ -7,6 +7,7 @@
  * @module apps/web/src/features/mcp-tokens/components
  */
 import { useState, type ReactElement } from 'react';
+import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
@@ -23,12 +24,14 @@ interface McpTokenListProps {
 
 export function McpTokenList({ tokens, onRevoke, isRevoking }: McpTokenListProps): ReactElement {
   const [pendingRevoke, setPendingRevoke] = useState<McpToken | null>(null);
+  const copy = useMessages('mcp-tokens').mcpTokenList;
+  const plural = usePlural();
 
   if (tokens.length === 0) {
     return (
       <EmptyState
-        title="No MCP tokens"
-        message="Create a token to let an MCP client authenticate to this OpenLinker instance."
+        title={copy.emptyTitle}
+        message={copy.emptyMessage}
       />
     );
   }
@@ -38,66 +41,60 @@ export function McpTokenList({ tokens, onRevoke, isRevoking }: McpTokenListProps
   return (
     <>
       {mismatched.length > 0 ? (
-        <Alert tone="warning">
-          {mismatched.length === 1 ? '1 token is' : `${mismatched.length} tokens are`} bound to a
-          different MCP resource URL than this deployment currently serves. They will fail with a
-          bare 401 until re-minted — this usually means <code className="mono-text">
-            OL_MCP_RESOURCE_URL
-          </code> changed after they were created.
-        </Alert>
+        <Alert tone="warning">{plural(mismatched.length, copy.wrongResourceWarning)}</Alert>
       ) : null}
       <table className="data-table data-table--stackable">
         <thead>
           <tr>
-            <th scope="col">Name</th>
-            <th scope="col">Owner</th>
-            <th scope="col">Scopes</th>
-            <th scope="col">Status</th>
-            <th scope="col">Last used</th>
-            <th scope="col">Expires</th>
+            <th scope="col">{copy.columns.name}</th>
+            <th scope="col">{copy.columns.owner}</th>
+            <th scope="col">{copy.columns.scopes}</th>
+            <th scope="col">{copy.columns.status}</th>
+            <th scope="col">{copy.columns.lastUsed}</th>
+            <th scope="col">{copy.columns.expires}</th>
             <th scope="col">
-              <span className="sr-only">Actions</span>
+              <span className="sr-only">{copy.columns.actions}</span>
             </th>
           </tr>
         </thead>
         <tbody>
           {tokens.map((token) => (
             <tr key={token.id}>
-              <td data-label="Name">{token.name}</td>
-              <td data-label="Owner" className="mono-text">
+              <td data-label={copy.columns.name}>{token.name}</td>
+              <td data-label={copy.columns.owner} className="mono-text">
                 {token.userId}
               </td>
-              <td data-label="Scopes" className="mono-text">
+              <td data-label={copy.columns.scopes} className="mono-text">
                 {token.scopes.join(', ')}
               </td>
-              <td data-label="Status">
+              <td data-label={copy.columns.status}>
                 {token.revokedAt ? (
                   <StatusBadge tone="neutral" withDot>
-                    Revoked
+                    {copy.status.revoked}
                   </StatusBadge>
                 ) : token.isActive && !token.resourceMatchesCurrent ? (
-                  <span title={`Bound to ${token.resource}`}>
+                  <span title={interpolate(copy.boundTo, { resource: token.resource })}>
                     <StatusBadge tone="warning" withDot>
-                      Wrong resource
+                      {copy.status.wrongResource}
                     </StatusBadge>
                   </span>
                 ) : token.isActive ? (
                   <StatusBadge tone="success" withDot>
-                    Active
+                    {copy.status.active}
                   </StatusBadge>
                 ) : (
                   <StatusBadge tone="warning" withDot>
-                    Expired
+                    {copy.status.expired}
                   </StatusBadge>
                 )}
               </td>
-              <td data-label="Last used">
-                {token.lastUsedAt ? <TimeDisplay iso={token.lastUsedAt} /> : <span>Never</span>}
+              <td data-label={copy.columns.lastUsed}>
+                {token.lastUsedAt ? <TimeDisplay iso={token.lastUsedAt} /> : <span>{copy.never}</span>}
               </td>
-              <td data-label="Expires">
+              <td data-label={copy.columns.expires}>
                 <TimeDisplay iso={token.expiresAt} />
               </td>
-              <td data-label="Actions">
+              <td data-label={copy.columns.actions}>
                 {token.revokedAt ? null : (
                   <Button
                     type="button"
@@ -105,7 +102,7 @@ export function McpTokenList({ tokens, onRevoke, isRevoking }: McpTokenListProps
                     className="button--sm"
                     onClick={() => setPendingRevoke(token)}
                   >
-                    Revoke
+                    {copy.revoke}
                   </Button>
                 )}
               </td>
@@ -119,13 +116,16 @@ export function McpTokenList({ tokens, onRevoke, isRevoking }: McpTokenListProps
         onOpenChange={(next) => {
           if (!next) setPendingRevoke(null);
         }}
-        title="Revoke this token?"
+        title={copy.confirmTitle}
         description={
           pendingRevoke
-            ? `"${pendingRevoke.name}" (owner ${pendingRevoke.userId}) will stop working immediately. Any MCP client configured with it will start failing authentication. This cannot be undone.`
+            ? interpolate(copy.confirmDescription, {
+                name: pendingRevoke.name,
+                owner: pendingRevoke.userId,
+              })
             : ''
         }
-        confirmLabel="Revoke"
+        confirmLabel={copy.confirmLabel}
         tone="danger"
         isConfirming={isRevoking}
         onConfirm={() => {

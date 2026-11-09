@@ -792,7 +792,7 @@ describe('ProductSalesTable', () => {
 
       const p2Notes = p2Row!.querySelectorAll('.excl-note');
       expect(p2Notes).toHaveLength(1);
-      expect(p2Notes[0]).toHaveTextContent('1 order have no tax rate at all');
+      expect(p2Notes[0]).toHaveTextContent('1 order has no tax rate at all');
     });
 
     it('should annotate a product for every cross-referenceable category it has an excluded order in', async () => {

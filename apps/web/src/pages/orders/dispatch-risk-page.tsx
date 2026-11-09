@@ -19,8 +19,15 @@
  *
  * @module apps/web/src/pages/orders
  */
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import {
+  interpolate,
+  useFormat,
+  useMessages,
+  type Messages,
+  type ResolvedCopy,
+} from '../../shared/i18n';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
@@ -47,11 +54,16 @@ type RiskBucket = Exclude<SlaStateValue, 'none'>;
 
 const RISK_BUCKETS: readonly RiskBucket[] = ['overdue', 'at_risk', 'on_track'];
 
-const BUCKET_META: Record<RiskBucket, { label: string; tone: 'error' | 'warning' | 'success' }> = {
-  overdue: { label: 'Overdue', tone: 'error' },
-  at_risk: { label: 'Due soon', tone: 'warning' },
-  on_track: { label: 'On track', tone: 'success' },
-};
+type DispatchRiskCopy = ResolvedCopy<Messages['orders']>['dispatchRiskPage'];
+
+const BUCKET_META = {
+  overdue: { copyKey: 'overdue', tone: 'error' },
+  at_risk: { copyKey: 'atRisk', tone: 'warning' },
+  on_track: { copyKey: 'onTrack', tone: 'success' },
+} as const satisfies Record<
+  RiskBucket,
+  { copyKey: keyof DispatchRiskCopy['buckets']; tone: 'error' | 'warning' | 'success' }
+>;
 
 const SHIP_BY_TONE: Record<ShipByLevel, 'error' | 'warning' | 'success'> = {
   overdue: 'error',
@@ -69,85 +81,89 @@ function snapshotItemCount(snapshot: Record<string, unknown>): number {
   return 0;
 }
 
-const COLUMNS: DataTableColumn<OrderRecord>[] = [
-  {
-    id: 'internalOrderId',
-    header: 'Order',
-    cell: (order) => <span className="mono">{order.internalOrderId}</span>,
-  },
-  {
-    id: 'sourceConnectionId',
-    header: 'Source',
-    hideBelow: 1024,
-    cell: (order) => <ConnectionEntityLabel connectionId={order.sourceConnectionId} />,
-  },
-  {
-    id: 'shipBy',
-    header: 'Ship by',
-    cell: (order) => {
-      const due = order.dispatchByAt ?? null;
-      // Live countdown only — the BUCKET itself is `order.slaState`, owned by
-      // the backend. Re-deriving it here would create a second SLA vocabulary.
-      const view = formatShipBy(due);
-      const sla = slaBadge(order.slaState);
-      // #2441 review S4 — an `<abbr>`, not a `<span aria-label>`. A `span` has no
-      // ARIA role, so the label is not reliably exposed, and where it is it
-      // REPLACES the visible "est." rather than expanding it. `<abbr title>` is
-      // the element for exactly this and keeps the visible text intact.
-      const estMark = order.dispatchByEstimated ? (
-        <abbr
-          className="text-muted"
-          title="OpenLinker estimate — not a marketplace-confirmed deadline"
-        >
-          est.{' '}
-        </abbr>
-      ) : null;
+function buildColumns(copy: DispatchRiskCopy): DataTableColumn<OrderRecord>[] {
+  return [
+    {
+      id: 'internalOrderId',
+      header: copy.columns.order,
+      cell: (order) => <span className="mono">{order.internalOrderId}</span>,
+    },
+    {
+      id: 'sourceConnectionId',
+      header: copy.columns.source,
+      hideBelow: 1024,
+      cell: (order) => <ConnectionEntityLabel connectionId={order.sourceConnectionId} />,
+    },
+    {
+      id: 'shipBy',
+      header: copy.columns.shipBy,
+      cell: (order) => {
+        const due = order.dispatchByAt ?? null;
+        // Live countdown only — the BUCKET itself is `order.slaState`, owned by
+        // the backend. Re-deriving it here would create a second SLA vocabulary.
+        const view = formatShipBy(due);
+        const sla = slaBadge(order.slaState);
+        // #2441 review S4 — an `<abbr>`, not a `<span aria-label>`. A `span` has no
+        // ARIA role, so the label is not reliably exposed, and where it is it
+        // REPLACES the visible "est." rather than expanding it. `<abbr title>` is
+        // the element for exactly this and keeps the visible text intact.
+        const estMark = order.dispatchByEstimated ? (
+          <abbr className="text-muted" title={copy.estimate.title}>
+            {copy.estimate.abbr}{' '}
+          </abbr>
+        ) : null;
 
-      return (
-        <span className="ds-row" style={{ alignItems: 'center', gap: 'var(--space-2)' }}>
-          {sla ? (
-            <StatusBadge tone={sla.tone} withDot compact>
-              {sla.label}
-            </StatusBadge>
-          ) : null}
-          {view ? (
-            <span className="text-muted mono tabular">
-              {estMark}
-              {view.remaining}
-            </span>
-          ) : null}
-          {due ? <TimeDisplay iso={due} /> : null}
-        </span>
-      );
+        return (
+          <span className="ds-row" style={{ alignItems: 'center', gap: 'var(--space-2)' }}>
+            {sla ? (
+              <StatusBadge tone={sla.tone} withDot compact>
+                {sla.label}
+              </StatusBadge>
+            ) : null}
+            {view ? (
+              <span className="text-muted mono tabular">
+                {estMark}
+                {view.remaining}
+              </span>
+            ) : null}
+            {due ? <TimeDisplay iso={due} /> : null}
+          </span>
+        );
+      },
     },
-  },
-  {
-    id: 'fulfillmentState',
-    header: 'Fulfillment',
-    hideBelow: 768,
-    cell: (order) => {
-      // No null guard: `fulfillmentBadge` is total by contract (#2678) — an
-      // absent state means `not-shipped` and an unrecognised one renders a
-      // neutral "Unknown (…)" badge. The guard that used to sit here was dead
-      // and read as coverage it never provided (the #2589 dead-fallback lesson).
-      const badge = fulfillmentBadge(order.fulfillmentState);
-      return (
-        <StatusBadge tone={badge.tone} compact>
-          {badge.label}
-        </StatusBadge>
-      );
+    {
+      id: 'fulfillmentState',
+      header: copy.columns.fulfilment,
+      hideBelow: 768,
+      cell: (order) => {
+        // No null guard: `fulfillmentBadge` is total by contract (#2678) — an
+        // absent state means `not-shipped` and an unrecognised one renders a
+        // neutral "Unknown (…)" badge. The guard that used to sit here was dead
+        // and read as coverage it never provided (the #2589 dead-fallback lesson).
+        const badge = fulfillmentBadge(order.fulfillmentState);
+        return (
+          <StatusBadge tone={badge.tone} compact>
+            {badge.label}
+          </StatusBadge>
+        );
+      },
     },
-  },
-  {
-    id: 'items',
-    header: 'Items',
-    align: 'right',
-    hideBelow: 480,
-    cell: (order) => <span className="mono tabular">{snapshotItemCount(order.orderSnapshot)}</span>,
-  },
-];
+    {
+      id: 'items',
+      header: copy.columns.items,
+      align: 'right',
+      hideBelow: 480,
+      cell: (order) => (
+        <span className="mono tabular">{snapshotItemCount(order.orderSnapshot)}</span>
+      ),
+    },
+  ];
+}
 
 export function DispatchRiskPage(): ReactElement {
+  const copy = useMessages('orders').dispatchRiskPage;
+  const format = useFormat();
+  const columns = useMemo(() => buildColumns(copy), [copy]);
   const [searchParams, setSearchParams] = useSearchParams();
 
   const bucketParam = searchParams.get('bucket');
@@ -196,7 +212,7 @@ export function DispatchRiskPage(): ReactElement {
   }
 
   const rows = query.data?.items ?? [];
-  const meta = BUCKET_META[bucket];
+  const bucketCopy = copy.buckets[BUCKET_META[bucket].copyKey];
   // Distinguish "nothing in THIS bucket" from "no order carries a deadline at
   // all" — the second is a configuration answer, not a clean queue.
   const noDeadlinesAnywhere =
@@ -204,10 +220,10 @@ export function DispatchRiskPage(): ReactElement {
 
   return (
     <PageLayout
-      backTo={{ to: '/orders', label: 'Orders' }}
-      eyebrow="Operations"
-      title="Dispatch risk"
-      description="Orders ranked by how soon they breach their ship-by deadline. Dispatched, delivered and cancelled orders are excluded."
+      backTo={{ to: '/orders', label: copy.backToOrders }}
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
     >
       <div className="toolbar">
         <div className="ds-row" style={{ alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -226,23 +242,23 @@ export function DispatchRiskPage(): ReactElement {
                   selectBucket(candidate);
                 }}
               >
-                {BUCKET_META[candidate].label}
+                {copy.buckets[BUCKET_META[candidate].copyKey].label}
                 {/* #2441 review S2 — bare-number form, matching the orders-list
                     invoicing and phase chips. Two adjacent Operations surfaces
                     were formatting one primitive two ways. */}
-                {count === null ? '' : ` ${count}`}
+                {count === null ? null : ` ${format.number(count)}`}
               </Chip>
             );
           })}
         </div>
         <Select
-          aria-label="Filter by connection"
+          aria-label={copy.filterByConnection}
           value={connectionId ?? ''}
           onChange={(event) => {
             patchParams({ source: event.target.value || undefined, offset: undefined });
           }}
         >
-          <option value="">All connections</option>
+          <option value="">{copy.allConnections}</option>
           {connections.map((connection) => (
             <option key={connection.id} value={connection.id}>
               {connection.name}
@@ -252,41 +268,31 @@ export function DispatchRiskPage(): ReactElement {
       </div>
 
       {query.isLoading ? (
-        <LoadingState
-          liveRegion="off"
-          title="Loading dispatch risk"
-          message="Fetching orders ranked by ship-by deadline."
-        />
+        <LoadingState liveRegion="off" title={copy.loading.title} message={copy.loading.message} />
       ) : query.error ? (
         <ErrorState
-          title="Could not load dispatch risk"
-          message="The order list could not be fetched."
+          title={copy.error.title}
+          message={copy.error.message}
           action={
             <Button
               onClick={() => {
                 void query.refetch();
               }}
             >
-              Retry
+              {copy.error.retry}
             </Button>
           }
         />
       ) : rows.length === 0 ? (
         <EmptyState
           liveRegion="off"
-          title={
-            noDeadlinesAnywhere ? 'No ship-by deadlines' : `Nothing ${meta.label.toLowerCase()}`
-          }
-          message={
-            noDeadlinesAnywhere
-              ? 'No open order carries a ship-by deadline, so there is nothing to rank. Deadlines come from the marketplace dispatch window.'
-              : 'No open order sits in this bucket right now.'
-          }
+          title={noDeadlinesAnywhere ? copy.noDeadlines.title : bucketCopy.empty}
+          message={noDeadlinesAnywhere ? copy.noDeadlines.message : copy.emptyBucket}
         />
       ) : (
         <DataTable
-          caption={`Orders ${meta.label.toLowerCase()}, soonest deadline first`}
-          columns={COLUMNS}
+          caption={bucketCopy.caption}
+          columns={columns}
           rows={rows}
           rowKey={(order) => order.internalOrderId}
           rowHref={(order) => `/orders/${order.internalOrderId}`}
@@ -308,7 +314,11 @@ export function DispatchRiskPage(): ReactElement {
       {rows.length > 0 && (
         <div className="pagination">
           <span className="text-muted">
-            Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
+            {interpolate(copy.pagination.showing, {
+              from: format.number(offset + 1),
+              to: format.number(Math.min(offset + PAGE_SIZE, total)),
+              total: format.number(total),
+            })}
           </span>
           <Button
             disabled={!hasPrev}
@@ -316,7 +326,7 @@ export function DispatchRiskPage(): ReactElement {
               patchParams({ offset: String(Math.max(0, offset - PAGE_SIZE)) });
             }}
           >
-            Previous
+            {copy.pagination.previous}
           </Button>
           <Button
             disabled={!hasNext}
@@ -324,7 +334,7 @@ export function DispatchRiskPage(): ReactElement {
               patchParams({ offset: String(offset + PAGE_SIZE) });
             }}
           >
-            Next
+            {copy.pagination.next}
           </Button>
         </div>
       )}

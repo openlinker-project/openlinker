@@ -10,8 +10,9 @@
  * @module apps/web/src/features/ai-provider-settings/components
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, type ReactElement } from 'react';
+import { useEffect, useMemo, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -29,7 +30,7 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import type { AiProvider } from '../api/ai-provider-settings.types';
 import { useUpdateAiProviderSettingsMutation } from '../hooks/use-update-ai-provider-settings-mutation';
 import {
-  aiProviderSettingsFormSchema,
+  createAiProviderSettingsFormSchema,
   type AiProviderSettingsFormSubmission,
   type AiProviderSettingsFormValues,
 } from './ai-provider-settings-form.schema';
@@ -40,23 +41,11 @@ interface AiProviderKeyDialogProps {
   onClose: () => void;
 }
 
-/**
- * Provider-specific key placeholder. Anthropic keys begin `sk-ant-`,
- * OpenAI keys begin `sk-`. Showing the right hint reduces operator
- * confusion when switching between providers.
- */
-const PLACEHOLDER_BY_PROVIDER: Record<Exclude<AiProvider, 'fake'>, string> = {
-  anthropic: 'sk-ant-...',
-  openai: 'sk-...',
-};
-
-const PROVIDER_LABEL: Record<AiProvider, string> = {
-  anthropic: 'Anthropic',
-  openai: 'OpenAI',
-  fake: 'Fake',
-};
-
 export function AiProviderKeyDialog({ provider, onClose }: AiProviderKeyDialogProps): ReactElement {
+  const messages = useMessages('ai-provider-settings');
+  const copy = messages.aiProviderKeyDialog;
+  const schemaCopy = messages.aiProviderSettingsFormSchema;
+  const schema = useMemo(() => createAiProviderSettingsFormSchema(schemaCopy), [schemaCopy]);
   const { showToast } = useToast();
   const mutation = useUpdateAiProviderSettingsMutation();
 
@@ -66,7 +55,7 @@ export function AiProviderKeyDialog({ provider, onClose }: AiProviderKeyDialogPr
     AiProviderSettingsFormSubmission
   >({
     defaultValues: { apiKey: '' },
-    resolver: zodResolver(aiProviderSettingsFormSchema),
+    resolver: zodResolver(schema),
   });
 
   // Reset the form (and any prior mutation error) when the dialog opens or
@@ -90,8 +79,10 @@ export function AiProviderKeyDialog({ provider, onClose }: AiProviderKeyDialogPr
       await mutation.mutateAsync({ provider, input: { apiKey: values.apiKey } });
       showToast({
         tone: 'success',
-        title: 'API key saved',
-        description: `Subsequent ${PROVIDER_LABEL[provider]} requests will use the new key.`,
+        title: copy.savedToastTitle,
+        description: interpolate(copy.savedToastDescription, {
+          provider: copy.providers[provider],
+        }),
       });
       onClose();
     } catch {
@@ -108,7 +99,7 @@ export function AiProviderKeyDialog({ provider, onClose }: AiProviderKeyDialogPr
 
   const open = provider !== null;
   const placeholder =
-    provider !== null && provider !== 'fake' ? PLACEHOLDER_BY_PROVIDER[provider] : '';
+    provider !== null && provider !== 'fake' ? copy.placeholders[provider] : '';
 
   return (
     <Dialog
@@ -119,14 +110,16 @@ export function AiProviderKeyDialog({ provider, onClose }: AiProviderKeyDialogPr
     >
       <DialogContent>
         <DialogTitle>
-          {provider !== null ? `Set ${PROVIDER_LABEL[provider]} API key` : 'Set API key'}
+          {provider !== null
+            ? interpolate(copy.title, { provider: copy.providers[provider] })
+            : copy.titleGeneric}
         </DialogTitle>
         <DialogDescription>
-          Stored encrypted at rest. Server-side only — never returned by the API.
+          {copy.description}
         </DialogDescription>
 
         {mutation.error ? (
-          <Alert tone="error" title="Could not save the key">
+          <Alert tone="error" title={copy.saveErrorTitle}>
             {mutation.error.message}
           </Alert>
         ) : null}
@@ -139,7 +132,7 @@ export function AiProviderKeyDialog({ provider, onClose }: AiProviderKeyDialogPr
         >
           {showValidationSummary ? <FormErrorSummary errors={validationMessages} /> : null}
 
-          <FormField label="API key" name="apiKey" error={form.formState.errors.apiKey?.message}>
+          <FormField label={copy.apiKeyLabel} name="apiKey" error={form.formState.errors.apiKey?.message}>
             <Input
               type="password"
               autoComplete="off"
@@ -152,11 +145,11 @@ export function AiProviderKeyDialog({ provider, onClose }: AiProviderKeyDialogPr
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" tone="ghost">
-                Cancel
+                {copy.cancel}
               </Button>
             </DialogClose>
             <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? 'Saving…' : 'Save key'}
+              {mutation.isPending ? copy.saving : copy.save}
             </Button>
           </DialogFooter>
         </form>

@@ -31,6 +31,14 @@ import {
   type Shipment,
 } from '../../shipments';
 import { usePermission } from '../../../shared/auth/use-permission';
+import {
+  interpolate,
+  useFormat,
+  useMessages,
+  type Formatters,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 import { usePlatform, type Platform } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
 import { LoadingState, ErrorState, EmptyState } from '../../../shared/ui/feedback-state';
@@ -42,19 +50,21 @@ import { TimeDisplay } from '../../../shared/ui/time-display';
 import type { OrderDeliveryRider, OrderRecord } from '../api/orders.types';
 import { parseOrderSnapshot, type PaymentStatus } from '../api/order-snapshot.schema';
 import { hasLiveOlCarrierRoute } from '../lib/delivery-outcome';
-import { SHOP_FULFILLED_NO_DUP_LABEL } from '../lib/delivery-copy';
 import { DeliveryRiderAction } from './delivery-rider-action';
 import { GenerateLabelForm } from './generate-label-form';
 import {
   ShipmentActionButtons,
-  GENERATE_LABEL_BLOCK_REASON,
   PAYMENT_BLOCKS_DISPATCH,
+  generateLabelBlockReason,
   resolveGenerateLabelBlock,
 } from './shipment-action-buttons';
 import { ShipmentLifecycleRail } from './shipment-lifecycle-rail';
 import { ShipmentTrackingLink } from './shipment-tracking-link';
+import { serverErrorText } from '../lib/server-error-text';
 
 const SHIPPING_CAPABILITY = 'ShippingProviderManager';
+
+type ShipmentPanelCopy = ResolvedCopy<Messages['orders']>['orderShipmentPanel'];
 
 /** Whether a rider is one OpenLinker could take over (#1776). */
 function isTakeoverRider(rider: OrderDeliveryRider | undefined): boolean {
@@ -69,15 +79,19 @@ function isTakeoverRider(rider: OrderDeliveryRider | undefined): boolean {
  * carrier display name (or "a carrier"). Copy always says "this and future
  * orders", never "re-ship this order".
  */
-function takeoverMessage(rider: OrderDeliveryRider | undefined, carrier: string): string {
+function takeoverMessage(
+  rider: OrderDeliveryRider | undefined,
+  carrier: string,
+  copy: ShipmentPanelCopy['takeover'],
+): string {
   switch (rider?.rider) {
     case 'not-connected':
-      return `OpenLinker supports ${carrier} but isn't connected to it yet. Connect it to ship this and future orders on this method through OpenLinker.`;
+      return interpolate(copy.notConnected, { carrier });
     case 'disabled':
-      return `This delivery method routes to ${carrier}, but that connection is disabled. Enable it so OpenLinker can generate the label.`;
+      return interpolate(copy.disabled, { carrier });
     case 'unmapped':
     default:
-      return `This delivery method isn't mapped to a carrier yet. Map it to ${carrier} and OpenLinker will generate the label for this and future orders on this method.`;
+      return interpolate(copy.unmapped, { carrier });
   }
 }
 
@@ -86,9 +100,11 @@ function takeoverMessage(rider: OrderDeliveryRider | undefined, carrier: string)
  * OpenLinker only mirrors its status. Substitutes the shop connection name for
  * "The destination shop" when it's resolvable.
  */
-function shopFulfilledMessage(shopName: string | null): string {
-  const subject = shopName ?? 'The destination shop';
-  return `${subject} ships this order with its own carrier. ${SHOP_FULFILLED_NO_DUP_LABEL}`;
+function shopFulfilledMessage(
+  shopName: string | null,
+  copy: ShipmentPanelCopy['shopFulfilled'],
+): string {
+  return shopName ? interpolate(copy.named, { shop: shopName }) : copy.generic;
 }
 
 interface OrderShipmentPanelProps {
@@ -114,6 +130,9 @@ export function OrderShipmentPanel({
   order,
   autoOpenForShipmentId,
 }: OrderShipmentPanelProps): ReactElement | null {
+  const ordersCopy = useMessages('orders');
+  const serverSaid = ordersCopy.common.serverSaid;
+  const copy = ordersCopy.orderShipmentPanel;
   const connectionsQuery = useConnectionsQuery();
   const shipmentsQuery = useOrderShipmentsQuery(order.internalOrderId);
   const [formOpen, setFormOpen] = useState(false);
@@ -216,14 +235,14 @@ export function OrderShipmentPanel({
     alreadyAutoOpened
       ? null
       : retryTargetShipment === null
-        ? 'That shipment is no longer on this order.'
+        ? copy.deepLinkGone
         : retryBlock !== null
-          ? GENERATE_LABEL_BLOCK_REASON[retryBlock]
+          ? generateLabelBlockReason(retryBlock, ordersCopy.shipmentActionButtons)
           : null;
 
   const rider = order.deliveryRider;
   const takeover = isTakeoverRider(rider);
-  const candidateCarrier = rider?.candidateCarrier?.displayName ?? 'a carrier';
+  const candidateCarrier = rider?.candidateCarrier?.displayName ?? copy.takeover.carrierFallback;
   // Shop connection name for the affirmative empty state — the explicit OMP
   // processor when the routing named one (id → name lookup only).
   const shopConnectionName =
@@ -237,8 +256,8 @@ export function OrderShipmentPanel({
   const noRouteMessage = olCarrierRoute
     ? null
     : takeover
-      ? takeoverMessage(rider, candidateCarrier)
-      : shopFulfilledMessage(shopConnectionName);
+      ? takeoverMessage(rider, candidateCarrier, copy.takeover)
+      : shopFulfilledMessage(shopConnectionName, copy.shopFulfilled);
 
   // AC-8 — global capability gate. If no connection declares
   // ShippingProviderManager, render nothing (the operator has no way to
@@ -259,7 +278,7 @@ export function OrderShipmentPanel({
     return (
       <section className="detail-section order-shipment-panel order-shipment-panel--loading">
         <header className="order-shipment-panel__header">
-          <h3 className="detail-section__title">Shipment</h3>
+          <h3 className="detail-section__title">{copy.title}</h3>
         </header>
         <div className="order-shipment-panel__skeleton" aria-hidden="true" />
       </section>
@@ -287,19 +306,19 @@ export function OrderShipmentPanel({
   return (
     <section className="detail-section order-shipment-panel">
       <header className="order-shipment-panel__header">
-        <h3 className="detail-section__title">Shipment</h3>
+        <h3 className="detail-section__title">{copy.title}</h3>
         {activeShipment ? <ShipmentStatusBadge status={activeShipment.status} /> : null}
       </header>
 
       {shipmentsQuery.isLoading ? (
-        <LoadingState title="Loading shipment" message="Fetching the latest dispatch state." />
+        <LoadingState title={copy.loading.title} message={copy.loading.message} />
       ) : shipmentsQuery.isError ? (
         <ErrorState
-          title="Could not load shipment"
-          message={shipmentsQuery.error.message}
+          title={copy.loadError.title}
+          message={serverErrorText(serverSaid, shipmentsQuery.error.message, '')}
           action={
             <Button onClick={() => void shipmentsQuery.refetch()} tone="secondary">
-              Retry
+              {copy.loadError.retry}
             </Button>
           }
         />
@@ -325,8 +344,8 @@ export function OrderShipmentPanel({
         // passive note instead of an active "Generate a label" CTA (this takes
         // precedence over the normal live-route empty state).
         <EmptyState
-          title="Dispatched outside OpenLinker"
-          message="Dispatched outside OpenLinker - no label to generate here."
+          title={copy.outsideOpenLinker.title}
+          message={copy.outsideOpenLinker.message}
         />
       ) : !olCarrierRoute ? (
         takeover ? (
@@ -334,8 +353,8 @@ export function OrderShipmentPanel({
           // operator maps / connects / enables the carrier. The fix-it deep link
           // is the EmptyState's action (needs the source connection + method).
           <EmptyState
-            title="OpenLinker can ship this"
-            message={takeoverMessage(rider, candidateCarrier)}
+            title={copy.takeover.title}
+            message={takeoverMessage(rider, candidateCarrier, copy.takeover)}
             action={
               rider && order.sourceConnectionId ? (
                 <DeliveryRiderAction
@@ -351,14 +370,14 @@ export function OrderShipmentPanel({
           // Affirmative shop-fulfilled empty state (#1776 E2) — the shop owns
           // fulfilment; no CTA, no dead-end label action.
           <EmptyState
-            title="Shipped by the shop"
-            message={shopFulfilledMessage(shopConnectionName)}
+            title={copy.shopFulfilled.title}
+            message={shopFulfilledMessage(shopConnectionName, copy.shopFulfilled)}
           />
         )
       ) : (
         <EmptyState
-          title="No shipment yet"
-          message="Generate a label to dispatch this order."
+          title={copy.noShipment.title}
+          message={copy.noShipment.message}
           // Same permission gate the action row and `/shipments`' Regenerate
           // link apply (#1905) — a viewer saw a live CTA here before.
           action={
@@ -370,7 +389,7 @@ export function OrderShipmentPanel({
                   setFormOpen(true);
                 }}
               >
-                Generate label
+                {copy.noShipment.action}
               </Button>
             ) : undefined
           }
@@ -442,7 +461,9 @@ function OrderShipmentPanelBody({
   // in the parent, which has early returns above its `shippingConnection`
   // computation — a `usePlatform` call there would be conditional (#893).
   const shippingPlatform = usePlatform(shippingPlatformType ?? undefined);
-  const items = buildShipmentFieldItems(shipment, shippingPlatform, paymentStatus);
+  const copy = useMessages('orders').orderShipmentPanel;
+  const format = useFormat();
+  const items = buildShipmentFieldItems(shipment, shippingPlatform, paymentStatus, copy, format);
   return (
     <div className="order-shipment-panel__body">
       <KeyValueList items={items} />
@@ -462,7 +483,7 @@ function OrderShipmentPanelBody({
           </p>
           {shipment.failedAt ? (
             <p className="order-shipment-panel__error-meta">
-              Failed <TimeDisplay iso={shipment.failedAt} />
+              {copy.failed} <TimeDisplay iso={shipment.failedAt} />
             </p>
           ) : null}
         </Alert>
@@ -480,14 +501,17 @@ function buildShipmentFieldItems(
   shipment: Shipment,
   shippingPlatform: Platform | undefined,
   paymentStatus: PaymentStatus | undefined,
+  copy: ShipmentPanelCopy,
+  format: Formatters,
 ): KeyValueItem[] {
+  const fields = copy.fields;
   const items: KeyValueItem[] = [];
 
   // Tracking number — formatted as a link when carrier resolves, copy-text
   // when not.
   items.push({
     id: 'tracking',
-    label: 'Tracking',
+    label: fields.tracking,
     value: shipment.trackingNumber ? (
       <ShipmentTrackingLink shipment={shipment} />
     ) : (
@@ -500,8 +524,8 @@ function buildShipmentFieldItems(
   const carrierName = getCarrierDisplayName(shipment.carrier);
   items.push({
     id: 'carrier',
-    label: 'Carrier',
-    value: carrierName ?? <span className="text-muted">— (awaiting)</span>,
+    label: fields.carrier,
+    value: carrierName ?? <span className="text-muted">— {fields.awaiting}</span>,
   });
 
   // Paczkomat row — caption keyed on the shipping platform's
@@ -512,12 +536,12 @@ function buildShipmentFieldItems(
   if (shipment.paczkomatId !== null) {
     const caption =
       shippingPlatform?.pickupPointResolvesAsync === true
-        ? `(buyer-selected via ${shippingPlatform.displayName})`
-        : '(operator-selected)';
+        ? interpolate(fields.buyerSelectedVia, { provider: shippingPlatform.displayName })
+        : fields.operatorSelected;
     // Row label follows the method: parcel-shop / PUDO methods ('pickup', e.g.
     // DPD Pickup) read "Pickup point"; locker methods ('paczkomat') keep their
     // name. Both carry their point id on `paczkomatId`.
-    const pointLabel = shipment.shippingMethod === 'pickup' ? 'Pickup point' : 'Paczkomat';
+    const pointLabel = shipment.shippingMethod === 'pickup' ? fields.pickupPoint : fields.paczkomat;
     items.push({
       id: 'paczkomat',
       label: pointLabel,
@@ -536,13 +560,13 @@ function buildShipmentFieldItems(
   if (paymentStatus === 'cod') {
     items.push({
       id: 'cod',
-      label: 'Payment',
+      label: fields.payment,
       value: (
         <>
           <StatusBadge tone="warning" withDot>
-            Cash on delivery
+            {fields.cod}
           </StatusBadge>{' '}
-          <span className="text-muted">collect on delivery</span>
+          <span className="text-muted">{fields.codNote}</span>
         </>
       ),
     });
@@ -550,8 +574,8 @@ function buildShipmentFieldItems(
 
   items.push({
     id: 'dispatchedAt',
-    label: 'Dispatched at',
-    value: shipment.dispatchedAt ? new Date(shipment.dispatchedAt).toLocaleString() : (
+    label: fields.dispatchedAt,
+    value: shipment.dispatchedAt ? format.dateTime(shipment.dispatchedAt) : (
       <span className="text-muted">—</span>
     ),
   });

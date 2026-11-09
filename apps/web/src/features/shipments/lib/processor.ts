@@ -32,7 +32,9 @@
  *
  * @module apps/web/src/features/shipments/lib
  */
+import { getMessages } from '../../../shared/i18n';
 import type { Shipment, ShipmentFilters } from '../api/shipments.types';
+import { labelGetters } from './label-getters';
 
 export const PROCESSOR_KIND_VALUES = ['omp', 'carrier', 'pending'] as const;
 export type ProcessorKind = (typeof PROCESSOR_KIND_VALUES)[number];
@@ -48,11 +50,10 @@ export type ProcessorKind = (typeof PROCESSOR_KIND_VALUES)[number];
  * but **not filterable** — the processor-filter dropdown iterates the
  * narrower `PROCESSOR_FILTER_VALUES` set instead.
  */
-export const PROCESSOR_KIND_LABEL: Record<ProcessorKind, string> = {
-  omp: 'OMP-fulfilled',
-  carrier: 'Carrier',
-  pending: 'Pending',
-};
+export const PROCESSOR_KIND_LABEL: Record<ProcessorKind, string> = labelGetters(
+  PROCESSOR_KIND_VALUES,
+  () => getMessages('shipments').processor.kinds,
+);
 
 /**
  * URL-filterable subset of `ProcessorKind`. `'pending'` is not filterable

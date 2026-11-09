@@ -16,9 +16,8 @@ export type {
 export { MCP_TOKEN_SCOPES } from './api/mcp-tokens.types';
 export { useMcpTokensQuery } from './hooks/use-mcp-tokens-query';
 export {
-  MCP_CONNECTION_CHANGE_HINT,
-  MCP_TOOL_AVAILABILITY_NOTE,
-} from './lib/tool-staleness-copy';
-export { MCP_TOOL_CAPABILITIES } from './lib/mcp-tool-capabilities';
+  MCP_TOOL_CAPABILITIES,
+  useMcpConnectionChangeHint,
+} from './lib/mcp-tool-capabilities';
 export { McpTokensPanel } from './components/mcp-tokens-panel';
 export { McpTokensTile } from './components/mcp-tokens-tile';

@@ -18,6 +18,7 @@
  *
  * @module features/connections/components
  */
+import { interpolate, useMessages } from '../../../shared/i18n';
 import type { ReactElement } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import type { ConnectionEnvironment } from '../lib/connection-environment';
@@ -58,6 +59,7 @@ export function ConnectionChip({
   channel,
   className = '',
 }: ConnectionChipProps): ReactElement {
+  const copy = useMessages('connections').connectionChip;
   const location = useLocation();
   const target = resolveConnectionLinkTarget({
     connectionId,
@@ -71,15 +73,24 @@ export function ConnectionChip({
   // production row would be noise that hides the one row that differs.
   const sandbox = channel.environment === 'sandbox';
   const platformLabel = channel.label || null;
-  const label = platformLabel && sandbox ? `${platformLabel} (sandbox)` : platformLabel;
+  const label =
+    platformLabel && sandbox
+      ? interpolate(copy.sandboxLabel, { platform: platformLabel })
+      : platformLabel;
+  const shortPlatform = channel.shortLabel || platformLabel;
   const faceLabel = platformLabel
-    ? `${channel.shortLabel || platformLabel}${sandbox ? ' sandbox' : ''}`
+    ? sandbox
+      ? interpolate(copy.sandboxFace, { platform: shortPlatform ?? platformLabel })
+      : shortPlatform
     : null;
 
   // System and an unresolved connection carry the resolver's own tooltip (the
   // latter its raw id, for a support ticket); otherwise name and full platform.
   const title =
-    target.title ?? ([target.displayName, label].filter(Boolean).join(' - ') || undefined);
+    target.title ??
+    (target.displayName && label
+      ? interpolate(copy.title, { name: target.displayName, platform: label })
+      : target.displayName || label || undefined);
 
   const classes = [
     'connection-chip',
@@ -141,7 +152,7 @@ export function ConnectionChip({
       // Face and slide-out are adjacent inline boxes, so the computed name would
       // run them together ("AllegroAllegro (sandbox)"). Name first: it is what
       // tells two rows apart.
-      aria-label={label ? `${nameText}, ${label}` : undefined}
+      aria-label={label ? interpolate(copy.ariaLabel, { name: nameText, platform: label }) : undefined}
     >
       {body}
     </Link>

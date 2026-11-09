@@ -1,0 +1,102 @@
+{
+  "editor": {
+    "back": "E-maile do kupujących",
+    "bodyLabel": "Wiadomość",
+    "bodyRequired": "Wpisz wiadomość.",
+    "cancel": "Anuluj",
+    "enabledLabel": "Wysyłaj ten e-mail",
+    "eyebrow": "Ustawienia",
+    "fromHint": "Opcjonalne. Zostaw puste, aby użyć nadawcy z ustawień poczty.",
+    "fromLabel": "Adres nadawcy",
+    "invalidAddress": "Wpisz jeden adres e-mail.",
+    "loading": "Wczytywanie…",
+    "noRule": "Brakuje gotowej reguły dla tego e-maila, więc nie można go tutaj włączyć ani edytować jego treści. Nadawca i adres do odpowiedzi nadal się zapisują.",
+    "notAllowed": "Ten e-mail nie jest dostępny dla połączenia z marketplace.",
+    "previewTitle": "Podgląd",
+    "replyToLabel": "Adres do odpowiedzi",
+    "retry": "Spróbuj ponownie",
+    "rulesLoadError": "Nie udało się wczytać treści tego e-maila. W ustawieniach nic się nie zmieniło - spróbuj ponownie.",
+    "rulesLoadErrorTitle": "Nie udało się wczytać tego e-maila",
+    "save": "Zapisz zmiany",
+    "saveSettingsFailed": "Nic nie zostało zapisane. {reason}",
+    "saveWordingFailed": "Przełącznik i nadawca zostały zapisane, ale temat i wiadomość nie. {reason}",
+    "sharedWording": "Temat i wiadomość są wspólne dla wszystkich połączeń. Przełącznik, nadawca i adres do odpowiedzi dotyczą tylko tego połączenia.",
+    "subjectLabel": "Temat",
+    "subjectRequired": "Wpisz temat.",
+    "testRateLimited": "Zbyt wiele testowych e-maili w krótkim czasie. Odczekaj kilka minut i spróbuj ponownie.",
+    "testSend": "Wyślij testowy e-mail",
+    "testSenderUnsaved": "Test jest wysyłany od zapisanego nadawcy. Najpierw zapisz zmiany nadawcy i adresu do odpowiedzi, aby je przetestować.",
+    "testSent": "Testowy e-mail wysłano na {to}.",
+    "testSentDetail": "Odpowiada podglądowi: temat i wiadomość z przykładowymi wartościami zamiast zmiennych, od zapisanego nadawcy tego połączenia. Prawdziwe e-maile korzystają z tego samego sposobu wysyłki poczty.",
+    "testTitle": "Wyślij test",
+    "testToLabel": "Wyślij na",
+    "variablesHint": "Kliknij, aby wstawić do wiadomości.",
+    "variablesTitle": "Zmienne"
+  },
+  "order": {
+    "bounced": "Odrzucony",
+    "bouncedDetail": "Serwer poczty kupującego odrzucił adres. Sprawdź adres e-mail w zamówieniu.",
+    "empty": "Dla tego zamówienia nie próbowano wysłać żadnego e-maila do kupującego.",
+    "loadError": "Nie udało się wczytać e-maili do kupującego dla tego zamówienia.",
+    "pending": "Wysyłanie",
+    "pendingDetail": "OpenLinker rozpoczął wysyłkę i nie ma jeszcze odpowiedzi od serwera poczty. Nie wyśle jej ponownie.",
+    "sent": "Wysłany",
+    "suppressed": "Niewysłany",
+    "suppressedFallback": "Ten e-mail nie został wysłany.",
+    "timeline": {
+      "bounced": "E-mail „{label}” odrzucony",
+      "pending": "E-mail „{label}” jest wysyłany",
+      "sent": "E-mail „{label}” wysłany do kupującego",
+      "suppressed": "E-mail „{label}” niewysłany"
+    },
+    "title": "E-maile do kupujących"
+  },
+  "page": {
+    "adminOnly": "E-maile do kupujących może zmieniać tylko administrator.",
+    "connectionLabel": "Połączenie",
+    "defaultSender": "Domyślny z ustawień poczty",
+    "description": "Automatyczne e-maile wysyłane do kupujących w miarę realizacji ich zamówień.",
+    "edit": "Edytuj",
+    "loadError": "Nie udało się wczytać połączenia.",
+    "loadingConnections": "Wczytywanie połączeń…",
+    "marketplaceNote": "To połączenie z marketplace. Można tu wysyłać tylko e-maile transakcyjne, na adres, który marketplace podaje w zamówieniu. „Zamówienie potwierdzone” to własna wiadomość sklepu i nie jest tu dostępna.",
+    "masterLabel": "Wysyłaj e-maile do kupujących dla tego połączenia",
+    "noConnections": "Nie ma jeszcze połączenia, które przyjmuje zamówienia.",
+    "offNote": "Domyślnie wyłączone. Kanał sprzedaży już powiadamia kupujących o ich zamówieniach, więc te e-maile są dodatkiem, a nie zastępstwem - włącz je tylko wtedy, gdy chcesz, aby kupujący dostawali wiadomości także od Ciebie.",
+    "saved": "E-maile do kupujących zaktualizowane.",
+    "senderHeader": "Nadawca",
+    "settings": "Ustawienia",
+    "statusHeader": "Status",
+    "statusInactiveBecauseMaster": "Wyłączony (e-maile są wyłączone dla tego połączenia)",
+    "statusNoRule": "Niedostępny (brak gotowej reguły)",
+    "statusOff": "Wyłączony",
+    "statusOn": "Włączony",
+    "templateHeader": "E-mail",
+    "title": "E-maile do kupujących"
+  },
+  "templateFallback": "E-mail do kupującego",
+  "templates": {
+    "document-issued": {
+      "description": "Wysyłany po wystawieniu dokumentu sprzedaży zamówienia.",
+      "label": "Wystawiono fakturę lub paragon"
+    },
+    "order-confirmed": {
+      "description": "Wysyłany raz, gdy OpenLinker przyjmie nowe zamówienie. Tylko zamówienia ze sklepu.",
+      "label": "Zamówienie potwierdzone"
+    },
+    "return-received": {
+      "description": "Wysyłany raz na zwrot, gdy pierwsza paczka dotrze do Twojego magazynu.",
+      "label": "Zwrot przyjęty"
+    },
+    "shipped": {
+      "description": "Wysyłany, gdy paczki zamówienia są już u przewoźnika i znany jest numer przesyłki, albo 30 minut po przekazaniu paczki przewoźnikowi, jeśli numer nie dotrze.",
+      "label": "Wysłane"
+    }
+  },
+  "tile": {
+    "description": "Wybierz, jakie e-maile kupujący dostają od Ciebie, osobno dla każdego połączenia, i edytuj ich treść.",
+    "eyebrow": "Zamówienia",
+    "link": "Skonfiguruj e-maile do kupujących",
+    "title": "E-maile do kupujących"
+  }
+}

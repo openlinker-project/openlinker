@@ -16,15 +16,19 @@
  */
 import type { ReactElement } from 'react';
 
+import { interpolate, useMessages } from '../../../../shared/i18n';
 import { Alert } from '../../../../shared/ui/alert';
 import { Button } from '../../../../shared/ui/button';
 import { FormField } from '../../../../shared/ui/form-field';
 import { Input } from '../../../../shared/ui/input';
 import { Select } from '../../../../shared/ui/select';
 import { useDeliveryPriceListsQuery } from '../../hooks/use-delivery-price-lists-query';
+import { serverErrorText } from '../../lib/server-error-text';
 
 interface ErliDeliveryPriceListOverrideFieldProps {
   connectionId: string;
+  /** The marketplace's display name, so copy can say whose account to check. */
+  platformName: string;
   /** Per-row override value; `undefined` means the row inherits the batch default. */
   value: string | undefined;
   /** Batch-wide default from the Config step (may be empty = none). */
@@ -34,16 +38,21 @@ interface ErliDeliveryPriceListOverrideFieldProps {
 
 export function ErliDeliveryPriceListOverrideField({
   connectionId,
+  platformName,
   value,
   batchDefault,
   onChange,
 }: ErliDeliveryPriceListOverrideFieldProps): ReactElement {
+  const copy = useMessages('listings').erliDeliveryPriceListOverrideField;
+  const common = useMessages('listings').common;
   const query = useDeliveryPriceListsQuery(connectionId);
   const priceLists = query.data?.deliveryPriceLists ?? [];
 
   const isOverridden = value !== undefined;
   const effective = value ?? batchDefault;
-  const batchDefaultLabel = batchDefault ? `"${batchDefault}"` : 'none';
+  const batchDefaultLabel = batchDefault
+    ? interpolate(copy.batchDefaultQuoted, { name: batchDefault })
+    : copy.batchDefaultNone;
 
   // Matches FormField's `ControlProps` so the single child typechecks in every
   // branch (Input / Alert / Select all satisfy these optional props).
@@ -54,12 +63,12 @@ export function ErliDeliveryPriceListOverrideField({
     'aria-describedby'?: string;
   }>;
   if (query.isLoading) {
-    control = <Input disabled value="Loading delivery price lists…" readOnly />;
+    control = <Input disabled value={copy.loading} readOnly />;
   } else if (query.error) {
     control = (
       <Alert
         tone="error"
-        title="Unable to load delivery price lists"
+        title={copy.loadErrorTitle}
         action={
           <Button
             type="button"
@@ -67,18 +76,18 @@ export function ErliDeliveryPriceListOverrideField({
             className="button--sm"
             onClick={() => void query.refetch()}
           >
-            Retry
+            {copy.retry}
           </Button>
         }
       >
-        {query.error instanceof Error ? query.error.message : 'Please try again.'}
+        {serverErrorText(common.serverSaid, query.error instanceof Error ? query.error.message : undefined, copy.tryAgain)}
       </Alert>
     );
   } else if (priceLists.length === 0) {
     control = (
       <Alert
         tone="info"
-        title="No delivery price lists found"
+        title={copy.emptyTitle}
         action={
           <Button
             type="button"
@@ -86,11 +95,11 @@ export function ErliDeliveryPriceListOverrideField({
             className="button--sm"
             onClick={() => void query.refetch()}
           >
-            Refresh
+            {copy.refresh}
           </Button>
         }
       >
-        No delivery price lists found on this Erli account - add one in Erli, then refresh.
+        {interpolate(copy.emptyBody, { platform: platformName })}
       </Alert>
     );
   } else {
@@ -103,7 +112,7 @@ export function ErliDeliveryPriceListOverrideField({
           onChange(chosen === batchDefault ? undefined : chosen);
         }}
       >
-        <option value="">Choose a delivery price list…</option>
+        <option value="">{copy.placeholder}</option>
         {priceLists.map((list) => (
           <option key={list.id} value={list.name}>
             {list.name}
@@ -116,12 +125,12 @@ export function ErliDeliveryPriceListOverrideField({
   return (
     <div className="bulk-edit__delivery-price-list">
       <FormField
-        label="Delivery price list"
+        label={copy.label}
         name="bulk-edit-delivery-price-list"
         description={
           isOverridden
-            ? `Overriding the batch default (${batchDefaultLabel}) for this product.`
-            : `Batch default (${batchDefaultLabel}). Change to override this product only.`
+            ? interpolate(copy.overriding, { batchDefault: batchDefaultLabel })
+            : interpolate(copy.inheriting, { batchDefault: batchDefaultLabel })
         }
       >
         {control}
@@ -129,13 +138,13 @@ export function ErliDeliveryPriceListOverrideField({
       <div className="bulk-edit__delivery-price-list-status">
         {isOverridden ? (
           <>
-            <span className="bulk-edit__delivery-price-list-status-label">Overridden</span>
+            <span className="bulk-edit__delivery-price-list-status-label">{copy.overridden}</span>
             <Button tone="ghost" type="button" onClick={() => onChange(undefined)}>
-              Reset to batch default
+              {copy.resetToBatchDefault}
             </Button>
           </>
         ) : (
-          <span className="bulk-edit__delivery-price-list-status-label">Batch default</span>
+          <span className="bulk-edit__delivery-price-list-status-label">{copy.batchDefault}</span>
         )}
       </div>
     </div>

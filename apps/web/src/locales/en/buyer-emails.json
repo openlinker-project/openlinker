@@ -1,0 +1,102 @@
+{
+  "editor": {
+    "back": "Buyer emails",
+    "bodyLabel": "Message",
+    "bodyRequired": "Enter a message.",
+    "cancel": "Cancel",
+    "enabledLabel": "Send this email",
+    "eyebrow": "Settings",
+    "fromHint": "Optional. Leave empty to use the sender from the mail settings.",
+    "fromLabel": "Sender address",
+    "invalidAddress": "Enter one email address.",
+    "loading": "Loading…",
+    "noRule": "The ready-made rule for this email is missing, so it cannot be switched on and its wording cannot be edited here. The sender and reply-to still save.",
+    "notAllowed": "This email is not offered on a marketplace connection.",
+    "previewTitle": "Preview",
+    "replyToLabel": "Reply-to address",
+    "retry": "Try again",
+    "rulesLoadError": "The wording of this email could not be loaded. Nothing has changed in your settings - try again.",
+    "rulesLoadErrorTitle": "Could not load this email",
+    "save": "Save changes",
+    "saveSettingsFailed": "Nothing was saved. {reason}",
+    "saveWordingFailed": "The switch and sender were saved, but the subject and message were not. {reason}",
+    "sharedWording": "The subject and message are shared by every connection. The switch, sender and reply-to apply to this connection only.",
+    "subjectLabel": "Subject",
+    "subjectRequired": "Enter a subject.",
+    "testRateLimited": "Too many test emails in a short time. Wait a few minutes and try again.",
+    "testSend": "Send test email",
+    "testSenderUnsaved": "The test is sent from the saved sender. Save your sender and reply-to changes first to test them.",
+    "testSent": "Test email sent to {to}.",
+    "testSentDetail": "It matches the preview: the subject and message with sample values in place of the variables, from the saved sender of this connection. Real emails use the same mail transport.",
+    "testTitle": "Send a test",
+    "testToLabel": "Send to",
+    "variablesHint": "Click to insert into the message.",
+    "variablesTitle": "Variables"
+  },
+  "order": {
+    "bounced": "Bounced",
+    "bouncedDetail": "The buyer's mail server refused the address. Check the email address on the order.",
+    "empty": "No buyer email has been attempted for this order.",
+    "loadError": "Could not load the buyer emails of this order.",
+    "pending": "Sending",
+    "pendingDetail": "OpenLinker started this send and has no answer from the mail server yet. It will not send it again.",
+    "sent": "Sent",
+    "suppressed": "Not sent",
+    "suppressedFallback": "This email was not sent.",
+    "timeline": {
+      "bounced": "\"{label}\" email bounced",
+      "pending": "\"{label}\" email being sent",
+      "sent": "\"{label}\" email sent to buyer",
+      "suppressed": "\"{label}\" email not sent"
+    },
+    "title": "Buyer emails"
+  },
+  "page": {
+    "adminOnly": "Only an administrator can change buyer emails.",
+    "connectionLabel": "Connection",
+    "defaultSender": "Mail settings default",
+    "description": "Automatic emails sent to buyers as their order moves through fulfilment.",
+    "edit": "Edit",
+    "loadError": "Could not load the connection.",
+    "loadingConnections": "Loading connections…",
+    "marketplaceNote": "This is a marketplace connection. Only transactional emails can be sent here, to the address the marketplace provides on the order. \"Order confirmed\" is the shop's own message and is not offered.",
+    "masterLabel": "Send buyer emails for this connection",
+    "noConnections": "No connection that takes orders exists yet.",
+    "offNote": "Off by default. The channel already notifies its buyers about their orders, so these emails are an addition, not a replacement - turn them on only if you want buyers to hear from you as well.",
+    "saved": "Buyer emails updated.",
+    "senderHeader": "Sender",
+    "settings": "Settings",
+    "statusHeader": "Status",
+    "statusInactiveBecauseMaster": "Off (emails are off for this connection)",
+    "statusNoRule": "Not available (ready-made rule missing)",
+    "statusOff": "Off",
+    "statusOn": "On",
+    "templateHeader": "Email",
+    "title": "Buyer emails"
+  },
+  "templateFallback": "Buyer email",
+  "templates": {
+    "document-issued": {
+      "description": "Sent when the order's sales document is issued.",
+      "label": "Invoice or receipt issued"
+    },
+    "order-confirmed": {
+      "description": "Sent once, when OpenLinker takes a new order in. Shop orders only.",
+      "label": "Order confirmed"
+    },
+    "return-received": {
+      "description": "Sent once per return, when the first parcel reaches your warehouse.",
+      "label": "Return received"
+    },
+    "shipped": {
+      "description": "Sent once the order's parcels are with the carrier and the tracking number is known, or 30 minutes after the carrier takes the parcel if none arrives.",
+      "label": "Shipped"
+    }
+  },
+  "tile": {
+    "description": "Choose which emails buyers get from you, per connection, and edit their wording.",
+    "eyebrow": "Orders",
+    "link": "Set up buyer emails",
+    "title": "Buyer emails"
+  }
+}

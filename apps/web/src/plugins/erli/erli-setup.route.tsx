@@ -5,10 +5,19 @@
  */
 import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../../app/nav-registry.types';
+import { getErliMessages } from './messages';
 
 export const erliSetupRoute: RouteObject = {
   path: 'connections/new/erli',
-  handle: { crumb: { group: 'Platform', title: 'Connect Erli' } } satisfies RouteCrumbHandle,
+  // A getter so the crumb is read in the active language at render.
+  handle: {
+    crumb: {
+      group: 'platform',
+      get title(): string {
+        return getErliMessages().erliSetupRoute.crumb;
+      },
+    },
+  } satisfies RouteCrumbHandle,
   lazy: async () => {
     const { ErliSetupPage } = await import('../../pages/connections/erli-setup-page');
     return { Component: ErliSetupPage };

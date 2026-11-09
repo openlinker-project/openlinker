@@ -24,6 +24,7 @@
  *
  * @module apps/web/src/features/returns/lib
  */
+import { getMessages, interpolate } from '../../../shared/i18n';
 import type { ReturnCounters, ReturnListItem } from '../api/returns.types';
 import { RETURN_STAGE_VALUES, type ReturnStage } from './return-stage.types';
 
@@ -74,20 +75,32 @@ export function deriveReturnStage(item: ReturnListItem): ReturnStage {
 }
 
 /**
- * Operator-facing labels.
+ * Operator-facing labels, read from the `returns` namespace at access time.
  *
  * `satisfies Record<ReturnStage, string>` is the exhaustiveness gate — adding a
  * stage to the vocabulary without a label is a compile error rather than a blank
  * cell (the #2100 `invoicingBlockedBadge` precedent).
  */
 export const RETURN_STAGE_LABELS = {
-  declined: 'Declined',
-  not_returned: 'Not returned',
-  partially_received: 'Partially received',
-  received_awaiting_disposition: 'Received — awaiting disposition',
-  disposed: 'Disposed',
-  awaiting_parcel: 'Awaiting parcel',
-} as const satisfies Record<ReturnStage, string>;
+  get declined(): string {
+    return getMessages('returns').returnRow.stage.declined;
+  },
+  get not_returned(): string {
+    return getMessages('returns').returnRow.stage.not_returned;
+  },
+  get partially_received(): string {
+    return getMessages('returns').returnRow.stage.partially_received;
+  },
+  get received_awaiting_disposition(): string {
+    return getMessages('returns').returnRow.stage.received_awaiting_disposition;
+  },
+  get disposed(): string {
+    return getMessages('returns').returnRow.stage.disposed;
+  },
+  get awaiting_parcel(): string {
+    return getMessages('returns').returnRow.stage.awaiting_parcel;
+  },
+} satisfies Record<ReturnStage, string>;
 
 /**
  * Tones.
@@ -115,7 +128,10 @@ export const RETURN_STAGE_TONES = {
  * `3 of 5` on a return where only three were ever coming.
  */
 export function returnCounterLine(counters: ReturnCounters): string {
-  return `${counters.quantityReceived} of ${expectedQuantity(counters)} received`;
+  return interpolate(getMessages('returns').returnRow.counterLine, {
+    received: counters.quantityReceived,
+    expected: expectedQuantity(counters),
+  });
 }
 
 /** The vocabulary, re-exported so a consumer needs one import. */

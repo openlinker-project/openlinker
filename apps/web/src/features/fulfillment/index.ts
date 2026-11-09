@@ -99,7 +99,6 @@ export {
   UNASSIGNED_LANE_ID,
 } from './lib/assign-packing-work-lanes';
 export type { AssignPackingWorkLane } from './lib/assign-packing-work-lanes';
-export { ASSIGN_PACKING_WORK_COPY } from './lib/assign-packing-work.copy';
 // #3424 — the "Oldest unassigned" metric's inputs; the badge's own use of
 // this module stays internal to the card component.
 export {
@@ -111,16 +110,12 @@ export {
   describeFulfillmentActionError,
   readFulfillmentConflict,
 } from './lib/fulfillment-conflict';
-export { fulfillmentActionLabel, FULFILLMENT_ACTION_COPY } from './lib/fulfillment-task.copy';
+export { fulfillmentActionLabel } from './lib/fulfillment-task-labels';
 // #3098 — the detail hero renders the state label exactly as the card does:
 // heldness lives in `activeHolds`, not in `status`, so the label is never
-// dropped. Previously private because only the lane sections read them; the
-// page is the second consumer. #3763 retired the raw request-status label.
-export { fulfillmentStatusLabel, FULFILLMENT_EXPEDITED_BADGE } from './lib/fulfillment-task.copy';
-export { FULFILLMENT_WORKLIST_COPY } from './lib/fulfillment-worklist.copy';
-// #3096 — the detail page lives in `pages/`, which `check-ui-vocabulary.mjs`
-// does not scan, so every sentence it renders is read from here.
-export { FULFILLMENT_WORK_DETAIL_COPY } from './lib/fulfillment-work-detail.copy';
+// dropped. #3763 retired the raw request-status label. The copy itself lives
+// in the `fulfillment` namespace of the locale files (#3875).
+export { fulfillmentStatusLabel } from './lib/fulfillment-task-labels';
 // #3099 — the plain-language sentence under the hero's state headline.
 // Pure, and takes a narrow struct rather than the task: a function handed
 // the task could reach `supportedActions`, which is the client-side state

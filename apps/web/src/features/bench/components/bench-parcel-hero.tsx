@@ -47,8 +47,13 @@ import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { BenchParcelLine } from '../api/bench-parcel.types';
 import { isEditableTarget } from '../lib/scanner-gesture';
-import { narrowAttributes } from '../../../shared/lib/variant-attributes';
-import { benchParcelCopy } from '../lib/bench-parcel.copy';
+import { formatVariantAttributes, narrowAttributes } from '../../../shared/lib/variant-attributes';
+import { interpolate, useMessages } from '../../../shared/i18n';
+import {
+  formatBenchBinCode,
+  formatBenchLineCodes,
+  formatBenchStillToScan,
+} from '../lib/bench-line-text';
 import { BenchCopyButton } from './bench-copy-button';
 import { BenchThumb } from './bench-thumb';
 
@@ -87,6 +92,7 @@ export function BenchParcelHero({
   onUndo,
   undoing = false,
 }: BenchParcelHeroProps): ReactElement {
+  const copy = useMessages('bench').parcel;
   const [typed, setTyped] = useState('');
   const field = useRef<HTMLInputElement | null>(null);
   /** The mockup's transient `✓ Matched`, cleared on the next gesture. */
@@ -130,7 +136,7 @@ export function BenchParcelHero({
   const remaining = Math.max(0, line.requiredQuantity - line.verifiedQuantity);
   const visibleAttributes = narrowAttributes(line.attributes, distinguishingAttributes);
   const attributes =
-    visibleAttributes === null ? null : benchParcelCopy.lines.attributesText(visibleAttributes);
+    visibleAttributes === null ? null : formatVariantAttributes(visibleAttributes);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
@@ -145,18 +151,18 @@ export function BenchParcelHero({
       <BenchThumb className="bench-hero__swatch" imageUrl={line.imageUrl} name={line.name} />
 
       <div className="bench-hero__body">
-        <p className="bench-hero__name">{line.name ?? benchParcelCopy.lines.unnamed}</p>
+        <p className="bench-hero__name">{line.name ?? copy.lines.unnamed}</p>
         {attributes === null ? null : <p className="bench-hero__attrs">{attributes}</p>}
 
         <p className="bench-hero__ids">
-          {benchParcelCopy.lines.codes({ ean: line.ean, sku: line.sku })}
+          {formatBenchLineCodes({ ean: line.ean, sku: line.sku })}
           {/* The mockup's copy control, on the value a packer reads out to the
               office when an item will not scan. */}
           {line.ean === null ? null : (
-            <BenchCopyButton value={line.ean} what={benchParcelCopy.copy.barcode} />
+            <BenchCopyButton value={line.ean} what={copy.copy.barcode} />
           )}
           {line.binCode === null ? null : (
-            <> · {benchParcelCopy.lines.binCodeLabel(line.binCode)}</>
+            <> · {formatBenchBinCode(line.binCode)}</>
           )}
         </p>
 
@@ -167,7 +173,7 @@ export function BenchParcelHero({
           <>
             <form className="bench-hero__scan" onSubmit={handleSubmit}>
               <label htmlFor="bench-hero-scan" className="sr-only">
-                {benchParcelCopy.hero.scanLabel}
+                {copy.hero.scanLabel}
               </label>
               <input
                 id="bench-hero-scan"
@@ -175,7 +181,7 @@ export function BenchParcelHero({
                 type="text"
                 className="mono"
                 autoComplete="off"
-                placeholder={benchParcelCopy.hero.scanPlaceholder}
+                placeholder={copy.hero.scanPlaceholder}
                 value={typed}
                 disabled={unreachable}
                 onChange={(event) => {
@@ -189,7 +195,7 @@ export function BenchParcelHero({
                   onConfirm(line);
                 }}
               >
-                {benchParcelCopy.hero.confirmAction}
+                {copy.hero.confirmAction}
               </Button>
               {onUndo === undefined ? null : (
                 <Button
@@ -199,20 +205,20 @@ export function BenchParcelHero({
                     onUndo();
                   }}
                 >
-                  {benchParcelCopy.undo.action}
+                  {copy.undo.action}
                 </Button>
               )}
             </form>
 
-            <p className="bench-hero__hint">{benchParcelCopy.hero.scanHint}</p>
-            <p className="bench-hero__keys">{benchParcelCopy.hero.keyboardHint}</p>
+            <p className="bench-hero__hint">{copy.hero.scanHint}</p>
+            <p className="bench-hero__keys">{copy.hero.keyboardHint}</p>
             {/* Transient, and it says only that the count MOVED — the live
                 region still carries the number, so this adds reassurance at a
                 glance and never a fact of its own. */}
             <p className="bench-hero__feedback">
               {matched ? (
                 <StatusBadge tone="success" withDot compact>
-                  {benchParcelCopy.hero.matched}
+                  {copy.hero.matched}
                 </StatusBadge>
               ) : null}
             </p>
@@ -225,17 +231,17 @@ export function BenchParcelHero({
           {line.verifiedQuantity}
           <span className="bench-hero__count-of">
             {' '}
-            {benchParcelCopy.hero.countOf(line.requiredQuantity)}
+            {interpolate(copy.hero.countOf, { required: line.requiredQuantity })}
           </span>
         </p>
         <p className="bench-hero__count-label">
           {remaining === 0
-            ? benchParcelCopy.lines.allIn
-            : benchParcelCopy.lines.stillToScan(remaining)}
+            ? copy.lines.allIn
+            : formatBenchStillToScan(remaining)}
         </p>
         {/* H2's per-line in-flight marker, in words — same rule as the row. */}
         {pendingCount > 0 ? (
-          <p className="bench-hero__pending">{benchParcelCopy.inFlight.sent}</p>
+          <p className="bench-hero__pending">{copy.inFlight.sent}</p>
         ) : null}
       </div>
     </section>

@@ -1,0 +1,68 @@
+{
+  "back": "Ustawienia",
+  "cancel": "Anuluj",
+  "description": "To widzi każdy, zanim się zaloguje. Teksty ustawiasz osobno dla każdego języka.",
+  "emptyHint": "Puste pole pokazuje tekst domyślny.",
+  "eyebrow": "Ustawienia",
+  "fields": {
+    "formSubtitle": {
+      "hint": "Np. kto zakłada konta w Twojej firmie.",
+      "label": "Podpis formularza"
+    },
+    "formTitle": {
+      "hint": "Nad polami logowania.",
+      "label": "Tytuł formularza"
+    },
+    "headline": {
+      "hint": "Pierwsza linia, np. nazwa panelu.",
+      "label": "Nagłówek"
+    },
+    "headlineAccent": {
+      "hint": "Druga linia w kolorze marki, np. nazwa firmy.",
+      "label": "Wyróżnienie w nagłówku"
+    },
+    "lead": {
+      "hint": "Jedno lub dwa zdania o tym, do czego służy panel.",
+      "label": "Opis pod nagłówkiem"
+    },
+    "registerSubtitle": {
+      "hint": "Np. kto zatwierdza nowe konta.",
+      "label": "Podpis formularza prośby"
+    },
+    "registerTitle": {
+      "hint": "Nad polami prośby o dostęp.",
+      "label": "Tytuł formularza prośby"
+    },
+    "support": {
+      "hint": "Pod formularzem logowania. Możesz dodać link do swojej strony pomocy, adres albo telefon.",
+      "label": "Pomoc przy logowaniu"
+    }
+  },
+  "formCardTitle": "Formularz",
+  "language": "Język tekstów",
+  "loadError": "Nie udało się wczytać ustawień strony logowania.",
+  "preview": "Podgląd",
+  "previewClose": "Zamknij",
+  "previewHintEn": "Tak zobaczą to osoby logujące się po angielsku.",
+  "previewHintPl": "Tak zobaczą to osoby logujące się po polsku.",
+  "previewLogin": "Logowanie",
+  "previewOpen": "Pokaż podgląd",
+  "previewRegister": "Prośba o dostęp",
+  "previewScreen": "Ekran",
+  "registrationEnv": "Dopóki tu nie zapiszesz, decyduje zmienna OL_REGISTRATION_ENABLED.",
+  "registrationHint": "Osoba bez konta wysyła prośbę. Zatwierdzasz ją w Użytkownikach, na karcie Pending.",
+  "registrationLabel": "Prośby o dostęp",
+  "registrationToggle": "Pokazuj na stronie logowania kartę „Poproś o dostęp”",
+  "reset": "Przywróć domyślne",
+  "save": "Zapisz",
+  "saveError": "Nie udało się zapisać strony logowania.",
+  "saved": "Zapisano. Nowe teksty są już na stronie logowania.",
+  "saving": "Zapisuję...",
+  "screenHint": "Pola i podgląd pokazują wybrany ekran.",
+  "tile": "Nagłówek, teksty formularzy, pomoc przy logowaniu i prośby o dostęp.",
+  "title": "Strona logowania",
+  "tooLong": "Wpisz najwyżej {max} znaków.",
+  "unsaved": "Masz niezapisane zmiany.",
+  "usersOff": "Prośby o dostęp są wyłączone, więc strona logowania ich nie przyjmuje. <link>Ustawienia strony logowania</link>",
+  "usersOn": "Prośby o dostęp są włączone, więc nowe trafiają na kartę Pending. <link>Ustawienia strony logowania</link>"
+}

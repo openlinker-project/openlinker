@@ -18,55 +18,62 @@
  */
 import { mergePluginNavContributions } from '../plugins/merge-nav-contributions';
 import { plugins } from '../plugins';
-import { NAV_DEMO_RESTRICTED_MESSAGE } from '../shared/config/demo-mode';
+import { navDemoRestrictedMessage } from '../shared/config/demo-mode';
+import { getMessages, type Messages, type ResolvedCopy } from '../shared/i18n';
 import type { Permission, Session } from '../shared/auth/session.types';
 import type { OmsRoutingState } from '../features/fulfillment-authority';
-import type { LiveNavItem, NavGroup, NavRegistryGroup } from './nav-registry.types';
+import type {
+  BaseNavGroup,
+  BaseNavItem,
+  LiveNavItem,
+  NavGroup,
+  NavItemGates,
+} from './nav-registry.types';
 
 /**
  * Canonical sidebar composition. The shell consumes whatever this builder
  * resolves at render time after filtering by session role and folding plugin
  * contributions in.
  */
-export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
+export const BASE_NAV_GROUPS: readonly BaseNavGroup[] = [
   {
     kind: 'live',
-    label: 'Operations',
+    section: 'operations',
     items: [
       // Role-gated (#3221): the primary read (`GET /analytics/sales` et al.)
       // is `@Roles('admin', 'operator', 'viewer')` on every analytics
       // controller — a `packer` (empty `ROLE_PERMISSIONS` grant, #2413) 403s
       // on the first request the page makes.
-      { to: '/', label: 'Analytics', end: true, requiresRole: ['admin', 'operator', 'viewer'] },
+      { to: '/', page: 'analytics', end: true, requiresRole: ['admin', 'operator', 'viewer'] },
       // Role-gated (#3221): its first read, `GET /connections`, is
       // `@Roles('admin', 'operator', 'viewer')` — same 403 for `packer`.
-      { to: '/insights', label: 'Insights', requiresRole: ['admin', 'operator', 'viewer'] },
+      { to: '/insights', page: 'insights', requiresRole: ['admin', 'operator', 'viewer'] },
       // Role-gated (#3221): `GET /orders` is
       // `@Roles('admin', 'operator', 'viewer')` — same 403 for `packer`.
       {
         to: '/orders',
-        label: 'Orders',
+        page: 'orders',
         countKey: 'orders',
         requiresRole: ['admin', 'operator', 'viewer'],
       },
-      { to: '/products', label: 'Products' },
+      { to: '/products', page: 'products' },
       // Read-only history (#3568); the read is `@Roles('admin', 'operator', 'viewer')`,
       // so a `packer` would 403 on the first request.
       {
         to: '/inventory/movements',
-        label: 'Stock movements',
+        page: 'stockMovements',
         requiresRole: ['admin', 'operator', 'viewer'],
       },
       // Role-gated (#3221): `GET /customers` is
       // `@Roles('admin', 'operator', 'viewer')` — same 403 for `packer`.
       {
         to: '/customers',
-        label: 'Customers',
+        page: 'customers',
         countKey: 'customers',
         requiresRole: ['admin', 'operator', 'viewer'],
       },
-      { to: '/listings', label: 'Listings', countKey: 'listings' },
-      { to: '/shipments', label: 'Shipments' },
+      { to: '/listings', page: 'listings', countKey: 'listings' },
+      { to: '/shipments', page: 'shipments' },
       // ONE entry, since the staffing board and the worklist merged into one
       // screen. No `countKey`: the #2406 read exposes no counts endpoint the
       // nav could read, and a badge is worse absent than wrong (the `/returns`
@@ -80,7 +87,7 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // ever created, so the screen is empty by construction.
       {
         to: '/fulfillment',
-        label: 'Fulfilment',
+        page: 'fulfilment',
         requiresPermission: 'fulfillment:read',
         requiresOms: true,
       },
@@ -100,13 +107,13 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // fulfilment tasks, which only routing creates.
       {
         to: '/bench',
-        label: 'Pack bench',
+        page: 'packBench',
         requiresPermission: 'bench:read',
         requiresOms: true,
       },
       // No `countKey`: the #2334 returns contract exposes no counts endpoint
       // the nav could read, and a badge is worse absent than wrong.
-      { to: '/returns', label: 'Returns' },
+      { to: '/returns', page: 'returns' },
       // No `countKey`: `GET /automations/summary` reports rule counts per
       // trigger, not an attention count — a badge showing how many rules exist
       // would read as how many need looking at.
@@ -114,7 +121,7 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // `@Roles('admin', 'operator')` on every route, so a `viewer` shown this
       // entry gets a 403 on the first request the page makes. `automations:read`
       // is held by exactly admin + operator in `ROLE_PERMISSIONS`.
-      { to: '/automations', label: 'Automations', requiresPermission: 'automations:read' },
+      { to: '/automations', page: 'automations', requiresPermission: 'automations:read' },
       // Role-gated (#3221): its primary read, `GET /invoices`
       // (`InvoicingController`), is `@Roles('admin', 'operator', 'viewer')` —
       // same 403 for `packer`. Every other read on the page carries the same
@@ -123,48 +130,48 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // carries over unchanged.
       {
         to: '/sales-documents',
-        label: 'Sales documents',
+        page: 'salesDocuments',
         requiresRole: ['admin', 'operator', 'viewer'],
       },
     ],
   },
   {
     kind: 'live',
-    label: 'Diagnostics',
+    section: 'diagnostics',
     items: [
-      { to: '/jobs-logs', label: 'Jobs & Logs', countKey: 'jobsFailed' },
-      { to: '/webhook-deliveries', label: 'Webhooks', countKey: 'webhooksFailed' },
-      { to: '/cursors', label: 'Cursors' },
+      { to: '/jobs-logs', page: 'jobsLogs', countKey: 'jobsFailed' },
+      { to: '/webhook-deliveries', page: 'webhooks', countKey: 'webhooksFailed' },
+      { to: '/cursors', page: 'cursors' },
       {
         to: '/duplicate-positions',
-        label: 'Duplicate stock positions',
+        page: 'duplicatePositions',
         requiresRole: ['admin'],
       },
     ],
   },
   {
     kind: 'live',
-    label: 'Platform',
+    section: 'platform',
     items: [
-      { to: '/connections', label: 'Connections', countKey: 'connections' },
-      { to: '/adapters', label: 'Adapters' },
-      { to: '/settings', label: 'Settings' },
+      { to: '/connections', page: 'connections', countKey: 'connections' },
+      { to: '/adapters', page: 'adapters' },
+      { to: '/settings', page: 'settings' },
     ],
   },
   {
     kind: 'live',
-    label: 'AI',
+    section: 'ai',
     requiresRole: 'admin',
     items: [
-      { to: '/ai/prompt-templates', label: 'Prompt templates' },
-      { to: '/ai/provider-settings', label: 'Provider settings' },
+      { to: '/ai/prompt-templates', page: 'promptTemplates' },
+      { to: '/ai/provider-settings', page: 'providerSettings' },
     ],
   },
   {
     kind: 'live',
-    label: 'Administration',
+    section: 'administration',
     requiresRole: 'admin',
-    items: [{ to: '/users', label: 'Users' }],
+    items: [{ to: '/users', page: 'users' }],
   },
   // The `Planned` group is gone: `Automations` was its only item and #2364
   // made it real. `PlannedNavGroup` and the shell's `kind: 'planned'` branch
@@ -190,7 +197,7 @@ export interface NavItemVisibilityInput {
  * behaviour); one declaring both must satisfy both.
  */
 export function isNavItemVisible(
-  item: LiveNavItem,
+  item: NavItemGates,
   { permissions = [], role }: NavItemVisibilityInput
 ): boolean {
   if (item.requiresPermission !== undefined && !permissions.includes(item.requiresPermission)) {
@@ -261,6 +268,20 @@ export interface BuildNavGroupsInput {
    * gated item" posture as `permissions`.
    */
   omsRouting?: OmsRoutingState;
+  /**
+   * The `app` namespace in the active language, from `useMessages('app')` in
+   * the caller. Labels are read from it here, at render time, so a language
+   * switch reaches the nav. Defaults to the active language outside React.
+   */
+  copy?: AppCopy;
+}
+
+/** The `app` namespace, as `useMessages('app')` returns it. */
+export type AppCopy = ResolvedCopy<Messages['app']>;
+
+function toLiveNavItem(item: BaseNavItem, copy: AppCopy): LiveNavItem {
+  const { page, ...rest } = item;
+  return { ...rest, label: copy.pages[page] };
 }
 
 /**
@@ -272,7 +293,7 @@ export interface BuildNavGroupsInput {
  * screen for as long as one endpoint is down. `unknown` (not answered yet)
  * hides it, so a routing-off install never flashes the entry while loading.
  */
-export function isOmsNavItemVisible(item: LiveNavItem, omsRouting: OmsRoutingState): boolean {
+export function isOmsNavItemVisible(item: NavItemGates, omsRouting: OmsRoutingState): boolean {
   if (item.requiresOms !== true) return true;
   return omsRouting === 'on' || omsRouting === 'unreadable';
 }
@@ -318,38 +339,41 @@ export function buildNavGroups({
   permissions = [],
   role,
   omsRouting = 'unknown',
+  copy = getMessages('app'),
 }: BuildNavGroupsInput): NavGroup[] {
-  // `mergePluginNavContributions` deep-clones each live group before mutating,
-  // so pushing the readonly BASE group objects by reference is safe.
   const baseGroups: NavGroup[] = [];
   for (const group of BASE_NAV_GROUPS) {
-    if (group.kind === 'live' && group.requiresRole === 'admin' && !isAdmin) {
+    const label = copy.sections[group.section];
+    if (group.requiresRole === 'admin' && !isAdmin) {
       // Non-admin: locked-but-visible in demo, hidden otherwise.
       if (demoMode) {
         baseGroups.push({
           kind: 'restricted',
-          label: group.label,
-          items: group.items.map((item) => ({ label: item.label })),
-          reason: NAV_DEMO_RESTRICTED_MESSAGE,
+          label,
+          items: group.items.map((item) => ({ label: copy.pages[item.page] })),
+          reason: navDemoRestrictedMessage(),
         });
       }
       continue;
     }
-    if (group.kind === 'live') {
-      // Per-ITEM gates: permission (#2358 review I5), role (#3076/#3108) and
-      // routing (#3505). A live group whose every item is gated away is
-      // dropped entirely — an empty group heading advertises a section the
-      // session cannot reach.
-      const items = group.items.filter(
+    // Per-ITEM gates: permission (#2358 review I5), role (#3076/#3108) and
+    // routing (#3505). A group whose every item is gated away is dropped
+    // entirely — an empty group heading advertises a section the session
+    // cannot reach.
+    const items = group.items
+      .filter(
         (item) =>
           isNavItemVisible(item, { permissions, role }) && isOmsNavItemVisible(item, omsRouting)
-      );
-      if (items.length === 0) continue;
-      baseGroups.push(items.length === group.items.length ? group : { ...group, items });
-      continue;
-    }
-
-    baseGroups.push(group);
+      )
+      .map((item) => toLiveNavItem(item, copy));
+    if (items.length === 0) continue;
+    baseGroups.push({
+      kind: 'live',
+      id: group.section,
+      label,
+      items,
+      ...(group.requiresRole !== undefined ? { requiresRole: group.requiresRole } : {}),
+    });
   }
 
   const contributions = plugins.flatMap((plugin) => plugin.build?.navItems ?? []);

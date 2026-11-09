@@ -6,6 +6,7 @@
 import type { ReactElement } from 'react';
 import { SubiektSetupForm } from '../../features/connections/components/subiekt-setup-form';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { interpolate, useMessages } from '../../shared/i18n';
 import type { SubiektProductIdentity } from '../../features/connections/components/subiekt-setup.schema';
 
 export function SubiektSetupPage({ identity }: { identity: SubiektProductIdentity }): ReactElement {
@@ -13,16 +14,18 @@ export function SubiektSetupPage({ identity }: { identity: SubiektProductIdentit
   // one product name is two places for it to disagree, and the routes already
   // pass the identity.
   const productName = identity.productName;
+  const copy = useMessages('connections');
+  const page = copy.subiektSetupPage;
 
   return (
     <PageLayout
-      eyebrow="Integrations"
-      title={`Connect ${productName}`}
-      description={`Point OpenLinker at your ${productName} bridge. OpenLinker uses it to work with ${productName} for your orders.`}
+      eyebrow={copy.setup.eyebrow}
+      title={interpolate(page.title, { product: productName })}
+      description={interpolate(page.description, { product: productName })}
       summary={
         <div className="toolbar__group">
-          <span className="toolbar-chip">Sfera bridge</span>
-          <span className="toolbar-chip">Guided setup</span>
+          <span className="toolbar-chip">{page.chip}</span>
+          <span className="toolbar-chip">{copy.setup.guidedSetup}</span>
         </div>
       }
     >

@@ -58,6 +58,8 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { interpolate, renderRich } from '../../../shared/i18n';
+import { useErliMessages } from '../messages';
 
 type AllegroCredentialSource = 'reuse' | 'manual';
 type AllegroCatalogEnvironment = 'sandbox' | 'production';
@@ -96,6 +98,7 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
   const rotate = useUpdateConnectionCredentialsMutation();
   const updateConfig = useUpdateConnectionMutation();
   const { showToast } = useToast();
+  const copy = useErliMessages().erliCredentialsPanel;
   // #1387 — every Allegro connection the operator already has, offered as a
   // "reuse this app's credentials" pick list. Filtered client-side (not just
   // trusted from the `platformType` query param) so a mocked/misbehaving
@@ -109,8 +112,8 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
 
   if (!connection.credentialsBacked) {
     return (
-      <FormField label="API Key" name="credentials">
-        <Input value="Environment variable (not editable via UI)" disabled />
+      <FormField label={copy.apiKey.label} name="credentials">
+        <Input value={copy.apiKey.envBacked} disabled />
       </FormField>
     );
   }
@@ -184,21 +187,15 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
     if (allegroEnabled) {
       if (effectiveCredSource === 'manual') {
         if (idFilled !== secretFilled) {
-          setValidationError(
-            'Enter both the Allegro Client ID and Client Secret, or leave both blank.'
-          );
+          setValidationError(copy.validation.bothOrNeither);
           return;
         }
         if (!idFilled && !secretFilled && !initialAllegroEnabled) {
-          setValidationError(
-            'Enter the Allegro Client ID and Client Secret to enable category browsing.'
-          );
+          setValidationError(copy.validation.required);
           return;
         }
       } else if (!reuseSelected && !initialAllegroEnabled) {
-        setValidationError(
-          'Select an Allegro connection to reuse its credentials, or switch to manual entry.'
-        );
+        setValidationError(copy.validation.selectConnection);
         return;
       }
     }
@@ -258,8 +255,8 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
       }
       showToast({
         tone: 'success',
-        title: 'Credentials saved',
-        description: 'Erli connection credentials are now in use.',
+        title: copy.toast.title,
+        description: copy.toast.description,
       });
       closeApiKeyInput();
       resetAllegroTransientFields();
@@ -274,33 +271,32 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
       {rotate.error ? <Alert tone="error">{rotate.error.message}</Alert> : null}
       {updateConfig.error ? (
         <Alert tone="error">
-          Category-browsing setting failed to save: {updateConfig.error.message}. Click Save again
-          to retry.
+          {interpolate(copy.configSaveFailed, { message: updateConfig.error.message })}
         </Alert>
       ) : null}
       {validationError ? <Alert tone="error">{validationError}</Alert> : null}
 
       <FormField
-        label="API Key"
+        label={copy.apiKey.label}
         name="credentials"
-        description="Stored securely on the server. Rotate to replace the key without restarting the API."
+        description={copy.apiKey.description}
       >
         {showRotate ? (
           <div className="erli-credentials-panel__input-row">
             <Input
               type="password"
               autoComplete="off"
-              placeholder="New API key"
+              placeholder={copy.apiKey.newPlaceholder}
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
             />
             <Button tone="ghost" type="button" onClick={closeApiKeyInput}>
-              Cancel
+              {copy.cancel}
             </Button>
           </div>
         ) : (
           <Button tone="secondary" type="button" onClick={openApiKeyInput}>
-            Rotate API key
+            {copy.apiKey.rotate}
           </Button>
         )}
       </FormField>
@@ -316,18 +312,15 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
             onChange={(event) => setAllegroEnabled(event.target.checked)}
           />
           <span>
-            <strong>Browse Allegro categories when creating Erli offers</strong>
-            <small className="erli-credentials-panel__hint">
-              Turn this on to pick categories and fill required parameters from a list, the same
-              way you do for Allegro. Leave it off and you&apos;ll enter category IDs by hand.
-            </small>
+            <strong>{copy.categoryAccess.label}</strong>
+            <small className="erli-credentials-panel__hint">{copy.categoryAccess.hint}</small>
           </span>
         </label>
 
         {allegroEnabled ? (
           <div className="form-grid">
             {isLoadingAllegroConnections ? (
-              <Alert tone="info">Checking for existing Allegro connections...</Alert>
+              <Alert tone="info">{copy.categoryAccess.checking}</Alert>
             ) : hasAllegroConnections ? (
               <div>
                 <label className="erli-credentials-panel__option-label">
@@ -338,34 +331,32 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
                     onChange={() => setCredSource('reuse')}
                   />
                   <span>
-                    <strong>Reuse credentials from an existing Allegro connection</strong>
-                    <small className="erli-credentials-panel__hint">
-                      Recommended - uses the same app credentials already configured on that
-                      connection. Nothing new to register.
-                    </small>
+                    <strong>{copy.reuse.label}</strong>
+                    <small className="erli-credentials-panel__hint">{copy.reuse.hint}</small>
                   </span>
                 </label>
                 {effectiveCredSource === 'reuse' ? (
                   <div className="erli-credentials-panel__indent">
                     <Select
-                      aria-label="Allegro connection to reuse"
+                      aria-label={copy.reuse.selectAriaLabel}
                       value={selectedAllegroConnectionId}
                       onChange={(event) => setSelectedAllegroConnectionId(event.target.value)}
                     >
-                      <option value="">Select an Allegro connection...</option>
+                      <option value="">{copy.reuse.selectPlaceholder}</option>
                       {allegroConnections.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.name}
                         </option>
                       ))}
                     </Select>
-                    <small className="erli-credentials-panel__hint">
-                      Only read access to the public category catalog is used - this
-                      connection&apos;s seller credentials are never touched.
-                    </small>
+                    <small className="erli-credentials-panel__hint">{copy.reuse.readOnlyHint}</small>
                     {selectedAllegroConnection ? (
                       <small className="erli-credentials-panel__hint">
-                        Will use that connection&apos;s environment: <strong>{reuseEnvironment}</strong>.
+                        {renderRich(
+                          copy.reuse.environment,
+                          { strong: (text) => <strong>{text}</strong> },
+                          { environment: reuseEnvironment ?? '' },
+                        )}
                       </small>
                     ) : null}
                   </div>
@@ -378,58 +369,47 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
                     onChange={() => setCredSource('manual')}
                   />
                   <span>
-                    <strong>Enter Allegro app credentials manually</strong>
-                    <small className="erli-credentials-panel__hint">
-                      Use a different Allegro app - e.g. one dedicated just for category browsing.
-                    </small>
+                    <strong>{copy.manual.label}</strong>
+                    <small className="erli-credentials-panel__hint">{copy.manual.hint}</small>
                   </span>
                 </label>
               </div>
             ) : (
-              <Alert tone="info">
-                No Allegro connection found on this account. Enter your own Allegro app
-                credentials below to enable category browsing.
-              </Alert>
+              <Alert tone="info">{copy.manual.noConnections}</Alert>
             )}
 
             {effectiveCredSource === 'manual' ? (
               <div className="form-grid">
                 <div>
                   <Select
-                    aria-label="Allegro app environment"
+                    aria-label={copy.manual.environmentAriaLabel}
                     value={manualEnvironment}
                     onChange={(event) =>
                       setManualEnvironment(event.target.value as AllegroCatalogEnvironment)
                     }
                   >
-                    <option value="production">Production</option>
-                    <option value="sandbox">Sandbox</option>
+                    <option value="production">{copy.manual.environments.production}</option>
+                    <option value="sandbox">{copy.manual.environments.sandbox}</option>
                   </Select>
                   <small className="erli-credentials-panel__hint">
-                    Sandbox and production Allegro apps are registered separately - pick the one
-                    this Client ID/Secret belongs to, or category requests will fail
-                    authentication.
+                    {copy.manual.environmentHint}
                   </small>
                 </div>
                 <div>
                   <Input
                     autoComplete="off"
-                    placeholder="Allegro Client ID"
+                    placeholder={copy.manual.clientIdPlaceholder}
                     value={allegroClientId}
                     onChange={(event) => setAllegroClientId(event.target.value)}
                   />
-                  <small className="erli-credentials-panel__hint">
-                    From an Allegro app you register at apps.developer.allegro.pl. Used only to
-                    read the public category catalog - never to sign in as a seller or place
-                    offers.
-                  </small>
+                  <small className="erli-credentials-panel__hint">{copy.manual.clientIdHint}</small>
                 </div>
                 <div>
                   <div className="erli-credentials-panel__input-row">
                     <Input
                       type={showSecret ? 'text' : 'password'}
                       autoComplete="off"
-                      placeholder="Allegro Client Secret"
+                      placeholder={copy.manual.clientSecretPlaceholder}
                       value={allegroClientSecret}
                       onChange={(event) => setAllegroClientSecret(event.target.value)}
                     />
@@ -437,13 +417,15 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
                       tone="ghost"
                       type="button"
                       onClick={() => setShowSecret((v) => !v)}
-                      aria-label={showSecret ? 'Hide Client Secret' : 'Show Client Secret'}
+                      aria-label={
+                        showSecret ? copy.manual.hideSecretAriaLabel : copy.manual.showSecretAriaLabel
+                      }
                     >
-                      {showSecret ? 'Hide' : 'Show'}
+                      {showSecret ? copy.manual.hide : copy.manual.show}
                     </Button>
                   </div>
                   <small className="erli-credentials-panel__hint">
-                    Stored encrypted. You won&apos;t see it again after saving.
+                    {copy.manual.clientSecretHint}
                   </small>
                 </div>
               </div>
@@ -458,7 +440,7 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
           onClick={(event) => void onSave(event)}
           disabled={rotate.isPending || updateConfig.isPending || !canSubmit}
         >
-          {rotate.isPending || updateConfig.isPending ? 'Saving...' : 'Save credentials'}
+          {rotate.isPending || updateConfig.isPending ? copy.saving : copy.save}
         </Button>
       </div>
     </div>

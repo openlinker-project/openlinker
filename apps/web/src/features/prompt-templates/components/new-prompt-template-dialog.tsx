@@ -13,6 +13,7 @@ import { useMemo, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useNavigate } from 'react-router-dom';
+import { interpolate, renderRich, useMessages, usePlural } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -54,6 +55,9 @@ export function NewPromptTemplateDialog({
   open,
   onOpenChange,
 }: NewPromptTemplateDialogProps): ReactElement {
+  const messages = useMessages('prompt-templates');
+  const copy = messages.newPromptTemplateDialog;
+  const plural = usePlural();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const mutation = useCreatePromptTemplateMutation();
@@ -89,13 +93,13 @@ export function NewPromptTemplateDialog({
     try {
       const parsed = JSON.parse(trimmed) as unknown;
       if (!Array.isArray(parsed)) {
-        return { tone: 'error', message: 'must be a JSON array' };
+        return { tone: 'error', message: copy.jsonStatus.notArray };
       }
       return { tone: 'ok', count: parsed.length };
     } catch {
-      return { tone: 'error', message: 'invalid JSON syntax' };
+      return { tone: 'error', message: copy.jsonStatus.invalidSyntax };
     }
-  }, [variablesJsonValue]);
+  }, [variablesJsonValue, copy]);
 
   const handleOpenChange = (next: boolean): void => {
     onOpenChange(next);
@@ -110,8 +114,11 @@ export function NewPromptTemplateDialog({
       const created = await createTemplate(toApiInput(values));
       showToast({
         tone: 'success',
-        title: 'Draft created',
-        description: `${created.key} v${created.version}`,
+        title: copy.createdToastTitle,
+        description: interpolate(copy.createdToastDescription, {
+          key: created.key,
+          version: created.version,
+        }),
       });
       handleOpenChange(false);
       void navigate(`/ai/prompt-templates/${created.id}`);
@@ -123,10 +130,11 @@ export function NewPromptTemplateDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="new-prompt-template-dialog">
-        <DialogTitle>New prompt template</DialogTitle>
+        <DialogTitle>{copy.title}</DialogTitle>
         <DialogDescription>
-          Create a draft template for a new <span className="mono-text">(key, channel)</span> pair.
-          Use the editor on the next page to refine the prompts and publish.
+          {renderRich(copy.description, {
+            code: (text) => <span className="mono-text">{text}</span>,
+          })}
         </DialogDescription>
 
         <form
@@ -144,23 +152,23 @@ export function NewPromptTemplateDialog({
           ) : null}
 
           <FormField
-            label="Key"
+            label={copy.fields.key.label}
             name="key"
-            description="Stable identifier the suggestion service looks up. Lowercase, dot- or dash-separated. Cannot change after publish."
+            description={copy.fields.key.description}
             error={form.formState.errors.key?.message}
           >
             <Input
               {...form.register('key')}
-              placeholder="offer.description.suggest"
+              placeholder={copy.fields.key.placeholder}
               maxLength={128}
               className="mono-text new-prompt-template-dialog__key-input"
             />
           </FormField>
 
           <FormField
-            label="Channel"
+            label={copy.fields.channel.label}
             name="channel"
-            description="Master = generic fallback for any platform. Channel-specific overrides win when published."
+            description={copy.fields.channel.description}
             error={form.formState.errors.channel?.message}
           >
             <Select {...form.register('channel')}>
@@ -173,44 +181,44 @@ export function NewPromptTemplateDialog({
           </FormField>
 
           <FormField
-            label="System prompt"
+            label={copy.fields.systemPrompt.label}
             name="systemPrompt"
-            description="Sent as the model's system message. Use {{dotted.path}} placeholders for variables."
+            description={copy.fields.systemPrompt.description}
             error={form.formState.errors.systemPrompt?.message}
           >
             <Textarea
               {...form.register('systemPrompt')}
               rows={6}
               maxLength={65536}
-              placeholder="You are an assistant that writes marketplace product descriptions…"
+              placeholder={copy.fields.systemPrompt.placeholder}
             />
           </FormField>
 
           <FormField
-            label="User prompt template"
+            label={copy.fields.userPromptTemplate.label}
             name="userPromptTemplate"
-            description="Sent as the user message. Use {{dotted.path}} placeholders for variables."
+            description={copy.fields.userPromptTemplate.description}
             error={form.formState.errors.userPromptTemplate?.message}
           >
             <Textarea
               {...form.register('userPromptTemplate')}
               rows={6}
               maxLength={65536}
-              placeholder="Write a description for {{product.name}} ({{product.category}})…"
+              placeholder={copy.fields.userPromptTemplate.placeholder}
             />
           </FormField>
 
           <FormField
-            label="Variables (JSON)"
+            label={copy.fields.variablesJson.label}
             name="variablesJson"
-            description='JSON array of declared variables. Use [] for none. Example: [{"name":"product.name","type":"string","required":true}]'
+            description={copy.fields.variablesJson.description}
             error={form.formState.errors.variablesJson?.message}
           >
             <Textarea
               {...form.register('variablesJson')}
               rows={5}
               className="mono-text"
-              placeholder="[]"
+              placeholder={copy.fields.variablesJson.placeholder}
             />
           </FormField>
           {variablesStatus !== null ? (
@@ -221,15 +229,15 @@ export function NewPromptTemplateDialog({
               aria-live="polite"
             >
               {variablesStatus.tone === 'ok'
-                ? `✓ valid JSON · ${variablesStatus.count} variable${variablesStatus.count === 1 ? '' : 's'}`
-                : `✗ ${variablesStatus.message}`}
+                ? plural(variablesStatus.count, copy.jsonStatus.valid)
+                : interpolate(copy.jsonStatus.invalid, { message: variablesStatus.message })}
             </p>
           ) : null}
         </form>
 
         <DialogFooter>
           <Button type="button" tone="secondary" onClick={() => handleOpenChange(false)}>
-            Cancel
+            {messages.common.cancel}
           </Button>
           <Button
             type="submit"
@@ -237,7 +245,7 @@ export function NewPromptTemplateDialog({
             tone="primary"
             disabled={mutation.isPending}
           >
-            {mutation.isPending ? 'Creating…' : 'Create draft'}
+            {mutation.isPending ? copy.creating : copy.create}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -130,7 +130,7 @@ export type {
   AutomationWriteRefusal,
 } from './lib/automation-write-error';
 export {
-  automationComposerSchema,
+  createAutomationComposerSchema,
   newActionDraft,
   newConditionDraft,
   toActionInput,
@@ -142,25 +142,11 @@ export type {
   AutomationConditionDraft,
 } from './lib/automation-composer.schema';
 export {
-  AUTOMATIONS_PAGE_COPY,
-  AUTOMATION_ACTIVITY_COPY,
-  AUTOMATION_AVAILABILITY_COPY,
-  AUTOMATION_ERROR_COPY,
-  AUTOMATION_FIRING_MODE_COPY,
-  AUTOMATION_INDEX_COPY,
-  AUTOMATION_RULES_COPY,
-  AUTOMATION_SUGGESTION_COPY,
-  AUTOMATION_TRIGGER_COPY,
   AUTOMATION_ACTION_LABELS,
-  AUTOMATION_COMPOSER_COPY,
-  AUTOMATION_CONDITION_FIELD_LABELS,
-  AUTOMATION_CONDITION_OUTCOME_COPY,
-  AUTOMATION_DRY_RUN_COPY,
-  AUTOMATION_NON_FIRING_REASON_COPY,
-  AUTOMATION_RUN_LOG_COPY,
+  AUTOMATION_FAILURE_COPY,
   AUTOMATION_RUN_OUTCOME_COPY,
-  AUTOMATION_STEP_STATUS_COPY,
-} from './lib/automation.copy';
+  AUTOMATION_TRIGGER_COPY,
+} from './lib/automation-labels';
 
 // ── AF-X: "an automation couldn't finish" (#2387) ────────────────────────────
 export {
@@ -170,11 +156,6 @@ export {
   stepReasonText,
 } from './lib/automation-failure';
 export type { AutomationFailureView } from './lib/automation-failure';
-export {
-  AUTOMATION_FAILURE_COPY,
-  AUTOMATION_FAILURE_TITLE,
-  RETRY_REFUSAL_COPY,
-} from './lib/automation.copy';
 export { useRetryAutomationRunMutation } from './hooks/use-retry-automation-run-mutation';
 export { useDismissAutomationRunMutation } from './hooks/use-dismiss-automation-run-mutation';
 export type { RetryRefusalReason, AutomationStepReport } from './api/automation.types';
