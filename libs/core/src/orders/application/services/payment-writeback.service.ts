@@ -182,6 +182,14 @@ export class PaymentWritebackService implements IPaymentWritebackService {
       return 'skipped';
     }
 
+    const totals = record.nativeTotals;
+    if (!totals || !Number.isFinite(totals.amount) || totals.amount <= 0 || !totals.currency) {
+      // Without a known total the event would tell the shop "0 paid" (Shoper
+      // stores that as the paid amount). Stop and show it, never send a guess.
+      await this.record(internalOrderId, destinationConnectionId, entry, 'not-sent', 'no-total');
+      return 'done';
+    }
+
     const claimed = await this.records.claimPaymentWriteback(
       internalOrderId,
       destinationConnectionId,
@@ -189,15 +197,14 @@ export class PaymentWritebackService implements IPaymentWritebackService {
     );
     if (!claimed) return 'skipped';
 
-    const totals = record.nativeTotals;
     const relayed = await this.relay.relay({
       internalOrderId,
       originConnectionId: input.sourceConnectionId,
       onlyConnectionIds: [destinationConnectionId],
       event: {
         type: 'paid',
-        amount: totals?.amount ?? 0,
-        currency: totals?.currency ?? '',
+        amount: totals.amount,
+        currency: totals.currency,
         paidOn: await this.connectionName(input.sourceConnectionId),
       },
     });
@@ -245,17 +252,30 @@ export class PaymentWritebackService implements IPaymentWritebackService {
     for (const record of records) {
       for (const [connectionId, entry] of Object.entries(record.paymentWriteback)) {
         if (!isPaymentWritebackProblem(entry) && entry.state !== 'retrying') continue;
+        // Mark it retrying before the enqueue (the job skips an entry that is not
+        // waiting), and put the previous entry back if the enqueue fails, so a
+        // row never says "retrying" with no job behind it. One failure must not
+        // stop the rest of a bulk retry.
         await this.records.recordPaymentWriteback(record.internalOrderId, connectionId, {
           state: 'retrying',
           at: new Date().toISOString(),
           attempts: entry.attempts,
         });
-        await this.enqueue(
-          record.internalOrderId,
-          connectionId,
-          record.sourceConnectionId,
-          `${paymentWritebackDedupeKey(record.internalOrderId, connectionId)}:manual:${stamp}`
-        );
+        try {
+          await this.enqueue(
+            record.internalOrderId,
+            connectionId,
+            record.sourceConnectionId,
+            `${paymentWritebackDedupeKey(record.internalOrderId, connectionId)}:manual:${stamp}`
+          );
+        } catch (error) {
+          this.logger.warn(
+            `Payment writeback retry not queued for order ${record.internalOrderId} / shop ${connectionId}: ` +
+              this.message(error)
+          );
+          await this.records.recordPaymentWriteback(record.internalOrderId, connectionId, entry);
+          continue;
+        }
         enqueued += 1;
       }
     }

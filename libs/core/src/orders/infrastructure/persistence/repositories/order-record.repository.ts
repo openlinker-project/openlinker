@@ -2621,7 +2621,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     return (
       `EXISTS (SELECT 1 FROM jsonb_each(${nextValueSql}) AS e ` +
       `WHERE e.value->>'state' = 'not-sent' ` +
-      `AND e.value->>'reason' IN ('retries-exhausted', 'rejected'))`
+      `AND e.value->>'reason' IN ('retries-exhausted', 'rejected', 'no-total'))`
     );
   }
 
@@ -2670,7 +2670,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     const rows = (await this.repository.query(
       `UPDATE "order_records" AS r SET "paymentWriteback" = (` +
         `SELECT jsonb_object_agg(e.key, CASE WHEN e.value->>'state' = 'not-sent' ` +
-        `AND e.value->>'reason' IN ('retries-exhausted', 'rejected') ` +
+        `AND e.value->>'reason' IN ('retries-exhausted', 'rejected', 'no-total') ` +
         `THEN e.value || jsonb_build_object('state', 'handled', 'at', $2::text) ELSE e.value END) ` +
         `FROM jsonb_each(r."paymentWriteback") AS e), ` +
         `"paymentWritebackProblem" = false ` +

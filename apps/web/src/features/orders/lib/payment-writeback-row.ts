@@ -50,6 +50,7 @@ export function paymentWritebackRowCopy(
       if (reason === 'cancelled') return { label: row.notSent, tone: 'muted', helper: row.notSentCancelled };
       if (reason === 'refunded') return { label: row.notSent, tone: 'muted', helper: row.notSentRefunded };
       if (reason === 'rejected') return { label: row.notSent, tone: 'warn', helper: row.notSentRejected };
+      if (reason === 'no-total') return { label: row.notSent, tone: 'warn', helper: row.notSentNoTotal };
       return { label: row.notSent, tone: 'warn', helper: row.notSentStopped };
     default:
       return { label: row.unknown, tone: 'muted', helper: null };

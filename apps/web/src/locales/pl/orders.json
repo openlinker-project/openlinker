@@ -2673,6 +2673,7 @@
       "handledHelper": "Oznaczono jako obsłużone",
       "notSent": "Nie wysłano",
       "notSentCancelled": "Zamówienie anulowane",
+      "notSentNoTotal": "Nieznana kwota zamówienia",
       "notSentRefunded": "Pieniądze zwrócone",
       "notSentRejected": "Sklep to odrzucił",
       "notSentStopped": "Ponawianie zatrzymane",

@@ -236,6 +236,26 @@ describe('PaymentWritebackService', () => {
       );
     });
 
+    it('should record not-sent no-total and send nothing when the order total is unknown', async () => {
+      records.findById.mockResolvedValue(makeRecord({ nativeTotals: undefined }));
+
+      await expect(service.push(input)).resolves.toBe('done');
+      expect(relay.relay).not.toHaveBeenCalled();
+      expect(records.claimPaymentWriteback).not.toHaveBeenCalled();
+      expect(records.recordPaymentWriteback).toHaveBeenCalledWith(
+        ORDER_ID,
+        PS,
+        expect.objectContaining({ state: 'not-sent', reason: 'no-total' })
+      );
+    });
+
+    it('should not send a zero amount as paid', async () => {
+      records.findById.mockResolvedValue(makeRecord({ nativeTotals: { amount: 0, currency: 'PLN' } }));
+
+      await expect(service.push(input)).resolves.toBe('done');
+      expect(relay.relay).not.toHaveBeenCalled();
+    });
+
     it('should report retrying for a transient failure before the last attempt', async () => {
       relay.relay.mockResolvedValue({
         targets: [{ connectionId: PS, outcome: 'rejected', adapterThrew: true, detail: '503' }],
@@ -316,6 +336,24 @@ describe('PaymentWritebackService', () => {
         expect.objectContaining({
           options: { dedupeKey: expect.stringMatching(new RegExp(`^payment:${ORDER_ID}:${PS}:manual:`)) },
         })
+      );
+    });
+
+    it('should put the previous entry back and carry on when one enqueue fails', async () => {
+      const stopped = { state: 'not-sent', reason: 'retries-exhausted', at: AT, attempts: 8 };
+      records.findByIds.mockResolvedValue([
+        makeRecord({ paymentWriteback: { [PS]: stopped } }),
+        makeRecord({ internalOrderId: 'ol_order_2', paymentWriteback: { [PS]: stopped } }),
+      ]);
+      jobQueue.enqueue.mockRejectedValueOnce(new Error('queue down')).mockResolvedValueOnce('job-2');
+
+      await expect(service.retry([ORDER_ID, 'ol_order_2'])).resolves.toBe(1);
+      expect(records.recordPaymentWriteback).toHaveBeenCalledWith(ORDER_ID, PS, stopped);
+      expect(jobQueue.enqueue).toHaveBeenCalledTimes(2);
+      expect(records.recordPaymentWriteback).toHaveBeenLastCalledWith(
+        'ol_order_2',
+        PS,
+        expect.objectContaining({ state: 'retrying' })
       );
     });
 

@@ -41,7 +41,7 @@ export class OrderPaymentWritebackEntryDto {
     enum: PaymentWritebackReasonValues,
     nullable: true,
     description:
-      'Why a not-sent entry was not sent. Only retries-exhausted and rejected are problems an ' +
+      'Why a not-sent entry was not sent. Only retries-exhausted, rejected and no-total are problems an ' +
       'operator has to act on; cancelled and refunded are deliberate.',
   })
   reason!: PaymentWritebackReason | null;

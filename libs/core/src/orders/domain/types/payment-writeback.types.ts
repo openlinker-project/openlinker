@@ -54,14 +54,16 @@ export type PaymentWritebackState = (typeof PaymentWritebackStateValues)[number]
 
 /**
  * Why a `not-sent` entry was not sent. `cancelled` and `refunded` are
- * deliberate decisions, not failures; only the other two are problems an
- * operator has to act on.
+ * deliberate decisions, not failures; the other three are problems an
+ * operator has to act on. `no-total` means OpenLinker does not know how much
+ * the buyer paid, so it sends nothing rather than tell the shop "0 paid".
  */
 export const PaymentWritebackReasonValues = [
   'cancelled',
   'refunded',
   'retries-exhausted',
   'rejected',
+  'no-total',
 ] as const;
 export type PaymentWritebackReason = (typeof PaymentWritebackReasonValues)[number];
 
@@ -93,6 +95,7 @@ const SETTLED_STATES: ReadonlySet<PaymentWritebackState> = new Set<PaymentWriteb
 const PROBLEM_REASONS: ReadonlySet<PaymentWritebackReason> = new Set<PaymentWritebackReason>([
   'retries-exhausted',
   'rejected',
+  'no-total',
 ]);
 
 function isState(value: unknown): value is PaymentWritebackState {
