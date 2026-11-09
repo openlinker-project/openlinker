@@ -753,7 +753,12 @@ describe('OfferMappingRepository', () => {
       expect(whereClauses(sellingQb).filter((c) => c.includes('isStale'))).toHaveLength(1);
       expect(whereClauses(blockedQb).filter((c) => c.includes('validationProblems'))).toHaveLength(1);
       expect(whereClauses(blockedQb).some((c) => c.includes('isStale'))).toBe(true);
-      expect(String((query.mock.calls as unknown[][])[0]?.[0])).toContain('FROM (SELECT inner) t');
+      const problemSql = String((query.mock.calls as unknown[][])[0]?.[0]);
+      expect(problemSql).toContain('FROM (SELECT inner) t');
+      // Same non-array guard as the shopBlocked predicate, and the cap in SQL.
+      expect(problemSql).toContain(`jsonb_typeof(t."problems") = 'array'`);
+      expect(problemSql).toContain('ROW_NUMBER() OVER (PARTITION BY g."connectionId"');
+      expect(problemSql).toContain('WHERE rn <= 5');
     });
   });
 
