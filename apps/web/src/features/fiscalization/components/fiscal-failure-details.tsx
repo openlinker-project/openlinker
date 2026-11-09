@@ -19,7 +19,7 @@
 import { useState, type ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { CopyableId } from '../../../shared/ui/copyable-id';
-import { useTranslation } from '../../../shared/i18n';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import type { FiscalProviderFailureDetails } from '../api/fiscalization.types';
 import {
   buildFiscalFailureDetailRows,
@@ -31,8 +31,8 @@ interface FiscalFailureDetailsProps {
 }
 
 export function FiscalFailureDetails({ details }: FiscalFailureDetailsProps): ReactElement | null {
-  const { t } = useTranslation();
-  const rows = buildFiscalFailureDetailRows(details, t);
+  const copy = useMessages('fiscalization').fiscalReceipt.details;
+  const rows = buildFiscalFailureDetailRows(details);
   const hint = details?.hint ?? null;
   if (rows.length === 0 && !hint) return null;
 
@@ -47,10 +47,7 @@ export function FiscalFailureDetails({ details }: FiscalFailureDetailsProps): Re
               <dd>
                 <CopyableId
                   id={row.value}
-                  copyLabel={t('fiscalReceipt.details.copyOne', 'Copy {label}').replace(
-                    '{label}',
-                    row.label,
-                  )}
+                  copyLabel={interpolate(copy.copyOne, { label: row.label })}
                 />
               </dd>
             </div>
@@ -68,9 +65,9 @@ export function FiscalFailureDetails({ details }: FiscalFailureDetailsProps): Re
 export function CopyFiscalFailureDetailsButton({
   details,
 }: FiscalFailureDetailsProps): ReactElement | null {
-  const { t } = useTranslation();
+  const copy = useMessages('fiscalization').fiscalReceipt.details;
   const [copied, setCopied] = useState(false);
-  const rows = buildFiscalFailureDetailRows(details, t);
+  const rows = buildFiscalFailureDetailRows(details);
   if (rows.length === 0) return null;
 
   const handleCopy = (): void => {
@@ -85,9 +82,7 @@ export function CopyFiscalFailureDetailsButton({
 
   return (
     <Button tone="secondary" onClick={handleCopy}>
-      {copied
-        ? t('fiscalReceipt.details.copied', 'Copied')
-        : t('fiscalReceipt.details.copyAll', 'Copy details')}
+      {copied ? copy.copied : copy.copyAll}
     </Button>
   );
 }

@@ -49,7 +49,7 @@ import { Button } from '../../../shared/ui/button';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { BenchWork } from '../api/bench-work.types';
 import { describeBenchDeadline, expediteActionFor } from '../lib/bench-work-presentation';
-import { benchWorkCopy } from '../lib/bench-work.copy';
+import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { BenchThumb } from './bench-thumb';
 
 export interface BenchWorkRowProps {
@@ -105,6 +105,8 @@ export function BenchWorkRow({
   claiming = false,
   active = false,
 }: BenchWorkRowProps): ReactElement {
+  const copy = useMessages('bench').work;
+  const plural = usePlural();
   const deadline = describeBenchDeadline(work.dispatchByAt, now);
   const expediteAction = expediteActionFor(work);
   const expedited = work.expeditedAt !== null;
@@ -114,15 +116,15 @@ export function BenchWorkRow({
   const badge =
     work.state === 'held' ? (
       <StatusBadge tone={toneFor(work)} withDot compact>
-        {benchWorkCopy.row.heldBadge}
+        {copy.row.heldBadge}
       </StatusBadge>
     ) : work.state === 'cancelled' ? (
       <StatusBadge tone={toneFor(work)} withDot compact>
-        {benchWorkCopy.row.cancelledBadge}
+        {copy.row.cancelledBadge}
       </StatusBadge>
     ) : expedited ? (
       <StatusBadge tone="warning" withDot compact>
-        {benchWorkCopy.row.expeditedBadge}
+        {copy.row.expeditedBadge}
       </StatusBadge>
     ) : (
       <StatusBadge tone="warning" compact>
@@ -157,10 +159,9 @@ export function BenchWorkRow({
             // renders and is still openable - saying nothing here would make
             // it look broken rather than empty.
             <span className="bench-work-row__item bench-work-row__item--empty">
-              {benchWorkCopy.row.summary({
+              {plural(work.lineCount, copy.row.summary, {
                 parcelIndex: work.parcelIndex,
                 parcelTotal: work.parcelTotal,
-                lineCount: work.lineCount,
                 unitsToVerify: work.unitsToVerify,
               })}
             </span>
@@ -176,7 +177,7 @@ export function BenchWorkRow({
                   name={item.name}
                 />
                 <span className="bench-work-row__item-qty tabular">
-                  {benchWorkCopy.row.itemQuantity(item.quantity)}
+                  {interpolate(copy.row.itemQuantity, { quantity: item.quantity })}
                 </span>
                 <span
                   className={
@@ -186,14 +187,14 @@ export function BenchWorkRow({
                   }
                   title={item.name ?? undefined}
                 >
-                  {item.name ?? benchWorkCopy.row.itemUnnamed}
+                  {item.name ?? copy.row.itemUnnamed}
                 </span>
               </span>
             ))
           )}
           {hiddenItemCount === 0 ? null : (
             <span className="bench-work-row__item-more">
-              {benchWorkCopy.row.itemsMore(hiddenItemCount)}
+              {plural(hiddenItemCount, copy.row.itemsMore)}
             </span>
           )}
         </span>
@@ -206,12 +207,11 @@ export function BenchWorkRow({
       {/* Demoted, never deleted. Parcel, counts, the order reference and then
           the work id in mono - the two values a packer reads out on the phone. */}
       <span className="bench-work-row__meta" id={metaId}>
-        {benchWorkCopy.row.summary({
-          parcelIndex: work.parcelIndex,
-          parcelTotal: work.parcelTotal,
-          lineCount: work.lineCount,
-          unitsToVerify: work.unitsToVerify,
-        })}
+        {plural(work.lineCount, copy.row.summary, {
+                parcelIndex: work.parcelIndex,
+                parcelTotal: work.parcelTotal,
+                unitsToVerify: work.unitsToVerify,
+              })}
         {' · '}
         <span className="mono bench-work-row__reference" title={work.orderReference}>
           {work.orderReference}
@@ -221,24 +221,24 @@ export function BenchWorkRow({
         {/* #3341, ADR-074. In the meta rather than in a second badge: the
             mockup carries one badge per row, and the section this row sits in
             already names the same fact. */}
-        {work.assignmentState === 'mine' ? <> · {benchWorkCopy.row.assignedToYouBadge}</> : null}
+        {work.assignmentState === 'mine' ? <> · {copy.row.assignedToYouBadge}</> : null}
         {work.assignmentState === 'assigned-other' ? (
-          <> · {benchWorkCopy.row.assignedToOtherBadge}</>
+          <> · {copy.row.assignedToOtherBadge}</>
         ) : null}
       </span>
 
       {work.hasBuyerNote ? (
         <span className="bench-work-row__buyer-note" data-testid="bench-work-row-buyer-note">
-          <strong>{benchWorkCopy.row.buyerNote}</strong>
-          {work.buyerNoteAcknowledgedAt === null ? null : <> · {benchWorkCopy.row.buyerNoteRead}</>}
+          <strong>{copy.row.buyerNote}</strong>
+          {work.buyerNoteAcknowledgedAt === null ? null : <> · {copy.row.buyerNoteRead}</>}
         </span>
       ) : null}
 
       {work.state === 'held' ? (
-        <span className="bench-work-row__note">{benchWorkCopy.row.heldBody}</span>
+        <span className="bench-work-row__note">{copy.row.heldBody}</span>
       ) : null}
       {work.state === 'cancelled' ? (
-        <span className="bench-work-row__note">{benchWorkCopy.row.cancelledBody}</span>
+        <span className="bench-work-row__note">{copy.row.cancelledBody}</span>
       ) : null}
     </>
   );
@@ -274,7 +274,7 @@ export function BenchWorkRow({
           // Says what the gesture DOES. Without it the accessible name is the
           // whole card read aloud, which is what the mockup's own row would
           // have produced and is no use to anyone.
-          aria-label={benchWorkCopy.row.openAction}
+          aria-label={copy.row.openAction}
           aria-describedby={metaId}
           onClick={() => {
             onOpenParcel(work.workId);
@@ -289,7 +289,7 @@ export function BenchWorkRow({
             // Convenience only — see the module docblock. A packer sees why the
             // control is gone rather than a control that would refuse them.
             <span className="bench-work-row__locked-note text-muted">
-              {benchWorkCopy.row.lockedForOther}
+              {copy.row.lockedForOther}
             </span>
           )}
         </div>
@@ -308,8 +308,8 @@ export function BenchWorkRow({
               }}
             >
               {expediteAction === 'expedite'
-                ? benchWorkCopy.row.expediteAction
-                : benchWorkCopy.row.releaseExpediteAction}
+                ? copy.row.expediteAction
+                : copy.row.releaseExpediteAction}
             </Button>
           ) : null}
           {showClaim && onClaim !== undefined ? (
@@ -320,7 +320,7 @@ export function BenchWorkRow({
                 onClaim(work);
               }}
             >
-              {benchWorkCopy.tabs.claimAction}
+              {copy.tabs.claimAction}
             </Button>
           ) : null}
         </div>

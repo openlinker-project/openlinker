@@ -23,7 +23,7 @@ import { useCallback, useState, type ReactElement, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
@@ -251,7 +251,7 @@ export function StepShipping(props: StepShippingProps): ReactElement {
   const effectiveChoice: Choice = unlocked ? choice : 'no';
   const dirtySource = sources.find((source) => dirty[source.id] === true);
   const controlsDisabled = !props.canWrite || props.saving;
-  const disabledTitle = props.demoReadOnly ? DEMO_READ_ONLY_ACTION_MESSAGE : !props.canWrite ? COPY.adminOnly : undefined;
+  const disabledTitle = props.demoReadOnly ? demoReadOnlyActionMessage() : !props.canWrite ? COPY.adminOnly : undefined;
 
   const onDirtyChange = useCallback((sourceId: string, next: boolean): void => {
     setDirty((previous) => (previous[sourceId] === next ? previous : { ...previous, [sourceId]: next }));

@@ -1,9 +1,10 @@
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
 import { useLogin } from '../hooks/use-login';
-import { loginFormSchema, type LoginFormValues } from './login-form.schema';
+import { createLoginFormSchema, type LoginFormValues } from './login-form.schema';
+import { useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
@@ -26,9 +27,12 @@ export function LoginForm({
   showTrackingFootnote = false,
 }: LoginFormProps): ReactElement {
   const login = useLogin();
+  const auth = useMessages('auth');
+  const copy = auth.login;
+  const schema = useMemo(() => createLoginFormSchema(auth.validation), [auth]);
   const form = useForm<LoginFormValues>({
     defaultValues: DEFAULT_VALUES,
-    resolver: zodResolver(loginFormSchema),
+    resolver: zodResolver(schema),
   });
 
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
@@ -47,43 +51,43 @@ export function LoginForm({
     <form className="form-card guest-form" onSubmit={(event) => void onSubmit(event)} noValidate>
       {demoMode ? (
         <div className="guest-form__demo-bar">
-          <strong>🔗 OpenLinker Demo</strong>
-          <span>Explore a live sandbox with read-only access</span>
+          <strong>🔗 {copy.demoTitle}</strong>
+          <span>{copy.demoTagline}</span>
           {/* Plain <a>, not router <Link>: these leave the app. They are also the
               crawlable path from the indexed demo back to the project (#3709). */}
-          <nav className="guest-form__demo-links" aria-label="OpenLinker project">
-            <a href="https://openlinker.io/en/">openlinker.io</a>
-            <a href="https://docs.openlinker.io/">Docs</a>
-            <a href="https://github.com/openlinker-project/openlinker">GitHub</a>
+          <nav className="guest-form__demo-links" aria-label={copy.projectLinks}>
+            <a href="https://openlinker.io/en/">{copy.links.site}</a>
+            <a href="https://docs.openlinker.io/">{copy.links.docs}</a>
+            <a href="https://github.com/openlinker-project/openlinker">{copy.links.github}</a>
           </nav>
         </div>
       ) : null}
 
       {form.formState.submitCount > 0 ? <FormErrorSummary errors={validationMessages} /> : null}
       {login.error ? (
-        <Alert tone="error" title="Login failed">
+        <Alert tone="error" title={copy.failed}>
           {login.error.message}
         </Alert>
       ) : null}
 
       <FormField
-        label="Username or email"
+        label={copy.username}
         name="username"
         error={form.formState.errors.username?.message}
       >
         <Input
           {...form.register('username')}
-          placeholder="Username or email"
+          placeholder={copy.username}
           autoComplete="username"
           invalid={Boolean(form.formState.errors.username)}
         />
       </FormField>
 
-      <FormField label="Password" name="password" error={form.formState.errors.password?.message}>
+      <FormField label={copy.password} name="password" error={form.formState.errors.password?.message}>
         <Input
           {...form.register('password')}
           type="password"
-          placeholder="Enter your password"
+          placeholder={copy.passwordPlaceholder}
           autoComplete="current-password"
           invalid={Boolean(form.formState.errors.password)}
         />
@@ -91,20 +95,20 @@ export function LoginForm({
 
       <div className="form-actions">
         <Button className="guest-form__submit" type="submit" disabled={login.isPending}>
-          {login.isPending ? 'Signing in...' : 'Sign in'}
+          {login.isPending ? copy.submitting : copy.submit}
         </Button>
         <Link className="guest-form__secondary" to="/forgot-password">
-          Forgot password?
+          {copy.forgotPassword}
         </Link>
       </div>
 
       {demoMode ? (
         <>
           <div className="guest-form__divider" aria-hidden="true">
-            new here?
+            {copy.newHere}
           </div>
           <Link to="/register" className="button button--secondary guest-form__demo-register">
-            Create a free demo account →
+            {copy.registerDemo} <span aria-hidden="true">→</span>
           </Link>
         </>
       ) : null}

@@ -1,0 +1,37 @@
+{
+  "fiscalReceipt": {
+    "artefact": {
+      "codeAlt": "Kod paragonu do zeskanowania",
+      "download": "Pobierz",
+      "internal": "Do użytku wewnętrznego",
+      "medium": {
+        "code": "Kod",
+        "document": "Dokument",
+        "link": "Link",
+        "markup": "Znaczniki",
+        "text": "Tekst"
+      },
+      "open": "Otwórz"
+    },
+    "details": {
+      "copied": "Skopiowano",
+      "copyAll": "Kopiuj szczegóły",
+      "copyOne": "Kopiuj {label}",
+      "deviceErrorCode": "Kod błędu drukarki",
+      "documentId": "ID dokumentu u dostawcy",
+      "errorCode": "Kod błędu dostawcy"
+    },
+    "failed": {
+      "genericInDoubt": "Połączenie zostało przerwane, zanim poznaliśmy wynik. Ta sprzedaż mogła już zostać zarejestrowana.",
+      "genericRejected": "Dostawca odrzucił tę sprzedaż. Nic nie zostało zarejestrowane, więc można bezpiecznie spróbować ponownie po usunięciu przyczyny."
+    },
+    "status": {
+      "in-doubt": "Niepotwierdzony",
+      "not-registered": "Niezarejestrowany",
+      "pending": "W kolejce",
+      "registered": "Zarejestrowany",
+      "registering": "Rejestrowanie",
+      "rejected": "Odrzucony"
+    }
+  }
+}

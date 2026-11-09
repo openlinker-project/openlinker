@@ -19,7 +19,7 @@ import { Select } from '../../../shared/ui/select';
 import { useConnectionsQuery } from '../../connections';
 import { useDemoMode } from '../../system';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { RoutingParcelDialog } from './routing-parcel-dialog';
 import {
@@ -31,7 +31,7 @@ import {
   summarizeParcelProfile,
   type ParcelProfileDraft,
 } from '../lib/parcel-profile';
-import { PARCEL_COPY } from '../lib/parcel-profile.copy';
+import { useMessages } from '../../../shared/i18n';
 import { useShippingRouteCopy } from '../hooks/use-shipping-route-copy';
 import { RoutingSplitBar, type RoutingSplitBucket } from './routing-split-bar';
 import {
@@ -132,6 +132,8 @@ export function RoutingRulesPanel({
   focusMethodId,
 }: RoutingRulesPanelProps): ReactElement {
   const routeCopy = useShippingRouteCopy();
+  const panelCopy = useMessages('mappings').routingRulesPanel;
+  const parcelCopy = useMessages('mappings').parcelProfile;
   const rulesQuery = useRoutingRulesQuery(connectionId);
   const candidatesQuery = useRoutingCandidatesQuery(connectionId);
   const connectionsQuery = useConnectionsQuery();
@@ -412,10 +414,10 @@ export function RoutingRulesPanel({
       return (
         <span className="routing-route-cell__parcel">
           <span className="routing-route-cell__parcel-value">
-            {PARCEL_COPY.columnHeader}: {summary ?? PARCEL_COPY.noneSet.toLowerCase()}
+            {parcelCopy.columnHeader}: {summary ?? parcelCopy.noneSet.toLowerCase()}
           </span>
           {write.visible && (
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
               <button
                 type="button"
                 className="routing-route-cell__parcel-action"
@@ -424,7 +426,7 @@ export function RoutingRulesPanel({
                   setEditingMethod(method);
                 }}
               >
-                {summary ? PARCEL_COPY.editAction : PARCEL_COPY.setAction}
+                {summary ? parcelCopy.editAction : parcelCopy.setAction}
               </button>
             </ReadOnlyLock>
           )}
@@ -472,15 +474,15 @@ export function RoutingRulesPanel({
     return (
       <LoadingState
         liveRegion="off"
-        title="Loading fulfillment routing"
-        message="Fetching delivery methods and compatible processors…"
+        title={panelCopy.loading.title}
+        message={panelCopy.loading.message}
       />
     );
   }
 
   const dataError = deliveryMethodsError ?? rulesQuery.error ?? candidatesQuery.error ?? null;
   if (dataError) {
-    return <ErrorState title="Unable to load routing configuration" message={dataError.message} />;
+    return <ErrorState title={panelCopy.errorTitle} message={dataError.message} />;
   }
 
   // A row whose route buys a label carries the default-parcel line under its
@@ -493,7 +495,7 @@ export function RoutingRulesPanel({
 
   const dirtyBadge = isDirty ? (
     <span className="status-badge status-badge--warning" aria-live="polite">
-      Unsaved changes
+      {panelCopy.unsaved}
     </span>
   ) : null;
 
@@ -524,8 +526,7 @@ export function RoutingRulesPanel({
 
       {rowMethods.length === 0 ? (
         <p className="muted-text" role="status" aria-live="polite">
-          This connection reported no delivery methods to route. Routing becomes configurable once
-          the source exposes delivery methods.
+          {panelCopy.noMethods}
         </p>
       ) : (
         // Virtualized so hundreds of source delivery methods (Allegro) render
@@ -533,7 +534,7 @@ export function RoutingRulesPanel({
         // and renders its `cardView` on narrow viewports, so the mobile layout
         // is preserved without the raw-table `.data-table--stackable` transform.
         <DataTable
-          caption="Fulfillment routing rules"
+          caption={panelCopy.caption}
           rows={rowMethods}
           rowKey={(m) => m.value}
           virtualize
@@ -567,11 +568,11 @@ export function RoutingRulesPanel({
 
       <div className="routing-panel__actions">
         <Button tone="primary" disabled={!isDirty || replaceMutation.isPending} onClick={handleSave}>
-          {replaceMutation.isPending ? 'Saving…' : 'Save routing'}
+          {replaceMutation.isPending ? panelCopy.saving : panelCopy.save}
         </Button>
         {replaceMutation.error && (
           <Button tone="secondary" disabled={replaceMutation.isPending} onClick={handleSave}>
-            Try again
+            {panelCopy.tryAgain}
           </Button>
         )}
         {embedded ? dirtyBadge : null}

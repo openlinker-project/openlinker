@@ -10,9 +10,8 @@
  */
 import type { ReactElement } from 'react';
 
-import { formatAbsoluteTime } from '../../../shared/format/format-date';
+import { useFormat, useMessages } from '../../../shared/i18n';
 import { useBenchActivityQuery } from '../hooks/use-bench-activity-query';
-import { benchParcelCopy } from '../lib/bench-parcel.copy';
 
 export interface BenchActivityPanelProps {
   readonly workId: string;
@@ -20,6 +19,8 @@ export interface BenchActivityPanelProps {
 
 export function BenchActivityPanel({ workId }: BenchActivityPanelProps): ReactElement | null {
   const query = useBenchActivityQuery(workId);
+  const copy = useMessages('bench').parcel;
+  const format = useFormat();
 
   // Absent rather than an empty box: a panel with nothing to say should not
   // occupy space next to the lines a packer is actively working.
@@ -29,17 +30,17 @@ export function BenchActivityPanel({ workId }: BenchActivityPanelProps): ReactEl
 
   return (
     <section className="bench-activity" data-testid="bench-activity-panel">
-      <h3>{benchParcelCopy.activity.heading}</h3>
+      <h3>{copy.activity.heading}</h3>
       <ul>
         {entries.map((entry) => (
           <li key={`${entry.workLineId}-${entry.kind}-${entry.at}`}>
-            <time dateTime={entry.at}>{formatAbsoluteTime(entry.at)}</time>
+            <time dateTime={entry.at}>{format.time(entry.at)}</time>
             <span>
-              {entry.name ?? benchParcelCopy.lines.unnamed}
+              {entry.name ?? copy.lines.unnamed}
               {' — '}
               {entry.kind === 'undone'
-                ? benchParcelCopy.activity.undone
-                : benchParcelCopy.activity.verified}
+                ? copy.activity.undone
+                : copy.activity.verified}
             </span>
           </li>
         ))}

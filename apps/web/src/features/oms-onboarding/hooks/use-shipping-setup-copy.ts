@@ -21,7 +21,7 @@ import {
   type SupportedLocale,
 } from '../../../shared/i18n';
 
-type OmsOnboardingMessages = ResolvedCopy<Messages['omsOnboarding']>;
+type OmsOnboardingMessages = ResolvedCopy<Messages['oms-onboarding']>;
 
 export interface ShippingStepCopy {
   readonly why: string;
@@ -153,22 +153,22 @@ export function buildShippingStatusCopy(
 
 /** The step's wording for an explicit language, outside React (tests). */
 export function shippingStepCopyIn(locale: SupportedLocale): ShippingStepCopy {
-  return buildShippingStepCopy(messagesIn('omsOnboarding', locale).shippingStep, locale);
+  return buildShippingStepCopy(messagesIn('oms-onboarding', locale).shippingStep, locale);
 }
 
 /** The status row's wording for an explicit language, outside React (tests). */
 export function shippingStatusCopyIn(locale: SupportedLocale): ShippingStatusCopy {
-  return buildShippingStatusCopy(messagesIn('omsOnboarding', locale).shippingStatus, locale);
+  return buildShippingStatusCopy(messagesIn('oms-onboarding', locale).shippingStatus, locale);
 }
 
 export function useShippingStepCopy(): ShippingStepCopy {
-  const messages = useMessages('omsOnboarding').shippingStep;
+  const messages = useMessages('oms-onboarding').shippingStep;
   const locale = useActiveLocale();
   return useMemo(() => buildShippingStepCopy(messages, locale), [messages, locale]);
 }
 
 export function useShippingStatusCopy(): ShippingStatusCopy {
-  const messages = useMessages('omsOnboarding').shippingStatus;
+  const messages = useMessages('oms-onboarding').shippingStatus;
   const locale = useActiveLocale();
   return useMemo(() => buildShippingStatusCopy(messages, locale), [messages, locale]);
 }

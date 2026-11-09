@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { Connection } from '../../../connections';
 import {
   ERLI_DEFAULT_DISPATCH,
+  createErliOfferFieldsSchema,
   formatDispatch,
   isValidDispatch,
   parseErliConnectionDispatchDefault,
@@ -77,5 +78,18 @@ describe('formatDispatch', () => {
     expect(formatDispatch({ period: 2, unit: 'day' })).toBe('2 working days');
     expect(formatDispatch({ period: 1, unit: 'hour' })).toBe('1 hour');
     expect(formatDispatch({ period: 3, unit: 'month' })).toBe('3 months');
+  });
+});
+
+describe('createErliOfferFieldsSchema', () => {
+  it('reports the copy it was built with', () => {
+    const schema = createErliOfferFieldsSchema({
+      periodRequired: 'required',
+      periodWholeNumber: 'whole',
+      periodMin: 'min',
+    });
+    const result = schema.safeParse({ dispatchPeriod: -1, dispatchUnit: 'day' });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toBe('min');
   });
 });

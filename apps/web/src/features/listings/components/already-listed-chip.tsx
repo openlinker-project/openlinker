@@ -10,6 +10,7 @@
  * @module apps/web/src/features/listings/components
  */
 import type { ReactElement } from 'react';
+import { interpolate, useMessages } from '../../../shared/i18n';
 
 interface AlreadyListedChipProps {
   /** Destination connection name, e.g. "My Allegro" / "My Shop". */
@@ -20,10 +21,11 @@ interface AlreadyListedChipProps {
 }
 
 export function AlreadyListedChip({ destinationName, title }: AlreadyListedChipProps): ReactElement {
+  const copy = useMessages('listings').alreadyListedChip;
   return (
     <span className="bulk-chip bulk-chip--neutral" title={title}>
       <span className="bulk-chip__dot" aria-hidden="true" />
-      already on {destinationName}
+      {interpolate(copy.label, { destination: destinationName })}
     </span>
   );
 }

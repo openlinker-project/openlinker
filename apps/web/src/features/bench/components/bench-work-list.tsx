@@ -46,7 +46,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
@@ -69,7 +69,7 @@ import {
   matchesBenchSearch,
   matchesBenchTextSearch,
 } from '../lib/bench-work-presentation';
-import { benchWorkCopy } from '../lib/bench-work.copy';
+import { getMessages, useMessages } from '../../../shared/i18n';
 import { BenchPackedTodayRow } from './bench-packed-today-row';
 import { BenchUnlabelledRow } from './bench-unlabelled-row';
 import { BenchWorkEmpty } from './bench-work-empty';
@@ -109,10 +109,11 @@ type BenchRailTab = 'bench' | 'hold' | 'done';
  * reading of a refusal this build cannot name.
  */
 function claimNextRefusalNotice(reason: string | null): string {
-  if (reason === 'held') return benchWorkCopy.tabs.takeNextHeld;
-  if (reason === 'cancelled') return benchWorkCopy.tabs.takeNextCancelled;
-  if (reason === 'not-claimable') return benchWorkCopy.tabs.takeNextLocked;
-  return benchWorkCopy.tabs.takeNextTaken;
+  const tabs = getMessages('bench').work.tabs;
+  if (reason === 'held') return tabs.takeNextHeld;
+  if (reason === 'cancelled') return tabs.takeNextCancelled;
+  if (reason === 'not-claimable') return tabs.takeNextLocked;
+  return tabs.takeNextTaken;
 }
 
 export function BenchWorkList({
@@ -120,6 +121,7 @@ export function BenchWorkList({
   onOpenParcel,
   activeWorkId = null,
 }: BenchWorkListProps): ReactElement {
+  const copy = useMessages('bench').work;
   const query = useBenchWorkQuery();
   const unlabelledQuery = useBenchUnlabelledQuery();
   const packedTodayQuery = useBenchPackedTodayQuery();
@@ -232,14 +234,14 @@ export function BenchWorkList({
   // says the list updates by itself.
   if (query.data === undefined && query.isPending) {
     return (
-      <LoadingState title={benchWorkCopy.loading.title} message={benchWorkCopy.loading.body} />
+      <LoadingState title={copy.loading.title} message={copy.loading.body} />
     );
   }
 
   if (query.error && query.data === undefined) {
     return (
       <ErrorState
-        title={benchWorkCopy.errors.loadTitle}
+        title={copy.errors.loadTitle}
         message={query.error.message}
         action={
           <Button
@@ -248,7 +250,7 @@ export function BenchWorkList({
               void query.refetch();
             }}
           >
-            {benchWorkCopy.errors.retryAction}
+            {copy.errors.retryAction}
           </Button>
         }
       />
@@ -261,7 +263,7 @@ export function BenchWorkList({
     claimNext.mutate(undefined, {
       onSuccess: (result) => {
         if (result.outcome === 'nothing-to-claim') {
-          setClaimNextNotice(benchWorkCopy.tabs.takeNextEmpty);
+          setClaimNextNotice(copy.tabs.takeNextEmpty);
           return;
         }
         if (result.outcome === 'refused') {
@@ -372,14 +374,14 @@ export function BenchWorkList({
           rule are standing facts and moved to the footer with the rest. */}
       <div className="bench-rail__search">
         <label htmlFor="bench-search" className="sr-only">
-          {benchWorkCopy.search.label}
+          {copy.search.label}
         </label>
         <input
           id="bench-search"
           type="search"
           inputMode="search"
           autoComplete="off"
-          placeholder={benchWorkCopy.search.placeholder}
+          placeholder={copy.search.placeholder}
           value={search}
           onChange={(event) => {
             setSearch(event.target.value);
@@ -394,13 +396,13 @@ export function BenchWorkList({
       {canClaim ? (
         <div className="bench-rail__take-next">
           <Button tone="primary" disabled={claimNext.isPending} onClick={takeNextTask}>
-            {benchWorkCopy.tabs.takeNextAction}
+            {copy.tabs.takeNextAction}
           </Button>
           {claimNextNotice === null ? null : (
             <p className="bench-work-list__take-next-notice">{claimNextNotice}</p>
           )}
           {claimNext.error ? (
-            <Alert tone="warning">{benchWorkCopy.tabs.takeNextFailed}</Alert>
+            <Alert tone="warning">{copy.tabs.takeNextFailed}</Alert>
           ) : null}
         </div>
       ) : null}
@@ -418,7 +420,7 @@ export function BenchWorkList({
             setActiveTab('bench');
           }}
         >
-          {benchWorkCopy.tabs.bench} <span className="mono">{bothCounts.bench}</span>
+          {copy.tabs.bench} <span className="mono">{bothCounts.bench}</span>
         </button>
         <button
           type="button"
@@ -429,7 +431,7 @@ export function BenchWorkList({
             setActiveTab('hold');
           }}
         >
-          {benchWorkCopy.tabs.hold} <span className="mono">{bothCounts.hold}</span>
+          {copy.tabs.hold} <span className="mono">{bothCounts.hold}</span>
         </button>
         <button
           type="button"
@@ -440,7 +442,7 @@ export function BenchWorkList({
             setActiveTab('done');
           }}
         >
-          {benchWorkCopy.tabs.done} <span className="mono">{bothCounts.done}</span>
+          {copy.tabs.done} <span className="mono">{bothCounts.done}</span>
         </button>
       </div>
 
@@ -449,7 +451,7 @@ export function BenchWorkList({
       {rejectedScan === null ? null : (
         <Alert
           tone="error"
-          title={benchWorkCopy.scan.unrecognisedTitle}
+          title={copy.scan.unrecognisedTitle}
           action={
             <Button
               tone="secondary"
@@ -457,27 +459,27 @@ export function BenchWorkList({
                 setRejectedScan(null);
               }}
             >
-              {benchWorkCopy.scan.dismissAction}
+              {copy.scan.dismissAction}
             </Button>
           }
         >
-          {benchWorkCopy.scan.unrecognisedBody}{' '}
+          {copy.scan.unrecognisedBody}{' '}
           {/* What actually came off the scanner. A packer needs to SEE a
               misread — "not recognised" without the value leaves them guessing
               whether the label is damaged or the wrong box is in front of them. */}
           <span className="bench-work-list__scanned">
-            {benchWorkCopy.scan.scannedLabel}: <code>{rejectedScan}</code>
+            {copy.scan.scannedLabel}: <code>{rejectedScan}</code>
           </span>
         </Alert>
       )}
 
-      {expedite.error ? <Alert tone="warning">{benchWorkCopy.row.expediteFailed}</Alert> : null}
+      {expedite.error ? <Alert tone="warning">{copy.row.expediteFailed}</Alert> : null}
 
-      {claim.error ? <Alert tone="warning">{benchWorkCopy.tabs.claimFailed}</Alert> : null}
+      {claim.error ? <Alert tone="warning">{copy.tabs.claimFailed}</Alert> : null}
 
       {claimRefusal === null ? null : <Alert tone="warning">{claimRefusal}</Alert>}
 
-      {write.demoReadOnly ? <Alert tone="info">{DEMO_READ_ONLY_ACTION_MESSAGE}</Alert> : null}
+      {write.demoReadOnly ? <Alert tone="info">{demoReadOnlyActionMessage()}</Alert> : null}
 
       {works.length === 0 && unlabelled.length === 0 ? (
         <BenchWorkEmpty routingReady={routingReady} />
@@ -486,18 +488,18 @@ export function BenchWorkList({
           {activeTab === 'bench' ? (
             <>
               {renderSection(
-                benchWorkCopy.tabs.assignedToYou,
+                copy.tabs.assignedToYou,
                 visibleMine,
                 'bench-section-assigned-to-you',
                 'bench-rail__section-label--mine'
               )}
               {renderSection(
-                benchWorkCopy.tabs.assignedToOthers,
+                copy.tabs.assignedToOthers,
                 visibleAssignedOther,
                 'bench-section-assigned-others'
               )}
               {renderSection(
-                benchWorkCopy.tabs.unassigned,
+                copy.tabs.unassigned,
                 visibleUnassigned,
                 'bench-section-unassigned'
               )}
@@ -507,7 +509,7 @@ export function BenchWorkList({
                   data-testid="bench-section-waiting-on-carrier"
                 >
                   <h2 className="bench-rail__section-label">
-                    <span>{benchWorkCopy.tabs.waitingOnCarrier}</span>
+                    <span>{copy.tabs.waitingOnCarrier}</span>
                     <span className="mono">{visibleUnlabelled.length}</span>
                   </h2>
                   <ul className="bench-rail__list">
@@ -523,7 +525,7 @@ export function BenchWorkList({
               )}
               {noBenchSectionMatches ? (
                 <p className="bench-work-list__no-matches" data-testid="bench-search-no-matches">
-                  {benchWorkCopy.tabs.noSectionMatches}
+                  {copy.tabs.noSectionMatches}
                 </p>
               ) : null}
             </>
@@ -533,14 +535,14 @@ export function BenchWorkList({
             visibleDoNotPack.length === 0 ? (
               noHoldSectionMatches ? (
                 <p className="bench-work-list__no-matches" data-testid="bench-search-no-matches">
-                  {benchWorkCopy.tabs.noSectionMatches}
+                  {copy.tabs.noSectionMatches}
                 </p>
               ) : (
-                <p className="bench-work-list__no-matches">{benchWorkCopy.tabs.noPacksYet}</p>
+                <p className="bench-work-list__no-matches">{copy.tabs.noPacksYet}</p>
               )
             ) : (
               renderSection(
-                benchWorkCopy.tabs.onHoldHeading,
+                copy.tabs.onHoldHeading,
                 visibleDoNotPack,
                 'bench-section-do-not-pack',
                 'bench-rail__section-label--hold'
@@ -551,14 +553,14 @@ export function BenchWorkList({
           {activeTab === 'done' ? (
             <section className="bench-rail__section" data-testid="bench-section-packed-today">
               <h2 className="bench-rail__section-label">
-                <span>{benchWorkCopy.tabs.done}</span>
+                <span>{copy.tabs.done}</span>
                 <span className="mono">{bothCounts.done}</span>
               </h2>
               {visiblePackedToday.length === 0 ? (
                 <p className="bench-work-list__no-matches" data-testid="bench-search-no-matches">
                   {noDoneSectionMatches
-                    ? benchWorkCopy.tabs.noSectionMatches
-                    : benchWorkCopy.tabs.noPacksYet}
+                    ? copy.tabs.noSectionMatches
+                    : copy.tabs.noPacksYet}
                 </p>
               ) : (
                 <>
@@ -567,7 +569,7 @@ export function BenchWorkList({
                       <BenchPackedTodayRow key={row.workId} row={row} />
                     ))}
                   </ul>
-                  <p className="bench-work-list__done-note">{benchWorkCopy.tabs.doneNote}</p>
+                  <p className="bench-work-list__done-note">{copy.tabs.doneNote}</p>
                 </>
               )}
             </section>
@@ -578,7 +580,7 @@ export function BenchWorkList({
       {/* Said rather than left to be discovered: the read is capped, and a
           truncated list must not look like the whole of the work. */}
       {(query.data?.total ?? 0) > works.length ? (
-        <p className="bench-work-list__truncated">{benchWorkCopy.truncated.note}</p>
+        <p className="bench-work-list__truncated">{copy.truncated.note}</p>
       ) : null}
 
       <footer className="bench-work-list__footer">
@@ -595,10 +597,10 @@ export function BenchWorkList({
             what is on the shelf. `bench-work.copy.test.ts` asserts that second
             line exists, so it is a guard rather than a preference. */}
         <span>
-          {query.data?.executorName ?? benchWorkCopy.header.fallbackTitle} ·{' '}
-          {benchWorkCopy.header.orderingNote}
+          {query.data?.executorName ?? copy.header.fallbackTitle} ·{' '}
+          {copy.header.orderingNote}
         </span>
-        <span>{benchWorkCopy.footer.honesty}</span>
+        <span>{copy.footer.honesty}</span>
       </footer>
     </div>
   );

@@ -12,7 +12,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../../../test/test-utils';
 import type { Connection } from '../../connections';
-import { PARCEL_COPY } from '../../mappings';
+import mappingsEn from '../../../locales/en/mappings.json';
+
+const PARCEL_COPY = mappingsEn.parcelProfile;
 import type * as MappingsModule from '../../mappings';
 import { StepShipping, type StepShippingProps } from '../components/step-shipping';
 import { shippingStepCopyIn } from '../hooks/use-shipping-setup-copy';

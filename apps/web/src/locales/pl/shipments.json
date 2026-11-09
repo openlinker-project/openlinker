@@ -1,0 +1,238 @@
+{
+  "cancelShipment": {
+    "alsoOutstanding": "Ta przesyłka była już oznaczona jako nadana, więc kanał sprzedaży otrzymał informację, że paczka jest w drodze. OpenLinker nie może tego cofnąć - po anulowaniu powiadom kanał samodzielnie.",
+    "effect": "Etykieta zostanie unieważniona u przewoźnika {carrier}. Tej operacji nie można cofnąć - aby ponownie wysłać to zamówienie, trzeba wygenerować nową etykietę."
+  },
+  "labelDownloadError": {
+    "credentialsRejected": {
+      "description": "To problem z połączeniem, którego ponowienie nie rozwiąże. Poproś administratora o ponowne połączenie tego przewoźnika.",
+      "title": "Zapisane dane dostępowe przewoźnika zostały odrzucone"
+    },
+    "network": {
+      "description": "Sprawdź połączenie i spróbuj ponownie.",
+      "title": "Nie udało się połączyć z OpenLinker"
+    },
+    "noLabelYet": {
+      "description": "Dla tej przesyłki nie wygenerowano jeszcze etykiety. Najpierw ją wygeneruj.",
+      "title": "Brak etykiety do pobrania"
+    },
+    "notFound": {
+      "description": "Mogła zostać usunięta albo link jest nieaktualny. Odśwież zamówienie, aby zobaczyć jego bieżącą przesyłkę.",
+      "title": "Żadna przesyłka nie ma tego ID"
+    },
+    "notSupported": {
+      "description": "Etykieta jest dostępna bezpośrednio u przewoźnika - ponawianie tutaj nigdy nie da pliku.",
+      "title": "Ten przewoźnik nie udostępnia etykiety do pobrania"
+    },
+    "providerRejected": {
+      "messageWithRef": "{message} (nr ref.: {code})",
+      "title": "Przewoźnik odrzucił żądanie"
+    },
+    "unknown": {
+      "description": "Spróbuj ponownie za chwilę. Jeśli problem się powtarza, skontaktuj się z pomocą techniczną, podając ID zamówienia.",
+      "title": "Coś poszło nie tak"
+    }
+  },
+  "processor": {
+    "kinds": {
+      "carrier": "Przewoźnik",
+      "omp": "Realizuje marketplace",
+      "pending": "Oczekuje"
+    }
+  },
+  "shipmentRetryability": {
+    "labels": {
+      "auth": "Problem z uwierzytelnieniem połączenia",
+      "permanent": "Wymaga poprawki przed ponowieniem",
+      "transient": "Przejściowy - można bezpiecznie ponowić",
+      "unknown": "Przyczyna niesklasyfikowana"
+    }
+  },
+  "shipmentRowDetail": {
+    "actions": {
+      "cancel": "Anuluj",
+      "downloadLabel": "Pobierz etykietę",
+      "downloading": "Pobieranie…",
+      "generateLabel": "Wygeneruj etykietę",
+      "markDispatched": "Oznacz jako nadane",
+      "regenerateLabel": "Wygeneruj ponownie",
+      "reviewConnection": "Sprawdź ustawienia połączenia",
+      "trackParcel": "Śledź paczkę"
+    },
+    "cancelDialog": {
+      "cancelLabel": "Zostaw",
+      "cancelling": "Anulowanie…",
+      "confirm": "Anuluj przesyłkę",
+      "title": "Anulować tę przesyłkę?"
+    },
+    "carrierFallback": "przewoźnika",
+    "copiedOrderId": "Skopiowano wewnętrzne ID zamówienia {id}",
+    "copyOrderId": "Kopiuj wewnętrzne ID zamówienia {id}",
+    "fields": {
+      "carrierRejection": "Odrzucenie przez przewoźnika",
+      "failed": "Niepowodzenie",
+      "method": "Metoda",
+      "order": "Zamówienie",
+      "paczkomat": "Paczkomat",
+      "provider": "Dostawca",
+      "rejectionCode": "Kod odrzucenia",
+      "requestedAs": "Zamówiono jako",
+      "shipmentFailed": "Przesyłka nieudana",
+      "tracking": "Numer przesyłki"
+    },
+    "noActionsReadOnly": "Brak uprawnień do działań na tej przesyłce.",
+    "noActionsYet": "Dla tej przesyłki nie ma jeszcze dostępnych działań - sprawdź ponownie, gdy synchronizacja statusu przewoźnika nadrobi zaległości.",
+    "notifyDialog": {
+      "cancelLabel": "Anuluj",
+      "confirm": "Oznacz jako nadane",
+      "description": "Wysyła powiadomienie do marketplace'u źródłowego i aktualizuje stan realizacji w kanale docelowym. Używaj tylko wtedy, gdy automatyczne nadanie utknęło - zwykle dzieje się to automatycznie przez synchronizację statusu przewoźnika.",
+      "notifying": "Powiadamianie…",
+      "title": "Ręcznie oznaczyć jako nadane?"
+    },
+    "ompNoTracking": "Realizuje kanał docelowy - brak jeszcze numeru przesyłki.",
+    "postWaybill": {
+      "readOnly": "Ta paczka ma już aktywny list przewozowy, więc nie można jej tu ponownie nadać.",
+      "readOnlyWithWaybill": "Ta paczka ma już aktywny list przewozowy ({waybill}), więc nie można jej tu ponownie nadać.",
+      "writable": "Ta paczka ma już aktywny list przewozowy, więc nie można jej tu ponownie nadać - ponowne wygenerowanie oznaczałoby zakup drugiej etykiety. Najpierw unieważnij istniejący list przewozowy u przewoźnika {carrier}, a potem wygeneruj nowy.",
+      "writableWithWaybill": "Ta paczka ma już aktywny list przewozowy ({waybill}), więc nie można jej tu ponownie nadać - ponowne wygenerowanie oznaczałoby zakup drugiej etykiety. Najpierw unieważnij istniejący list przewozowy u przewoźnika {carrier}, a potem wygeneruj nowy."
+    },
+    "undeliveredFallback": "Przewoźnik zgłosił tę paczkę jako niedoręczoną lub zwróconą - sprawdź śledzenie przesyłki."
+  },
+  "shipmentSeverityLabel": {
+    "labels": {
+      "Finish": "Dokończ",
+      "Fix": "Popraw",
+      "Send": "Nadaj",
+      "View": "Zobacz"
+    },
+    "srPrefix": "Sugerowane działanie:"
+  },
+  "shipmentStatusBadge": {
+    "statuses": {
+      "cancelled": "anulowana",
+      "delivered": "dostarczona",
+      "dispatched": "nadana",
+      "draft": "szkic",
+      "failed": "nieudana",
+      "generated": "wygenerowana",
+      "in-transit": "w drodze"
+    }
+  },
+  "shipmentTriageStrip": {
+    "coarseCode": "(kod przewoźnika <code>{code}</code> - {retryability})",
+    "exactCode": "- <code>{code}</code>",
+    "exactCodeWithClass": "- <code>{code}</code> ({retryability})",
+    "headingCode": {
+      "few": "{n} nieudane przesyłki w {connection} zgłaszają ten sam kod odrzucenia",
+      "many": "{n} nieudanych przesyłek w {connection} zgłasza ten sam kod odrzucenia",
+      "one": "{n} nieudana przesyłka w {connection} zgłasza ten sam kod odrzucenia",
+      "other": "{n} nieudanej przesyłki w {connection} zgłasza ten sam kod odrzucenia"
+    },
+    "headingMessage": {
+      "few": "{n} nieudane przesyłki w {connection} zgłaszają ten sam komunikat przewoźnika",
+      "many": "{n} nieudanych przesyłek w {connection} zgłasza ten sam komunikat przewoźnika",
+      "one": "{n} nieudana przesyłka w {connection} zgłasza ten sam komunikat przewoźnika",
+      "other": "{n} nieudanej przesyłki w {connection} zgłasza ten sam komunikat przewoźnika"
+    },
+    "pageScope": ". Liczone tylko wśród przesyłek wczytanych na tej stronie. Jeśli przyczyną jest ustawienie połączenia, jedna poprawka oszczędza generowania każdej etykiety od nowa.",
+    "reviewConnection": "Sprawdź ustawienia połączenia",
+    "sampleMessage": "- <message>{message}</message>",
+    "showAllFailed": "Pokaż wszystkie nieudane w tym połączeniu",
+    "thisConnection": "tym połączeniu"
+  },
+  "shipmentsPage": {
+    "columns": {
+      "action": "Działanie",
+      "connection": "Połączenie",
+      "created": "Utworzono",
+      "customer": "Klient",
+      "method": "Metoda",
+      "order": "Zamówienie",
+      "paczkomat": "Paczkomat",
+      "processor": "Realizacja",
+      "status": "Status",
+      "tracking": "Nr przesyłki"
+    },
+    "description": "Zestawienie wszystkich przesyłek ze wszystkich zamówień - filtruj według statusu, metody, połączenia lub daty.",
+    "empty": {
+      "clearFilters": "Wyczyść filtry",
+      "filtered": "Żadna przesyłka nie pasuje do bieżących filtrów.",
+      "none": "Nie utworzono jeszcze żadnych przesyłek.",
+      "title": "Nie znaleziono przesyłek"
+    },
+    "error": {
+      "title": "Nie udało się wczytać przesyłek"
+    },
+    "eyebrow": "Operacje",
+    "filters": {
+      "allConnections": "Wszystkie połączenia",
+      "allMethods": "Wszystkie metody",
+      "allProcessors": "Każda realizacja",
+      "allStatuses": "Wszystkie statusy",
+      "anyRelayState": "Dowolny stan przekazania",
+      "anyTracking": "Dowolny numer przesyłki",
+      "byConnection": "Filtruj według połączenia",
+      "byMethod": "Filtruj według metody wysyłki",
+      "byProcessor": "Filtruj według realizacji",
+      "byRelay": "Filtruj według przekazania numeru przesyłki",
+      "byStatus": "Filtruj według statusu",
+      "byTracking": "Filtruj według numeru przesyłki",
+      "createdFrom": "Utworzono od",
+      "createdTo": "Utworzono do",
+      "relayStuck": "Numer przesyłki nie dotarł do kanału",
+      "withTracking": "Z numerem przesyłki",
+      "withoutTracking": "Bez numeru przesyłki"
+    },
+    "loading": "Wczytywanie przesyłek…",
+    "pagination": {
+      "next": "Dalej",
+      "previous": "Wstecz",
+      "showing": "Wyświetlanie {from}-{to} z {total}"
+    },
+    "tableCaption": "Przesyłki",
+    "title": "Przesyłki",
+    "toggle": {
+      "collapse": "Zwiń szczegóły przesyłki {id}",
+      "expand": "Rozwiń szczegóły przesyłki {id}"
+    },
+    "triageOverflow": {
+      "few": "+{n} kolejne grupy ze wspólnym komunikatem przewoźnika.",
+      "many": "+{n} kolejnych grup ze wspólnym komunikatem przewoźnika.",
+      "one": "+{n} kolejna grupa ze wspólnym komunikatem przewoźnika.",
+      "other": "+{n} kolejnej grupy ze wspólnym komunikatem przewoźnika."
+    }
+  },
+  "shipmentsTypes": {
+    "deliveryIntents": {
+      "address": "Dostawa pod adres",
+      "pickup_point": "Punkt odbioru"
+    },
+    "shippingMethods": {
+      "kurier": "Kurier",
+      "omp": "Realizuje marketplace",
+      "paczkomat": "Paczkomat",
+      "pickup": "Punkt odbioru"
+    },
+    "waybillRelayReasons": {
+      "adapter-unresolved": "połączenie było nieosiągalne",
+      "rejected": "kanał odrzucił aktualizację",
+      "threw": "nie udało się ustalić uczestników zamówienia"
+    }
+  },
+  "waybillRelayStuckBadge": {
+    "badge": "Nr przesyłki nie przekazany",
+    "srDescription": "- {description}",
+    "withCause": {
+      "few": "Numer przesyłki nie dotarł do kanału sprzedaży po {n} próbach - ostatni błąd: {cause}. Kupujący nie został powiadomiony.",
+      "many": "Numer przesyłki nie dotarł do kanału sprzedaży po {n} próbach - ostatni błąd: {cause}. Kupujący nie został powiadomiony.",
+      "one": "Numer przesyłki nie dotarł do kanału sprzedaży po {n} próbie - ostatni błąd: {cause}. Kupujący nie został powiadomiony.",
+      "other": "Numer przesyłki nie dotarł do kanału sprzedaży po {n} próby - ostatni błąd: {cause}. Kupujący nie został powiadomiony."
+    },
+    "withoutCause": {
+      "few": "Numer przesyłki nie dotarł do kanału sprzedaży po {n} próbach. Kupujący nie został powiadomiony.",
+      "many": "Numer przesyłki nie dotarł do kanału sprzedaży po {n} próbach. Kupujący nie został powiadomiony.",
+      "one": "Numer przesyłki nie dotarł do kanału sprzedaży po {n} próbie. Kupujący nie został powiadomiony.",
+      "other": "Numer przesyłki nie dotarł do kanału sprzedaży po {n} próby. Kupujący nie został powiadomiony."
+    }
+  }
+}

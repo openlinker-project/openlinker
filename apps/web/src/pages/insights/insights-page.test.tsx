@@ -143,7 +143,7 @@ describe('InsightsPage', () => {
     const { container } = renderWithProviders(<InsightsPage />, { apiClient });
 
     expect(
-      await within(container).findByText('WooCommerce — My WooCommerce Shop')
+      await within(container).findByText('WooCommerce - My WooCommerce Shop')
     ).toBeInTheDocument();
     // Fixed core services still render alongside the connection row.
     expect(within(container).getByText('PostgreSQL')).toBeInTheDocument();
@@ -457,7 +457,7 @@ describe('InsightsPage', () => {
 
       await screen.findByText('some › failing › job');
       const retryButton = await screen.findByRole('button', {
-        name: /Retry — some › failing › job on Main PrestaShop Store/,
+        name: /Retry - some › failing › job on Main PrestaShop Store/,
       });
       fireEvent.click(retryButton);
 
@@ -492,7 +492,7 @@ describe('InsightsPage', () => {
       renderWithProviders(<InsightsPage />, { apiClient });
 
       const retryButton = await screen.findByRole('button', {
-        name: /Retry — bulk › failing › job on Main PrestaShop Store/,
+        name: /Retry - bulk › failing › job on Main PrestaShop Store/,
       });
       fireEvent.click(retryButton);
 
@@ -522,7 +522,7 @@ describe('InsightsPage', () => {
       renderWithProviders(<InsightsPage />, { apiClient });
 
       const retryButton = await screen.findByRole('button', {
-        name: /Retry — partial › retry › job on Main PrestaShop Store/,
+        name: /Retry - partial › retry › job on Main PrestaShop Store/,
       });
       fireEvent.click(retryButton);
 
@@ -554,7 +554,7 @@ describe('InsightsPage', () => {
       renderWithProviders(<InsightsPage />, { apiClient });
 
       const retryButton = await screen.findByRole('button', {
-        name: /Retry — racy › job on Main PrestaShop Store/,
+        name: /Retry - racy › job on Main PrestaShop Store/,
       });
       fireEvent.click(retryButton);
 

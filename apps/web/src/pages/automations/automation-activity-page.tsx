@@ -27,18 +27,16 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system/hooks/use-demo-mode';
-import { NAV_DEMO_RESTRICTED_MESSAGE } from '../../shared/config/demo-mode';
+import { navDemoRestrictedMessage } from '../../shared/config/demo-mode';
 import { Button } from '../../shared/ui/button';
 import { Chip } from '../../shared/ui/chip';
 import { Alert } from '../../shared/ui/alert';
-import { AUTOMATION_FAILURE_COPY } from '../../features/automation';
 import { Select } from '../../shared/ui/select';
 import { FormField } from '../../shared/ui/form-field';
 import { Input } from '../../shared/ui/input';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
+import { interpolate, useMessages } from '../../shared/i18n';
 import {
-  AUTOMATION_ACTIVITY_COPY,
-  AUTOMATION_RUN_OUTCOME_COPY,
   AUTOMATION_RUN_OUTCOME_VALUES,
   AUTOMATION_TRIGGER_VALUES,
   AutomationActivityTable,
@@ -57,6 +55,10 @@ import {
 const PAGE_SIZE = 50;
 
 export function AutomationActivityPage(): ReactElement {
+  const messages = useMessages('automation');
+  const copy = messages.activity;
+  const failureCopy = messages.failure;
+  const pageCopy = messages.activityPage;
   const demoMode = useDemoMode();
   // The documented primitive — never an inline `role === 'admin'` compare. The
   // two run actions are writes, so they mirror the controller's admin-only
@@ -100,7 +102,7 @@ export function AutomationActivityPage(): ReactElement {
 
   const header = (
     <Link className="button button--secondary" to="/automations">
-      {AUTOMATION_ACTIVITY_COPY.backToIndex}
+      {copy.backToIndex}
     </Link>
   );
 
@@ -120,23 +122,23 @@ export function AutomationActivityPage(): ReactElement {
     if (recordingAvailable === false) {
       return (
         <Alert tone="info">
-          {feedQuery.data?.note ?? AUTOMATION_ACTIVITY_COPY.recordingUnavailableFallback}
+          {feedQuery.data?.note ?? copy.recordingUnavailableFallback}
         </Alert>
       );
     }
     if (filters.outcome === 'blocked') {
       return (
         <EmptyState
-          title={AUTOMATION_ACTIVITY_COPY.emptyBlockedTitle}
-          message={AUTOMATION_ACTIVITY_COPY.emptyBlockedMessage}
+          title={copy.emptyBlockedTitle}
+          message={copy.emptyBlockedMessage}
         />
       );
     }
     if (isFiltered) {
       return (
         <EmptyState
-          title={AUTOMATION_ACTIVITY_COPY.emptyFilteredTitle}
-          message={AUTOMATION_ACTIVITY_COPY.emptyFilteredMessage}
+          title={copy.emptyFilteredTitle}
+          message={copy.emptyFilteredMessage}
         />
       );
     }
@@ -146,11 +148,11 @@ export function AutomationActivityPage(): ReactElement {
     if (!summaryQuery.isLoading && !summaryQuery.error && !hasAnyRule) {
       return (
         <EmptyState
-          title={AUTOMATION_ACTIVITY_COPY.emptyNoRulesTitle}
-          message={AUTOMATION_ACTIVITY_COPY.emptyNoRulesMessage}
+          title={copy.emptyNoRulesTitle}
+          message={copy.emptyNoRulesMessage}
           action={
             <Link className="button button--primary" to="/automations">
-              {AUTOMATION_ACTIVITY_COPY.emptyNoRulesAction}
+              {copy.emptyNoRulesAction}
             </Link>
           }
         />
@@ -158,17 +160,17 @@ export function AutomationActivityPage(): ReactElement {
     }
     return (
       <EmptyState
-        title={AUTOMATION_ACTIVITY_COPY.emptyNoRunsTitle}
-        message={AUTOMATION_ACTIVITY_COPY.emptyNoRunsMessage}
+        title={copy.emptyNoRunsTitle}
+        message={copy.emptyNoRunsMessage}
       />
     );
   })();
 
   return (
     <PageLayout
-      eyebrow={AUTOMATION_ACTIVITY_COPY.eyebrow}
-      title={AUTOMATION_ACTIVITY_COPY.title}
-      description={AUTOMATION_ACTIVITY_COPY.description}
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
       actions={header}
     >
       {/*
@@ -191,25 +193,25 @@ export function AutomationActivityPage(): ReactElement {
           onClick={() => patch('attentionOnly', filters.attentionOnly === true ? '' : 'true')}
         >
           {filters.attentionOnly === true
-            ? AUTOMATION_FAILURE_COPY.clearAttentionFilter
-            : AUTOMATION_FAILURE_COPY.attentionFilter}
+            ? failureCopy.clearAttentionFilter
+            : failureCopy.attentionFilter}
         </Chip>
       </div>
       {filters.ruleId === undefined ? null : (
         <div className="automation-activity__active-rule">
           <Chip active tone="info" onClick={() => patch('ruleId', '')}>
-            {`${AUTOMATION_ACTIVITY_COPY.filterRule}: ${filters.ruleId} · ${AUTOMATION_ACTIVITY_COPY.clearRuleFilter}`}
+            {interpolate(pageCopy.ruleFilterChip, { ruleId: filters.ruleId })}
           </Chip>
         </div>
       )}
 
       <div className="automation-activity__filters">
-        <FormField label={AUTOMATION_ACTIVITY_COPY.filterTrigger} name="activity-trigger">
+        <FormField label={copy.filterTrigger} name="activity-trigger">
           <Select
             value={filters.trigger ?? ''}
             onChange={(event) => patch('trigger', event.target.value)}
           >
-            <option value="">{AUTOMATION_ACTIVITY_COPY.filterAll}</option>
+            <option value="">{copy.filterAll}</option>
             {AUTOMATION_TRIGGER_VALUES.map((trigger) => (
               <option key={trigger} value={trigger}>
                 {describeTrigger(trigger).label}
@@ -218,12 +220,12 @@ export function AutomationActivityPage(): ReactElement {
           </Select>
         </FormField>
 
-        <FormField label={AUTOMATION_ACTIVITY_COPY.filterOutcome} name="activity-outcome">
+        <FormField label={copy.filterOutcome} name="activity-outcome">
           <Select
             value={filters.outcome ?? ''}
             onChange={(event) => patch('outcome', event.target.value)}
           >
-            <option value="">{AUTOMATION_ACTIVITY_COPY.filterAll}</option>
+            <option value="">{copy.filterAll}</option>
             {/*
               All four, including `blocked` — a filter that silently omits one of
               four documented outcomes is its own lie. It matches nothing today,
@@ -231,7 +233,7 @@ export function AutomationActivityPage(): ReactElement {
             */}
             {AUTOMATION_RUN_OUTCOME_VALUES.map((outcome) => (
               <option key={outcome} value={outcome}>
-                {AUTOMATION_RUN_OUTCOME_COPY[outcome]}
+                {messages.runOutcomes[outcome]}
               </option>
             ))}
           </Select>
@@ -244,7 +246,7 @@ export function AutomationActivityPage(): ReactElement {
           reset the offset 30 times. Local draft state is what § Local UI State
           is for.
         */}
-        <FormField label={AUTOMATION_ACTIVITY_COPY.filterOrder} name="activity-order">
+        <FormField label={copy.filterOrder} name="activity-order">
           <Input
             value={orderDraft}
             onChange={(event) => setOrderDraft(event.target.value)}
@@ -257,7 +259,7 @@ export function AutomationActivityPage(): ReactElement {
           />
         </FormField>
 
-        <FormField label={AUTOMATION_ACTIVITY_COPY.filterFrom} name="activity-from">
+        <FormField label={copy.filterFrom} name="activity-from">
           <Input
             type="date"
             value={(filters.from ?? '').slice(0, 10)}
@@ -265,7 +267,7 @@ export function AutomationActivityPage(): ReactElement {
           />
         </FormField>
 
-        <FormField label={AUTOMATION_ACTIVITY_COPY.filterTo} name="activity-to">
+        <FormField label={copy.filterTo} name="activity-to">
           <Input
             type="date"
             value={(filters.to ?? '').slice(0, 10)}
@@ -281,16 +283,16 @@ export function AutomationActivityPage(): ReactElement {
               setSearchParams(clearAutomationActivityFilters(searchParams), { replace: true })
             }
           >
-            {AUTOMATION_ACTIVITY_COPY.clearFilters}
+            {copy.clearFilters}
           </Button>
         ) : null}
       </div>
 
       {feedQuery.isLoading ? (
-        <LoadingState title={AUTOMATION_ACTIVITY_COPY.loadingTitle} message="" />
+        <LoadingState title={copy.loadingTitle} message="" />
       ) : feedQuery.error ? (
         <ErrorState
-          title={AUTOMATION_ACTIVITY_COPY.errorTitle}
+          title={copy.errorTitle}
           message={feedQuery.error.message}
         />
       ) : (
@@ -298,7 +300,7 @@ export function AutomationActivityPage(): ReactElement {
           <AutomationActivityTable
           canWrite={write.canWrite}
           readOnlyLocked={write.demoReadOnly}
-          readOnlyMessage={NAV_DEMO_RESTRICTED_MESSAGE} runs={runs} emptyState={emptyState} />
+          readOnlyMessage={navDemoRestrictedMessage()} runs={runs} emptyState={emptyState} />
 
           {/* Next/prev only: the envelope carries `hasMore`, deliberately no `total`. */}
           <div className="automation-activity__pager">
@@ -313,7 +315,7 @@ export function AutomationActivityPage(): ReactElement {
                 )
               }
             >
-              Previous
+              {pageCopy.previous}
             </Button>
             <Button
               tone="secondary"
@@ -326,13 +328,13 @@ export function AutomationActivityPage(): ReactElement {
                 )
               }
             >
-              Next
+              {pageCopy.next}
             </Button>
           </div>
         </>
       )}
 
-      <p className="muted-text">{AUTOMATION_ACTIVITY_COPY.retentionFooter}</p>
+      <p className="muted-text">{copy.retentionFooter}</p>
     </PageLayout>
   );
 }

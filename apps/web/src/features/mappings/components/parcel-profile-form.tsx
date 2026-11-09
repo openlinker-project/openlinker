@@ -20,7 +20,7 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { PARCEL_TEMPLATE_OPTIONS, type ParcelProfileDraft } from '../lib/parcel-profile';
-import { PARCEL_COPY } from '../lib/parcel-profile.copy';
+import { useMessages } from '../../../shared/i18n';
 
 // Select value for the free-text escape hatch. It never reaches the draft: the
 // draft's `template` holds the typed code, the select only tracks the mode.
@@ -46,6 +46,7 @@ export function ParcelProfileForm({
   weightDescription,
   disabled,
 }: ParcelProfileFormProps): ReactElement {
+  const copy = useMessages('mappings').parcelProfile;
   const set =
     (field: keyof ParcelProfileDraft) =>
     (value: string): void =>
@@ -73,41 +74,41 @@ export function ParcelProfileForm({
 
   return (
     <>
-      <FormField label={PARCEL_COPY.templateLabel} name={`${namePrefix}Template`}>
+      <FormField label={copy.templateLabel} name={`${namePrefix}Template`}>
         <Select
           value={customTemplate ? OTHER_TEMPLATE_OPTION : draft.template}
           disabled={disabled}
           onChange={(e) => handleTemplateSelect(e.target.value)}
         >
-          <option value="">{PARCEL_COPY.templateNone}</option>
+          <option value="">{copy.templateNone}</option>
           {PARCEL_TEMPLATE_OPTIONS.map((t) => (
             <option key={t} value={t}>
               {t}
             </option>
           ))}
-          <option value={OTHER_TEMPLATE_OPTION}>{PARCEL_COPY.templateOther}</option>
+          <option value={OTHER_TEMPLATE_OPTION}>{copy.templateOther}</option>
         </Select>
       </FormField>
 
       {customTemplate && (
-        <FormField label={PARCEL_COPY.customTemplateLabel} name={`${namePrefix}TemplateCode`}>
+        <FormField label={copy.customTemplateLabel} name={`${namePrefix}TemplateCode`}>
           <Input value={draft.template} disabled={disabled} onChange={(e) => set('template')(e.target.value)} />
         </FormField>
       )}
 
       <div className="form-field-row form-field-row--cols-3">
-        <FormField label={PARCEL_COPY.lengthLabel} name={`${namePrefix}Length`}>
+        <FormField label={copy.lengthLabel} name={`${namePrefix}Length`}>
           {numberInput('lengthCm')}
         </FormField>
-        <FormField label={PARCEL_COPY.widthLabel} name={`${namePrefix}Width`}>
+        <FormField label={copy.widthLabel} name={`${namePrefix}Width`}>
           {numberInput('widthCm')}
         </FormField>
-        <FormField label={PARCEL_COPY.heightLabel} name={`${namePrefix}Height`}>
+        <FormField label={copy.heightLabel} name={`${namePrefix}Height`}>
           {numberInput('heightCm')}
         </FormField>
       </div>
 
-      <FormField label={PARCEL_COPY.weightLabel} name={`${namePrefix}Weight`} description={weightDescription}>
+      <FormField label={copy.weightLabel} name={`${namePrefix}Weight`} description={weightDescription}>
         {numberInput('weightKg')}
       </FormField>
     </>

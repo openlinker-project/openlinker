@@ -5,13 +5,13 @@
  * the right (which moves directly above the form on the mobile breakpoint via
  * CSS `order`, so the number stays visible while typing). Creates a new series
  * or patches an existing one. Client-side Zod mirrors the core rule for instant
- * feedback; the API stays the source of truth — server 400 `errors[]` are
+ * feedback; the API stays the source of truth - server 400 `errors[]` are
  * mapped onto the pattern field via `setError`, other rejections surface in a
  * single top-level alert (no duplicate toast).
  *
  * @module plugins/ksef/components
  */
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import {
@@ -24,7 +24,8 @@ import {
   type ResetPolicy,
 } from '../../../features/invoicing';
 import { ApiError } from '../../../shared/api/api-error';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { interpolate } from '../../../shared/i18n';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
@@ -34,6 +35,7 @@ import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useMediaQuery } from '../../../shared/ui/use-media-query';
+import { useKsefMessages } from '../messages';
 import { KsefNumberingPreview } from './ksef-numbering-preview';
 import { captureDemoEvent } from '../../../features/demo';
 import {
@@ -43,9 +45,9 @@ import {
   RESET_POLICY_LABELS,
 } from './ksef-numbering.lib';
 import {
-  NUMBERING_CREATE_DEFAULTS,
   SERVER_ISSUE_FIELD,
-  numberingFormSchema,
+  createNumberingFormSchema,
+  numberingCreateDefaults,
   seriesToFormValues,
   toCreateInput,
   toUpdateInput,
@@ -83,6 +85,10 @@ export function KsefNumberingEditor({
   onDone,
   onCancel,
 }: KsefNumberingEditorProps): ReactElement {
+  const messages = useKsefMessages();
+  const copy = messages.ksefNumberingEditor;
+  const schemaCopy = messages.ksefNumberingSchema;
+  const schema = useMemo(() => createNumberingFormSchema(schemaCopy), [schemaCopy]);
   const isEdit = series !== undefined;
   const { showToast } = useToast();
   const createSeries = useCreateNumberingSeriesMutation();
@@ -103,14 +109,14 @@ export function KsefNumberingEditor({
   }, [prefersReducedMotion]);
 
   const createDefaults: NumberingFormValues = {
-    ...NUMBERING_CREATE_DEFAULTS,
+    ...numberingCreateDefaults(schemaCopy),
     ...(createPrefill?.documentType ? { documentType: createPrefill.documentType } : {}),
     ...(createPrefill?.register != null ? { register: createPrefill.register } : {}),
   };
 
   const form = useForm<NumberingFormValues>({
     defaultValues: series ? seriesToFormValues(series) : createDefaults,
-    resolver: zodResolver(numberingFormSchema),
+    resolver: zodResolver(schema),
     mode: 'onChange',
   });
 
@@ -180,23 +186,23 @@ export function KsefNumberingEditor({
       } else {
         await createSeries.mutateAsync(toCreateInput(submitted));
       }
-      showToast({ tone: 'success', title: 'Series saved', description: 'Invoice numbering is set.' });
+      showToast({ tone: 'success', title: copy.toast.title, description: copy.toast.description });
       onDone();
     } catch (error) {
       const issues = extractServerIssues(error);
       if (issues.length > 0) {
-        // Server pattern-coverage issues are identifiable — attach to the field.
+        // Server pattern-coverage issues are identifiable - attach to the field.
         const joined = issues.join(' ');
         setPatternServerError(joined);
         form.setError(SERVER_ISSUE_FIELD, { type: 'server', message: joined });
         patternInputRef.current?.focus({ preventScroll: prefersReducedMotion });
       } else {
-        setTopLevelError(error instanceof Error ? error.message : 'Could not save the series.');
+        setTopLevelError(error instanceof Error ? error.message : copy.saveError.fallback);
       }
     }
   });
 
-  const heading = isEdit ? 'Edit series' : 'Add series';
+  const heading = isEdit ? copy.headingEdit : copy.headingCreate;
 
   return (
     <div className="numbering-editor">
@@ -210,7 +216,7 @@ export function KsefNumberingEditor({
         </h3>
 
         {topLevelError ? (
-          <Alert tone="error" title="Could not save the series">
+          <Alert tone="error" title={copy.saveError.title}>
             {topLevelError}
           </Alert>
         ) : null}
@@ -219,15 +225,15 @@ export function KsefNumberingEditor({
           <FormErrorSummary errors={validationMessages} />
         ) : null}
 
-        <FormField label="Series name" name="name" error={errors.name?.message}>
-          <Input {...form.register('name')} placeholder="Sales invoices" />
+        <FormField label={copy.fields.name.label} name="name" error={errors.name?.message}>
+          <Input {...form.register('name')} placeholder={copy.fields.name.placeholder} />
         </FormField>
 
         <div className="numbering-editor__row">
           <FormField
-            label="Document type"
+            label={copy.fields.documentType.label}
             name="documentType"
-            description="Which document this series numbers."
+            description={copy.fields.documentType.description}
             error={errors.documentType?.message}
           >
             <Select {...form.register('documentType')}>
@@ -240,26 +246,25 @@ export function KsefNumberingEditor({
           </FormField>
 
           <FormField
-            label="Register / entity"
+            label={copy.fields.register.label}
             name="register"
-            description="Optional scope; leave blank for the default."
+            description={copy.fields.register.description}
             error={errors.register?.message}
           >
-            <Input {...form.register('register')} placeholder="e.g. warehouse-2" />
+            <Input {...form.register('register')} placeholder={copy.fields.register.placeholder} />
           </FormField>
         </div>
 
         {documentTypeChanged ? (
-          <Alert tone="warning" title="Changing the document type">
-            This series may already be routed to a document type. Changing it can leave that route
-            pointing at a series that no longer matches. Recheck document routing after saving.
+          <Alert tone="warning" title={copy.alerts.documentTypeChanged.title}>
+            {copy.alerts.documentTypeChanged.body}
           </Alert>
         ) : null}
 
         <FormField
-          label="Pattern"
+          label={copy.fields.pattern.label}
           name="pattern"
-          description="{seq} is required; everything else is literal text. The series is shared, so a change applies to every connection routed to it."
+          description={interpolate(copy.fields.pattern.description, { token: '{seq}' })}
           error={errors.pattern?.message ?? patternServerError ?? undefined}
         >
           <Input
@@ -279,7 +284,7 @@ export function KsefNumberingEditor({
               key={variable}
               type="button"
               className="numbering-chip"
-              aria-label={`Insert ${variable}`}
+              aria-label={interpolate(copy.insertVariable, { variable })}
               onClick={() => insertVariable(variable)}
             >
               <span className="mono-text">{variable}</span>
@@ -288,13 +293,12 @@ export function KsefNumberingEditor({
         </div>
 
         {patternChangedWithIssued ? (
-          <Alert tone="warning" title="Changing an in-use pattern">
-            This series has already issued numbers. A new pattern changes the format only for
-            numbers going forward, on every connection routed to this series.
+          <Alert tone="warning" title={copy.alerts.patternChanged.title}>
+            {copy.alerts.patternChanged.body}
           </Alert>
         ) : null}
 
-        <FormField label="Reset counter" name="resetPolicy" error={errors.resetPolicy?.message}>
+        <FormField label={copy.fields.resetPolicy.label} name="resetPolicy" error={errors.resetPolicy?.message}>
           <Select {...form.register('resetPolicy')}>
             {ResetPolicyValues.map((policy: ResetPolicy) => (
               <option key={policy} value={policy}>
@@ -306,9 +310,9 @@ export function KsefNumberingEditor({
 
         {usesFiscalYear ? (
           <FormField
-            label="Fiscal year starts in"
+            label={copy.fields.fiscalYearStart.label}
             name="fiscalYearStartMonth"
-            description="Governs the {FY} variable. A fiscal year is labelled by the calendar year it starts in; leave at January for {FY} = calendar year."
+            description={interpolate(copy.fields.fiscalYearStart.description, { token: '{FY}' })}
             error={errors.fiscalYearStartMonth?.message}
           >
             <Select {...form.register('fiscalYearStartMonth')}>
@@ -323,18 +327,18 @@ export function KsefNumberingEditor({
 
         <div className="numbering-editor__row">
           <FormField
-            label="Padding"
+            label={copy.fields.padding.label}
             name="seqPadding"
-            description="Leading zeros on {seq}."
+            description={interpolate(copy.fields.padding.description, { token: '{seq}' })}
             error={errors.seqPadding?.message}
           >
             <Input {...form.register('seqPadding')} type="number" min={0} max={20} inputMode="numeric" />
           </FormField>
 
           <FormField
-            label="Next number"
+            label={copy.fields.nextSeq.label}
             name="nextSeq"
-            description="Where the series continues from. Issued numbers are permanent and gap-sensitive, and the series is shared across every routed connection."
+            description={copy.fields.nextSeq.description}
             error={errors.nextSeq?.message}
           >
             <Input {...form.register('nextSeq')} type="number" min={1} inputMode="numeric" />
@@ -342,25 +346,24 @@ export function KsefNumberingEditor({
         </div>
 
         {loweringNextNumber ? (
-          <Alert tone="warning" title="Lowering the next number">
-            Lowering the next number can reproduce a number you have already issued. Only do this when
-            migrating from another system.
+          <Alert tone="warning" title={copy.alerts.lowering.title}>
+            {copy.alerts.lowering.body}
           </Alert>
         ) : null}
 
         <div className="numbering-editor__actions">
           <Button type="button" tone="secondary" onClick={onCancel} disabled={isPending}>
-            Cancel
+            {copy.cancel}
           </Button>
           <ReadOnlyLock
             active={readOnly}
-            message={DEMO_READ_ONLY_ACTION_MESSAGE}
+            message={demoReadOnlyActionMessage()}
             onLockedClick={() =>
               captureDemoEvent('demo_ksef_series_save_attempted', { mode: isEdit ? 'edit' : 'create' })
             }
           >
             <Button type="submit" tone="primary" disabled={isPending || readOnly}>
-              {isPending ? 'Saving…' : 'Save series'}
+              {isPending ? copy.saving : copy.save}
             </Button>
           </ReadOnlyLock>
         </div>

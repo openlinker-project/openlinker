@@ -24,7 +24,7 @@
 import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
@@ -187,7 +187,7 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
                 className="button--sm"
                 data-testid="btn-shipping-stop"
                 disabled={!props.canWrite || shipping.busy}
-                title={props.demoReadOnly ? DEMO_READ_ONLY_ACTION_MESSAGE : undefined}
+                title={props.demoReadOnly ? demoReadOnlyActionMessage() : undefined}
                 onClick={() => setStopLabelsOpen(true)}
               >
                 {shippingCopy.stop}
@@ -242,7 +242,7 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
     }
   }
 
-  const disabledTitle = props.demoReadOnly ? DEMO_READ_ONLY_ACTION_MESSAGE : undefined;
+  const disabledTitle = props.demoReadOnly ? demoReadOnlyActionMessage() : undefined;
 
   return (
     <div className="oms-onboarding__stack">

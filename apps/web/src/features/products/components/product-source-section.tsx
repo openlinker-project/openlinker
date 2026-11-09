@@ -15,6 +15,7 @@ import { StatusBadge } from '../../../shared/ui/status-badge';
 import { usePlatforms } from '../../../shared/plugins';
 import { resolvePlatformLabel } from '../../mappings';
 import type { Connection } from '../../connections';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import type { ExternalIdMapping } from '../api/products.types';
 
 interface ProductSourceSectionProps {
@@ -27,9 +28,10 @@ export function ProductSourceSection({
   connections,
 }: ProductSourceSectionProps): ReactElement {
   const platforms = usePlatforms();
+  const copy = useMessages('products').productSourceSection;
 
   if (mappings.length === 0) {
-    return <span className="text-muted">No source mapping</span>;
+    return <span className="text-muted">{copy.empty}</span>;
   }
 
   const [primary, ...rest] = mappings;
@@ -41,7 +43,7 @@ export function ProductSourceSection({
       <Link
         className="product-source__primary"
         to={`/connections/${primary.connectionId}`}
-        title={`Open the master connection for ${platformLabel}`}
+        title={interpolate(copy.openMasterConnection, { platform: platformLabel })}
       >
         <span className="channel-pill" data-channel={primary.platformType}>
           {platformLabel}
@@ -53,20 +55,23 @@ export function ProductSourceSection({
           </span>
         </span>
         <StatusBadge className="product-source__tag" tone="neutral" compact>
-          Master
+          {copy.masterTag}
         </StatusBadge>
       </Link>
 
       {rest.length > 0 ? (
         <div className="product-source__more">
-          <span className="product-source__more-label">Also mapped on</span>
+          <span className="product-source__more-label">{copy.alsoMappedOn}</span>
           <div className="id-chip-row">
             {rest.map((mapping) => (
               <Link
                 key={`${mapping.platformType}-${mapping.connectionId}-${mapping.externalId}`}
                 className="id-chip id-chip--link"
                 to={`/connections/${mapping.connectionId}`}
-                title={`Open connection for ${mapping.platformType} ${mapping.externalId}`}
+                title={interpolate(copy.openConnection, {
+                  platform: mapping.platformType,
+                  externalId: mapping.externalId,
+                })}
               >
                 <span className="id-chip__platform">{mapping.platformType}</span>
                 <span>{mapping.externalId}</span>

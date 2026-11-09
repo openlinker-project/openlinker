@@ -1,0 +1,795 @@
+{
+  "common": {
+    "authTypes": {
+      "ksef-token": "KSeF authorization token",
+      "qualified-seal": "Qualified electronic seal"
+    },
+    "environments": {
+      "demo": "Demo (pre-production)",
+      "prod": "Production (live clearance)",
+      "test": "Test (sandbox)"
+    },
+    "fields": {
+      "addressLine1": {
+        "description": "Street and building number. Required to issue.",
+        "label": "Address line 1",
+        "placeholder": "ul. Przykładowa 1"
+      },
+      "addressLine2": {
+        "description": "Apartment, suite, or unit. Optional.",
+        "label": "Address line 2"
+      },
+      "city": {
+        "description": "Required to issue.",
+        "label": "City",
+        "placeholder": "Warszawa"
+      },
+      "contextIdentifier": {
+        "label": "Context identifier"
+      },
+      "country": {
+        "description": "ISO 3166-1 alpha-2 code. Defaults to PL.",
+        "label": "Country",
+        "placeholder": "PL"
+      },
+      "environment": {
+        "label": "Environment"
+      },
+      "lineUnit": {
+        "label": "Default line unit",
+        "placeholder": "szt."
+      },
+      "optional": "(optional)",
+      "postalCode": {
+        "description": "Required to issue.",
+        "label": "Postal code",
+        "placeholder": "00-001"
+      },
+      "sellerName": {
+        "description": "Registered company name (Podmiot1) printed on the invoice. Required to issue.",
+        "label": "Seller legal name",
+        "placeholder": "ACME Sp. z o.o."
+      },
+      "sellerNip": {
+        "description": "10-digit Polish tax identifier of the issuing seller. Required to issue invoices.",
+        "label": "Seller NIP",
+        "placeholder": "1234567890"
+      }
+    },
+    "formaPlatnosci": {
+      "1": "Gotówka (cash)",
+      "2": "Karta (card)",
+      "3": "Bon (voucher)",
+      "4": "Czek (cheque)",
+      "5": "Kredyt (credit)",
+      "6": "Przelew (bank transfer)",
+      "7": "Mobilna (mobile payment)"
+    }
+  },
+  "ksefConnectionConfig": {
+    "bankAccountLength": "Bank account number must be 10-34 characters (per the FA(3) NrRB format).",
+    "countryIso2": "Country must be a 2-letter ISO code (e.g. PL).",
+    "exemptionKindRequired": "Choose what the grounds cite.",
+    "exemptionTextRequired": "Enter the legal grounds the exemption cites.",
+    "nipChecksum": "Seller NIP has an invalid checksum.",
+    "nipDigits": "Seller NIP must be 10 digits.",
+    "paymentTermMax": "Payment term must be at most 999 days.",
+    "paymentTermWhole": "Payment term must be a non-negative whole number of days.",
+    "postalCode": "Postal code must use the PL format NN-NNN.",
+    "skontoAmountRequired": "Discount amount is required when discount conditions are set.",
+    "skontoConditionsRequired": "Discount conditions are required when a discount amount is set."
+  },
+  "ksefCredentialsPanel": {
+    "cancel": "Cancel",
+    "description": "Stored securely on the server. Rotate to replace the KSeF token / seal reference without restarting the API.",
+    "envBacked": "Environment variable (not editable via UI)",
+    "label": "Authentication secret",
+    "newSecretPlaceholder": "New authentication secret",
+    "rotate": "Rotate authentication secret",
+    "rotating": "Rotating...",
+    "save": "Save new secret",
+    "toast": {
+      "description": "The new KSeF authentication secret is now in use.",
+      "title": "Credentials rotated"
+    }
+  },
+  "ksefFa3View": {
+    "additionalParties": "Other parties",
+    "annotationWithDetail": "{label}: {detail}",
+    "annotations": {
+      "cash-accounting": "Cash accounting (metoda kasowa)",
+      "exemption": "VAT exemption",
+      "margin": "Margin scheme (procedura marży)",
+      "reverse-charge": "Reverse charge (odwrotne obciążenie)",
+      "self-billing": "Self-billing (samofakturowanie)",
+      "split-payment": "Split payment (mechanizm podzielonej płatności)",
+      "triangulation": "Triangular transaction (procedura uproszczona)"
+    },
+    "annotationsTitle": "Annotations",
+    "buyer": "Buyer",
+    "correctedInvoice": "Corrects invoice",
+    "correctedKsefNumber": "KSeF number of corrected invoice",
+    "correctionReason": "Correction reason",
+    "currency": "Currency",
+    "emptyCell": "-",
+    "exchangeRate": "Exchange rate (NBP)",
+    "grandTotal": "Total due",
+    "issueDate": "Issue date",
+    "ksefNumber": "KSeF number",
+    "lineDesc": "Description",
+    "lineGrossTotal": "Gross total",
+    "lineGtu": "GTU",
+    "lineNetPrice": "Net unit price",
+    "lineNetTotal": "Net total",
+    "lineNo": "#",
+    "lineProcedure": "Procedure",
+    "lineQty": "Qty",
+    "lineUnit": "Unit",
+    "lineVat": "VAT rate",
+    "lines": "Invoice lines",
+    "linesBefore": "Lines before correction",
+    "marginTotal": "Sale under the margin scheme",
+    "nipLine": "NIP: <mono>{nip}</mono>",
+    "partyNip": "(NIP {nip})",
+    "partyRole": "· role {role}",
+    "payment": "Payment",
+    "paymentAccount": "Bank account",
+    "paymentForm": "Payment form",
+    "paymentForms": {
+      "1": "Cash",
+      "2": "Card",
+      "3": "Voucher",
+      "4": "Cheque",
+      "5": "Credit",
+      "6": "Transfer",
+      "7": "Mobile"
+    },
+    "paymentSkonto": "Early-payment discount (skonto)",
+    "paymentTerm": "Payment term",
+    "saleDate": "Sale date",
+    "seller": "Seller",
+    "skontoValue": "{amount} - {conditions}",
+    "totalWithCurrency": "{amount} {currency}",
+    "typeCorrection": "Correction invoice",
+    "typeStandard": "Standard invoice",
+    "vatGross": "Gross",
+    "vatNet": "Net",
+    "vatRate": "Rate",
+    "vatSummary": "VAT summary",
+    "vatTax": "Tax",
+    "vatTaxPln": "Tax (PLN)",
+    "verificationHint": "Scan to verify this invoice against the KSeF system.",
+    "verificationLabel": "Verification code",
+    "verificationQrAlt": "KSeF invoice verification QR code"
+  },
+  "ksefInvoiceCorrectionFlow": {
+    "addLine": "+ Add line",
+    "cancel": "Cancel",
+    "col": {
+      "lp": "Lp",
+      "newPrice": "New gross",
+      "newQty": "New qty",
+      "remove": "Remove"
+    },
+    "correcting": "Correcting <strong>{reference}</strong>",
+    "emptyCell": "-",
+    "failed": "KOR failed",
+    "gridLinesRequired": "Change at least one line’s quantity or price before issuing a correction.",
+    "issued": "KOR issued",
+    "issuedBody": "The correcting document was submitted to KSeF.",
+    "issuedOn": "Issued <strong>{date}</strong>",
+    "ksefRef": "KSeF <strong>{reference}</strong>",
+    "lineDeltaRequired": "Each line must specify a new quantity and/or a new price.",
+    "lineNum": "Line number {n}",
+    "linesRequired": "At least one line with a line number is required.",
+    "loadingLines": "Loading invoice lines…",
+    "newPrice": "New gross, line {n}",
+    "newQty": "New qty, line {n}",
+    "note": "A KOR document corrects quantity and/or price per line. KSeF assigns a clearance number; OpenLinker reconciles the status automatically.",
+    "providerTag": "Sent directly to KSeF",
+    "removeLine": "Remove line {n}",
+    "submit": "Issue KOR",
+    "submitting": "Issuing…",
+    "title": "Issue KOR correction"
+  },
+  "ksefInvoiceDetailSection": {
+    "art108gHint": "Art. 108g: include this KSeF number in the bank-transfer title when paying this invoice.",
+    "clearanceStatus": "Clearance status",
+    "close": "Close",
+    "documentNumber": "Invoice number",
+    "documentNumberHint": "Assigned by OpenLinker at issue",
+    "emptyCell": "-",
+    "fa3DownloadXml": "Download XML",
+    "fa3Downloading": "Downloading…",
+    "fa3Hint": "Human-readable + source XML",
+    "fa3Label": "FA(3) document",
+    "fa3Preview": "FA(3) preview",
+    "fa3PreviewPlaceholder": "Click 'View' to load the invoice.",
+    "fa3View": "View",
+    "fa3ViewError": "Preview failed. Click 'View' to retry.",
+    "fa3ViewFailed": "FA(3) preview failed",
+    "fa3ViewFailedDesc": "Could not fetch the document.",
+    "fa3XmlFailed": "FA(3) XML download failed",
+    "fa3XmlFailedDesc": "Could not fetch the source document.",
+    "loading": "Loading…",
+    "number": "KSeF number",
+    "numberHint": "Assigned by KSeF on clearance",
+    "numberPending": "Pending",
+    "rejectionDetail": "Rejection detail",
+    "rejectionDetailHint": "Reported by KSeF",
+    "sectionTitle": "KSeF · National e-Invoicing System",
+    "upoDialogDesc": "Official confirmation (UPO) for this KSeF invoice.",
+    "upoDialogTitle": "UPO confirmation",
+    "upoDownload": "Download UPO",
+    "upoDownloadFailed": "UPO download failed",
+    "upoDownloadFailedDesc": "Could not fetch the confirmation document.",
+    "upoDownloading": "Downloading…",
+    "upoFrameTitle": "UPO confirmation preview",
+    "upoHint": "Proof of clearance",
+    "upoHintPending": "Available once cleared",
+    "upoLabel": "Official receipt (UPO)",
+    "upoPreview": "Preview",
+    "upoPreviewFailed": "UPO preview failed",
+    "upoPreviewFailedDesc": "Could not fetch the confirmation document.",
+    "upoPreviewUnsupported": "This confirmation can't be previewed inline. Use \"Download UPO\" to open it.",
+    "verificationPendingFrame": "Verification code appears once KSeF assigns the number",
+    "verificationPendingHint": "KSeF has received this invoice and has not assigned its number yet. OpenLinker checks for it automatically; the code appears here once the number is assigned.",
+    "verificationPendingLabel": "Verification code (KOD I)",
+    "verificationPendingNotSent": "This invoice has not reached KSeF yet. The code appears here once KSeF accepts it and assigns its number."
+  },
+  "ksefInvoiceIssueOptions": {
+    "addParty": "Add a party",
+    "gtu": "GTU",
+    "gtuFor": "GTU for {line}",
+    "lead": "Nothing here is set for you. Tick only what applies to this sale; your accountant knows best.",
+    "line": "Line",
+    "lineN": "Line {n}",
+    "linesCaption": "Markers per line",
+    "none": "None",
+    "partyLegend": "Another party on the invoice (Podmiot3)",
+    "partyName": "Name",
+    "partyNip": "NIP",
+    "partyRole": "Role",
+    "procedure": "Procedure",
+    "procedureFor": "Procedure for {line}",
+    "removeParty": "Remove this party",
+    "roleGv": "VAT group member (role 10)",
+    "roleJst": "Public sector unit (JST, role 8)",
+    "splitPayment": "Split payment (MPP)",
+    "splitPaymentHint": "Usually needed for goods listed in annex 15 when the invoice is over 15 000 PLN gross.",
+    "summary": "KSeF details for this invoice",
+    "triangulation": "Triangular transaction (WDT, second taxpayer)"
+  },
+  "ksefNumberingActions": {
+    "configure": "Configure…",
+    "description": "Sequential numbers OpenLinker stamps on every KSeF invoice.",
+    "notSetUp": "not set up yet",
+    "routedCount": {
+      "one": "{n} document type routed",
+      "other": "{n} document types routed"
+    },
+    "setUp": "Set up…",
+    "title": "Invoice numbering"
+  },
+  "ksefNumberingAuditTab": {
+    "columns": {
+      "actions": "Actions",
+      "explanation": "Explanation",
+      "number": "Number",
+      "seq": "Seq",
+      "status": "Status"
+    },
+    "dialog": {
+      "cancel": "Cancel",
+      "description": "Record the written explanation (oświadczenie o pominięciu numeru) for sequence <num>{seq}</num>. This is kept with the numbering audit for your tax records.",
+      "errorTitle": "Could not record",
+      "reasonLabel": "Reason",
+      "reasonPlaceholder": "e.g. Draft abandoned before submission; number never issued.",
+      "reasonRequired": "Enter a reason before recording the explanation.",
+      "record": "Record explanation",
+      "recordFallback": "Could not record the explanation.",
+      "saveAndPrint": "Save & print oświadczenie",
+      "saving": "Saving…",
+      "title": "Explain numbering gap",
+      "toast": {
+        "description": "The oświadczenie for number {seq} was saved.",
+        "title": "Explanation recorded"
+      }
+    },
+    "empty": {
+      "message": "Create a numbering series first - the audit shows its allocated-vs-issued sequence.",
+      "title": "No series to audit"
+    },
+    "explainGap": "Explain gap",
+    "loadError": "Unable to load the audit",
+    "loadingAudit": {
+      "message": "Building the sequence audit…",
+      "title": "Loading audit"
+    },
+    "loadingSeries": {
+      "message": "Fetching numbering series…",
+      "title": "Loading series"
+    },
+    "noEntries": {
+      "message": "This series has not allocated any numbers yet.",
+      "title": "No entries"
+    },
+    "noGaps": {
+      "message": "This series has no numbering gaps.",
+      "title": "No gaps"
+    },
+    "notExplained": "Not explained",
+    "onlyGaps": "Only gaps",
+    "printOswiadczenie": "Print oświadczenie",
+    "retry": "Retry",
+    "seriesOption": "{name} - {pattern}",
+    "seriesPickerLabel": "Series to audit",
+    "summary": "<num>{issued}</num> issued · <num>{gaps}</num> gaps (<num>{explained}</num> explained) · <num>{abandoned}</num> abandoned · <num>{skipped}</num> skipped · <num>{pending}</num> pending"
+  },
+  "ksefNumberingEditor": {
+    "alerts": {
+      "documentTypeChanged": {
+        "body": "This series may already be routed to a document type. Changing it can leave that route pointing at a series that no longer matches. Recheck document routing after saving.",
+        "title": "Changing the document type"
+      },
+      "lowering": {
+        "body": "Lowering the next number can reproduce a number you have already issued. Only do this when migrating from another system.",
+        "title": "Lowering the next number"
+      },
+      "patternChanged": {
+        "body": "This series has already issued numbers. A new pattern changes the format only for numbers going forward, on every connection routed to this series.",
+        "title": "Changing an in-use pattern"
+      }
+    },
+    "cancel": "Cancel",
+    "fields": {
+      "documentType": {
+        "description": "Which document this series numbers.",
+        "label": "Document type"
+      },
+      "fiscalYearStart": {
+        "description": "Governs the {token} variable. A fiscal year is labelled by the calendar year it starts in; leave at January for {token} = calendar year.",
+        "label": "Fiscal year starts in"
+      },
+      "name": {
+        "label": "Series name",
+        "placeholder": "Sales invoices"
+      },
+      "nextSeq": {
+        "description": "Where the series continues from. Issued numbers are permanent and gap-sensitive, and the series is shared across every routed connection.",
+        "label": "Next number"
+      },
+      "padding": {
+        "description": "Leading zeros on {token}.",
+        "label": "Padding"
+      },
+      "pattern": {
+        "description": "{token} is required; everything else is literal text. The series is shared, so a change applies to every connection routed to it.",
+        "label": "Pattern"
+      },
+      "register": {
+        "description": "Optional scope; leave blank for the default.",
+        "label": "Register / entity",
+        "placeholder": "e.g. warehouse-2"
+      },
+      "resetPolicy": {
+        "label": "Reset counter"
+      }
+    },
+    "headingCreate": "Add series",
+    "headingEdit": "Edit series",
+    "insertVariable": "Insert {variable}",
+    "save": "Save series",
+    "saveError": {
+      "fallback": "Could not save the series.",
+      "title": "Could not save the series"
+    },
+    "saving": "Saving…",
+    "toast": {
+      "description": "Invoice numbering is set.",
+      "title": "Series saved"
+    }
+  },
+  "ksefNumberingLib": {
+    "documentTypes": {
+      "corrected": "Correction",
+      "creditNote": "Credit note",
+      "invoice": "Invoice",
+      "prepayment": "Advance",
+      "proforma": "Proforma",
+      "receipt": "Receipt"
+    },
+    "months": {
+      "april": "April",
+      "august": "August",
+      "december": "December",
+      "february": "February",
+      "january": "January",
+      "july": "July",
+      "june": "June",
+      "march": "March",
+      "may": "May",
+      "november": "November",
+      "october": "October",
+      "september": "September"
+    },
+    "resetCaptions": {
+      "daily": "resets daily",
+      "monthly": "resets monthly",
+      "none": "never resets",
+      "quarterly": "resets quarterly",
+      "yearly": "resets yearly"
+    },
+    "resetPolicies": {
+      "daily": "Daily",
+      "monthly": "Monthly",
+      "none": "Never",
+      "quarterly": "Quarterly",
+      "yearly": "Yearly"
+    },
+    "routedDocumentTypes": {
+      "corrected": {
+        "hint": "Correcting invoices - kept on their own series so a correction never reuses the original number.",
+        "label": "Correction"
+      },
+      "invoice": {
+        "hint": "Regular sales invoices (FA VAT).",
+        "label": "Standard invoice"
+      },
+      "prepayment": {
+        "hint": "Advance / prepayment invoices (FA ZAL).",
+        "label": "Advance"
+      },
+      "proforma": {
+        "hint": "Proforma documents (no legal numbering requirement).",
+        "label": "Proforma"
+      }
+    },
+    "seqStatuses": {
+      "abandoned": "Abandoned",
+      "issued": "Issued",
+      "pending": "Pending",
+      "skipped": "Skipped"
+    },
+    "variables": {
+      "dd": "Day 01-31",
+      "fy": "Fiscal year",
+      "mm": "Month 01-12",
+      "qq": "Quarter 1-4",
+      "seq": "Sequence number",
+      "yy": "2-digit year",
+      "yyyy": "4-digit year"
+    }
+  },
+  "ksefNumberingPage": {
+    "back": "Actions",
+    "backWithConnection": "Actions · {connection}",
+    "description": "Numbering series are shared across every connection; this page controls which series each document type on this connection is routed to.",
+    "eyebrow": "Invoicing",
+    "tabs": {
+      "audit": "Number audit",
+      "series": "Series"
+    },
+    "tabsLabel": "Invoice numbering sections",
+    "title": "Invoice numbering"
+  },
+  "ksefNumberingPreview": {
+    "announce": {
+      "invalid": "Pattern is not valid yet",
+      "valid": "Renders as {number}",
+      "validOverLimit": "Renders as {number}, over the maximum length"
+    },
+    "caption": "Renders from the invoice's issue date (preview assumes today) · {timeZone} · {reset}",
+    "eyebrow": "Live preview",
+    "meter": "{length} / {max} characters",
+    "meterOverLimit": "{length} / {max} characters - too long for the KSeF invoice-number field",
+    "nextNumber": "Next invoice number",
+    "then": "Then"
+  },
+  "ksefNumberingRoutingCard": {
+    "addForm": {
+      "add": "Add route",
+      "addFallback": "Could not add the route.",
+      "adding": "Adding…",
+      "ariaLabel": "Add a routing rule",
+      "cancel": "Cancel",
+      "chooseSeries": "Choose a series…",
+      "currency": "Currency (any)",
+      "documentType": "Document type",
+      "register": "Register (any)",
+      "series": "Series",
+      "seriesRequired": "Choose a series for the new route.",
+      "source": "Source (any)"
+    },
+    "addRoute": "+ Add route",
+    "addSeriesFirst": "Add a series first",
+    "any": "any",
+    "columns": {
+      "currency": "Currency",
+      "documentType": "Document type",
+      "register": "Register",
+      "series": "Series",
+      "source": "Source"
+    },
+    "errorTitle": "Could not update routing",
+    "heading": "Numbering routing",
+    "intro": "Choose which series numbers each KSeF document type on this connection. A route can be refined by register, currency, and source; the most specific matching route wins.",
+    "notAssigned": "Not assigned",
+    "nudge": {
+      "body": "Assign a series to a document type below to start numbering.",
+      "title": "Series created"
+    },
+    "resolution": {
+      "currency": "Currency",
+      "documentType": "Document type",
+      "heading": "Resolution order",
+      "intro": "For an example document, the most specific matching route wins; unmatched axes are dropped in order (source, then currency, then register) until a route matches.",
+      "matches": "matches",
+      "matchesWinner": "matches ✓",
+      "noRoute": "no route",
+      "none": "No route matches this example - issuing would fail with \"no numbering series\". Add a default route for this document type.",
+      "register": "Register",
+      "source": "Source",
+      "stepKey": "register={register}, currency={currency}, source={source}",
+      "steps": {
+        "default": "Default",
+        "dropCurrency": "Drop currency",
+        "dropSource": "Drop source",
+        "exact": "Exact"
+      }
+    },
+    "scopeRegister": "register {register}",
+    "seriesFor": {
+      "plain": "Series for {document}",
+      "scoped": "Series for {document} ({scope})"
+    },
+    "seriesOption": "{name} - {pattern}",
+    "toasts": {
+      "added": {
+        "description": "The routing rule is saved.",
+        "title": "Route added"
+      },
+      "removed": {
+        "plain": "{document} is no longer routed.",
+        "scoped": "{document} ({scope}) is no longer routed.",
+        "title": "Route removed"
+      },
+      "saved": {
+        "plain": "{document} now uses the selected series.",
+        "scoped": "{document} ({scope}) now uses the selected series.",
+        "title": "Route saved"
+      }
+    },
+    "updateFallback": "Could not update the route."
+  },
+  "ksefNumberingSchema": {
+    "defaults": {
+      "name": "Sales invoices"
+    },
+    "errors": {
+      "fiscalYearStart": "Fiscal year start must be a month between 1 and 12.",
+      "nameRequired": "Give the series a name.",
+      "nextSeq": "Next number must be a whole number of at least 1.",
+      "padding": "Padding must be a whole number between 0 and {max}."
+    }
+  },
+  "ksefNumberingSeriesTab": {
+    "addSeries": "Add series",
+    "columns": {
+      "actions": "Actions",
+      "documentType": "Document type",
+      "name": "Name",
+      "next": "Next",
+      "pattern": "Pattern",
+      "register": "Register",
+      "reset": "Reset"
+    },
+    "edit": "Edit",
+    "empty": {
+      "message": "Create a series before issuing invoices - KSeF needs a unique, sequential number for every document.",
+      "title": "No numbering series yet"
+    },
+    "heading": "Series",
+    "loadError": "Unable to load numbering series",
+    "loading": {
+      "message": "Fetching this connection's numbering setup…",
+      "title": "Loading series"
+    },
+    "noSeriesInRegister": "No series in this register.",
+    "registerFilter": {
+      "all": "All registers",
+      "default": "Default (no register)",
+      "label": "Filter by register"
+    },
+    "retry": "Retry",
+    "subtitle": "Shared across every connection; routing below is per-connection."
+  },
+  "ksefRegulatoryStatusLabels": {
+    "accepted": "KSeF: accepted",
+    "cleared": "KSeF: clearing",
+    "pending-submission": "KSeF: awaiting submission",
+    "rejected": "KSeF: rejected",
+    "submitted": "KSeF: submitted"
+  },
+  "ksefSetupForm": {
+    "authType": {
+      "description": "How OpenLinker authenticates the KSeF session.",
+      "label": "Authentication type"
+    },
+    "back": "Connections",
+    "beforeYouStart": {
+      "body": "Generate a KSeF authorization token (or register a qualified electronic seal) for your seller context in the chosen KSeF environment. The secret is stored securely on the server and shown only once below.",
+      "title": "Before you start"
+    },
+    "connect": "Connect KSeF",
+    "connecting": "Connecting…",
+    "contextIdentifier": {
+      "description": "Optional KSeF subject/context identifier for display and future scoping. Does not affect authentication - sessions always authenticate in the seller NIP context."
+    },
+    "createError": "Unable to create connection",
+    "created": {
+      "description": "KSeF connection \"{name}\" was created.",
+      "title": "Connection created"
+    },
+    "createdWithWarnings": {
+      "goToConnection": "Go to connection",
+      "title": "Connection created, with something to check"
+    },
+    "environment": {
+      "description": "KSeF target environment. Use Test/Demo for sandboxes; Production clears live invoices."
+    },
+    "lineUnit": {
+      "description": "Unit of measure stamped on issued-invoice lines. Clear it to omit the unit from documents."
+    },
+    "name": {
+      "description": "A label to identify this e-invoicing connection in OpenLinker.",
+      "label": "Connection name",
+      "placeholder": "KSeF - main seller"
+    },
+    "secret": {
+      "description": "The KSeF authorization token or qualified-seal reference. Write-only - stored securely and never shown again.",
+      "label": "Authentication secret"
+    }
+  },
+  "ksefSetupPage": {
+    "chips": {
+      "eInvoicing": "e-Invoicing",
+      "guided": "Guided setup"
+    },
+    "description": "Provide your KSeF environment, seller context, and authentication secret. OpenLinker uses them to clear invoices through the Polish national e-invoicing system.",
+    "eyebrow": "Integrations",
+    "title": "Connect KSeF"
+  },
+  "ksefSetupRoute": {
+    "crumb": "Connect KSeF"
+  },
+  "ksefSetupSchema": {
+    "countryIso2": "Country must be a 2-letter ISO code (e.g. PL)",
+    "lineUnitMax": "Default line unit must be at most 20 characters.",
+    "nameRequired": "Connection name is required",
+    "nipChecksum": "Seller NIP has an invalid checksum",
+    "nipDigits": "Seller NIP must be 10 digits",
+    "postalCode": "Postal code must use the PL format NN-NNN.",
+    "secretRequired": "Authentication secret is required"
+  },
+  "ksefStructuredSection": {
+    "bankAccount": {
+      "description": "Emitted as Platnosc/RachunekBankowy/NrRB. Optional.",
+      "label": "Bank account number",
+      "placeholder": "61 1090 1014 0000 0000 9999 9999"
+    },
+    "bankName": {
+      "description": "Emitted as Platnosc/RachunekBankowy/NazwaBanku. Optional.",
+      "label": "Bank name"
+    },
+    "contextIdentifier": {
+      "description": "Optional KSeF subject/context identifier when issuing on behalf of a sub-unit."
+    },
+    "crossBorder": {
+      "description": "OpenLinker cannot choose the WDT / export / OSS band for a foreign buyer by itself. Turn this on only if your catalogue already carries the right rate for those sales; without it such invoices are refused before sending.",
+      "label": "Allow cross-border invoices"
+    },
+    "environment": {
+      "description": "KSeF target environment. Production clears live invoices.",
+      "placeholder": "Select an environment…"
+    },
+    "exemptionKind": {
+      "description": "Used on invoices with VAT-exempt (zw) lines.",
+      "label": "Exemption grounds cite",
+      "options": {
+        "directive": "EU VAT directive (P_19B)",
+        "other": "Other legal basis (P_19C)",
+        "statute": "Polish VAT act (P_19A)"
+      }
+    },
+    "exemptionText": {
+      "description": "The provision you rely on, e.g. art. 113 ust. 1 ustawy o VAT. Up to 256 characters.",
+      "label": "Exemption grounds",
+      "missing": "No exemption grounds are set. Invoices with exempt lines will cite the generic text \"{text}\", which names no provision.",
+      "placeholder": "art. 43 ust. 1 pkt …"
+    },
+    "lineUnit": {
+      "description": "Unit of measure stamped on issued-invoice lines. Clear it to omit the unit from documents."
+    },
+    "marginKind": {
+      "default": "Used goods (default)",
+      "label": "Margin scheme kind",
+      "options": {
+        "collectors-items": "Collectors' items and antiques",
+        "travel-services": "Travel services (biura podróży)",
+        "used-goods": "Used goods (towary używane)",
+        "works-of-art": "Works of art (dzieła sztuki)"
+      }
+    },
+    "nipLooksOdd": "This NIP passes the checksum but does not look like a typical NIP. Check it; KSeF decides when the first invoice is sent.",
+    "notSet": "(not set)",
+    "paymentMethod": {
+      "description": "Emitted as Platnosc/FormaPlatnosci. Optional - omit to leave payment info off issued invoices.",
+      "label": "Default payment method"
+    },
+    "paymentTerm": {
+      "description": "Emitted as Platnosc/TerminPlatnosci/TerminOpis (days from the issue date). Optional; max 999.",
+      "label": "Default payment term (days)",
+      "placeholder": "14"
+    },
+    "skontoAmount": {
+      "description": "Emitted as Platnosc/Skonto/WysokoscSkonta. Optional; required together with the discount conditions.",
+      "label": "Early-payment discount amount",
+      "placeholder": "e.g. 2%"
+    },
+    "skontoConditions": {
+      "description": "Emitted as Platnosc/Skonto/WarunkiSkonta. Optional; required together with the discount amount.",
+      "label": "Early-payment discount conditions",
+      "placeholder": "e.g. paid within 7 days"
+    },
+    "swift": {
+      "description": "Emitted as Platnosc/RachunekBankowy/SWIFT. Optional - for foreign-currency transfers.",
+      "label": "SWIFT"
+    },
+    "taxTreatment": {
+      "cashAccounting": "Cash accounting (metoda kasowa, P_16)",
+      "intro": "These describe your business, not a single sale. Every invoice from this connection starts from them; you can change any of them when issuing one by hand. OpenLinker does not decide what applies to you.",
+      "legend": "Tax treatment",
+      "marginScheme": "Margin scheme (procedura marży)",
+      "selfBilling": "Self-billing (samofakturowanie, P_17)"
+    }
+  },
+  "oswiadczenie": {
+    "body": "Oświadczam, że numer {number} w serii numeracji „{series}\" został pominięty i nie został oraz nie zostanie przypisany do żadnej faktury.",
+    "bodyWithSeller": "Działając w imieniu {seller}, oświadczam, że numer {number} w serii numeracji „{series}\" został pominięty i nie został oraz nie zostanie przypisany do żadnej faktury.",
+    "continuity": "Pominięcie powyższego numeru nie narusza ciągłości numeracji faktur - kolejne numery w tej serii są nadawane w sposób ciągły i chronologiczny.",
+    "date": "{date} r.",
+    "dated": "dnia {date}",
+    "nip": "NIP: {nip}",
+    "placeAndDate": "{place}, {dated}",
+    "reasonLabel": "Przyczyna pominięcia:",
+    "reasonLine": "Przyczyna pominięcia: {reason}",
+    "sellerMissing": "Uzupełnij profil sprzedawcy (nazwa, adres, NIP) w ustawieniach połączenia, aby dane sprzedawcy pojawiły się w nagłówku.",
+    "seriesLine": "Seria: {name} ({pattern})",
+    "sheet": {
+      "pattern": "Wzorzec",
+      "series": "Seria",
+      "skippedNumber": "Pominięty numer"
+    },
+    "sheetLabel": "Oświadczenie",
+    "signature": "(podpis osoby upoważnionej)",
+    "skippedLine": "Pominięty numer: {number}",
+    "title": "Oświadczenie o pominięciu numeru faktury",
+    "toolbar": {
+      "close": "Zamknij",
+      "copied": {
+        "description": "Treść oświadczenia skopiowana do schowka.",
+        "title": "Skopiowano"
+      },
+      "copy": "Kopiuj tekst",
+      "copyFailed": "Nie udało się skopiować treści.",
+      "print": "Drukuj / Zapisz jako PDF"
+    }
+  },
+  "plugin": {
+    "setupCard": {
+      "badge": "e-Invoicing",
+      "description": "Connect the Polish national e-invoicing system (Krajowy System e-Faktur) to clear invoices. You will need a KSeF authorization token or a qualified electronic seal."
+    }
+  }
+}

@@ -17,7 +17,7 @@
 import { useState, type ReactElement } from 'react';
 
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useConnectionsQuery } from '../../connections';
@@ -67,7 +67,7 @@ export function ShippingRouteAction({
 
   return (
     <>
-      <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+      <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
         {appearance === 'rider' ? (
           <button
             type="button"

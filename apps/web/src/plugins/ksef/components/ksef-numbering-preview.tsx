@@ -17,6 +17,8 @@
  */
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { buildNumberingPreview, type ResetPolicy } from '../../../features/invoicing';
+import { interpolate, useFormat } from '../../../shared/i18n';
+import { useKsefMessages } from '../messages';
 import {
   FA3_P2_MAX_LENGTH,
   KSEF_TIME_ZONE,
@@ -41,6 +43,8 @@ export function KsefNumberingPreview({
   resetPolicy,
   fiscalYearStartMonth,
 }: KsefNumberingPreviewProps): ReactElement {
+  const copy = useKsefMessages().ksefNumberingPreview;
+  const format = useFormat();
   const parsedSeq = /^\d+$/.test(nextSeq.trim()) ? Number(nextSeq.trim()) : NaN;
   const parsedPadding = /^\d+$/.test(seqPadding.trim()) ? Number(seqPadding.trim()) : 0;
   const parsedFyStart = /^\d+$/.test(fiscalYearStartMonth.trim())
@@ -69,15 +73,17 @@ export function KsefNumberingPreview({
     prevRef.current = { valid: preview.valid, over: overLimit };
     setAnnouncement(
       preview.valid
-        ? `Renders as ${preview.rendered}${overLimit ? ', over the maximum length' : ''}`
-        : 'Pattern is not valid yet',
+        ? interpolate(overLimit ? copy.announce.validOverLimit : copy.announce.valid, {
+            number: preview.rendered,
+          })
+        : copy.announce.invalid,
     );
-  }, [preview.valid, preview.rendered, overLimit]);
+  }, [preview.valid, preview.rendered, overLimit, copy]);
 
   return (
     <aside className="numbering-preview">
-      <p className="numbering-preview__eyebrow">Live preview</p>
-      <p className="numbering-preview__caption-top">Next invoice number</p>
+      <p className="numbering-preview__eyebrow">{copy.eyebrow}</p>
+      <p className="numbering-preview__caption-top">{copy.nextNumber}</p>
 
       <div className="numbering-preview__live">
         {preview.valid ? (
@@ -105,8 +111,7 @@ export function KsefNumberingPreview({
       </div>
 
       <p className="numbering-preview__caption">
-        Renders from the invoice&apos;s issue date (preview assumes today) · {KSEF_TIME_ZONE} ·{' '}
-        {resetCaption(resetPolicy)}
+        {interpolate(copy.caption, { timeZone: KSEF_TIME_ZONE, reset: resetCaption(resetPolicy) })}
       </p>
 
       {preview.valid ? (
@@ -117,15 +122,17 @@ export function KsefNumberingPreview({
             <span className="numbering-preview__meter-fill" style={{ width: `${meterPct}%` }} />
           </div>
           <p className="numbering-preview__meter-caption">
-            {preview.renderedLength} / {FA3_P2_MAX_LENGTH} characters
-            {overLimit ? ' — too long for the KSeF invoice-number field' : ''}
+            {interpolate(overLimit ? copy.meterOverLimit : copy.meter, {
+              length: format.number(preview.renderedLength),
+              max: format.number(FA3_P2_MAX_LENGTH),
+            })}
           </p>
         </div>
       ) : null}
 
       {preview.valid && preview.then.length > 0 ? (
         <div className="numbering-preview__then">
-          <p className="numbering-preview__then-label">Then</p>
+          <p className="numbering-preview__then-label">{copy.then}</p>
           <ol className="numbering-preview__then-list">
             {preview.then.map((value) => (
               <li key={value} className="mono-text tabular">

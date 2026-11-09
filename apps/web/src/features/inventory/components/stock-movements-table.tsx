@@ -17,6 +17,7 @@
  */
 import type { ReactElement, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { TimeDisplay } from '../../../shared/ui/time-display';
@@ -27,7 +28,7 @@ import {
   presentMovementType,
   presentRefusalText,
   sourceKindLabel,
-} from '../lib/stock-movement-copy';
+} from '../lib/stock-movement-presentation';
 
 export interface StockMovementsTableProps {
   rows: readonly InventoryMovementRow[];
@@ -65,13 +66,15 @@ function DeltaCell({ row }: { row: InventoryMovementRow }): ReactElement {
 }
 
 function BeforeAfterCell({ row }: { row: InventoryMovementRow }): ReactElement {
+  const copy = useMessages('inventory').stockMovementsTable;
   if (row.kind === 'reservation') {
-    const promised =
-      row.status === 'held' ? `Reserved 0 → ${row.quantityDelta}` : `Reserved ${row.quantityDelta} → 0`;
+    const promised = interpolate(row.status === 'held' ? copy.reservedFromZero : copy.reservedToZero, {
+      n: row.quantityDelta,
+    });
     return (
       <>
         <div className="muted-text" style={{ fontSize: '0.8125rem' }}>
-          Stock unchanged
+          {copy.stockUnchanged}
         </div>
         <div className="mono-text tabular stock-movement__promise-line">{promised}</div>
       </>
@@ -81,7 +84,7 @@ function BeforeAfterCell({ row }: { row: InventoryMovementRow }): ReactElement {
   if (row.status === 'refused') {
     after = (
       <span className="muted-text" data-testid="stock-movement-after">
-        Not applied
+        {copy.notApplied}
       </span>
     );
   } else if (row.status === 'in_doubt' || row.quantityAfter === null) {
@@ -101,7 +104,7 @@ function BeforeAfterCell({ row }: { row: InventoryMovementRow }): ReactElement {
     <>
       <span className="mono-text tabular" data-testid="stock-movement-before">
         {row.quantityBefore ??
-          (row.status === 'applied' && row.quantityAfter !== null ? 'new' : '?')}
+          (row.status === 'applied' && row.quantityAfter !== null ? copy.new : '?')}
       </span>
       <span className="stock-movement__arrow" aria-hidden="true">
         {' '}
@@ -113,6 +116,7 @@ function BeforeAfterCell({ row }: { row: InventoryMovementRow }): ReactElement {
 }
 
 function TypeCell({ row }: { row: InventoryMovementRow }): ReactElement {
+  const copy = useMessages('inventory').stockMovementsTable;
   const type = presentMovementType(row);
   const note = row.kind === 'movement' && row.reason === 'manual_correction' ? operatorReasonText(row) : null;
   return (
@@ -126,7 +130,7 @@ function TypeCell({ row }: { row: InventoryMovementRow }): ReactElement {
           className="stock-movement__promised-badge"
           data-testid="stock-movement-promised"
         >
-          Reserved
+          {copy.reserved}
         </StatusBadge>
       ) : null}
       {note ? <div className="muted-text stock-movement__reason">{note}</div> : null}
@@ -160,6 +164,7 @@ function StatusCell({
 }
 
 function SourceCell({ row }: { row: InventoryMovementRow }): ReactElement {
+  const copy = useMessages('inventory').stockMovementsTable;
   const kind = sourceKindLabel(row.sourceKind);
   if (kind === null) return <span className="muted-text">-</span>;
   let ref: ReactNode = null;
@@ -173,7 +178,7 @@ function SourceCell({ row }: { row: InventoryMovementRow }): ReactElement {
           to={`/orders/${encodeURIComponent(row.sourceRef)}`}
           title={row.sourceLabel ? undefined : row.sourceRef}
         >
-          {row.sourceLabel ?? 'Order'}
+          {row.sourceLabel ?? copy.order}
         </Link>
       );
     } else if (row.sourceKind === 'return') {
@@ -183,7 +188,7 @@ function SourceCell({ row }: { row: InventoryMovementRow }): ReactElement {
           to={`/returns/${encodeURIComponent(row.sourceRef)}`}
           title={row.sourceLabel ? undefined : row.sourceRef}
         >
-          {row.sourceLabel ?? 'Return'}
+          {row.sourceLabel ?? copy.return}
         </Link>
       );
     } else {
@@ -192,7 +197,7 @@ function SourceCell({ row }: { row: InventoryMovementRow }): ReactElement {
   } else if (row.sourceKind === 'operator' && row.actorUserId !== null) {
     // Who changed the stock is the point of an audit trail; a deleted account
     // reads as unknown rather than as nobody.
-    ref = <span data-testid="stock-movement-actor">{row.actorName ?? 'Unknown user'}</span>;
+    ref = <span data-testid="stock-movement-actor">{row.actorName ?? copy.unknownUser}</span>;
   }
   return (
     <>
@@ -215,9 +220,10 @@ export function StockMovementsTable({
   layout,
   caption,
 }: StockMovementsTableProps): ReactElement {
+  const columnsCopy = useMessages('inventory').stockMovementsTable.columns;
   const time: DataTableColumn<InventoryMovementRow> = {
     id: 'time',
-    header: 'Time',
+    header: columnsCopy.time,
     cell: (row) => (
       <span className="mono-text tabular">
         <TimeDisplay iso={row.occurredAt} />
@@ -226,7 +232,7 @@ export function StockMovementsTable({
   };
   const sku: DataTableColumn<InventoryMovementRow> = {
     id: 'sku',
-    header: 'SKU / variant',
+    header: columnsCopy.sku,
     cell: (row) => (
       <>
         <div>{row.productName ?? '-'}</div>
@@ -238,24 +244,24 @@ export function StockMovementsTable({
   };
   const type: DataTableColumn<InventoryMovementRow> = {
     id: 'type',
-    header: 'Type',
+    header: columnsCopy.type,
     cell: (row) => <TypeCell row={row} />,
   };
   const source: DataTableColumn<InventoryMovementRow> = {
     id: 'source',
-    header: 'Source',
+    header: columnsCopy.source,
     hideBelow: layout === 'global' ? 768 : undefined,
     cell: (row) => <SourceCell row={row} />,
   };
   const master: DataTableColumn<InventoryMovementRow> = {
     id: 'master',
-    header: 'Master connection',
+    header: columnsCopy.master,
     hideBelow: 768,
     cell: (row) => connectionLabel(row.sourceConnectionId, connectionNames),
   };
   const status: DataTableColumn<InventoryMovementRow> = {
     id: 'status',
-    header: 'Status',
+    header: columnsCopy.status,
     cell: (row) => <StatusCell row={row} connectionNames={connectionNames} />,
   };
 
@@ -265,7 +271,7 @@ export function StockMovementsTable({
           time,
           type,
           { id: 'delta', header: 'Δ', cell: (row) => <DeltaCell row={row} /> },
-          { id: 'beforeAfter', header: 'Before → after', cell: (row) => <BeforeAfterCell row={row} /> },
+          { id: 'beforeAfter', header: columnsCopy.beforeAfter, cell: (row) => <BeforeAfterCell row={row} /> },
           source,
           master,
           status,
@@ -276,7 +282,7 @@ export function StockMovementsTable({
           type,
           {
             id: 'delta',
-            header: 'Δ / before → after',
+            header: columnsCopy.deltaBeforeAfter,
             cell: (row) => (
               <>
                 <DeltaCell row={row} /> <BeforeAfterCell row={row} />

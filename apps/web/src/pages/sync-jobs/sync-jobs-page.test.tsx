@@ -95,7 +95,7 @@ describe('SyncJobsPage', () => {
     renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
 
     expect(await screen.findByText(/1 \/ 3/)).toBeInTheDocument();
-    expect(screen.getAllByText('marketplace.orders.poll').length).toBeGreaterThan(1);
+    expect(screen.getAllByText('Fetch new orders').length).toBeGreaterThan(1);
   });
 
   it('renders the Diagnostics eyebrow so the header matches the sidebar group and breadcrumb', async () => {
@@ -211,7 +211,7 @@ describe('SyncJobsPage', () => {
 
     const typeFilter = await screen.findByRole('combobox', { name: /filter by job type/i });
     expect(
-      await screen.findByRole('option', { name: 'orders.export' }),
+      await screen.findByRole('option', { name: 'Export orders' }),
     ).toBeInTheDocument();
     expect(typeFilter).toHaveValue('orders.export');
     await waitFor(() => {

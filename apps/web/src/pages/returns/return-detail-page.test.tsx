@@ -8,16 +8,19 @@ import {
   renderWithProviders,
 } from '../../test/test-utils';
 import { ApiError } from '../../shared/api/api-error';
+import { getMessages } from '../../shared/i18n';
 import {
-  MATCH_RETURN_DIALOG_COPY,
-  RETURN_ACTIVITY_COPY,
-  RETURN_ORPHAN_BANNER_COPY,
   ReturnDetailUnreadableError,
   type ReturnDetail,
   type ReturnLine,
 } from '../../features/returns';
 import { ReturnDetailPage } from './return-detail-page';
 import type { Connection } from '../../features/connections/api/connections.types';
+
+const RETURNS_COPY = getMessages('returns');
+const MATCH_RETURN_DIALOG_COPY = RETURNS_COPY.matchReturnDialog;
+const RETURN_ACTIVITY_COPY = RETURNS_COPY.activity;
+const RETURN_ORPHAN_BANNER_COPY = RETURNS_COPY.detail.orphanBanner;
 
 const RETURN_ID = 'ol_return_aaaaaaaa1111';
 

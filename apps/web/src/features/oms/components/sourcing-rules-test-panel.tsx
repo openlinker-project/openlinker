@@ -34,6 +34,13 @@
 import { useEffect, useState, type ReactElement } from 'react';
 
 import { useOrdersQuery } from '../../orders';
+import {
+  interpolate,
+  useMessages,
+  usePlural,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FormField } from '../../../shared/ui/form-field';
@@ -46,7 +53,6 @@ import type {
   RoutingEvaluation,
 } from '../api/routing-dry-run.types';
 import { useRoutingDryRunMutation } from '../hooks/use-routing-dry-run-mutation';
-import { ROUTING_DRY_RUN_COPY as COPY } from '../lib/routing-dry-run.copy';
 import type { SourcingRuleLocationOption } from './sourcing-rule-dialog';
 
 export interface SourcingRulesTestPanelProps {
@@ -65,15 +71,29 @@ interface BasketLineState {
 
 const EMPTY_LINE: BasketLineState = { productVariantId: '', quantity: '1' };
 
+type DryRunCopy = ResolvedCopy<Messages['oms-core']>['routingDryRun'];
+
 function describePlacement(
   evaluation: RoutingEvaluation,
   orderLineId: string,
-  locationName: (id: string | null) => string
+  locationName: (id: string | null) => string,
+  copy: DryRunCopy
 ): string[] {
   const assigned = evaluation.candidates
     .filter((candidate) => candidate.orderLineId === orderLineId)
-    .map((candidate) => `${locationName(candidate.locationId)} × ${candidate.quantity}`);
+    .map((candidate) =>
+      interpolate(copy.placement, {
+        location: locationName(candidate.locationId),
+        quantity: candidate.quantity,
+      })
+    );
   return assigned;
+}
+
+/** A raw resolution value falls back to itself when this build has no label for it. */
+function resolutionLabel(resolution: string, copy: DryRunCopy): string {
+  const labels: Readonly<Record<string, string | undefined>> = copy.resolutions;
+  return labels[resolution] ?? resolution;
 }
 
 export function SourcingRulesTestPanel({
@@ -81,6 +101,7 @@ export function SourcingRulesTestPanel({
   locations,
   draftRules,
 }: SourcingRulesTestPanelProps): ReactElement {
+  const copy = useMessages('oms-core').routingDryRun;
   const [mode, setMode] = useState<Mode>('order');
   const [search, setSearch] = useState('');
   const [orderId, setOrderId] = useState<string | null>(null);
@@ -108,7 +129,7 @@ export function SourcingRulesTestPanel({
   const picking = mode === 'order' && trimmedSearch.length >= 2;
 
   const locationName = (id: string | null): string => {
-    if (id === null) return COPY.unplaced;
+    if (id === null) return copy.unplaced;
     return locations.find((location) => location.id === id)?.name ?? id;
   };
 
@@ -156,26 +177,26 @@ export function SourcingRulesTestPanel({
           : 'routable';
 
   return (
-    <section className="sourcing-test" data-testid="routing-test-panel" aria-label={COPY.title}>
-      <h2 className="sourcing-test__title">{COPY.title}</h2>
-      <Alert tone="info" title={COPY.banner}>
-        {COPY.bannerDetail}
+    <section className="sourcing-test" data-testid="routing-test-panel" aria-label={copy.title}>
+      <h2 className="sourcing-test__title">{copy.title}</h2>
+      <Alert tone="info" title={copy.banner}>
+        {copy.bannerDetail}
       </Alert>
 
-      <div role="group" aria-label={COPY.title} className="sourcing-test__modes">
+      <div role="group" aria-label={copy.title} className="sourcing-test__modes">
         <Button
           tone={mode === 'order' ? 'primary' : 'secondary'}
           aria-pressed={mode === 'order'}
           onClick={() => setMode('order')}
         >
-          {COPY.modeOrder}
+          {copy.modeOrder}
         </Button>
         <Button
           tone={mode === 'basket' ? 'primary' : 'secondary'}
           aria-pressed={mode === 'basket'}
           onClick={() => setMode('basket')}
         >
-          {COPY.modeBasket}
+          {copy.modeBasket}
         </Button>
       </div>
 
@@ -183,12 +204,12 @@ export function SourcingRulesTestPanel({
         <div data-testid="routing-test-order-picker">
           <FormField
             name="routing-test-order"
-            label={COPY.orderSearchLabel}
-            description={COPY.orderSearchHint}
+            label={copy.orderSearchLabel}
+            description={copy.orderSearchHint}
           >
             <Input
               value={search}
-              placeholder={COPY.orderSearchPlaceholder}
+              placeholder={copy.orderSearchPlaceholder}
               onChange={(event) => {
                 setSearch(event.target.value);
                 setOrderId(null);
@@ -196,10 +217,10 @@ export function SourcingRulesTestPanel({
             />
           </FormField>
           {picking && ordersQuery.isError ? (
-            <Alert tone="error">{COPY.orderSearchError}</Alert>
+            <Alert tone="error">{copy.orderSearchError}</Alert>
           ) : null}
           {picking && !ordersQuery.isError && ordersQuery.data?.items.length === 0 ? (
-            <p>{COPY.orderSearchEmpty}</p>
+            <p>{copy.orderSearchEmpty}</p>
           ) : null}
           <ul className="sourcing-test__orders">
             {(picking ? ordersQuery.data?.items ?? [] : []).map((order) => (
@@ -219,7 +240,7 @@ export function SourcingRulesTestPanel({
         <div data-testid="routing-test-basket">
           {lines.map((line, index) => (
             <div key={index} className="sourcing-test__basket-row">
-              <FormField name={`routing-test-sku-${index}`} label={COPY.basketSku}>
+              <FormField name={`routing-test-sku-${index}`} label={copy.basketSku}>
                 <Input
                   value={line.productVariantId}
                   onChange={(event) =>
@@ -231,7 +252,7 @@ export function SourcingRulesTestPanel({
                   }
                 />
               </FormField>
-              <FormField name={`routing-test-qty-${index}`} label={COPY.basketQuantity}>
+              <FormField name={`routing-test-qty-${index}`} label={copy.basketQuantity}>
                 <Input
                   type="number"
                   min={1}
@@ -250,25 +271,25 @@ export function SourcingRulesTestPanel({
                   tone="secondary"
                   onClick={() => setLines(lines.filter((_, i) => i !== index))}
                 >
-                  {COPY.basketRemoveLine}
+                  {copy.basketRemoveLine}
                 </Button>
               ) : null}
             </div>
           ))}
           <Button tone="secondary" onClick={() => setLines([...lines, { ...EMPTY_LINE }])}>
-            {COPY.basketAddLine}
+            {copy.basketAddLine}
           </Button>
-          <FormField name="routing-test-country" label={COPY.basketCountry}>
+          <FormField name="routing-test-country" label={copy.basketCountry}>
             <Input
               value={country}
               maxLength={2}
               onChange={(event) => setCountry(event.target.value)}
             />
           </FormField>
-          <FormField name="routing-test-postcode" label={COPY.basketPostcode}>
+          <FormField name="routing-test-postcode" label={copy.basketPostcode}>
             <Input value={postcode} onChange={(event) => setPostcode(event.target.value)} />
           </FormField>
-          <FormField name="routing-test-delivery" label={COPY.basketDelivery}>
+          <FormField name="routing-test-delivery" label={copy.basketDelivery}>
             <Input value={delivery} onChange={(event) => setDelivery(event.target.value)} />
           </FormField>
         </div>
@@ -281,29 +302,29 @@ export function SourcingRulesTestPanel({
             checked={compare}
             onChange={(event) => setCompare(event.target.checked)}
           />{' '}
-          {COPY.compareToggle}
+          {copy.compareToggle}
         </label>
       ) : null}
 
       <Button disabled={!canRun} onClick={run}>
-        {mutation.isPending ? COPY.running : COPY.runTest}
+        {mutation.isPending ? copy.running : copy.runTest}
       </Button>
 
       <div data-testid={`routing-test-state-${state}`}>
         {mutation.isError ? (
           <Alert
             tone="error"
-            title={COPY.errorTitle}
+            title={copy.errorTitle}
             action={
               <Button tone="secondary" onClick={run}>
-                {COPY.errorRetry}
+                {copy.errorRetry}
               </Button>
             }
           >
-            {COPY.errorNothingChanged}
+            {copy.errorNothingChanged}
           </Alert>
         ) : result !== undefined ? (
-          <DryRunResult result={result} locationName={locationName} />
+          <DryRunResult result={result} locationName={locationName} copy={copy} />
         ) : null}
       </div>
     </section>
@@ -313,10 +334,14 @@ export function SourcingRulesTestPanel({
 function DryRunResult({
   result,
   locationName,
+  copy,
 }: {
   result: RoutingDryRunResult;
   locationName: (id: string | null) => string;
+  copy: DryRunCopy;
 }): ReactElement {
+  const plural = usePlural();
+  const skipReasons: Readonly<Record<string, string | undefined>> = copy.skipReasons;
   const hasShortfall = result.saved.unfulfillable.length > 0;
   const split = result.input.lines.some(
     (line) => result.saved.candidates.filter((c) => c.orderLineId === line.orderLineId).length > 1
@@ -325,28 +350,28 @@ function DryRunResult({
   return (
     <div>
       {result.routingSkipReason !== null ? (
-        <Alert tone="warning" title={COPY.skippedTitle}>
-          {COPY.skipReasons[result.routingSkipReason] ?? COPY.skippedUnknown} {COPY.skippedNote}
+        <Alert tone="warning" title={copy.skippedTitle}>
+          {skipReasons[result.routingSkipReason] ?? copy.skippedUnknown} {copy.skippedNote}
         </Alert>
       ) : null}
       <StatusBadge tone={hasShortfall ? 'warning' : 'success'}>
-        {hasShortfall ? COPY.resultUnfulfillable : COPY.resultRoutable}
+        {hasShortfall ? copy.resultUnfulfillable : copy.resultRoutable}
       </StatusBadge>
-      {!hasShortfall && split ? <p>{COPY.resultRoutableSplit}</p> : null}
-      {hasShortfall ? <p>{COPY.resultUnfulfillableNote}</p> : null}
+      {!hasShortfall && split ? <p>{copy.resultRoutableSplit}</p> : null}
+      {hasShortfall ? <p>{copy.resultUnfulfillableNote}</p> : null}
 
-      <h3>{COPY.resultInputHeading}</h3>
-      <p>{COPY.resultInputNote}</p>
+      <h3>{copy.resultInputHeading}</h3>
+      <p>{copy.resultInputNote}</p>
       <p>
         {result.input.shipTo.countryIso2}
         {result.input.shipTo.postalCode ? ` ${result.input.shipTo.postalCode}` : ''}
         {result.input.requestedDeliveryMethod ? ` · ${result.input.requestedDeliveryMethod}` : ''}
       </p>
 
-      <h3>{COPY.resultLinesHeading}</h3>
+      <h3>{copy.resultLinesHeading}</h3>
       <ul data-testid="routing-test-lines">
         {result.input.lines.map((line) => {
-          const placement = describePlacement(result.saved, line.orderLineId, locationName);
+          const placement = describePlacement(result.saved, line.orderLineId, locationName, copy);
           const short = result.saved.unfulfillable.filter(
             (u) => u.orderLineId === line.orderLineId
           );
@@ -359,7 +384,11 @@ function DryRunResult({
                   data-testid="routing-test-unfulfillable"
                 >
                   {' '}
-                  {u.quantity} × {u.resolution} - {u.reason}
+                  {interpolate(copy.unfulfillableLine, {
+                    quantity: u.quantity,
+                    resolution: resolutionLabel(u.resolution, copy),
+                    reason: u.reason,
+                  })}
                 </span>
               ))}
             </li>
@@ -367,16 +396,16 @@ function DryRunResult({
         })}
       </ul>
 
-      <h3>{COPY.explanationHeading}</h3>
+      <h3>{copy.explanationHeading}</h3>
       {result.saved.explanation.length === 0 ? (
-        <p>{COPY.explanationEmpty}</p>
+        <p>{copy.explanationEmpty}</p>
       ) : (
         <ol data-testid="routing-test-explanation">
           {result.saved.explanation.map((step, index) => (
             <li key={`${step.rule.ruleId}-${index}`}>
               {step.rule.displayLabel}
               {step.eliminated.length > 0
-                ? ` (${COPY.explanationRemoved(step.eliminated.length)})`
+                ? ` (${interpolate(copy.explanationRemoved, { count: step.eliminated.length })})`
                 : ''}
               {step.detail ? ` - ${step.detail}` : ''}
             </li>
@@ -386,17 +415,17 @@ function DryRunResult({
 
       {result.draft !== undefined ? (
         <div data-testid="routing-test-compare">
-          <h3>{COPY.compareHeading}</h3>
+          <h3>{copy.compareHeading}</h3>
           {(result.changedLines ?? []).length === 0 ? (
-            <p>{COPY.compareNoChange}</p>
+            <p>{copy.compareNoChange}</p>
           ) : (
             <>
-              <p>{COPY.compareChanged((result.changedLines ?? []).length)}</p>
+              <p>{plural((result.changedLines ?? []).length, copy.compareChanged)}</p>
               <ul>
                 {(result.changedLines ?? []).map((change) => (
                   <li key={change.orderLineId}>
-                    {change.orderLineId}: {COPY.compareSaved} {change.saved.join(', ')} →{' '}
-                    {COPY.compareDraft} {change.draft.join(', ')}
+                    {change.orderLineId}: {copy.compareSaved} {change.saved.join(', ')} →{' '}
+                    {copy.compareDraft} {change.draft.join(', ')}
                   </li>
                 ))}
               </ul>

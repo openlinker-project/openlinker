@@ -17,6 +17,7 @@
  */
 import type { ReactElement } from 'react';
 
+import { useMessages } from '../../../shared/i18n';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 
 interface OrderEditedBadgeProps {
@@ -32,25 +33,26 @@ export function OrderEditedBadge({
   needsAttention = false,
   compact = false,
 }: OrderEditedBadgeProps): ReactElement | null {
+  const copy = useMessages('orders').orderEditedBadge;
   if (needsAttention === true) {
     return (
-      <span title="The sales channel changed this order's lines, so an edit made in OpenLinker no longer applies.">
+      <span title={copy.attentionTitle}>
         <StatusBadge
           tone="warning"
           withDot
           compact={compact}
           data-testid="order-edit-attention-badge"
         >
-          Edited in OpenLinker - needs attention
+          {copy.attention}
         </StatusBadge>
       </span>
     );
   }
   if (edited !== true) return null;
   return (
-    <span title="An operator changed this order in OpenLinker. The sales channel keeps the original.">
+    <span title={copy.editedTitle}>
       <StatusBadge tone="info" withDot compact={compact} data-testid="order-edit-saved-badge">
-        Edited in OpenLinker
+        {copy.edited}
       </StatusBadge>
     </span>
   );

@@ -16,23 +16,25 @@ import {
 import { PageLayout } from '../../shared/ui/page-layout';
 
 export function NewConnectionPage(): ReactElement {
+  const copy = useMessages('connections');
+  const page = copy.newConnectionPage;
   const [searchParams] = useSearchParams();
-  const shippingCopy = useMessages('connections').shipping;
+  const shippingCopy = copy.shipping;
   // The OMS setup's Shipping step sends operators here to connect a carrier;
   // the way back is to that step, not to the connections list (#3958).
   const backTo = isFromOmsSetup(searchParams)
     ? { to: OMS_SETUP_RETURN_PATH, label: shippingCopy.backToOmsSetup }
-    : { to: '/connections', label: 'Connections' };
+    : { to: '/connections', label: page.backLabel };
   return (
     <PageLayout
       backTo={backTo}
-      eyebrow="Integrations"
-      title="Add a connection"
-      description="Pick the platform you want to connect. Each platform has a guided setup flow — no raw adapter keys or config JSON required."
+      eyebrow={copy.setup.eyebrow}
+      title={page.title}
+      description={page.description}
       summary={
         <div className="toolbar__group">
-          <span className="toolbar-chip">Guided setup</span>
-          <span className="toolbar-chip">Per-platform wizards</span>
+          <span className="toolbar-chip">{copy.setup.guidedSetup}</span>
+          <span className="toolbar-chip">{page.wizardsChip}</span>
         </div>
       }
     >

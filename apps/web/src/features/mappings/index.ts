@@ -50,7 +50,6 @@ export {
   validateDraft,
   type ParcelProfileDraft,
 } from './lib/parcel-profile';
-export { PARCEL_COPY } from './lib/parcel-profile.copy';
 // Delivery-mapping fix-it deep link (#1794) — built by the orders delivery
 // rider, parsed by the connection-mappings page.
 // Second cross-feature consumer as of #2028 (the listings channel pill), so the

@@ -5,17 +5,21 @@
  */
 import type { ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useMessages } from '../../shared/i18n';
+import { interpolate, useMessages } from '../../shared/i18n';
 import {
   OMS_SETUP_RETURN_PATH,
   isFromOmsSetup,
 } from '../../features/connections/lib/oms-setup-return';
 import { DpdSetupForm } from '../../features/connections/components/dpd-setup-form';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { usePlatform } from '../../shared/plugins';
 
 export function DpdSetupPage(): ReactElement {
   const [searchParams] = useSearchParams();
   const shippingCopy = useMessages('connections').shipping;
+  const copy = useMessages('connections');
+  const page = copy.dpdSetupPage;
+  const platform = usePlatform('dpd')?.displayName ?? page.fallbackPlatform;
   return (
     <PageLayout
       backTo={
@@ -23,13 +27,13 @@ export function DpdSetupPage(): ReactElement {
           ? { to: OMS_SETUP_RETURN_PATH, label: shippingCopy.backToOmsSetup }
           : undefined
       }
-      eyebrow="Integrations"
-      title="Connect DPD Polska"
-      description="Provide your DPDServices credentials, payer account, and sender address. OpenLinker uses them to generate courier labels and handover protocols."
+      eyebrow={copy.setup.eyebrow}
+      title={interpolate(page.title, { platform })}
+      description={interpolate(page.description, { platform })}
       summary={
         <div className="toolbar__group">
-          <span className="toolbar-chip">DPDServices REST</span>
-          <span className="toolbar-chip">Guided setup</span>
+          <span className="toolbar-chip">{page.chip}</span>
+          <span className="toolbar-chip">{copy.setup.guidedSetup}</span>
         </div>
       }
     >

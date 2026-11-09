@@ -22,8 +22,8 @@ import {
   validateDraft,
   type ParcelProfileDraft,
 } from '../lib/parcel-profile';
-import { PARCEL_COPY } from '../lib/parcel-profile.copy';
 import { ParcelProfileForm } from './parcel-profile-form';
+import { interpolate, useMessages } from '../../../shared/i18n';
 
 interface RoutingParcelDialogProps {
   open: boolean;
@@ -40,6 +40,7 @@ export function RoutingParcelDialog({
   onApply,
   onOpenChange,
 }: RoutingParcelDialogProps): ReactElement {
+  const copy = useMessages('mappings').parcelProfile;
   const [draft, setDraft] = useState<ParcelProfileDraft>(initial);
   // A stored code outside the listed sizes opens in free-text mode, so opening
   // the dialog never silently rewrites it.
@@ -61,9 +62,9 @@ export function RoutingParcelDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent aria-describedby="routing-parcel-desc">
-        <DialogTitle>{PARCEL_COPY.sectionTitle}</DialogTitle>
+        <DialogTitle>{copy.sectionTitle}</DialogTitle>
         <DialogDescription id="routing-parcel-desc">
-          {methodLabel}. {PARCEL_COPY.sectionHint}
+          {interpolate(copy.sectionHintWithMethod, { method: methodLabel })}
         </DialogDescription>
 
         <ParcelProfileForm
@@ -92,7 +93,7 @@ export function RoutingParcelDialog({
             }}
             disabled={isDraftEmpty(draft)}
           >
-            {PARCEL_COPY.clearAction}
+            {copy.clearAction}
           </Button>
           <Button
             tone="ghost"
@@ -100,10 +101,10 @@ export function RoutingParcelDialog({
               onOpenChange(false);
             }}
           >
-            {PARCEL_COPY.cancelAction}
+            {copy.cancelAction}
           </Button>
           <Button tone="primary" onClick={handleApply}>
-            {PARCEL_COPY.applyAction}
+            {copy.applyAction}
           </Button>
         </DialogFooter>
       </DialogContent>

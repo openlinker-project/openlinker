@@ -32,29 +32,7 @@
  */
 import type { ReactElement } from 'react';
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import { RETURN_LINES_COPY, RETURN_RAIL_COPY } from '../lib/return-detail.copy';
-
-/**
- * Human wording for the declared values. An unrecognised value renders
- * verbatim — it describes a real parcel, and a build that does not recognise it
- * should say what the server said rather than blank the cell.
- */
-const CUSTODY_LABEL: Record<string, string> = {
-  advised: 'Announced',
-  in_transit: 'On the way',
-  received: 'Received',
-  disposed: 'Handled',
-  not_returned: 'Never arrived',
-};
-
-const MONEY_LABEL: Record<string, string> = {
-  not_refundable: 'No refund due',
-  pending: 'Not refunded',
-  triggered: 'Refund started',
-  refunded: 'Refunded',
-  denied: 'Refund refused',
-  in_doubt: 'Refund outcome unconfirmed',
-};
+import { interpolate, useMessages } from '../../../shared/i18n';
 
 interface ReturnLineStateChipProps {
   value: string;
@@ -83,16 +61,23 @@ export function ReturnLineStateChip({
   tracked = true,
   sourceName = null,
 }: ReturnLineStateChipProps): ReactElement {
-  const label = (axis === 'custody' ? CUSTODY_LABEL : MONEY_LABEL)[value] ?? value;
-  const railLabel = axis === 'custody' ? RETURN_RAIL_COPY.custodyLabel : RETURN_RAIL_COPY.moneyLabel;
+  const returnsCopy = useMessages('returns');
+  const railCopy = returnsCopy.detail.rail;
+  const linesCopy = returnsCopy.detail.lines;
+  // An unrecognised value renders verbatim - it describes a real parcel, and a
+  // build that does not recognise it should say what the server said.
+  const labels: Readonly<Record<string, string>> =
+    axis === 'custody' ? returnsCopy.returnLineStateChips.custody : returnsCopy.returnLineStateChips.money;
+  const label = labels[value] ?? value;
+  const railLabel = axis === 'custody' ? railCopy.custodyLabel : railCopy.moneyLabel;
 
   if (!tracked) {
     return (
-      <span className="returns-line-state" title={RETURN_LINES_COPY.notTrackedYetHint}>
+      <span className="returns-line-state" title={linesCopy.notTrackedYetHint}>
         <StatusBadge tone="neutral" compact>
           {label}
         </StatusBadge>{' '}
-        <span className="text-muted">{RETURN_LINES_COPY.notTrackedYet}</span>
+        <span className="text-muted">{linesCopy.notTrackedYet}</span>
       </span>
     );
   }
@@ -108,11 +93,13 @@ export function ReturnLineStateChip({
       </StatusBadge>
       {isInDoubt ? (
         <span className="returns-rail__note returns-rail__note--warning">
-          {RETURN_RAIL_COPY.inDoubtNote}
+          {railCopy.inDoubtNote}
         </span>
       ) : null}
       {isRefunded ? (
-        <span className="returns-rail__note">{RETURN_RAIL_COPY.refundedBy(sourceName)}</span>
+        <span className="returns-rail__note">{sourceName === null
+            ? railCopy.refundedByUnknownSource
+            : interpolate(railCopy.refundedBy, { sourceName })}</span>
       ) : null}
     </span>
   );
@@ -126,5 +113,6 @@ export function ReturnLineStateChip({
  * as much as a reader of the code.
  */
 export function ReturnRailsNote(): ReactElement {
-  return <p className="returns-rails__note">{RETURN_RAIL_COPY.independenceNote}</p>;
+  const copy = useMessages('returns').detail.rail;
+  return <p className="returns-rails__note">{copy.independenceNote}</p>;
 }

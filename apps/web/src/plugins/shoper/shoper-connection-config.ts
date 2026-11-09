@@ -28,6 +28,7 @@
 import { z } from 'zod';
 import type { ConnectionConfigContribution } from '../../shared/plugins';
 import { readConfigString, readOptionalConfigString } from '../../shared/plugins';
+import { getShoperMessages } from './messages';
 
 declare module '../../shared/plugins/plugin.types' {
   interface PluginEditConnectionFields {
@@ -48,19 +49,23 @@ declare module '../../shared/plugins/plugin.types' {
 
 /** Form field -> `config.defaults` key. One table so read, write and schema cannot drift. */
 export const SHOPER_DEFAULT_FIELDS = [
-  { field: 'shoperShippingId', key: 'shippingId', label: 'delivery method' },
-  { field: 'shoperPaymentId', key: 'paymentId', label: 'payment method' },
-  { field: 'shoperStatusId', key: 'statusId', label: 'order status' },
-  { field: 'shoperParcelShippingId', key: 'parcelShippingId', label: 'parcel delivery method' },
-  { field: 'shoperCancelledStatusId', key: 'cancelledStatusId', label: 'cancelled status' },
-  { field: 'shoperInProgressStatusId', key: 'inProgressStatusId', label: 'in-progress status' },
+  { field: 'shoperShippingId', key: 'shippingId' },
+  { field: 'shoperPaymentId', key: 'paymentId' },
+  { field: 'shoperStatusId', key: 'statusId' },
+  { field: 'shoperParcelShippingId', key: 'parcelShippingId' },
+  { field: 'shoperCancelledStatusId', key: 'cancelledStatusId' },
+  { field: 'shoperInProgressStatusId', key: 'inProgressStatusId' },
 ] as const;
 
-function positiveIntegerField(label: string): z.ZodTypeAny {
+type ShoperDefaultField = (typeof SHOPER_DEFAULT_FIELDS)[number]['field'];
+
+function positiveIntegerField(field: ShoperDefaultField): z.ZodTypeAny {
   return z
     .union([
+      // The message is looked up when a value is validated, so it follows
+      // the active language instead of freezing at module load.
       z.string().refine((value) => value === '' || /^[1-9]\d*$/.test(value.trim()), {
-        message: `The ${label} must be a positive whole number.`,
+        error: () => getShoperMessages().shoperConnectionConfig.positiveInteger[field],
       }),
       z.literal(''),
     ])
@@ -69,12 +74,12 @@ function positiveIntegerField(label: string): z.ZodTypeAny {
 
 // Annotated so TS keeps the excess-property check live (the KSeF precedent).
 const shoperSchemaShape: ConnectionConfigContribution['schemaShape'] = {
-  shoperShippingId: positiveIntegerField('delivery method id'),
-  shoperPaymentId: positiveIntegerField('payment method id'),
-  shoperStatusId: positiveIntegerField('order status id'),
-  shoperParcelShippingId: positiveIntegerField('parcel delivery method id'),
-  shoperCancelledStatusId: positiveIntegerField('cancelled status id'),
-  shoperInProgressStatusId: positiveIntegerField('in-progress status id'),
+  shoperShippingId: positiveIntegerField('shoperShippingId'),
+  shoperPaymentId: positiveIntegerField('shoperPaymentId'),
+  shoperStatusId: positiveIntegerField('shoperStatusId'),
+  shoperParcelShippingId: positiveIntegerField('shoperParcelShippingId'),
+  shoperCancelledStatusId: positiveIntegerField('shoperCancelledStatusId'),
+  shoperInProgressStatusId: positiveIntegerField('shoperInProgressStatusId'),
 };
 
 function readDefaultsBag(config: Record<string, unknown>): Record<string, unknown> {

@@ -9,6 +9,7 @@
  * @module pages/dev-ui/sections
  */
 import type { ReactElement, ReactNode } from 'react';
+import { useMessages } from '../../../shared/i18n';
 import {
   AccessDeniedState,
   Alert,
@@ -35,6 +36,7 @@ import {
   useFormFieldControl,
 } from '../../../shared/ui';
 import { FilterPrimitivesDemo } from './filter-primitives-demo';
+import { SwitchPrimitivesDemo } from './switch-primitives-demo';
 
 interface GroupProps {
   title: string;
@@ -70,6 +72,7 @@ function Group({ title, description, children }: GroupProps): ReactElement {
 const SPARKLINE_TREND: readonly number[] = [4, 6, 5, 8, 7, 9, 10, 12, 11, 14, 13, 16, 15, 18];
 
 export function PrimitivesSection(): ReactElement {
+  const copy = useMessages('dev-ui').primitivesSection;
   return (
     <div className="ds-stack" style={{ gap: 'var(--space-6)' }}>
       <Group
@@ -84,14 +87,26 @@ export function PrimitivesSection(): ReactElement {
           <Button disabled>Disabled</Button>
         </div>
         <div className="ds-row">
-          <Button tone="primary" className="button--xs">Approve</Button>
-          <Button tone="primary" className="button--sm">Approve</Button>
-          <Button tone="primary" className="button--md">Approve</Button>
-          <Button tone="primary" className="button--lg">Approve</Button>
+          <Button tone="primary" className="button--xs">
+            Approve
+          </Button>
+          <Button tone="primary" className="button--sm">
+            Approve
+          </Button>
+          <Button tone="primary" className="button--md">
+            Approve
+          </Button>
+          <Button tone="primary" className="button--lg">
+            Approve
+          </Button>
         </div>
         <div className="ds-row">
-          <Button tone="secondary"><span aria-hidden="true">＋</span> Add connection</Button>
-          <Button tone="ghost"><span aria-hidden="true">⟳</span> Sync now</Button>
+          <Button tone="secondary">
+            <span aria-hidden="true">＋</span> Add connection
+          </Button>
+          <Button tone="ghost">
+            <span aria-hidden="true">⟳</span> Sync now
+          </Button>
         </div>
       </Group>
 
@@ -121,11 +136,7 @@ export function PrimitivesSection(): ReactElement {
               <option value="shopify.admin.v2">shopify.admin.v2</option>
             </Select>
           </FormField>
-          <FormField
-            label="Buyer email"
-            name="ds-buyer-email"
-            error="Enter a valid email address."
-          >
+          <FormField label="Buyer email" name="ds-buyer-email" error="Enter a valid email address.">
             <Input defaultValue="not-an-email" invalid />
           </FormField>
           <div>
@@ -134,11 +145,7 @@ export function PrimitivesSection(): ReactElement {
             <label htmlFor="ds-standalone-invalid">Standalone invalid input</label>
             <Input id="ds-standalone-invalid" defaultValue="not-an-email" invalid />
           </div>
-          <FormField
-            label="Webhook endpoint"
-            name="ds-webhook"
-            description="Read-only."
-          >
+          <FormField label="Webhook endpoint" name="ds-webhook" description="Read-only.">
             <Input defaultValue="https://api.openlinker.com/webhooks/allegro/c_4f8a" disabled />
           </FormField>
           <FormField label="Notes" name="ds-notes">
@@ -164,11 +171,21 @@ export function PrimitivesSection(): ReactElement {
       >
         <div className="ds-row">
           <StatusBadge withDot>Idle</StatusBadge>
-          <StatusBadge tone="info" pulse>Syncing</StatusBadge>
-          <StatusBadge tone="success" withDot>Live</StatusBadge>
-          <StatusBadge tone="warning" withDot>Stale 14m</StatusBadge>
-          <StatusBadge tone="error" withDot>Failed</StatusBadge>
-          <StatusBadge tone="review" withDot>Needs review</StatusBadge>
+          <StatusBadge tone="info" pulse>
+            Syncing
+          </StatusBadge>
+          <StatusBadge tone="success" withDot>
+            Live
+          </StatusBadge>
+          <StatusBadge tone="warning" withDot>
+            Stale 14m
+          </StatusBadge>
+          <StatusBadge tone="error" withDot>
+            Failed
+          </StatusBadge>
+          <StatusBadge tone="review" withDot>
+            Needs review
+          </StatusBadge>
           <StatusBadge solid>Draft</StatusBadge>
         </div>
       </Group>
@@ -211,7 +228,12 @@ export function PrimitivesSection(): ReactElement {
           label="Invoice lifecycle, issued and awaiting the authority"
           steps={[
             { id: 'issued', label: 'Issued', state: 'done', at: '2026-08-26T09:12:00.000Z' },
-            { id: 'sent', label: 'Sent to the authority', state: 'done', at: '2026-08-26T09:12:00.000Z' },
+            {
+              id: 'sent',
+              label: 'Sent to the authority',
+              state: 'done',
+              at: '2026-08-26T09:12:00.000Z',
+            },
             { id: 'answer', label: 'Authority answer', state: 'active', at: null },
           ]}
         />
@@ -220,7 +242,12 @@ export function PrimitivesSection(): ReactElement {
           label="Invoice lifecycle, refused by the authority"
           steps={[
             { id: 'issued', label: 'Issued', state: 'done', at: '2026-08-25T16:04:00.000Z' },
-            { id: 'sent', label: 'Sent to the authority', state: 'done', at: '2026-08-25T16:04:00.000Z' },
+            {
+              id: 'sent',
+              label: 'Sent to the authority',
+              state: 'done',
+              at: '2026-08-25T16:04:00.000Z',
+            },
             { id: 'answer', label: 'Refused', state: 'error', at: '2026-08-25T16:07:00.000Z' },
           ]}
         />
@@ -234,10 +261,12 @@ export function PrimitivesSection(): ReactElement {
           Reached <span className="mono">allegro.publicapi.v1</span> in 312 ms.
         </Alert>
         <Alert tone="warning" title="Token expires in 6 days">
-          Refresh credentials before <span className="mono">2026-05-23</span> to avoid sync failures.
+          Refresh credentials before <span className="mono">2026-05-23</span> to avoid sync
+          failures.
         </Alert>
         <Alert tone="error" title="Offer rejected by Allegro">
-          Category 257 requires brand parameter. <a href="#alert-detail">View 3 affected offers →</a>
+          Category 257 requires brand parameter.{' '}
+          <a href="#alert-detail">View 3 affected offers →</a>
         </Alert>
         <Alert tone="info" title="Webhook signature rotated">
           All inbound webhooks will use the new HMAC key starting next sync.
@@ -252,7 +281,11 @@ export function PrimitivesSection(): ReactElement {
           <EmptyState
             title="No connections yet"
             message="Connect a marketplace or shop to start syncing orders."
-            action={<Button tone="primary" className="button--sm">Add connection</Button>}
+            action={
+              <Button tone="primary" className="button--sm">
+                Add connection
+              </Button>
+            }
           />
           <LoadingState
             title="Resolving 1,284 mappings"
@@ -261,7 +294,11 @@ export function PrimitivesSection(): ReactElement {
           <ErrorState
             title="We couldn't reach Allegro"
             message="HTTP 503 from api.allegro.pl. Retry usually clears this."
-            action={<Button tone="secondary" className="button--sm">Retry</Button>}
+            action={
+              <Button tone="secondary" className="button--sm">
+                Retry
+              </Button>
+            }
           />
           <AccessDeniedState
             title="Fulfilment tasks are for supervisors"
@@ -355,9 +392,25 @@ export function PrimitivesSection(): ReactElement {
             items={[
               { id: 'internal', label: 'Internal id', mono: true, value: 'ol_order_a4f3b9c' },
               { id: 'external', label: 'External id', mono: true, value: 'ALG-2026-05-17-882414' },
-              { id: 'channel', label: 'Channel', value: <span className="channel-pill" data-channel="allegro">Allegro · Main</span> },
+              {
+                id: 'channel',
+                label: 'Channel',
+                value: (
+                  <span className="channel-pill" data-channel="allegro">
+                    Allegro · Main
+                  </span>
+                ),
+              },
               { id: 'total', label: 'Total', mono: true, value: '€84.20' },
-              { id: 'status', label: 'Status', value: <StatusBadge tone="success" withDot>Paid</StatusBadge> },
+              {
+                id: 'status',
+                label: 'Status',
+                value: (
+                  <StatusBadge tone="success" withDot>
+                    Paid
+                  </StatusBadge>
+                ),
+              },
               { id: 'created', label: 'Created', mono: true, value: '2026-05-17 14:22 UTC+02' },
             ]}
           />
@@ -366,10 +419,10 @@ export function PrimitivesSection(): ReactElement {
             payload={{
               externalOrderId: 'ALG-2026-05-17-882414',
               status: 'PAID',
-              total: { amount: 84.20, currency: 'EUR' },
+              total: { amount: 84.2, currency: 'EUR' },
               lineItems: [
                 { sku: 'SKU-9182', qty: 2, price: 29.95 },
-                { sku: 'SKU-3310', qty: 1, price: 24.30 },
+                { sku: 'SKU-3310', qty: 1, price: 24.3 },
               ],
               shipping: { method: 'INPOST_LOCKER' },
             }}
@@ -392,7 +445,9 @@ export function PrimitivesSection(): ReactElement {
           </label>
           <label className="ds-row" style={{ gap: 'var(--space-2)', cursor: 'not-allowed' }}>
             <input type="checkbox" disabled />
-            <span style={{ fontSize: '0.8125rem', color: 'var(--text-disabled)' }}>Locked option</span>
+            <span style={{ fontSize: '0.8125rem', color: 'var(--text-disabled)' }}>
+              Locked option
+            </span>
           </label>
         </div>
         <div className="ds-row" style={{ gap: 'var(--space-5)' }}>
@@ -411,6 +466,19 @@ export function PrimitivesSection(): ReactElement {
         </div>
       </Group>
 
+      <Group
+        title="Switch primitives"
+        description={
+          <>
+            The building blocks of the theme and language switches (#4029): <code>PeekButton</code>,{' '}
+            <code>MotionPopover</code> (with <code>useAnchoredPopover</code>
+            ), <code>OptionList</code> and <code>SegmentedSwitch</code>.
+          </>
+        }
+      >
+        <SwitchPrimitivesDemo />
+      </Group>
+
       <Group title="BackLink">
         <BackLink to="#" label="Back to orders" />
       </Group>
@@ -422,12 +490,12 @@ export function PrimitivesSection(): ReactElement {
             Content gate keyed on a <code>Permission</code>. Renders <code>children</code> when the
             session holds it, <code>fallback</code> (nothing by default) when it does not, and
             neither while the session is still hydrating. Both branches below are{' '}
-            <strong>static illustrations</strong> — a real{' '}
-            <code>&lt;AccessGate&gt;</code> rendered here would always take the{' '}
-            <code>children</code> branch, because <code>/dev/ui</code> is an admin-only route.{' '}
+            <strong>static illustrations</strong> — a real <code>&lt;AccessGate&gt;</code> rendered
+            here would always take the <code>children</code> branch, because <code>/dev/ui</code> is
+            an admin-only route.{' '}
             <strong>
-              For a write affordance reach for <code>useWriteAccess</code> + <code>ReadOnlyLock</code>{' '}
-              instead
+              For a write affordance reach for <code>useWriteAccess</code> +{' '}
+              <code>ReadOnlyLock</code> instead
             </strong>{' '}
             — demo mode shows those disabled rather than hiding them, which is the opposite policy.
           </>
@@ -446,7 +514,7 @@ export function PrimitivesSection(): ReactElement {
           </p>
           <ErrorState
             title="Admin role required"
-            message="This page manages agent credentials — it requires an admin session."
+            message={copy.adminRequiredMessage}
           />
           <p className="ds-section__sub">
             Permission missing, no <code>fallback</code> — renders nothing

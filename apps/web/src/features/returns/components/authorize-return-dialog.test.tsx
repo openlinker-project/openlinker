@@ -7,7 +7,9 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { AuthorizeReturnDialog } from './authorize-return-dialog';
-import { AUTHORIZE_RETURN_DIALOG_COPY as COPY } from '../lib/authorize-return-dialog.copy';
+import { getMessages } from '../../../shared/i18n';
+
+const COPY = getMessages('returns').authorizeReturnDialog;
 import { ApiError } from '../../../shared/api/api-error';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 

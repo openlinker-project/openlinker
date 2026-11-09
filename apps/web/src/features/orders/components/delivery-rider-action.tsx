@@ -19,9 +19,11 @@
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
+import { useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
 import type { OrderDeliveryRider } from '../api/orders.types';
 import { ShippingRouteAction } from './shipping-route-action';
+import { deliveryRiderActionLabel } from './delivery-chip';
 
 interface DeliveryRiderActionProps {
   rider: OrderDeliveryRider;
@@ -39,7 +41,9 @@ export function DeliveryRiderAction({
   sourceDeliveryMethodId,
   sourceDeliveryMethodName,
 }: DeliveryRiderActionProps): ReactElement | null {
+  const copy = useMessages('orders').deliveryChip.action;
   const candidate = rider.candidateCarrier;
+  const carrier = candidate?.displayName ?? null;
   // Resolved unconditionally (never inside a branch) so hook order stays stable.
   // The candidate carrier's guided setup wizard; falls back to the platform
   // picker when the plugin ships no setup card.
@@ -51,14 +55,14 @@ export function DeliveryRiderAction({
         sourceConnectionId={sourceConnectionId}
         methodLabel={sourceDeliveryMethodName ?? sourceDeliveryMethodId}
         methodId={sourceDeliveryMethodId}
-        label="Add mapping"
+        label={deliveryRiderActionLabel('unmapped', carrier, copy)}
         appearance="rider"
       />
     );
   }
 
   if (rider.rider === 'not-connected') {
-    const label = candidate ? `Connect ${candidate.displayName}` : 'Connect';
+    const label = deliveryRiderActionLabel('not-connected', carrier, copy);
     return (
       <Link to={connectTarget} className="delivery-rider-banner__button">
         {label}
@@ -72,7 +76,7 @@ export function DeliveryRiderAction({
     // re-enable it. The connections list reads `platformType` + `status` from
     // the query string; when the heuristic couldn't name the carrier we fall
     // back to the unfiltered list.
-    const label = candidate ? `Enable ${candidate.displayName}` : 'Enable';
+    const label = deliveryRiderActionLabel('disabled', carrier, copy);
     const to = candidate
       ? `/connections?platformType=${encodeURIComponent(candidate.platformType)}&status=disabled`
       : '/connections';

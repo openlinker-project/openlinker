@@ -25,6 +25,7 @@
  */
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { ApiError } from '../../../../shared/api/api-error';
+import { getMessages } from '../../../../shared/i18n';
 import { RESOLVE_CATEGORY_STREAM_CHUNK_SIZE } from '../../api/listings.api';
 import type { EanCategoryMatchStreamEvent, EanMatchResult } from '../../api/listings.types';
 
@@ -176,15 +177,24 @@ export function resolveStreamReducer(
   }
 }
 
-const TRUNCATED_STREAM_MESSAGE =
-  'Category matching stopped before every variant was checked, so the results are incomplete.';
 /**
  * A `failed` terminal is a failure the server explicitly reported, which is a
  * different fact from a body that was cut short - so it gets its own sentence
- * rather than being described as truncation.
+ * rather than being described as truncation. Read at call time so the words
+ * follow the active language.
  */
-const FAILED_STREAM_MESSAGE =
-  'Category matching reported a failure part-way through this batch, so the results are incomplete.';
+function incompleteStreamMessage(completion: 'failed' | 'truncated' | 'aborted'): string {
+  const copy = getMessages('listings').useResolveStream;
+  switch (completion) {
+    case 'failed':
+      return copy.failed;
+    // An aborted stream also stopped before its last chunk, so the operator is
+    // told the same thing as for a body cut short.
+    case 'truncated':
+    case 'aborted':
+      return copy.truncated;
+  }
+}
 
 export interface UseResolveStreamInput {
   apiClient: ResolveStreamClient;
@@ -368,7 +378,7 @@ export function useResolveStream({
           if (completion !== 'complete') {
             dispatch({
               type: 'error',
-              message: completion === 'failed' ? FAILED_STREAM_MESSAGE : TRUNCATED_STREAM_MESSAGE,
+              message: incompleteStreamMessage(completion),
             });
             return;
           }
@@ -376,7 +386,7 @@ export function useResolveStream({
         dispatch({ type: 'terminal', catalogueLookupPerformed: observed });
       } catch (error) {
         if (cancelled) return;
-        const failure = error instanceof Error ? error : new Error('Resolution failed.');
+        const failure = error instanceof Error ? error : new Error(getMessages('listings').useResolveStream.resolutionFailed);
         // Retry only while NOTHING has been delivered - that is the #1709
         // cold-start case the retry exists for. Once an event has arrived the
         // run is progressing, so restarting it would re-spend marketplace calls

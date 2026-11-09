@@ -5,16 +5,50 @@
  * the packing stage from `handledInOpenLinker`, the waiting reason from
  * `fulfillmentBlockReason`. Nothing is inferred from the sync rollup or computed
  * from the order (#2100: a surface must not state a cause the backend never
- * recorded).
+ * recorded). The words live in `orders.handledInOpenLinker`; each function takes
+ * the namespace, defaulting to the active language when called outside React.
  *
  * @module apps/web/src/features/orders/lib
  */
-import type { OrderHandledInOpenLinker, OrderRecord } from '../api/orders.types';
-import {
-  HANDLED_IN_OPENLINKER_COPY,
-  ORDER_WORK_STAGE_COPY,
-  WAITING_REASON_COPY,
-} from './handled-in-openlinker.copy';
+import { getMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
+import type {
+  OrderHandledInOpenLinker,
+  OrderRecord,
+  OrderWorkStageValue,
+  WaitingFulfillmentBlockReasonValue,
+} from '../api/orders.types';
+
+type OrdersCopy = ResolvedCopy<Messages['orders']>;
+
+/**
+ * The packing position's glyph, in time order. The label and hint live in
+ * `orders.handledInOpenLinker.workStages`; `satisfies` makes a new stage a
+ * compile error here, and `check-handled-in-openlinker-mirror.mjs` ties the
+ * copy keys to core.
+ */
+export const ORDER_WORK_STAGE_MARK = {
+  'to-pack': '○',
+  'packing': '◐',
+  'packed': '✓',
+} as const satisfies Record<OrderWorkStageValue, string>;
+
+/**
+ * A held order's tone, keyed by the BACKEND's persisted value (`satisfies` ties
+ * the keys to the frontend mirror, and `check-fulfillment-reason-mirror.mjs`
+ * ties the copy keys to core); the three #3485 states. The other held states
+ * (`routing-in-doubt`, `routing-contended`, `routing-already-live-elsewhere`)
+ * are deliberately absent: they are transient guards, not an order waiting on
+ * the operator, so they render no badge rather than a misleading one.
+ */
+export const WAITING_REASON_TONE = {
+  'routing-refused': 'warning',
+  'routing-no-shipping-address': 'warning',
+  'routing-failed': 'error',
+} as const satisfies Record<WaitingFulfillmentBlockReasonValue, 'warning' | 'error'>;
+
+function hasOwn<K extends string>(table: Readonly<Record<K, unknown>>, key: string): key is K {
+  return Object.prototype.hasOwnProperty.call(table, key);
+}
 
 export interface PackingStageView {
   readonly stage: OrderHandledInOpenLinker['stage'];
@@ -25,15 +59,15 @@ export interface PackingStageView {
 
 /** The packing position for a row, or `null` when OpenLinker found no live work. */
 export function derivePackingStage(
-  handled: OrderHandledInOpenLinker | undefined
+  handled: OrderHandledInOpenLinker | undefined,
+  copy: OrdersCopy = getMessages('orders')
 ): PackingStageView | null {
   if (!handled) return null;
-  const copy = ORDER_WORK_STAGE_COPY[handled.stage] as
-    | (typeof ORDER_WORK_STAGE_COPY)[keyof typeof ORDER_WORK_STAGE_COPY]
-    | undefined;
+  const stage: string = handled.stage;
   // An unknown stage (a newer API) renders nothing rather than a guess.
-  if (!copy) return null;
-  return { stage: handled.stage, ...copy };
+  if (!hasOwn(ORDER_WORK_STAGE_MARK, stage)) return null;
+  const words = copy.handledInOpenLinker.workStages[stage];
+  return { stage: handled.stage, label: words.label, hint: words.hint, mark: ORDER_WORK_STAGE_MARK[stage] };
 }
 
 export interface WaitingView {
@@ -51,12 +85,13 @@ export interface WaitingView {
  * state written by a newer release must render as nothing, not as a wrong label.
  */
 export function deriveWaiting(
-  order: Pick<OrderRecord, 'fulfillmentBlockReason'>
+  order: Pick<OrderRecord, 'fulfillmentBlockReason'>,
+  copy: OrdersCopy = getMessages('orders')
 ): WaitingView | null {
   const reason = order.fulfillmentBlockReason;
-  if (!reason) return null;
-  const copy = (WAITING_REASON_COPY as Record<string, WaitingView | undefined>)[reason];
-  return copy ?? null;
+  if (!reason || !hasOwn(WAITING_REASON_TONE, reason)) return null;
+  const words = copy.handledInOpenLinker.waitingReasons[reason];
+  return { label: words.label, fact: words.fact, hint: words.hint, tone: WAITING_REASON_TONE[reason] };
 }
 
 /**
@@ -90,14 +125,16 @@ export function showsPackingStage(
  */
 export function derivePackerLabel(
   handled: OrderHandledInOpenLinker | undefined,
-  nameById: ReadonlyMap<string, string> | null
+  nameById: ReadonlyMap<string, string> | null,
+  copy: OrdersCopy = getMessages('orders')
 ): string | null {
-  const view = derivePackingStage(handled);
+  const view = derivePackingStage(handled, copy);
   if (!view || view.stage === 'packed' || !handled?.assignment) return null;
-  if (handled.assignment === 'mixed') return HANDLED_IN_OPENLINKER_COPY.severalPackers;
-  if (!handled.assignedToUserId) return HANDLED_IN_OPENLINKER_COPY.unassigned;
+  const words = copy.handledInOpenLinker;
+  if (handled.assignment === 'mixed') return words.severalPackers;
+  if (!handled.assignedToUserId) return words.unassigned;
   if (nameById === null) return null;
-  return nameById.get(handled.assignedToUserId) ?? HANDLED_IN_OPENLINKER_COPY.assignedUnknown;
+  return nameById.get(handled.assignedToUserId) ?? words.assignedUnknown;
 }
 
 /** Does any row on the page need a packer's NAME (so the roster is worth fetching)? */

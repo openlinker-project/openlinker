@@ -6,6 +6,7 @@
  * plugin registry (`shared/plugins`) — adding a new platform plugin is
  * the single edit point; this component picks it up automatically.
  */
+import { renderRich, useMessages } from '../../../shared/i18n';
 import type { ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { usePlatforms } from '../../../shared/plugins';
@@ -14,6 +15,7 @@ import { captureDemoEvent } from '../../demo';
 import { isFromOmsSetup, withOmsSetupReturn } from '../lib/oms-setup-return';
 
 export function PlatformPicker(): ReactElement {
+  const copy = useMessages('connections').platformPicker;
   const plugins = usePlatforms();
   const connectionsQuery = useConnectionsQuery();
   // An operator sent here by the OMS setup keeps the way back through the
@@ -60,16 +62,17 @@ export function PlatformPicker(): ReactElement {
               <p className="platform-picker__card-description">{card.description}</p>
               <span className="platform-picker__card-cta" aria-hidden="true">
                 {card.featured === true && configuredTypes.has(card.platformType)
-                  ? 'Already set up — click to edit →'
-                  : 'Continue →'}
+                  ? copy.alreadySetUp
+                  : copy.continue}
               </span>
             </Link>
           </li>
         ))}
       </ul>
       <p className="platform-picker__advanced">
-        Need to configure a raw adapter key or bespoke config JSON?{' '}
-        <Link to="/connections/new/advanced">Use advanced mode</Link>.
+        {renderRich(copy.advanced, {
+          link: (text) => <Link to="/connections/new/advanced">{text}</Link>,
+        })}
       </p>
     </div>
   );

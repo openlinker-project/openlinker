@@ -162,6 +162,8 @@ export function OrderDeliveryPanel({
   const sourcePlatform = usePlatform(sourcePlatformType ?? undefined);
   const routeCopy = useShippingRouteCopy();
   const routeOrigin = useMessages('orders').shippingRouteOrigin;
+  const copy = useMessages('orders').orderDeliveryPanel;
+  const channel = channelName ?? copy.edited.theChannel;
 
   const items: KeyValueItem[] = [];
   const methodLabel =
@@ -187,7 +189,7 @@ export function OrderDeliveryPanel({
     const fromRule = deliveryResolution?.source === 'rule';
     items.push({
       id: 'shipped-by',
-      label: 'Shipped by',
+      label: copy.shippedBy.label,
       value: (
         <>
           <span className="order-delivery__shipped-by">
@@ -227,17 +229,18 @@ export function OrderDeliveryPanel({
     const originalAddress = edits?.address?.original ?? null;
     items.push({
       id: 'ship-to',
-      label: 'Ship to',
+      label: copy.shipTo,
       value: (
         <>
           {addressLines(shippingAddress)}
           {edits?.address ? (
             <span className="order-edit-edited" data-testid="order-edit-address-original">
-              {`Edited in OpenLinker · ${channelName ?? 'the channel'} shows ${
-                originalAddress
+              {interpolate(copy.edited.address, {
+                channel,
+                address: originalAddress
                   ? [originalAddress.address1, originalAddress.address2].filter(Boolean).join(', ')
-                  : 'a different address'
-              }`}
+                  : copy.edited.differentAddress,
+              })}
             </span>
           ) : null}
         </>
@@ -251,15 +254,19 @@ export function OrderDeliveryPanel({
   // name (#1793) → "-".
   items.push({
     id: 'method',
-    label: 'Method',
+    label: copy.method,
     value: (
       <>
         {shipping?.methodName ?? shipping?.methodId ?? methodFallback ?? pickupPoint?.name ?? '-'}
         {edits?.deliveryMethod ? (
           <span className="order-edit-edited" data-testid="order-edit-method-original">
-            {`Edited in OpenLinker · ${channelName ?? 'the channel'} shows ${
-              edits.deliveryMethod.original.name ?? edits.deliveryMethod.original.id ?? 'no method'
-            }`}
+            {interpolate(copy.edited.method, {
+              channel,
+              method:
+                edits.deliveryMethod.original.name ??
+                edits.deliveryMethod.original.id ??
+                copy.edited.noMethod,
+            })}
           </span>
         ) : null}
       </>
@@ -275,7 +282,7 @@ export function OrderDeliveryPanel({
   // (#1793) sits alongside the carrier name when the caller derived one.
   items.push({
     id: 'carrier',
-    label: 'Carrier',
+    label: copy.carrier,
     value: deliveryOutcome ? (
       <span className="order-delivery__carrier">
         <span>{carrier ?? '-'}</span>
@@ -288,8 +295,8 @@ export function OrderDeliveryPanel({
 
   const pickupCaption =
     sourcePlatform?.pickupPointResolvesAsync === true
-      ? `buyer-selected via ${sourcePlatform.displayName}`
-      : 'operator-selected';
+      ? interpolate(copy.pickup.buyerSelectedVia, { provider: sourcePlatform.displayName })
+      : copy.pickup.operatorSelected;
 
   // Point-kind label (#1433) — Paczkomat (apm) vs PaczkoPunkt (pop). Absent
   // pointType falls back to no kind label (pre-#1433 behaviour).
@@ -301,8 +308,8 @@ export function OrderDeliveryPanel({
         : undefined;
 
   return (
-    <section className="detail-section order-delivery" aria-label="Delivery">
-      <h3 className="detail-section__title">Delivery</h3>
+    <section className="detail-section order-delivery" aria-label={copy.title}>
+      <h3 className="detail-section__title">{copy.title}</h3>
       <div className="order-delivery__card">
         <KeyValueList items={items} />
         {deliveryRider ? (

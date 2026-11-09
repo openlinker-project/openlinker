@@ -14,7 +14,7 @@
  */
 import type { ReactElement } from 'react';
 
-import { BUYER_NOTE_COPY as COPY } from '../lib/buyer-note.copy';
+import { useMessages } from '../../../shared/i18n';
 import { BuyerNoteIcon } from './buyer-note-icon';
 
 export interface OrderBuyerNoteHintProps {
@@ -30,6 +30,7 @@ export function OrderBuyerNoteHint({
   preview = null,
   layout = 'row',
 }: OrderBuyerNoteHintProps): ReactElement | null {
+  const COPY = useMessages('orders').buyerNote;
   if (hasBuyerNote !== true) return null;
   return (
     <span
@@ -43,7 +44,7 @@ export function OrderBuyerNoteHint({
         className={layout === 'card' ? 'buyer-note-clamp-2' : 'buyer-note-hint__text'}
         lang={preview === null ? undefined : 'und'}
       >
-        {preview === null ? null : <span className="sr-only">{COPY.listIndicator}: </span>}
+        {preview === null ? null : <span className="sr-only">{COPY.listIndicatorSrPrefix} </span>}
         {preview ?? COPY.listIndicator}
       </span>
     </span>

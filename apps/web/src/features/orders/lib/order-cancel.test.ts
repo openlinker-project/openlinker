@@ -5,7 +5,12 @@ import {
   classifyOrderCancelError,
   hasAcceptedFulfilmentWork,
   isOrderCancelTerminal,
+  abandonReasonCopy,
+  cancelParticipantEffectCopy,
+  confirmCorrectionErrorTitle,
   orderCancelErrorNeedsRefresh,
+  orderCancelInlineTitle,
+  orderCancelReasonLabel,
   readOrderCancelErrorCode,
 } from './order-cancel';
 
@@ -76,5 +81,35 @@ describe('order cancel rules (#3541)', () => {
       expect(orderCancelErrorNeedsRefresh(conflict('ORDER_CANCEL_CONTENDED'))).toBe(false);
       expect(orderCancelErrorNeedsRefresh(conflict('LABEL_NOT_VOIDABLE'))).toBe(false);
     });
+  });
+});
+
+describe('order cancel copy (#3870)', () => {
+  it('should label a known reason and show an unknown one as it is', () => {
+    expect(orderCancelReasonLabel('fraud')).toBe('Suspected fraud or payment problem');
+    expect(orderCancelReasonLabel('something-new')).toBe('something-new');
+  });
+
+  it('should title only the codes that have a title', () => {
+    expect(orderCancelInlineTitle('ORDER_CANCEL_IN_FLIGHT')).toBe('A cancellation is already in progress');
+    expect(orderCancelInlineTitle('LABEL_NOT_VOIDABLE')).toBeUndefined();
+    expect(confirmCorrectionErrorTitle('CHANGE_EXPIRED')).toBe('This correction proposal expired');
+    expect(confirmCorrectionErrorTitle('ORDER_ALREADY_SHIPPED')).toBeUndefined();
+  });
+
+  it('should pair each participant effect with its tone', () => {
+    expect(cancelParticipantEffectCopy('unreachable')).toEqual({
+      label: 'Could not reach',
+      tone: 'error',
+      description: 'The connection could not be reached. Cancel the order there by hand.',
+    });
+  });
+
+  it('should name the superseding document, or fall back when it is unknown', () => {
+    expect(abandonReasonCopy('correction-superseded', 'KOR/1')?.title).toBe(
+      'Correction no longer needed: KOR/1 already corrected the invoice',
+    );
+    expect(abandonReasonCopy('correction-superseded', null)?.title).toContain('a document');
+    expect(abandonReasonCopy('unknown', null)).toBeNull();
   });
 });

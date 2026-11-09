@@ -8,7 +8,9 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../../shared/api/api-error';
 import { describeAutomationWriteError } from './automation-write-error';
-import { AUTOMATION_COMPOSER_COPY } from './automation.copy';
+import { getMessages } from '../../../shared/i18n';
+
+const AUTOMATION_COMPOSER_COPY = getMessages('automation').composer;
 
 describe('describeAutomationWriteError', () => {
   it('should render an actionable message for a duplicate rule', () => {

@@ -23,6 +23,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PASSWORD_RESET_NOTIFIER_TOKEN, UsersModule } from '@openlinker/core/users';
 import { MailerModule as CoreMailerModule, MailerTransportModule } from '@openlinker/core/mailer';
 import { SyncModule as CoreSyncModule } from '@openlinker/core/sync';
+import { LoginPageSettingsModule } from '@openlinker/core/login-page-settings';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AuthService } from './auth.service';
 import { AUTH_SERVICE_TOKEN } from './auth.service.interface';
@@ -58,6 +59,8 @@ import { UsersApiModule } from '../users/users.module';
     // For SYNC_LOCK_TOKEN — DemoAccountCleanupService's per-tick singleton
     // lock across api replicas (#2279).
     CoreSyncModule,
+    // LOGIN_PAGE_SETTINGS_SERVICE_TOKEN - whether registration is on (#4028).
+    LoginPageSettingsModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
