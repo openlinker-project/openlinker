@@ -1,4 +1,5 @@
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import { isBulkInventoryReader, type InventoryMasterPort } from '@openlinker/core/inventory';
 import {
   isBulkProductReader,
   isModifiedProductLister,
@@ -10,12 +11,12 @@ import {
 import { createShopifyPlugin, shopifyAdapterManifest } from '../shopify-plugin';
 
 describe('createShopifyPlugin', () => {
-  it('should advertise ProductMaster and enable only it by default', () => {
+  it('should advertise and enable by default the two master capabilities', () => {
     expect(shopifyAdapterManifest).toMatchObject({
       adapterKey: 'shopify.admin.v1',
       platformType: 'shopify',
-      supportedCapabilities: ['ProductMaster'],
-      defaultEnabledCapabilities: ['ProductMaster'],
+      supportedCapabilities: ['ProductMaster', 'InventoryMaster'],
+      defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
     });
     expect(createShopifyPlugin().manifest).toBe(shopifyAdapterManifest);
   });
@@ -58,5 +59,27 @@ describe('createShopifyPlugin', () => {
     expect(isBulkProductReader(adapter)).toBe(true);
     expect(isProductTaxRateReader(adapter)).toBe(true);
     expect((adapter as Partial<ProductTaxRateReader>).readsTaxRatePerVariant).toBeUndefined();
+  });
+
+  it('should build the InventoryMaster with the bulk inventory rung', async () => {
+    const host = {
+      credentialsResolver: { get: jest.fn().mockResolvedValue({ accessToken: 'shpat_x' }) },
+      http: { forConnection: jest.fn().mockReturnValue(jest.fn()) },
+      identifierMapping: {},
+      cache: undefined,
+    };
+    const connection = {
+      id: 'c1',
+      credentialsRef: 'db:ref',
+      config: { storeDomain: 'my-shop.myshopify.com' },
+    } as unknown as Connection;
+
+    const adapter = await createShopifyPlugin().createCapabilityAdapter<InventoryMasterPort>(
+      connection,
+      'InventoryMaster',
+      host as never,
+    );
+
+    expect(isBulkInventoryReader(adapter)).toBe(true);
   });
 });

@@ -124,3 +124,29 @@ export interface ShopifyTaxLine {
   readonly rate: number | null;
   readonly ratePercentage: number | null;
 }
+
+export interface ShopifyInventoryQuantity {
+  readonly name: string;
+  readonly quantity: number;
+}
+
+export interface ShopifyInventoryLevel {
+  readonly updatedAt?: string | null;
+  readonly quantities: readonly ShopifyInventoryQuantity[];
+}
+
+/** A variant with its inventory item and its level at ONE location (null when not stocked there). */
+export interface ShopifyInventoryVariant {
+  readonly id: string;
+  readonly inventoryItem: {
+    readonly id: string;
+    readonly tracked: boolean;
+    readonly inventoryLevel?: ShopifyInventoryLevel | null;
+  };
+}
+
+export interface ShopifyInventoryProduct {
+  readonly id: string;
+  readonly status: string;
+  readonly variants: ShopifyConnection<ShopifyInventoryVariant>;
+}

@@ -21,7 +21,9 @@ export interface ShopifyConnectionConfig {
   readonly locationId?: string;
   /**
    * Quantity reported for a variant whose inventory Shopify does not track
-   * (`tracked: false`). Absent means such a variant reports no quantity.
+   * (`tracked: false`, "always available"). Absent means
+   * `SHOPIFY_DEFAULT_UNMANAGED_STOCK_QUANTITY` (1000, the WooCommerce
+   * convention, L-I1).
    */
   readonly unmanagedStockQuantity?: number;
   /**

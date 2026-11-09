@@ -2,9 +2,9 @@
 
 OpenLinker adapter for [Shopify](https://shopify.dev/docs/api/admin-graphql), Admin GraphQL API **2026-10**.
 
-**Status:** plugin foundation (#3974) and **ProductMaster** (#3975). The plugin registers the connection, the
+**Status:** plugin foundation (#3974), **ProductMaster** (#3975) and **InventoryMaster** (#3976). The plugin registers the connection, the
 token handling, the GraphQL client, the connection tester and the retry / auth-failure classifiers. Further
-capabilities (InventoryMaster, OrderSource, OrderProcessorManager, ProductPublisher, ...) enter
+capabilities (OrderSource, OrderProcessorManager, ProductPublisher, ...) enter
 `supportedCapabilities` together with the adapter that delivers them, in the follow-up issues of the
 "Shopify integration" milestone. Evidence base: spike #3928 (`SPIKE-3928-shopify-capabilities.md`) and the first
 spike #2879 (`docs/plans/analysis/SPIKE-2879-shopify-admin-api.md`).
@@ -28,7 +28,8 @@ Three ways, all stored in the connection's encrypted credentials:
 
 Config (`Connection.config`): `storeDomain` (required, `*.myshopify.com`), `apiVersion` (optional, a supported
 version), `locationId` (optional, the ONE location stock is read and written at; the primary location when absent;
-must exist and be active, checked by the connection test), `unmanagedStockQuantity` (optional, whole number),
+must exist and be active, checked by the connection test), `unmanagedStockQuantity` (optional, whole number, the stock reported for a variant whose inventory Shopify does not
+track; 1000 when absent, the WooCommerce convention),
 `salesCountryIso2` (optional, the country the catalogue's tax rate is computed for; the shop's own billing country
 when absent).
 
@@ -102,6 +103,26 @@ Read-only: product writes are refused (`ShopifyNotSupportedException`).
 | DRAFT / ARCHIVED (A11) | ARCHIVED counts as removed from sale: left out of the enumeration, and a direct read raises `MasterProductNotFoundError`, so its offers are paused; back to ACTIVE, the next sync restores it. DRAFT and UNLISTED products sync normally. The job list labels such a sync "deleted at the master" (`master_deleted`): core has one label for both. |
 | Non-taxable variant | `taxable: false` reads as the rate `0`, the shop's own "charge no tax" (the PrestaShop "No tax" precedent). Shopify does not tell 0% from exempt, so a Polish exempt (`zw`) product shows as `0`. |
 | Gift cards (A17) | Skipped: not a physical product and redeemable only at Shopify checkout. Left out of the enumeration, the delta pass and the category directory. |
+
+## InventoryMaster (#3976)
+
+- **One location.** Stock is read and written at the connection's `locationId`, or the shop's primary location.
+  Stock at other Shopify locations is ignored until a WMS brings multi-location support. Rows are reported pooled
+  (no OpenLinker location); map the warehouse with the connection's `stockLocationOverride`.
+- **Figures.** `available` is Shopify's sellable number, `committed` is reported as reserved, `on_hand` as the
+  physical count. A variant not stocked at the location reports 0; an untracked one reports `unmanagedStockQuantity`.
+- **Writes** (manual corrections, sale decrements, return restocks) are a delta on `available` through
+  `inventoryAdjustQuantities`, compare-and-set on the level read just before (`changeFromQuantity`) and with
+  `@idempotent`. A level that moved in between is refused by Shopify with nothing written
+  (`CHANGE_FROM_QUANTITY_STALE`), so the adapter reads it again and retries, up to three attempts. A removal past zero
+  stops at zero.
+- **Once only.** A caller's idempotency key is remembered in the host cache after the write, so the same key again
+  applies nothing and answers `deduplicated` with the original Shopify instant (A18). The Shopify key is derived from
+  the caller's key and the attempt number, so a retry after a crash sends the first attempt's key again: if that
+  write had landed, Shopify answers a parameter mismatch rather than writing twice.
+- **Refusals before anything is written** (variant not named on a multi-variant product, untracked, not stocked at
+  the location) are `ShopifyNotSupportedException`, which core records as refused rather than in doubt.
+- **Batched sweep** (`BulkInventoryReader`): one `nodes(ids:)` read warms a batch.
 
 ## Known gaps
 
