@@ -249,6 +249,7 @@ export type {
   CreateOfferResultStatus,
   CreateOfferValidationError,
   OfferCondition,
+  OfferProductSetComponent,
   OfferVariantGroup,
   OfferVariantAttribute,
   SourceCategoryRef,

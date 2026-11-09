@@ -54,6 +54,7 @@ import type {
   CreateOfferOverrides,
   OfferManagerPort,
   OfferParameter,
+  OfferProductSetComponent,
   OfferVariantGroup,
   SourceAttribute,
   SourceCategoryRef,
@@ -67,6 +68,8 @@ import {
 import type { TaxonomyOwner } from '@openlinker/core/listings';
 import type { Product, ProductGpsr, ProductMasterPort, ProductVariant } from '@openlinker/core/products';
 import {
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
+  IBundleDefinitionService,
   IProductsService,
   PRODUCTS_SERVICE_TOKEN,
   resolveVariantDefaultImages,
@@ -108,7 +111,9 @@ export class OfferBuilderService implements IOfferBuilderService {
     @Inject(ATTRIBUTE_PROJECTION_SERVICE_TOKEN)
     private readonly attributeProjection: IAttributeProjectionService,
     @Inject(AVAILABILITY_SERVICE_TOKEN)
-    private readonly availabilityService: IAvailabilityService
+    private readonly availabilityService: IAvailabilityService,
+    @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
+    private readonly bundleDefinitions: IBundleDefinitionService
   ) {}
 
   async buildCreateOfferCommand(input: BuildCreateOfferCommandInput): Promise<CreateOfferCommand> {
@@ -361,11 +366,65 @@ export class OfferBuilderService implements IOfferBuilderService {
       command.variantGroup = variantGroup;
     }
 
+    // #3520 - a bundle publishes as a product set: one entry per component.
+    const productSet = await this.resolveProductSet(input.internalVariantId);
+    if (productSet) {
+      command.productSet = productSet;
+    }
+
     this.logger.debug(
       `Built CreateOfferCommand for variant=${input.internalVariantId} connection=${input.connectionId} categoryId=${categoryId ?? 'null'} params=${parameters.length} productCardId=${command.productCardId ?? 'null'}`
     );
 
     return command;
+  }
+
+  /**
+   * The components of a bundle variant, resolved from the catalogue (#3520).
+   * `undefined` for an ordinary variant, so its command is byte-identical to
+   * before. A component whose variant or product is gone is a hard validation
+   * failure: publishing the set without it would sell a different item than the
+   * definition promises.
+   */
+  private async resolveProductSet(
+    internalVariantId: string
+  ): Promise<OfferProductSetComponent[] | undefined> {
+    const definition = await this.bundleDefinitions.get(internalVariantId);
+    if (!definition || definition.components.length === 0) {
+      return undefined;
+    }
+    const components: OfferProductSetComponent[] = [];
+    for (const component of definition.components) {
+      const [componentVariant, componentProduct] = await Promise.all([
+        this.productsService.getVariant(component.variantId),
+        this.productsService.getProduct(component.productId),
+      ]);
+      if (!componentVariant || !componentProduct) {
+        throw new OfferBuilderValidationException([
+          {
+            field: 'productSet',
+            code: 'NOT_FOUND',
+            message: `Bundle component variant ${component.variantId} (product ${component.productId}) not found`,
+          },
+        ]);
+      }
+      components.push({
+        variantId: component.variantId,
+        productId: component.productId,
+        quantity: component.quantity,
+        ...(component.giftSlot ? { giftSlot: true } : {}),
+        name: componentProduct.name,
+        barcode: componentVariant.ean ?? componentVariant.gtin ?? null,
+        imageUrls:
+          resolveVariantDefaultImages(
+            componentVariant,
+            await this.productsService.getVariantsByProductId(component.productId),
+            componentProduct.images
+          ) ?? [],
+        ...(componentProduct.gpsr ? { gpsr: componentProduct.gpsr } : {}),
+      });
+    }
+    return components;
   }
 
   /**
