@@ -14,6 +14,7 @@
  */
 import { Module } from '@nestjs/common';
 import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analytics';
+import { LoginPageSettingsModule } from '@openlinker/core/login-page-settings';
 import { DemoModeService } from '../auth/demo-mode.service';
 import { DEMO_MODE_SERVICE_TOKEN } from '../auth/demo-mode.service.interface';
 import { SystemService } from './system.service';
@@ -21,7 +22,7 @@ import { SYSTEM_SERVICE_TOKEN } from './system.service.interface';
 import { SystemController } from './system.controller';
 
 @Module({
-  imports: [CoreAnalyticsModule],
+  imports: [CoreAnalyticsModule, LoginPageSettingsModule],
   controllers: [SystemController],
   providers: [
     DemoModeService,

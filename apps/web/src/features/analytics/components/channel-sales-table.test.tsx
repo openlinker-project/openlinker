@@ -250,7 +250,7 @@ describe('ChannelSalesTable', () => {
     expect(screen.queryByText(/^Total ·/)).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        '5 orders not yet converted to the reporting currency — excluded from the figures above.'
+        '5 orders not yet converted to the reporting currency - excluded from the figures above.'
       )
     ).toBeInTheDocument();
   });
@@ -343,7 +343,7 @@ describe('ChannelSalesTable', () => {
     expect(screen.queryByText('€800.00')).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        '8 orders not yet converted to the reporting currency — excluded from the figures above.'
+        '8 orders not yet converted to the reporting currency - excluded from the figures above.'
       )
     ).toBeInTheDocument();
   });
@@ -454,7 +454,7 @@ describe('ChannelSalesTable', () => {
 
       const conn2Notes = conn2Row!.querySelectorAll('.excl-note');
       expect(conn2Notes).toHaveLength(1);
-      expect(conn2Notes[0]).toHaveTextContent('1 order have no tax rate at all');
+      expect(conn2Notes[0]).toHaveTextContent('1 order has no tax rate at all');
     });
 
     it('should annotate a channel for every cross-referenceable category it has an excluded order in', async () => {

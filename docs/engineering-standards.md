@@ -1282,7 +1282,7 @@ async createProduct(@Body() dto: CreateProductDto): Promise<ProductResponse> {
 
 Every word an operator reads in `apps/web` comes from a translation file, in English and Polish.
 
-- **File**: core copy goes in `apps/web/src/locales/en.json` and `pl.json`, under a top-level namespace named after the feature folder (`orders`, `returns`; `ui` for the shared primitives, `format` for the formatters). A plugin keeps its namespace in `plugins/<id>/locales/<lang>.json` and registers it with `definePluginMessages`. Existing English-only `*.copy.ts` / `-copy.ts` modules move into their feature's namespace in the extraction PRs.
+- **File**: core copy goes in `apps/web/src/locales/en/<namespace>.json` and `pl/<namespace>.json`, one file per namespace named after the feature folder (`orders`, `returns`; `ui` for the shared primitives, `format` for the formatters). A plugin keeps its namespace in `plugins/<id>/locales/<lang>.json` and registers it with `definePluginMessages`. Existing English-only `*.copy.ts` / `-copy.ts` modules move into their feature's namespace in the extraction PRs.
 - **Shape**: nest keys by component, then by element: `orders.header.title`, `orders.filters.status.label`. Keys are sorted at every level (`pnpm i18n:sort`); a namespace reads only itself and `ui.common`.
 - **Keys**: `camelCase`, named for meaning, not for the English text (`emptyState.title`, not `noOrdersFound`). One key for a repeated sentence; one sentence per key, never fragments joined at runtime.
 - **Params**: `{name}` placeholders; the same placeholders in every language.

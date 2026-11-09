@@ -34,8 +34,14 @@ import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { TimeDisplay } from '../../shared/ui/time-display';
-import { formatAmount } from '../../shared/format/format-amount';
-import { formatDateTime } from '../../shared/format/format-date';
+import {
+  interpolate,
+  type Messages,
+  type ResolvedCopy,
+  useFormat,
+  useMessages,
+  usePlural,
+} from '../../shared/i18n';
 import { usePlatforms } from '../../shared/plugins';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import {
@@ -66,6 +72,9 @@ import type {
   OfferLifecycle,
   OfferMapping,
 } from '../../features/listings/api/listings.types';
+import { serverErrorText } from '../../features/listings/lib/server-error-text';
+
+type ListingsListCopy = ResolvedCopy<Messages['listings']>['listingsListPage'];
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -86,62 +95,35 @@ function isLifecycleTab(value: string | null): value is LifecycleTab {
 }
 
 /**
- * One entry per lifecycle tab: its URL token, the `OfferLifecycle` value it
- * filters by, its label, and its own empty-state copy (#2029) - each bucket
- * means something different (see `offer-lifecycle.types.ts` docblocks), so a
- * single generic "no results" message would under-inform the operator.
+ * One entry per lifecycle tab: its URL token and the `OfferLifecycle` value it
+ * filters by. Its label and its own empty-state copy (#2029) live in the
+ * `listings.listingsListPage.lifecycleTabs` namespace under the same token -
+ * each bucket means something different (see `offer-lifecycle.types.ts`
+ * docblocks), so a single generic "no results" message would under-inform the
+ * operator. Draft's copy deliberately does NOT say "not live yet": Draft also
+ * holds an offer an operator deactivated weeks ago and will never relist.
  */
 interface LifecycleTabDef {
   key: LifecycleTab;
   lifecycle: OfferLifecycle;
-  label: string;
-  emptyTitle: string;
-  emptyMessage: string;
 }
 
 const LIFECYCLE_TABS: readonly LifecycleTabDef[] = [
-  {
-    key: 'active',
-    lifecycle: 'Active',
-    label: 'Active',
-    emptyTitle: 'No active listings',
-    emptyMessage: 'Nothing here is currently live on a channel.',
-  },
-  {
-    // Named `invalid`/`Invalid`, not `inactive`/`Inactive` (#2032 review
-    // thread 9): Allegro's own INACTIVE means "not live", which this bucket
-    // is not - see `OfferLifecycleValues`'s docblock for the full rationale.
-    key: 'invalid',
-    lifecycle: 'Invalid',
-    label: 'Invalid',
-    emptyTitle: 'No invalid listings',
-    emptyMessage: 'Nothing here has been rejected by a channel validator.',
-  },
-  {
-    key: 'draft',
-    lifecycle: 'Draft',
-    label: 'Draft',
-    emptyTitle: 'No draft listings',
-    // Deliberately NOT "not live yet" - Draft also holds an offer an operator
-    // deliberately deactivated weeks ago and will never relist
-    // (offer-lifecycle.types.ts), so the copy must not promise a future state.
-    emptyMessage: 'Nothing here is currently live, and none of it has been rejected.',
-  },
-  {
-    key: 'ended',
-    lifecycle: 'Ended',
-    label: 'Ended',
-    emptyTitle: 'No ended listings',
-    emptyMessage: 'Nothing here has been ended by a channel.',
-  },
-  {
-    key: 'unsynced',
-    lifecycle: 'Unsynced',
-    label: 'Unsynced',
-    emptyTitle: 'No unsynced listings',
-    emptyMessage: 'Every mapping here has had its channel status read at least once.',
-  },
+  { key: 'active', lifecycle: 'Active' },
+  // Named `invalid`/`Invalid`, not `inactive`/`Inactive` (#2032 review
+  // thread 9): Allegro's own INACTIVE means "not live", which this bucket
+  // is not - see `OfferLifecycleValues`'s docblock for the full rationale.
+  { key: 'invalid', lifecycle: 'Invalid' },
+  { key: 'draft', lifecycle: 'Draft' },
+  { key: 'ended', lifecycle: 'Ended' },
+  { key: 'unsynced', lifecycle: 'Unsynced' },
 ];
+
+/** The operator's word for a lifecycle bucket; an unknown value is shown as sent. */
+function lifecycleLabel(lifecycle: string, copy: ListingsListCopy): string {
+  const def = LIFECYCLE_TABS.find((entry) => entry.lifecycle === lifecycle);
+  return def ? copy.lifecycleTabs[def.key].label : lifecycle;
+}
 
 /**
  * Column heading that names whose number the column carries. Price and quantity
@@ -212,6 +194,7 @@ function ListingCell({
   shape?: 'row' | 'card';
   activeLifecycle?: OfferLifecycle;
 }): ReactElement {
+  const copy = useMessages('listings').listingsListPage.listingCell;
   const identity = row.identity ?? null;
   const badges = listingRowBadges(row, activeLifecycle);
   const alert = listingRowAlert(row);
@@ -229,7 +212,7 @@ function ListingCell({
             </span>
           ) : (
             <span className="listing-cell__name listing-cell__name--missing">
-              {identity ? 'Unnamed product' : 'No linked variant'}
+              {identity ? copy.unnamedProduct : copy.noLinkedVariant}
             </span>
           )}
           {!isCard && identity?.variantLabel ? (
@@ -250,13 +233,13 @@ function ListingCell({
             </span>
           )}
           {identity?.sku ? (
-            <span title={`SKU: ${identity.sku}`}>
-              SKU: <em>{identity.sku}</em>
+            <span title={interpolate(copy.skuTitle, { sku: identity.sku })}>
+              {copy.skuLabel} <em>{identity.sku}</em>
             </span>
           ) : null}
           {!isCard && identity?.ean ? (
-            <span title={`EAN: ${identity.ean}`}>
-              EAN: <em>{identity.ean}</em>
+            <span title={interpolate(copy.eanTitle, { ean: identity.ean })}>
+              {copy.eanLabel} <em>{identity.ean}</em>
             </span>
           ) : null}
         </span>
@@ -295,15 +278,20 @@ function ListingCell({
  * own words.
  */
 function ConnectionProblemNotice({ notice }: { notice: ListingConnectionNotice }): ReactElement {
+  const copy = useMessages('listings').listingsListPage.connectionNotice;
+  const plural = usePlural();
   return (
     <Alert
       tone="error"
       className="listings-connection-notice"
-      title={`${notice.connectionLabel} reports a shop-level block`}
+      title={interpolate(copy.title, { connection: notice.connectionLabel })}
     >
       <p>
-        {notice.problems.map((problem) => problem.summary ?? problem.message).join(' \u00b7 ')} -
-        this is reported against every listing on the connection, not against any one of them.
+        {interpolate(copy.summary, {
+          problems: notice.problems
+            .map((problem) => problem.summary ?? problem.message)
+            .join(' \u00b7 '),
+        })}
       </p>
       <ul className="listings-connection-notice__problems">
         {notice.problems.map((problem) => (
@@ -316,9 +304,7 @@ function ConnectionProblemNotice({ notice }: { notice: ListingConnectionNotice }
         ))}
       </ul>
       <p className="text-muted">
-        {notice.affectedShownCount === 1
-          ? '1 of the listings shown here is affected.'
-          : `${notice.affectedShownCount} of the listings shown here are affected.`}
+        {plural(notice.affectedShownCount, copy.affectedShown)}
       </p>
     </Alert>
   );
@@ -363,30 +349,30 @@ function isCommercialReadingStale(row: OfferMapping): boolean {
  * rather than staying silent in a tooltip.
  */
 function PriceCell({ row }: { row: OfferMapping }): ReactElement {
+  const copy = useMessages('listings').listingsListPage.cells;
+  const format = useFormat();
   const commercial = row.commercial ?? null;
-  if (!commercial) return <AbsentValue label="No channel reading yet" />;
+  if (!commercial) return <AbsentValue label={copy.noReadingYet} />;
 
-  const readAt = `Price and quantity on channel, last read ${formatDateTime(
-    commercial.lastCommercialSyncedAt,
-  )}`;
+  const readAt = interpolate(copy.priceReadAt, {
+    readAt: format.dateTime(commercial.lastCommercialSyncedAt),
+  });
   const stale = isCommercialReadingStale(row);
 
   return (
     <span className="price-cell" title={readAt}>
       <span className="price-cell__value">
         {commercial.price == null ? (
-          <AbsentValue label="Price not reported by the channel" />
+          <AbsentValue label={copy.priceNotReported} />
         ) : (
-          formatAmount(Number(commercial.price), commercial.currency ?? undefined)
+          format.money(Number(commercial.price), commercial.currency ?? undefined)
         )}
       </span>
       <span className="sr-only">. {readAt}</span>
       {stale ? (
         <StatusBadge tone="warning" compact withDot className="price-cell__stale">
-          <span title="This price reading is older than the latest channel status read">Stale</span>
-          <span className="sr-only">
-            . This price reading is older than the latest channel status read
-          </span>
+          <span title={copy.staleTitle}>{copy.stale}</span>
+          <span className="sr-only">. {copy.staleTitle}</span>
         </StatusBadge>
       ) : null}
     </span>
@@ -394,23 +380,25 @@ function PriceCell({ row }: { row: OfferMapping }): ReactElement {
 }
 
 function QuantityCell({ row }: { row: OfferMapping }): ReactElement {
+  const copy = useMessages('listings').listingsListPage.cells;
+  const format = useFormat();
   const commercial = row.commercial ?? null;
   // Nothing was ever persisted for this offer, so no reading was taken - which
   // is a different fact from a channel that answered and withheld the number.
   // On a connection whose status-sync task is off this is every row.
-  if (!commercial) return <AbsentValue label="No channel reading yet" />;
+  if (!commercial) return <AbsentValue label={copy.noReadingYet} />;
 
   const quantity = commercial.availableQuantity;
   // Absence is not zero: a marketplace that reported no quantity says nothing
   // about whether the offer has stock.
-  if (quantity == null) return <AbsentValue label="Quantity not reported by the channel" />;
+  if (quantity == null) return <AbsentValue label={copy.quantityNotReported} />;
 
   return (
     <span className="qty-cell">
-      <span className="qty-cell__value">{quantity}</span>
+      <span className="qty-cell__value">{format.number(quantity)}</span>
       {quantity === 0 ? (
         <StatusBadge tone="error" compact withDot>
-          Out of stock
+          {copy.outOfStock}
         </StatusBadge>
       ) : null}
     </span>
@@ -418,13 +406,18 @@ function QuantityCell({ row }: { row: OfferMapping }): ReactElement {
 }
 
 function UpdatedCell({ row }: { row: OfferMapping }): ReactElement {
+  const copy = useMessages('listings').listingsListPage.cells;
   const syncedAt = row.channelStatus?.lastStatusSyncedAt;
-  if (!syncedAt) return <AbsentValue label="Channel status never read" />;
+  if (!syncedAt) return <AbsentValue label={copy.statusNeverRead} />;
   return <TimeDisplay className="time-cell" iso={syncedAt} format="datetime" />;
 }
 
 export function ListingsListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
+  const copy = useMessages('listings').listingsListPage;
+  const common = useMessages('listings').common;
+  const plural = usePlural();
+  const format = useFormat();
 
   const urlSearch = searchParams.get('search') ?? '';
   const urlConnectionId = searchParams.get('connectionId') ?? '';
@@ -436,6 +429,7 @@ export function ListingsListPage(): ReactElement {
   const rawTab = searchParams.get('tab');
   const tab: LifecycleTab = isLifecycleTab(rawTab) ? rawTab : DEFAULT_TAB;
   const activeTabDef = LIFECYCLE_TABS.find((def) => def.key === tab) ?? LIFECYCLE_TABS[0];
+  const activeTabCopy = copy.lifecycleTabs[activeTabDef.key];
 
   // Top-level view switch (#3147): "All listings" (everything below,
   // unchanged) vs "Price changes" (the new review queue). A permanent tab on
@@ -567,19 +561,19 @@ export function ListingsListPage(): ReactElement {
         id: 'listing',
         // #2538 - Thumbnail, title and a meta line.
         lines: 2,
-        header: 'Listing',
+        header: copy.columns.listing,
         cell: (row): ReactNode => <ListingCell row={row} activeLifecycle={activeTabDef.lifecycle} />,
       },
       {
         id: 'channel',
-        header: 'Channel',
+        header: copy.columns.channel,
         cell: (row): ReactNode => <ChannelPill row={row} label={channelLabel(row)} />,
       },
       {
         id: 'connection',
         // #2538 - ConnectionCell stacks the name over its status.
         lines: 2,
-        header: 'Connection',
+        header: copy.columns.connection,
         // `.get()` returns undefined on a miss, which ConnectionCell reads as
         // "resolve it yourself" and would turn back into a per-row fetch -
         // coalesce to null and hand it the batched query's loading state.
@@ -593,13 +587,17 @@ export function ListingsListPage(): ReactElement {
       },
       {
         id: 'price',
-        header: <ColumnHead label="Price" note="on channel" align="right" />,
+        header: (
+          <ColumnHead label={copy.columns.price} note={copy.columns.onChannel} align="right" />
+        ),
         align: 'right',
         cell: (row): ReactNode => <PriceCell row={row} />,
       },
       {
         id: 'quantity',
-        header: <ColumnHead label="Quantity" note="on channel" align="right" />,
+        header: (
+          <ColumnHead label={copy.columns.quantity} note={copy.columns.onChannel} align="right" />
+        ),
         align: 'right',
         cell: (row): ReactNode => <QuantityCell row={row} />,
       },
@@ -608,11 +606,11 @@ export function ListingsListPage(): ReactElement {
         // Not "when this listing changed" - when OL last read the channel. The
         // hourly scan makes a days-old value ordinary, and the mobile card
         // already calls the identical value "Status read".
-        header: <ColumnHead label="Updated" note="status read" />,
+        header: <ColumnHead label={copy.columns.updated} note={copy.columns.statusRead} />,
         cell: (row): ReactNode => <UpdatedCell row={row} />,
       },
     ],
-    [channelLabel, connectionsById, connectionsQuery.isLoading, activeTabDef.lifecycle],
+    [channelLabel, connectionsById, connectionsQuery.isLoading, activeTabDef.lifecycle, copy.columns],
   );
 
   function handleFilterChange(key: 'search' | 'connectionId', value: string): void {
@@ -714,12 +712,12 @@ export function ListingsListPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow="Operations"
-      title="Listings"
-      description="Everything you sell on connected channels, and what state it is in right now."
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
       actions={
         write.visible ? (
-          <Button onClick={() => setIsWizardOpen(true)}>Publish products</Button>
+          <Button onClick={() => setIsWizardOpen(true)}>{copy.publishProducts}</Button>
         ) : null
       }
     >
@@ -734,10 +732,10 @@ export function ListingsListPage(): ReactElement {
           });
         }}
       >
-        <TabsList aria-label="Listings views">
-          <TabsTrigger value="all">All listings</TabsTrigger>
+        <TabsList aria-label={copy.views.ariaLabel}>
+          <TabsTrigger value="all">{copy.views.all}</TabsTrigger>
           <TabsTrigger value="queue">
-            Price changes{' '}
+            {copy.views.priceChanges}{' '}
             <span className="tabs__count">
               {/* Same 3-state treatment as the lifecycle tab counts below
                   (#3164 review) — a count that snaps from a placeholder `0`
@@ -753,7 +751,7 @@ export function ListingsListPage(): ReactElement {
               ) : priceChangesOpenCount === null ? (
                 <span className="tabs__count-skeleton" aria-hidden="true" />
               ) : (
-                priceChangesOpenCount
+                format.number(priceChangesOpenCount)
               )}
             </span>
           </TabsTrigger>
@@ -767,8 +765,8 @@ export function ListingsListPage(): ReactElement {
       <div className="toolbar toolbar--compact listings-toolbar">
         <div className="toolbar__group">
           <Input
-            aria-label="Search listings by product name, SKU, EAN or external ID"
-            placeholder="Product name, SKU, EAN or external ID"
+            aria-label={copy.toolbar.searchAriaLabel}
+            placeholder={copy.toolbar.searchPlaceholder}
             value={searchInput}
             onChange={(e) => {
               handleFilterChange('search', e.target.value);
@@ -784,13 +782,13 @@ export function ListingsListPage(): ReactElement {
               ProductMaster/ProductPublisher-only connection can never produce a
               row here and would otherwise dead-end the table on selection. */}
           <Select
-            aria-label="Filter by channel"
+            aria-label={copy.toolbar.channelAriaLabel}
             value={urlConnectionId}
             onChange={(e) => {
               handleFilterChange('connectionId', e.target.value);
             }}
           >
-            <option value="">All channels</option>
+            <option value="">{copy.toolbar.allChannels}</option>
             {offerManagerConnections.map((connection) => (
               <option key={connection.id} value={connection.id}>
                 {connection.name}
@@ -799,7 +797,7 @@ export function ListingsListPage(): ReactElement {
           </Select>
         </div>
         <Button tone="ghost" className="button--sm" onClick={clearFilters}>
-          Clear
+          {copy.toolbar.clear}
         </Button>
       </div>
 
@@ -809,13 +807,13 @@ export function ListingsListPage(): ReactElement {
           if (isLifecycleTab(value)) setTab(value);
         }}
       >
-        <TabsList aria-label="Listing lifecycle">
+        <TabsList aria-label={copy.lifecycleAriaLabel}>
           {LIFECYCLE_TABS.map((def) => (
             <TabsTrigger key={def.key} value={def.key}>
               {/* Explicit {' '} - not JSX whitespace, which collapses away
                   entirely - so the accessible name reads "Active 7", not the
                   run-on "Active7" (#2029 round 1 review). */}
-              {def.label}{' '}
+              {copy.lifecycleTabs[def.key].label}{' '}
               <span className="tabs__count">
                 {/* A count that snaps from 0 to its real value reads as a
                     bug (#2029 / mockup frame 04) - render a skeleton line
@@ -840,7 +838,9 @@ export function ListingsListPage(): ReactElement {
                 ) : lifecycleCounts === null ? (
                   <span className="tabs__count-skeleton" aria-hidden="true" />
                 ) : (
-                  (lifecycleCounts[def.lifecycle] ?? '—')
+                  (lifecycleCounts[def.lifecycle] != null
+                    ? format.number(lifecycleCounts[def.lifecycle])
+                    : '—')
                 )}
               </span>
             </TabsTrigger>
@@ -859,12 +859,12 @@ export function ListingsListPage(): ReactElement {
             lifecycle-counts announcement. */}
         <span className="sr-only" role="status" aria-live="polite">
           {query.isFetching && !query.isPending
-            ? 'Refreshing listings…'
+            ? copy.status.refreshing
             : lifecycleCounts
-              ? 'Listing counts loaded.'
+              ? copy.status.countsLoaded
               : countsUnavailable
-                ? 'Listing counts unavailable.'
-                : 'Loading listing counts…'}
+                ? copy.status.countsUnavailable
+                : copy.status.countsLoading}
         </span>
 
         {/* `placeholderData: keepPreviousData` (round-1 fix) stops the table
@@ -908,18 +908,18 @@ export function ListingsListPage(): ReactElement {
               skeleton on it would still blank the table on every one of
               them - the exact symptom this fix removes. */}
           {query.isPending ? (
-            <DataTableSkeleton columns={columns} label="Loading listings…" />
+            <DataTableSkeleton columns={columns} label={copy.loading} />
           ) : query.error ? (
             <ErrorState
-              title="Unable to load listings"
-              message={query.error.message}
+              title={copy.errorTitle}
+              message={serverErrorText(common.serverSaid, query.error.message, common.unknownError)}
               action={
                 <Button
                   onClick={() => {
                     void query.refetch();
                   }}
                 >
-                  Retry
+                  {copy.retry}
                 </Button>
               }
             />
@@ -927,18 +927,18 @@ export function ListingsListPage(): ReactElement {
             hasFilters ? (
               <EmptyState
                 liveRegion="off"
-                title="No offer mappings found"
-                message="No offer mappings match the current filters."
-                action={<Button onClick={clearFilters}>Clear filters</Button>}
+                title={copy.empty.filteredTitle}
+                message={copy.empty.filteredMessage}
+                action={<Button onClick={clearFilters}>{copy.empty.clearFilters}</Button>}
               />
             ) : noConnectionsConfigured ? (
               <EmptyState
                 liveRegion="off"
-                title="No channels connected yet"
-                message="Listings are published to connected sales channels."
+                title={copy.empty.noChannelsTitle}
+                message={copy.empty.noChannelsMessage}
                 action={
                   <Link className="button button--primary" to="/connections">
-                    Connect a channel
+                    {copy.empty.connectChannel}
                   </Link>
                 }
               />
@@ -955,19 +955,24 @@ export function ListingsListPage(): ReactElement {
               tab !== 'unsynced' && (lifecycleCounts?.Unsynced ?? 0) > 0 ? (
                 <EmptyState
                   liveRegion="off"
-                  title={activeTabDef.emptyTitle}
-                  message={`${activeTabDef.emptyMessage} ${lifecycleCounts?.Unsynced} mapping(s) have never had their channel status read.`}
+                  title={activeTabCopy.emptyTitle}
+                  message={`${activeTabCopy.emptyMessage} ${plural(
+                    lifecycleCounts?.Unsynced ?? 0,
+                    copy.empty.unsyncedHint,
+                  )}`}
                   action={
                     <Button onClick={() => setTab('unsynced')}>
-                      Show unsynced ({lifecycleCounts?.Unsynced})
+                      {interpolate(copy.empty.showUnsynced, {
+                        count: format.number(lifecycleCounts?.Unsynced ?? 0),
+                      })}
                     </Button>
                   }
                 />
               ) : (
                 <EmptyState
                   liveRegion="off"
-                  title={activeTabDef.emptyTitle}
-                  message={activeTabDef.emptyMessage}
+                  title={activeTabCopy.emptyTitle}
+                  message={activeTabCopy.emptyMessage}
                 />
               )
             )
@@ -977,7 +982,7 @@ export function ListingsListPage(): ReactElement {
                 <ConnectionProblemNotice key={notice.connectionId} notice={notice} />
               ))}
               <DataTable
-                caption="Listings"
+                caption={copy.title}
                 // Scopes the identity column's width floor to this table - the
                 // mockup put `min-width: 28rem` on `.data-table td:first-child`,
                 // which here would reach ~12 unrelated tables (#2028).
@@ -1004,13 +1009,13 @@ export function ListingsListPage(): ReactElement {
                   summary: (m) => (
                     <dl className="listings-card-facts">
                       <div>
-                        <dt>Channel</dt>
+                        <dt>{copy.card.channel}</dt>
                         <dd>
                           <ChannelPill row={m} label={channelLabel(m)} />
                         </dd>
                       </div>
                       <div>
-                        <dt>Connection</dt>
+                        <dt>{copy.card.connection}</dt>
                         <dd>
                           <ConnectionCell
                             connectionId={m.connectionId}
@@ -1020,13 +1025,13 @@ export function ListingsListPage(): ReactElement {
                         </dd>
                       </div>
                       <div>
-                        <dt>Price on channel</dt>
+                        <dt>{copy.card.priceOnChannel}</dt>
                         <dd>
                           <PriceCell row={m} />
                         </dd>
                       </div>
                       <div>
-                        <dt>Quantity on channel</dt>
+                        <dt>{copy.card.quantityOnChannel}</dt>
                         <dd>
                           <QuantityCell row={m} />
                         </dd>
@@ -1041,18 +1046,22 @@ export function ListingsListPage(): ReactElement {
                       items={[
                         {
                           id: 'lifecycle',
-                          label: 'Lifecycle',
-                          value: m.channelStatus?.lifecycle ?? <EmptyValue />,
+                          label: copy.card.lifecycle,
+                          value: m.channelStatus?.lifecycle ? (
+                            lifecycleLabel(m.channelStatus.lifecycle, copy)
+                          ) : (
+                            <EmptyValue />
+                          ),
                         },
                         {
                           id: 'publicationStatus',
-                          label: 'Channel status',
+                          label: copy.card.channelStatus,
                           value: m.channelStatus?.publicationStatus ?? <EmptyValue />,
                           mono: true,
                         },
                         {
                           id: 'updated',
-                          label: 'Status read',
+                          label: copy.card.statusRead,
                           value: <UpdatedCell row={m} />,
                         },
                         // The card head drops these two so the product name keeps
@@ -1060,27 +1069,25 @@ export function ListingsListPage(): ReactElement {
                         // one tap away rather than disappearing.
                         {
                           id: 'externalId',
-                          label: 'Offer ID',
+                          label: copy.card.offerId,
                           value: m.externalId,
                           mono: true,
                         },
                         {
                           id: 'ean',
-                          label: 'EAN/GTIN',
-                          value: m.identity?.ean ?? (
-                            <EmptyValue label="No EAN on the linked variant" />
-                          ),
+                          label: copy.card.ean,
+                          value: m.identity?.ean ?? <EmptyValue label={copy.card.noEan} />,
                           mono: true,
                         },
                         {
                           id: 'internalId',
-                          label: 'Variant ID',
+                          label: copy.card.variantId,
                           value: m.internalId,
                           mono: true,
                         },
                         {
                           id: 'validation',
-                          label: 'Channel problems',
+                          label: copy.card.channelProblems,
                           // The card's disclosure is the mobile counterpart of
                           // the publication-status panel, so it lists EVERY
                           // reason - shop-level ones included, since the notice
@@ -1100,7 +1107,7 @@ export function ListingsListPage(): ReactElement {
                               ))}
                             </ul>
                           ) : (
-                            <EmptyValue label="No problems reported" />
+                            <EmptyValue label={copy.card.noProblems} />
                           ),
                         },
                       ]}

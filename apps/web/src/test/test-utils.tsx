@@ -181,7 +181,7 @@ function withTwoStageReads<T extends Record<string, unknown>>(namespace: T): T {
 
 export function createMockApiClient(
   overrides: DeepPartialApiClient = {},
-  mockApiNamespaces: readonly PluginMockApiNamespacesFactory[] = IN_TREE_MOCK_API_NAMESPACES,
+  mockApiNamespaces: readonly PluginMockApiNamespacesFactory[] = IN_TREE_MOCK_API_NAMESPACES
 ): ApiClient {
   const core: CoreApiClient = {
     request: overrides.request ?? vi.fn(),
@@ -223,7 +223,13 @@ export function createMockApiClient(
       listRunsBySubject: vi.fn().mockResolvedValue(null),
       listRunFeed: vi
         .fn()
-        .mockResolvedValue({ runs: [], limit: 50, hasMore: false, recordingAvailable: true, note: null }),
+        .mockResolvedValue({
+          runs: [],
+          limit: 50,
+          hasMore: false,
+          recordingAvailable: true,
+          note: null,
+        }),
       replace: vi.fn(),
       remove: vi.fn().mockResolvedValue(undefined),
       ...overrides.automations,
@@ -393,8 +399,22 @@ export function createMockApiClient(
     connections: {
       create: vi.fn().mockResolvedValue(sampleConnection),
       disable: vi.fn().mockResolvedValue({ ...sampleConnection, status: 'disabled' }),
-      archive: vi.fn().mockResolvedValue({ ...sampleConnection, status: 'archived', credentialsBacked: true, credentialsStored: false }),
-      restore: vi.fn().mockResolvedValue({ ...sampleConnection, status: 'disabled', credentialsBacked: true, credentialsStored: false }),
+      archive: vi
+        .fn()
+        .mockResolvedValue({
+          ...sampleConnection,
+          status: 'archived',
+          credentialsBacked: true,
+          credentialsStored: false,
+        }),
+      restore: vi
+        .fn()
+        .mockResolvedValue({
+          ...sampleConnection,
+          status: 'disabled',
+          credentialsBacked: true,
+          credentialsStored: false,
+        }),
       getBankAccounts: vi.fn().mockResolvedValue([]),
       setDefaultBankAccount: vi.fn().mockResolvedValue(undefined),
       getDiagnostics: vi.fn().mockResolvedValue({
@@ -503,7 +523,9 @@ export function createMockApiClient(
       // #1909 — empty list default: the normal never-registered state, never a
       // 404 (OpenLinker never asserts an order requires a receipt).
       listForOrder: vi.fn().mockResolvedValue([]),
-      sendEmail: vi.fn().mockResolvedValue({ delivered: true, recipient: null, sentVia: 'openlinker' }),
+      sendEmail: vi
+        .fn()
+        .mockResolvedValue({ delivered: true, recipient: null, sentVia: 'openlinker' }),
       register: vi.fn().mockResolvedValue({
         orderId: 'ord_1',
         connectionId: 'conn_fiscal',
@@ -574,7 +596,7 @@ export function createMockApiClient(
       getForOrder: vi
         .fn()
         .mockRejectedValue(
-          new ApiError('No invoice for order', 404, { message: 'No invoice for order' }),
+          new ApiError('No invoice for order', 404, { message: 'No invoice for order' })
         ),
       // #758 — empty paginated list default so the /invoices list page (and any
       // other `invoicing.list` caller) does not hit `undefined` once `list` is
@@ -591,9 +613,7 @@ export function createMockApiClient(
       // UPO preview/download path don't hit `undefined`.
       downloadUpo: vi.fn().mockResolvedValue(new Blob([''], { type: 'application/pdf' })),
       // #1228 — resolves to an empty HTML blob by default for FA(3) doc tests.
-      downloadDocument: vi
-        .fn()
-        .mockResolvedValue(new Blob([''], { type: 'text/html' })),
+      downloadDocument: vi.fn().mockResolvedValue(new Blob([''], { type: 'text/html' })),
       // #2076 — 409 default ("no content snapshot for this invoice"), mirroring
       // the real endpoint's terminal 409 and the `getForOrder` 404 precedent
       // above. This puts correction-flow tests on the picker's manual-entry
@@ -602,7 +622,7 @@ export function createMockApiClient(
       getContent: vi
         .fn()
         .mockRejectedValue(
-          new ApiError('No content snapshot', 409, { message: 'No content snapshot' }),
+          new ApiError('No content snapshot', 409, { message: 'No content snapshot' })
         ),
       // #2558 — default so a rejected-clearance resend affordance doesn't hit
       // `undefined` in a test that doesn't override it.
@@ -813,7 +833,7 @@ export function createMockApiClient(
       getCatalogProduct: vi
         .fn()
         .mockRejectedValue(
-          new ApiError('Adapter does not support catalog product reading', 422, null),
+          new ApiError('Adapter does not support catalog product reading', 422, null)
         ),
       // #632 — default to a no-match outcome so existing wizard tests that
       // don't opt in behave as if the BE returned "manual / null". Tests that
@@ -953,7 +973,9 @@ export function createMockApiClient(
       getCostSummary: vi
         .fn()
         .mockResolvedValue({ variantsWithoutCost: 0, productsWithoutCost: 0, variantsWithCost: 0 }),
-      getCostWorklist: vi.fn().mockResolvedValue({ currency: 'PLN', items: [], limit: 20, offset: 0 }),
+      getCostWorklist: vi
+        .fn()
+        .mockResolvedValue({ currency: 'PLN', items: [], limit: 20, offset: 0 }),
       countCostWorklist: vi.fn().mockResolvedValue({ total: 0 }),
       bulkFillVariantCost: vi.fn(),
       ...overrides.products,
@@ -1106,6 +1128,9 @@ export function createMockApiClient(
       undoLastScan: vi
         .fn<BenchApi['undoLastScan']>()
         .mockRejectedValue(new Error('bench.undoLastScan not stubbed')),
+      confirmSourceChangeTakenOut: vi
+        .fn<BenchApi['confirmSourceChangeTakenOut']>()
+        .mockRejectedValue(new Error('bench.confirmSourceChangeTakenOut not stubbed')),
       pingPresence: vi
         .fn<BenchApi['pingPresence']>()
         .mockRejectedValue(new Error('bench.pingPresence not stubbed')),
@@ -1157,9 +1182,7 @@ export function createMockApiClient(
       // not opt in renders neither banner: an "overlapping" default would put
       // a conflict warning on every unrelated test, and a "disjoint" one would
       // claim a non-collision nothing checked.
-      checkRuleOverlap: vi
-        .fn()
-        .mockResolvedValue({ overlapping: [], disjoint: [], undecided: [] }),
+      checkRuleOverlap: vi.fn().mockResolvedValue({ overlapping: [], disjoint: [], undecided: [] }),
       listCountryDefaults: vi.fn().mockResolvedValue([]),
       upsertCountryDefault: vi.fn().mockResolvedValue(null),
       deleteCountryDefault: vi.fn().mockResolvedValue(undefined),
@@ -1250,9 +1273,7 @@ export function createMockApiClient(
         counts: { total: 0, orphan: 0, attributed: 0 },
         droppedCount: 0,
       }),
-      getIngestionAvailability: vi
-        .fn()
-        .mockResolvedValue({ configured: true, connectionIds: [] }),
+      getIngestionAvailability: vi.fn().mockResolvedValue({ configured: true, connectionIds: [] }),
       // #2383 — the order detail page reads this on every render. Defaulted to
       // the no-returns case so every existing order test keeps its behaviour.
       listReturnEventsForOrder: vi.fn().mockResolvedValue([]),
@@ -1341,6 +1362,26 @@ export function createMockApiClient(
       getConfig: vi.fn().mockResolvedValue({ demoMode: false }),
       ...overrides.system,
     } as ApiClient['system'],
+    loginPageSettings: {
+      get: vi.fn().mockResolvedValue({
+        copy: { pl: {}, en: {} },
+        registration: { value: false, source: 'default' },
+        maxLength: {
+          headline: 60,
+          headlineAccent: 60,
+          lead: 280,
+          formTitle: 60,
+          formSubtitle: 140,
+          support: 500,
+          registerTitle: 60,
+          registerSubtitle: 140,
+        },
+        updatedAt: null,
+        updatedBy: null,
+      }),
+      update: vi.fn().mockResolvedValue(undefined),
+      ...overrides.loginPageSettings,
+    } as ApiClient['loginPageSettings'],
   };
 
   // Fold plugin mock defaults, layering caller overrides per namespace. Caller
@@ -1390,7 +1431,7 @@ const DEFAULT_TEST_USER: SessionUser = {
 };
 
 export function createAuthenticatedSessionAdapter(
-  user: SessionUser = DEFAULT_TEST_USER,
+  user: SessionUser = DEFAULT_TEST_USER
 ): SessionAdapter {
   const token = 'test-jwt-token';
   return {
@@ -1468,7 +1509,7 @@ export function stubUnavailableLocalStorage(): () => void {
 
 export function renderWithProviders(
   ui: ReactElement,
-  options: RenderWithProvidersOptions = {},
+  options: RenderWithProvidersOptions = {}
 ): RenderResult {
   const {
     apiClient = createMockApiClient(),

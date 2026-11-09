@@ -16,10 +16,12 @@
 import { screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { OrderReturnsPanel } from './order-returns-panel';
-import { ORDER_RETURNS_PANEL_COPY as COPY } from '../lib/order-returns-panel.copy';
-import { RETURN_RESTOCK_BLOCKED_COPY } from '../lib/restock-blocked.copy';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import type { ReturnListItem } from '../api/returns.types';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+
+const COPY = getMessages('returns').orderReturnsPanel;
+const RETURN_RESTOCK_BLOCKED_COPY = getMessages('returns').restockBlocked;
 
 function item(overrides: Partial<ReturnListItem> = {}): ReturnListItem {
   return {
@@ -150,7 +152,7 @@ describe('OrderReturnsPanel', () => {
     // Truncation is a PAGE-SIZE fact: `total` past the panel's own page size.
     renderPanel(listResult({ items: [item()], total: 25 }));
 
-    expect(await screen.findByText(COPY.truncated(1, 25))).toBeInTheDocument();
+    expect(await screen.findByText(interpolate(COPY.truncated, { shown: 1, total: 25 }))).toBeInTheDocument();
   });
 
   it('should NOT call an unreadable row a truncated page', async () => {
@@ -161,7 +163,7 @@ describe('OrderReturnsPanel', () => {
     renderPanel(listResult({ items: [item()], total: 2, droppedCount: 1 }));
 
     expect(await screen.findByText(/could not be read/i)).toBeInTheDocument();
-    expect(screen.queryByText(COPY.truncated(1, 2))).not.toBeInTheDocument();
+    expect(screen.queryByText(interpolate(COPY.truncated, { shown: 1, total: 2 }))).not.toBeInTheDocument();
   });
 
   it('should report rows it could not read rather than dropping them silently', async () => {

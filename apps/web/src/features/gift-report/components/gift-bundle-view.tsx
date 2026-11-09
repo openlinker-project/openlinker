@@ -27,8 +27,8 @@ interface GiftBundleViewProps {
 }
 
 export function GiftBundleView({ filters }: GiftBundleViewProps): ReactElement {
-  const copy = useMessages('giftReport').bundles;
-  const errorCopy = useMessages('giftReport').error;
+  const copy = useMessages('gift-report').bundles;
+  const errorCopy = useMessages('gift-report').error;
   const format = useFormat();
   const query = useGiftBundleReportQuery(filters);
 

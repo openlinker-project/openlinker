@@ -372,6 +372,14 @@ export const JobTypeValues = [
   // mint `connection.reachability.sweep` and register this one as its alias -
   // with a real second consumer to justify the alias, rather than for tidiness.
   'subiekt.bridge.reachabilitySweep',
+
+  // Payment writeback (#3963). Marks ONE destination shop's order paid after
+  // the buyer paid at the source, once the shop already holds the order as
+  // unpaid. One job per (order, destination) so one slow shop never re-drives
+  // another (#861); `connectionId` is the DESTINATION connection, which keeps
+  // per-scope lane accounting honest. Retries ride the runner's ladder; the
+  // last attempt records `not-sent` instead of throwing.
+  'order.paymentWriteback.push',
 ] as const;
 
 /**

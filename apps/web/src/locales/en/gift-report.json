@@ -1,0 +1,80 @@
+{
+  "bundles": {
+    "alone": "Alone",
+    "available": "Available",
+    "bundle": "Bundle",
+    "component": "Component",
+    "componentCostMissing": "Component cost missing",
+    "demandTitle": "Demand for components",
+    "empty": "No bundle was sold in this period.",
+    "giftInComposition": "Gift in composition",
+    "inBundles": "In bundles",
+    "margin": "Margin",
+    "note": "The cost of a bundle is the sum of the purchase costs of its components. A gift in the composition counts as cost.",
+    "revenue": "Net revenue",
+    "salesTitle": "Bundle sales",
+    "sold": "Sold",
+    "unknown": "unknown"
+  },
+  "description": "How many gifts you gave, what they cost you and how bundles sell. One report, filters on top.",
+  "empty": {
+    "body": "No order in this range carried a gift. Change the period or the filters.",
+    "title": "No gifts in this period"
+  },
+  "error": "The gift report could not be loaded.",
+  "export": {
+    "body": "Each row: date, customer, gift, net purchase cost, document. The customer is the same buyer in all orders, even when Allegro gives a different e-mail each time. The yearly thresholds (20 zł and 100 zł) are judged by your accountant, OpenLinker does not watch them.",
+    "button": "Export per customer (CSV)",
+    "download": "Download CSV",
+    "preparing": "Preparing CSV…",
+    "title": "Yearly gift export for your accountant"
+  },
+  "eyebrow": "Analytics",
+  "filters": {
+    "allChannels": "All channels",
+    "allSources": "All",
+    "channel": "Channel",
+    "manual": "Added by hand",
+    "rule": "From a promotion",
+    "source": "Gift source"
+  },
+  "movements": {
+    "body": "Stock movements with the reason Gift for this period are in the stock history. Bundle components leave stock as ordinary sales and are not listed separately.",
+    "open": "Show gift movements"
+  },
+  "range": {
+    "from": "From",
+    "to": "To"
+  },
+  "summary": {
+    "cost": "Cost you",
+    "paid": "Customers paid",
+    "sentence": "Customers paid {paid} for {units} gifts. They cost you {cost} net, by the purchase cost of the product. You pay for them.",
+    "units": "Pieces",
+    "unknownInSentence": "{n} pcs without a purchase cost are not in this amount."
+  },
+  "table": {
+    "bundleLabel": "Gift in a bundle",
+    "channelLabel": "Sent by the channel",
+    "cost": "Cost you",
+    "costUnknown": "Cost unknown",
+    "deletedRule": "Deleted promotion",
+    "gift": "Gift",
+    "manualLabel": "Added by hand",
+    "orders": "Orders",
+    "pieces": "Pieces",
+    "promotion": "Promotion",
+    "title": "Gift cost by promotion",
+    "withoutPieces": "without {n} pcs"
+  },
+  "title": "Gift cost",
+  "unknown": {
+    "body": "They are not in the cost above. Fill in the purchase cost of the product and the report recalculates by itself.",
+    "title": "{n} pcs of gifts without a purchase cost"
+  },
+  "views": {
+    "bundles": "Bundles",
+    "gifts": "Gifts",
+    "movements": "Stock movements"
+  }
+}

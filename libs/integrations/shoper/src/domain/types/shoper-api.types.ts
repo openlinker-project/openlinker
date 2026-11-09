@@ -458,6 +458,24 @@ export interface ShoperOrderStatusUpdate {
 }
 
 /**
+ * Body of `PUT /orders/:id` that records the amount paid (#3963). `paid` is a
+ * writable order field in the REST schema; setting it to the order total is
+ * what flips the read-only `is_paid`.
+ */
+export interface ShoperOrderPaymentUpdate {
+  readonly paid: number;
+}
+
+/** The slice of `GET /orders/:id` the `paid` writeback reads (#3963). */
+export interface ShoperOrderPayment {
+  readonly order_id: string | number;
+  readonly status_id?: string | number | null;
+  readonly sum?: string | number | null;
+  readonly paid?: string | number | null;
+  readonly is_paid?: boolean | null;
+}
+
+/**
  * Body of `PUT /parcels/:id` that attaches a tracking number arriving after the
  * parcel. `sent` is left out for a parcel that is already sent: Shoper answers
  * 400 `parcel_already_sent` to any write naming the flag then, while the code on

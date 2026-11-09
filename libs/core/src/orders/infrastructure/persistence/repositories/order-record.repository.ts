@@ -115,6 +115,10 @@ import {
 } from '@openlinker/core/sales-documents';
 import type { PriceTaxTreatment } from '../../../domain/types/order.types';
 import { isPaymentMethod } from '../../../domain/types/payment-method.types';
+import {
+  readPaymentWriteback,
+  type PaymentWritebackEntry,
+} from '../../../domain/types/payment-writeback.types';
 import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
 import type { OrderAmendmentChange } from '../../../domain/order-amendment-diff';
@@ -656,6 +660,26 @@ export class OrderRecordRepository
       );
     }
 
+    if (filters.omsAttentionReason !== undefined) {
+      // #3961 - one named attention reason. The reason is BOUND as a jsonpath
+      // variable, never interpolated: it arrives from a query string.
+      qb.andWhere(
+        `jsonb_path_exists(COALESCE(rec."omsAttention", '[]'::jsonb), '$[*] ? (@.reason == $r)', jsonb_build_object('r', CAST(:omsAttentionReason AS text)))`,
+        { omsAttentionReason: filters.omsAttentionReason }
+      );
+    }
+
+    if (filters.paymentNotSent !== undefined) {
+      // #3963 - its own axis, ANDed like `omsAttention`. Reads the flag the
+      // writer recomputes in the same statement as the jsonb, served by a
+      // partial index, so the filter never scans the jsonb.
+      qb.andWhere(
+        filters.paymentNotSent
+          ? OrderRecordRepository.HAS_PAYMENT_NOT_SENT
+          : `NOT (${OrderRecordRepository.HAS_PAYMENT_NOT_SENT})`
+      );
+    }
+
     if (filters.activeHoldReason) {
       // #2342 — the hold REASON axis, ANDed with the others. It reads the same
       // #2340 projection column the lifecycle `CASE`'s `held` arm tests, which
@@ -878,6 +902,11 @@ export class OrderRecordRepository
         `COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_OMS_ATTENTION})`,
         'oms_attention'
       )
+      // #3963 - same predicate as the filter arm, so the chip and its rows agree.
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_PAYMENT_NOT_SENT})`,
+        'payment_not_sent'
+      )
       // #2703 / #2704 — its own count, never inside any health bucket. Reads the
       // SAME predicate the filter arm does, so the chip's number and the rows it
       // reveals can never disagree (#2100's badge/count/filter rule).
@@ -924,6 +953,7 @@ export class OrderRecordRepository
       sales_document_blocked: string;
       tax_rate_conflict: string;
       oms_attention: string;
+      payment_not_sent: string;
       destination_routing_blocked: string;
       waiting_in_openlinker: string;
       waiting_in_openlinker_oldest_at: Date | null;
@@ -942,6 +972,7 @@ export class OrderRecordRepository
       salesDocumentBlocked: Number(raw?.sales_document_blocked ?? 0),
       taxRateConflict: Number(raw?.tax_rate_conflict ?? 0),
       omsAttention: Number(raw?.oms_attention ?? 0),
+      paymentNotSent: Number(raw?.payment_not_sent ?? 0),
       destinationRoutingBlocked: Number(raw?.destination_routing_blocked ?? 0),
       waitingInOpenLinker: Number(raw?.waiting_in_openlinker ?? 0),
       waitingInOpenLinkerOldestAt: raw?.waiting_in_openlinker_oldest_at ?? null,
@@ -2103,6 +2134,9 @@ export class OrderRecordRepository
    * `COALESCE(…, '')` for — `jsonb_path_exists(NULL, …)` yields NULL, so the
    * column is coalesced to an empty array before the test rather than after.
    */
+  /** #3963 - a shop still shows the order unpaid and OpenLinker gave up. */
+  private static readonly HAS_PAYMENT_NOT_SENT = `rec."paymentWritebackProblem" = true`;
+
   private static readonly HAS_OMS_ATTENTION =
     AuthorityAttentionCountedReasonValues.length === 0
       ? // An empty counted set means nothing is attention-worthy, so the honest
@@ -2678,6 +2712,88 @@ export class OrderRecordRepository
     }
     await this.repository.update({ internalOrderId }, { fulfillmentState });
     return false;
+  }
+
+  /**
+   * The `paymentWritebackProblem` flag computed from a jsonb expression that is
+   * ALSO the value being written, so the flag can never disagree with the
+   * column it summarises. Reads the reasons straight from
+   * `isPaymentWritebackProblem`'s definition: `not-sent` for a reason an
+   * operator has to act on.
+   */
+  private static paymentWritebackProblemSql(nextValueSql: string): string {
+    return (
+      `EXISTS (SELECT 1 FROM jsonb_each(${nextValueSql}) AS e ` +
+      `WHERE e.value->>'state' = 'not-sent' ` +
+      `AND e.value->>'reason' IN ('retries-exhausted', 'rejected', 'no-total'))`
+    );
+  }
+
+  async claimPaymentWriteback(
+    internalOrderId: string,
+    destinationConnectionId: string,
+    staleBefore: Date
+  ): Promise<boolean> {
+    // SET expressions are evaluated against the row version the UPDATE locks,
+    // so a racing claim that lost the row lock re-reads the winner's `sending`
+    // entry in the WHERE and affects nothing (READ COMMITTED re-check).
+    const next =
+      `jsonb_set(COALESCE("paymentWriteback", '{}'::jsonb), ARRAY[$2]::text[], ` +
+      `jsonb_build_object('state', 'sending', 'at', $3::text, 'attempts', ` +
+      `COALESCE(("paymentWriteback"->$2->>'attempts')::int, 0)))`;
+    const rows = (await this.repository.query(
+      `UPDATE "order_records" SET "paymentWriteback" = ${next}, ` +
+        `"paymentWritebackProblem" = ${OrderRecordRepository.paymentWritebackProblemSql(next)} ` +
+        `WHERE "internalOrderId" = $1 AND (` +
+        `"paymentWriteback" IS NULL OR NOT ("paymentWriteback" ? $2) ` +
+        `OR "paymentWriteback"->$2->>'state' IN ('awaiting', 'retrying') ` +
+        `OR ("paymentWriteback"->$2->>'state' = 'sending' ` +
+        `AND ("paymentWriteback"->$2->>'at')::timestamptz < $4)) ` +
+        `RETURNING "internalOrderId"`,
+      [internalOrderId, destinationConnectionId, new Date().toISOString(), staleBefore.toISOString()]
+    )) as unknown[];
+    return OrderRecordRepository.affectedRows(rows) > 0;
+  }
+
+  async recordPaymentWriteback(
+    internalOrderId: string,
+    destinationConnectionId: string,
+    entry: PaymentWritebackEntry
+  ): Promise<void> {
+    const next = `jsonb_set(COALESCE("paymentWriteback", '{}'::jsonb), ARRAY[$2]::text[], $3::jsonb)`;
+    await this.repository.query(
+      `UPDATE "order_records" SET "paymentWriteback" = ${next}, ` +
+        `"paymentWritebackProblem" = ${OrderRecordRepository.paymentWritebackProblemSql(next)} ` +
+        `WHERE "internalOrderId" = $1`,
+      [internalOrderId, destinationConnectionId, JSON.stringify(entry)]
+    );
+  }
+
+  async markPaymentWritebackHandled(internalOrderIds: readonly string[]): Promise<number> {
+    if (internalOrderIds.length === 0) return 0;
+    const rows = (await this.repository.query(
+      `UPDATE "order_records" AS r SET "paymentWriteback" = (` +
+        `SELECT jsonb_object_agg(e.key, CASE WHEN e.value->>'state' = 'not-sent' ` +
+        `AND e.value->>'reason' IN ('retries-exhausted', 'rejected', 'no-total') ` +
+        `THEN e.value || jsonb_build_object('state', 'handled', 'at', $2::text) ELSE e.value END) ` +
+        `FROM jsonb_each(r."paymentWriteback") AS e), ` +
+        `"paymentWritebackProblem" = false ` +
+        `WHERE r."internalOrderId" = ANY($1::text[]) AND r."paymentWritebackProblem" = true ` +
+        `RETURNING r."internalOrderId"`,
+      [internalOrderIds, new Date().toISOString()]
+    )) as unknown[];
+    return OrderRecordRepository.affectedRows(rows);
+  }
+
+  /**
+   * `repository.query` returns the RETURNING rows for a plain UPDATE on the
+   * postgres driver, but `[rows, count]` when TypeORM wraps it; accept both.
+   */
+  private static affectedRows(result: unknown[]): number {
+    if (result.length === 2 && Array.isArray(result[0]) && typeof result[1] === 'number') {
+      return result[1];
+    }
+    return result.length;
   }
 
   async claimShippedNotification(internalOrderId: string): Promise<boolean> {
@@ -4158,7 +4274,10 @@ export class OrderRecordRepository
       entity.buyerNoteChangedAt ?? null,
       orderEdits === null ? null : entity.orderSnapshot,
       orderEdits,
-      entity.recordStatus === 'ready' ? readLineExpansion(entity.lineExpansion) : null
+      entity.recordStatus === 'ready' ? readLineExpansion(entity.lineExpansion) : null,
+      // #3963 - coerced at the mapping boundary: an entry this build does not
+      // recognise is absent, never present-and-unrenderable.
+      readPaymentWriteback(entity.paymentWriteback)
     );
   }
 

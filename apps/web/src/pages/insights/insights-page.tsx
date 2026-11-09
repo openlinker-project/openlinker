@@ -17,11 +17,16 @@ import { useRetryGroupedSyncJobsMutation } from '../../features/sync-jobs/hooks/
 import { usePlatforms, type Platform } from '../../shared/plugins';
 import { useCostCoverageQuery } from '../../features/products/hooks/use-cost-coverage-query';
 import { useTrackMargin } from '../../features/analytics';
-import { formatAmount } from '../../shared/format/format-amount';
+import {
+  getMessages,
+  interpolate,
+  useFormat,
+  useMessages,
+  usePlural,
+} from '../../shared/i18n';
 import { resolvePlatformLabel } from '../../features/mappings';
 import type {
   DevStackHealth,
-  ServiceHealth,
   ServiceStatus,
   OverallStatus,
 } from '../../features/health/api/health.types';
@@ -35,6 +40,8 @@ import type {
   SyncJobGroup,
 } from '../../features/sync-jobs/api/sync-jobs.types';
 import { INSIGHTS_HEALTH_INTERVAL_MS, INSIGHTS_JOBS_INTERVAL_MS } from './intervals';
+import { ConnectionHealthList } from './connection-health-list';
+import { SystemHealthList } from './system-health-list';
 import { Button } from '../../shared/ui/button';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
@@ -69,10 +76,44 @@ function mapHealthTone(
 }
 
 function toHealthLabel(status: OverallStatus | undefined): string {
-  if (status === 'ok') return 'OK';
-  if (status === 'degraded') return 'Degraded';
-  if (status === 'error') return 'Error';
-  return 'Unknown';
+  const health = getMessages('analytics').insightsPage.health;
+  if (status === 'ok') return health.ok;
+  if (status === 'degraded') return health.degraded;
+  if (status === 'error') return health.error;
+  return health.unknown;
+}
+
+/** Operator label for a raw health, connection or job status; an unknown value is shown as sent. */
+function statusLabel(status: string): string {
+  const labels = getMessages('analytics').insightsPage.status;
+  switch (status) {
+    case 'ok':
+      return labels.ok;
+    case 'warning':
+      return labels.warning;
+    case 'error':
+      return labels.error;
+    case 'degraded':
+      return labels.degraded;
+    case 'active':
+      return labels.active;
+    case 'disabled':
+      return labels.disabled;
+    case 'needs_reauth':
+      return labels.needsReauth;
+    case 'archived':
+      return labels.archived;
+    case 'queued':
+      return labels.queued;
+    case 'running':
+      return labels.running;
+    case 'succeeded':
+      return labels.succeeded;
+    case 'dead':
+      return labels.dead;
+    default:
+      return status;
+  }
 }
 
 function formatJobType(jobType: string): string {
@@ -85,18 +126,8 @@ function renderHealthValue(
   hasError: boolean
 ): string {
   if (isLoading) return '—';
-  if (hasError) return 'Unreachable';
+  if (hasError) return getMessages('analytics').insightsPage.health.unreachable;
   return toHealthLabel(status);
-}
-
-function ServiceHealthRow({ name, health }: { name: string; health: ServiceHealth }): ReactElement {
-  return (
-    <li>
-      <strong>{name}</strong>
-      <StatusBadge tone={mapHealthTone(health.status, false)}>{health.status}</StatusBadge>
-      {health.message ? <span className="muted-text">{health.message}</span> : null}
-    </li>
-  );
 }
 
 /**
@@ -117,7 +148,14 @@ function buildInfraNodeLabels(
   }
   for (const connection of data.connections ?? []) {
     const platformLabel = resolvePlatformLabel(platforms, connection.platformType);
-    labels.push(connection.name ? `${platformLabel} (${connection.name})` : platformLabel);
+    labels.push(
+      connection.name
+        ? interpolate(getMessages('analytics').insightsPage.infraNodeWithName, {
+            platform: platformLabel,
+            name: connection.name,
+          })
+        : platformLabel
+    );
   }
   return labels;
 }
@@ -173,37 +211,10 @@ function rollUpConnectionHealth(
   });
 }
 
-function ConnectionHealthList({ rows }: { rows: RolledUpConnection[] }): ReactElement {
-  if (rows.length === 0) {
-    return (
-      <p className="muted-text">
-        No connections configured. <Link to="/connections/new">Add the first connection.</Link>
-      </p>
-    );
-  }
-  return (
-    <ul className="check-list">
-      {rows.map(({ connection, deadJobCount, rollupTone }) => (
-        <li key={connection.id}>
-          <strong>{connection.name}</strong>
-          <StatusBadge tone={rollupTone} withDot>
-            {connection.status}
-          </StatusBadge>
-          {deadJobCount > 0 ? (
-            <Link
-              className="muted-text"
-              to={`/jobs-logs?status=dead&connectionId=${encodeURIComponent(connection.id)}`}
-            >
-              {deadJobCount} failing job{deadJobCount === 1 ? '' : 's'}
-            </Link>
-          ) : null}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 export function InsightsPage(): ReactElement {
+  const copy = useMessages('analytics').insightsPage;
+  const format = useFormat();
+  const plural = usePlural();
   const connectionsQuery = useConnectionsQuery(undefined, {
     refetchInterval: INSIGHTS_HEALTH_INTERVAL_MS,
   });
@@ -229,7 +240,11 @@ export function InsightsPage(): ReactElement {
   // the whole table freezing on a shared mutation flag.
   const [pendingGroupKey, setPendingGroupKey] = useState<string | null>(null);
 
-  const connections = connectionsQuery.data ?? [];
+  const connections = useMemo(() => connectionsQuery.data ?? [], [connectionsQuery.data]);
+  const connectionById = useMemo(
+    () => new Map(connections.map((c) => [c.id, c] as const)),
+    [connections]
+  );
   const failedGroups = useMemo<SyncJobGroup[]>(
     () => deadGroupsQuery.data?.groups ?? [],
     [deadGroupsQuery.data]
@@ -241,16 +256,15 @@ export function InsightsPage(): ReactElement {
   );
 
   const platforms = usePlatforms();
-  const infraConnections = healthQuery.data?.connections ?? [];
   const infraNodeLabels = useMemo(
     () => buildInfraNodeLabels(healthQuery.data, platforms),
     [healthQuery.data, platforms]
   );
   const systemHealthDescription = healthQuery.isLoading
-    ? 'Checking dependencies…'
+    ? copy.checkingDependencies
     : infraNodeLabels.length > 0
       ? infraNodeLabels.join(' · ')
-      : 'No infrastructure nodes detected';
+      : copy.noInfraNodes;
 
   const activeCount = connections.filter((c) => c.status === 'active').length;
   const errorCount = connections.filter((c) => c.status === 'error').length;
@@ -263,10 +277,10 @@ export function InsightsPage(): ReactElement {
     errorCount > 0 ? 'warning' : warningCount > 0 ? 'warning' : 'neutral';
   const integrationDescription =
     errorCount > 0
-      ? `${errorCount} connection${errorCount > 1 ? 's' : ''} in error`
+      ? plural(errorCount, copy.connectionsInError)
       : warningCount > 0
-        ? `${warningCount} connection${warningCount > 1 ? 's' : ''} with failing jobs`
-        : 'All channels active';
+        ? plural(warningCount, copy.connectionsFailing)
+        : copy.allChannelsActive;
 
   const isFetching =
     connectionsQuery.isFetching ||
@@ -305,43 +319,50 @@ export function InsightsPage(): ReactElement {
           // green-checkmark success either.
           showToast({
             tone: 'info',
-            title: 'Nothing re-queued',
-            description: `${formatJobType(group.jobType)} — no dead jobs remain (${result.skipped} already running).`,
+            title: copy.toast.nothingRequeued,
+            description: interpolate(copy.toast.noDeadJobs, {
+              jobType: formatJobType(group.jobType),
+              skipped: format.number(result.skipped),
+            }),
           });
         } else {
           const description =
             result.skipped > 0
-              ? `${formatJobType(group.jobType)} — re-queued ${result.count}, skipped ${result.skipped} already running.`
-              : `${formatJobType(group.jobType)} will re-run.`;
+              ? interpolate(copy.toast.requeuedSkipped, {
+                  jobType: formatJobType(group.jobType),
+                  count: format.number(result.count),
+                  skipped: format.number(result.skipped),
+                })
+              : interpolate(copy.toast.willRerun, { jobType: formatJobType(group.jobType) });
           showToast({
             tone: 'success',
-            title: `Re-queued ${result.count} job${result.count === 1 ? '' : 's'}`,
+            title: plural(result.count, copy.toast.requeued),
             description,
           });
         }
       } catch (error) {
         showToast({
           tone: 'error',
-          title: 'Retry failed',
-          description: error instanceof Error ? error.message : 'Unknown error',
+          title: copy.toast.retryFailed,
+          description: error instanceof Error ? error.message : copy.toast.unknownError,
         });
       } finally {
         setPendingGroupKey((current) => (current === key ? null : current));
       }
     },
-    [retryGrouped, showToast]
+    [copy, format, plural, retryGrouped, showToast]
   );
 
   const failedGroupColumns: DataTableColumn<SyncJobGroup>[] = useMemo(
     () => [
       {
         id: 'jobType',
-        header: 'Job type',
+        header: copy.columns.jobType,
         cell: (group) => <span className="mono-text">{formatJobType(group.jobType)}</span>,
       },
       {
         id: 'connection',
-        header: 'Connection',
+        header: copy.columns.connection,
         cell: (group) => (
           <span>{connectionNameById.get(group.connectionId) ?? group.connectionId}</span>
         ),
@@ -349,7 +370,7 @@ export function InsightsPage(): ReactElement {
       },
       {
         id: 'count',
-        header: 'Failures',
+        header: copy.columns.failures,
         align: 'right',
         cell: (group) => (
           <StatusBadge tone="error" compact>
@@ -359,12 +380,12 @@ export function InsightsPage(): ReactElement {
       },
       {
         id: 'lastError',
-        header: 'Last error',
+        header: copy.columns.lastError,
         cell: (group) => (
           <span className="muted-text" title={group.lastError ?? undefined}>
             {group.lastError
               ? group.lastError.length > 80
-                ? `${group.lastError.slice(0, 80)}…`
+                ? interpolate(copy.truncated, { text: group.lastError.slice(0, 80) })
                 : group.lastError
               : '—'}
           </span>
@@ -373,7 +394,7 @@ export function InsightsPage(): ReactElement {
       },
       {
         id: 'updatedAt',
-        header: 'Latest',
+        header: copy.columns.latest,
         align: 'right',
         cell: (group) => (
           <TimeDisplay iso={group.latestUpdatedAt} format="relative" className="muted-text" />
@@ -382,68 +403,75 @@ export function InsightsPage(): ReactElement {
       },
       {
         id: 'actions',
-        header: 'Actions',
+        header: copy.columns.actions,
         align: 'right',
         cell: (group): ReactElement => {
           const key = groupKey(group);
           const connectionName = connectionNameById.get(group.connectionId) ?? group.connectionId;
-          const signature = `${formatJobType(group.jobType)} on ${connectionName}`;
+          const signature = interpolate(copy.signature, {
+            jobType: formatJobType(group.jobType),
+            connection: connectionName,
+          });
           return (
             <div className="insights-incidents__actions">
               <Button
                 tone="secondary"
                 onClick={() => void handleRetryGroup(group)}
                 disabled={pendingGroupKey === key}
-                aria-label={`Retry — ${signature}`}
+                aria-label={interpolate(copy.retryAria, { signature })}
               >
-                {pendingGroupKey === key ? 'Retrying…' : 'Retry'}
+                {pendingGroupKey === key ? copy.retrying : copy.retry}
               </Button>
               <Link
                 className="button button--ghost"
                 to={`/jobs-logs?status=dead&connectionId=${encodeURIComponent(group.connectionId)}&jobType=${encodeURIComponent(group.jobType)}`}
-                aria-label={`View jobs — ${signature}`}
+                aria-label={interpolate(copy.viewJobsAria, { signature })}
               >
-                View jobs
+                {copy.viewJobs}
               </Link>
             </div>
           );
         },
       },
     ],
-    [connectionNameById, handleRetryGroup, pendingGroupKey]
+    [connectionNameById, copy, handleRetryGroup, pendingGroupKey]
   );
 
   const recentJobColumns: DataTableColumn<SyncJob>[] = useMemo(
     () => [
       {
         id: 'jobType',
-        header: 'Job type',
+        header: copy.columns.jobType,
         cell: (job) => <span className="mono-text">{formatJobType(job.jobType)}</span>,
       },
       {
         id: 'status',
-        header: 'Status',
+        header: copy.columns.status,
         cell: (job) => (
           <StatusBadge tone={toRowStatusTone(job.status)} compact>
-            {job.status}
+            {statusLabel(job.status)}
           </StatusBadge>
         ),
       },
       {
         id: 'attempts',
-        header: 'Attempts',
+        header: copy.columns.attempts,
         align: 'right',
-        cell: (job) => `${job.attempts}/${job.maxAttempts}`,
+        cell: (job) =>
+          interpolate(copy.attempts, {
+            attempts: format.number(job.attempts),
+            max: format.number(job.maxAttempts),
+          }),
         hideBelow: 768,
       },
       {
         id: 'updatedAt',
-        header: 'Updated',
+        header: copy.columns.updated,
         align: 'right',
         cell: (job) => <TimeDisplay iso={job.updatedAt} format="relative" className="muted-text" />,
       },
     ],
-    []
+    [copy, format]
   );
 
   // #3588 - data to fill in. Not an incident: nothing is blocked, margin is just
@@ -455,26 +483,33 @@ export function InsightsPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow="Overview"
-      title="Operations overview"
-      description="Monitor integration health, dependency status, and connection activity from one command surface."
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
       actions={
         <Button onClick={handleRefresh} disabled={isFetching}>
-          {isFetching ? 'Refreshing…' : 'Refresh'}
+          {isFetching ? copy.refreshing : copy.refresh}
         </Button>
       }
     >
       {/* ── KPI strip ────────────────────────────────────────────── */}
       <section className="status-strip">
         <KpiCard
-          label="Integration health"
-          value={connectionsQuery.isLoading ? '—' : `${activeCount} / ${connections.length}`}
+          label={copy.kpis.integrationHealth}
+          value={
+            connectionsQuery.isLoading
+              ? '—'
+              : interpolate(copy.kpis.activeOfTotal, {
+                  active: format.number(activeCount),
+                  total: format.number(connections.length),
+                })
+          }
           tone={integrationTone}
           description={integrationDescription}
         />
 
         <KpiCard
-          label="System health"
+          label={copy.kpis.systemHealth}
           value={renderHealthValue(
             healthQuery.data?.status,
             healthQuery.isLoading,
@@ -486,35 +521,35 @@ export function InsightsPage(): ReactElement {
 
         {deadTotal > 0 ? (
           <KpiCard
-            label="Failed jobs"
+            label={copy.kpis.failedJobs}
             value={deadTotal}
             tone="error"
             to="/jobs-logs?status=dead"
-            description={`${deadTotal} job${deadTotal === 1 ? '' : 's'} need${deadTotal === 1 ? 's' : ''} attention`}
+            description={plural(deadTotal, copy.kpis.needAttention)}
           />
         ) : (
           <KpiCard
-            label="Failed jobs"
+            label={copy.kpis.failedJobs}
             value={deadGroupsQuery.isLoading ? '—' : 0}
             tone="neutral"
-            description="No failures"
+            description={copy.kpis.noFailures}
           />
         )}
 
         {queuedTotal > 0 ? (
           <KpiCard
-            label="Queued jobs"
+            label={copy.kpis.queuedJobs}
             value={queuedTotal}
             tone="neutral"
             to="/jobs-logs?status=queued"
-            description={`${queuedTotal} job${queuedTotal > 1 ? 's' : ''} waiting`}
+            description={plural(queuedTotal, copy.kpis.waiting)}
           />
         ) : (
           <KpiCard
-            label="Queued jobs"
+            label={copy.kpis.queuedJobs}
             value={queuedJobsQuery.isLoading ? '—' : 0}
             tone="neutral"
-            description="Queue empty"
+            description={copy.kpis.queueEmpty}
           />
         )}
       </section>
@@ -523,28 +558,32 @@ export function InsightsPage(): ReactElement {
         <article className="panel panel--dense" data-testid="insights-setup-gaps">
           <div className="panel__header">
             <div>
-              <p className="eyebrow">Setup</p>
-              <h3 className="section-title">Data to fill in</h3>
+              <p className="eyebrow">{copy.setup.eyebrow}</p>
+              <h3 className="section-title">{copy.setup.title}</h3>
             </div>
-            <span className="panel__meta">Not errors. Nothing is blocked.</span>
+            <span className="panel__meta">{copy.setup.meta}</span>
           </div>
           <ul className="insights-gaps">
             <li data-testid="insights-gap-cost-price">
               <StatusBadge tone="warning" withDot compact>
-                Margin
+                {copy.setup.margin}
               </StatusBadge>
               <div className="insights-gaps__body">
                 <b>
-                  {costGap.soldVariantsWithoutCost}{' '}
-                  {costGap.soldVariantsWithoutCost === 1 ? 'variant' : 'variants'} you sold in the
-                  last {costGap.days} days {costGap.soldVariantsWithoutCost === 1 ? 'has' : 'have'}{' '}
-                  no cost price
+                  {plural(costGap.soldVariantsWithoutCost, copy.setup.variantsWithoutCost, {
+                    days: format.number(costGap.days),
+                  })}
                 </b>
                 <span className="text-muted">
-                  {formatAmount(costGap.netSalesWithoutCost, costGap.currency)} of net sales left
-                  out of margin.
+                  {interpolate(copy.setup.leftOut, {
+                    amount: format.money(costGap.netSalesWithoutCost, costGap.currency),
+                  })}
                   {costGap.top3SharePct !== null && costGap.soldVariantsWithoutCost > 3
-                    ? ` 3 of them make up ${String(Math.round(costGap.top3SharePct))}% of that.`
+                    ? ` ${interpolate(copy.setup.topThree, {
+                        pct: format.percent(Math.round(costGap.top3SharePct) / 100, {
+                          maximumFractionDigits: 0,
+                        }),
+                      })}`
                     : ''}
                 </span>
               </div>
@@ -553,7 +592,7 @@ export function InsightsPage(): ReactElement {
                 to="/products/cost-prices"
                 data-testid="insights-gap-cost-price-open"
               >
-                Add cost prices
+                {copy.setup.addCostPrices}
               </Link>
             </li>
           </ul>
@@ -564,29 +603,33 @@ export function InsightsPage(): ReactElement {
       <article className="panel panel--dense insights-incidents">
         <div className="panel__header">
           <div>
-            <p className="eyebrow">Incidents</p>
-            <h3 className="section-title">What&rsquo;s broken right now</h3>
+            <p className="eyebrow">{copy.incidents.eyebrow}</p>
+            <h3 className="section-title">{copy.incidents.title}</h3>
           </div>
           {deadTotal > 0 ? (
             <span className="panel__meta">
-              {totalGroups} unique signature{totalGroups === 1 ? '' : 's'}
+              {plural(totalGroups, copy.incidents.signatures)}
               {' · '}
-              {deadTotal} total failure{deadTotal === 1 ? '' : 's'}
+              {plural(deadTotal, copy.incidents.totalFailures)}
             </span>
           ) : null}
         </div>
 
         {deadGroupsQuery.isLoading ? (
-          <LoadingState title="Loading failures" message="Collecting dead jobs…" liveRegion="off" />
+          <LoadingState
+            title={copy.incidents.loadingTitle}
+            message={copy.incidents.loadingMessage}
+            liveRegion="off"
+          />
         ) : deadGroupsQuery.error ? (
           <ErrorState
-            title="Unable to load failures"
+            title={copy.incidents.errorTitle}
             message={deadGroupsQuery.error.message}
-            action={<Button onClick={() => void deadGroupsQuery.refetch()}>Retry</Button>}
+            action={<Button onClick={() => void deadGroupsQuery.refetch()}>{copy.retry}</Button>}
           />
         ) : (
           <DataTable
-            caption="Failed sync jobs grouped by connection and job type"
+            caption={copy.incidents.caption}
             columns={failedGroupColumns}
             rows={failedGroups}
             rowKey={(group) => groupKey(group)}
@@ -594,8 +637,9 @@ export function InsightsPage(): ReactElement {
               title: (group) => <span className="mono-text">{formatJobType(group.jobType)}</span>,
               subtitle: (group) => (
                 <span>
-                  {connectionNameById.get(group.connectionId) ?? group.connectionId} · {group.count}{' '}
-                  failure{group.count === 1 ? '' : 's'}
+                  {plural(group.count, copy.incidents.cardSubtitle, {
+                    connection: connectionNameById.get(group.connectionId) ?? group.connectionId,
+                  })}
                 </span>
               ),
               meta: (group) => (
@@ -604,7 +648,7 @@ export function InsightsPage(): ReactElement {
                 </StatusBadge>
               ),
             }}
-            emptyState={<p className="muted-text">No failed jobs. All clear.</p>}
+            emptyState={<p className="muted-text">{copy.incidents.empty}</p>}
           />
         )}
       </article>
@@ -614,26 +658,30 @@ export function InsightsPage(): ReactElement {
         <article className="panel panel--dense">
           <div className="panel__header">
             <div>
-              <p className="eyebrow">Integrations</p>
-              <h3 className="section-title">Connection health</h3>
+              <p className="eyebrow">{copy.connections.eyebrow}</p>
+              <h3 className="section-title">{copy.connections.title}</h3>
             </div>
             <span className="panel__meta">
-              {connectionsQuery.isLoading ? '…' : `${connections.length} configured`}
+              {connectionsQuery.isLoading
+                ? '…'
+                : interpolate(copy.connections.configured, {
+                    n: format.number(connections.length),
+                  })}
             </span>
           </div>
 
           {connectionsQuery.isLoading && (
             <LoadingState
-              title="Loading connections"
-              message="Fetching connection status…"
+              title={copy.connections.loadingTitle}
+              message={copy.connections.loadingMessage}
               liveRegion="off"
             />
           )}
           {connectionsQuery.error && (
             <ErrorState
-              title="Unable to load connections"
+              title={copy.connections.errorTitle}
               message={connectionsQuery.error.message}
-              action={<Button onClick={() => void connectionsQuery.refetch()}>Retry</Button>}
+              action={<Button onClick={() => void connectionsQuery.refetch()}>{copy.retry}</Button>}
             />
           )}
           {!connectionsQuery.isLoading && !connectionsQuery.error && (
@@ -644,50 +692,38 @@ export function InsightsPage(): ReactElement {
         <article className="panel panel--dense">
           <div className="panel__header">
             <div>
-              <p className="eyebrow">Infrastructure</p>
-              <h3 className="section-title">System health</h3>
+              <p className="eyebrow">{copy.infrastructure.eyebrow}</p>
+              <h3 className="section-title">{copy.infrastructure.title}</h3>
             </div>
             {healthQuery.data && (
-              <StatusBadge tone={mapHealthTone(healthQuery.data.status, false)}>
-                {healthQuery.data.status}
-              </StatusBadge>
+              <span className="sys-health__head">
+                <StatusBadge tone={mapHealthTone(healthQuery.data.status, false)} withDot>
+                  {toHealthLabel(healthQuery.data.status)}
+                </StatusBadge>
+                <span className="sys-health__checked">
+                  {copy.infrastructure.checked}{' '}
+                  <TimeDisplay iso={healthQuery.data.timestamp} format="relative" />
+                </span>
+              </span>
             )}
           </div>
 
           {healthQuery.isLoading && (
             <LoadingState
-              title="Checking system health"
-              message="Pinging dependencies…"
+              title={copy.infrastructure.loadingTitle}
+              message={copy.infrastructure.loadingMessage}
               liveRegion="off"
             />
           )}
           {healthQuery.error && (
             <ErrorState
-              title="Health check failed"
+              title={copy.infrastructure.errorTitle}
               message={healthQuery.error.message}
-              action={<Button onClick={() => void healthQuery.refetch()}>Retry</Button>}
+              action={<Button onClick={() => void healthQuery.refetch()}>{copy.retry}</Button>}
             />
           )}
           {healthQuery.data && (
-            <ul className="check-list">
-              <ServiceHealthRow name="PostgreSQL" health={healthQuery.data.services.postgres} />
-              <ServiceHealthRow name="Redis" health={healthQuery.data.services.redis} />
-              <ServiceHealthRow name="PrestaShop" health={healthQuery.data.services.prestashop} />
-              {healthQuery.data.services.worker && (
-                <ServiceHealthRow name="Worker" health={healthQuery.data.services.worker} />
-              )}
-              {infraConnections.map((connection) => (
-                <ServiceHealthRow
-                  key={connection.connectionId}
-                  name={
-                    connection.name
-                      ? `${resolvePlatformLabel(platforms, connection.platformType)} — ${connection.name}`
-                      : resolvePlatformLabel(platforms, connection.platformType)
-                  }
-                  health={{ status: connection.status, message: connection.message }}
-                />
-              ))}
-            </ul>
+            <SystemHealthList data={healthQuery.data} connectionById={connectionById} />
           )}
         </article>
       </div>
@@ -696,35 +732,39 @@ export function InsightsPage(): ReactElement {
       <article className="panel panel--dense">
         <div className="panel__header">
           <div>
-            <p className="eyebrow">Activity</p>
-            <h3 className="section-title">Recent sync jobs</h3>
+            <p className="eyebrow">{copy.activity.eyebrow}</p>
+            <h3 className="section-title">{copy.activity.title}</h3>
           </div>
           <span className="panel__meta">
-            {recentJobsQuery.isLoading ? '…' : `${recentJobsQuery.data?.total ?? 0} total`}
+            {recentJobsQuery.isLoading
+              ? '…'
+              : interpolate(copy.activity.total, {
+                  n: format.number(recentJobsQuery.data?.total ?? 0),
+                })}
           </span>
         </div>
 
         {recentJobsQuery.isLoading && (
           <LoadingState
-            title="Loading sync jobs"
-            message="Fetching recent activity…"
+            title={copy.activity.loadingTitle}
+            message={copy.activity.loadingMessage}
             liveRegion="off"
           />
         )}
         {recentJobsQuery.error && (
           <ErrorState
-            title="Unable to load sync jobs"
+            title={copy.activity.errorTitle}
             message={recentJobsQuery.error.message}
-            action={<Button onClick={() => void recentJobsQuery.refetch()}>Retry</Button>}
+            action={<Button onClick={() => void recentJobsQuery.refetch()}>{copy.retry}</Button>}
           />
         )}
         {!recentJobsQuery.isLoading && !recentJobsQuery.error && (
           <DataTable
-            caption="Recent sync jobs"
+            caption={copy.activity.caption}
             columns={recentJobColumns}
             rows={recentJobsQuery.data?.items ?? []}
             rowKey={(row) => row.id}
-            emptyState={<p className="muted-text">No sync jobs recorded yet.</p>}
+            emptyState={<p className="muted-text">{copy.activity.empty}</p>}
           />
         )}
       </article>

@@ -32,15 +32,6 @@ export { ReturnMoneyPanel } from './components/return-money-panel';
 export { ReturnGiftsPanel } from './components/return-gifts-panel';
 export { CorrectionProposalPanel } from './components/correction-proposal-panel';
 export { useReturnProposalQuery } from './hooks/use-return-proposal-query';
-// #2381 — the single home for every refused-restock string (returns spec § 5.4).
-// Exported here because the barrel is the ONLY way a cross-feature consumer can
-// reach it: `.eslintrc.js` hard-blocks deep imports of `features/returns/lib/**`.
-// #2357 (`W2-20`) and the split-out order-panel issue both consume it from here.
-export {
-  RETURN_RESTOCK_ATTESTED_COPY,
-  RETURN_RESTOCK_BLOCKED_COPY,
-  RETURN_RESTOCK_BLOCKED_EXPLAINER,
-} from './lib/restock-blocked.copy';
 export { ReturnIdentityCell, returnIdentitySummary } from './components/return-identity-cell';
 export { ReturnOrderCell, ReturnOrphanBadge, returnOrderSummary } from './components/return-order-cell';
 export { ReturnOpenedCell } from './components/return-opened-cell';
@@ -108,51 +99,24 @@ export { useRecordReturnMutation } from './hooks/use-record-return-mutation';
 // row, each routing to the return's own detail page rather than opening a
 // dialog here (see the component docblock for why).
 export { OrphanReturnsWorklist } from './components/orphan-returns-worklist';
-export { ORPHAN_RETURNS_WORKLIST_COPY } from './lib/orphan-returns-worklist.copy';
 // The match-to-order dialog (#3082) — the destination the worklist's
 // "Match to an order" link routes toward. Mounted on the return detail
 // page's orphan banner (#3085).
 export { MatchReturnDialog } from './components/match-return-dialog';
-export { MATCH_RETURN_DIALOG_COPY } from './lib/match-return-dialog.copy';
 // The approve dialog (#3083) — mounted inline by the worklist itself, since
 // this write carries no form to defer to a detail-page destination for.
 export { AuthorizeReturnDialog } from './components/authorize-return-dialog';
-export { AUTHORIZE_RETURN_DIALOG_COPY } from './lib/authorize-return-dialog.copy';
 // The record-a-return-by-hand dialog (#3084) — for a channel with no
 // returns feed at all. Standalone entry point (#3078's own list of
 // sub-issues has it opened from the returns list, not from a row).
 export { RecordReturnDialog } from './components/record-return-dialog';
-export { RECORD_RETURN_DIALOG_COPY } from './lib/record-return-dialog.copy';
 export { ReturnDeclineAction } from './components/return-decline-action';
 export { ReturnLineStateChip } from './components/return-line-state-chips';
 export { ReturnLinesTable } from './components/return-lines-table';
 export { ReturnOrphanBanner } from './components/return-orphan-banner';
-export {
-  RETURN_DECLINE_COPY,
-  RETURN_DECLINE_ERROR_COPY,
-  RETURN_DECLINE_OUTCOME_COPY,
-  RETURN_DETAIL_COPY,
-  RETURN_DETAIL_HEADER_COPY,
-  RETURN_LINES_COPY,
-  RETURN_ORPHAN_BANNER_COPY,
-  RETURN_SOURCE_PANEL_COPY,
-  describeLineQuantity,
-  describeUnreadableLines,
-} from './lib/return-detail.copy';
-export { RETURN_PROPOSAL_COPY } from './lib/return-proposal.copy';
+export { describeLineQuantity, describeUnreadableLines } from './lib/return-detail-text';
 export { describeDeclineError, readBlockedTrigger } from './lib/decline-error';
-export {
-  RETURNS_EMPTY_COPY,
-  RETURNS_ERROR_COPY,
-  RETURNS_FILTER_COPY,
-  RETURNS_ORPHAN_COPY,
-  RETURNS_PAGE_COPY,
-  RETURNS_PAGINATION_COPY,
-  RETURNS_ROW_COPY,
-  RETURNS_SOURCE_STATUS_COPY,
-  describeRange,
-  describeUnreadableRows,
-} from './lib/returns-list.copy';
+export { describeRange, describeUnreadableRows } from './lib/returns-list-text';
 export {
   RETURN_FILTER_PARAMS,
   RETURN_OFFSET_PARAM,
@@ -185,7 +149,6 @@ export type { ReturnSegment, ReturnSegmentCounts } from './lib/return-segments';
 // own docblock: `features/returns` already value-imports the orders barrel, so
 // the reverse edge would close a runtime cycle.
 export { OrderReturnsPanel } from './components/order-returns-panel';
-export { ORDER_RETURNS_PANEL_COPY } from './lib/order-returns-panel.copy';
 
 // Returns activity on the ORDER timeline (#2383, `W2-45`).
 //
@@ -198,7 +161,5 @@ export { useOrderReturnEventsQuery } from './hooks/use-order-return-events-query
 // which is the only grain an ORPHAN return has.
 export { useReturnEventsQuery } from './hooks/use-return-events-query';
 export { ReturnActivityTimeline } from './components/return-activity-timeline';
-export { RETURN_ACTIVITY_COPY } from './lib/return-activity.copy';
 export { mapReturnEventsToTimeline } from './lib/return-timeline-events';
-export { RETURN_TIMELINE_COPY } from './lib/return-timeline.copy';
 export type { ReturnTimelineEntry } from './api/returns.types';

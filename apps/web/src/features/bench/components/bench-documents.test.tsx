@@ -152,7 +152,7 @@ describe('BenchDocumentsPanel (#2418)', () => {
       }),
     });
 
-    expect(await screen.findByText(/Carry on packing — one paper is not coming/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Carry on packing - one paper is not coming/i)).toBeInTheDocument();
     expect(screen.getByText(/does not stop the box going out/i)).toBeInTheDocument();
     // The reason comes from the guarded sales-document map, not a second copy.
     expect(screen.getByText(/Tax rate missing/)).toBeInTheDocument();
@@ -408,7 +408,7 @@ describe('BenchDocumentsPanel (#2418)', () => {
       // bench they sign in at. Asserted rather than merely omitted, because a
       // reassurance that is wrong about where the paper comes out is worse
       // than none, and this clause is exactly what a later parity pass
-      // re-adds. See `benchParcelCopy.documents.printingTo`.
+      // re-adds. See `bench.parcel.documents.printingTo`.
       expect(line).not.toHaveTextContent(/station/i);
       expect(line).not.toHaveTextContent(/always/i);
     });

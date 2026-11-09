@@ -1,0 +1,581 @@
+{
+  "connectivity": {
+    "connectivity": {
+      "linkDown": {
+        "detail": "This terminal has no network. Nothing already counted is lost, and new scans are turned down until it is back.",
+        "label": "No connection"
+      },
+      "ok": {
+        "detail": "The bench is talking to OpenLinker.",
+        "label": "All systems"
+      },
+      "serverUnreachable": {
+        "detail": "The network at this bench is fine - OpenLinker is not answering. Nothing already counted is lost. This clears by itself; if it does not, tell whoever looks after OpenLinker.",
+        "label": "OpenLinker not answering"
+      }
+    }
+  },
+  "identity": {
+    "locked": {
+      "body": "Sign in to carry on. Nothing about the order that was open is shown here - no reference, no buyer, no address, nothing about what is in the box.",
+      "progressReassurance": "Nothing has been lost. The box is exactly as it was left.",
+      "title": "This bench is locked"
+    },
+    "signIn": {
+      "attribution": "The next person to finish an open box is the one recorded as having packed it. Check what has already been verified before you take it on.",
+      "body": "Use your own account. It works at any bench in this warehouse.",
+      "title": "Sign in to this bench"
+    },
+    "warning": "You'll be signed out in {seconds}s - tap anywhere to stay signed in."
+  },
+  "parcel": {
+    "activity": {
+      "heading": "Recent activity",
+      "undone": "undone",
+      "verified": "verified"
+    },
+    "audio": {
+      "hint": "Refusals are always shown on screen. The sound is extra, for when you are looking at the box.",
+      "muteAction": "Turn the sound off",
+      "offLabel": "Sound off",
+      "onLabel": "Sound on",
+      "unmuteAction": "Turn the sound on"
+    },
+    "buyerNote": {
+      "acknowledge": "I have read the note",
+      "eachBoxOwn": "Each box records its own reading.",
+      "failed": "That did not save. The note stays open - press it again.",
+      "hint": "Scanning works either way. This records that you saw it, for this box.",
+      "lockedOut": "This box is assigned to another packer, so your reading was not saved.",
+      "meta": "The buyer wrote this at checkout.",
+      "metaWholeOrder": "The buyer wrote this at checkout. It is about the whole order.",
+      "noBuyerNote": "The order no longer has a buyer note, so there is nothing to record.",
+      "otherRead": "{who} read it on parcel {parcel} of {total} at {time}.",
+      "otherReadSomeone": "Another packer",
+      "otherReadYou": "You",
+      "readBy": "Read by {who} at {time}",
+      "saving": "Saving...",
+      "showAll": "Show the whole note",
+      "showLess": "Show less",
+      "someoneElse": "a colleague",
+      "textNotStored": "The buyer left a note, but this installation does not store its text.",
+      "title": "Buyer note",
+      "workCancelled": "This box was cancelled, so your reading was not saved.",
+      "you": "you"
+    },
+    "changeSize": {
+      "cancelAction": "Keep the current label",
+      "confirmAction": "Cancel it and buy a new label",
+      "confirmNotice": "The current label will be cancelled and a new one bought.",
+      "description": "Tell us what this box really is. Nothing else about the order changes.",
+      "failed": "That did not go through - try again.",
+      "heightLabel": "Height (cm)",
+      "lengthLabel": "Length (cm)",
+      "modeBox": "Measure the box",
+      "modeLegend": "What is wrong",
+      "modeTemplate": "Pick a size",
+      "modeWeight": "Weight only",
+      "pendingAction": "Buying a new label...",
+      "pickTemplate": "Choose a size first.",
+      "refusedAdapterUnresolved": "We cannot reach the carrier connection right now, so the label cannot be replaced. The current label stays. Try again in a minute - ask the office if it keeps happening.",
+      "refusedAlreadyHandedOver": "The carrier already has this parcel, so its label cannot be replaced. The current label stays.",
+      "refusedCannotCancel": "This carrier does not let us cancel a label from the bench. The current label stays. Ask the office.",
+      "refusedNoLabel": "This box has no label yet, so there is nothing to replace. Ask the office to buy one.",
+      "refusedParcelCompleted": "This box is already marked done, so its label cannot be replaced. The current label stays.",
+      "refusedParcelSizeUnknown": "A weight alone is not enough here - choose a size or enter the box measurements too. The current label stays.",
+      "refusedRecipientUnavailable": "The delivery address for this order is missing, so no new label can be bought. The current label stays. Ask the office.",
+      "refusedReplaceInProgress": "A new label for this box is already being bought. Wait a moment, then look again.",
+      "refusedUnknown": "That did not go through and the current label stays. Show this screen to your supervisor.",
+      "replacedKeptSizeNotice": "New label bought in size {template}. Print it now.",
+      "replacedNotice": "New label bought. Print it now.",
+      "required": "Enter a number above zero.",
+      "templateLabel": "Size",
+      "templatePlaceholder": "Choose a size",
+      "title": "Change the label size",
+      "tooLarge": "That is more than a carrier will take.",
+      "voidBody": "Do not stick the old label on the box. Tell the office - they need to buy a new label for this parcel.",
+      "voidDismiss": "Understood",
+      "voidDoubtBody": "The carrier did not confirm whether it cancelled the old label, so do not use it - do not stick it on the box. Tell the office - they need to check it and buy a new label for this parcel.",
+      "voidDoubtTitle": "The old label may already be void, and no new one was bought",
+      "voidTitle": "The old label is void and no new one was bought",
+      "weightKgLabel": "Weight (kg)",
+      "widthLabel": "Width (cm)"
+    },
+    "closed": {
+      "body": {
+        "one": "The only unit matched. The last scan closed it - there was nothing to press.",
+        "other": "All {n} units matched. The last scan closed it - there was nothing to press."
+      },
+      "next": "The next parcel opens here by itself. Scan its first item when you are at that box.",
+      "reopenAction": "Reopen this box",
+      "reopenFailed": "That did not go through. Nothing changed - try again.",
+      "reopenHint": "Only if it closed by mistake. Every unit is cleared and you scan the box again from the start.",
+      "reopenNotClosed": "This box is not closed, so there is nothing to reopen. Carry on scanning.",
+      "reopenShipped": "This box has already gone. It cannot be reopened here, because the goods are not in the building any more.",
+      "reopenUnknownRefusal": "The box was not reopened, and this bench cannot say why. Show this screen to your supervisor.",
+      "reopenedNotice": "The box is open again. Every unit was cleared - scan them all back in.",
+      "summary": "{orderReference} · Parcel {index} of {total}",
+      "title": "This box is closed"
+    },
+    "collision": {
+      "body": {
+        "one": "{who} is scanning this box as well. Your scans and theirs are counted together, so carry on - just do not both go hunting for the same missing unit.",
+        "other": "{who} are scanning this box as well. Your scans and theirs are counted together, so carry on - just do not both go hunting for the same missing unit."
+      },
+      "title": "Someone else has this box open too"
+    },
+    "completion": {
+      "action": "Mark as done here",
+      "cancelAction": "Not yet",
+      "confirmAction": "Mark as done anyway",
+      "confirmBodyBoth": "Neither the label nor the invoice for this box has been printed yet.",
+      "confirmBodyInvoice": "The invoice for this box has not been printed yet.",
+      "confirmBodyLabel": "The label for this box has not been printed yet.",
+      "confirmBodyNoneLeft": "Both papers are printed now.",
+      "confirmHint": "Print them now, or go ahead if you already printed them somewhere else.",
+      "confirmTitle": "Before you mark it done",
+      "doneNotice": "Marked done at {time}.",
+      "failed": "That did not go through. Nothing changed - try again.",
+      "hint": "This tells the office you're finished with this box - it's off your bench now.",
+      "printFailed": "That did not print. Try again, or go ahead anyway.",
+      "printInvoiceAction": "Print the invoice",
+      "printLabelAction": "Print the label",
+      "refusedAlreadyCompleted": "This box was already marked done.",
+      "refusedLocked": "This box is assigned to someone else right now, so it cannot be marked done from here.",
+      "refusedNotClosed": "This box is not closed yet, so there is nothing to mark done. Carry on scanning.",
+      "refusedStale": "Somebody else changed this box. This screen now shows the latest - try again.",
+      "refusedUnknown": "That did not go through, and this bench cannot say why. Show this screen to your supervisor.",
+      "undoAction": "Take this back",
+      "undoFailed": "That did not go through. Nothing changed - try again.",
+      "undoHint": "The box stays packed exactly as it is - only the \"done\" mark clears.",
+      "undoRefusedLocked": "This box is assigned to someone else right now, so it cannot be taken back from here.",
+      "undoRefusedNotCompleted": "This box was never marked done, so there is nothing to take back.",
+      "undoRefusedStale": "Somebody else changed this box. This screen now shows the latest - try again.",
+      "undoRefusedUnknown": "That did not go through, and this bench cannot say why. Show this screen to your supervisor."
+    },
+    "copy": {
+      "action": "Copy {what}",
+      "barcode": "barcode",
+      "copied": "{what} copied",
+      "orderReference": "order reference"
+    },
+    "documents": {
+      "audience": {
+        "issuedOnRequest": {
+          "body": "This shop only makes an invoice when someone asks for one. Send the box; if this order needs an invoice, tell the office.",
+          "title": "Nobody is told automatically."
+        },
+        "nobodyTold": {
+          "body": "This order is not on any list OpenLinker keeps. Send the box, and mention it to the office.",
+          "title": "Nobody has been told."
+        },
+        "onOfficeList": {
+          "body": "It is in their list of orders that went out without a document - you do not need to write it down.",
+          "title": "The office can see this one."
+        }
+      },
+      "changeSizeAction": "Change size",
+      "doesNotStop": "It does not stop the box going out.",
+      "insideLabel": "Goes INSIDE the box",
+      "insideLabelMissing": "Would go INSIDE the box",
+      "invoiceHint": "Fold it once and drop it in on top of the goods, before you tape the box.",
+      "invoiceStatus": {
+        "inProgressBadge": "Being issued",
+        "inProgressTitle": "Invoice on its way",
+        "notConfirmedBadge": "Not confirmed",
+        "notConfirmedBody": "OpenLinker does not know if this invoice was made.",
+        "notConfirmedTitle": "Invoice not confirmed",
+        "rejectedBadge": "Not issued",
+        "rejectedTitle": "The invoice did not go through"
+      },
+      "invoiceTitle": {
+        "numbered": "Invoice {number}",
+        "unnumbered": "Invoice for this order"
+      },
+      "labelHint": "Stick it flat on the largest side. Cover nothing else with it.",
+      "labelPendingBadge": "Not ready yet",
+      "labelPendingBody": "Dispatch will sort it out. Carry on packing - nothing here waits for it.",
+      "labelPendingTitle": "The label is not ready yet",
+      "labelTitle": "Label for this box",
+      "link": {
+        "badge": "Print from the online page",
+        "body": "This invoice cannot be printed from here. Open it, then print it from that page.",
+        "openAction": "Open invoice online"
+      },
+      "mentionOffice": "Mention it to the office.",
+      "missingBody": "This is not something you can fix at the bench, and it does not stop the box going out.",
+      "missingInvoiceBody": "There is nothing to put in the box. Send it without one.",
+      "missingInvoiceTitle": "No invoice was made for this order",
+      "missingReasonLabel": "Why",
+      "missingReasonUnknown": "Nothing on this order says why.",
+      "missingTitle": "Carry on packing - one paper is not coming",
+      "notPrintableBadge": "Issued, not printable",
+      "notPrintableBody": "Issued, but it cannot be printed here.",
+      "notPrintableTitle": {
+        "numbered": "Invoice {number}",
+        "unnumbered": "Invoice issued"
+      },
+      "nothingToPrintBadge": "Nothing to print",
+      "onLabel": "Goes ON the box",
+      "printFailed": "That did not print. Nothing changed - try again.",
+      "printInvoiceAction": "Print invoice",
+      "printLabelAction": "Print label",
+      "printNotAvailable": "This invoice has no printable version. Send the box without it.",
+      "printingTo": "Printing to {label}",
+      "readyBadge": "Ready to print",
+      "readyBody": "They were both made earlier, away from this bench. Printing them here does not create anything.",
+      "readyTitle": "Both papers are waiting to print",
+      "receipt": {
+        "inProgressBadge": "Being registered",
+        "inProgressTitle": "Receipt on its way",
+        "linkBody": "Open with the link below.",
+        "linkFailed": "The link did not load.",
+        "linkPending": "Getting the link. One moment.",
+        "madeBadge": "Receipt made",
+        "noArtefactBody": "There is no link to this receipt in OpenLinker.",
+        "notConfirmedBadge": "Not confirmed",
+        "notConfirmedBody": "OpenLinker does not know if this receipt was made.",
+        "notConfirmedTitle": "Receipt not confirmed",
+        "openAction": "Open receipt",
+        "printAction": "Print receipt",
+        "rejectedBadge": "Not registered",
+        "rejectedTitle": "The receipt did not go through",
+        "retryAction": "Try again",
+        "slot": "Receipt for this order",
+        "title": {
+          "numbered": "Receipt {reference}",
+          "unnumbered": "Receipt"
+        }
+      },
+      "trackingLabel": "Tracking",
+      "unknownDocument": {
+        "badge": "Document",
+        "slot": "Document for this order",
+        "title": "This screen cannot show this document"
+      }
+    },
+    "errors": {
+      "loadTitle": "Could not open this parcel",
+      "retryAction": "Try again"
+    },
+    "footer": {
+      "keyboardHint": "Not scanning? Press C to confirm the next open item by hand.",
+      "noCommit": "This box closes itself the moment the last item is verified. There is nothing here to press.",
+      "scannerReady": "Scanner in · keyboard not needed"
+    },
+    "header": {
+      "backAction": "Back to the list",
+      "buyerLabel": "Buyer",
+      "carrierLabel": "Carrier",
+      "dispatchByLabel": "Ship by",
+      "orderLabel": "Order",
+      "parcelLabel": "Parcel",
+      "parcelOf": "Parcel {index} of {total}",
+      "progress": "{verified} of {required} units scanned",
+      "statusCancelled": "Cancelled",
+      "statusHeld": "On hold",
+      "statusInProgress": "In progress",
+      "statusPacked": "Packed",
+      "thisBoxOnly": "Everything below belongs in this box only. The other boxes of this order are being handled somewhere else.",
+      "totalLabel": "Order total"
+    },
+    "hero": {
+      "confirmAction": "Confirm this item",
+      "countOf": "of {required}",
+      "keyboardHint": "C confirm · U undo · Esc back to the scan box",
+      "matched": "Matched",
+      "scanHint": "Scanning counts on its own. Confirm by hand only when a barcode will not read.",
+      "scanLabel": "Scan this item",
+      "scanPlaceholder": "Scan or type SKU / EAN, then press Enter"
+    },
+    "inFlight": {
+      "recordedAnnouncement": "{name} counted. {verified} of {required}.",
+      "sent": "Sent - waiting for the system",
+      "sentAnnouncement": "{name} sent. Waiting for the system.",
+      "unresolved": "{name} was sent and we have no answer yet. It is not counted. Scan the same item again - one scan is never counted twice.",
+      "unresolvedTitle": "That scan has no answer yet"
+    },
+    "interrupt": {
+      "acknowledgeAction": "Back to the list",
+      "body": "It changed while you were packing it. Stop scanning, put the tote back on the trolley, and open the next parcel.",
+      "cancelledTitle": "This order has just been cancelled",
+      "heldTitle": "This box has just been put on hold",
+      "unknownTitle": "This box can no longer be packed"
+    },
+    "lines": {
+      "allIn": "all in",
+      "allItemsCaption": "All items in this parcel",
+      "badgeNotScanned": "Not scanned yet",
+      "badgeScanning": "Scanning now",
+      "badgeVerified": "Verified",
+      "binCodeLabel": "Bin {code}",
+      "codes": {
+        "ean": "EAN {ean}",
+        "sku": "SKU {sku}"
+      },
+      "colIdentifiers": "Identifiers",
+      "colItem": "Item",
+      "colLocation": "Location",
+      "colScanned": "Scanned",
+      "colStatus": "Status",
+      "confirmAction": "Confirm this item",
+      "confirmActionFor": "Confirm {item}",
+      "confirmHint": "For an item whose barcode is damaged, missing or will not read.",
+      "count": "{verified} of {required}",
+      "dimensionsMm": "{length} × {width} × {height} mm",
+      "groupByLocationLabel": "Group by bin",
+      "groupByLocationNote": "Sorts this box’s own items by bin.",
+      "noneYet": "not scanned yet",
+      "stillToScan": {
+        "one": "{n} still to scan",
+        "other": "{n} still to scan"
+      },
+      "unnamed": "No product name recorded",
+      "weightGrams": {
+        "g": "{value} g",
+        "kg": "{value} kg"
+      }
+    },
+    "loading": {
+      "body": "One moment.",
+      "title": "Opening this parcel"
+    },
+    "mobile": {
+      "aim": "Hold the barcode inside the frame",
+      "allItemsDone": "All items scanned",
+      "cameraDenied": "The camera is blocked for this page. Allow it in your browser settings, or type the code instead.",
+      "cameraFailed": "The camera did not start. Try again, or type the code instead.",
+      "cameraNoDevice": "No camera on this device. Type the code instead.",
+      "cameraUnsupported": "This browser cannot read a barcode from the camera. Type the code instead - it counts exactly the same.",
+      "closeList": "Back to the box",
+      "itemOf": "Item {index} of {total}",
+      "itemsHeading": "Items in this box",
+      "keepScanning": "Keep scanning - the camera stays open until this item is done.",
+      "lastRead": "Read",
+      "scanAction": "Scan with camera",
+      "scanClose": "Close the camera",
+      "stillToScanShort": {
+        "one": "{n} left",
+        "other": "{n} left"
+      },
+      "switchParcel": "Switch to another parcel",
+      "torch": "Torch"
+    },
+    "officeNotes": {
+      "title": "Notes from the office ({count})",
+      "today": "today {time}",
+      "yesterday": "yesterday {time}"
+    },
+    "preview": {
+      "body": "You can look at this parcel, but you cannot scan, confirm or close it.",
+      "title": "Preview only"
+    },
+    "refusal": {
+      "cancelledBody": "Take the items back to the shelf. This box is not going out.",
+      "cancelledTitle": "Cancelled - nothing to pack",
+      "heldBody": "Put the tote back on the trolley. Nothing in it can be scanned while it is on hold.",
+      "heldTitle": "On hold - do not pack this box",
+      "reasonLabel": "Reason given",
+      "unknownBody": "Put the tote back on the trolley. This bench cannot say more than that - show this screen to your supervisor.",
+      "unknownTitle": "This box must not be packed"
+    },
+    "undo": {
+      "action": "Undo last scan",
+      "nothingToUndo": "Nothing to undo yet.",
+      "parcelClosed": "This box already closed. Reopen it first.",
+      "voidedNotice": {
+        "named": "Undone - the last unit on {name} no longer counts.",
+        "unnamed": "Undone - the last unit on that line no longer counts."
+      }
+    },
+    "unlabelled": {
+      "badge": "Packed · no label",
+      "body": {
+        "one": "The box is finished and correct - its only unit matched and it is closed. The carrier would not give us a label for it, so there is nothing to stick on. Do not open it and do not check it again.",
+        "other": "The box is finished and correct - all {n} units matched and it is closed. The carrier would not give us a label for it, so there is nothing to stick on. Do not open it and do not check it again."
+      },
+      "carrierCode": "The carrier turned it down with code {code}.",
+      "carrierHeading": "What the carrier said",
+      "carrierHidden": "The carrier gave a reason, but it is not shown at the bench.",
+      "carrierQuote": "“{message}”",
+      "carrierReassurance": "Nothing about the box is wrong. Somebody needs to choose a different collection point or a courier, and then the label will print.",
+      "carrierUnknown": "The carrier did not say why.",
+      "counts": "{here} box waiting here · {inDispatch} in dispatch",
+      "dispatchBody": "It sits on the dispatch list of boxes waiting for a label until one prints, so it does not depend on anyone remembering this bench. If you leave now, the box stays on that list.",
+      "dispatchTitle": "Dispatch can see this box too",
+      "eyebrow": "This box cannot go out",
+      "invoiceStillFine": "The invoice is fine and can go in the box now, so it is not missing later.",
+      "notRetryable": "There is nothing to try again from this bench. Buying a label needs the address and the box measurements, which are not on this screen - dispatch does it.",
+      "title": "Packed, but there is no label"
+    },
+    "unreachable": {
+      "badge": "No connection",
+      "body": "Everything already counted is safe - nothing you scanned has been lost. New scans are turned down until the bench is back, because a scan it cannot record is a scan that did not happen.",
+      "confirmDisabledHint": "Not while the bench is out of touch with OpenLinker.",
+      "refusedBody": "Nothing was recorded. Wait for the message above to clear, then scan this item again.",
+      "refusedTitle": "Not counted - the bench cannot reach OpenLinker",
+      "title": "This bench cannot reach OpenLinker",
+      "whatToDo": "Stop scanning and wait. This clears by itself the moment the bench gets through."
+    },
+    "verify": {
+      "dismissAction": "Dismiss",
+      "noSuchLine": "Nothing was recorded. That item is not part of this box any more. The screen has been refreshed.",
+      "notPackable": "Nothing was recorded. This box must not be packed - take it back to the trolley.",
+      "notYours": "Nothing was recorded. This box belongs to another packer now. Take the next one instead.",
+      "overPacked": "Third scan turned down - this box takes {required}. The count stayed at {kept}. The bench beeped.",
+      "overPackedBadge": "Extra scan refused",
+      "parcelClosed": "Nothing was recorded. This box is already closed. Reopen it first if something needs changing.",
+      "scannedLabel": "Scanned",
+      "unknownRefusal": "Nothing was recorded, and this bench cannot say why. Show this screen to your supervisor.",
+      "wrongItemBody": {
+        "nothingLeft": "Nothing was recorded. This box has nothing left to scan, so {scanned} cannot go in it.",
+        "waiting": "Nothing was recorded. This box is still waiting for {expected} - you scanned {scanned}."
+      },
+      "wrongItemTitle": "That item does not belong in this box"
+    }
+  },
+  "sourceChange": {
+    "countLabel": "Take out",
+    "ean": "EAN {ean}",
+    "heldBody": "The shop changed this order, so leave the box as it is - the office decides what goes in it.",
+    "sku": "SKU {sku}",
+    "takeOutBin": {
+      "one": "The shop lowered this item, so take {n} out and put it back on shelf {bin}.",
+      "other": "The shop lowered this item, so take {n} out and put them back on shelf {bin}."
+    },
+    "takeOutNote": "The box goes back to packing on its own.",
+    "takeOutShelf": {
+      "one": "The shop lowered this item, so take {n} out and put it back on the shelf.",
+      "other": "The shop lowered this item, so take {n} out and put them back on the shelf."
+    },
+    "takenOutAction": "Done, I took it out",
+    "takenOutFailed": "That did not go through, so check the box and confirm again.",
+    "unnamedItem": "This item"
+  },
+  "work": {
+    "emptyIdle": {
+      "body": "Every parcel routed to this bench has been packed. New work turns up here on its own - you do not need to refresh, and you can stay signed in.",
+      "reassurance": "Work is reaching this bench normally.",
+      "title": "Nothing to pack right now"
+    },
+    "emptyNotRouted": {
+      "body": "OpenLinker is not sending packing work here, so nothing will appear however long you keep this screen open. Nothing is broken at the bench, and this is not the same as having nothing to pack.",
+      "remedyBody": "Show this screen to your supervisor. Someone with an administrator account turns on packing in OpenLinker under Connections › Add a connection › OpenLinker OMS. Until then, orders keep going wherever they went before.",
+      "remedyLink": "Open packing setup",
+      "remedyTitle": "What to do about it",
+      "title": "No work can reach this bench"
+    },
+    "emptyNotSetUpAdmin": {
+      "action": "Set up OpenLinker OMS",
+      "body": "OpenLinker OMS is not set up or is switched off, so orders are not packed in OpenLinker and nothing will appear at this bench. Set up OMS to start packing here.",
+      "title": "Packing is out of scope"
+    },
+    "errors": {
+      "loadTitle": "Could not load the work for this bench",
+      "retryAction": "Try again"
+    },
+    "footer": {
+      "honesty": "OpenLinker cannot see your shelves - this is what must go out, and when.",
+      "liveness": "Updates by itself"
+    },
+    "header": {
+      "eyebrow": "Packing work",
+      "fallbackTitle": "Packing work at this bench",
+      "orderingNote": "Most urgent first"
+    },
+    "loading": {
+      "body": "One moment.",
+      "title": "Loading the work for this bench"
+    },
+    "metrics": {
+      "packedTodayLabel": "Packed today",
+      "toPackLabel": "To pack - all benches",
+      "trendDown": "-{delta} vs yesterday",
+      "trendFlat": "same as yesterday",
+      "trendUp": "+{delta} vs yesterday"
+    },
+    "placeholder": {
+      "body": "Pick a parcel from the list on the left to start scanning it into a box.",
+      "title": "No box open"
+    },
+    "row": {
+      "assignedToOtherBadge": "Assigned to another packer",
+      "assignedToYouBadge": "Assigned to you",
+      "buyerNote": "Buyer note",
+      "buyerNoteRead": "read",
+      "cancelledBadge": "Cancelled",
+      "cancelledBody": "Nothing to pack. Take the items back to the shelf.",
+      "cancelledTitle": "Cancelled",
+      "deadlineLater": "Later today or after",
+      "deadlineOverdue": "Past its deadline",
+      "deadlineSoon": "Deadline close",
+      "deadlineUnknown": "No dispatch deadline given",
+      "expediteAction": "Move to the front",
+      "expediteFailed": "That did not go through. The list has been refreshed - try again.",
+      "expeditedBadge": "Moved to the front",
+      "heldBadge": "On hold",
+      "heldBody": "Put the tote back on the trolley.",
+      "heldTitle": "On hold - do not pack",
+      "itemQuantity": "{quantity} x",
+      "itemUnnamed": "Product not in the catalogue",
+      "itemsMore": {
+        "one": "{n} more item in this box",
+        "other": "{n} more items in this box"
+      },
+      "lockedForOther": "Only the assigned packer may open this one",
+      "openAction": "Open parcel",
+      "releaseExpediteAction": "Back to deadline order",
+      "summary": {
+        "one": "Parcel {parcelIndex} of {parcelTotal} · {n} item, {unitsToVerify} units to scan",
+        "other": "Parcel {parcelIndex} of {parcelTotal} · {n} items, {unitsToVerify} units to scan"
+      }
+    },
+    "scan": {
+      "dismissAction": "Dismiss",
+      "scannedLabel": "Scanned",
+      "unrecognisedBody": "Nothing on this screen can be scanned, and nothing was recorded. Find the parcel by typing its reference or the buyer’s name.",
+      "unrecognisedTitle": "That scan was not recognised"
+    },
+    "scope": {
+      "note": "This is the packing work routed here and accepted at this bench - not a list of every unpacked order. Orders that go out through a logistics provider never appear here."
+    },
+    "search": {
+      "clearAction": "Clear",
+      "hint": "Part of a reference is enough. Leading zeros, marketplace prefixes and a surname all find it. There is no barcode on the tote, so typing is how a parcel is found.",
+      "label": "Find a parcel - type the order reference or the buyer's name",
+      "noMatches": "Nothing here matches what you typed. Clear the box to see everything again.",
+      "placeholder": "e.g. 4471, OL-4471, allegro-4471, Nowak"
+    },
+    "sections": {
+      "doNotPack": "Do not pack these",
+      "toPack": "To pack"
+    },
+    "tabs": {
+      "assignedToOthers": "Assigned to other packers",
+      "assignedToYou": "Assigned to you",
+      "bench": "At this bench",
+      "claimAction": "Claim this parcel",
+      "claimFailed": "That claim did not go through. The list has been refreshed - try again.",
+      "done": "Packed today",
+      "doneNote": "This is a log, not a queue - nothing here can be opened.",
+      "hold": "On hold",
+      "noPacksYet": "Nothing packed yet today.",
+      "noSectionMatches": "Nothing here matches what you typed.",
+      "nothingLeftHere": "Nothing left for you to do here",
+      "onHoldHeading": "On hold - do not pack",
+      "takeNextAction": "Take next task",
+      "takeNextCancelled": "That order was just cancelled. Try again.",
+      "takeNextEmpty": "Nothing unassigned right now.",
+      "takeNextFailed": "That did not go through. The list has been refreshed - try again.",
+      "takeNextHeld": "That one just went on hold. Try again.",
+      "takeNextLocked": "That one is already assigned to someone. Try a different one.",
+      "takeNextTaken": "Someone got there first. Try again - there may be more.",
+      "unassigned": "Unassigned - anyone can pick this up",
+      "unlabelledBadge": "Packed · no label",
+      "waitingOnCarrier": "Packed - waiting on carrier"
+    },
+    "truncated": {
+      "note": "More work than fits here. Pack some and the rest appears."
+    }
+  }
+}

@@ -9,11 +9,11 @@
  *
  * @module apps/web/src/features/orders/components
  */
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { TimeDisplay } from '../../../shared/ui/time-display';
-import { formatAmount } from '../../../shared/format/format-amount';
+import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import type { OrderEditsView } from '../api/order-edit.types';
 import type { OrderBundleLine } from '../api/orders.types';
 import type { ParsedOrderItem, ParsedOrderTotals } from '../api/order-snapshot.schema';
@@ -44,6 +44,9 @@ export function OrderPricingPanel({
   bundleLines,
   documentConnectionId,
 }: OrderPricingPanelProps): ReactElement {
+  const copy = useMessages('orders').orderPricing;
+  const format = useFormat();
+  const bold = (text: string): ReactNode => <b>{text}</b>;
   const channelQuantities =
     edits && edits.lines.length > 0
       ? new Map(edits.lines.map((line) => [line.orderLineId, line.channelQuantity] as const))
@@ -70,7 +73,7 @@ export function OrderPricingPanel({
           <OrderTotalsPanel totals={totals} editedTotals={editedTotals} />
           {grossNet ? (
             <StatusBadge tone="neutral" className="order-pricing__treatment">
-              {grossNet} · source-authoritative
+              {interpolate(copy.treatmentBadge, { treatment: copy.treatment[grossNet] })}
             </StatusBadge>
           ) : null}
         </div>
@@ -78,15 +81,22 @@ export function OrderPricingPanel({
 
       {edits && editedTotals ? (
         <p className="order-pricing__note" data-testid="order-edit-pricing-note">
-          Edited in OpenLinker on <TimeDisplay iso={edits.editedAt} format="datetime" />. The buyer paid{' '}
-          <b>{formatAmount(editedTotals.channelTotal, editedTotals.currency)}</b> on{' '}
-          {channelName ?? 'the sales channel'}; the label, invoice and pack bench use the edited order (
-          <b>{formatAmount(editedTotals.total, editedTotals.currency)}</b>).
+          {renderRich(copy.editedOn, {
+            time: () => <TimeDisplay iso={edits.editedAt} format="datetime" />,
+          })}{' '}
+          {renderRich(
+            channelName ? copy.buyerPaidOnChannel : copy.buyerPaidOnSalesChannel,
+            { b: bold },
+            {
+              paid: format.money(editedTotals.channelTotal, editedTotals.currency),
+              total: format.money(editedTotals.total, editedTotals.currency),
+              channel: channelName ?? '',
+            },
+          )}
         </p>
       ) : grossNet ? (
         <p className="order-pricing__note">
-          OpenLinker pins the <b>buyer-paid ({grossNet}) price</b> onto the destination — it does not use the
-          destination&rsquo;s catalog price.
+          {renderRich(copy.pinsBuyerPaidPrice, { b: bold }, { treatment: copy.treatment[grossNet] })}
         </p>
       ) : null}
     </div>

@@ -1,0 +1,80 @@
+{
+  "bundles": {
+    "alone": "Osobno",
+    "available": "Dostępne",
+    "bundle": "Zestaw",
+    "component": "Składnik",
+    "componentCostMissing": "Brak kosztu składnika",
+    "demandTitle": "Zapotrzebowanie na składniki",
+    "empty": "W tym okresie nie sprzedano żadnego zestawu.",
+    "giftInComposition": "Gratis w składzie",
+    "inBundles": "W zestawach",
+    "margin": "Marża",
+    "note": "Koszt zestawu to suma cen zakupu jego składników. Gratis w składzie liczy się jako koszt.",
+    "revenue": "Przychód netto",
+    "salesTitle": "Sprzedaż zestawów",
+    "sold": "Sprzedano",
+    "unknown": "nieznane"
+  },
+  "description": "Ile gratisów wydałeś, ile Cię kosztowały i jak sprzedają się zestawy. Jeden raport, filtry u góry.",
+  "empty": {
+    "body": "Żadne zamówienie z tego zakresu nie miało gratisu. Zmień okres albo filtry.",
+    "title": "Brak gratisów w tym okresie"
+  },
+  "error": "Nie udało się wczytać raportu gratisów.",
+  "export": {
+    "body": "Każdy wiersz: data, klient, gratis, netto koszt zakupu, dokument. Klient to ten sam kupujący we wszystkich zamówieniach, nawet gdy Allegro podaje za każdym razem inny e-mail. Roczne progi (20 zł i 100 zł) ocenia księgowa, OpenLinker ich nie pilnuje.",
+    "button": "Eksport per klient (CSV)",
+    "download": "Pobierz CSV",
+    "preparing": "Przygotowuję CSV…",
+    "title": "Roczny eksport gratisów dla księgowej"
+  },
+  "eyebrow": "Analityka",
+  "filters": {
+    "allChannels": "Wszystkie kanały",
+    "allSources": "Wszystkie",
+    "channel": "Kanał",
+    "manual": "Dodane ręcznie",
+    "rule": "Z promocji",
+    "source": "Źródło gratisu"
+  },
+  "movements": {
+    "body": "Ruchy magazynowe z powodem Gratis dla tego okresu są w historii magazynu. Składniki zestawów schodzą z magazynu jako zwykła sprzedaż i nie są wymienione osobno.",
+    "open": "Pokaż ruchy gratisów"
+  },
+  "range": {
+    "from": "Od",
+    "to": "Do"
+  },
+  "summary": {
+    "cost": "Kosztuje Cię",
+    "paid": "Klienci zapłacili",
+    "sentence": "Klienci zapłacili {paid} za {units} gratisów. Kosztowały Cię {cost} netto, według ceny zakupu produktu. Za nie płacisz Ty.",
+    "units": "Sztuk",
+    "unknownInSentence": "{n} szt. bez ceny zakupu nie ma w tej kwocie."
+  },
+  "table": {
+    "bundleLabel": "Gratis w zestawie",
+    "channelLabel": "Wysłane przez kanał",
+    "cost": "Kosztuje Cię",
+    "costUnknown": "Koszt nieznany",
+    "deletedRule": "Usunięta promocja",
+    "gift": "Gratis",
+    "manualLabel": "Dodane ręcznie",
+    "orders": "Zamówień",
+    "pieces": "Sztuk",
+    "promotion": "Promocja",
+    "title": "Koszt gratisów według promocji",
+    "withoutPieces": "bez {n} szt."
+  },
+  "title": "Koszt gratisów",
+  "unknown": {
+    "body": "Nie ma ich w koszcie powyżej. Uzupełnij cenę zakupu produktu, a raport przeliczy się sam.",
+    "title": "{n} szt. gratisów bez ceny zakupu"
+  },
+  "views": {
+    "bundles": "Zestawy",
+    "gifts": "Gratisy",
+    "movements": "Ruchy magazynowe"
+  }
+}

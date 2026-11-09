@@ -113,6 +113,7 @@ import {
   discountRefundTargetRef,
   effectiveDiscountAmount,
   effectiveLineQuantity,
+  orderEditLockKey,
   evaluateRefundCeiling,
   goodsGrossValue,
   isDecimalAmountText,
@@ -179,16 +180,16 @@ import {
   buildOrderEditHistory,
   buildOrderEditsView,
 } from './order-edits-view';
+import {
+  FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN,
+  type IFulfillmentParcelClosureNotifier,
+} from '../../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
 
 /**
  * Covers read-gates -> overlay write. Once the overlay is written a peer's own
  * gates see it, and the follow-up effects are idempotent, so no longer is needed.
  */
 const ORDER_EDIT_LOCK_TTL_MS = 30_000;
-
-function orderEditLockKey(internalOrderId: string): string {
-  return `order:edit:${internalOrderId}`;
-}
 
 /** A label exists (bought) but the parcel has not left: the address is baked into it. */
 const LABEL_BOUGHT_STATUSES: readonly string[] = [SHIPMENT_STATUS.Generated, SHIPMENT_STATUS.Dispatched];
@@ -302,6 +303,8 @@ export class OrderEditService implements IOrderEditService {
     private readonly lock: SyncLockPort,
     @Inject(ORDER_REFUND_SERVICE_TOKEN)
     private readonly refunds: IOrderRefundService,
+    @Inject(FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN)
+    private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier,
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly products: IProductsService
   ) {}
@@ -1115,14 +1118,16 @@ export class OrderEditService implements IOrderEditService {
     if (prepared.loweredLines.length === 0) return { stock: [], workNarrowingFailures: [] };
 
     const workNarrowingFailures: OrderEditWorkNarrowingFailure[] = [];
+    const closedWorkIds: string[] = [];
     for (const line of prepared.loweredLines) {
       try {
-        await this.fulfillmentEdit.lowerLineQuantity({
+        const lowered = await this.fulfillmentEdit.lowerLineQuantity({
           orderId: written.internalOrderId,
           orderLineId: line.orderLineId,
           newQuantity: line.newQuantity,
           components: written.componentsOfLine(line.orderLineId),
         });
+        closedWorkIds.push(...lowered.closedParcels.map((closed) => closed.workId));
       } catch (error) {
         // The overlay is already written and the order IS edited; a work that
         // refuses (units already fulfilled raced in) is reported, never swallowed.
@@ -1135,6 +1140,13 @@ export class OrderEditService implements IOrderEditService {
           reason: error instanceof Error ? error.message : String(error),
         });
       }
+    }
+
+    // #3961 - a box the lowered quantity left exactly full was closed and
+    // recorded as shipped by core; tell the order's channel now rather than at
+    // the next relay sweep. Best-effort: the notifier never throws.
+    for (const workId of closedWorkIds) {
+      await this.parcelClosureNotifier.relayRecordedClose(workId);
     }
 
     try {

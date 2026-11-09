@@ -20,6 +20,7 @@
  */
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { useMessages } from '../../../shared/i18n';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import type { Product } from '../api/products.types';
 
@@ -28,21 +29,22 @@ export interface ProductDetailLinksProps {
 }
 
 export function ProductDetailLinks({ productId }: ProductDetailLinksProps): ReactElement {
+  const copy = useMessages('products').productDetailSummary.links;
   return (
     <div className="products-detail-links">
       <Link
         className="products-detail-links__link products-detail-links__link--internal"
         to={`/products/${productId}`}
-        title="Open the full product detail page"
+        title={copy.productDetailsTitle}
       >
-        Product details <span className="products-detail-links__arrow">&rarr;</span>
+        {copy.productDetails} <span className="products-detail-links__arrow">&rarr;</span>
       </Link>
       <Link
         className="products-detail-links__link products-detail-links__link--internal"
         to={`/products/${productId}?view=content`}
-        title="Edit this product's description"
+        title={copy.editContentTitle}
       >
-        Edit content <span className="products-detail-links__arrow">&rarr;</span>
+        {copy.editContent} <span className="products-detail-links__arrow">&rarr;</span>
       </Link>
     </div>
   );
@@ -55,15 +57,16 @@ export interface ProductDetailFieldsProps {
 
 export function ProductDetailFields({ productId, product }: ProductDetailFieldsProps): ReactElement {
   const source = product?.externalIds?.[0];
+  const copy = useMessages('products').productDetailSummary.fields;
 
   return (
     <div className="products-detail-fields">
       <div className="products-detail-field">
-        <div className="products-detail-field__label">Internal ID</div>
+        <div className="products-detail-field__label">{copy.internalId}</div>
         <div className="products-detail-field__value mono-text">{productId}</div>
       </div>
       <div className="products-detail-field">
-        <div className="products-detail-field__label">Source external ID</div>
+        <div className="products-detail-field__label">{copy.sourceExternalId}</div>
         <div className="products-detail-field__value mono-text">
           {source ? (
             `${source.platformType} · ${source.externalId}`
@@ -73,13 +76,13 @@ export function ProductDetailFields({ productId, product }: ProductDetailFieldsP
         </div>
       </div>
       <div className="products-detail-field">
-        <div className="products-detail-field__label">Currency</div>
+        <div className="products-detail-field__label">{copy.currency}</div>
         <div className="products-detail-field__value">
-          {product?.currency ?? <span className="text-muted">not set by source</span>}
+          {product?.currency ?? <span className="text-muted">{copy.currencyNotSet}</span>}
         </div>
       </div>
       <div className="products-detail-field">
-        <div className="products-detail-field__label">Stock synced</div>
+        <div className="products-detail-field__label">{copy.stockSynced}</div>
         <div className="products-detail-field__value">
           {product?.stockUpdatedAt ? (
             <TimeDisplay iso={product.stockUpdatedAt} format="datetime" />

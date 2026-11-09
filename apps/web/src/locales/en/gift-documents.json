@@ -1,0 +1,84 @@
+{
+  "connection": {
+    "defaultBadge": "Default",
+    "fieldHelp": "Gifts from this channel use this form unless the gift itself says otherwise.",
+    "fieldLabel": "Gift on the document in this channel",
+    "inheritDescription": "This channel follows the OpenLinker-wide setting.",
+    "inheritLabel": "As in OpenLinker ({form})",
+    "inheritLabelUnknown": "As in OpenLinker (not known yet)",
+    "loadFailed": "Unable to load the gift settings",
+    "loadFailedMessage": "The connection could not be loaded.",
+    "loading": "Loading the gift settings",
+    "loadingMessage": "Fetching this connection.",
+    "notAvailable": "Not available",
+    "readOnlyNotice": "You can see these settings but not change them.",
+    "tab": "Gifts on documents",
+    "title": "Gifts on documents",
+    "zeroNoProvider": "Not offered: no document provider of this channel is known to accept a 0.00 line.",
+    "zeroNotOffered": "Not offered: {provider} does not accept a 0.00 line."
+  },
+  "default": {
+    "bundleInfo": "Bundles on documents: one line when all items share a VAT rate, otherwise each item at its own rate.",
+    "fieldHelp": "This is the OpenLinker-wide default.",
+    "fieldLabel": "Gift on the document",
+    "levels": "The most specific setting wins: the gift itself (gift rule, gift slot in a bundle, manual add), then the sales channel, then this OpenLinker-wide default. Every gift shows where its form came from: \"from the rule\", \"from the channel settings\" or \"OpenLinker default\".",
+    "loadFailed": "Unable to load the gift settings",
+    "loading": "Loading the gift settings",
+    "readOnlyNotice": "You can see these settings but not change them.",
+    "save": "Save settings",
+    "saveFailed": "Changes not saved",
+    "saved": "Settings saved.",
+    "taxNote": "The form of the gift is a tax decision. Talk to your accountant or tax adviser.",
+    "title": "Gifts and bundles"
+  },
+  "example": {
+    "book": "Book",
+    "caption": "Example: a book for 100.00 and a mug for 20.00 as a gift",
+    "form": "Form",
+    "intro": "A customer pays {total} for a book (price {book}) and gets a mug (price {mug}).",
+    "mug": "Mug (gift)",
+    "mugName": "Mug",
+    "noLine": "no line",
+    "title": "Example"
+  },
+  "forms": {
+    "omit": {
+      "description": "The gift is not on the document. It may be treated as a free transfer, ask your accountant.",
+      "label": "Omitted",
+      "short": "Omitted"
+    },
+    "pricedIn": {
+      "description": "Part of the payment moves to the gift, in proportion to prices, each item in its own VAT rate.",
+      "label": "Priced in proportionally",
+      "short": "Priced in proportionally"
+    },
+    "showZero": {
+      "description": "The gift is a 0.00 line. Offered only where the document provider accepts a zero line.",
+      "label": "Shown at 0.00",
+      "short": "Shown at 0.00"
+    },
+    "technicalCent": {
+      "description": "The gift is a 0.01 line, taken off the most expensive paid item. The total does not change. Default, as BaseLinker does it.",
+      "label": "0.01, taken from the most expensive paid item",
+      "short": "0.01, from the most expensive"
+    }
+  },
+  "perGift": {
+    "asInSettings": "As in settings",
+    "label": "On the document"
+  },
+  "preview": {
+    "equalsPaid": "The total equals what the customer paid.",
+    "giftSuffix": "(gift)",
+    "invoiceTitle": "On an invoice",
+    "line": "{quantity} x {price} ({rate}%)",
+    "receiptTitle": "On a receipt",
+    "title": "Document preview",
+    "total": "Total"
+  },
+  "source": {
+    "channel": "from {name} settings",
+    "default": "OpenLinker default",
+    "rule": "from the rule"
+  }
+}

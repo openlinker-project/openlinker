@@ -17,6 +17,7 @@
  */
 import { useMemo, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { interpolate, useFormat, useMessages, usePlural } from '../../shared/i18n';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
@@ -134,6 +135,12 @@ function ShipmentStatusCell({ shipment, canWrite }: { shipment: Shipment; canWri
 }
 
 export function ShipmentsPage(): ReactElement {
+  const copy = useMessages('shipments').shipmentsPage;
+  const statusLabels: Readonly<Record<string, string>> =
+    useMessages('shipments').shipmentStatusBadge.statuses;
+  const plural = usePlural();
+  const format = useFormat();
+  const retryLabel = useMessages('ui').common.retry;
   const [searchParams, setSearchParams] = useSearchParams();
   const { sort, setSort } = useTableSort([{ id: 'createdAt', desc: true }]);
   // Gates the triage strip, the recovery actions in the row accordion, and the
@@ -282,14 +289,14 @@ export function ShipmentsPage(): ReactElement {
     ? [
         {
           id: 'shippingMethod',
-          header: 'Method',
+          header: copy.columns.method,
           cell: (s) => <span className="mono-text">{SHIPPING_METHOD_LABEL[s.shippingMethod]}</span>,
           accessor: (s) => s.shippingMethod,
           sortable: true,
         },
         {
           id: 'paczkomatId',
-          header: 'Paczkomat',
+          header: copy.columns.paczkomat,
           cell: (s) =>
             s.paczkomatId ? (
               <span className="mono-text">{s.paczkomatId}</span>
@@ -304,7 +311,7 @@ export function ShipmentsPage(): ReactElement {
   const columns: DataTableColumn<Shipment>[] = [
     {
       id: 'status',
-      header: 'Status',
+      header: copy.columns.status,
       cell: (s) => <ShipmentStatusCell shipment={s} canWrite={canWrite} />,
       accessor: (s) => s.status,
       sortable: true,
@@ -313,7 +320,7 @@ export function ShipmentsPage(): ReactElement {
       id: 'orderId',
       // #2538 - OrderIdentityCell stacks the order number over a meta line.
       lines: 2,
-      header: 'Order',
+      header: copy.columns.order,
       // Position 2 so the frozen pane is Status + row IDENTITY (#1905),
       // matching `/orders` (select + order). Frozen on Status alone, a
       // horizontally-scrolled row read "failed - sender postcode invalid" with
@@ -327,7 +334,7 @@ export function ShipmentsPage(): ReactElement {
     },
     {
       id: 'action',
-      header: 'Action',
+      header: copy.columns.action,
       // Plain text, not sortable — it's a derived hint riding alongside the
       // real control (the row's `expandable` toggle), not a second
       // interactive column.
@@ -335,7 +342,7 @@ export function ShipmentsPage(): ReactElement {
     },
     {
       id: 'processor',
-      header: 'Processor',
+      header: copy.columns.processor,
       // FE-derived from (shippingMethod, providerShipmentId) — see
       // `features/shipments/lib/processor.ts`. Branch-2 vs. branch-3
       // disambiguation needs the order's source platformType and is deferred
@@ -376,14 +383,14 @@ export function ShipmentsPage(): ReactElement {
     },
     {
       id: 'createdAt',
-      header: 'Created',
+      header: copy.columns.created,
       cell: (s) => <TimeDisplay iso={s.createdAt} />,
       accessor: (s) => s.createdAt,
       sortable: true,
     },
     {
       id: 'customerId',
-      header: 'Customer',
+      header: copy.columns.customer,
       cell: (s) =>
         s.customerId ? (
           <CustomerEntityLabel customerId={s.customerId} showId={false} />
@@ -409,7 +416,7 @@ export function ShipmentsPage(): ReactElement {
       // page's own filter still says "All connections", so an operator hunting
       // for a "Provider" filter would never find it.
       id: 'connectionId',
-      header: 'Connection',
+      header: copy.columns.connection,
       cell: (s): ReactElement => {
         const connection = connectionsById.get(s.connectionId) ?? null;
         return (
@@ -438,7 +445,7 @@ export function ShipmentsPage(): ReactElement {
     },
     {
       id: 'trackingNumber',
-      header: 'Tracking',
+      header: copy.columns.tracking,
       cell: (s) =>
         s.trackingNumber ? (
           <span className="mono-text">{s.trackingNumber}</span>
@@ -451,20 +458,20 @@ export function ShipmentsPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow="Operations"
-      title="Shipments"
-      description="Cross-order rollup of every shipment — filter by status, method, connection, or date."
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
     >
       <div className="toolbar">
         <Select
-          aria-label="Filter by status"
+          aria-label={copy.filters.byStatus}
           value={status ?? ''}
           onChange={(e) => { setFilter('status', e.target.value); }}
         >
-          <option value="">All statuses</option>
+          <option value="">{copy.filters.allStatuses}</option>
           {SHIPMENT_STATUS_VALUES.map((s) => (
             <option key={s} value={s}>
-              {s}
+              {statusLabels[s] ?? s}
             </option>
           ))}
         </Select>
@@ -477,7 +484,7 @@ export function ShipmentsPage(): ReactElement {
             contradict itself (the Processor selector implies a method
             slice; the user picks one OR the other, not both). */}
         <Select
-          aria-label="Filter by processor"
+          aria-label={copy.filters.byProcessor}
           value={processor ?? ''}
           onChange={(e) => {
             // Batch the processor + shippingMethod + offset reset in one
@@ -500,7 +507,7 @@ export function ShipmentsPage(): ReactElement {
             });
           }}
         >
-          <option value="">All processors</option>
+          <option value="">{copy.filters.allProcessors}</option>
           {PROCESSOR_FILTER_VALUES.map((p) => (
             <option key={p} value={p}>
               {PROCESSOR_KIND_LABEL[p]}
@@ -510,11 +517,11 @@ export function ShipmentsPage(): ReactElement {
 
         {showMethodColumns && processor === undefined ? (
           <Select
-            aria-label="Filter by shipping method"
+            aria-label={copy.filters.byMethod}
             value={shippingMethod ?? ''}
             onChange={(e) => { setFilter('shippingMethod', e.target.value); }}
           >
-            <option value="">All methods</option>
+            <option value="">{copy.filters.allMethods}</option>
             {SHIPPING_METHOD_VALUES.map((m) => (
               <option key={m} value={m}>
                 {SHIPPING_METHOD_LABEL[m]}
@@ -524,33 +531,33 @@ export function ShipmentsPage(): ReactElement {
         ) : null}
 
         <Select
-          aria-label="Filter by tracking"
+          aria-label={copy.filters.byTracking}
           value={hasTracking === undefined ? '' : String(hasTracking)}
           onChange={(e) => { setFilter('hasTracking', e.target.value); }}
         >
-          <option value="">Any tracking</option>
-          <option value="true">With tracking</option>
-          <option value="false">Without tracking</option>
+          <option value="">{copy.filters.anyTracking}</option>
+          <option value="true">{copy.filters.withTracking}</option>
+          <option value="false">{copy.filters.withoutTracking}</option>
         </Select>
 
         {/* #2073. Two options, not three: there is no "not stuck" cohort worth
             offering, because a shipment with no failures and one that has failed
             twice are equally not-escalated. The empty value clears the filter. */}
         <Select
-          aria-label="Filter by tracking relay"
+          aria-label={copy.filters.byRelay}
           value={waybillRelayStuck === true ? 'true' : ''}
           onChange={(e) => { setFilter('waybillRelayStuck', e.target.value); }}
         >
-          <option value="">Any relay state</option>
-          <option value="true">Tracking not sent to channel</option>
+          <option value="">{copy.filters.anyRelayState}</option>
+          <option value="true">{copy.filters.relayStuck}</option>
         </Select>
 
         <Select
-          aria-label="Filter by connection"
+          aria-label={copy.filters.byConnection}
           value={connectionId ?? ''}
           onChange={(e) => { setFilter('connectionId', e.target.value); }}
         >
-          <option value="">All connections</option>
+          <option value="">{copy.filters.allConnections}</option>
           {connections.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -560,36 +567,34 @@ export function ShipmentsPage(): ReactElement {
 
         <Input
           type="date"
-          aria-label="Created from"
+          aria-label={copy.filters.createdFrom}
           value={createdFrom ?? ''}
           onChange={(e) => { setFilter('createdFrom', e.target.value); }}
         />
         <Input
           type="date"
-          aria-label="Created to"
+          aria-label={copy.filters.createdTo}
           value={createdTo ?? ''}
           onChange={(e) => { setFilter('createdTo', e.target.value); }}
         />
       </div>
 
       {query.isLoading ? (
-        <DataTableSkeleton columns={columns} rowAction label="Loading shipments…" />
+        <DataTableSkeleton columns={columns} rowAction label={copy.loading} />
       ) : query.error ? (
         <ErrorState
-          title="Unable to load shipments"
+          title={copy.error.title}
           message={query.error.message}
-          action={<Button onClick={() => { void query.refetch(); }}>Retry</Button>}
+          action={<Button onClick={() => { void query.refetch(); }}>{retryLabel}</Button>}
         />
       ) : (query.data?.items.length ?? 0) === 0 ? (
         <EmptyState
           liveRegion="off"
-          title="No shipments found"
+          title={copy.empty.title}
           message={
-            filtersActive
-              ? 'No shipments match the current filters.'
-              : 'No shipments have been created yet.'
+            filtersActive ? copy.empty.filtered : copy.empty.none
           }
-          action={filtersActive ? <Button onClick={clearFilters}>Clear filters</Button> : undefined}
+          action={filtersActive ? <Button onClick={clearFilters}>{copy.empty.clearFilters}</Button> : undefined}
         />
       ) : (
         <>
@@ -613,16 +618,14 @@ export function ShipmentsPage(): ReactElement {
               ))}
               {failedCauseGroups.length > MAX_TRIAGE_STRIPS ? (
                 <p className="text-muted shipments-page__triage-overflow">
-                  +{failedCauseGroups.length - MAX_TRIAGE_STRIPS} more group
-                  {failedCauseGroups.length - MAX_TRIAGE_STRIPS === 1 ? '' : 's'} with a shared
-                  carrier message.
+                  {plural(failedCauseGroups.length - MAX_TRIAGE_STRIPS, copy.triageOverflow)}
                 </p>
               ) : null}
             </>
           ) : null}
 
           <DataTable
-            caption="Shipments"
+            caption={copy.tableCaption}
             columns={columns}
             rows={query.data?.items ?? []}
             rowKey={(s) => s.id}
@@ -647,7 +650,7 @@ export function ShipmentsPage(): ReactElement {
                 />
               ),
               toggleLabel: (s, expanded) =>
-                expanded ? `Collapse details for shipment ${s.id}` : `Expand details for shipment ${s.id}`,
+                interpolate(expanded ? copy.toggle.collapse : copy.toggle.expand, { id: s.id }),
             }}
             cardView={{
               // Order link restored (#1826) — dropping `rowHref` in favour of
@@ -675,14 +678,18 @@ export function ShipmentsPage(): ReactElement {
 
           <div className="pagination">
             <span className="text-muted">
-              Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
+              {interpolate(copy.pagination.showing, {
+                from: format.number(offset + 1),
+                to: format.number(Math.min(offset + PAGE_SIZE, total)),
+                total: format.number(total),
+              })}
             </span>
             <div className="pagination__actions">
               <Button disabled={!hasPrev} onClick={() => { setOffset(offset - PAGE_SIZE); }}>
-                Previous
+                {copy.pagination.previous}
               </Button>
               <Button disabled={!hasNext} onClick={() => { setOffset(offset + PAGE_SIZE); }}>
-                Next
+                {copy.pagination.next}
               </Button>
             </div>
           </div>

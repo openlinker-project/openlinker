@@ -1,0 +1,274 @@
+{
+  "accessDenied": {
+    "eyebrow": "No access",
+    "message": "Your account's role doesn't include this screen. Ask an administrator if you need it.",
+    "title": "You don't have access to this"
+  },
+  "apiError": {
+    "networkFailed": "Network request failed",
+    "noReadableBody": "The server sent an empty response.",
+    "requestFailed": "Request failed",
+    "timedOut": "The request timed out."
+  },
+  "bulkActionBar": {
+    "selected": {
+      "one": "selected",
+      "other": "selected"
+    },
+    "selectedCount": {
+      "one": "{n} item selected",
+      "other": "{n} items selected"
+    }
+  },
+  "categorySearch": {
+    "errorTitle": "Unable to search categories",
+    "found": {
+      "one": "{n} category found",
+      "other": "{n} categories found"
+    },
+    "noMatchMessage": "Nothing in this tree matches \"{query}\". Try a shorter or differently-spelled term.",
+    "noMatchTitle": "No matching categories",
+    "notSelectable": "Not selectable",
+    "searchingMessage": "Searching the whole tree…",
+    "searchingTitle": "Searching categories",
+    "selectNamed": "Select {name}",
+    "topLevel": "Top level",
+    "unsyncedMessage": "This destination's category tree has not been synced. Search will work once the first sync completes.",
+    "unsyncedTitle": "No categories synced yet"
+  },
+  "categoryTree": {
+    "browse": "Browse",
+    "browseInto": "Browse into {name}",
+    "emptyMessage": "This level has no children. Step back and pick a different branch.",
+    "emptyTitle": "No subcategories",
+    "errorTitle": "Unable to load categories",
+    "loadingMessage": "Fetching categories…",
+    "loadingTitle": "Loading categories",
+    "path": "Category path",
+    "root": "Root"
+  },
+  "combobox": {
+    "clearCustom": "Clear custom value",
+    "close": "close",
+    "customValueTitle": "Custom value (not from list)",
+    "filter": "Type to filter…",
+    "more": "+{n} more",
+    "navigate": "navigate",
+    "noMatch": "No options match “{query}”.",
+    "optionCount": {
+      "one": "{n} option",
+      "other": "{n} options"
+    },
+    "placeholder": "Select…",
+    "remove": "Remove {label}",
+    "searchCount": {
+      "one": "Type to search {n} option…",
+      "other": "Type to search {n} options…"
+    },
+    "searchCountHint": {
+      "one": "Type to search {n} option.",
+      "other": "Type to search {n} options."
+    },
+    "searchOrCustom": "Type to search or enter a custom value…",
+    "select": "select",
+    "selectedCount": {
+      "one": "{n} selected",
+      "other": "{n} selected"
+    },
+    "showing": "Showing {shown} of {total}",
+    "useCustom": "Use as custom value:"
+  },
+  "commandPalette": {
+    "label": "Command palette",
+    "noResults": "No results found.",
+    "open": "Open command palette (⌘K)",
+    "placeholder": "Search…",
+    "results": "Command results",
+    "searching": "Searching…",
+    "startTyping": "Start typing to search.",
+    "trigger": "Search orders, products, connections…"
+  },
+  "common": {
+    "copied": "Copied",
+    "copiedId": "Copied {id}",
+    "copy": "Copy",
+    "copyId": "Copy {id}",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "select": "Select",
+    "selected": "Selected",
+    "unknown": "Unknown"
+  },
+  "confirmDialog": {
+    "cancel": "Cancel",
+    "confirm": "Confirm"
+  },
+  "dataTable": {
+    "collapseRow": "Collapse row details",
+    "emptyMessage": "There is no data available for this table yet.",
+    "emptyTitle": "No records to display",
+    "expandRow": "Expand row details",
+    "expandRowShort": "Expand row",
+    "hideDetails": "Hide details",
+    "scrollable": "Scrollable table",
+    "scrollableNamed": "{caption} (scrollable)",
+    "viewDetails": "View full details"
+  },
+  "demo": {
+    "navRestricted": "Requires an administrator role.",
+    "readOnlyAction": "Read-only in demo mode."
+  },
+  "demoBanner": {
+    "body": "You can explore all data; write actions are disabled.",
+    "label": "Demo mode notice",
+    "title": "Demo mode - read-only."
+  },
+  "density": {
+    "compact": "Compact density",
+    "cozy": "Cozy density",
+    "group": "Row density"
+  },
+  "desktopOnly": {
+    "body": "This editor needs a wider screen to show both sides side by side. The view below is read-only on this viewport.",
+    "title": "Open on a desktop screen to edit"
+  },
+  "documentKind": {
+    "fiscalReceipt": "Fiscal receipt",
+    "invoice": "Invoice",
+    "none": "No document"
+  },
+  "documentLifecycle": {
+    "active": "in progress",
+    "done": "done",
+    "error": "failed",
+    "label": "Document lifecycle",
+    "noTime": "No time recorded for {step}",
+    "todo": "not yet reached"
+  },
+  "emptyValue": {
+    "label": "No value"
+  },
+  "environment": {
+    "ariaLabel": "Environment {env}",
+    "ariaLabelVersion": "Environment {env}, version {version}",
+    "names": {
+      "custom": "Custom",
+      "development": "Development",
+      "developmentShort": "Dev",
+      "preview": "Preview",
+      "previewShort": "Prev",
+      "production": "Production",
+      "productionShort": "Prod",
+      "staging": "Staging",
+      "stagingShort": "Stg"
+    },
+    "version": "v{version}"
+  },
+  "feedback": {
+    "error": "Error",
+    "loading": "Loading"
+  },
+  "fileUpload": {
+    "drop": "Drop a file here, or click to choose",
+    "hint": "Accepted: {accept}. Max {max}.",
+    "release": "Release to upload",
+    "tooLarge": "File is too large ({size}). Maximum allowed: {max}.",
+    "uploading": "Uploading…",
+    "wrongType": "File type \"{type}\" is not accepted. Allowed: {accept}."
+  },
+  "formErrorSummary": {
+    "title": "Please correct the highlighted fields."
+  },
+  "inlineDisclosure": {
+    "change": "Change"
+  },
+  "languageSwitch": {
+    "beta": "Beta",
+    "betaHint": "Some content may not be translated yet.",
+    "current": "Language: {name}",
+    "label": "Language"
+  },
+  "pagination": {
+    "countUnavailable": "(count unavailable)",
+    "counting": "Counting the full result set",
+    "label": "Pagination",
+    "next": "Next",
+    "noResults": "No results",
+    "previous": "Previous",
+    "showing": "Showing {start}–{end} of <total></total>",
+    "totalFailed": "The full count could not be loaded. At least this many match."
+  },
+  "rangeNumber": {
+    "clampOnBlur": "Leaving the field sets it to {value}.",
+    "outOfRange": "Enter a whole number from {min} to {max}."
+  },
+  "rawPayload": {
+    "collapse": "Collapse",
+    "content": "Payload content",
+    "copied": "Copied payload",
+    "copy": "Copy payload",
+    "expand": "Expand",
+    "title": "Payload"
+  },
+  "richText": {
+    "bold": "Bold",
+    "bulletList": "Bullet list",
+    "bytes": {
+      "one": "{bytes} / {max} byte",
+      "other": "{bytes} / {max} bytes"
+    },
+    "bytesNearLimit": {
+      "one": "{bytes} / {max} byte - near the limit",
+      "other": "{bytes} / {max} bytes - near the limit"
+    },
+    "bytesOverLimit": {
+      "one": "{bytes} / {max} byte - over the destination limit",
+      "other": "{bytes} / {max} bytes - over the destination limit"
+    },
+    "heading": "Heading {level}",
+    "htmlMode": "HTML",
+    "htmlSource": "HTML source",
+    "htmlSourceNamed": "{label} (HTML source)",
+    "italic": "Italic",
+    "italicAsBold": "Italic - this destination has no italic tag, so it publishes as bold",
+    "link": "Add or edit link",
+    "linkTarget": "Link target",
+    "loadingFormat": "Loading the destination's formatting rules…",
+    "numberedList": "Numbered list",
+    "placeholder": "Describe the product…",
+    "richMode": "Rich text",
+    "strike": "Strikethrough",
+    "toolbar": "Formatting",
+    "undeclared": "This destination has not declared its description format - showing a safe subset.",
+    "underline": "Underline"
+  },
+  "richTextView": {
+    "empty": "No description"
+  },
+  "setupStepper": {
+    "label": "Setup progress",
+    "step": "Step {current} of {total}"
+  },
+  "structuredErrors": {
+    "copied": "copied",
+    "copiedPath": "Copied {path}",
+    "copyPath": "Copy field path {path}",
+    "label": "Errors",
+    "original": "Original message"
+  },
+  "theme": {
+    "current": "Theme: {name}",
+    "dark": "Dark",
+    "label": "Theme",
+    "light": "Light",
+    "system": "Auto"
+  },
+  "toast": {
+    "dismiss": "Dismiss",
+    "dismissNamed": "Dismiss {title}",
+    "notification": "notification"
+  },
+  "wizard": {
+    "summary": "Setup summary"
+  }
+}

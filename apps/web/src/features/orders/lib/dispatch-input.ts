@@ -10,6 +10,7 @@
  * @module apps/web/src/features/orders/lib
  */
 import type { BulkDispatchItem } from '../../shipments';
+import type { Messages, ResolvedCopy } from '../../../shared/i18n';
 import type { OrderRecord } from '../api/orders.types';
 import { parseOrderSnapshot, type ParsedOrderSnapshot, type PaymentStatus } from '../api/order-snapshot.schema';
 
@@ -48,9 +49,19 @@ export function resolveShippingMethod(snapshot: ParsedOrderSnapshot): ResolvedSh
     : 'kurier';
 }
 
+/** The `orders.dispatchInput` copy, in the language the caller renders in. */
+export type DispatchInputCopy = ResolvedCopy<Messages['orders']>['dispatchInput'];
+
+export type MissingFieldId = 'email' | 'phone' | 'street' | 'city' | 'postCode' | 'country';
+
+/** A snapshot field the label request needs and the order did not supply. */
 export interface MissingField {
-  id: string;
-  message: string;
+  id: MissingFieldId;
+}
+
+/** The sentence an operator reads for a missing field. */
+export function missingFieldMessage(id: MissingFieldId, copy: DispatchInputCopy): string {
+  return copy.missingField[id];
 }
 
 function isIsoAlpha2(code: string): boolean {
@@ -68,19 +79,19 @@ export function detectMissingFields(
 ): MissingField[] {
   const missing: MissingField[] = [];
   if (!snapshot.customerEmail) {
-    missing.push({ id: 'email', message: 'Buyer email is missing from the order snapshot.' });
+    missing.push({ id: 'email' });
   }
   const phone = snapshot.shippingAddress?.phone;
   if (!phone || phone.trim().length === 0) {
-    missing.push({ id: 'phone', message: 'Buyer phone is missing from the shipping address.' });
+    missing.push({ id: 'phone' });
   }
   if (shippingMethod === 'kurier') {
     const a = snapshot.shippingAddress;
-    if (!a?.address1) missing.push({ id: 'street', message: 'Shipping street is missing.' });
-    if (!a?.city) missing.push({ id: 'city', message: 'Shipping city is missing.' });
-    if (!a?.postalCode) missing.push({ id: 'postCode', message: 'Shipping postal code is missing.' });
+    if (!a?.address1) missing.push({ id: 'street' });
+    if (!a?.city) missing.push({ id: 'city' });
+    if (!a?.postalCode) missing.push({ id: 'postCode' });
     if (!a?.country || !isIsoAlpha2(a.country)) {
-      missing.push({ id: 'country', message: 'Shipping country must be a 2-letter ISO code (e.g. PL).' });
+      missing.push({ id: 'country' });
     }
   }
   return missing;
@@ -169,27 +180,32 @@ export const DISPATCH_INELIGIBILITY_REASONS = [
 ] as const;
 export type DispatchIneligibilityReason = (typeof DISPATCH_INELIGIBILITY_REASONS)[number];
 
+/** The copy key each ineligibility reason reads (kebab-case value -> camelCase key). */
+const INELIGIBILITY_COPY_KEY = {
+  'missing-recipient': 'missingRecipient',
+  'needs-paczkomat': 'needsPaczkomat',
+  cod: 'cod',
+  'payment-blocked': 'paymentBlocked',
+  'already-shipped': 'alreadyShipped',
+  'not-ready': 'notReady',
+  'source-deleted': 'sourceDeleted',
+} as const satisfies Record<DispatchIneligibilityReason, keyof DispatchInputCopy['ineligibleLabel']>;
+
 /** Short STATUS-badge label per ineligibility reason. */
-export const DISPATCH_INELIGIBILITY_LABEL: Record<DispatchIneligibilityReason, string> = {
-  'missing-recipient': 'Missing recipient',
-  'needs-paczkomat': 'Needs paczkomat',
-  cod: 'COD — enter amount',
-  'payment-blocked': 'Payment not cleared',
-  'already-shipped': 'Already shipped',
-  'not-ready': 'Awaiting mapping',
-  'source-deleted': 'Source deleted',
-};
+export function dispatchIneligibilityLabel(
+  reason: DispatchIneligibilityReason,
+  copy: DispatchInputCopy,
+): string {
+  return copy.ineligibleLabel[INELIGIBILITY_COPY_KEY[reason]];
+}
 
 /** One-line reason hint shown under an ineligible row. */
-export const DISPATCH_INELIGIBILITY_HINT: Record<DispatchIneligibilityReason, string> = {
-  'missing-recipient': 'Recipient data is incomplete — fix at source, then dispatch individually.',
-  'needs-paczkomat': 'Buyer locker not resolved — dispatch individually.',
-  cod: 'Cash-on-delivery amount needed — dispatch individually.',
-  'payment-blocked': 'Payment is not cleared — resolve payment, then dispatch.',
-  'already-shipped': 'A shipment already exists for this order.',
-  'not-ready': 'Order is still awaiting mapping.',
-  'source-deleted': 'Item was deleted at the source — cannot be dispatched.',
-};
+export function dispatchIneligibilityHint(
+  reason: DispatchIneligibilityReason,
+  copy: DispatchInputCopy,
+): string {
+  return copy.ineligibleHint[INELIGIBILITY_COPY_KEY[reason]];
+}
 
 /**
  * Per-order dispatch readiness. Carries the parsed snapshot + resolved method so

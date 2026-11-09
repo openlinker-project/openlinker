@@ -5,10 +5,7 @@
  *
  * @module apps/web/src/features/automation/lib
  */
-import {
-  AUTOMATION_CONDITION_OUTCOME_COPY,
-  AUTOMATION_NON_FIRING_REASON_COPY,
-} from './automation.copy';
+import { getMessages } from '../../../shared/i18n';
 import type {
   AutomationActionVocabulary,
   AutomationConditionOutcome,
@@ -23,15 +20,16 @@ import { toActionInput, toConditionInput } from './automation-composer.schema';
 
 /** Label one per-condition outcome. Exhaustive; a fifth value fails the build. */
 export function describeConditionOutcome(outcome: AutomationConditionOutcome): string {
+  const copy = getMessages('automation').conditionOutcomes;
   switch (outcome) {
     case 'true':
-      return AUTOMATION_CONDITION_OUTCOME_COPY.true;
+      return copy.true;
     case 'false':
-      return AUTOMATION_CONDITION_OUTCOME_COPY.false;
+      return copy.false;
     case 'unknown':
-      return AUTOMATION_CONDITION_OUTCOME_COPY.unknown;
+      return copy.unknown;
     case 'currency-mismatch':
-      return AUTOMATION_CONDITION_OUTCOME_COPY['currency-mismatch'];
+      return copy['currency-mismatch'];
     default: {
       const exhaustive: never = outcome;
       throw new Error(`Unhandled automation condition outcome: ${String(exhaustive)}`);
@@ -63,7 +61,7 @@ export function conditionOutcomeTone(
  * addition fails the build instead of silently reaching this fallback.
  */
 export function describeNonFiringReason(reason: string): string {
-  return (AUTOMATION_NON_FIRING_REASON_COPY as Record<string, string>)[reason] ?? reason;
+  return (getMessages('automation').nonFiringReasons as Record<string, string>)[reason] ?? reason;
 }
 
 /**

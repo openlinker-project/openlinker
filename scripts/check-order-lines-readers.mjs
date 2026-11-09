@@ -72,6 +72,7 @@ export const ALLOWED = new Map([
   ['libs/core/src/orders/application/services/order-gift.service.ts', 'gift rules match the lines the buyer BOUGHT (purchase conditions, per-unit counts) and add a gift line to the overlay; the gift reserves like any line afterwards. Skip-if-present over bundle components is the #3945 seam'],
   ['libs/core/src/orders/application/services/order-line-cost.service.ts', 'the cost snapshot at ingestion (decision 8)'],
   ['libs/core/src/orders/application/services/order-record.service.ts', COMMERCIAL.entity],
+  ['libs/core/src/orders/application/services/order-source-amendment-effects.service.ts', 'compares the source\'s commercial lines with the work; bundle lines are folded to commercial grain by assessForEdit and fanned out to components by componentsOfLine (ADR-083)'],
   ['libs/core/src/orders/application/services/order-sync.service.ts', 'the destination mirror sends order.items as they are (decision 8); stock steps use physicalProductIds'],
   ['libs/core/src/orders/domain/entities/order-record.entity.ts', COMMERCIAL.entity],
   ['libs/core/src/orders/domain/order-amendment-diff.ts', 'the amendment diff compares commercial lines (decision 8)'],

@@ -1,0 +1,741 @@
+{
+  "duplicatePositionsCsv": {
+    "headers": {
+      "availableQuantity": "availableQuantity",
+      "connectionName": "connectionName",
+      "groupLiveRowCount": "groupLiveRowCount",
+      "groupRowCount": "groupRowCount",
+      "inventoryItemId": "inventoryItemId",
+      "isStale": "isStale",
+      "locationId": "locationId",
+      "locationName": "locationName",
+      "productId": "productId",
+      "productName": "productName",
+      "productVariantId": "productVariantId",
+      "reservedQuantity": "reservedQuantity",
+      "sku": "sku",
+      "sourceConnectionId": "sourceConnectionId",
+      "updatedAt": "updatedAt"
+    }
+  },
+  "duplicatePositionsPage": {
+    "adminOnly": "Dostęp tylko dla administratorów.",
+    "adminRequiredMessage": "Ta diagnostyka odczytuje bezpośrednio tabelę inventory_items - wymaga sesji administratora.",
+    "adminRequiredTitle": "Wymagana rola administratora",
+    "backfillComplete": "Uzupełnianie pochodzenia zakończone",
+    "backfillRemaining": "Wierszy wciąż bez pochodzenia: {n}",
+    "backfillStuck": "Wierszy wciąż bez pochodzenia: {n} - uzupełnianie zablokowało się {date} i przestało działać. Nie wznowi się samo - poproś inżyniera o jego ponowne uruchomienie.",
+    "caption": "Zduplikowane pozycje magazynowe",
+    "cardMeta": "Wiersze: {rows} (aktywne: {live})",
+    "caution": "Pozycje mogą się zmienić między tym skanem a ręczną poprawką wykonaną gdzie indziej - uruchom raport ponownie tuż przed działaniem, nigdy nie korzystaj ze strony wczytanej dawno temu.",
+    "collapseRows": "Zwiń wiersze produktu {product}",
+    "columns": {
+      "allStale": "wszystkie nieaktualne",
+      "liveQty": "Zagrożona ilość aktywna",
+      "liveQtyTip": "Suma availableQuantity z AKTYWNYCH (nie nieaktualnych) wierszy tej grupy, gdy istnieją co najmniej dwa aktywne wiersze - to, co jest obecnie liczone podwójnie dla tej pozycji. Pojedynczy aktywny wiersz nigdy nie jest zagrożony (jego wartość jest już poprawna), więc jest tu pokazany jako nienaruszony. Sortuje tylko tę obciętą stronę - liczbę grup ogranicza maxGroups, od największych.",
+      "liveRows": "Aktywne",
+      "location": "Lokalizacja",
+      "nLive": "aktywne: {n}",
+      "oneLive": "1 aktywny",
+      "product": "Produkt",
+      "rows": "Wiersze",
+      "sortHint": "Sortuje tylko tę obciętą stronę - liczbę grup ogranicza maxGroups, od największych",
+      "sourceConnection": "Połączenie źródłowe",
+      "variant": "Wariant"
+    },
+    "description": "Wiersze stanu magazynowego, które pokrywają się dla tego samego produktu, wariantu, lokalizacji i źródła. To raport, a nie narzędzie naprawcze - wykrywa, nigdy nie zapisuje. Stanowi warunek włączenia ostrzejszej reguły unikalności dla całej instalacji.",
+    "detail": {
+      "available": "Dostępne",
+      "distorting": "<strong>Obecnie zniekształca ilość możliwą do obiecania.</strong> Aktywne wiersze tej pozycji sumują się do <strong>{n}</strong> dostępnych - odczyt dostępności nie wie, że prawdziwy jest tylko jeden wiersz, więc publikuje {n}, podczas gdy prawdziwą wartością jest ta z wiersza, który zostanie. Nigdy nie sumuj zduplikowanych ilości przy uzgadnianiu; po porządkach odczytaj wartość pozostałego wiersza z systemu głównego.",
+      "likelySurvivor": "prawdopodobnie zostaje",
+      "live": "Aktywny",
+      "noLive": "<strong>Brak aktywnych wierszy - dziś nie ma ryzyka sprzedaży ponad stan.</strong> Każdy wiersz jest już nieaktualny, więc zwykły odczyt dostępności już pomija tę pozycję. Ta grupa blokuje tylko migrację ostrzejszej unikalności; nie jest aktywnym problemem z dokładnością stanów.",
+      "noLiveRow": "Brak aktywnego wiersza w tej grupie - zobacz krok 2 instrukcji naprawy.",
+      "oneLive": "<strong>Jeden aktywny wiersz - dziś nie ma ryzyka sprzedaży ponad stan.</strong> Jego wartość jest już poprawna i niezniekształcona; przed zbudowaniem indeksu unikalności trzeba tylko usunąć nieaktualne wiersze tej grupy.",
+      "reservationRiskBody": "{rows}, ale domyślna reguła wybiera najnowszy wiersz bez względu na rezerwacje. Przed usunięciem upewnij się, że żadne otwarte zamówienie nie zależy od tego stanu - najpierw sprawdź Zamówienia dla tego wariantu.",
+      "reservationRiskRow": {
+        "few": "{id} ma {n} zarezerwowane sztuki",
+        "many": "{id} ma {n} zarezerwowanych sztuk",
+        "one": "{id} ma {n} zarezerwowaną sztukę",
+        "other": "{id} ma {n} zarezerwowanej sztuki"
+      },
+      "reservationRiskTitle": "Ryzyko dla rezerwacji - nie kieruj się ślepo oznaczeniem wiersza, który zostaje.",
+      "reserved": "Zarezerwowane",
+      "reservedBadge": "zarezerwowane",
+      "rowId": "ID wiersza",
+      "rowsCaption": "Poszczególne wiersze inventory_items dla tego klucza pozycji",
+      "rowsRegion": "Poszczególne wiersze inventory_items dla tego klucza pozycji (przewijane)",
+      "stale": "Nieaktualny",
+      "status": "Status",
+      "survivorHint": "Domyślna reguła: zostaje najnowszy aktywny wiersz (oznaczony poniżej), konflikt od {date}.",
+      "updated": "Zaktualizowano"
+    },
+    "done": "Gotowe",
+    "empty": {
+      "message": "Każdy klucz pozycji magazynowej jest unikalny. Nie ma nic do sprawdzenia.",
+      "title": "Brak zduplikowanych pozycji"
+    },
+    "errorTitle": "Nie udało się wczytać raportu zduplikowanych pozycji",
+    "expandRows": "Rozwiń wiersze produktu {product}",
+    "exportCsv": "Eksportuj CSV",
+    "eyebrow": "Diagnostyka",
+    "generated": "Wygenerowano {date}",
+    "groupsToResolve": {
+      "few": "Trzeba rozwiązać {n} grupy zduplikowanych pozycji",
+      "many": "Trzeba rozwiązać {n} grup zduplikowanych pozycji",
+      "one": "Trzeba rozwiązać {n} grupę zduplikowanych pozycji",
+      "other": "Trzeba rozwiązać {n} grupy zduplikowanych pozycji"
+    },
+    "kpis": {
+      "excessRows": "Nadmiarowe wiersze",
+      "excessRowsHint": "Wiersze, które trzeba usunąć przed zbudowaniem indeksu - z każdej grupy zostaje jeden wiersz.",
+      "groups": "Zduplikowane grupy",
+      "provenanceHint": "Wiersze inventory_items wciąż bez sourceConnectionId.",
+      "provenanceRemaining": "Wiersze bez pochodzenia",
+      "provenanceStuckHint": "Wiersze inventory_items wciąż bez sourceConnectionId - uzupełnianie zablokowane, wymaga ponownego uruchomienia.",
+      "totalRows": "Wszystkie wiersze w zduplikowanych grupach"
+    },
+    "legacy": "starsze",
+    "legacyTip": "Znacznik, który uzupełnianie pochodzenia zapisuje dla wiersza o nieznanym połączeniu-właścicielu. Grupowany razem z wierszami nieuzupełnionymi - oba znaczą to samo.",
+    "loadingMessage": "Przeszukiwanie inventory_items pod kątem pokrywających się kluczy pozycji i sprawdzanie uzupełniania pochodzenia...",
+    "loadingTitle": "Wczytywanie raportu zduplikowanych pozycji",
+    "noGroups": "Brak zduplikowanych grup pozycji",
+    "notBackfilled": "- nieuzupełnione -",
+    "notBackfilledTip": "Nie zapisano jeszcze połączenia źródłowego - ten wiersz jest starszy niż uzupełnianie pochodzenia. Grupowany razem z wierszami „starsze”; oba znaczą to samo.",
+    "notReady": "Niegotowe",
+    "notReadyFootnote": "Przed zbudowaniem ostrzejszego indeksu unikalności muszą być spełnione oba warunki. Rozwiązanie zduplikowanych grup to ręczna operacja na bazie danych - poproś inżyniera o wykonanie procedury naprawczej, a potem odśwież tę stronę, aby sprawdzić ponownie.",
+    "pending": "Oczekuje",
+    "provenanceFootnote": "Pochodzenie jest częścią klucza - dwa wiersze różniące się tylko połączeniem źródłowym to poprawne, współistniejące kopie, a nie duplikaty, i są już pominięte w tej liczbie.",
+    "ready": "Gotowe",
+    "refresh": "Odśwież",
+    "refreshFailedBody": "{error} - poniżej widać ostatni udany skan.",
+    "refreshFailedTitle": "Odświeżanie nie powiodło się",
+    "refreshing": "Odświeżanie…",
+    "remediationLink": "Instrukcja naprawy: jak wybrać wiersz, który zostaje, i usunąć resztę →",
+    "retry": "Ponów",
+    "stuck": "Zablokowane",
+    "title": "Zduplikowane pozycje magazynowe",
+    "truncated": {
+      "apply": "Zastosuj",
+      "body": {
+        "few": "Sumy KPI powyżej obejmują wszystkie zduplikowane pozycje w bazie danych. Serwer ogranicza poniższą tabelę do {shown} z {n} zduplikowanych grup z największą liczbą wierszy <code>inventory_items</code> - według liczby wierszy, a nie ekspozycji. Pokazane grupy są następnie ułożone według zagrożonej aktywnej ilości, więc grupa z mniejszą liczbą wierszy, ale większą ekspozycją, może istnieć poza tym limitem i się tu nie pojawić.",
+        "many": "Sumy KPI powyżej obejmują wszystkie zduplikowane pozycje w bazie danych. Serwer ogranicza poniższą tabelę do {shown} z {n} zduplikowanych grup z największą liczbą wierszy <code>inventory_items</code> - według liczby wierszy, a nie ekspozycji. Pokazane grupy są następnie ułożone według zagrożonej aktywnej ilości, więc grupa z mniejszą liczbą wierszy, ale większą ekspozycją, może istnieć poza tym limitem i się tu nie pojawić.",
+        "one": "Sumy KPI powyżej obejmują wszystkie zduplikowane pozycje w bazie danych. Serwer ogranicza poniższą tabelę do {shown} z {n} zduplikowanej grupy z największą liczbą wierszy <code>inventory_items</code> - według liczby wierszy, a nie ekspozycji. Pokazane grupy są następnie ułożone według zagrożonej aktywnej ilości, więc grupa z mniejszą liczbą wierszy, ale większą ekspozycją, może istnieć poza tym limitem i się tu nie pojawić.",
+        "other": "Sumy KPI powyżej obejmują wszystkie zduplikowane pozycje w bazie danych. Serwer ogranicza poniższą tabelę do {shown} z {n} zduplikowanej grupy z największą liczbą wierszy <code>inventory_items</code> - według liczby wierszy, a nie ekspozycji. Pokazane grupy są następnie ułożone według zagrożonej aktywnej ilości, więc grupa z mniejszą liczbą wierszy, ale większą ekspozycją, może istnieć poza tym limitem i się tu nie pojawić."
+      },
+      "groupsToShow": "Liczba grup do pokazania",
+      "title": "Szczegóły obcięte"
+    },
+    "unlocated": "- bez lokalizacji -",
+    "unlocatedTip": "System główny nie podaje lokalizacji tego stanu. To nie brak danych - traktuj to jako rzeczywistą wartość „bez lokalizacji”."
+  },
+  "duplicatePositionsRemediationModal": {
+    "close": "Zamknij",
+    "copied": "Skopiowano",
+    "copiedDelete": {
+      "few": "Skopiowano polecenie DELETE dla {n} wierszy do usunięcia",
+      "many": "Skopiowano polecenie DELETE dla {n} wierszy do usunięcia",
+      "one": "Skopiowano polecenie DELETE dla {n} wiersza do usunięcia",
+      "other": "Skopiowano polecenie DELETE dla {n} wiersza do usunięcia"
+    },
+    "copy": "Kopiuj",
+    "copyDelete": {
+      "few": "Kopiuj polecenie DELETE dla {n} wierszy do usunięcia",
+      "many": "Kopiuj polecenie DELETE dla {n} wierszy do usunięcia",
+      "one": "Kopiuj polecenie DELETE dla {n} wiersza do usunięcia",
+      "other": "Kopiuj polecenie DELETE dla {n} wiersza do usunięcia"
+    },
+    "footerHint": "To fragment. Pełna dokumentacja zawiera kolejność zależności, postępowanie dla grup nieaktualnych i zastrzeżenia dotyczące SQL.",
+    "neverSum": "Nigdy nie sumuj zduplikowanych ilości przy uzgadnianiu - to ręcznie odtwarza dokładnie to podwójne liczenie, które ten raport ma wykrywać, a kolejna synchronizacja go nie poprawi, bo będzie wyglądać jak prawdziwa wartość z systemu głównego.",
+    "openFromGroup": "Otwórz to z wiersza konkretnej grupy, aby otrzymać gotowe do sprawdzenia polecenie <code>DELETE</code> dla wierszy do usunięcia z tej grupy.",
+    "openRunbook": "Otwórz pełną procedurę →",
+    "sqlHint": "Nic na tej stronie tego nie uruchamia - upewnij się ponownie, że te ID są aktualne (uruchom skan ponownie), a potem wykonaj je samodzielnie.",
+    "sqlLabel": {
+      "few": "DELETE dla {n} wierszy do usunięcia w tej grupie",
+      "many": "DELETE dla {n} wierszy do usunięcia w tej grupie",
+      "one": "DELETE dla {n} wiersza do usunięcia w tej grupie",
+      "other": "DELETE dla {n} wiersza do usunięcia w tej grupie"
+    },
+    "steps": {
+      "allStale": "<strong>Wszystkie wiersze nieaktualne?</strong> Zostaw najnowszy i usuń resztę albo usuń całą grupę, jeśli produkt naprawdę zniknął z systemu głównego.",
+      "deleteLosers": "<strong>Usuwaj wiersze tylko po kluczu głównym.</strong> Polecenie <code>DELETE</code> oparte na kolumnach pozycji nie wyrazi „wszystkie oprócz jednego” i opróżni całą grupę.",
+      "pick": "<strong>Wybierz wiersz, który zostaje.</strong> Aktywny (nie nieaktualny) wiersz z najnowszym <code>updatedAt</code> - zwykle pierwszy, bo wiersze są ułożone od najnowszych.",
+      "reconcile": "<strong>Uzgodnij ilość w pozostałym wierszu z systemem głównym</strong>, a nie z innymi wierszami - kolejna synchronizacja i tak ją nadpisze.",
+      "rerun": "<strong>Uruchamiaj ten raport ponownie</strong>, dopóki <code>groupCount</code> nie pokaże 0, a potem przejdź do migracji."
+    },
+    "survivorLive": "Zostaje (aktywny, najnowszy):",
+    "survivorNoLive": "Brak aktywnego wiersza w tej grupie - zgodnie z krokiem 2 zostaje najnowszy ogółem:",
+    "title": "Instrukcja naprawy (skrót)"
+  },
+  "inventoryLocationsPage": {
+    "actions": {
+      "delete": "Usuń",
+      "edit": "Edytuj",
+      "reactivate": "Aktywuj ponownie",
+      "retire": "Wycofaj"
+    },
+    "addLocation": "+ Dodaj lokalizację",
+    "allKinds": "Wszystkie rodzaje",
+    "back": "Ustawienia",
+    "caption": "Lokalizacje magazynowe",
+    "columns": {
+      "geo": "Kraj / kod pocztowy",
+      "kind": "Rodzaj",
+      "location": "Lokalizacja",
+      "noGeo": "Brak kraju/kodu pocztowego",
+      "noOwner": "Brak połączenia-właściciela",
+      "owner": "Połączenie-właściciel",
+      "status": "Status"
+    },
+    "description": "Magazyny, sklepy i miejsca zewnętrzne, z których OpenLinker może pobierać towar. Lokalizacja nie decyduje o stanie magazynowym - to miejsce, spośród którego wybierają reguły wyboru lokalizacji. Usunięcie jest odrzucane, dopóki wskazuje ją jakikolwiek stan; zamiast tego ją wycofaj.",
+    "empty": {
+      "addManually": "+ Dodaj ręcznie",
+      "backToFirst": "Wróć do strony 1",
+      "clearFilters": "Wyczyść filtry",
+      "createFirst": "Utwórz pierwszą lokalizację",
+      "filteredMessage": "Żadna lokalizacja nie pasuje do bieżących filtrów.",
+      "filteredTitle": "Żadna lokalizacja nie pasuje do tego filtra",
+      "message": "Kierowanie realizacji nie ma jeszcze skąd pobierać towaru, więc nie można go włączyć dla żadnego połączenia. Utwórz pierwszą lokalizację albo dodaj własną - w obu przypadkach trzeba jeszcze przypisać do niej stan, aby kierowanie mogło działać.",
+      "pageGoneMessage": "Lokalizacji jest {total}, ale nie na stronie {page}.",
+      "pageGoneTitle": "Ta strona już nie istnieje",
+      "title": "Kierowanie nie ma skąd pobierać towaru"
+    },
+    "errorTitle": "Nie udało się wczytać lokalizacji",
+    "eyebrow": "Kierowanie realizacji",
+    "filterKind": "Filtruj według rodzaju",
+    "pagination": {
+      "next": "Dalej",
+      "previous": "Wstecz",
+      "summary": {
+        "few": "Strona {page} z {pages} · {n} lokalizacje",
+        "many": "Strona {page} z {pages} · {n} lokalizacji",
+        "one": "Strona {page} z {pages} · {n} lokalizacja",
+        "other": "Strona {page} z {pages} · {n} lokalizacji"
+      }
+    },
+    "retry": "Ponów",
+    "showRetired": "Pokaż wycofane",
+    "statuses": {
+      "active": "Aktywna",
+      "inactive": "Wycofana"
+    },
+    "title": "Lokalizacje magazynowe",
+    "toasts": {
+      "bootstrapFailed": "Nie udało się utworzyć lokalizacji",
+      "reactivateFailed": "Ponowna aktywacja nie powiodła się",
+      "reactivatedDescription": "Nowy stan może znowu do niej trafiać.",
+      "reactivatedTitle": "Aktywowano ponownie „{name}”",
+      "retireFailed": "Wycofanie nie powiodło się",
+      "retiredDescription": "Istniejące pozycje nadal na nią wskazują, a później można ją ponownie aktywować.",
+      "retiredTitle": "Wycofano „{name}”",
+      "tryAgain": "Spróbuj ponownie."
+    }
+  },
+  "inventoryLocationsTile": {
+    "description": "Magazyny, sklepy i miejsca zewnętrzne, z których OpenLinker może pobierać towar.",
+    "eyebrow": "Kierowanie realizacji",
+    "linkLabel": "Otwórz",
+    "title": "Lokalizacje magazynowe"
+  },
+  "inventoryMovementsPage": {
+    "allConnections": "Wszystkie połączenia",
+    "allTypes": "Wszystkie typy",
+    "attention": {
+      "body": "{parts}. Sumy mogą jeszcze nie uwzględniać tych zmian.",
+      "inDoubt": "Niepotwierdzone: {n}",
+      "onThisPage": "{parts} na tej stronie. Sumy mogą jeszcze nie uwzględniać tych zmian.",
+      "refused": "Odrzucone przez system główny: {n}",
+      "title": {
+        "few": "{n} ruchy wymagają sprawdzenia",
+        "many": "{n} ruchów wymaga sprawdzenia",
+        "one": "{n} ruch wymaga sprawdzenia",
+        "other": "{n} ruchu wymaga sprawdzenia"
+      }
+    },
+    "caption": "Ruchy magazynowe",
+    "chips": {
+      "all": "Wszystko",
+      "attention": "Wymaga uwagi",
+      "promised": "Tylko rezerwacje"
+    },
+    "count": {
+      "few": "{n} wyniki",
+      "many": "{n} wyników",
+      "one": "{n} wynik",
+      "other": "{n} wyniku"
+    },
+    "countAtLeast": "Wyniki: {n}+",
+    "dateFrom": "Data od",
+    "dateTo": "Data do",
+    "denied": {
+      "message": "Ruchy magazynowe widzą administratorzy, operatorzy i przeglądający. Jeśli są potrzebne, poproś administratora.",
+      "title": "Historia stanów nie jest dostępna dla Twojej roli"
+    },
+    "description": "Każda zastosowana, odrzucona lub niepotwierdzona zmiana stanu wariantu - oraz rezerwacje, które odkładają towar dla zamówień.",
+    "empty": {
+      "body": "Ruchy pojawią się tutaj, gdy stan zmieni się w połączeniu głównym albo zostanie skorygowany przez OpenLinker.",
+      "clearFilters": "Wyczyść filtry",
+      "filteredBody": "Spróbuj poszerzyć zakres dat lub wyczyścić filtr.",
+      "filteredTitle": "Żaden ruch magazynowy nie pasuje do tych filtrów",
+      "productTitle": "Dla tego produktu nie zapisano jeszcze ruchów magazynowych",
+      "scopedBody": "Ruchy pojawią się tutaj, gdy jego stan zmieni się w połączeniu głównym albo zostanie skorygowany przez OpenLinker.",
+      "title": "Brak ruchów magazynowych",
+      "variantTitle": "Dla tego wariantu nie zapisano jeszcze ruchów magazynowych"
+    },
+    "errorTitle": "Nie udało się wczytać ruchów magazynowych",
+    "eyebrow": "Produkty",
+    "filterMaster": "Filtruj według połączenia głównego",
+    "filterType": "Filtruj według typu",
+    "from": "Od",
+    "master": "Połączenie główne",
+    "retry": "Ponów",
+    "scopeProduct": "Widoczny tylko jeden produkt.",
+    "scopeVariant": "Widoczny tylko jeden wariant.",
+    "search": "Szukaj po SKU lub nazwie wariantu",
+    "showAllProducts": "Pokaż wszystkie produkty",
+    "showAllVariants": "Pokaż wszystkie warianty",
+    "title": "Historia ruchów magazynowych",
+    "to": "Do",
+    "type": "Typ"
+  },
+  "locationDeleteDialog": {
+    "delete": "Usuń",
+    "deletedDescription": "Żadna pozycja magazynowa jej nie wskazywała, więc wiersz został usunięty, a nie wycofany.",
+    "deletedTitle": "Usunięto „{name}”",
+    "descriptionConfirm": "Tej operacji nie można cofnąć. Jeśli wskazuje tu jeszcze jakiś stan, usunięcie zostanie odrzucone.",
+    "descriptionInUse": "Pozycje magazynowe nadal tu wskazują, więc usunięcie zostało odrzucone.",
+    "retireInstead": "Zamiast tego wycofaj",
+    "retireInsteadBody": "Wycofanie zachowuje wiersz i jego historię - nic nie jest usuwane, a później można ją ponownie aktywować.",
+    "retireInsteadTitle": "Zamiast tego wycofaj",
+    "retiredDescription": "Istniejące pozycje nadal na nią wskazują, a później można ją ponownie aktywować.",
+    "retiredTitle": "Wycofano „{name}”",
+    "saveError": "Nie udało się zapisać lokalizacji",
+    "titleConfirm": "Usunąć „{name}”?",
+    "titleInUse": "Nie można usunąć „{name}”"
+  },
+  "locationDialog": {
+    "cancel": "Anuluj",
+    "connectionOption": "{platform} - {name}",
+    "description": "Magazyny, sklepy i miejsca zewnętrzne, z których OpenLinker może pobierać towar.",
+    "errors": {
+      "codeRequired": "Kod jest wymagany",
+      "codeTooLong": "Kod może mieć najwyżej 64 znaki",
+      "countryCode": "Użyj dwuliterowego kodu kraju (ISO-3166-1 alpha-2)",
+      "latRange": "Wartość musi być z zakresu od -90 do 90",
+      "lngRange": "Wartość musi być z zakresu od -180 do 180",
+      "mustBeNumber": "Wartość musi być liczbą",
+      "nameRequired": "Nazwa jest wymagana",
+      "nameTooLong": "Nazwa może mieć najwyżej 255 znaków",
+      "tooLong16": "Najwyżej 16 znaków",
+      "tooLong255": "Najwyżej 255 znaków"
+    },
+    "fields": {
+      "code": "Kod",
+      "codeHint": "Unikalny w całej instalacji. Przy zapisie zamieniany na wielkie litery.",
+      "codePlaceholder": "WH1",
+      "country": "Kraj (opcjonalnie)",
+      "countryPlaceholder": "PL",
+      "externalRef": "Oznaczenie operatora (opcjonalnie)",
+      "externalRefHint": "Nic poza OpenLinker tego nie odczytuje.",
+      "externalRefPlaceholder": "Dowolny tekst - np. wewnętrzny kod magazynu",
+      "kind": "Rodzaj",
+      "latitude": "Szerokość geograficzna (opcjonalnie)",
+      "longitude": "Długość geograficzna (opcjonalnie)",
+      "name": "Nazwa",
+      "namePlaceholder": "Magazyn główny",
+      "owner": "Połączenie-właściciel (opcjonalnie)",
+      "ownerHint": "Czyja synchronizacja może zapisywać tu stan. Nie decyduje o niczym w tej lokalizacji.",
+      "ownerLoadError": "Nie udało się wczytać połączeń - spróbuj ponownie lub zostaw puste.",
+      "ownerLoading": "Wczytywanie połączeń…",
+      "ownerNone": "- brak -",
+      "postcode": "Kod pocztowy (opcjonalnie)",
+      "postcodePlaceholder": "00-001",
+      "status": "Status",
+      "statusHint": "Wycofanie sprawia, że nowy stan nie może już do niej trafiać; dotychczasowa historia nadal wskazuje ten wiersz. Przełącz z powrotem na Aktywna, aby ją ponownie aktywować."
+    },
+    "kinds": {
+      "store": "Sklep",
+      "thirdParty": "Zewnętrzna",
+      "virtual": "Wirtualna",
+      "warehouse": "Magazyn"
+    },
+    "save": "Zapisz lokalizację",
+    "saveError": "Nie udało się zapisać lokalizacji",
+    "saving": "Zapisywanie…",
+    "statuses": {
+      "active": "Aktywna",
+      "inactive": "Wycofana"
+    },
+    "titleCreate": "Dodaj lokalizację",
+    "titleEdit": "Edytuj „{name}”",
+    "toasts": {
+      "createdDescription": "Dodano „{name}”.",
+      "createdTitle": "Utworzono lokalizację",
+      "updatedDescription": "Zapisano „{name}”.",
+      "updatedTitle": "Zaktualizowano lokalizację"
+    }
+  },
+  "stockAlerts": {
+    "empty": {
+      "body": "{master} nie zgłosił stanu tego produktu. Dopóki tego nie zrobi, OpenLinker liczy go jako 0 do sprzedania, a kanały pokazują go jako wyprzedany.",
+      "checkSync": "Sprawdź synchronizację stanów połączenia",
+      "theMaster": "System główny",
+      "title": "Nie zapisano jeszcze stanu tego produktu"
+    },
+    "gone": {
+      "few": "{master} przestał zgłaszać {variants}, więc ich oferty zostały wstrzymane. Jeśli usunięto je celowo, nie trzeba nic więcej robić.",
+      "many": "{master} przestał zgłaszać {variants}, więc ich oferty zostały wstrzymane. Jeśli usunięto je celowo, nie trzeba nic więcej robić.",
+      "one": "{master} przestał zgłaszać {variants}, więc jego oferty zostały wstrzymane. Jeśli usunięto go celowo, nie trzeba nic więcej robić.",
+      "other": "{master} przestał zgłaszać {variants}, więc ich oferty zostały wstrzymane. Jeśli usunięto je celowo, nie trzeba nic więcej robić."
+    },
+    "loading": {
+      "few": "Ustalanie, co można sprzedać, dla {n} wariantów…",
+      "many": "Ustalanie, co można sprzedać, dla {n} wariantów…",
+      "one": "Ustalanie, co można sprzedać, dla {n} wariantu…",
+      "other": "Ustalanie, co można sprzedać, dla {n} wariantu…"
+    },
+    "multiLocation": {
+      "few": "{variants} są przechowywane w więcej niż jednej lokalizacji. OpenLinker pokazuje sumę, ale korekty wprowadza się w {master}, a nowe zamówienia jeszcze ich nie rezerwują.",
+      "many": "{variants} są przechowywane w więcej niż jednej lokalizacji. OpenLinker pokazuje sumę, ale korekty wprowadza się w {master}, a nowe zamówienia jeszcze ich nie rezerwują.",
+      "one": "{variants} jest przechowywany w więcej niż jednej lokalizacji. OpenLinker pokazuje sumę, ale korekty wprowadza się w {master}, a nowe zamówienia jeszcze go nie rezerwują.",
+      "other": "{variants} są przechowywane w więcej niż jednej lokalizacji. OpenLinker pokazuje sumę, ale korekty wprowadza się w {master}, a nowe zamówienia jeszcze ich nie rezerwują."
+    },
+    "multiSource": {
+      "body": {
+        "few": "{variants} są liczone przez {sources}, a wyniki są sumowane. Korekty są dla nich wyłączone, a nowe zamówienia ich nie rezerwują.",
+        "many": "{variants} są liczone przez {sources}, a wyniki są sumowane. Korekty są dla nich wyłączone, a nowe zamówienia ich nie rezerwują.",
+        "one": "{variants} jest liczony przez {sources}, a wyniki są sumowane. Korekty są dla niego wyłączone, a nowe zamówienia go nie rezerwują.",
+        "other": "{variants} są liczone przez {sources}, a wyniki są sumowane. Korekty są dla nich wyłączone, a nowe zamówienia ich nie rezerwują."
+      },
+      "link": "Zobacz połączenia"
+    },
+    "restricted": {
+      "body": "Stan w sklepie jest aktualny. To, ile można sprzedać, co jest zarezerwowane i co trafia do każdego kanału, widzą administratorzy, operatorzy i przeglądający.",
+      "title": "Twoja rola nie widzi, ile można sprzedać"
+    },
+    "stale": {
+      "body": "Od tego czasu OpenLinker nie wysłał kanałom nowej wartości. Stan uznaje się za nieaktualny po {hours} godz. bez aktualizacji.",
+      "lastAnswered": "{shop} odpowiedział ostatnio <time></time>.",
+      "openConnection": "Otwórz połączenie",
+      "theShop": "Sklep",
+      "titleFor": "Stan nie był odświeżany od {duration}",
+      "titleRecently": "Stan nie był ostatnio odświeżany"
+    },
+    "unknown": {
+      "body": "OpenLinker nie mógł odczytać liczby zarezerwowanych sztuk, więc nie pokazuje wartości i nie wysyła stanów do kanałów. Nic nie zostało zmienione.",
+      "retry": "Spróbuj ponownie",
+      "title": "Stan tego produktu jest teraz nieznany"
+    },
+    "viewerNotice": "Masz dostęp tylko do podglądu. Aby zmienić stan, poproś administratora lub operatora."
+  },
+  "stockCell": {
+    "inMaster": "{n} w {master}",
+    "inMasterLabel": "w {master}",
+    "loadingStock": "Wczytywanie stanu",
+    "missingIn": "Brak w {master}",
+    "notKnown": "Nieznany",
+    "reserved": "Zarezerwowane: {n}",
+    "shortBy": "Brakuje {n}",
+    "toSell": "do sprzedania"
+  },
+  "stockCorrectionDialog": {
+    "applied": {
+      "channelPublishes": "{channel} opublikuje {n}",
+      "channels": "Kanały",
+      "confirmed": "Potwierdzono",
+      "confirmedAt": "Potwierdzono o",
+      "deduplicated": "Ta korekta była już zapisana, więc nic nie zostało wysłane ponownie.",
+      "description": "{master} potwierdził nowy stan dla {name}.",
+      "done": "Gotowe",
+      "master": "System główny",
+      "quantity": "Ilość",
+      "reason": "Powód",
+      "title": "Zaktualizowano stan",
+      "unknownAmount": "nieznaną ilość",
+      "variant": "Wariant",
+      "withinMinute": "{channels} - zwykle w ciągu minuty."
+    },
+    "attemptChange": "zmiana o {delta}",
+    "cancel": "Anuluj",
+    "changeBy": "Zmień o",
+    "channelHow": {
+      "asIs": "Publikuje to, co można sprzedać, bez zmian.",
+      "buffer": "Publikuje to, co można sprzedać, minus zapas bezpieczeństwa {n} szt. dla tego połączenia.",
+      "zeroThreshold": "Wszystko poniżej {n} szt. jest pokazywane jako wyprzedane."
+    },
+    "checkingTarget": "Sprawdzanie, do którego połączenia należy ten stan…",
+    "close": "Zamknij",
+    "currently": "Obecnie {n} w {master}.",
+    "deltaHint": "Użyj znaku minus, aby zmniejszyć stan, np. -2.",
+    "description": "Zapis trafia do {master}, połączenia głównego tego produktu. Kanały zaktualizują się same po potwierdzeniu.",
+    "errors": {
+      "deltaInvalid": "Wpisz liczbę całkowitą, np. +3 lub -2",
+      "deltaZero": "Zmiana o 0 niczego nie zmieni",
+      "noteRequired": "Opisz, co się stało, gdy powodem jest Inny",
+      "noteTooLong": "Notatka może mieć najwyżej {max} znaków",
+      "quantityInvalid": "Wpisz liczbę całkowitą, 0 lub większą"
+    },
+    "heldSentence": "Z tego {n} jest zarezerwowane dla otwartych zamówień.",
+    "inDoubt": {
+      "body": "OpenLinker utracił połączenie zaraz po wysłaniu tej korekty. Mogła już zostać zastosowana.",
+      "hint": "Zanim zdecydujesz, co dalej, sprawdź stan bezpośrednio w {master}. Ponowne wypełnienie formularza rozpoczęłoby zupełnie nową korektę, co mogłoby podwoić zmianę, jeśli pierwsza jednak dotarła.",
+      "sent": "Wysłano: {attempt} · {reason}",
+      "title": "Nie udało się potwierdzić, że korekta dotarła do {master}"
+    },
+    "inlineErrors": {
+      "contended": "Właśnie trwa inna korekta tego wariantu. Poczekaj chwilę i zapisz ponownie.",
+      "idempotencyKeyReused": "Ta korekta została już wysłana z innymi wartościami. Zamknij to okno i rozpocznij nową.",
+      "masterUnreadable": "Nie udało się odczytać bieżącego stanu tej pozycji z {master}. Nic się nie zmieniło. Spróbuj ponownie za chwilę.",
+      "noChange": "To nie zmieni stanu - system główny ma już tę wartość."
+    },
+    "insufficientStockKnown": "{master} ma tylko {n}, więc nic się nie zmieniło.",
+    "insufficientStockUnknown": "{master} nie ma wystarczającego stanu do tego zmniejszenia, więc nic się nie zmieniło.",
+    "largeChange": {
+      "absolute": "więcej niż {n} szt.",
+      "change": "Ta zmiana wynosi {change} szt.",
+      "changeFrom": "Ta zmiana wynosi {change} szt. przy obecnym stanie {current}.",
+      "check": "Sprawdź wartość przed zapisaniem.",
+      "confirm": "Wartość została sprawdzona",
+      "default": "Zmienia stan o więcej niż 50 sztuk lub o więcej niż połowę obecnego stanu. Sprawdź wartość przed zapisaniem.",
+      "relative": "więcej niż {percent} obecnego stanu",
+      "rule": "Zmiany o {limits} wymagają ponownego sprawdzenia.",
+      "title": "To duża zmiana"
+    },
+    "masterConnectionSuffix": "(połączenie główne tego produktu)",
+    "modeDelta": "Zmień o ilość",
+    "modeLabel": "Jak chcesz to wprowadzić?",
+    "modeSet": "Ustaw nową ilość",
+    "newQuantity": "Nowa ilość",
+    "notKnown": "Nieznane",
+    "noteHint": "Dla zespołu - {master} nie otrzymuje tej notatki.",
+    "noteOptional": "Notatka (opcjonalnie)",
+    "noteRequired": "Notatka (wymagana dla Inny)",
+    "preview": {
+      "catchUp": "Marketplace'y zwykle nadrabiają w ciągu minuty od potwierdzenia przez system główny.",
+      "enterQuantity": "Wpisz ilość, aby zobaczyć, co opublikuje każdy kanał.",
+      "heading": "Co kanały opublikują po tej zmianie",
+      "heldKnown": "Nowy stan minus {n} szt. zarezerwowanych dla otwartych zamówień.",
+      "heldUnknown": "OpenLinker nie mógł odczytać liczby zarezerwowanych sztuk, więc ta wartość jest nieznana.",
+      "master": "system główny",
+      "masterHow": "Pokazuje skorygowany stan bezpośrednio.",
+      "toSell": "Do sprzedania",
+      "toSellSub": "punkt wyjścia dla kanałów",
+      "unavailable": "Wartości dla kanałów są teraz niedostępne, więc podgląd nie jest pokazany. Nie ma to wpływu na samą korektę."
+    },
+    "reason": "Powód",
+    "reasons": {
+      "countCorrection": "Policzono (inwentaryzacja)",
+      "damaged": "Uszkodzone lub zgubione",
+      "found": "Znalezione lub przyjęte",
+      "gift": "Prezent spakowany poza OpenLinker",
+      "other": "Inny"
+    },
+    "refused": {
+      "attempted": "Próba: {attempt} · {reason}",
+      "noReason": "System główny nie przyjął zmiany i nie podał powodu.",
+      "notApplied": "Nie zastosowano",
+      "title": "{master} odrzucił tę zmianę"
+    },
+    "removalWarning": "OpenLinker pokazuje tylko {n} w {master}. Przy zapisie {master} sprawdza własny stan i odrzuca zmianę, jeśli towaru nie wystarcza.",
+    "retry": "Ponów",
+    "save": "Zapisz korektę",
+    "saveError": "Nie udało się zapisać korekty",
+    "savingTo": "Zapisywanie w {master}…",
+    "targetError": {
+      "fallback": "Żądanie nie powiodło się.",
+      "title": "Nie udało się sprawdzić, gdzie znajduje się ten stan"
+    },
+    "targetRefusals": {
+      "adapterUnresolved": {
+        "body": "Połączenie, do którego należy ten stan, może być wyłączone lub wymagać ponownej autoryzacji. Sprawdź je na stronie Połączenia.",
+        "title": "OpenLinker nie może połączyć się z połączeniem głównym"
+      },
+      "ambiguousInventoryMaster": {
+        "body": "Dwa połączenia zgłaszają ten stan jako swój, więc OpenLinker nie będzie zgadywać, które zmienić.",
+        "title": "Więcej niż jedno połączenie zgłasza ten stan"
+      },
+      "noInventoryMaster": {
+        "body": "Żadne połączenie nie jest ustawione jako główne źródło stanu tego produktu, więc nie ma gdzie zapisać zmiany.",
+        "title": "Ten stan nie należy do żadnego połączenia"
+      },
+      "noPosition": {
+        "body": "Dla tego wariantu nie ma wiersza stanu do zmiany. Poczekaj na kolejną synchronizację stanów i spróbuj ponownie.",
+        "title": "System główny nie zgłosił jeszcze tego wariantu"
+      },
+      "unattributedOwner": {
+        "body": "Ten wiersz stanu powstał przed śledzeniem właściciela. Zostanie przypisany przy kolejnej synchronizacji stanów, po której będzie można go skorygować.",
+        "title": "OpenLinker nie wie, do kogo należy ten wiersz stanu"
+      }
+    },
+    "theMaster": "system główny",
+    "theMasterConnection": "połączenie główne",
+    "title": "Koryguj stan - {name}",
+    "transition": "{from} → {to} · {reason}",
+    "variant": "Wariant",
+    "writesTo": "Zapisuje do"
+  },
+  "stockHistorySection": {
+    "availableNow": "Dostępne teraz",
+    "caption": "Historia stanów dla {variant}",
+    "chooseVariant": "Wybierz wariant",
+    "empty": "Dla tego wariantu nie zapisano jeszcze ruchów magazynowych.",
+    "errorTitle": "Nie udało się wczytać historii stanów",
+    "lastChange": "Ostatnia zmiana",
+    "loadingMessage": "Pobieranie ruchów…",
+    "loadingTitle": "Wczytywanie historii stanów",
+    "reserved": "Zarezerwowane",
+    "restricted": "Historię stanów widzą administratorzy, operatorzy i przeglądający. Jeśli jest potrzebna, poproś administratora.",
+    "retry": "Ponów",
+    "stockSource": "Źródło stanu",
+    "title": "Historia stanów",
+    "variantLabel": "{attributes} - {sku}",
+    "viewAll": "Zobacz wszystkie ruchy magazynowe tego SKU"
+  },
+  "stockMovement": {
+    "masterProductNotFound": "{master} nie ma już tego produktu. Nic się nie zmieniło.",
+    "operatorReasonWithNote": "{reason} - {note}",
+    "operatorReasons": {
+      "countCorrection": "Korekta po inwentaryzacji",
+      "damaged": "Uszkodzone",
+      "found": "Znalezione",
+      "gift": "Prezent",
+      "other": "Inny"
+    },
+    "sourceKinds": {
+      "masterSync": "Synchronizacja z systemem głównym",
+      "operator": "Operator",
+      "order": "Zamówienie",
+      "return": "Zwrot"
+    },
+    "statuses": {
+      "applied": "Zastosowano",
+      "consumed": "Wykorzystano",
+      "expired": "Wygasło",
+      "held": "Zarezerwowano",
+      "inDoubt": "Niepewne",
+      "pending": "Oczekuje",
+      "refused": "Odrzucono",
+      "released": "Zwolniono"
+    },
+    "theShop": "sklep",
+    "typeFilters": {
+      "cancellationRestore": "Przywrócenie po anulowaniu",
+      "gift": "Prezent",
+      "manualCorrection": "Korekta ręczna",
+      "masterSync": "Zmiana wykryta przy synchronizacji",
+      "reservation": "Rezerwacja",
+      "returnRestock": "Przyjęcie zwrotu na stan",
+      "sale": "Sprzedaż (zamówienie OpenLinker)"
+    },
+    "types": {
+      "cancellationRestore": "Przywrócenie po anulowaniu",
+      "gift": "Prezent",
+      "manualCorrection": "Korekta ręczna",
+      "masterSync": "Zmiana wykryta przy synchronizacji",
+      "reservation": "Rezerwacja",
+      "returnRestock": "Przyjęcie zwrotu na stan",
+      "sale": "Sprzedaż"
+    }
+  },
+  "stockMovementsTable": {
+    "columns": {
+      "beforeAfter": "Przed → po",
+      "deltaBeforeAfter": "Δ / przed → po",
+      "master": "Połączenie główne",
+      "sku": "SKU / wariant",
+      "source": "Źródło",
+      "status": "Status",
+      "time": "Czas",
+      "type": "Typ"
+    },
+    "new": "nowy",
+    "notApplied": "Nie zastosowano",
+    "order": "Zamówienie",
+    "reserved": "Zarezerwowano",
+    "reservedFromZero": "Zarezerwowano 0 → {n}",
+    "reservedToZero": "Zarezerwowano {n} → 0",
+    "return": "Zwrot",
+    "stockUnchanged": "Stan bez zmian",
+    "unknownUser": "Nieznany użytkownik"
+  },
+  "stockRow": {
+    "adjustHints": {
+      "multiLocation": "Ten wariant jest w {n} lokalizacjach. Skoryguj go w {master}.",
+      "multiSource": "Ten wariant jest liczony przez dwa sklepy. Skoryguj go w sklepie, do którego powinien należeć.",
+      "staled": "{master} nie zgłasza już tego wariantu.",
+      "unknown": "Dostępne ponownie, gdy OpenLinker będzie mógł odczytać stan.",
+      "viewer": "Stan mogą zmieniać tylko administratorzy i operatorzy."
+    },
+    "unnamedMaster": "system główny"
+  },
+  "stockVariantDetail": {
+    "adjustStock": "Koryguj stan",
+    "anotherConnection": "inne połączenie",
+    "copiedVariantId": "Skopiowano ID wariantu",
+    "copyVariantId": "Kopiuj ID wariantu",
+    "holdReserved": "Zarezerwowane: {n}",
+    "holdsUnlisted": "Nie udało się wyświetlić zamówień rezerwujących stan.",
+    "inMaster": "w {master}",
+    "lastSynced": "Ostatnia synchronizacja",
+    "location": "Lokalizacja",
+    "multiLocation": "Lokalizacje: {n} - zobacz poniżej",
+    "multiSourceNote": "<b>{total}</b> = {terms}. Nowe zamówienia na ten wariant nie rezerwują stanu, dopóki nie będzie należał do jednego sklepu.",
+    "noLocation": "Nie zgłoszono lokalizacji",
+    "orderAria": "Zamówienie {label}",
+    "positions": {
+      "lastSynced": "Ostatnia synchronizacja",
+      "location": "Lokalizacja",
+      "notCounted": "Nieliczone",
+      "reservedInShop": "Zarezerwowane w sklepie",
+      "stale": "Nieaktualne",
+      "stock": "Stan",
+      "stockSource": "Źródło stanu"
+    },
+    "provenanceExternal": "według systemu zewnętrznego",
+    "provenanceReportedBy": "według {source}",
+    "provenanceUnknown": "nieznane",
+    "recordedOnly": {
+      "few": "Jeszcze {n} szt. jest zarezerwowane dla zamówień, których OpenLinker nie realizuje. Nie zmniejszają one ilości do sprzedania.",
+      "many": "Jeszcze {n} szt. jest zarezerwowanych dla zamówień, których OpenLinker nie realizuje. Nie zmniejszają one ilości do sprzedania.",
+      "one": "Jeszcze {n} szt. jest zarezerwowana dla zamówień, których OpenLinker nie realizuje. Nie zmniejsza to ilości do sprzedania.",
+      "other": "Jeszcze {n} szt. jest zarezerwowane dla zamówień, których OpenLinker nie realizuje. Nie zmniejszają one ilości do sprzedania."
+    },
+    "reserved": "zarezerwowane",
+    "shortBy": "{n} z zarezerwowanych sztuk nie ma na stanie.",
+    "sourceTerm": "{n} w {source}",
+    "stockHistory": "Historia stanów",
+    "stockSource": "Źródło stanu",
+    "stoppedReporting": "{master} przestał zgłaszać <b>{key}</b>. Nie jest już liczony, więc do sprzedania jest <b>0</b>, a jego oferty są wstrzymane. Jeśli wariant usunięto celowo, nie trzeba nic więcej robić.",
+    "stoppedReportingOn": "{master} przestał zgłaszać <b>{key}</b> <time></time>. Nie jest już liczony, więc do sprzedania jest <b>0</b>, a jego oferty są wstrzymane. Jeśli wariant usunięto celowo, nie trzeba nic więcej robić.",
+    "toSell": "do sprzedania",
+    "unknownNote": "<b>{n}</b> w {master}. OpenLinker nie może teraz ustalić liczby zarezerwowanych sztuk, więc nie wysyła stanów do kanałów."
+  },
+  "stockView": {
+    "channelRule": {
+      "buffer": "Zatrzymuje {n} szt. (zapas bezpieczeństwa)",
+      "joined": "{first}. {second}",
+      "none": "Brak dodatkowych reguł",
+      "zeroThreshold": "Pokazuje 0 poniżej {n} szt."
+    },
+    "staleness": {
+      "days": {
+        "few": "{n} dni temu",
+        "many": "{n} dni temu",
+        "one": "{n} dzień temu",
+        "other": "{n} dnia temu"
+      },
+      "hours": "{n} godz. temu",
+      "minutes": "{n} min temu"
+    },
+    "stalenessDuration": {
+      "days": {
+        "few": "{n} dni",
+        "many": "{n} dni",
+        "one": "{n} dzień",
+        "other": "{n} dnia"
+      },
+      "hours": "{n} godz.",
+      "minutes": "{n} min"
+    }
+  }
+}

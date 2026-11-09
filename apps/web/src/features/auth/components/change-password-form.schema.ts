@@ -1,22 +1,29 @@
 import { z } from 'zod';
+import { interpolate } from '../../../shared/i18n';
+import type { AuthValidationCopy } from './auth-form.types';
 
 // 8..72 mirrors the backend `ChangePasswordDto` (bcrypt reads at most 72 bytes).
-export const changePasswordFormSchema = z
-  .object({
-    currentPassword: z.string().min(1, 'Enter the one-time password you were given'),
-    newPassword: z
-      .string()
-      .min(8, 'Password must be at least 8 characters')
-      .max(72, 'Password must be at most 72 characters'),
-    confirmPassword: z.string().min(1, 'Please confirm your new password'),
-  })
-  .refine((v) => v.newPassword === v.confirmPassword, {
-    path: ['confirmPassword'],
-    message: 'Passwords do not match',
-  })
-  .refine((v) => v.newPassword !== v.currentPassword, {
-    path: ['newPassword'],
-    message: 'Choose a password different from the one-time password',
-  });
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 72;
 
-export type ChangePasswordFormValues = z.input<typeof changePasswordFormSchema>;
+export function createChangePasswordFormSchema(copy: AuthValidationCopy) {
+  return z
+    .object({
+      currentPassword: z.string().min(1, copy.oneTimePassword),
+      newPassword: z
+        .string()
+        .min(PASSWORD_MIN_LENGTH, interpolate(copy.passwordMin, { min: PASSWORD_MIN_LENGTH }))
+        .max(PASSWORD_MAX_LENGTH, interpolate(copy.passwordMax, { max: PASSWORD_MAX_LENGTH })),
+      confirmPassword: z.string().min(1, copy.confirmNewPassword),
+    })
+    .refine((v) => v.newPassword === v.confirmPassword, {
+      path: ['confirmPassword'],
+      message: copy.passwordsDiffer,
+    })
+    .refine((v) => v.newPassword !== v.currentPassword, {
+      path: ['newPassword'],
+      message: copy.passwordReused,
+    });
+}
+
+export type ChangePasswordFormValues = z.input<ReturnType<typeof createChangePasswordFormSchema>>;

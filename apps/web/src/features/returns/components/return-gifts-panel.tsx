@@ -28,7 +28,7 @@ interface ReturnGiftsPanelProps {
 }
 
 export function ReturnGiftsPanel({ returnId, writeAccess }: ReturnGiftsPanelProps): ReactElement | null {
-  const copy = useMessages('returnGifts');
+  const copy = useMessages('return-gifts');
   const format = useFormat();
   const { showToast } = useToast();
   const query = useReturnGiftsQuery(returnId);

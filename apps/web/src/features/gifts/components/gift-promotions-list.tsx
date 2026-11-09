@@ -36,6 +36,9 @@ import type { GiftRule } from '../api/gifts.types';
 import { useVariantSummaries } from '../hooks/use-variant-summaries';
 import { movedOrder, ruleStateKey, RULE_STATE_TONE } from '../lib/gift-rule-view';
 
+/** Vertical-ellipsis glyph on the row menu trigger; the accessible name is the aria-label. */
+const MENU_GLYPH = '\u22EF';
+
 export interface GiftPromotionsListProps {
   rules: readonly GiftRule[];
   connections: readonly Connection[];
@@ -221,7 +224,7 @@ export function GiftPromotionsList({
             aria-label={interpolate(copy.list.menu.open, { name: rule.name })}
             data-testid={`gift-rule-menu-${rule.id}`}
           >
-            ⋯
+            {MENU_GLYPH}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

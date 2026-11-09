@@ -16,7 +16,8 @@
  * @module apps/web/src/features/delivery-on-documents/components
  */
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -68,6 +69,7 @@ export function DeliveryOnDocumentsPanel({
   const write = useWriteAccess('connections:write', demoMode);
   const canEdit = write.visible && !write.demoReadOnly;
 
+  const copy = useMessages('delivery-on-documents');
   const [editing, setEditing] = useState<EditorTarget | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -93,8 +95,8 @@ export function DeliveryOnDocumentsPanel({
       <div className="panel panel--dense dd-panel" aria-busy="true">
         <LoadingState
           liveRegion="off"
-          title="Loading delivery settings"
-          message="Fetching this connection."
+          title={copy.panel.loadingTitle}
+          message={copy.panel.loadingMessage}
         />
       </div>
     );
@@ -103,8 +105,8 @@ export function DeliveryOnDocumentsPanel({
     return (
       <div className="panel panel--dense dd-panel">
         <ErrorState
-          title="Unable to load delivery settings"
-          message={connectionQuery.error?.message ?? 'The connection could not be loaded.'}
+          title={copy.panel.errorTitle}
+          message={connectionQuery.error?.message ?? copy.panel.errorFallback}
         />
       </div>
     );
@@ -124,9 +126,8 @@ export function DeliveryOnDocumentsPanel({
     } catch (error) {
       showToast({
         tone: 'error',
-        title: 'Changes not saved',
-        description:
-          error instanceof Error ? error.message : 'The delivery settings could not be saved.',
+        title: copy.panel.saveFailedTitle,
+        description: error instanceof Error ? error.message : copy.panel.saveFailedFallback,
       });
       return false;
     }
@@ -138,7 +139,9 @@ export function DeliveryOnDocumentsPanel({
       : [{ country, settings }, ...rules];
     const saved = await persist(
       next,
-      country ? `${countryName(country)} saved.` : 'All other countries saved.',
+      country
+        ? interpolate(copy.panel.countrySaved, { country: countryName(country) })
+        : copy.panel.otherSaved,
     );
     if (saved) setEditing(null);
   }
@@ -146,7 +149,7 @@ export function DeliveryOnDocumentsPanel({
   async function handleRemove(country: string): Promise<void> {
     const saved = await persist(
       rules.filter((r) => r.country !== country),
-      `${countryName(country)} removed. Its orders now use "All other countries".`,
+      interpolate(copy.panel.countryRemoved, { country: countryName(country) }),
     );
     if (saved) setEditing(null);
   }
@@ -155,13 +158,11 @@ export function DeliveryOnDocumentsPanel({
     <div className="panel panel--dense dd-panel">
       <div className="dd-panel__head">
         <div>
-          <h3 className="section-title">Delivery on documents</h3>
-          <p className="muted-text">
-            How delivery appears on receipts and invoices, per buyer country.
-          </p>
+          <h3 className="section-title">{copy.panel.title}</h3>
+          <p className="muted-text">{copy.panel.description}</p>
         </div>
         {write.visible ? (
-          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
             <Button
               tone="secondary"
               className="button--sm"
@@ -170,7 +171,7 @@ export function DeliveryOnDocumentsPanel({
                 setEditing({ mode: 'add', country: null, settings: neutralSettings() })
               }
             >
-              + Add a country
+              {copy.common.addCountryButton}
             </Button>
           </ReadOnlyLock>
         ) : null}
@@ -185,8 +186,10 @@ export function DeliveryOnDocumentsPanel({
       {strip && canEdit ? (
         <div className="dd-suggest">
           <span>
-            <strong>Most of your orders go to {countryName(strip.country)}.</strong>{' '}
-            <span className="muted-text">There are suggested settings for it.</span>
+            <strong>
+              {interpolate(copy.panel.suggest.title, { country: countryName(strip.country) })}
+            </strong>{' '}
+            <span className="muted-text">{copy.panel.suggest.body}</span>
           </span>
           <span className="dd-inline">
             <Button
@@ -200,7 +203,7 @@ export function DeliveryOnDocumentsPanel({
                 })
               }
             >
-              Review
+              {copy.panel.suggest.review}
             </Button>
             <Button
               className="button--sm"
@@ -208,11 +211,11 @@ export function DeliveryOnDocumentsPanel({
               onClick={() =>
                 void persist(
                   [{ country: strip.country, settings: settingsFromSuggestion(strip) }, ...rules],
-                  `${countryName(strip.country)} saved.`,
+                  interpolate(copy.panel.countrySaved, { country: countryName(strip.country) }),
                 )
               }
             >
-              Use them
+              {copy.panel.suggest.use}
             </Button>
           </span>
         </div>

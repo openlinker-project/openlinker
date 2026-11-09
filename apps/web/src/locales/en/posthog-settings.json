@@ -1,0 +1,91 @@
+{
+  "posthogSettingsDialog": {
+    "apiKeyConfigured": "Configured. Leave blank to keep it, or paste a new key to rotate it.",
+    "apiKeyLabel": "API key",
+    "apiKeyNotSet": "No key set. Paste your PostHog project API key.",
+    "apiKeyPlaceholder": "phc_...",
+    "autocaptureLabel": "Autocapture clicks, form submits, and page changes",
+    "cancel": "Cancel",
+    "customHostLabel": "Custom host URL",
+    "customHostPlaceholder": "https://posthog.yourcompany.com",
+    "description": "Configure demo-only PostHog tracking. Values here are stored in the database and take priority over environment variables.",
+    "enableLabel": "Enable PostHog",
+    "noKeyHint": "PostHog is enabled but no API key is set yet - events won't be tracked until one is configured.",
+    "overrideMessage": {
+      "one": "{vars} is set in the environment for this deployment. Saving here uses the values below instead until you reset to environment.",
+      "other": "{vars} are set in the environment for this deployment. Saving here uses the values below instead until you reset to environment."
+    },
+    "overrideTitle": "This overrides an environment variable",
+    "region": {
+      "custom": "Custom host (self-hosted)",
+      "eu": "EU Cloud (eu.i.posthog.com)",
+      "us": "US Cloud (us.i.posthog.com)"
+    },
+    "regionLabel": "Region",
+    "reset": "Reset to environment",
+    "resetErrorTitle": "Could not reset to environment",
+    "resetToastDescription": "Analytics now resolve from the deployment's environment settings, if set.",
+    "resetToastTitle": "Reset to environment",
+    "resetting": "Resetting…",
+    "resolvedHostEmpty": "(enter a host)",
+    "resolvedHostLabel": "Resolved host",
+    "save": "Save changes",
+    "saveErrorTitle": "Could not save analytics settings",
+    "savedToastDescription": "Demo visitors who accept analytics will now be tracked with the updated configuration.",
+    "savedToastTitle": "Analytics settings saved",
+    "saving": "Saving…",
+    "sendTest": "Send test event",
+    "sending": "Sending…",
+    "sessionRecordingLabel": "Session recording (all text/inputs always masked)",
+    "testAccepted": "Accepted",
+    "testMissingInput": "Enter an API key and a resolved host first",
+    "testRejected": "Rejected - check the key and region match the same PostHog project",
+    "title": "Edit analytics settings",
+    "unknownError": "Unknown error"
+  },
+  "posthogSettingsFormSchema": {
+    "apiKeyTooLong": "API key is too long (max {max} characters)",
+    "hostInvalid": "Enter a valid http(s) URL",
+    "hostRequired": "Host URL is required for a custom region",
+    "hostTooLong": "Host is too long (max {max} characters)"
+  },
+  "posthogSettingsTile": {
+    "adminOnly": "Admin only",
+    "apiKeyLabel": "API key",
+    "autocaptureLabel": "Autocapture",
+    "configured": "Configured",
+    "disabled": "Disabled",
+    "disabledMessage": "Session recording and pageview capture are off. No PostHog script is loaded for demo visitors.",
+    "edit": "Edit",
+    "enabled": "Enabled",
+    "eyebrow": "Product analytics",
+    "loadError": "Could not load analytics settings: {message}",
+    "loading": "Loading analytics settings…",
+    "notSet": "Not set",
+    "off": "Off",
+    "on": "On",
+    "overridesEnv": "Overrides env",
+    "region": {
+      "custom": "Custom host",
+      "eu": "EU Cloud",
+      "us": "US Cloud"
+    },
+    "regionLabel": "Region",
+    "sessionRecordingLabel": "Session recording",
+    "sourceEnvironment": "Environment",
+    "sourceLabel": "Source",
+    "sourceSaved": "Saved settings",
+    "title": "PostHog"
+  },
+  "productEventsSection": {
+    "catalogTitle": "Event catalogue (read-only)",
+    "groupsTitle": "Event groups",
+    "hint": "Runs independently of autocapture - named business events for cleaner marketing funnels.",
+    "noGroups": "No event groups are defined yet.",
+    "noProps": "(none)",
+    "props": "props: {props}",
+    "separateMessage": "openlinker.io uses its own PostHog project - this panel only controls in-app demo events.",
+    "separateTitle": "Separate from the marketing site",
+    "toggleLabel": "Product events"
+  }
+}

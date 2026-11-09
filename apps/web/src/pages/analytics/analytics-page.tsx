@@ -14,6 +14,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { useMessages } from '../../shared/i18n';
 import {
   ANALYTICS_DATA_COVERAGE_ANCHOR_ID,
   AnalyticsConvertNote,
@@ -191,16 +192,18 @@ export function AnalyticsPage(): ReactElement {
   // panel's own coverage note, so the panel opens and scrolls to it.
   const [marginCoverageReveal, setMarginCoverageReveal] = useState(0);
   const marginVisible = useMarginPanelVisible();
+  const copy = useMessages('analytics').analyticsPage;
+  const giftReportCopy = useMessages('gift-report');
 
   return (
     <PageLayout
-      eyebrow="Operations"
+      eyebrow={copy.eyebrow}
       title={
         <>
-          Analytics <AnalyticsCoverageAlertBadge categories={coverageQuery.data?.categories} />
+          {copy.title} <AnalyticsCoverageAlertBadge categories={coverageQuery.data?.categories} />
         </>
       }
-      description="Sales across connected channels, with clear data coverage."
+      description={copy.description}
       actions={
         <>
           <Link
@@ -208,10 +211,10 @@ export function AnalyticsPage(): ReactElement {
             to={`/analytics/gifts?from=${from}&to=${to}`}
             data-testid="analytics-gift-report-link"
           >
-            Gift cost
+            {giftReportCopy.title}
           </Link>
           <Button type="button" tone="secondary" onClick={() => setSettingsDialogOpen(true)}>
-            Analytics settings
+            {copy.settings}
           </Button>
         </>
       }
@@ -242,7 +245,7 @@ export function AnalyticsPage(): ReactElement {
       />
 
       {trustQuery.isLoading ? (
-        <LoadingState title="Loading data coverage" message="Checking ingestion status…" />
+        <LoadingState title={copy.trustLoading.title} message={copy.trustLoading.message} />
       ) : trustQuery.error ? (
         // #3096: a 403 here is a role fact, not an outage, so it renders the
         // denied state with no Retry rather than "Unable to load … [Retry]".
@@ -251,23 +254,23 @@ export function AnalyticsPage(): ReactElement {
           onRetry={() => void trustQuery.refetch()}
           copy={{
             error: {
-              title: 'Unable to load data coverage',
+              title: copy.trustError.title,
               message: trustQuery.error.message,
-              retry: 'Retry',
+              retry: copy.trustError.retry,
             },
             denied: {
-              title: 'Data coverage is not available to your role',
-              message: 'Ask an administrator if you need to see ingestion coverage.',
+              title: copy.trustDenied.title,
+              message: copy.trustDenied.message,
             },
           }}
         />
       ) : trustQuery.data && trustQuery.data.connections.length === 0 ? (
         <EmptyState
-          title="Connect a sales channel to see figures here"
-          message="This page reports the orders OpenLinker has ingested. Once a marketplace or shop is connected and its first orders arrive, figures appear here without further setup."
+          title={copy.noConnections.title}
+          message={copy.noConnections.message}
           action={
             <Link className="button button--primary" to="/connections/new">
-              Add a connection
+              {copy.noConnections.action}
             </Link>
           }
         />
@@ -276,11 +279,11 @@ export function AnalyticsPage(): ReactElement {
           <AnalyticsDegradationBanner connections={trustQuery.data.connections} />
           {trustQuery.data.connections.every((entry) => entry.status === 'never-ingested') ? (
             <EmptyState
-              title="First orders are still arriving"
-              message="Nothing is missing; it is not here yet. Figures will appear as orders land."
+              title={copy.firstOrders.title}
+              message={copy.firstOrders.message}
               action={
                 <Link className="button button--secondary" to="/cursors">
-                  View sync progress
+                  {copy.firstOrders.action}
                 </Link>
               }
             />
@@ -295,8 +298,8 @@ export function AnalyticsPage(): ReactElement {
               {netGrossBasis === null ? (
                 <div aria-busy="true">
                   <LoadingState
-                    title="Loading sales figures"
-                    message="Resolving your saved VAT basis…"
+                    title={copy.basisLoading.title}
+                    message={copy.basisLoading.message}
                   />
                 </div>
               ) : (

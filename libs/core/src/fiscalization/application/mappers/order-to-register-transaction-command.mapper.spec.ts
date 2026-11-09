@@ -1,10 +1,9 @@
-import { addedLineToOrderItem } from '../../../orders/domain/types/order-edits.types';
 /**
  * Order -> RegisterTransactionCommand mapper - unit tests
  *
  * @module libs/core/src/fiscalization/application/mappers
  */
-import type { Order } from '@openlinker/core/orders';
+import { addedLineToOrderItem, type Order } from '@openlinker/core/orders';
 import type { ResolvedDeliveryLine } from '@openlinker/core/sales-documents';
 
 import { toRegisterTransactionCommand } from './order-to-register-transaction-command.mapper';

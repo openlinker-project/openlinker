@@ -10,6 +10,7 @@ import type { OrderRecord } from '../entities/order-record.entity';
 import type { SlaState } from './order-sla.types';
 import type { FulfillmentRollupState } from './order-fulfillment.types';
 import type { HoldReason, OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
+import type { AuthorityAttentionReason } from '@openlinker/core/fulfillment-authority';
 
 /**
  * Per-destination sync status values (#2284).
@@ -178,6 +179,12 @@ export interface OrderHealthSummary {
    * returns side; a surface wanting both adds them.
    */
   omsAttention: number;
+  /**
+   * Orders where a shop still shows the order unpaid and OpenLinker gave up
+   * sending the payment (#3963). Its own axis, never a health bucket - the
+   * same shape as `salesDocumentBlocked`.
+   */
+  paymentNotSent: number;
   /**
    * When the OLDEST still-held order was held (#2254), or `null` when nothing
    * is held. Lets the blocked chip carry an age inside its label rather than
@@ -422,6 +429,18 @@ export interface OrderRecordFilters {
    * two columns, ANDed with every other axis; not a health bucket.
    */
   withGift?: boolean;
+  /**
+   * Restrict to orders carrying an attention entry with exactly this reason
+   * (#3961 - the "Changed by the shop" filter). Composes with `omsAttention`;
+   * `undefined` means "don't filter".
+   */
+  omsAttentionReason?: AuthorityAttentionReason;
+  /**
+   * Restrict to orders where a shop still shows the order unpaid and
+   * OpenLinker gave up sending the payment (#3963). ANDed with `health`, never
+   * folded into it. Reads the denormalised `paymentWritebackProblem` flag.
+   */
+  paymentNotSent?: boolean;
   /**
    * Restrict to orders whose OPEN hold carries this reason (#2342).
    * `undefined` means "don't filter".

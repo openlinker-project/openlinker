@@ -1,5 +1,5 @@
 /**
- * KSeF numbering — Series tab
+ * KSeF numbering - Series tab
  *
  * The Series tab of the numbering page: a table of numbering series (with a
  * register/scope filter and an "Add series" action), plus the document-routing
@@ -24,6 +24,7 @@ import { KsefNumberingEditor } from './ksef-numbering-editor';
 import { KsefNumberingRoutingCard, type RoutingSeriesPrefill } from './ksef-numbering-routing-card';
 import { KSEF_TIME_ZONE, documentTypeLabel, RESET_POLICY_LABELS } from './ksef-numbering.lib';
 import { captureDemoEvent } from '../../../features/demo';
+import { useKsefMessages } from '../messages';
 
 interface KsefNumberingSeriesTabProps {
   connectionId: string;
@@ -35,6 +36,8 @@ type Mode =
   | { kind: 'create'; prefill?: RoutingSeriesPrefill }
   | { kind: 'edit'; series: NumberingSeries };
 
+/** Decorative numero sign on the empty state; not text an operator reads. */
+const NUMERO_GLYPH = '№';
 const ALL_REGISTERS = '__all__';
 const DEFAULT_REGISTER = '__default__';
 
@@ -51,6 +54,7 @@ export function KsefNumberingSeriesTab({
   connectionId,
   readOnly,
 }: KsefNumberingSeriesTabProps): ReactElement {
+  const copy = useKsefMessages().ksefNumberingSeriesTab;
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
   const [registerFilter, setRegisterFilter] = useState<string>(ALL_REGISTERS);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
@@ -91,16 +95,16 @@ export function KsefNumberingSeriesTab({
   }
 
   if (seriesQuery.isLoading || routesQuery.isLoading) {
-    return <LoadingState title="Loading series" message="Fetching this connection's numbering setup…" />;
+    return <LoadingState title={copy.loading.title} message={copy.loading.message} />;
   }
   if (seriesQuery.error) {
     return (
       <ErrorState
-        title="Unable to load numbering series"
+        title={copy.loadError}
         message={seriesQuery.error.message}
         action={
           <Button tone="secondary" onClick={() => void seriesQuery.refetch()}>
-            Retry
+            {copy.retry}
           </Button>
         }
       />
@@ -124,14 +128,14 @@ export function KsefNumberingSeriesTab({
     return (
       <div className="numbering-series-tab">
         <div className="numbering-empty-glyph" aria-hidden="true">
-          №
+          {NUMERO_GLYPH}
         </div>
         <EmptyState
-          title="No numbering series yet"
-          message="Create a series before issuing invoices — KSeF needs a unique, sequential number for every document."
+          title={copy.empty.title}
+          message={copy.empty.message}
           action={
             <Button tone="primary" onClick={openCreate}>
-              Add series
+              {copy.addSeries}
             </Button>
           }
         />
@@ -144,25 +148,23 @@ export function KsefNumberingSeriesTab({
       <div className="numbering-series-tab__toolbar">
         <div className="numbering-series-tab__heading">
           <h3 className="section-title" ref={headingRef} tabIndex={-1}>
-            Series
+            {copy.heading}
           </h3>
-          <p className="muted-text numbering-series-tab__subtitle">
-            Shared across every connection; routing below is per-connection.
-          </p>
+          <p className="muted-text numbering-series-tab__subtitle">{copy.subtitle}</p>
         </div>
         <div className="numbering-series-tab__toolbar-actions">
           {registerValues.length > 0 ? (
             <>
               <label className="sr-only" htmlFor="numbering-register-filter">
-                Filter by register
+                {copy.registerFilter.label}
               </label>
               <Select
                 id="numbering-register-filter"
                 value={registerFilter}
                 onChange={(event) => setRegisterFilter(event.target.value)}
               >
-                <option value={ALL_REGISTERS}>All registers</option>
-                <option value={DEFAULT_REGISTER}>Default (no register)</option>
+                <option value={ALL_REGISTERS}>{copy.registerFilter.all}</option>
+                <option value={DEFAULT_REGISTER}>{copy.registerFilter.default}</option>
                 {registerValues.map((register) => (
                   <option key={register} value={register}>
                     {register}
@@ -172,7 +174,7 @@ export function KsefNumberingSeriesTab({
             </>
           ) : null}
           <Button tone="primary" onClick={openCreate}>
-            Add series
+            {copy.addSeries}
           </Button>
         </div>
       </div>
@@ -181,14 +183,14 @@ export function KsefNumberingSeriesTab({
         <table className="numbering-table">
           <thead>
             <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Pattern</th>
-              <th scope="col">Document type</th>
-              <th scope="col">Register</th>
-              <th scope="col">Next</th>
-              <th scope="col">Reset</th>
+              <th scope="col">{copy.columns.name}</th>
+              <th scope="col">{copy.columns.pattern}</th>
+              <th scope="col">{copy.columns.documentType}</th>
+              <th scope="col">{copy.columns.register}</th>
+              <th scope="col">{copy.columns.next}</th>
+              <th scope="col">{copy.columns.reset}</th>
               <th scope="col">
-                <span className="sr-only">Actions</span>
+                <span className="sr-only">{copy.columns.actions}</span>
               </th>
             </tr>
           </thead>
@@ -215,7 +217,7 @@ export function KsefNumberingSeriesTab({
                       setMode({ kind: 'edit', series: s });
                     }}
                   >
-                    Edit
+                    {copy.edit}
                   </Button>
                 </td>
               </tr>
@@ -223,7 +225,7 @@ export function KsefNumberingSeriesTab({
             {filtered.length === 0 ? (
               <tr>
                 <td colSpan={7} className="numbering-table__empty muted-text">
-                  No series in this register.
+                  {copy.noSeriesInRegister}
                 </td>
               </tr>
             ) : null}

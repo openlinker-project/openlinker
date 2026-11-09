@@ -167,6 +167,11 @@ const KNOWN_CONFIG_KNOBS = new Map([
     'libs/core/src/sales-documents/domain/types/gift-lines.types.ts',
     { helper: 'readGiftConnectionForm', key: 'config.giftOnDocuments' },
   ],
+  [
+    // #3963: "when the buyer pays later" - mark the destination order paid, or leave it.
+    'libs/core/src/identifier-mapping/domain/types/payment-writeback-config.types.ts',
+    { helper: 'readPaymentWritebackConfig', key: 'config.paymentWriteback' },
+  ],
 ]);
 
 /**
@@ -419,11 +424,21 @@ const NON_KNOBS = new Map([
 // which forms are offered. The #1032 question still stands; raised by one so the
 // next knob asks again.
 //
+// #3963 raised it to 15 for `config.paymentWriteback` - whether a payment that
+// arrives after a shop got the order is marked paid there, and which shop state
+// "paid" lands on. Per connection by nature: it is a fact about ONE destination
+// shop (PrestaShop models paid as a state the operator may have renamed,
+// WooCommerce does not), so an install-wide setting could not name the state.
+// Registered rather than excused; the #1032 question still stands, and the
+// number is raised by one so the next knob asks again.
+//
+// Both landed on separate branches (#3930, #3963), so the count is 16 now.
+//
 // #3941 narrows it rather than adding one: the key stays, but it is now an
 // optional per-connection OVERRIDE of the OpenLinker-wide default held in the
 // `sales_document_settings` singleton (absent = inherit), so the threshold is
 // unchanged.
-const KNOB_THRESHOLD = 15;
+const KNOB_THRESHOLD = 16;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);

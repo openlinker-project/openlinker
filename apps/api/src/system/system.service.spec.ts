@@ -1,12 +1,19 @@
 import type { IPosthogSettingsService, ResolvedPosthogConfig } from '@openlinker/core/analytics';
+import type {
+  ILoginPageSettingsService,
+  LoginPageCopyByLocale,
+} from '@openlinker/core/login-page-settings';
 import type { IDemoModeService } from '../auth/demo-mode.service.interface';
 import { SystemService } from './system.service';
 
 describe('SystemService', () => {
   const originalStorePii = process.env.OL_STORE_PII;
+  const originalRegistration = process.env.OL_REGISTRATION_ENABLED;
+  const NO_COPY: LoginPageCopyByLocale = { pl: {}, en: {} };
 
   beforeEach(() => {
     delete process.env.OL_STORE_PII;
+    delete process.env.OL_REGISTRATION_ENABLED;
   });
 
   afterEach(() => {
@@ -15,11 +22,17 @@ describe('SystemService', () => {
     } else {
       process.env.OL_STORE_PII = originalStorePii;
     }
+    if (originalRegistration === undefined) {
+      delete process.env.OL_REGISTRATION_ENABLED;
+    } else {
+      process.env.OL_REGISTRATION_ENABLED = originalRegistration;
+    }
   });
 
   function makeService(
     demoMode: boolean,
     resolvedConfig: ResolvedPosthogConfig | null = null,
+    loginPage: LoginPageCopyByLocale = NO_COPY
   ): SystemService {
     const demoModeService: IDemoModeService = {
       isDemoModeEnabled: () => demoMode,
@@ -27,9 +40,14 @@ describe('SystemService', () => {
     const posthogSettingsService: Partial<IPosthogSettingsService> = {
       resolveConfig: () => Promise.resolve(resolvedConfig),
     };
+    const loginPageSettingsService: Partial<ILoginPageSettingsService> = {
+      resolvePublicCopy: () => Promise.resolve(loginPage),
+      isRegistrationEnabled: () => Promise.resolve(process.env.OL_REGISTRATION_ENABLED === 'true'),
+    };
     return new SystemService(
       demoModeService,
       posthogSettingsService as IPosthogSettingsService,
+      loginPageSettingsService as ILoginPageSettingsService
     );
   }
 
@@ -37,6 +55,7 @@ describe('SystemService', () => {
     await expect(makeService(true).getConfig()).resolves.toEqual({
       demoMode: true,
       storesPersonalData: true,
+      registrationEnabled: false,
     });
   });
 
@@ -44,6 +63,8 @@ describe('SystemService', () => {
     await expect(makeService(false).getConfig()).resolves.toEqual({
       demoMode: false,
       storesPersonalData: true,
+      registrationEnabled: false,
+      loginPage: NO_COPY,
     });
   });
 
@@ -59,6 +80,8 @@ describe('SystemService', () => {
     await expect(makeService(false).getConfig()).resolves.toEqual({
       demoMode: false,
       storesPersonalData: false,
+      registrationEnabled: false,
+      loginPage: NO_COPY,
     });
   });
 
@@ -76,6 +99,7 @@ describe('SystemService', () => {
     await expect(makeService(true, resolvedConfig).getConfig()).resolves.toEqual({
       demoMode: true,
       storesPersonalData: false,
+      registrationEnabled: false,
       demoIntegrations: { posthog: resolvedConfig },
     });
   });
@@ -89,14 +113,20 @@ describe('SystemService', () => {
         sessionRecording: true,
         productEventsEnabled: false,
         enabledEventGroups: [],
-      }).getConfig(),
-    ).resolves.toEqual({ demoMode: false, storesPersonalData: true });
+      }).getConfig()
+    ).resolves.toEqual({
+      demoMode: false,
+      storesPersonalData: true,
+      registrationEnabled: false,
+      loginPage: NO_COPY,
+    });
   });
 
   it('should not include demoIntegrations when demo mode is on but PostHog is unconfigured', async () => {
     await expect(makeService(true, null).getConfig()).resolves.toEqual({
       demoMode: true,
       storesPersonalData: true,
+      registrationEnabled: false,
     });
   });
 
@@ -112,6 +142,7 @@ describe('SystemService', () => {
     await expect(makeService(true, resolvedConfig).getConfig()).resolves.toEqual({
       demoMode: true,
       storesPersonalData: true,
+      registrationEnabled: false,
       demoIntegrations: { posthog: resolvedConfig },
     });
   });
@@ -128,7 +159,28 @@ describe('SystemService', () => {
     await expect(makeService(true, resolvedConfig).getConfig()).resolves.toEqual({
       demoMode: true,
       storesPersonalData: true,
+      registrationEnabled: false,
       demoIntegrations: { posthog: resolvedConfig },
     });
+  });
+
+  it('should report registrationEnabled: true when OL_REGISTRATION_ENABLED=true', async () => {
+    process.env.OL_REGISTRATION_ENABLED = 'true';
+    await expect(makeService(false).getConfig()).resolves.toMatchObject({
+      registrationEnabled: true,
+    });
+  });
+
+  it('should carry the login-page overrides on a real install', async () => {
+    const copy: LoginPageCopyByLocale = { pl: { headline: 'Panel sprzedaży' }, en: {} };
+    await expect(makeService(false, null, copy).getConfig()).resolves.toMatchObject({
+      loginPage: copy,
+    });
+  });
+
+  it('should omit loginPage in demo mode, whose copy is fixed in the frontend', async () => {
+    const copy: LoginPageCopyByLocale = { pl: { headline: 'Panel sprzedaży' }, en: {} };
+    const config = await makeService(true, null, copy).getConfig();
+    expect(config).not.toHaveProperty('loginPage');
   });
 });

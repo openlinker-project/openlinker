@@ -8,6 +8,7 @@
  *
  * @module features/fiscalization/lib
  */
+import { getMessages } from '../../../shared/i18n';
 import type { FiscalProviderFailureDetails } from '../api/fiscalization.types';
 
 export interface FiscalFailureDetailRow {
@@ -19,28 +20,28 @@ export interface FiscalFailureDetailRow {
 /** Rows for the identifiers the provider declared, in a fixed order. */
 export function buildFiscalFailureDetailRows(
   details: FiscalProviderFailureDetails | null,
-  t: (key: string, fallback: string) => string,
 ): FiscalFailureDetailRow[] {
   if (!details) return [];
+  const copy = getMessages('fiscalization').fiscalReceipt.details;
   const rows: FiscalFailureDetailRow[] = [];
   if (details.errorCode) {
     rows.push({
       key: 'errorCode',
-      label: t('fiscalReceipt.details.errorCode', 'Provider error code'),
+      label: copy.errorCode,
       value: details.errorCode,
     });
   }
   if (details.deviceErrorCode) {
     rows.push({
       key: 'deviceErrorCode',
-      label: t('fiscalReceipt.details.deviceErrorCode', 'Printer error code'),
+      label: copy.deviceErrorCode,
       value: details.deviceErrorCode,
     });
   }
   if (details.documentId) {
     rows.push({
       key: 'documentId',
-      label: t('fiscalReceipt.details.documentId', 'Provider document ID'),
+      label: copy.documentId,
       value: details.documentId,
     });
   }

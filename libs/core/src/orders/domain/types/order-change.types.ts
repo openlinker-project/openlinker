@@ -74,6 +74,10 @@ export const OrderChangeKindValues = [
   'order.gift_added',
   'order.discount_refund',
   'order.discount_correction',
+  // #3961: the operator accepted that the packing work stays as it is although
+  // the order source changed a line (ship as packed, or handled after shipping).
+  // Confirmed in one step; it is a record of a decision, not a request.
+  'order.source_change_accept',
 ] as const;
 
 export type OrderChangeKind = (typeof OrderChangeKindValues)[number];

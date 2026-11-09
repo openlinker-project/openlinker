@@ -19,7 +19,7 @@ interface GiftTotalsProps {
 }
 
 export function GiftTotals({ totals }: GiftTotalsProps): ReactElement {
-  const copy = useMessages('giftReport');
+  const copy = useMessages('gift-report');
   const format = useFormat();
   const unknown = totals.reduce((sum, total) => sum + total.unknownCostUnits, 0);
 

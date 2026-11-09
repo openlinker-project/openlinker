@@ -6,10 +6,13 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ReturnMoneyPanel } from './return-money-panel';
-import { RETURN_MONEY_COPY, RETURN_REFUND_CEILING_COPY } from '../lib/return-money.copy';
+import { getMessages } from '../../../shared/i18n';
 import type { ReturnDetail } from '../api/returns.types';
 import { ApiError } from '../../../shared/api/api-error';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+
+const RETURN_MONEY_COPY = getMessages('returns').money.panel;
+const RETURN_REFUND_CEILING_COPY = getMessages('returns').money.refundCeiling;
 
 const detail = {
   id: 'ol_return_1',

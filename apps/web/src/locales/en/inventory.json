@@ -1,0 +1,709 @@
+{
+  "duplicatePositionsCsv": {
+    "headers": {
+      "availableQuantity": "availableQuantity",
+      "connectionName": "connectionName",
+      "groupLiveRowCount": "groupLiveRowCount",
+      "groupRowCount": "groupRowCount",
+      "inventoryItemId": "inventoryItemId",
+      "isStale": "isStale",
+      "locationId": "locationId",
+      "locationName": "locationName",
+      "productId": "productId",
+      "productName": "productName",
+      "productVariantId": "productVariantId",
+      "reservedQuantity": "reservedQuantity",
+      "sku": "sku",
+      "sourceConnectionId": "sourceConnectionId",
+      "updatedAt": "updatedAt"
+    }
+  },
+  "duplicatePositionsPage": {
+    "adminOnly": "Admin-only access.",
+    "adminRequiredMessage": "This diagnostic reads inventory_items directly - it requires an admin session.",
+    "adminRequiredTitle": "Admin role required",
+    "backfillComplete": "Provenance backfill complete",
+    "backfillRemaining": "{n} row(s) still missing provenance",
+    "backfillStuck": "{n} row(s) still missing provenance - the backfill latched on {date} and has stopped running. It will not resume on its own - ask an engineer to re-arm it.",
+    "caption": "Duplicate inventory positions",
+    "cardMeta": "{rows} rows ({live} live)",
+    "caution": "Positions can change between this scan and a manual fix performed elsewhere - re-run the report immediately before acting on it, never from a page you loaded a while ago.",
+    "collapseRows": "Collapse rows for product {product}",
+    "columns": {
+      "allStale": "all stale",
+      "liveQty": "Live qty at risk",
+      "liveQtyTip": "Sum of availableQuantity across this group's LIVE (non-stale) rows, when two or more live rows exist - what's currently over-counted for this position. A single live row is never at risk (its own figure is already correct), so it shows as unaffected here. Sorts only this truncated page - groups is capped by maxGroups, largest first.",
+      "liveRows": "Live rows",
+      "location": "Location",
+      "nLive": "{n} live",
+      "oneLive": "1 live",
+      "product": "Product",
+      "rows": "Rows",
+      "sortHint": "Sorts only this truncated page - groups is capped by maxGroups, largest first",
+      "sourceConnection": "Source connection",
+      "variant": "Variant"
+    },
+    "description": "Stock rows that collide on the same product, variant, location and source. This is a report, not a repair tool - it detects, it never writes. It's the gate before a stricter uniqueness rule can be turned on for the whole install.",
+    "detail": {
+      "available": "Available",
+      "distorting": "<strong>Currently distorting available-to-promise.</strong> This position's live rows sum to <strong>{n}</strong> available - the availability read has no way to know only one row is real, so it publishes {n} where the true figure is whichever row survives. Never sum the duplicated quantities when reconciling; re-read the survivor's figure from the master after cleanup.",
+      "likelySurvivor": "likely survivor",
+      "live": "Live",
+      "noLive": "<strong>No live rows - no oversell risk today.</strong> Every row here is already stale, so the normal availability read already excludes this position. This group only blocks the stricter uniqueness migration; it is not an active stock-accuracy problem.",
+      "noLiveRow": "No live row in this group - see step 2 of the remediation guide.",
+      "oneLive": "<strong>One live row - no oversell risk today.</strong> Its own figure is already the correct, undistorted quantity; only the stale rows in this group remain to be deleted before the uniqueness index can build.",
+      "reservationRiskBody": "{rows}, but the default survivor rule picks the newest row regardless of reservations. Confirm no open order depends on this stock before deleting it - check Orders for this variant first.",
+      "reservationRiskRow": {
+        "one": "{id} holds {n} reserved unit",
+        "other": "{id} holds {n} reserved units"
+      },
+      "reservationRiskTitle": "Reservation risk - do not blindly follow the survivor badge.",
+      "reserved": "Reserved",
+      "reservedBadge": "reserved",
+      "rowId": "Row ID",
+      "rowsCaption": "Individual inventory_items rows for this position key",
+      "rowsRegion": "Individual inventory_items rows for this position key (scrollable)",
+      "stale": "Stale",
+      "status": "Status",
+      "survivorHint": "Default survivor rule: newest live row (marked below), colliding since {date}.",
+      "updated": "Updated"
+    },
+    "done": "Done",
+    "empty": {
+      "message": "Every inventory position key is unique. Nothing to review.",
+      "title": "No duplicate positions"
+    },
+    "errorTitle": "Unable to load the duplicate-position report",
+    "expandRows": "Expand rows for product {product}",
+    "exportCsv": "Export CSV",
+    "eyebrow": "Diagnostics",
+    "generated": "Generated {date}",
+    "groupsToResolve": {
+      "one": "{n} duplicate position group must be resolved",
+      "other": "{n} duplicate position groups must be resolved"
+    },
+    "kpis": {
+      "excessRows": "Excess rows",
+      "excessRowsHint": "Rows that must be removed before the index can build - one row per group survives.",
+      "groups": "Duplicate groups",
+      "provenanceHint": "inventory_items rows still missing sourceConnectionId.",
+      "provenanceRemaining": "Provenance rows remaining",
+      "provenanceStuckHint": "inventory_items rows still missing sourceConnectionId - backfill latched, needs re-arming.",
+      "totalRows": "Total rows in duplicate groups"
+    },
+    "legacy": "legacy",
+    "legacyTip": "Sentinel the provenance backfill writes for a row whose owning connection is unknown. Grouped together with unbackfilled rows - both mean the same thing.",
+    "loadingMessage": "Scanning inventory_items for colliding position keys and checking the provenance backfill...",
+    "loadingTitle": "Loading duplicate-position report",
+    "noGroups": "No duplicate position groups",
+    "notBackfilled": "- not backfilled -",
+    "notBackfilledTip": "No source connection recorded yet - this row predates the provenance backfill. Grouped together with 'legacy' rows; both mean the same thing.",
+    "notReady": "Not ready",
+    "notReadyFootnote": "Both conditions must hold before the stricter uniqueness index can be built. Resolving duplicate groups is a manual database operation - ask an engineer to run the remediation procedure, then refresh this page to re-check.",
+    "pending": "Pending",
+    "provenanceFootnote": "Provenance is part of the key - two rows differing only by source connection are legitimate coexisting mirrors, not duplicates, and are already excluded from this count.",
+    "ready": "Ready",
+    "refresh": "Refresh",
+    "refreshFailedBody": "{error} - showing the last successful scan below.",
+    "refreshFailedTitle": "Refresh failed",
+    "refreshing": "Refreshing…",
+    "remediationLink": "Remediation guide: how to pick the survivor and delete the rest →",
+    "retry": "Retry",
+    "stuck": "Stuck",
+    "title": "Duplicate stock positions",
+    "truncated": {
+      "apply": "Apply",
+      "body": {
+        "one": "The KPI totals above count every duplicate position in the database. The server caps the table below to the {shown} of {n} duplicate group with the most <code>inventory_items</code> rows - row count, not exposure. What's shown is then re-ranked by live stock quantity at risk, so a low-row-count group carrying more exposure could still exist below this cap and not appear here.",
+        "other": "The KPI totals above count every duplicate position in the database. The server caps the table below to the {shown} of {n} duplicate groups with the most <code>inventory_items</code> rows - row count, not exposure. What's shown is then re-ranked by live stock quantity at risk, so a low-row-count group carrying more exposure could still exist below this cap and not appear here."
+      },
+      "groupsToShow": "Groups to show",
+      "title": "Detail truncated"
+    },
+    "unlocated": "- unlocated -",
+    "unlocatedTip": "Master does not report a location for this stock. Not missing data - treat as a real 'unlocated' value."
+  },
+  "duplicatePositionsRemediationModal": {
+    "close": "Close",
+    "copied": "Copied",
+    "copiedDelete": {
+      "one": "Copied DELETE statement for {n} loser row",
+      "other": "Copied DELETE statement for {n} loser rows"
+    },
+    "copy": "Copy",
+    "copyDelete": {
+      "one": "Copy DELETE statement for {n} loser row",
+      "other": "Copy DELETE statement for {n} loser rows"
+    },
+    "footerHint": "This is an excerpt. The committed doc has the full ordering dependency, the stale-group fallback and the SQL caveats.",
+    "neverSum": "Never sum the duplicated quantities when reconciling - that recreates, by hand, the exact over-count this report exists to catch, and the next sync won't correct it because it will look like a real master figure.",
+    "openFromGroup": "Open this from a specific group's row instead to get a ready-to-review <code>DELETE</code> for that group's losers.",
+    "openRunbook": "Open full runbook →",
+    "sqlHint": "Nothing on this page runs this - re-confirm these ids are still current (re-run the scan), then run it yourself.",
+    "sqlLabel": {
+      "one": "DELETE for the {n} loser row in this group",
+      "other": "DELETE for the {n} loser rows in this group"
+    },
+    "steps": {
+      "allStale": "<strong>Every row stale?</strong> Keep the newest and delete the rest, or delete the whole group if the product is genuinely gone at the master.",
+      "deleteLosers": "<strong>Delete the losers by primary key only.</strong> A <code>DELETE</code> keyed on the position columns can't express \"all but one\" and empties the whole group.",
+      "pick": "<strong>Pick the survivor.</strong> The live row (not stale) with the highest <code>updatedAt</code> - normally the first row, since rows are newest-first.",
+      "reconcile": "<strong>Reconcile the survivor's quantity from the master</strong>, not from the other rows - the next sync overwrites it anyway.",
+      "rerun": "<strong>Re-run this report</strong> until <code>groupCount</code> reads 0, then proceed to the migration."
+    },
+    "survivorLive": "Survivor (live, newest):",
+    "survivorNoLive": "No live row in this group - keeping the newest overall per step 2:",
+    "title": "Remediation guide (condensed)"
+  },
+  "inventoryLocationsPage": {
+    "actions": {
+      "delete": "Delete",
+      "edit": "Edit",
+      "reactivate": "Reactivate",
+      "retire": "Retire"
+    },
+    "addLocation": "+ Add location",
+    "allKinds": "All kinds",
+    "back": "Settings",
+    "caption": "Inventory locations",
+    "columns": {
+      "geo": "Country / postcode",
+      "kind": "Kind",
+      "location": "Location",
+      "noGeo": "No country/postcode",
+      "noOwner": "No owning connection",
+      "owner": "Owning connection",
+      "status": "Status"
+    },
+    "description": "The warehouses, stores and third-party sites OpenLinker can source stock from. A location does not decide anything about stock - it's the place sourcing rules pick between. Delete is refused while any stock still points here; retire it instead.",
+    "empty": {
+      "addManually": "+ Add manually",
+      "backToFirst": "Back to page 1",
+      "clearFilters": "Clear filters",
+      "createFirst": "Create first location",
+      "filteredMessage": "No locations match the current filters.",
+      "filteredTitle": "No locations match this filter",
+      "message": "Fulfilment routing has nowhere to source stock from yet, so it can't be enabled for any connection. Mint the first location, or add your own - either way it still needs stock assigned before routing can succeed.",
+      "pageGoneMessage": "There are {total} locations, but not on page {page}.",
+      "pageGoneTitle": "This page doesn't exist anymore",
+      "title": "Routing has nowhere to source stock from"
+    },
+    "errorTitle": "Couldn't load locations",
+    "eyebrow": "Fulfilment routing",
+    "filterKind": "Filter by kind",
+    "pagination": {
+      "next": "Next",
+      "previous": "Previous",
+      "summary": {
+        "one": "Page {page} of {pages} · {n} location",
+        "other": "Page {page} of {pages} · {n} locations"
+      }
+    },
+    "retry": "Retry",
+    "showRetired": "Show retired",
+    "statuses": {
+      "active": "Active",
+      "inactive": "Retired"
+    },
+    "title": "Inventory locations",
+    "toasts": {
+      "bootstrapFailed": "Could not create the location",
+      "reactivateFailed": "Reactivation failed",
+      "reactivatedDescription": "New stock can target it again.",
+      "reactivatedTitle": "\"{name}\" reactivated",
+      "retireFailed": "Retire failed",
+      "retiredDescription": "Existing positions keep pointing at it, and it can be reactivated later.",
+      "retiredTitle": "\"{name}\" retired",
+      "tryAgain": "Try again."
+    }
+  },
+  "inventoryLocationsTile": {
+    "description": "The warehouses, stores and third-party sites OpenLinker can source stock from.",
+    "eyebrow": "Fulfilment routing",
+    "linkLabel": "Open",
+    "title": "Inventory locations"
+  },
+  "inventoryMovementsPage": {
+    "allConnections": "All connections",
+    "allTypes": "All types",
+    "attention": {
+      "body": "{parts}. The totals may not reflect these changes yet.",
+      "inDoubt": "{n} unconfirmed",
+      "onThisPage": "{parts} on this page. The totals may not reflect these changes yet.",
+      "refused": "{n} refused by the master",
+      "title": {
+        "one": "{n} movement needs a look",
+        "other": "{n} movements need a look"
+      }
+    },
+    "caption": "Stock movements",
+    "chips": {
+      "all": "All",
+      "attention": "Needs attention",
+      "promised": "Reserved only"
+    },
+    "count": {
+      "one": "{n} result",
+      "other": "{n} results"
+    },
+    "countAtLeast": "{n}+ results",
+    "dateFrom": "Date from",
+    "dateTo": "Date to",
+    "denied": {
+      "message": "Stock movements are visible to admins, operators and viewers. Ask an administrator if you need them.",
+      "title": "Stock history is not available for your role"
+    },
+    "description": "Every applied, refused, or unconfirmed change to a variant's stock - plus the reservations that set stock aside for orders.",
+    "empty": {
+      "body": "Movements appear here once stock changes in a master connection or OpenLinker adjusts it.",
+      "clearFilters": "Clear filters",
+      "filteredBody": "Try widening the date range or clearing a filter.",
+      "filteredTitle": "No stock movements match these filters",
+      "productTitle": "No stock movements recorded for this product yet",
+      "scopedBody": "Movements appear here once its stock changes in a master connection or OpenLinker adjusts it.",
+      "title": "No stock movements yet",
+      "variantTitle": "No stock movements recorded for this variant yet"
+    },
+    "errorTitle": "Unable to load stock movements",
+    "eyebrow": "Products",
+    "filterMaster": "Filter by master connection",
+    "filterType": "Filter by type",
+    "from": "From",
+    "master": "Master connection",
+    "retry": "Retry",
+    "scopeProduct": "Showing one product only.",
+    "scopeVariant": "Showing one variant only.",
+    "search": "Search SKU or variant name",
+    "showAllProducts": "Show all products",
+    "showAllVariants": "Show all variants",
+    "title": "Stock movement history",
+    "to": "To",
+    "type": "Type"
+  },
+  "locationDeleteDialog": {
+    "delete": "Delete",
+    "deletedDescription": "No inventory position named it, so the row is gone rather than retired.",
+    "deletedTitle": "\"{name}\" deleted",
+    "descriptionConfirm": "This can't be undone. If stock still points here, the delete will be refused instead.",
+    "descriptionInUse": "Stock positions still point here, so the delete was refused.",
+    "retireInstead": "Retire instead",
+    "retireInsteadBody": "Retiring keeps the row and its history intact - nothing is deleted, and it can be reactivated later.",
+    "retireInsteadTitle": "Retire instead",
+    "retiredDescription": "Existing positions keep pointing at it, and it can be reactivated later.",
+    "retiredTitle": "\"{name}\" retired",
+    "saveError": "Could not save the location",
+    "titleConfirm": "Delete \"{name}\"?",
+    "titleInUse": "Can't delete \"{name}\""
+  },
+  "locationDialog": {
+    "cancel": "Cancel",
+    "connectionOption": "{platform} - {name}",
+    "description": "The warehouses, stores and third-party sites OpenLinker can source stock from.",
+    "errors": {
+      "codeRequired": "Code is required",
+      "codeTooLong": "Code must be 64 characters or fewer",
+      "countryCode": "Use a 2-letter country code (ISO-3166-1 alpha-2)",
+      "latRange": "Must be between -90 and 90",
+      "lngRange": "Must be between -180 and 180",
+      "mustBeNumber": "Must be a number",
+      "nameRequired": "Name is required",
+      "nameTooLong": "Name must be 255 characters or fewer",
+      "tooLong16": "Must be 16 characters or fewer",
+      "tooLong255": "Must be 255 characters or fewer"
+    },
+    "fields": {
+      "code": "Code",
+      "codeHint": "Unique across the install. Normalised to uppercase on save.",
+      "codePlaceholder": "WH1",
+      "country": "Country (optional)",
+      "countryPlaceholder": "PL",
+      "externalRef": "Operator reference (optional)",
+      "externalRefHint": "Nothing outside OpenLinker reads this.",
+      "externalRefPlaceholder": "Free text - e.g. an internal warehouse code",
+      "kind": "Kind",
+      "latitude": "Latitude (optional)",
+      "longitude": "Longitude (optional)",
+      "name": "Name",
+      "namePlaceholder": "Main warehouse",
+      "owner": "Owning connection (optional)",
+      "ownerHint": "Whose sync may write stock here. It does not decide anything about the location.",
+      "ownerLoadError": "Couldn't load connections - try again, or leave unset.",
+      "ownerLoading": "Loading connections…",
+      "ownerNone": "- none -",
+      "postcode": "Postcode (optional)",
+      "postcodePlaceholder": "00-001",
+      "status": "Status",
+      "statusHint": "Retiring stops new stock from targeting it; existing history keeps pointing at the row. Flip back to Active to re-activate."
+    },
+    "kinds": {
+      "store": "Store",
+      "thirdParty": "Third-party",
+      "virtual": "Virtual",
+      "warehouse": "Warehouse"
+    },
+    "save": "Save location",
+    "saveError": "Could not save the location",
+    "saving": "Saving…",
+    "statuses": {
+      "active": "Active",
+      "inactive": "Retired"
+    },
+    "titleCreate": "Add location",
+    "titleEdit": "Edit \"{name}\"",
+    "toasts": {
+      "createdDescription": "\"{name}\" was added.",
+      "createdTitle": "Location created",
+      "updatedDescription": "\"{name}\" was saved.",
+      "updatedTitle": "Location updated"
+    }
+  },
+  "stockAlerts": {
+    "empty": {
+      "body": "{master} hasn't reported stock for this product. Until it does, OpenLinker counts it as 0 to sell and channels show it as sold out.",
+      "checkSync": "Check the connection's stock sync",
+      "theMaster": "The master",
+      "title": "No stock recorded for this product yet"
+    },
+    "gone": {
+      "one": "{master} stopped reporting {variants}, so its offers were paused. If it was deleted on purpose, there is nothing else to do.",
+      "other": "{master} stopped reporting {variants}, so their offers were paused. If it was deleted on purpose, there is nothing else to do."
+    },
+    "loading": {
+      "one": "Working out what you can sell for {n} variant…",
+      "other": "Working out what you can sell for {n} variants…"
+    },
+    "multiLocation": {
+      "one": "{variants} is kept in more than one location. OpenLinker shows the total, but you correct it in {master}, and new orders don't reserve it yet.",
+      "other": "{variants} are kept in more than one location. OpenLinker shows the total, but you correct them in {master}, and new orders don't reserve them yet."
+    },
+    "multiSource": {
+      "body": {
+        "one": "{variants} is counted by {sources}, and the counts are added together. Corrections for it are off and new orders don't reserve it.",
+        "other": "{variants} are counted by {sources}, and the counts are added together. Corrections for them are off and new orders don't reserve them."
+      },
+      "link": "See the connections"
+    },
+    "restricted": {
+      "body": "The count in the shop is current. What you can sell, what is reserved and what each channel gets are visible to admins, operators and viewers.",
+      "title": "How much you can sell isn't shown to your role"
+    },
+    "stale": {
+      "body": "OpenLinker hasn't sent your channels a new number since then. Stock counts as stale after {hours} h without an update.",
+      "lastAnswered": "{shop} last answered <time></time>.",
+      "openConnection": "Open connection",
+      "theShop": "The shop",
+      "titleFor": "Stock hasn't been refreshed for {duration}",
+      "titleRecently": "Stock hasn't been refreshed recently"
+    },
+    "unknown": {
+      "body": "OpenLinker couldn't read the reserved count, so it shows no number and isn't sending stock to your channels. Nothing was changed.",
+      "retry": "Try again",
+      "title": "Stock for this product isn't known right now"
+    },
+    "viewerNotice": "You have view-only access. Ask an admin or operator to change stock."
+  },
+  "stockCell": {
+    "inMaster": "{n} in {master}",
+    "inMasterLabel": "in {master}",
+    "loadingStock": "Loading stock",
+    "missingIn": "Missing in {master}",
+    "notKnown": "Not known",
+    "reserved": "{n} reserved",
+    "shortBy": "Short by {n}",
+    "toSell": "to sell"
+  },
+  "stockCorrectionDialog": {
+    "applied": {
+      "channelPublishes": "{channel} will publish {n}",
+      "channels": "Channels",
+      "confirmed": "Confirmed",
+      "confirmedAt": "Confirmed at",
+      "deduplicated": "This correction had already been recorded, so nothing was sent again.",
+      "description": "{master} confirmed the new count for {name}.",
+      "done": "Done",
+      "master": "Master",
+      "quantity": "Quantity",
+      "reason": "Reason",
+      "title": "Stock updated",
+      "unknownAmount": "an unknown amount",
+      "variant": "Variant",
+      "withinMinute": "{channels} - usually within a minute."
+    },
+    "attemptChange": "change of {delta}",
+    "cancel": "Cancel",
+    "changeBy": "Change by",
+    "channelHow": {
+      "asIs": "Publishes what you can sell as-is.",
+      "buffer": "Publishes what you can sell minus a {n}-unit buffer for this connection.",
+      "zeroThreshold": "Anything under {n} units is shown as sold out."
+    },
+    "checkingTarget": "Checking which connection owns this stock…",
+    "close": "Close",
+    "currently": "Currently {n} in {master}.",
+    "deltaHint": "Use a minus sign to reduce stock, e.g. -2.",
+    "description": "This writes to {master}, the master connection for this product. Channels update on their own once it confirms.",
+    "errors": {
+      "deltaInvalid": "Enter a whole number, e.g. +3 or -2",
+      "deltaZero": "A change of 0 would not do anything",
+      "noteRequired": "Say what happened when the reason is Other",
+      "noteTooLong": "Note must be {max} characters or fewer",
+      "quantityInvalid": "Enter a whole number, 0 or more"
+    },
+    "heldSentence": "{n} of them are reserved for open orders.",
+    "inDoubt": {
+      "body": "OpenLinker lost contact right after sending this correction. It may already be applied.",
+      "hint": "Check {master}'s own stock number before deciding what to do next. Filling in this form again would start a brand-new correction, which could double the change if the first one did land.",
+      "sent": "Sent: {attempt} · {reason}",
+      "title": "We couldn't confirm this reached {master}"
+    },
+    "inlineErrors": {
+      "contended": "Another correction for this variant is being applied right now. Wait a moment and save again.",
+      "idempotencyKeyReused": "This correction was already submitted with different values. Close this dialog and start a new one.",
+      "masterUnreadable": "Couldn't read the current stock for this item from {master}. Nothing changed. Try again in a moment.",
+      "noChange": "This would not change the stock - the master already has that number."
+    },
+    "insufficientStockKnown": "{master} has only {n}, so nothing changed.",
+    "insufficientStockUnknown": "{master} doesn't have enough stock for this removal, so nothing changed.",
+    "largeChange": {
+      "absolute": "more than {n} units",
+      "change": "This changes stock by {change} units.",
+      "changeFrom": "This changes stock by {change} units against a current count of {current}.",
+      "check": "Check the number before saving.",
+      "confirm": "I checked this number",
+      "default": "It changes stock by more than 50 units or more than half of the current count. Check the number before saving.",
+      "relative": "more than {percent} of the current count",
+      "rule": "Changes of {limits} need a second look.",
+      "title": "This is a large change"
+    },
+    "masterConnectionSuffix": "(this product's master connection)",
+    "modeDelta": "Adjust by amount",
+    "modeLabel": "How do you want to enter it?",
+    "modeSet": "Set new quantity",
+    "newQuantity": "New quantity",
+    "notKnown": "Not known",
+    "noteHint": "For your team - {master} doesn't receive this note.",
+    "noteOptional": "Note (optional)",
+    "noteRequired": "Note (required for Other)",
+    "preview": {
+      "catchUp": "Marketplaces usually catch up within a minute of the master confirming.",
+      "enterQuantity": "Enter a quantity to see what each channel will publish.",
+      "heading": "What channels will publish after this",
+      "heldKnown": "New count minus the {n} units reserved for open orders.",
+      "heldUnknown": "OpenLinker couldn't read the reserved count, so this is not known.",
+      "master": "master",
+      "masterHow": "Shows the corrected count directly.",
+      "toSell": "To sell",
+      "toSellSub": "what channels start from",
+      "unavailable": "Channel figures are unavailable right now, so no preview is shown. The correction itself is not affected."
+    },
+    "reason": "Reason",
+    "reasons": {
+      "countCorrection": "Counted (physical stock check)",
+      "damaged": "Damaged or lost",
+      "found": "Found or received",
+      "gift": "Gift packed outside OpenLinker",
+      "other": "Other"
+    },
+    "refused": {
+      "attempted": "Attempted: {attempt} · {reason}",
+      "noReason": "The master did not accept the change and gave no reason.",
+      "notApplied": "Not applied",
+      "title": "{master} refused this change"
+    },
+    "removalWarning": "OpenLinker shows only {n} in {master}. {master} checks its own count when you save and refuses the change if there isn't enough.",
+    "retry": "Retry",
+    "save": "Save correction",
+    "saveError": "Could not save the correction",
+    "savingTo": "Saving to {master}…",
+    "targetError": {
+      "fallback": "The request failed.",
+      "title": "Could not check where this stock lives"
+    },
+    "targetRefusals": {
+      "adapterUnresolved": {
+        "body": "The connection that owns this stock may be disabled or need re-authorisation. Check it on the Connections page.",
+        "title": "OpenLinker can't reach the master connection"
+      },
+      "ambiguousInventoryMaster": {
+        "body": "Two connections claim this stock, so OpenLinker will not guess which one to change.",
+        "title": "More than one connection claims this stock"
+      },
+      "noInventoryMaster": {
+        "body": "No connection is set up as the stock master for this product, so there is nowhere to write the change.",
+        "title": "No connection owns this stock"
+      },
+      "noPosition": {
+        "body": "There is no stock row for this variant to change. Wait for the next stock sync, then try again.",
+        "title": "The master has not reported this variant yet"
+      },
+      "unattributedOwner": {
+        "body": "This stock row predates ownership tracking. It will be attributed by the next stock sync, after which you can correct it.",
+        "title": "OpenLinker cannot tell who owns this stock row"
+      }
+    },
+    "theMaster": "the master",
+    "theMasterConnection": "the master connection",
+    "title": "Adjust stock - {name}",
+    "transition": "{from} → {to} · {reason}",
+    "variant": "Variant",
+    "writesTo": "Writes to"
+  },
+  "stockHistorySection": {
+    "availableNow": "Available now",
+    "caption": "Stock history for {variant}",
+    "chooseVariant": "Choose variant",
+    "empty": "No stock movements recorded for this variant yet.",
+    "errorTitle": "Unable to load stock history",
+    "lastChange": "Last change",
+    "loadingMessage": "Fetching movements…",
+    "loadingTitle": "Loading stock history",
+    "reserved": "Reserved",
+    "restricted": "Stock history is visible to admins, operators and viewers. Ask an administrator if you need it.",
+    "retry": "Retry",
+    "stockSource": "Stock source",
+    "title": "Stock history",
+    "variantLabel": "{attributes} - {sku}",
+    "viewAll": "View all stock movements for this SKU"
+  },
+  "stockMovement": {
+    "masterProductNotFound": "{master} no longer has this product. Nothing changed.",
+    "operatorReasonWithNote": "{reason} - {note}",
+    "operatorReasons": {
+      "countCorrection": "Count correction",
+      "damaged": "Damaged",
+      "found": "Found",
+      "gift": "Gift",
+      "other": "Other"
+    },
+    "sourceKinds": {
+      "masterSync": "Master sync",
+      "operator": "Operator",
+      "order": "Order",
+      "return": "Return"
+    },
+    "statuses": {
+      "applied": "Applied",
+      "consumed": "Consumed",
+      "expired": "Expired",
+      "held": "Reserved",
+      "inDoubt": "In doubt",
+      "pending": "Pending",
+      "refused": "Refused",
+      "released": "Released"
+    },
+    "theShop": "the shop",
+    "typeFilters": {
+      "cancellationRestore": "Cancellation restore",
+      "gift": "Gift",
+      "manualCorrection": "Manual correction",
+      "masterSync": "Sync change detected",
+      "reservation": "Reservation",
+      "returnRestock": "Return restock",
+      "sale": "Sale (OpenLinker order)"
+    },
+    "types": {
+      "cancellationRestore": "Cancellation restore",
+      "gift": "Gift",
+      "manualCorrection": "Manual correction",
+      "masterSync": "Sync change detected",
+      "reservation": "Reservation",
+      "returnRestock": "Return restock",
+      "sale": "Sale"
+    }
+  },
+  "stockMovementsTable": {
+    "columns": {
+      "beforeAfter": "Before → after",
+      "deltaBeforeAfter": "Δ / before → after",
+      "master": "Master connection",
+      "sku": "SKU / variant",
+      "source": "Source",
+      "status": "Status",
+      "time": "Time",
+      "type": "Type"
+    },
+    "new": "new",
+    "notApplied": "Not applied",
+    "order": "Order",
+    "reserved": "Reserved",
+    "reservedFromZero": "Reserved 0 → {n}",
+    "reservedToZero": "Reserved {n} → 0",
+    "return": "Return",
+    "stockUnchanged": "Stock unchanged",
+    "unknownUser": "Unknown user"
+  },
+  "stockRow": {
+    "adjustHints": {
+      "multiLocation": "This variant is in {n} locations. Correct it in {master}.",
+      "multiSource": "Two shops count this variant. Correct it in the shop that should own it.",
+      "staled": "{master} no longer reports this variant.",
+      "unknown": "Available again once OpenLinker can read the count.",
+      "viewer": "Only admins and operators can change stock."
+    },
+    "unnamedMaster": "the master"
+  },
+  "stockVariantDetail": {
+    "adjustStock": "Adjust stock",
+    "anotherConnection": "another connection",
+    "copiedVariantId": "Copied variant ID",
+    "copyVariantId": "Copy variant ID",
+    "holdReserved": "{n} reserved",
+    "holdsUnlisted": "The orders reserving stock couldn't be listed.",
+    "inMaster": "in {master}",
+    "lastSynced": "Last synced",
+    "location": "Location",
+    "multiLocation": "{n} locations - see below",
+    "multiSourceNote": "<b>{total}</b> = {terms}. New orders for this variant don't reserve stock until one shop owns it.",
+    "noLocation": "No location reported",
+    "orderAria": "Order {label}",
+    "positions": {
+      "lastSynced": "Last synced",
+      "location": "Location",
+      "notCounted": "Not counted",
+      "reservedInShop": "Reserved in the shop",
+      "stale": "Stale",
+      "stock": "Stock",
+      "stockSource": "Stock source"
+    },
+    "provenanceExternal": "as reported by an external system",
+    "provenanceReportedBy": "as reported by {source}",
+    "provenanceUnknown": "not known",
+    "recordedOnly": {
+      "one": "{n} more is reserved for orders OpenLinker doesn't fulfil. They don't lower what you can sell.",
+      "other": "{n} more are reserved for orders OpenLinker doesn't fulfil. They don't lower what you can sell."
+    },
+    "reserved": "reserved",
+    "shortBy": "{n} of the reserved units aren't in stock.",
+    "sourceTerm": "{n} in {source}",
+    "stockHistory": "Stock history",
+    "stockSource": "Stock source",
+    "stoppedReporting": "{master} stopped reporting <b>{key}</b>. It is no longer counted, so you can sell <b>0</b> and its listings are paused. If the variant was deleted on purpose, nothing else is needed.",
+    "stoppedReportingOn": "{master} stopped reporting <b>{key}</b> on <time></time>. It is no longer counted, so you can sell <b>0</b> and its listings are paused. If the variant was deleted on purpose, nothing else is needed.",
+    "toSell": "to sell",
+    "unknownNote": "<b>{n}</b> in {master}. OpenLinker can't work out the reserved count right now, so it isn't sending stock to your channels."
+  },
+  "stockView": {
+    "channelRule": {
+      "buffer": "Keeps {n} back (safety buffer)",
+      "joined": "{first}. {second}",
+      "none": "No extra rules",
+      "zeroThreshold": "Shows 0 below {n} units"
+    },
+    "staleness": {
+      "days": {
+        "one": "{n} day ago",
+        "other": "{n} days ago"
+      },
+      "hours": "{n} h ago",
+      "minutes": "{n} min ago"
+    },
+    "stalenessDuration": {
+      "days": {
+        "one": "{n} day",
+        "other": "{n} days"
+      },
+      "hours": "{n} h",
+      "minutes": "{n} min"
+    }
+  }
+}

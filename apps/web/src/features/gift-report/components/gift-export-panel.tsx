@@ -19,7 +19,7 @@ interface GiftExportPanelProps {
 }
 
 export function GiftExportPanel({ filters }: GiftExportPanelProps): ReactElement {
-  const copy = useMessages('giftReport').export;
+  const copy = useMessages('gift-report').export;
   const [open, setOpen] = useState(false);
   const exportCsv = useAnalyticsCsvExport();
 

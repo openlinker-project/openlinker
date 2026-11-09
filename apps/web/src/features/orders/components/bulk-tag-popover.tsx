@@ -40,13 +40,11 @@ import {
   useBulkAssignOrderTagMutation,
   useBulkRemoveOrderTagMutation,
 } from '../hooks/use-order-tag-mutations';
-import { BULK_ACTIONS_COPY, BULK_TAG_ROW } from '../lib/bulk-order-actions.copy';
-import { ORDER_TAGS_COPY } from '../lib/order-tags.copy';
+import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
+import { bulkTagRow } from '../lib/bulk-order-actions';
 import { BulkResultRows } from './bulk-result-rows';
 import { OrderTagChip } from './order-tag-chip';
-
-const COPY = ORDER_TAGS_COPY.bulk;
-const REMOVE_COPY = BULK_ACTIONS_COPY.tags;
+import { serverErrorText } from '../lib/server-error-text';
 
 export interface BulkTagPopoverProps {
   selectedOrders: readonly OrderRecord[];
@@ -68,6 +66,11 @@ export function BulkTagPopover({
   const bulkRemove = useBulkRemoveOrderTagMutation();
   const isAdmin = useIsAdmin();
   const { showToast } = useToast();
+  const bulkCopy = useMessages('orders').bulkActions;
+  const REMOVE_COPY = bulkCopy.tags;
+  const COPY = useMessages('orders').orderTags.bulk;
+  const serverSaid = useMessages('orders').common.serverSaid;
+  const plural = usePlural();
   const [mode, setMode] = useState<'add' | 'remove'>('add');
   const [details, setDetails] = useState<TagDetails | null>(null);
 
@@ -88,8 +91,8 @@ export function BulkTagPopover({
     if (failed > 0) {
       showToast({
         tone: 'warning',
-        title: REMOVE_COPY.partialTitle(tag.name),
-        description: REMOVE_COPY.partialDescription(failed),
+        title: interpolate(REMOVE_COPY.partialTitle, { name: tag.name }),
+        description: plural(failed, REMOVE_COPY.partialDescription),
       });
       if (results) setDetails({ tagName: tag.name, results });
       return;
@@ -104,14 +107,17 @@ export function BulkTagPopover({
         onSuccess: (result) => {
           report(tag, result.failed ?? 0, result.results, {
             title: COPY.resultTitle,
-            description: COPY.resultDescription(tag.name, result.added, result.alreadyTagged),
+            description:
+              result.alreadyTagged > 0
+                ? `${plural(result.added, COPY.resultDescription, { name: tag.name })} ${plural(result.alreadyTagged, COPY.resultAlreadyHad)}`
+                : plural(result.added, COPY.resultDescription, { name: tag.name }),
           });
         },
         onError: (error) => {
           showToast({
             tone: 'error',
             title: COPY.errorTitle,
-            description: error.message || COPY.errorFallback,
+            description: serverErrorText(serverSaid, error.message, COPY.errorFallback),
           });
         },
       },
@@ -125,14 +131,17 @@ export function BulkTagPopover({
         onSuccess: (result) => {
           report(tag, result.failed, result.results, {
             title: REMOVE_COPY.removeResultTitle,
-            description: REMOVE_COPY.removeResultDescription(tag.name, result.removed, result.notTagged),
+            description:
+              result.notTagged > 0
+                ? `${plural(result.removed, REMOVE_COPY.removeResultDescription, { name: tag.name })} ${plural(result.notTagged, REMOVE_COPY.removeNotTagged)}`
+                : plural(result.removed, REMOVE_COPY.removeResultDescription, { name: tag.name }),
           });
         },
         onError: (error) => {
           showToast({
             tone: 'error',
             title: REMOVE_COPY.removeErrorTitle,
-            description: error.message || REMOVE_COPY.removeErrorFallback,
+            description: serverErrorText(serverSaid, error.message, REMOVE_COPY.removeErrorFallback),
           });
         },
       },
@@ -168,7 +177,7 @@ export function BulkTagPopover({
         >
           {mode === 'add' ? (
             <>
-              <DropdownMenuLabel>{COPY.heading(selectedCount)}</DropdownMenuLabel>
+              <DropdownMenuLabel>{plural(selectedCount, COPY.heading)}</DropdownMenuLabel>
               {tags.length === 0 ? (
                 <DropdownMenuItem disabled>{COPY.emptyVocabulary}</DropdownMenuItem>
               ) : (
@@ -190,7 +199,7 @@ export function BulkTagPopover({
                         <span className="bulk-menu__hint">{COPY.allHaveIt}</span>
                       ) : hasCount > 0 ? (
                         <span className="bulk-menu__hint" data-testid="orders-bulk-tag-has-it">
-                          {COPY.hasIt(hasCount, selectedCount)}
+                          {plural(hasCount, COPY.hasIt, { total: selectedCount })}
                         </span>
                       ) : null}
                     </DropdownMenuItem>
@@ -205,12 +214,12 @@ export function BulkTagPopover({
                   setMode('remove');
                 }}
               >
-                {REMOVE_COPY.removeOpen(selectedCount)}
+                {plural(selectedCount, REMOVE_COPY.removeOpen)}
               </DropdownMenuItem>
             </>
           ) : (
             <>
-              <DropdownMenuLabel>{REMOVE_COPY.removeHeading(selectedCount)}</DropdownMenuLabel>
+              <DropdownMenuLabel>{plural(selectedCount, REMOVE_COPY.removeHeading)}</DropdownMenuLabel>
               {removable.length === 0 ? (
                 <DropdownMenuItem disabled>{REMOVE_COPY.removeNone}</DropdownMenuItem>
               ) : (
@@ -224,7 +233,7 @@ export function BulkTagPopover({
                     }}
                   >
                     <OrderTagChip tag={tag} small />
-                    <span className="bulk-menu__hint">{COPY.hasIt(countWith(tag), selectedCount)}</span>
+                    <span className="bulk-menu__hint">{plural(countWith(tag), COPY.hasIt, { total: selectedCount })}</span>
                   </DropdownMenuItem>
                 ))
               )}
@@ -259,20 +268,19 @@ export function BulkTagPopover({
         <DialogContent className="bulk-dispatch" data-testid="orders-bulk-tag-details">
           {details ? (
             <>
-              <DialogTitle>{REMOVE_COPY.detailsTitle(details.tagName)}</DialogTitle>
+              <DialogTitle>{interpolate(REMOVE_COPY.detailsTitle, { name: details.tagName })}</DialogTitle>
               <DialogDescription>
-                {REMOVE_COPY.detailsDescription(
-                  details.results.filter((r) => r.outcome !== 'failed').length,
-                  details.results.filter((r) => r.outcome === 'failed').length,
-                )}
+                {interpolate(REMOVE_COPY.detailsDescription, {
+                  ok: details.results.filter((r) => r.outcome !== 'failed').length,
+                  failed: details.results.filter((r) => r.outcome === 'failed').length,
+                })}
               </DialogDescription>
               <BulkResultRows
                 testId="orders-bulk-tag-details-rows"
                 rows={details.results.map((r) => ({
                   orderId: r.orderId,
-                  tone: BULK_TAG_ROW[r.outcome].tone,
-                  label: BULK_TAG_ROW[r.outcome].label,
-                  detail: r.code === 'ORDER_NOT_FOUND' ? 'Order not found' : (r.reason ?? null),
+                  ...bulkTagRow(r.outcome, bulkCopy),
+                  detail: r.code === 'ORDER_NOT_FOUND' ? REMOVE_COPY.orderNotFound : (r.reason ?? null),
                 }))}
               />
               <DialogFooter>

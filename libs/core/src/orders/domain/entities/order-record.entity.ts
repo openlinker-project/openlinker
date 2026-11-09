@@ -46,6 +46,7 @@ import type {
   TaxRateEra,
 } from '@openlinker/core/sales-documents';
 import { OrderStatusValues } from '../types/order.types';
+import type { PaymentWriteback } from '../types/payment-writeback.types';
 import type { OrderStatus } from '../types/order.types';
 
 export type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
@@ -549,7 +550,16 @@ export class OrderRecord {
      * writer `freezeLineExpansion`; excluded from every ingestion statement.
      * Read through {@link physicalItems}, never bare. Appended LAST.
      */
-    public readonly lineExpansion: LineExpansion | null = null
+    public readonly lineExpansion: LineExpansion | null = null,
+    /**
+     * Per-destination payment writeback record (#3963): whether a payment that
+     * arrived after a shop got this order has reached that shop. Keyed by
+     * destination connection id. Sole writers are the two narrow repository
+     * methods (`claimPaymentWriteback`, `recordPaymentWriteback`); never
+     * round-tripped through `toOrm`. Already coerced through
+     * `readPaymentWriteback`. Appended LAST: positional constructor.
+     */
+    public readonly paymentWriteback: PaymentWriteback = {}
   ) {}
 
   /**

@@ -22,7 +22,7 @@ export interface GiftFormLabels {
 }
 
 export function useGiftFormLabels(): GiftFormLabels {
-  const copy = useMessages('giftDocuments');
+  const copy = useMessages('gift-documents');
   const key = {
     'technical-cent': 'technicalCent',
     'priced-in': 'pricedIn',

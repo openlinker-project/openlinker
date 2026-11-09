@@ -49,6 +49,19 @@ describe('checkParameterRestrictions (FE mirror)', () => {
     expect(issues[0].message).toContain('at least 8');
   });
 
+  it('words the message from the copy, singular and plural by the bound', () => {
+    const one = checkParameterRestrictions(
+      param({ name: 'Kolor', type: 'dictionary', restrictions: { allowedNumberOfValues: 1 } }),
+      { values: ['a', 'b'] },
+    );
+    expect(one[0].message).toBe('Kolor accepts at most 1 value, 2 supplied.');
+    const precision = checkParameterRestrictions(
+      param({ name: 'Waga', type: 'float', restrictions: { precision: 2 } }),
+      { texts: ['1.234'] },
+    );
+    expect(precision[0].message).toBe('Waga allows 2 decimal places, this value has 3.');
+  });
+
   it('accepts both edges of a declared length range', () => {
     const p = param({ restrictions: { minLength: 8, maxLength: 10 } });
     expect(checkParameterRestrictions(p, { texts: ['25079200'] })).toEqual([]);

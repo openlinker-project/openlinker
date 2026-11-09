@@ -32,7 +32,7 @@ export function BundleRefundHint({
   currency,
   onUse,
 }: BundleRefundHintProps): ReactElement | null {
-  const copy = useMessages('bundleReturns').hint;
+  const copy = useMessages('bundle-returns').hint;
   const format = useFormat();
   const hint = useBundleRefundHintQuery(returnId, true);
 

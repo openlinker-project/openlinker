@@ -10,7 +10,7 @@
  * @module apps/web/src/features/gift-documents/components
  */
 import type { ReactElement } from 'react';
-import { useMessages } from '../../../shared/i18n';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import {
   formatMoney,
   previewGiftForm,
@@ -31,6 +31,7 @@ function DocumentLines({
   title,
   lines,
   giftSuffix,
+  lineTemplate,
   totalLabel,
   totalMinor,
   testId,
@@ -38,6 +39,7 @@ function DocumentLines({
   title: string;
   lines: readonly SampleLine[];
   giftSuffix: string;
+  lineTemplate: string;
   totalLabel: string;
   totalMinor: number;
   testId: string;
@@ -53,7 +55,11 @@ function DocumentLines({
               {line.isGift === true ? ` ${giftSuffix}` : ''}
             </span>
             <span className="gift-preview__num">
-              {line.quantity} x {formatMoney(line.unitPriceGross)} ({line.taxRate}%)
+              {interpolate(lineTemplate, {
+                quantity: String(line.quantity),
+                price: formatMoney(line.unitPriceGross),
+                rate: String(line.taxRate),
+              })}
             </span>
           </li>
         ))}
@@ -69,7 +75,7 @@ function DocumentLines({
 }
 
 export function GiftFormPreview({ form, zeroAccepted }: GiftFormPreviewProps): ReactElement {
-  const copy = useMessages('giftDocuments');
+  const copy = useMessages('gift-documents');
   const sample = sampleOrderLines(copy.example.book, copy.example.mugName);
   const receipt = previewGiftForm(sample, form, false);
   const invoice = previewGiftForm(sample, form, zeroAccepted);
@@ -87,6 +93,7 @@ export function GiftFormPreview({ form, zeroAccepted }: GiftFormPreviewProps): R
           title={copy.preview.receiptTitle}
           lines={receipt.lines}
           giftSuffix={copy.preview.giftSuffix}
+          lineTemplate={copy.preview.line}
           totalLabel={copy.preview.total}
           totalMinor={receipt.totalMinor}
           testId="doc-gift-set-receipt"
@@ -95,6 +102,7 @@ export function GiftFormPreview({ form, zeroAccepted }: GiftFormPreviewProps): R
           title={copy.preview.invoiceTitle}
           lines={invoice.lines}
           giftSuffix={copy.preview.giftSuffix}
+          lineTemplate={copy.preview.line}
           totalLabel={copy.preview.total}
           totalMinor={invoice.totalMinor}
           testId="doc-gift-set-invoice"

@@ -18,6 +18,8 @@ import {
 } from './infakt-webhook-config';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
+import { interpolate } from '../../../shared/i18n';
+import { useInfaktMessages } from '../messages';
 
 export function InfaktWebhookConnectionActions({
   connection,
@@ -25,6 +27,7 @@ export function InfaktWebhookConnectionActions({
   connection: Connection;
   readOnly?: boolean;
 }): ReactElement {
+  const copy = useInfaktMessages().infaktWebhookConnectionActions;
   const [open, setOpen] = useState(false);
   const statusQuery = useWebhookStatusQuery(connection.id, { enabled: !open });
 
@@ -33,28 +36,25 @@ export function InfaktWebhookConnectionActions({
   return (
     <div className="action-list__item">
       <div>
-        <strong>Webhook setup</strong>
-        <p className="muted-text">
-          Deliver KSeF clearance events from inFakt in real time. Register the endpoint and,
-          optionally, verify delivery signatures.
-        </p>
+        <strong>{copy.title}</strong>
+        <p className="muted-text">{copy.description}</p>
         {summary ? (
           <div
             className="infakt-webhook__events"
             style={{ marginTop: 'var(--space-2)', display: 'flex', gap: 'var(--space-2)' }}
           >
             <StatusBadge tone={infaktWebhookActivationLabel(summary).tone} withDot compact>
-              Activation: {infaktWebhookActivationLabel(summary).text}
+              {interpolate(copy.activation, { value: infaktWebhookActivationLabel(summary).text })}
             </StatusBadge>
             <StatusBadge tone={infaktWebhookSignatureLabel(summary).tone} withDot compact>
-              Signature: {infaktWebhookSignatureLabel(summary).text}
+              {interpolate(copy.signature, { value: infaktWebhookSignatureLabel(summary).text })}
             </StatusBadge>
           </div>
         ) : null}
       </div>
       <div className="action-list__item-actions">
         <Button tone="secondary" type="button" onClick={() => setOpen(true)}>
-          Configure webhooks…
+          {copy.configure}
         </Button>
       </div>
       <InfaktWebhookConfigDialog connection={connection} open={open} onOpenChange={setOpen} />

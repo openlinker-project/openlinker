@@ -1,4 +1,3 @@
-import { addedLineToOrderItem } from '../../../orders/domain/types/order-edits.types';
 /**
  * toIssueInvoiceCommand mapper — unit tests
  *
@@ -8,7 +7,7 @@ import { addedLineToOrderItem } from '../../../orders/domain/types/order-edits.t
  *
  * @module libs/core/src/invoicing/application/mappers
  */
-import type { Address, Order, OrderItem } from '@openlinker/core/orders';
+import { addedLineToOrderItem, type Address, type Order, type OrderItem } from '@openlinker/core/orders';
 
 import { InvalidBuyerProfileError } from './errors/invalid-buyer-profile.error';
 import { InvalidInvoiceLineError } from './errors/invalid-invoice-line.error';

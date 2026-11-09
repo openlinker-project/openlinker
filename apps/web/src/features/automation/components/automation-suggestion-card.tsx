@@ -22,7 +22,7 @@
  */
 import type { ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
-import { AUTOMATION_SUGGESTION_COPY } from '../lib/automation.copy';
+import { useMessages } from '../../../shared/i18n';
 
 interface AutomationSuggestionCardProps {
   /** Opens the composer pre-filled with the suggested rule. Creates nothing. */
@@ -35,25 +35,26 @@ export function AutomationSuggestionCard({
   onSetUp,
   onStartFromScratch,
 }: AutomationSuggestionCardProps): ReactElement {
+  const copy = useMessages('automation').suggestions;
   return (
     <article className="panel automation-suggestion">
       <div className="panel__header">
         <div>
-          <h3 className="section-title">{AUTOMATION_SUGGESTION_COPY.title}</h3>
-          <p className="muted-text">{AUTOMATION_SUGGESTION_COPY.intro}</p>
+          <h3 className="section-title">{copy.title}</h3>
+          <p className="muted-text">{copy.intro}</p>
         </div>
       </div>
-      <p className="automation-suggestion__rule">{AUTOMATION_SUGGESTION_COPY.suggestion}</p>
-      <p className="muted-text">{AUTOMATION_SUGGESTION_COPY.rationale}</p>
+      <p className="automation-suggestion__rule">{copy.suggestion}</p>
+      <p className="muted-text">{copy.rationale}</p>
       <p className="muted-text automation-suggestion__caveat">
-        {AUTOMATION_SUGGESTION_COPY.caveat}
+        {copy.caveat}
       </p>
       <div className="automation-suggestion__actions">
         <Button tone="primary" onClick={onSetUp}>
-          {AUTOMATION_SUGGESTION_COPY.primary}
+          {copy.primary}
         </Button>
         <Button tone="secondary" onClick={onStartFromScratch}>
-          {AUTOMATION_SUGGESTION_COPY.secondary}
+          {copy.secondary}
         </Button>
       </div>
     </article>

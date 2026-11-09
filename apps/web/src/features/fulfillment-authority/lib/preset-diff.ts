@@ -34,7 +34,7 @@
  */
 
 import { resolveAnswer, type AnswerRendering } from './who-decides-view';
-import { PRESET_CHANGE_MEANING_COPY, QUESTION_LABEL_COPY } from './who-decides.copy';
+import { PRESET_CHANGE_MEANING_COPY, QUESTION_LABEL_COPY } from './who-decides-text';
 import type { AuthorityAnswerKind, AuthorityPresetChange, AuthorityQuestion } from '../api/who-decides.types';
 
 /** One generated sentence: what this decision was, what it becomes, what that means. */

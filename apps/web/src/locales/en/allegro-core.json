@@ -1,0 +1,140 @@
+{
+  "allegroConnectCallbackPage": {
+    "alreadyCompleted": {
+      "message": "This authorisation link was already used. Your marketplace connection should be active.",
+      "title": "Authorisation already completed",
+      "viewConnections": "View connections"
+    },
+    "apiChip": "Marketplace API",
+    "denied": {
+      "message": "You did not authorise OpenLinker on the marketplace. No connection was created.",
+      "startOver": "Start over",
+      "title": "Authorisation denied"
+    },
+    "description": "Processing the authorisation response from the marketplace.",
+    "eyebrow": "OAuth callback",
+    "failed": {
+      "title": "Authorisation failed",
+      "tryAgain": "Try again",
+      "unknown": "Unknown error"
+    },
+    "invalid": {
+      "message": "The authorisation callback is missing required parameters. This may happen if you navigate here directly.",
+      "startSetup": "Start setup",
+      "title": "Invalid callback"
+    },
+    "oauthChip": "OAuth 2.0",
+    "pending": {
+      "message": "Exchanging the authorisation code with the marketplace…",
+      "title": "Completing authorisation"
+    },
+    "success": {
+      "active": "Active",
+      "connectionId": "Connection ID",
+      "eyebrow": "Success",
+      "goToConnection": "Go to connection",
+      "name": "Name",
+      "title": "Connection created",
+      "viewAll": "View all connections"
+    },
+    "title": "Marketplace authorisation"
+  },
+  "allegroSetupForm": {
+    "back": "Back",
+    "backLabel": "Connections",
+    "beforeYouStart": {
+      "body": "In the <link>{platform} developer portal</link>, create a developer app and register <uri>{redirectUri}</uri> as an allowed redirect URI. Copy the Client ID and Client Secret from that app into the fields below.",
+      "title": "Before you start"
+    },
+    "catalogueInfo": {
+      "body": "OpenLinker links {platform} offers to products through barcodes on your product catalogue connection. Select the shop whose catalogue should resolve those barcodes.",
+      "title": "Link the product catalogue"
+    },
+    "connect": "Connect with {platform}",
+    "connecting": "Connecting…",
+    "environmentInfo": {
+      "body": "Sandbox is a separate {platform} tenant for testing. Production credentials will not work in sandbox and vice versa.",
+      "title": "Pick the right environment"
+    },
+    "environments": {
+      "production": "Production",
+      "sandbox": "Sandbox"
+    },
+    "fallbackPlatform": "the marketplace",
+    "fields": {
+      "catalogue": {
+        "description": "Select the product catalogue connection to use for offer-product barcode linking. You can configure this later if you are still setting up the shop side.",
+        "failed": "Failed to load connections",
+        "label": "Product catalogue connection",
+        "loading": "Loading connections…"
+      },
+      "clientId": {
+        "description": "OAuth client ID from your {platform} developer app.",
+        "label": "Client ID",
+        "placeholder": "your-client-id"
+      },
+      "clientSecret": {
+        "description": "OAuth client secret from your {platform} developer app.",
+        "label": "Client secret",
+        "placeholder": "your-client-secret"
+      },
+      "environment": "Environment",
+      "name": {
+        "description": "A label for this {platform} integration in OpenLinker.",
+        "label": "Connection name",
+        "placeholder": "{platform} sandbox"
+      }
+    },
+    "next": "Next",
+    "none": "None (configure later)",
+    "reauth": {
+      "body": "Completing this flow replaces the stored credentials for the flagged connection and resumes syncing. Re-enter the Client ID and Client Secret for the <strong>same {platform} seller account</strong> from your developer app - the connection and its mappings are preserved. The Environment and Product catalogue selections below do not change the existing connection's configuration; only the credentials are rotated.",
+      "title": "Re-authenticating an existing connection"
+    },
+    "review": {
+      "delivery": "Delivery on documents",
+      "empty": "-",
+      "name": "Name",
+      "redirectNote": "After clicking <strong>Connect with {platform}</strong>, you will be redirected to {platform} to authorise this connection. Make sure your {platform} app has <uri>{redirectUri}</uri> registered as a redirect URI."
+    },
+    "startFailed": "Failed to start authorisation",
+    "steps": {
+      "credentials": "Credentials",
+      "environment": "Environment",
+      "productCatalogue": "Product catalogue",
+      "review": "Review & connect",
+      "salesDocuments": "Sales documents"
+    }
+  },
+  "allegroSetupSchema": {
+    "clientIdRequired": "Client ID is required",
+    "clientSecretRequired": "Client secret is required",
+    "invalidConnectionId": "Invalid connection ID",
+    "nameRequired": "Connection name is required"
+  },
+  "allegroSetupSummary": {
+    "clientId": "Client ID",
+    "connection": "Connection",
+    "environment": "Environment",
+    "linkedTo": "Linked to",
+    "name": "Name",
+    "notLinked": "- not linked -",
+    "productCatalogue": "Product catalogue",
+    "production": "Production",
+    "sandbox": "Sandbox",
+    "target": "Target"
+  },
+  "translateAllegroError": {
+    "afterSalesRequired": "Set after-sales policies (returns, warranty, implied warranty) on the connection-edit page or directly on the offer. The marketplace requires them for business accounts.",
+    "noSafetyInformationNotAllowed": "This category requires substantive safety information. Edit the connection and choose 'Provide safety information (text)' with category-relevant content (battery warnings, age restrictions, CE/RoHS, etc.).",
+    "responsibleProducerMissing": "Set a responsible producer in the connection's seller defaults.",
+    "safetyInfoNotDefined": "The marketplace rejected the safety information for this category. Check the safety information type and save the connection's seller defaults again. If the issue persists, the category likely needs written safety information rather than the \"no safety information\" option.",
+    "taxRateMissing": "No tax rate is known for this product, so the offer cannot state what tax it charges. Add the rate in the shop's catalogue and re-sync the product.",
+    "taxRateNotAllowed": "{reason} Correct the rate in the shop and re-sync the product; OpenLinker never publishes an offer with the rate omitted.",
+    "taxRateNotAllowedDefault": "This marketplace category does not allow the tax rate on this product.",
+    "taxRateNotExpressible": "This channel cannot express the tax code on this product. Set a rate the channel supports, or list the product where the code is supported.",
+    "unknownField": "OpenLinker sent a field the marketplace does not recognise. Try again later; if it keeps failing, contact support with the offer ID.",
+    "unknownFieldAt": "OpenLinker sent a field the marketplace does not recognise at `{field}`. Try again later; if it keeps failing, contact support with the offer ID.",
+    "unsupportedLanguage": "OpenLinker sent a language setting the marketplace does not support. Try again later; if it keeps failing, contact support."
+  }
+}

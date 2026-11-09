@@ -10,12 +10,14 @@
 import { WoocommercePublishWizard } from '../../features/listings';
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
+import { getWoocommerceMessages, woocommerceMessages } from './messages';
 import { WoocommerceCredentialsPanel } from './components/woocommerce-credentials-panel';
 import { WoocommerceStructuredSection } from './components/woocommerce-structured-section';
 import { woocommerceSetupRoute } from './woocommerce-setup.route';
 
 export const woocommercePlugin: OpenLinkerPlugin = definePlugin({
   id: 'woocommerce',
+  messages: woocommerceMessages,
   platformType: 'woocommerce',
   build: {
     routes: [woocommerceSetupRoute],
@@ -29,12 +31,17 @@ export const woocommercePlugin: OpenLinkerPlugin = definePlugin({
   },
   platform: {
     displayName: 'WooCommerce',
+    // Getters, not values: the card is read at render, so the copy follows
+    // the active language instead of freezing at module load.
     setupCard: {
       title: 'WooCommerce',
-      description:
-        'Connect a WooCommerce store via the REST API. You will need the site URL and a Consumer Key / Secret pair.',
+      get description(): string {
+        return getWoocommerceMessages().plugin.setupCard.description;
+      },
       to: '/connections/new/woocommerce',
-      badge: 'REST API',
+      get badge(): string {
+        return getWoocommerceMessages().plugin.setupCard.badge;
+      },
     },
     StructuredConfigSection: WoocommerceStructuredSection,
     CredentialsPanel: WoocommerceCredentialsPanel,

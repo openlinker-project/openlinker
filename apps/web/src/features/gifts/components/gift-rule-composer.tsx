@@ -45,6 +45,9 @@ import { GiftRulePeriodSection } from './gift-rule-period-section';
 import { GiftRuleRail } from './gift-rule-rail';
 import { GiftRuleWhenSection } from './gift-rule-when-section';
 
+/** Vertical-ellipsis glyph on the row menu trigger; the accessible name is the aria-label. */
+const MENU_GLYPH = '\u22EF';
+
 export interface GiftRuleComposerProps {
   initial: GiftRuleFormValues;
   /** The saved rule being edited; `null` for a new one. */
@@ -152,7 +155,7 @@ export function GiftRuleComposer({
                 aria-label={copy.detail.actionsMenu}
                 data-testid="gift-composer-menu"
               >
-                ⋯
+                {MENU_GLYPH}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">

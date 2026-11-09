@@ -1,0 +1,663 @@
+{
+  "connectionRoleGap": "{name} nie ma jeszcze ustawionej roli w sekcji Podłączeni dostawcy. Ta reguła i tak będzie kierować samodzielnie, ale {name} będzie widoczne tutaj na liście ostrzeżeń kanałów docelowych, dopóki nie dostanie roli.",
+  "countryReset": {
+    "acknowledgment": "potwierdzenie braku dokumentu",
+    "bothDefaults": "oba ustawienia domyślne kraju",
+    "invoiceDefault": "ustawienie domyślne dla faktury",
+    "nothing": "nic",
+    "receiptDefault": "ustawienie domyślne dla paragonu",
+    "rules": {
+      "few": "{n} reguły",
+      "many": "{n} reguł",
+      "one": "{n} regułę",
+      "other": "{n} reguły"
+    },
+    "sentence": "To usunie {items} dla kraju {country}. Tej operacji nie można cofnąć."
+  },
+  "describeCondition": {
+    "hasTaxId": "klient ma NIP",
+    "noTaxId": "klient nie ma NIP",
+    "orderCountry": "kraj zamówienia to {country}",
+    "totalAtLeast": "suma ≥ {amount}",
+    "totalAtLeastWithCurrency": "suma ≥ {amount} {currency}",
+    "totalBelow": "suma < {amount}",
+    "totalBelowWithCurrency": "suma < {amount} {currency}"
+  },
+  "destinationWarnings": {
+    "issuesNothing": {
+      "few": "{name} ma ustawione wystawianie Nic w sekcji Podłączeni dostawcy, więc {n} reguły, które je wskazują, nie mogą kierować. Nadaj mu rolę albo skieruj je gdzie indziej.",
+      "many": "{name} ma ustawione wystawianie Nic w sekcji Podłączeni dostawcy, więc {n} reguł, które je wskazują, nie może kierować. Nadaj mu rolę albo skieruj je gdzie indziej.",
+      "one": "{name} ma ustawione wystawianie Nic w sekcji Podłączeni dostawcy, więc reguła, która je wskazuje, nie może kierować. Nadaj mu rolę albo skieruj ją gdzie indziej.",
+      "other": "{name} ma ustawione wystawianie Nic w sekcji Podłączeni dostawcy, więc {n} reguły, które je wskazują, nie mogą kierować. Nadaj mu rolę albo skieruj je gdzie indziej."
+    },
+    "notActive": {
+      "archived": {
+        "few": "{name} jest zarchiwizowane, więc {n} reguły, które je wskazują, nie mogą kierować - automatyczne wystawianie bierze pod uwagę tylko aktywne połączenia. Przywróć je albo skieruj reguły gdzie indziej.",
+        "many": "{name} jest zarchiwizowane, więc {n} reguł, które je wskazują, nie może kierować - automatyczne wystawianie bierze pod uwagę tylko aktywne połączenia. Przywróć je albo skieruj reguły gdzie indziej.",
+        "one": "{name} jest zarchiwizowane, więc reguła, która je wskazuje, nie może kierować - automatyczne wystawianie bierze pod uwagę tylko aktywne połączenia. Przywróć je albo skieruj regułę gdzie indziej.",
+        "other": "{name} jest zarchiwizowane, więc {n} reguły, które je wskazują, nie mogą kierować - automatyczne wystawianie bierze pod uwagę tylko aktywne połączenia. Przywróć je albo skieruj reguły gdzie indziej."
+      },
+      "disabled": {
+        "few": "{name} jest wyłączone, więc {n} reguły, które je wskazują, nie mogą kierować - automatyczne wystawianie bierze pod uwagę tylko aktywne połączenia. Włącz je albo skieruj reguły gdzie indziej.",
+        "many": "{name} jest wyłączone, więc {n} reguł, które je wskazują, nie może kierować - automatyczne wystawianie bierze pod uwagę tylko aktywne połączenia. Włącz je albo skieruj reguły gdzie indziej.",
+        "one": "{name} jest wyłączone, więc reguła, która je wskazuje, nie może kierować - automatyczne wystawianie bierze pod uwagę tylko aktywne połączenia. Włącz je albo skieruj regułę gdzie indziej.",
+        "other": "{name} jest wyłączone, więc {n} reguły, które je wskazują, nie mogą kierować - automatyczne wystawianie bierze pod uwagę tylko aktywne połączenia. Włącz je albo skieruj reguły gdzie indziej."
+      },
+      "error": {
+        "few": "{name} jest w stanie błędu, więc {n} reguły, które je wskazują, nie mogą kierować - automatyczne wystawianie bierze pod uwagę tylko aktywne połączenia. Napraw połączenie albo skieruj reguły gdzie indziej.",
+        "many": "{name} jest w stanie błędu, więc {n} reguł, które je wskazują, nie może kierować - automatyczne wystawianie bierze pod uwagę tylko aktywne połączenia. Napraw połączenie albo skieruj reguły gdzie indziej.",
+        "one": "{name} jest w stanie błędu, więc reguła, która je wskazuje, nie może kierować - automatyczne wystawianie bierze pod uwagę tylko aktywne połączenia. Napraw połączenie albo skieruj regułę gdzie indziej.",
+        "other": "{name} jest w stanie błędu, więc {n} reguły, które je wskazują, nie mogą kierować - automatyczne wystawianie bierze pod uwagę tylko aktywne połączenia. Napraw połączenie albo skieruj reguły gdzie indziej."
+      },
+      "needsReauth": {
+        "few": "{name} wymaga ponownego połączenia, więc {n} reguły, które je wskazują, nie mogą kierować - automatyczne wystawianie bierze pod uwagę tylko aktywne połączenia. Połącz je ponownie albo skieruj reguły gdzie indziej.",
+        "many": "{name} wymaga ponownego połączenia, więc {n} reguł, które je wskazują, nie może kierować - automatyczne wystawianie bierze pod uwagę tylko aktywne połączenia. Połącz je ponownie albo skieruj reguły gdzie indziej.",
+        "one": "{name} wymaga ponownego połączenia, więc reguła, która je wskazuje, nie może kierować - automatyczne wystawianie bierze pod uwagę tylko aktywne połączenia. Połącz je ponownie albo skieruj regułę gdzie indziej.",
+        "other": "{name} wymaga ponownego połączenia, więc {n} reguły, które je wskazują, nie mogą kierować - automatyczne wystawianie bierze pod uwagę tylko aktywne połączenia. Połącz je ponownie albo skieruj reguły gdzie indziej."
+      }
+    },
+    "title": {
+      "few": "{n} kanały docelowe nie mogą kierować",
+      "many": "{n} kanałów docelowych nie może kierować",
+      "one": "Jeden kanał docelowy nie może kierować",
+      "other": "{n} kanału docelowego nie może kierować"
+    },
+    "unknownConnection": {
+      "few": "{name} nie ma na liście połączeń, więc {n} reguły, które je wskazują, nie mogą kierować. Odśwież stronę - jeśli to nie zniknie, skieruj je do działającego dostawcy.",
+      "many": "{name} nie ma na liście połączeń, więc {n} reguł, które je wskazują, nie może kierować. Odśwież stronę - jeśli to nie zniknie, skieruj je do działającego dostawcy.",
+      "one": "{name} nie ma na liście połączeń, więc reguła, która je wskazuje, nie może kierować. Odśwież stronę - jeśli to nie zniknie, skieruj ją do działającego dostawcy.",
+      "other": "{name} nie ma na liście połączeń, więc {n} reguły, które je wskazują, nie mogą kierować. Odśwież stronę - jeśli to nie zniknie, skieruj je do działającego dostawcy."
+    }
+  },
+  "documentKind": {
+    "both": "Oba",
+    "fiscalReceipt": "Paragon fiskalny",
+    "invoice": "Faktura",
+    "invoices": "Faktury",
+    "nothing": "Nic",
+    "receipt": "Paragon",
+    "receipts": "Paragony"
+  },
+  "dryRun": {
+    "aggregate": "To zamówienie zostałoby dołączone do okresowej partii zamiast od razu dostać dokument.",
+    "held": "To zamówienie zostałoby wstrzymane - nic nie mogło ustalić dla niego dokumentu.",
+    "kind": {
+      "destinationDecides": "dokument, o którym decyduje jego kanał docelowy",
+      "document": "dokument",
+      "fiscalReceipt": "paragon fiskalny",
+      "invoice": "fakturę",
+      "other": "dokument {kind}"
+    },
+    "routeCandidate": "To zamówienie dostałoby {kind} przez {where} - dzięki regule, którą tworzysz.",
+    "routeCountryDefault": "To zamówienie dostałoby {kind} przez {where} - dzięki ustawieniu domyślnemu kraju w {where}.",
+    "routeSavedRule": "To zamówienie dostałoby {kind} przez {where} - dzięki zapisanej już regule w {where}.",
+    "unknownConnection": "(nieznane)"
+  },
+  "fiscalReceiptDetailPage": {
+    "empty": "-",
+    "eyebrow": "Operacje",
+    "fields": {
+      "connection": "Połączenie",
+      "documentReference": "Numer dokumentu",
+      "provider": "Dostawca",
+      "providerReference": "Numer u dostawcy",
+      "registered": "Zarejestrowano"
+    },
+    "loadError": "Nie udało się wczytać tego paragonu fiskalnego",
+    "loading": "Wczytywanie…",
+    "notFound": {
+      "back": "Wróć do dokumentów sprzedaży",
+      "message": "Ten rekord nie istnieje lub nie masz do niego dostępu.",
+      "title": "Nie znaleziono paragonu fiskalnego"
+    },
+    "openOrder": "Otwórz zamówienie",
+    "retry": "Ponów",
+    "title": "Paragon fiskalny"
+  },
+  "gateReasons": {
+    "bundle-split-unknown": {
+      "detail": "Zestaw w tym zamówieniu zawiera pozycje o różnych stawkach VAT, ale brakuje stawki lub ceny potrzebnej do jego rozbicia, więc nic nie wystawiono. Popraw stawkę lub cenę w sklepie; zamówienie zostanie ponowione przy następnej aktualizacji.",
+      "short": "Zestawu nie można rozbić"
+    },
+    "line-total-mismatch": {
+      "detail": "Pozycje zamówienia nie sumują się do podanej w nim sumy, więc nie można automatycznie wystawić dokumentu. Zwykle przyczyną jest rabat, który marketplace naliczył na całe zamówienie.",
+      "short": "Kwoty się nie sumują"
+    },
+    "missing-required-tax-id": {
+      "detail": "Ten dokument wymaga NIP kupującego, a zamówienie go nie ma.",
+      "short": "Brak NIP kupującego"
+    },
+    "missing-tax-rate": {
+      "detail": "Coś w tym zamówieniu nie ma stawki VAT. Nic tu nie jest zgadywane, więc dokument jest wstrzymany. Ustaw stawkę w katalogu sklepu.",
+      "short": "Brak stawki VAT"
+    },
+    "tax-rate-conflict": {
+      "detail": "Twój sklep i kanał sprzedaży podają różne stawki VAT dla pozycji. Używana jest stawka ze sklepu.",
+      "short": "Niezgodne stawki VAT"
+    },
+    "trigger-model-batched": {
+      "detail": "To połączenie ma ustawione wystawianie w partiach, a wystawianie w partiach nie jest jeszcze dostępne, więc nic nie zostało wystawione. Wystaw dokument ręcznie albo przełącz połączenie na wystawianie po opłaceniu.",
+      "short": "W partiach"
+    },
+    "trigger-model-manual": {
+      "detail": "Ten dostawca wystawia dokumenty tylko na żądanie, więc nic nie zostało wystawione automatycznie.",
+      "short": "Na żądanie"
+    },
+    "unresolved-routing": {
+      "detail": "Kierowanie nie mogło ustalić, jaki dokument dostaje to zamówienie. Sprawdź reguły dla jego kraju.",
+      "short": "Brak kierowania"
+    }
+  },
+  "marketOutcome": {
+    "acknowledged": "Brak dokumentu z wyboru",
+    "aggregate": "Zebrane, jeszcze niewystawione",
+    "notSetUp": "Nie ustawiono",
+    "nothingIssued": "Nic nie wystawiono"
+  },
+  "marketSummary": {
+    "allSet": {
+      "few": "Wszystkie {n} rynki wystawiają swoje dokumenty.",
+      "many": "Wszystkie {n} rynków wystawia swoje dokumenty.",
+      "one": "Ten rynek wystawia swoje dokumenty.",
+      "other": "Wszystkie {n} rynku wystawiają swoje dokumenty."
+    },
+    "attention": {
+      "few": "{n} z {total} rynków - {names} - nic teraz nie wystawiają. Nic nie przepada, dopóki nie są skonfigurowane - ustaw kierowanie, aby zacząć wystawiać.",
+      "many": "{n} z {total} rynków - {names} - nic teraz nie wystawia. Nic nie przepada, dopóki nie są skonfigurowane - ustaw kierowanie, aby zacząć wystawiać.",
+      "one": "{n} z {total} rynków - {names} - nic teraz nie wystawia. Nic nie przepada, dopóki nie jest skonfigurowany - ustaw kierowanie, aby zacząć wystawiać.",
+      "other": "{n} z {total} rynków - {names} - nic teraz nie wystawia. Nic nie przepada, dopóki nie są skonfigurowane - ustaw kierowanie, aby zacząć wystawiać."
+    },
+    "freshInstall": {
+      "few": "Zamówienia przychodzą z {n} rynków - {names} - i żaden nie jest jeszcze skonfigurowany. Nic nie przepada, dopóki czekają - ustaw kierowanie, gdy będziesz gotowy.",
+      "many": "Zamówienia przychodzą z {n} rynków - {names} - i żaden nie jest jeszcze skonfigurowany. Nic nie przepada, dopóki czekają - ustaw kierowanie, gdy będziesz gotowy.",
+      "one": "Zamówienia przychodzą z rynku {names}, który nie jest jeszcze skonfigurowany. Nic nie przepada, dopóki czeka - ustaw kierowanie, gdy będziesz gotowy.",
+      "other": "Zamówienia przychodzą z {n} rynku - {names} - i żaden nie jest jeszcze skonfigurowany. Nic nie przepada, dopóki czekają - ustaw kierowanie, gdy będziesz gotowy."
+    },
+    "namesAndMore": "{names} i jeszcze {count}",
+    "restOfWorld": "Reszta świata"
+  },
+  "overlap": {
+    "clear": {
+      "amountRange": "Ta reguła nie może pasować do tego samego zamówienia co {rule} - żadna suma zamówienia nie spełnia obu.",
+      "buyerTaxId": "Ta reguła nie może pasować do tego samego zamówienia co {rule} - jedna wymaga klienta z NIP, a druga klienta bez NIP.",
+      "currency": "Ta reguła nie może pasować do tego samego zamówienia co {rule} - ich waluty się różnią, a kwota jest porównywana, nie przeliczana.",
+      "effectiveWindow": "Ta reguła nie może pasować do tego samego zamówienia co {rule} - ich okresy obowiązywania nigdy się nie pokrywają.",
+      "generic": "Ta reguła nie może pasować do tego samego zamówienia co {rule}.",
+      "orderCountry": "Ta reguła nie może pasować do tego samego zamówienia co {rule} - dotyczą różnych krajów dostawy."
+    },
+    "conflictRival": "{rule} może pasować do tego samego zamówienia co ta reguła.",
+    "consequence": "Gdy pasują dwie reguły, zamówienie jest wstrzymywane, zamiast żeby jedna wygrała. Zawęź jedną z nich.",
+    "ruleByConditions": "„{conditions}”",
+    "ruleById": "reguła {ruleId}",
+    "undecided": {
+      "generic": "Nie udało się ustalić, czy ta reguła koliduje z {rule} - ta wersja nie potrafi ich porównać.",
+      "multiCurrencyRule": "Nie udało się ustalić, czy ta reguła koliduje z {rule} - jedna z nich ogranicza sumę w więcej niż jednej walucie, co nie pasuje do żadnego zamówienia.",
+      "unreadableCondition": "Nie udało się ustalić, czy ta reguła koliduje z {rule} - zawiera warunek, którego ta wersja nie rozumie. Otwórz ją i sprawdź jego treść."
+    }
+  },
+  "recordWord": {
+    "atClearance": "W rozliczeniu",
+    "clearanceRejected": "Odrzucony przy rozliczeniu",
+    "failed": "Błąd",
+    "issued": "Wystawiony",
+    "issuing": "Wystawianie",
+    "needsReview": "Do sprawdzenia",
+    "queued": "W kolejce",
+    "registered": "Zarejestrowany",
+    "registering": "Rejestrowanie",
+    "rejected": "Odrzucony",
+    "unconfirmed": "Niepotwierdzony",
+    "unrecognised": "Nierozpoznany status"
+  },
+  "ruleDraft": {
+    "conditionsBetween": "zamówienie, w którym {conditions}, dostaje {kind} przez {where} od {from} do {to}.",
+    "conditionsOpen": "zamówienie, w którym {conditions}, dostaje {kind} przez {where} od {from}.",
+    "everyOrderBetween": "każde zamówienie dostaje {kind} przez {where} od {from} do {to}.",
+    "everyOrderOpen": "każde zamówienie dostaje {kind} przez {where} od {from}.",
+    "kind": {
+      "invoice": "fakturę",
+      "other": "dokument {kind}",
+      "receipt": "paragon"
+    },
+    "noConnection": "(nie wybrano integracji)"
+  },
+  "salesDocumentCountryDefaults": {
+    "eyebrow": "Jeśli żadna reguła nie pasuje",
+    "eyebrowSaving": "Jeśli żadna reguła nie pasuje - Zapisywanie…",
+    "loadError": "Nie udało się wczytać ustawienia domyślnego",
+    "loading": {
+      "message": "Pobieranie ustawienia domyślnego kraju…",
+      "title": "Wczytywanie ustawienia domyślnego"
+    },
+    "noCandidates": "Żadne połączenie nie ma tu jeszcze roli - nadaj ją w sekcji Podłączeni dostawcy.",
+    "nothingOption": "Nic - wstrzymaj zamówienie",
+    "option": "{kind} · {name}",
+    "optionStale": "{kind} · {name} (już nie spełnia warunków)",
+    "optionsHint": "Opcje: <b>Nic - wstrzymaj zamówienie</b> albo dowolne jedno połączenie z rolą.",
+    "readback": {
+      "heading": "Co oznacza",
+      "held": "Zamówienie w kraju <b>{country}</b>, które nie pasuje do żadnej reguły powyżej, nie ma tu ustawienia zapasowego i zostaje <b>wstrzymane</b>.",
+      "invoice": "Zamówienie w kraju <b>{country}</b>, które nie pasuje do żadnej reguły powyżej, dostaje dokument <b>{kind}</b> przez <b>{connection}</b>.",
+      "receipt": "Zamówienie w kraju <b>{country}</b>, które nie pasuje do żadnej reguły powyżej, dostaje dokument <b>{kind}</b> przez <b>{connection}</b>."
+    },
+    "restOfWorld": "★ Reszta świata",
+    "unknownError": "Nieznany błąd"
+  },
+  "salesDocumentCountryRoutingDialog": {
+    "acknowledged": {
+      "body": "Potwierdzono - <time></time>.",
+      "title": "Brak dokumentu sprzedaży, celowo",
+      "undo": "Cofnij"
+    },
+    "back": "← Wróć do {country}",
+    "done": "Gotowe",
+    "leave": {
+      "cancel": "Wróć",
+      "confirm": "Potwierdź - nic tu nie trzeba",
+      "description": "Dla tego rynku nie ustawiono żadnej reguły ani ustawienia domyślnego, więc każde zamówienie z kraju {country} jest wstrzymywane i nic nie jest wystawiane. Jeśli tak ma być - na przykład marketplace już fiskalizuje sprzedaż w Twoim imieniu - potwierdź to poniżej. OpenLinker nadal nie decyduje, czego wymagają przepisy; to tylko przestaje oznaczać kraj {country} jako wymagający sprawdzenia.",
+      "title": "Zostawić {country} bez konfiguracji?"
+    },
+    "reset": {
+      "button": "Resetuj kraj",
+      "confirm": "Tak, resetuj",
+      "title": "Zresetować {country}?",
+      "warning": "Resetowanie usuwa wszystkie reguły i ustawienia domyślne skonfigurowane dla kraju {country} w OpenLinker. Nie zmienia niczego u dostawcy - nie dotyczy żadnej już wystawionej faktury ani paragonu."
+    },
+    "resetFailed": "Nie udało się zresetować kraju",
+    "restOfWorld": "★ Reszta świata",
+    "saveNote": "Każda kontrolka tutaj zapisuje się przy zmianie - nie ma czego zatwierdzać.",
+    "tiers": {
+      "countryDefault": "Ustawienie domyślne kraju",
+      "fallsThrough": "Przechodzi do ★ Reszta świata",
+      "rules": "Reguły",
+      "unmatchedHeld": "Niedopasowane zamówienie jest wstrzymywane",
+      "unmatchedLoading": "Co dzieje się z niedopasowanym zamówieniem",
+      "unresolved": "Nierozstrzygnięte"
+    },
+    "title": "Kierowanie dokumentów sprzedaży · {country}",
+    "unmatched": {
+      "fallsThrough": "{country} nie ma reguł ani ustawienia domyślnego, więc zamówienie dostarczane tutaj trafia do reguł i ustawień domyślnych <mono>★ Reszta świata</mono>.",
+      "held": "{country} ma własne kierowanie, więc zamówienie, które nie pasuje tu do niczego, jest <strong>wstrzymywane</strong>. <strong>Nie</strong> trafia do <mono>★ Reszta świata</mono> - przechodzi tam tylko rynek bez żadnych reguł i bez ustawienia domyślnego.",
+      "loading": "Wczytywanie reguł i ustawień domyślnych tego rynku…",
+      "openRestOfWorld": "Otwórz kierowanie dla ★ Reszta świata →"
+    },
+    "unresolved": {
+      "fallsThrough": "Jeśli ★ Reszta świata też nie ma pasującej reguły ani ustawienia domyślnego, zamówienie jest zgłaszane jako nierozstrzygnięte.",
+      "held": "Zamówienie jest wstrzymywane, jak opisano wyżej - nigdy nie trafia do ★ Reszta świata, gdy ten kraj ma jakąkolwiek własną regułę lub ustawienie domyślne.",
+      "loading": "To, co się tu dzieje, zależy od tego, czy ten rynek ma własne kierowanie - trwa sprawdzanie.",
+      "restOfWorld": "Jeśli nic powyżej nie pasuje, zamówieniu nie zostaje żadne skonfigurowane ustawienie zapasowe i jest zgłaszane jako nierozstrzygnięte."
+    }
+  },
+  "salesDocumentListCell": {
+    "clearance": "Rozliczenie",
+    "dupeMany": {
+      "few": "Dla tego zamówienia istnieją {n} dokumenty",
+      "many": "Dla tego zamówienia istnieje {n} dokumentów",
+      "one": "Dla tego zamówienia istnieje {n} dokument",
+      "other": "Dla tego zamówienia istnieje {n} dokumentu"
+    },
+    "dupeSecond": "Dla tego zamówienia istnieje drugi dokument",
+    "dupeWarn": "{dupe}.",
+    "headline": "{kind} · {word}",
+    "number": "Numer",
+    "openOrder": "Pokaż zamówienie",
+    "provider": "Dostawca",
+    "providerWithType": "{name} ({type})",
+    "regulatory": {
+      "accepted": "Przyjęty",
+      "cleared": "W rozliczeniu",
+      "not-applicable": "Nie dotyczy",
+      "pending-submission": "Czeka na przesłanie",
+      "rejected": "Odrzucony",
+      "submitted": "Przesłany"
+    },
+    "spokenState": "{kind}: {word}",
+    "spokenWithDupe": "{state}. {dupe}",
+    "viewDocument": "Pokaż dokument →"
+  },
+  "salesDocumentMarketRow": {
+    "configure": "Konfiguruj",
+    "meta": "{orders}, {rules}",
+    "needsAttention": "Wymaga uwagi",
+    "orders": {
+      "few": "{n} zamówienia",
+      "many": "{n} zamówień",
+      "one": "{n} zamówienie",
+      "other": "{n} zamówienia"
+    },
+    "ordersInWindow": {
+      "few": "{n} zamówienia w ciągu ostatnich {days} dni",
+      "many": "{n} zamówień w ciągu ostatnich {days} dni",
+      "one": "{n} zamówienie w ciągu ostatnich {days} dni",
+      "other": "{n} zamówienia w ciągu ostatnich {days} dni"
+    },
+    "reasonWithTemplate": "{reason} · Dostępna konfiguracja startowa",
+    "restOfWorld": "★ Reszta świata",
+    "rulesConfigured": {
+      "few": "{n} skonfigurowane reguły",
+      "many": "{n} skonfigurowanych reguł",
+      "one": "{n} skonfigurowana reguła",
+      "other": "{n} skonfigurowanej reguły"
+    },
+    "setUp": "Skonfiguruj"
+  },
+  "salesDocumentMarketSection": {
+    "empty": {
+      "message": "Rynki pojawiają się tutaj same, gdy przychodzą zamówienia z nowego kraju. Do tego czasu nie ma czego konfigurować.",
+      "title": "Nie ma jeszcze rynków"
+    },
+    "filters": {
+      "active": "Ostatnie zamówienia",
+      "all": "Wszystkie rynki",
+      "attention": "Wymaga decyzji",
+      "configured": "Skonfigurowane, bez ostatnich zamówień",
+      "label": "Filtruj rynki"
+    },
+    "listLabel": "Rynki dokumentów sprzedaży",
+    "loadError": "Nie udało się wczytać rynków",
+    "noMatches": "Żaden rynek nie pasuje do tego filtra.",
+    "refreshing": "Odświeżanie rynków…",
+    "retry": "Ponów"
+  },
+  "salesDocumentMarketSectionSkeleton": {
+    "loading": "Wczytywanie rynków…"
+  },
+  "salesDocumentRuleComposerDialog": {
+    "cancel": "Anuluj",
+    "checking": "Sprawdzanie…",
+    "conditions": {
+      "add": "+ Dodaj warunek",
+      "amountLabel": "Kwota sumy zamówienia",
+      "atLeast": "≥",
+      "below": "<",
+      "comparisonLabel": "Porównanie sumy zamówienia",
+      "countryValueLabel": "Wartość kraju zamówienia",
+      "currencyLabel": "Waluta sumy zamówienia",
+      "fieldLabel": "Pole warunku",
+      "fields": {
+        "buyerHasTaxId": "Kupujący ma NIP",
+        "orderCountry": "Kraj zamówienia to",
+        "orderTotalGross": "Suma zamówienia (brutto)"
+      },
+      "heading": "Warunki",
+      "intro": "Aby reguła pasowała, WSZYSTKIE dodane warunki muszą być spełnione (I).",
+      "no": "nie",
+      "taxIdValueLabel": "Wartość: kupujący ma NIP",
+      "yes": "tak"
+    },
+    "conflict": {
+      "showRule": "Pokaż tę regułę",
+      "title": "Ta reguła może pasować do tego samego zamówienia co istniejąca reguła"
+    },
+    "destination": {
+      "documentType": "Typ dokumentu",
+      "heading": "Dokument i kanał docelowy",
+      "integration": "Integracja",
+      "roleGapTitle": "To połączenie nie ma jeszcze roli",
+      "selectConnection": "Wybierz połączenie…"
+    },
+    "footnote": "Bazowe <mono>pole</mono> pochodzi z jednego zamkniętego słownika wspólnego dla wszystkich krajów - nigdy nie jest tekstem właściwym dla jednego kraju.",
+    "overlapUnavailable": {
+      "body": "Ta reguła nie została porównana z pozostałymi regułami tego rynku. Zapisanie jest nadal możliwe, a zamówienie dopasowane przez dwie reguły jest wstrzymywane, zamiast dostać niewłaściwy dokument.",
+      "title": "Nie udało się sprawdzić nakładania się reguł"
+    },
+    "placeholders": {
+      "amount": "450.00",
+      "country": "np. PL",
+      "currency": "PLN"
+    },
+    "readback": {
+      "currencyHint": "Zamówienia wycenione w innej walucie nie pasują do tej reguły.",
+      "heading": "Ta reguła mówi"
+    },
+    "sample": {
+      "amountLabel": "Kwota sumy przykładowego zamówienia",
+      "countryLabel": "Kraj dostawy przykładowego zamówienia",
+      "currencyLabel": "Waluta przykładowego zamówienia",
+      "gross": "Ceny brutto (z VAT)",
+      "heading": "Przykładowe zamówienie",
+      "ignoresWindow": "Ten test pomija okres obowiązywania ustawiony powyżej i sprawdza tylko warunki reguły.",
+      "net": "Ceny netto (bez VAT)",
+      "pricingHint": "Warunek progu kwoty można porównać tylko z zamówieniem w cenach brutto - wybierz ceny netto, aby zobaczyć, jak reguła wstrzymuje zamówienie, którego nie może ocenić.",
+      "pricingLabel": "Ceny przykładowego zamówienia",
+      "run": "Uruchom test",
+      "taxIdLabel": "Kupujący w przykładowym zamówieniu ma NIP",
+      "taxIdNone": "NIP kupującego: brak",
+      "taxIdPresent": "NIP kupującego: podany",
+      "taxIdUnknown": "NIP kupującego: nieznany",
+      "testing": "Testowanie…",
+      "toggle": "Przetestuj na przykładowym zamówieniu"
+    },
+    "save": "Zapisz regułę",
+    "saveHint": {
+      "checking": "Sprawdzanie tego szkicu względem pozostałych reguł tego rynku…",
+      "incomplete": "Uzupełnij każdy warunek przed zapisaniem - kwota wymaga liczby i trzyliterowego kodu waluty, a kraj wymaga kodu.",
+      "mixedCurrencies": "Ta reguła ogranicza sumę zamówienia w więcej niż jednej walucie, więc nigdy nie dopasuje zamówienia. Użyj jednej waluty."
+    },
+    "saving": "Zapisywanie…",
+    "taxIdCaveat": "Obecnie podają to tylko niektóre źródła: zamówienie ze sklepu, który zapisuje numer VAT kupującego, ma faktyczny status NIP (podany albo jednoznacznie brak). Zamówienia z innych źródeł nie podają żadnego z nich - ten warunek nigdy do nich nie pasuje, a zamówienie przechodzi do kolejnego poziomu.",
+    "taxIdCaveatLabel": "Zastrzeżenie dotyczące zakresu tego warunku",
+    "title": "Dodaj regułę",
+    "undecidedTitle": "Nie udało się sprawdzić wszystkich reguł",
+    "window": {
+      "from": "Obowiązuje od",
+      "heading": "Okres obowiązywania",
+      "to": "Obowiązuje do <muted>(opcjonalnie)</muted>"
+    }
+  },
+  "salesDocumentRuleEnginePanel": {
+    "addMarket": "Dodaj rynek",
+    "alreadyListed": "Jest już na liście powyżej",
+    "description": "Odpowiedzialność prawna za to, czego wymaga sprzedaż, pozostaje po stronie operatora - OpenLinker wykonuje skonfigurowane kierowanie, nie decyduje o obowiązkach podatkowych.",
+    "eyebrow": "Kierowanie dokumentów sprzedaży",
+    "newMarketLabel": "Kraj nowego rynku",
+    "restOfWorld": {
+      "configure": "Konfiguruj →",
+      "description": "Ustawienie zbiorcze, do którego przechodzi każdy nieskonfigurowany rynek powyżej.",
+      "title": "★ Reszta świata"
+    },
+    "searchPlaceholder": "Szukaj kraju…",
+    "title": "Co wystawia każdy rynek"
+  },
+  "salesDocumentRulesList": {
+    "addRule": "+ Dodaj regułę",
+    "delete": "Usuń",
+    "deleting": "Usuwanie…",
+    "empty": "Ten kraj nie ma jeszcze reguł.",
+    "endsOn": "kończy się {date}",
+    "heading": "Reguły dla {country}",
+    "intro": "Do zamówienia musi pasować dokładnie jedna reguła. Reguły nie mają priorytetów - jeśli pasują dwie, zamówienie jest wstrzymywane, zamiast żeby jedna wygrała.",
+    "loadError": "Nie udało się wczytać reguł",
+    "loading": {
+      "message": "Pobieranie reguł dla tego kraju…",
+      "title": "Wczytywanie reguł"
+    },
+    "noEndDate": "bez daty końcowej",
+    "provenance": "źródło: {provenance}",
+    "restOfWorld": "★ Reszta świata",
+    "result": "{kind} · {connection}",
+    "taxIdTag": {
+      "label": "tylko źródła podające NIP",
+      "title": "Pasuje tylko wtedy, gdy źródło zamówienia zapisało NIP kupującego - warunkowo dla każdego źródła"
+    },
+    "taxIdWarning": "Warunek NIP kupującego pasuje tylko do zamówienia, którego źródło faktycznie zapisało tę informację. Sklep podaje ją tylko wtedy, gdy kupujący wpisał numer VAT w adresie; marketplace tylko wtedy, gdy kupujący poprosił o fakturę VAT; niektóre sklepy tylko wtedy, gdy mają obsługiwaną wtyczkę numeru VAT. Zamówienie, którego źródło nie podało NIP, nigdy nie pasuje do tej reguły.",
+    "unknownError": "Nieznany błąd"
+  },
+  "salesDocumentTemplateScreen": {
+    "adopt": "Przejrzyj i przyjmij",
+    "adopting": "Przyjmowanie…",
+    "badge": "Sugerowany szablon startowy",
+    "connectionFor": "Połączenie dla {rule}",
+    "dismiss": "Zacznij od zera",
+    "hint": "Gotowy zestaw reguł dla {country} - kliknij, aby przejrzeć",
+    "loading": "Sprawdzanie szablonu startowego",
+    "selectFiscalization": "Wybierz połączenie do paragonów fiskalnych…",
+    "selectInvoicing": "Wybierz połączenie do fakturowania…",
+    "source": "Na podstawie publicznych wytycznych - <link>{source}</link>",
+    "taxIdWarning": "Każda reguła powyżej opiera się na tym, czy kupujący ma NIP - a tę informację podają tylko niektóre źródła. Sklep podaje ją tylko wtedy, gdy kupujący wpisał numer VAT w adresie; marketplace tylko wtedy, gdy kupujący poprosił o fakturę VAT; niektóre sklepy tylko wtedy, gdy mają obsługiwaną wtyczkę numeru VAT. Zamówienie, którego źródło nie podało NIP, nigdy nie pasuje do tych reguł."
+  },
+  "salesDocumentsListPage": {
+    "columns": {
+      "amount": "Kwota",
+      "connection": "Połączenie",
+      "created": "Utworzono",
+      "kind": "Rodzaj",
+      "order": "Zamów.",
+      "status": "Status"
+    },
+    "description": "Wszystkie wystawione faktury i zarejestrowane paragony fiskalne ze wszystkich połączeń w jednym miejscu.",
+    "empty": {
+      "filtered": "Żaden dokument nie pasuje do bieżących filtrów. Spróbuj wyczyścić część filtrów.",
+      "none": "Nie wystawiono jeszcze żadnej faktury ani paragonu fiskalnego.",
+      "title": "Nie znaleziono dokumentów sprzedaży"
+    },
+    "end": {
+      "back": "Wstecz",
+      "message": "To koniec tej listy.",
+      "title": "Nie ma więcej dokumentów"
+    },
+    "eyebrow": "Operacje",
+    "filters": {
+      "allConnections": "Wszystkie połączenia",
+      "allKinds": "Wszystkie rodzaje",
+      "allStatuses": "Wszystkie statusy",
+      "allTaxIds": "Wszystkie NIP kupujących",
+      "connection": "Filtruj według połączenia",
+      "issuedFrom": "Wystawione od",
+      "issuedTo": "Wystawione do",
+      "kind": "Filtruj według rodzaju",
+      "search": "Szukaj",
+      "searchPlaceholder": "ID zamówienia, numer dokumentu…",
+      "status": "Filtruj według statusu",
+      "taxId": "Filtruj według NIP kupującego",
+      "withTaxId": "Z NIP",
+      "withoutTaxId": "Bez NIP"
+    },
+    "loadError": "Nie udało się wczytać dokumentów sprzedaży",
+    "loading": "Wczytywanie dokumentów sprzedaży…",
+    "manageInvoices": "Zarządzaj fakturami",
+    "manageRouting": "Zarządzaj kierowaniem",
+    "next": "Dalej",
+    "previous": "Wstecz",
+    "retry": "Ponów",
+    "showing": "Wyświetlono {count}",
+    "status": {
+      "failed": "Błąd",
+      "issued": "Wystawiony",
+      "issuing": "Wystawianie",
+      "pending": "Oczekuje",
+      "registered": "Zarejestrowany",
+      "registering": "Rejestrowanie"
+    },
+    "title": "Dokumenty sprzedaży"
+  },
+  "salesDocumentsPanel": {
+    "capability": {
+      "Both": "Oba",
+      "Fiscalization": "Fiskalizacja",
+      "Invoicing": "Fakturowanie"
+    },
+    "conflict": {
+      "ambiguousNoPrimary": {
+        "body": "Kilka połączeń wystawia dokument sprzedaży, ale żadne nie jest główne, więc OpenLinker nic nie wystawia dla nowych zamówień. Wybierz poniżej dokładnie jedno.",
+        "title": "Żadne połączenie nie jest oznaczone jako główne"
+      },
+      "multiplePrimaries": {
+        "body": "Dopóki nie wybierzesz jednego, OpenLinker nic nie wystawia dla nowych zamówień. Wybór za Ciebie oznaczałby zgadywanie, a niewłaściwy dokument to problem prawny, a nie problem z danymi.",
+        "title": "Co najmniej dwa połączenia mają ustawione wystawianie"
+      }
+    },
+    "empty": {
+      "message": "Włącz fakturowanie lub paragony fiskalne dla połączenia, aby skonfigurować tutaj, co wystawia.",
+      "title": "Nie ma jeszcze połączeń do dokumentów sprzedaży"
+    },
+    "intro": "Co może wystawiać każde połączenie, czy wystawia jako pierwsze i kiedy. Tylko jedno połączenie może być pierwsze spośród WSZYSTKICH, niezależnie od tego, co wystawia - kolumna Główne to jeden wybór, a nie jeden na wiersz. Połączenie bez ustawień tutaj w ogóle nie bierze udziału w kierowaniu.",
+    "issuesLabel": "Dokument wystawiany przez {name}",
+    "loadError": "Nie udało się wczytać połączeń",
+    "loading": {
+      "message": "Pobieranie połączeń do fakturowania i paragonów fiskalnych…",
+      "title": "Wczytywanie połączeń"
+    },
+    "needsReconnect": "Nie może wystawiać do czasu ponownego połączenia",
+    "notCandidate": "Nie bierze udziału w kierowaniu",
+    "notPrimary": "-",
+    "primary": "Główne",
+    "primaryLabel": "Oznacz {name} jako główne połączenie do dokumentów sprzedaży",
+    "retry": "Ponów",
+    "status": {
+      "active": "Aktywne",
+      "archived": "Zarchiwizowane",
+      "disabled": "Wyłączone",
+      "error": "Błąd",
+      "needs_reauth": "Wymaga ponownego połączenia"
+    },
+    "table": {
+      "capability": "Funkcja",
+      "caption": "Połączenia i dokument wystawiany przez każde z nich, z jednym połączeniem głównym",
+      "issues": "Wystawia",
+      "label": "Kierowanie dokumentów sprzedaży dla każdego połączenia",
+      "primary": "Główne",
+      "provider": "Dostawca",
+      "status": "Status",
+      "trigger": "Wyzwalacz"
+    },
+    "title": "Podłączeni dostawcy",
+    "triggerHint": "Wyzwalacz jest wyszarzony w wierszu, który nie jest główny, bo wybór momentu nie ma znaczenia, dopóki połączenie faktycznie nie wystawia dokumentów.",
+    "triggerLabel": "Kiedy wystawia {name}"
+  },
+  "salesDocumentsTile": {
+    "adminOnly": "Tylko administratorzy",
+    "conflict": "Sprzeczna konfiguracja połączenia głównego - wymaga uwagi.",
+    "connections": "Połączenia",
+    "description": "Które połączenie wystawia faktury lub paragony fiskalne i które wystawia jako pierwsze.",
+    "eyebrow": "Fiskalne",
+    "manage": "Zarządzaj kierowaniem",
+    "title": "Kierowanie dokumentów sprzedaży"
+  },
+  "taxIdCoverage": {
+    "ruleCount": {
+      "few": "{n} reguły odczytują NIP kupującego",
+      "many": "{n} reguł odczytuje NIP kupującego",
+      "one": "{n} reguła odczytuje NIP kupującego",
+      "other": "{n} reguły odczytuje NIP kupującego"
+    }
+  },
+  "unresolvedReasons": {
+    "ambiguous-connection-no-primary": {
+      "detail": "Ten dokument może wystawić więcej niż jedna konfiguracja i nic nie rozstrzyga między nimi: albo ten kraj ma ustawienie domyślne zarówno dla faktury, jak i dla paragonu, albo kilku dostawców może wystawiać i żaden nie jest oznaczony jako pierwszy. Zostaw jedno z nich albo dodaj regułę, która rozstrzyga.",
+      "short": "Pasują dwie konfiguracje"
+    },
+    "conflicting-rules-equal-priority": {
+      "detail": "Do tego zamówienia pasują co najmniej dwie reguły. Reguły nie mają priorytetów, więc nic nie wybiera zwycięzcy i zamówienie jest wstrzymane. Zawęź warunki tak, aby pasować mogła tylko jedna reguła.",
+      "short": "Pasują dwie reguły"
+    },
+    "net-priced-order": {
+      "detail": "Reguła porównuje sumę zamówienia, ale to zamówienie jest wycenione netto. Porównanie jest niemożliwe, więc zamówienie jest wstrzymane.",
+      "short": "Zamówienie w cenach netto"
+    },
+    "no-configuration-for-country": {
+      "detail": "Ani ten kraj, ani Reszta świata nie ma reguły ani ustawienia domyślnego. Nic tu nie jest wystawiane i nie będzie, dopóki nie ustawisz kierowania.",
+      "short": "Brak kierowania nigdzie"
+    },
+    "no-connection-declares-document-kind": {
+      "detail": "Ten system może wystawiać dokumenty, ale żadne połączenie nie określa, jaki rodzaj ma wystawiać. Wybierz go w Ustawienia, Kierowanie dokumentów sprzedaży, a zamówienia zaczną dostawać faktury.",
+      "short": "Nie ustawiono typu dokumentu"
+    },
+    "no-matching-rule": {
+      "detail": "Żadna reguła tutaj nie pasuje do tego zamówienia i nie ma jednego ustawienia domyślnego, do którego można przejść. Zamówienie jest wstrzymane. Nie trafia do Reszta świata.",
+      "short": "Żadna reguła nie pasuje"
+    },
+    "routed-connection-unavailable": {
+      "detail": "Kierowanie wysyła to zamówienie do połączenia, które jest wyłączone, zostało usunięte albo nie może już wystawić tego dokumentu, więc nic nie zostało wystawione. Włącz to połączenie ponownie albo skieruj regułę na inne połączenie.",
+      "short": "Połączenie niedostępne"
+    },
+    "threshold-currency-mismatch": {
+      "detail": "Reguła ustawia limit w innej walucie niż waluta tego zamówienia. Przy kierowaniu kwoty nigdy nie są przeliczane, więc zamówienie jest wstrzymane.",
+      "short": "Waluta się nie zgadza"
+    },
+    "unsupported-document-kind-on-connection": {
+      "detail": "Kierowanie wybrało dokument, którego ten dostawca nie może wystawić. Wybierz dostawcę, który wystawia ten rodzaj.",
+      "short": "Dostawca tego nie wystawia"
+    }
+  }
+}

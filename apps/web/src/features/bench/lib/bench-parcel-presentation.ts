@@ -29,7 +29,7 @@ import {
   type SalesDocumentGateReasonCopy,
 } from '../../sales-documents';
 import type { BenchDocuments, BenchParcel, BenchParcelLine } from '../api/bench-parcel.types';
-import { benchParcelCopy } from './bench-parcel.copy';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import { describeBenchDocumentCard } from './bench-sales-document';
 
 /** How far one line has got. Never says HOW its units were confirmed. */
@@ -112,7 +112,7 @@ export function describeParcelRefusal(refusal: string): {
   readonly body: string;
   readonly interruptTitle: string;
 } {
-  const copy = benchParcelCopy;
+  const copy = getMessages('bench').parcel;
   switch (refusal) {
     case 'held':
       return {
@@ -162,10 +162,10 @@ export function describeVerificationRefusal(
   reason: string | null,
   line: BenchParcelLine | undefined
 ): string {
-  const copy = benchParcelCopy.verify;
+  const copy = getMessages('bench').parcel.verify;
   switch (reason) {
     case 'over-packed':
-      return copy.overPacked({
+      return interpolate(copy.overPacked, {
         required: line?.requiredQuantity ?? 0,
         kept: line?.verifiedQuantity ?? 0,
       });
@@ -190,14 +190,14 @@ export function describeVerificationRefusal(
  * than minting a per-method spelling, so the copy is reused verbatim here too.
  */
 export function describeReopenRefusal(reason: string | null): string {
-  const copy = benchParcelCopy.closed;
+  const copy = getMessages('bench').parcel.closed;
   switch (reason) {
     case 'shipped':
       return copy.reopenShipped;
     case 'not-closed':
       return copy.reopenNotClosed;
     case 'not-packable':
-      return benchParcelCopy.verify.notPackable;
+      return getMessages('bench').parcel.verify.notPackable;
     default:
       return copy.reopenUnknownRefusal;
   }
@@ -215,7 +215,7 @@ export function describeReopenRefusal(reason: string | null): string {
  * treats that one reason as a reason to move on rather than to stay and retry.
  */
 export function describeCompletionRefusal(reason: string | null): string {
-  const copy = benchParcelCopy.completion;
+  const copy = getMessages('bench').parcel.completion;
   switch (reason) {
     case 'not-closed':
       return copy.refusedNotClosed;
@@ -243,7 +243,7 @@ export function describeCompletionRefusal(reason: string | null): string {
  * that cannot work until they reload.
  */
 export function describeUndoCompletionRefusal(reason: string | null): string {
-  const copy = benchParcelCopy.completion;
+  const copy = getMessages('bench').parcel.completion;
   switch (reason) {
     case 'not-completed':
       return copy.undoRefusedNotCompleted;

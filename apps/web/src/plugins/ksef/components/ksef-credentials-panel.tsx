@@ -23,13 +23,12 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
-
-const AUTH_TYPE_LABELS: Record<(typeof KSEF_AUTH_TYPE_VALUES)[number], string> = {
-  'ksef-token': 'KSeF authorization token',
-  'qualified-seal': 'Qualified electronic seal',
-};
+import { useKsefMessages } from '../messages';
 
 export function KsefCredentialsPanel({ connection }: { connection: Connection }): ReactElement {
+  const messages = useKsefMessages();
+  const copy = messages.ksefCredentialsPanel;
+  const authTypeLabels = messages.common.authTypes;
   const [showRotate, setShowRotate] = useState(false);
   const [authType, setAuthType] = useState<(typeof KSEF_AUTH_TYPE_VALUES)[number]>('ksef-token');
   const [secret, setSecret] = useState('');
@@ -38,8 +37,8 @@ export function KsefCredentialsPanel({ connection }: { connection: Connection })
 
   if (!connection.credentialsBacked) {
     return (
-      <FormField label="Authentication secret" name="credentials">
-        <Input value="Environment variable (not editable via UI)" disabled />
+      <FormField label={copy.label} name="credentials">
+        <Input value={copy.envBacked} disabled />
       </FormField>
     );
   }
@@ -56,8 +55,8 @@ export function KsefCredentialsPanel({ connection }: { connection: Connection })
       });
       showToast({
         tone: 'success',
-        title: 'Credentials rotated',
-        description: 'The new KSeF authentication secret is now in use.',
+        title: copy.toast.title,
+        description: copy.toast.description,
       });
       setSecret('');
       setShowRotate(false);
@@ -68,9 +67,9 @@ export function KsefCredentialsPanel({ connection }: { connection: Connection })
 
   return (
     <FormField
-      label="Authentication secret"
+      label={copy.label}
       name="credentials"
-      description="Stored securely on the server. Rotate to replace the KSeF token / seal reference without restarting the API."
+      description={copy.description}
     >
       {showRotate ? (
         <div className="form-grid">
@@ -83,14 +82,14 @@ export function KsefCredentialsPanel({ connection }: { connection: Connection })
           >
             {KSEF_AUTH_TYPE_VALUES.map((value) => (
               <option key={value} value={value}>
-                {AUTH_TYPE_LABELS[value]}
+                {authTypeLabels[value]}
               </option>
             ))}
           </Select>
           <Input
             type="password"
             autoComplete="off"
-            placeholder="New authentication secret"
+            placeholder={copy.newSecretPlaceholder}
             value={secret}
             onChange={(event) => setSecret(event.target.value)}
           />
@@ -100,7 +99,7 @@ export function KsefCredentialsPanel({ connection }: { connection: Connection })
               onClick={(event) => void onRotate(event)}
               disabled={rotate.isPending || !canSubmit}
             >
-              {rotate.isPending ? 'Rotating...' : 'Save new secret'}
+              {rotate.isPending ? copy.rotating : copy.save}
             </Button>
             <Button
               tone="secondary"
@@ -110,13 +109,13 @@ export function KsefCredentialsPanel({ connection }: { connection: Connection })
                 setSecret('');
               }}
             >
-              Cancel
+              {copy.cancel}
             </Button>
           </div>
         </div>
       ) : (
         <Button tone="secondary" type="button" onClick={() => setShowRotate(true)}>
-          Rotate authentication secret
+          {copy.rotate}
         </Button>
       )}
     </FormField>

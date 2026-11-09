@@ -1,0 +1,357 @@
+{
+  "addDialog": {
+    "added": "Gratis dodany",
+    "addedBody": "Gratis jest w zamówieniu, a jego stan zarezerwowany.",
+    "cancel": "Anuluj",
+    "changeProduct": "Zmień",
+    "closedBody": "Gratis można dodać, dopóki paczka nie jest zamknięta. Najpierw cofnij oznaczenie jako spakowane albo dodaj gratis do następnego zamówienia.",
+    "closedTitle": "Paczka jest już zamknięta",
+    "description": "Gratis trafia tylko do tego zamówienia. Stan jest rezerwowany jak przy zwykłej pozycji.",
+    "documentTitle": "Dokument sprzedaży jest już wystawiony",
+    "documentWarning": "Dokument nie pokaże tego gratisu. Gratis i tak trafi do zamówienia.",
+    "notOnPickList": "Gratis jest w zamówieniu, ale ono jest już u pakowaczy: powiedz im o gratisie.",
+    "notReadyBody": "Jego produkty nie są jeszcze dopasowane. Popraw dopasowanie produktów, potem dodaj gratis.",
+    "notReadyTitle": "Zamówienie nie skończyło się importować",
+    "onDocument": "Na dokumencie",
+    "product": "Produkt na gratis",
+    "productPlaceholder": "Wpisz nazwę lub SKU produktu",
+    "quantity": "Ilość",
+    "reason": "Dodany ręcznie. Na zamówieniu widać go jako gratis od Ciebie.",
+    "submit": "Dodaj gratis",
+    "title": "Dodaj gratis do zamówienia {order}"
+  },
+  "attention": {
+    "addAnother": "Dodaj inny gratis",
+    "decisionSaved": "Decyzja zapisana",
+    "openRule": "Otwórz promocję",
+    "readFailed": "Nie udało się odczytać, dlaczego brakuje gratisu.",
+    "reasons": {
+      "below-threshold": {
+        "body": "Zamówienie nie osiąga tego, czego chce promocja, więc gratisu nie dodano.",
+        "title": "{rule}: poniżej progu"
+      },
+      "customer-limit": {
+        "body": "Limit na klienta jest wyczerpany. Klienta rozpoznajemy po tożsamości w OpenLinkerze, nie po koncie kupującego w kanale.",
+        "title": "{rule}: ten klient dostał już gratis"
+      },
+      "customer-unknown": {
+        "body": "Nie dało się sprawdzić limitu na klienta, więc gratisu nie dodano.",
+        "title": "{rule}: klient jest nieznany"
+      },
+      "failed": {
+        "body": "Coś poszło nie tak przy dodawaniu. Możesz dodać gratis ręcznie albo otworzyć promocję i historię uruchomień.",
+        "title": "{rule}: nie udało się dodać gratisu"
+      },
+      "limit-reached": {
+        "body": "Nie dodano gratisu. Otwórz promocję, żeby podnieść limit i ją wznowić.",
+        "title": "{rule}: limit sztuk wyczerpany"
+      },
+      "other": {
+        "body": "Promocja nie dodała gratisu do tego zamówienia. Otwórz ją, żeby zobaczyć szczegóły.",
+        "title": "{rule}: nie dodano gratisu"
+      },
+      "out-of-stock": {
+        "body": "Zamówienie idzie dalej bez gratisu. Możesz dodać inny gratis ręcznie. Promocja wznowi się sama, gdy produkt wróci.",
+        "title": "{rule}: gratisu brak na stanie"
+      },
+      "stock-unknown": {
+        "body": "Gratisu nie dodano, bo nieznana liczba nigdy nie jest traktowana jak zero. Sprawdź stan i w razie potrzeby dodaj gratis ręcznie.",
+        "title": "{rule}: nie znamy stanu gratisu"
+      },
+      "superseded": {
+        "body": "Wyższa promocja, która nie łączy się z innymi, już dała swój gratis, więc ta nie zadziałała.",
+        "title": "{rule}: zadziałała wyższa promocja"
+      }
+    },
+    "seePromotion": "Zobacz promocję",
+    "shopRejected": {
+      "body": "Zamówienie ma pozycję z gratisem, a sklep je odrzucił. Usuń przyczynę w statusie synchronizacji niżej albo zdejmij gratis z zamówienia i ponów.",
+      "title": "Sklep nie przyjął zamówienia z gratisem"
+    },
+    "skip": "Wyślij bez gratisu",
+    "skipFailed": "Nie udało się zapisać decyzji"
+  },
+  "composer": {
+    "back": "Promocje z gratisem",
+    "basketFrom": "Zamówienie od",
+    "basketHelp": "Liczy się kwota, którą zapłacił klient, bez dostawy.",
+    "change": "Zmień",
+    "channels": "Kanały",
+    "channelsHelp": "Gdzie działa promocja. Domyślnie wszystkie kanały.",
+    "copy": "Kopiuj",
+    "copySuffix": "(kopia)",
+    "costPerUnit": "Kosztuje Cię {cost} za sztukę",
+    "costUnknown": "Kosztuje Cię: brak kosztu zakupu",
+    "currency": "Waluta",
+    "delete": "Usuń",
+    "deleteBody": "Gratisy już dodane do zamówień zostają. Historia tego, co dała, jest zachowana.",
+    "deleteConfirm": "Usuń promocję",
+    "deleteFailed": "Nie udało się usunąć promocji",
+    "deleteKeep": "Zostaw",
+    "deleteTitle": "Usunąć tę promocję?",
+    "deleted": "Promocja usunięta",
+    "docForm": "Na dokumencie",
+    "doubleGiftWarning": "Sklep z własną regułą gratisu może dać ten sam gratis drugi raz. Zostaw włączone \"Pomiń, jeśli produkt jest już w zamówieniu\".",
+    "editNote": "Zmiana działa od teraz. Zamówienia już złożone zostają przy swoim gratisie.",
+    "endedBody": "Nadal możesz ją edytować, skopiować albo przedłużyć nową datą zakończenia.",
+    "endedTitle": "Zakończona {date}",
+    "extend": "Przedłuż i wznów",
+    "extendTo": "Nowa data zakończenia",
+    "from": "Od",
+    "gift": "Gratis",
+    "giftLabel": "Gratis",
+    "limitBody": "Rozdano {given} z {cap} szt. Zamówienia idą dalej bez gratisu. Dodaj sztuki do limitu, żeby wznowić.",
+    "limitTitle": "Wstrzymała się sama: limit sztuk wyczerpany",
+    "loadFailed": "Nie udało się wczytać promocji",
+    "markerNative": "Sklep też zna gratisy",
+    "markerOpenLinker": "Przez OpenLinker",
+    "maxPerOrder": "Maks. na zamówienie",
+    "missing": "Jeszcze potrzeba",
+    "more": "Więcej opcji",
+    "name": "Nazwa",
+    "nameHelp": "Podpowiadamy z ustawień niżej. Możesz ją zmienić.",
+    "nameTemplates": {
+      "basket": "{gift} przy zakupach od {amount}",
+      "product": "{gift} do {product}",
+      "unit": "{gift} do każdej sztuki: {product}"
+    },
+    "newTitle": "Nowa promocja",
+    "noStack": "Nie łącz z innymi promocjami",
+    "pause": "Wstrzymaj",
+    "pausedStockBody": "Zamówienia idą dalej bez gratisu, z uwagą na zamówieniu. Promocja wznowi się sama, gdy produkt wróci na stan.",
+    "pausedStockTitle": "Wstrzymała się sama: gratisu brak na stanie",
+    "perCustomer": "Najwyżej na klienta",
+    "perN": "1 gratis na N sztuk",
+    "period": "Okres",
+    "periodHelp": "Liczy się data złożenia zamówienia. Promocja nie działa wstecz.",
+    "problems": {
+      "basket": "kwoty",
+      "gift": "gratisu",
+      "name": "nazwy",
+      "per-n": "liczby całkowitej dla \"1 gratis na N\"",
+      "period": "daty końca po początku",
+      "quantity": "ilości",
+      "unit-cap": "całkowitego limitu sztuk",
+      "when": "produktu"
+    },
+    "productHelp": "Wybierz produkt lub zestaw.",
+    "productLabel": "Gdy zamówienie zawiera",
+    "productPlaceholder": "Wpisz nazwę lub SKU produktu",
+    "quantity": "Ilość",
+    "resume": "Wznów",
+    "resumeUnits": "Ile sztuk dodać do limitu",
+    "saveChanges": "Zapisz zmiany",
+    "saveDraft": "Zapisz jako szkic",
+    "saved": "Promocja zapisana",
+    "skipPresent": "Pomiń, jeśli produkt jest już w zamówieniu (także jako składnik zestawu)",
+    "summary": {
+      "cap": "limit {n} szt.",
+      "combines": "łączy się z innymi",
+      "noStack": "nie łączy się z innymi",
+      "pauses": "wstrzymuje się, gdy gratis się skończy"
+    },
+    "title": "Promocja z gratisem",
+    "to": "Do (opcjonalnie)",
+    "turnOn": "Włącz promocję",
+    "unitCap": "Limit sztuk w całej promocji",
+    "unitProductHelp": "Wybierz produkt, do którego każdej sztuki dajesz gratis.",
+    "when": "Kiedy"
+  },
+  "cost": {
+    "failed": "Kosztuje Cię: nie udało się odczytać ceny zakupu",
+    "loading": "Kosztuje Cię: sprawdzam cenę zakupu",
+    "otherCurrency": "Kosztuje Cię: cena zakupu jest zapisana w innej walucie ({currency})"
+  },
+  "detail": {
+    "actionsMenu": "Więcej działań",
+    "channelsCount": "{n} z {total}",
+    "customerLimitN": "najwyżej {n} na klienta",
+    "givesAgain": "daje też, gdy gratis już jest",
+    "inStock": "na stanie {n} szt.",
+    "kindBasket": "Koszyk od kwoty",
+    "kindLabel": "Warunek",
+    "kindProduct": "Zawiera produkt",
+    "kindUnit": "Do każdej sztuki",
+    "limits": "Limity i dokumenty",
+    "moreOptions": "Więcej opcji",
+    "name": "Nazwa",
+    "noCustomerLimit": "bez limitu na klienta",
+    "noStackHint": "Promocje pod tą nie zadziałają, gdy ta zadziała.",
+    "periodInvalid": "Data końca musi być po dacie początku.",
+    "results": {
+      "average": "Średnio",
+      "cost": "Koszt",
+      "costPartial": "Część sztuk bez ceny zakupu: {n}.",
+      "failed": "Nie udało się wczytać wyników.",
+      "given": "Wydano",
+      "none": "W ostatnich 30 dniach ta promocja nie dała jeszcze gratisu.",
+      "ofCap": "z {cap} szt.",
+      "orders": "Zamówienia",
+      "pcs": "{n} szt.",
+      "range": "ostatnie 30 dni",
+      "title": "Wyniki"
+    },
+    "skipsPresent": "pomija, gdy gratis już jest",
+    "sku": "SKU {sku}",
+    "stockUnknown": "stan nieznany",
+    "summary": {
+      "anyChannel": "dowolnego kanału",
+      "basket": "Gdy zamówienie z {channels} ma wartość od {amount}, dodajemy gratis: {gift}, {qty} szt.",
+      "cap": " Limit to {cap} szt.",
+      "from": " Działa od {date}.",
+      "fromTo": " Działa od {from} do {to}.",
+      "incomplete": "Uzupełnij formularz, a tu pojawi się opis promocji.",
+      "noStack": " Promocja nie łączy się z innymi.",
+      "or": " lub ",
+      "product": "Gdy zamówienie z {channels} zawiera {product}, dodajemy gratis: {gift}, {qty} szt.",
+      "title": "Podsumowanie",
+      "unit": "Do każdej {n}. sztuki produktu {product} w zamówieniu z {channels} dodajemy gratis: {gift}, {qty} szt."
+    },
+    "tabs": {
+      "runs": "Uruchomienia",
+      "test": "Test na zamówieniu"
+    }
+  },
+  "filter": {
+    "check": "Z gratisem",
+    "chipLabel": "Gratis",
+    "chipValue": "Jest",
+    "quick": "Z gratisem",
+    "rowIcon": "Zawiera gratis"
+  },
+  "list": {
+    "allChannels": "Wszystkie kanały",
+    "back": "Automatyzacje",
+    "colActions": "Działania",
+    "colGift": "Gratis",
+    "colGiven": "Rozdane",
+    "colOrder": "Kolejność",
+    "colPromotion": "Promocja",
+    "colState": "Stan",
+    "condition": {
+      "basket": "Koszyk od {amount}",
+      "contains": "Zawiera {product}",
+      "everyNth": "Co {n}. sztuka: {product}",
+      "everyUnit": "Każda sztuka: {product}"
+    },
+    "create": "Nowa promocja",
+    "deleteFailed": "Nie udało się usunąć promocji.",
+    "deleteTitle": "Usunąć promocję {name}?",
+    "description": "OpenLinker dodaje gratis do zamówienia w każdym kanale, także tam, gdzie kanał nie zna gratisów.",
+    "doNotCombine": "Nie łączy się z innymi",
+    "down": "W dół",
+    "empty": "Nie ma jeszcze promocji z gratisem",
+    "emptyHint": "Utwórz pierwszą, na przykład łyżeczkę do każdego zestawu porannego.",
+    "emptyStart": "Zacznij od jednego z trzech wzorów.",
+    "eyebrow": "Automatyzacje",
+    "giftQty": "× {n}",
+    "givenNoCap": "{given} szt.",
+    "givenOfCap": "{given} z {cap} szt.",
+    "kpi": {
+      "active": "Aktywne promocje",
+      "activeOf": "z {total} wszystkich",
+      "cost": "Koszt gratisów, 30 dni",
+      "costBasis": "wg cen zakupu",
+      "costPartial": "bez ceny zakupu: {n} szt.",
+      "given": "Gratisy wydane, 30 dni",
+      "givenOrders": "w zamówieniach: {orders}",
+      "givenUnits": "szt.",
+      "paused": "Wstrzymane",
+      "pausedNone": "Żadna nie czeka",
+      "pausedSplit": "{stock} brak towaru · {limit} limit",
+      "unknown": "Brak danych",
+      "unknownHint": "Nie udało się wczytać raportu gratisów."
+    },
+    "kpiLabel": "Podsumowanie promocji",
+    "loadFailed": "Nie udało się wczytać promocji z gratisem",
+    "loading": "Wczytuję promocje z gratisem",
+    "menu": {
+      "copy": "Kopiuj",
+      "delete": "Usuń",
+      "down": "Przesuń niżej",
+      "edit": "Edytuj",
+      "open": "Działania dla {name}",
+      "pause": "Wstrzymaj",
+      "resume": "Wznów",
+      "turnOn": "Włącz",
+      "up": "Przesuń wyżej"
+    },
+    "orderNote": "Promocje sprawdzamy od góry do dołu. Jeśli promocja ma włączone \"Nie łącz z innymi\", te pod nią nie działają, gdy ona zadziała. Kolejność zmienisz w menu wiersza.",
+    "pauseFailed": "Nie udało się zmienić stanu promocji.",
+    "readOnly": "Możesz oglądać promocje z gratisem, ale nie możesz ich zmieniać.",
+    "reasonLimit": "Rozdano {given} z {cap} szt.",
+    "reasonStock": "Gratis się skończył. Promocja wznowi się sama po dostawie.",
+    "reorderFailed": "Nie udało się zapisać kolejności. Spróbuj ponownie.",
+    "starts": "Rusza {date}",
+    "tableLabel": "Promocje z gratisem w kolejności sprawdzania",
+    "title": "Promocje z gratisem",
+    "until": "do {date}",
+    "up": "W górę"
+  },
+  "order": {
+    "add": "Dodaj gratis",
+    "costUnknown": "Koszt nieznany",
+    "costsYou": "Kosztuje Cię {cost}",
+    "customerPays": "Klient płaci {price}",
+    "decidedBy": "Skąd jest",
+    "onDocument": "Na dokumencie",
+    "readOnly": "Gratis mogą dodawać tylko administratorzy i operatorzy.",
+    "readOnlyNotice": "Możesz wszystko zobaczyć, ale „Dodaj gratis” jest wyłączone.",
+    "source": {
+      "cartRule": "Dała go reguła koszyka w sklepie. Finansujesz go Ty.",
+      "channel": "Kanał sprzedaży oznaczył go jako gratis. Finansujesz go Ty.",
+      "operator": "Dodany ręcznie przez operatora. Finansujesz go Ty.",
+      "rule": "Dodała go promocja w OpenLinkerze. Finansujesz go Ty."
+    },
+    "tag": "Gratis",
+    "tagLabel": "Gratis: pokaż, skąd jest",
+    "whoPays": "Kto płaci"
+  },
+  "status": {
+    "active": "Aktywna",
+    "draft": "Szkic",
+    "ended": "Zakończona",
+    "pausedLimit": "Wstrzymana: limit sztuk",
+    "pausedStock": "Wstrzymana: brak gratisu",
+    "scheduled": "Ruszy później"
+  },
+  "template": {
+    "basket": {
+      "example": "np. próbka kawy do zamówień od 150 zł",
+      "title": "Gratis od kwoty zamówienia"
+    },
+    "description": "Wybierz, kiedy klient dostaje gratis. Szczegóły ustawisz w następnym kroku.",
+    "product": {
+      "example": "np. łyżeczka do każdego zestawu porannego",
+      "title": "Gratis do produktu"
+    },
+    "title": "Nowa promocja",
+    "unit": {
+      "example": "np. torba na co drugi kubek",
+      "title": "Gratis do każdej sztuki"
+    }
+  },
+  "test": {
+    "help": "Pokazuje, które promocje dodałyby gratis do tego zamówienia i dlaczego pozostałe nie. Nic się nie zapisuje.",
+    "noneApply": "Nie dodano by żadnego gratisu",
+    "orderLabel": "Zamówienie",
+    "orderNotFound": "Nie ma takiego zamówienia.",
+    "orderPlaceholder": "Id zamówienia (ol_order_...)",
+    "reasons": {
+      "alreadyInOrder": "Gratis jest już w zamówieniu.",
+      "belowThreshold": "W zamówieniu jest za mało sztuk produktu.",
+      "customerLimit": "Ten klient dostał już najwięcej, ile wolno.",
+      "customerUnknown": "Klient jest nieznany, więc nie sprawdzimy limitu na klienta.",
+      "limit": "Limit sztuk jest wyczerpany.",
+      "notMatching": "Zamówienie nie spełnia warunków.",
+      "outOfStock": "Gratisu nie ma na stanie.",
+      "stockUnknown": "Nie znamy stanu gratisu, więc go nie dodano.",
+      "superseded": "Wyższa promocja, która nie łączy się z innymi, już zadziałała."
+    },
+    "run": "Sprawdź",
+    "someApply": "Gratis dodałoby promocji: {count}",
+    "thisPromotion": "Ta promocja",
+    "title": "Sprawdź na zamówieniu",
+    "wouldAdd": "Doda {count} szt."
+  }
+}

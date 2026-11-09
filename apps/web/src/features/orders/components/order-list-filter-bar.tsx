@@ -20,7 +20,6 @@
  *
  * @module apps/web/src/features/orders/components
  */
-import { useMessages } from '../../../shared/i18n';
 import { useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { ActiveFilterChips, type ActiveFilterChip } from '../../../shared/ui/active-filter-chips';
@@ -54,17 +53,18 @@ import type { UseOrderListFiltersResult } from '../hooks/use-order-list-filters'
 import {
   ORDER_FILTER_DESCRIPTORS,
   buildOrderFilterChips,
+  FULFILLMENT_FILTER_VALUES,
+  SLA_FILTER_VALUES,
   type OrderFilterChipContext,
   type OrderFilterGroup,
 } from '../lib/order-filter-descriptors';
-import { HOLD_REASON_COPY, HoldReasonValues } from '../lib/order-hold.types';
-import { ORDER_LIFECYCLE_PHASE_META, OrderLifecyclePhaseValues } from '../lib/order-lifecycle-phase';
-import type { OrderLifecyclePhaseValue } from '../lib/order-lifecycle-phase.types';
+import { HoldReasonValues, holdReasonLabel } from '../lib/order-hold.types';
 import {
-  FULFILLMENT_FILTER_OPTIONS,
-  ORDERS_LIST_FILTERS_COPY as COPY,
-  SLA_FILTER_OPTIONS,
-} from '../lib/orders-list-filters.copy';
+  ORDER_LIFECYCLE_PHASE_TONE,
+  OrderLifecyclePhaseValues,
+} from '../lib/order-lifecycle-phase';
+import type { OrderLifecyclePhaseValue } from '../lib/order-lifecycle-phase.types';
+import { useMessages, usePlural } from '../../../shared/i18n';
 import { OrderTagChip } from './order-tag-chip';
 
 /** Per-browser memory of the panel being open — a view preference, not a filter, so never in the URL. */
@@ -143,8 +143,11 @@ export interface OrderListFilterBarProps {
   summary: OrderHealthSummary | undefined;
   slaSummary: OrderSlaSummary | undefined;
   lifecycleSummary: OrderLifecyclePhaseSummary | undefined;
-  /** Already formatted ("69", "100+"); `null` while unknown — never shown as 0. */
-  resultCount: string | null;
+  /**
+   * How many orders match: the exact total, or a floor ("100+") while the total
+   * is still being counted. `null` while unknown - never shown as 0.
+   */
+  resultCount: { value: number; atLeast: boolean } | null;
   /** `false` only when the install is known not to store buyer data (G03-14). */
   storesPersonalData: boolean | undefined;
   formatDay: (ymd: string) => string;
@@ -164,6 +167,10 @@ export function OrderListFilterBar({
 }: OrderListFilterBarProps): ReactElement {
   const { state } = filtersApi;
   const giftCopy = useMessages('gifts');
+  const orders = useMessages('orders');
+  const COPY = orders.listFilters;
+  const paymentCopy = orders.paymentWriteback;
+  const plural = usePlural();
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const panelId = useId();
   const searchRef = useRef<HTMLInputElement>(null);
@@ -182,8 +189,9 @@ export function OrderListFilterBar({
       connectionName: (id) => sources.find((s) => s.id === id)?.name,
       tagById,
       formatDay,
+      copy: orders,
     }),
-    [sources, tagById, formatDay],
+    [sources, tagById, formatDay, orders],
   );
   const chipSpecs = useMemo(() => buildOrderFilterChips(state, chipCtx), [state, chipCtx]);
   const activeCount = chipSpecs.length;
@@ -230,7 +238,7 @@ export function OrderListFilterBar({
   const slaValue: SlaChoice = state.slaState ?? 'any';
   const slaOptions: { value: SlaChoice; label: string }[] = [
     { value: 'any', label: COPY.anySla },
-    ...SLA_FILTER_OPTIONS,
+    ...SLA_FILTER_VALUES.map((value) => ({ value, label: COPY.slaOptions[value] })),
   ];
   const packingValue = state.packed === undefined ? '' : String(state.packed);
   const tagRadioValue = state.untagged ? '__untagged__' : (state.tag ?? '');
@@ -241,9 +249,9 @@ export function OrderListFilterBar({
 
   // ── Controls, shared verbatim by the desktop panel and the mobile sheet ──
   const sourceField = (
-    <FilterField label={COPY.fieldSource}>
+    <FilterField label={COPY.fields.source}>
       <Select
-        aria-label={COPY.fieldSource}
+        aria-label={COPY.fields.source}
         value={state.sourceConnectionId ?? ''}
         onChange={(e) => {
           filtersApi.setFilter('sourceConnectionId', e.target.value);
@@ -259,16 +267,16 @@ export function OrderListFilterBar({
     </FilterField>
   );
   const createdField = (
-    <FilterField label={COPY.fieldCreated} as="div">
+    <FilterField label={COPY.fields.created} as="div">
       <FilterRange
         rows={[
           {
-            label: COPY.createdFrom,
+            label: COPY.fields.createdFrom,
             control: (
               <input
                 type="date"
                 className="control"
-                aria-label={COPY.createdFromAria}
+                aria-label={COPY.fields.createdFromAria}
                 value={state.createdFrom ?? ''}
                 onChange={(e) => {
                   filtersApi.setFilter('createdFrom', e.target.value);
@@ -277,12 +285,12 @@ export function OrderListFilterBar({
             ),
           },
           {
-            label: COPY.createdTo,
+            label: COPY.fields.createdTo,
             control: (
               <input
                 type="date"
                 className="control"
-                aria-label={COPY.createdToAria}
+                aria-label={COPY.fields.createdToAria}
                 value={state.createdTo ?? ''}
                 onChange={(e) => {
                   filtersApi.setFilter('createdTo', e.target.value);
@@ -295,27 +303,27 @@ export function OrderListFilterBar({
     </FilterField>
   );
   const fulfillmentField = (
-    <FilterField label={COPY.fieldFulfillment}>
+    <FilterField label={COPY.fields.fulfilment}>
       <Select
-        aria-label={COPY.fieldFulfillment}
+        aria-label={COPY.fields.fulfilment}
         value={state.fulfillmentState ?? ''}
         onChange={(e) => {
           filtersApi.setFilter('fulfillmentState', e.target.value);
         }}
       >
-        <option value="">{COPY.anyFulfillment}</option>
-        {FULFILLMENT_FILTER_OPTIONS.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
+        <option value="">{COPY.anyFulfilment}</option>
+        {FULFILLMENT_FILTER_VALUES.map((value) => (
+          <option key={value} value={value}>
+            {COPY.fulfilmentOptions[value]}
           </option>
         ))}
       </Select>
     </FilterField>
   );
   const shipByField = (
-    <FilterField label={COPY.fieldShipBy} as="div">
+    <FilterField label={COPY.fields.shipBy} as="div">
       <SegmentedControl<SlaChoice>
-        aria-label={COPY.fieldShipBy}
+        aria-label={COPY.fields.shipBy}
         options={slaOptions}
         value={slaValue}
         onChange={(next) => {
@@ -325,9 +333,9 @@ export function OrderListFilterBar({
     </FilterField>
   );
   const packingField = (
-    <FilterField label={COPY.fieldPacking}>
+    <FilterField label={COPY.fields.packing}>
       <Select
-        aria-label={COPY.fieldPacking}
+        aria-label={COPY.fields.packing}
         value={packingValue}
         onChange={(e) => {
           filtersApi.setFilter('packed', e.target.value);
@@ -343,7 +351,7 @@ export function OrderListFilterBar({
   const packBenchCheck = (
     <FilterChecks>
       <FilterCheck
-        label={COPY.checkPackBench}
+        label={COPY.checks.packBench}
         checked={state.onPackBench}
         count={summary?.onPackBench}
         onChange={() => {
@@ -353,9 +361,9 @@ export function OrderListFilterBar({
     </FilterChecks>
   );
   const holdField = (
-    <FilterField label={COPY.fieldHold}>
+    <FilterField label={COPY.fields.hold}>
       <Select
-        aria-label={COPY.fieldHold}
+        aria-label={COPY.fields.hold}
         value={state.holdReason ?? ''}
         onChange={(e) => {
           filtersApi.setFilter('holdReason', e.target.value);
@@ -364,7 +372,7 @@ export function OrderListFilterBar({
         <option value="">{COPY.anyHold}</option>
         {HoldReasonValues.map((value) => (
           <option key={value} value={value}>
-            {HOLD_REASON_COPY[value].label}
+            {holdReasonLabel(value)}
           </option>
         ))}
       </Select>
@@ -373,7 +381,7 @@ export function OrderListFilterBar({
   const exceptionChecks = (
     <FilterChecks>
       <FilterCheck
-        label={COPY.checkSalesDocsBlocked}
+        label={COPY.checks.salesDocsBlocked}
         tone="error"
         checked={state.invoicingBlocked}
         count={summary?.salesDocumentBlocked}
@@ -382,7 +390,7 @@ export function OrderListFilterBar({
         }}
       />
       <FilterCheck
-        label={COPY.checkOmsStopped}
+        label={COPY.checks.omsStopped}
         tone="error"
         checked={state.omsAttention}
         count={summary?.omsAttention}
@@ -391,7 +399,24 @@ export function OrderListFilterBar({
         }}
       />
       <FilterCheck
-        label={COPY.checkWaiting}
+        label={COPY.checks.shopChanged}
+        tone="warning"
+        checked={state.shopChanged}
+        onChange={() => {
+          filtersApi.toggle('attentionReason');
+        }}
+      />
+      <FilterCheck
+        label={paymentCopy.filterCheck}
+        tone="warning"
+        checked={state.paymentNotSent}
+        count={summary?.paymentNotSent}
+        onChange={() => {
+          filtersApi.toggle('paymentNotSent');
+        }}
+      />
+      <FilterCheck
+        label={COPY.checks.waiting}
         tone="warning"
         checked={state.waitingInOpenLinker}
         count={summary?.waitingInOpenLinker}
@@ -400,7 +425,7 @@ export function OrderListFilterBar({
         }}
       />
       <FilterCheck
-        label={COPY.checkRoutingBlocked}
+        label={COPY.checks.routingBlocked}
         tone="error"
         checked={state.routingBlocked}
         count={summary?.destinationRoutingBlocked}
@@ -409,7 +434,7 @@ export function OrderListFilterBar({
         }}
       />
       <FilterCheck
-        label={COPY.checkRateConflict}
+        label={COPY.checks.rateConflict}
         checked={state.rateConflict}
         count={summary?.taxRateConflict}
         onChange={() => {
@@ -417,7 +442,7 @@ export function OrderListFilterBar({
         }}
       />
       <FilterCheck
-        label={COPY.checkOpenReturn}
+        label={COPY.checks.openReturn}
         checked={state.openReturn}
         onChange={() => {
           filtersApi.toggle('openReturn');
@@ -431,7 +456,7 @@ export function OrderListFilterBar({
         }}
       />
       <FilterCheck
-        label={COPY.checkBuyerNote}
+        label={COPY.checks.buyerNote}
         checked={state.hasBuyerNote}
         onChange={() => {
           filtersApi.toggle('hasBuyerNote');
@@ -445,19 +470,19 @@ export function OrderListFilterBar({
       {tags.length > TAG_FIND_THRESHOLD ? (
         <Input
           type="search"
-          aria-label={COPY.findTag}
-          placeholder={COPY.findTag}
+          aria-label={COPY.tags.find}
+          placeholder={COPY.tags.find}
           value={tagFind}
           onChange={(e) => {
             setTagFind(e.target.value);
           }}
         />
       ) : null}
-      <FilterChecks role="radiogroup" aria-label={COPY.tagGroupAria} scroll>
+      <FilterChecks role="radiogroup" aria-label={COPY.tags.groupAria} scroll>
         <FilterCheck
           type="radio"
           name={tagRadioName}
-          label={COPY.anyTag}
+          label={COPY.tags.any}
           checked={tagRadioValue === ''}
           onChange={() => {
             filtersApi.setTagFilter(null);
@@ -480,7 +505,7 @@ export function OrderListFilterBar({
         <FilterCheck
           type="radio"
           name={tagRadioName}
-          label={COPY.noTags}
+          label={COPY.tags.none}
           mutedLabel
           checked={tagRadioValue === '__untagged__'}
           onChange={() => {
@@ -488,7 +513,7 @@ export function OrderListFilterBar({
           }}
         />
       </FilterChecks>
-      {tags.length === 0 ? <span className="filter-panel__hint">{COPY.noTagsYet}</span> : null}
+      {tags.length === 0 ? <span className="filter-panel__hint">{COPY.tags.noneYet}</span> : null}
     </>
   );
 
@@ -501,17 +526,16 @@ export function OrderListFilterBar({
     // chip must stay or the only way to clear an applied `?phase=` vanishes
     // the moment its last order moves on (#2310 / #2100).
     if (!active && !count) return null;
-    const meta = ORDER_LIFECYCLE_PHASE_META[value];
     return (
       <Chip
         key={value}
-        tone={CHIP_TONE_FOR_PHASE_TONE[meta.tone]}
+        tone={CHIP_TONE_FOR_PHASE_TONE[ORDER_LIFECYCLE_PHASE_TONE[value]]}
         active={active}
         onClick={() => {
           filtersApi.togglePhase(value);
         }}
       >
-        {meta.label}
+        {orders.lifecyclePhase.labels[value]}
         {count === undefined ? null : <span className="chip__count">{count}</span>}
       </Chip>
     );
@@ -521,12 +545,12 @@ export function OrderListFilterBar({
     <>
       {slaSummary && slaSummary.overdue > 0 ? (
         <StatusBadge tone="error" withDot compact>
-          {COPY.overdue(slaSummary.overdue)}
+          {plural(slaSummary.overdue, COPY.overdue)}
         </StatusBadge>
       ) : null}
       {slaSummary && slaSummary.atRisk > 0 ? (
         <StatusBadge tone="warning" withDot compact>
-          {COPY.atRisk(slaSummary.atRisk)}
+          {plural(slaSummary.atRisk, COPY.atRisk)}
         </StatusBadge>
       ) : null}
       {/* Unconditional (#2441 review I3): the risk page's most useful states
@@ -538,7 +562,7 @@ export function OrderListFilterBar({
   );
 
   const placeholder =
-    storesPersonalData === false ? COPY.searchPlaceholderNoPii : COPY.searchPlaceholderWithPii;
+    storesPersonalData === false ? COPY.search.placeholderNoPii : COPY.search.placeholderWithPii;
 
   // The phone sheet's sections — the same controls as the desktop panel, plus
   // the lifecycle stage (on a desktop it is the quick-filter row). Bodies are
@@ -564,7 +588,7 @@ export function OrderListFilterBar({
     </>
   );
   const stageBody = (
-    <FilterChecks role="radiogroup" aria-label={COPY.groupPhase}>
+    <FilterChecks role="radiogroup" aria-label={COPY.groups.phase}>
       <FilterCheck
         type="radio"
         name={`${panelId}-phase`}
@@ -582,7 +606,7 @@ export function OrderListFilterBar({
             key={value}
             type="radio"
             name={`${panelId}-phase`}
-            label={ORDER_LIFECYCLE_PHASE_META[value].label}
+            label={orders.lifecyclePhase.labels[value]}
             count={count}
             checked={state.phase === value}
             onChange={() => {
@@ -594,11 +618,11 @@ export function OrderListFilterBar({
     </FilterChecks>
   );
   const sheetSections: ReadonlyArray<readonly [OrderFilterGroup, string, ReactElement]> = [
-    ['source', COPY.groupSource, sourceBody],
-    ['shipment', COPY.groupShipment, shipmentBody],
-    ['exceptions', COPY.groupExceptions, exceptionsBody],
-    ['tags', COPY.groupTags, tagList],
-    ['phase', COPY.groupPhase, stageBody],
+    ['source', COPY.groups.source, sourceBody],
+    ['shipment', COPY.groups.shipment, shipmentBody],
+    ['exceptions', COPY.groups.exceptions, exceptionsBody],
+    ['tags', COPY.groups.tags, tagList],
+    ['phase', COPY.groups.phase, stageBody],
   ];
   const firstActiveSection = sheetSections.findIndex(([g]) => groupSummary(g).active);
 
@@ -614,7 +638,7 @@ export function OrderListFilterBar({
           <Input
             ref={searchRef}
             type="search"
-            aria-label={COPY.searchLabel}
+            aria-label={COPY.search.label}
             placeholder={placeholder}
             value={filtersApi.searchInput}
             onChange={(e) => {
@@ -622,7 +646,7 @@ export function OrderListFilterBar({
             }}
           />
           <span className="button__shortcut orders-filterbar__kbd" aria-hidden="true">
-            {COPY.searchShortcut}
+            /
           </span>
         </div>
         <FilterToggleButton
@@ -639,7 +663,9 @@ export function OrderListFilterBar({
           }}
         />
         <span className="text-muted mono tabular orders-filterbar__count" aria-live="polite">
-          {resultCount === null ? null : COPY.results(resultCount)}
+          {resultCount === null
+            ? null
+            : plural(resultCount.value, resultCount.atLeast ? COPY.resultsAtLeast : COPY.results)}
         </span>
       </div>
 
@@ -682,26 +708,26 @@ export function OrderListFilterBar({
             />
           }
         >
-          <FilterGroup legend={COPY.groupSource}>
+          <FilterGroup legend={COPY.groups.source}>
             {sourceField}
             {createdField}
           </FilterGroup>
-          <FilterGroup legend={COPY.groupShipment}>
+          <FilterGroup legend={COPY.groups.shipment}>
             {fulfillmentField}
             {shipByField}
             {packingField}
             {packBenchCheck}
           </FilterGroup>
-          <FilterGroup legend={COPY.groupExceptions}>
+          <FilterGroup legend={COPY.groups.exceptions}>
             {holdField}
             {exceptionChecks}
           </FilterGroup>
-          <FilterGroup legend={COPY.groupTags}>{tagList}</FilterGroup>
+          <FilterGroup legend={COPY.groups.tags}>{tagList}</FilterGroup>
         </FilterPanel>
       ) : null}
 
-      <QuickFilters aria-label={COPY.quickFiltersAria} end={quickEnd}>
-        <QuickFiltersLabel>{COPY.quickNeedsLook}</QuickFiltersLabel>
+      <QuickFilters aria-label={COPY.quick.aria} end={quickEnd}>
+        <QuickFiltersLabel>{COPY.quick.needsLook}</QuickFiltersLabel>
         <Chip
           tone="warning"
           active={state.breaching}
@@ -709,7 +735,7 @@ export function OrderListFilterBar({
             filtersApi.toggle('dueBefore');
           }}
         >
-          {COPY.quickBreaching}
+          {COPY.quick.breaching}
         </Chip>
         {state.invoicingBlocked || salesDocsBlocked ? (
           <Chip
@@ -717,14 +743,14 @@ export function OrderListFilterBar({
             active={state.invoicingBlocked}
             title={
               summary?.salesDocumentIssuedOnRequest
-                ? COPY.quickSalesDocsTitle(summary.salesDocumentIssuedOnRequest)
+                ? plural(summary.salesDocumentIssuedOnRequest, COPY.quick.salesDocsTitle)
                 : undefined
             }
             onClick={() => {
               filtersApi.toggle('salesDocumentBlocked');
             }}
           >
-            {COPY.quickSalesDocs}
+            {COPY.quick.salesDocs}
             {salesDocsBlocked === undefined ? null : (
               <span className="chip__count">
                 {`${salesDocsBlocked}${oldestAgeSuffix(summary?.salesDocumentBlockedOldestAt)}`}
@@ -742,7 +768,7 @@ export function OrderListFilterBar({
               filtersApi.toggle('waitingInOpenLinker');
             }}
           >
-            {COPY.quickWaiting}
+            {COPY.quick.waiting}
             {summary?.waitingInOpenLinker === undefined ? null : (
               <span className="chip__count">
                 {`${summary.waitingInOpenLinker}${oldestAgeSuffix(summary.waitingInOpenLinkerOldestAt)}`}
@@ -758,7 +784,7 @@ export function OrderListFilterBar({
               filtersApi.toggle('onPackBench');
             }}
           >
-            {COPY.quickPackBench}
+            {COPY.quick.packBench}
             {summary?.onPackBench === undefined ? null : (
               <span className="chip__count">{summary.onPackBench}</span>
             )}
@@ -772,7 +798,7 @@ export function OrderListFilterBar({
               filtersApi.toggle('destinationRoutingBlocked');
             }}
           >
-            {COPY.quickRoutingBlocked}
+            {COPY.quick.routingBlocked}
             {summary?.destinationRoutingBlocked === undefined ? null : (
               <span className="chip__count">{summary.destinationRoutingBlocked}</span>
             )}
@@ -785,7 +811,7 @@ export function OrderListFilterBar({
               filtersApi.toggle('taxRateConflict');
             }}
           >
-            {COPY.quickRateConflict}
+            {COPY.quick.rateConflict}
             {summary?.taxRateConflict === undefined ? null : (
               <span className="chip__count">{summary.taxRateConflict}</span>
             )}
@@ -799,9 +825,34 @@ export function OrderListFilterBar({
               filtersApi.toggle('attention');
             }}
           >
-            {COPY.quickOmsStopped}
+            {COPY.quick.omsStopped}
             {summary?.omsAttention === undefined ? null : (
               <span className="chip__count">{summary.omsAttention}</span>
+            )}
+          </Chip>
+        ) : null}
+        {/* #3961 - orders the shop changed after packing started that wait for a
+            decision. No count: the summary aggregate does not split reasons. */}
+        <Chip
+          tone="warning"
+          active={state.shopChanged}
+          onClick={() => {
+            filtersApi.toggle('attentionReason');
+          }}
+        >
+          {COPY.quick.shopChanged}
+        </Chip>
+        {state.paymentNotSent || summary?.paymentNotSent ? (
+          <Chip
+            tone="warning"
+            active={state.paymentNotSent}
+            onClick={() => {
+              filtersApi.toggle('paymentNotSent');
+            }}
+          >
+            {paymentCopy.filterQuick}
+            {summary?.paymentNotSent === undefined ? null : (
+              <span className="chip__count">{summary.paymentNotSent}</span>
             )}
           </Chip>
         ) : null}
@@ -811,7 +862,7 @@ export function OrderListFilterBar({
             filtersApi.toggle('openReturn');
           }}
         >
-          {COPY.quickOpenReturn}
+          {COPY.quick.openReturn}
         </Chip>
         <Chip
           active={state.withGift}
@@ -829,10 +880,10 @@ export function OrderListFilterBar({
             filtersApi.toggle('hasBuyerNote');
           }}
         >
-          {COPY.quickBuyerNote}
+          {COPY.quick.buyerNote}
         </Chip>
         <QuickFiltersSeparator />
-        <QuickFiltersLabel>{COPY.quickPhase}</QuickFiltersLabel>
+        <QuickFiltersLabel>{COPY.quick.phase}</QuickFiltersLabel>
         {phaseChips}
       </QuickFilters>
 
@@ -853,7 +904,12 @@ export function OrderListFilterBar({
                   setSheetOpen(false);
                 }}
               >
-                {COPY.showOrders(resultCount)}
+                {resultCount === null
+                  ? COPY.showOrdersUnknown
+                  : plural(
+                      resultCount.value,
+                      resultCount.atLeast ? COPY.showOrdersAtLeast : COPY.showOrders,
+                    )}
               </Button>
             </>
           }

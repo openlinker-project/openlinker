@@ -94,10 +94,17 @@ import { deriveAtpStatus } from '../../features/inventory';
 import { deriveProductStaleness } from '../../features/products/lib/product-staleness';
 import { CostCoverageBanner } from '../../features/products/components/cost-coverage-banner';
 import { useCostSummaryQuery } from '../../features/products/hooks/use-cost-coverage-query';
+import {
+  interpolate,
+  renderRich,
+  useFormat,
+  useMessages,
+  usePlural,
+  type Formatters,
+} from '../../shared/i18n';
 import { useTrackMargin } from '../../features/analytics';
 import { ListingsCoveragePills } from './listings-coverage-pills';
 import { ProductRowDetail } from './product-row-detail';
-import { interpolate, useMessages } from '../../shared/i18n';
 import { SegmentedControl } from '../../shared/ui/segmented-control';
 import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
 import { bucketCount, captureDemoEvent } from '../../features/demo';
@@ -116,7 +123,12 @@ const KPI_PROBE = { limit: 1 } as const;
 
 // When currency is missing, the raw amount is shown muted with a hover-reveal
 // rather than silently emitting a bare decimal — explicit ambiguity is safer.
-function formatPrice(price: number | null, currency: string | null): ReactNode {
+function formatPrice(
+  price: number | null,
+  currency: string | null,
+  currencyUnknownLabel: string,
+  format: Formatters,
+): ReactNode {
   if (price === null) {
     return <span className="text-muted">-</span>;
   }
@@ -124,8 +136,8 @@ function formatPrice(price: number | null, currency: string | null): ReactNode {
     return formatAmount(price, currency);
   }
   return (
-    <span className="text-muted" title="Currency unknown">
-      {price.toFixed(2)}
+    <span className="text-muted" title={currencyUnknownLabel}>
+      {format.number(price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
     </span>
   );
 }
@@ -160,11 +172,6 @@ const SORTABLE_COLUMN_IDS: readonly ProductListSortField[] = ['name', 'stock'];
 
 /** Sort keys rendered as stacked buttons in the merged Price/Updated/Created header. */
 const MONEY_SORT_FIELDS: readonly ProductListSortField[] = ['price', 'updatedAt', 'createdAt'];
-const MONEY_SORT_LABELS: Record<'price' | 'updatedAt' | 'createdAt', string> = {
-  price: 'Price',
-  updatedAt: 'Updated',
-  createdAt: 'Created',
-};
 
 /** First-click direction per sort key; re-clicking the active column flips it. */
 const DEFAULT_DIR: Record<ProductListSortField, ProductListSortDir> = {
@@ -176,26 +183,26 @@ const DEFAULT_DIR: Record<ProductListSortField, ProductListSortDir> = {
   stock: 'asc',
 };
 
-const STOCK_CHIPS: readonly { value: ProductStockFilter; label: string }[] = [
-  { value: 'out', label: 'Out of stock' },
-  { value: 'low', label: 'Low stock' },
-  { value: 'oversold', label: 'Oversold' },
-];
+/** Stock filter chips; labels come from copy (`filters.stockChips`). */
+const STOCK_CHIPS: readonly ProductStockFilter[] = ['out', 'low', 'oversold'];
 
 /** Sort-field options for the collapsed-panel Sort control (narrow viewports). */
-const SORT_OPTIONS: readonly { value: ProductListSortField; label: string }[] = [
-  { value: 'name', label: 'Name' },
-  { value: 'sku', label: 'SKU' },
-  { value: 'price', label: 'Price' },
-  { value: 'stock', label: 'Stock' },
-  { value: 'updatedAt', label: 'Updated' },
-  { value: 'createdAt', label: 'Created' },
+const SORT_OPTIONS: readonly ProductListSortField[] = [
+  'name',
+  'sku',
+  'price',
+  'stock',
+  'updatedAt',
+  'createdAt',
 ];
 
 export function ProductsListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const platforms = usePlatforms();
+  const copy = useMessages('products').productsListPage;
+  const plural = usePlural();
+  const format = useFormat();
 
   // ── URL state ──────────────────────────────────────────────────────────
   const urlSearch = searchParams.get('search') ?? '';
@@ -452,7 +459,7 @@ export function ProductsListPage(): ReactElement {
   });
 
   const probeValue = (total: number | undefined): string =>
-    total === undefined ? '-' : String(total);
+    total === undefined ? '-' : format.number(total);
 
   // ── URL param setters ──────────────────────────────────────────────────
   /** Set/clear one filter param and reset paging (orders pattern). */
@@ -734,16 +741,20 @@ export function ProductsListPage(): ReactElement {
           disabled={disabled}
           ariaLabel={
             checked
-              ? `Unselect ${product.name}`
+              ? interpolate(copy.row.unselect, { name: product.name })
               : disabled
-                ? `Maximum ${BULK_SELECTION_CAP} products per batch reached`
-                : `Select ${product.name}`
+                ? interpolate(copy.row.capReached, { max: format.number(BULK_SELECTION_CAP) })
+                : interpolate(copy.row.select, { name: product.name })
           }
-          tooltip={disabled ? `Max ${BULK_SELECTION_CAP} per batch` : undefined}
+          tooltip={
+            disabled
+              ? interpolate(copy.row.capTooltip, { max: format.number(BULK_SELECTION_CAP) })
+              : undefined
+          }
         />
       );
     },
-    [selectedIds, atCap, handleToggleRow],
+    [selectedIds, atCap, handleToggleRow, copy, format],
   );
 
   const renderStockCell = useCallback((product: Product): ReactNode => {
@@ -763,8 +774,8 @@ export function ProductsListPage(): ReactElement {
               {bundleCopy.list.availabilityUnknown}
             </StatusBadge>
           ) : product.availableToPromise === null ? (
-            <span className="av-unknown" title="OpenLinker doesn't know. Not zero.">
-              Not known
+            <span className="av-unknown" title={copy.stock.notKnownTitle}>
+              {copy.stock.notKnown}
             </span>
           ) : (
             <span>
@@ -775,13 +786,13 @@ export function ProductsListPage(): ReactElement {
                 {product.availableToPromise}
               </span>{' '}
               <span className="text-muted" style={{ fontSize: '0.75rem' }}>
-                to sell
+                {copy.stock.toSell}
               </span>
             </span>
           )}
           {atpStatus === 'unknown' ? (
             <StatusBadge tone="neutral" withDot compact>
-              Not known
+              {copy.stock.notKnown}
             </StatusBadge>
           ) : (
             <StatusBadge tone={STOCK_STATUS_BADGE_TONE[atpStatus]} withDot compact>
@@ -803,7 +814,9 @@ export function ProductsListPage(): ReactElement {
             </span>
           ) : null}
           {product.totalAvailable !== undefined ? (
-            <span className="text-muted products-cell-sub tabular">master {product.totalAvailable}</span>
+            <span className="text-muted products-cell-sub tabular">
+              {interpolate(copy.stock.master, { n: format.number(product.totalAvailable) })}
+            </span>
           ) : null}
         </span>
       );
@@ -820,12 +833,12 @@ export function ProductsListPage(): ReactElement {
         </StatusBadge>
         {(product.totalReserved ?? 0) > 0 ? (
           <span className="text-muted products-cell-sub tabular">
-            reserved {product.totalReserved}
+            {interpolate(copy.stock.reserved, { n: format.number(product.totalReserved ?? 0) })}
           </span>
         ) : null}
       </span>
     );
-  }, [bundleCopy]);
+  }, [bundleCopy, copy, format]);
 
   const renderCoveragePills = useCallback(
     (product: Product): ReactNode => (
@@ -863,9 +876,7 @@ export function ProductsListPage(): ReactElement {
             state={headerCheckboxState}
             onToggle={handleToggleHeader}
             ariaLabel={
-              headerCheckboxState === 'all'
-                ? 'Unselect all visible products'
-                : 'Select all visible products'
+              headerCheckboxState === 'all' ? copy.columns.unselectAll : copy.columns.selectAll
             }
           />
         ),
@@ -876,7 +887,7 @@ export function ProductsListPage(): ReactElement {
         id: 'name',
         // #2538 - Thumbnail, name and a meta line.
         lines: 2,
-        header: 'Product',
+        header: copy.columns.product,
         sortable: true,
         cell: (product): ReactNode => {
           const origin = product.externalIds?.[0];
@@ -899,7 +910,7 @@ export function ProductsListPage(): ReactElement {
                   ) : null}
                   {(product.variantCount ?? 0) > 1 ? (
                     <StatusBadge tone="neutral" compact>
-                      {product.variantCount} variants
+                      {plural(product.variantCount ?? 0, copy.row.variantsBadge)}
                     </StatusBadge>
                   ) : null}
                   {renderStalenessBadge(product)}
@@ -917,10 +928,17 @@ export function ProductsListPage(): ReactElement {
                     resolves to a single variant. */}
                 {product.sku ? (
                   <span className="text-muted products-cell-sub">
-                    SKU:{' '}
-                    <span className="mono-text" title={product.sku}>
-                      {product.sku}
-                    </span>
+                    {renderRich(
+                      copy.row.sku,
+                      {
+                        value: (text: string) => (
+                          <span className="mono-text" title={text}>
+                            {text}
+                          </span>
+                        ),
+                      },
+                      { sku: product.sku },
+                    )}
                   </span>
                 ) : null}
                 {/* #3624 - a bundle row says what limits it; its composition opens
@@ -959,7 +977,7 @@ export function ProductsListPage(): ReactElement {
         id: 'source',
         // #2538 - ConnectionCell stacks the name over its status.
         lines: 2,
-        header: 'Source',
+        header: copy.columns.source,
         // Stays 1024 (#1996): lowering it to 768 was rejected because it keeps
         // the column only behind horizontal scroll. The tablet relocation of
         // this fact into the Product cell shipped as #2094 (S8).
@@ -986,13 +1004,13 @@ export function ProductsListPage(): ReactElement {
       },
       {
         id: 'stock',
-        header: 'Stock',
+        header: copy.columns.stock,
         sortable: true,
         cell: (product) => renderStockCell(product),
       },
       {
         id: 'listings',
-        header: 'Listings',
+        header: copy.columns.listings,
         cell: (product) => (
           <span className="products-cell-stack">
             {renderCoveragePills(product)}
@@ -1004,7 +1022,7 @@ export function ProductsListPage(): ReactElement {
                   handleCreateOffersForProduct(product.id);
                 }}
               >
-                + Publish
+                {copy.row.publish}
               </Button>
             ) : null}
           </span>
@@ -1021,7 +1039,7 @@ export function ProductsListPage(): ReactElement {
                 className={`sortbtn${sortField === field ? ' sortbtn--active' : ''}`}
                 onClick={() => { handleMergedSort(field); }}
               >
-                {MONEY_SORT_LABELS[field as 'price' | 'updatedAt' | 'createdAt']}
+                {copy.sortOptions[field]}
                 <span className="sortbtn__ind" aria-hidden="true">
                   {sortField === field ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
                 </span>
@@ -1033,10 +1051,10 @@ export function ProductsListPage(): ReactElement {
         cell: (product) => (
           <span className="products-cell-stack products-cell-stack--end">
             <span className="mono tabular products-stock-value">
-              {formatPrice(product.price, product.currency)}
+              {formatPrice(product.price, product.currency, copy.price.currencyUnknown, format)}
             </span>
             <span className="products-cell-sub products-cell-sub--date mono tabular">
-              upd. <TimeDisplay iso={product.updatedAt} format="date" />
+              {copy.row.updatedPrefix} <TimeDisplay iso={product.updatedAt} format="date" />
             </span>
             <span className="products-cell-sub products-cell-sub--date mono tabular">
               <TimeDisplay iso={product.createdAt} format="date" />
@@ -1062,6 +1080,12 @@ export function ProductsListPage(): ReactElement {
       handleCreateOffersForProduct,
       bundleCopy,
       bundleWrite.canWrite,
+      copy,
+      format,
+      plural,
+      sortField,
+      sortDir,
+      handleMergedSort,
     ],
   );
 
@@ -1078,9 +1102,9 @@ export function ProductsListPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow="Operations"
-      title="Products"
-      description="Catalog cockpit — search, stock health, and per-channel listings coverage. Select up to 100 products to bulk-create offers."
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={interpolate(copy.description, { max: format.number(BULK_SELECTION_CAP) })}
       actions={
         <>
           {bundleWrite.canWrite ? (
@@ -1108,7 +1132,7 @@ export function ProductsListPage(): ReactElement {
             to="/products/cost-prices"
             data-testid="products-open-cost-prices"
           >
-            Cost prices
+            {copy.costPrices}
           </Link>
         </>
       }
@@ -1131,7 +1155,7 @@ export function ProductsListPage(): ReactElement {
             });
           }}
         >
-          <MetricCard label="Products" value={probeValue(allProbe.data?.total)} />
+          <MetricCard label={copy.kpi.products} value={probeValue(allProbe.data?.total)} />
         </button>
         <button
           type="button"
@@ -1144,7 +1168,7 @@ export function ProductsListPage(): ReactElement {
           }}
         >
           <MetricCard
-            label="Out of stock"
+            label={copy.kpi.outOfStock}
             tone={(outProbe.data?.total ?? 0) > 0 ? 'error' : 'neutral'}
             value={probeValue(outProbe.data?.total)}
           />
@@ -1160,7 +1184,7 @@ export function ProductsListPage(): ReactElement {
           }}
         >
           <MetricCard
-            label="Low stock"
+            label={copy.kpi.lowStock}
             tone={(lowProbe.data?.total ?? 0) > 0 ? 'warning' : 'neutral'}
             value={probeValue(lowProbe.data?.total)}
           />
@@ -1177,7 +1201,7 @@ export function ProductsListPage(): ReactElement {
             }}
           >
             <MetricCard
-              label="Listing gaps"
+              label={copy.kpi.listingGaps}
               tone={(gapsProbe.data?.total ?? 0) > 0 ? 'info' : 'neutral'}
               value={probeValue(gapsProbe.data?.total)}
             />
@@ -1206,7 +1230,7 @@ export function ProductsListPage(): ReactElement {
             }}
           >
             <KpiCard
-              label="No tax rate"
+              label={copy.kpi.noTaxRate}
               tone={(noRateProbe.data?.total ?? 0) > 0 ? 'error' : 'neutral'}
               value={probeValue(noRateProbe.data?.total)}
             />
@@ -1249,7 +1273,7 @@ export function ProductsListPage(): ReactElement {
       {hasProductMaster && !suggestionDismissed && (notCheckedProbe.data?.total ?? 0) > 0 ? (
         <Alert
           tone="info"
-          title={`${String(notCheckedProbe.data?.total ?? 0)} products have never been checked for a tax rate`}
+          title={plural(notCheckedProbe.data?.total ?? 0, copy.taxRateSuggestion.title)}
           action={
             <Button
               tone="ghost"
@@ -1257,12 +1281,11 @@ export function ProductsListPage(): ReactElement {
                 setSuggestionDismissed(true);
               }}
             >
-              Dismiss for this session
+              {copy.taxRateSuggestion.dismiss}
             </Button>
           }
         >
-          Rates arrive with the ordinary product sync. Run one to find out which items have a rate
-          and which are missing it.
+          {copy.taxRateSuggestion.body}
         </Alert>
       ) : null}
 
@@ -1288,7 +1311,7 @@ export function ProductsListPage(): ReactElement {
             false here, where nothing is named. Deliberately not reused: the
             link points at the surface that DOES name them instead.
           */}
-          <Link to="/settings/who-decides">Who decides what</Link>
+          <Link to="/settings/who-decides">{copy.availabilityUnknownLink}</Link>
         </Alert>
       ) : null}
 
@@ -1298,9 +1321,9 @@ export function ProductsListPage(): ReactElement {
           the search input stays inline. */}
       <div className="toolbar products-toolbar">
         <Input
-          aria-label="Search products by name or SKU"
+          aria-label={copy.filters.searchLabel}
           data-testid="stock-list-search"
-          placeholder="Search by name or SKU…"
+          placeholder={copy.filters.searchPlaceholder}
           value={searchInput}
           onChange={(e) => {
             handleSearchChange(e.target.value);
@@ -1320,7 +1343,7 @@ export function ProductsListPage(): ReactElement {
               setFiltersOpen((open) => !open);
             }}
           >
-            Filters
+            {copy.filters.toggle}
             {activeFilterCount > 0 ? (
               <span className="products-filter-toggle__count tabular">{activeFilterCount}</span>
             ) : null}
@@ -1329,13 +1352,13 @@ export function ProductsListPage(): ReactElement {
         ) : (
           <>
             <Select
-              aria-label="Filter by source connection"
+              aria-label={copy.filters.sourceLabel}
               value={sourceConnectionId ?? ''}
               onChange={(e) => {
                 setFilterParam('connectionId', e.target.value);
               }}
             >
-              <option value="">Source: All connections</option>
+              <option value="">{copy.filters.sourceAll}</option>
               {activeConnections.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -1344,7 +1367,7 @@ export function ProductsListPage(): ReactElement {
             </Select>
             {anyFilterActive ? (
               <Button tone="ghost" className="button--sm" onClick={clearFilters}>
-                Clear filters
+                {copy.filters.clear}
               </Button>
             ) : null}
           </>
@@ -1361,19 +1384,19 @@ export function ProductsListPage(): ReactElement {
             active={stock === undefined}
             onClick={() => { setFilterParam('stock', ''); }}
           >
-            All {totalLabel}
+            {interpolate(copy.filters.all, { total: totalLabel })}
           </Chip>
           {STOCK_CHIPS.map((chip) => (
             <Chip
-              key={chip.value}
-              data-testid={`stock-list-chip-${chip.value}`}
-              tone={chip.value === 'low' ? 'warning' : 'error'}
-              active={stock === chip.value}
+              key={chip}
+              data-testid={`stock-list-chip-${chip}`}
+              tone={chip === 'low' ? 'warning' : 'error'}
+              active={stock === chip}
               onClick={() => {
-                toggleStock(chip.value);
+                toggleStock(chip);
               }}
             >
-              {chip.label}
+              {copy.filters.stockChips[chip]}
             </Chip>
           ))}
           {offerManagerConnections.map((c) => (
@@ -1385,13 +1408,13 @@ export function ProductsListPage(): ReactElement {
                 toggleUnlistedOn(c.id);
               }}
             >
-              Unlisted on {c.name}
+              {interpolate(copy.filters.unlistedOn, { name: c.name })}
             </Chip>
           ))}
           {/* #2447 — opt-in: a phantom (fully-deleted-at-source) row is a rare,
               cleanup-shaped need, not a default-view change. */}
           <Chip tone="error" active={hideFullyStale} onClick={toggleHideStale}>
-            Hide deleted at source
+            {copy.filters.hideDeleted}
           </Chip>
           {trackMargin && (costSummary.data?.variantsWithoutCost ?? 0) > 0 ? (
             // The list API has no "variant without a cost" filter, so the chip
@@ -1402,7 +1425,7 @@ export function ProductsListPage(): ReactElement {
               to="/products/cost-prices?tab=all"
               data-testid="products-filter-no-cost"
             >
-              No cost price{' '}
+              {copy.filters.noCostPrice}{' '}
               <span className="chip__count">{costSummary.data?.variantsWithoutCost}</span>
             </Link>
           ) : null}
@@ -1414,11 +1437,16 @@ export function ProductsListPage(): ReactElement {
               className="text-muted mono tabular"
               style={{ marginLeft: 'auto', fontSize: '0.75rem' }}
             >
-              {formatPaginatedTotal(
-                totalStage.total,
-                query.data ? offset + query.data.items.length : null
-              )}{' '}
-              results
+              {plural(
+                totalStage.total ?? (query.data ? offset + query.data.items.length : 0),
+                copy.filters.results,
+                {
+                  total: formatPaginatedTotal(
+                    totalStage.total,
+                    query.data ? offset + query.data.items.length : null
+                  ),
+                },
+              )}
             </span>
           ) : null}
         </div>
@@ -1427,32 +1455,32 @@ export function ProductsListPage(): ReactElement {
       {isNarrow && filtersOpen ? (
         <div className="products-filter-panel">
           <div className="products-filter-panel__group">
-            <span className="products-filter-panel__label">Stock</span>
+            <span className="products-filter-panel__label">{copy.filters.panel.stock}</span>
             <div className="ds-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
               <Chip
                 tone="neutral"
                 active={stock === undefined}
                 onClick={() => { setFilterParam('stock', ''); }}
               >
-                All {totalLabel}
+                {interpolate(copy.filters.all, { total: totalLabel })}
               </Chip>
               {STOCK_CHIPS.map((chip) => (
                 <Chip
-                  key={chip.value}
-                  tone={chip.value === 'low' ? 'warning' : 'error'}
-                  active={stock === chip.value}
+                  key={chip}
+                  tone={chip === 'low' ? 'warning' : 'error'}
+                  active={stock === chip}
                   onClick={() => {
-                    toggleStock(chip.value);
+                    toggleStock(chip);
                   }}
                 >
-                  {chip.label}
+                  {copy.filters.stockChips[chip]}
                 </Chip>
               ))}
             </div>
           </div>
           {offerManagerConnections.length > 0 ? (
             <div className="products-filter-panel__group">
-              <span className="products-filter-panel__label">Listings</span>
+              <span className="products-filter-panel__label">{copy.filters.panel.listings}</span>
               <div className="ds-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                 {offerManagerConnections.map((c) => (
                   <Chip
@@ -1463,30 +1491,30 @@ export function ProductsListPage(): ReactElement {
                       toggleUnlistedOn(c.id);
                     }}
                   >
-                    Unlisted on {c.name}
+                    {interpolate(copy.filters.unlistedOn, { name: c.name })}
                   </Chip>
                 ))}
               </div>
             </div>
           ) : null}
           <div className="products-filter-panel__group">
-            <span className="products-filter-panel__label">Deleted at source</span>
+            <span className="products-filter-panel__label">{copy.filters.panel.deletedAtSource}</span>
             <div className="ds-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
               <Chip tone="error" active={hideFullyStale} onClick={toggleHideStale}>
-                Hide deleted at source
+                {copy.filters.hideDeleted}
               </Chip>
             </div>
           </div>
           <div className="products-filter-panel__group">
-            <span className="products-filter-panel__label">Source</span>
+            <span className="products-filter-panel__label">{copy.filters.panel.source}</span>
             <Select
-              aria-label="Filter by source connection"
+              aria-label={copy.filters.sourceLabel}
               value={sourceConnectionId ?? ''}
               onChange={(e) => {
                 setFilterParam('connectionId', e.target.value);
               }}
             >
-              <option value="">Source: All connections</option>
+              <option value="">{copy.filters.sourceAll}</option>
               {activeConnections.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -1498,10 +1526,10 @@ export function ProductsListPage(): ReactElement {
               Updated columns are hidden there (hideBelow), so headers alone
               can no longer reach every sort axis. */}
           <div className="products-filter-panel__group">
-            <span className="products-filter-panel__label">Sort</span>
+            <span className="products-filter-panel__label">{copy.filters.panel.sort}</span>
             <div className="ds-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
               <Select
-                aria-label="Sort by"
+                aria-label={copy.filters.panel.sortBy}
                 value={sortField}
                 onChange={(e) => {
                   const field = e.target.value;
@@ -1509,8 +1537,8 @@ export function ProductsListPage(): ReactElement {
                 }}
               >
                 {SORT_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
+                  <option key={o} value={o}>
+                    {copy.sortOptions[o]}
                   </option>
                 ))}
               </Select>
@@ -1520,7 +1548,7 @@ export function ProductsListPage(): ReactElement {
                   setSort(sortField, 'asc');
                 }}
               >
-                Asc
+                {copy.filters.panel.asc}
               </Chip>
               <Chip
                 active={sortDir === 'desc'}
@@ -1528,14 +1556,14 @@ export function ProductsListPage(): ReactElement {
                   setSort(sortField, 'desc');
                 }}
               >
-                Desc
+                {copy.filters.panel.desc}
               </Chip>
             </div>
           </div>
           {anyFilterActive ? (
             <div className="products-filter-panel__group">
               <Button tone="ghost" className="button--sm" onClick={clearFilters}>
-                Clear filters
+                {copy.filters.clear}
               </Button>
             </div>
           ) : null}
@@ -1543,28 +1571,28 @@ export function ProductsListPage(): ReactElement {
       ) : null}
 
       {query.isLoading ? (
-        <DataTableSkeleton columns={columns} label="Loading products…" />
+        <DataTableSkeleton columns={columns} label={copy.loading} />
       ) : query.error ? (
         <ErrorState
-          title="Unable to load products"
+          title={copy.error.title}
           message={query.error.message}
-          action={<Button onClick={() => { void query.refetch(); }}>Retry</Button>}
+          action={<Button onClick={() => { void query.refetch(); }}>{copy.error.retry}</Button>}
         />
       ) : items.length === 0 ? (
         <EmptyState
           liveRegion="off"
-          title="No products found"
+          title={copy.empty.title}
           message={
             anyFilterActive
-              ? 'No products match the current filters.'
-              : 'No products have been synced yet.'
+              ? copy.empty.filtered
+              : copy.empty.unsynced
           }
           action={
             anyFilterActive ? (
-              <Button onClick={clearFilters}>Clear filters</Button>
+              <Button onClick={clearFilters}>{copy.filters.clear}</Button>
             ) : (
               <Link className="button button--primary" to="/connections">
-                Manage connections
+                {copy.empty.manageConnections}
               </Link>
             )
           }
@@ -1572,7 +1600,7 @@ export function ProductsListPage(): ReactElement {
       ) : (
         <>
           <DataTable
-            caption="Products"
+            caption={copy.tableCaption}
             className="products-table"
             tableTestId="stock-list-table"
             rowAttributes={(product) => ({ 'data-testid': `stock-list-row-${product.sku ?? product.id}` })}
@@ -1583,23 +1611,29 @@ export function ProductsListPage(): ReactElement {
             footer={
               <BulkActionBar
                 count={selectedIds.size}
-                itemNoun="product"
+                selectedLabel={copy.bulk.selected}
                 hint={
                   atCap
-                    ? `Max ${BULK_SELECTION_CAP} per batch`
-                    : `Max ${BULK_SELECTION_CAP} per batch · ${BULK_SELECTION_CAP - selectedIds.size} more available`
+                    ? interpolate(copy.bulk.hintAtCap, { max: format.number(BULK_SELECTION_CAP) })
+                    : interpolate(copy.bulk.hint, {
+                        max: format.number(BULK_SELECTION_CAP),
+                        remaining: format.number(BULK_SELECTION_CAP - selectedIds.size),
+                      })
                 }
                 actions={
                   <>
                     <Button tone="ghost" className="button--sm" onClick={clearSelection}>
-                      Clear
+                      {copy.bulk.clear}
                     </Button>
                     {/* Capability-gated (#1096/#1828): hidden with 0 publish destinations. */}
                     {publishDestinations.length > 0 && write.visible ? (
                       <Button tone="primary" onClick={handleCreateOffers}>
                         {soleConnectionName
-                          ? `Publish to ${soleConnectionName} (${selectedIds.size.toLocaleString()})`
-                          : `Publish products (${selectedIds.size.toLocaleString()})`}
+                          ? interpolate(copy.bulk.publishTo, {
+                              destination: soleConnectionName,
+                              n: format.number(selectedIds.size),
+                            })
+                          : interpolate(copy.bulk.publish, { n: format.number(selectedIds.size) })}
                       </Button>
                     ) : null}
                   </>
@@ -1639,7 +1673,7 @@ export function ProductsListPage(): ReactElement {
                 />
               ),
               toggleLabel: (product, expanded) =>
-                `${expanded ? 'Collapse' : 'Expand'} variant stock for ${product.name}`,
+                interpolate(expanded ? copy.row.collapse : copy.row.expand, { name: product.name }),
             }}
             cardView={{
               // The same hooks the desktop table carries, so a stock check reads
@@ -1667,14 +1701,18 @@ export function ProductsListPage(): ReactElement {
               subtitle: (product) =>
                 product.sku ? (
                   <>
-                    SKU: <span className="mono-text">{product.sku}</span>
+                    {renderRich(
+                      copy.row.sku,
+                      { value: (text: string) => <span className="mono-text">{text}</span> },
+                      { sku: product.sku },
+                    )}
                   </>
                 ) : null,
               meta: (product) => (
                 <span className="data-table__badge-row">
                   {product.price !== null ? (
                     <span className="mono tabular">
-                      {formatPrice(product.price, product.currency)}
+                      {formatPrice(product.price, product.currency, copy.price.currencyUnknown, format)}
                     </span>
                   ) : null}
                   {product.availableToPromise !== undefined ? (
@@ -1689,8 +1727,11 @@ export function ProductsListPage(): ReactElement {
                       data-testid={`stock-list-cell-${product.sku ?? product.id}`}
                     >
                       {product.availableToPromise === null
-                        ? 'Not known'
-                        : `${product.availableToPromise} to sell · ${STOCK_STATUS_LABEL[deriveStockStatus(product.availableToPromise)]}`}
+                        ? copy.stock.notKnown
+                        : interpolate(copy.stock.toSellWithStatus, {
+                            n: format.number(product.availableToPromise),
+                            status: STOCK_STATUS_LABEL[deriveStockStatus(product.availableToPromise)],
+                          })}
                     </StatusBadge>
                   ) : product.totalAvailable !== undefined ? (
                     <StatusBadge
@@ -1723,7 +1764,7 @@ export function ProductsListPage(): ReactElement {
                       <span className="products-card-disclosure__chev" aria-hidden="true">
                         {expanded ? '▾' : '▸'}
                       </span>
-                      {product.variantCount ?? 1} variant{(product.variantCount ?? 1) === 1 ? '' : 's'}
+                      {plural(product.variantCount ?? 1, copy.row.cardVariants)}
                     </button>
                     {expanded ? (
                       <ProductRowDetail

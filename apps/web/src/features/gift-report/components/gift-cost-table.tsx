@@ -18,7 +18,7 @@ interface GiftCostTableProps {
 }
 
 export function GiftCostTable({ groups }: GiftCostTableProps): ReactElement {
-  const copy = useMessages('giftReport').table;
+  const copy = useMessages('gift-report').table;
   const format = useFormat();
 
   function promotionLabel(group: GiftReportGroup): string {

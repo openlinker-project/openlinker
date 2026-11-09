@@ -20,12 +20,14 @@ import { Button } from '../../../shared/ui/button';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { usePrestashopMessages } from '../messages';
 
 export function PrestashopCredentialsPanel({
   connection,
 }: {
   connection: Connection;
 }): ReactElement {
+  const copy = usePrestashopMessages().prestashopCredentialsPanel;
   const [showRotate, setShowRotate] = useState(false);
   const [newKey, setNewKey] = useState('');
   const rotate = useUpdateConnectionCredentialsMutation();
@@ -33,8 +35,8 @@ export function PrestashopCredentialsPanel({
 
   if (!connection.credentialsBacked) {
     return (
-      <FormField label="Credentials" name="credentials">
-        <Input value="Environment variable (not editable via UI)" disabled />
+      <FormField label={copy.envBackedLabel} name="credentials">
+        <Input value={copy.envBacked} disabled />
       </FormField>
     );
   }
@@ -49,8 +51,8 @@ export function PrestashopCredentialsPanel({
       });
       showToast({
         tone: 'success',
-        title: 'Credentials rotated',
-        description: 'The new webservice key is now in use.',
+        title: copy.toast.title,
+        description: copy.toast.description,
       });
       setNewKey('');
       setShowRotate(false);
@@ -61,9 +63,9 @@ export function PrestashopCredentialsPanel({
 
   return (
     <FormField
-      label="Webservice key"
+      label={copy.label}
       name="credentials"
-      description="Stored securely on the server. Rotate to replace the key without restarting the API."
+      description={copy.description}
     >
       {showRotate ? (
         <div className="form-grid">
@@ -71,7 +73,7 @@ export function PrestashopCredentialsPanel({
           <Input
             type="password"
             autoComplete="off"
-            placeholder="New webservice key"
+            placeholder={copy.newKeyPlaceholder}
             value={newKey}
             onChange={(event) => setNewKey(event.target.value)}
           />
@@ -81,7 +83,7 @@ export function PrestashopCredentialsPanel({
               onClick={(event) => void onRotate(event)}
               disabled={rotate.isPending || newKey.trim().length === 0}
             >
-              {rotate.isPending ? 'Rotating...' : 'Save new key'}
+              {rotate.isPending ? copy.rotating : copy.save}
             </Button>
             <Button
               tone="secondary"
@@ -91,13 +93,13 @@ export function PrestashopCredentialsPanel({
                 setNewKey('');
               }}
             >
-              Cancel
+              {copy.cancel}
             </Button>
           </div>
         </div>
       ) : (
         <Button tone="secondary" type="button" onClick={() => setShowRotate(true)}>
-          Rotate webservice key
+          {copy.rotate}
         </Button>
       )}
     </FormField>

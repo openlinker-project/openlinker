@@ -117,7 +117,7 @@ function readErrorCode(error: ApiError | null): { code: string | null; reason: s
 
 export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps): ReactElement {
   const copy = useMessages('bundles');
-  const giftDocumentsCopy = useMessages('giftDocuments');
+  const giftDocumentsCopy = useMessages('gift-documents');
   const { locale } = useLocale();
   const format = useFormat();
   const apiClient = useApiClient();

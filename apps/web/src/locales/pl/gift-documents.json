@@ -1,0 +1,84 @@
+{
+  "connection": {
+    "defaultBadge": "Domyślnie",
+    "fieldHelp": "Gratisy z tego kanału używają tej formy, chyba że sam gratis mówi inaczej.",
+    "fieldLabel": "Gratis na dokumencie w tym kanale",
+    "inheritDescription": "Ten kanał stosuje ustawienie z OpenLinker.",
+    "inheritLabel": "Jak w OpenLinker ({form})",
+    "inheritLabelUnknown": "Jak w OpenLinkerze (jeszcze nieznane)",
+    "loadFailed": "Nie udało się wczytać ustawień gratisów",
+    "loadFailedMessage": "Nie udało się wczytać połączenia.",
+    "loading": "Wczytywanie ustawień gratisów",
+    "loadingMessage": "Pobieranie tego połączenia.",
+    "notAvailable": "Niedostępne",
+    "readOnlyNotice": "Możesz zobaczyć te ustawienia, ale nie możesz ich zmieniać.",
+    "tab": "Gratisy na dokumentach",
+    "title": "Gratisy na dokumentach",
+    "zeroNoProvider": "Niedostępne: żaden dostawca dokumentów tego kanału nie przyjmuje pozycji 0,00.",
+    "zeroNotOffered": "Niedostępne: {provider} nie przyjmuje pozycji 0,00."
+  },
+  "default": {
+    "bundleInfo": "Zestawy na dokumentach: jedna pozycja, gdy wszystkie elementy mają tę samą stawkę VAT, w przeciwnym razie każdy element w swojej stawce.",
+    "fieldHelp": "To jest domyślne ustawienie dla całego OpenLinker.",
+    "fieldLabel": "Gratis na dokumencie",
+    "levels": "Wygrywa ustawienie najbardziej szczegółowe: sam gratis (reguła gratisu, miejsce na gratis w zestawie, ręczne dodanie), potem kanał sprzedaży, potem to domyślne ustawienie OpenLinker. Przy każdym gratisie widać, skąd pochodzi jego forma: \"z reguły\", \"z ustawień kanału\" lub \"domyślne w OpenLinker\".",
+    "loadFailed": "Nie udało się wczytać ustawień gratisów",
+    "loading": "Wczytywanie ustawień gratisów",
+    "readOnlyNotice": "Możesz zobaczyć te ustawienia, ale nie możesz ich zmieniać.",
+    "save": "Zapisz ustawienia",
+    "saveFailed": "Zmiany nie zostały zapisane",
+    "saved": "Ustawienia zapisane.",
+    "taxNote": "Forma gratisu to decyzja podatkowa. Porozmawiaj z księgowym lub doradcą podatkowym.",
+    "title": "Gratisy i zestawy"
+  },
+  "example": {
+    "book": "Książka",
+    "caption": "Przykład: książka za 100,00 i kubek za 20,00 jako gratis",
+    "form": "Forma",
+    "intro": "Klient płaci {total} za książkę (cena {book}) i dostaje kubek (cena {mug}).",
+    "mug": "Kubek (gratis)",
+    "mugName": "Kubek",
+    "noLine": "brak pozycji",
+    "title": "Przykład"
+  },
+  "forms": {
+    "omit": {
+      "description": "Gratisu nie ma na dokumencie. Może to zostać uznane za darowiznę, zapytaj księgowego.",
+      "label": "Pominięty",
+      "short": "Pominięty"
+    },
+    "pricedIn": {
+      "description": "Część płatności przechodzi na gratis, proporcjonalnie do cen, każda pozycja w swojej stawce VAT.",
+      "label": "Wliczony proporcjonalnie",
+      "short": "Wliczony proporcjonalnie"
+    },
+    "showZero": {
+      "description": "Gratis jest pozycją 0,00. Dostępne tylko tam, gdzie dostawca dokumentów przyjmuje pozycję zerową.",
+      "label": "Pokazany jako 0,00",
+      "short": "Pokazany jako 0,00"
+    },
+    "technicalCent": {
+      "description": "Gratis jest pozycją 0,01, zdjętą z najdroższej płatnej pozycji. Suma się nie zmienia. Domyślnie, tak jak robi to BaseLinker.",
+      "label": "0,01, zdjęte z najdroższej płatnej pozycji",
+      "short": "0,01, z najdroższej"
+    }
+  },
+  "perGift": {
+    "asInSettings": "Jak w ustawieniach",
+    "label": "Na dokumencie"
+  },
+  "preview": {
+    "equalsPaid": "Suma równa się temu, co zapłacił klient.",
+    "giftSuffix": "(gratis)",
+    "invoiceTitle": "Na fakturze",
+    "line": "{quantity} x {price} ({rate}%)",
+    "receiptTitle": "Na paragonie",
+    "title": "Podgląd dokumentu",
+    "total": "Razem"
+  },
+  "source": {
+    "channel": "z ustawień {name}",
+    "default": "domyślne w OpenLinker",
+    "rule": "z reguły"
+  }
+}

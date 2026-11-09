@@ -47,6 +47,22 @@ export interface ReverseLineQuantityInput {
   readonly changeId: string;
 }
 
+/**
+ * Give back whatever a line's decrements took beyond `targetUnits` (#3961).
+ *
+ * Unlike {@link ReverseLineQuantityInput} it carries no unit delta: the amount
+ * is read from the ledger (decremented, less everything already given back,
+ * less the target), so a second call for a line an operator edit already
+ * lowered gives back nothing. That is what makes it safe to run on every
+ * ingestion of an order the source changed.
+ */
+export interface ReverseLineToTargetInput {
+  readonly internalOrderId: string;
+  readonly orderLineId: string;
+  /** Units the line should end at in the master's ledger. */
+  readonly targetUnits: number;
+}
+
 export interface ReverseLineQuantityResult {
   /**
    * `restored` - the master was raised (or a replay found it already was);
@@ -88,4 +104,7 @@ export interface IInventorySaleReversalService {
    * cancel reverses only what remains.
    */
   reverseLineQuantity(input: ReverseLineQuantityInput): Promise<ReverseLineQuantityResult>;
+
+  /** See {@link ReverseLineToTargetInput}. Same statuses as {@link reverseLineQuantity}. */
+  reverseLineToTarget(input: ReverseLineToTargetInput): Promise<ReverseLineQuantityResult>;
 }

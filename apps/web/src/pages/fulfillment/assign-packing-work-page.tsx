@@ -49,11 +49,9 @@ import { useMemo, useState, type KeyboardEvent, type ReactElement } from 'react'
 import { useSearchParams } from 'react-router-dom';
 
 import {
-  ASSIGN_PACKING_WORK_COPY,
   AssignPackingWorkActions,
   AssignPackingWorkLaneSection,
   AssignPackingWorkSkeleton,
-  FULFILLMENT_WORKLIST_COPY,
   FULFILLMENT_WORKLIST_PAGE_SIZE,
   FulfillmentAccessDenied,
   FulfillmentTaskActionDialog,
@@ -91,6 +89,7 @@ import { KpiCard, KpiGrid } from '../../shared/ui/kpi-card';
 import { ListPagination } from '../../shared/ui/list-pagination';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { SegmentedControl } from '../../shared/ui/segmented-control';
+import { useMessages } from '../../shared/i18n';
 
 /**
  * Which question the lanes answer.
@@ -111,15 +110,16 @@ function readGroupBy(params: URLSearchParams, locationAxisOffered: boolean): Boa
 }
 
 export function AssignPackingWorkPage(): ReactElement {
+  const assignCopy = useMessages('fulfillment').assignPackingWork;
   return (
     <AccessGate
       require="fulfillment:read"
       fallback={
         <PageLayout
-          eyebrow={ASSIGN_PACKING_WORK_COPY.page.eyebrow}
-          title={ASSIGN_PACKING_WORK_COPY.page.title}
+          eyebrow={assignCopy.page.eyebrow}
+          title={assignCopy.page.title}
         >
-          <FulfillmentAccessDenied copy={ASSIGN_PACKING_WORK_COPY.denied} />
+          <FulfillmentAccessDenied copy={assignCopy.denied} />
         </PageLayout>
       }
     >
@@ -129,6 +129,9 @@ export function AssignPackingWorkPage(): ReactElement {
 }
 
 function AssignPackingWorkBoard(): ReactElement {
+  const messages = useMessages('fulfillment');
+  const assignCopy = messages.assignPackingWork;
+  const worklistCopy = messages.worklist;
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = useMemo(() => readFulfillmentFilters(searchParams), [searchParams]);
   const offset = readFulfillmentOffset(searchParams);
@@ -267,7 +270,7 @@ function AssignPackingWorkBoard(): ReactElement {
     <KpiGrid className="assign-packing-work-metrics">
       <KpiCard
         density="compact"
-        label={ASSIGN_PACKING_WORK_COPY.metrics.unassignedLabel}
+        label={assignCopy.metrics.unassignedLabel}
         value={unassignedCount}
       />
       {/* A FAILED roster read renders "Not known", never `0`: the page keeps
@@ -275,10 +278,10 @@ function AssignPackingWorkBoard(): ReactElement {
           when the truth is that the question was never answered. */}
       <KpiCard
         density="compact"
-        label={ASSIGN_PACKING_WORK_COPY.metrics.packersAtBenchesLabel}
+        label={assignCopy.metrics.packersAtBenchesLabel}
         value={
           packersQuery.isError || packersQuery.isPending ? (
-            <EmptyValue label={ASSIGN_PACKING_WORK_COPY.metrics.packersAtBenchesUnknownLabel} />
+            <EmptyValue label={assignCopy.metrics.packersAtBenchesUnknownLabel} />
           ) : (
             packers.filter((packer) => packer.online).length
           )
@@ -286,10 +289,10 @@ function AssignPackingWorkBoard(): ReactElement {
       />
       <KpiCard
         density="compact"
-        label={ASSIGN_PACKING_WORK_COPY.metrics.oldestUnassignedLabel}
+        label={assignCopy.metrics.oldestUnassignedLabel}
         value={
           oldestUnassignedAge ?? (
-            <EmptyValue label={ASSIGN_PACKING_WORK_COPY.metrics.oldestUnassignedEmptyLabel} />
+            <EmptyValue label={assignCopy.metrics.oldestUnassignedEmptyLabel} />
           )
         }
       />
@@ -303,15 +306,15 @@ function AssignPackingWorkBoard(): ReactElement {
     if (tasksQuery.isError) {
       return (
         <ErrorState
-          title={ASSIGN_PACKING_WORK_COPY.error.title}
-          message={ASSIGN_PACKING_WORK_COPY.error.message}
+          title={assignCopy.error.title}
+          message={assignCopy.error.message}
           action={
             <Button
               onClick={() => {
                 void tasksQuery.refetch();
               }}
             >
-              {ASSIGN_PACKING_WORK_COPY.error.retry}
+              {assignCopy.error.retry}
             </Button>
           }
         />
@@ -325,15 +328,15 @@ function AssignPackingWorkBoard(): ReactElement {
         return (
           <EmptyState
             liveRegion="off"
-            title={FULFILLMENT_WORKLIST_COPY.empty.pastEnd.title}
-            message={FULFILLMENT_WORKLIST_COPY.empty.pastEnd.message}
+            title={worklistCopy.empty.pastEnd.title}
+            message={worklistCopy.empty.pastEnd.message}
             action={
               <Button
                 onClick={() => {
                   goToOffset(0);
                 }}
               >
-                {FULFILLMENT_WORKLIST_COPY.empty.pastEnd.action}
+                {worklistCopy.empty.pastEnd.action}
               </Button>
             }
           />
@@ -343,10 +346,10 @@ function AssignPackingWorkBoard(): ReactElement {
         return (
           <EmptyState
             liveRegion="off"
-            title={FULFILLMENT_WORKLIST_COPY.empty.filtered.title}
-            message={FULFILLMENT_WORKLIST_COPY.empty.filtered.message}
+            title={worklistCopy.empty.filtered.title}
+            message={worklistCopy.empty.filtered.message}
             action={
-              <Button onClick={clearFilters}>{FULFILLMENT_WORKLIST_COPY.filter.clear}</Button>
+              <Button onClick={clearFilters}>{worklistCopy.filter.clear}</Button>
             }
           />
         );
@@ -354,8 +357,8 @@ function AssignPackingWorkBoard(): ReactElement {
       return (
         <EmptyState
           liveRegion="off"
-          title={ASSIGN_PACKING_WORK_COPY.empty.title}
-          message={ASSIGN_PACKING_WORK_COPY.empty.message}
+          title={assignCopy.empty.title}
+          message={assignCopy.empty.message}
         />
       );
     }
@@ -368,7 +371,7 @@ function AssignPackingWorkBoard(): ReactElement {
             skip (#3096). */}
         {total > appliedLimit ? (
           <p className="text-muted assign-packing-work-scope-note">
-            {FULFILLMENT_WORKLIST_COPY.lane.pageScopeNote}
+            {worklistCopy.lane.pageScopeNote}
           </p>
         ) : null}
 
@@ -407,23 +410,23 @@ function AssignPackingWorkBoard(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow={ASSIGN_PACKING_WORK_COPY.page.eyebrow}
-      title={ASSIGN_PACKING_WORK_COPY.page.title}
-      description={ASSIGN_PACKING_WORK_COPY.page.description}
+      eyebrow={assignCopy.page.eyebrow}
+      title={assignCopy.page.title}
+      description={assignCopy.page.description}
     >
       <div
         className="assign-packing-work-toolbar"
         role="group"
-        aria-label={FULFILLMENT_WORKLIST_COPY.filter.groupLabel}
+        aria-label={worklistCopy.filter.groupLabel}
       >
         {/* The second axis only where there is a second place (#3096). */}
         {hasMultipleLocations ? (
           <SegmentedControl
-            aria-label={ASSIGN_PACKING_WORK_COPY.groupBy.label}
+            aria-label={assignCopy.groupBy.label}
             value={groupBy}
             options={[
-              { value: 'packer', label: ASSIGN_PACKING_WORK_COPY.groupBy.packer },
-              { value: 'location', label: ASSIGN_PACKING_WORK_COPY.groupBy.location },
+              { value: 'packer', label: assignCopy.groupBy.packer },
+              { value: 'location', label: assignCopy.groupBy.location },
             ]}
             onChange={setGroupBy}
           />
@@ -434,8 +437,8 @@ function AssignPackingWorkBoard(): ReactElement {
         <Input
           key={`orderId:${filters.orderId ?? ''}`}
           className="assign-packing-work-toolbar__filter"
-          aria-label={FULFILLMENT_WORKLIST_COPY.filter.orderLabel}
-          placeholder={FULFILLMENT_WORKLIST_COPY.filter.orderPlaceholder}
+          aria-label={worklistCopy.filter.orderLabel}
+          placeholder={worklistCopy.filter.orderPlaceholder}
           defaultValue={filters.orderId ?? ''}
           onBlur={(event) => {
             setOrderFilter(event.target.value.trim());
@@ -444,20 +447,20 @@ function AssignPackingWorkBoard(): ReactElement {
         />
         {isFiltered ? (
           <Button tone="secondary" onClick={clearFilters}>
-            {FULFILLMENT_WORKLIST_COPY.filter.clear}
+            {worklistCopy.filter.clear}
           </Button>
         ) : null}
         {/* Said in place: the cards stop being draggable on the other axis,
             and a control that quietly stops working reads as a bug. */}
         {write.canWrite && !byPacker ? (
           <span className="text-muted assign-packing-work-groupby__note">
-            {ASSIGN_PACKING_WORK_COPY.groupBy.dragUnavailable}
+            {assignCopy.groupBy.dragUnavailable}
           </span>
         ) : null}
       </div>
 
       {packersQuery.isError ? (
-        <Alert tone="warning">{ASSIGN_PACKING_WORK_COPY.rosterError.message}</Alert>
+        <Alert tone="warning">{assignCopy.rosterError.message}</Alert>
       ) : null}
 
       {tasksQuery.isPending || tasksQuery.isError ? null : metrics}

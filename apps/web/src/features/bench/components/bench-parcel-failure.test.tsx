@@ -71,6 +71,7 @@ function parcel(over: Partial<BenchParcel> = {}): BenchParcel {
     parcelTotal: 2,
     refusal: null,
     holdReason: null,
+    sourceChange: null,
     closedAt: null,
     packedByUserId: null,
     assignedToUserId: null,
@@ -202,7 +203,7 @@ describe('bench under failure (#2421)', () => {
       // reads from. Neither is a spinner: a spinner says "busy", not "your last
       // scan is the thing that is busy".
       expect(await screen.findByTestId('bench-parcel-line-pending')).toHaveTextContent(
-        /sent — waiting for the system/i
+        /sent - waiting for the system/i
       );
       await waitFor(() => {
         expect(screen.getByTestId('bench-parcel-announcer').textContent).toMatch(
@@ -585,7 +586,7 @@ describe('bench under failure (#2421)', () => {
       // Refused, said so, and nothing sent. The scanner stays ATTACHED while
       // out of touch precisely so this can happen — detaching the listener
       // would swallow the gesture instead of refusing it.
-      expect(await screen.findByText(/Not counted — the bench cannot reach/i)).toBeInTheDocument();
+      expect(await screen.findByText(/Not counted - the bench cannot reach/i)).toBeInTheDocument();
       expect(verifyUnit).not.toHaveBeenCalled();
     });
 
@@ -654,7 +655,7 @@ describe('bench under failure (#2421)', () => {
       });
       await screen.findByText(/This bench cannot reach OpenLinker/i);
       scan('5901234123457');
-      await screen.findByText(/Not counted — the bench cannot reach/i);
+      await screen.findByText(/Not counted - the bench cannot reach/i);
 
       // Coming back must not replay it. A queue would have to decide who a
       // replayed gesture is attributed to on a shared roaming terminal, and
@@ -791,7 +792,7 @@ describe('bench under failure (#2421)', () => {
       // Read from `textContent` alone: strip every stylesheet and the state is
       // still legible, which is what "signalled by more than colour" means.
       const row = await screen.findByTestId('bench-parcel-line');
-      expect(row.textContent).toMatch(/sent — waiting for the system/i);
+      expect(row.textContent).toMatch(/sent - waiting for the system/i);
     });
   });
 });

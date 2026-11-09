@@ -9,6 +9,7 @@
  * @module pages/dev-ui/sections
  */
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
+import { useMessages } from '../../../shared/i18n';
 
 interface SwatchProps {
   token: string;
@@ -110,11 +111,12 @@ const SHADOW_TOKENS: { name: string }[] = [
 ];
 
 export function BrandbookSection(): ReactElement {
+  const copy = useMessages('dev-ui').brandbookSection;
   return (
     <div className="ds-stack" style={{ gap: 'var(--space-6)' }}>
       <DsSection
         title="Identity"
-        subtitle="OpenLinker is an operator cockpit for multi-channel commerce. The visual identity favours information density and signal clarity — a serious instrument, not a generic admin."
+        subtitle={copy.identitySubtitle}
       >
         <div className="ds-row" style={{ gap: 'var(--space-5)' }}>
           <div className="ds-brand-mark" aria-hidden="true" />

@@ -20,6 +20,13 @@ import {
 } from '../../shared/ui/dialog';
 import { PublishDestinationRail, type PublishDestination } from '../../features/listings';
 import { captureDemoEvent } from '../../features/demo';
+import {
+  renderRich,
+  selectPluralForm,
+  useActiveLocale,
+  useFormat,
+  useMessages,
+} from '../../shared/i18n';
 
 interface MarketplacePickerModalProps {
   open: boolean;
@@ -37,6 +44,9 @@ export function MarketplacePickerModal({
   onContinue,
 }: MarketplacePickerModalProps): ReactElement {
   const [picked, setPicked] = useState<string>('');
+  const copy = useMessages('products').marketplacePickerModal;
+  const locale = useActiveLocale();
+  const format = useFormat();
 
   // Reset the draft pick every time the modal closes.
   useEffect(() => {
@@ -46,24 +56,26 @@ export function MarketplacePickerModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogTitle>Where should these publish?</DialogTitle>
+        <DialogTitle>{copy.title}</DialogTitle>
         <DialogDescription>
-          Publishing <strong>{productCount.toLocaleString()}</strong>{' '}
-          {productCount === 1 ? 'product' : 'products'}. Pick the marketplace or shop to publish
-          them to.
+          {renderRich(
+            selectPluralForm(productCount, copy.description, locale),
+            { strong: (text: string) => <strong>{text}</strong> },
+            { n: format.number(productCount) },
+          )}
         </DialogDescription>
 
         <PublishDestinationRail
           destinations={destinations}
           selectedConnectionId={picked || null}
           onSelect={setPicked}
-          ariaLabel="Publish destination"
+          ariaLabel={copy.railLabel}
         />
 
         <div className="wizard-actions">
           <div className="wizard-actions__group">
             <Button tone="ghost" type="button" onClick={() => onOpenChange(false)}>
-              Cancel
+              {copy.cancel}
             </Button>
           </div>
           <div className="wizard-actions__group">
@@ -80,7 +92,7 @@ export function MarketplacePickerModal({
                 onContinue(picked);
               }}
             >
-              Continue →
+              {copy.continue}
             </Button>
           </div>
         </div>

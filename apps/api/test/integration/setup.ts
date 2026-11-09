@@ -264,6 +264,8 @@ const harness = createIntegrationTestHarness({
     // row. No FK, so it never cascades; a row written by one case would
     // otherwise change every later case's resolved budgets.
     'operational_settings',
+    // login_page_settings (#4028) - singleton login-page copy row, no FK.
+    'login_page_settings',
     // analytics_remediation_runs (#2468) — the Data Coverage remediation audit
     // ledger. No FK anywhere (its `triggered_by` is a plain text user id, the
     // invoice_records precedent), so nothing cascades into it — and its partial

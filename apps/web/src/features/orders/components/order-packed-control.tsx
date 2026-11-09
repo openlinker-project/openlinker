@@ -27,9 +27,11 @@ import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
+import { renderRich, useMessages } from '../../../shared/i18n';
 import { useMarkPackedMutation } from '../hooks/use-mark-packed-mutation';
+import { serverErrorText } from '../lib/server-error-text';
 
 export interface OrderPackedControlProps {
   internalOrderId: string;
@@ -46,6 +48,8 @@ export function OrderPackedControl({
   const demoMode = useDemoMode();
   const packWrite = useWriteAccess('orders:write', demoMode);
   const markPacked = useMarkPackedMutation();
+  const copy = useMessages('orders').packedControl;
+  const serverSaid = useMessages('orders').common.serverSaid;
 
   const packed = Boolean(packedAt);
 
@@ -56,13 +60,13 @@ export function OrderPackedControl({
         onSuccess: () => {
           showToast({
             tone: 'success',
-            description: packed ? 'Packed mark cleared.' : 'Order marked packed.',
+            description: packed ? copy.toasts.cleared : copy.toasts.marked,
           });
         },
         onError: (error: Error) => {
           showToast({
             tone: 'error',
-            description: error.message || 'Could not update the packed mark.',
+            description: serverErrorText(serverSaid, error.message, copy.toasts.failed),
           });
         },
       },
@@ -71,15 +75,15 @@ export function OrderPackedControl({
 
   const buttonLabel = markPacked.isPending
     ? packed
-      ? 'Clearing…'
-      : 'Marking…'
+      ? copy.clearing
+      : copy.marking
     : packed
-      ? 'Undo'
-      : 'Mark packed';
+      ? copy.undo
+      : copy.markPacked;
 
   return (
     <section className="detail-section">
-      <h3 className="detail-section__title">Packing</h3>
+      <h3 className="detail-section__title">{copy.title}</h3>
       <div className="ds-row order-packed-control">
         {packedAt ? (
           <span className="orders-packed-state">
@@ -87,19 +91,16 @@ export function OrderPackedControl({
             <span className="orders-packed-tick__mark" aria-hidden="true">
               ✓
             </span>{' '}
-            Packed <TimeDisplay iso={packedAt} format="relative" />
-            {packedByUserId ? (
-              <>
-                {' '}
-                by <span className="mono-text">{packedByUserId}</span>
-              </>
-            ) : null}
+            {renderRich(packedByUserId ? copy.packedAtBy : copy.packedAt, {
+              time: () => <TimeDisplay iso={packedAt} format="relative" />,
+              user: () => <span className="mono-text">{packedByUserId}</span>,
+            })}
           </span>
         ) : (
-          <span className="text-muted">Not packed yet.</span>
+          <span className="text-muted">{copy.notPacked}</span>
         )}
         {packWrite.visible ? (
-          <ReadOnlyLock active={packWrite.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock active={packWrite.demoReadOnly} message={demoReadOnlyActionMessage()}>
             <Button
               tone={packed ? 'ghost' : 'primary'}
               className="button--sm"

@@ -1,0 +1,357 @@
+{
+  "addDialog": {
+    "added": "Gift added",
+    "addedBody": "The gift is on the order and its stock is held.",
+    "cancel": "Cancel",
+    "changeProduct": "Change",
+    "closedBody": "A gift can be added until the parcel is closed. Mark the order as not packed first, or add the gift to the next order.",
+    "closedTitle": "The parcel is already closed",
+    "description": "The gift is added to this order only. It is held in stock like any other line.",
+    "documentTitle": "A sales document is already issued",
+    "documentWarning": "The document will not show this gift. The gift is still added to the order.",
+    "notOnPickList": "The gift is on the order, but this order is already with the packers: tell them about the gift.",
+    "notReadyBody": "Its products are not matched yet. Fix the product mapping, then add the gift.",
+    "notReadyTitle": "The order has not finished importing",
+    "onDocument": "On the document",
+    "product": "Gift product",
+    "productPlaceholder": "Type a product name or SKU",
+    "quantity": "Quantity",
+    "reason": "Added by hand. It shows on the order as a gift from you.",
+    "submit": "Add gift",
+    "title": "Add a gift to order {order}"
+  },
+  "attention": {
+    "addAnother": "Add another gift",
+    "decisionSaved": "Decision saved",
+    "openRule": "Open the promotion",
+    "readFailed": "The reason a gift is missing could not be read.",
+    "reasons": {
+      "below-threshold": {
+        "body": "The order does not reach what the promotion asks for, so no gift was added.",
+        "title": "{rule}: below the threshold"
+      },
+      "customer-limit": {
+        "body": "The per-customer limit is reached. The customer is the one OpenLinker recognises, not the channel buyer id.",
+        "title": "{rule}: this customer already got their gift"
+      },
+      "customer-unknown": {
+        "body": "The per-customer limit could not be checked, so no gift was added.",
+        "title": "{rule}: the customer is not known"
+      },
+      "failed": {
+        "body": "Something went wrong while adding it. You can add the gift by hand, or open the promotion and the run history.",
+        "title": "{rule}: the gift could not be added"
+      },
+      "limit-reached": {
+        "body": "No gift was added. Open the promotion to raise the limit and resume it.",
+        "title": "{rule}: the piece limit is used up"
+      },
+      "other": {
+        "body": "The promotion did not add its gift to this order. Open it for the details.",
+        "title": "{rule}: no gift was added"
+      },
+      "out-of-stock": {
+        "body": "The order goes on without the gift. You can add another gift by hand. The promotion resumes on its own when the product is back.",
+        "title": "{rule}: the gift is out of stock"
+      },
+      "stock-unknown": {
+        "body": "The gift was not added, because an unknown number is never read as zero. Check the stock and add the gift by hand if needed.",
+        "title": "{rule}: the stock of the gift is not known"
+      },
+      "superseded": {
+        "body": "An earlier promotion that does not combine with others already gave its gift, so this one did not.",
+        "title": "{rule}: an earlier promotion applied"
+      }
+    },
+    "seePromotion": "See the promotion",
+    "shopRejected": {
+      "body": "The order carries a gift line and the shop refused the order. Fix the cause in the sync status below, or take the gift off the order and retry.",
+      "title": "The shop did not accept the order with the gift"
+    },
+    "skip": "Send without the gift",
+    "skipFailed": "The decision could not be saved"
+  },
+  "composer": {
+    "back": "Gift promotions",
+    "basketFrom": "Order from",
+    "basketHelp": "The amount the customer paid counts, without delivery.",
+    "change": "Change",
+    "channels": "Channels",
+    "channelsHelp": "Where the promotion applies. All channels is the default.",
+    "copy": "Copy",
+    "copySuffix": "(copy)",
+    "costPerUnit": "Costs you {cost} per unit",
+    "costUnknown": "Costs you: no purchase cost recorded",
+    "currency": "Currency",
+    "delete": "Delete",
+    "deleteBody": "Gifts already added to orders stay. The history of what it gave is kept.",
+    "deleteConfirm": "Delete promotion",
+    "deleteFailed": "The promotion could not be deleted",
+    "deleteKeep": "Keep it",
+    "deleteTitle": "Delete this promotion?",
+    "deleted": "Promotion deleted",
+    "docForm": "On the document",
+    "doubleGiftWarning": "A shop with its own gift rule could give the same gift twice. Keep \"Skip if the product is already in the order\" on.",
+    "editNote": "A change applies from now on. Orders already placed keep the gift they got.",
+    "endedBody": "You can still edit it, copy it, or extend it with a new end date.",
+    "endedTitle": "Ended {date}",
+    "extend": "Extend and resume",
+    "extendTo": "New end date",
+    "from": "From",
+    "gift": "Gift",
+    "giftLabel": "Gift",
+    "limitBody": "Given {given} of {cap} pcs. Orders go on without the gift. Add pieces to the limit to resume.",
+    "limitTitle": "Paused itself: piece limit reached",
+    "loadFailed": "Unable to load the promotion",
+    "markerNative": "The shop can also give gifts",
+    "markerOpenLinker": "Through OpenLinker",
+    "maxPerOrder": "Most per order",
+    "missing": "Still needed",
+    "more": "More options",
+    "name": "Name",
+    "nameHelp": "Suggested from the settings below. You can change it.",
+    "nameTemplates": {
+      "basket": "{gift} for orders from {amount}",
+      "product": "{gift} with {product}",
+      "unit": "{gift} for every {product}"
+    },
+    "newTitle": "New promotion",
+    "noStack": "Do not combine with other promotions",
+    "pause": "Pause",
+    "pausedStockBody": "Orders go on without the gift, with a note on the order. The promotion resumes on its own when the product is back in stock.",
+    "pausedStockTitle": "Paused itself: the gift is out of stock",
+    "perCustomer": "Most per customer",
+    "perN": "1 gift per N pieces",
+    "period": "Period",
+    "periodHelp": "The day the order was placed counts. A promotion never applies to orders placed before it was saved.",
+    "problems": {
+      "basket": "the amount",
+      "gift": "the gift",
+      "name": "a name",
+      "per-n": "a whole number for \"1 gift per N\"",
+      "period": "an end date after the start",
+      "quantity": "a quantity",
+      "unit-cap": "a whole piece limit",
+      "when": "the product"
+    },
+    "productHelp": "Pick a product or a bundle.",
+    "productLabel": "When the order contains",
+    "productPlaceholder": "Type a product name or SKU",
+    "quantity": "Quantity",
+    "resume": "Resume",
+    "resumeUnits": "Pieces to add to the limit",
+    "saveChanges": "Save changes",
+    "saveDraft": "Save as draft",
+    "saved": "Promotion saved",
+    "skipPresent": "Skip if the product is already in the order (also as a part of a bundle)",
+    "summary": {
+      "cap": "limit {n} pcs",
+      "combines": "combines with others",
+      "noStack": "does not combine with others",
+      "pauses": "pauses when the gift runs out"
+    },
+    "title": "Gift promotion",
+    "to": "To (optional)",
+    "turnOn": "Turn on promotion",
+    "unitCap": "Piece limit for the whole promotion",
+    "unitProductHelp": "Pick the product that gets a gift with every unit.",
+    "when": "When"
+  },
+  "cost": {
+    "failed": "Costs you: the purchase cost could not be read",
+    "loading": "Costs you: checking the purchase cost",
+    "otherCurrency": "Costs you: the purchase cost is recorded in another currency ({currency})"
+  },
+  "detail": {
+    "actionsMenu": "More actions",
+    "channelsCount": "{n} of {total}",
+    "customerLimitN": "at most {n} per customer",
+    "givesAgain": "gives even when the gift is already there",
+    "inStock": "{n} pcs in stock",
+    "kindBasket": "Basket amount",
+    "kindLabel": "Condition",
+    "kindProduct": "Contains product",
+    "kindUnit": "Every unit",
+    "limits": "Limits and documents",
+    "moreOptions": "More options",
+    "name": "Name",
+    "noCustomerLimit": "no limit per customer",
+    "noStackHint": "The promotions below this one do not fire when this one does.",
+    "periodInvalid": "The end date must be after the start date.",
+    "results": {
+      "average": "Average",
+      "cost": "Cost",
+      "costPartial": "Pieces without a purchase cost: {n}.",
+      "failed": "The results could not be loaded.",
+      "given": "Given",
+      "none": "This promotion has not given a gift in the last 30 days.",
+      "ofCap": "of {cap} pcs",
+      "orders": "Orders",
+      "pcs": "{n} pcs",
+      "range": "last 30 days",
+      "title": "Results"
+    },
+    "skipsPresent": "skips when the gift is already there",
+    "sku": "SKU {sku}",
+    "stockUnknown": "stock unknown",
+    "summary": {
+      "anyChannel": "any channel",
+      "basket": "When an order from {channels} is worth {amount} or more, we add a gift: {gift}, {qty} pcs.",
+      "cap": " The limit is {cap} pcs.",
+      "from": " Runs from {date}.",
+      "fromTo": " Runs from {from} to {to}.",
+      "incomplete": "Fill in the form and the promotion is described here.",
+      "noStack": " The promotion does not combine with others.",
+      "or": " or ",
+      "product": "When an order from {channels} contains {product}, we add a gift: {gift}, {qty} pcs.",
+      "title": "Summary",
+      "unit": "For every {n}th unit of {product} in an order from {channels}, we add a gift: {gift}, {qty} pcs."
+    },
+    "tabs": {
+      "runs": "Runs",
+      "test": "Test on an order"
+    }
+  },
+  "filter": {
+    "check": "With a gift",
+    "chipLabel": "Gift",
+    "chipValue": "Included",
+    "quick": "With a gift",
+    "rowIcon": "Includes a gift"
+  },
+  "list": {
+    "allChannels": "All channels",
+    "back": "Automations",
+    "colActions": "Actions",
+    "colGift": "Gift",
+    "colGiven": "Given",
+    "colOrder": "Order",
+    "colPromotion": "Promotion",
+    "colState": "State",
+    "condition": {
+      "basket": "Basket from {amount}",
+      "contains": "Contains {product}",
+      "everyNth": "Every {n}th unit: {product}",
+      "everyUnit": "Every unit: {product}"
+    },
+    "create": "New promotion",
+    "deleteFailed": "Could not delete the promotion.",
+    "deleteTitle": "Delete the promotion {name}?",
+    "description": "OpenLinker adds the gift to the order in every channel, also where the channel does not know gifts.",
+    "doNotCombine": "Does not combine with others",
+    "down": "Down",
+    "empty": "No gift promotions yet",
+    "emptyHint": "Create the first one, for example a spoon with every morning set.",
+    "emptyStart": "Start from one of three templates.",
+    "eyebrow": "Automations",
+    "giftQty": "× {n}",
+    "givenNoCap": "{given} pcs",
+    "givenOfCap": "{given} of {cap} pcs",
+    "kpi": {
+      "active": "Active promotions",
+      "activeOf": "of {total} in total",
+      "cost": "Gift cost, 30 days",
+      "costBasis": "at purchase cost",
+      "costPartial": "no purchase cost: {n} pcs",
+      "given": "Gifts given, 30 days",
+      "givenOrders": "in orders: {orders}",
+      "givenUnits": "pcs",
+      "paused": "Paused",
+      "pausedNone": "None waiting",
+      "pausedSplit": "{stock} out of stock · {limit} limit",
+      "unknown": "No data",
+      "unknownHint": "The gift report could not be loaded."
+    },
+    "kpiLabel": "Promotions summary",
+    "loadFailed": "Unable to load the gift promotions",
+    "loading": "Loading the gift promotions",
+    "menu": {
+      "copy": "Copy",
+      "delete": "Delete",
+      "down": "Move down",
+      "edit": "Edit",
+      "open": "Actions for {name}",
+      "pause": "Pause",
+      "resume": "Resume",
+      "turnOn": "Turn on",
+      "up": "Move up"
+    },
+    "orderNote": "Promotions are checked from top to bottom. If a promotion has \"Do not combine with others\", the ones below it do not fire when it does. Change the order from the row menu.",
+    "pauseFailed": "Could not change the promotion state.",
+    "readOnly": "You can look at the gift promotions but not change them.",
+    "reasonLimit": "Given {given} of {cap} pcs.",
+    "reasonStock": "The gift ran out. It resumes on its own after a delivery.",
+    "reorderFailed": "The order could not be saved. Try again.",
+    "starts": "Starts {date}",
+    "tableLabel": "Gift promotions in the order they are checked",
+    "title": "Gift promotions",
+    "until": "until {date}",
+    "up": "Up"
+  },
+  "order": {
+    "add": "Add gift",
+    "costUnknown": "Cost not recorded",
+    "costsYou": "Costs you {cost}",
+    "customerPays": "Customer pays {price}",
+    "decidedBy": "Where it comes from",
+    "onDocument": "On the document",
+    "readOnly": "Only admins and operators can add a gift.",
+    "readOnlyNotice": "You can see everything, but \"Add gift\" is switched off.",
+    "source": {
+      "cartRule": "A cart rule of the shop gave it. You pay for it.",
+      "channel": "Marked as a gift by the sales channel. You pay for it.",
+      "operator": "Added by hand by an operator. You pay for it.",
+      "rule": "A gift promotion in OpenLinker added it. You pay for it."
+    },
+    "tag": "Gift",
+    "tagLabel": "Gift: show where it comes from",
+    "whoPays": "Who pays"
+  },
+  "status": {
+    "active": "Active",
+    "draft": "Draft",
+    "ended": "Ended",
+    "pausedLimit": "Paused: piece limit",
+    "pausedStock": "Paused: gift out of stock",
+    "scheduled": "Starts later"
+  },
+  "template": {
+    "basket": {
+      "example": "e.g. a coffee sample with orders from 150 zl",
+      "title": "Gift from an order amount"
+    },
+    "description": "Choose when the customer gets a gift. You set the details in the next step.",
+    "product": {
+      "example": "e.g. a spoon with every morning set",
+      "title": "Gift with a product"
+    },
+    "title": "New promotion",
+    "unit": {
+      "example": "e.g. a bag for every second mug",
+      "title": "Gift for every unit"
+    }
+  },
+  "test": {
+    "help": "Shows which promotions would add a gift to that order, and why the others would not. Nothing is saved.",
+    "noneApply": "No gift would be added",
+    "orderLabel": "Order",
+    "orderNotFound": "There is no such order.",
+    "orderPlaceholder": "Order id (ol_order_...)",
+    "reasons": {
+      "alreadyInOrder": "The gift is already in the order.",
+      "belowThreshold": "Not enough units of the product in the order.",
+      "customerLimit": "This customer already got the most allowed.",
+      "customerUnknown": "The customer is not known, so the per-customer limit cannot be checked.",
+      "limit": "The piece limit is used up.",
+      "notMatching": "The conditions are not met by this order.",
+      "outOfStock": "The gift is out of stock.",
+      "stockUnknown": "The stock of the gift is not known, so it was not added.",
+      "superseded": "An earlier promotion that does not combine already applies."
+    },
+    "run": "Test",
+    "someApply": "{count} promotion(s) would add a gift",
+    "thisPromotion": "This promotion",
+    "title": "Test on a sample order",
+    "wouldAdd": "Would add {count} pcs."
+  }
+}

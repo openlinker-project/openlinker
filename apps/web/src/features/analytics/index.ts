@@ -89,3 +89,7 @@ export type {
 // #3943: the gift report reuses the range-param builder and the CSV download.
 export { buildMarginRangeParams } from './api/margin-analytics.api';
 export { useAnalyticsCsvExport } from './hooks/use-analytics-csv-export';
+
+// #4029 - the login page's background preview renders the real KPI card.
+export { AnalyticsKpiCard } from './components/analytics-kpi-card';
+export type { AnalyticsKpiDelta, AnalyticsKpiTrend } from './components/analytics-kpi-card';

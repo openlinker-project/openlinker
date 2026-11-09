@@ -18,6 +18,7 @@
  *
  * @module apps/web/src/features/settings/lib
  */
+import { formatPlural, getLocale, getMessages } from '../../../shared/i18n';
 import { readCadenceIntervalMinutes } from './sync-pacing-model';
 
 export interface CadenceOption {
@@ -27,13 +28,25 @@ export interface CadenceOption {
   readonly label: string;
 }
 
-export const DELETION_AUDIT_CADENCE_OPTIONS: readonly CadenceOption[] = [
-  { value: '*/15 * * * *', label: 'Every 15 minutes' },
-  { value: '*/30 * * * *', label: 'Every 30 minutes' },
-  { value: '0 * * * *', label: 'Every hour' },
-  { value: '0 */4 * * *', label: 'Every 4 hours' },
-  { value: '0 3 * * *', label: 'Once a day' },
+type CadenceOptionKey = 'every15Minutes' | 'every30Minutes' | 'everyHour' | 'every4Hours' | 'onceADay';
+
+const OPTION_KEYS: readonly { readonly value: string; readonly key: CadenceOptionKey }[] = [
+  { value: '*/15 * * * *', key: 'every15Minutes' },
+  { value: '*/30 * * * *', key: 'every30Minutes' },
+  { value: '0 * * * *', key: 'everyHour' },
+  { value: '0 */4 * * *', key: 'every4Hours' },
+  { value: '0 3 * * *', key: 'onceADay' },
 ];
+
+/** Labels are read at access time, so they follow the active language. */
+export const DELETION_AUDIT_CADENCE_OPTIONS: readonly CadenceOption[] = OPTION_KEYS.map(
+  ({ value, key }) => ({
+    value,
+    get label(): string {
+      return getMessages('settings').deletionAuditCadence.options[key];
+    },
+  })
+);
 
 /**
  * The offered cadences, plus the one currently in force when it is not among
@@ -49,7 +62,7 @@ export function resolveCadenceOptions(current: string): readonly CadenceOption[]
 
 /**
  * An operator-facing name for a cadence, falling back to a plain reading of
- * the interval and finally to the raw expression — which is at least true,
+ * the interval and finally to the raw expression - which is at least true,
  * where inventing a friendly name for something unparsed would not be.
  */
 export function describeCadence(expression: string): string {
@@ -61,12 +74,13 @@ export function describeCadence(expression: string): string {
   if (minutes === null) {
     return expression;
   }
+  const copy = getMessages('settings').deletionAuditCadence;
+  const locale = getLocale();
   if (minutes < 60) {
-    return `Every ${String(minutes)} minutes`;
+    return formatPlural(minutes, copy.everyMinutes, locale);
   }
   if (minutes < 1440) {
-    const hours = minutes / 60;
-    return hours === 1 ? 'Every hour' : `Every ${String(hours)} hours`;
+    return formatPlural(minutes / 60, copy.everyHours, locale);
   }
-  return 'Once a day';
+  return copy.options.onceADay;
 }

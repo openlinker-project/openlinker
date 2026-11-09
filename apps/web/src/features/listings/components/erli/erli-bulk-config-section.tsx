@@ -14,7 +14,9 @@
  */
 import { useEffect, useMemo, type ReactElement } from 'react';
 
-import type { BulkOfferConfigSectionProps } from '../../../../shared/plugins';
+import { interpolate, useMessages } from '../../../../shared/i18n';
+import { usePlatforms, type BulkOfferConfigSectionProps } from '../../../../shared/plugins';
+import { resolvePlatformLabel } from '../../../mappings';
 import { ErliDeliveryPriceListField } from './erli-delivery-price-list-field';
 import { ErliDispatchTimeField } from './erli-dispatch-time-field';
 import { ErliProducerField } from './erli-producer-field';
@@ -28,6 +30,8 @@ export function ErliBulkConfigSection({
   connection,
   form,
 }: BulkOfferConfigSectionProps): ReactElement {
+  const note = useMessages('listings').erliBulkConfigSection.note;
+  const platformName = resolvePlatformLabel(usePlatforms(), connection);
   const connectionDefault = useMemo<ErliDispatchTimeParam>(
     () => parseErliConnectionDispatchDefault(connection.config),
     [connection.config],
@@ -64,6 +68,7 @@ export function ErliBulkConfigSection({
       <ErliDispatchTimeField
         value={current}
         connectionDefault={connectionDefault}
+        platformName={platformName}
         onChange={(next) => {
           form.setValue(
             'platformParams',
@@ -74,6 +79,7 @@ export function ErliBulkConfigSection({
       />
       <ErliProducerField
         connectionId={connection.id}
+        platformName={platformName}
         value={producer}
         onChange={(next) => {
           form.setValue(
@@ -85,6 +91,7 @@ export function ErliBulkConfigSection({
       />
       <ErliDeliveryPriceListField
         connectionId={connection.id}
+        platformName={platformName}
         value={deliveryPriceList}
         onChange={(next) => {
           form.setValue(
@@ -95,10 +102,12 @@ export function ErliBulkConfigSection({
         }}
       />
       <p className="erli-config__note">
-        Erli has no seller/delivery policies — dispatch time stands in for Allegro's policy step.
-        The producer applies to every product in this batch (override it per product in the Review
-        step). Prices are sent in PLN; images are pulled from each product (Erli requires at least
-        one), and the Resolving step flags any product missing one.
+        {[
+          interpolate(note.noPolicies, { platform: platformName }),
+          note.producer,
+          note.currency,
+          interpolate(note.images, { platform: platformName }),
+        ].join(' ')}
       </p>
     </div>
   );

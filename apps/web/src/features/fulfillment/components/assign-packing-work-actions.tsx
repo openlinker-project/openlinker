@@ -43,7 +43,7 @@ import { useState, type ReactElement } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '../../../shared/ui/popover';
 import type { PackerSummary } from '../../users';
 import type { FulfillmentTask, FulfillmentTaskHold } from '../api/fulfillment.types';
-import { ASSIGN_PACKING_WORK_COPY } from '../lib/assign-packing-work.copy';
+import { useMessages } from '../../../shared/i18n';
 import { FulfillmentAssignmentControls } from './fulfillment-assignment-controls';
 import { FulfillmentTaskActions } from './fulfillment-task-actions';
 
@@ -83,6 +83,7 @@ export function AssignPackingWorkActions({
   // Above the early return — a hook cannot be called conditionally, and
   // `visible` can flip between renders of the SAME task row.
   const [menuOpen, setMenuOpen] = useState(false);
+  const rowCopy = useMessages('fulfillment').assignPackingWork.row;
 
   if (!visible) return null;
 
@@ -110,9 +111,9 @@ export function AssignPackingWorkActions({
             <button
               type="button"
               className="assign-packing-work-card__menu-trigger"
-              aria-label={ASSIGN_PACKING_WORK_COPY.row.moreActionsLabel}
+              aria-label={rowCopy.moreActionsLabel}
             >
-              ⋮
+              {'⋮'}
             </button>
           </PopoverTrigger>
           <PopoverContent className="assign-packing-work-card__menu" align="end">

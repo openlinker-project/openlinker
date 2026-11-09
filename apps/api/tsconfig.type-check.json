@@ -4,6 +4,6 @@
     "rootDir": "../../",
     "noEmit": true
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "scripts/assert-no-pending-migrations.ts"],
   "exclude": ["node_modules", "dist", "test"]
 }

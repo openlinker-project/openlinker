@@ -13,7 +13,7 @@
  * @module apps/web/src/features/gift-documents/components
  */
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
@@ -44,7 +44,7 @@ export function GiftsOnDocumentsPanel({
   connectionId,
   onDirtyChange,
 }: GiftsOnDocumentsPanelProps): ReactElement {
-  const copy = useMessages('giftDocuments');
+  const copy = useMessages('gift-documents');
   const connectionQuery = useConnectionQuery(connectionId);
   const settingsQuery = useGiftDocumentSettingsQuery();
   const providersQuery = useDocumentProvidersQuery();
@@ -157,7 +157,7 @@ export function GiftsOnDocumentsPanel({
       {notice ? <Alert tone="success">{notice}</Alert> : null}
       {write.visible ? (
         <div>
-          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
             <Button
               disabled={!canEdit || isPending || !dirty}
               onClick={() => void handleSave()}

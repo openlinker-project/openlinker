@@ -222,11 +222,12 @@ describe('Button', () => {
 
 Before creating a new component, check if one already exists in `shared/ui/index.ts`:
 
-- **Controls:** `Button` (tones × sizes × icon × `.button__shortcut` slot), `Input`, `Textarea`, `Select`, `Combobox`, `Chip`, `FileUpload`, `ThemeToggle`
+- **Controls:** `Button` (tones × sizes × icon × `.button__shortcut` slot), `Input`, `Textarea`, `Select`, `Combobox`, `Chip`, `FileUpload`, `SegmentedControl` (text options, forms), `SegmentedSwitch` (icon options with a springing thumb; `labels` always/hover/none)
 - **Form composition:** `FormField`, `FieldError`, `FormErrorSummary`
 - **Feedback / status:** `Alert` (4 tones, left-rule), `StatusBadge` (7 tones, `pulse`, `solid`, `withDot`, `compact`), `EmptyState`, `LoadingState`, `ErrorState`, `StructuredErrorList`, `EnvironmentBadge`
 - **Layout / navigation:** `PageLayout`, `BackLink`, `Tabs` + `TabsList` + `TabsTrigger` + `TabsContent` (with `.tabs__count` badge slot), `SetupStepper`, `WizardLayout`, `WizardSummaryRow`, `DesktopOnlyBanner`
 - **Overlays (Radix-wrapped):** `Dialog`, `ConfirmDialog`, `DropdownMenu` (with `.dropdown-menu__shortcut` slot), `Popover`, `Tooltip`, `ToastProvider` / `useToast()`
+- **Switch family (#4029):** `PeekButton` (pill that slides out its name on hover; `reveal`, `touchSize`), `MotionPopover` + `useAnchoredPopover` (centred animated panel, renders into a `<dialog>` host when inside one), `OptionList` (listbox with sliding selection), `SegmentedSwitch`. Composed by `features/appearance` (`ThemeSwitch`, `ThemePicker`) and `features/language` (`LanguageSwitch`)
 - **Data surfaces:** `DataTable` + `DataTableSkeleton`, `KeyValueList`, `RawPayloadPanel`, `TimeDisplay`, `MetricCard`, `KpiCard` (with sparkline + tone), `Sparkline`
 - **Identity / labels:** `EntityLabel`, `ProductThumbnail`, `CategoryTreeBrowser`
 

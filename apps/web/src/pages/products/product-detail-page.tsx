@@ -31,7 +31,6 @@ import { useConnectionsQuery, type Connection } from '../../features/connections
 import { usePermission, useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import { useBundleQuery } from '../../features/bundles/hooks/use-bundle-queries';
-import { useMessages } from '../../shared/i18n';
 import { VariantStockTable, VariantDetailPanel } from './variant-stock-table';
 import { MarketplacePickerModal } from './marketplace-picker-modal';
 import {
@@ -40,6 +39,7 @@ import {
   STOCK_STATUS_BADGE_TONE,
   STOCK_STATUS_LABEL,
 } from '../../features/products';
+import { interpolate, useFormat, useMessages, usePlural } from '../../shared/i18n';
 
 /**
  * What the product's headline stock figures say. Available to promise when the
@@ -65,6 +65,9 @@ function deriveAvailableTone(totalAvailable: number, shortCount: number): KpiCar
 }
 
 export function ProductDetailPage(): ReactElement {
+  const copy = useMessages('products').productDetailPage;
+  const format = useFormat();
+  const plural = usePlural();
   const { id = '' } = useParams<{ id: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const query = useProductQuery(id);
@@ -138,20 +141,20 @@ export function ProductDetailPage(): ReactElement {
 
   if (query.isLoading) {
     return (
-      <PageLayout eyebrow="Products" title="Product detail">
-        <LoadingState liveRegion="off" title="Loading product" message="Fetching product details…" />
+      <PageLayout eyebrow={copy.eyebrow} title={copy.fallbackTitle}>
+        <LoadingState liveRegion="off" title={copy.loading.title} message={copy.loading.message} />
       </PageLayout>
     );
   }
 
   if (query.error || !query.data) {
     return (
-      <PageLayout eyebrow="Products" title="Product detail">
+      <PageLayout eyebrow={copy.eyebrow} title={copy.fallbackTitle}>
         <ErrorState
-          title="Unable to load product"
-          message={query.error?.message ?? 'Product not found'}
+          title={copy.loadError.title}
+          message={query.error?.message ?? copy.loadError.notFound}
           action={
-            <Button onClick={() => { void query.refetch(); }}>Retry</Button>
+            <Button onClick={() => { void query.refetch(); }}>{copy.retry}</Button>
           }
         />
       </PageLayout>
@@ -222,7 +225,9 @@ export function ProductDetailPage(): ReactElement {
         .map((item) => item.locationId)
         .filter((locationId): locationId is string => locationId !== null),
     ).size || 1;
-  const availableDescription = `across ${distinctLocationCount} location${distinctLocationCount === 1 ? '' : 's'}`;
+  const availableDescription = plural(distinctLocationCount, copy.kpis.acrossLocations, {
+    n: format.number(distinctLocationCount),
+  });
 
   const isSingleVariant = variants.length === 1;
   const sourceConnectionId = product.externalIds?.[0]?.connectionId;
@@ -236,8 +241,8 @@ export function ProductDetailPage(): ReactElement {
 
   return (
     <PageLayout
-      backTo={{ to: '/products', label: 'Products', 'data-testid': 'stock-back-to-products' }}
-      eyebrow="Products"
+      backTo={{ to: '/products', label: copy.backToProducts, 'data-testid': 'stock-back-to-products' }}
+      eyebrow={copy.eyebrow}
       title={<EntityLabel id={product.id} name={product.name} />}
       actions={
         isBundle ? undefined : bundleWrite.canWrite ? (
@@ -263,13 +268,13 @@ export function ProductDetailPage(): ReactElement {
       }
     >
       <Tabs value={activeView} onValueChange={setActiveView}>
-        <TabsList aria-label="Product views">
-          <TabsTrigger value={VIEW_OVERVIEW}>Overview</TabsTrigger>
-          <TabsTrigger value={VIEW_CONTENT}>Content</TabsTrigger>
+        <TabsList aria-label={copy.tabs.label}>
+          <TabsTrigger value={VIEW_OVERVIEW}>{copy.tabs.overview}</TabsTrigger>
+          <TabsTrigger value={VIEW_CONTENT}>{copy.tabs.content}</TabsTrigger>
         </TabsList>
 
         <TabsContent value={VIEW_OVERVIEW}>
-          <section className="product-detail-hero" aria-label="Product summary">
+          <section className="product-detail-hero" aria-label={copy.hero.label}>
             <ProductGallery images={product.images ?? []} name={product.name} />
             <div className="product-detail-hero__body">
               <div className="product-detail-hero__badges">
@@ -284,14 +289,14 @@ export function ProductDetailPage(): ReactElement {
                   </StatusBadge>
                 ) : (
                   <StatusBadge compact withDot tone="neutral" data-testid="product-stock-badge-unknown">
-                    {headline.kind === 'loading' ? 'Checking stock' : 'Stock not known'}
+                    {headline.kind === 'loading' ? copy.hero.checkingStock : copy.hero.stockNotKnown}
                   </StatusBadge>
                 )}
                 <StatusBadge compact tone="neutral">
-                  {variants.length} variant{variants.length === 1 ? '' : 's'}
+                  {plural(variants.length, copy.hero.variantCount, { n: format.number(variants.length) })}
                 </StatusBadge>
                 <StatusBadge compact tone="info">
-                  {totalListings} listing{totalListings === 1 ? '' : 's'}
+                  {plural(totalListings, copy.hero.listingCount, { n: format.number(totalListings) })}
                 </StatusBadge>
               </div>
               <h3 className="product-detail-hero__title">{product.name}</h3>
@@ -300,7 +305,7 @@ export function ProductDetailPage(): ReactElement {
               </code>
               <div className="product-detail-hero__facts">
                 <span className="product-detail-hero__fact">
-                  <span className="product-detail-hero__fact-label">SKU</span>
+                  <span className="product-detail-hero__fact-label">{copy.hero.sku}</span>
                   {product.sku ? (
                     <span className="mono-text">{product.sku}</span>
                   ) : (
@@ -308,7 +313,7 @@ export function ProductDetailPage(): ReactElement {
                   )}
                 </span>
                 <span className="product-detail-hero__fact">
-                  <span className="product-detail-hero__fact-label">Category</span>
+                  <span className="product-detail-hero__fact-label">{copy.hero.category}</span>
                   {product.categoryBreadcrumb && product.categoryBreadcrumb.length > 0 ? (
                     <span>{product.categoryBreadcrumb.map((node) => node.name).join(' › ')}</span>
                   ) : (
@@ -316,27 +321,31 @@ export function ProductDetailPage(): ReactElement {
                   )}
                 </span>
                 <span className="product-detail-hero__fact">
-                  <span className="product-detail-hero__fact-label">Created</span>
+                  <span className="product-detail-hero__fact-label">{copy.hero.created}</span>
                   <TimeDisplay className="mono-text tabular" iso={product.createdAt} />
                 </span>
                 <span className="product-detail-hero__fact">
-                  <span className="product-detail-hero__fact-label">Catalog updated</span>
+                  <span className="product-detail-hero__fact-label">{copy.hero.catalogueUpdated}</span>
                   <TimeDisplay className="mono-text tabular" iso={product.updatedAt} />
                 </span>
               </div>
             </div>
           </section>
 
-          <section className="detail-section" aria-label="At a glance">
-            <h3 className="detail-section__title">At a glance</h3>
+          <section className="detail-section" aria-label={copy.kpis.title}>
+            <h3 className="detail-section__title">{copy.kpis.title}</h3>
             <div className="product-detail__kpi-row product-detail__kpi-row--cols-4">
               <KpiCard
-                label="Price (gross)"
-                value={product.price !== null ? product.price.toFixed(2) : '—'}
+                label={copy.kpis.price}
+                value={
+                  product.price !== null
+                    ? format.number(product.price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                    : '—'
+                }
                 description={product.currency ?? undefined}
               />
               <KpiCard
-                label="Available"
+                label={copy.kpis.available}
                 tone={availableTone}
                 value={
                   <span data-testid="stock-summary-atp">
@@ -346,29 +355,40 @@ export function ProductDetailPage(): ReactElement {
                 description={
                   headline.kind === 'atp' && stockSummary ? (
                     <>
-                      to sell ·{' '}
+                      {copy.kpis.toSell}
+                      {' · '}
                       <span data-testid="stock-summary-master">
-                        {stockSummary.masterStock} in {productMasterName ?? 'the master'}
+                        {interpolate(copy.kpis.inMaster, {
+                          n: format.number(stockSummary.masterStock),
+                          source: productMasterName ?? copy.kpis.theMaster,
+                        })}
                       </span>
                       {stockSummary.heldCounted !== null && stockSummary.heldCounted > 0 ? (
                         <>
                           {' · '}
-                          <span data-testid="stock-summary-held">{stockSummary.heldCounted} reserved</span>
+                          <span data-testid="stock-summary-held">
+                            {interpolate(copy.kpis.reserved, { n: format.number(stockSummary.heldCounted) })}
+                          </span>
                         </>
                       ) : null}
-                      {shortCount > 0 ? ` · ${shortCount} short` : null}
+                      {shortCount > 0 ? (
+                        <>
+                          {' · '}
+                          {interpolate(copy.kpis.short, { n: format.number(shortCount) })}
+                        </>
+                      ) : null}
                     </>
                   ) : headline.kind === 'unknown' ? (
-                    'not known right now'
+                    copy.kpis.notKnown
                   ) : headline.kind === 'loading' ? (
-                    'working out what you can sell'
+                    copy.kpis.workingOut
                   ) : (
                     availableDescription
                   )
                 }
               />
-              <KpiCard label="Variants" value={variants.length} />
-              <KpiCard label="Listings" value={totalListings} />
+              <KpiCard label={copy.kpis.variants} value={format.number(variants.length)} />
+              <KpiCard label={copy.kpis.listings} value={format.number(totalListings)} />
             </div>
           </section>
 
@@ -377,13 +397,13 @@ export function ProductDetailPage(): ReactElement {
               <section className="detail-section">
                 <div className="detail-section__title-row">
                   <h3 className="detail-section__title">
-                    Description{' '}
+                    {copy.description.title}{' '}
                     <StatusBadge tone="neutral" compact>
-                      Source · read-only
+                      {copy.description.readOnlyBadge}
                     </StatusBadge>
                   </h3>
                   <Link className="detail-section__edit-link" to="?view=content">
-                    Edit in Content →
+                    {copy.description.editInContent}
                   </Link>
                 </div>
                 {/* ADR-046: rendered, not printed. This block interpolated the
@@ -392,15 +412,15 @@ export function ProductDetailPage(): ReactElement {
                 <RichTextView
                   html={product.description}
                   className="description-block"
-                  emptyLabel="No description synced from the source. Draft and publish one per channel in the Content tab."
+                  emptyLabel={copy.description.empty}
                 />
               </section>
             </div>
 
             <div className="product-detail__stack">
               {product.features && product.features.length > 0 ? (
-                <section className="detail-section" aria-label="Attributes">
-                  <h3 className="detail-section__title">Attributes</h3>
+                <section className="detail-section" aria-label={copy.attributes}>
+                  <h3 className="detail-section__title">{copy.attributes}</h3>
                   <div className="attr-chips">
                     {product.features.map((feature) => (
                       <span className="attr-chip" key={`${feature.name}:${feature.value}`}>
@@ -412,7 +432,7 @@ export function ProductDetailPage(): ReactElement {
                 </section>
               ) : null}
               <section className="detail-section">
-                <h3 className="detail-section__title">Source</h3>
+                <h3 className="detail-section__title">{copy.source}</h3>
                 <ProductSourceSection
                   mappings={product.externalIds ?? []}
                   connections={connectionsQuery.data ?? []}
@@ -424,9 +444,9 @@ export function ProductDetailPage(): ReactElement {
           <section className="detail-section" data-testid="variant-table-section">
             <div className="detail-section__title-row">
               <h3 className="detail-section__title">
-                {isSingleVariant
-                  ? 'Variants & stock'
-                  : `Variants & stock${variants.length > 0 ? ` (${variants.length})` : ''}`}
+                {!isSingleVariant && variants.length > 0
+                  ? interpolate(copy.variants.headingWithCount, { n: format.number(variants.length) })
+                  : copy.variants.heading}
               </h3>
               {stockSummary?.lastSyncedAt ? (
                 <span
@@ -439,26 +459,26 @@ export function ProductDetailPage(): ReactElement {
                     aria-hidden="true"
                     style={staleSync ? { background: 'var(--status-warning-strong)' } : undefined}
                   ></span>
-                  Stock synced <TimeDisplay iso={stockSummary.lastSyncedAt} format="time" />
+                  {copy.variants.stockSynced} <TimeDisplay iso={stockSummary.lastSyncedAt} format="time" />
                 </span>
               ) : null}
             </div>
             {inventoryQuery.isLoading ? (
               <LoadingState
                 liveRegion="off"
-                title="Loading stock"
-                message="Fetching inventory data…"
+                title={copy.variants.loading.title}
+                message={copy.variants.loading.message}
               />
             ) : inventoryQuery.error ? (
               <ErrorState
-                title="Unable to load stock"
+                title={copy.variants.loadError}
                 message={inventoryQuery.error.message}
                 action={
-                  <Button onClick={() => { void inventoryQuery.refetch(); }}>Retry</Button>
+                  <Button onClick={() => { void inventoryQuery.refetch(); }}>{copy.retry}</Button>
                 }
               />
             ) : variants.length === 0 ? (
-              <p className="text-muted">No variants found for this product.</p>
+              <p className="text-muted">{copy.variants.empty}</p>
             ) : (
               <>
                 <StockAlerts

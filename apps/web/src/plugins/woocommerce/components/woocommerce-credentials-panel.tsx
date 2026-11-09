@@ -17,12 +17,14 @@ import { Button } from '../../../shared/ui/button';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { useWoocommerceMessages } from '../messages';
 
 export function WoocommerceCredentialsPanel({
   connection,
 }: {
   connection: Connection;
 }): ReactElement {
+  const copy = useWoocommerceMessages().woocommerceCredentialsPanel;
   const [showRotate, setShowRotate] = useState(false);
   const [consumerKey, setConsumerKey] = useState('');
   const [consumerSecret, setConsumerSecret] = useState('');
@@ -31,8 +33,8 @@ export function WoocommerceCredentialsPanel({
 
   if (!connection.credentialsBacked) {
     return (
-      <FormField label="API Credentials" name="credentials">
-        <Input value="Environment variable (not editable via UI)" disabled />
+      <FormField label={copy.label} name="credentials">
+        <Input value={copy.envBacked} disabled />
       </FormField>
     );
   }
@@ -52,8 +54,8 @@ export function WoocommerceCredentialsPanel({
       });
       showToast({
         tone: 'success',
-        title: 'Credentials rotated',
-        description: 'New WooCommerce API credentials are now in use.',
+        title: copy.toast.title,
+        description: copy.toast.description,
       });
       setConsumerKey('');
       setConsumerSecret('');
@@ -65,9 +67,9 @@ export function WoocommerceCredentialsPanel({
 
   return (
     <FormField
-      label="API Credentials"
+      label={copy.label}
       name="credentials"
-      description="Stored securely on the server. Rotate to replace the keys without restarting the API."
+      description={copy.description}
     >
       {showRotate ? (
         <div className="form-grid">
@@ -75,14 +77,14 @@ export function WoocommerceCredentialsPanel({
           <Input
             type="password"
             autoComplete="off"
-            placeholder="New consumer key (ck_...)"
+            placeholder={copy.newConsumerKeyPlaceholder}
             value={consumerKey}
             onChange={(event) => setConsumerKey(event.target.value)}
           />
           <Input
             type="password"
             autoComplete="off"
-            placeholder="New consumer secret (cs_...)"
+            placeholder={copy.newConsumerSecretPlaceholder}
             value={consumerSecret}
             onChange={(event) => setConsumerSecret(event.target.value)}
           />
@@ -92,7 +94,7 @@ export function WoocommerceCredentialsPanel({
               onClick={(event) => void onRotate(event)}
               disabled={rotate.isPending || !canSubmit}
             >
-              {rotate.isPending ? 'Rotating...' : 'Save new credentials'}
+              {rotate.isPending ? copy.rotating : copy.save}
             </Button>
             <Button
               tone="secondary"
@@ -103,13 +105,13 @@ export function WoocommerceCredentialsPanel({
                 setConsumerSecret('');
               }}
             >
-              Cancel
+              {copy.cancel}
             </Button>
           </div>
         </div>
       ) : (
         <Button tone="secondary" type="button" onClick={() => setShowRotate(true)}>
-          Rotate API credentials
+          {copy.rotate}
         </Button>
       )}
     </FormField>

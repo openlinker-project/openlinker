@@ -34,7 +34,7 @@ export function GiftDocumentFormField({
   id,
   'data-testid': testId,
 }: GiftDocumentFormFieldProps): ReactElement {
-  const copy = useMessages('giftDocuments');
+  const copy = useMessages('gift-documents');
   const labels = useGiftFormLabels();
   const providers = useDocumentProvidersQuery();
   const zero = zeroAvailability(providers.data?.providers);

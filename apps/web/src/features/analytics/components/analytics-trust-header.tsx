@@ -20,6 +20,7 @@
  * @module apps/web/src/features/analytics/components
  */
 import type { ReactElement } from 'react';
+import { renderRich, useMessages } from '../../../shared/i18n';
 import {
   Popover,
   PopoverContent,
@@ -45,34 +46,34 @@ const STATUS_TONE: Record<ConnectionIngestionStatus, StatusBadgeTone> = {
   unknown: 'neutral',
 };
 
-const STATUS_LABEL: Record<ConnectionIngestionStatus, string> = {
-  fresh: 'Up to date',
-  stalled: 'Stalled',
-  disconnected: 'Disconnected',
-  'never-ingested': 'Never ingested',
-  unknown: 'Unknown',
+type StatusLabelKey = 'fresh' | 'stalled' | 'disconnected' | 'neverIngested' | 'unknown';
+
+const STATUS_LABEL_KEY: Record<ConnectionIngestionStatus, StatusLabelKey> = {
+  fresh: 'fresh',
+  stalled: 'stalled',
+  disconnected: 'disconnected',
+  'never-ingested': 'neverIngested',
+  unknown: 'unknown',
 };
 
 export function AnalyticsTrustHeader({ connections }: AnalyticsTrustHeaderProps): ReactElement {
+  const copy = useMessages('analytics').analyticsTrustHeader;
   return (
     <article className="panel panel--dense">
       <div className="panel__header">
         <div className="trust-header__title-group">
-          <h3 className="section-title">Synchronization</h3>
+          <h3 className="section-title">{copy.title}</h3>
           <Popover>
             <PopoverTrigger asChild>
               <button
                 type="button"
                 className="analytics-info-popover-trigger"
-                aria-label="About these dates"
+                aria-label={copy.aboutDates}
               >
                 &#9432;
               </button>
             </PopoverTrigger>
-            <PopoverContent>
-              Dates are the earliest order stored for each channel, not a guarantee of
-              completeness. Some later orders may also be missing.
-            </PopoverContent>
+            <PopoverContent>{copy.aboutDatesBody}</PopoverContent>
           </Popover>
         </div>
       </div>
@@ -88,23 +89,19 @@ export function AnalyticsTrustHeader({ connections }: AnalyticsTrustHeaderProps)
               {entry.connectionName}
             </span>
             <span className="trust-header__facts">
-              {entry.earliestOrderDate ? (
-                <>
-                  data from <TimeDisplay iso={entry.earliestOrderDate} format="date" />
-                </>
-              ) : (
-                'no orders yet'
-              )}
+              {entry.earliestOrderDate
+                ? renderRich(copy.dataFrom, {
+                    date: () => <TimeDisplay iso={entry.earliestOrderDate ?? ''} format="date" />,
+                  })
+                : copy.noOrders}
               {' · '}
-              {entry.lastPollAt ? (
-                <>
-                  synced <TimeDisplay iso={entry.lastPollAt} format="time" />
-                </>
-              ) : (
-                'never polled'
-              )}
+              {entry.lastPollAt
+                ? renderRich(copy.synced, {
+                    time: () => <TimeDisplay iso={entry.lastPollAt ?? ''} format="time" />,
+                  })
+                : copy.neverPolled}
               <StatusBadge tone={STATUS_TONE[entry.status]} withDot>
-                {STATUS_LABEL[entry.status]}
+                {copy.status[STATUS_LABEL_KEY[entry.status]]}
               </StatusBadge>
             </span>
           </div>

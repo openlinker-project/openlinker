@@ -27,6 +27,7 @@ import type { SyncLockPort } from '@openlinker/core/sync';
 import type { IConnectionService } from '../../../integrations/application/interfaces/connection.service.interface';
 import { OrderEditInvalidError, OrderEditNotFoundError, OrderEditRefusedError } from '../errors/order-edit.errors';
 import { OrderEditService } from './order-edit.service';
+import type { IFulfillmentParcelClosureNotifier } from '../../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
 
 const ORDER_ID = 'ol_order_1';
 
@@ -59,6 +60,8 @@ const assessment = (overrides: Partial<OrderWorkEditAssessment> = {}): OrderWork
   handedOff: [],
   underway: false,
   fulfilledByLine: {},
+  requiredByLine: {},
+  verifiedByLine: {},
   ...overrides,
 });
 
@@ -245,6 +248,7 @@ describe('OrderEditService (#3542)', () => {
   let integrations: { resolveAdapterMetadata: jest.Mock };
   let lock: jest.Mocked<Pick<SyncLockPort, 'acquire' | 'release'>>;
   let refunds: { getRefundSummariesForOrders: jest.Mock };
+  let parcelClosureNotifier: { notifyParcelClosed: jest.Mock; relayRecordedClose: jest.Mock };
   let service: OrderEditService;
   const calls: string[] = [];
 
@@ -288,8 +292,10 @@ describe('OrderEditService (#3542)', () => {
       addLineToOpenWork: jest.fn().mockResolvedValue({ outcome: 'added', workId: 'w1' }),
       lowerLineQuantity: jest.fn().mockImplementation(() => {
         calls.push('work');
-        return Promise.resolve({ outcome: 'applied', cancelledUnits: 2, workIds: ['w1'] });
+        return Promise.resolve({ outcome: 'applied', cancelledUnits: 2, workIds: ['w1'], closedParcels: [] });
       }),
+      holdForSourceChange: jest.fn(),
+      releaseSourceChangeHolds: jest.fn(),
     };
     products = {
       getVariant: jest.fn().mockResolvedValue({ id: 'v-gift', productId: 'p-gift', sku: 'GIFT-1' }),
@@ -319,6 +325,7 @@ describe('OrderEditService (#3542)', () => {
     integrations = { resolveAdapterMetadata: jest.fn().mockResolvedValue({ adapterKey: 'acme.3pl.v1' }) };
     lock = { acquire: jest.fn().mockResolvedValue('token'), release: jest.fn().mockResolvedValue(undefined) };
     refunds = { getRefundSummariesForOrders: jest.fn().mockResolvedValue(new Map()) };
+    parcelClosureNotifier = { notifyParcelClosed: jest.fn(), relayRecordedClose: jest.fn().mockResolvedValue(undefined) };
 
     service = new OrderEditService(
       orderRecords as unknown as IOrderRecordService,
@@ -333,6 +340,7 @@ describe('OrderEditService (#3542)', () => {
       integrations as unknown as IIntegrationsService,
       lock as unknown as SyncLockPort,
       refunds as unknown as IOrderRefundService,
+      parcelClosureNotifier as unknown as IFulfillmentParcelClosureNotifier,
       products as unknown as IProductsService
     );
   });
@@ -496,6 +504,25 @@ describe('OrderEditService (#3542)', () => {
 
   describe('lines', () => {
     const lowerL1 = { ...base, lines: [{ orderLineId: 'l1', quantity: 1 }], acknowledgeAcceptedWork: false };
+
+    it('should relay at once a box the lowered quantity closed (#3961)', async () => {
+      fulfillment.lowerLineQuantity.mockResolvedValueOnce({
+        outcome: 'applied',
+        cancelledUnits: 1,
+        workIds: ['w1'],
+        closedParcels: [{ workId: 'w1', closedAt: new Date() }],
+      });
+
+      await service.editLines(lowerL1);
+
+      expect(parcelClosureNotifier.relayRecordedClose).toHaveBeenCalledWith('w1');
+    });
+
+    it('should relay nothing when no box closed', async () => {
+      await service.editLines(lowerL1);
+
+      expect(parcelClosureNotifier.relayRecordedClose).not.toHaveBeenCalled();
+    });
 
     it('should narrow the work, lower the reservation and give the stock back, after the overlay and in that order', async () => {
       const result = await service.editLines(lowerL1);

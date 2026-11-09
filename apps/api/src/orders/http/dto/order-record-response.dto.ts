@@ -33,6 +33,7 @@ import {
   type HoldReason,
 } from '@openlinker/core/order-lifecycle';
 import { OrderHoldDto } from './order-hold-response.dto';
+import { OrderPaymentWritebackEntryDto } from './order-payment-writeback-entry.dto';
 import { OrderEditsViewDto } from './order-edit-response.dto';
 import {
   FulfillmentBlockReasonValues,
@@ -228,9 +229,12 @@ export class OrderRecordResponseDto {
     nullable: true,
     description:
       'How a fulfilment routing decision narrowed this order\'s destination fan-out (#2703/#2704). ' +
-      'null when routing narrowed nothing — which is every order until a router is wired. ' +
-      '"routed-to-no-destination" is a working router making a DECISION and is rendered neutrally; ' +
-      'the other three name a destination the router asked for that OpenLinker could not reach. ' +
+      'null when routing narrowed nothing and at least one destination was reached. ' +
+      '"routed-to-no-destination" is a working router making a DECISION and is rendered neutrally. ' +
+      '"no-destination-configured" (#3959) means no connection other than the source can create ' +
+      'orders, so there is nothing to copy the order to; also neutral. "no-active-destination" ' +
+      'means such connections exist but none is active, and the order is copied once one is. ' +
+      'The routed-* rest name a destination the router asked for that OpenLinker could not reach. ' +
       'Independent of health and of salesDocumentBlockReason.',
   })
   destinationRoutingBlockReason!: DestinationRoutingBlockReason | null;
@@ -272,6 +276,15 @@ export class OrderRecordResponseDto {
       'other, or both. Keyed by PRODUCER, so an order can carry several at once.',
   })
   omsAttention!: OrderOmsAttentionEntryDto[];
+
+  @ApiProperty({
+    type: [OrderPaymentWritebackEntryDto],
+    description:
+      'Per destination shop: whether a payment that arrived after the shop got the order reached ' +
+      'it (#3963). Empty for an order no shop got before it was paid, and for every order ' +
+      'provisioned before this feature that has not been paid since.',
+  })
+  paymentWriteback!: OrderPaymentWritebackEntryDto[];
 
   @ApiPropertyOptional({
     nullable: true,

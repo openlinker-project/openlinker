@@ -12,8 +12,13 @@
  * (same `config.seller` shape + legacy flat `config.sellerNip` fallback), shaped
  * here for display rather than form hydration.
  *
+ * The Polish wording itself lives under `oswiadczenie` in the plugin's
+ * locale files and is Polish in every language.
+ *
  * @module plugins/ksef/lib
  */
+import { interpolate } from '../../../shared/i18n';
+import { getKsefMessages } from '../messages';
 
 /** Seller profile the oświadczenie header is printed from. */
 export interface KsefSellerProfile {
@@ -77,7 +82,7 @@ export function readKsefSellerProfile(config: Record<string, unknown>): KsefSell
   };
 }
 
-/** Whether the profile carries at least a name or a NIP — enough to print a header. */
+/** Whether the profile carries at least a name or a NIP - enough to print a header. */
 export function hasPrintableSeller(seller: KsefSellerProfile): boolean {
   return seller.name.trim().length > 0 || seller.nip.trim().length > 0;
 }
@@ -100,49 +105,42 @@ export function formatSellerNip(seller: KsefSellerProfile): string {
   return seller.nip.trim();
 }
 
-/** Long-form Polish date, e.g. "16 lipca 2026 r." */
+/**
+ * Long-form Polish date, e.g. "16 lipca 2026 r.". Always Polish: the
+ * oświadczenie is a Polish legal document in every interface language.
+ */
 export function formatPolishDate(date: Date): string {
   const formatted = new Intl.DateTimeFormat('pl-PL', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
   }).format(date);
-  return `${formatted} r.`;
+  return interpolate(getKsefMessages().oswiadczenie.date, { date: formatted });
 }
 
-/** The "place, date" line — city (when known) + long-form date. */
+/** The "place, date" line - city (when known) + long-form date. */
 export function formatPlaceAndDate(seller: KsefSellerProfile, date: Date): string {
+  const copy = getKsefMessages().oswiadczenie;
   const place = seller.city.trim();
-  const dated = `dnia ${formatPolishDate(date)}`;
-  return place.length > 0 ? `${place}, ${dated}` : dated;
+  const dated = interpolate(copy.dated, { date: formatPolishDate(date) });
+  return place.length > 0 ? interpolate(copy.placeAndDate, { place, dated }) : dated;
 }
-
-export const OSWIADCZENIE_TITLE = 'Oświadczenie o pominięciu numeru faktury';
 
 /**
- * The oświadczenie body sentence — states the skipped number was omitted and
+ * The oświadczenie body sentence - states the skipped number was omitted and
  * will not be assigned to any invoice, naming the seller and the series.
  */
 export function formatOswiadczenieBody(content: KsefOswiadczenieContent): string {
+  const copy = getKsefMessages().oswiadczenie;
   const sellerName = content.seller.name.trim();
-  const actingAs =
-    sellerName.length > 0
-      ? `Działając w imieniu ${sellerName}, oświadczam`
-      : 'Oświadczam';
-  return (
-    `${actingAs}, że numer ${content.skippedNumber} w serii numeracji ` +
-    `„${content.seriesName}" został pominięty i nie został oraz nie zostanie ` +
-    `przypisany do żadnej faktury.`
-  );
+  const params = { number: content.skippedNumber, series: content.seriesName };
+  return sellerName.length > 0
+    ? interpolate(copy.bodyWithSeller, { ...params, seller: sellerName })
+    : interpolate(copy.body, params);
 }
 
-/**
- * The continuity-preserved sentence — reassures that skipping the number does
- * not break the chronological continuity of the series' numbering.
- */
-export const OSWIADCZENIE_CONTINUITY =
-  'Pominięcie powyższego numeru nie narusza ciągłości numeracji faktur — ' +
-  'kolejne numery w tej serii są nadawane w sposób ciągły i chronologiczny.';
+/** The dotted line a signature goes on in the plain-text form. */
+const SIGNATURE_LINE = '.................................................';
 
 /**
  * Plain-text rendering of the whole document, for the "Copy text" action. Mirrors
@@ -150,6 +148,7 @@ export const OSWIADCZENIE_CONTINUITY =
  * series identity, signature line.
  */
 export function buildOswiadczenieText(content: KsefOswiadczenieContent): string {
+  const copy = getKsefMessages().oswiadczenie;
   const issuedAt = content.issuedAt ?? new Date();
   const lines: string[] = [];
 
@@ -157,25 +156,27 @@ export function buildOswiadczenieText(content: KsefOswiadczenieContent): string 
   if (sellerName.length > 0) lines.push(sellerName);
   for (const line of formatSellerAddressLines(content.seller)) lines.push(line);
   const nip = formatSellerNip(content.seller);
-  if (nip.length > 0) lines.push(`NIP: ${nip}`);
+  if (nip.length > 0) lines.push(interpolate(copy.nip, { nip }));
 
   lines.push('');
   lines.push(formatPlaceAndDate(content.seller, issuedAt));
   lines.push('');
-  lines.push(OSWIADCZENIE_TITLE);
+  lines.push(copy.title);
   lines.push('');
   lines.push(formatOswiadczenieBody(content));
   lines.push('');
-  lines.push(`Przyczyna pominięcia: ${content.reason}`);
+  lines.push(interpolate(copy.reasonLine, { reason: content.reason }));
   lines.push('');
-  lines.push(OSWIADCZENIE_CONTINUITY);
+  lines.push(copy.continuity);
   lines.push('');
-  lines.push(`Seria: ${content.seriesName} (${content.seriesPattern})`);
-  lines.push(`Pominięty numer: ${content.skippedNumber}`);
+  lines.push(
+    interpolate(copy.seriesLine, { name: content.seriesName, pattern: content.seriesPattern }),
+  );
+  lines.push(interpolate(copy.skippedLine, { number: content.skippedNumber }));
   lines.push('');
   lines.push('');
-  lines.push('.................................................');
-  lines.push('(podpis osoby upoważnionej)');
+  lines.push(SIGNATURE_LINE);
+  lines.push(copy.signature);
 
   return lines.join('\n');
 }

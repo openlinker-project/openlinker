@@ -31,7 +31,7 @@ import { createFakeAvailabilityService } from './fake-availability-service';
 describe('OfferBuilderService', () => {
   let service: OfferBuilderService;
   let productsService: jest.Mocked<
-    Pick<IProductsService, 'getVariant' | 'getVariantsByProductId' | 'getEffectiveTaxRate' | 'getProduct'>
+    Pick<IProductsService, 'getVariant' | 'getVariantsByProductId' | 'getEffectiveTaxRate' | 'getProduct' | 'getVariantsByIds' | 'getVariantsByProductIds'>
   >;
   let connectionPort: jest.Mocked<Pick<ConnectionPort, 'get'>>;
   let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
@@ -48,7 +48,7 @@ describe('OfferBuilderService', () => {
   const emptyProjection: AttributeProjectionResult = {
     parameters: [],
     unmappedSourceKeys: [],
-    unresolvedRequired: [], restrictionIssues: [],
+    unresolvedRequired: [], restrictionIssues: [], origins: [],
   };
 
   const VARIANT_ID = 'ol_variant_123';
@@ -75,6 +75,8 @@ describe('OfferBuilderService', () => {
     productsService = {
       getVariant: jest.fn().mockResolvedValue(defaultVariant),
       getVariantsByProductId: jest.fn().mockResolvedValue([defaultVariant]),
+      getVariantsByIds: jest.fn().mockResolvedValue([]),
+      getVariantsByProductIds: jest.fn().mockResolvedValue([]),
       // #2249 / ADR-077: no catalogue rate by default, so every command below
       // keeps its rate-less shape.
       getEffectiveTaxRate: jest
@@ -318,10 +320,12 @@ describe('OfferBuilderService', () => {
       productsService.getVariant.mockImplementation(
         (id: string) => Promise.resolve((byId[id] ?? defaultVariant) as ProductVariant)
       );
-      productsService.getVariantsByProductId.mockImplementation((pid: string) => {
-        const v = pid === 'p-a' ? byId['v-a'] : pid === 'p-b' ? byId['v-b'] : defaultVariant;
-        return Promise.resolve([v as ProductVariant]);
-      });
+      productsService.getVariantsByIds.mockResolvedValue(
+        Object.values(byId) as ProductVariant[]
+      );
+      productsService.getVariantsByProductIds.mockResolvedValue(
+        Object.values(byId) as ProductVariant[]
+      );
       productsService.getProduct.mockImplementation((id: string) =>
         Promise.resolve({ id, name: `Name ${id}`, images: [`https://x/${id}.jpg`] } as never)
       );
@@ -380,7 +384,10 @@ describe('OfferBuilderService', () => {
             : { id, productId: `p-${id.slice(2)}`, ean: '5901234123457', gtin: null }) as ProductVariant
         )
       );
-      productsService.getVariantsByProductId.mockResolvedValue([]);
+      productsService.getVariantsByIds.mockResolvedValue([
+        { id: 'v-a', productId: 'p-a', ean: '5901234123457', gtin: null },
+        { id: 'v-b', productId: 'p-b', ean: '5901234123457', gtin: null },
+      ] as unknown as ProductVariant[]);
       productsService.getProduct.mockImplementation((id: string) =>
         Promise.resolve({ id, name: `Name ${id}`, images: [] } as never)
       );
@@ -407,6 +414,72 @@ describe('OfferBuilderService', () => {
       await expect(service.buildCreateOfferCommand(input)).rejects.toBeInstanceOf(
         OfferBuilderValidationException
       );
+    });
+
+    it('resolves components concurrently and keeps definition order', async () => {
+      bundleDefinitions.get.mockResolvedValue({
+        variantId: VARIANT_ID,
+        version: 1,
+        components: [
+          { variantId: 'v-a', productId: 'p-a', quantity: 1 },
+          { variantId: 'v-b', productId: 'p-b', quantity: 1 },
+        ],
+      });
+      productsService.getVariantsByIds.mockResolvedValue([
+        { id: 'v-a', productId: 'p-a', ean: '1', gtin: null },
+        { id: 'v-b', productId: 'p-b', ean: '2', gtin: null },
+      ] as unknown as ProductVariant[]);
+      productsService.getProduct.mockImplementation((id: string) =>
+        Promise.resolve({ id, name: `Name ${id}`, images: [] } as never)
+      );
+      // The first component's category resolution only settles after the second
+      // has STARTED, which a sequential loop could never satisfy.
+      let releaseFirst: () => void = () => undefined;
+      const firstGate = new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
+      categoryResolution.resolveCategory.mockImplementation(async (req: { barcode?: string | null }) => {
+        if (req.barcode === '1') {
+          await firstGate;
+        } else if (req.barcode === '2') {
+          releaseFirst();
+        }
+        return { destinationCategoryId: 'cat', provenance: 'owns', method: 'auto_detect' };
+      });
+
+      const result = await service.buildCreateOfferCommand(input);
+
+      expect(result.productSet?.map((c) => c.variantId)).toEqual(['v-a', 'v-b']);
+      expect(productsService.getVariantsByIds).toHaveBeenCalledTimes(1);
+    });
+
+    it('finds a live offer beyond the first page of mappings', async () => {
+      bundleDefinitions.get.mockResolvedValue({
+        variantId: VARIANT_ID,
+        version: 1,
+        components: [{ variantId: 'v-a', productId: 'p-a', quantity: 1 }],
+      });
+      offerMappings.countByConnectionAndVariants.mockResolvedValue(new Map([['v-a', 1]]));
+      const deadIds = Array.from({ length: 50 }, (_, i) => `dead-${i}`);
+      offerMappings.findDeadFailedCreationOfferIds.mockResolvedValue(deadIds);
+      offerMappings.findMappingPage.mockImplementation((_f: unknown, page: { offset: number }) =>
+        Promise.resolve(
+          page.offset === 0
+            ? { items: deadIds.map((externalId) => ({ externalId })), total: 51 }
+            : { items: [{ externalId: 'live-51' }], total: 51 }
+        )
+      );
+      productsService.getVariantsByIds.mockResolvedValue([
+        { id: 'v-a', productId: 'p-a', ean: '1', gtin: null },
+      ] as unknown as ProductVariant[]);
+      productsService.getProduct.mockImplementation((id: string) =>
+        Promise.resolve({ id, name: `Name ${id}`, images: [] } as never)
+      );
+
+      const result = await service.buildCreateOfferCommand(input);
+
+      expect(result.productSet?.[0].existingOfferExternalId).toBe('live-51');
+      expect(offerMappings.findMappingPage).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -963,7 +1036,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [{ id: '224017', valuesIds: ['11954'], section: 'product' }],
         unmappedSourceKeys: [],
-        unresolvedRequired: [], restrictionIssues: [],
+        unresolvedRequired: [], restrictionIssues: [], origins: [],
       });
 
       const result = await service.buildCreateOfferCommand({
@@ -1000,7 +1073,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],
         unmappedSourceKeys: [],
-        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [],
+        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [], origins: [],
       });
 
       const error = await service
@@ -1030,7 +1103,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],
         unmappedSourceKeys: [],
-        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [],
+        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [], origins: [],
       });
 
       const result = await service.buildCreateOfferCommand({
@@ -1054,7 +1127,7 @@ describe('OfferBuilderService', () => {
           { id: 'cond-1', name: 'Stan', section: 'offer' },
           { id: 'qty-1', name: 'Liczba sztuk w ofercie', section: 'offer' },
         ],
-        restrictionIssues: [],
+        restrictionIssues: [], origins: [],
       });
 
       const error = await service
@@ -1078,7 +1151,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],
         unmappedSourceKeys: [],
-        unresolvedRequired: [{ id: 'brand-1', name: 'Marka', section: 'product' }], restrictionIssues: [],
+        unresolvedRequired: [{ id: 'brand-1', name: 'Marka', section: 'product' }], restrictionIssues: [], origins: [],
       });
 
       const result = await service.buildCreateOfferCommand({
@@ -1097,7 +1170,7 @@ describe('OfferBuilderService', () => {
           { id: 'brand-1', valuesIds: ['canon'], section: 'product' },
         ],
         unmappedSourceKeys: [],
-        unresolvedRequired: [], restrictionIssues: [],
+        unresolvedRequired: [], restrictionIssues: [], origins: [],
       });
 
       const result = await service.buildCreateOfferCommand({
@@ -1123,7 +1196,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],
         unmappedSourceKeys: [],
-        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [],
+        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [], origins: [],
       });
 
       const result = await service.buildCreateOfferCommand({
@@ -1140,7 +1213,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],
         unmappedSourceKeys: [],
-        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [],
+        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [], origins: [],
       });
 
       // No overrides.parameters → fallback reads platformParams.{parameters,productParameters}.
@@ -1170,7 +1243,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],
         unmappedSourceKeys: ['Material', 'Pattern'],
-        unresolvedRequired: [], restrictionIssues: [],
+        unresolvedRequired: [], restrictionIssues: [], origins: [],
       });
 
       const result = await service.buildCreateOfferCommand({

@@ -41,7 +41,7 @@ function isSource(value: string | null): value is GiftReportSource {
 }
 
 export function GiftReportPage(): ReactElement {
-  const copy = useMessages('giftReport');
+  const copy = useMessages('gift-report');
   const [searchParams, setSearchParams] = useSearchParams();
   const defaultRange = useRef(computePresetRange('30d', new Date())).current;
   const from = searchParams.get('from') ?? defaultRange.from;

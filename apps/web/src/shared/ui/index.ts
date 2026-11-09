@@ -47,7 +47,13 @@ export { Chip } from './chip';
 export type { ChipProps, ChipTone } from './chip';
 export { FilterToggleButton } from './filter-toggle-button';
 export type { FilterToggleButtonProps } from './filter-toggle-button';
-export { FilterPanel, FilterPanelFooter, FilterGroup, FilterField, FilterRange } from './filter-panel';
+export {
+  FilterPanel,
+  FilterPanelFooter,
+  FilterGroup,
+  FilterField,
+  FilterRange,
+} from './filter-panel';
 export type { FilterPanelProps, FilterGroupProps, FilterFieldProps } from './filter-panel';
 export { FilterCheck, FilterChecks } from './filter-check';
 export type { FilterCheckProps, FilterCheckTone } from './filter-check';
@@ -146,7 +152,20 @@ export { MASTER_DESCRIPTION_FORMAT } from './rich-text.types';
 // ── QR verification code (#1579) ────────────────────────────
 export { QrCode } from './qr-code';
 export type { QrCodeErrorCorrectionLevel } from './qr-code';
-export { LanguageSwitch } from './language-switch';
-export type { LanguageSwitchProps } from './language-switch';
 export { LanguageFlag } from './language-flag';
 export { MotionProvider } from './motion-provider';
+
+// ── Switch primitives (#4029) ───────────────────────────────
+export { PeekButton } from './peek-button';
+export type { PeekButtonProps } from './peek-button';
+export { MotionPopover, useAnchoredPopover, anchoredPosition } from './motion-popover';
+export type { MotionPopoverProps, AnchoredPopover, PopoverPlacement } from './motion-popover';
+export { OptionList } from './option-list';
+export type { OptionListItem, OptionListProps } from './option-list';
+export { SegmentedSwitch } from './segmented-switch';
+export type {
+  SegmentedSwitchLabels,
+  SegmentedSwitchOption,
+  SegmentedSwitchProps,
+} from './segmented-switch';
+export { SNAPPY_SPRING, THUMB_SPRING, ENTRANCE_GROUP, ENTRANCE_ITEM } from './motion-presets';

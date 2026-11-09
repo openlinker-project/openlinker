@@ -92,6 +92,12 @@ export type OrderSyncResult =
         orderId: string;
         orderNumber?: string;
       };
+      /**
+       * `true` when the shop received the order in THIS run, `false` when it
+       * already had it (#3963). Optional so a hand-built result in a test or an
+       * older caller still type-checks; absent reads as "not created now".
+       */
+      created?: boolean;
     }
   | {
       destinationConnectionId: string;

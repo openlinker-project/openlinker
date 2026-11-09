@@ -51,14 +51,13 @@
  *
  * @module features/orders/components
  */
-import { useMessages } from '../../../shared/i18n';
 import type { ReactElement } from 'react';
 import { EmptyValue } from '../../../shared/ui/empty-value';
 import { EntityLabel, shortenId } from '../../../shared/ui/entity-label';
 import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
+import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { OrderTagChip } from './order-tag-chip';
 import type { OrderTag } from '../api/orders.types';
-import { ORDER_TAGS_COPY } from '../lib/order-tags.copy';
 
 /** How many tags a list row renders before folding the rest into "+N" (#3533). */
 const TAGS_LINE_MAX_VISIBLE = 2;
@@ -141,6 +140,9 @@ export function OrderIdentityCell({
   hasGift = false,
 }: OrderIdentityCellProps): ReactElement {
   const giftCopy = useMessages('gifts');
+  const copy = useMessages('orders').identityCell;
+  const plural = usePlural();
+  const tagsCopy = useMessages('orders').orderTags;
   if (!orderId) return <EmptyValue />;
 
   // Trim what is RENDERED, not just what is tested: a padded order number would
@@ -155,17 +157,23 @@ export function OrderIdentityCell({
   const moreCount = totalItems > 1 ? totalItems - 1 : 0;
   // `+4` alone leaves an operator (and a screen reader) to guess what is being
   // counted — lines, not units — so the chip states both facts on hover.
-  const moreLabel = `more line item${moreCount === 1 ? '' : 's'}`;
-  const moreCountTitle = `${moreCount} ${moreLabel} (${totalItems} in this order)`;
+  const moreCountTitle = plural(moreCount, copy.moreLineItems, { total: totalItems });
+  const hiddenTagNames = (tags ?? []).slice(TAGS_LINE_MAX_VISIBLE).map((tag) => tag.name);
+  const moreTagsText = plural(hiddenTagNames.length, tagsCopy.moreTags, {
+    names: hiddenTagNames.join(', '),
+  });
   // Copy writes the INTERNAL id, so the button must say so. Naming it after the
   // order number (as this cell first did) made it assert one identifier while
   // delivering another — an operator pasting into a marketplace search would get
   // an `ol_order_…` string the marketplace never issued. The row is still named,
   // so a button list distinguishes rows: reading out a bare 41-character id per
   // row is not an accessible name either.
-  const copySubject = trimmedNumber
-    ? `internal order ID for order ${trimmedNumber}`
-    : `internal order ID ${displayName}`;
+  const copyLabel = trimmedNumber
+    ? interpolate(copy.copyForNumber, { number: trimmedNumber })
+    : interpolate(copy.copyForId, { id: displayName });
+  const copiedLabel = trimmedNumber
+    ? interpolate(copy.copiedForNumber, { number: trimmedNumber })
+    : interpolate(copy.copiedForId, { id: displayName });
   const classes = ['order-cell', className].filter(Boolean).join(' ');
 
   return (
@@ -182,8 +190,8 @@ export function OrderIdentityCell({
           id={orderId}
           name={displayName}
           showId={false}
-          copyLabel={`Copy ${copySubject}`}
-          copiedLabel={`Copied ${copySubject}`}
+          copyLabel={copyLabel}
+          copiedLabel={copiedLabel}
           // `formatOrderRef` may have shortened line 1; without this the tooltip
           // would show the shortened form and the full number would be
           // unreachable to a sighted user (#2089). On the id-fallback branch
@@ -212,7 +220,7 @@ export function OrderIdentityCell({
              the row height equal across the multi-item named and unnamed cases
              — a SINGLE unnamed item still renders no second line, deliberately,
              since there is no count worth stating. */
-          <span className="text-muted orders-cell-sub">{totalItems} line items</span>
+          <span className="text-muted orders-cell-sub">{plural(totalItems, copy.lineItems)}</span>
         ) : null}
         {tags && tags.length > 0 ? (
           <span className="orders-tags-line">
@@ -225,13 +233,11 @@ export function OrderIdentityCell({
                  prohibited on the generic role and dropped by some readers. */
               <span
                 className="orders-more-count"
-                title={ORDER_TAGS_COPY.moreTags(
-                  tags.slice(TAGS_LINE_MAX_VISIBLE).map((tag) => tag.name),
-                )}
+                title={moreTagsText}
               >
                 <span aria-hidden="true">+{tags.length - TAGS_LINE_MAX_VISIBLE}</span>
                 <span className="sr-only">
-                  {ORDER_TAGS_COPY.moreTags(tags.slice(TAGS_LINE_MAX_VISIBLE).map((tag) => tag.name))}
+                  {moreTagsText}
                 </span>
               </span>
             ) : null}

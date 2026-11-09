@@ -1,0 +1,437 @@
+{
+  "actionRow": {
+    "removeAriaLabel": "Remove step {n}",
+    "selectCarrier": "Select a carrier…",
+    "selectReason": "Select a reason…"
+  },
+  "actions": {
+    "add-gift": "Add a gift",
+    "dispatch-shipment": "Buy the shipping label",
+    "issue-sales-document": "Issue the invoice or receipt",
+    "place-hold": "Put the order on hold",
+    "relay-status-to-source": "Tell the marketplace",
+    "release-hold": "Lift the hold",
+    "send-email": "Send an email"
+  },
+  "activity": {
+    "backToIndex": "Back to automations",
+    "clearFilters": "Clear filters",
+    "clearRuleFilter": "Show every rule",
+    "description": "What your automations have actually done, newest first.",
+    "emptyBlockedMessage": "When two money-spending automations match the same order, OpenLinker runs only one - but it does not yet write that down, so nothing can be listed here. This is not a statement that it has never happened.",
+    "emptyBlockedTitle": "Collisions are not recorded yet",
+    "emptyFilteredMessage": "Try widening or clearing the filters.",
+    "emptyFilteredTitle": "No runs match these filters",
+    "emptyNoRulesAction": "Go to automations",
+    "emptyNoRulesMessage": "Set one up and everything it does will be listed here.",
+    "emptyNoRulesTitle": "You have no automations yet",
+    "emptyNoRunsMessage": "Your automations are set up and waiting. The moment one matches, it will show up here.",
+    "emptyNoRunsTitle": "Nothing has run yet",
+    "errorTitle": "Unable to load the run log",
+    "eyebrow": "Automations",
+    "filterAll": "All",
+    "filterFrom": "From",
+    "filterOrder": "Order",
+    "filterOutcome": "Result",
+    "filterRule": "Rule",
+    "filterTo": "To",
+    "filterTrigger": "Event",
+    "loadingTitle": "Loading run log",
+    "outcomeHeader": "Result",
+    "recordingUnavailableFallback": "OpenLinker is not recording automation runs in this build, so this list cannot tell you whether anything has fired.",
+    "retentionFooter": "Every automation run recorded so far is listed here.",
+    "ruleHeader": "Automation",
+    "seeAllForRule": "See all runs for this rule →",
+    "skippedSuffix": "did not run",
+    "stepsHeader": "What it did",
+    "subjectHeader": "Order or return",
+    "title": "Run log",
+    "triggerHeader": "Trigger",
+    "viewJob": "Job",
+    "whenHeader": "When"
+  },
+  "activityPage": {
+    "next": "Next",
+    "previous": "Previous",
+    "ruleFilterChip": "Rule: {ruleId} · Show every rule"
+  },
+  "activityTable": {
+    "skippedStep": "{step} - did not run"
+  },
+  "availability": {
+    "available": "Ready",
+    "irreversible": "Cannot be undone",
+    "panelIntro": "A rule can be saved with any of these steps, and OpenLinker will accept it. Only the ones marked ready will actually do anything when the rule fires.",
+    "panelTitle": "What automations can do in this build",
+    "partial": "Works in some cases",
+    "reasonSuffix": "- {reason}",
+    "ruleBlockedMany": "These steps cannot run in this build: {actions}.",
+    "ruleBlockedOne": "{action} cannot run in this build.",
+    "ruleBlockedTitle": "This rule cannot act yet",
+    "rulePartialTitle": "This rule only acts sometimes",
+    "unavailable": "Not built yet"
+  },
+  "composer": {
+    "a1Note": "Which document gets issued, and by which provider, is decided by your Sales documents routing rules. This automation only decides when.",
+    "a2NoOptions": "Service level and package presets are not available yet, so the carrier default is used and the order’s own weight and size are declared.",
+    "a2Warning": "Every time this runs, it buys a label and you are charged for it.",
+    "a3Note": "OpenLinker relays what it knows. If no label has been bought yet, the marketplace is told the order shipped without a tracking number.",
+    "actionLabel": "Step",
+    "activeHint": "You can save it switched off and turn it on once you are happy with it.",
+    "activeLabel": "Turn this on when I save it",
+    "addAction": "+ Add step",
+    "addCondition": "+ Add condition",
+    "addressLabel": "Email address",
+    "amountLabel": "Amount",
+    "amountOpLabel": "Comparison",
+    "bodyLabel": "Message",
+    "cancel": "Cancel",
+    "carrierEmpty": "No carrier is connected yet, so this step cannot be set up.",
+    "carrierHint": "Which carrier account to buy from.",
+    "carrierLabel": "Carrier",
+    "codLabel": "Collect the order total from the buyer on delivery",
+    "conditionFieldLabel": "Condition",
+    "conditionValueLabel": "Value",
+    "conditionsHint": "Every condition must be true for the automation to run. Leave this empty to act on every one.",
+    "createTitle": "New automation",
+    "currencyHint": "Only orders in this exact currency can match. Nothing is converted.",
+    "currencyLabel": "Currency",
+    "duplicateRule": "You already have an automation that does exactly this over an overlapping period. Both would run, doubling whatever they do - change something about this one, or narrow when it applies.",
+    "effectiveFromLabel": "Active from",
+    "effectiveToLabel": "Active until",
+    "effectiveToOptional": "(optional)",
+    "holdReasonHint": "Why it is being held. The operator who finds it sees this.",
+    "holdReasonLabel": "Reason",
+    "illegalPair": "This event cannot do \"{action}\". Pick a different step, or a different event to watch for.",
+    "mergeFieldsHint": "Click one to insert it. Anything else is sent exactly as you type it - including a field name you mistype, so you can see and fix it.",
+    "mergeFieldsTitle": "Drop in order details",
+    "moneyAckLabel": "I understand this automation spends money every time it runs, and those steps cannot be undone.",
+    "nameHint": "You will see this on the run log and on the order timeline.",
+    "nameLabel": "Name",
+    "nonRetroactivity": "An automation only acts on things that happen after you save it.",
+    "noteLabel": "Note",
+    "noteRequiredHint": "Required, the same as when you lift a hold by hand.",
+    "onlyIfLabel": "Only if",
+    "readOnly": "Your account can look at automations but not create them.",
+    "recipientAddress": "A fixed address",
+    "recipientBuyer": "The buyer",
+    "recipientLabel": "Send it to",
+    "releaseAnyHold": "Any hold",
+    "releaseWhichLabel": "Which hold to lift",
+    "removeAction": "Remove step",
+    "removeCondition": "Remove condition",
+    "save": "Save automation",
+    "saveFailed": "The automation was not saved",
+    "saveFailedGeneric": "Something went wrong saving this automation. Try again.",
+    "saving": "Saving…",
+    "stopOnFirstFailure": "Steps run in order, and if one fails the rest are skipped. You can add up to {max}.",
+    "subjectLabel": "Subject",
+    "thenLabel": "Then do this",
+    "triggerConfigLabel": "How many hours",
+    "whenLabel": "When this happens"
+  },
+  "composerDialog": {
+    "effectiveToOptionalLabel": "Active until (optional)",
+    "untitledName": "Untitled"
+  },
+  "composerSchema": {
+    "actionsRequired": "Add at least one step - an automation with no steps does nothing.",
+    "addressRequired": "Enter the address to send to.",
+    "amountShape": "Enter an amount like 2000 or 2000.50.",
+    "bodyRequired": "Write the message to send.",
+    "carrierRequired": "Pick the carrier account to buy from.",
+    "currencyShape": "Enter a three-letter currency code, like PLN.",
+    "effectiveFromRequired": "Pick the day this starts applying.",
+    "holdReasonRequired": "Pick why the order is being held.",
+    "nameRequired": "Give this automation a name.",
+    "noteRequired": "Say why the hold is being lifted.",
+    "triggerRequired": "Pick the event to watch for.",
+    "valueRequired": "Pick a value for this condition."
+  },
+  "conditionFields": {
+    "holdReason": "The hold reason is",
+    "orderCountry": "The delivery country is",
+    "orderTotalGross": "The order total (gross)",
+    "sourceConnection": "The order came from"
+  },
+  "conditionOutcomes": {
+    "currency-mismatch": "Different currency",
+    "false": "Not matched",
+    "true": "Matched",
+    "unknown": "Not known for this order"
+  },
+  "conditionRow": {
+    "amountOps": {
+      "gte": "is at least",
+      "lt": "is less than"
+    },
+    "countryPlaceholder": "e.g. PL",
+    "removeAriaLabel": "Remove condition {n}",
+    "selectConnection": "Select a connection…",
+    "selectReason": "Select a reason…"
+  },
+  "dryRun": {
+    "blockedActionsPrefix": "because both would",
+    "blockedByPrefix": "Held back by",
+    "conditionsTitle": "Conditions",
+    "factCountryLabel": "Delivery country",
+    "factSourceLabel": "Came from",
+    "factTotalLabel": "Order total",
+    "factUnknown": "Not known",
+    "factWhenLabel": "Happened",
+    "factsTitle": "What OpenLinker knew about this order",
+    "failedHint": "Nothing was evaluated, so this says nothing about whether the rule would match.",
+    "failedTitle": "The test did not run",
+    "gateLocked": "Test this rule before saving it - it can spend money, and OpenLinker cannot undo that.",
+    "gatePassed": "Tested.",
+    "gateStale": "You changed the rule after testing it. Test it again so what you save is what you checked.",
+    "intro": "Pick an order from the last 30 days and see what this rule would have done. Nothing is sent, bought or changed.",
+    "matchedButBlocked": "It matched this order, but another rule already does something that cannot be done twice.",
+    "noConditions": "This rule has no conditions, so it applies to every one of these events.",
+    "noOrders": "No orders in the last 30 days, so there is nothing to test against yet.",
+    "noOtherRules": "No other rules watch this event.",
+    "orderLabel": "Order",
+    "orderPlaceholder": "Select an order…",
+    "ordersFailed": "Unable to load recent orders.",
+    "otherRulesTitle": "Other rules on this event",
+    "retroactivityWaived": "It matches, but this order is older than the rule - so it would not actually have run. Only things that happen after you save it are acted on.",
+    "run": "Run the test",
+    "running": "Testing…",
+    "staleResult": "You changed the rule after this test, so the result below describes the previous version.",
+    "stepsTitle": "Steps it would run",
+    "title": "Test on a recent order",
+    "wouldFire": "This rule would have run",
+    "wouldMatchNotFire": "This rule matches, but would not have run",
+    "wouldNotFire": "This rule would not have run"
+  },
+  "dryRunPanel": {
+    "blockedBy": "Held back by <ids>{ids}</ids> because both would <actions>{actions}</actions>",
+    "orderOption": "{id} · {date}"
+  },
+  "errors": {
+    "loadingMessage": "Fetching your rules and what each step can do…",
+    "loadingTitle": "Loading automations",
+    "rulesTitle": "Unable to load these rules",
+    "summaryTitle": "Unable to load automations",
+    "unreadableEnvelopeMessage": "OpenLinker could not read the response, so it cannot say how many automations you have. This is not a statement that you have none.",
+    "unreadableTitle": "Unable to read the automations list",
+    "vocabularyMessage": "Without this, OpenLinker cannot tell you which steps are legal or which ones work - so it will not guess. Try again in a moment.",
+    "vocabularyTitle": "Unable to load what automations can do"
+  },
+  "failure": {
+    "actionsHeader": "Actions",
+    "attentionFilter": "Needs attention",
+    "badge": "Stopped",
+    "clearAttentionFilter": "Show all runs",
+    "dismiss": "I handled this myself",
+    "dismissFailed": "Could not record that",
+    "dismissed": "Handled by an operator",
+    "dismissing": "Recording…",
+    "emptyAttentionMessage": "No automation has stopped part-way through. Failures show up here until someone runs them again or marks them handled.",
+    "emptyAttentionTitle": "Nothing needs your attention",
+    "isRetryOf": "Ran again after an earlier failure",
+    "reasonUnknown": "No reason was recorded for this failure.",
+    "retry": "Try again",
+    "retryFailed": "Could not run it again",
+    "retrying": "Running again…",
+    "said": "{who} said:",
+    "skippedMany": {
+      "one": "{n} later step did not run.",
+      "other": "{n} later steps did not run."
+    },
+    "skippedOne": "Skipped: {step}.",
+    "stoppedAfter": "Nothing else in that automation ran.",
+    "superseded": "A newer attempt replaced this one",
+    "unknownActionTitle": "An automation step ({action}) could not finish for order {ref}"
+  },
+  "failureTitle": {
+    "dispatch-shipment": "Couldn't buy the label for order {ref}",
+    "issue-sales-document": "Couldn't issue the invoice for order {ref}",
+    "place-hold": "Couldn't put order {ref} on hold",
+    "relay-status-to-source": "Couldn't tell the marketplace about order {ref}",
+    "release-hold": "Couldn't lift the hold on order {ref}",
+    "send-email": "Couldn't send the email for order {ref}"
+  },
+  "firingModes": {
+    "deadline-sweep": "On a timer",
+    "edge": "When it happens"
+  },
+  "index": {
+    "actionsHeader": "Actions",
+    "canDoHeader": "What it can do now",
+    "configure": "Set up",
+    "droppedRows": {
+      "one": "{n} event could not be read and is not shown below.",
+      "other": "{n} events could not be read and are not shown below."
+    },
+    "firingModeSuffix": "· {mode}",
+    "lastFiredHeader": "Last acted",
+    "lastFiredUnknown": "Not recorded yet",
+    "lastFiredUnknownHint": "OpenLinker does not record what automations did yet, so this cannot say when one last acted. It is not a claim that nothing has.",
+    "ruleCountMany": {
+      "one": "{n} rule",
+      "other": "{n} rules"
+    },
+    "ruleCountNone": "No rules",
+    "ruleCountOne": "1 rule",
+    "rulesHeader": "Your rules",
+    "runnableSteps": "{runnable} of {legal} steps work",
+    "triggerHeader": "When this happens"
+  },
+  "mergeFields": {
+    "tokens": {
+      "buyerName": "the buyer's name as the source reported it, or \"customer\" when it is not stored",
+      "holdReason": "the current hold's reason, or \"no hold\"",
+      "orderDispatchBy": "the marketplace dispatch deadline (YYYY-MM-DD, UTC), or \"no deadline\"",
+      "orderPlacedAt": "the order date (YYYY-MM-DD, UTC)",
+      "orderReference": "the order's operator-facing reference",
+      "orderTotal": "the gross total with its currency",
+      "ruleName": "the automation's own name",
+      "shipmentTracking": "the tracking number, or \"not yet\" (\"not available\" in a buyer email)"
+    }
+  },
+  "nonFiringReasons": {
+    "condition-currency-mismatch": "The amount is in a different currency from this order, and nothing is converted.",
+    "condition-fact-unknown": "A condition asked about something OpenLinker does not know for this order.",
+    "condition-not-met": "A condition was not true for this order.",
+    "fact-precedes-rule": "This happened before the rule was saved, and rules are never retroactive.",
+    "fact-time-unknown": "OpenLinker does not know when this happened, so it cannot tell whether the rule already existed.",
+    "illegal-trigger-action-pair": "This rule pairs an event with a step that event can never run.",
+    "no-actions": "The rule has no steps left that this version can run.",
+    "no-longer-effective": "The rule stopped applying before this order.",
+    "not-yet-effective": "The rule does not start applying until later.",
+    "rule-inactive": "The rule is switched off.",
+    "trigger-config-invalid": "The rule is missing the setting its event needs.",
+    "trigger-mismatch": "This rule watches for a different event.",
+    "unknown-trigger": "This rule watches for an event this version does not recognise."
+  },
+  "page": {
+    "description": "Rules that act on your orders and returns without you clicking. Each one watches for a single event, checks the conditions you set, and then does what you told it to.",
+    "eyebrow": "Operations",
+    "runLogAction": "Run log",
+    "tableCaption": "Every event an automation can watch for",
+    "title": "Automations"
+  },
+  "retryRefusal": {
+    "not-failed": "This run did not fail, so there is nothing to run again.",
+    "retry-exhausted": "This has been run again the maximum number of times without succeeding. Fix what is failing at the source, or dismiss it.",
+    "rule-deleted": "This automation has been deleted, so there is no longer anything to run. The record of what it did stays here.",
+    "subject-unsupported": "Running again is not possible for a return.",
+    "superseded": "This run has already been tried again. Open the newer attempt to see what happened."
+  },
+  "rules": {
+    "actionsHeader": "Actions",
+    "active": "On",
+    "addRule": "New rule",
+    "backToIndex": "All automations",
+    "cancel": "Cancel",
+    "emptyMessage": "Nothing happens automatically when this event occurs.",
+    "emptyTitle": "No rules for this event yet",
+    "eyebrow": "Automations",
+    "inactive": "Off",
+    "moneyAckBody": "Turning it on lets OpenLinker act on your behalf every time it matches, and those steps cannot be undone.",
+    "moneyAckConfirm": "I understand - turn it on",
+    "moneyAckTitle": "This rule spends money",
+    "nameHeader": "Rule",
+    "neverMatchedUnknown": "OpenLinker cannot yet tell you whether this rule has ever matched an order.",
+    "readOnly": "Your account can look at automations but not change them.",
+    "stateHeader": "On or off",
+    "stepsHeader": "What it does",
+    "turnOff": "Turn off",
+    "turnOffHint": "Turning a rule off keeps everything it has already done.",
+    "turnOn": "Turn on",
+    "writeFailed": "The change was not saved"
+  },
+  "runLog": {
+    "blockedByPrefix": "Held back by",
+    "empty": "This rule has not run yet.",
+    "failed": "Unable to load this rule’s history.",
+    "hide": "Hide history",
+    "jobLink": "Job",
+    "loading": "Loading history…",
+    "orderLabel": "Order",
+    "outcomeLabel": "Result",
+    "show": "Show history",
+    "stepsLabel": "Steps",
+    "title": "What this rule has done",
+    "unreadableSteps": {
+      "one": "{n} step could not be read and is not shown.",
+      "other": "{n} steps could not be read and are not shown."
+    },
+    "whenLabel": "When"
+  },
+  "runLogPanel": {
+    "blockedBy": "Held back by <ids>{ids}</ids>"
+  },
+  "runOutcomes": {
+    "blocked": "Held back",
+    "done": "Done",
+    "failed": "Failed",
+    "nothing-to-do": "Nothing to do"
+  },
+  "stepStatuses": {
+    "done": "Done",
+    "failed": "Failed",
+    "nothing-to-do": "Nothing to do",
+    "skipped": "Skipped"
+  },
+  "suggestions": {
+    "caveat": "Nothing is created by opening this page. You will review the rule and turn it on yourself - and OpenLinker will tell you first if a step cannot run yet.",
+    "intro": "Most sellers start with this one:",
+    "primary": "Set this up",
+    "rationale": "One click at the packing bench instead of three, and the marketplace hears about it straight away.",
+    "secondary": "Start from scratch",
+    "suggestion": "When an order is marked packed → buy the shipping label → tell the marketplace.",
+    "title": "You have no automations yet."
+  },
+  "triggers": {
+    "inventory.reservation_shortfall": {
+      "description": "Stock was promised to orders that cannot all be filled.",
+      "label": "You have sold more than you have"
+    },
+    "order.dispatch_deadline_near": {
+      "description": "Checked on a timer, so it can warn you before you are late.",
+      "label": "A dispatch deadline is close"
+    },
+    "order.document_issued": {
+      "description": "Fires once, when the order's sales document is issued.",
+      "label": "An invoice or receipt is issued"
+    },
+    "order.hold.placed": {
+      "description": "Something stopped an order from being sent.",
+      "label": "An order is put on hold"
+    },
+    "order.hold.released": {
+      "description": "Whatever was blocking the order has been cleared.",
+      "label": "An order comes off hold"
+    },
+    "order.ingested": {
+      "description": "Gift promotions are checked when OpenLinker takes an order in.",
+      "label": "An order arrives (gift promotions)"
+    },
+    "order.on_hold_for": {
+      "description": "Checked on a timer, not the moment the order stops.",
+      "label": "An order has been stuck for too long"
+    },
+    "order.packed": {
+      "description": "Fires the moment someone at the packing bench marks it done.",
+      "label": "An order is marked packed"
+    },
+    "order.received": {
+      "description": "Fires once, the first time OpenLinker takes the order in.",
+      "label": "A new order comes in"
+    },
+    "order.shipped": {
+      "description": "Fires once the order's parcels are with the carrier and the tracking number is known, or 30 minutes after the carrier takes the parcel if none arrives.",
+      "label": "An order is shipped"
+    },
+    "return.disposed": {
+      "description": "Restocked, scrapped or sent on - whatever you decided.",
+      "label": "A returned item is dealt with"
+    },
+    "return.received": {
+      "description": "Returned goods are received at your warehouse, once per parcel.",
+      "label": "A return arrives"
+    }
+  }
+}

@@ -17,7 +17,7 @@
  *
  * @module features/connections/components
  */
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import {
@@ -32,7 +32,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import {
   INFAKT_SETUP_DEFAULT_VALUES,
-  infaktSetupSchema,
+  createInfaktSetupSchema,
   toCreateConnectionInput,
   type InfaktSetupFormSubmission,
   type InfaktSetupFormValues,
@@ -53,8 +53,18 @@ import {
   DialogTitle,
 } from '../../../shared/ui/dialog';
 import { InfaktWebhookConfigDialog } from './infakt-webhook-config';
+import { interpolate, renderRich } from '../../../shared/i18n';
+import { useInfaktMessages } from '../messages';
+
+const INFAKT_SANDBOX_URL = 'https://api.sandbox-infakt.pl';
+const INFAKT_PRODUCTION_URL = 'https://api.infakt.pl';
+const strong = { strong: (text: string): ReactElement => <strong>{text}</strong> };
 
 export function InfaktSetupForm(): ReactElement {
+  const messages = useInfaktMessages();
+  const copy = messages.infaktSetupForm;
+  const schemaCopy = messages.infaktSetupSchema;
+  const setupSchema = useMemo(() => createInfaktSetupSchema(schemaCopy), [schemaCopy]);
   const createConnection = useCreateConnectionMutation();
   const testConnection = useTestConnectionMutation();
   const updateConnection = useUpdateConnectionMutation();
@@ -79,7 +89,7 @@ export function InfaktSetupForm(): ReactElement {
 
   const form = useForm<InfaktSetupFormValues, undefined, InfaktSetupFormSubmission>({
     defaultValues: INFAKT_SETUP_DEFAULT_VALUES,
-    resolver: zodResolver(infaktSetupSchema),
+    resolver: zodResolver(setupSchema),
     mode: 'onBlur',
   });
 
@@ -95,7 +105,7 @@ export function InfaktSetupForm(): ReactElement {
   // `isPending` disables the Select to block a double-pick race.
   const { pickAccount, isPending: bankAccountPickPending } = usePickBankAccount({
     connectionId: createdConnectionId ?? '',
-    persistErrorHint: "re-pick it from the connection's edit screen.",
+    persistErrorHint: copy.persistErrorHint,
   });
 
   // Abandon-prevention.
@@ -121,8 +131,8 @@ export function InfaktSetupForm(): ReactElement {
       setWebhookPromptOpen(true);
       showToast({
         tone: 'success',
-        title: 'Connection created',
-        description: `inFakt connection "${created.name}" was created.`,
+        title: copy.created.title,
+        description: interpolate(copy.created.description, { name: created.name }),
       });
     } catch {
       return;
@@ -173,11 +183,10 @@ export function InfaktSetupForm(): ReactElement {
             form.setValue('defaultPaymentMethod', 'transfer');
             showToast({
               tone: 'error',
-              title: 'Could not switch the payment method to Cash',
-              description:
-                'inFakt has no bank account for Transfer invoices, but switching this ' +
-                "connection to Cash didn't save - change the payment method from the " +
-                `connection's edit screen. ${error.message}`,
+              title: copy.forcedCashFailed.title,
+              description: interpolate(copy.forcedCashFailed.description, {
+                error: error.message,
+              }),
             });
           },
         },
@@ -191,6 +200,7 @@ export function InfaktSetupForm(): ReactElement {
     pickAccount,
     showToast,
     form,
+    copy,
   ]);
 
   const onBankAccountChange = (accountId: string): void => {
@@ -216,42 +226,40 @@ export function InfaktSetupForm(): ReactElement {
 
   return (
     <form className="wizard-card" onSubmit={(event) => void onSubmit(event)} noValidate>
-      <BackLink to="/connections/new" label="Connections" className="wizard-card__back" />
+      <BackLink to="/connections/new" label={copy.back} className="wizard-card__back" />
 
       {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
         <FormErrorSummary errors={validationMessages} />
       ) : null}
       {createConnection.error ? (
-        <Alert tone="error" title="Unable to create connection">
+        <Alert tone="error" title={copy.createError}>
           {createConnection.error.message}
         </Alert>
       ) : null}
 
-      <Alert tone="info" title="Before you start">
-        In your inFakt account settings, generate an <strong>API key</strong>. OpenLinker uses
-        it to issue invoices and read KSeF clearance status through inFakt's native
-        integration. The key is stored securely on the server and only shown once.
+      <Alert tone="info" title={copy.beforeYouStart.title}>
+        {renderRich(copy.beforeYouStart.body, strong)}
       </Alert>
 
       <FormField
-        label="Connection name"
+        label={copy.name.label}
         name="name"
         error={form.formState.errors.name?.message}
-        description="A label to identify this inFakt account in OpenLinker."
+        description={copy.name.description}
       >
         <Input
           {...form.register('name')}
-          placeholder="My inFakt Account"
+          placeholder={copy.name.placeholder}
           autoComplete="off"
           invalid={Boolean(form.formState.errors.name)}
         />
       </FormField>
 
       <FormField
-        label="API key"
+        label={copy.apiKey.label}
         name="apiKey"
         error={form.formState.errors.apiKey?.message}
-        description="Your inFakt API key — generated in your inFakt account settings."
+        description={copy.apiKey.description}
       >
         <Input
           {...form.register('apiKey')}
@@ -263,28 +271,29 @@ export function InfaktSetupForm(): ReactElement {
       </FormField>
 
       <FormField
-        label="Environment"
+        label={copy.environment.label}
         name="environment"
         error={form.formState.errors.environment?.message}
-        description="Choose Sandbox to test against inFakt's sandbox before switching to production."
+        description={copy.environment.description}
       >
         <Select {...form.register('environment')}>
-          <option value="sandbox">Sandbox - https://api.sandbox-infakt.pl</option>
-          <option value="production">Production - https://api.infakt.pl</option>
+          <option value="sandbox">
+            {interpolate(copy.environment.sandbox, { url: INFAKT_SANDBOX_URL })}
+          </option>
+          <option value="production">
+            {interpolate(copy.environment.production, { url: INFAKT_PRODUCTION_URL })}
+          </option>
         </Select>
       </FormField>
 
       <FormField
-        label="Default payment method"
+        label={copy.paymentMethod.label}
         name="defaultPaymentMethod"
         error={form.formState.errors.defaultPaymentMethod?.message}
         description={
           createdConnection
-            ? 'Locked now that the connection is created — change the payment method from ' +
-              "the connection's edit screen (post-create changes here would not be saved)."
-            : 'Transfer needs a bank account on your inFakt account — without one, inFakt ' +
-              'rejects the invoice. You can pick which account after connecting; we start with ' +
-              'the one marked default in inFakt, or fall back to Cash if there is none.'
+            ? copy.paymentMethod.descriptionLocked
+            : copy.paymentMethod.descriptionBefore
         }
       >
         <Select
@@ -292,8 +301,8 @@ export function InfaktSetupForm(): ReactElement {
           disabled={createdConnection !== null}
           invalid={Boolean(form.formState.errors.defaultPaymentMethod)}
         >
-          <option value="cash">Cash</option>
-          <option value="transfer">Transfer</option>
+          <option value="cash">{copy.paymentMethod.cash}</option>
+          <option value="transfer">{copy.paymentMethod.transfer}</option>
         </Select>
       </FormField>
 
@@ -303,28 +312,27 @@ export function InfaktSetupForm(): ReactElement {
               screen (a bank account is only stamped on Transfer invoices). */}
           {paymentMethodIsTransfer ? (
             bankAccountsQuery.isLoading ? (
-              <p className="muted-text">Checking inFakt for bank accounts…</p>
+              <p className="muted-text">{copy.bankAccount.checking}</p>
             ) : bankAccountsQuery.isError ? (
-              <p className="muted-text">
-                Couldn't reach inFakt to list bank accounts. This connection stays on{' '}
-                <strong>Transfer</strong>, so invoices will keep being issued as Transfer and
-                may be rejected by inFakt until you pick a bank account from the connection's
-                edit screen.
-              </p>
+              <p className="muted-text">{renderRich(copy.bankAccount.unreachable, strong)}</p>
             ) : bankAccountsQuery.data && bankAccountsQuery.data.length > 0 ? (
-              <FormField label="Bank account for Transfer invoices" name="bankAccount">
+              <FormField label={copy.bankAccount.label} name="bankAccount">
                 <Select
                   value={selectedBankAccountId ?? ''}
                   onChange={(event) => onBankAccountChange(event.target.value)}
                   disabled={bankAccountPickPending}
                 >
                   <option value="" disabled>
-                    Select a bank account…
+                    {copy.bankAccount.placeholder}
                   </option>
                   {bankAccountsQuery.data.map((account) => (
                     <option key={account.id} value={account.id}>
-                      {account.bankName} — {account.accountNumber}
-                      {account.isDefault ? ' (default in inFakt)' : ''}
+                      {interpolate(
+                        account.isDefault
+                          ? copy.bankAccount.optionDefault
+                          : copy.bankAccount.option,
+                        { bank: account.bankName, number: account.accountNumber },
+                      )}
                     </option>
                   ))}
                 </Select>
@@ -336,25 +344,24 @@ export function InfaktSetupForm(): ReactElement {
               flips the form's own payment method to Cash, which unmounts the
               gated section above — the explanation must survive that. */}
           {forcedCashNoAccounts ? (
-            <p className="muted-text">
-              No bank account is configured on this inFakt account, so <strong>Transfer</strong>{' '}
-              isn't available yet — invoices will use <strong>Cash</strong>. Add a bank account in
-              your inFakt settings, then switch the payment method from the connection's edit
-              screen.
-            </p>
+            <p className="muted-text">{renderRich(copy.forcedCash, strong)}</p>
           ) : null}
 
           {testResult ? (
             <Alert
               tone={testResult.success ? 'success' : 'error'}
-              title={testResult.success ? 'Connection test passed' : 'Connection test failed'}
+              title={testResult.success ? copy.test.passed : copy.test.failed}
             >
-              {testResult.message}
-              {typeof testResult.latencyMs === 'number' ? ` (${testResult.latencyMs}ms)` : null}
+              {typeof testResult.latencyMs === 'number'
+                ? interpolate(copy.test.latency, {
+                    message: testResult.message,
+                    ms: testResult.latencyMs,
+                  })
+                : testResult.message}
             </Alert>
           ) : null}
           {testConnection.error ? (
-            <Alert tone="error" title="Unable to test connection">
+            <Alert tone="error" title={copy.test.unable}>
               {testConnection.error.message}
             </Alert>
           ) : null}
@@ -362,21 +369,21 @@ export function InfaktSetupForm(): ReactElement {
           {/* Delivery webhooks (#1770) — optional and post-create (they need the
               connection id + a live endpoint). A prompt opens the config dialog
               automatically on create; this row reopens it after a dismiss. */}
-          <Alert tone="info" title="Delivery webhooks (optional)">
-            Get KSeF clearance updates from inFakt in real time.
+          <Alert tone="info" title={copy.webhooks.title}>
+            {copy.webhooks.body}
             <div className="form-actions" style={{ marginTop: 'var(--space-3)' }}>
               <Button type="button" tone="secondary" onClick={() => setWebhookConfigOpen(true)}>
-                Configure webhooks…
+                {copy.configureWebhooks}
               </Button>
             </div>
           </Alert>
 
           <div className="form-actions">
             <Button type="button" onClick={() => void onTest()} disabled={testConnection.isPending}>
-              {testConnection.isPending ? 'Testing…' : 'Test connection'}
+              {testConnection.isPending ? copy.test.running : copy.test.run}
             </Button>
             <Button tone="secondary" type="button" onClick={() => void navigate('/connections')}>
-              Done
+              {copy.done}
             </Button>
           </div>
 
@@ -385,12 +392,8 @@ export function InfaktSetupForm(): ReactElement {
               full config dialog (#1770). */}
           <Dialog open={webhookPromptOpen} onOpenChange={setWebhookPromptOpen}>
             <DialogContent aria-describedby={undefined}>
-              <DialogTitle>Set up delivery webhooks now?</DialogTitle>
-              <DialogDescription>
-                Webhooks let inFakt tell OpenLinker the moment an invoice clears KSeF, instead of
-                waiting for the next poll. It&apos;s optional and takes a minute in the inFakt
-                dashboard. You can always set this up later from the connection&apos;s Actions tab.
-              </DialogDescription>
+              <DialogTitle>{copy.webhookPrompt.title}</DialogTitle>
+              <DialogDescription>{copy.webhookPrompt.description}</DialogDescription>
               <DialogFooter>
                 <Button
                   tone="secondary"
@@ -399,13 +402,12 @@ export function InfaktSetupForm(): ReactElement {
                     setWebhookPromptOpen(false);
                     showToast({
                       tone: 'success',
-                      title: 'Connection ready',
-                      description:
-                        'Configure webhooks anytime from the connection Actions tab.',
+                      title: copy.webhookPrompt.ready.title,
+                      description: copy.webhookPrompt.ready.description,
                     });
                   }}
                 >
-                  Not now
+                  {copy.webhookPrompt.notNow}
                 </Button>
                 <Button
                   tone="primary"
@@ -415,7 +417,7 @@ export function InfaktSetupForm(): ReactElement {
                     setWebhookConfigOpen(true);
                   }}
                 >
-                  Configure webhooks
+                  {copy.webhookPrompt.configure}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -430,7 +432,7 @@ export function InfaktSetupForm(): ReactElement {
       ) : (
         <div className="form-actions">
           <Button type="submit" disabled={createConnection.isPending}>
-            {createConnection.isPending ? 'Connecting…' : 'Connect inFakt'}
+            {createConnection.isPending ? copy.connecting : copy.connect}
           </Button>
         </div>
       )}

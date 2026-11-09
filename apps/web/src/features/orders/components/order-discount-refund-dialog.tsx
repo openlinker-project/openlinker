@@ -16,6 +16,7 @@
  */
 import { useEffect, useState, type ReactElement } from 'react';
 
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -30,9 +31,9 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import type { ConfirmOrderChangeResult } from '../api/order-cancel.types';
 import { useConfirmOrderChangeMutation } from '../hooks/use-confirm-order-change-mutation';
 import {
-  CONFIRM_CORRECTION_ERROR_TITLES,
   readOrderCancelErrorCode,
   readRefundCeilingFigures,
+  confirmCorrectionErrorTitle,
   readServerReason,
   remainingRefundable,
 } from '../lib/order-cancel';
@@ -61,10 +62,11 @@ export function OrderDiscountRefundDialog({
   channelName,
   onConfirmed,
 }: OrderDiscountRefundDialogProps): ReactElement {
+  const copy = useMessages('orders').orderDiscountRefund;
   const { showToast } = useToast();
   const mutation = useConfirmOrderChangeMutation();
   const [acknowledged, setAcknowledged] = useState(false);
-  const channel = channelName ?? 'the sales channel';
+  const channel = channelName ?? copy.channelFallback;
 
   const { reset: resetMutation } = mutation;
   useEffect(() => {
@@ -88,7 +90,7 @@ export function OrderDiscountRefundDialog({
       },
       {
         onSuccess: (result) => {
-          showToast({ tone: 'success', description: 'Refund recorded.' });
+          showToast({ tone: 'success', description: copy.recorded });
           onConfirmed?.(result);
           onOpenChange(false);
         },
@@ -101,33 +103,38 @@ export function OrderDiscountRefundDialog({
       <DialogContent className="order-hold-dialog" data-testid="order-edit-refund-dialog">
         <DialogTitle>
           {amount
-            ? `Confirm the refund of ${formatDecimalAmount(amount, currency)} was made`
-            : 'Confirm the refund was made'}
+            ? interpolate(copy.titleWithAmount, { amount: formatDecimalAmount(amount, currency) })
+            : copy.title}
         </DialogTitle>
         <DialogDescription>
-          {`The discount lowered what the buyer owes. OpenLinker doesn’t move money: refund the difference on ${channel} first, then confirm it here so the documents and what the buyer paid agree.`}
+          {copy.discountLowered} {interpolate(copy.refundFirst, { channel })}
         </DialogDescription>
 
         {mutation.isError && ceiling === null ? (
           <Alert
             tone="error"
             title={
-              (errorCode ? CONFIRM_CORRECTION_ERROR_TITLES[errorCode] : undefined) ??
-              'Could not confirm the refund'
+              (errorCode ? confirmCorrectionErrorTitle(errorCode) : undefined) ??
+              copy.errorTitle
             }
             data-testid="order-edit-refund-error"
           >
-            {readServerReason(mutation.error, 'Could not confirm the refund.')}
+            {readServerReason(mutation.error, copy.errorBody)}
           </Alert>
         ) : null}
 
         {ceiling ? (
           <Alert
             tone="warning"
-            title="More than can still be refunded"
+            title={copy.ceiling.title}
             data-testid="order-edit-refund-ceiling"
           >
-            {`This refund is ${ceiling.requested} ${ceiling.currency}, but only ${remainingRefundable(ceiling.ceiling, ceiling.alreadyRefunded)} ${ceiling.currency} can still be refunded on this order (${ceiling.alreadyRefunded} ${ceiling.currency} already refunded).`}
+            {interpolate(copy.ceiling.body, {
+              requested: ceiling.requested,
+              remaining: remainingRefundable(ceiling.ceiling, ceiling.alreadyRefunded),
+              refunded: ceiling.alreadyRefunded,
+              currency: ceiling.currency,
+            })}
             <label className="order-cancel-check">
               <input
                 type="checkbox"
@@ -137,7 +144,7 @@ export function OrderDiscountRefundDialog({
                   setAcknowledged(event.target.checked);
                 }}
               />
-              <span>Record it anyway</span>
+              <span>{copy.ceiling.acknowledge}</span>
             </label>
           </Alert>
         ) : null}
@@ -145,7 +152,7 @@ export function OrderDiscountRefundDialog({
         <DialogFooter>
           <DialogClose asChild>
             <Button type="button" tone="secondary" disabled={mutation.isPending}>
-              Close
+              {copy.close}
             </Button>
           </DialogClose>
           <Button
@@ -155,7 +162,7 @@ export function OrderDiscountRefundDialog({
             data-testid="order-edit-refund-confirm"
             onClick={confirm}
           >
-            {mutation.isPending ? 'Confirming…' : 'Confirm refund'}
+            {mutation.isPending ? copy.confirming : copy.confirm}
           </Button>
         </DialogFooter>
       </DialogContent>

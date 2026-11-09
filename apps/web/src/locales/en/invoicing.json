@@ -1,0 +1,411 @@
+{
+  "invoice": {
+    "acknowledge": {
+      "cancel": "Go back",
+      "confirm": "Continue anyway",
+      "note": "OpenLinker flags this from its own reading of the rules, which may not fit your case. You decide whether to go ahead.",
+      "title": "Check before you continue"
+    },
+    "action": {
+      "issued": "Invoice issued",
+      "issuedBody": "The invoice was re-issued.",
+      "retry": "Retry",
+      "retryFailed": "Retry failed"
+    },
+    "bulk": {
+      "clear": "Clear selection",
+      "dismiss": "Dismiss",
+      "hint": "Only failed invoices that were rejected will be retried; others are skipped.",
+      "issue": "Issue invoices",
+      "issueCancel": "Cancel",
+      "issueConfirmAction": "Issue",
+      "issueConfirmBody": {
+        "one": "Issue invoices for the {n} selected order? Orders that already have an issued invoice (or one in progress) are skipped, so no order gets two invoices.",
+        "other": "Issue invoices for the {n} selected orders? Orders that already have an issued invoice (or one in progress) are skipped, so no order gets two invoices."
+      },
+      "issueConfirmTitle": "Issue invoices",
+      "issueError": "Bulk issue failed: {message}",
+      "issueFailed": {
+        "one": "{n} failed.",
+        "other": "{n} failed."
+      },
+      "issueResult": "Bulk issue complete.",
+      "issueSkipped": {
+        "one": "{n} skipped (already issued or in progress).",
+        "other": "{n} skipped (already issued or in progress)."
+      },
+      "issueUnaccounted": "Some orders were not reported back; refresh the list before retrying.",
+      "issuedOfTotal": "Issued {issued} of {total}.",
+      "retried": {
+        "one": "{n} retried.",
+        "other": "{n} retried."
+      },
+      "retry": "Retry selected",
+      "retryCancel": "Cancel",
+      "retryConfirmAction": "Retry",
+      "retryConfirmBody": {
+        "one": "Retry {n} selected invoice? Only failed ones that were rejected will actually be re-attempted; the rest will be skipped.",
+        "other": "Retry {n} selected invoices? Only failed ones that were rejected will actually be re-attempted; the rest will be skipped."
+      },
+      "retryConfirmTitle": "Retry invoices",
+      "retryError": "Batch retry failed: {message}",
+      "retryResult": "Batch retry complete.",
+      "selectedLabel": {
+        "one": "{n} invoice selected",
+        "other": "{n} invoices selected"
+      },
+      "skipped": {
+        "one": "{n} skipped (not eligible).",
+        "other": "{n} skipped (not eligible)."
+      }
+    },
+    "chip": {
+      "awaitingSubmission": "Awaiting submission",
+      "awaitingSubmissionScope": "Counts only invoices on this page, not the whole install"
+    },
+    "column": {
+      "buyerTaxId": "Buyer tax ID",
+      "clearanceRef": "Clearance ref.",
+      "connection": "Connection",
+      "documentType": "Document type",
+      "issuedAt": "Issued",
+      "orderId": "Order",
+      "regulatory": "Regulatory",
+      "select": "Select invoice",
+      "status": "Status"
+    },
+    "copyNumber": "Copy document number {number}",
+    "correction": {
+      "reasonCounter": "{length} / {max}",
+      "reasonLabel": "Reason for correction",
+      "reasonMissingWarning": "Most corrections state why they were made, and your provider or the tax office may expect it. Add a reason, or submit again to issue the correction without one.",
+      "reasonPlaceholder": "e.g. Partial return of the order",
+      "reasonRecommended": "(recommended)",
+      "reasonTooLong": "The reason can be at most {max} characters."
+    },
+    "detail": {
+      "backToList": "Back to sales documents",
+      "error": "Error loading invoice",
+      "eyebrow": "Operations",
+      "loading": "Loading invoice…",
+      "notFound": "Invoice not found",
+      "notFoundMessage": "This invoice does not exist or you may not have access.",
+      "orderLabel": "Order <link>{orderId}</link>",
+      "providerRegion": "Provider region",
+      "retry": "Retry",
+      "sectionDocument": "Document",
+      "titleFallback": "Invoice"
+    },
+    "documentType": {
+      "corrected": "Correction (korekta)",
+      "credit-note": "Credit note (nota kredytowa)",
+      "invoice": "Invoice (faktura)",
+      "label": "Document type",
+      "prepayment": "Prepayment (faktura zaliczkowa)",
+      "proforma": "Proforma (faktura pro forma)",
+      "receipt": "Receipt",
+      "unknown": "Not yet issued"
+    },
+    "error": {
+      "alreadyIssued": "This order already has an issued invoice.",
+      "capabilityDisabled": "Invoicing is not enabled for this connection.",
+      "forbidden": "You don't have permission to issue invoices - this action requires an administrator account.",
+      "generic": "Could not issue the invoice. Please try again."
+    },
+    "failed": {
+      "retryHint": "Rejected - nothing was issued, safe to retry once the cause is fixed."
+    },
+    "failureCode": {
+      "acknowledgement-required": "This document needs your decision before it is issued. Read the warning, then issue again and confirm. Nothing was issued.",
+      "buyer-tax-id-invalid": "The provider rejected the buyer’s tax ID. Check the tax ID on the order’s customer, then retry. Nothing was issued.",
+      "connection-setting-rejected": "The provider refused a setting on this connection. Correct it in the connection’s settings, then retry. Nothing was issued.",
+      "connection-setup-incomplete": "This connection is missing a setting it needs to issue invoices. Complete the connection’s settings, then retry. Nothing was issued.",
+      "invalid-currency": "The document’s settlement currency is missing, malformed, or not accepted for this document. Fix the currency on the source order, then retry. Nothing was issued.",
+      "provider-answer-inconclusive": "The provider answered, but its answer does not say whether a document exists there. Check the provider before re-issuing - a blind retry could create a duplicate.",
+      "provider-error": "The provider returned an error. Check the order’s data, then retry. Nothing was issued.",
+      "provider-rejected": "The provider rejected the document. Check the order’s data, then retry. Nothing was issued.",
+      "sale-classification-required": "This connection needs a sale classification (goods vs. services) configured before it can issue invoices. Set it in the connection’s configuration, then retry. Nothing was issued.",
+      "transport-timeout": "The request to the provider timed out, so a document may already exist there. Check the provider before re-issuing - a blind retry could create a duplicate.",
+      "unknown": "We couldn’t confirm whether this invoice was issued. Check the provider before re-issuing - a blind retry could create a duplicate."
+    },
+    "field": {
+      "clearance": "Regulatory clearance",
+      "clearanceRef": "Reference",
+      "document": "Document type",
+      "issued": "Issued at",
+      "number": "Number",
+      "via": "Invoiced via"
+    },
+    "filter": {
+      "connection": {
+        "all": "All connections",
+        "label": "Filter by connection"
+      },
+      "issuedFrom": "Issued from",
+      "issuedTo": "Issued to",
+      "regulatory": {
+        "all": "All regulatory statuses",
+        "label": "Filter by regulatory status"
+      },
+      "status": {
+        "all": "All statuses",
+        "label": "Filter by status"
+      },
+      "taxId": {
+        "all": "All buyer tax IDs",
+        "label": "Filter by buyer tax ID",
+        "with": "With tax ID",
+        "without": "Without tax ID"
+      }
+    },
+    "inDoubt": {
+      "causeInconclusive": "{connection} answered, but not in a way that says whether the invoice was created.",
+      "causeTimeout": "{connection} did not answer in time.",
+      "causeUnknown": "{connection} did not confirm the result.",
+      "check": "Check provider",
+      "checkBody": "Open the provider portal and verify whether an invoice exists for this order.",
+      "checkTitle": "Check provider",
+      "confirmBody": "Do this only after you've checked {connection}. OpenLinker can't check it for you.",
+      "confirmCancel": "Not yet",
+      "confirmTitle": "Mark this invoice as resolved?",
+      "maybe": "The invoice may exist there, or it may not.",
+      "paused": "Retry and switching provider stay off until then, so this sale can't get two invoices.",
+      "providerResponse": "Provider response",
+      "resolve": "Mark resolved",
+      "resolvedBody": "Marking as resolved is not available yet.",
+      "resolvedTitle": "Marked resolved",
+      "step1": "Look for this order's invoice in <b>{connection}</b>.",
+      "step2": "Mark it resolved once you know.",
+      "stepsLabel": "To finish this order",
+      "title": "We can't tell if this invoice was issued"
+    },
+    "list": {
+      "caption": "Invoices",
+      "description": "Issued, pending, and failed invoices across connections, with regulatory status.",
+      "empty": {
+        "filtered": "No invoices match the current filters. Try clearing some filters.",
+        "none": "No invoices have been issued yet.",
+        "title": "No invoices found"
+      },
+      "error": "Unable to load invoices",
+      "loading": "Loading invoices…",
+      "next": "Next",
+      "pagination": "Showing {from}-{to} of {total}",
+      "prev": "Previous",
+      "retry": "Retry",
+      "title": "Invoices"
+    },
+    "lock": {
+      "hintFailed": "Retrying keeps the same connection, so the numbering series stays continuous.",
+      "hintInDoubt": "No provider change and no one-click retry while the outcome is unknown.",
+      "hintIssued": "Issued by {connection}. Every further action on it - correction, resend, email, mark paid - goes to this connection. One sale gets one document, so a receipt cannot be added on top of this invoice.",
+      "hintIssuing": "An attempt is running and holds this invoice. A second attempt cannot start until it finishes or releases.",
+      "hintPending": "Already committed to this connection. The document number appears here when the provider responds.",
+      "hintStale": "This connection is no longer active, so corrections and resends are unavailable here. The invoice itself stands.",
+      "issuedBy": "Issued by",
+      "issuingOn": "Issuing on",
+      "retryGoesTo": "Retry goes to",
+      "stillAssignedTo": "Still assigned to"
+    },
+    "marketplaceUpload": {
+      "explanation": {
+        "failed": "The document could not be attached to the marketplace order.",
+        "no-file": "This document has no PDF OpenLinker can send - only a link, or nothing yet. Trying again checks whether a file has appeared since.",
+        "pending": "The document is being attached to the marketplace order.",
+        "unsupported": "This marketplace does not accept documents through OpenLinker.",
+        "uploaded": "The buyer can see this document on the marketplace order."
+      },
+      "failure": {
+        "adapter-unresolved": "OpenLinker could not reach the marketplace connection. Check that it is active, then try again.",
+        "order-unmapped": "OpenLinker does not know this order on the marketplace connection yet.",
+        "rejected": "The marketplace refused the file, so trying again will not help.",
+        "transient": "The marketplace did not accept the file this time. Trying again may work."
+      },
+      "retry": "Try again",
+      "retryFailed": "Could not queue another attempt.",
+      "retrying": "Queuing…",
+      "status": {
+        "failed": "Not delivered to marketplace",
+        "no-file": "No file to send",
+        "pending": "Sending to marketplace",
+        "unsupported": "Not supported by marketplace",
+        "uploaded": "On the marketplace order"
+      },
+      "unknown": {
+        "explanation": "This build does not recognise the upload state reported by the server.",
+        "label": "Unknown upload state"
+      },
+      "unreadable": "Could not read whether the document reached the marketplace."
+    },
+    "panel": {
+      "blockNoRateBody": "{list} have no rate in the shop, and the channel did not report one. Rates arrive with the product sync.",
+      "blockNoRateTitle": {
+        "one": "Not invoiced: {n} line has no tax rate.",
+        "other": "Not invoiced: {n} lines have no tax rate."
+      },
+      "blockNoRateUncataloguedBody": "The channel reported no rate at purchase, and fixing the offer now will not release this order. Add the item to a shop to release it.",
+      "blockNoRateUncataloguedTitle": "Not invoiced: {subject} is not in your catalogue.",
+      "blockNoRateUncataloguedTitlePlural": {
+        "one": "Not invoiced: {n} item is not in your catalogue.",
+        "other": "Not invoiced: {n} items are not in your catalogue."
+      },
+      "someLines": "Some lines"
+    },
+    "pdf": {
+      "aria": "Open invoice PDF for {invoiceNumber} (opens in new tab)"
+    },
+    "regulatory": {
+      "accepted": "Accepted",
+      "cleared": "Clearing",
+      "not-applicable": "N/A",
+      "pending-submission": "Awaiting submission",
+      "rejected": "Rejected",
+      "submitted": "Submitted"
+    },
+    "status": {
+      "failed": "Failed",
+      "in-doubt": "Needs review",
+      "issued": "Issued",
+      "issuing": "Issuing…",
+      "not-issued": "Not issued",
+      "pending": "Pending"
+    },
+    "tl": {
+      "accepted": "Accepted",
+      "clearanceLane": "Regulatory clearance",
+      "clearancePending": "Awaiting acceptance",
+      "clearanceRejected": "Rejected by the tax office",
+      "created": "Created",
+      "failed": "Failed",
+      "failedHint": "Rejected - safe to retry",
+      "inDoubt": "Uncertain",
+      "inDoubtHint": "Check provider before retrying",
+      "issuanceLane": "Issuance",
+      "issued": "Issued",
+      "issuing": "Issuing",
+      "issuingHint": "In progress - locked",
+      "pending": "Pending",
+      "pendingSubmission": "Awaiting submission",
+      "pendingSubmissionHint": "Issued offline - not yet sent for clearance",
+      "submitted": "Submitted"
+    }
+  },
+  "invoicing": {
+    "correction": {
+      "afterPrice": "Unit price after correction, line {position}",
+      "afterQty": "Quantity after correction, line {position}",
+      "col": {
+        "after": "After correction",
+        "credit": "Credit",
+        "invoiced": "As invoiced",
+        "item": "Item",
+        "lp": "#"
+      },
+      "gridCaption": "Invoice lines, in the order they appear on the issued document",
+      "gridNote": "Enter the quantity and unit price that should be on the invoice - quantity 0 credits the whole line, and a lower price credits the difference without anything being returned. Figures are a preview; your invoicing provider calculates the final amounts on the document.",
+      "lineClearedOutOfRange": "Line {n} does not exist on this invoice - pick a row below.",
+      "linesFetchFailed": "Could not load this invoice’s lines. Enter the line number manually, or reopen this form to try again.",
+      "linesNotAuthoritative": "This invoice’s lines cannot be matched to the stored copy a correction uses - enter the line number from the issued document.",
+      "linesUnavailable": "Line list unavailable for this invoice - check the line number against the issued document before submitting.",
+      "selectLine": "Select a line…",
+      "totalCredit": "Total credit",
+      "vat": "VAT {rate}"
+    }
+  },
+  "numberingPattern": {
+    "dailyResetNeeds": "Daily reset needs {DD}, {MM} and a year ({YYYY}, {YY} or {FY}) in the pattern, or numbers repeat.",
+    "monthlyResetNeeds": "Monthly reset needs {MM} and a year ({YYYY}, {YY} or {FY}) in the pattern, or numbers repeat.",
+    "quarterlyResetNeeds": "Quarterly reset needs {QQ} and a year ({YYYY}, {YY} or {FY}) in the pattern, or numbers repeat.",
+    "seqMissing": "Add the {seq} variable - a series without a sequence number is not valid.",
+    "yearlyResetNeeds": "Yearly reset needs a year ({YYYY}, {YY} or {FY}) in the pattern, or numbers repeat."
+  },
+  "salesDocument": {
+    "lifecycle": {
+      "awaitingAuthority": "Awaiting the tax office",
+      "cleared": "Cleared",
+      "issued": "Issued",
+      "rejectedByAuthority": "Rejected by the tax office"
+    },
+    "panel": {
+      "fiscalReceipt": {
+        "blockBatchedBody": "OpenLinker cannot group this order into a batch, so it issued nothing. Register it by hand, or switch the connection to issue on payment.",
+        "blockBatchedTitle": "Not registered: batched fiscal registration is not available yet.",
+        "blockCurrencyMismatchBody": "A matching rule compares this order's total against an amount defined in a different currency. OpenLinker never converts currencies for a fiscal decision, so nothing was registered automatically. Register this one by hand, or adjust the rule's threshold.",
+        "blockCurrencyMismatchTitle": "Not registered: the order currency does not match the rule's threshold.",
+        "blockManualBody": "Nothing is wrong - no receipt is issued automatically here. Register this one whenever you are ready.",
+        "blockManualTitle": "This connection registers receipts by hand.",
+        "blockNoCountryConfigBody": "Neither this order's own country nor \"★ Rest of world\" has any sales-document rule or default configured. Set up rules for this country (or a Rest of world default) in Settings → Sales documents routing, or register this one by hand.",
+        "blockNoCountryConfigTitle": "Not registered: no rules configured for this country.",
+        "blockNoPrimaryBody": "Several connections can register receipts and none is set to issue automatically, so OpenLinker issued nothing rather than issuing twice. Set a primary, or pick a connection above and register this one by hand.",
+        "blockNoPrimaryTitle": "Not registered: no primary connection.",
+        "blockNoRateShippingBody": "Every product line has a rate, but nothing in this order carries an amount the delivery charge could follow. Check the order's lines and delivery charge, or register this one outside OpenLinker.",
+        "blockNoRateShippingTitle": "Not registered: the delivery charge has no tax rate.",
+        "blockRoutedConnectionUnavailableBody": "Your routing sends this receipt to a connection that is turned off, has been removed, or can no longer register it, so nothing was registered. Turn that connection back on, or point the rule at another connection. You can also pick a connection above and register this one by hand.",
+        "blockRoutedConnectionUnavailableTitle": "Not registered: the routed connection cannot register it.",
+        "blockTaxIdBody": "This receipt cannot be issued without the buyer tax ID the destination requires.",
+        "blockTaxIdTitle": "Not registered: the buyer tax ID is missing.",
+        "blockTaxRateBody": "The channel's tax rate does not match the master catalogue, so OpenLinker did not issue a receipt it could not vouch for.",
+        "blockTaxRateTitle": "Not registered: the tax rates disagree.",
+        "blockUnknownBody": "OpenLinker declined to issue a receipt for this order. Register it by hand if it should be.",
+        "blockUnknownTitle": "Not registered.",
+        "blockUnroutedBody": "OpenLinker could not decide where to register this receipt. Pick a connection above to register it by hand.",
+        "blockUnroutedTitle": "Not registered: no route for this receipt.",
+        "noPrimaryBody": "Several connections can register receipts and none is marked primary, so OpenLinker issued nothing rather than issuing twice. Pick a connection above to register this one by hand, or set a primary so it happens on its own.",
+        "noPrimaryTitle": "Automatic fiscal registration is off for this order."
+      },
+      "invoice": {
+        "blockBatchedBody": "OpenLinker cannot group this order into a batch, so it issued nothing. Issue it by hand, or switch the connection to issue on payment.",
+        "blockBatchedTitle": "Not invoiced: batched invoicing is not available yet.",
+        "blockCurrencyMismatchBody": "A matching rule compares this order's total against an amount defined in a different currency. OpenLinker never converts currencies for a fiscal decision, so nothing was invoiced automatically. Issue this one by hand, or adjust the rule's threshold.",
+        "blockCurrencyMismatchTitle": "Not invoiced: the order currency does not match the rule's threshold.",
+        "blockManualBody": "Nothing is wrong - no invoice is issued automatically here. Issue this one whenever you are ready.",
+        "blockManualTitle": "This connection invoices by hand.",
+        "blockNoCountryConfigBody": "Neither this order's own country nor \"★ Rest of world\" has any sales-document rule or default configured. Set up rules for this country (or a Rest of world default) in Settings → Sales documents routing, or issue this one by hand.",
+        "blockNoCountryConfigTitle": "Not invoiced: no rules configured for this country.",
+        "blockNoPrimaryBody": "Several connections can issue invoices and none is set to issue automatically, so OpenLinker issued nothing rather than issuing twice. Set a primary, or pick a connection above and issue this one by hand.",
+        "blockNoPrimaryTitle": "Not invoiced: no primary connection.",
+        "blockNoRateShippingBody": "Every product line has a rate, but nothing in this order carries an amount the delivery charge could follow. Check the order's lines and delivery charge, or issue this one outside OpenLinker.",
+        "blockNoRateShippingTitle": "Not invoiced: the delivery charge has no tax rate.",
+        "blockRoutedConnectionUnavailableBody": "Your routing sends this invoice to a connection that is turned off, has been removed, or can no longer issue it, so nothing was invoiced. Turn that connection back on, or point the rule at another connection. You can also pick a connection above and issue this one by hand.",
+        "blockRoutedConnectionUnavailableTitle": "Not invoiced: the routed connection cannot issue it.",
+        "blockTaxIdBody": "This invoice cannot be issued without the buyer tax ID the destination requires.",
+        "blockTaxIdTitle": "Not invoiced: the buyer tax ID is missing.",
+        "blockTaxRateBody": "The channel's tax rate does not match the master catalogue, so OpenLinker did not issue an invoice it could not vouch for.",
+        "blockTaxRateTitle": "Not invoiced: the tax rates disagree.",
+        "blockUnknownBody": "OpenLinker declined to issue an invoice for this order. Issue it by hand if it should be.",
+        "blockUnknownTitle": "Not invoiced.",
+        "blockUnroutedBody": "OpenLinker could not decide where to issue this invoice. Pick a connection above to issue it by hand.",
+        "blockUnroutedTitle": "Not invoiced: no route for this invoice.",
+        "noPrimaryBody": "Several connections can issue invoices and none is marked primary, so OpenLinker issued nothing rather than issuing twice. Pick a connection above to issue this one by hand, or set a primary so it happens on its own.",
+        "noPrimaryTitle": "Automatic invoicing is off for this order."
+      },
+      "mixed": {
+        "blockBatchedBody": "OpenLinker cannot group this order into a batch, so it issued nothing. Issue it by hand, or switch the connection to issue on payment.",
+        "blockBatchedTitle": "Not issued: batched sales-document issuance is not available yet.",
+        "blockCurrencyMismatchBody": "A matching rule compares this order's total against an amount defined in a different currency. OpenLinker never converts currencies for a fiscal decision, so nothing was issued automatically. Issue this one by hand, or adjust the rule's threshold.",
+        "blockCurrencyMismatchTitle": "Not issued: the order currency does not match the rule's threshold.",
+        "blockManualBody": "Nothing is wrong - no document is issued automatically here. Issue this one whenever you are ready.",
+        "blockManualTitle": "This connection issues sales documents by hand.",
+        "blockNoCountryConfigBody": "Neither this order's own country nor \"★ Rest of world\" has any sales-document rule or default configured. Set up rules for this country (or a Rest of world default) in Settings → Sales documents routing, or issue this one by hand.",
+        "blockNoCountryConfigTitle": "Not issued: no rules configured for this country.",
+        "blockNoPrimaryBody": "Several connections can issue a sales document and none is set to issue automatically, so OpenLinker issued nothing rather than issuing twice. Set a primary, or pick a connection above and issue this one by hand.",
+        "blockNoPrimaryTitle": "Not issued: no primary connection.",
+        "blockNoRateShippingBody": "Every product line has a rate, but nothing in this order carries an amount the delivery charge could follow. Check the order's lines and delivery charge, or issue this one outside OpenLinker.",
+        "blockNoRateShippingTitle": "Not issued: the delivery charge has no tax rate.",
+        "blockRoutedConnectionUnavailableBody": "Your routing sends this document to a connection that is turned off, has been removed, or can no longer issue it, so nothing was issued. Turn that connection back on, or point the rule at another connection. You can also pick a connection above and issue this one by hand.",
+        "blockRoutedConnectionUnavailableTitle": "Not issued: the routed connection cannot issue it.",
+        "blockTaxIdBody": "This document cannot be issued without the buyer tax ID the destination requires.",
+        "blockTaxIdTitle": "Not issued: the buyer tax ID is missing.",
+        "blockTaxRateBody": "The channel's tax rate does not match the master catalogue, so OpenLinker did not issue a document it could not vouch for.",
+        "blockTaxRateTitle": "Not issued: the tax rates disagree.",
+        "blockUnknownBody": "OpenLinker declined to issue a document for this order. Issue it by hand if it should be.",
+        "blockUnknownTitle": "Not issued.",
+        "blockUnroutedBody": "OpenLinker could not decide where to issue this document. Pick a connection above to issue it by hand.",
+        "blockUnroutedTitle": "Not issued: no route for this document.",
+        "noPrimaryBody": "Several connections can issue a sales document and none is marked primary, so OpenLinker issued nothing rather than issuing twice. Pick a connection above to issue this one by hand, or set a primary so it happens on its own.",
+        "noPrimaryTitle": "Automatic sales-document issuance is off for this order."
+      },
+      "whyThisDocument": "Why this document?"
+    }
+  }
+}

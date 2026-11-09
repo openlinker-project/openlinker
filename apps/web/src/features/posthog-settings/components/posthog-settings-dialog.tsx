@@ -18,8 +18,9 @@
  * @module apps/web/src/features/posthog-settings/components
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
+import { useMessages, usePlural } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -41,7 +42,7 @@ import { useSetPosthogCredentialsMutation } from '../hooks/use-set-posthog-crede
 import { useUpdatePosthogSettingsMutation } from '../hooks/use-update-posthog-settings-mutation';
 import { ProductEventsSection } from './product-events-section';
 import {
-  posthogSettingsFormSchema,
+  createPosthogSettingsFormSchema,
   type PosthogSettingsFormSubmission,
   type PosthogSettingsFormValues,
 } from './posthog-settings-form.schema';
@@ -51,12 +52,6 @@ interface PosthogSettingsDialogProps {
   view: PosthogSettingsView;
   onClose: () => void;
 }
-
-const REGION_LABEL: Record<PosthogRegion, string> = {
-  eu: 'EU Cloud (eu.i.posthog.com)',
-  us: 'US Cloud (us.i.posthog.com)',
-  custom: 'Custom host (self-hosted)',
-};
 
 const REGION_HOST: Record<Exclude<PosthogRegion, 'custom'>, string> = {
   eu: 'https://eu.i.posthog.com',
@@ -91,6 +86,13 @@ export function PosthogSettingsDialog({
   onClose,
 }: PosthogSettingsDialogProps): ReactElement {
   const { showToast } = useToast();
+  const messages = useMessages('posthog-settings');
+  const copy = messages.posthogSettingsDialog;
+  const plural = usePlural();
+  const schema = useMemo(
+    () => createPosthogSettingsFormSchema(messages.posthogSettingsFormSchema),
+    [messages.posthogSettingsFormSchema],
+  );
   const updateMutation = useUpdatePosthogSettingsMutation();
   const setCredentialsMutation = useSetPosthogCredentialsMutation();
   const clearCredentialsMutation = useClearPosthogCredentialsMutation();
@@ -98,7 +100,7 @@ export function PosthogSettingsDialog({
 
   const form = useForm<PosthogSettingsFormValues, undefined, PosthogSettingsFormSubmission>({
     defaultValues: toFormValues(view),
-    resolver: zodResolver(posthogSettingsFormSchema),
+    resolver: zodResolver(schema),
   });
 
   // Reset the form (and any prior mutation error) whenever the dialog opens —
@@ -143,8 +145,8 @@ export function PosthogSettingsDialog({
 
       showToast({
         tone: 'success',
-        title: 'Analytics settings saved',
-        description: 'Demo visitors who accept analytics will now be tracked with the updated configuration.',
+        title: copy.savedToastTitle,
+        description: copy.savedToastDescription,
       });
       onClose();
     } catch {
@@ -168,14 +170,14 @@ export function PosthogSettingsDialog({
       form.setValue('enabled', false);
       showToast({
         tone: 'success',
-        title: 'Reset to environment',
-        description: 'Analytics now resolve from OL_POSTHOG_KEY / OL_POSTHOG_HOST, if set.',
+        title: copy.resetToastTitle,
+        description: copy.resetToastDescription,
       });
     } catch (error) {
       showToast({
         tone: 'error',
-        title: 'Could not reset to environment',
-        description: error instanceof Error ? error.message : 'Unknown error',
+        title: copy.resetErrorTitle,
+        description: error instanceof Error ? error.message : copy.unknownError,
       });
     }
   };
@@ -225,22 +227,19 @@ export function PosthogSettingsDialog({
       }}
     >
       <DialogContent>
-        <DialogTitle>Edit analytics settings</DialogTitle>
-        <DialogDescription>
-          Configure demo-only PostHog tracking. Values here are stored in the database and take
-          priority over environment variables.
-        </DialogDescription>
+        <DialogTitle>{copy.title}</DialogTitle>
+        <DialogDescription>{copy.description}</DialogDescription>
 
         {view.wouldOverrideEnv ? (
-          <Alert tone="warning" title="This overrides an environment variable">
-            {view.overriddenEnvVars.join(', ')} {view.overriddenEnvVars.length > 1 ? 'are' : 'is'} set
-            in the environment for this deployment. Saving here uses the values below instead until
-            you reset to environment.
+          <Alert tone="warning" title={copy.overrideTitle}>
+            {plural(view.overriddenEnvVars.length, copy.overrideMessage, {
+              vars: view.overriddenEnvVars.join(', '),
+            })}
           </Alert>
         ) : null}
 
         {mutationError ? (
-          <Alert tone="error" title="Could not save analytics settings">
+          <Alert tone="error" title={copy.saveErrorTitle}>
             {mutationError.message}
           </Alert>
         ) : null}
@@ -255,16 +254,16 @@ export function PosthogSettingsDialog({
 
           <label className="posthog-settings-checkbox">
             <input type="checkbox" {...form.register('enabled')} />
-            <span>Enable PostHog</span>
+            <span>{copy.enableLabel}</span>
           </label>
 
           <FormField
-            label="API key"
+            label={copy.apiKeyLabel}
             name="apiKey"
             description={
               view.apiKeyConfigured
-                ? 'Configured. Leave blank to keep it, or paste a new key to rotate it.'
-                : 'No key set. Paste your PostHog project API key.'
+                ? copy.apiKeyConfigured
+                : copy.apiKeyNotSet
             }
             error={form.formState.errors.apiKey?.message}
           >
@@ -272,34 +271,34 @@ export function PosthogSettingsDialog({
               type="password"
               autoComplete="off"
               spellCheck={false}
-              placeholder="phc_..."
+              placeholder={copy.apiKeyPlaceholder}
               {...form.register('apiKey')}
             />
           </FormField>
 
-          <FormField label="Region" name="region">
+          <FormField label={copy.regionLabel} name="region">
             <Select {...form.register('region')}>
               {PosthogRegionValues.map((value) => (
                 <option key={value} value={value}>
-                  {REGION_LABEL[value]}
+                  {copy.region[value]}
                 </option>
               ))}
             </Select>
           </FormField>
 
-          <FormField label="Resolved host" name="resolvedHost">
-            <Input className="mono-text" disabled value={resolvedHost ?? '(enter a host)'} />
+          <FormField label={copy.resolvedHostLabel} name="resolvedHost">
+            <Input className="mono-text" disabled value={resolvedHost ?? copy.resolvedHostEmpty} />
           </FormField>
 
           {region === 'custom' ? (
             <FormField
-              label="Custom host URL"
+              label={copy.customHostLabel}
               name="customHost"
               error={form.formState.errors.customHost?.message}
             >
               <Input
                 type="url"
-                placeholder="https://posthog.yourcompany.com"
+                placeholder={copy.customHostPlaceholder}
                 {...form.register('customHost')}
               />
             </FormField>
@@ -307,12 +306,12 @@ export function PosthogSettingsDialog({
 
           <label className="posthog-settings-checkbox">
             <input type="checkbox" {...form.register('autocapture')} />
-            <span>Autocapture clicks, form submits, and page changes</span>
+            <span>{copy.autocaptureLabel}</span>
           </label>
 
           <label className="posthog-settings-checkbox">
             <input type="checkbox" {...form.register('sessionRecording')} />
-            <span>Session recording (all text/inputs always masked)</span>
+            <span>{copy.sessionRecordingLabel}</span>
           </label>
 
           <ProductEventsSection
@@ -330,21 +329,21 @@ export function PosthogSettingsDialog({
                 void handleSendTestEvent();
               }}
             >
-              {testStatus === 'testing' ? 'Sending…' : 'Send test event'}
+              {testStatus === 'testing' ? copy.sending : copy.sendTest}
             </Button>
             {testStatus === 'success' ? (
               <span className="context-chip context-chip--success posthog-settings-test-result">
-                Accepted
+                {copy.testAccepted}
               </span>
             ) : null}
             {testStatus === 'error' ? (
               <span className="context-chip context-chip--warning posthog-settings-test-result">
-                Rejected - check the key and region match the same PostHog project
+                {copy.testRejected}
               </span>
             ) : null}
             {testStatus === 'missing-input' ? (
               <span className="context-chip context-chip--neutral posthog-settings-test-result">
-                Enter an API key and a resolved host first
+                {copy.testMissingInput}
               </span>
             ) : null}
           </div>
@@ -359,25 +358,24 @@ export function PosthogSettingsDialog({
                 void handleResetToEnvironment();
               }}
             >
-              {clearCredentialsMutation.isPending ? 'Resetting…' : 'Reset to environment'}
+              {clearCredentialsMutation.isPending ? copy.resetting : copy.reset}
             </Button>
           ) : null}
 
           {enabled && !view.apiKeyConfigured && apiKey.trim().length === 0 ? (
             <p className="muted-text posthog-settings-hint" role="status">
-              PostHog is enabled but no API key is set yet - events won't be tracked until one is
-              configured.
+              {copy.noKeyHint}
             </p>
           ) : null}
 
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" tone="ghost">
-                Cancel
+                {copy.cancel}
               </Button>
             </DialogClose>
             <Button type="submit" disabled={isSaving}>
-              {isSaving ? 'Saving…' : 'Save changes'}
+              {isSaving ? copy.saving : copy.save}
             </Button>
           </DialogFooter>
         </form>

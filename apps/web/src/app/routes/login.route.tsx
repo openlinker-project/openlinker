@@ -1,22 +1,22 @@
 /**
- * Route: `/login` — anonymous entry point.
+ * Route: `/login` and `/register` — anonymous entry points (#4029).
  *
- * Login is intentionally kept eager (not lazy) because it's the first paint
- * for every unauthenticated cold visit: `/` → root redirects to `/login` →
- * login renders. A lazy chunk fetch there adds a blank-screen window for
- * the most-common first impression and conflicts with the
- * `docs/frontend-ui-style-guide.md` §Product Feel direction. Forgot/reset
- * routes stay lazy — they're rarely hit.
+ * Both paths share ONE pathless layout route, so switching between the
+ * sign-in and sign-up tabs changes the URL without remounting the screen:
+ * the card animates in place instead of the page being rebuilt. The layout
+ * renders everything; the two children only carry the paths.
+ *
+ * Kept eager (not lazy): this is the first paint for every unauthenticated
+ * cold visit (`/` redirects here), and a lazy chunk fetch adds a blank-screen
+ * window to the most common first impression. Forgot/reset stay lazy.
  *
  * @module app/routes
  */
 import type { RouteObject } from 'react-router-dom';
 
-import { LoginPage } from '../../pages/auth/LoginPage';
-import { GuestLayout } from '../layouts/guest-layout';
+import { LoginStageLayout } from '../layouts/login-stage-layout';
 
 export const loginRoute: RouteObject = {
-  path: '/login',
-  element: <GuestLayout />,
-  children: [{ index: true, element: <LoginPage /> }],
+  element: <LoginStageLayout />,
+  children: [{ path: '/login' }, { path: '/register' }],
 };

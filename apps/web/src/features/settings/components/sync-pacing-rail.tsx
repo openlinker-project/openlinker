@@ -17,6 +17,7 @@
  * @module apps/web/src/features/settings/components
  */
 import type { MouseEvent, ReactElement, ReactNode } from 'react';
+import { renderRich, useMessages, usePlural } from '../../../shared/i18n';
 import { describeCadence } from '../lib/deletion-audit-cadence';
 import type { SyncPacingValues } from '../lib/sync-pacing-changes';
 import {
@@ -57,6 +58,7 @@ interface RailRowProps {
 }
 
 function RailRow({ label, before, after, hint }: RailRowProps): ReactElement {
+  const copy = useMessages('settings').syncPacingRail;
   const changed = before !== after;
   return (
     <div className="pacing-rail__row" data-changed={String(changed)}>
@@ -68,7 +70,7 @@ function RailRow({ label, before, after, hint }: RailRowProps): ReactElement {
             <span className="pacing-rail__arrow" aria-hidden="true">
               →
             </span>
-            <span className="sr-only">changes to</span>
+            <span className="sr-only">{copy.changesTo}</span>
             <span className="pacing-rail__after">{after}</span>
           </>
         ) : (
@@ -100,6 +102,7 @@ function RailGroup({
   children,
   extra,
 }: RailGroupProps): ReactElement {
+  const copy = useMessages('settings').syncPacingRail;
   return (
     <section className="pacing-rail__group" data-changed={String(changed)} aria-labelledby={id}>
       <h4 className="pacing-rail__group-title">
@@ -117,7 +120,7 @@ function RailGroup({
         >
           {title}
         </a>
-        {changed ? <span className="pacing-rail__edited">edited</span> : null}
+        {changed ? <span className="pacing-rail__edited">{copy.edited}</span> : null}
       </h4>
       <dl className="pacing-rail__rows">{children}</dl>
       {extra}
@@ -129,9 +132,6 @@ function cadenceLabel(expression: string | undefined, assumed: string): string {
   return expression === undefined ? assumed : describeCadence(expression).toLowerCase();
 }
 
-function days(value: number): string {
-  return `${String(value)} ${value === 1 ? 'day' : 'days'}`;
-}
 
 export function SyncPacingRail({
   saved,
@@ -148,6 +148,9 @@ export function SyncPacingRail({
   onJump,
   footer,
 }: SyncPacingRailProps): ReactElement {
+  const copy = useMessages('settings').syncPacingRail;
+  const plural = usePlural();
+  const days = (value: number): string => plural(value, copy.days);
   // Clamped to the ABSOLUTE ceiling, not the recommended one: the suggestion
   // answers "what fits your host", and a host that can take more than we
   // suggest should be told the number that fits it. Crossing the
@@ -170,24 +173,24 @@ export function SyncPacingRail({
     (retentionDraft.syncJobRetentionDays !== retentionSaved.syncJobRetentionDays ||
       retentionDraft.syncJobDeadRetentionDays !== retentionSaved.syncJobDeadRetentionDays);
 
-  const catalogueCadence = cadenceLabel(catalogueSweepCadence, 'every 20 min (assumed)');
-  const stockCadence = cadenceLabel(inventorySweepCadence, 'every 15 min (assumed)');
+  const catalogueCadence = cadenceLabel(catalogueSweepCadence, copy.assumedCatalogueCadence);
+  const stockCadence = cadenceLabel(inventorySweepCadence, copy.assumedStockCadence);
 
   return (
-    <aside className="pacing-rail" aria-label="Summary of these settings">
+    <aside className="pacing-rail" aria-label={copy.ariaLabel}>
       <div className="pacing-rail__body">
         <header className="pacing-rail__header">
-          <p className="eyebrow">Summary</p>
-          <h3 className="section-title">What these values do</h3>
+          <p className="eyebrow">{copy.eyebrow}</p>
+          <h3 className="section-title">{copy.title}</h3>
           <p className="pacing-rail__lede">
-            Live for what you have typed. Changed rows show the saved value first.
+            {copy.lede}
           </p>
         </header>
 
         <RailGroup
           id="pacing-rail-hosting"
           sectionId="pacing-hosting"
-          title="Hosting"
+          title={copy.hosting.title}
           changed={before.catalogueRunSeconds !== after.catalogueRunSeconds}
           onJump={onJump}
           extra={
@@ -200,29 +203,41 @@ export function SyncPacingRail({
               />
               {after.exceedsHostLimit ? (
                 <p className="pacing-rail__warning" data-tone="error" role="status">
-                  <strong>This run will be cut short.</strong> At {draft.catalogueSweepBudget}{' '}
-                  products a run takes about {formatSeconds(after.catalogueRunSeconds)}, past your
-                  host&apos;s {formatSeconds(hostLimitSeconds)}. Try {suggestion} or fewer.
+                  {renderRich(
+                    copy.hosting.cutShort,
+                    { strong: (text: string) => <strong>{text}</strong> },
+                    {
+                      budget: String(draft.catalogueSweepBudget),
+                      run: formatSeconds(after.catalogueRunSeconds),
+                      limit: formatSeconds(hostLimitSeconds),
+                      suggestion: String(suggestion),
+                    }
+                  )}
                 </p>
               ) : null}
               {after.exceedsInterval ? (
                 <p className="pacing-rail__warning" data-tone="warning" role="status">
-                  <strong>Runs will overlap.</strong> A run takes about{' '}
-                  {formatSeconds(after.catalogueRunSeconds)}, but the next one starts after{' '}
-                  {formatSeconds(after.catalogueWindowSeconds)}.
+                  {renderRich(
+                    copy.hosting.overlap,
+                    { strong: (text: string) => <strong>{text}</strong> },
+                    {
+                      run: formatSeconds(after.catalogueRunSeconds),
+                      window: formatSeconds(after.catalogueWindowSeconds),
+                    }
+                  )}
                 </p>
               ) : null}
             </div>
           }
         >
           <RailRow
-            label="Process time limit"
+            label={copy.hosting.processTimeLimit}
             before={formatSeconds(hostLimitSeconds)}
             after={formatSeconds(hostLimitSeconds)}
-            hint="Kept in this browser."
+            hint={copy.hosting.keptInBrowser}
           />
           <RailRow
-            label="Longest run (catalogue)"
+            label={copy.hosting.longestRun}
             before={formatSeconds(before.catalogueRunSeconds)}
             after={formatSeconds(after.catalogueRunSeconds)}
           />
@@ -231,84 +246,84 @@ export function SyncPacingRail({
         <RailGroup
           id="pacing-rail-catalogue"
           sectionId="pacing-catalogue"
-          title="Catalogue sweep"
+          title={copy.catalogue.title}
           changed={catalogueChanged}
           onJump={onJump}
         >
           <RailRow
-            label="Products per run"
+            label={copy.productsPerRun}
             before={String(saved.catalogueSweepBudget)}
             after={String(draft.catalogueSweepBudget)}
           />
           <RailRow
-            label="Products per shop request"
+            label={copy.catalogue.productsPerRequest}
             before={String(saved.sweepPageSize)}
             after={String(draft.sweepPageSize)}
           />
           <RailRow
-            label="Shop requests per run"
+            label={copy.shopRequestsPerRun}
             before={String(before.catalogueRequestsPerRun)}
             after={String(after.catalogueRequestsPerRun)}
           />
           <RailRow
-            label="Full catalogue pass"
+            label={copy.catalogue.fullPass}
             before={formatDays(before.cataloguePassDays) ?? UNKNOWN}
             after={formatDays(after.cataloguePassDays) ?? UNKNOWN}
           />
-          <RailRow label="Runs" before={catalogueCadence} after={catalogueCadence} />
+          <RailRow label={copy.runs} before={catalogueCadence} after={catalogueCadence} />
         </RailGroup>
 
         <RailGroup
           id="pacing-rail-stock"
           sectionId="pacing-stock"
-          title="Stock sweep"
+          title={copy.stock.title}
           changed={stockChanged}
           onJump={onJump}
         >
           <RailRow
-            label="Products per run"
+            label={copy.productsPerRun}
             before={String(saved.inventorySweepBudget)}
             after={String(draft.inventorySweepBudget)}
           />
           <RailRow
-            label="Shop requests per run"
+            label={copy.shopRequestsPerRun}
             before={String(before.stockRequestsPerRun)}
             after={String(after.stockRequestsPerRun)}
           />
           <RailRow
-            label="Full stock pass"
+            label={copy.stock.fullPass}
             before={formatDays(before.stockPassDays) ?? UNKNOWN}
             after={formatDays(after.stockPassDays) ?? UNKNOWN}
           />
-          <RailRow label="Runs" before={stockCadence} after={stockCadence} />
+          <RailRow label={copy.runs} before={stockCadence} after={stockCadence} />
         </RailGroup>
 
         <RailGroup
           id="pacing-rail-deletions"
           sectionId="pacing-deletions"
-          title="Deletion audit"
+          title={copy.deletions.title}
           changed={auditChanged}
           onJump={onJump}
         >
           <RailRow
-            label="Products checked per run"
+            label={copy.deletions.checkedPerRun}
             before={String(saved.deletionAuditBudget)}
             after={String(draft.deletionAuditBudget)}
           />
           <RailRow
-            label="Runs"
+            label={copy.runs}
             before={describeCadence(saved.deletionAuditCadence).toLowerCase()}
             after={describeCadence(draft.deletionAuditCadence).toLowerCase()}
           />
-          {/* Named for what it measures — the AUDIT's cycle — with the outcome
+          {/* Named for what it measures - the AUDIT's cycle — with the outcome
               qualified rather than promised (#2627 review): a shop that
               reports deletions as they happen finds one in about a minute,
               and this page cannot tell per connection whether it does. */}
           <RailRow
-            label="Full audit cycle"
+            label={copy.deletions.fullCycle}
             before={formatDays(before.deletionWindowDays) ?? UNKNOWN}
             after={formatDays(after.deletionWindowDays) ?? UNKNOWN}
-            hint="The longest a deleted product can keep selling when the shop does not report the deletion itself."
+            hint={copy.deletions.fullCycleHint}
           />
         </RailGroup>
 
@@ -316,54 +331,47 @@ export function SyncPacingRail({
           <RailGroup
             id="pacing-rail-retention"
             sectionId="pacing-retention"
-            title="Job retention"
+            title={copy.retention.title}
             changed={retentionChanged}
             onJump={onJump}
           >
             <RailRow
-              label="Completed jobs kept for"
+              label={copy.retention.completedKept}
               before={days(retentionSaved.syncJobRetentionDays)}
               after={days(retentionDraft.syncJobRetentionDays)}
             />
             <RailRow
-              label="Failed jobs kept for"
+              label={copy.retention.failedKept}
               before={days(retentionSaved.syncJobDeadRetentionDays)}
               after={days(retentionDraft.syncJobDeadRetentionDays)}
-              hint="Older job records are removed by the background worker's regular clean-up."
+              hint={copy.retention.cleanUpHint}
             />
           </RailGroup>
         ) : null}
 
         <details className="pacing-rail__caveats">
           <summary className="pacing-rail__caveats-summary">
-            What these numbers cannot tell you
+            {copy.caveats.summary}
           </summary>
           <ul className="limits-list">
             <li>
-              <span>
-                Not where your shop breaks. These figures come from OpenLinker&apos;s own pacing,
-                never from pushing a shop until it failed. They show load, they do not predict an
-                outage.
-              </span>
+              <span>{copy.caveats.notWhereItBreaks}</span>
             </li>
             <li>
-              <span>One background worker. If you run two, every request count here doubles.</span>
+              <span>{copy.caveats.oneService}</span>
             </li>
             <li>
-              <span>
-                Measured on a test catalogue of 100 000 products, 3 variants each, 9 categories, no
-                bundles. Your shop will differ.
-              </span>
+              <span>{copy.caveats.testCatalogue}</span>
             </li>
             <li>
               {/* The pass lengths are derived from the count of products
-                  OPENLINKER has replicated — the only number the browser can
+                  OPENLINKER has replicated - the only number the browser can
                   read. Mid-first-sync that is a floor, and the gap is not
                   small (#2627 review). */}
               <span>
                 {catalogueSizeKnown
-                  ? 'Pass lengths count the products OpenLinker has already copied over, not the products your shop holds. While a first sync is still running the real pass is longer, often far longer. The per-run figures are exact either way.'
-                  : 'OpenLinker does not know yet how many products this shop holds, so pass lengths cannot be worked out. The per-run figures are still exact.'}
+                  ? copy.caveats.sizeKnown
+                  : copy.caveats.sizeUnknown}
               </span>
             </li>
           </ul>

@@ -41,7 +41,7 @@ import {
   mapToFulfillmentStatusSnapshot,
 } from '../mappers/prestashop-fulfillment-status.mapper';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
-import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import { CORE_ENTITY_TYPE, readPaymentWritebackConfig } from '@openlinker/core/identifier-mapping';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import type {
@@ -83,7 +83,10 @@ import {
 } from '../../domain/exceptions/prestashop-ol-module.exception';
 import { PrestashopAmbiguousWriteException } from '../../domain/exceptions/prestashop-ambiguous-write.exception';
 import { PrestashopOrderStateUnresolvedException } from '../../domain/exceptions/prestashop-order-state-unresolved.exception';
-import { PrestashopOrderStateCatalog } from '../provisioners/prestashop-order-state.catalog';
+import {
+  PrestashopOrderStateCatalog,
+  type PrestashopOrderStateSnapshot,
+} from '../provisioners/prestashop-order-state.catalog';
 import { PrestashopOrderStockEffectResolver } from '../provisioners/prestashop-order-stock-effect.resolver';
 import { hashEmail } from '@openlinker/shared/config';
 
@@ -1308,6 +1311,9 @@ export class PrestashopOrderProcessorManagerAdapter
           return { outcome: 'applied' };
         }
 
+        case 'paid':
+          return await this.writePaid(event.externalOrderId);
+
         default: {
           // Unreachable in-tree: the binding is the compile break when an
           // `OrderLifecycleEvent` member is added without an arm here (#2286).
@@ -1339,6 +1345,87 @@ export class PrestashopOrderProcessorManagerAdapter
    * by `updateFulfillment` (dispatch / provisioning) and the `OrderStatusWriteback`
    * cancel path so the latter doesn't re-fetch the order it already read.
    */
+  /**
+   * The `paid` arm (#3963): move an order the shop holds as unpaid into a
+   * state flagged as paid. That is the configured `paymentWriteback.paidStateId`
+   * when the operator chose one, otherwise the shop's first active state that
+   * means "processing, paid" ("Payment accepted" on a default install).
+   *
+   * Never moves an order backwards: one already shipped, delivered, cancelled
+   * or refunded is refused, so a late payment cannot reopen a finished order.
+   * One already in a paid state is reported as applied, because the shop
+   * already shows what OpenLinker would have written.
+   *
+   * A transport failure (no answer, 5xx) is reported as `transient` so the
+   * writeback job retries it instead of giving up; any other failure is a real
+   * refusal.
+   */
+  private async writePaid(externalOrderId: string): Promise<OrderWritebackResult> {
+    try {
+      const order = await this.httpClient.getResource<PrestashopOrder>('orders', externalOrderId);
+      const states = await this.orderStates.load();
+      const currentStatus = states.statusOf(order.current_state);
+      if (
+        currentStatus === 'shipped' ||
+        currentStatus === 'delivered' ||
+        currentStatus === 'cancelled' ||
+        currentStatus === 'refunded'
+      ) {
+        return { outcome: 'rejected', detail: `order is already ${currentStatus} in the shop` };
+      }
+      if (states.paymentStatusOf(order.current_state) === 'paid') {
+        return { outcome: 'applied', detail: 'already paid in the shop' };
+      }
+
+      const configured = readPaymentWritebackConfig(this.connection.config).paidStateId;
+      let targetStateId: number | null;
+      if (configured !== null) {
+        const state = states.find(configured);
+        if (state === null || states.paymentStatusOf(configured) !== 'paid') {
+          return {
+            outcome: 'rejected',
+            detail: `the paid order state ${configured} chosen in OpenLinker does not exist in the shop or is not marked as paid`,
+          };
+        }
+        targetStateId = Number(state.id);
+      } else {
+        targetStateId = this.defaultPaidStateId(states);
+      }
+      if (targetStateId === null) {
+        return { outcome: 'rejected', detail: 'the shop has no order state marked as paid' };
+      }
+
+      await this.applyOrderStateTransition(
+        externalOrderId,
+        Number(order.current_state),
+        targetStateId,
+        'processing'
+      );
+      return { outcome: 'applied' };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const transient =
+        error instanceof PrestashopApiException &&
+        (error.statusCode === undefined || error.statusCode >= 500);
+      this.logger.warn(
+        `OrderStatusWriteback 'paid' failed for PrestaShop order ${externalOrderId}: ${detail} ` +
+          `(connection: ${this.connection.id})`
+      );
+      return { outcome: 'rejected', detail, ...(transient ? { transient: true } : {}) };
+    }
+  }
+
+  /** The first active state that reads as "processing, paid" - "Payment accepted" on a default install. */
+  private defaultPaidStateId(states: PrestashopOrderStateSnapshot): number | null {
+    for (const state of states.active()) {
+      if (states.statusOf(state.id) === 'processing' && states.paymentStatusOf(state.id) === 'paid') {
+        const id = Number(state.id);
+        if (Number.isFinite(id) && id > 0) return id;
+      }
+    }
+    return null;
+  }
+
   private async applyOrderStateTransition(
     externalOrderId: string,
     currentStateId: number,

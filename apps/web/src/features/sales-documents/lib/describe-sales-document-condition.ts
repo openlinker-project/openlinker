@@ -11,20 +11,29 @@
  * @module apps/web/src/features/sales-documents/lib
  */
 import type { SalesDocumentConditionInput } from '../api/sales-document-rules.types';
+import { getMessages, interpolate } from '../../../shared/i18n';
 
 export function describeSalesDocumentCondition(condition: SalesDocumentConditionInput): string {
+  const copy = getMessages('sales-documents').describeCondition;
   if (condition.field === 'buyerHasTaxId') {
-    return condition.boolValue ? 'customer has a tax ID' : 'customer has no tax ID';
+    return condition.boolValue ? copy.hasTaxId : copy.noTaxId;
   }
   if (condition.field === 'orderCountry') {
-    return `order country is ${condition.stringValue ?? '?'}`;
+    return interpolate(copy.orderCountry, { country: condition.stringValue ?? '?' });
   }
-  const comparison = condition.op === 'gte' ? '≥' : '<';
   // #3189: a real amount and currency, where this used to print the raw
   // `thresholdRef` slug - an internal key the operator never chose and could
   // not read. `?` is kept for a condition this build cannot understand rather
   // than guessing a figure.
   const amount = condition.amount ?? '?';
   const currency = condition.currency ?? '';
-  return `total ${comparison} ${amount}${currency ? ` ${currency}` : ''}`;
+  const atLeast = condition.op === 'gte';
+  const template = currency
+    ? atLeast
+      ? copy.totalAtLeastWithCurrency
+      : copy.totalBelowWithCurrency
+    : atLeast
+      ? copy.totalAtLeast
+      : copy.totalBelow;
+  return interpolate(template, { amount, currency });
 }

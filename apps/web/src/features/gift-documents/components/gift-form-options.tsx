@@ -52,7 +52,7 @@ export function GiftFormOptions({
   zeroReason,
   disabled = false,
 }: GiftFormOptionsProps): ReactElement {
-  const copy = useMessages('giftDocuments');
+  const copy = useMessages('gift-documents');
   const labels = useGiftFormLabels();
   const withInherit = inheritedForm !== undefined || inheritedUnknown;
 

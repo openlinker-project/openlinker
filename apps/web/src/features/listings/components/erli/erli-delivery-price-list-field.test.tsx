@@ -28,7 +28,7 @@ describe('ErliDeliveryPriceListField', () => {
     });
 
     renderWithProviders(
-      <ErliDeliveryPriceListField connectionId="conn_erli_1" value="" onChange={vi.fn()} />,
+      <ErliDeliveryPriceListField connectionId="conn_erli_1" platformName="Erli" value="" onChange={vi.fn()} />,
       { apiClient },
     );
 
@@ -44,11 +44,11 @@ describe('ErliDeliveryPriceListField', () => {
     });
 
     renderWithProviders(
-      <ErliDeliveryPriceListField connectionId="conn_erli_1" value="" onChange={vi.fn()} />,
+      <ErliDeliveryPriceListField connectionId="conn_erli_1" platformName="Erli" value="" onChange={vi.fn()} />,
       { apiClient },
     );
 
-    expect(await screen.findByText(/No delivery price lists found on this Erli account/i)).toBeInTheDocument();
+    expect(await screen.findByText(/No delivery price lists found on your Erli account/i)).toBeInTheDocument();
   });
 
   it('refetches when Refresh is clicked in the empty state', async () => {
@@ -56,11 +56,11 @@ describe('ErliDeliveryPriceListField', () => {
     const apiClient = createMockApiClient({ listings: { getDeliveryPriceLists } });
 
     renderWithProviders(
-      <ErliDeliveryPriceListField connectionId="conn_erli_1" value="" onChange={vi.fn()} />,
+      <ErliDeliveryPriceListField connectionId="conn_erli_1" platformName="Erli" value="" onChange={vi.fn()} />,
       { apiClient },
     );
 
-    await screen.findByText(/No delivery price lists found on this Erli account/i);
+    await screen.findByText(/No delivery price lists found on your Erli account/i);
     expect(getDeliveryPriceLists).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
@@ -73,7 +73,7 @@ describe('ErliDeliveryPriceListField', () => {
     const apiClient = createMockApiClient({ listings: { getDeliveryPriceLists } });
 
     renderWithProviders(
-      <ErliDeliveryPriceListField connectionId="conn_erli_1" value="" onChange={vi.fn()} />,
+      <ErliDeliveryPriceListField connectionId="conn_erli_1" platformName="Erli" value="" onChange={vi.fn()} />,
       { apiClient },
     );
 
@@ -96,7 +96,7 @@ describe('ErliDeliveryPriceListField', () => {
     });
 
     renderWithProviders(
-      <ErliDeliveryPriceListField connectionId="conn_erli_1" value="" onChange={onChange} />,
+      <ErliDeliveryPriceListField connectionId="conn_erli_1" platformName="Erli" value="" onChange={onChange} />,
       { apiClient },
     );
 

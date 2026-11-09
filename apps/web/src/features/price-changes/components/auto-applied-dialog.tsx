@@ -24,7 +24,8 @@ import { TimeDisplay } from '../../../shared/ui/time-display';
 import { AbsentValue } from '../../../shared/ui/absent-value';
 import { formatAmount } from '../../../shared/format/format-amount';
 import type { PriceChangeAutoAppliedItem } from '../api/price-changes.types';
-import { initialsFor } from '../lib/price-change-copy';
+import { initialsFor } from '../lib/initials';
+import { useMessages } from '../../../shared/i18n';
 
 export interface AutoAppliedRow {
   item: PriceChangeAutoAppliedItem;
@@ -50,13 +51,12 @@ function initialsForOrUnknown(name: string | null): string {
 }
 
 export function AutoAppliedDialog({ open, onOpenChange, rows }: AutoAppliedDialogProps): ReactElement {
+  const copy = useMessages('price-changes').autoAppliedDialog;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogTitle>Applied automatically recently</DialogTitle>
-        <DialogDescription>
-          These connections publish without asking, so nothing here needs a decision from you.
-        </DialogDescription>
+        <DialogTitle>{copy.title}</DialogTitle>
+        <DialogDescription>{copy.description}</DialogDescription>
         <div className="mini-list" id="dialog-auto-applied-list">
           {rows.map(({ item, productName, variantLabel, destinationLabel }) => (
             <div className="mini-row" key={item.id}>
@@ -65,7 +65,7 @@ export function AutoAppliedDialog({ open, onOpenChange, rows }: AutoAppliedDialo
               </span>
               <div className="mini-row__text">
                 <div className="mini-row__name">
-                  {productName === null ? <AbsentValue label="Product not found" /> : productName}
+                  {productName === null ? <AbsentValue label={copy.productNotFound} /> : productName}
                   {variantLabel ? (
                     <span className="mini-row__variant"> — {variantLabel}</span>
                   ) : null}
@@ -83,7 +83,7 @@ export function AutoAppliedDialog({ open, onOpenChange, rows }: AutoAppliedDialo
         </div>
         <DialogFooter>
           <Button tone="secondary" id="dialog-auto-applied-close" onClick={() => onOpenChange(false)}>
-            Close
+            {copy.close}
           </Button>
         </DialogFooter>
       </DialogContent>

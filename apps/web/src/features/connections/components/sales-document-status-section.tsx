@@ -19,6 +19,7 @@
  *
  * @module features/connections/components
  */
+import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
 import { Link } from 'react-router-dom';
 import type { ReactElement } from 'react';
 import type { Connection } from '../api/connections.types';
@@ -61,16 +62,12 @@ function isSalesDocumentCandidate(connection: Connection): boolean {
   );
 }
 
-const ISSUES_LABEL: Record<DocumentKind, string> = {
-  invoice: 'Invoice',
-  'fiscal-receipt': 'Fiscal receipt',
-  both: 'Either (invoice or fiscal receipt)',
-};
 
 export function SalesDocumentStatusSection({
   connection,
   allConnections,
 }: SalesDocumentStatusSectionProps): ReactElement {
+  const copy = useMessages('connections').salesDocumentStatusSection;
   const documentKind = readDocumentKind(connection.config);
   const isPrimary = readIsPrimary(connection.config);
 
@@ -85,39 +82,37 @@ export function SalesDocumentStatusSection({
 
   return (
     <section className="rate-limit-section">
-      <h3 className="rate-limit-section__title">Sales document</h3>
+      <h3 className="rate-limit-section__title">{copy.title}</h3>
       <KeyValueList
         items={[
           {
             id: 'issues',
-            label: 'Issues',
-            value: documentKind ? ISSUES_LABEL[documentKind] : 'Nothing',
+            label: copy.issues,
+            value: documentKind ? copy.issuesLabels[documentKind] : copy.nothing,
           },
           {
             id: 'status',
-            label: 'Status',
+            label: copy.status,
             value: isPrimary ? (
               <StatusBadge tone="success" withDot>
-                Primary
+                {copy.primary}
               </StatusBadge>
             ) : (
-              <StatusBadge tone="neutral">Not primary</StatusBadge>
+              <StatusBadge tone="neutral">{copy.notPrimary}</StatusBadge>
             ),
           },
         ]}
       />
       {documentKind === 'both' ? (
         <Alert tone="warning" data-testid="sales-document-dual-role-warning">
-          Issuing either document kind requires a matching sales-document rule for this
-          connection&apos;s markets — the &quot;Primary&quot; status above has no effect here,
-          whether or not it&apos;s set. A rule is the only thing that can decide invoice vs.
-          receipt for a dual-role connection; without one, orders are held rather than
-          auto-issued, because a fiscal document is never guessed.
+          {copy.dualRoleWarning}
         </Alert>
       ) : null}
       <p className="rate-limit-section__help">
-        Read-only. <Link to="/settings/sales-documents">Manage in Settings → Sales documents routing</Link>
-        {otherPrimary ? ` ${otherPrimary.name} is already primary.` : ''}
+        {renderRich(copy.readOnly, {
+          link: (text) => <Link to="/settings/sales-documents">{text}</Link>,
+        })}
+        {otherPrimary ? ' ' + interpolate(copy.otherPrimary, { name: otherPrimary.name }) : ''}
       </p>
     </section>
   );

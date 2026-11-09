@@ -179,6 +179,14 @@ export interface BenchParcelView {
   readonly refusal: BenchParcelRefusal | null;
   /** Why it is held, when it is held. `null` otherwise. */
   readonly holdReason: HoldReason | null;
+  /**
+   * Set only while the box is held because the order source lowered a line
+   * after packing started (#3961). `takeOut` names, per line, how many units are
+   * in the box beyond what the order now asks for - what the packer must take
+   * back out. Empty when the hold is for another reason in that change (an added
+   * unit, a closed box). `null` for every other parcel.
+   */
+  readonly sourceChange: BenchParcelSourceChangeView | null;
   /** When the last verification shut the box (D18), or `null` while it is open. */
   readonly closedAt: string | null;
   /** The last verifier (D13). `null` while the box is open. */
@@ -630,6 +638,26 @@ export interface BenchBuyerNoteAcknowledgementResultView {
   readonly parcel: BenchParcelView;
 }
 
+/**
+ * Why "Done, I took it out" (#3961) recorded nothing. `not-held-for-source-change`
+ * covers a box whose shop-change hold was already settled - typically a second
+ * tap, or the office deciding first - so the packer reads the box as it stands.
+ */
+export const BenchSourceChangeTakenOutRefusalValues = [
+  'not-claimable-by-viewer',
+  'not-held-for-source-change',
+  'no-such-line',
+] as const;
+
+export type BenchSourceChangeTakenOutRefusal = (typeof BenchSourceChangeTakenOutRefusalValues)[number];
+
+/** What confirming the extra units are out of the box answers (#3961). */
+export interface BenchSourceChangeTakenOutResultView {
+  readonly outcome: 'taken-out' | 'refused';
+  readonly reason: BenchSourceChangeTakenOutRefusal | null;
+  readonly parcel: BenchParcelView;
+}
+
 /** What claiming ONE chosen parcel answers (#3412). */
 export interface BenchClaimResultView {
   readonly outcome: 'claimed' | 'refused';
@@ -738,4 +766,9 @@ export interface BenchUnlabelledParcelListView {
    * is a box nobody looks for.
    */
   readonly truncated: boolean;
+}
+
+/** See `BenchParcelView.sourceChange` (#3961). */
+export interface BenchParcelSourceChangeView {
+  readonly takeOut: ReadonlyArray<{ readonly workLineId: string; readonly units: number }>;
 }

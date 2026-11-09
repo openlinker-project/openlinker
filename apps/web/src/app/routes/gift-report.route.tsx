@@ -6,7 +6,7 @@ import type { RouteCrumbHandle } from '../nav-registry.types';
  */
 export const giftReportRoute: RouteObject = {
   path: 'analytics/gifts',
-  handle: { crumb: { group: 'Operations', title: 'Gift cost' } } satisfies RouteCrumbHandle,
+  handle: { crumb: { group: 'operations', page: 'giftCost' } } satisfies RouteCrumbHandle,
   lazy: async () => {
     const { GiftReportPage } = await import('../../pages/analytics/gift-report-page');
     return { Component: GiftReportPage };

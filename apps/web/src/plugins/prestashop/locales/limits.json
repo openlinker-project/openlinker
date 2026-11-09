@@ -1,0 +1,9 @@
+{
+  "plugin.setupCard.badge": 24,
+  "prestashopConnectionActions.configure": 30,
+  "prestashopConnectionActions.configuring": 30,
+  "prestashopConnectionActions.reconfigure": 34,
+  "prestashopCredentialsPanel.cancel": 10,
+  "prestashopCredentialsPanel.rotate": 34,
+  "prestashopCredentialsPanel.save": 24
+}

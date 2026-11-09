@@ -1,0 +1,37 @@
+{
+  "plugin": {
+    "setupCard": {
+      "badge": "REST API",
+      "description": "Connect a WooCommerce store via the REST API. You will need the site URL and a Consumer Key / Secret pair."
+    }
+  },
+  "woocommerceCredentialsPanel": {
+    "cancel": "Cancel",
+    "description": "Stored securely on the server. Rotate to replace the keys without restarting the API.",
+    "envBacked": "Environment variable (not editable via UI)",
+    "label": "API Credentials",
+    "newConsumerKeyPlaceholder": "New consumer key (ck_...)",
+    "newConsumerSecretPlaceholder": "New consumer secret (cs_...)",
+    "rotate": "Rotate API credentials",
+    "rotating": "Rotating...",
+    "save": "Save new credentials",
+    "toast": {
+      "description": "New WooCommerce API credentials are now in use.",
+      "title": "Credentials rotated"
+    }
+  },
+  "woocommerceSetupRoute": {
+    "crumb": "Connect WooCommerce"
+  },
+  "woocommerceStructuredSection": {
+    "siteUrl": {
+      "description": "The root URL of the WooCommerce store. Must use HTTPS.",
+      "label": "Site URL",
+      "placeholder": "https://shop.example.com"
+    },
+    "unmanagedStockQuantity": {
+      "description": "Quantity reported for products with stock management disabled but in stock. Leave empty for the default (1000).",
+      "label": "Unmanaged stock quantity"
+    }
+  }
+}

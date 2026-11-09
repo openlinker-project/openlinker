@@ -78,4 +78,3 @@ describe('overlay gift line gross price', () => {
     expect(gift).toMatchObject({ price: 0, unitPriceGross: 0 });
   });
 });
-
