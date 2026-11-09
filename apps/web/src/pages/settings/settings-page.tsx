@@ -13,6 +13,7 @@ import { SyncPacingTile } from '../../features/settings';
 import { InventoryLocationsTile } from '../../features/inventory';
 import { OrderTagsSettingsTile } from '../../features/orders/components/order-tags-settings-tile';
 import { BuyerEmailsTile } from '../../features/buyer-emails';
+import { LoginPageSettingsTile } from '../../features/login-page-settings';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { useMessages } from '../../shared/i18n';
 
@@ -22,6 +23,7 @@ export function SettingsPage(): ReactElement {
   const isAdmin = isReady && session.status === 'authenticated' && session.user?.role === 'admin';
   // #3634 - both OMS routing tiles are withheld unless the build opts in.
   const omsRoutingUi = isOmsRoutingUiEnabled();
+  const loginPageCopy = useMessages('login-page-settings');
 
   return (
     <PageLayout
@@ -43,6 +45,7 @@ export function SettingsPage(): ReactElement {
           {isAdmin ? <span className="toolbar-chip">{copy.chips.syncPacing}</span> : null}
           {isAdmin ? <span className="toolbar-chip">{copy.chips.orderTags}</span> : null}
           {isAdmin ? <span className="toolbar-chip">{copy.chips.buyerEmails}</span> : null}
+          {isAdmin ? <span className="toolbar-chip">{loginPageCopy.title}</span> : null}
           {/* Role-ungated — see `InventoryLocationsTile`'s docblock. */}
           {omsRoutingUi ? <span className="toolbar-chip">{copy.chips.inventoryLocations}</span> : null}
           <span className="toolbar-chip">{copy.chips.upcoming}</span>
@@ -135,6 +138,9 @@ export function SettingsPage(): ReactElement {
         {/* ── Order tags (admin-only, #3532/#3533, D34) ─────────────── */}
         {isAdmin ? <OrderTagsSettingsTile /> : null}
         {isAdmin ? <BuyerEmailsTile /> : null}
+
+        {/* ── Login page (admin-only, #4029) ──────────────────────── */}
+        {isAdmin ? <LoginPageSettingsTile /> : null}
 
         {/* Deliberately NOT admin-gated — see `InventoryLocationsTile`'s docblock. */}
         {omsRoutingUi ? <InventoryLocationsTile /> : null}

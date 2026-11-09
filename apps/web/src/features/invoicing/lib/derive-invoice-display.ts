@@ -27,7 +27,6 @@ import {
 } from '../api/invoicing.types';
 import type { InvoiceDisplayStatus } from '../components/invoice-status-badge';
 
-type Translate = (key: string, fallback: string) => string;
 
 export type RegCardTone = 'reg-card--info' | 'reg-card--success' | 'reg-card--error' | '';
 
@@ -85,7 +84,7 @@ export function isConnectionSettingFailureCode(code: FailureCode | null | undefi
  * generic in-doubt-safe message when the code is absent / unknown (the row is
  * then treated as in-doubt by `deriveInvoiceDisplayStatus`).
  */
-export function resolveFailureCopy(invoice: InvoiceRecord, _t?: Translate): string {
+export function resolveFailureCopy(invoice: InvoiceRecord): string {
   const copy = getMessages('invoicing').invoice.failureCode;
   const code = invoice.failureCode;
   // The codes whose stored reason is the adapter's own sentence naming the
