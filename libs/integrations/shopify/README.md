@@ -69,7 +69,10 @@ Read-only: product writes are refused (`ShopifyNotSupportedException`).
   variant). EAN and GTIN come from `barcode`, weight from `inventoryItem.measurement`, the vendor becomes a feature,
   product and variant pictures are cdn.shopify.com URLs served through OpenLinker's image route.
 - **Price.** The gross catalogue price (ADR-077) is the variant's `price`, what the buyer pays in the shop. A shop
-  whose prices exclude tax reports no price rather than a net one.
+  whose prices exclude tax has its net price grossed up with the rate Shopify computes for the sales country (one
+  rate per product, cached for a day), rounded to the cent; an exemption adds nothing. When that rate is unknown (no
+  `write_draft_orders` scope, several tax lines, no tax region for the country) the product has no price rather
+  than a net one.
 - **Category.** The Standard Product Taxonomy category: `Product.categories` holds the leaf then every ancestor,
   so a category mapping on the leaf or on any parent resolves (A15). The mapping page's source list is the shop's
   directory: the nodes its products use plus their ancestors.

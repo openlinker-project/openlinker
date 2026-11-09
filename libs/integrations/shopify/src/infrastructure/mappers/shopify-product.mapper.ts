@@ -9,9 +9,12 @@
  * synthetic variant is ever minted (unlike PrestaShop / WooCommerce).
  *
  * Price (ADR-077): catalogue prices are GROSS. A shop with `taxesIncluded`
- * stores gross variant prices, transcribed as is; a tax-exclusive shop stores
- * net ones and keeps no tax rate on the product (L-T2), so that shop reports
- * NO price rather than a net figure dressed as gross. The price is the
+ * stores gross variant prices, transcribed as is. A tax-exclusive shop stores
+ * net ones and keeps no tax rate on the product (L-T2), so its net price is
+ * grossed up with the rate Shopify itself computes for the sales country
+ * (`ShopifyTaxRateReader`), the WooCommerce shape. When that rate is unknown
+ * (no `write_draft_orders` scope, several tax lines, no tax region) the shop
+ * reports NO price rather than a net figure dressed as gross. The price is the
  * variant's `price`, what the buyer pays in the shop; `compareAtPrice` (the
  * struck-through "was" price) is not carried (decision on #3975, case A05).
  *
@@ -23,7 +26,7 @@
  *
  * @module libs/integrations/shopify/src/infrastructure/mappers
  */
-import type { Category, Product, ProductVariant } from '@openlinker/core/products';
+import type { Category, Product, ProductVariant, TaxRateResolution } from '@openlinker/core/products';
 
 import { fromShopifyGid } from '../../domain/policies/shopify-gid.policy';
 import type {
@@ -48,6 +51,33 @@ const GRAMS_PER_UNIT: Readonly<Record<ShopifyWeight['unit'], number>> = {
 
 function nonEmpty(raw: string | null | undefined): string | null {
   return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : null;
+}
+
+const NUMERIC_RATE = /^\d+(\.\d+)?$/;
+
+/**
+ * What a tax-exclusive shop's net price is multiplied by to state it gross:
+ * `1 + rate` for a numeric rate, `1` for an exemption code (nothing is added
+ * to what the buyer pays), null when the rate is unknown.
+ */
+export function shopifyGrossFactor(resolution: TaxRateResolution | null): number | null {
+  if (resolution === null || resolution.kind !== 'resolved') {
+    return null;
+  }
+  return NUMERIC_RATE.test(resolution.code) ? 1 + Number(resolution.code) / 100 : 1;
+}
+
+/**
+ * The gross price of one variant: as stored on a tax-inclusive shop, grossed
+ * up and rounded to the cent on a tax-exclusive one, undefined when it cannot
+ * be stated.
+ */
+function grossPrice(raw: string | null | undefined, ctx: ShopifyShopContext, grossFactor: number | null): number | undefined {
+  const amount = parseShopifyAmount(raw);
+  if (amount === undefined || ctx.taxesIncluded) {
+    return amount;
+  }
+  return grossFactor === null ? undefined : Math.round((amount * grossFactor + Number.EPSILON) * 100) / 100;
 }
 
 /** A Money decimal string as a number, or undefined when absent or unparseable. */
@@ -129,12 +159,20 @@ export function shopifyCategoryDirectory(
   );
 }
 
-export function mapShopifyProduct(raw: ShopifyProduct, ctx: ShopifyShopContext): Omit<Product, 'id'> {
+/**
+ * `grossFactor` is the product's `shopifyGrossFactor`, read only for a
+ * tax-exclusive shop (one rate per product: a collection override applies to
+ * the whole product).
+ */
+export function mapShopifyProduct(
+  raw: ShopifyProduct,
+  ctx: ShopifyShopContext,
+  grossFactor: number | null = null,
+): Omit<Product, 'id'> {
   const variants = raw.variants.nodes;
   const single = variants.length === 1 ? variants[0] : null;
   const first = variants[0];
-  const price =
-    first === undefined || !ctx.taxesIncluded ? null : (parseShopifyAmount(first.price) ?? null);
+  const price = first === undefined ? null : (grossPrice(first.price, ctx, grossFactor) ?? null);
   const weight = shopifyWeightKg(first?.inventoryItem.measurement?.weight);
   const path = shopifyCategoryPath(raw.category);
   const vendor = nonEmpty(raw.vendor);
@@ -168,9 +206,10 @@ export function mapShopifyVariant(
   variant: ShopifyVariant,
   productId: string,
   ctx: ShopifyShopContext,
+  grossFactor: number | null = null,
 ): Omit<ProductVariant, 'id'> {
   const barcode = nonEmpty(variant.barcode);
-  const price = ctx.taxesIncluded ? parseShopifyAmount(variant.price) : undefined;
+  const price = grossPrice(variant.price, ctx, grossFactor);
   const weight = shopifyWeightKg(variant.inventoryItem.measurement?.weight);
   const images = mediaUrls(variant.media?.nodes);
   return {

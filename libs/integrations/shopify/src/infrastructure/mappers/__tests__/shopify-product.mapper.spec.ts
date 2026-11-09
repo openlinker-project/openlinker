@@ -6,6 +6,7 @@ import {
   shopifyCategoryDirectory,
   shopifyCategoryLookupIds,
   shopifyCategoryPath,
+  shopifyGrossFactor,
   shopifyWeightKg,
 } from '../shopify-product.mapper';
 
@@ -101,11 +102,22 @@ describe('Shopify product mapper', () => {
     });
   });
 
-  it('should report no price for a shop whose prices exclude tax rather than a net figure (ADR-077)', () => {
+  it('should report no price for a shop whose prices exclude tax when the rate is unknown (ADR-077)', () => {
     const netShop = { ...GROSS_SHOP, taxesIncluded: false };
 
     expect(mapShopifyProduct(product([variant()]), netShop).price).toBeNull();
     expect(mapShopifyVariant(variant(), 'p', netShop).price).toBeUndefined();
+  });
+
+  it('should gross up a net price with the known rate, rounded to the cent', () => {
+    const netShop = { ...GROSS_SHOP, taxesIncluded: false };
+
+    expect(mapShopifyProduct(product([variant()]), netShop, 1.23).price).toBe(47.96);
+    expect(mapShopifyVariant(variant(), 'p', netShop, 1.23).price).toBe(47.96);
+  });
+
+  it('should ignore the factor on a shop whose prices include tax', () => {
+    expect(mapShopifyVariant(variant(), 'p', GROSS_SHOP, 1.23).price).toBe(38.99);
   });
 
   it('should leave the product SKU empty when the product has several variants', () => {
@@ -146,5 +158,15 @@ describe('Shopify product mapper', () => {
 
     expect(directory).toHaveLength(5);
     expect(directory[0]).toMatchObject({ id: 'hg', depth: 0 });
+  });
+});
+
+describe('shopifyGrossFactor', () => {
+  it('should turn a numeric rate into a multiplier, an exemption into 1 and an unknown rate into null', () => {
+    expect(shopifyGrossFactor({ kind: 'resolved', code: '23', countryIso2: 'PL' })).toBeCloseTo(1.23);
+    expect(shopifyGrossFactor({ kind: 'resolved', code: '0', countryIso2: 'PL' })).toBe(1);
+    expect(shopifyGrossFactor({ kind: 'resolved', code: 'zw', countryIso2: 'PL' })).toBe(1);
+    expect(shopifyGrossFactor({ kind: 'unknown', reason: 'ambiguous' })).toBeNull();
+    expect(shopifyGrossFactor(null)).toBeNull();
   });
 });

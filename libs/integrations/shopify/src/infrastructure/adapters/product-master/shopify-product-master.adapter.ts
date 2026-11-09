@@ -72,6 +72,7 @@ import type { ShopifyGraphqlClient } from '../../http/shopify-graphql-client';
 import {
   mapShopifyProduct,
   mapShopifyVariant,
+  shopifyGrossFactor,
   shopifyCategoryDirectory,
   shopifyCategoryPath,
 } from '../../mappers/shopify-product.mapper';
@@ -89,7 +90,10 @@ import {
   SHOPIFY_PRODUCT_BATCH_SIZE,
 } from '../../readers/shopify-product.queries';
 import { isShopifyProductWithdrawn, type ShopifyProductReader } from '../../readers/shopify-product.reader';
-import type { ShopifyShopContextProvider } from '../../shop-context/shopify-shop-context.provider';
+import type {
+  ShopifyShopContext,
+  ShopifyShopContextProvider,
+} from '../../shop-context/shopify-shop-context.provider';
 import type { ShopifyTaxRateReader } from '../../tax/shopify-tax-rate.reader';
 
 const DEFAULT_WINDOW = 50;
@@ -249,7 +253,7 @@ export class ShopifyProductMasterAdapter
   async getProduct(productId: string): Promise<Product> {
     const raw = await this.readByInternalId(productId);
     const ctx = await this.shopContext.get();
-    return { ...mapShopifyProduct(raw, ctx), id: productId };
+    return { ...mapShopifyProduct(raw, ctx, await this.grossFactorFor(raw, ctx)), id: productId };
   }
 
   async getProducts(filters?: ProductFilters): Promise<Product[]> {
@@ -279,6 +283,7 @@ export class ShopifyProductMasterAdapter
     if (variants.length === 0) {
       return [];
     }
+    const grossFactor = await this.grossFactorFor(raw, ctx);
 
     const idMap = await this.identifierMapping.batchGetOrCreateInternalIds(
       variants.map((v) => {
@@ -303,7 +308,7 @@ export class ShopifyProductMasterAdapter
         this.logger.warn(`No internal id for Shopify variant ${variant.id} (connection: ${this.connection.id})`);
         continue;
       }
-      result.push({ ...mapShopifyVariant(variant, productId, ctx), id: internalId });
+      result.push({ ...mapShopifyVariant(variant, productId, ctx, grossFactor), id: internalId });
     }
     return result;
   }
@@ -387,6 +392,22 @@ export class ShopifyProductMasterAdapter
   }
 
   // ─── Internals ─────────────────────────────────────────────────────────────
+
+  /**
+   * The factor a tax-exclusive shop's net prices are grossed up with (ADR-077):
+   * the rate Shopify computes for the product's first variant in the sales
+   * country, one rate per product like `readProductTaxRate`. Null on a
+   * tax-inclusive shop (nothing to convert) and when the rate is unknown, which
+   * leaves the price absent. A transport failure throws, so the sync retries
+   * rather than storing a product without its price.
+   */
+  private async grossFactorFor(raw: ShopifyProduct, ctx: ShopifyShopContext): Promise<number | null> {
+    const first = raw.variants.nodes[0];
+    if (ctx.taxesIncluded || first === undefined) {
+      return null;
+    }
+    return shopifyGrossFactor(await this.taxRates.read({ variantId: first.id }));
+  }
 
   private async readByInternalId(productId: string): Promise<ShopifyProduct> {
     const externalId = await resolveShopifyExternalId(
@@ -476,7 +497,7 @@ export class ShopifyProductMasterAdapter
       }
       // Later per-product reads in this resolution are served from memory.
       this.productReader.seed(externalId, raw);
-      products.push({ ...mapShopifyProduct(raw, ctx), id: internalId });
+      products.push({ ...mapShopifyProduct(raw, ctx, await this.grossFactorFor(raw, ctx)), id: internalId });
     }
     return products;
   }

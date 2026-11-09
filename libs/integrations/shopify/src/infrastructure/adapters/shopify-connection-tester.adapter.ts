@@ -74,8 +74,8 @@ function describeMissingOptionalScopes(missing: readonly string[]): string {
     return '';
   }
   return (
-    `. The app lacks the optional scope ${missing.join(', ')}: product tax rates are not read ` +
-    'until it is granted'
+    `. The app lacks the optional scope ${missing.join(', ')}: product tax rates are not read, ` +
+    'and a store whose prices exclude tax reports no prices, until it is granted'
   );
 }
 

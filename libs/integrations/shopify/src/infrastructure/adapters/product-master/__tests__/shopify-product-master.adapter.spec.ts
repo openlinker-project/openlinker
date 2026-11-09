@@ -57,12 +57,21 @@ const SHOP_CONTEXT = {
   get: jest.fn().mockResolvedValue({ currencyCode: 'PLN', taxesIncluded: true, shopAddress: null }),
 } as unknown as ShopifyShopContextProvider;
 
-function build(query: jest.Mock, ids = mapping(), taxes?: ShopifyTaxRateReader): ShopifyProductMasterAdapter {
+const NET_SHOP_CONTEXT = {
+  get: jest.fn().mockResolvedValue({ currencyCode: 'PLN', taxesIncluded: false, shopAddress: null }),
+} as unknown as ShopifyShopContextProvider;
+
+function build(
+  query: jest.Mock,
+  ids = mapping(),
+  taxes?: ShopifyTaxRateReader,
+  shopContext: ShopifyShopContextProvider = SHOP_CONTEXT,
+): ShopifyProductMasterAdapter {
   const graphql = { query } as unknown as ShopifyGraphqlClient;
   return new ShopifyProductMasterAdapter(
     graphql,
     ids,
-    SHOP_CONTEXT,
+    shopContext,
     new ShopifyProductReader(graphql, 'c1'),
     taxes ?? ({ read: jest.fn() } as unknown as ShopifyTaxRateReader),
     CONNECTION,
@@ -240,5 +249,37 @@ describe('ShopifyProductMasterAdapter', () => {
 
     expect(products).toHaveLength(12);
     expect(query.mock.calls.map((call) => call[1].ids.length)).toEqual([10, 5, 5, 2]);
+  });
+
+  describe('prices of a store whose prices exclude tax (ADR-077)', () => {
+    it('should gross the net price up with the rate Shopify computes, one read per product', async () => {
+      const query = jest.fn().mockResolvedValue({ product: product('7') });
+      const taxes = { read: jest.fn().mockResolvedValue({ kind: 'resolved', code: '23', countryIso2: 'PL' }) };
+      const adapter = build(query, mapping(), taxes as unknown as ShopifyTaxRateReader, NET_SHOP_CONTEXT);
+
+      await expect(adapter.getProduct('ol_7')).resolves.toMatchObject({ price: 12.3 });
+      await expect(adapter.getProductVariants('ol_7')).resolves.toEqual([expect.objectContaining({ price: 12.3 })]);
+      expect(taxes.read).toHaveBeenCalledWith({ variantId: 'gid://shopify/ProductVariant/71' });
+    });
+
+    it('should report no price when the rate is unknown', async () => {
+      const query = jest.fn().mockResolvedValue({ product: product('7') });
+      const taxes = { read: jest.fn().mockResolvedValue({ kind: 'unknown', reason: 'unreadable' }) };
+      const adapter = build(query, mapping(), taxes as unknown as ShopifyTaxRateReader, NET_SHOP_CONTEXT);
+
+      await expect(adapter.getProduct('ol_7')).resolves.toMatchObject({ price: null });
+      const [variant] = await adapter.getProductVariants('ol_7');
+      expect(variant).not.toHaveProperty('price');
+    });
+
+    it('should not read a rate for a store whose prices include tax', async () => {
+      const query = jest.fn().mockResolvedValue({ product: product('7') });
+      const taxes = { read: jest.fn() };
+
+      await expect(
+        build(query, mapping(), taxes as unknown as ShopifyTaxRateReader).getProduct('ol_7'),
+      ).resolves.toMatchObject({ price: 10 });
+      expect(taxes.read).not.toHaveBeenCalled();
+    });
   });
 });
