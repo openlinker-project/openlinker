@@ -141,6 +141,7 @@ function InventoryMovementsContent(): ReactElement {
       copy: history,
       plural,
       masterName: (row) => (row.sourceConnectionId ? names.get(row.sourceConnectionId) : undefined) ?? fallback,
+      connectionName: (connectionId) => names.get(connectionId) ?? fallback,
     };
   }, [connections, history, plural]);
 

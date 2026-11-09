@@ -7,6 +7,7 @@ import type { SessionAdapter } from '../../shared/auth/session-adapter';
 import { createAuthenticatedSessionAdapter, createMockApiClient, renderWithProviders } from '../../test/test-utils';
 import { InventoryMovementsPage } from './inventory-movements-page';
 import type { InventoryMovementRow } from '../../features/inventory/api/inventory-movements.types';
+import { stockVariantFixture, stockViewFixture } from '../../features/inventory/testing/stock-view-fixtures';
 
 function row(overrides: Partial<InventoryMovementRow> = {}): InventoryMovementRow {
   return {
@@ -209,6 +210,98 @@ describe('InventoryMovementsPage', () => {
     expect(detail).toHaveTextContent('10');
     expect(detail).toHaveTextContent('On hand now');
     expect(screen.getByText('Order #11 took 1 unit')).toBeInTheDocument();
+  });
+
+  it('should list what was sent to each channel for an opened change (#4063)', async () => {
+    const listMovementPushes = vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: 'p1',
+          connectionId: 'ol_conn_1',
+          externalOfferId: 'offer-1',
+          quantity: 9,
+          outcome: 'sent',
+          errorCode: null,
+          message: null,
+          pushedAt: '2026-09-26T08:41:05.000Z',
+        },
+        {
+          id: 'p2',
+          connectionId: 'ol_conn_1',
+          externalOfferId: 'offer-2',
+          quantity: 9,
+          outcome: 'failed',
+          errorCode: 'unknown',
+          message: 'Offer is closed',
+          pushedAt: '2026-09-26T08:41:06.000Z',
+        },
+      ],
+    });
+    const apiClient = createMockApiClient({
+      inventory: { listMovements: vi.fn().mockResolvedValue(page([row()])), listMovementPushes },
+    });
+    renderMovements({ apiClient });
+
+    await userEvent.click(await screen.findByTestId('stock-movement-row'));
+    const pushes = await screen.findByTestId('stock-movement-pushes');
+    expect(listMovementPushes).toHaveBeenCalledWith('m1');
+    expect(pushes).toHaveTextContent('Sent');
+    expect(pushes).toHaveTextContent('Not sent');
+    expect(pushes).toHaveTextContent('Offer is closed');
+  });
+
+  it('should say nothing was sent, and not that the read failed, for an empty push list', async () => {
+    const apiClient = createMockApiClient({
+      inventory: { listMovements: vi.fn().mockResolvedValue(page([row()])) },
+    });
+    renderMovements({ apiClient });
+
+    await userEvent.click(await screen.findByTestId('stock-movement-row'));
+    expect(await screen.findByText('Nothing was sent to a channel for this change.')).toBeInTheDocument();
+  });
+
+  it('should say the read failed rather than that nothing was sent', async () => {
+    const apiClient = createMockApiClient({
+      inventory: {
+        listMovements: vi.fn().mockResolvedValue(page([row()])),
+        listMovementPushes: vi.fn().mockRejectedValue(new Error('boom')),
+      },
+    });
+    renderMovements({ apiClient });
+
+    await userEvent.click(await screen.findByTestId('stock-movement-row'));
+    expect(await screen.findByText('Could not load what was sent to channels.')).toBeInTheDocument();
+    expect(screen.queryByText('Nothing was sent to a channel for this change.')).not.toBeInTheDocument();
+  });
+
+  it('should flag a channel that shows a different number than was last sent (#4063)', async () => {
+    const variant = stockVariantFixture({
+      productVariantId: 'ol_variant_1',
+      sku: 'KUB-350-BIA',
+      channels: [
+        {
+          connectionId: 'conn_al',
+          connectionName: 'Allegro',
+          platformType: 'allegro',
+          rule: null,
+          willPublish: { quantity: 7, provenance: 'computed' },
+          channelShows: { quantity: 9, observedAt: '2026-09-26T08:00:00.000Z' },
+          lastSent: { quantity: 7, outcome: 'sent', pushedAt: '2026-09-26T07:00:00.000Z' },
+        },
+      ],
+    });
+    const apiClient = createMockApiClient({
+      inventory: {
+        listMovements: vi.fn().mockResolvedValue(page([row()])),
+        stockView: vi.fn().mockResolvedValue(stockViewFixture([variant])),
+      },
+    });
+    renderMovements({ apiClient, route: '/inventory/movements?productVariantId=ol_variant_1' });
+
+    const summary = await screen.findByTestId('stock-variant-summary');
+    expect(summary).toHaveTextContent('Sent 7');
+    expect(summary).toHaveTextContent('Shows 9');
+    expect(summary).toHaveTextContent('Different');
   });
 
   it('should open the guide from the page header and narrow it by search', async () => {
