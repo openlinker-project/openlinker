@@ -131,7 +131,7 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
           connectionId
         );
         if (internalProductId) {
-          return { internalProductId };
+          return this.withLoneVariant(connectionId, productRef, internalProductId);
         }
         const published = await this.resolveViaShopProduct(connectionId, productRef);
         if (published) {
@@ -201,9 +201,44 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
           }
           return { internalProductId: variant.productId, internalVariantId: variant.id };
         }
-        return { internalProductId: internalId };
+        return this.withLoneVariant(connectionId, productRef, internalId);
       }
     }
+  }
+
+  /**
+   * A ref that resolved to a PRODUCT, completed with that product's variant
+   * when it has exactly one (#4082).
+   *
+   * A product with no options (a "simple" product) still has one variant -
+   * the row its stock is keyed to (#822). Answering with the product alone left
+   * the order line with no variant, so every per-variant step missed it:
+   * routing found no stock and refused the order, the reservation found no
+   * position, and the sale decrement matched no row. The rule is the one
+   * `MasterInventorySyncService.resolveVariantId` keys stock by - exactly one
+   * variant means that variant - so the line and its stock row land on the same
+   * variant by construction, for any source; nothing here knows how a source
+   * names its synthetic variant.
+   *
+   * Two or more variants stay product-only: which one was sold is genuinely
+   * unknown, and a guess would reserve and decrement the wrong stock. A lone
+   * variant that is stale raises `StaleOrderItemError`, exactly as a `variant`
+   * ref pointing at it would.
+   */
+  private async withLoneVariant(
+    connectionId: string,
+    productRef: IncomingOrderItemRef,
+    internalProductId: string
+  ): Promise<ResolvedOrderItemProduct> {
+    const variants = await this.productsService.getVariantsByProductId(internalProductId);
+    if (variants.length !== 1) {
+      return { internalProductId };
+    }
+    const [variant] = variants;
+    if (variant.isStale) {
+      throw new StaleOrderItemError(connectionId, productRef, variant.id);
+    }
+    return { internalProductId, internalVariantId: variant.id };
   }
 
   /**
@@ -243,7 +278,7 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
 
     const product = await this.productsService.getProduct(internalId);
     if (product) {
-      return { internalProductId: product.id };
+      return this.withLoneVariant(connectionId, productRef, product.id);
     }
 
     throw new MissingOrderItemMappingError(

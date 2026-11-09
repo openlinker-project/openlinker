@@ -40,7 +40,7 @@ describe('OrderItemRefResolverService', () => {
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   // Only the products-service method the SUT actually calls — keeps the mock
   // surface tight per #718 review.
-  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant' | 'getProduct'>>;
+  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant' | 'getProduct' | 'getVariantsByProductId'>>;
   let service: OrderItemRefResolverService;
 
   beforeEach(() => {
@@ -57,6 +57,7 @@ describe('OrderItemRefResolverService', () => {
     productsService = {
       getVariant: jest.fn(),
       getProduct: jest.fn(),
+      getVariantsByProductId: jest.fn().mockResolvedValue([]),
     };
 
     service = new OrderItemRefResolverService(
@@ -451,6 +452,50 @@ describe('OrderItemRefResolverService', () => {
         expect(result.kind).toBe('missing_mapping');
         expect(result.reason).toContain('ProductVariant,ShopProductVariant,ShopProduct');
       }
+    });
+  });
+
+  describe('a product with exactly one variant (#4082)', () => {
+    it('should complete a product ref with the product\'s only variant', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce('ol_product_1');
+      productsService.getVariantsByProductId.mockResolvedValueOnce([makeVariant('ol_variant_1', 'ol_product_1')]);
+
+      await expect(service.resolve(connectionId, { type: 'product', externalId: '26' })).resolves.toEqual({
+        internalProductId: 'ol_product_1',
+        internalVariantId: 'ol_variant_1',
+      });
+    });
+
+    it('should leave a product with two variants product-only, never guessing one', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce('ol_product_1');
+      productsService.getVariantsByProductId.mockResolvedValueOnce([
+        makeVariant('ol_variant_1', 'ol_product_1'),
+        makeVariant('ol_variant_2', 'ol_product_1'),
+      ]);
+
+      await expect(service.resolve(connectionId, { type: 'product', externalId: '26' })).resolves.toEqual({
+        internalProductId: 'ol_product_1',
+      });
+    });
+
+    it('should raise StaleOrderItemError when the only variant is stale', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce('ol_product_1');
+      productsService.getVariantsByProductId.mockResolvedValueOnce([makeStaleVariant('ol_variant_1', 'ol_product_1')]);
+
+      await expect(service.resolve(connectionId, { type: 'product', externalId: '26' })).rejects.toBeInstanceOf(
+        StaleOrderItemError
+      );
+    });
+
+    it('should complete a sku that maps to a product', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce('ol_product_1');
+      productsService.getVariant.mockResolvedValueOnce(null);
+      productsService.getVariantsByProductId.mockResolvedValueOnce([makeVariant('ol_variant_1', 'ol_product_1')]);
+
+      await expect(service.resolve(connectionId, { type: 'sku', externalId: 'MUG-1' })).resolves.toEqual({
+        internalProductId: 'ol_product_1',
+        internalVariantId: 'ol_variant_1',
+      });
     });
   });
 });
