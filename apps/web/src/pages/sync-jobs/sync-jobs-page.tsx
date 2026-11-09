@@ -9,6 +9,7 @@ import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
 import { Select } from '../../shared/ui/select';
 import { TimeDisplay } from '../../shared/ui/time-display';
+import { EmptyValue } from '../../shared/ui/empty-value';
 import { formatDurationMs } from '../../shared/format/format-duration-ms';
 import { SyncJobStatusBadge } from '../../features/sync-jobs/components/SyncJobStatusBadge';
 import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-query';
@@ -233,11 +234,11 @@ function buildColumns(
       align: 'right',
       // Unmeasured rows sort as -1, so they group together and land first on an
       // ascending sort - ahead of a genuine 0 ms row. Stated rather than dressed
-      // up: the cell renders an em-dash, so the group is identifiable, and this
-      // page sorts only the visible page anyway.
+      // up: the cell renders the shared empty-value mark, so the group is
+      // identifiable, and this page sorts only the visible page anyway.
       cell: (job) => {
         const formatted = formatDurationMs(job.lastAttemptDurationMs);
-        return formatted ?? <span className="text-muted">—</span>;
+        return formatted ?? <EmptyValue />;
       },
       accessor: (job) => job.lastAttemptDurationMs ?? -1,
       sortable: true,
@@ -248,11 +249,7 @@ function buildColumns(
       id: 'lastError',
       header: copy.columns.lastError,
       cell: (job) =>
-        job.lastError ? (
-          <LastErrorCell error={job.lastError} />
-        ) : (
-          <span className="text-muted">—</span>
-        ),
+        job.lastError ? <LastErrorCell error={job.lastError} /> : <EmptyValue />,
       hideBelow: 1024,
     },
     {
