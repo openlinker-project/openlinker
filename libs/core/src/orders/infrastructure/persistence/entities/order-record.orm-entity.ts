@@ -216,6 +216,14 @@ export class OrderRecordOrmEntity {
   salesDocumentBlockDetail!: string | null;
 
   /**
+   * The values behind `salesDocumentBlockDetail` (#3866), for the frontend to
+   * phrase in the operator's language. Same PII rule and single writer as the
+   * detail; coerced on read.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  salesDocumentBlockParams!: Record<string, unknown> | null;
+
+  /**
    * The `sales_document_rules` row that decided this order's document kind
    * (#3186), when a rule engine match produced the route — `null` when it
    * didn't (a country default, the pre-#2170 single-primary fallback, or no

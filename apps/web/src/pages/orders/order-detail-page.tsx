@@ -43,6 +43,7 @@ import { useSubjectAutomationRunsQuery } from '../../features/automation';
 import { OrderPackedControl } from '../../features/orders/components/order-packed-control';
 import { useFulfilmentOwnedConnectionIds } from '../../features/orders/hooks/use-fulfilment-owned-connection-ids';
 import { isFulfilmentOwnedByDestination } from '../../features/orders/lib/fulfilment-ownership';
+import { describeSalesDocumentBlockDetail } from '../../features/orders/lib/sales-document-block-detail';
 import { OrderHoldPanel } from '../../features/orders/components/order-hold-panel';
 import {
   OrderNotesPanel,
@@ -958,7 +959,12 @@ export function OrderDetailPage(): ReactElement {
           mappingFailureReason={order.mappingFailureReason}
           salesDocumentBlockReason={order.salesDocumentBlockReason}
           salesDocumentUnresolvedReason={order.salesDocumentUnresolvedReason}
-          salesDocumentBlockDetail={order.salesDocumentBlockDetail}
+          salesDocumentBlockDetail={describeSalesDocumentBlockDetail({
+            reason: order.salesDocumentBlockReason,
+            unresolvedReason: order.salesDocumentUnresolvedReason,
+            detail: order.salesDocumentBlockDetail,
+            params: order.salesDocumentBlockParams,
+          })}
           invoice={snapshot.invoice}
           lastAmendedAt={order.lastAmendedAt}
           lastAmendmentChanges={order.lastAmendmentChanges}

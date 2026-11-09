@@ -2687,6 +2687,34 @@
     "withdrawal": "Kupujący zmienił zdanie",
     "wrongItem": "Wysłano niewłaściwy towar"
   },
+  "salesDocumentBlockDetail": {
+    "candidates": "Połączenia, które mogą go wystawić: {n}.",
+    "capabilities": {
+      "Fiscalization": "paragony",
+      "Invoicing": "faktury",
+      "or": "{a} lub {b}"
+    },
+    "connectionState": {
+      "archived": "To połączenie jest zarchiwizowane.",
+      "changed": "To połączenie zmieniło się podczas sprawdzania zamówienia.",
+      "disabled": "To połączenie jest wyłączone.",
+      "error": "To połączenie jest w stanie błędu.",
+      "missing-capability": "Na tym połączeniu nie są włączone: {documents}.",
+      "needs-reauth": "To połączenie wymaga ponownego zalogowania.",
+      "not-found": "To połączenie już nie istnieje.",
+      "unreadable": "Nie udało się odczytać tego połączenia."
+    },
+    "firstLine": "Pierwszy produkt: {ref}.",
+    "invoiceUnsupported": "Połączenie {connectionId} nie wystawia faktur.",
+    "kindUnsupported": "Połączenie {connectionId} ma ustawiony rodzaj dokumentu, którego OpenLinker nie obsługuje ({documentKind}).",
+    "linesWithoutRate": "Pozycje bez stawki VAT: {lineCount} z {totalLines}.",
+    "noKindDeclared": "Połączenia, które mogą wystawiać dokumenty: {n}. Żadne nie określa rodzaju dokumentu.",
+    "nonePrimary": "Połączenia, które mogą go wystawić: {n}. Żadne nie jest oznaczone jako główne.",
+    "routed": "Routing kieruje to zamówienie do połączenia {connectionId}.",
+    "routedByRule": "Reguła {ruleId} kieruje to zamówienie do połączenia {connectionId}.",
+    "severalPrimary": "Połączenia, które mogą go wystawić: {n}. Więcej niż jedno jest oznaczone jako główne.",
+    "shippingWithoutRate": "Nie można przypisać stawki VAT do kosztu dostawy."
+  },
   "salesDocumentCell": {
     "action": {
       "fiscalReceipt": "Zarejestruj paragon",

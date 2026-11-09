@@ -252,6 +252,7 @@ import {
   FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN,
   type IFulfillmentParcelClosureNotifier,
 } from '../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
+import { toSalesDocumentBlockParamsDto } from './dto/sales-document-block-params.dto';
 
 /**
  * The one DTO-to-filters mapping this list has (#2944).
@@ -1957,6 +1958,7 @@ export class OrdersController {
       salesDocumentBlockReason: order.salesDocumentBlockReason,
       salesDocumentUnresolvedReason: order.salesDocumentUnresolvedReason,
       salesDocumentBlockDetail: order.salesDocumentBlockDetail,
+      salesDocumentBlockParams: toSalesDocumentBlockParamsDto(order.salesDocumentBlockParams),
       destinationRoutingBlockReason: order.destinationRoutingBlockReason,
       destinationRoutingBlockDetail: order.destinationRoutingBlockDetail,
       salesDocumentBlockedAt: order.salesDocumentBlockedAt?.toISOString() ?? null,

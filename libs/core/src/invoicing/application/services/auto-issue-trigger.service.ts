@@ -169,6 +169,9 @@ import type {
   SalesDocumentKind,
   SalesDocumentRoutingCandidate,
   SalesDocumentUnresolvedReason,
+  RoutedConnectionState,
+  SalesDocumentBlockParams,
+  SalesDocumentPoolKind,
 } from '@openlinker/core/sales-documents';
 import {
   SalesDocumentUncountedUnresolvedReasonValues,
@@ -181,6 +184,7 @@ import type { ResolvedDeliveryLine } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
 import {
   describeMissingTaxRate,
+  missingTaxRateParams,
   findOrderTaxRateGap,
 } from '../../domain/types/order-tax-rate-gate.types';
 // Type-only NAMED import (never a wildcard — see
@@ -246,6 +250,21 @@ const CONNECTION_STATE_PHRASE: Readonly<Record<Exclude<ConnectionStatus, 'active
   archived: 'is archived',
 };
 
+/** The same states as codes for `SalesDocumentBlockParams.connectionState` (#3866). */
+const CONNECTION_STATE_CODE: Readonly<Record<Exclude<ConnectionStatus, 'active'>, RoutedConnectionState>> = {
+  disabled: 'disabled',
+  error: 'error',
+  needs_reauth: 'needs-reauth',
+  archived: 'archived',
+};
+
+/** Why the routed connection cannot issue: a code for the frontend and the English phrase for `detail`. */
+interface RoutedConnectionStateDescription {
+  readonly code: RoutedConnectionState;
+  readonly phrase: string;
+  readonly missingCapabilities?: readonly string[];
+}
+
 /**
  * The capability `documentKind` needs that `connection` does not have
  * enabled, or `null` when nothing is missing. Reads the same map the fallback
@@ -256,15 +275,16 @@ const CONNECTION_STATE_PHRASE: Readonly<Record<Exclude<ConnectionStatus, 'active
 function missingRequiredCapability(
   connection: Connection,
   documentKind: SalesDocumentKind | null,
-): string | null {
+): readonly string[] | null {
   if (documentKind !== null && isCoreSalesDocumentKind(documentKind)) {
     const required = REQUIRED_CAPABILITY_BY_CORE_KIND[documentKind];
-    return connection.enabledCapabilities.includes(required) ? null : required;
+    return connection.enabledCapabilities.includes(required) ? null : [required];
   }
   const canIssueAny =
     connection.enabledCapabilities.includes(INVOICING_CAPABILITY) ||
     connection.enabledCapabilities.includes(FISCALIZATION_CAPABILITY);
-  return canIssueAny ? null : `${INVOICING_CAPABILITY} or ${FISCALIZATION_CAPABILITY}`;
+  // Either one would do, so both are named; the detail joins them with "or".
+  return canIssueAny ? null : [INVOICING_CAPABILITY, FISCALIZATION_CAPABILITY];
 }
 
 /** The document a routing decision names, as a noun for the block detail. */
@@ -689,9 +709,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     // PII-free detail: a count and the neutral routing reason only. It reaches
     // an operator screen verbatim, so it must never carry buyer data.
     const detail = this.describeUnresolvedDetail(reason, eligible, candidates);
+    const params = this.describeUnresolvedParams(reason, eligible, candidates);
 
     return this.reportBlock(
-      { reason: 'unresolved-routing', unresolvedReason: reason, detail },
+      { reason: 'unresolved-routing', unresolvedReason: reason, detail, params },
       order.id,
     );
   }
@@ -728,6 +749,40 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       return `${eligible.length} ${noun}, ${qualifier}`;
     }
     return `${eligible.length} sales-document candidates, reason=${reason}`;
+  }
+
+  /**
+   * The values {@link describeUnresolvedDetail} states, for the frontend to
+   * phrase in the operator's language (#3866). Same counts, same pool.
+   */
+  private describeUnresolvedParams(
+    reason: SalesDocumentUnresolvedReason,
+    eligible: readonly SalesDocumentRoutingCandidate[],
+    candidates: readonly SalesDocumentRoutingCandidate[],
+  ): SalesDocumentBlockParams {
+    if (reason === 'no-connection-declares-document-kind') {
+      return { candidateCount: candidates.length };
+    }
+    if (reason === 'ambiguous-connection-no-primary') {
+      return {
+        eligibleCount: eligible.length,
+        primaryCount: eligible.filter((candidate) => candidate.isPrimary).length,
+        poolKind: this.describeEligiblePoolKind(eligible),
+      };
+    }
+    return { eligibleCount: eligible.length };
+  }
+
+  /** {@link describeEligiblePoolNoun} as a code. */
+  private describeEligiblePoolKind(
+    eligible: readonly SalesDocumentRoutingCandidate[],
+  ): SalesDocumentPoolKind {
+    const kinds = new Set(eligible.map((candidate) => candidate.documentKind));
+    if (kinds.size === 1) {
+      const [kind] = kinds;
+      if (kind === 'invoice' || kind === 'fiscal-receipt') return kind;
+    }
+    return 'mixed';
   }
 
   /**
@@ -807,12 +862,20 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceEventId?: string,
     candidate?: Connection,
   ): Promise<SalesDocumentBlockOutcome> {
-    const state = await this.describeRoutedConnectionState(decision, candidate);
+    const described = await this.describeRoutedConnectionState(decision, candidate);
+    const state = described.phrase;
     const router =
       decision.ruleId !== undefined ? `Rule ${decision.ruleId} routes` : 'Routing sends';
     const detail =
       `${router} this order's ${describeDocumentNoun(decision.documentKind)} to connection ` +
       `${decision.connectionId}, which ${state}`;
+    const params: SalesDocumentBlockParams = {
+      connectionId: decision.connectionId,
+      connectionState: described.code,
+      ...(decision.ruleId !== undefined ? { ruleId: decision.ruleId } : {}),
+      ...(decision.documentKind !== null ? { documentKind: decision.documentKind } : {}),
+      ...(described.missingCapabilities ? { missingCapabilities: described.missingCapabilities } : {}),
+    };
 
     this.logger.error(
       `Auto-issue skipped: sales-document routing names connection ${decision.connectionId}, ` +
@@ -822,40 +885,55 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     );
 
     return this.reportBlock(
-      { reason: 'unresolved-routing', unresolvedReason: 'routed-connection-unavailable', detail },
+      {
+        reason: 'unresolved-routing',
+        unresolvedReason: 'routed-connection-unavailable',
+        detail,
+        params,
+      },
       order.id,
       decision.ruleId,
     );
   }
 
-  /** Why the routed connection cannot issue, phrased to follow "which". */
+  /**
+   * Why the routed connection cannot issue: a code, and the English phrase
+   * (to follow "which") that `detail` and the log carry.
+   */
   private async describeRoutedConnectionState(
     decision: Extract<SalesDocumentDecision, { kind: 'route' }>,
     candidate?: Connection,
-  ): Promise<string> {
+  ): Promise<RoutedConnectionStateDescription> {
     let connection: Connection | undefined = candidate;
     if (connection === undefined) {
       try {
         connection = await this.connectionPort.get(decision.connectionId);
       } catch (error) {
         if (error instanceof ConnectionNotFoundException) {
-          return 'no longer exists';
+          return { code: 'not-found', phrase: 'no longer exists' };
         }
-        return 'is not an active connection that can issue it';
+        return { code: 'unreadable', phrase: 'is not an active connection that can issue it' };
       }
     }
 
     if (connection.status !== 'active') {
-      return CONNECTION_STATE_PHRASE[connection.status];
+      return {
+        code: CONNECTION_STATE_CODE[connection.status],
+        phrase: CONNECTION_STATE_PHRASE[connection.status],
+      };
     }
     const missing = missingRequiredCapability(connection, decision.documentKind);
     if (missing !== null) {
-      return `does not have ${missing} enabled`;
+      return {
+        code: 'missing-capability',
+        phrase: `does not have ${missing.join(' or ')} enabled`,
+        missingCapabilities: missing,
+      };
     }
     // Active and capable on a re-read, yet absent from the list read moments
     // earlier: the connection changed in between. The block is still the truth
     // for this evaluation, and the next transition re-decides.
-    return 'was not available when this order was checked';
+    return { code: 'changed', phrase: 'was not available when this order was checked' };
   }
 
   /**
@@ -943,6 +1021,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         reason: 'unresolved-routing',
         unresolvedReason: 'unsupported-document-kind-on-connection',
         detail: `connection ${connection.id} resolved to unrecognized kind '${decision.documentKind}'`,
+        params: {
+          connectionId: connection.id,
+          ...(decision.documentKind !== null ? { documentKind: decision.documentKind } : {}),
+        },
       },
       order.id,
       decision.ruleId,
@@ -977,6 +1059,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           reason: 'unresolved-routing',
           unresolvedReason: 'unsupported-document-kind-on-connection',
           detail: `connection ${connection.id} does not list 'invoice' in getSupportedDocumentTypes()`,
+          params: { connectionId: connection.id, documentKind: 'invoice' },
         },
         order.id,
         matchedRuleId,
@@ -1038,6 +1121,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
             {
               reason: 'missing-tax-rate',
               detail: describeMissingTaxRate(missingRate),
+              params: missingTaxRateParams(missingRate),
             },
             order.id,
             matchedRuleId,
@@ -1192,6 +1276,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
             {
               reason: 'missing-tax-rate',
               detail: describeMissingTaxRate(missingRate),
+              params: missingTaxRateParams(missingRate),
             },
             order.id,
             matchedRuleId,

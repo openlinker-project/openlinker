@@ -37,6 +37,13 @@ const MIRRORS = [
     copyFile: 'apps/web/src/locales/en/webhook-deliveries.json',
     copyPath: ['dlqCodes'],
   },
+  {
+    name: 'RoutedConnectionStateValues',
+    backend: 'libs/core/src/sales-documents/domain/types/sales-document-reason.types.ts',
+    frontend: 'apps/web/src/features/orders/api/orders.types.ts',
+    copyFile: 'apps/web/src/locales/en/orders.json',
+    copyPath: ['salesDocumentBlockDetail', 'connectionState'],
+  },
 ];
 
 /** String literals of `export const <name> = [...]`, comments blanked first. */
