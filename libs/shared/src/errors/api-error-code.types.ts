@@ -504,6 +504,13 @@ export const ApiErrorCodeValues = [
   /** The change would leave the installation with no admin. */
   'USER_LAST_ADMIN',
 
+  // ── Login page settings (#3865) ──
+  /**
+   * A login page settings value is refused: an unknown field or language, or a
+   * value over the field's limit. params: `field` (dotted path, e.g. `pl.headline`).
+   */
+  'LOGIN_PAGE_SETTING_INVALID',
+
   // ── Integrations (#3865) ──
   /** Another pricing & sync update for the connection is running. params: `connectionId`. */
   'PRICING_SYNC_UPDATE_IN_PROGRESS',

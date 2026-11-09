@@ -136,6 +136,10 @@ describe('Login Page Settings Integration', () => {
       .send({ en: { formTitle: 'x'.repeat(LOGIN_PAGE_COPY_MAX_LENGTH.formTitle + 1) } })
       .expect(400);
     expect(JSON.stringify(res.body)).toContain('en.formTitle');
+    expect(res.body).toMatchObject({
+      code: 'LOGIN_PAGE_SETTING_INVALID',
+      params: { field: 'en.formTitle' },
+    });
   });
 
   it('should answer 403 to a non-admin on both routes', async () => {
