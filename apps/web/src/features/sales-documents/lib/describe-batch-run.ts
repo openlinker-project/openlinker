@@ -20,7 +20,7 @@ import { interpolate, type Messages, type PluralFn, type ResolvedCopy } from '..
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { SalesDocumentGateBlockReasonValue } from '../../orders';
 import type { BatchRun, BatchRunItem } from '../api/sales-document-batch.types';
-import { resolveSalesDocumentReasonCopy } from './sales-document-reason-copy';
+import { resolveSalesDocumentReasonCopy } from './sales-document-reasons';
 
 export interface BatchBadgeView {
   label: string;
