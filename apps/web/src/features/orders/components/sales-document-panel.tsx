@@ -79,7 +79,6 @@ import {
   useFormat,
   useMessages,
   usePlural,
-  useTranslation,
   type Formatters,
   type Messages,
   type ResolvedCopy,
@@ -172,7 +171,6 @@ function buildInvoiceFieldItems(
   invoice: InvoiceRecord,
   showRegulatoryBadge: boolean,
   copy: PanelCopy,
-  t: (key: string, fallback: string) => string,
 ): KeyValueItem[] {
   const items: KeyValueItem[] = [
     {
@@ -187,10 +185,7 @@ function buildInvoiceFieldItems(
     {
       id: 'document',
       label: copy.invoice.field.document,
-      value: t(
-        `invoice.documentType.${invoice.documentType}`,
-        DOCUMENT_TYPE_LABEL_FALLBACK[invoice.documentType] ?? invoice.documentType,
-      ),
+      value: DOCUMENT_TYPE_LABEL_FALLBACK[invoice.documentType] ?? invoice.documentType,
     },
   ];
 
@@ -258,10 +253,6 @@ function buildFiscalFieldItems(
 }
 
 export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactElement | null {
-  // The legacy translator is still the contract of the invoicing and
-  // fiscalization helpers this panel calls; everything this panel says itself
-  // comes from the `orders` namespace.
-  const { t } = useTranslation();
   const ordersCopy = useMessages('orders');
   const copy = ordersCopy.salesDocumentPanel;
   const format = useFormat();
@@ -476,7 +467,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const invoiceSettled = !invoiceQuery.isError && !invoiceQuery.isLoading;
   // Computed once so the failure alert can tell whether the stored reason is
   // already its headline (the connection-setting codes) and not repeat it.
-  const invoiceFailureHeadline = invoice ? resolveFailureCopy(invoice, t) : null;
+  const invoiceFailureHeadline = invoice ? resolveFailureCopy(invoice) : null;
 
   const issueOn = (connection: { id: string }): void => {
     issueAcknowledgement.reset();
@@ -540,7 +531,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           showToast({
             tone: 'error',
             title: copy.invoice.action.issueFailed,
-            description: resolveIssueErrorMessage(error, t),
+            description: resolveIssueErrorMessage(error),
           });
           // A 409 means the server refused: the order is already
           // issuing/issued here, or already invoiced/registered ELSEWHERE
@@ -689,7 +680,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const rateLessLines = collectRateLessLines(snapshotItems);
   const conflictLines = snapshotItems.filter((item) => Boolean(item.taxRateChannel));
   const blockCopy = showEmptyState
-    ? resolveSalesDocumentBlockCopy(order, derivedAmbiguity, t, blockCopyKind, rateLessLines)
+    ? resolveSalesDocumentBlockCopy(order, derivedAmbiguity, blockCopyKind, rateLessLines)
     : null;
   // #2560 — whether a hard block leaves the manual action standing.
   // `keepsAction` is the backend-vocabulary answer (`trigger-model-manual` /
@@ -888,8 +879,8 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
 
           {invoiceSettled && invoiceDisplayStatus === 'issued' && invoice ? (
             <div className="sales-document-panel__body">
-              <DocumentLifecycle kind="invoice" steps={resolveInvoiceLifecycleSteps(invoice, t)} />
-              <KeyValueList items={buildInvoiceFieldItems(invoice, showRegulatoryBadge, copy, t)} />
+              <DocumentLifecycle kind="invoice" steps={resolveInvoiceLifecycleSteps(invoice)} />
+              <KeyValueList items={buildInvoiceFieldItems(invoice, showRegulatoryBadge, copy)} />
               {/* #3549 - did the document reach the marketplace order? */}
               <InvoiceMarketplaceUploadStatus invoiceId={invoice.id} />
               {/* #3551 - one neutral email control for every provider. */}
@@ -1049,7 +1040,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                   )}
                   data-testid="invoice-setup-incomplete"
                 >
-                  <p className="panel-copy">{resolveFailureCopy(invoice, t)}</p>
+                  <p className="panel-copy">{resolveFailureCopy(invoice)}</p>
                   <p className="panel-copy">
                     <Link
                       className="button button--primary button--sm"
@@ -1329,7 +1320,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                   action={<CopyFiscalFailureDetailsButton details={fiscalRecord.providerFailureDetails} />}
                 >
                   <p>
-                    {resolveFiscalFailureCopy(fiscalRecord, t)}{' '}
+                    {resolveFiscalFailureCopy(fiscalRecord)}{' '}
                     {copy.fiscalReceipt.rejected.retrySafe}
                   </p>
                   <FiscalFailureDetails details={fiscalRecord.providerFailureDetails} />
@@ -1360,7 +1351,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             <>
               <Alert tone="warning" title={copy.fiscalReceipt.inDoubt.title}>
                 <p>
-                  {resolveFiscalFailureCopy(fiscalRecord, t)}{' '}
+                  {resolveFiscalFailureCopy(fiscalRecord)}{' '}
                   {copy.fiscalReceipt.inDoubt.noRetry}
                 </p>
                 <AccessGate require="orders:write">

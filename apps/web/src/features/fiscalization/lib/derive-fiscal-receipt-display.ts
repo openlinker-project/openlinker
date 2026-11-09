@@ -81,8 +81,6 @@ export function canRetryFiscalReceipt(record: FiscalRegistrationRecord): boolean
 
 export function resolveFiscalFailureCopy(
   record: FiscalRegistrationRecord,
-  /** Kept for callers that still pass a translator; copy is read at call time. */
-  _t?: (key: string, fallback: string) => string,
 ): string {
   if (record.failureReason && record.failureReason.trim().length > 0) {
     return record.failureReason;

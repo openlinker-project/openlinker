@@ -309,10 +309,11 @@
     "original": "Oryginalny komunikat"
   },
   "theme": {
+    "current": "Motyw: {name}",
     "dark": "Ciemny",
     "label": "Motyw",
     "light": "Jasny",
-    "system": "Systemowy"
+    "system": "Auto"
   },
   "toast": {
     "dismiss": "Zamknij",

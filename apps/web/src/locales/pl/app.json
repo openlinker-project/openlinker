@@ -43,6 +43,7 @@
     "jobsLogs": "Zadania w tle i logi",
     "listing": "Oferta",
     "listings": "Oferty",
+    "loginPage": "Strona logowania",
     "mcpTokens": "Tokeny MCP",
     "newConnection": "Nowe połączenie",
     "omsSetup": "OpenLinker OMS",
@@ -109,6 +110,7 @@
   "userMenu": {
     "accountMenu": "Menu konta {username}",
     "density": "Gęstość",
+    "language": "Język",
     "signOut": "Wyloguj się",
     "theme": "Motyw"
   }

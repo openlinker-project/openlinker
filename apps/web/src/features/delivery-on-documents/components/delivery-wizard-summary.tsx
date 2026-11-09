@@ -7,6 +7,7 @@
  * @module apps/web/src/features/delivery-on-documents/components
  */
 import type { ReactElement } from 'react';
+import { useMessages } from '../../../shared/i18n';
 import { WizardSummaryRow } from '../../../shared/ui/wizard-summary-row';
 import type { DeliveryLineSuggestion } from '../api/delivery-on-documents.types';
 import {
@@ -24,9 +25,10 @@ export function DeliveryWizardSummary({
   value,
   suggestions,
 }: DeliveryWizardSummaryProps): ReactElement {
+  const copy = useMessages('delivery-on-documents').wizard;
   return (
     <section className="wizard-summary__section">
-      <h3 className="wizard-summary__section-title">Delivery on documents</h3>
+      <h3 className="wizard-summary__section-title">{copy.summaryTitle}</h3>
       <dl className="wizard-summary__rows">
         {wizardSummaryRows(wizardRules(value, suggestions)).map((row) => (
           <WizardSummaryRow key={row.label} label={row.label} value={row.value} />
