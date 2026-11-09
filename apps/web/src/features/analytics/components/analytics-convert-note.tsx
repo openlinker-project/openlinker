@@ -32,6 +32,7 @@
  * @module apps/web/src/features/analytics/components
  */
 import type { ReactElement } from 'react';
+import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { Alert, Button } from '../../../shared/ui';
 import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
 import { isCurrencyRecalculating, resolveConvertNoteState } from '../lib/display-currency.lib';
@@ -50,6 +51,8 @@ export function AnalyticsConvertNote({
   coverage,
   onSwitchBack,
 }: AnalyticsConvertNoteProps): ReactElement | null {
+  const copy = useMessages('analytics').analyticsConvertNote;
+  const format = useFormat();
   const query = useSalesAnalyticsQuery(filters, { enabled: Boolean(filters.displayCurrency) });
   const state = resolveConvertNoteState({
     displayCurrency: filters.displayCurrency ?? null,
@@ -64,7 +67,9 @@ export function AnalyticsConvertNote({
 
   if (state === 'converting') {
     return (
-      <Alert tone="info">Converting to {filters.displayCurrency}…</Alert>
+      <Alert tone="info">
+        {interpolate(copy.converting, { currency: filters.displayCurrency })}
+      </Alert>
     );
   }
 
@@ -74,11 +79,11 @@ export function AnalyticsConvertNote({
         tone="warning"
         action={
           <Button type="button" tone="secondary" className="button--sm" onClick={() => void query.refetch()}>
-            Try again
+            {copy.tryAgain}
           </Button>
         }
       >
-        Couldn&rsquo;t get today&rsquo;s {filters.displayCurrency} rate. Showing the reporting currency instead.
+        {interpolate(copy.unavailable, { currency: filters.displayCurrency })}
       </Alert>
     );
   }
@@ -88,8 +93,7 @@ export function AnalyticsConvertNote({
   if (currencyRecalculating) {
     return (
       <Alert tone="info">
-        A currency recalculation is running for this range — the {filters.displayCurrency} conversion will
-        reflect the updated figures once it completes.
+        {interpolate(copy.recalculating, { currency: filters.displayCurrency })}
       </Alert>
     );
   }
@@ -97,27 +101,27 @@ export function AnalyticsConvertNote({
   const conversion = query.data?.headline.displayCurrencyConversion;
   const unresolved = conversion?.unresolvedNativeCurrencies ?? [];
   const rateBasis = filters.rateBasis ?? 'current-rate';
-  const modeLabel = rateBasis === 'order-date' ? 'Rate on order date' : 'Current rate';
-  const modeExplanation =
-    rateBasis === 'order-date'
-      ? "today's live rate applied once to the already-summed reporting-currency total"
-      : "today's live rate applied to each order's own native currency, then summed";
+  const convertedTemplate =
+    rateBasis === 'order-date' ? copy.convertedOrderDate : copy.convertedCurrentRate;
 
   return (
     <Alert
       tone="info"
       action={
         <Button type="button" tone="ghost" className="button--sm" onClick={onSwitchBack}>
-          Switch back
+          {copy.switchBack}
         </Button>
       }
     >
-      <strong>{modeLabel}:</strong> converted to {filters.displayCurrency} — {modeExplanation}. Preview only,
-      nothing saved.
+      {renderRich(
+        convertedTemplate,
+        { strong: (text) => <strong>{text}</strong> },
+        { currency: filters.displayCurrency }
+      )}
       {unresolved.length > 0 && (
         <span>
           {' '}
-          Couldn&rsquo;t convert orders in {unresolved.join(', ')} — excluded from this total.
+          {interpolate(copy.unresolved, { currencies: format.list(unresolved) })}
         </span>
       )}
     </Alert>

@@ -12,8 +12,9 @@
  * @module apps/web/src/features/mailer-settings/components
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, type ReactElement } from 'react';
+import { useEffect, useMemo, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
+import { useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -34,7 +35,7 @@ import { useClearMailerCredentialsMutation } from '../hooks/use-clear-mailer-cre
 import { useSetMailerCredentialsMutation } from '../hooks/use-set-mailer-credentials-mutation';
 import { useUpdateMailerSettingsMutation } from '../hooks/use-update-mailer-settings-mutation';
 import {
-  mailerSettingsFormSchema,
+  createMailerSettingsFormSchema,
   type MailerSettingsFormSubmission,
   type MailerSettingsFormValues,
 } from './mailer-settings-form.schema';
@@ -44,11 +45,6 @@ interface MailerSettingsDialogProps {
   view: MailerSettingsView;
   onClose: () => void;
 }
-
-const TRANSPORT_LABEL: Record<(typeof MailerTransportValues)[number], string> = {
-  console: 'Console (log only, no email sent)',
-  smtp: 'SMTP',
-};
 
 function toFormValues(view: MailerSettingsView): MailerSettingsFormValues {
   return {
@@ -67,13 +63,19 @@ export function MailerSettingsDialog({
   onClose,
 }: MailerSettingsDialogProps): ReactElement {
   const { showToast } = useToast();
+  const messages = useMessages('mailer-settings');
+  const copy = messages.mailerSettingsDialog;
+  const schema = useMemo(
+    () => createMailerSettingsFormSchema(messages.mailerSettingsFormSchema),
+    [messages.mailerSettingsFormSchema],
+  );
   const updateMutation = useUpdateMailerSettingsMutation();
   const setCredentialsMutation = useSetMailerCredentialsMutation();
   const clearCredentialsMutation = useClearMailerCredentialsMutation();
 
   const form = useForm<MailerSettingsFormValues, undefined, MailerSettingsFormSubmission>({
     defaultValues: toFormValues(view),
-    resolver: zodResolver(mailerSettingsFormSchema),
+    resolver: zodResolver(schema),
   });
 
   // Reset the form (and any prior mutation error) whenever the dialog opens —
@@ -111,8 +113,8 @@ export function MailerSettingsDialog({
 
       showToast({
         tone: 'success',
-        title: 'Mailer settings saved',
-        description: 'Outbound mail will use the updated configuration.',
+        title: copy.savedToastTitle,
+        description: copy.savedToastDescription,
       });
       onClose();
     } catch {
@@ -126,14 +128,14 @@ export function MailerSettingsDialog({
       form.setValue('password', '');
       showToast({
         tone: 'success',
-        title: 'SMTP password cleared',
-        description: 'The server falls back to env or none until a new password is set.',
+        title: copy.clearedToastTitle,
+        description: copy.clearedToastDescription,
       });
     } catch (error) {
       showToast({
         tone: 'error',
-        title: 'Could not clear the password',
-        description: error instanceof Error ? error.message : 'Unknown error',
+        title: copy.clearErrorTitle,
+        description: error instanceof Error ? error.message : copy.unknownError,
       });
     }
   };
@@ -157,14 +159,11 @@ export function MailerSettingsDialog({
       <DialogContent>
         {/* No help icon: the docs have no mailer section to point at, and a
             link to a page's top answers nothing (#81, help-links.ts). */}
-        <DialogTitle>Edit mailer settings</DialogTitle>
-        <DialogDescription>
-          Choose how outbound mail is sent. The SMTP password is write-only — it is never returned by
-          the API.
-        </DialogDescription>
+        <DialogTitle>{copy.title}</DialogTitle>
+        <DialogDescription>{copy.description}</DialogDescription>
 
         {mutationError ? (
-          <Alert tone="error" title="Could not save mailer settings">
+          <Alert tone="error" title={copy.saveErrorTitle}>
             {mutationError.message}
           </Alert>
         ) : null}
@@ -177,11 +176,11 @@ export function MailerSettingsDialog({
         >
           {showValidationSummary ? <FormErrorSummary errors={validationMessages} /> : null}
 
-          <FormField label="Transport" name="transport">
+          <FormField label={copy.transportLabel} name="transport">
             <Select {...form.register('transport')}>
               {MailerTransportValues.map((value) => (
                 <option key={value} value={value}>
-                  {TRANSPORT_LABEL[value]}
+                  {copy.transport[value]}
                 </option>
               ))}
             </Select>
@@ -190,42 +189,42 @@ export function MailerSettingsDialog({
           {transport === 'smtp' ? (
             <>
               <FormField
-                label="SMTP host"
+                label={copy.hostLabel}
                 name="smtpHost"
                 error={form.formState.errors.smtpHost?.message}
               >
-                <Input placeholder="smtp.example.com" {...form.register('smtpHost')} />
+                <Input placeholder={copy.hostPlaceholder} {...form.register('smtpHost')} />
               </FormField>
 
               <FormField
-                label="SMTP port"
+                label={copy.portLabel}
                 name="smtpPort"
                 error={form.formState.errors.smtpPort?.message}
               >
-                <Input inputMode="numeric" placeholder="587" {...form.register('smtpPort')} />
+                <Input inputMode="numeric" placeholder={copy.portPlaceholder} {...form.register('smtpPort')} />
               </FormField>
 
               <label className="mailer-settings-checkbox">
                 <input type="checkbox" {...form.register('smtpSecure')} />
-                <span>Use implicit TLS (leave unchecked for STARTTLS/plain)</span>
+                <span>{copy.secureLabel}</span>
               </label>
 
               <FormField
-                label="From address"
+                label={copy.fromLabel}
                 name="fromAddress"
-                description='Also accepts a display name, e.g. "OpenLinker <orders@example.com>".'
+                description={copy.fromDescription}
                 error={form.formState.errors.fromAddress?.message}
               >
-                <Input type="text" placeholder="orders@example.com" {...form.register('fromAddress')} />
+                <Input type="text" placeholder={copy.fromPlaceholder} {...form.register('fromAddress')} />
               </FormField>
 
               <FormField
-                label="SMTP password"
+                label={copy.passwordLabel}
                 name="password"
                 description={
                   view.smtpPasswordConfigured
-                    ? 'Password configured. Leave blank to keep it, or enter a new value to rotate it.'
-                    : 'No password set. Enter a value to configure one.'
+                    ? copy.passwordConfigured
+                    : copy.passwordNotSet
                 }
                 error={form.formState.errors.password?.message}
               >
@@ -233,7 +232,7 @@ export function MailerSettingsDialog({
                   type="password"
                   autoComplete="off"
                   spellCheck={false}
-                  placeholder="Leave blank to keep current password"
+                  placeholder={copy.passwordPlaceholder}
                   {...form.register('password')}
                 />
               </FormField>
@@ -248,7 +247,7 @@ export function MailerSettingsDialog({
                     void handleClearPassword();
                   }}
                 >
-                  {clearCredentialsMutation.isPending ? 'Clearing…' : 'Clear stored password'}
+                  {clearCredentialsMutation.isPending ? copy.clearing : copy.clearPassword}
                 </Button>
               ) : null}
             </>
@@ -257,11 +256,11 @@ export function MailerSettingsDialog({
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" tone="ghost">
-                Cancel
+                {copy.cancel}
               </Button>
             </DialogClose>
             <Button type="submit" disabled={isSaving}>
-              {isSaving ? 'Saving…' : 'Save changes'}
+              {isSaving ? copy.saving : copy.save}
             </Button>
           </DialogFooter>
         </form>

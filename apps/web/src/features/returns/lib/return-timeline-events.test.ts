@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { mapReturnEventsToTimeline } from './return-timeline-events';
-import { RETURN_TIMELINE_COPY as COPY } from './return-timeline.copy';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import type { ReturnTimelineEntry } from '../api/returns.types';
+
+const COPY = getMessages('returns').timeline;
 
 const SESSION_USER = 'ol_user_me';
 
@@ -48,7 +50,7 @@ describe('mapReturnEventsToTimeline', () => {
     const events = mapReturnEventsToTimeline([entry({ kind: 'teleported' })], SESSION_USER);
 
     expect(events).toHaveLength(1);
-    expect(events[0].title).toBe(COPY.unknownKind('teleported'));
+    expect(events[0].title).toBe(interpolate(COPY.unknownKind, { kind: 'teleported' }));
   });
 
   it('never drops an entry — the mapper is total', () => {

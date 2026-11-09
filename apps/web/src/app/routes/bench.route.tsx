@@ -57,7 +57,7 @@ import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../nav-registry.types';
 
 const benchCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Pack bench' },
+  crumb: { group: 'operations', page: 'packBench' },
 };
 
 export const benchRoute: RouteObject = {

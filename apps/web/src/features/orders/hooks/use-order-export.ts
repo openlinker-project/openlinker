@@ -21,8 +21,8 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { ordersQueryKeys } from '../api/orders.query-keys';
 import type { CreateOrderExportRequest, OrderExportRun } from '../api/orders.types';
 import { triggerBlobDownload } from '../../shipments';
-import { formatExportCount, orderExportFileName } from '../lib/order-export-columns';
-import { ORDER_EXPORT_COPY } from '../lib/order-export.copy';
+import { orderExportFileName } from '../lib/order-export-columns';
+import { useMessages, usePlural } from '../../../shared/i18n';
 
 const POLL_INTERVAL_MS = 2000;
 
@@ -84,6 +84,8 @@ export function useOrderExportBackgroundToast(): OrderExportBackgroundToast {
   const download = useDownloadExportMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const copy = useMessages('orders').orderExport;
+  const plural = usePlural();
   // The effect re-runs on every poll; this pins "announce a run once" to the
   // run id rather than to which dependency happened to change identity.
   const announced = useRef<string | null>(null);
@@ -96,14 +98,13 @@ export function useOrderExportBackgroundToast(): OrderExportBackgroundToast {
       announced.current = run.id;
       showToast({
         tone: 'success',
-        title: ORDER_EXPORT_COPY.toastReadyTitle,
-        description: ORDER_EXPORT_COPY.toastReadyBody(
-          formatExportCount(run.rowCount ?? 0),
-          orderExportFileName(run, run.format),
-        ),
+        title: copy.toastReadyTitle,
+        description: plural(run.rowCount ?? 0, copy.toastReadyBody, {
+          fileName: orderExportFileName(run, run.format),
+        }),
         durationMs: 15000,
         action: {
-          label: ORDER_EXPORT_COPY.toastDownload,
+          label: copy.toastDownload,
           onClick: () => { startDownload({ run }); },
         },
       });
@@ -112,17 +113,17 @@ export function useOrderExportBackgroundToast(): OrderExportBackgroundToast {
       announced.current = run.id;
       showToast({
         tone: 'error',
-        title: ORDER_EXPORT_COPY.toastFailedTitle,
-        description: run.errorMessage ?? ORDER_EXPORT_COPY.toastFailedBody,
+        title: copy.toastFailedTitle,
+        description: run.errorMessage ?? copy.toastFailedBody,
         durationMs: 15000,
         action: {
-          label: ORDER_EXPORT_COPY.toastViewJob,
+          label: copy.toastViewJob,
           onClick: () => { void navigate(ORDER_EXPORT_JOBS_PATH); },
         },
       });
       setRunId(null);
     }
-  }, [run, runId, showToast, navigate, startDownload]);
+  }, [run, runId, showToast, navigate, startDownload, copy, plural]);
 
   const track = useCallback((id: string) => {
     announced.current = null;

@@ -22,11 +22,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { FulfillmentVsOrdersExplainer } from './fulfillment-vs-orders-explainer';
 import { renderWithProviders } from '../../../test/test-utils';
-import { FULFILLMENT_WORK_DETAIL_COPY } from '../lib/fulfillment-work-detail.copy';
+import { getMessages } from '../../../shared/i18n';
 
 afterEach(cleanup);
 
-const COPY = FULFILLMENT_WORK_DETAIL_COPY.vsOrders;
+const COPY = getMessages('fulfillment').workDetail.vsOrders;
 
 describe('FulfillmentVsOrdersExplainer', () => {
   it('should show both halves of the comparison when it first renders', () => {

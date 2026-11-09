@@ -53,7 +53,7 @@ describe('PrestashopRateLimitReadout', () => {
     // connection is not rate-limited" was false for a connection whose adapter
     // paces its own resolve path below this mechanism.
     expect(
-      await screen.findByText('No outbound limit configured — requests to this connection are not paced.'),
+      await screen.findByText('No outbound limit configured - requests to this connection are not paced.'),
     ).toBeInTheDocument();
     expect(screen.queryByText(/is not rate-limited/i)).not.toBeInTheDocument();
   });

@@ -14,7 +14,7 @@ describe('AllegroConnectCallbackPage', () => {
       route: `${CALLBACK_ROUTE}?error=access_denied`,
     });
 
-    expect(screen.getByRole('heading', { name: 'Authorization denied' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Authorisation denied' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /start over/i })).toHaveAttribute(
       'href',
       '/connections/new/allegro',
@@ -38,7 +38,7 @@ describe('AllegroConnectCallbackPage', () => {
       route: `${CALLBACK_ROUTE}?code=auth_code&state=csrf_state`,
     });
 
-    expect(screen.getByRole('heading', { name: 'Completing authorization' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Completing authorisation' })).toBeInTheDocument();
   });
 
   it('shows success panel with connection details on mutation success', async () => {
@@ -76,7 +76,7 @@ describe('AllegroConnectCallbackPage', () => {
       route: `${CALLBACK_ROUTE}?code=auth_code&state=some_state`,
     });
 
-    expect(await screen.findByRole('heading', { name: 'Authorization failed' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Authorisation failed' })).toBeInTheDocument();
     expect(screen.getByText('Token exchange failed')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /try again/i })).toHaveAttribute(
       'href',
@@ -100,8 +100,8 @@ describe('AllegroConnectCallbackPage', () => {
       route: `${CALLBACK_ROUTE}?code=auth_code&state=expired_state`,
     });
 
-    expect(await screen.findByRole('heading', { name: 'Authorization already completed' })).toBeInTheDocument();
-    expect(screen.getByText(/This authorization link was already used/i)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Authorisation already completed' })).toBeInTheDocument();
+    expect(screen.getByText(/This authorisation link was already used/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /view connections/i })).toHaveAttribute(
       'href',
       '/connections',

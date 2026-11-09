@@ -127,7 +127,7 @@ describe('ConnectionMappingsPage', () => {
     // Pairing route strip shows both sides once resolved.
     expect(await screen.findByText('Main Allegro')).toBeInTheDocument();
     expect(screen.getByText('Main PrestaShop Store')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Order Statuses' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Order statuses' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Carriers' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Payments' })).toBeInTheDocument();
   });
@@ -136,7 +136,7 @@ describe('ConnectionMappingsPage', () => {
     renderAt(buildApiClient());
 
     expect(await screen.findByText(/Configure Allegro/)).toBeInTheDocument();
-    await openTab('Order Statuses');
+    await openTab('Order statuses');
     expect(screen.getByRole('combobox', { name: /Select Allegro status/i })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: /Select PrestaShop status/i })).toBeInTheDocument();
   });
@@ -145,19 +145,19 @@ describe('ConnectionMappingsPage', () => {
     renderAt(buildApiClient({ connectionList: [ERLI, PRESTA] }));
 
     expect(await screen.findByText(/Configure Erli/)).toBeInTheDocument();
-    await openTab('Order Statuses');
+    await openTab('Order statuses');
     expect(screen.getByRole('combobox', { name: /Select Erli status/i })).toBeInTheDocument();
   });
 
   it('renders empty state when no status mappings exist', async () => {
     renderAt(buildApiClient());
-    await openTab('Order Statuses');
+    await openTab('Order statuses');
     expect(await screen.findByText(/No mappings configured yet/i)).toBeInTheDocument();
   });
 
   it('renders table rows when status mappings exist', async () => {
     renderAt(buildApiClient({ mappings: { getStatusMappings: vi.fn().mockResolvedValue(SAVED_STATUS_MAPPINGS) } }));
-    await openTab('Order Statuses');
+    await openTab('Order statuses');
     await waitFor(() => {
       const cells = screen.getAllByText('Ready for processing');
       expect(cells.some((el) => el.tagName === 'TD')).toBe(true);
@@ -167,7 +167,7 @@ describe('ConnectionMappingsPage', () => {
   it('shows unsaved changes indicator after adding a row', async () => {
     const user = userEvent.setup();
     renderAt(buildApiClient());
-    await openTab('Order Statuses');
+    await openTab('Order statuses');
 
     // The add-row choosers are searchable comboboxes (#1784 I8): open + pick.
     await user.click(screen.getByRole('combobox', { name: /Select Allegro status/i }));
@@ -194,7 +194,7 @@ describe('ConnectionMappingsPage', () => {
         },
       }),
     );
-    await openTab('Order Statuses');
+    await openTab('Order statuses');
 
     await screen.findByText('Ready for processing');
     fireEvent.click(screen.getByRole('button', { name: /Remove mapping for Ready for processing/i }));
@@ -214,7 +214,7 @@ describe('ConnectionMappingsPage', () => {
       mappings: { getStatusMappings: vi.fn().mockResolvedValue([]) },
     });
     renderAt(masterApi, '/connections/ps_1/mappings');
-    await openTab('Order Statuses');
+    await openTab('Order statuses');
     await waitFor(() => {
       expect(masterApi.mappings.getStatusMappings).toHaveBeenCalledWith('alg_1');
     });
@@ -225,7 +225,7 @@ describe('ConnectionMappingsPage', () => {
       mappings: { getStatusMappings: vi.fn().mockResolvedValue([]) },
     });
     renderAt(sourceApi, '/connections/alg_1/mappings');
-    await openTab('Order Statuses');
+    await openTab('Order statuses');
     await waitFor(() => {
       expect(sourceApi.mappings.getStatusMappings).toHaveBeenCalledWith('alg_1');
     });
@@ -240,7 +240,7 @@ describe('ConnectionMappingsPage', () => {
         },
       }),
     );
-    await openTab('Order Statuses');
+    await openTab('Order statuses');
 
     await screen.findByText('Ready for processing');
     fireEvent.click(screen.getByRole('button', { name: /Remove mapping for Ready for processing/i }));
@@ -258,7 +258,7 @@ describe('ConnectionMappingsPage', () => {
       expect(
         await screen.findByText(/Mapping isn't available for WooCommerce connections yet/i),
       ).toBeInTheDocument();
-      expect(screen.queryByRole('tab', { name: 'Order Statuses' })).toBeNull();
+      expect(screen.queryByRole('tab', { name: 'Order statuses' })).toBeNull();
     });
 
     it('shows the no-source guidance when a shop has no paired marketplace', async () => {
@@ -267,7 +267,7 @@ describe('ConnectionMappingsPage', () => {
       expect(
         await screen.findByText(/No supported marketplace is paired with this shop/i),
       ).toBeInTheDocument();
-      expect(screen.queryByRole('tab', { name: 'Order Statuses' })).toBeNull();
+      expect(screen.queryByRole('tab', { name: 'Order statuses' })).toBeNull();
     });
 
     it('prompts for a source and navigates only after an explicit Configure click (#1784 I5)', async () => {
@@ -275,7 +275,7 @@ describe('ConnectionMappingsPage', () => {
       renderAt(buildApiClient({ connectionList: [ALLEGRO, ERLI, PRESTA] }));
 
       expect(await screen.findByText(/Choose which marketplace to configure/i)).toBeInTheDocument();
-      expect(screen.queryByRole('tab', { name: 'Order Statuses' })).toBeNull();
+      expect(screen.queryByRole('tab', { name: 'Order statuses' })).toBeNull();
 
       // Selecting a value must NOT navigate on its own (no keyboard trap).
       await user.selectOptions(
@@ -391,7 +391,7 @@ describe('ConnectionMappingsPage', () => {
       const tabpanel = await screen.findByRole('tabpanel', { name: /carriers/i });
       // Give queries a beat to settle, then assert absence.
       await waitFor(() => {
-        expect(screen.getByText('Carrier Mappings')).toBeInTheDocument();
+        expect(screen.getByText('Carrier mappings')).toBeInTheDocument();
       });
       expect(tabpanel.querySelector('.mapping-panel__fallback-alert')).toBeNull();
     });
@@ -400,9 +400,9 @@ describe('ConnectionMappingsPage', () => {
   describe('order-state mappings tab (#862)', () => {
     it('shows the Order States tab and renders the OL->destination panel', async () => {
       renderAt(buildApiClient());
-      await openTab('Order States');
+      await openTab('Order states');
 
-      expect(await screen.findByText('Order-State Mappings')).toBeInTheDocument();
+      expect(await screen.findByText('Order-state mappings')).toBeInTheDocument();
       expect(screen.getByRole('combobox', { name: /Select OpenLinker status/i })).toBeInTheDocument();
       expect(screen.getByRole('combobox', { name: /Select PrestaShop order state/i })).toBeInTheDocument();
     });
@@ -415,15 +415,15 @@ describe('ConnectionMappingsPage', () => {
       renderAt(buildApiClient(), '/connections/alg_1/mappings');
 
       await screen.findByRole('tab', { name: 'Carriers' });
-      expect(screen.getByRole('tab', { name: 'Order States' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Order states' })).toBeInTheDocument();
     });
 
     it('saves OL->destination order-state overrides with olStatus + externalStateId', async () => {
       const user = userEvent.setup();
       const upsertFn = vi.fn().mockResolvedValue([]);
       renderAt(buildApiClient({ mappings: { upsertOrderStateMappings: upsertFn } }));
-      await openTab('Order States');
-      await screen.findByText('Order-State Mappings');
+      await openTab('Order states');
+      await screen.findByText('Order-state mappings');
 
       await user.click(screen.getByRole('combobox', { name: /Select OpenLinker status/i }));
       await user.click(await screen.findByText('Shipped'));
@@ -478,7 +478,7 @@ describe('ConnectionMappingsPage', () => {
       await waitFor(() => {
         expect(carriersTab).toHaveAttribute('aria-selected', 'true');
       });
-      expect(await screen.findByText('Carrier Mappings')).toBeInTheDocument();
+      expect(await screen.findByText('Carrier mappings')).toBeInTheDocument();
 
       // The unmapped source method carried via ?method= is pre-selected in the
       // add-row picker — the searchable Combobox (#1784 I8), not a native
@@ -513,11 +513,11 @@ describe('ConnectionMappingsPage', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByText('Mapping Configuration')).toBeInTheDocument();
+        expect(screen.getByText('Mapping configuration')).toBeInTheDocument();
       });
       // With OrderSource capability the Fulfillment tab is tabs[0] — the true
       // first available tab this connection falls back to.
-      const fulfillmentTab = await screen.findByRole('tab', { name: 'Fulfillment' });
+      const fulfillmentTab = await screen.findByRole('tab', { name: 'Fulfilment' });
       expect(fulfillmentTab).toHaveAttribute('aria-selected', 'true');
     });
   });
@@ -527,7 +527,7 @@ describe('ConnectionMappingsPage', () => {
     await openTab('Carriers');
 
     expect(screen.getByRole('tab', { name: 'Carriers' })).toHaveAttribute('aria-selected', 'true');
-    expect(await screen.findByText('Carrier Mappings')).toBeInTheDocument();
+    expect(await screen.findByText('Carrier mappings')).toBeInTheDocument();
   });
 
   describe('lazy-load per tab (#1784 I4)', () => {
@@ -548,7 +548,7 @@ describe('ConnectionMappingsPage', () => {
       });
       renderAt(api); // default tab is Fulfillment (source advertises OrderSource)
 
-      await screen.findByRole('tab', { name: 'Fulfillment' });
+      await screen.findByRole('tab', { name: 'Fulfilment' });
       // The default (Fulfillment) tab's option key IS fetched on load…
       await waitFor(() => {
         expect(api.mappings.getMappingOptions).toHaveBeenCalledWith(
@@ -582,7 +582,7 @@ describe('ConnectionMappingsPage', () => {
 
       // Each tab's fetcher fires only once its tab is opened, keyed to the
       // correct side (source vs destination) per #1784 B1.
-      await openTab('Order Statuses');
+      await openTab('Order statuses');
       await waitFor(() => expect(api.mappings.getStatusMappings).toHaveBeenCalledWith('alg_1'));
 
       await openTab('Carriers');
@@ -591,7 +591,7 @@ describe('ConnectionMappingsPage', () => {
       await openTab('Payments');
       await waitFor(() => expect(api.mappings.getPaymentMappings).toHaveBeenCalledWith('alg_1'));
 
-      await openTab('Order States');
+      await openTab('Order states');
       await waitFor(() => expect(api.mappings.getOrderStateMappings).toHaveBeenCalledWith('ps_1'));
     });
   });
@@ -611,7 +611,7 @@ describe('ConnectionMappingsPage', () => {
       });
       renderAt(buildApiClient({ connectionList: [noOrderSource, PRESTA], byId: { alg_1: noOrderSource, ps_1: PRESTA } }), '/connections/alg_1/mappings');
 
-      await screen.findByRole('tab', { name: 'Order Statuses' });
+      await screen.findByRole('tab', { name: 'Order statuses' });
       expect(screen.queryByRole('tab', { name: 'Delivery on documents' })).not.toBeInTheDocument();
     });
 

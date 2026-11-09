@@ -19,6 +19,7 @@
  * @module apps/web/src/features/listings/components/bulk
  */
 import { useId, type ReactElement } from 'react';
+import { interpolate, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
 import { KeyValueList, StatusBadge, shortenId, type StatusBadgeTone } from '../../../../shared/ui';
 // The tooltip compound is not on the `shared/ui` barrel; the sibling
 // `bulk-confirm-modal.tsx` imports it from the module directly for the same reason.
@@ -46,11 +47,14 @@ interface BulkDestinationBarProps {
   onChangeDestination: () => void;
 }
 
-const STATUS_COPY: Record<Exclude<ConnectionStatus, 'active'>, { label: string; tone: StatusBadgeTone }> = {
-  needs_reauth: { label: 'Needs re-auth', tone: 'error' },
-  error: { label: 'Connection error', tone: 'error' },
-  disabled: { label: 'Disabled', tone: 'neutral' },
-  archived: { label: 'Archived', tone: 'neutral' },
+const STATUS_BADGE: Record<
+  Exclude<ConnectionStatus, 'active'>,
+  { copyKey: 'needsReauth' | 'error' | 'disabled' | 'archived'; tone: StatusBadgeTone }
+> = {
+  needs_reauth: { copyKey: 'needsReauth', tone: 'error' },
+  error: { copyKey: 'error', tone: 'error' },
+  disabled: { copyKey: 'disabled', tone: 'neutral' },
+  archived: { copyKey: 'archived', tone: 'neutral' },
 };
 
 export function BulkDestinationBar({
@@ -62,9 +66,18 @@ export function BulkDestinationBar({
 }: BulkDestinationBarProps): ReactElement {
   const platforms = usePlatforms();
   const panelId = useId();
+  const copy = useMessages('listings').bulkDestinationBar;
+  const plural = usePlural();
+  const format = useFormat();
 
   const environment = readConnectionEnvironment(connection.config);
-  const health = connection.status === 'active' ? null : STATUS_COPY[connection.status];
+  const health =
+    connection.status === 'active'
+      ? null
+      : {
+          label: copy.status[STATUS_BADGE[connection.status].copyKey],
+          tone: STATUS_BADGE[connection.status].tone,
+        };
   const changes = config ? collectBulkConfigChanges(config) : [];
   const platformLabel = resolvePlatformLabel(platforms, connection);
 
@@ -101,7 +114,7 @@ export function BulkDestinationBar({
         <span className="bulk-destbar__badges">
           {environment !== null && (
             <StatusBadge tone={environment === 'sandbox' ? 'warning' : 'success'} withDot compact>
-              {environment === 'sandbox' ? 'Sandbox' : 'Production'}
+              {environment === 'sandbox' ? copy.environment.sandbox : copy.environment.production}
             </StatusBadge>
           )}
           {health !== null && (
@@ -119,12 +132,16 @@ export function BulkDestinationBar({
               <TooltipTrigger asChild>
                 <span className="bulk-destbar__changes">
                   <StatusBadge tone="review" compact>
-                    {changes.length} settings changed
+                    {plural(changes.length, copy.settingsChanged)}
                   </StatusBadge>
                 </span>
               </TooltipTrigger>
               <TooltipContent>
-                {changes.map((change) => `${change.label}: ${change.value}`).join(' · ')}
+                {format.list(
+                  changes.map((change) =>
+                    interpolate(copy.changeEntry, { label: change.label, value: change.value }),
+                  ),
+                )}
               </TooltipContent>
             </Tooltip>
           )}
@@ -138,7 +155,7 @@ export function BulkDestinationBar({
             aria-controls={panelId}
             onClick={onToggleSettings}
           >
-            {settingsOpen ? 'Hide settings' : 'Show settings'}
+            {settingsOpen ? copy.hideSettings : copy.showSettings}
           </button>
         )}
       </div>
@@ -146,7 +163,7 @@ export function BulkDestinationBar({
       <div className="bulk-destbar__panel" id={panelId} hidden={!settingsOpen || config === null}>
         <KeyValueList items={rows} />
         <button type="button" className="bulk-destbar__change" onClick={onChangeDestination}>
-          Change destination
+          {copy.changeDestination}
         </button>
       </div>
     </div>

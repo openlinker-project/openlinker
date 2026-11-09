@@ -5942,13 +5942,8 @@ a.delivery-rider-banner__button:focus-visible {
   position: relative;
 }
 
-.guest-layout__language {
-  position: absolute;
-  top: max(1rem, env(safe-area-inset-top, 0px));
-  right: max(1rem, env(safe-area-inset-right, 0px));
-}
-
 .guest-card {
+  position: relative;
   width: 100%;
   max-width: 400px;
   background: var(--bg-surface);
@@ -5965,6 +5960,21 @@ a.delivery-rider-banner__button:focus-visible {
   gap: 0.25rem;
   margin-bottom: 1.5rem;
   text-align: center;
+}
+
+/* The language switch in the card's top-right corner (#4021), where the
+ * operator is looking, rather than the far corner of a wide screen. Only the
+ * guest card routes (forgot / reset password, confirm email) use it; login,
+ * register and consent carry the switch in the login stage's top bar (#4048).
+ * The brand keeps clear of it with the same inset on both sides. */
+.guest-card__language {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+}
+
+.guest-card:has(.guest-card__language) .guest-brand {
+  padding-inline: 3rem;
 }
 
 .guest-brand__title {

@@ -193,7 +193,7 @@ describe('AutomationActivityTable', () => {
         ],
       }),
     ]);
-    expect(screen.getByText(/Tell the marketplace — did not run/)).toBeInTheDocument();
+    expect(screen.getByText(/Tell the marketplace - did not run/)).toBeInTheDocument();
   });
 
   it('should render the supplied empty state when there are no runs', () => {

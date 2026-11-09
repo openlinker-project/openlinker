@@ -9,10 +9,9 @@
  * @module features/analytics/components
  */
 import { useId, type ReactElement } from 'react';
-import { formatAmount } from '../../../shared/format/format-amount';
-import { useNumberFormat } from '../../../shared/i18n/use-number-format';
+import { useFormat, useMessages, usePlural } from '../../../shared/i18n';
 import type { MarginFigures } from '../api/margin-analytics.types';
-import { MARGIN_GAP_COPY, totalMarginGaps } from '../lib/margin-copy';
+import { marginGapCopy, totalMarginGaps } from '../lib/margin.lib';
 
 export const MARGIN_COVERAGE_TOGGLE_TESTID = 'margin-coverage-toggle';
 
@@ -30,7 +29,9 @@ export function MarginCoverageNote({
   onOpenChange,
 }: MarginCoverageNoteProps): ReactElement | null {
   const detailsId = useId();
-  const intFormat = useNumberFormat();
+  const copy = useMessages('analytics').marginCoverageNote;
+  const format = useFormat();
+  const plural = usePlural();
   const totals = totalMarginGaps(figures.gaps);
   if (totals.lineCount === 0) return null;
 
@@ -45,8 +46,9 @@ export function MarginCoverageNote({
           data-testid={MARGIN_COVERAGE_TOGGLE_TESTID}
           onClick={() => onOpenChange(!open)}
         >
-          {intFormat.format(totals.lineCount)} {totals.lineCount === 1 ? 'line is' : 'lines are'} not
-          in margin · {formatAmount(totals.netAmount, currency)} of net revenue left out
+          {plural(totals.lineCount, copy.toggle, {
+            amount: format.money(totals.netAmount, currency),
+          })}
         </button>
       </div>
       <div
@@ -56,22 +58,22 @@ export function MarginCoverageNote({
         hidden={!open}
       >
         <table className="data-table">
-          <caption className="sr-only">Why lines are left out of margin</caption>
+          <caption className="sr-only">{copy.caption}</caption>
           <thead>
             <tr>
-              <th>Reason</th>
-              <th className="analytics-margin__num">Lines</th>
-              <th className="analytics-margin__num">Net revenue</th>
-              <th>What to do</th>
+              <th>{copy.columns.reason}</th>
+              <th className="analytics-margin__num">{copy.columns.lines}</th>
+              <th className="analytics-margin__num">{copy.columns.netRevenue}</th>
+              <th>{copy.columns.whatToDo}</th>
             </tr>
           </thead>
           <tbody>
             {totals.gaps.map((gap) => (
               <tr key={gap.reason} data-testid={`margin-coverage-reason-${gap.reason}`}>
-                <td>{MARGIN_GAP_COPY[gap.reason].reason}</td>
-                <td className="analytics-margin__num">{intFormat.format(gap.lineCount)}</td>
-                <td className="analytics-margin__num">{formatAmount(gap.netAmount, currency)}</td>
-                <td className="text-muted">{MARGIN_GAP_COPY[gap.reason].action}</td>
+                <td>{marginGapCopy(gap.reason).reason}</td>
+                <td className="analytics-margin__num">{format.number(gap.lineCount)}</td>
+                <td className="analytics-margin__num">{format.money(gap.netAmount, currency)}</td>
+                <td className="text-muted">{marginGapCopy(gap.reason).action}</td>
               </tr>
             ))}
           </tbody>

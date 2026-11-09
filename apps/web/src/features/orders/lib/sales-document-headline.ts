@@ -13,21 +13,19 @@
  * @module apps/web/src/features/orders/lib
  */
 import type { ReactNode } from 'react';
+import type { Messages, ResolvedCopy } from '../../../shared/i18n';
 import type { DocumentHeadlineTone } from '../../../shared/ui/document-headline';
 import type { InvoiceRecord } from '../../invoicing';
 import type { FiscalRegistrationProgress, FiscalRegistrationRecord } from '../../fiscalization';
 
 /**
- * The panel's translator, narrowed to what this module needs: a key plus the
- * English fallback that ships as the default copy. Taken as a PARAMETER rather
- * than read from a hook so the module stays pure and directly testable, and so
- * these strings go through the same `t(key, fallback)` path as every other
- * string in the panel instead of being the one place that hardcodes English.
+ * The headline words, from the `orders` namespace. Taken as a PARAMETER rather
+ * than read from a hook so the module stays pure and directly testable.
  */
-export type HeadlineTranslate = (key: string, fallback: string) => string;
+export type HeadlineCopy = ResolvedCopy<Messages['orders']>['salesDocumentHeadline'];
 
 const identityOf = (reference: string | null | undefined, connectionName: string): string | null => {
-  // No em-dash placeholder: a document with no number yet is described by the
+  // No dash placeholder: a document with no number yet is described by the
   // connection alone, rather than by a dash that reads like a missing value.
   if (reference && connectionName) return `${reference} \u00B7 ${connectionName}`;
   return reference || connectionName || null;
@@ -48,12 +46,12 @@ export interface SalesDocumentHeadlineModel {
 export function resolveInvoiceHeadline(
   invoice: InvoiceRecord,
   connectionName: string,
-  t: HeadlineTranslate,
+  copy: HeadlineCopy,
 ): SalesDocumentHeadlineModel {
   const identity = identityOf(invoice.providerInvoiceNumber, connectionName);
 
   if (invoice.status === 'pending' || invoice.status === 'issuing') {
-    return { state: t('salesDocument.headline.issuing', 'Issuing'), tone: 'progress', identity };
+    return { state: copy.issuing, tone: 'progress', identity };
   }
 
   if (invoice.status === 'failed') {
@@ -61,26 +59,26 @@ export function resolveInvoiceHeadline(
     // contacting the provider, because the connection is missing a setting,
     // nobody rejected anything - the document simply was not issued (#3772).
     if (invoice.failureCode === 'connection-setup-incomplete') {
-      return { state: t('salesDocument.headline.notIssued', 'Not issued'), tone: 'error', identity };
+      return { state: copy.notIssued, tone: 'error', identity };
     }
     return invoice.failureMode === 'rejected'
-      ? { state: t('salesDocument.headline.rejected', 'Rejected'), tone: 'error', identity }
-      : { state: t('salesDocument.headline.unconfirmed', 'Unconfirmed'), tone: 'warning', identity };
+      ? { state: copy.rejected, tone: 'error', identity }
+      : { state: copy.unconfirmed, tone: 'warning', identity };
   }
 
   // status === 'issued' — the clearance axis decides the word from here.
   switch (invoice.regulatoryStatus) {
     case 'rejected':
-      return { state: t('salesDocument.headline.rejectedByAuthority', 'Rejected by authority'), tone: 'error', identity };
+      return { state: copy.rejectedByAuthority, tone: 'error', identity };
     case 'pending-submission':
     case 'submitted':
-      return { state: t('salesDocument.headline.awaitingClearance', 'Awaiting clearance'), tone: 'progress', identity };
+      return { state: copy.awaitingClearance, tone: 'progress', identity };
     case 'cleared':
     case 'accepted':
-      return { state: t('salesDocument.headline.cleared', 'Cleared'), tone: 'done', identity };
+      return { state: copy.cleared, tone: 'done', identity };
     case 'not-applicable':
     default:
-      return { state: t('salesDocument.headline.issued', 'Issued'), tone: 'done', identity };
+      return { state: copy.issued, tone: 'done', identity };
   }
 }
 
@@ -89,33 +87,33 @@ export function resolveFiscalHeadline(
   progress: FiscalRegistrationProgress | undefined,
   connectionName: string,
   contended: boolean,
-  t: HeadlineTranslate,
+  copy: HeadlineCopy,
 ): SalesDocumentHeadlineModel {
   const identity = identityOf(record?.documentReference, connectionName);
 
   if (contended) {
-    return { state: t('salesDocument.headline.inProgressElsewhere', 'In progress elsewhere'), tone: 'progress', identity: null };
+    return { state: copy.inProgressElsewhere, tone: 'progress', identity: null };
   }
   if (progress === 'queued' || progress === 'running') {
-    return { state: t('salesDocument.headline.registering', 'Registering'), tone: 'progress', identity: null };
+    return { state: copy.registering, tone: 'progress', identity: null };
   }
   if (progress === 'stalled') {
-    return { state: t('salesDocument.headline.stalled', 'Stalled'), tone: 'warning', identity: null };
+    return { state: copy.stalled, tone: 'warning', identity: null };
   }
   if (progress === 'interrupted') {
-    return { state: t('salesDocument.headline.unconfirmed', 'Unconfirmed'), tone: 'warning', identity: null };
+    return { state: copy.unconfirmed, tone: 'warning', identity: null };
   }
 
   if (!record) {
-    return { state: t('salesDocument.headline.notRegistered', 'Not registered'), tone: 'idle', identity: null };
+    return { state: copy.notRegistered, tone: 'idle', identity: null };
   }
   if (record.status === 'registered') {
-    return { state: t('salesDocument.headline.registered', 'Registered'), tone: 'done', identity };
+    return { state: copy.registered, tone: 'done', identity };
   }
   if (record.status === 'failed') {
     return record.failureMode === 'rejected'
-      ? { state: t('salesDocument.headline.rejected', 'Rejected'), tone: 'error', identity }
-      : { state: t('salesDocument.headline.unconfirmed', 'Unconfirmed'), tone: 'warning', identity };
+      ? { state: copy.rejected, tone: 'error', identity }
+      : { state: copy.unconfirmed, tone: 'warning', identity };
   }
-  return { state: t('salesDocument.headline.registering', 'Registering'), tone: 'progress', identity };
+  return { state: copy.registering, tone: 'progress', identity };
 }

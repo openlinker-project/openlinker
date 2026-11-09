@@ -20,12 +20,24 @@
  * submission. The visibility check uses the `values` argument as snapshotted
  * at validation time; consumers pass the entire form state in.
  *
+ * Messages come from the `listings.parametersZodSchema` copy, read when the
+ * schema is built (by default, in the active language), so build it inside
+ * the component rather than at module level.
+ *
  * @module apps/web/src/features/listings/components
  */
 import { z, type ZodTypeAny } from 'zod';
 
+import {
+  formatPlural,
+  getLocale,
+  getMessages,
+  interpolate,
+} from '../../../shared/i18n';
+
 import type { CategoryParameter } from '../api/listings.types';
 import type { CategoryParameterFormValues } from './category-parameter-form.types';
+import type { ParametersZodSchemaCopy } from './listing-form.types';
 import {
   isFormValueEmpty,
   isParameterVisible,
@@ -35,10 +47,13 @@ import {
 const INTEGER_REGEX = /^-?\d+$/;
 const FLOAT_REGEX = /^-?\d+(\.\d+)?$/;
 
-export function buildParametersZodSchema(parameters: CategoryParameter[]): ZodTypeAny {
+export function buildParametersZodSchema(
+  parameters: CategoryParameter[],
+  copy: ParametersZodSchemaCopy = getMessages('listings').parametersZodSchema,
+): ZodTypeAny {
   const shape: Record<string, ZodTypeAny> = {};
   for (const p of parameters) {
-    shape[p.id] = fieldSchema(p);
+    shape[p.id] = fieldSchema(p, copy);
   }
   const base = z.object(shape).passthrough();
 
@@ -53,7 +68,7 @@ export function buildParametersZodSchema(parameters: CategoryParameter[]): ZodTy
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: [p.id],
-          message: `${p.name} is required`,
+          message: interpolate(copy.required, { name: p.name }),
         });
         continue;
       }
@@ -72,7 +87,7 @@ export function buildParametersZodSchema(parameters: CategoryParameter[]): ZodTy
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               path: [p.id],
-              message: `${p.name}: selected option is no longer available for the current parent value`,
+              message: interpolate(copy.optionUnavailable, { name: p.name }),
             });
             break;
           }
@@ -82,7 +97,7 @@ export function buildParametersZodSchema(parameters: CategoryParameter[]): ZodTy
   });
 }
 
-function fieldSchema(p: CategoryParameter): ZodTypeAny {
+function fieldSchema(p: CategoryParameter, copy: ParametersZodSchemaCopy): ZodTypeAny {
   switch (p.type) {
     case 'dictionary':
       return p.restrictions.multipleChoices
@@ -90,27 +105,27 @@ function fieldSchema(p: CategoryParameter): ZodTypeAny {
         : z.string().optional();
 
     case 'string':
-      return stringFieldSchema(p);
+      return stringFieldSchema(p, copy);
 
     case 'integer':
       return p.restrictions.range
-        ? rangeSchema()
+        ? rangeSchema(copy)
         : z.string().optional().refine(
             (s) => s === undefined || s === '' || INTEGER_REGEX.test(s),
-            'Must be a whole number',
+            copy.wholeNumber,
           );
 
     case 'float':
       return p.restrictions.range
-        ? rangeSchema()
+        ? rangeSchema(copy)
         : z.string().optional().refine(
             (s) => s === undefined || s === '' || FLOAT_REGEX.test(s),
-            'Must be a number',
+            copy.number,
           );
   }
 }
 
-function stringFieldSchema(p: CategoryParameter): ZodTypeAny {
+function stringFieldSchema(p: CategoryParameter, copy: ParametersZodSchemaCopy): ZodTypeAny {
   return z
     .string()
     .optional()
@@ -125,20 +140,22 @@ function stringFieldSchema(p: CategoryParameter): ZodTypeAny {
         }
         return true;
       },
-      lengthMessage(p),
+      lengthMessage(p, copy),
     );
 }
 
-function lengthMessage(p: CategoryParameter): string {
+function lengthMessage(p: CategoryParameter, copy: ParametersZodSchemaCopy): string {
   const min = p.restrictions.minLength;
   const max = p.restrictions.maxLength;
-  if (min !== undefined && max !== undefined) return `Must be between ${min} and ${max} characters`;
-  if (min !== undefined) return `Must be at least ${min} characters`;
-  if (max !== undefined) return `Must be at most ${max} characters`;
-  return 'Invalid length';
+  if (min !== undefined && max !== undefined) {
+    return interpolate(copy.lengthBetween, { min, max });
+  }
+  if (min !== undefined) return formatPlural(min, copy.lengthAtLeast, getLocale());
+  if (max !== undefined) return formatPlural(max, copy.lengthAtMost, getLocale());
+  return copy.invalidLength;
 }
 
-function rangeSchema(): ZodTypeAny {
+function rangeSchema(copy: ParametersZodSchemaCopy): ZodTypeAny {
   return z
     .object({ from: z.string().optional(), to: z.string().optional() })
     .optional()
@@ -153,6 +170,6 @@ function rangeSchema(): ZodTypeAny {
         if (!Number.isFinite(fromNum) || !Number.isFinite(toNum)) return false;
         return fromNum <= toNum;
       },
-      'Range must be valid (from ≤ to)',
+      copy.invalidRange,
     );
 }

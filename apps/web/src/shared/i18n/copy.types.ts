@@ -3,8 +3,9 @@
  *
  * Shapes of the translation namespaces (ADR-081). English is the source
  * shape; Polish mirrors it key for key, with plural entries carrying
- * the Polish one/few/many/other forms. `PolishCopy` is deep-partial until the
- * lock-in step (#3891) so features can be extracted in English first.
+ * the Polish one/few/many/other forms. `PolishCopy` is deep-partial on
+ * purpose: a missing Polish key shows the English text at runtime, so it is a
+ * gap to translate (reported by `check-locales`), never a type error (#3891).
  *
  * Convention: an object whose keys are exactly `one` and `other` is a plural
  * entry, never a nested section. Do not name sections `one` / `other`.
@@ -58,9 +59,12 @@ type PolishOf<T> = T extends string
 type DeepPartial<T> = T extends string ? T : { readonly [K in keyof T]?: DeepPartial<T[K]> };
 
 /**
- * The Polish half of a copy file. Partial until #3891 flips it to
- * `PolishOf<T>`; excess keys are still rejected, so Polish can never carry a
- * key English lacks.
+ * The Polish half of a copy file. Deep-partial by design (#3891): a missing
+ * key falls back to English and `check-locales` warns about it. The shape is
+ * still checked - excess keys are rejected, so Polish can never carry a key
+ * English lacks, and a string cannot stand where English has a section or the
+ * reverse. Being partial, a plural missing `few` / `many` is not a type error
+ * either.
  */
 export type PolishCopy<T extends CopyTree> = DeepPartial<PolishOf<T>>;
 

@@ -33,8 +33,18 @@
  * Anything else that drifts is a bug, not a variant. Add to this list only with
  * the reason, never to record a difference that just happened.
  *
+ * The messages read the `listings.parameterRestrictions` copy when the check
+ * runs, so they follow the active language.
+ *
  * @module apps/web/src/features/listings/lib
  */
+import {
+  formatPlural,
+  getBcp47Locale,
+  getLocale,
+  getMessages,
+  interpolate,
+} from '../../../shared/i18n';
 
 /**
  * Structural input shapes, declared here rather than imported, so BOTH the
@@ -109,11 +119,17 @@ export function checkParameterRestrictions(
   const suppliedCount = texts.length + dictionaryIds.length;
   if (suppliedCount === 0) return issues;
 
+  const copy = getMessages('listings').parameterRestrictions;
+  const locale = getLocale();
+  const numbers = new Intl.NumberFormat(getBcp47Locale(locale), { maximumFractionDigits: 20 });
+  const num = (n: number): string => numbers.format(n);
+  const name = parameter.name;
+
   const allowed = parameter.restrictions.allowedNumberOfValues;
   if (allowed !== undefined && allowed > 0 && suppliedCount > allowed) {
     push(
       'TOO_MANY_VALUES',
-      `${parameter.name} accepts at most ${allowed} ${allowed === 1 ? 'value' : 'values'}, ${suppliedCount} supplied.`,
+      formatPlural(allowed, copy.tooManyValues, locale, { name, supplied: num(suppliedCount) }),
     );
   }
 
@@ -124,18 +140,12 @@ export function checkParameterRestrictions(
       const allowedValues = new Set(entries.map((e) => e.value));
       for (const id of dictionaryIds) {
         if (!allowedIds.has(id)) {
-          push(
-            'VALUE_NOT_IN_DICTIONARY',
-            `"${id}" is not one of the values ${parameter.name} allows in this category.`,
-          );
+          push('VALUE_NOT_IN_DICTIONARY', interpolate(copy.notInDictionary, { value: id, name }));
         }
       }
       for (const text of texts) {
         if (!allowedValues.has(text) && !allowedIds.has(text)) {
-          push(
-            'VALUE_NOT_IN_DICTIONARY',
-            `"${text}" is not one of the values ${parameter.name} allows in this category.`,
-          );
+          push('VALUE_NOT_IN_DICTIONARY', interpolate(copy.notInDictionary, { value: text, name }));
         }
       }
     }
@@ -149,13 +159,17 @@ export function checkParameterRestrictions(
       if (minLength !== undefined && text.length < minLength) {
         push(
           'VALUE_TOO_SHORT',
-          `${parameter.name} needs at least ${minLength} characters, "${text}" has ${text.length}.`,
+          formatPlural(minLength, copy.tooShort, locale, {
+            name,
+            value: text,
+            length: num(text.length),
+          }),
         );
       }
       if (maxLength !== undefined && text.length > maxLength) {
         push(
           'VALUE_TOO_LONG',
-          `${parameter.name} allows at most ${maxLength} characters, this value has ${text.length}.`,
+          formatPlural(maxLength, copy.tooLong, locale, { name, length: num(text.length) }),
         );
       }
       continue;
@@ -163,19 +177,19 @@ export function checkParameterRestrictions(
 
     const trimmed = text.trim();
     if (!NUMERIC_PATTERN.test(trimmed)) {
-      push('NOT_NUMERIC', `${parameter.name} must be a number, "${text}" is not.`);
+      push('NOT_NUMERIC', interpolate(copy.notNumeric, { name, value: text }));
       continue;
     }
     const numeric = Number(trimmed);
     if (parameter.type === 'integer' && !Number.isInteger(numeric)) {
-      push('NOT_NUMERIC', `${parameter.name} must be a whole number, "${text}" is not.`);
+      push('NOT_NUMERIC', interpolate(copy.notWholeNumber, { name, value: text }));
       continue;
     }
     if (min !== undefined && numeric < min) {
-      push('VALUE_BELOW_MIN', `${parameter.name} must be at least ${min}, this value is ${numeric}.`);
+      push('VALUE_BELOW_MIN', interpolate(copy.belowMin, { name, min: num(min), value: num(numeric) }));
     }
     if (max !== undefined && numeric > max) {
-      push('VALUE_ABOVE_MAX', `${parameter.name} must be at most ${max}, this value is ${numeric}.`);
+      push('VALUE_ABOVE_MAX', interpolate(copy.aboveMax, { name, max: num(max), value: num(numeric) }));
     }
     if (parameter.type === 'float' && precision !== undefined) {
       const dot = trimmed.indexOf('.');
@@ -183,7 +197,7 @@ export function checkParameterRestrictions(
       if (decimals > precision) {
         push(
           'PRECISION_EXCEEDED',
-          `${parameter.name} allows ${precision} decimal ${precision === 1 ? 'place' : 'places'}, this value has ${decimals}.`,
+          formatPlural(precision, copy.precisionExceeded, locale, { name, decimals: num(decimals) }),
         );
       }
     }

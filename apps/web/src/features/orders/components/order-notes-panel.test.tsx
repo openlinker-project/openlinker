@@ -130,9 +130,9 @@ describe('OrderNotesPanel — layout (#3533, mockup M3)', () => {
     const user = userEvent.setup();
 
     await screen.findByText('No notes yet');
-    expect(screen.getByText('0 / 2000')).toBeInTheDocument();
+    expect(screen.getByText('0 / 2,000')).toBeInTheDocument();
     await user.type(screen.getByLabelText('New note'), 'Hello');
-    expect(screen.getByText('5 / 2000')).toBeInTheDocument();
+    expect(screen.getByText('5 / 2,000')).toBeInTheDocument();
   });
 
   it('should warn about personal data when "Show to packer" is ticked', async () => {

@@ -8,7 +8,8 @@
  * Sidebar nav items carry count badges fed by `useNavCounts` (fanning out
  * existing list queries). The topbar hosts breadcrumbs, a live ⌘K command
  * palette trigger (CommandPaletteTrigger → CommandPaletteProvider, #333),
- * an alerts trigger, and a user chip dropdown with the theme toggle.
+ * an alerts trigger, and a user chip dropdown with the theme, density and
+ * language controls.
  *
  * @module shared/ui
  */
@@ -24,13 +25,14 @@ import {
 import { NavLink, useLocation, useMatches } from 'react-router-dom';
 import { useSession } from '../shared/auth/use-session';
 import { markEntrancePlayed, shouldPlayEntrance } from '../shared/lib/entrance';
-import { useNumberFormat } from '../shared/i18n';
+import { interpolate, useMessages, useNumberFormat, usePlural } from '../shared/i18n';
 import { resolveCrumbFromMatches } from './breadcrumbs';
 import { buildNavGroups, navRoleOf, sessionNeedsOmsRouting } from './nav-registry';
 import { useOmsRoutingState } from '../features/fulfillment-authority';
 import type { NavGroup } from './nav-registry.types';
 import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
 import { Button } from '../shared/ui/button';
+import { LanguageMenuList, restoreFocusAfterLanguageChange } from '../features/language';
 import { EnvironmentBadge } from '../shared/ui/environment-badge';
 import {
   DropdownMenu,
@@ -41,8 +43,6 @@ import {
   DropdownMenuTrigger,
 } from '../shared/ui/dropdown-menu';
 import { ThemePicker } from '../features/appearance';
-import { LanguageSwitch } from '../features/language';
-import { useMessages } from '../shared/i18n/use-messages';
 import { DensityToggle, useDensity } from '../shared/ui/density-toggle';
 import { useToast } from '../shared/ui/toast-provider';
 import { CommandPaletteProvider, useCommandPalette } from './command-palette-provider';
@@ -149,6 +149,7 @@ export function SidebarNav({
 }
 
 export function SidebarBrand(): ReactElement {
+  const copy = useMessages('app');
   return (
     <div className="shell-brand">
       <img
@@ -159,7 +160,7 @@ export function SidebarBrand(): ReactElement {
         width={26}
         height={26}
       />
-      <span className="shell-brand__name">OpenLinker</span>
+      <span className="shell-brand__name">{copy.brand.name}</span>
       <EnvironmentBadge />
     </div>
   );
@@ -178,11 +179,11 @@ function WorkspaceFooter({
   location,
   demoMode,
 }: WorkspaceFooterProps): ReactElement {
+  const copy = useMessages('app');
   return (
     <div className="shell-workspace">
       <div className="shell-workspace__header">
-        <strong className="shell-workspace__name">Default organization</strong>
-        <LanguageSwitch placement="up" />
+        <strong className="shell-workspace__name">{copy.shell.organization}</strong>
       </div>
       {demoMode ? (
         <a
@@ -192,7 +193,7 @@ function WorkspaceFooter({
           rel="noopener noreferrer"
           onClick={() => captureDemoEvent('demo_opensource_link_clicked', { location })}
         >
-          View on GitHub ↗
+          {copy.shell.viewOnGithub} <span aria-hidden="true">↗</span>
         </a>
       ) : null}
       {username ? (
@@ -200,7 +201,7 @@ function WorkspaceFooter({
           <span className="shell-workspace__username">{username}</span>
           {onLogout ? (
             <Button tone="ghost" onClick={onLogout} className="shell-workspace__logout">
-              Sign out
+              {copy.userMenu.signOut}
             </Button>
           ) : null}
         </div>
@@ -228,14 +229,21 @@ interface UserChipProps {
 }
 
 function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
+  const copy = useMessages('app').userMenu;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  // A language picked in this menu remounts the app; focus comes back here.
+  useEffect(() => {
+    restoreFocusAfterLanguageChange(triggerRef.current);
+  }, []);
   const themeCopy = useMessages('ui').theme;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
+          ref={triggerRef}
           type="button"
           className="shell-user-chip"
-          aria-label={`Account menu for ${username}`}
+          aria-label={interpolate(copy.accountMenu, { username })}
         >
           <span className="shell-user-chip__avatar" aria-hidden="true">
             {initialsFrom(username)}
@@ -250,15 +258,19 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <div className="shell-user-chip__menu-section">
+          <div className="shell-user-chip__menu-section-label">{copy.language}</div>
+          <LanguageMenuList />
+        </div>
+        <div className="shell-user-chip__menu-section">
           <div className="shell-user-chip__menu-section-label">{themeCopy.label}</div>
           <ThemePicker />
         </div>
         <div className="shell-user-chip__menu-section">
-          <div className="shell-user-chip__menu-section-label">Density</div>
+          <div className="shell-user-chip__menu-section-label">{copy.density}</div>
           <DensityToggle />
         </div>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={onLogout}>Sign out</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onLogout}>{copy.signOut}</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -300,7 +312,9 @@ export function ShellTopbar({
   const { session } = useSession();
   const username = session.user?.username;
   const email = session.user?.email ?? null;
-  const crumbs = resolveCrumbFromMatches(useMatches());
+  const copy = useMessages('app');
+  const plural = usePlural();
+  const crumbs = resolveCrumbFromMatches(useMatches(), copy);
 
   return (
     <header className="shell-topbar">
@@ -308,7 +322,7 @@ export function ShellTopbar({
         <button
           type="button"
           onClick={onOpenMenu}
-          aria-label="Open menu"
+          aria-label={copy.shell.openMenu}
           className="shell-topbar__hamburger"
         >
           <span aria-hidden="true">☰</span>
@@ -317,7 +331,7 @@ export function ShellTopbar({
 
       {showBrand ? <SidebarBrand /> : null}
 
-      <nav aria-label="Breadcrumb" className="shell-crumbs">
+      <nav aria-label={copy.shell.breadcrumb} className="shell-crumbs">
         <span className="shell-crumbs__group">{crumbs.group}</span>
         {crumbs.title ? (
           <>
@@ -334,8 +348,8 @@ export function ShellTopbar({
       <div className="shell-topbar__spacer" />
 
       <Button tone="ghost" className="shell-topbar__alerts">
-        Alerts <span aria-hidden="true">0</span>
-        <span className="sr-only">(0 new)</span>
+        {copy.shell.alerts} <span aria-hidden="true">0</span>
+        <span className="sr-only">{plural(0, copy.shell.alertsNew)}</span>
       </Button>
 
       {username ? <UserChip username={username} email={email} onLogout={onLogout} /> : null}
@@ -345,6 +359,7 @@ export function ShellTopbar({
 
 export function AppShell({ children }: PropsWithChildren): ReactElement {
   const { isReady, session, clearSession } = useSession();
+  const copy = useMessages('app');
   const { showToast } = useToast();
   const systemConfigQuery = useSystemConfigQuery();
   const demoMode = systemConfigQuery.data?.demoMode ?? false;
@@ -404,8 +419,8 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   // issued for a session that could see one of them.
   const omsRouting = useOmsRoutingState({ enabled: sessionNeedsOmsRouting(permissions, role) });
   const groups = useMemo(
-    () => buildNavGroups({ isAdmin, demoMode, permissions, role, omsRouting }),
-    [isAdmin, demoMode, permissions, role, omsRouting]
+    () => buildNavGroups({ isAdmin, demoMode, permissions, role, omsRouting, copy }),
+    [isAdmin, demoMode, permissions, role, omsRouting, copy],
   );
 
   const closeDrawer = useCallback((): void => {
@@ -423,9 +438,9 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   const handleLogout = useCallback((): void => {
     void (async (): Promise<void> => {
       await clearSession();
-      showToast({ tone: 'info', description: 'You have been logged out.' });
+      showToast({ tone: 'info', description: copy.shell.loggedOut });
     })();
-  }, [clearSession, showToast]);
+  }, [clearSession, showToast, copy]);
 
   // Demo-only analytics (#1301) — attempt init once the config query has
   // settled and the account's consent is known. Consent comes from the session
@@ -460,7 +475,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
       >
         <div className="shell-sidebar">
           <SidebarBrand />
-          <SidebarNav ariaLabel="Primary" counts={counts} groups={groups} />
+          <SidebarNav ariaLabel={copy.shell.navPrimary} counts={counts} groups={groups} />
           <WorkspaceFooter
             username={username}
             onLogout={username ? handleLogout : undefined}
@@ -469,21 +484,21 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
           />
         </div>
 
-        <dialog ref={drawerRef} className="shell-drawer" aria-label="Primary navigation (mobile)">
+        <dialog ref={drawerRef} className="shell-drawer" aria-label={copy.shell.mobileNavigation}>
           <div className="shell-drawer__inner">
             <div className="shell-drawer__header">
               <SidebarBrand />
               <Button
                 tone="ghost"
                 onClick={closeDrawer}
-                aria-label="Close menu"
+                aria-label={copy.shell.closeMenu}
                 className="shell-drawer__close"
               >
                 ✕
               </Button>
             </div>
             <SidebarNav
-              ariaLabel="Primary (mobile)"
+              ariaLabel={copy.shell.navPrimaryMobile}
               counts={counts}
               groups={groups}
               onNavigate={closeDrawer}

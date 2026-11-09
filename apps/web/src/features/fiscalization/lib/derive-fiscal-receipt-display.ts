@@ -8,6 +8,7 @@
  *
  * @module apps/web/src/features/fiscalization/lib
  */
+import { getMessages } from '../../../shared/i18n';
 import type {
   FiscalRegistrationProgress,
   FiscalRegistrationRecord,
@@ -80,18 +81,10 @@ export function canRetryFiscalReceipt(record: FiscalRegistrationRecord): boolean
 
 export function resolveFiscalFailureCopy(
   record: FiscalRegistrationRecord,
-  t: (key: string, fallback: string) => string,
 ): string {
   if (record.failureReason && record.failureReason.trim().length > 0) {
     return record.failureReason;
   }
-  return record.failureMode === 'rejected'
-    ? t(
-        'fiscalReceipt.failed.genericRejected',
-        'The provider rejected this sale. Nothing was registered, so it is safe to try again once the cause is fixed.',
-      )
-    : t(
-        'fiscalReceipt.failed.genericInDoubt',
-        'The connection dropped before we learned the outcome. This sale may already be registered.',
-      );
+  const copy = getMessages('fiscalization').fiscalReceipt.failed;
+  return record.failureMode === 'rejected' ? copy.genericRejected : copy.genericInDoubt;
 }

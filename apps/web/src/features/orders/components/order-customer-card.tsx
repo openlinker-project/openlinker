@@ -15,6 +15,7 @@
  */
 import { Link } from 'react-router-dom';
 import type { ReactElement } from 'react';
+import { useFormat, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { useCustomerQuery } from '../../customers';
@@ -37,18 +38,19 @@ export function OrderCustomerCard({
   customerId,
   sourceConnectionId,
 }: OrderCustomerCardProps): ReactElement {
+  const copy = useMessages('orders').orderCustomerCard;
   if (customerId === null) {
     return (
-      <section className="order-customer-card order-customer-card--empty" aria-label="Customer">
+      <section className="order-customer-card order-customer-card--empty" aria-label={copy.ariaLabel}>
         <p className="order-customer-card__empty-body text-muted">
-          No customer linked — order may be a guest checkout or customer resolution failed.
+          {copy.noCustomer}
         </p>
         {sourceConnectionId ? (
           <Link
             to={`/orders/failed?connectionId=${encodeURIComponent(sourceConnectionId)}`}
             className="order-customer-card__empty-link"
           >
-            View failed orders →
+            {copy.viewFailedOrders} <span aria-hidden="true">→</span>
           </Link>
         ) : null}
       </section>
@@ -58,6 +60,8 @@ export function OrderCustomerCard({
 }
 
 function OrderCustomerCardLinked({ customerId }: { customerId: string }): ReactElement {
+  const copy = useMessages('orders').orderCustomerCard;
+  const format = useFormat();
   const customerQuery = useCustomerQuery(customerId);
   // Staletime pinned so sibling-order nav within the same customer doesn't
   // refetch this count on every mount — see #382 tech review.
@@ -69,9 +73,9 @@ function OrderCustomerCardLinked({ customerId }: { customerId: string }): ReactE
 
   if (customerQuery.isLoading) {
     return (
-      <section className="order-customer-card" aria-label="Customer" aria-busy="true">
+      <section className="order-customer-card" aria-label={copy.ariaLabel} aria-busy="true">
         <header className="order-customer-card__header">
-          <span className="order-customer-card__label">Customer</span>
+          <span className="order-customer-card__label">{copy.label}</span>
         </header>
         <p className="order-customer-card__name order-customer-card__name--loading">…</p>
         <p className="order-customer-card__email order-customer-card__email--loading">…</p>
@@ -81,12 +85,12 @@ function OrderCustomerCardLinked({ customerId }: { customerId: string }): ReactE
 
   if (customerQuery.error) {
     return (
-      <section className="order-customer-card" aria-label="Customer">
+      <section className="order-customer-card" aria-label={copy.ariaLabel}>
         <header className="order-customer-card__header">
-          <span className="order-customer-card__label">Customer</span>
+          <span className="order-customer-card__label">{copy.label}</span>
         </header>
         <p className="order-customer-card__error text-muted">
-          Couldn&rsquo;t load customer details.
+          {copy.loadError}
         </p>
         <Button
           tone="secondary"
@@ -94,7 +98,7 @@ function OrderCustomerCardLinked({ customerId }: { customerId: string }): ReactE
             void customerQuery.refetch();
           }}
         >
-          Retry
+          {copy.retry}
         </Button>
       </section>
     );
@@ -106,11 +110,11 @@ function OrderCustomerCardLinked({ customerId }: { customerId: string }): ReactE
   // default `null` resolution.
   if (!customer) {
     return (
-      <section className="order-customer-card" aria-label="Customer">
+      <section className="order-customer-card" aria-label={copy.ariaLabel}>
         <header className="order-customer-card__header">
-          <span className="order-customer-card__label">Customer</span>
+          <span className="order-customer-card__label">{copy.label}</span>
         </header>
-        <p className="order-customer-card__error text-muted">Customer record not found.</p>
+        <p className="order-customer-card__error text-muted">{copy.notFound}</p>
       </section>
     );
   }
@@ -126,20 +130,20 @@ function OrderCustomerCardLinked({ customerId }: { customerId: string }): ReactE
       : 0;
 
   return (
-    <section className="order-customer-card" aria-label="Customer">
+    <section className="order-customer-card" aria-label={copy.ariaLabel}>
       <header className="order-customer-card__header">
-        <span className="order-customer-card__label">Customer</span>
+        <span className="order-customer-card__label">{copy.label}</span>
         <Link
           to={`/customers/${customerId}`}
           className="order-customer-card__view"
-          aria-label="View customer"
+          aria-label={copy.viewCustomer}
         >
-          View customer →
+          {copy.viewCustomer} <span aria-hidden="true">→</span>
         </Link>
       </header>
 
       <p className="order-customer-card__name">
-        {displayName ?? <span className="text-muted">Unknown name</span>}
+        {displayName ?? <span className="text-muted">{copy.unknownName}</span>}
       </p>
 
       <p className="order-customer-card__email">
@@ -154,17 +158,17 @@ function OrderCustomerCardLinked({ customerId }: { customerId: string }): ReactE
 
       <dl className="order-customer-card__meta">
         <div className="order-customer-card__meta-row">
-          <dt>Last seen</dt>
+          <dt>{copy.lastSeen}</dt>
           <dd>
             <TimeDisplay iso={customer.lastSeenAt} />
           </dd>
         </div>
         {previousOrdersCount > 0 ? (
           <div className="order-customer-card__meta-row">
-            <dt>Previous orders</dt>
+            <dt>{copy.previousOrders}</dt>
             <dd>
               <Link to={`/customers/${customerId}`} className="order-customer-card__meta-link">
-                {previousOrdersCount}
+                {format.number(previousOrdersCount)}
               </Link>
             </dd>
           </div>

@@ -179,6 +179,13 @@ const MISMATCHED_PLATFORM_CONNECTION = {
   updatedAt: '2026-01-01T00:00:00Z',
 };
 
+/** The list's pagination bar, which carries the total the two-stage tests assert. */
+function paginationNav(): HTMLElement {
+  const nav = document.querySelector<HTMLElement>('nav.pagination');
+  if (!nav) throw new Error('pagination bar not rendered');
+  return nav;
+}
+
 describe('ListingsListPage', () => {
   afterEach(cleanup);
   afterEach(() => navigateMock.mockClear());
@@ -583,7 +590,7 @@ describe('ListingsListPage', () => {
     renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('Unable to load listings')).toBeInTheDocument();
-    expect(screen.getByText('Network error')).toBeInTheDocument();
+    expect(screen.getByText('The server said: Network error')).toBeInTheDocument();
   });
 
   it("should show the Active tab's own empty state when a connection exists but nothing is synced", async () => {
@@ -1376,7 +1383,9 @@ describe('ListingsListPage', () => {
         }),
       });
 
-      expect(await screen.findByText('1,234')).toBeInTheDocument();
+      // The lifecycle tab count shows the same number (format.number), so the
+      // assertion is scoped to the pagination total it is about.
+      await waitFor(() => expect(within(paginationNav()).getByText('1,234')).toBeInTheDocument());
       await user.click(screen.getByRole('tab', { name: /draft/i }));
       await waitFor(() => expect(listRows).toHaveBeenCalledTimes(2));
 
@@ -1417,14 +1426,14 @@ describe('ListingsListPage', () => {
         }),
       });
 
-      expect(await screen.findByText('1,234')).toBeInTheDocument();
+      await waitFor(() => expect(within(paginationNav()).getByText('1,234')).toBeInTheDocument());
       await user.click(screen.getByRole('button', { name: /next/i }));
       await waitFor(() => expect(listRows).toHaveBeenCalledTimes(2));
 
       // The rows are now a placeholder and the second page is still in flight.
       // The total is unaffected - the count key carries no offset - so it must
       // still read 1,234, not `20+` and not an em-dash.
-      expect(screen.getByText('1,234')).toBeInTheDocument();
+      expect(within(paginationNav()).getByText('1,234')).toBeInTheDocument();
       expect(screen.queryByText('20+')).not.toBeInTheDocument();
     });
   });

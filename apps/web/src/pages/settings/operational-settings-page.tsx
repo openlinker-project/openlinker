@@ -6,7 +6,7 @@
  * products that were deleted there.
  *
  * A plain form would not do. These values are not intuitive and getting one
- * wrong is not obviously wrong — raising the catalogue value from 500 to 2000
+ * wrong is not obviously wrong - raising the catalogue value from 500 to 2000
  * sounds like "sync faster", and on a host that kills processes at 300 s it
  * means every run is killed part-way. So the page says what a change DOES,
  * beside the control that makes it.
@@ -25,6 +25,7 @@
  * @module apps/web/src/pages/settings
  */
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { interpolate, useFormat, useMessages, usePlural } from '../../shared/i18n';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
@@ -80,19 +81,28 @@ const HOST_LIMIT_MIN_SECONDS = 10;
 const HOST_LIMIT_MAX_SECONDS = 3600;
 
 /** The in-page jump targets, in the order the sections appear. */
-const SECTION_LINKS: readonly { id: string; label: string }[] = [
-  { id: 'pacing-hosting', label: 'Hosting' },
-  { id: 'pacing-catalogue', label: 'Catalogue' },
-  { id: 'pacing-stock', label: 'Stock' },
-  { id: 'pacing-deletions', label: 'Deleted products' },
-  { id: 'pacing-retention', label: 'Job retention' },
-  { id: 'pacing-inventory-history', label: 'Stock history' },
-  { id: 'pacing-stock-staleness', label: 'Stale stock' },
+type SectionLinkKey =
+  | 'hosting'
+  | 'catalogue'
+  | 'stock'
+  | 'deletions'
+  | 'retention'
+  | 'inventoryHistory'
+  | 'stockStaleness';
+
+const SECTION_LINKS: readonly { id: string; key: SectionLinkKey }[] = [
+  { id: 'pacing-hosting', key: 'hosting' },
+  { id: 'pacing-catalogue', key: 'catalogue' },
+  { id: 'pacing-stock', key: 'stock' },
+  { id: 'pacing-deletions', key: 'deletions' },
+  { id: 'pacing-retention', key: 'retention' },
+  { id: 'pacing-inventory-history', key: 'inventoryHistory' },
+  { id: 'pacing-stock-staleness', key: 'stockStaleness' },
 ];
 
 /**
  * The sweep-pacing form's own numeric fields, in the order the page lays
- * them out — a NARROWER type than `OperationalSettingKey` on purpose
+ * them out - a NARROWER type than `OperationalSettingKey` on purpose
  * (#2946 widened that union with `syncJobRetentionDays` /
  * `syncJobDeadRetentionDays`, which have no place in `SyncPacingValues`'s
  * catalogue-size projection and are rendered by their own self-contained
@@ -134,6 +144,9 @@ function readStoredHostLimit(): number {
 export function OperationalSettingsPage(): ReactElement {
   const { isReady, session } = useSession();
   const isAdmin = isReady && session.status === 'authenticated' && session.user?.role === 'admin';
+  const copy = useMessages('settings').operationalSettingsPage;
+  const plural = usePlural();
+  const format = useFormat();
 
   const query = useOperationalSettingsQuery();
   const catalogueSizeQuery = useCatalogueSizeQuery();
@@ -262,10 +275,10 @@ export function OperationalSettingsPage(): ReactElement {
 
   if (isReady && !isAdmin) {
     return (
-      <PageLayout eyebrow="Settings" title="Sync pacing" description="Admin-only access.">
+      <PageLayout eyebrow={copy.eyebrow} title={copy.title} description={copy.adminOnly.description}>
         <ErrorState
-          title="Admin role required"
-          message="This page changes how hard OpenLinker works your shop — it requires an admin session."
+          title={copy.adminOnly.title}
+          message={copy.adminOnly.message}
         />
       </PageLayout>
     );
@@ -313,11 +326,11 @@ export function OperationalSettingsPage(): ReactElement {
       setConfirmOpen(false);
       showToast({
         tone: 'success',
-        title: 'Sync pacing saved',
+        title: copy.savedToast.title,
         description:
           payload.deletionAuditCadence === undefined
-            ? 'The next run uses the new values.'
-            : 'The next run uses the new values. How often deleted products are checked changes when the background worker next restarts.',
+            ? copy.savedToast.description
+            : copy.savedToast.descriptionWithCadence,
       });
     } catch {
       // Kept open so the per-field messages below the form are reachable
@@ -339,22 +352,20 @@ export function OperationalSettingsPage(): ReactElement {
   };
   const saveStatus =
     changeCount === 0
-      ? 'No changes yet.'
+      ? copy.saveStatus.noChanges
       : unacknowledgedFields.length > 0
-        ? `${
-            unacknowledgedFields.length === 1 ? 'One value is' : 'Some values are'
-          } past what we suggest. Tick the box next to ${
-            unacknowledgedFields.length === 1 ? 'it' : 'each of them'
-          } to continue.`
-        : 'You will see what each one does before it saves.';
+        ? unacknowledgedFields.length === 1
+          ? copy.saveStatus.oneUnacknowledged
+          : copy.saveStatus.someUnacknowledged
+        : copy.saveStatus.ready;
 
   return (
     <PageLayout
-      eyebrow="Settings"
-      title="Sync pacing"
-      description="How hard OpenLinker works your shop, and how long a full pass takes. Changing these trades shop load against how quickly OpenLinker notices a change."
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
       summary={
-        <nav className="pacing-nav" aria-label="Sections on this page">
+        <nav className="pacing-nav" aria-label={copy.sectionsNavLabel}>
           {SECTION_LINKS.map((link) => (
             <a
               key={link.id}
@@ -366,21 +377,21 @@ export function OperationalSettingsPage(): ReactElement {
                 jumpTo(link.id);
               }}
             >
-              {link.label}
+              {copy.sections[link.key]}
             </a>
           ))}
         </nav>
       }
     >
       {query.isPending ? (
-        <LoadingState title="Loading sync pacing" message="Reading the values in force…" />
+        <LoadingState title={copy.loading.title} message={copy.loading.message} />
       ) : query.error ? (
         <ErrorState
-          title="Unable to load sync pacing"
-          message={query.error instanceof Error ? query.error.message : 'Unknown error'}
+          title={copy.error.title}
+          message={query.error instanceof Error ? query.error.message : copy.error.unknown}
           action={
             <Button tone="secondary" onClick={() => void query.refetch()}>
-              Retry
+              {copy.error.retry}
             </Button>
           }
         />
@@ -388,25 +399,22 @@ export function OperationalSettingsPage(): ReactElement {
         <div className="pacing-layout" data-mobile-bar={String(totalChanges > 0)}>
           <div className="settings-column">
             {errors.formErrors.length > 0 ? (
-              <Alert tone="error" title="The change was not saved">
+              <Alert tone="error" title={copy.notSaved}>
                 {errors.formErrors.join(' ')}
               </Alert>
             ) : null}
 
             {/* Stated once, not per field. OpenLinker runs as two processes with
                 separate environments, and the sweeps run in the background
-                worker — so a value this page read from an environment variable,
+                worker - so a value this page read from an environment variable,
                 or fell back to a default for, describes the API process rather
                 than the one doing the work. Only a saved value is definite for
                 both (#2660 review). Rendered when ANY value is unsaved, which
                 on a fresh install is all of them, and is exactly when the
                 caveat is worth reading. */}
             {workerMayDiffer ? (
-              <Alert tone="info" title="Some of these are not saved here yet">
-                Values you have not saved come from this server&apos;s settings or from
-                OpenLinker&apos;s defaults. The part of OpenLinker that does the syncing runs
-                as a separate process and reads its own settings, so it may be using
-                something else. Saving a value here makes it definite for both.
+              <Alert tone="info" title={copy.workerMayDiffer.title}>
+                {copy.workerMayDiffer.body}
               </Alert>
             ) : null}
 
@@ -418,22 +426,22 @@ export function OperationalSettingsPage(): ReactElement {
             >
               <header className="pacing-card__header">
                 <div>
-                  <p className="eyebrow">Your server</p>
+                  <p className="eyebrow">{copy.hosting.eyebrow}</p>
                   <h3 className="section-title" id="pacing-hosting-title">
-                    Hosting limits
+                    {copy.hosting.title}
                   </h3>
                 </div>
-                <span className="panel__meta">Used by the calculator</span>
+                <span className="panel__meta">{copy.hosting.meta}</span>
               </header>
 
               <div className="pacing-card__fields">
                 <div className="pacing-field">
                   <div className="pacing-field__head">
                     <label className="form-field__label" htmlFor="host-process-limit">
-                      Process time limit
+                      {copy.hosting.processTimeLimit}
                     </label>
                     <span className="form-field__source pacing-field__source">
-                      kept in this browser
+                      {copy.hosting.keptInBrowser}
                     </span>
                   </div>
                   <RangeNumberInput
@@ -442,8 +450,8 @@ export function OperationalSettingsPage(): ReactElement {
                     min={HOST_LIMIT_MIN_SECONDS}
                     max={HOST_LIMIT_MAX_SECONDS}
                     step={10}
-                    unit="s"
-                    ariaLabel="Process time limit in seconds"
+                    unit={copy.hosting.secondsUnit}
+                    ariaLabel={copy.hosting.processTimeLimitAria}
                     describedBy="host-process-limit-description"
                     onChange={handleHostLimit}
                   />
@@ -451,29 +459,26 @@ export function OperationalSettingsPage(): ReactElement {
                     className="form-field__description pacing-field__description"
                     id="host-process-limit-description"
                   >
-                    How long your host lets a single process run before killing it. Shared hosting
-                    is often 300 seconds. Ask your provider, or leave it at 300. OpenLinker cannot
-                    read it from your host.
+                    {copy.hosting.processTimeLimitDescription}
                   </p>
                 </div>
 
                 <div className="pacing-field">
                   <div className="pacing-field__head">
-                    <span className="form-field__label">Products OpenLinker holds</span>
+                    <span className="form-field__label">{copy.hosting.catalogueSize}</span>
                     <span className="form-field__source pacing-field__source">
-                      read from your catalogue
+                      {copy.hosting.fromCatalogue}
                     </span>
                   </div>
                   <p className="pacing-stat">
                     {catalogueSizeQuery.isPending
                       ? '…'
                       : catalogueSize === null
-                        ? 'not known yet'
-                        : catalogueSize.toLocaleString()}
+                        ? copy.hosting.notKnownYet
+                        : format.number(catalogueSize)}
                   </p>
                   <p className="form-field__description pacing-field__description">
-                    Used only to work out how long a full pass takes. This is what OpenLinker has
-                    copied over so far, which during a first sync is fewer than your shop holds.
+                    {copy.hosting.catalogueSizeDescription}
                   </p>
                 </div>
               </div>
@@ -487,9 +492,9 @@ export function OperationalSettingsPage(): ReactElement {
             >
               <header className="pacing-card__header">
                 <div>
-                  <p className="eyebrow">Catalogue</p>
+                  <p className="eyebrow">{copy.catalogue.eyebrow}</p>
                   <h3 className="section-title" id="pacing-catalogue-title">
-                    Product sweep
+                    {copy.catalogue.title}
                   </h3>
                 </div>
                 {/* Rendered from what the API reported, never a literal: both
@@ -498,16 +503,16 @@ export function OperationalSettingsPage(): ReactElement {
                     changed (#2660 review). */}
                 <span className="panel__meta">
                   {view.catalogueSweepCadence === undefined
-                    ? 'every 20 min (assumed)'
+                    ? copy.catalogue.assumedCadence
                     : describeCadence(view.catalogueSweepCadence.value).toLowerCase()}
                 </span>
               </header>
 
               <div className="pacing-card__fields">
                 <PacingValueField
-                  label="Products per run"
-                  ariaLabel="Products per catalogue run"
-                  description="How many products OpenLinker reads from the shop in one run. Raise it and a full pass finishes sooner, but each run leans harder on the shop."
+                  label={copy.productsPerRun}
+                  ariaLabel={copy.catalogue.budget.ariaLabel}
+                  description={copy.catalogue.budget.description}
                   value={draft.catalogueSweepBudget}
                   limits={limitsFor(view, 'catalogueSweepBudget')}
                   savedValue={view.catalogueSweepBudget.value}
@@ -524,9 +529,9 @@ export function OperationalSettingsPage(): ReactElement {
                 />
 
                 <PacingValueField
-                  label="Products per shop request"
-                  ariaLabel="Products per shop request"
-                  description="How many products OpenLinker asks the shop for in one request. Asking for fewer means more requests for the same work; asking for more makes a single failed request cost more."
+                  label={copy.catalogue.pageSize.label}
+                  ariaLabel={copy.catalogue.pageSize.ariaLabel}
+                  description={copy.catalogue.pageSize.description}
                   value={draft.sweepPageSize}
                   limits={limitsFor(view, 'sweepPageSize')}
                   step={10}
@@ -560,23 +565,23 @@ export function OperationalSettingsPage(): ReactElement {
             >
               <header className="pacing-card__header">
                 <div>
-                  <p className="eyebrow">Stock</p>
+                  <p className="eyebrow">{copy.stock.eyebrow}</p>
                   <h3 className="section-title" id="pacing-stock-title">
-                    Stock sweep
+                    {copy.stock.title}
                   </h3>
                 </div>
                 <span className="panel__meta">
                   {view.inventorySweepCadence === undefined
-                    ? 'every 15 min (assumed)'
+                    ? copy.stock.assumedCadence
                     : describeCadence(view.inventorySweepCadence.value).toLowerCase()}
                 </span>
               </header>
 
               <div className="pacing-card__fields">
                 <PacingValueField
-                  label="Products per run"
-                  ariaLabel="Products per stock run"
-                  description="How many products have their stock re-read in one run. On a shop that does not push stock changes to OpenLinker, this is the only thing that notices a quantity change."
+                  label={copy.productsPerRun}
+                  ariaLabel={copy.stock.budget.ariaLabel}
+                  description={copy.stock.budget.description}
                   value={draft.inventorySweepBudget}
                   limits={limitsFor(view, 'inventorySweepBudget')}
                   savedValue={view.inventorySweepBudget.value}
@@ -602,37 +607,26 @@ export function OperationalSettingsPage(): ReactElement {
             >
               <header className="pacing-card__header">
                 <div>
-                  <p className="eyebrow">Deleted products</p>
+                  <p className="eyebrow">{copy.deletions.eyebrow}</p>
                   <h3 className="section-title" id="pacing-deletions-title">
-                    Deletion audit
+                    {copy.deletions.title}
                   </h3>
                 </div>
                 {view.deletionAuditAlwaysEnabled ? (
-                  <span className="panel__meta">no off switch here</span>
+                  <span className="panel__meta">{copy.deletions.noOffSwitch}</span>
                 ) : null}
               </header>
 
               <div className="pacing-card__copy">
-                <p>
-                  OpenLinker walks its own list of products and checks each one against the shop, so a
-                  deletion is found even when nothing told us about it. Some shops do tell us — the
-                  PrestaShop module reports a delete as it happens — and where they do, the audit is
-                  the backstop rather than the only route. This page cannot tell which is true for a
-                  given connection.
-                </p>
-                <p>
-                  This page has no switch to turn the audit off, because it is what stops a deleted
-                  product's offers from selling. It can still be disabled on the worker with{' '}
-                  <code>OL_MASTER_PRODUCT_RECONCILE_ENABLED=false</code>, and this page cannot see
-                  that.
-                </p>
+                <p>{copy.deletions.intro}</p>
+                <p>{copy.deletions.noSwitch}</p>
               </div>
 
               <div className="pacing-card__fields">
                 <PacingValueField
-                  label="Products checked per run"
-                  ariaLabel="Products checked per deletion-audit run"
-                  description="How many products are checked in one run."
+                  label={copy.deletions.budget.label}
+                  ariaLabel={copy.deletions.budget.ariaLabel}
+                  description={copy.deletions.budget.description}
                   value={draft.deletionAuditBudget}
                   limits={limitsFor(view, 'deletionAuditBudget')}
                   savedValue={view.deletionAuditBudget.value}
@@ -651,7 +645,7 @@ export function OperationalSettingsPage(): ReactElement {
                 <div className="pacing-field">
                   <div className="pacing-field__head">
                     <label className="form-field__label" htmlFor="audit-cadence">
-                      How often it runs
+                      {copy.deletions.cadenceLabel}
                     </label>
                     <span
                       className="form-field__source pacing-field__source"
@@ -662,14 +656,18 @@ export function OperationalSettingsPage(): ReactElement {
                       }
                     >
                       {draft.deletionAuditCadence === view.deletionAuditCadence.value
-                        ? `${describeCadence(view.deletionAuditCadence.value).toLowerCase()} (${
-                            view.deletionAuditCadence.source === 'setting'
-                              ? 'you set this'
-                              : view.deletionAuditCadence.source === 'env'
-                                ? 'from a server setting'
-                                : 'default'
-                          })`
-                        : `${describeCadence(draft.deletionAuditCadence).toLowerCase()} (not saved yet)`}
+                        ? interpolate(copy.deletions.cadenceWithSource, {
+                            cadence: describeCadence(view.deletionAuditCadence.value).toLowerCase(),
+                            source:
+                              view.deletionAuditCadence.source === 'setting'
+                                ? copy.deletions.sourceSetting
+                                : view.deletionAuditCadence.source === 'env'
+                                  ? copy.deletions.sourceEnv
+                                  : copy.deletions.sourceDefault,
+                          })
+                        : interpolate(copy.deletions.cadenceNotSaved, {
+                            cadence: describeCadence(draft.deletionAuditCadence).toLowerCase(),
+                          })}
                     </span>
                   </div>
                   <Select
@@ -691,17 +689,17 @@ export function OperationalSettingsPage(): ReactElement {
                     className="form-field__description pacing-field__description"
                     id="audit-cadence-description"
                   >
-                    Together with the number above, this decides how long a deleted product can keep
-                    selling. It cannot be turned off.
+                    {copy.deletions.cadenceDescription}
                   </p>
                   {draft.deletionAuditCadence !== view.deletionAuditCadence.value ? (
                     <>
                       <span className="field-changed">
-                        changed from{' '}
-                        {describeCadence(view.deletionAuditCadence.value).toLowerCase()}
+                        {interpolate(copy.deletions.changedFrom, {
+                          cadence: describeCadence(view.deletionAuditCadence.value).toLowerCase(),
+                        })}
                       </span>
                       {cadenceTimingNote !== undefined ? (
-                        <Alert tone="info" title="When this starts">
+                        <Alert tone="info" title={copy.deletions.whenThisStarts}>
                           {cadenceTimingNote}
                         </Alert>
                       ) : null}
@@ -748,9 +746,7 @@ export function OperationalSettingsPage(): ReactElement {
                 <div className="pacing-save" data-dirty={String(changeCount > 0)}>
                   <div className="pacing-save__text">
                     <p className="pacing-save__count">
-                      {changeCount === 0
-                        ? 'Sync pacing'
-                        : `${String(changeCount)} unsaved ${changeCount === 1 ? 'change' : 'changes'}`}
+                      {changeCount === 0 ? copy.title : plural(changeCount, copy.unsavedChanges)}
                     </p>
                     <p className="pacing-save__status" aria-live="polite">
                       {saveStatus}
@@ -764,7 +760,7 @@ export function OperationalSettingsPage(): ReactElement {
                         setDraft(toValues(view));
                       }}
                     >
-                      Undo my edits
+                      {copy.footer.undo}
                     </Button>
                     <Button
                       disabled={!pacingSavable}
@@ -772,7 +768,7 @@ export function OperationalSettingsPage(): ReactElement {
                         setConfirmOpen(true);
                       }}
                     >
-                      Save changes
+                      {copy.footer.save}
                     </Button>
                   </div>
                 </div>
@@ -783,15 +779,15 @@ export function OperationalSettingsPage(): ReactElement {
                 {retention.changeCount > 0 ? (
                   <div className="pacing-save pacing-save--inline" data-dirty="true">
                     <div className="pacing-save__text">
-                      <p className="pacing-save__count">Job retention changed</p>
-                      <p className="pacing-save__status">Saves on its own, no confirmation.</p>
+                      <p className="pacing-save__count">{copy.footer.retentionChanged}</p>
+                      <p className="pacing-save__status">{copy.footer.savesOnItsOwn}</p>
                     </div>
                     <div className="pacing-save__actions">
                       <Button tone="secondary" onClick={retention.reset}>
-                        Undo
+                        {copy.footer.retentionUndo}
                       </Button>
                       <Button disabled={retention.saving} onClick={retention.save}>
-                        Save retention
+                        {copy.footer.retentionSave}
                       </Button>
                     </div>
                   </div>
@@ -804,9 +800,9 @@ export function OperationalSettingsPage(): ReactElement {
               its footer can be a long way down: this bar keeps the save in
               reach, and only exists while there is something to save. */}
           {totalChanges > 0 ? (
-            <div className="pacing-mobilebar" role="region" aria-label="Unsaved changes">
+            <div className="pacing-mobilebar" role="region" aria-label={copy.mobileBar.ariaLabel}>
               <p className="pacing-mobilebar__count">
-                {`${String(totalChanges)} unsaved ${totalChanges === 1 ? 'change' : 'changes'}`}
+                {plural(totalChanges, copy.unsavedChanges)}
               </p>
               <Button
                 className="pacing-mobilebar__save"
@@ -819,7 +815,7 @@ export function OperationalSettingsPage(): ReactElement {
                   }
                 }}
               >
-                Save
+                {copy.mobileBar.save}
               </Button>
             </div>
           ) : null}

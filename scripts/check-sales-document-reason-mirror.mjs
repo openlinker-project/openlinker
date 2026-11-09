@@ -58,7 +58,7 @@ const COPY_FILE = join(
   'features',
   'sales-documents',
   'lib',
-  'sales-document-reason-copy.ts',
+  'sales-document-reasons.ts',
 );
 
 /** The two `as const` arrays this script keeps aligned. */

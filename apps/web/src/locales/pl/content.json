@@ -1,0 +1,105 @@
+{
+  "contentEditor": {
+    "channel": {
+      "connectionStatus": {
+        "active": "aktywne",
+        "disabled": "wyłączone",
+        "error": "z błędem",
+        "needs_reauth": "wymaga ponownej autoryzacji"
+      },
+      "inactiveReason": "Połączenie jest {status}. Aktywuj je ponownie, aby włączyć edycję.",
+      "linkedOffers": {
+        "few": "{platform} · {n} powiązane oferty",
+        "many": "{platform} · {n} powiązanych ofert",
+        "one": "{platform} · {n} powiązana oferta",
+        "other": "{platform} · {n} powiązanej oferty"
+      }
+    },
+    "loadError": {
+      "emptyResponse": "Nieoczekiwana pusta odpowiedź",
+      "retry": "Ponów",
+      "title": "Nie udało się wczytać treści"
+    },
+    "loading": {
+      "message": "Pobieranie opisów…",
+      "title": "Wczytywanie treści"
+    },
+    "master": {
+      "subtitle": "Opis główny. Publikacja aktualizuje produkt w systemie źródłowym i czyści szkic.",
+      "title": "Opis główny"
+    },
+    "noChannels": {
+      "message": "Kanały pojawiają się tu, gdy aktywne połączenie z marketplace, które może aktualizować opisy ofert, ma co najmniej jedną ofertę powiązaną z tym produktem.",
+      "title": "Brak dostępnych kanałów"
+    },
+    "publishDialog": {
+      "channelDescription": "Szkic zostanie wysłany do każdej powiązanej oferty w wybranym kanale, a następnie wyczyszczony.",
+      "confirm": "Opublikuj",
+      "masterDescription": "Szkic zostanie wysłany do produktu w systemie źródłowym, a następnie wyczyszczony. Systemy zewnętrzne mogą go uzgodnić.",
+      "title": "Opublikować opis?"
+    },
+    "readOnlyAccess": "Masz dostęp tylko do odczytu treści. Zapisywanie, odrzucanie i publikowanie wymaga uprawnień operatora lub administratora.",
+    "tabs": {
+      "ariaLabel": "Miejsca docelowe treści",
+      "conflictMarker": "!",
+      "draft": "szkic",
+      "master": "Główny"
+    },
+    "toasts": {
+      "draftDiscarded": "Odrzucono szkic",
+      "draftSaved": "Zapisano szkic",
+      "published": "Opublikowano"
+    },
+    "unknownError": "Nieznany błąd"
+  },
+  "contentPanel": {
+    "actions": {
+      "discard": "Odrzuć szkic",
+      "publish": "Opublikuj",
+      "save": "Zapisz szkic"
+    },
+    "conflict": "Po zapisaniu szkicu wykryto zmianę z zewnątrz. Sprawdź wartość bazową i zapisz ponownie, aby ją potwierdzić.",
+    "desktopOnly": {
+      "message": "Poniżej 1024 px edytor działa tylko do odczytu. Otwórz go na większym ekranie, aby wprowadzić zmiany.",
+      "title": "Edycja dostępna tylko na komputerze"
+    },
+    "editorAriaLabel": "Opis: {title}",
+    "overDestinationCap": "Opis jest dłuższy, niż akceptuje kanał docelowy ({cap} bajtów). Skróć go przed zapisaniem - platforma odrzuci publikację.",
+    "overStorageLimit": "Przekroczono limit {limit} znaków",
+    "publishRejected": "Marketplace odrzucił publikację w kanale",
+    "status": {
+      "draftPending": "Szkic oczekuje",
+      "empty": "Pusty",
+      "published": "Opublikowany"
+    }
+  },
+  "suggestionDialog": {
+    "actions": {
+      "apply": "Wstaw do edytora",
+      "cancel": "Anuluj",
+      "generate": "Generuj",
+      "generating": "Generowanie…",
+      "regenerate": "Generuj ponownie"
+    },
+    "description": "Wygeneruj szkic opisu dla kanału <strong>{channel}</strong>. Sprawdź go przed wstawieniem - propozycja zastępuje treść edytora, ale nie zapisuje się automatycznie.",
+    "extra": {
+      "description": "Opcjonalnie. Maks. {max} znaków.",
+      "label": "Dodatkowe instrukcje",
+      "placeholder": "np. podkreśl gwarancję, wspomnij o darmowej dostawie"
+    },
+    "masterChannel": "główny",
+    "openPromptTemplates": "Otwórz szablony promptów →",
+    "preview": {
+      "empty": "Model nic nie zwrócił.",
+      "requestId": "ID żądania",
+      "title": "Proponowany opis"
+    },
+    "title": "Zaproponuj opis",
+    "tone": {
+      "description": "Opcjonalnie. Maks. {max} znaków.",
+      "label": "Ton",
+      "placeholder": "np. pewny siebie, zwięzły"
+    },
+    "trigger": "✨ Zaproponuj z AI"
+  }
+}

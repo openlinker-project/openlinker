@@ -2,14 +2,19 @@
  * Composer schema tests (#2365)
  */
 import { describe, expect, it } from 'vitest';
+import { getMessages } from '../../../shared/i18n';
 import {
-  automationActionDraftSchema,
-  automationConditionDraftSchema,
+  createAutomationActionDraftSchema,
+  createAutomationConditionDraftSchema,
   newActionDraft,
   newConditionDraft,
   toActionInput,
   toConditionInput,
 } from './automation-composer.schema';
+
+const schemaCopy = getMessages('automation').composerSchema;
+const automationConditionDraftSchema = createAutomationConditionDraftSchema(schemaCopy);
+const automationActionDraftSchema = createAutomationActionDraftSchema(schemaCopy);
 
 describe('automationConditionDraftSchema', () => {
   it('should require a value for a non-amount condition', () => {

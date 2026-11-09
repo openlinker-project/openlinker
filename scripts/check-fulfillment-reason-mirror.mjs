@@ -22,11 +22,11 @@
  * silently: a reason renamed in core makes the "Waiting: ..." badge fall back to
  * nothing with no error anywhere.
  *
- * Rule C - `WAITING_REASON_COPY` (apps/web/.../handled-in-openlinker.copy.ts)
+ * Rule C - `orders.handledInOpenLinker.waitingReasons` (apps/web/src/locales/en/orders.json)
  *   may carry only keys that are block reasons. SUBSET, not coverage: the
- *   transient held states deliberately have no badge. The `satisfies` in the copy
- *   file checks the keys against the FRONTEND union; this check is what ties them
- *   to the BACKEND one.
+ *   transient held states deliberately have no badge. The `satisfies` on
+ *   `WAITING_REASON_TONE` in handled-in-openlinker.ts checks the keys against the
+ *   FRONTEND union; this check is what ties the copy to the BACKEND one.
  *
  * SCOPE: arrays and object keys, compared TEXTUALLY. The parsers are COPIED from
  * `check-destination-routing-reason-mirror.mjs` (with its #3002 comment-order
@@ -43,8 +43,27 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const repoRoot = join(__dirname, '..');
 
 const FRONTEND_FILE = join('apps', 'web', 'src', 'features', 'orders', 'api', 'orders.types.ts');
-const COPY_FILE = join('apps', 'web', 'src', 'features', 'orders', 'lib', 'handled-in-openlinker.copy.ts');
-const COPY_DECLARATION = 'WAITING_REASON_COPY';
+const COPY_FILE = join('apps', 'web', 'src', 'locales', 'en', 'orders.json');
+const COPY_PATH = ['handledInOpenLinker', 'waitingReasons'];
+const COPY_DECLARATION = COPY_PATH.join('.');
+
+/**
+ * The keys of the copy object at `path` in a locale JSON file, with the 1-based
+ * line its first key sits on. `null` when the path is absent or not an object.
+ * COPIED from `check-destination-routing-reason-mirror.mjs` (see below).
+ */
+export function readJsonCopyKeys(src, path) {
+  let node = JSON.parse(src);
+  for (const segment of path) {
+    if (node === null || typeof node !== 'object' || !(segment in node)) return null;
+    node = node[segment];
+  }
+  if (node === null || typeof node !== 'object' || Array.isArray(node)) return null;
+  const keys = Object.keys(node);
+  const first = keys.length > 0 ? src.indexOf(`"${keys[0]}"`) : -1;
+  const line = first < 0 ? 1 : src.slice(0, first).split('\n').length;
+  return { line, keys };
+}
 const BLOCK_DECLARATION = 'FulfillmentBlockReasonValues';
 const DOCS_REF = 'docs/architecture-overview.md § 28 The pack bench (#3482)';
 
@@ -98,81 +117,6 @@ function parseReasonValues(content, name) {
 
   const line = content.slice(0, declMatch.index).split('\n').length;
   return { line, values };
-}
-
-/**
- * Extract the TOP-LEVEL keys of `export const <name> = { ... } satisfies ...;`.
- *
- * Brace-matched rather than regex-scanned, because a copy entry is itself an
- * object and a nested key must not be read as a reason id. String bodies are
- * skipped so a brace or a quote inside operator copy cannot end the scan early.
- * Returns `{ line, keys }`, or `null` when the declaration is absent.
- */
-function parseCopyKeys(content, name) {
-  const declRe = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*\\{`);
-  const declMatch = declRe.exec(content);
-  if (!declMatch) return null;
-
-  const open = declMatch.index + declMatch[0].length - 1;
-  const keys = [];
-  let depth = 0;
-  let quote = null;
-  let pendingKey = null;
-
-  for (let i = open; i < content.length; i += 1) {
-    const ch = content[i];
-
-    if (quote !== null) {
-      if (ch === '\\') {
-        i += 1;
-      } else if (ch === quote) {
-        quote = null;
-      }
-      continue;
-    }
-
-    if (ch === '/' && content[i + 1] === '/') {
-      i = content.indexOf('\n', i);
-      if (i === -1) break;
-      continue;
-    }
-    if (ch === '/' && content[i + 1] === '*') {
-      const end = content.indexOf('*/', i + 2);
-      if (end === -1) break;
-      i = end + 1;
-      continue;
-    }
-
-    if (ch === "'" || ch === '"') {
-      const end = findStringEnd(content, i);
-      if (end === -1) break;
-      if (depth === 1) pendingKey = content.slice(i + 1, end);
-      i = end;
-      continue;
-    }
-
-    if (ch === '{') {
-      depth += 1;
-      continue;
-    }
-    if (ch === '}') {
-      depth -= 1;
-      if (depth === 0) break;
-      continue;
-    }
-
-    if (ch === ':' && depth === 1 && pendingKey !== null) {
-      keys.push(pendingKey);
-      pendingKey = null;
-      continue;
-    }
-    if (ch === ',' && depth === 1) {
-      pendingKey = null;
-    }
-  }
-
-  const line = content.slice(0, declMatch.index).split('\n').length;
-  return { line, keys };
 }
 
 /** Index of the closing quote of the string literal starting at `start`. */
@@ -244,8 +188,9 @@ function selfCheck() {
     'X',
   );
   expect('bracket in a comment does not truncate', bracketed?.values.join(','), 'one,two');
-  const keys = parseCopyKeys(`export const C = {\n  'one': { label: 'x' },\n} as const satisfies R;`, 'C');
-  expect('parser reads copy keys', keys?.keys.join(','), 'one');
+  const json = '{\n  "a": {\n    "b": {\n      "one": { "label": "x" }\n    }\n  }\n}';
+  expect('json reader reads copy keys', readJsonCopyKeys(json, ['a', 'b'])?.keys.join(','), 'one');
+  expect('json reader rejects a missing path', readJsonCopyKeys(json, ['a', 'c']), null);
 
   if (failures.length > 0) {
     console.error('✗ check-fulfillment-reason-mirror self-check FAILED');
@@ -293,8 +238,8 @@ async function main() {
     if (pair.declaration === BLOCK_DECLARATION) blockValues = backend.values;
   }
 
-  const copy = parseCopyKeys(copySrc, COPY_DECLARATION);
-  if (!copy) fatal.push(`${COPY_FILE}: could not find \`export const ${COPY_DECLARATION} = {\``);
+  const copy = readJsonCopyKeys(copySrc, COPY_PATH);
+  if (!copy) fatal.push(`${COPY_FILE}: could not find the \`${COPY_DECLARATION}\` object`);
   else if (copy.keys.length === 0) {
     fatal.push(`${COPY_FILE}:${copy.line}: \`${COPY_DECLARATION}\` parsed as EMPTY - refusing to compare`);
   } else if (blockValues) {

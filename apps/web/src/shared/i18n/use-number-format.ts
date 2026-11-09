@@ -10,9 +10,9 @@
  */
 import { numberFormat } from './intl-cache';
 import { getBcp47Locale } from './locale';
-import { useTranslation } from './use-translation';
+import { useLocale } from './use-locale';
 
 export function useNumberFormat(options?: Intl.NumberFormatOptions): Intl.NumberFormat {
-  const { locale } = useTranslation();
+  const { locale } = useLocale();
   return numberFormat(getBcp47Locale(locale), options);
 }

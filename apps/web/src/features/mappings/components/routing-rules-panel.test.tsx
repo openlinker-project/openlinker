@@ -83,7 +83,7 @@ describe('RoutingRulesPanel', () => {
 
   it('shows the loading state while delivery methods load', () => {
     renderPanel(buildApiClient(), { deliveryMethodsLoading: true });
-    expect(screen.getByText('Loading fulfillment routing')).toBeInTheDocument();
+    expect(screen.getByText('Loading fulfilment routing')).toBeInTheDocument();
   });
 
   it('shows the error state when delivery methods fail to load', async () => {
@@ -107,7 +107,7 @@ describe('RoutingRulesPanel', () => {
     renderPanel(buildApiClient());
 
     const select = await screen.findByRole('combobox', {
-      name: /Fulfillment processor for InPost Paczkomat/i,
+      name: /Fulfilment processor for InPost Paczkomat/i,
     });
     // Default selection is rule-absence.
     expect(select).toHaveValue('__default__');
@@ -129,7 +129,7 @@ describe('RoutingRulesPanel', () => {
     renderPanel(buildApiClient({ replace }));
 
     const select = await screen.findByRole('combobox', {
-      name: /Fulfillment processor for InPost Paczkomat/i,
+      name: /Fulfilment processor for InPost Paczkomat/i,
     });
     fireEvent.change(select, { target: { value: 'source_brokered::conn_allegro' } });
 
@@ -163,7 +163,7 @@ describe('RoutingRulesPanel', () => {
     renderPanel(buildApiClient({ rules }));
 
     const select = await screen.findByRole('combobox', {
-      name: /Fulfillment processor for InPost Paczkomat/i,
+      name: /Fulfilment processor for InPost Paczkomat/i,
     });
     await waitFor(() => {
       expect(select).toHaveValue('ol_managed_carrier::conn_inpost');
@@ -220,7 +220,7 @@ describe('RoutingRulesPanel', () => {
       );
 
       await screen.findByRole('combobox', {
-        name: /Fulfillment processor for InPost Paczkomat/i,
+        name: /Fulfilment processor for InPost Paczkomat/i,
       });
       await waitFor(() => {
         expect(legendEntry(container, 'InPost')).toHaveTextContent('1');
@@ -242,7 +242,7 @@ describe('RoutingRulesPanel', () => {
       );
 
       const select = await screen.findByRole('combobox', {
-        name: /Fulfillment processor for InPost Paczkomat/i,
+        name: /Fulfilment processor for InPost Paczkomat/i,
       });
       await waitFor(() => {
         expect(legendEntry(container, 'My Shop')).toHaveTextContent('2');
@@ -265,7 +265,7 @@ describe('RoutingRulesPanel', () => {
       renderPanel(buildApiClient({ replace }), { deliveryMethods: erliMethods });
 
       const select = await screen.findByRole('combobox', {
-        name: /Fulfillment processor for ERLI InPost Paczkomaty/i,
+        name: /Fulfilment processor for ERLI InPost Paczkomaty/i,
       });
       fireEvent.change(select, { target: { value: 'ol_managed_carrier::conn_inpost' } });
       fireEvent.click(screen.getByRole('button', { name: 'Save routing' }));
@@ -307,7 +307,7 @@ describe('RoutingRulesPanel', () => {
 
     it('should offer no parcel controls for a default-routed method', async () => {
       renderPanel(buildApiClient());
-      await screen.findByRole('combobox', { name: /Fulfillment processor for InPost Paczkomat/i });
+      await screen.findByRole('combobox', { name: /Fulfilment processor for InPost Paczkomat/i });
       expect(screen.queryByRole('button', { name: 'Set parcel' })).not.toBeInTheDocument();
     });
 
@@ -425,7 +425,7 @@ describe('RoutingRulesPanel', () => {
       const replace = vi.fn().mockResolvedValue([]);
       renderPanel(buildApiClient({ replace }));
       const select = await screen.findByRole('combobox', {
-        name: /Fulfillment processor for InPost Paczkomat/i,
+        name: /Fulfilment processor for InPost Paczkomat/i,
       });
       fireEvent.change(select, { target: { value: 'source_brokered::conn_allegro' } });
       fireEvent.click(screen.getByRole('button', { name: 'Save routing' }));

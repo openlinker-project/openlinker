@@ -45,6 +45,7 @@
  */
 import { useState, type ReactElement } from 'react';
 
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { EmptyState, ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
@@ -52,7 +53,6 @@ import type { SourcingRule } from '../api/sourcing-rules.types';
 import { useReorderSourcingRulesMutation } from '../hooks/use-reorder-sourcing-rules-mutation';
 import { useSourcingRulesQuery } from '../hooks/use-sourcing-rules-query';
 import { describeSourcingRuleError, readSourcingRuleConflict } from '../lib/sourcing-rule-conflict';
-import { SOURCING_RULES_STATE_COPY as COPY } from '../lib/sourcing-rule.copy';
 import { SourcingRuleDeleteDialog } from './sourcing-rule-delete-dialog';
 import { SourcingRuleDialog, type SourcingRuleLocationOption } from './sourcing-rule-dialog';
 import { SourcingRuleLockedDialog } from './sourcing-rule-locked-dialog';
@@ -81,26 +81,28 @@ export function SourcingRulesSection({
   includeSuperseded = false,
   now = new Date(),
 }: SourcingRulesSectionProps): ReactElement {
+  const copy = useMessages('oms-core').sourcingRulesState;
+  const sectionCopy = useMessages('oms-core').sourcingRulesSection;
   const rulesQuery = useSourcingRulesQuery(connectionId, { includeSuperseded });
   const reorderMutation = useReorderSourcingRulesMutation();
   const [dialog, setDialog] = useState<OpenDialog>({ kind: 'none' });
 
   const addButton = (
-    <Button onClick={() => setDialog({ kind: 'create' })}>{COPY.addRule}</Button>
+    <Button onClick={() => setDialog({ kind: 'create' })}>{copy.addRule}</Button>
   );
 
   if (rulesQuery.isLoading) {
-    return <LoadingState title={COPY.loadingTitle} message={COPY.loadingMessage} />;
+    return <LoadingState title={copy.loadingTitle} message={copy.loadingMessage} />;
   }
 
   if (rulesQuery.error) {
     return (
       <ErrorState
-        title={COPY.errorTitle}
-        message={COPY.errorMessage}
+        title={copy.errorTitle}
+        message={copy.errorMessage}
         action={
           <Button tone="secondary" onClick={() => void rulesQuery.refetch()}>
-            {COPY.errorRetry}
+            {copy.errorRetry}
           </Button>
         }
       />
@@ -123,21 +125,21 @@ export function SourcingRulesSection({
           tone="error"
           action={
             <Button tone="secondary" onClick={() => reorderMutation.reset()}>
-              {COPY.dismissReorderError}
+              {copy.dismissReorderError}
             </Button>
           }
         >
           {reorderConflict === null
-            ? describeSourcingRuleError(reorderMutation.error, 'The new order could not be saved.')
-            : `Could not save the new order. ${reorderConflict.message} The list has been refreshed.`}
+            ? describeSourcingRuleError(reorderMutation.error, sectionCopy.reorderFailed)
+            : interpolate(sectionCopy.reorderConflict, { message: reorderConflict.message })}
         </Alert>
       ) : null}
 
       {rules.length === 0 ? (
         <EmptyState
-          eyebrow={COPY.emptyEyebrow}
-          title={COPY.emptyTitle}
-          message={COPY.emptyMessage}
+          eyebrow={copy.emptyEyebrow}
+          title={copy.emptyTitle}
+          message={copy.emptyMessage}
           action={addButton}
         />
       ) : (

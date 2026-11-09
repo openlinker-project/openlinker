@@ -19,7 +19,7 @@ import { Select } from '../../../shared/ui/select';
 import { ConnectionEntityLabel, useConnectionsQuery } from '../../connections';
 import { useDemoMode } from '../../system';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { RoutingParcelDialog } from './routing-parcel-dialog';
 import {
@@ -31,7 +31,7 @@ import {
   summarizeParcelProfile,
   type ParcelProfileDraft,
 } from '../lib/parcel-profile';
-import { PARCEL_COPY } from '../lib/parcel-profile.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { RoutingSplitBar, type RoutingSplitBucket } from './routing-split-bar';
 import {
   useRoutingRulesQuery,
@@ -66,13 +66,6 @@ const DEFAULT_KEY = '__default__';
 /** Virtualized-row height estimate; also caps the container to content (#1784 S17). */
 const ROUTING_ROW_HEIGHT = 52;
 const ROUTING_MAX_CONTAINER_HEIGHT = 520;
-
-/** Human qualifier shown before the connection name in dropdowns + row display. */
-const PROCESSOR_KIND_LABEL: Record<FulfillmentProcessorKind, string> = {
-  omp_fulfilled: 'Order-management platform',
-  ol_managed_carrier: 'OpenLinker-managed carrier',
-  source_brokered: 'Marketplace-brokered',
-};
 
 const SHORT_VALUE_HEAD = 6;
 const SHORT_VALUE_TAIL = 4;
@@ -121,6 +114,9 @@ export function RoutingRulesPanel({
   const candidatesQuery = useRoutingCandidatesQuery(connectionId);
   const connectionsQuery = useConnectionsQuery();
   const replaceMutation = useReplaceRoutingRules(connectionId);
+  const copy = useMessages('mappings').routingRulesPanel;
+  const parcelCopy = useMessages('mappings').parcelProfile;
+  const kindLabels = copy.processorKinds;
 
   const savedRules = useMemo(() => rulesQuery.data ?? [], [rulesQuery.data]);
 
@@ -176,8 +172,8 @@ export function RoutingRulesPanel({
   // platform name) — falls back to a generic phrase when none is reported.
   const ompCandidate = candidates.find((c) => c.processorKind === 'omp_fulfilled') ?? null;
   const defaultLabel = ompCandidate
-    ? `${connName(ompCandidate.processorConnectionId)} — default`
-    : 'Default (order-management platform)';
+    ? interpolate(copy.defaultNamed, { name: connName(ompCandidate.processorConnectionId) })
+    : copy.defaultGeneric;
 
   // Divert options exclude omp_fulfilled — that IS the default in v1; explicit
   // OMP pinning is the multi-OMP follow-up. Sorted by label so the divert menu
@@ -188,10 +184,13 @@ export function RoutingRulesPanel({
         .filter((c) => c.processorKind !== 'omp_fulfilled')
         .map((c) => ({
           key: `${c.processorKind}::${c.processorConnectionId}`,
-          label: `${PROCESSOR_KIND_LABEL[c.processorKind]} · ${connName(c.processorConnectionId)}`,
+          label: interpolate(copy.divertOption, {
+            kind: kindLabels[c.processorKind],
+            name: connName(c.processorConnectionId),
+          }),
         }))
         .sort((a, b) => a.label.localeCompare(b.label)),
-    [candidates, connName],
+    [candidates, connName, copy, kindLabels],
   );
 
   // Render a row per delivery method, plus any saved rule whose method the
@@ -250,7 +249,7 @@ export function RoutingRulesPanel({
       const parsed = parseSelectionKey(key);
       buckets.push({
         key,
-        label: parsed ? `${nameFor(parsed.connectionId)} (unavailable)` : key,
+        label: parsed ? interpolate(copy.unavailableBucket, { name: nameFor(parsed.connectionId) }) : key,
         count,
       });
     }
@@ -262,7 +261,7 @@ export function RoutingRulesPanel({
       isDefault: true,
     });
     return buckets;
-  }, [rowMethods, selections, candidates, defaultLabel, connectionNameById]);
+  }, [rowMethods, selections, candidates, defaultLabel, connectionNameById, copy]);
 
   const optionsForRow = useCallback(
     (currentKey: string): DivertOption[] => {
@@ -274,13 +273,16 @@ export function RoutingRulesPanel({
         base.push({
           key: currentKey,
           label: parsed
-            ? `${PROCESSOR_KIND_LABEL[parsed.kind]} · ${connName(parsed.connectionId)} (unavailable)`
+            ? interpolate(copy.unavailableOption, {
+                kind: kindLabels[parsed.kind],
+                name: connName(parsed.connectionId),
+              })
             : currentKey,
         });
       }
       return base;
     },
-    [defaultLabel, divertOptions, connName],
+    [defaultLabel, divertOptions, connName, copy, kindLabels],
   );
 
   const handleSelect = useCallback((methodId: string, key: string): void => {
@@ -332,7 +334,7 @@ export function RoutingRulesPanel({
       if (!parsed) return <span className="mono-text">{currentKey}</span>;
       return (
         <>
-          <span>{PROCESSOR_KIND_LABEL[parsed.kind]}</span>{' '}
+          <span>{kindLabels[parsed.kind]}</span>{' '}
           <ConnectionEntityLabel
             connectionId={parsed.connectionId}
             linkToDetail={false}
@@ -341,7 +343,7 @@ export function RoutingRulesPanel({
         </>
       );
     },
-    [defaultLabel],
+    [defaultLabel, kindLabels],
   );
 
   // NOTE (#1784 I8): the per-row divert picker stays a native <select> routed
@@ -355,7 +357,7 @@ export function RoutingRulesPanel({
       const currentKey = selections[method.value] ?? DEFAULT_KEY;
       return (
         <Select
-          aria-label={`Fulfillment processor for ${method.label}`}
+          aria-label={interpolate(copy.processorSelectLabel, { method: method.label })}
           value={currentKey}
           onChange={(e) => {
             handleSelect(method.value, e.target.value);
@@ -369,7 +371,7 @@ export function RoutingRulesPanel({
         </Select>
       );
     },
-    [selections, optionsForRow, handleSelect],
+    [selections, optionsForRow, handleSelect, copy],
   );
 
   const renderParcel = useCallback(
@@ -380,10 +382,10 @@ export function RoutingRulesPanel({
       return (
         <>
           <span className={summary ? undefined : 'muted-text'}>
-            {summary ?? PARCEL_COPY.noneSet}
+            {summary ?? parcelCopy.noneSet}
           </span>{' '}
           {write.visible && (
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
               <Button
                 tone="secondary"
                 className="button--sm"
@@ -392,32 +394,41 @@ export function RoutingRulesPanel({
                   setEditingMethod(method);
                 }}
               >
-                {summary ? PARCEL_COPY.editAction : PARCEL_COPY.setAction}
+                {summary ? parcelCopy.editAction : parcelCopy.setAction}
               </Button>
             </ReadOnlyLock>
           )}
         </>
       );
     },
-    [selections, draftFor, write.visible, write.demoReadOnly],
+    [selections, draftFor, write.visible, write.demoReadOnly, parcelCopy],
   );
 
   const columns = useMemo<DataTableColumn<MappingOption>[]>(
     () => [
       {
         id: 'method',
-        header: `${sourceLabel} delivery method`,
+        header: interpolate(copy.columns.method, { source: sourceLabel }),
         cell: (m) => renderMethodLabel(m),
       },
       {
         id: 'routed',
-        header: 'Routed to',
+        header: copy.columns.routed,
         cell: (m) => renderRoutedTo(selections[m.value] ?? DEFAULT_KEY),
       },
-      { id: 'change', header: 'Change', cell: (m) => renderProcessorSelect(m) },
-      { id: 'parcel', header: PARCEL_COPY.columnHeader, cell: (m) => renderParcel(m) },
+      { id: 'change', header: copy.columns.change, cell: (m) => renderProcessorSelect(m) },
+      { id: 'parcel', header: parcelCopy.columnHeader, cell: (m) => renderParcel(m) },
     ],
-    [sourceLabel, renderMethodLabel, renderRoutedTo, renderProcessorSelect, renderParcel, selections],
+    [
+      sourceLabel,
+      renderMethodLabel,
+      renderRoutedTo,
+      renderProcessorSelect,
+      renderParcel,
+      selections,
+      copy,
+      parcelCopy,
+    ],
   );
 
   const cardView = useMemo<DataTableCardView<MappingOption>>(
@@ -438,15 +449,15 @@ export function RoutingRulesPanel({
     return (
       <LoadingState
         liveRegion="off"
-        title="Loading fulfillment routing"
-        message="Fetching delivery methods and compatible processors…"
+        title={copy.loading.title}
+        message={copy.loading.message}
       />
     );
   }
 
   const dataError = deliveryMethodsError ?? rulesQuery.error ?? candidatesQuery.error ?? null;
   if (dataError) {
-    return <ErrorState title="Unable to load routing configuration" message={dataError.message} />;
+    return <ErrorState title={copy.errorTitle} message={dataError.message} />;
   }
 
   const containerHeight = Math.min(
@@ -458,20 +469,18 @@ export function RoutingRulesPanel({
     <div className="panel panel--dense">
       <div className="panel__header">
         <div>
-          <p className="eyebrow">Configuration</p>
-          <h3 className="section-title">Fulfillment Routing</h3>
+          <p className="eyebrow">{copy.eyebrow}</p>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
         {isDirty && (
           <span className="status-badge status-badge--warning" aria-live="polite">
-            Unsaved changes
+            {copy.unsaved}
           </span>
         )}
       </div>
 
       <p className="muted-text" style={{ marginBottom: 'var(--space-4)' }}>
-        Choose how each {sourceLabel} delivery method is fulfilled. Methods stay with the default
-        order-management platform unless you divert them to a connected carrier or
-        marketplace-delivery processor.
+        {interpolate(copy.description, { source: sourceLabel })}
       </p>
 
       {divertOptions.length === 0 && (
@@ -481,8 +490,7 @@ export function RoutingRulesPanel({
           aria-live="polite"
           style={{ marginBottom: 'var(--space-3)' }}
         >
-          No compatible fulfillment processors are connected yet. Every method stays with the
-          default until you add a carrier-managed or marketplace-delivery connection.
+          {copy.noProcessors}
         </p>
       )}
 
@@ -490,8 +498,7 @@ export function RoutingRulesPanel({
 
       {rowMethods.length === 0 ? (
         <p className="muted-text" role="status" aria-live="polite">
-          This connection reported no delivery methods to route. Routing becomes configurable once
-          the source exposes delivery methods.
+          {copy.noMethods}
         </p>
       ) : (
         // Virtualized so hundreds of source delivery methods (Allegro) render
@@ -499,7 +506,7 @@ export function RoutingRulesPanel({
         // and renders its `cardView` on narrow viewports, so the mobile layout
         // is preserved without the raw-table `.data-table--stackable` transform.
         <DataTable
-          caption="Fulfillment routing rules"
+          caption={copy.caption}
           rows={rowMethods}
           rowKey={(m) => m.value}
           virtualize
@@ -540,11 +547,11 @@ export function RoutingRulesPanel({
         }}
       >
         <Button tone="primary" disabled={!isDirty || replaceMutation.isPending} onClick={handleSave}>
-          {replaceMutation.isPending ? 'Saving…' : 'Save routing'}
+          {replaceMutation.isPending ? copy.saving : copy.save}
         </Button>
         {replaceMutation.error && (
           <Button tone="secondary" disabled={replaceMutation.isPending} onClick={handleSave}>
-            Try again
+            {copy.tryAgain}
           </Button>
         )}
       </div>

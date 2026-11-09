@@ -12,11 +12,11 @@ import type { ReactElement } from 'react';
 
 import { Alert } from '../../../shared/ui/alert';
 import { formatAcceptanceWait, type TaskAcceptance } from '../lib/fulfillment-task-acceptance';
-import { TASK_ACCEPTANCE_COPY } from '../lib/fulfillment-task.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
 
 export interface FulfillmentTaskAcceptanceNoticeProps {
   acceptance: TaskAcceptance;
-  /** Where accepted work appears; see `OWN_PACK_BENCH_NAME`. */
+  /** Where accepted work appears; see `fulfillment.ownPackBenchName`. */
   where: string;
 }
 
@@ -24,17 +24,18 @@ export function FulfillmentTaskAcceptanceNotice({
   acceptance,
   where,
 }: FulfillmentTaskAcceptanceNoticeProps): ReactElement | null {
+  const copy = useMessages('fulfillment').taskAcceptance;
   if (acceptance.kind === 'stuck') {
     return (
-      <Alert tone="warning" density="compact" title={TASK_ACCEPTANCE_COPY.stuckTitle}>
-        {TASK_ACCEPTANCE_COPY.stuckBody(formatAcceptanceWait(acceptance.waitedMs), where)}
+      <Alert tone="warning" density="compact" title={copy.stuckTitle}>
+        {interpolate(copy.stuckBody, { age: formatAcceptanceWait(acceptance.waitedMs), where })}
       </Alert>
     );
   }
   if (acceptance.kind === 'refused') {
     return (
-      <Alert tone="warning" density="compact" title={TASK_ACCEPTANCE_COPY.refusedTitle}>
-        {TASK_ACCEPTANCE_COPY.refusedBody(where)}
+      <Alert tone="warning" density="compact" title={copy.refusedTitle}>
+        {interpolate(copy.refusedBody, { where })}
       </Alert>
     );
   }
