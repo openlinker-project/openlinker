@@ -1904,13 +1904,19 @@ textarea,
   --rise-i: 7;
 }
 
+/* `:not(.page-section .page-section)` keeps the outermost section only, so a
+ * nested section's children do not rise a second time inside a rising block. */
 .shell--app .shell-content .page-section:not(.page-section .page-section) > *,
 .reveal-stagger > * {
   animation: content-rise 520ms var(--ease-out) backwards;
   animation-delay: calc(60ms + var(--rise-i) * 50ms);
 }
 
-/* Cards in a row start once their row has begun, then follow one another. */
+/* Cards in a row start once their row has begun, then follow one another.
+ * The scope is the whole content, not the route's first paint, on purpose: an
+ * animation plays once per mount, so a filter or search change (the KPI rows
+ * stay mounted, keyed by segment) replays nothing, while content that really
+ * arrives later, a tab panel or a loaded section, rises in like the rest. */
 .shell--app .shell-content :is(.status-strip, .ds-grid) > * {
   animation: content-rise 520ms var(--ease-out) backwards;
   animation-delay: calc(160ms + var(--rise-i) * 50ms);
