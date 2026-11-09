@@ -1845,6 +1845,87 @@ textarea,
   animation: page-fade-in 320ms var(--ease-out) both;
 }
 
+/* ── Content entrance (#4029) ──────────────────────────────────────────
+ * One small, repeatable reveal: each block rises 8 px into place while it
+ * fades in, one after another, 50 ms apart. It plays on the first page after
+ * signing in or in a new tab (`.shell--intro`, set by app-shell.tsx through
+ * shared/lib/entrance.ts) for a page's blocks (`.page-section > *`) and the
+ * cards of a KPI row. `.reveal-stagger` gives any container the same reveal
+ * for its children, every time it mounts. Transform and opacity only, and no
+ * transform is left behind once it ends (the keyframes set only `from`).
+ */
+.page-section > *,
+:is(.status-strip, .ds-grid, .reveal-stagger) > * {
+  --rise-i: 8;
+}
+
+.page-section > :nth-child(1),
+:is(.status-strip, .ds-grid, .reveal-stagger) > :nth-child(1) {
+  --rise-i: 0;
+}
+
+.page-section > :nth-child(2),
+:is(.status-strip, .ds-grid, .reveal-stagger) > :nth-child(2) {
+  --rise-i: 1;
+}
+
+.page-section > :nth-child(3),
+:is(.status-strip, .ds-grid, .reveal-stagger) > :nth-child(3) {
+  --rise-i: 2;
+}
+
+.page-section > :nth-child(4),
+:is(.status-strip, .ds-grid, .reveal-stagger) > :nth-child(4) {
+  --rise-i: 3;
+}
+
+.page-section > :nth-child(5),
+:is(.status-strip, .ds-grid, .reveal-stagger) > :nth-child(5) {
+  --rise-i: 4;
+}
+
+.page-section > :nth-child(6),
+:is(.status-strip, .ds-grid, .reveal-stagger) > :nth-child(6) {
+  --rise-i: 5;
+}
+
+.page-section > :nth-child(7),
+:is(.status-strip, .ds-grid, .reveal-stagger) > :nth-child(7) {
+  --rise-i: 6;
+}
+
+.page-section > :nth-child(8),
+:is(.status-strip, .ds-grid, .reveal-stagger) > :nth-child(8) {
+  --rise-i: 7;
+}
+
+.shell--intro .shell-content > .page-section > *,
+.reveal-stagger > * {
+  animation: content-rise 520ms var(--ease-out) both;
+  animation-delay: calc(60ms + var(--rise-i) * 50ms);
+}
+
+/* Cards in a row start once their row has begun, then follow one another. */
+.shell--intro .shell-content :is(.status-strip, .ds-grid) > * {
+  animation: content-rise 520ms var(--ease-out) both;
+  animation-delay: calc(160ms + var(--rise-i) * 50ms);
+}
+
+@keyframes content-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell--intro .shell-content > .page-section > *,
+  .shell--intro .shell-content :is(.status-strip, .ds-grid) > *,
+  .reveal-stagger > * {
+    animation: none;
+  }
+}
+
 @keyframes page-fade-in {
   from {
     opacity: 0;

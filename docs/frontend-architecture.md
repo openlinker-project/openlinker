@@ -246,6 +246,8 @@ A parameterized test at `apps/web/src/app/routes/route-lazy.test.ts` asserts the
 
 A screen never shows a loader for a check that takes a moment: the session-check placeholders (`.guest-layout--pending`, `.shell--pending`) stay invisible for 400 ms and only then fade in, so a quick check shows the plain page background. The page that follows fades in once (`.shell--app`, `.login-stage`, 320 ms, no delay of its own). Nothing waits on purpose. A new top-level layout's loading branch takes the `--pending` class.
 
+The first page after signing in, or of a new tab, lets its content rise in: each block of the page (`.page-section > *`) and each card of a KPI row (`.status-strip`, `.ds-grid`) rises 8 px while it fades in, 50 ms after the one before. `AppShell` adds `.shell--intro` for that one page (`shared/lib/entrance.ts` remembers it per tab, and a fresh sign-in resets it), so moving around afterwards stays quick. Any container can take `.reveal-stagger` to give its children the same reveal every time it mounts. CSS only, transform and opacity, nothing left behind when it ends, off under reduced motion.
+
 ### Breadcrumb metadata on routes (#610)
 
 Each authenticated route module declares its breadcrumb metadata inline via `route.handle` using the `RouteCrumbHandle` shape from `apps/web/src/app/nav-registry.types.ts`:
