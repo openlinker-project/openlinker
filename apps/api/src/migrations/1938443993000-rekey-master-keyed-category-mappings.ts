@@ -49,8 +49,8 @@ const LEGACY_ROWS_CTE = `
       AND cardinality(owners.ids) = 1
   )`;
 
-export class RekeyMasterKeyedCategoryMappings1938393993000 implements MigrationInterface {
-  name = 'RekeyMasterKeyedCategoryMappings1938393993000';
+export class RekeyMasterKeyedCategoryMappings1938443993000 implements MigrationInterface {
+  name = 'RekeyMasterKeyedCategoryMappings1938443993000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(

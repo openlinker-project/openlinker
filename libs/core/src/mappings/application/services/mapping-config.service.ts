@@ -175,14 +175,12 @@ export class MappingConfigService implements IMappingConfigService {
     );
   }
 
-  reassignCategoryMappings(
+  async reassignCategoryMappings(
     fromDestinationConnectionId: string,
     toDestinationConnectionId: string
   ): Promise<CategoryMappingReassignResult> {
     if (fromDestinationConnectionId === toDestinationConnectionId) {
-      return Promise.reject(
-        new CategoryMappingReassignSameConnectionException(fromDestinationConnectionId)
-      );
+      throw new CategoryMappingReassignSameConnectionException(fromDestinationConnectionId);
     }
     return this.categoryRepo.reassignDestination(
       fromDestinationConnectionId,
