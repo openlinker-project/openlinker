@@ -158,6 +158,7 @@ import type { IssueInvoiceOptions } from '../../invoicing';
 import type { ResolvedDeliveryLine } from '../../delivery-on-documents/lib/delivery-line';
 import type { OrderRecord } from '../api/orders.types';
 import { parseOrderSnapshot } from '../api/order-snapshot.schema';
+import { humanizeExtraKey } from '../lib/humanize-extra-key';
 import type { ParsedOrderItem, ParsedOrderTotals } from '../api/order-snapshot.schema';
 
 interface SalesDocumentPanelProps {
@@ -166,13 +167,23 @@ interface SalesDocumentPanelProps {
 
 type PanelCopy = ResolvedCopy<Messages['orders']>['salesDocumentPanel'];
 
+/**
+ * The rows of a document's field list, split by who needs them (#4065). An
+ * operator glancing at an order needs which document it is and when it was
+ * issued; everything else is support data and starts collapsed.
+ */
+interface DocumentFieldItems {
+  summary: KeyValueItem[];
+  details: KeyValueItem[];
+}
+
 /** Mirrors `buildInvoiceFieldItems` from the pre-#2160 `OrderInvoicePanel`. */
 function buildInvoiceFieldItems(
   invoice: InvoiceRecord,
   showRegulatoryBadge: boolean,
   copy: PanelCopy,
-): KeyValueItem[] {
-  const items: KeyValueItem[] = [
+): DocumentFieldItems {
+  const summary: KeyValueItem[] = [
     {
       id: 'number',
       label: copy.invoice.field.number,
@@ -182,22 +193,17 @@ function buildInvoiceFieldItems(
         <span className="text-muted">—</span>
       ),
     },
-    {
-      id: 'document',
-      label: copy.invoice.field.document,
-      value: DOCUMENT_TYPE_LABEL_FALLBACK[invoice.documentType] ?? invoice.documentType,
-    },
   ];
 
   if (showRegulatoryBadge) {
-    items.push({
+    summary.push({
       id: 'clearance',
       label: copy.invoice.field.clearance,
       value: <RegulatoryStatusBadge status={invoice.regulatoryStatus} />,
     });
   }
 
-  items.push({
+  summary.push({
     id: 'issued',
     label: copy.invoice.field.issued,
     value: invoice.issuedAt ? (
@@ -207,30 +213,32 @@ function buildInvoiceFieldItems(
     ),
   });
 
-  return items;
+  const details: KeyValueItem[] = [
+    {
+      id: 'document',
+      label: copy.invoice.field.document,
+      value: DOCUMENT_TYPE_LABEL_FALLBACK[invoice.documentType] ?? invoice.documentType,
+    },
+  ];
+
+  return { summary, details };
 }
 
 /** Mirrors `buildRegisteredFieldItems` from the pre-#2160 `OrderReceiptPanel`. */
 function buildFiscalFieldItems(
   record: FiscalRegistrationRecord,
   copy: PanelCopy,
-): KeyValueItem[] {
+): DocumentFieldItems {
   const notReported = (
     <span className="text-muted">{copy.fiscalReceipt.field.notReported}</span>
   );
 
-  const items: KeyValueItem[] = [
+  const summary: KeyValueItem[] = [
     {
       id: 'documentReference',
       label: copy.fiscalReceipt.field.documentReference,
       value: record.documentReference ?? notReported,
       mono: Boolean(record.documentReference),
-    },
-    {
-      id: 'signingIdentity',
-      label: copy.fiscalReceipt.field.signingIdentity,
-      value: record.signingIdentity ?? notReported,
-      mono: Boolean(record.signingIdentity),
     },
     {
       id: 'registeredAt',
@@ -243,13 +251,49 @@ function buildFiscalFieldItems(
     },
   ];
 
+  const details: KeyValueItem[] = [
+    {
+      id: 'signingIdentity',
+      label: copy.fiscalReceipt.field.signingIdentity,
+      value: record.signingIdentity ?? notReported,
+      mono: Boolean(record.signingIdentity),
+    },
+  ];
+
   if (record.regimeExtras) {
     for (const [key, value] of Object.entries(record.regimeExtras)) {
-      items.push({ id: `extra-${key}`, label: key, value, mono: true });
+      // Humanized for reading only; the vendor key is provider vocabulary and
+      // is not translated.
+      details.push({ id: `extra-${key}`, label: humanizeExtraKey(key), value, mono: true });
     }
   }
 
-  return items;
+  return { summary, details };
+}
+
+function DocumentFieldList({
+  items,
+  copy,
+}: {
+  items: DocumentFieldItems;
+  copy: PanelCopy;
+}): ReactElement {
+  return (
+    <>
+      <KeyValueList items={items.summary} />
+      {items.details.length > 0 ? (
+        <details
+          className="sales-document-panel__routing-disclosure sales-document-panel__technical-details"
+          data-testid="sales-document-technical-details"
+        >
+          <summary>
+            {interpolate(copy.panel.technicalDetails, { count: items.details.length })}
+          </summary>
+          <KeyValueList items={items.details} />
+        </details>
+      ) : null}
+    </>
+  );
 }
 
 export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactElement | null {
@@ -880,7 +924,10 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           {invoiceSettled && invoiceDisplayStatus === 'issued' && invoice ? (
             <div className="sales-document-panel__body">
               <DocumentLifecycle kind="invoice" steps={resolveInvoiceLifecycleSteps(invoice)} />
-              <KeyValueList items={buildInvoiceFieldItems(invoice, showRegulatoryBadge, copy)} />
+              <DocumentFieldList
+                items={buildInvoiceFieldItems(invoice, showRegulatoryBadge, copy)}
+                copy={copy}
+              />
               {/* #3549 - did the document reach the marketplace order? */}
               <InvoiceMarketplaceUploadStatus invoiceId={invoice.id} />
               {/* #3551 - one neutral email control for every provider. */}
@@ -1272,7 +1319,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
 
           {fiscalSettled && fiscalDisplayStatus === 'registered' && fiscalRecord ? (
             <div className="sales-document-panel__body">
-              <KeyValueList items={buildFiscalFieldItems(fiscalRecord, copy)} />
+              <DocumentFieldList items={buildFiscalFieldItems(fiscalRecord, copy)} copy={copy} />
               {fiscalRecord.artefacts && fiscalRecord.artefacts.length > 0 ? (
                 <FiscalArtefactList artefacts={fiscalRecord.artefacts} />
               ) : (

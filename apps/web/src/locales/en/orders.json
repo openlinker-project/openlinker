@@ -2753,6 +2753,7 @@
     "panel": {
       "fixRouting": "Fix routing settings",
       "manualOverride": "Issue or register manually instead",
+      "technicalDetails": "Technical details ({count})",
       "title": "Sales document",
       "whyThisKind": "Why this kind?"
     }
