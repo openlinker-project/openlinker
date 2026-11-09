@@ -83,8 +83,8 @@ export interface SidePanelProps {
 }
 
 const PHONE_QUERY = '(max-width: 640px)';
-const SIDE_SPRING = { type: 'tween', duration: 0.36, ease: [0.32, 0.72, 0, 1] } as const;
-/** vaul's curve: fast out, long settle. */
+/** Desktop side sheet: vaul's curve, fast out with a long settle. */
+const SIDE_TWEEN = { type: 'tween', duration: 0.36, ease: [0.32, 0.72, 0, 1] } as const;
 /**
  * Phone sheet motion: shorter than vaul's 480 ms and still decelerating, so
  * the sheet arrives without a long slide across the whole screen.
@@ -203,7 +203,7 @@ export function SidePanel({
                 initial={enter}
                 animate={rest}
                 exit={enter}
-                transition={phone ? SHEET_TWEEN : SIDE_SPRING}
+                transition={phone ? SHEET_TWEEN : SIDE_TWEEN}
                 drag={phone && !reduce ? 'y' : false}
                 dragControls={controls}
                 dragListener={false}
