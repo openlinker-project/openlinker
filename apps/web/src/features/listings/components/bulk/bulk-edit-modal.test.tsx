@@ -126,6 +126,8 @@ function makeVariantRow(variant: ProductVariant, opts: { candidates?: EanMatchCa
     resolvedCategoryId: null,
     resolvedProductCardId: null,
     resolutionMethod: null,
+    overriddenCard: null,
+    mappingAgrees: false,
     categoryCandidates: opts.candidates ?? [],
     override: {},
   };

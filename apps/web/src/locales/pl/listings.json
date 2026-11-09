@@ -261,6 +261,7 @@
     },
     "chips": {
       "alreadyListed": "Już wystawiony",
+      "cardCategoryDiffers": "katalog ≠ mapowanie",
       "categoryNotSet": "Brak kategorii",
       "currencyMismatch": "Niezgodna waluta",
       "invalidBarcode": "Błędny kod kreskowy",
@@ -278,6 +279,10 @@
       "unknownCategoryResult": "Nieznany wynik"
     },
     "describe": {
+      "cardCategoryDiffers": {
+        "detail": "Używamy Twojego mapowania, a produkt z katalogu nie zostanie powiązany. Otwórz, aby porównać obie kategorie.",
+        "title": "Kod kreskowy {ean} pasuje do produktu z katalogu {destination} w innej kategorii niż Twoje mapowanie kategorii."
+      },
       "currencyMismatch": {
         "detail": "Ustaw jawną cenę w {currency} dla tego wariantu lub zmień walutę partii.",
         "title": "Cena główna nie jest w {currency}."
@@ -342,6 +347,25 @@
       "consequence": "Wynika z przyczyny powyżej",
       "jumpTo": "Przejdź do pola {name}"
     }
+  },
+  "bulkCardCategoryDialog": {
+    "adoptNote": "Zmień tylko wtedy, gdy ten kod kreskowy naprawdę należy do tego produktu. Oferta zostanie wtedy powiązana z produktem z katalogu i przejmie jego nazwę, parametry i zdjęcia.",
+    "barcodeMatch": "Z kodu kreskowego",
+    "catalogProduct": "Produkt z katalogu {destination}",
+    "categoryFallback": "Kategoria {id}",
+    "editProduct": "Edytuj produkt",
+    "inUse": "W użyciu",
+    "keepMapping": "Zostaw moje mapowanie",
+    "leafId": "ID {id}",
+    "lede": "<subject>{subject}</subject> (kod kreskowy <ean>{ean}</ean>) pasuje do produktu z katalogu {destination}, który jest w innej kategorii. Używamy Twojego mapowania, a produkt z katalogu nie zostanie powiązany.",
+    "ledeNoEan": "<subject>{subject}</subject> pasuje do produktu z katalogu {destination}, który jest w innej kategorii. Używamy Twojego mapowania, a produkt z katalogu nie zostanie powiązany.",
+    "loading": "Ładowanie kategorii…",
+    "noSharedBranch": "Brak wspólnej gałęzi: to różne części katalogu",
+    "notSynced": "Ścieżki kategorii nie są jeszcze zsynchronizowane",
+    "siblingNote": "Wszystkie warianty tego produktu są wystawiane w jednej kategorii, więc ten wariant nie może zmienić jej osobno. Aby przenieść cały produkt, zmień jego kategorię w edytorze.",
+    "title": "Twoje mapowanie i kod kreskowy wskazują różne kategorie",
+    "useCard": "Użyj kategorii z katalogu",
+    "yourMapping": "Twoje mapowanie kategorii"
   },
   "bulkCategoryChooseModal": {
     "browse": "Przeglądaj ›",
@@ -900,6 +924,36 @@
     "retry": "Ponów ustalanie",
     "stopAndReview": "Zatrzymaj i przejrzyj {n}"
   },
+  "bulkReviewCategoryCell": {
+    "barcodeMatched": "Kod kreskowy wskazuje: {category}",
+    "barcodeMatchedUnknown": "Kod kreskowy wskazuje inną kategorię",
+    "categoryFallback": "Kategoria {id}",
+    "compareAria": "{label}. Porównaj z Twoim mapowaniem",
+    "loading": "Ładowanie…",
+    "notSet": "Nie ustawiono",
+    "pathNotSynced": "Ścieżka nie jest jeszcze zsynchronizowana",
+    "resolvedAtSubmit": "Ustalana przy tworzeniu ofert",
+    "siblingConflicts": {
+      "few": "Kod kreskowy nie zgadza się w {n} wariantach",
+      "many": "Kod kreskowy nie zgadza się w {n} wariantach",
+      "one": "Kod kreskowy nie zgadza się w {n} wariancie",
+      "other": "Kod kreskowy nie zgadza się w {n} wariantu"
+    },
+    "sourceHint": {
+      "card": "Dopasowana przez kod kreskowy do produktu z katalogu. Żadne mapowanie kategorii nie obejmuje tego produktu.",
+      "cardAgrees": "Dopasowana przez kod kreskowy do produktu z katalogu, który jest w kategorii wskazanej przez Twoje mapowanie.",
+      "mapping": "Ustalona na podstawie Twojego mapowania kategorii.",
+      "picked": "Ta kategoria została wybrana w tym kreatorze.",
+      "shared": "Wszystkie warianty produktu są wystawiane w jednej kategorii, więc ten wariant używa kategorii produktu."
+    },
+    "sourceLabel": {
+      "card": "Katalog",
+      "cardAgrees": "Katalog + mapowanie",
+      "mapping": "Mapowanie",
+      "picked": "Wybrana tutaj",
+      "shared": "Wspólna"
+    }
+  },
   "bulkReviewStep": {
     "alreadyOn": "już w {destination}",
     "backToConfig": "Wróć do konfiguracji",
@@ -973,6 +1027,7 @@
       }
     },
     "columns": {
+      "category": "Kategoria",
       "priceGross": "Cena (brutto)",
       "product": "Produkt",
       "status": "Status",

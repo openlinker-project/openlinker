@@ -29,7 +29,9 @@ import {
 import { RateLimitSection } from './rate-limit-section';
 import { StockAndPricingSection } from './stock-and-pricing-section';
 import { FulfilmentOwnershipSection } from './fulfilment-ownership-section';
+import { PaymentWritebackSection } from './payment-writeback-section';
 import { readFulfilmentOwnedByDestination } from '../lib/fulfilment-ownership';
+import { readPaymentWritebackForm } from '../lib/payment-writeback-config';
 import { SalesDocumentStatusSection } from './sales-document-status-section';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -516,6 +518,8 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       stockLocationOverride: readStockLocationOverride(connection.config),
       // "This system packs and ships orders itself" (#2118) — platform-neutral.
       fulfilmentOwnedByDestination: readFulfilmentOwnedByDestination(connection.config),
+      // "When the buyer pays later" (#3963) — platform-neutral.
+      paymentWriteback: readPaymentWritebackForm(connection.config),
       // Plugin-owned structured fields (#1330) — the platform's contribution
       // hydrates its own field slice (e.g. KSeF seller/payment) so an
       // unrelated save doesn't blank the persisted platform config.
@@ -735,6 +739,17 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
     const merged = mergeStructuredIntoConfig(parsed, {
       fulfilmentOwnedByDestination: form.getValues('fulfilmentOwnedByDestination'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
+  // #3963 — re-serialize `config.paymentWriteback` into configText. Same shape
+  // as `syncFulfilmentOwnershipToJson`: the section sets the value FIRST.
+  function syncPaymentWritebackToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      paymentWriteback: form.getValues('paymentWriteback'),
     });
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
@@ -1030,6 +1045,16 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           form={form}
           configIsParseable={configIsParseable}
           syncFulfilmentOwnershipToJson={syncFulfilmentOwnershipToJson}
+        />
+      ) : null}
+
+      {/* #3963 — read only where a late payment can be mirrored: an order destination. */}
+      {connection.enabledCapabilities.includes('OrderProcessorManager') ? (
+        <PaymentWritebackSection
+          connectionId={connection.id}
+          form={form}
+          configIsParseable={configIsParseable}
+          syncPaymentWritebackToJson={syncPaymentWritebackToJson}
         />
       ) : null}
 

@@ -99,6 +99,17 @@ export const NEUTRAL_BLOCKER_CHIPS: Record<string, ChipDescriptor> = {
     fixable: true,
     field: 'category',
   }),
+  // #3994 - a catalogue product matched the barcode in a different category
+  // than the operator's mapping. The mapping was used, so nothing is wrong with
+  // the row; the chip only says a catalogue product was set aside. Advisory:
+  // the operator's own mapping is the answer, so it must never gate the batch.
+  // The Review step shows it on the Category cell rather than as a status chip.
+  'card-category-differs': chip('cardCategoryDiffers', {
+    tone: 'warning',
+    fixable: true,
+    advisory: true,
+    field: 'category',
+  }),
   'no-master-price': chip('noMasterPrice', { tone: 'error', fixable: true, field: 'price' }),
   'no-master-stock': chip('noMasterStock', { tone: 'error', fixable: true }),
   'stock-unknown': chip('stockUnknown', { tone: 'error', fixable: true }),
@@ -254,6 +265,11 @@ export function describeBlocker(blocker: string, ctx: BlockerCopyContext): Block
       return {
         title: interpolate(copy.unknownCategoryResult.title, params),
         detail: copy.unknownCategoryResult.detail,
+      };
+    case 'card-category-differs':
+      return {
+        title: interpolate(copy.cardCategoryDiffers.title, params),
+        detail: copy.cardCategoryDiffers.detail,
       };
     case 'no-master-price':
       return { title: copy.noMasterPrice.title, detail: copy.noMasterPrice.detail };
