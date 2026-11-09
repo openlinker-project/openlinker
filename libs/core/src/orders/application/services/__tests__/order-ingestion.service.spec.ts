@@ -1259,6 +1259,12 @@ describe('OrderIngestionService', () => {
     // takes the job onto its retry ladder.
     it('should decide and persist the sales document before rethrowing when no destination is reachable', async () => {
       const noDestinations = new NoOrderDestinationsAvailableException('ol_order_test', connectionId);
+      // The rethrow path must hand the trigger the JUST-PERSISTED buyer tax id,
+      // exactly as the success path does (#3187), so it is stubbed here and
+      // asserted below rather than left to whatever the default mock returns.
+      orderRecordService.persistOrder.mockResolvedValueOnce({
+        buyerTaxId: '5213796333',
+      } as never);
       orderSyncService.syncOrder.mockRejectedValue(noDestinations);
       autoIssueTrigger.onOrderTransition.mockResolvedValueOnce({ kind: 'none' });
 
@@ -1272,7 +1278,7 @@ describe('OrderIngestionService', () => {
         connectionId,
         'evt-3959',
         null,
-        expect.anything()
+        '5213796333'
       );
       expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith('ol_order_test', null, {
         action: 'set',
