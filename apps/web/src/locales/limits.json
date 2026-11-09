@@ -1,4 +1,11 @@
 {
+  "listings:attributeRules.chip.fromRules": 20,
+  "listings:attributeRules.chip.rejectedCount": 36,
+  "listings:attributeRules.fix": 12,
+  "listings:attributeRules.manage": 24,
+  "listings:attributeRules.notChecked": 40,
+  "listings:attributeRules.retry": 20,
+  "listings:attributeRules.title": 32,
   "ui:confirmDialog.cancel": 12,
   "ui:confirmDialog.confirm": 12,
   "ui:pagination.next": 12,
