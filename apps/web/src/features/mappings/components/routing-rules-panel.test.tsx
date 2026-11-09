@@ -458,7 +458,7 @@ describe('RoutingRulesPanel', () => {
 describe('RoutingRulesPanel layout (#3958)', () => {
   it('shows one "Who ships it" column and no "Routed to" column', async () => {
     renderPanel(buildApiClient());
-    await screen.findByRole('combobox', { name: /Fulfillment processor for InPost Paczkomat/i });
+    await screen.findByRole('combobox', { name: /Fulfilment processor for InPost Paczkomat/i });
     expect(screen.getByRole('heading', { name: 'Who ships each delivery method' })).toBeInTheDocument();
     expect(screen.getAllByText('Who ships it').length).toBeGreaterThan(0);
     expect(screen.queryByText('Routed to')).not.toBeInTheDocument();
@@ -469,14 +469,14 @@ describe('RoutingRulesPanel layout (#3958)', () => {
 describe('RoutingRulesPanel embedded in a host (#3958)', () => {
   it('drops its own title and intro when embedded', async () => {
     renderPanel(buildApiClient(), { embedded: true });
-    await screen.findByRole('combobox', { name: /Fulfillment processor for InPost Paczkomat/i });
+    await screen.findByRole('combobox', { name: /Fulfilment processor for InPost Paczkomat/i });
     expect(screen.queryByRole('heading', { name: 'Who ships each delivery method' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Pick who ships each Allegro delivery method/)).not.toBeInTheDocument();
   });
 
   it('lists the focused delivery method first and marks it', async () => {
     renderPanel(buildApiClient(), { focusMethodId: 'm2' });
-    const selects = await screen.findAllByRole('combobox', { name: /Fulfillment processor for/i });
+    const selects = await screen.findAllByRole('combobox', { name: /Fulfilment processor for/i });
     expect(selects[0]).toHaveAccessibleName(/Kurier24/);
     expect(screen.getByText('This order')).toBeInTheDocument();
   });

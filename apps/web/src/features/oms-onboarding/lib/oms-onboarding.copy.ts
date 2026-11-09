@@ -36,16 +36,6 @@ export const omsOnboardingCopy = {
     retry: 'Try again',
   },
 
-  steps: [
-    { title: 'Your product master', meta: 'Products and stock' },
-    { title: 'Sales documents', meta: 'Invoices and receipts' },
-    { title: 'Add packers', meta: 'Optional' },
-    { title: 'Shipping', meta: 'Carriers and labels' },
-    { title: 'See what changes', meta: 'Read before turning on' },
-    { title: 'Automations', meta: 'Review only' },
-    { title: 'Who decides what', meta: 'Review' },
-    { title: 'Turn it on', meta: 'Last step' },
-  ],
   stepOf: (step: number, total: number): string => `Step ${String(step)} of ${String(total)}`,
   salesDocumentsStep: {
     why: 'Decide which document each order gets: an invoice or a receipt. Connect a provider that issues them, then say what each one issues, which goes first, and whether it issues by itself once an order is paid.',

@@ -81,5 +81,39 @@
     "why": "Wybierz, który przewoźnik wysyła każdą metodę dostawy. Wtedy OpenLinker może kupić etykietę od razu po przyjęciu paczki do pakowania, a pakowacz tylko ją drukuje.",
     "yesBody": "Jedna etykieta na paczkę, na koncie przewoźnika, do którego trafia jej metoda dostawy.",
     "yesTitle": "Tak, kupuj po przyjęciu paczki"
+  },
+  "wizardSteps": {
+    "automations": {
+      "meta": "Tylko do przejrzenia",
+      "title": "Automatyzacje"
+    },
+    "packers": {
+      "meta": "Opcjonalnie",
+      "title": "Dodaj pakowaczy"
+    },
+    "productMaster": {
+      "meta": "Produkty i stany",
+      "title": "Twój główny sklep"
+    },
+    "salesDocuments": {
+      "meta": "Faktury i paragony",
+      "title": "Dokumenty sprzedaży"
+    },
+    "shipping": {
+      "meta": "Przewoźnicy i etykiety",
+      "title": "Wysyłka"
+    },
+    "turnOn": {
+      "meta": "Ostatni krok",
+      "title": "Włącz"
+    },
+    "whatChanges": {
+      "meta": "Przeczytaj przed włączeniem",
+      "title": "Co się zmieni"
+    },
+    "whoDecides": {
+      "meta": "Do przejrzenia",
+      "title": "Kto o czym decyduje"
+    }
   }
 }

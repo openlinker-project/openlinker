@@ -31,7 +31,7 @@ import {
   summarizeParcelProfile,
   type ParcelProfileDraft,
 } from '../lib/parcel-profile';
-import { useMessages } from '../../../shared/i18n';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { useShippingRouteCopy } from '../hooks/use-shipping-route-copy';
 import { RoutingSplitBar, type RoutingSplitBucket } from './routing-split-bar';
 import {
@@ -381,7 +381,7 @@ export function RoutingRulesPanel({
       const currentKey = selections[method.value] ?? DEFAULT_KEY;
       return (
         <Select
-          aria-label={`Fulfillment processor for ${method.label}`}
+          aria-label={interpolate(panelCopy.processorSelectLabel, { method: method.label })}
           value={currentKey}
           onChange={(e) => {
             handleSelect(method.value, e.target.value);

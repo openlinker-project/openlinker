@@ -48,6 +48,7 @@ import { useFulfillmentSnapshotQuery } from '../hooks/use-fulfillment-snapshot-q
 import { useMainLocationQuery } from '../hooks/use-main-location-query';
 import { useSetSetupStepSkippedMutation } from '../hooks/use-set-setup-step-skipped-mutation';
 import { useSetupSteps } from '../hooks/use-setup-steps';
+import { useWizardSteps } from '../hooks/use-wizard-steps';
 import { SetupStepKeys, type SetupStepKey } from '../lib/setup-steps';
 import { useSetAutoDispatchMutation, type SetAutoDispatchInput } from '../hooks/use-set-auto-dispatch-mutation';
 import { useSetPackingMutation } from '../hooks/use-set-packing-mutation';
@@ -180,6 +181,7 @@ interface OnboardingFlowProps extends OmsOnboardingProps {
 }
 
 function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
+  const wizardSteps = useWizardSteps();
   const { packingConnection, mainLocation, standing, packers } = props;
 
   const { eligible: masters, partial } = useMemo(
@@ -379,7 +381,7 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
       stepperPlacement="side"
       stepper={
         <SetupStepper
-          steps={COPY.steps.map((s) => s.title)}
+          steps={wizardSteps.map((s) => s.title)}
           currentStep={step - 1}
           completedSteps={completedSteps}
           // Packing that is already on lets the operator move between the setup
@@ -392,7 +394,7 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
           onSelectStep={(index) => goToStep(index + 1)}
           testId="wizard-stepper"
           orientation="vertical"
-          stepMeta={COPY.steps.map((s) => s.meta)}
+          stepMeta={wizardSteps.map((s) => s.meta)}
         />
       }
     >
