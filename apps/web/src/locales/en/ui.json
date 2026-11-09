@@ -8,6 +8,7 @@
     "networkFailed": "Network request failed",
     "noReadableBody": "The server sent an empty response.",
     "requestFailed": "Request failed",
+    "technicalDetails": "Technical details (not translated)",
     "timedOut": "The request timed out."
   },
   "bulkActionBar": {
