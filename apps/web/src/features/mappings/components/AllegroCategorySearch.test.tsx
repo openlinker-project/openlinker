@@ -119,9 +119,10 @@ describe('AllegroCategorySearch', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^select$/i }));
 
-    // Staged row renders with "Selected:" label and the full path
-    expect(screen.getByText('Selected:')).toBeInTheDocument();
-    expect(screen.getByText('Electronics > Phones')).toBeInTheDocument();
+    // Staged row renders with the "Map to" label and the full path. The path is
+    // drawn as breadcrumb spans, so the whole string lives in the title only.
+    expect(screen.getByText('Map to')).toBeInTheDocument();
+    expect(screen.getByTitle('Electronics > Phones')).toBeInTheDocument();
     // Save + Cancel actions are available
     expect(screen.getByRole('button', { name: /save mapping/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
@@ -190,12 +191,12 @@ describe('AllegroCategorySearch', () => {
 
     await screen.findByText('Books');
     fireEvent.click(screen.getByRole('button', { name: /^select$/i }));
-    expect(screen.getByText('Selected:')).toBeInTheDocument();
+    expect(screen.getByText('Map to')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
 
     // Staged row is gone; onSelect was never called
-    expect(screen.queryByText('Selected:')).not.toBeInTheDocument();
+    expect(screen.queryByText('Map to')).not.toBeInTheDocument();
     expect(onSelect).not.toHaveBeenCalled();
   });
   describe('whole-tree search (#2075)', () => {
@@ -245,7 +246,7 @@ describe('AllegroCategorySearch', () => {
       renderSearch(mockApi());
       expect(await screen.findByText('Electronics')).toBeInTheDocument();
 
-      await userEvent.type(screen.getByLabelText('Search all categories'), 'smart');
+      await userEvent.type(screen.getByLabelText('Search all categories...'), 'smart');
 
       expect(await screen.findByText('Smartfony')).toBeInTheDocument();
     });
@@ -254,7 +255,7 @@ describe('AllegroCategorySearch', () => {
       const { onSelect } = renderSearch(mockApi());
       await screen.findByText('Electronics');
 
-      await userEvent.type(screen.getByLabelText('Search all categories'), 'smart');
+      await userEvent.type(screen.getByLabelText('Search all categories...'), 'smart');
       await userEvent.click(await screen.findByRole('button', { name: 'Select Smartfony' }));
 
       // Staged, not saved — the confirm step is unchanged by #2075.
@@ -274,7 +275,7 @@ describe('AllegroCategorySearch', () => {
       renderSearch(apiClient);
       await screen.findByText('Electronics');
 
-      await userEvent.type(screen.getByLabelText('Search all categories'), 'a');
+      await userEvent.type(screen.getByLabelText('Search all categories...'), 'a');
 
       await new Promise((resolve) => setTimeout(resolve, 400));
       expect(apiClient.mappings.searchCategories).not.toHaveBeenCalled();
@@ -284,7 +285,7 @@ describe('AllegroCategorySearch', () => {
       renderSearch(mockApi([]));
       await screen.findByText('Electronics');
 
-      await userEvent.type(screen.getByLabelText('Search all categories'), 'zzz');
+      await userEvent.type(screen.getByLabelText('Search all categories...'), 'zzz');
 
       expect(await screen.findByText('No matching categories')).toBeInTheDocument();
       expect(screen.queryByText('No categories synced yet')).not.toBeInTheDocument();
@@ -294,7 +295,7 @@ describe('AllegroCategorySearch', () => {
       renderSearch(mockApi());
       await screen.findByText('Electronics');
 
-      const input = screen.getByLabelText('Search all categories');
+      const input = screen.getByLabelText('Search all categories...');
       await userEvent.type(input, 'smart');
       await screen.findByText('Smartfony');
 
