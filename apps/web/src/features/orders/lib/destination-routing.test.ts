@@ -35,7 +35,7 @@ describe('destination routing reason guard', () => {
 
   it('should count every reason except the routing decision', () => {
     expect(DESTINATION_ROUTING_ATTENTION_REASONS).not.toContain('routed-to-no-destination');
-    expect(DESTINATION_ROUTING_ATTENTION_REASONS).toHaveLength(3);
+    expect(DESTINATION_ROUTING_ATTENTION_REASONS).toHaveLength(4);
   });
 });
 
@@ -56,5 +56,35 @@ describe('resolveDestinationRoutingSyncHint', () => {
     expect(resolveDestinationRoutingSyncHint('routed-destinations-unavailable', false, copy)).toBe(
       copy.destinationRouting.attentionSyncHint
     );
+  });
+});
+
+// #3959 - a shop with nothing to copy its orders to.
+describe('own-only destination reasons', () => {
+  it('should keep no-destination-configured neutral and uncounted', () => {
+    expect(resolveDestinationRoutingCopy('no-destination-configured', copy)?.tone).toBe('decision');
+    expect(DESTINATION_ROUTING_ATTENTION_REASONS).not.toContain('no-destination-configured');
+  });
+
+  it('should show its own hint, not the attention pointer, when no destination rows exist', () => {
+    expect(resolveDestinationRoutingSyncHint('no-destination-configured', false, copy)).toBe(
+      copy.destinationRouting.reasons['no-destination-configured'].hint
+    );
+  });
+
+  it.each(['no-destination-configured', 'no-active-destination'] as const)(
+    'should read the %s label and hint from the orders namespace',
+    (reason) => {
+      const words = copy.destinationRouting.reasons[reason];
+      expect(resolveDestinationRoutingCopy(reason, copy)).toMatchObject({
+        label: words.label,
+        hint: words.hint,
+      });
+    }
+  );
+
+  it('should count no-active-destination as outstanding work', () => {
+    expect(resolveDestinationRoutingCopy('no-active-destination', copy)?.tone).toBe('attention');
+    expect(DESTINATION_ROUTING_ATTENTION_REASONS).toContain('no-active-destination');
   });
 });

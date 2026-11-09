@@ -125,6 +125,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { diffOrderAmendment } from '../../domain/order-amendment-diff';
 import { applyOrderEditsToOrder } from '../../domain/types/order-edits.types';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
+import { NoOrderDestinationsAvailableException } from '../../domain/exceptions/no-order-destinations-available.exception';
 
 /**
  * What the #2396 intercept decided for one order.
@@ -800,11 +801,27 @@ export class OrderIngestionService implements IOrderIngestionService {
       // until the next run - a bounded display fault, not a correctness one.
       await this.persistDestinationRoutingCleared(order.id);
     } else {
-      results = await this.orderSyncService.syncOrder({
-        order,
-        sourceConnectionId: connectionId,
-        sourceEventId,
-      });
+      try {
+        results = await this.orderSyncService.syncOrder({
+          order,
+          sourceConnectionId: connectionId,
+          sourceEventId,
+        });
+      } catch (error) {
+        // #3959 - no reachable destination is a fact about MIRRORING, not
+        // about the sale. Decide the sales document before the throw takes the
+        // job onto its retry ladder, or the order never gets its invoice.
+        if (error instanceof NoOrderDestinationsAvailableException) {
+          await this.decideSalesDocument(
+            order,
+            connectionId,
+            sourceEventId,
+            existing?.taxRateEra ?? null,
+            persisted.buyerTaxId
+          );
+        }
+        throw error;
+      }
     }
 
     // Update per-destination sync status; allSettled — one failure doesn't block others
@@ -920,6 +937,35 @@ export class OrderIngestionService implements IOrderIngestionService {
       }
     }
 
+    await this.decideSalesDocument(
+      order,
+      connectionId,
+      sourceEventId,
+      existing?.taxRateEra ?? null,
+      persisted.buyerTaxId
+    );
+
+    return results;
+  }
+
+  /**
+   * The sales-document step (OL #1120, #2100): ask the auto-issue gate what this
+   * transition means for the order's invoice or receipt, and persist its answer.
+   *
+   * Runs at the end of every source ingestion, and ALSO before a
+   * `NoOrderDestinationsAvailableException` propagates (#3959): whether the
+   * order could be copied to a destination says nothing about whether the buyer
+   * is owed a document, so a missing or disabled destination must not cost the
+   * order its invoice. The gate is idempotent per order, so a retried job asks
+   * again without issuing a second document.
+   */
+  private async decideSalesDocument(
+    order: Order,
+    connectionId: string,
+    sourceEventId: string | undefined,
+    taxRateEra: OrderRecord['taxRateEra'] | null,
+    buyerTaxId: OrderRecord['buyerTaxId']
+  ): Promise<void> {
     // OL #1120 — auto-issue trigger (EV→SVC edge, ADR-026 §3). Fires STRICTLY at
     // the end of the authoritative source poll, AFTER per-destination status is
     // settled.
@@ -930,9 +976,9 @@ export class OrderIngestionService implements IOrderIngestionService {
     // destination shop or from a routed holder. Skipping it under a hold would
     // silently stop invoicing for exactly the orders a router took over, which
     // is a fiscal regression disguised as a fulfilment change. `results` is
-    // empty on that path, so the settlement loop above simply did nothing.
+    // empty on that path, so the settlement loop in `syncOrderFromSource` did nothing.
     //
-    // The destination-echo early-return (`return []`) above is the
+    // The destination-echo early-return (`return []`) in `syncOrderFromSource` is the
     // INTENDED gate: issuance fires only on the real source ingestion, never on a
     // destination re-read. Threads the in-scope `sourceEventId` as the trace token
     // (D10 — no `correlationId` exists). Wrapped so an enqueue/compose failure
@@ -951,14 +997,14 @@ export class OrderIngestionService implements IOrderIngestionService {
         // the feature. Without this the marker was write-only and every
         // already-ingested uninvoiced order became un-issuable under strict
         // enforcement.
-        existing?.taxRateEra ?? null,
+        taxRateEra,
         // #3187, ADR-073 decision 1: the OPPOSITE read from taxRateEra above -
         // `persisted`, not `existing`. `buyerTaxId` is computed fresh by
         // `persistOrder` from THIS transition's order, so a first-seen order
         // (`existing === null`) still carries its correct three-state value on
         // `persisted`; reading `existing` here would silently answer
         // "not asserted" for every order's first ingestion.
-        persisted.buyerTaxId
+        buyerTaxId
       );
       // #2100 (ADR-041 §54/§105): a block is never log-only. The trigger REPORTS
       // the outcome and this service — which owns the order record — writes it,
@@ -979,8 +1025,6 @@ export class OrderIngestionService implements IOrderIngestionService {
         `Auto-issue trigger failed (swallowed): error=${errorName} connectionId=${connectionId} orderId=${order.id} sourceEventId=${sourceEventId ?? 'n/a'}`
       );
     }
-
-    return results;
   }
 
   /**

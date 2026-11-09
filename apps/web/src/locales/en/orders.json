@@ -502,6 +502,14 @@
     "attentionSyncHint": "Routing needs attention",
     "partialSyncHint": "Some routed destinations were not reached",
     "reasons": {
+      "no-active-destination": {
+        "hint": "Every connection that can receive this order is disabled or needs attention. The order is copied automatically once one of them is active again. Its sales document is decided anyway.",
+        "label": "No active destination"
+      },
+      "no-destination-configured": {
+        "hint": "No other connection creates orders, so there is nothing to copy this order to. Its sales document is still issued. Add an order destination in Connections if orders should be copied elsewhere.",
+        "label": "Kept in source shop"
+      },
       "routed-destinations-partially-unavailable": {
         "hint": "This order reached some of the destinations routing chose, but not all of them. The rest are disabled, unknown, or cannot create orders.",
         "label": "Some routed destinations unavailable"
