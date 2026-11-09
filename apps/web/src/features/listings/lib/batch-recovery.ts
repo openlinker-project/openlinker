@@ -10,6 +10,7 @@
  *
  * @module apps/web/src/features/listings/lib
  */
+import { getMessages, interpolate } from '../../../shared/i18n';
 import type { BulkBatchRecordSummary } from '../api/bulk-listings.types';
 
 /**
@@ -91,10 +92,11 @@ export function buildBatchFixUrl(input: {
 
 /** Operator-facing reason a fix cannot be offered. */
 export function describeBatchFixBlocker(blocker: BatchFixBlocker): string {
+  const copy = getMessages('listings').batchRecovery.blockers;
   switch (blocker) {
     case 'no-product-link':
-      return 'Fix and resubmit needs the product link, which this batch did not record. Retry is unaffected.';
+      return copy.noProductLink;
     case 'over-product-cap':
-      return `Fix and resubmit handles up to ${MAX_WIZARD_PRODUCTS.toString()} products at a time. Retry is unaffected.`;
+      return interpolate(copy.overProductCap, { max: MAX_WIZARD_PRODUCTS });
   }
 }

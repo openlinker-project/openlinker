@@ -32,6 +32,7 @@ import { useDestinationPricingSyncSummaries } from '../hooks/use-destination-pri
 import { anyConnectionAutomatic } from '../lib/pricing-sync-mode';
 import { formatAutoAppliedCount } from '../lib/auto-applied-count-label';
 import type { Connection } from '../../connections';
+import { renderRich, selectPluralForm, useActiveLocale, useMessages } from '../../../shared/i18n';
 import { AutoAppliedDialog, type AutoAppliedRow } from './auto-applied-dialog';
 
 export interface AutoAppliedNoteProps {
@@ -53,6 +54,8 @@ export interface AutoAppliedNoteProps {
 
 export function AutoAppliedNote({ destinationConnections }: AutoAppliedNoteProps): ReactElement | null {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const copy = useMessages('price-changes').autoAppliedNote;
+  const locale = useActiveLocale();
   const query = useAutoAppliedPriceChangesQuery();
   const items = query.data ?? [];
 
@@ -77,17 +80,23 @@ export function AutoAppliedNote({ destinationConnections }: AutoAppliedNoteProps
   return (
     <>
       <div className="filter-note" id="auto-applied-note" role="status">
-        <span id="auto-applied-count">{count.label}</span> price change{count.plural ? 's' : ''} went live
-        automatically recently (
-        <button
-          type="button"
-          className="filter-note__action"
-          id="auto-applied-link"
-          onClick={() => setDialogOpen(true)}
-        >
-          see them
-        </button>
-        )
+        {renderRich(
+          selectPluralForm(items.length, copy.message, locale),
+          {
+            count: (text) => <span id="auto-applied-count">{text}</span>,
+            link: (text) => (
+              <button
+                type="button"
+                className="filter-note__action"
+                id="auto-applied-link"
+                onClick={() => setDialogOpen(true)}
+              >
+                {text}
+              </button>
+            ),
+          },
+          { n: count.label },
+        )}
       </div>
       <AutoAppliedDialog open={dialogOpen} onOpenChange={setDialogOpen} rows={rows} />
     </>

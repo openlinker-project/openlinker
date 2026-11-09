@@ -13,6 +13,7 @@
  * @module features/analytics/components
  */
 import type { ReactElement } from 'react';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { useAnalyticsCsvExport } from '../hooks/use-analytics-csv-export';
@@ -32,7 +33,7 @@ interface ExportCsvButtonProps {
 
 /** Moves the operator to the date range controls: the one fix for a refused range. */
 function focusDateRange(): void {
-  const input = document.querySelector<HTMLInputElement>('input[aria-label="Order date from"]');
+  const input = document.querySelector<HTMLInputElement>('input[data-analytics-range-from]');
   input?.scrollIntoView({ block: 'center' });
   input?.focus();
 }
@@ -45,6 +46,7 @@ export function ExportCsvButton({
   reportingCurrency,
   disabledReason,
 }: ExportCsvButtonProps): ReactElement {
+  const copy = useMessages('analytics').exportCsvButton;
   const exportCsv = useAnalyticsCsvExport();
   const preparing = exportCsv.isPending;
   const currencyDiffers =
@@ -52,7 +54,10 @@ export function ExportCsvButton({
   const title = disabledReason
     ? disabledReason
     : currencyDiffers
-      ? `The file is in ${reportingCurrency}, the reporting currency, not ${displayCurrency}.`
+      ? interpolate(copy.currencyTitle, {
+          reporting: reportingCurrency ?? '',
+          display: displayCurrency ?? '',
+        })
       : undefined;
 
   function run(): void {
@@ -74,26 +79,26 @@ export function ExportCsvButton({
         {preparing ? (
           <>
             <span className="button__spinner" aria-hidden="true" />
-            Preparing CSV…
+            {copy.preparing}
           </>
         ) : (
-          'Export CSV'
+          copy.export
         )}
       </Button>
       {currencyDiffers && !preparing && !exportCsv.isError ? (
         <p className="analytics-export__note">
-          File is in {reportingCurrency}, the reporting currency.
+          {interpolate(copy.currencyNote, { reporting: reportingCurrency ?? '' })}
         </p>
       ) : null}
       {preparing ? (
         <p className="analytics-export__note" role="status" data-testid="export-status">
-          Preparing “{reportLabel}”. The download starts when it is ready; you can keep working.
+          {interpolate(copy.status, { report: reportLabel })}
         </p>
       ) : null}
       {exportCsv.isError ? (
         <Alert
           tone="error"
-          title="Export refused"
+          title={copy.refused}
           data-testid="export-status"
           action={
             <>
@@ -104,7 +109,7 @@ export function ExportCsvButton({
                 data-testid="export-change-range"
                 onClick={focusDateRange}
               >
-                Change range
+                {copy.changeRange}
               </Button>
               <Button
                 type="button"
@@ -113,7 +118,7 @@ export function ExportCsvButton({
                 data-testid="export-retry"
                 onClick={run}
               >
-                Try again
+                {copy.tryAgain}
               </Button>
             </>
           }

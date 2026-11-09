@@ -18,8 +18,9 @@ import type { ReactElement } from 'react';
 
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import {
-  ORDER_EDIT_REFUSAL_COPY,
+  orderEditRefusalCopy,
   type OrderEditErrorCode,
   type OrderEditRemedyTarget,
 } from '../lib/order-edit';
@@ -39,7 +40,9 @@ export function OrderEditRefusal({
   savedSectionLabels = [],
   onGoTo,
 }: OrderEditRefusalProps): ReactElement {
-  const copy = ORDER_EDIT_REFUSAL_COPY[code];
+  const words = useMessages('orders').orderEditRefusal;
+  const format = useFormat();
+  const copy = orderEditRefusalCopy(code);
   const remedy = copy.remedy;
   const lockedWholeOrder = copy.locks.length >= 4;
 
@@ -73,13 +76,13 @@ export function OrderEditRefusal({
         </ol>
       ) : null}
       {code === 'SALES_DOCUMENT_ISSUED' || lockedWholeOrder ? (
-        <p className="muted-text">
-          Or cancel the order and ask the buyer to order again.
-        </p>
+        <p className="muted-text">{words.orCancel}</p>
       ) : null}
       {savedSectionLabels.length > 0 ? (
         <p data-testid="order-edit-blocked-saved">
-          {`Already saved: ${savedSectionLabels.join(', ').toLowerCase()}.`}
+          {interpolate(words.alreadySaved, {
+            sections: format.list(savedSectionLabels.map((label) => label.toLowerCase())),
+          })}
         </p>
       ) : null}
     </Alert>

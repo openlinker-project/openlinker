@@ -45,10 +45,11 @@ import {
   useUnassignOrderTagMutation,
 } from '../hooks/use-order-tag-mutations';
 import { pickNextColor } from '../lib/order-tag-color';
-import { ORDER_TAG_NAME_MAX_LENGTH, ORDER_TAGS_COPY } from '../lib/order-tags.copy';
+import { ORDER_TAG_NAME_MAX_LENGTH } from '../lib/order-tags';
+import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { OrderTagChip } from './order-tag-chip';
+import { serverErrorText } from '../lib/server-error-text';
 
-const COPY = ORDER_TAGS_COPY.picker;
 /** The `<768` band, as the fractional complement of `min-width: 768px` (lessons). */
 const PHONE_QUERY = '(max-width: 767.98px)';
 const ROW_SELECTOR = '[data-picker-row]';
@@ -68,6 +69,9 @@ interface TagPickerPanelProps {
 }
 
 function TagPickerPanel({ internalOrderId, assignedTagIds }: TagPickerPanelProps): ReactElement {
+  const copy = useMessages('orders').orderTags.picker;
+  const serverSaid = useMessages('orders').common.serverSaid;
+  const plural = usePlural();
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -90,8 +94,8 @@ function TagPickerPanel({ internalOrderId, assignedTagIds }: TagPickerPanelProps
   function reportSaveError(error: Error): void {
     showToast({
       tone: 'error',
-      title: COPY.saveErrorTitle,
-      description: error.message || COPY.saveErrorFallback,
+      title: copy.saveErrorTitle,
+      description: serverErrorText(serverSaid, error.message, copy.saveErrorFallback),
     });
   }
 
@@ -115,8 +119,8 @@ function TagPickerPanel({ internalOrderId, assignedTagIds }: TagPickerPanelProps
             onSuccess: () => {
               showToast({
                 tone: 'success',
-                title: COPY.createdToastTitle,
-                description: COPY.createdToastDescription(tag.name),
+                title: copy.createdToastTitle,
+                description: interpolate(copy.createdToastDescription, { name: tag.name }),
               });
             },
             onError: reportSaveError,
@@ -163,8 +167,8 @@ function TagPickerPanel({ internalOrderId, assignedTagIds }: TagPickerPanelProps
       <Input
         ref={searchRef}
         className="tag-picker__search"
-        aria-label={COPY.searchPlaceholder}
-        placeholder={COPY.searchPlaceholder}
+        aria-label={copy.searchPlaceholder}
+        placeholder={copy.searchPlaceholder}
         value={query}
         maxLength={ORDER_TAG_NAME_MAX_LENGTH}
         onChange={(event) => { setQuery(event.target.value); }}
@@ -172,15 +176,15 @@ function TagPickerPanel({ internalOrderId, assignedTagIds }: TagPickerPanelProps
         autoFocus
       />
       {createTag.isError ? (
-        <Alert tone="error" title={COPY.createErrorTitle}>
-          {createTag.error.message || COPY.createErrorFallback}
+        <Alert tone="error" title={copy.createErrorTitle}>
+          {serverErrorText(serverSaid, createTag.error.message, copy.createErrorFallback)}
         </Alert>
       ) : null}
       <div
         ref={listRef}
         className="tag-picker__list"
         role="group"
-        aria-label={COPY.listLabel}
+        aria-label={copy.listLabel}
         onKeyDown={handleListKeyDown}
       >
         {canOfferCreate ? (
@@ -191,11 +195,11 @@ function TagPickerPanel({ internalOrderId, assignedTagIds }: TagPickerPanelProps
             onClick={createAndAssign}
             disabled={createTag.isPending}
           >
-            {COPY.createRow(trimmedQuery)}
+            {interpolate(copy.createRow, { name: trimmedQuery })}
           </button>
         ) : null}
-        {tagsQuery.isLoading ? <p className="tag-picker__empty">Loading tags…</p> : null}
-        {showEmptyVocabulary ? <p className="tag-picker__empty">{COPY.emptyVocabulary}</p> : null}
+        {tagsQuery.isLoading ? <p className="tag-picker__empty">{copy.loading}</p> : null}
+        {showEmptyVocabulary ? <p className="tag-picker__empty">{copy.emptyVocabulary}</p> : null}
         {filtered.map((tag) => (
           <label key={tag.id} className="dropdown-menu__item tag-picker__item">
             <input
@@ -214,14 +218,14 @@ function TagPickerPanel({ internalOrderId, assignedTagIds }: TagPickerPanelProps
             <OrderTagChip tag={tag} small />
             <span className="tag-picker__hint">
               {tag.orderCount}
-              <span className="sr-only"> orders</span>
+              <span className="sr-only"> {plural(tag.orderCount, copy.orderCountUnit)}</span>
             </span>
           </label>
         ))}
       </div>
       <div className="tag-picker__foot">
-        {isAdmin ? <Link to="/settings/order-tags">{COPY.manageTags}</Link> : null}
-        <span className="text-muted tag-picker__saved">{COPY.savedHint}</span>
+        {isAdmin ? <Link to="/settings/order-tags">{copy.manageTags}</Link> : null}
+        <span className="text-muted tag-picker__saved">{copy.savedHint}</span>
       </div>
     </>
   );
@@ -233,6 +237,7 @@ export function OrderTagPicker({
   canWrite,
   trigger,
 }: OrderTagPickerProps): ReactElement | null {
+  const copy = useMessages('orders').orderTags;
   const [open, setOpen] = useState(false);
   const isPhone = useMediaQuery(PHONE_QUERY);
 
@@ -242,7 +247,7 @@ export function OrderTagPicker({
 
   const triggerElement = trigger ?? (
     <Button tone="ghost" className="button--xs" aria-haspopup="dialog">
-      {ORDER_TAGS_COPY.addTag}
+      {copy.addTag}
     </Button>
   );
 
@@ -253,14 +258,14 @@ export function OrderTagPicker({
         <DialogContent className="dialog__content--sheet tag-picker-sheet" aria-describedby={undefined}>
           <div className="sheet__grabber" aria-hidden="true" />
           <div className="sheet__header">
-            <DialogTitle>{COPY.dialogLabel}</DialogTitle>
+            <DialogTitle>{copy.picker.dialogLabel}</DialogTitle>
           </div>
           <div className="sheet__body tag-picker tag-picker--sheet">
             <TagPickerPanel internalOrderId={internalOrderId} assignedTagIds={assignedTagIds} />
           </div>
           <div className="sheet__footer">
             <DialogClose asChild>
-              <Button tone="secondary">{COPY.done}</Button>
+              <Button tone="secondary">{copy.picker.done}</Button>
             </DialogClose>
           </div>
         </DialogContent>
@@ -271,7 +276,7 @@ export function OrderTagPicker({
   return (
     <Popover open={open} onOpenChange={setOpen} dismissOnViewportChange>
       <PopoverTrigger asChild>{triggerElement}</PopoverTrigger>
-      <PopoverContent className="tag-picker" align="start" aria-label={COPY.dialogLabel}>
+      <PopoverContent className="tag-picker" align="start" aria-label={copy.picker.dialogLabel}>
         <TagPickerPanel internalOrderId={internalOrderId} assignedTagIds={assignedTagIds} />
       </PopoverContent>
     </Popover>

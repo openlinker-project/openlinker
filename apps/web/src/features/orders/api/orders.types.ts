@@ -169,7 +169,7 @@ export type SalesDocumentUnresolvedReasonValue =
 // `'routed-to-no-destination'` is a working router making a DECISION and
 // `'no-destination-configured'` (#3959) a shop with nothing to copy its orders
 // to; both are rendered neutrally. The rest are outstanding work and are counted
-// - see `DESTINATION_ROUTING_ATTENTION_REASONS` in `../lib/destination-routing-copy`.
+// - see `DESTINATION_ROUTING_ATTENTION_REASONS` in `../lib/destination-routing`.
 export const DestinationRoutingBlockReasonValues = [
   'routed-to-no-destination',
   'routed-destinations-unavailable',
@@ -1387,13 +1387,6 @@ export const ORDER_EXPORT_PII_COLUMNS: readonly OrderExportColumnIdValue[] = [
 export const ORDER_LIST_COLUMN_IDS = ['customer', 'channel', 'status', 'shipment', 'money'] as const;
 export type OrderListColumnIdValue = (typeof ORDER_LIST_COLUMN_IDS)[number];
 
-export const ORDER_LIST_COLUMN_LABELS: Record<OrderListColumnIdValue, string> = {
-  customer: 'Customer',
-  channel: 'Channel',
-  status: 'Status',
-  shipment: 'Shipment',
-  money: 'Money',
-};
 
 /**
  * A personal, named, ordered column set (#3530, D32). `userId: null` marks

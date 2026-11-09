@@ -15,6 +15,7 @@
  *
  * @module apps/web/src/features/products/lib
  */
+import { getMessages } from '../../../shared/i18n';
 import type { KpiCardTone } from '../../../shared/ui/kpi-card';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 
@@ -34,11 +35,23 @@ export function deriveStockStatus(
   return 'in-stock';
 }
 
-export const STOCK_STATUS_LABEL: Record<StockStatus, string> = {
-  oversold: 'Oversold',
-  'out-of-stock': 'Out of stock',
-  'low-stock': 'Low stock',
-  'in-stock': 'In stock',
+/**
+ * Operator-facing label per status. Each entry is a getter so the copy is read
+ * in the active language at call time, never frozen at module load.
+ */
+export const STOCK_STATUS_LABEL: Readonly<Record<StockStatus, string>> = {
+  get oversold(): string {
+    return getMessages('products').productStockStatus.oversold;
+  },
+  get 'out-of-stock'(): string {
+    return getMessages('products').productStockStatus.outOfStock;
+  },
+  get 'low-stock'(): string {
+    return getMessages('products').productStockStatus.lowStock;
+  },
+  get 'in-stock'(): string {
+    return getMessages('products').productStockStatus.inStock;
+  },
 };
 
 export const STOCK_STATUS_BADGE_TONE: Record<StockStatus, StatusBadgeTone> = {

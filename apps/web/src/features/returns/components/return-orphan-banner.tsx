@@ -4,7 +4,7 @@
  * The top-of-page statement that nothing can be done with this return yet
  * (returns spec §5.5).
  *
- * It **imports** `RETURNS_ORPHAN_COPY.explanation` rather than restating it.
+ * It **imports** `returnsCopy.list.orphan.explanation` rather than restating it.
  * That sentence is the canonical description of the orphan state and the list
  * already renders it; two wordings for one state is exactly the drift the copy
  * modules exist to prevent.
@@ -22,8 +22,7 @@
  */
 import type { ReactElement, ReactNode } from 'react';
 import { Alert } from '../../../shared/ui/alert';
-import { RETURNS_ORPHAN_COPY } from '../lib/returns-list.copy';
-import { RETURN_ORPHAN_BANNER_COPY } from '../lib/return-detail.copy';
+import { useMessages } from '../../../shared/i18n';
 
 interface ReturnOrphanBannerProps {
   /** The channel's own order reference — the operator's only lead. */
@@ -36,11 +35,13 @@ export function ReturnOrphanBanner({
   externalOrderId,
   action,
 }: ReturnOrphanBannerProps): ReactElement {
+  const returnsCopy = useMessages('returns');
+  const copy = returnsCopy.detail.orphanBanner;
   return (
-    <Alert tone="error" title={RETURN_ORPHAN_BANNER_COPY.title} action={action}>
-      <p>{RETURNS_ORPHAN_COPY.explanation}</p>
+    <Alert tone="error" title={copy.title} action={action}>
+      <p>{returnsCopy.list.orphan.explanation}</p>
       <p>
-        {RETURN_ORPHAN_BANNER_COPY.safeHere} {RETURN_ORPHAN_BANNER_COPY.reattribution}
+        {copy.safeHere} {copy.reattribution}
       </p>
       {externalOrderId !== null ? (
         <p>

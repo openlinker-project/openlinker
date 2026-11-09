@@ -15,6 +15,7 @@
  */
 import { useEffect, type ReactElement } from 'react';
 
+import { useMessages } from '../../../../shared/i18n';
 import { Alert } from '../../../../shared/ui/alert';
 import { FormField } from '../../../../shared/ui/form-field';
 import { Input } from '../../../../shared/ui/input';
@@ -28,6 +29,7 @@ export function AllegroBulkConfigSection({
   connection,
   form,
 }: BulkOfferConfigSectionProps): ReactElement {
+  const copy = useMessages('listings').allegroBulkConfigSection;
   const policiesQuery = useSellerPoliciesQuery(connection.id);
   const deliveryPolicies = policiesQuery.data?.deliveryPolicies ?? [];
 
@@ -59,11 +61,11 @@ export function AllegroBulkConfigSection({
       className="bulk-config__platform-section"
       style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 'var(--space-3)' }}
     >
-      <FormField name="bulk-config-shipping" label="Shipping rate package">
+      <FormField name="bulk-config-shipping" label={copy.shippingLabel}>
         {policiesQuery.isLoading ? (
-          <Input disabled value="Loading policies…" />
+          <Input disabled value={copy.loadingPolicies} />
         ) : policiesQuery.error ? (
-          <Alert tone="error">Could not load shipping policies for this connection.</Alert>
+          <Alert tone="error">{copy.loadError}</Alert>
         ) : (
           <Select
             value={deliveryPolicyId}
@@ -77,7 +79,7 @@ export function AllegroBulkConfigSection({
             disabled={deliveryPolicies.length === 0}
           >
             <option value="" disabled>
-              Select a delivery package…
+              {copy.selectPlaceholder}
             </option>
             {deliveryPolicies.map((p) => (
               <option key={p.id} value={p.id}>
@@ -87,7 +89,7 @@ export function AllegroBulkConfigSection({
           </Select>
         )}
       </FormField>
-      <FormField name="bulk-config-currency" label="Currency">
+      <FormField name="bulk-config-currency" label={copy.currencyLabel}>
         <Select
           value={currency}
           onChange={(e) => form.setValue('currency', e.target.value, { shouldDirty: true })}

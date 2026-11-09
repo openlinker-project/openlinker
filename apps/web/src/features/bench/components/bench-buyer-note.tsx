@@ -31,9 +31,8 @@ import { formatAbsoluteTime } from '../../../shared/format/format-date';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { BenchParcel } from '../api/bench-parcel.types';
 import { useBenchBuyerNoteAcknowledgeMutation } from '../hooks/use-bench-buyer-note-acknowledge-mutation';
-import { benchParcelCopy } from '../lib/bench-parcel.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
 
-const COPY = benchParcelCopy.buyerNote;
 
 export interface BenchBuyerNoteProps {
   readonly parcel: BenchParcel;
@@ -70,6 +69,7 @@ export function BenchBuyerNote({
   hasBuyerNote = false,
 }: BenchBuyerNoteProps): ReactElement | null {
   const { session } = useSession();
+  const noteCopy = useMessages('bench').parcel.buyerNote;
   const acknowledge = useBenchBuyerNoteAcknowledgeMutation();
   const [expanded, setExpanded] = useState(false);
   const textRef = useRef<HTMLParagraphElement>(null);
@@ -102,18 +102,18 @@ export function BenchBuyerNote({
         <div className="bench-buyer-note__head">
           <h3 className="bench-parcel__field-label" id={titleId} style={{ margin: 0 }}>
             <NoteIcon />
-            {COPY.title}
+            {noteCopy.title}
           </h3>
           <StatusBadge tone="success" compact withDot data-testid="bench-buyer-note-read-badge">
-            {COPY.readBy(
-              mine ? COPY.you : COPY.someoneElse,
-              formatAbsoluteTime(parcel.buyerNoteAcknowledgedAt),
-            )}
+            {interpolate(noteCopy.readBy, {
+              who: mine ? noteCopy.you : noteCopy.someoneElse,
+              time: formatAbsoluteTime(parcel.buyerNoteAcknowledgedAt),
+            })}
           </StatusBadge>
         </div>
         {noText ? (
           <p className="bench-buyer-note__text" data-testid="bench-buyer-note-text-not-stored">
-            {COPY.textNotStored}
+            {noteCopy.textNotStored}
           </p>
         ) : (
           <p
@@ -137,7 +137,7 @@ export function BenchBuyerNote({
                 setExpanded((value) => !value);
               }}
             >
-              {expanded ? COPY.showLess : COPY.showAll}
+              {expanded ? noteCopy.showLess : noteCopy.showAll}
             </Button>
           </div>
         ) : null}
@@ -157,15 +157,15 @@ export function BenchBuyerNote({
       <div className="bench-buyer-note__head">
         <h3 className="bench-parcel__field-label" id={titleId} style={{ margin: 0 }}>
           <NoteIcon />
-          {COPY.title}
+          {noteCopy.title}
         </h3>
         <span className="bench-buyer-note__meta">
-          {wholeOrder ? COPY.metaWholeOrder : COPY.meta}
+          {wholeOrder ? noteCopy.metaWholeOrder : noteCopy.meta}
         </span>
       </div>
       {noText ? (
         <p className="bench-buyer-note__text" data-testid="bench-buyer-note-text-not-stored">
-          {COPY.textNotStored}
+          {noteCopy.textNotStored}
         </p>
       ) : (
         <p
@@ -184,28 +184,29 @@ export function BenchBuyerNote({
         <p className="bench-buyer-note__others" data-testid="bench-buyer-note-others">
           {others
             .map((entry) =>
-              COPY.otherRead(
-                currentUserId !== null && entry.acknowledgedByUserId === currentUserId
-                  ? COPY.otherReadYou
-                  : COPY.otherReadSomeone,
-                entry.parcelIndex,
-                parcel.parcelTotal,
-                formatAbsoluteTime(entry.acknowledgedAt),
-              ),
+              interpolate(noteCopy.otherRead, {
+                who:
+                  currentUserId !== null && entry.acknowledgedByUserId === currentUserId
+                    ? noteCopy.otherReadYou
+                    : noteCopy.otherReadSomeone,
+                parcel: entry.parcelIndex,
+                total: parcel.parcelTotal,
+                time: formatAbsoluteTime(entry.acknowledgedAt),
+              }),
             )
             .join(' ')}{' '}
-          {COPY.eachBoxOwn}
+          {noteCopy.eachBoxOwn}
         </p>
       ) : null}
       {failed ? (
         <p className="bench-buyer-note__error" role="alert" data-testid="bench-buyer-note-error">
           {refusedReason === 'not-claimable-by-viewer'
-            ? COPY.lockedOut
+            ? noteCopy.lockedOut
             : refusedReason === 'work-cancelled'
-              ? COPY.workCancelled
+              ? noteCopy.workCancelled
               : refusedReason === 'no-buyer-note'
-                ? COPY.noBuyerNote
-                : COPY.failed}
+                ? noteCopy.noBuyerNote
+                : noteCopy.failed}
         </p>
       ) : null}
       <div className="bench-buyer-note__foot">
@@ -218,7 +219,7 @@ export function BenchBuyerNote({
               acknowledge.mutate(parcel.workId);
             }}
           >
-            {acknowledge.isPending ? COPY.saving : COPY.acknowledge}
+            {acknowledge.isPending ? noteCopy.saving : noteCopy.acknowledge}
           </Button>
         ) : null}
         {overflowing || expanded ? (
@@ -231,10 +232,10 @@ export function BenchBuyerNote({
               setExpanded((value) => !value);
             }}
           >
-            {expanded ? COPY.showLess : COPY.showAll}
+            {expanded ? noteCopy.showLess : noteCopy.showAll}
           </Button>
         ) : null}
-        {canAcknowledge ? <span className="bench-buyer-note__hint">{COPY.hint}</span> : null}
+        {canAcknowledge ? <span className="bench-buyer-note__hint">{noteCopy.hint}</span> : null}
       </div>
     </section>
   );

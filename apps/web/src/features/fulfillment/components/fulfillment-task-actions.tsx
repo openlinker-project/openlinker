@@ -27,14 +27,14 @@ import type { ReactElement } from 'react';
 
 import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { holdReasonLabel } from '../../orders';
 import type { FulfillmentTask, FulfillmentTaskHold } from '../api/fulfillment.types';
 import {
   fulfillmentActionHint,
   fulfillmentActionLabel,
   fulfillmentActionTone,
-} from '../lib/fulfillment-task.copy';
+} from '../lib/fulfillment-task-labels';
 
 export interface FulfillmentTaskActionsProps {
   task: FulfillmentTask;
@@ -79,7 +79,7 @@ export function FulfillmentTaskActions({
     label: string,
     onClick: () => void
   ): ReactElement => (
-    <ReadOnlyLock key={key} active={readOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+    <ReadOnlyLock key={key} active={readOnly} message={demoReadOnlyActionMessage()}>
       <Button
         tone={fulfillmentActionTone(action)}
         className={size === 'sm' ? 'button--sm' : undefined}

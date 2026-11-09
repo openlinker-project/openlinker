@@ -11,7 +11,7 @@ import { Link } from 'react-router-dom';
 import { useMessages } from '../../../shared/i18n';
 
 export function LoginPageSettingsTile(): ReactElement {
-  const copy = useMessages('loginPageSettings');
+  const copy = useMessages('login-page-settings');
   return (
     <article className="panel panel--dense">
       <div className="panel__header">

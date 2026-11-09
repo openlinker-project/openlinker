@@ -9,11 +9,10 @@
  */
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
-import { BUYER_EMAILS_COPY } from '../lib/buyer-emails.copy';
-
-const COPY = BUYER_EMAILS_COPY.tile;
+import { useMessages } from '../../../shared/i18n';
 
 export function BuyerEmailsTile(): ReactElement {
+  const COPY = useMessages('buyer-emails').tile;
   return (
     <article className="panel panel--dense">
       <div className="panel__header">

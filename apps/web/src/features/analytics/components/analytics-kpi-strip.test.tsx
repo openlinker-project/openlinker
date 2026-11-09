@@ -279,7 +279,7 @@ describe('AnalyticsKpiStrip', () => {
 
     expect(
       await screen.findAllByTitle(
-        'Order value is computed only from orders an FX rate has been stamped onto — recently ingested, not-yet-stamped orders are excluded from this figure until the FX stamp sweep reaches them.'
+        'Order value counts only orders already converted to the reporting currency - recently imported orders are left out until they are converted.'
       )
     ).not.toHaveLength(0);
     // Orders headline counts every placed order: 35 stamped + 5 unconverted = 40.
@@ -320,7 +320,7 @@ describe('AnalyticsKpiStrip', () => {
     renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} connections={[]} />, { apiClient });
 
     expect(await screen.findByText('Net sales')).toBeInTheDocument();
-    expect(screen.getByLabelText('No return/refund entity exists yet')).toBeInTheDocument();
+    expect(screen.getByLabelText('Returns are not tracked yet')).toBeInTheDocument();
   });
 
   it('renders a period-over-period delta on the Orders card when the previous period is fully covered by history', async () => {
@@ -384,7 +384,7 @@ describe('AnalyticsKpiStrip', () => {
 
     await screen.findByText('40');
     expect(
-      screen.getAllByTitle('No order history yet — nothing to compare against.').length
+      screen.getAllByTitle('No order history yet - nothing to compare against.').length
     ).toBeGreaterThan(0);
   });
 
@@ -419,7 +419,7 @@ describe('AnalyticsKpiStrip', () => {
       // the primary headline under `netGrossBasis="net"` carried no coverage
       // caveat at all while GMV beside it carried one.
       const buttons = await screen.findAllByRole('button', {
-        name: 'The reporting currency changed — these orders are still tagged with the old one.',
+        name: 'The reporting currency changed - these orders are still tagged with the old one.',
       });
       expect(buttons).toHaveLength(3);
       await user.click(buttons[0]);
@@ -451,7 +451,7 @@ describe('AnalyticsKpiStrip', () => {
       // missing caveat here is a money figure rendered with no disclosure at
       // all. `findAllBy` because GMV (now the qualifier) carries the same mark.
       const marks = await screen.findAllByRole('button', {
-        name: 'The reporting currency changed — these orders are still tagged with the old one.',
+        name: 'The reporting currency changed - these orders are still tagged with the old one.',
       });
       expect(marks.length).toBeGreaterThanOrEqual(2);
       expect(screen.getByText('Net sales')).toBeInTheDocument();
@@ -477,7 +477,7 @@ describe('AnalyticsKpiStrip', () => {
       );
 
       const button = await screen.findByRole('button', {
-        name: 'The product has no tax rate set at the source — fix it there, not here.',
+        name: 'The product has no tax rate set at the source - fix it there, not here.',
       });
       await user.click(button);
 
@@ -509,7 +509,7 @@ describe('AnalyticsKpiStrip', () => {
       await screen.findByText('Net sales');
       expect(
         screen.queryByTitle(
-          '5 order(s) predate per-line tax rates or carry a line with an unresolvable rate, and are excluded from NOV.'
+          '5 orders predate per-line tax rates or carry a line with an unresolvable rate, and are excluded from the net order value.'
         )
       ).not.toBeInTheDocument();
       expect(onOpenCategory).not.toHaveBeenCalled();

@@ -28,7 +28,8 @@ import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { LoadingState, ErrorState, EmptyState } from '../../../shared/ui/feedback-state';
 import { useConnectionAsSourceQuery } from '../hooks/use-connection-as-source-query';
-import { ruleLabelFor, toRuleSummary } from '../lib/price-change-copy';
+import { ruleLabelFor, syncModeLabelFor, toRuleSummary } from '../lib/price-rule-labels';
+import { getMessages, interpolate, useMessages } from '../../../shared/i18n';
 import { describeOverride, hasOwnOverride } from '../lib/pricing-sync-overrides';
 import type { ConnectionAsSourceEntry } from '../api/pricing-sync.types';
 
@@ -37,26 +38,27 @@ export interface SourceConnectionPricingRollupProps {
 }
 
 function summaryFor(entry: ConnectionAsSourceEntry): string {
-  const modeLabel = entry.effectiveMode === 'automatic' ? 'Automatic' : 'Manual review';
-  const ruleLabel = ruleLabelFor(toRuleSummary(entry.effectiveRuleSummary));
-  const suffix = hasOwnOverride(entry)
-    ? `— ${describeOverride(entry)} just for this source`
-    : `— using ${entry.destinationLabel}'s default rule`;
-  return `${modeLabel} · ${ruleLabel} ${suffix}`;
+  const copy = getMessages('price-changes').sourceConnectionPricingRollup;
+  const mode = syncModeLabelFor(entry.effectiveMode);
+  const rule = ruleLabelFor(toRuleSummary(entry.effectiveRuleSummary));
+  return hasOwnOverride(entry)
+    ? interpolate(copy.summaryOverride, { mode, rule, override: describeOverride(entry) })
+    : interpolate(copy.summaryDefault, { mode, rule, destination: entry.destinationLabel });
 }
 
 export function SourceConnectionPricingRollup({
   connectionId,
 }: SourceConnectionPricingRollupProps): ReactElement {
   const query = useConnectionAsSourceQuery(connectionId);
+  const copy = useMessages('price-changes').sourceConnectionPricingRollup;
 
   if (query.isLoading) {
-    return <LoadingState title="Pricing & sync" message="Loading how your prices get adjusted…" />;
+    return <LoadingState title={copy.loadingTitle} message={copy.loadingMessage} />;
   }
   if (query.error) {
     return (
       <ErrorState
-        title="Couldn't load pricing & sync settings"
+        title={copy.errorTitle}
         message={query.error.message}
       />
     );
@@ -78,17 +80,14 @@ export function SourceConnectionPricingRollup({
     <div className="pricing-rollup">
       <div className="pricing-rollup__head">
         <div>
-          <h3>How your prices get adjusted</h3>
-          <p className="pricing-rollup__desc">
-            Each place you sell can mark up or round your price differently. Manage a rule from
-            where it&apos;s used.
-          </p>
+          <h3>{copy.heading}</h3>
+          <p className="pricing-rollup__desc">{copy.description}</p>
         </div>
       </div>
       {entries.length === 0 ? (
         <EmptyState
-          title="Nothing to show yet"
-          message="No destinations are adjusting your prices right now. A destination appears here once it has its own rule for this source, or a price change from it is waiting for review."
+          title={copy.empty.title}
+          message={copy.empty.message}
         />
       ) : (
         <div className="pricing-rollup__list" id="source-page-list">
@@ -101,7 +100,7 @@ export function SourceConnectionPricingRollup({
                   id={`source-page-manage-${entry.destinationConnectionId}`}
                   to={`/connections/${entry.destinationConnectionId}/pricing-sync?source=${connectionId}`}
                 >
-                  Manage
+                  {copy.manage}
                 </Link>
               </div>
               <div className="pricing-rollup__row-summary">{summaryFor(entry)}</div>

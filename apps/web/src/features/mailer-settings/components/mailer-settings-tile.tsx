@@ -10,16 +10,13 @@
  * @module apps/web/src/features/mailer-settings/components
  */
 import { useState, type ReactElement } from 'react';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { useMailerSettingsQuery } from '../hooks/use-mailer-settings-query';
 import { MailerSettingsDialog } from './mailer-settings-dialog';
 
-const TRANSPORT_LABEL: Record<'console' | 'smtp', string> = {
-  console: 'Console',
-  smtp: 'SMTP',
-};
-
 export function MailerSettingsTile(): ReactElement {
+  const copy = useMessages('mailer-settings').mailerSettingsTile;
   const query = useMailerSettingsQuery();
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -27,21 +24,21 @@ export function MailerSettingsTile(): ReactElement {
     <article className="panel panel--dense">
       <div className="panel__header">
         <div>
-          <p className="eyebrow">Outbound mail</p>
-          <h3 className="section-title">Mailer</h3>
+          <p className="eyebrow">{copy.eyebrow}</p>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
-        <span className="panel__meta">Admin only</span>
+        <span className="panel__meta">{copy.adminOnly}</span>
       </div>
 
       {query.isLoading ? (
         <p className="muted-text" aria-live="polite">
-          Loading mailer settings…
+          {copy.loading}
         </p>
       ) : null}
 
       {query.isError ? (
         <p className="muted-text" role="alert">
-          Could not load mailer settings: {query.error.message}
+          {interpolate(copy.loadError, { message: query.error.message })}
         </p>
       ) : null}
 
@@ -49,26 +46,26 @@ export function MailerSettingsTile(): ReactElement {
         <>
           <dl className="definition-list">
             <div>
-              <dt>Transport</dt>
-              <dd>{TRANSPORT_LABEL[query.data.transport]}</dd>
+              <dt>{copy.transportLabel}</dt>
+              <dd>{copy.transport[query.data.transport]}</dd>
             </div>
             {query.data.transport === 'smtp' ? (
               <>
                 <div>
-                  <dt>Host</dt>
+                  <dt>{copy.hostLabel}</dt>
                   <dd className="mono-text">{query.data.smtpHost ?? '—'}</dd>
                 </div>
                 <div>
-                  <dt>Port</dt>
+                  <dt>{copy.portLabel}</dt>
                   <dd className="mono-text">{query.data.smtpPort ?? '—'}</dd>
                 </div>
                 <div>
-                  <dt>From address</dt>
+                  <dt>{copy.fromLabel}</dt>
                   <dd className="mono-text">{query.data.fromAddress ?? '—'}</dd>
                 </div>
                 <div>
-                  <dt>SMTP password</dt>
-                  <dd>{query.data.smtpPasswordConfigured ? 'Configured' : 'Not set'}</dd>
+                  <dt>{copy.passwordLabel}</dt>
+                  <dd>{query.data.smtpPasswordConfigured ? copy.configured : copy.notSet}</dd>
                 </div>
               </>
             ) : null}
@@ -81,7 +78,7 @@ export function MailerSettingsTile(): ReactElement {
               setDialogOpen(true);
             }}
           >
-            Edit
+            {copy.edit}
           </Button>
 
           <MailerSettingsDialog

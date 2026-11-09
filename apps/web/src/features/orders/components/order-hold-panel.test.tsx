@@ -99,7 +99,7 @@ describe('OrderHoldPanel (#2342)', () => {
 
   it('should show the open hold and offer "Release hold"', async () => {
     renderPanel({ activeHold: hold({ note: 'Waiting on the supplier' }) });
-    expect(screen.getByText(/On hold — Stock shortfall/)).toBeInTheDocument();
+    expect(screen.getByText(/On hold - Stock shortfall/)).toBeInTheDocument();
     expect(screen.getByText(/Waiting on the supplier/)).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Release hold' })).toBeInTheDocument();
   });
@@ -113,7 +113,7 @@ describe('OrderHoldPanel (#2342)', () => {
       { user: VIEWER },
     );
 
-    expect(screen.getByText(/On hold — Stock shortfall/)).toBeInTheDocument();
+    expect(screen.getByText(/On hold - Stock shortfall/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Release hold' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Put on hold' })).not.toBeInTheDocument();
   });
@@ -123,7 +123,7 @@ describe('OrderHoldPanel (#2342)', () => {
     // `orders:write` — gating on the permission alone renders a button that 403s.
     renderPanel({ activeHold: hold() }, { user: OPERATOR });
 
-    expect(screen.getByText(/On hold — Stock shortfall/)).toBeInTheDocument();
+    expect(screen.getByText(/On hold - Stock shortfall/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Release hold' })).not.toBeInTheDocument();
   });
 
@@ -151,7 +151,7 @@ describe('OrderHoldPanel (#2342)', () => {
     // it was exported, spec'd and reachable only from its own test while three
     // production call sites hand-copied the logic.
     renderPanel({ activeHold: hold({ reason: 'reason-from-a-newer-build' as never }) });
-    expect(screen.getByText(/On hold — reason-from-a-newer-build/)).toBeInTheDocument();
+    expect(screen.getByText(/On hold - reason-from-a-newer-build/)).toBeInTheDocument();
   });
 
   it('should not carry a failed-resume alert onto a DIFFERENT order', async () => {

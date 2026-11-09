@@ -51,4 +51,9 @@ describe('deriveProductStaleness', () => {
       label: '1 of 3 variants deleted at source',
     });
   });
+
+  it('should pick the plural form from the total and show the deleted count as a number (one of five)', () => {
+    const result = deriveProductStaleness(baseProduct({ variantCount: 5, staleVariantCount: 1 }));
+    expect(result?.label).toBe('1 of 5 variants deleted at source');
+  });
 });

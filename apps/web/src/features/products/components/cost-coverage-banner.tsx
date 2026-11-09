@@ -11,7 +11,7 @@ import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
-import { formatAmount } from '../../../shared/format/format-amount';
+import { interpolate, useFormat, useMessages, usePlural } from '../../../shared/i18n';
 import { useSessionDismissed } from '../../../shared/hooks/use-session-dismissed';
 import { useCostCoverageQuery } from '../hooks/use-cost-coverage-query';
 
@@ -20,6 +20,9 @@ const DISMISS_KEY = 'ol.cost-coverage-banner.dismissed';
 export function CostCoverageBanner(): ReactElement | null {
   const [dismissed, dismiss] = useSessionDismissed(DISMISS_KEY);
   const query = useCostCoverageQuery({ enabled: !dismissed });
+  const copy = useMessages('products').costCoverageBanner;
+  const format = useFormat();
+  const plural = usePlural();
   const data = query.data;
   if (dismissed || !data || data.soldVariantsWithoutCost <= 0) return null;
 
@@ -28,7 +31,7 @@ export function CostCoverageBanner(): ReactElement | null {
     <Alert
       tone="warning"
       data-testid="cost-coverage-banner"
-      title={`${String(count)} ${count === 1 ? 'variant' : 'variants'} you sold in the last ${String(data.days)} days ${count === 1 ? 'has' : 'have'} no cost price`}
+      title={plural(count, copy.title, { days: data.days })}
       action={
         <>
           <Link
@@ -36,7 +39,7 @@ export function CostCoverageBanner(): ReactElement | null {
             to="/products/cost-prices"
             data-testid="cost-coverage-banner-open"
           >
-            Add cost prices
+            {copy.addCostPrices}
           </Link>
           <Button
             type="button"
@@ -45,14 +48,15 @@ export function CostCoverageBanner(): ReactElement | null {
             onClick={dismiss}
             data-testid="cost-coverage-banner-dismiss"
           >
-            Dismiss for this session
+            {copy.dismiss}
           </Button>
         </>
       }
     >
-      They made {formatAmount(data.netSalesWithoutCost, data.currency)} of net sales, which is left
-      out of margin. Add costs and orders placed from now on count toward margin. Nothing else
-      changes: orders, listings and invoices work the same with or without a cost.
+      {interpolate(copy.bodyNetSales, {
+        amount: format.money(data.netSalesWithoutCost, data.currency),
+      })}{' '}
+      {copy.bodyAddCosts} {copy.bodyNothingElse}
     </Alert>
   );
 }

@@ -15,7 +15,7 @@
  */
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
-import { WHO_DECIDES_TILE_COPY } from '../lib/who-decides.copy';
+import { WHO_DECIDES_TILE_COPY } from '../lib/who-decides-text';
 
 export function WhoDecidesTile(): ReactElement {
   return (

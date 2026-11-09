@@ -15,33 +15,14 @@
  * wire contract - it has no adapter here, and if one is built it gets its own
  * plugin, its own id and its own platformType.
  *
- * ---
- * I18N — PL strings DEFERRED (AC "PL + EN locale strings").
- *
- * Every human-facing string in this plugin is already routed through the host
- * i18n seam as `t('subiekt.settings.*', '<English fallback>')` — see
- * `subiekt-structured-section.tsx`, `subiekt-credentials-panel.tsx`, and the
- * `subiekt.settings.triggerModel.*` keys derived from
- * `INVOICE_TRIGGER_MODEL_LABELS`. The seam is the architecturally-correct
- * localization boundary and the key namespace is stable.
- *
- * What is NOT delivered: actual Polish content. The host
- * (`shared/i18n/locale-provider.tsx`) ships a frozen EMPTY_CATALOG, exposes no
- * `setLocale`/locale switcher, and has no per-locale catalog loader
- * (`LocaleCodeValues === ['en']`). So today `t()` always returns its English
- * fallback for every consumer in the app, not just Subiekt.
- *
- * Shipping live PL strings is therefore a HOST change (a `pl` catalog +
- * loader + persistence + a `LocaleSwitcher`), which the host deferred in
- * #612 and is out of scope for this FE feature. Because the `t()` keys here
- * are stable, a PL catalog keyed on `subiekt.settings.*` can be registered via
- * `LocaleProvider`'s `catalog` prop later WITHOUT editing any #759 component.
- * AC explicitly recorded as deferred — not silently unmet.
+ * Operator copy lives in the plugin's own `subiekt-gt` namespace
+ * (`locales/en.json`, ADR-081).
  *
  * @module plugins/subiekt-gt
  */
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
+import { getSubiektGtMessages, subiektGtMessages } from './messages';
 import { subiektSetupRoute } from './subiekt-setup.route';
 import { SubiektCredentialsPanel } from './components/subiekt-credentials-panel';
 import { SubiektStructuredSection } from './components/subiekt-structured-section';
@@ -57,6 +38,7 @@ export const subiektPlugin: OpenLinkerPlugin = definePlugin({
   // platformType rather than sharing these.
   id: 'subiekt-gt',
   platformType: 'subiekt-gt',
+  messages: subiektGtMessages,
   build: {
     routes: [subiektSetupRoute],
   },
@@ -64,12 +46,17 @@ export const subiektPlugin: OpenLinkerPlugin = definePlugin({
     displayName: 'Subiekt GT (Sfera GT bridge)',
     // The bridge is how it is reached, not what it is: the chip face says the platform.
     shortLabel: 'Subiekt GT',
+    // Getters, not values: the card is read at render, so the copy follows
+    // the active language instead of freezing at module load.
     setupCard: {
       title: 'Subiekt GT',
-      description:
-        'Connect Subiekt GT through the OpenLinker bridge on your Windows machine: read the product catalogue and stock levels, receive orders, and issue invoices and receipts with their warehouse release.',
+      get description(): string {
+        return getSubiektGtMessages().plugin.setupCard.description;
+      },
       to: '/connections/new/subiekt-gt',
-      badge: 'Sfera GT bridge',
+      get badge(): string {
+        return getSubiektGtMessages().plugin.setupCard.badge;
+      },
     },
     capabilityDescriptors: SUBIEKT_CAPABILITY_DESCRIPTORS,
     connectionConfig: subiektConnectionConfig,

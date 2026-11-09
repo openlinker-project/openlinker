@@ -103,15 +103,8 @@ describe('RegulatoryStatusBadge', () => {
     });
   });
 
-  it('renders the catalog entry over the neutral fallback when no override is given', () => {
-    renderWithProviders(
-      <LocaleProvider
-        locale="en"
-        catalog={{ 'invoice.regulatory.accepted': 'Accepted by the authority' }}
-      >
-        <RegulatoryStatusBadge status="accepted" />
-      </LocaleProvider>,
-    );
-    expect(screen.getByText('Accepted by the authority')).toBeInTheDocument();
+  it('renders the neutral copy when no override is given', () => {
+    renderWithProviders(<RegulatoryStatusBadge status="accepted" />);
+    expect(screen.getByText('Accepted')).toBeInTheDocument();
   });
 });

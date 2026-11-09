@@ -10,7 +10,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { RefundConfirmationForm } from './refund-confirmation-form';
-import { REFUND_CONFIRMATION_COPY } from '../lib/refund-confirmation.copy';
+import { getMessages } from '../../../shared/i18n';
 
 function renderForm(props: Partial<Parameters<typeof RefundConfirmationForm>[0]> = {}) {
   const onSubmit = vi.fn();
@@ -69,7 +69,7 @@ describe('RefundConfirmationForm (#2382)', () => {
 
     // Refused rather than degraded to a typed input: nothing downstream would
     // catch a wrong currency.
-    expect(screen.getByText(REFUND_CONFIRMATION_COPY.noCurrency)).toBeInTheDocument();
+    expect(screen.getByText(getMessages('orders').refundConfirmation.noCurrency)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Confirm refund' })).not.toBeInTheDocument();
   });
 

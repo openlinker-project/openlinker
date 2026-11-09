@@ -39,7 +39,6 @@ import {
   DialogTitle,
 } from '../../shared/ui/dialog';
 import { useToast } from '../../shared/ui/toast-provider';
-import { formatAmount } from '../../shared/format/format-amount';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
@@ -63,11 +62,10 @@ import {
   type CostWorklistTab,
 } from '../../features/products/api/products.types';
 import { formatCostAmount } from './variant-cost';
+import { interpolate, useFormat, useMessages, usePlural } from '../../shared/i18n';
 
 const PAGE_SIZE = 20;
 const FALLBACK_CURRENCIES = ['PLN', 'EUR', 'CZK'] as const;
-const COST_ERROR_COPY = 'Enter 0 or more, with up to 2 decimals.';
-const READ_ONLY_DEMO_MESSAGE = 'This is a read-only demo, so cost prices cannot be changed.';
 
 function isTab(value: string | null): value is CostWorklistTab {
   return (COST_WORKLIST_TAB_VALUES as readonly string[]).includes(value ?? '');
@@ -122,6 +120,9 @@ interface SavedCost {
 }
 
 export function CostPricesPage(): ReactElement {
+  const copy = useMessages('products').costPricesPage;
+  const format = useFormat();
+  const plural = usePlural();
   const [searchParams, setSearchParams] = useSearchParams();
   const { showToast } = useToast();
   const demoMode = useDemoMode();
@@ -251,7 +252,7 @@ export function CostPricesPage(): ReactElement {
           if (next) setFocusRowId(next.variantId);
         },
         onError: (error) => {
-          showToast({ tone: 'error', description: error.message || 'The cost could not be saved.' });
+          showToast({ tone: 'error', description: error.message || copy.toasts.saveFailed });
         },
       }
     );
@@ -305,17 +306,17 @@ export function CostPricesPage(): ReactElement {
           const skipped = result.skippedAlreadySet.length;
           showToast({
             tone: 'success',
-            title: `Cost saved for ${String(filled)} ${filled === 1 ? 'variant' : 'variants'}`,
+            title: plural(filled, copy.toasts.bulkSaved, { n: format.number(filled) }),
             description:
               skipped > 0
-                ? `${String(skipped)} already had a cost and ${skipped === 1 ? 'was' : 'were'} left as it was.`
-                : 'It counts toward margin from the next order.',
+                ? plural(skipped, copy.toasts.bulkSkipped, { n: format.number(skipped) })
+                : copy.toasts.bulkCountsFromNext,
           });
           setBulkOpen(false);
           setSelected(new Set());
         },
         onError: (error) => {
-          showToast({ tone: 'error', description: error.message || 'The costs could not be saved.' });
+          showToast({ tone: 'error', description: error.message || copy.toasts.bulkSaveFailed });
         },
       }
     );
@@ -328,6 +329,8 @@ export function CostPricesPage(): ReactElement {
     return summary?.variantsWithCost ?? null;
   };
   const coveragePct = coverage?.coveragePct ?? null;
+  const pct = (value: number): string =>
+    format.percent(value / 100, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const unfiltered = urlQuery === '' && channel === '';
   const soldDone =
     tab === 'sold' &&
@@ -350,8 +353,9 @@ export function CostPricesPage(): ReactElement {
     if (savedCost) {
       return (
         <span className="cost-worklist__saved" data-testid={`cost-worklist-saved-${slug}`}>
-          {savedCost.currency} {formatCostAmount(savedCost.amount)} net · saved, counts from the next
-          order
+          {interpolate(copy.cost.saved, {
+            cost: `${savedCost.currency} ${formatCostAmount(savedCost.amount)}`,
+          })}
         </span>
       );
     }
@@ -365,15 +369,15 @@ export function CostPricesPage(): ReactElement {
     if (!showEditing) {
       const badge = (
         <StatusBadge tone="warning" withDot compact>
-          Not recorded
+          {copy.cost.notRecorded}
         </StatusBadge>
       );
       return (
         <span data-testid={`cost-worklist-cost-${slug}`}>
           {write.demoReadOnly ? (
-            <ReadOnlyLock active message={READ_ONLY_DEMO_MESSAGE}>
+            <ReadOnlyLock active message={copy.demoReadOnlyMessage}>
               <Button type="button" tone="secondary" className="button--sm" disabled>
-                Add cost
+                {copy.cost.add}
               </Button>
             </ReadOnlyLock>
           ) : (
@@ -398,7 +402,7 @@ export function CostPricesPage(): ReactElement {
               autoComplete="off"
               autoFocus
               value={draft}
-              aria-label={`Net cost for ${row.sku ?? rowLabel(row)}`}
+              aria-label={interpolate(copy.cost.inputLabel, { variant: row.sku ?? rowLabel(row) })}
               aria-invalid={draftError ? true : undefined}
               data-testid={`cost-worklist-input-${slug}`}
               onChange={(event) => {
@@ -409,10 +413,10 @@ export function CostPricesPage(): ReactElement {
                 if (event.key === 'Escape') setEditingId(null);
               }}
             />
-            <span className="field__currency">net</span>
+            <span className="field__currency">{copy.netSuffix}</span>
           </div>
           <Select
-            aria-label="Currency"
+            aria-label={copy.cost.currencyLabel}
             value={draftCurrency}
             data-testid={`cost-worklist-currency-${slug}`}
             onChange={(event) => setDraftCurrency(event.target.value)}
@@ -429,11 +433,11 @@ export function CostPricesPage(): ReactElement {
             disabled={setCost.isPending}
             data-testid={`cost-worklist-save-${slug}`}
           >
-            Save
+            {copy.cost.save}
           </Button>
           {draftError ? (
             <span className="form-field__error" role="alert">
-              {COST_ERROR_COPY}
+              {copy.amountError}
             </span>
           ) : null}
         </form>
@@ -447,21 +451,21 @@ export function CostPricesPage(): ReactElement {
         onClick={() => startEdit(row)}
         data-testid={`cost-worklist-add-${slug}`}
       >
-        Add cost
+        {copy.cost.add}
       </Button>
     );
   }
 
   function renderBody(): ReactElement {
     if (rowsQuery.isLoading) {
-      return <LoadingState title="Loading variants" message="Fetching the work list…" />;
+      return <LoadingState title={copy.loading.title} message={copy.loading.message} />;
     }
     if (rowsQuery.isError) {
       return (
         <ErrorState
-          title="Unable to load the cost list"
+          title={copy.loadError}
           message={rowsQuery.error.message}
-          action={<Button onClick={() => void rowsQuery.refetch()}>Retry</Button>}
+          action={<Button onClick={() => void rowsQuery.refetch()}>{copy.retry}</Button>}
         />
       );
     }
@@ -470,20 +474,24 @@ export function CostPricesPage(): ReactElement {
         <article className="panel panel--dense">
           <div data-testid="cost-worklist-done-empty">
             <EmptyState
-              title="Every variant you sold has a cost"
+              title={copy.doneEmpty.title}
               message={
                 unsoldMissing !== null && unsoldMissing > 0
-                  ? `New orders count fully toward margin. ${String(unsoldMissing)} variants have not sold in 30 days and have no cost; they show up here as soon as one sells.`
-                  : 'New orders count fully toward margin.'
+                  ? plural(unsoldMissing, copy.doneEmpty.messageWithUnsold, {
+                      n: format.number(unsoldMissing),
+                    })
+                  : copy.doneEmpty.message
               }
               action={
                 <>
                   <Link className="button button--secondary" to="/">
-                    Open Margin
+                    {copy.doneEmpty.openMargin}
                   </Link>{' '}
                   {unsoldMissing !== null && unsoldMissing > 0 ? (
                     <Link className="button button--ghost" to="/products/cost-prices?tab=all">
-                      Show the {unsoldMissing} variants
+                      {plural(unsoldMissing, copy.doneEmpty.showUnsold, {
+                        n: format.number(unsoldMissing),
+                      })}
                     </Link>
                   ) : null}
                 </>
@@ -496,12 +504,8 @@ export function CostPricesPage(): ReactElement {
     if (rows.length === 0) {
       return (
         <EmptyState
-          title="No variants match"
-          message={
-            unfiltered
-              ? 'There is nothing in this list.'
-              : 'Nothing matches this search or channel. Clear a filter to see more.'
-          }
+          title={copy.noMatch.title}
+          message={unfiltered ? copy.noMatch.emptyList : copy.noMatch.filtered}
         />
       );
     }
@@ -511,11 +515,11 @@ export function CostPricesPage(): ReactElement {
           className="data-table__container"
           tabIndex={0}
           role="region"
-          aria-label="Variants (scrollable)"
+          aria-label={copy.table.regionLabel}
         >
           <table className="data-table" data-testid="cost-worklist-table" ref={tableRef}>
             <caption className="sr-only">
-              Variants by net sales in the last 30 days, with their cost price
+              {copy.table.caption}
             </caption>
             <thead>
               <tr>
@@ -525,22 +529,26 @@ export function CostPricesPage(): ReactElement {
                       state={allSelected ? 'all' : someSelected ? 'some' : 'none'}
                       onToggle={toggleAll}
                       disabled={selectable.length === 0}
-                      ariaLabel="Select all on this page"
+                      ariaLabel={copy.table.selectAll}
                     />
                   </th>
                 ) : null}
-                <th>Variant</th>
-                <th className="cost-worklist__num">Units, 30 d</th>
+                <th>{copy.table.columns.variant}</th>
+                <th className="cost-worklist__num">{copy.table.columns.units}</th>
                 <th className="cost-worklist__num">
-                  Net sales{reportingCurrency ? `, ${reportingCurrency}` : ''}
+                  {reportingCurrency
+                    ? interpolate(copy.table.columns.netSalesWithCurrency, {
+                        currency: reportingCurrency,
+                      })
+                    : copy.table.columns.netSales}
                 </th>
                 {showRunningShare ? (
                   <th className="cost-worklist__num data-table__cell--hide-below-768">
-                    Running share
+                    {copy.table.columns.runningShare}
                   </th>
                 ) : null}
-                <th className="data-table__cell--hide-below-1024">Sold on</th>
-                <th className="data-table__cell--right">Cost, net</th>
+                <th className="data-table__cell--hide-below-1024">{copy.table.columns.soldOn}</th>
+                <th className="data-table__cell--right">{copy.table.columns.cost}</th>
               </tr>
             </thead>
             <tbody>
@@ -562,7 +570,7 @@ export function CostPricesPage(): ReactElement {
                       <td className="cost-worklist__check">
                         <input
                           type="checkbox"
-                          aria-label={`Select ${row.sku ?? rowLabel(row)}`}
+                          aria-label={interpolate(copy.table.selectRow, { variant: row.sku ?? rowLabel(row) })}
                           checked={selected.has(row.variantId)}
                           disabled={!needsCost(row)}
                           onChange={() => toggleRow(row.variantId)}
@@ -576,18 +584,21 @@ export function CostPricesPage(): ReactElement {
                         {row.sku ? <span className="cost-worklist__sku">{row.sku}</span> : null}
                       </div>
                     </td>
-                    <td className="cost-worklist__num">{row.units30d}</td>
+                    <td className="cost-worklist__num">{format.number(row.units30d)}</td>
                     <td className="cost-worklist__num">
-                      {row.netSales30d > 0 ? formatAmount(row.netSales30d, rowsQuery.data?.currency) : '—'}
+                      {row.netSales30d > 0 ? format.money(row.netSales30d, rowsQuery.data?.currency) : '—'}
                     </td>
                     {showRunningShare ? (
                       <td className="cost-worklist__num data-table__cell--hide-below-768">
-                        {share === null ? '—' : `${String(share)}%`}
+                        {share === null ? '—' : format.percent(share / 100, { maximumFractionDigits: 0 })}
                       </td>
                     ) : null}
                     <td className="data-table__cell--hide-below-1024 text-muted">
                       {row.soldOn.length > 0
-                        ? row.soldOn.map((s) => s.name ?? s.platformType ?? s.connectionId).join(', ')
+                        ? format.list(
+                            row.soldOn.map((s) => s.name ?? s.platformType ?? s.connectionId),
+                            'unit',
+                          )
                         : '—'}
                     </td>
                     <td className="data-table__cell--right">{renderCostCell(row)}</td>
@@ -607,13 +618,20 @@ export function CostPricesPage(): ReactElement {
           onOffsetChange={(next) => setParam('offset', next > 0 ? String(next) : '')}
         />
         <p className="data-table__footnote">
-          {tab === 'sold'
-            ? 'Sorted by net sales in the last 30 days. '
-            : 'Sorted by net sales in the last 30 days, then by name. '}
-          {coverage && coverage.top3.length > 0 && coverage.top3SharePct !== null && tab === 'sold'
-            ? `The first ${String(coverage.top3.length)} variants are ${String(Math.round(coverage.top3SharePct))}% of the sales left out of margin. `
-            : ''}
-          {showEditing ? 'Enter saves a row and moves to the next.' : ''}
+          {[
+            tab === 'sold' ? copy.footnote.sortedSold : copy.footnote.sortedAll,
+            coverage && coverage.top3.length > 0 && coverage.top3SharePct !== null && tab === 'sold'
+              ? plural(coverage.top3.length, copy.footnote.topShare, {
+                  n: format.number(coverage.top3.length),
+                  share: format.percent(Math.round(coverage.top3SharePct) / 100, {
+                    maximumFractionDigits: 0,
+                  }),
+                })
+              : '',
+            showEditing ? copy.footnote.enterSaves : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
         </p>
       </>
     );
@@ -621,60 +639,59 @@ export function CostPricesPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow="Products"
-      title="Cost prices"
-      description="What you pay for each variant, excluding VAT. Used only for margin on Analytics."
-      backTo={{ to: '/products', label: 'Products' }}
+      eyebrow={copy.header.eyebrow}
+      title={copy.header.title}
+      description={copy.header.description}
+      backTo={{ to: '/products', label: copy.header.back }}
     >
       <div className="cost-worklist" data-testid="cost-worklist-state">
         {!trackMargin ? (
           <Alert tone="info" data-testid="cost-tracking-off-note">
-            Margin tracking is off. Cost prices you enter here are still saved and copied onto new
-            orders; the Margin panel and the reminders stay hidden until an admin turns tracking
-            back on in Analytics settings.
+            {copy.trackingOff}
           </Alert>
         ) : null}
         {!canEdit && !write.demoReadOnly ? (
-          <Alert tone="info" title="You can see cost prices but not change them" data-testid="cost-worklist-readonly">
-            Only an admin can add or change a cost price. Send them this page: the list is already
-            sorted by what matters most.
+          <Alert tone="info" title={copy.readOnly.title} data-testid="cost-worklist-readonly">
+            {copy.readOnly.message}
           </Alert>
         ) : null}
 
-        <section className="status-strip" aria-label="Cost coverage">
+        <section className="status-strip" aria-label={copy.kpis.regionLabel}>
           <CostKpi
             testId="cost-kpi-sold-missing"
-            label="Sold in 30 days, no cost"
+            label={copy.kpis.soldMissing.label}
             tone={coverage && coverage.soldVariantsWithoutCost > 0 ? 'warning' : 'success'}
-            value={coverage ? String(coverage.soldVariantsWithoutCost) : '—'}
+            value={coverage ? format.number(coverage.soldVariantsWithoutCost) : '—'}
             metric={
               coverage
                 ? coverage.soldVariantsWithoutCost === 0
-                  ? 'All sold variants have a cost'
-                  : `Of ${String(coverage.soldVariantCount)} variants sold`
+                  ? copy.kpis.soldMissing.allCovered
+                  : plural(coverage.soldVariantCount, copy.kpis.soldMissing.ofSold, {
+                      n: format.number(coverage.soldVariantCount),
+                    })
                 : undefined
             }
           />
           {coverage && coverage.soldVariantsWithoutCost === 0 && unsoldMissing !== null ? (
             <CostKpi
               testId="cost-kpi-unsold-missing"
-              label="Never sold, no cost"
-              value={String(unsoldMissing)}
-              metric="Not urgent: they do not affect margin yet"
+              label={copy.kpis.unsoldMissing.label}
+              value={format.number(unsoldMissing)}
+              metric={copy.kpis.unsoldMissing.metric}
             />
           ) : (
             <>
               <CostKpi
                 testId="cost-kpi-gap-amount"
-                label="Net sales not in margin"
-                value={coverage ? formatAmount(coverage.netSalesWithoutCost, coverage.currency) : '—'}
-                metric="Last 30 days, these variants"
+                label={copy.kpis.gapAmount.label}
+                value={coverage ? format.money(coverage.netSalesWithoutCost, coverage.currency) : '—'}
+                metric={copy.kpis.gapAmount.metric}
               />
               <CostKpi
                 testId="cost-kpi-expected"
-                label="Share of net sales with a cost"
-                value={coveragePct === null ? '—' : `${coveragePct.toFixed(1)}%`}
-                metric="Last 30 days; a cost counts from the next order"
+                label={copy.kpis.expected.label}
+                value={coveragePct === null ? '—' : pct(coveragePct)}
+                metric={copy.kpis.expected.metric}
               />
             </>
           )}
@@ -684,24 +701,22 @@ export function CostPricesPage(): ReactElement {
           <article className="panel panel--dense">
             <div className="panel__header">
               <div>
-                <p className="eyebrow">Last 30 days</p>
-                <h3 className="section-title">Share of net sales with a cost</h3>
+                <p className="eyebrow">{copy.meter.eyebrow}</p>
+                <h3 className="section-title">{copy.meter.title}</h3>
               </div>
-              <span className="panel__meta">
-                Costs count from the next order on, so past orders stay as they are.
-              </span>
+              <span className="panel__meta">{copy.meter.meta}</span>
             </div>
             <div className="cost-coverage" data-testid="cost-coverage-meter">
               <div
                 className="cost-coverage__track"
                 role="img"
-                aria-label={`With a cost: ${coveragePct.toFixed(1)} percent of net sales`}
+                aria-label={interpolate(copy.meter.ariaLabel, { share: pct(coveragePct) })}
               >
                 <div className="cost-coverage__fill" style={{ width: `${String(coveragePct)}%` }} />
               </div>
               <div className="cost-coverage__legend">
-                <span>With a cost: {coveragePct.toFixed(1)}% of net sales</span>
-                <span>Not in margin: {(100 - coveragePct).toFixed(1)}%</span>
+                <span>{interpolate(copy.meter.withCost, { share: pct(coveragePct) })}</span>
+                <span>{interpolate(copy.meter.notInMargin, { share: pct(100 - coveragePct) })}</span>
               </div>
             </div>
           </article>
@@ -714,12 +729,12 @@ export function CostPricesPage(): ReactElement {
               if (isTab(value)) setParam('tab', value === 'sold' ? '' : value);
             }}
           >
-            <TabsList aria-label="Which variants">
+            <TabsList aria-label={copy.tabs.label}>
               {(
                 [
-                  ['sold', 'Sold, no cost'],
-                  ['all', 'All without cost'],
-                  ['has-cost', 'Has cost'],
+                  ['sold', copy.tabs.sold],
+                  ['all', copy.tabs.all],
+                  ['has-cost', copy.tabs.hasCost],
                 ] as const
               ).map(([value, label]) => (
                 <TabsTrigger key={value} value={value} data-testid={`cost-worklist-tab-${value}`}>
@@ -735,19 +750,19 @@ export function CostPricesPage(): ReactElement {
             <input
               className="control"
               type="search"
-              placeholder="Search variant, SKU"
-              aria-label="Search variants"
+              placeholder={copy.toolbar.searchPlaceholder}
+              aria-label={copy.toolbar.searchLabel}
               value={searchInput}
               onChange={(event) => setSearchInput(event.target.value)}
               data-testid="cost-worklist-search"
             />
             <Select
-              aria-label="Channel"
+              aria-label={copy.toolbar.channelLabel}
               value={channel}
               onChange={(event) => setParam('channel', event.target.value)}
               data-testid="cost-worklist-channel"
             >
-              <option value="">All channels</option>
+              <option value="">{copy.toolbar.allChannels}</option>
               {channels.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -760,7 +775,7 @@ export function CostPricesPage(): ReactElement {
         {showEditing ? (
           <BulkActionBar
             count={selectedRows.length}
-            itemNoun="variant"
+            selectedLabel={copy.bulk.selectedLabel}
             data-testid="cost-worklist-bulk-bar"
             actions={
               <>
@@ -770,7 +785,7 @@ export function CostPricesPage(): ReactElement {
                   onClick={openBulk}
                   data-testid="cost-worklist-bulk-open"
                 >
-                  Set one cost for selected
+                  {copy.bulk.open}
                 </Button>
                 <Button
                   type="button"
@@ -778,7 +793,7 @@ export function CostPricesPage(): ReactElement {
                   className="button--sm"
                   onClick={() => setSelected(new Set())}
                 >
-                  Clear selection
+                  {copy.bulk.clearSelection}
                 </Button>
               </>
             }
@@ -789,16 +804,14 @@ export function CostPricesPage(): ReactElement {
       </div>
 
       <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
-        <DialogContent data-testid="cost-bulk-dialog" aria-label="Set one cost">
+        <DialogContent data-testid="cost-bulk-dialog" aria-label={copy.bulk.dialogLabel}>
           <DialogTitle>
-            Set one cost for {selectedRows.length} {selectedRows.length === 1 ? 'variant' : 'variants'}
+            {plural(selectedRows.length, copy.bulk.title, { n: format.number(selectedRows.length) })}
           </DialogTitle>
-          <DialogDescription>
-            Use this when the variants cost you the same, like two colours of one cup.
-          </DialogDescription>
+          <DialogDescription>{copy.bulk.description}</DialogDescription>
           <div className="form-field">
             <label className="form-field__label" htmlFor="cost-bulk-input">
-              Cost price, net per unit
+              {copy.bulk.inputLabel}
             </label>
             <div className="cost-worklist__inline">
               <div className={`field__price-input${bulkError ? ' has-error' : ''}`}>
@@ -814,10 +827,10 @@ export function CostPricesPage(): ReactElement {
                     setBulkError(false);
                   }}
                 />
-                <span className="field__currency">net</span>
+                <span className="field__currency">{copy.netSuffix}</span>
               </div>
               <Select
-                aria-label="Cost currency"
+                aria-label={copy.bulk.currencyLabel}
                 value={bulkCurrency}
                 data-testid="cost-bulk-currency"
                 onChange={(event) => setBulkCurrency(event.target.value)}
@@ -830,17 +843,16 @@ export function CostPricesPage(): ReactElement {
               </Select>
             </div>
             <p className="form-field__description">
-              Excluding VAT. Counts toward margin for orders placed after you save. Earlier orders
-              keep no cost.
+              {copy.bulk.inputDescription}
             </p>
             {bulkError ? (
               <p className="form-field__error" role="alert" data-testid="cost-bulk-error">
-                {COST_ERROR_COPY}
+                {copy.amountError}
               </p>
             ) : null}
           </div>
           <div>
-            <p className="form-field__label">Applies to</p>
+            <p className="form-field__label">{copy.bulk.appliesTo}</p>
             <ul className="cost-worklist__preview" data-testid="cost-bulk-preview">
               {selectedRows.map((row) => (
                 <li key={row.variantId}>
@@ -849,17 +861,19 @@ export function CostPricesPage(): ReactElement {
                     {row.sku ? <span className="cost-worklist__sku"> {row.sku}</span> : null}
                   </span>
                   <span className="mono-text">
-                    no cost →{' '}
-                    {parseCostInput(bulkDraft) !== null
-                      ? `${bulkCurrency} ${formatCostAmount(parseCostInput(bulkDraft) ?? '0')}`
-                      : '…'}
+                    {interpolate(copy.bulk.preview, {
+                      cost:
+                        parseCostInput(bulkDraft) !== null
+                          ? `${bulkCurrency} ${formatCostAmount(parseCostInput(bulkDraft) ?? '0')}`
+                          : '…',
+                    })}
                   </span>
                 </li>
               ))}
             </ul>
           </div>
           <p className="text-muted">
-            Variants that already have a cost are never selected here, so nothing gets overwritten.
+            {copy.bulk.neverOverwrites}
           </p>
           <DialogFooter>
             <Button
@@ -868,7 +882,7 @@ export function CostPricesPage(): ReactElement {
               onClick={() => setBulkOpen(false)}
               data-testid="cost-bulk-cancel"
             >
-              Cancel
+              {copy.bulk.cancel}
             </Button>
             <Button
               type="button"
@@ -876,7 +890,7 @@ export function CostPricesPage(): ReactElement {
               onClick={saveBulk}
               data-testid="cost-bulk-save"
             >
-              Save cost for {selectedRows.length} {selectedRows.length === 1 ? 'variant' : 'variants'}
+              {plural(selectedRows.length, copy.bulk.save, { n: format.number(selectedRows.length) })}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -598,39 +598,36 @@ The app ships English and Polish. English is the default today; #3890 makes Poli
 
 ### Copy files
 
-User-facing text lives in JSON (ADR-081). The application core keeps one file per language, `apps/web/src/locales/en.json` and `pl.json`; their top-level keys are **namespaces**, named after the feature folder:
+User-facing text lives in JSON (ADR-081). The application core keeps one file per language and **namespace**, `apps/web/src/locales/<lang>/<namespace>.json`, named after the feature folder (`orders`, `returns`; `ui` for the shared primitives, `format` for the formatters). `locales/en/index.ts` lists every core namespace and is where the `Messages` type comes from:
 
 ```jsonc
-// apps/web/src/locales/en.json
+// apps/web/src/locales/en/orders.json
 {
-  "orders": {
-    "header": {
-      "needsAttention": { "one": "{n} order needs attention", "other": "{n} orders need attention" },
-      "title": "Orders"
-    }
-  },
-  "ui": { "common": { "retry": "Retry" } }
-}
-```
-
-```jsonc
-// apps/web/src/locales/pl.json
-{
-  "orders": {
-    "header": {
-      "needsAttention": {
-        "few": "{n} zamówienia wymagają uwagi",
-        "many": "{n} zamówień wymaga uwagi",
-        "one": "{n} zamówienie wymaga uwagi",
-        "other": "{n} zamówienia wymaga uwagi"
-      },
-      "title": "Zamówienia"
-    }
+  "header": {
+    "needsAttention": { "one": "{n} order needs attention", "other": "{n} orders need attention" },
+    "title": "Orders"
   }
 }
 ```
 
-A component reads one namespace, typed from `en.json`:
+```jsonc
+// apps/web/src/locales/pl/orders.json
+{
+  "header": {
+    "needsAttention": {
+      "few": "{n} zamówienia wymagają uwagi",
+      "many": "{n} zamówień wymaga uwagi",
+      "one": "{n} zamówienie wymaga uwagi",
+      "other": "{n} zamówienia wymaga uwagi"
+    },
+    "title": "Zamówienia"
+  }
+}
+```
+
+A new namespace is a new `en/<namespace>.json` plus one line in `locales/en/index.ts`; its Polish file is `pl/<namespace>.json` plus one line in `locales/pl/index.check.ts`. `scripts/check-locales.mjs` fails when a file and its index disagree. Polish files load lazily, one chunk per namespace.
+
+A component reads one namespace, typed from its English file:
 
 ```tsx
 const copy = useMessages('orders');
@@ -640,7 +637,8 @@ const copy = useMessages('orders');
 Placement:
 
 - **One namespace per feature folder**, sectioned by component: `orders.header.title`, `orders.filters.status.label`. Pages read their feature's namespace.
-- **Shared namespaces**: `ui` for the shared primitives (`ui.common` holds the few words every feature may use), `format` for the formatters. The shell (`app/`) has no namespace yet: its strings are not extracted, so it is part of the interface that is still English-only.
+- **Shared namespaces**: `ui` for the shared primitives and the rest of `shared/` (`ui.common` holds the few words every feature may use), `format` for the formatters, `app` for the shell (`app/`: sidebar, topbar, layouts, command palette, breadcrumbs). `app.sections` and `app.pages` name the app's sections and pages once; the sidebar and the breadcrumbs both read them.
+- **Text held in module-level data** (a nav registry, a route `handle`, a constant passed around as a tooltip) stores a **key** or is a **function**, never the string: a module is evaluated once, so a string would stay in the language it first loaded in. `BASE_NAV_GROUPS` stores `section` / `page` keys and a route crumb `{ group, page }`, resolved at render; `demoReadOnlyActionMessage()` reads its namespace when called. A plugin crumb with no core page passes `title` until its own extraction issue.
 - **No reaching into another namespace.** "Cancel" in orders and "Cancel" in returns are two keys; only `ui.common` is shared. Removing a feature removes one block.
 - **Plugins** keep their own namespace in their own folder, `plugins/<id>/locales/en.json` and `pl.json`, named after the plugin id, and register it with `definePluginMessages`, which returns the plugin's typed hook. Reference the result from the plugin's `messages` slot in `definePlugin` so the namespace is registered at module load, before the first language load:
 
@@ -671,7 +669,7 @@ An object whose keys are exactly `one` and `other` is read as a plural, so never
 | Export | Returns | Used for |
 |---|---|---|
 | `useLocale()` | `locale`, `setLocale`, `locales`, `bcp47` | the language switch, `<html lang>`, anything that needs the language |
-| `useMessages(namespace)` | one core namespace for the active language, typed from `en.json`, English fallback per key | every component that renders text |
+| `useMessages(namespace)` | one core namespace for the active language, typed from `locales/en/<namespace>.json`, English fallback per key | every component that renders text |
 | `getMessages(namespace)` / `messagesIn(namespace, locale)` | the same outside React, for the active / a given language | zod schemas, formatters, module-level label maps |
 | `definePluginMessages(id, options)` | `{ useMessages, getMessages }` typed from the plugin's own file | a plugin's own namespace |
 | `loadMessages(locale)` | a promise that resolves once every namespace has the language | `main.tsx`; the provider calls it on a switch |
@@ -731,7 +729,7 @@ Unit tests and Playwright run in English. `src/test/setup.ts` resets the active 
   - It also checks that the e2e fixture pins the same `localStorage` key the app reads.
   - **Sorting:** `pnpm i18n:sort` (`--fix`) rewrites every unsorted file in place.
   - **Coverage report (not a gate):** `pnpm i18n:report` (`--report`) prints, for every namespace, how many English keys each other language has translated, most missing first, then a `TOTAL` line per language; add `--missing` to list the missing key paths. A plural counts as one key (translated when its `other` form is non-empty), Polish-only `few` / `many` are never extra keys, and an empty string counts as missing. It always exits 0.
-- **`scripts/check-ui-vocabulary.mjs`** reads every `.copy.ts` / `-copy.ts` file under `features/*` and every English translation file (`locales/en.json` and `plugins/<id>/locales/en.json`, with a floor). Its banned words are English; the Polish counterparts live in the glossary for review.
+- **`scripts/check-ui-vocabulary.mjs`** reads every `.copy.ts` / `-copy.ts` file under `features/*` and every English translation file (`locales/en/*.json` and `plugins/<id>/locales/en.json`, with a floor). Its banned words are English; the Polish counterparts live in the glossary for review.
 - **Budgets**: a key that sits in a tight spot (button, nav item, chip, table header) gets a character budget in `limits.json`.
 - **No hardcoded text**: `i18next/no-literal-string` in `.eslintrc.js` fails on JSX text outside copy files, and three `no-restricted-syntax` selectors cover the shapes it skips in JSX children: `{'text'}`, a ternary label and a template literal. It is switched on folder by folder as each folder is migrated; add the folder to the override's `files` list in the same PR. Covered today: `shared/ui/**/*.tsx` only. `scripts/check-i18n-lint-rule.mjs` pins that list (`EXPECTED_SCOPE`), so widening it means editing the script in the same PR.
   - **Known gap:** text in an attribute (`aria-label`, `title`, `placeholder`) or in a variable outside JSX is not caught; review covers it until the extraction PRs move it. A `jsx-only` mode was tried and rejected for now because it also flags every `tone="ghost"`-style prop (53 hits in `shared/ui` alone).
@@ -742,14 +740,14 @@ Unit tests and Playwright run in English. `src/test/setup.ts` resets the active 
 
 ### Adding another language
 
-Every translation lives in a namespace: the top-level keys of `apps/web/src/locales/<lang>.json`, plus one `plugins/<id>/locales/<lang>.json` per plugin that has copy. `scripts/check-locales.mjs` finds them the same way. The engine is deliberately written for exactly the two shipped languages (ADR-081), so a new language is first a small engine change, then the translations. The steps below use French (`fr`) as the worked example.
+Every translation lives in a namespace: one `apps/web/src/locales/<lang>/<namespace>.json` per core namespace, plus one `plugins/<id>/locales/<lang>.json` per plugin that has copy. `scripts/check-locales.mjs` finds them the same way. The engine is deliberately written for exactly the two shipped languages (ADR-081), so a new language is first a small engine change, then the translations. The steps below use French (`fr`) as the worked example.
 
 **Part A - the engine (once, in this order)**
 
 1. `apps/web/src/shared/i18n/i18n.types.ts`: add the code to `LocaleCodeValues`. Its order is the order the switch lists languages in, and `SupportedLocale` follows from it, so the compiler now points at every place that still has to learn the language.
 2. `apps/web/src/shared/i18n/copy.types.ts`: add a shape type for the language, deep-partial the way `PolishCopy` is until the lock-in step (#3891), with a plural type that matches its CLDR plural categories (French: `one`, `many`, `other`; look the language up in the [CLDR plural rules chart](https://www.unicode.org/cldr/charts/latest/supplemental/language_plural_rules.html)), and extend `PluralForms` if a category is new. Keep the `IsPlural` convention in mind: an object whose keys are exactly `one` and `other` is read as a plural, so never name a section that way.
-3. `apps/web/src/locales/fr.json` with `{}`, and `apps/web/src/locales/fr.check.ts` beside `pl.check.ts`, so `tsc` checks its shape.
-4. `apps/web/src/shared/i18n/messages.ts`: give every core namespace a loader for the language (the `pl` loader is the template). A plugin adds its own loader to its `definePluginMessages` call.
+3. An `apps/web/src/locales/fr/` folder and `fr/index.check.ts` beside `pl/index.check.ts`, so `tsc` checks the shape of every `fr/<namespace>.json` you add.
+4. `apps/web/src/shared/i18n/messages.ts`: give every core namespace a loader for the language (the `import.meta.glob` of `pl/*.json` is the template). A plugin adds its own loader to its `definePluginMessages` call.
 5. `apps/web/src/shared/i18n/locale.ts`: map the code to its BCP 47 tag in `getBcp47Locale` (for example `fr` to `fr-FR`). The formatters, `Accept-Language` and `<html lang>` all read it.
 6. `apps/web/src/shared/i18n/zod-locale.ts`: choose `z.locales.fr()` for the new code in `applyZodLocale`, so Zod's default messages follow the language.
 7. `apps/web/src/shared/ui/language-switch.tsx`: add the language's native name ("Français") to `LANGUAGE_DETAILS`, with `beta: true` until its translation is complete; `LANGUAGE_OPTIONS` is derived from `LocaleCodeValues`, and the `Record` makes a missing entry a compile error. Add its flag SVG to the `switch` in `apps/web/src/shared/ui/language-flag.tsx`.
@@ -759,7 +757,7 @@ Every translation lives in a namespace: the top-level keys of `apps/web/src/loca
 
 **Part B - the translations**
 
-11. Translate namespace by namespace into `fr.json` (start with `format`, which holds the formatters' units and relative-time words) and into each plugin's `fr.json`, using the glossary. English stays the fallback per key, so this can land feature by feature.
+11. Translate namespace by namespace into `fr/<namespace>.json` files (start with `format`, which holds the formatters' units and relative-time words) and into each plugin's `fr.json`, using the glossary. English stays the fallback per key, so this can land feature by feature.
 12. When every namespace is complete, make the shape required (the lock-in step, as #3891 does for Polish): `pnpm --filter @openlinker/web exec tsc -b` then lists every key still missing in the core file, and `pnpm i18n:report --missing` lists the plugins' gaps. Then remove `beta: true` from the switch (as #3901 does for Polish).
 
 Tests keep running in English (pinned in `src/test/setup.ts` and the Vitest config), so add only targeted tests for the new language, for example its plural forms and the `locale.ts` mapping. `src/test/setup.ts` loads every language once before the tests run; add the new code there.

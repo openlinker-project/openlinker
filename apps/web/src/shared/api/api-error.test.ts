@@ -1,7 +1,9 @@
 /**
- * ApiError status-helper tests (#1625 — isConflict()).
+ * ApiError tests: status helpers (#1625 — isConflict()) and the factory
+ * fallbacks, whose operator copy must not carry the request path (#3868).
  */
 import { describe, expect, it } from 'vitest';
+import { getMessages } from '../i18n';
 import { ApiError } from './api-error';
 
 describe('ApiError', () => {
@@ -12,6 +14,27 @@ describe('ApiError', () => {
 
     it('returns false for a non-409 status', () => {
       expect(new ApiError('Not found', 404, null).isConflict()).toBe(false);
+    });
+  });
+
+  describe('fromTimeout', () => {
+    it('should keep the request path in details when the message is operator copy', () => {
+      const error = ApiError.fromTimeout('/v1/orders?page=2');
+
+      expect(error.status).toBe(0);
+      expect(error.message).toBe(getMessages('ui').apiError.timedOut);
+      expect(error.message).not.toContain('/v1/orders');
+      expect(error.details).toEqual({ timeout: true, path: '/v1/orders?page=2' });
+    });
+  });
+
+  describe('fromNetworkFailure', () => {
+    it('should use the fallback copy when the cause is not an Error', () => {
+      const error = ApiError.fromNetworkFailure('offline');
+
+      expect(error.status).toBe(0);
+      expect(error.message).toBe(getMessages('ui').apiError.networkFailed);
+      expect(error.details).toBe('offline');
     });
   });
 });

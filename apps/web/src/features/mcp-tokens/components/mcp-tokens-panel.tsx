@@ -17,8 +17,8 @@
 import { useState, type ReactElement } from 'react';
 import { Alert } from '../../../shared/ui/alert';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
+import { useMessages } from '../../../shared/i18n';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { MCP_TOOL_AVAILABILITY_NOTE } from '../lib/tool-staleness-copy';
 import { useMcpTokensQuery } from '../hooks/use-mcp-tokens-query';
 import { useCreateMcpTokenMutation } from '../hooks/use-create-mcp-token-mutation';
 import { useRevokeMcpTokenMutation } from '../hooks/use-revoke-mcp-token-mutation';
@@ -34,6 +34,8 @@ interface RevealedToken {
 export function McpTokensPanel(): ReactElement {
   const [revealed, setRevealed] = useState<RevealedToken | null>(null);
   const { showToast } = useToast();
+  const messages = useMessages('mcp-tokens');
+  const copy = messages.mcpTokensPanel;
 
   const tokensQuery = useMcpTokensQuery();
   const createMutation = useCreateMcpTokenMutation();
@@ -41,15 +43,15 @@ export function McpTokensPanel(): ReactElement {
 
   return (
     <div className="mcp-tokens-panel">
-      <Alert tone="info">{MCP_TOOL_AVAILABILITY_NOTE}</Alert>
+      <Alert tone="info">{messages.toolStaleness.availabilityNote}</Alert>
 
       <article className="panel panel--dense">
         <div className="panel__header">
           <div>
-            <p className="eyebrow">Create</p>
-            <h3 className="section-title">New MCP token</h3>
+            <p className="eyebrow">{copy.createEyebrow}</p>
+            <h3 className="section-title">{copy.createTitle}</h3>
           </div>
-          <span className="panel__meta">Admin only</span>
+          <span className="panel__meta">{copy.adminOnly}</span>
         </div>
         {createMutation.isError ? (
           <Alert tone="error">{createMutation.error.message}</Alert>
@@ -69,14 +71,14 @@ export function McpTokensPanel(): ReactElement {
       <article className="panel panel--dense">
         <div className="panel__header">
           <div>
-            <p className="eyebrow">Existing</p>
-            <h3 className="section-title">MCP tokens</h3>
+            <p className="eyebrow">{copy.existingEyebrow}</p>
+            <h3 className="section-title">{copy.existingTitle}</h3>
           </div>
         </div>
 
-        {tokensQuery.isLoading ? <LoadingState title="Loading tokens" message="Fetching MCP tokens…" /> : null}
+        {tokensQuery.isLoading ? <LoadingState title={copy.loadingTitle} message={copy.loadingMessage} /> : null}
         {tokensQuery.isError ? (
-          <ErrorState title="Could not load tokens" message={tokensQuery.error.message} />
+          <ErrorState title={copy.loadErrorTitle} message={tokensQuery.error.message} />
         ) : null}
         {tokensQuery.data ? (
           <McpTokenList
@@ -87,11 +89,11 @@ export function McpTokensPanel(): ReactElement {
                 onSuccess: () =>
                   showToast({
                     tone: 'success',
-                    title: 'Token revoked',
-                    description: 'Any MCP client using it will stop authenticating.',
+                    title: copy.revokedToastTitle,
+                    description: copy.revokedToastDescription,
                   }),
                 onError: (error) =>
-                  showToast({ tone: 'error', title: 'Could not revoke', description: error.message }),
+                  showToast({ tone: 'error', title: copy.revokeErrorTitle, description: error.message }),
               });
             }}
           />

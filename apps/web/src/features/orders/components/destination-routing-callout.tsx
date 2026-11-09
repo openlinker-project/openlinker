@@ -9,18 +9,19 @@
  * reconciled" beside a reason saying it was not.
  *
  * Renders nothing for an absent or unrecognised reason, and nothing for a
- * routing DECISION (`routed-to-no-destination`) — that is not outstanding work,
+ * routing DECISION (`routed-to-no-destination`) - that is not outstanding work,
  * and the sync cell already states it neutrally.
  *
  * @module apps/web/src/features/orders/components
  */
 import type { ReactNode } from 'react';
 import { Alert } from '../../../shared/ui/alert';
+import { useMessages } from '../../../shared/i18n';
 import {
   DESTINATION_ROUTING_ATTENTION_REASONS,
   isDestinationRoutingBlockReason,
   resolveDestinationRoutingCopy,
-} from '../lib/destination-routing-copy';
+} from '../lib/destination-routing';
 
 export interface DestinationRoutingCalloutProps {
   reason: string | null | undefined;
@@ -31,7 +32,7 @@ export function DestinationRoutingCallout({
   reason,
   detail,
 }: DestinationRoutingCalloutProps): ReactNode {
-  const copy = resolveDestinationRoutingCopy(reason);
+  const copy = resolveDestinationRoutingCopy(reason, useMessages('orders'));
   if (copy === null || !isDestinationRoutingBlockReason(reason)) return null;
   if (!DESTINATION_ROUTING_ATTENTION_REASONS.includes(reason)) return null;
 

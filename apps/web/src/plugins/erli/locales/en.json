@@ -1,0 +1,94 @@
+{
+  "erliConnectionActions": {
+    "callbackUrlMissing": "Set the <strong>Callback URL</strong> field on this connection before configuring webhooks. Open <strong>Edit connection</strong>, fill in the Callback URL (the public OpenLinker URL Erli posts webhooks to), save, then return here.",
+    "configure": "Configure webhooks",
+    "configuring": "Configuring...",
+    "currentlyConfigured": "Currently configured ✓",
+    "description": "Register Erli webhook subscriptions and rotate the webhook secret.",
+    "reconfigure": "Re-configure webhooks",
+    "title": "Configure webhooks",
+    "toast": {
+      "configured": {
+        "description": "Erli webhook subscriptions registered and verified by a test ping.",
+        "title": "Webhooks configured"
+      },
+      "failed": {
+        "notAccepted": "Erli did not accept the webhook registration.",
+        "title": "Configuration push failed"
+      },
+      "pingMissing": {
+        "description": "Subscriptions registered but the test ping did not arrive. Click again to retry, or wait for the next real event.",
+        "title": "Webhooks configured (ping not received)"
+      }
+    }
+  },
+  "erliCredentialsPanel": {
+    "apiKey": {
+      "description": "Stored securely on the server. Rotate to replace the key without restarting the API.",
+      "envBacked": "Environment variable (not editable via UI)",
+      "label": "API Key",
+      "newPlaceholder": "New API key",
+      "rotate": "Rotate API key"
+    },
+    "cancel": "Cancel",
+    "categoryAccess": {
+      "checking": "Checking for existing Allegro connections...",
+      "hint": "Turn this on to pick categories and fill required parameters from a list, the same way you do for Allegro. Leave it off and you'll enter category IDs by hand.",
+      "label": "Browse Allegro categories when creating Erli offers"
+    },
+    "configSaveFailed": "Category-browsing setting failed to save: {message}. Click Save again to retry.",
+    "manual": {
+      "clientIdHint": "From an Allegro app you register at apps.developer.allegro.pl. Used only to read the public category catalog - never to sign in as a seller or place offers.",
+      "clientIdPlaceholder": "Allegro Client ID",
+      "clientSecretHint": "Stored encrypted. You won't see it again after saving.",
+      "clientSecretPlaceholder": "Allegro Client Secret",
+      "environmentAriaLabel": "Allegro app environment",
+      "environmentHint": "Sandbox and production Allegro apps are registered separately - pick the one this Client ID/Secret belongs to, or category requests will fail authentication.",
+      "environments": {
+        "production": "Production",
+        "sandbox": "Sandbox"
+      },
+      "hide": "Hide",
+      "hideSecretAriaLabel": "Hide Client Secret",
+      "hint": "Use a different Allegro app - e.g. one dedicated just for category browsing.",
+      "label": "Enter Allegro app credentials manually",
+      "noConnections": "No Allegro connection found on this account. Enter your own Allegro app credentials below to enable category browsing.",
+      "show": "Show",
+      "showSecretAriaLabel": "Show Client Secret"
+    },
+    "reuse": {
+      "environment": "Will use that connection's environment: <strong>{environment}</strong>.",
+      "hint": "Recommended - uses the same app credentials already configured on that connection. Nothing new to register.",
+      "label": "Reuse credentials from an existing Allegro connection",
+      "readOnlyHint": "Only read access to the public category catalog is used - this connection's seller credentials are never touched.",
+      "selectAriaLabel": "Allegro connection to reuse",
+      "selectPlaceholder": "Select an Allegro connection..."
+    },
+    "save": "Save credentials",
+    "saving": "Saving...",
+    "toast": {
+      "description": "Erli connection credentials are now in use.",
+      "title": "Credentials saved"
+    },
+    "validation": {
+      "bothOrNeither": "Enter both the Allegro Client ID and Client Secret, or leave both blank.",
+      "required": "Enter the Allegro Client ID and Client Secret to enable category browsing.",
+      "selectConnection": "Select an Allegro connection to reuse its credentials, or switch to manual entry."
+    }
+  },
+  "erliSetupRoute": {
+    "crumb": "Connect Erli"
+  },
+  "erliStructuredSection": {
+    "callbackUrl": {
+      "description": "The public OpenLinker URL Erli posts webhook events to (e.g. https://api.example.com).",
+      "label": "Callback URL"
+    }
+  },
+  "plugin": {
+    "setupCard": {
+      "badge": "API key",
+      "description": "Connect your Erli seller account with your Shop API key."
+    }
+  }
+}

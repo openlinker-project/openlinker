@@ -19,6 +19,7 @@ import {
 } from '../lib/map-operational-settings-errors';
 import { limitsFor } from '../lib/resolve-value-limits';
 import { PacingValueField } from './pacing-value-field';
+import { useMessages } from '../../../shared/i18n';
 
 interface StockStalenessSectionProps {
   view: OperationalSettingsView;
@@ -40,6 +41,7 @@ export function StockStalenessSection({ view }: StockStalenessSectionProps): Rea
     : NO_OPERATIONAL_SETTINGS_ERRORS;
   const limits = limitsFor(view, 'stockStaleSyncThresholdHours');
   const changed = value !== saved.value;
+  const copy = useMessages('settings').stockStalenessSection;
 
   return (
     <section
@@ -49,23 +51,22 @@ export function StockStalenessSection({ view }: StockStalenessSectionProps): Rea
     >
       <header className="pacing-card__header">
         <div>
-          <p className="eyebrow">Stock view</p>
+          <p className="eyebrow">{copy.eyebrow}</p>
           <h3 className="section-title" id="pacing-stock-staleness-title">
-            Stale stock warning
-          </h3>
+            {copy.title}          </h3>
         </div>
-        <span className="panel__meta">saved on its own</span>
+        <span className="panel__meta">{copy.savedOnItsOwn}</span>
       </header>
 
       <div className="pacing-card__fields">
         <PacingValueField
-          label="Flag stock as stale after"
-          ariaLabel="Hours before a stock figure is flagged as stale"
-          description="How long a stock figure may go without a fresh read from the master before the stock view marks it stale."
+          label={copy.field.label}
+          ariaLabel={copy.field.ariaLabel}
+          description={copy.field.description}
           value={value}
           limits={limits}
           step={1}
-          unit="hours"
+          unit={copy.unitHours}
           savedValue={saved.value}
           savedSource={saved.source}
           savedAboveRecommended={saved.aboveRecommended === true}
@@ -85,8 +86,7 @@ export function StockStalenessSection({ view }: StockStalenessSectionProps): Rea
       {changed ? (
         <div className="pacing-save">
           <Button tone="secondary" onClick={() => setValue(saved.value)}>
-            Reset
-          </Button>
+            {copy.reset}          </Button>
           <Button
             disabled={mutation.isPending}
             onClick={() => {
@@ -99,15 +99,15 @@ export function StockStalenessSection({ view }: StockStalenessSectionProps): Rea
                   onSuccess: () => {
                     showToast({
                       tone: 'success',
-                      title: 'Stale stock warning saved',
-                      description: 'The stock view uses the new threshold straight away.',
+                      title: copy.savedToast.title,
+                      description: copy.savedToast.description,
                     });
                   },
                 }
               );
             }}
           >
-            Save threshold
+            {copy.save}
           </Button>
         </div>
       ) : null}
