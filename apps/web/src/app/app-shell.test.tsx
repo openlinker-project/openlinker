@@ -398,6 +398,18 @@ describe('AppShell', () => {
     expect(screen.getByRole('radiogroup', { name: 'Theme' })).toBeInTheDocument();
   });
 
+  it('should offer the language in the account menu, not in the sidebar (#4021)', async () => {
+    const user = userEvent.setup();
+    renderShell({ pathname: '/' });
+
+    expect(screen.queryByRole('button', { name: /^Language:/ })).not.toBeInTheDocument();
+
+    await user.click(await screen.findByRole('button', { name: /Account menu for/i }));
+
+    const language = await screen.findByRole('radiogroup', { name: 'Language' });
+    expect(within(language).getByRole('radio', { name: /English/ })).toHaveAttribute('aria-checked', 'true');
+  });
+
   it('opens the mobile drawer when the hamburger is clicked', async () => {
     renderShell({ pathname: '/' });
 

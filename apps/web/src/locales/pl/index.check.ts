@@ -4,8 +4,8 @@
  * Compiled by `tsc -b`, never imported at runtime (Polish files load lazily,
  * one per namespace, see `shared/i18n/messages.ts`). Fails the type-check when
  * a `pl/<namespace>.json` does not fit the shape its English file declares: a
- * string where English has a section, a plural missing its Polish forms, or a
- * key English lacks.
+ * string where English has a section or the reverse, or a key English lacks.
+ * A missing key is not an error (the type is partial, #3891).
  *
  * Lists every `pl/*.json`; `scripts/check-locales.mjs` fails when a file is
  * missing here.
@@ -28,6 +28,7 @@ import content from './content.json';
 import currencySettings from './currency-settings.json';
 import cursors from './cursors.json';
 import customers from './customers.json';
+import deliveryOnDocuments from './delivery-on-documents.json';
 import demo from './demo.json';
 import devUi from './dev-ui.json';
 import fiscalization from './fiscalization.json';
@@ -37,6 +38,8 @@ import fulfillmentAuthority from './fulfillment-authority.json';
 import inventory from './inventory.json';
 import invoicing from './invoicing.json';
 import listings from './listings.json';
+import login from './login.json';
+import loginPageSettings from './login-page-settings.json';
 import mailerSettings from './mailer-settings.json';
 import mappings from './mappings.json';
 import mcpTokens from './mcp-tokens.json';
@@ -70,6 +73,7 @@ const polish: PolishCopy<Messages> = {
   'currency-settings': currencySettings,
   cursors,
   customers,
+  'delivery-on-documents': deliveryOnDocuments,
   demo,
   'dev-ui': devUi,
   fiscalization,
@@ -79,6 +83,8 @@ const polish: PolishCopy<Messages> = {
   inventory,
   invoicing,
   listings,
+  login,
+  'login-page-settings': loginPageSettings,
   'mailer-settings': mailerSettings,
   mappings,
   'mcp-tokens': mcpTokens,

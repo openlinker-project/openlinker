@@ -1,0 +1,176 @@
+{
+  "checkName": {
+    "empty": "Enter a name.",
+    "hasRate": "Leave the VAT rate out. Receipts add it for you.",
+    "tooLong": "Use at most {max} characters, so the VAT rate still fits in what fiscal printers read."
+  },
+  "common": {
+    "addCountryButton": "+ Add a country",
+    "allOtherCountries": "All other countries",
+    "exampleOrderFrom": "Example order from",
+    "noLine": "No delivery line",
+    "orderFrom": "Order from {country}",
+    "rateTag": "+ VAT rate",
+    "suggestionBasis": "What the suggestion is based on"
+  },
+  "editor": {
+    "addCountry": "Add country",
+    "addTitle": "Add a country",
+    "cancel": "Cancel",
+    "chooseCountry": "Choose a country to see its settings.",
+    "country": {
+      "alreadyListed": "Already in the table",
+      "description": "Any country. Countries you already get orders from are at the top.",
+      "label": "Buyer country",
+      "orders": {
+        "one": "{n} order in 30 days",
+        "other": "{n} orders in 30 days"
+      },
+      "placeholder": "Search for a country…",
+      "suggestionAvailable": "suggestion available"
+    },
+    "descriptionCountry": "Orders delivered to this country use these settings.",
+    "descriptionOther": "Used for every buyer country that is not listed in the table.",
+    "fewerOptions": "Fewer options",
+    "fill": {
+      "description": "Fills the fields below. Change anything afterwards.",
+      "label": "Fill in from",
+      "noSuggestion": "OpenLinker has no suggestion for {country} yet. Check the VAT on delivery with your accountant.",
+      "openLinkerDefault": "OpenLinker default ({name})",
+      "ownSettings": "Your own settings",
+      "sameAsOther": "The same as \"All other countries\"",
+      "suggestedFor": "Suggested for {country}"
+    },
+    "fixedRate": {
+      "label": "Fixed rate in %",
+      "placeholder": "For example 21",
+      "seen": "Rates in your {country} orders"
+    },
+    "free": {
+      "label": "When delivery is free",
+      "omit": "Leave the delivery line out",
+      "show": "Show the line with 0"
+    },
+    "invoiceName": {
+      "label": "Name on invoices",
+      "toggle": "Different name on invoices"
+    },
+    "methods": {
+      "addLabel": "Add a delivery method",
+      "addOption": "+ Add a delivery method…",
+      "nameFor": "Name for {method}",
+      "remove": "Remove",
+      "title": "Own name for a delivery method"
+    },
+    "moreOptions": "More options",
+    "name": {
+      "description": "Pick one or type your own, in any language.",
+      "label": "Name of the delivery line"
+    },
+    "preview": {
+      "empty": "Nothing to show yet.",
+      "label": "Preview",
+      "suggestedFrom": "Suggested from {country} VAT practice"
+    },
+    "rate": {
+      "fixed": "One fixed rate",
+      "goods": "Same as the products",
+      "label": "VAT rate of delivery",
+      "spread": "Add delivery to the product prices"
+    },
+    "rateFormatLabel": "How receipts write the rate",
+    "removeCountry": "Remove {country}",
+    "save": "Save"
+  },
+  "nameInput": {
+    "characters": "{count} of {max} characters",
+    "ownLabel": "{label}, your own",
+    "placeholder": "For example: Doprava, Versand, Envío",
+    "typeOwn": "Type my own…",
+    "useName": "Use this name"
+  },
+  "panel": {
+    "countryRemoved": "{country} removed. Its orders now use \"All other countries\".",
+    "countrySaved": "{country} saved.",
+    "description": "How delivery appears on receipts and invoices, per buyer country.",
+    "errorFallback": "The connection could not be loaded.",
+    "errorTitle": "Unable to load delivery settings",
+    "loadingMessage": "Fetching this connection.",
+    "loadingTitle": "Loading delivery settings",
+    "otherSaved": "All other countries saved.",
+    "saveFailedFallback": "The delivery settings could not be saved.",
+    "saveFailedTitle": "Changes not saved",
+    "suggest": {
+      "body": "There are suggested settings for it.",
+      "review": "Review",
+      "title": "Most of your orders go to {country}.",
+      "use": "Use them"
+    },
+    "title": "Delivery on documents"
+  },
+  "preview": {
+    "deliveryPaid": "Delivery paid by the buyer",
+    "exampleFrom": "Example order from {country}",
+    "exampleSummary": "See it on an example receipt and invoice",
+    "includedInPrices": "No delivery line. Product prices include it.",
+    "noOrders": "No orders from {country} yet, so there is no example order to show.",
+    "onInvoice": "On the invoice",
+    "onReceipt": "On the receipt",
+    "rateFromProducts": "The rate comes from the products in each order."
+  },
+  "rateText": {
+    "fixed": "Always {rate}",
+    "fixedNotSet": "Fixed, not set",
+    "goods": "Same as the products",
+    "spread": "Added to product prices"
+  },
+  "table": {
+    "aboutLabel": "About {label}",
+    "actions": "Actions",
+    "buyerCountry": "Buyer country",
+    "caption": "Delivery line per buyer country",
+    "deliveryLine": "Delivery line",
+    "edit": "Edit",
+    "editLabel": "Edit {who}",
+    "editOtherLabel": "Edit all other countries",
+    "invoiceHint": "Invoices: {name}",
+    "methodsHint": {
+      "one": "{n} delivery method named separately",
+      "other": "{n} delivery methods named separately"
+    },
+    "vatRate": "VAT rate"
+  },
+  "tips": {
+    "line": {
+      "term": "Delivery line",
+      "text": "The line for delivery on the receipt and the invoice. Receipts add the VAT rate to its name, for example \"Koszt dostawy 23%\".",
+      "whyTerm": "Why the rate is in the name",
+      "whyText": "Fiscal printers keep one VAT rate per line name and refuse a name whose rate goes up. A name with the rate in it never changes rate."
+    },
+    "rate": {
+      "fixedTerm": "One fixed rate",
+      "fixedText": "Delivery always gets the rate you choose.",
+      "goodsTerm": "Same as the products",
+      "goodsText": "Delivery gets the VAT rate of the products. If an order has products at different rates, delivery is split between them by value.",
+      "spreadTerm": "Add to product prices",
+      "spreadText": "There is no delivery line. Its cost is added to the product prices on the document."
+    }
+  },
+  "wizard": {
+    "groupLabel": "Delivery on documents",
+    "intro": "Pick one. You can change it at any time later.",
+    "later": "You can change this later in the connection, under Mappings, Delivery on documents.",
+    "ownText": "Choose the names and VAT rate for each buyer country.",
+    "ownTitle": "Set it up myself",
+    "receiptFor": "Receipt for an order from {country}",
+    "recommended": "Recommended",
+    "suggestedCountry": "orders to {country} say “{name}”",
+    "suggestedLead": "Delivery gets the same VAT rate as the products.",
+    "suggestedNames": "{list}, other countries say “{name}”.",
+    "suggestedNone": "Delivery gets the same VAT rate as the products and says “{name}”.",
+    "suggestedTitle": "Use the suggested settings",
+    "summarySpread": "In product prices",
+    "summaryTitle": "Delivery on documents",
+    "title": "How should delivery appear on receipts and invoices?"
+  }
+}
