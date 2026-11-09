@@ -17,6 +17,7 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Button, CheckboxCell, Input, ProductThumbnail } from '../../../../shared/ui';
+import { useMessages } from '../../../../shared/i18n';
 import type { StatusBadgeTone } from '../../../../shared/ui';
 import type { OfferBatchIssue, OfferBlockerDescriptor } from '../../../../shared/plugins';
 import type { Connection } from '../../../connections';
@@ -211,6 +212,7 @@ export function BulkReviewStep({
     focusVariantId?: string;
     focusField?: OfferBlockerField;
   } | null>(null);
+  const columns = useMessages('listings').bulkReview.columns;
   const [zoom, setZoom] = useState<{ src: string; name: string } | null>(null);
   // The card-vs-mapping comparison (#3994), keyed by the row it was opened from.
   const [comparing, setComparing] = useState<{ productId: string; variantId: string } | null>(null);
@@ -506,11 +508,11 @@ export function BulkReviewStep({
             column labels for the rows below (#1741 review #9). */}
         <div className="bulk-review__grid bulk-review__head">
           <span className="bulk-review__c-lead" />
-          <span>Product</span>
-          <span className="bulk-review__c-status">Status</span>
-          <span className="bulk-review__c-cat">Category</span>
-          <span className="bulk-review__c-stock">Stock</span>
-          <span className="bulk-review__c-price">Price (gross)</span>
+          <span>{columns.product}</span>
+          <span className="bulk-review__c-status">{columns.status}</span>
+          <span className="bulk-review__c-cat">{columns.category}</span>
+          <span className="bulk-review__c-stock">{columns.stock}</span>
+          <span className="bulk-review__c-price">{columns.priceGross}</span>
           <span className="bulk-review__c-action" />
         </div>
 

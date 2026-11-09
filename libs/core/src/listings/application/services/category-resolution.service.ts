@@ -128,8 +128,11 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     // The operator's mapping is read up front, not only as a fallback (#3994):
     // a barcode match is an inference from data that may be wrong or reused,
     // the mapping is an explicit statement, so when both answer and disagree the
-    // mapping wins. Looked up lazily so a destination with no source categories
-    // pays nothing.
+    // mapping wins. It is therefore read EAGERLY whenever source categories are
+    // supplied, even when the barcode step would answer on its own - the
+    // precedence check needs both answers. It is skipped only when there are no
+    // source categories. Do not turn this back into a fallback after the barcode
+    // step: that silently restores barcode precedence.
     const mapped =
       sourceCategoryIds && sourceCategoryIds.length > 0
         ? await this.tryCategoryMapping(connectionId, sourceCategoryIds, {
@@ -153,7 +156,10 @@ export class CategoryResolutionService implements ICategoryResolutionService {
         };
       }
       if (autoDetected.categoryId && mapped !== null) {
-        this.logger.warn(
+        // `debug`, like the batch/stream path: a disagreement is an expected,
+        // operator-visible state, not a fault, and a `warn` per variant would be
+        // noise on a large batch.
+        this.logger.debug(
           `Barcode matched category ${autoDetected.categoryId} but the category mapping names ` +
             `${mapped}; using the mapping (connection=${connectionId}, barcode=${barcode})`
         );

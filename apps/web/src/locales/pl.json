@@ -83,6 +83,13 @@
           "picked": "Wybrana tutaj",
           "shared": "Wspólna"
         }
+      },
+      "columns": {
+        "category": "Kategoria",
+        "priceGross": "Cena (brutto)",
+        "product": "Produkt",
+        "status": "Status",
+        "stock": "Stan magazynowy"
       }
     }
   },

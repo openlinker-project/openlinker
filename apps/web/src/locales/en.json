@@ -77,6 +77,13 @@
           "picked": "Set here",
           "shared": "Shared"
         }
+      },
+      "columns": {
+        "category": "Category",
+        "priceGross": "Price (gross)",
+        "product": "Product",
+        "status": "Status",
+        "stock": "Stock"
       }
     }
   },
