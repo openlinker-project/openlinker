@@ -60,6 +60,7 @@ import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
+import { interpolate, useMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import { useDemoMode } from '../../system';
 import type {
   BenchLabel,
@@ -149,6 +150,7 @@ export function BenchDocumentsPanel({
   closed,
   route = null,
 }: BenchDocumentsPanelProps): ReactElement | null {
+  const benchMessages = useMessages('bench');
   const apiClient = useApiClient();
   const documents = useBenchDocumentsQuery(workId);
   const [printError, setPrintError] = useState<string | null>(null);
@@ -406,7 +408,7 @@ export function BenchDocumentsPanel({
             {benchParcelCopy.documents.readyBadge}
           </StatusBadge>
           <span className="bench-documents__slot">{benchParcelCopy.documents.onLabel}</span>
-          <h3>{benchParcelCopy.documents.labelTitle(labelCarrierName(routeCase))}</h3>
+          <h3>{labelCardTitle(labelCarrierName(routeCase), benchMessages.documents.labelReady)}</h3>
           {label.trackingNumber === null ? null : (
             <p className="bench-documents__tracking">
               {benchParcelCopy.documents.trackingLabel}: {label.trackingNumber}
@@ -452,7 +454,7 @@ export function BenchDocumentsPanel({
           <p>{benchParcelCopy.documents.labelPendingBody}</p>
         </div>
       ) : showRouteCard ? (
-        renderRouteCard(routeCase, closed)
+        renderRouteCard(routeCase, closed, benchMessages.labelRoute)
       ) : null}
       </div>
 
@@ -492,8 +494,12 @@ export function BenchDocumentsPanel({
  * (#3958). No action on any arm: a packer cannot change routing, so the card
  * says what to do with the box and names the fix as an admin's.
  */
-function renderRouteCard(routeCase: BenchLabelRouteCase, closed: boolean): ReactNode {
-  const view = describeRouteCard(routeCase, closed);
+function renderRouteCard(
+  routeCase: BenchLabelRouteCase,
+  closed: boolean,
+  copy: LabelRouteMessages
+): ReactNode {
+  const view = describeRouteCard(routeCase, closed, copy);
   if (view === null) return null;
   return (
     <div
@@ -511,6 +517,8 @@ function renderRouteCard(routeCase: BenchLabelRouteCase, closed: boolean): React
   );
 }
 
+type LabelRouteMessages = ResolvedCopy<Messages['bench']>['labelRoute'];
+
 interface RouteCardView {
   readonly tone: StatusBadgeTone;
   readonly badge: string;
@@ -522,46 +530,76 @@ interface RouteCardView {
  * An exhaustive switch rather than a lookup, so a fifth route case added to
  * `BenchLabelRouteCase` is a compile error here instead of a silent blank card.
  */
-function describeRouteCard(routeCase: BenchLabelRouteCase, closed: boolean): RouteCardView | null {
-  const copy = benchParcelCopy.labelRoute;
+function describeRouteCard(
+  routeCase: BenchLabelRouteCase,
+  closed: boolean,
+  copy: LabelRouteMessages
+): RouteCardView | null {
   const method = (label: string | null): string => label ?? copy.methodFallback;
 
   switch (routeCase.kind) {
     case 'buys-label': {
       const name = method(routeCase.methodLabel);
+      const carrier = routeCase.carrierName;
+      // A route whose carrier name could not be read still buys a label; the
+      // sentence then names OpenLinker as the buyer instead of a blank carrier.
+      const body = closed
+        ? carrier === null
+          ? interpolate(copy.buysLabelClosedBodyNoCarrier, { method: name })
+          : interpolate(copy.buysLabelClosedBody, { method: name, carrier })
+        : carrier === null
+          ? interpolate(copy.buysLabelBodyNoCarrier, { method: name })
+          : interpolate(copy.buysLabelBody, { method: name, carrier });
       return {
         tone: 'info',
         badge: copy.buysLabelBadge,
         title: closed ? copy.buysLabelClosedTitle : copy.buysLabelTitle,
-        body: closed
-          ? copy.buysLabelClosedBody(name, routeCase.carrierName)
-          : copy.buysLabelBody(name, routeCase.carrierName),
+        body,
       };
     }
     case 'carrier-off':
       return {
         tone: 'warning',
         badge: copy.carrierOffBadge,
-        title: copy.carrierOffTitle(routeCase.carrierName),
+        title:
+          routeCase.carrierName === null
+            ? copy.carrierOffTitleNoCarrier
+            : interpolate(copy.carrierOffTitle, { carrier: routeCase.carrierName }),
         body: copy.carrierOffBody,
       };
-    case 'shop-ships':
+    case 'shop-ships': {
+      const name = method(routeCase.methodLabel);
       return {
         tone: 'neutral',
         badge: copy.shopShipsBadge,
-        title: copy.shopShipsTitle(routeCase.shopName, method(routeCase.methodLabel)),
+        title:
+          routeCase.shopName === null
+            ? interpolate(copy.shopShipsTitleNoShop, { method: name })
+            : interpolate(copy.shopShipsTitle, { shop: routeCase.shopName, method: name }),
         body: copy.shopShipsBody,
       };
+    }
     case 'no-carrier':
       return {
         tone: 'warning',
         badge: copy.noCarrierBadge,
-        title: copy.noCarrierTitle(method(routeCase.methodLabel)),
+        title: interpolate(copy.noCarrierTitle, { method: method(routeCase.methodLabel) }),
         body: copy.noCarrierBody,
       };
     case 'unknown':
       return null;
   }
+}
+
+/**
+ * The ready label's heading. The routed connection's name is operator-typed
+ * ("InPost"), so it can name whose label it is; without one the neutral
+ * title stays, never the adapter key `Shipment.carrier` holds.
+ */
+function labelCardTitle(carrierName: string | null, labelReady: string): string {
+  return carrierName === null
+    ? benchParcelCopy.documents.labelTitle()
+    : interpolate(labelReady, { carrier: carrierName });
 }
 
 function isReceiptCard(card: BenchDocumentCard): boolean {
