@@ -127,6 +127,7 @@
     "FISCAL_REGISTRATION_CONTENDED": "Another document for this order is being issued. Try again in a moment.",
     "FISCAL_REGISTRATION_NOT_FOUND": "This receipt record no longer exists.",
     "FISCAL_REGISTRATION_NOT_IN_DOUBT": "This receipt has a known result, so there is nothing to check.",
+    "FISCAL_REGISTRATION_NOT_RESTARTABLE": "The last registration attempt never finished, and asking again would not change that. Check the registration before trying again.",
     "FULFILLMENT_ACTION_FIELD_MISSING": "This action needs more information. Fill in the required fields.",
     "FULFILLMENT_ACTION_UNSUPPORTED": "This action is not available for the fulfilment task.",
     "FULFILLMENT_ASSIGNMENT_UPDATE_EMPTY": "Choose what to change in the assignment.",

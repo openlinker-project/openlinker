@@ -127,6 +127,7 @@
     "FISCAL_REGISTRATION_CONTENDED": "Inny dokument dla tego zamówienia jest właśnie wystawiany. Spróbuj ponownie za chwilę.",
     "FISCAL_REGISTRATION_NOT_FOUND": "Ten rekord paragonu już nie istnieje.",
     "FISCAL_REGISTRATION_NOT_IN_DOUBT": "Wynik tego paragonu jest znany, więc nie ma czego sprawdzać.",
+    "FISCAL_REGISTRATION_NOT_RESTARTABLE": "Ostatnia próba rejestracji nie została dokończona, a ponowne zlecenie niczego nie zmieni. Sprawdź rejestrację, zanim spróbujesz ponownie.",
     "FULFILLMENT_ACTION_FIELD_MISSING": "Ta akcja wymaga dodatkowych informacji. Uzupełnij wymagane pola.",
     "FULFILLMENT_ACTION_UNSUPPORTED": "Ta akcja nie jest dostępna dla zadania realizacji.",
     "FULFILLMENT_ASSIGNMENT_UPDATE_EMPTY": "Wybierz, co zmienić w przypisaniu.",
