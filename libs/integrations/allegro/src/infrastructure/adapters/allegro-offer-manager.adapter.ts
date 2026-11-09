@@ -2008,7 +2008,20 @@ export class AllegroOfferManagerAdapter
     }
 
     // #487 — opportunistic seller-defaults backfill (see method JSDoc).
-    const { patch: defaultsPatch, fields: backfilled } = this.buildSellerDefaultsPatch();
+    const built = this.buildSellerDefaultsPatch();
+    const defaultsPatch = built.patch;
+    const backfilled = built.fields;
+    if (defaultsPatch.productSet) {
+      const resolved = await this.resolveProductSetBackfill(
+        cmd.externalOfferId,
+        defaultsPatch.productSet[0]
+      );
+      if (resolved) {
+        defaultsPatch.productSet = resolved;
+      } else {
+        delete defaultsPatch.productSet;
+      }
+    }
     const body: AllegroOfferFieldsPatchBody = { ...defaultsPatch, ...callerBody };
     if (backfilled.length > 0) {
       this.logger.debug(
@@ -2034,6 +2047,59 @@ export class AllegroOfferManagerAdapter
   }
 
   /**
+   * Turn the one-entry GPSR template into a patch that is safe for the live
+   * offer's `productSet` (#3520). A PATCH replaces the whole set, so a bundle
+   * offer (several entries) must be sent back with EVERY entry, each keeping its
+   * `product` and `quantity`, and only a missing GPSR field filled in. Returns
+   * `null` when nothing needs filling or the live set cannot be read (skipping
+   * the backfill is safe, sending fewer entries than exist is not).
+   */
+  private async resolveProductSetBackfill(
+    offerId: string,
+    template: AllegroProductSetEntry
+  ): Promise<AllegroProductSetEntry[] | null> {
+    let live: AllegroProductSetEntry[];
+    try {
+      const offer = await this.fetchProductOfferById(offerId);
+      live = offer?.productSet ?? [];
+    } catch (error) {
+      this.logger.warn(
+        `Allegro updateOfferFields: could not read productSet for offerId=${offerId}, ` +
+          `skipping GPSR backfill: ${(error as Error).message}`
+      );
+      return null;
+    }
+    if (live.length <= 1) {
+      return [template];
+    }
+    let changed = false;
+    const entries = live.map((entry) => {
+      const next: AllegroProductSetEntry = {};
+      if (entry.product) {
+        // `publication` is read-only state of the card, never part of a patch.
+        next.product = { ...entry.product };
+        delete next.product.publication;
+      }
+      if (entry.quantity) {
+        next.quantity = entry.quantity;
+      }
+      const producer = entry.responsibleProducer ?? template.responsibleProducer;
+      const safety = entry.safetyInformation ?? template.safetyInformation;
+      if (producer) {
+        next.responsibleProducer = producer;
+      }
+      if (safety) {
+        next.safetyInformation = safety;
+      }
+      if (producer !== entry.responsibleProducer || safety !== entry.safetyInformation) {
+        changed = true;
+      }
+      return next;
+    });
+    return changed ? entries : null;
+  }
+
+  /**
    * Build the slice of `AllegroOfferFieldsPatchBody` that the connection's
    * `sellerDefaults` is willing to provide on PATCH. Each subfield is
    * independently gated — partial configurations still help (the create-time
@@ -2046,11 +2112,9 @@ export class AllegroOfferManagerAdapter
    * Allegro accepts on POST, and we expect the same shape on partial product-
    * set updates; sandbox verification is the AC closer (#487).
    *
-   * Not bundle-aware (#3520), on purpose: this is an operator-requested backfill
-   * of connection defaults and never rebuilds `productSet` from a command, so it
-   * does not know an offer is a product set. Allegro's handling of a one-entry
-   * `productSet` patch against a multi-entry set is unverified; do not run the
-   * backfill against a bundle offer until it has been checked in the sandbox.
+   * The returned `productSet` is a one-entry TEMPLATE only. `updateOfferFields`
+   * resolves it against the live offer (`resolveProductSetBackfill`, #3520)
+   * so a bundle offer keeps every entry it has.
    *
    * After-sales backfill (`afterSalesServices.{returnPolicy,warranty,
    * impliedWarranty}`) is intentionally not populated here. Those policy ids
