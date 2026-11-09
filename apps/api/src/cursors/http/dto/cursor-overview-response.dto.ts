@@ -13,22 +13,39 @@ export class CursorLastRunDto {
   @ApiProperty() jobId!: string;
   @ApiProperty({ description: 'Job type that advances this cursor' }) jobType!: string;
   @ApiProperty({ enum: ['queued', 'running', 'succeeded', 'dead'] }) status!: string;
-  @ApiPropertyOptional({ nullable: true, enum: ['ok', 'business_failure'] }) outcome!: string | null;
+  @ApiPropertyOptional({ nullable: true, enum: ['ok', 'business_failure'] }) outcome!:
+    | string
+    | null;
   @ApiProperty({ description: 'When the run last changed state' }) at!: string;
   @ApiPropertyOptional({ nullable: true }) lastError!: string | null;
 }
 
 export class CursorOverviewItemDto {
   @ApiProperty() cursorKey!: string;
-  @ApiProperty({ description: 'Raw value. An empty string after a catalogue pass completes is the normal resting state.' })
+  @ApiProperty({
+    description:
+      'Raw value. An empty string after a catalogue pass completes is the normal resting state.',
+  })
   value!: string;
   @ApiProperty() createdAt!: string;
   @ApiProperty() updatedAt!: string;
-  @ApiPropertyOptional({ nullable: true, enum: CursorFamilyValues, description: 'Null for a key this build does not recognise' })
+  @ApiPropertyOptional({
+    nullable: true,
+    enum: CursorFamilyValues,
+    description: 'Null for a key this build does not recognise',
+  })
   family!: CursorFamily | null;
-  @ApiPropertyOptional({ nullable: true, enum: CursorRewindTargetValues, description: 'The one target POST /cursors/:connectionId/rewind accepts for this key, or null' })
+  @ApiPropertyOptional({
+    nullable: true,
+    enum: CursorRewindTargetValues,
+    description: 'The one target POST /cursors/:connectionId/rewind accepts for this key, or null',
+  })
   rewind!: CursorRewindTarget | null;
-  @ApiPropertyOptional({ nullable: true, type: CursorLastRunDto, description: 'Newest run of the job that advances this cursor, whatever its status' })
+  @ApiPropertyOptional({
+    nullable: true,
+    type: CursorLastRunDto,
+    description: 'Newest run of the job that advances this cursor, whatever its status',
+  })
   lastRun!: CursorLastRunDto | null;
 }
 
@@ -43,11 +60,17 @@ export class CursorWriteMarksSummaryDto {
 export class CursorOverviewConnectionDto {
   @ApiProperty() connectionId!: string;
   @ApiProperty({ type: [CursorOverviewItemDto] }) cursors!: CursorOverviewItemDto[];
-  @ApiPropertyOptional({ nullable: true, type: CursorWriteMarksSummaryDto, description: 'Per-listing stock write marks, summarised. Page through them with GET /cursors?keyPrefix=' })
+  @ApiPropertyOptional({
+    nullable: true,
+    type: CursorWriteMarksSummaryDto,
+    description:
+      'Per-listing stock write marks, summarised. Page through them with GET /cursors?keyPrefix=',
+  })
   writeMarks!: CursorWriteMarksSummaryDto | null;
 }
 
 export class CursorOverviewResponseDto {
   @ApiProperty({ type: [CursorOverviewConnectionDto] }) connections!: CursorOverviewConnectionDto[];
-  @ApiProperty({ description: 'True when more cursors exist than the overview read' }) truncated!: boolean;
+  @ApiProperty({ description: 'True when more cursors exist than the overview read' })
+  truncated!: boolean;
 }

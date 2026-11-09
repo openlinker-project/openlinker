@@ -84,7 +84,9 @@ export function WriteMarksBundle({
               ))
             : null}
           {isOpen && query.data && query.data.total > query.data.items.length ? (
-            <p className="sync-progress__note">{C.writeMarksMore(query.data.items.length, query.data.total)}</p>
+            <p className="sync-progress__note">
+              {C.writeMarksMore(query.data.items.length, query.data.total)}
+            </p>
           ) : null}
         </div>
       </div>

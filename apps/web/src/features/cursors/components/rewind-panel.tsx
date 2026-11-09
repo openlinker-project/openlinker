@@ -22,7 +22,12 @@ interface RewindPanelProps {
   copy: SyncProgressCopy;
 }
 
-export function RewindPanel({ connectionId, cursor, canAct, copy }: RewindPanelProps): ReactElement | null {
+export function RewindPanel({
+  connectionId,
+  cursor,
+  canAct,
+  copy,
+}: RewindPanelProps): ReactElement | null {
   const [confirming, setConfirming] = useState(false);
   const mutation = useRewindCursorMutation();
   const { showToast } = useToast();
@@ -46,19 +51,27 @@ export function RewindPanel({ connectionId, cursor, canAct, copy }: RewindPanelP
         onError: (error) => {
           showToast({ tone: 'error', description: R.failed(error.message) });
         },
-      },
+      }
     );
   };
 
   return (
     <div className="sync-progress__rewind">
       <div className="sync-progress__choice" aria-hidden={confirming ? 'true' : undefined}>
-        <span className="sync-progress__choice-title">{isPass ? R.restartPass : R.restartCheck}</span>
+        <span className="sync-progress__choice-title">
+          {isPass ? R.restartPass : R.restartCheck}
+        </span>
         <small>{isPass ? R.restartPassHint : R.restartCheckHint}</small>
       </div>
       {confirming ? (
-        <div className="sync-progress__confirm" role="group" aria-label={isPass ? R.restartPass : R.restartCheck}>
-          <div className="sync-progress__consequence">{isPass ? R.consequencePass : R.consequenceCheck}</div>
+        <div
+          className="sync-progress__confirm"
+          role="group"
+          aria-label={isPass ? R.restartPass : R.restartCheck}
+        >
+          <div className="sync-progress__consequence">
+            {isPass ? R.consequencePass : R.consequenceCheck}
+          </div>
           <div className="sync-progress__actions">
             <Button onClick={confirm} disabled={mutation.isPending || !canAct}>
               {R.confirm}

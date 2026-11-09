@@ -10,7 +10,11 @@ import { cursorsQueryKeys } from '../api/cursors.query-keys';
 import type { RewindCursorInput, RewindCursorResult } from '../api/cursors.types';
 import { useApiClient } from '../../../app/api/api-client-provider';
 
-export function useRewindCursorMutation(): UseMutationResult<RewindCursorResult, Error, RewindCursorInput> {
+export function useRewindCursorMutation(): UseMutationResult<
+  RewindCursorResult,
+  Error,
+  RewindCursorInput
+> {
   const apiClient = useApiClient();
   const queryClient = useQueryClient();
   return useMutation({

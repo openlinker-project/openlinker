@@ -33,7 +33,12 @@ export const LATE_AFTER_INTERVALS = 2;
 export const STUCK_AFTER_INTERVALS = 6;
 
 export function isProblem(health: CursorHealth): boolean {
-  return health.id === 'late' || health.id === 'stuck' || health.id === 'failing' || health.id === 'misplaced';
+  return (
+    health.id === 'late' ||
+    health.id === 'stuck' ||
+    health.id === 'failing' ||
+    health.id === 'misplaced'
+  );
 }
 
 export function readCursorHealth(
@@ -42,24 +47,38 @@ export function readCursorHealth(
   now: number,
   ago: (iso: string) => string,
   formatWhen: (iso: string) => string,
-  C: SyncProgressCopy,
+  C: SyncProgressCopy
 ): CursorHealth {
   const d = describeCursor(cursor.cursorKey);
   // `subiekt` owns both `subiekt-gt` and `subiekt-nexo`: compare the family, not the exact type.
   if (d.platform && connectionPlatform && connectionPlatform.split('-')[0] !== d.platform) {
-    return { id: 'misplaced', label: C.healthLabel.misplaced, tone: 'error', why: C.healthWhy.misplaced(d.platform, connectionPlatform), guideId: 'h-misplaced' };
+    return {
+      id: 'misplaced',
+      label: C.healthLabel.misplaced,
+      tone: 'error',
+      why: C.healthWhy.misplaced(d.platform, connectionPlatform),
+      guideId: 'h-misplaced',
+    };
   }
   if (cursor.lastRun?.status === 'dead') {
     return {
       id: 'failing',
       label: C.healthLabel.failing,
       tone: 'error',
-      why: cursor.lastRun.lastError ? C.healthWhy.failing(firstLine(cursor.lastRun.lastError)) : C.healthWhy.failingNoError,
+      why: cursor.lastRun.lastError
+        ? C.healthWhy.failing(firstLine(cursor.lastRun.lastError))
+        : C.healthWhy.failingNoError,
       guideId: 'h-failing',
     };
   }
   if (d.cadenceMinutes === null) {
-    return { id: 'plain', label: C.healthLabel.plain, tone: 'neutral', why: null, guideId: 'h-plain' };
+    return {
+      id: 'plain',
+      label: C.healthLabel.plain,
+      tone: 'neutral',
+      why: null,
+      guideId: 'h-plain',
+    };
   }
   if (cursor.family === 'sweep-cycle' && cursor.value === '') {
     return { id: 'ok', label: C.healthLabel.ok, tone: 'success', why: null, guideId: 'h-ok' };
@@ -67,13 +86,30 @@ export function readCursorHealth(
   // A run that succeeded but found nothing new leaves the value - and so its
   // `updatedAt` - untouched (a re-check over an empty set stays at 0). The
   // sync is still on schedule, so its last successful (or running) run counts as a move.
-  const lastSeen = latestOf(cursor.updatedAt, cursor.lastRun && (cursor.lastRun.status === 'succeeded' || cursor.lastRun.status === 'running') ? cursor.lastRun.at : null);
+  const lastSeen = latestOf(
+    cursor.updatedAt,
+    cursor.lastRun && (cursor.lastRun.status === 'succeeded' || cursor.lastRun.status === 'running')
+      ? cursor.lastRun.at
+      : null
+  );
   const minutes = (now - Date.parse(lastSeen)) / 60_000;
   if (minutes > d.cadenceMinutes * STUCK_AFTER_INTERVALS) {
-    return { id: 'stuck', label: C.healthLabel.stuck, tone: 'warning', why: C.healthWhy.stuck(formatWhen(lastSeen), d.cadenceMinutes), guideId: 'h-stuck' };
+    return {
+      id: 'stuck',
+      label: C.healthLabel.stuck,
+      tone: 'warning',
+      why: C.healthWhy.stuck(formatWhen(lastSeen), d.cadenceMinutes),
+      guideId: 'h-stuck',
+    };
   }
   if (minutes > d.cadenceMinutes * LATE_AFTER_INTERVALS) {
-    return { id: 'late', label: C.healthLabel.late, tone: 'warning', why: C.healthWhy.late(ago(lastSeen), d.cadenceMinutes), guideId: 'h-late' };
+    return {
+      id: 'late',
+      label: C.healthLabel.late,
+      tone: 'warning',
+      why: C.healthWhy.late(ago(lastSeen), d.cadenceMinutes),
+      guideId: 'h-late',
+    };
   }
   return { id: 'ok', label: C.healthLabel.ok, tone: 'success', why: null, guideId: 'h-ok' };
 }
@@ -96,40 +132,93 @@ export function readCursorProgress(
   passDoneAt: string | null,
   ago: (iso: string) => string,
   formatWhen: (iso: string) => string,
-  C: SyncProgressCopy,
+  C: SyncProgressCopy
 ): CursorProgress {
   const P = C.progress;
   const v = cursor.value;
   switch (cursor.family) {
     case 'sweep-cycle': {
       if (v === '') {
-        return { main: P.passFinished, sub: passDoneAt ? P.passDoneAgo(ago(passDoneAt)) : P.passNextOnSchedule, empty: true, guideId: 'p-finished', parsedPass: null };
+        return {
+          main: P.passFinished,
+          sub: passDoneAt ? P.passDoneAgo(ago(passDoneAt)) : P.passNextOnSchedule,
+          empty: true,
+          guideId: 'p-finished',
+          parsedPass: null,
+        };
       }
       const sep = v.lastIndexOf(':');
       const offset = Number(v.slice(sep + 1));
       const cycleId = v.slice(0, sep);
       if (sep < 0 || !Number.isFinite(offset)) break;
-      return { main: P.passInProgress(offset), sub: P.passContinues, empty: false, guideId: 'p-inprogress', parsedPass: { cycleId, offset } };
+      return {
+        main: P.passInProgress(offset),
+        sub: P.passContinues,
+        empty: false,
+        guideId: 'p-inprogress',
+        parsedPass: { cycleId, offset },
+      };
     }
     case 'rolling-offset': {
       const n = Number(v);
-      if (v === '') return { main: P.notStarted, sub: P.waitingFirstRun, empty: true, guideId: 'p-notstarted', parsedPass: null };
-      if (Number.isFinite(n)) return { main: P.checkedUpTo(n), sub: P.startsOver, empty: false, guideId: 'p-checked', parsedPass: null };
+      if (v === '')
+        return {
+          main: P.notStarted,
+          sub: P.waitingFirstRun,
+          empty: true,
+          guideId: 'p-notstarted',
+          parsedPass: null,
+        };
+      if (Number.isFinite(n))
+        return {
+          main: P.checkedUpTo(n),
+          sub: P.startsOver,
+          empty: false,
+          guideId: 'p-checked',
+          parsedPass: null,
+        };
       break;
     }
     case 'write-order':
-      if (v !== '' && !Number.isNaN(Date.parse(v))) return { main: P.stockSent(ago(v)), sub: null, empty: false, guideId: 'p-stock', parsedPass: null };
+      if (v !== '' && !Number.isNaN(Date.parse(v)))
+        return {
+          main: P.stockSent(ago(v)),
+          sub: null,
+          empty: false,
+          guideId: 'p-stock',
+          parsedPass: null,
+        };
       break;
     case 'completion-stamp':
-      if (v !== '' && !Number.isNaN(Date.parse(v))) return { main: P.stamped(formatWhen(v)), sub: null, empty: false, guideId: 'k-completion-stamp', parsedPass: null };
+      if (v !== '' && !Number.isNaN(Date.parse(v)))
+        return {
+          main: P.stamped(formatWhen(v)),
+          sub: null,
+          empty: false,
+          guideId: 'k-completion-stamp',
+          parsedPass: null,
+        };
       break;
     default:
       break;
   }
-  if (v === '') return { main: P.notStarted, sub: P.waitingFirstRun, empty: true, guideId: 'p-notstarted', parsedPass: null };
+  if (v === '')
+    return {
+      main: P.notStarted,
+      sub: P.waitingFirstRun,
+      empty: true,
+      guideId: 'p-notstarted',
+      parsedPass: null,
+    };
   // A feed cursor is the platform's own format; the only honest statement
   // about it is WHEN it last moved, not what the value means.
-  return { main: P.readUpTo(formatWhen(cursor.updatedAt)), sub: null, empty: false, guideId: 'p-readupto', parsedPass: null };
+  return {
+    main: P.readUpTo(formatWhen(cursor.updatedAt)),
+    sub: null,
+    empty: false,
+    guideId: 'p-readupto',
+    parsedPass: null,
+  };
 }
 
 function latestOf(a: string, b: string | null): string {

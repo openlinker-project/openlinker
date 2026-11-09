@@ -17,7 +17,7 @@ export class ListCursorsQueryDto {
 
   @ApiPropertyOptional({
     description:
-      'Only cursors whose key starts with this text, matched literally (#4023). Used to page through one connection\'s per-listing stock write marks.',
+      "Only cursors whose key starts with this text, matched literally (#4023). Used to page through one connection's per-listing stock write marks.",
     example: 'inventory.offerQuantity.observedAt:offer:',
   })
   @IsOptional()

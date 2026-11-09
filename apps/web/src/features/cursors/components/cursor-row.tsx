@@ -31,7 +31,7 @@ interface CursorRowProps {
 export function lastRunLine(
   view: CursorRowView,
   ago: (iso: string) => string,
-  C: SyncProgressCopy,
+  C: SyncProgressCopy
 ): { text: string; failed: boolean } | null {
   const run = view.cursor.lastRun;
   if (!run) return null;
@@ -41,7 +41,14 @@ export function lastRunLine(
   return { text: C.lastRunOk(ago(run.at)), failed: false };
 }
 
-export function CursorRow({ view, showKeys, ago, formatWhen, onOpen, copy }: CursorRowProps): ReactElement {
+export function CursorRow({
+  view,
+  showKeys,
+  ago,
+  formatWhen,
+  onOpen,
+  copy,
+}: CursorRowProps): ReactElement {
   const { cursor, label, health, progress } = view;
   const job = lastRunLine(view, ago, copy);
   return (
@@ -55,11 +62,23 @@ export function CursorRow({ view, showKeys, ago, formatWhen, onOpen, copy }: Cur
         <span className="sync-progress__label">{label}</span>
         {showKeys ? <span className="sync-progress__key">{cursor.cursorKey}</span> : null}
         {job ? (
-          <span className={job.failed ? 'sync-progress__job sync-progress__job--fail' : 'sync-progress__job'}>{job.text}</span>
+          <span
+            className={
+              job.failed ? 'sync-progress__job sync-progress__job--fail' : 'sync-progress__job'
+            }
+          >
+            {job.text}
+          </span>
         ) : null}
       </span>
       <span className="sync-progress__pos">
-        <span className={progress.empty ? 'sync-progress__pos-main sync-progress__pos-main--empty' : 'sync-progress__pos-main'}>
+        <span
+          className={
+            progress.empty
+              ? 'sync-progress__pos-main sync-progress__pos-main--empty'
+              : 'sync-progress__pos-main'
+          }
+        >
           {progress.main}
         </span>
         {progress.sub ? <span className="sync-progress__pos-sub">{progress.sub}</span> : null}

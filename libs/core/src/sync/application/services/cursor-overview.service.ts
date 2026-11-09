@@ -30,7 +30,10 @@ import {
   OFFER_QUANTITY_WRITE_MARK_PREFIX,
   resolveCursorCatalogueEntry,
 } from '../../domain/types/cursor-key-catalogue.types';
-import { MasterSweepKindValues, masterSweepLockKey } from '../../domain/types/master-sweep-cursor.types';
+import {
+  MasterSweepKindValues,
+  masterSweepLockKey,
+} from '../../domain/types/master-sweep-cursor.types';
 import type { MasterSweepKind } from '../../domain/types/master-sweep-cursor.types';
 import type {
   CursorLastRun,
@@ -57,22 +60,28 @@ export class CursorOverviewService implements ICursorOverviewService {
     @Inject(SYNC_JOB_REPOSITORY_TOKEN)
     private readonly jobs: SyncJobRepositoryPort,
     @Inject(SYNC_LOCK_TOKEN)
-    private readonly locks: SyncLockPort,
+    private readonly locks: SyncLockPort
   ) {}
 
-  async getOverview(): Promise<CursorOverview> {
-    const [page, marks] = await Promise.all([
+  async getOverview(filter: { connectionId?: string } = {}): Promise<CursorOverview> {
+    const [page, allMarks] = await Promise.all([
       this.cursors.findMany(
-        { excludeKeyPrefix: OFFER_QUANTITY_WRITE_MARK_PREFIX },
-        { limit: CURSOR_OVERVIEW_LIMIT, offset: 0 },
+        { connectionId: filter.connectionId, excludeKeyPrefix: OFFER_QUANTITY_WRITE_MARK_PREFIX },
+        { limit: CURSOR_OVERVIEW_LIMIT, offset: 0 }
       ),
       this.cursors.summarizeByKeyPrefix(OFFER_QUANTITY_WRITE_MARK_PREFIX),
     ]);
+    const marks = filter.connectionId
+      ? allMarks.filter((m) => m.connectionId === filter.connectionId)
+      : allMarks;
 
     const connectionIds = [
       ...new Set([...page.items.map((c) => c.connectionId), ...marks.map((m) => m.connectionId)]),
     ];
-    const latest = await this.jobs.findLatestByConnectionsAndJobTypes(connectionIds, catalogueWriterJobTypes());
+    const latest = await this.jobs.findLatestByConnectionsAndJobTypes(
+      connectionIds,
+      catalogueWriterJobTypes()
+    );
     const runByPair = new Map(latest.map((job) => [`${job.connectionId}|${job.jobType}`, job]));
 
     const byConnection = new Map<string, CursorOverviewConnection>();
@@ -87,7 +96,9 @@ export class CursorOverviewService implements ICursorOverviewService {
 
     for (const cursor of page.items) {
       const entry = resolveCursorCatalogueEntry(cursor.cursorKey);
-      const job = entry?.writerJobType ? runByPair.get(`${cursor.connectionId}|${entry.writerJobType}`) : undefined;
+      const job = entry?.writerJobType
+        ? runByPair.get(`${cursor.connectionId}|${entry.writerJobType}`)
+        : undefined;
       group(cursor.connectionId).cursors.push({
         cursorKey: cursor.cursorKey,
         value: cursor.value,
@@ -115,37 +126,61 @@ export class CursorOverviewService implements ICursorOverviewService {
     const { connectionId, cursorKey, target } = input;
     const entry = resolveCursorCatalogueEntry(cursorKey);
     if (!entry || entry.rewind === null) {
-      throw new CursorRewindRefusedError('not-rewindable', cursorKey, `Cursor ${cursorKey} cannot be moved back.`);
+      throw new CursorRewindRefusedError(
+        'not-rewindable',
+        cursorKey,
+        `Cursor ${cursorKey} cannot be moved back.`
+      );
     }
     if (entry.rewind !== target) {
-      throw new CursorRewindRefusedError('target-mismatch', cursorKey, `Cursor ${cursorKey} only supports ${entry.rewind}.`);
+      throw new CursorRewindRefusedError(
+        'target-mismatch',
+        cursorKey,
+        `Cursor ${cursorKey} only supports ${entry.rewind}.`
+      );
     }
     const current = await this.cursors.findOne(connectionId, cursorKey);
     if (!current) {
-      throw new CursorRewindRefusedError('cursor-not-found', cursorKey, `Cursor ${cursorKey} not found on connection ${connectionId}.`);
+      throw new CursorRewindRefusedError(
+        'cursor-not-found',
+        cursorKey,
+        `Cursor ${cursorKey} not found on connection ${connectionId}.`
+      );
     }
 
     if (target === 'restart-check') {
       await this.cursors.set(connectionId, cursorKey, '0');
-      this.logger.log(`Cursor ${cursorKey} on ${connectionId} reset from "${current.value}" to "0" (restart-check)`);
+      this.logger.log(
+        `Cursor ${cursorKey} on ${connectionId} reset from "${current.value}" to "0" (restart-check)`
+      );
       return { connectionId, cursorKey, previousValue: current.value, value: '0' };
     }
 
     if (current.value === '') {
-      throw new CursorRewindRefusedError('pass-not-open', cursorKey, 'The last pass already finished. Use Run now to start the next one.');
+      throw new CursorRewindRefusedError(
+        'pass-not-open',
+        cursorKey,
+        'The last pass already finished. Use Run now to start the next one.'
+      );
     }
     const kind = sweepKindOf(cursorKey);
     const lockKey = masterSweepLockKey(kind, connectionId);
     const token = await this.locks.acquire(lockKey, REWIND_LOCK_TTL_MS);
     if (!token) {
-      throw new CursorRewindRefusedError('run-in-progress', cursorKey, 'A run is in progress. Try again when it finishes.');
+      throw new CursorRewindRefusedError(
+        'run-in-progress',
+        cursorKey,
+        'A run is in progress. Try again when it finishes.'
+      );
     }
     try {
       await this.cursors.set(connectionId, cursorKey, '');
     } finally {
       await this.locks.release(lockKey, token);
     }
-    this.logger.log(`Cursor ${cursorKey} on ${connectionId} cleared from "${current.value}" (restart-pass)`);
+    this.logger.log(
+      `Cursor ${cursorKey} on ${connectionId} cleared from "${current.value}" (restart-pass)`
+    );
     return { connectionId, cursorKey, previousValue: current.value, value: '' };
   }
 }
@@ -153,7 +188,11 @@ export class CursorOverviewService implements ICursorOverviewService {
 function sweepKindOf(cursorKey: string): MasterSweepKind {
   const kind = cursorKey.slice('master.'.length, cursorKey.indexOf('.sweep:'));
   if (!(MasterSweepKindValues as readonly string[]).includes(kind)) {
-    throw new CursorRewindRefusedError('not-rewindable', cursorKey, `Cursor ${cursorKey} is not a catalogue pass.`);
+    throw new CursorRewindRefusedError(
+      'not-rewindable',
+      cursorKey,
+      `Cursor ${cursorKey} is not a catalogue pass.`
+    );
   }
   return kind as MasterSweepKind;
 }

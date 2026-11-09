@@ -151,19 +151,35 @@ describe('CursorsController', () => {
         ],
       });
 
-      const result = await controller.getOverview();
+      const result = await controller.getOverview({});
 
       expect(result.connections[0].cursors[0].updatedAt).toBe('2026-04-10T12:00:00.000Z');
       expect(result.connections[0].cursors[0].lastRun?.at).toBe('2026-04-10T12:05:00.000Z');
       expect(result.connections[0].cursors[0].lastRun?.lastError).toBe('401 Unauthorized');
     });
+
+    it('should pass the connection filter to the service when one is given', async () => {
+      overview.getOverview.mockResolvedValue({ truncated: false, connections: [] });
+
+      await controller.getOverview({ connectionId: 'conn-001' });
+
+      expect(overview.getOverview).toHaveBeenCalledWith({ connectionId: 'conn-001' });
+    });
   });
 
   describe('rewind', () => {
-    const body = { cursorKey: 'master.product.sweep:connection:conn-001', target: 'restart-pass' as const };
+    const body = {
+      cursorKey: 'master.product.sweep:connection:conn-001',
+      target: 'restart-pass' as const,
+    };
 
     it('should return the result when the service rewinds', async () => {
-      overview.rewind.mockResolvedValue({ connectionId: 'conn-001', cursorKey: body.cursorKey, previousValue: 'c:10', value: '' });
+      overview.rewind.mockResolvedValue({
+        connectionId: 'conn-001',
+        cursorKey: body.cursorKey,
+        previousValue: 'c:10',
+        value: '',
+      });
 
       await expect(controller.rewind('conn-001', body)).resolves.toMatchObject({ value: '' });
     });
@@ -174,10 +190,15 @@ describe('CursorsController', () => {
       ['run-in-progress', ConflictException],
       ['not-rewindable', BadRequestException],
       ['target-mismatch', BadRequestException],
-    ] as const)('should map %s to the matching HTTP error when the service refuses', async (reason, Expected) => {
-      overview.rewind.mockRejectedValue(new CursorRewindRefusedError(reason, body.cursorKey, 'refused'));
+    ] as const)(
+      'should map %s to the matching HTTP error when the service refuses',
+      async (reason, Expected) => {
+        overview.rewind.mockRejectedValue(
+          new CursorRewindRefusedError(reason, body.cursorKey, 'refused')
+        );
 
-      await expect(controller.rewind('conn-001', body)).rejects.toBeInstanceOf(Expected);
-    });
+        await expect(controller.rewind('conn-001', body)).rejects.toBeInstanceOf(Expected);
+      }
+    );
   });
 });

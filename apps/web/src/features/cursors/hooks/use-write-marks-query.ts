@@ -16,7 +16,7 @@ export const WRITE_MARKS_PAGE = 50;
 export function useWriteMarksQuery(
   connectionId: string,
   keyPrefix: string,
-  enabled: boolean,
+  enabled: boolean
 ): UseQueryResult<PaginatedCursors> {
   const apiClient = useApiClient();
   const filters = { connectionId, keyPrefix };

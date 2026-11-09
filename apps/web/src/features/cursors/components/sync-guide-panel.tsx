@@ -42,10 +42,24 @@ function highlight(text: string, q: string): ReactNode {
 }
 
 function matches(item: SyncGuideItem, q: string): boolean {
-  return [item.name, item.text, item.key, item.todo, item.how].filter(Boolean).join(' ').toLowerCase().includes(q);
+  return [item.name, item.text, item.key, item.todo, item.how]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .includes(q);
 }
 
-function GuideItem({ item, q, focused, G }: { item: SyncGuideItem; q: string; focused: boolean; G: GuideChrome }): ReactElement {
+function GuideItem({
+  item,
+  q,
+  focused,
+  G,
+}: {
+  item: SyncGuideItem;
+  q: string;
+  focused: boolean;
+  G: GuideChrome;
+}): ReactElement {
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!focused) return undefined;
@@ -58,7 +72,12 @@ function GuideItem({ item, q, focused, G }: { item: SyncGuideItem; q: string; fo
     };
   }, [focused]);
   return (
-    <article className="sync-guide__item" id={`sync-guide-${item.id}`} ref={ref} data-focus={focused}>
+    <article
+      className="sync-guide__item"
+      id={`sync-guide-${item.id}`}
+      ref={ref}
+      data-focus={focused}
+    >
       <div className="sync-guide__item-top">
         {item.badge ? (
           <StatusBadge tone={item.badge} withDot={item.badge !== 'success'}>
@@ -69,7 +88,9 @@ function GuideItem({ item, q, focused, G }: { item: SyncGuideItem; q: string; fo
         )}
       </div>
       <p>{highlight(item.text, q)}</p>
-      {item.how ? <div className="sync-guide__meta">{interpolate(G.shownWhen, { how: item.how })}</div> : null}
+      {item.how ? (
+        <div className="sync-guide__meta">{interpolate(G.shownWhen, { how: item.how })}</div>
+      ) : null}
       {item.todo ? (
         <div className="sync-guide__todo">
           <b>{G.whatToDo}</b> {item.todo}
@@ -77,7 +98,9 @@ function GuideItem({ item, q, focused, G }: { item: SyncGuideItem; q: string; fo
       ) : null}
       {item.everyMinutes || item.canStartOver ? (
         <div className="sync-guide__meta">
-          {item.everyMinutes ? <span>{interpolate(G.runsEvery, { n: item.everyMinutes })}</span> : null}
+          {item.everyMinutes ? (
+            <span>{interpolate(G.runsEvery, { n: item.everyMinutes })}</span>
+          ) : null}
           {item.canStartOver ? <span>{G.canStartOver}</span> : null}
         </div>
       ) : null}
@@ -108,9 +131,9 @@ export function SyncGuidePanel({ open, focusId, onOpenChange }: SyncGuidePanelPr
     };
   }, [open, focusId, guide]);
 
-  const sections = guide.map((s) => ({ ...s, shown: query ? s.items.filter((i) => matches(i, query)) : s.items })).filter(
-    (s) => s.shown.length > 0,
-  );
+  const sections = guide
+    .map((s) => ({ ...s, shown: query ? s.items.filter((i) => matches(i, query)) : s.items }))
+    .filter((s) => s.shown.length > 0);
   const toggle = (id: string): void => {
     setOpenSections((prev) => {
       const next = new Set(prev);
@@ -173,13 +196,21 @@ export function SyncGuidePanel({ open, focusId, onOpenChange }: SyncGuidePanelPr
                     ›
                   </span>
                   <span className="sync-guide__section-title">{s.title}</span>
-                  <span className="sync-guide__section-sum">{query ? interpolate(G.found, { n: s.shown.length }) : s.summary}</span>
+                  <span className="sync-guide__section-sum">
+                    {query ? interpolate(G.found, { n: s.shown.length }) : s.summary}
+                  </span>
                 </button>
                 <div className="sync-guide__section-body" id={`sync-guide-section-${s.id}`}>
                   <div className="sync-guide__section-inner">
                     <div className="sync-guide__list">
                       {s.shown.map((i) => (
-                        <GuideItem key={i.id} item={i} q={query} focused={open && focusId === i.id} G={G} />
+                        <GuideItem
+                          key={i.id}
+                          item={i}
+                          q={query}
+                          focused={open && focusId === i.id}
+                          G={G}
+                        />
                       ))}
                     </div>
                   </div>

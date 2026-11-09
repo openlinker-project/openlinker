@@ -73,7 +73,7 @@ export function CursorDetailPanel({
         onError: (error) => {
           showToast({ tone: 'error', description: S.runFailed(error.message) });
         },
-      },
+      }
     );
   };
 
@@ -94,7 +94,10 @@ export function CursorDetailPanel({
       meta={
         view ? (
           <>
-            <StatusBadge tone={view.health.tone} withDot={view.health.id !== 'ok' && view.health.id !== 'plain'}>
+            <StatusBadge
+              tone={view.health.tone}
+              withDot={view.health.id !== 'ok' && view.health.id !== 'plain'}
+            >
               {view.health.label}
             </StatusBadge>
             <button
@@ -189,7 +192,12 @@ export function CursorDetailPanel({
                 </button>
               </div>
               {view.cursor.rewind ? (
-                <RewindPanel connectionId={connection.id} cursor={view.cursor} canAct={canAct} copy={copy} />
+                <RewindPanel
+                  connectionId={connection.id}
+                  cursor={view.cursor}
+                  canAct={canAct}
+                  copy={copy}
+                />
               ) : (
                 <p className="sync-progress__hint">{S.feedCannotRewind}</p>
               )}

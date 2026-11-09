@@ -16,7 +16,7 @@ import type {
 
 export interface CursorsApi {
   list: (filters?: CursorFilters, pagination?: CursorPagination) => Promise<PaginatedCursors>;
-  overview: () => Promise<CursorOverview>;
+  overview: (connectionId?: string) => Promise<CursorOverview>;
   rewind: (input: RewindCursorInput) => Promise<RewindCursorResult>;
 }
 
@@ -39,8 +39,9 @@ export function createCursorsApi(request: ApiRequest): CursorsApi {
     list(filters, pagination): Promise<PaginatedCursors> {
       return request<PaginatedCursors>(`/cursors${buildQuery(filters, pagination)}`);
     },
-    overview(): Promise<CursorOverview> {
-      return request<CursorOverview>('/cursors/overview');
+    overview(connectionId): Promise<CursorOverview> {
+      const qs = connectionId ? `?connectionId=${encodeURIComponent(connectionId)}` : '';
+      return request<CursorOverview>(`/cursors/overview${qs}`);
     },
     rewind({ connectionId, cursorKey, target }): Promise<RewindCursorResult> {
       return request<RewindCursorResult>(`/cursors/${encodeURIComponent(connectionId)}/rewind`, {

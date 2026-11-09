@@ -9,5 +9,5 @@ export const cursorsQueryKeys = {
   all: ['cursors'] as const,
   list: (filters?: CursorFilters, pagination?: CursorPagination) =>
     ['cursors', 'list', filters ?? {}, pagination ?? {}] as const,
-  overview: () => ['cursors', 'overview'] as const,
+  overview: (connectionId?: string) => ['cursors', 'overview', connectionId ?? 'all'] as const,
 };

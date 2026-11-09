@@ -34,12 +34,14 @@ export function buildSyncProgressCopy(raw: Raw, locale: SupportedLocale) {
     lastRunOk: (ago: string): string => interpolate(m.lastRunOk, { ago }),
     lastRunFailed: (ago: string): string => interpolate(m.lastRunFailed, { ago }),
     writeMarks: (n: number): string => formatPlural(n, m.writeMarks, locale),
-    writeMarksRange: (newest: string, oldest: string): string => interpolate(m.writeMarksRange, { newest, oldest }),
+    writeMarksRange: (newest: string, oldest: string): string =>
+      interpolate(m.writeMarksRange, { newest, oldest }),
     writeMarksMore: (shown: number, total: number): string =>
       interpolate(m.writeMarksMore, { shown, total: count(total) }),
     healthWhy: {
       late: (ago: string, every: number): string => interpolate(m.healthWhy.late, { ago, every }),
-      stuck: (when: string, every: number): string => interpolate(m.healthWhy.stuck, { when, every }),
+      stuck: (when: string, every: number): string =>
+        interpolate(m.healthWhy.stuck, { when, every }),
       failing: (error: string): string => interpolate(m.healthWhy.failing, { error }),
       failingNoError: m.healthWhy.failingNoError,
       misplaced: (keyPlatform: string, connPlatform: string): string =>
@@ -57,7 +59,8 @@ export function buildSyncProgressCopy(raw: Raw, locale: SupportedLocale) {
     sheet: {
       ...m.sheet,
       everyMinutes: (n: number): string => interpolate(m.sheet.everyMinutes, { n }),
-      lastRunValue: (status: RunStatus, ago: string): string => interpolate(m.sheet.lastRunValue[status], { ago }),
+      lastRunValue: (status: RunStatus, ago: string): string =>
+        interpolate(m.sheet.lastRunValue[status], { ago }),
       runFailed: (message: string): string => interpolate(m.sheet.runFailed, { message }),
     },
     rewind: {

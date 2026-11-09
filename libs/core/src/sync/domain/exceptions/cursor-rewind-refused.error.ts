@@ -19,7 +19,7 @@ export class CursorRewindRefusedError extends Error {
   constructor(
     public readonly reason: CursorRewindRefusal,
     public readonly cursorKey: string,
-    message: string,
+    message: string
   ) {
     super(message);
     this.name = 'CursorRewindRefusedError';

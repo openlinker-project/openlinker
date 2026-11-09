@@ -13,11 +13,15 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 /** A diagnostics page someone leaves open while waiting for a sync to move. */
 const REFRESH_MS = 30_000;
 
-export function useCursorOverviewQuery(): UseQueryResult<CursorOverview> {
+/**
+ * @param connectionId - read only this connection; the way to see all of one
+ *   connection's bookmarks when the full overview is truncated
+ */
+export function useCursorOverviewQuery(connectionId?: string): UseQueryResult<CursorOverview> {
   const apiClient = useApiClient();
   return useQuery({
-    queryKey: cursorsQueryKeys.overview(),
-    queryFn: () => apiClient.cursors.overview(),
+    queryKey: cursorsQueryKeys.overview(connectionId),
+    queryFn: () => apiClient.cursors.overview(connectionId),
     refetchInterval: REFRESH_MS,
   });
 }

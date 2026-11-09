@@ -23,16 +23,36 @@ import { formatRelativeTime } from '../../shared/format/format-relative-time';
 import { formatDateTime } from '../../shared/format/format-date';
 import { useIsAdmin, useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
-import { SYSTEM_CONNECTION_ID, useConnectionsQuery, type Connection } from '../../features/connections';
+import {
+  SYSTEM_CONNECTION_ID,
+  useConnectionsQuery,
+  type Connection,
+} from '../../features/connections';
 import { ConnectionDot } from '../../features/orders';
 import { useCursorOverviewQuery } from '../../features/cursors/hooks/use-cursor-overview-query';
-import type { CursorOverviewConnection, CursorOverviewItem } from '../../features/cursors/api/cursors.types';
-import { cursorLabel, sweepKeyForCompletionStamp } from '../../features/cursors/lib/cursor-catalogue';
-import { isProblem, readCursorHealth, readCursorProgress } from '../../features/cursors/lib/read-cursor-health';
-import { useSyncProgressCopy, type SyncProgressCopy } from '../../features/cursors/lib/sync-progress-copy';
+import type {
+  CursorOverviewConnection,
+  CursorOverviewItem,
+} from '../../features/cursors/api/cursors.types';
+import {
+  cursorLabel,
+  sweepKeyForCompletionStamp,
+} from '../../features/cursors/lib/cursor-catalogue';
+import {
+  isProblem,
+  readCursorHealth,
+  readCursorProgress,
+} from '../../features/cursors/lib/read-cursor-health';
+import {
+  useSyncProgressCopy,
+  type SyncProgressCopy,
+} from '../../features/cursors/lib/sync-progress-copy';
 import { CursorRow, type CursorRowView } from '../../features/cursors/components/cursor-row';
 import { WriteMarksBundle } from '../../features/cursors/components/write-marks-bundle';
-import { CursorDetailPanel, type CursorDetailConnection } from '../../features/cursors/components/cursor-detail-panel';
+import {
+  CursorDetailPanel,
+  type CursorDetailConnection,
+} from '../../features/cursors/components/cursor-detail-panel';
 import { SyncGuidePanel } from '../../features/cursors/components/sync-guide-panel';
 
 const HEALTH_FILTERS = ['all', 'problem', 'ok'] as const;
@@ -53,7 +73,9 @@ interface GroupView {
 }
 
 function readHealthFilter(value: string | null): HealthFilter {
-  return (HEALTH_FILTERS as readonly string[]).includes(value ?? '') ? (value as HealthFilter) : 'all';
+  return (HEALTH_FILTERS as readonly string[]).includes(value ?? '')
+    ? (value as HealthFilter)
+    : 'all';
 }
 
 function roleOf(connection: Connection | undefined, C: SyncProgressCopy): string | null {
@@ -76,9 +98,18 @@ export function CursorsListPage(): ReactElement {
   const [allProblems, setAllProblems] = useState(false);
   // Held as ids, not as a row snapshot, so the open panel follows every refetch.
   const [selected, setSelected] = useState<{ view: CursorRowView; groupId: string } | null>(null);
-  const [guide, setGuide] = useState<{ open: boolean; focus: string | null }>({ open: false, focus: null });
+  const [guide, setGuide] = useState<{ open: boolean; focus: string | null }>({
+    open: false,
+    focus: null,
+  });
 
-  const overview = useCursorOverviewQuery();
+  // A chosen connection is read on its own, so the 1,000-cursor overview
+  // limit never hides any of that connection's bookmarks.
+  const overview = useCursorOverviewQuery(
+    connectionFilter === 'all' || connectionFilter === SYSTEM_CONNECTION_ID
+      ? undefined
+      : connectionFilter
+  );
   const connections = useConnectionsQuery();
   const demoMode = useDemoMode();
   const write = useWriteAccess('sync:write', demoMode);
@@ -99,7 +130,7 @@ export function CursorsListPage(): ReactElement {
         else next.delete(key);
         return next;
       },
-      { replace: true },
+      { replace: true }
     );
   };
 
@@ -132,7 +163,8 @@ export function CursorsListPage(): ReactElement {
       const platform = conn?.platformType ?? null;
       const stamps = new Map<string, string>();
       for (const item of g.cursors) {
-        const sweepKey = item.family === 'completion-stamp' ? sweepKeyForCompletionStamp(item.cursorKey) : null;
+        const sweepKey =
+          item.family === 'completion-stamp' ? sweepKeyForCompletionStamp(item.cursorKey) : null;
         if (sweepKey) stamps.set(sweepKey, item.value);
       }
       const toView = (item: CursorOverviewItem): CursorRowView => ({
@@ -146,7 +178,7 @@ export function CursorsListPage(): ReactElement {
         id: g.connectionId,
         connection: {
           id: g.connectionId,
-          name: isSystem ? C.systemName : (conn?.name ?? g.connectionId),
+          name: isSystem ? C.systemName : conn?.name ?? g.connectionId,
           platformType: platform,
           isSystem,
         },
@@ -162,7 +194,12 @@ export function CursorsListPage(): ReactElement {
       if (!conn.enabledCapabilities.some((cap) => SOURCE_CAPABILITIES.includes(cap))) continue;
       out.push({
         id: conn.id,
-        connection: { id: conn.id, name: conn.name, platformType: conn.platformType, isSystem: false },
+        connection: {
+          id: conn.id,
+          name: conn.name,
+          platformType: conn.platformType,
+          isSystem: false,
+        },
         role: roleOf(conn, C),
         allRows: [],
         rows: [],
@@ -181,7 +218,7 @@ export function CursorsListPage(): ReactElement {
         health: readCursorHealth(item, group.connection.platformType, now, ago, formatWhen, C),
         progress: readCursorProgress(item, null, ago, formatWhen, C),
       }),
-    [now, ago, formatWhen, C],
+    [now, ago, formatWhen, C]
   );
 
   const matchesSearch = (row: CursorRowView): boolean =>
@@ -189,6 +226,14 @@ export function CursorsListPage(): ReactElement {
   const matchesHealth = (row: CursorRowView): boolean =>
     health === 'all' || (health === 'problem' ? isProblem(row.health) : !isProblem(row.health));
 
+  // Options come from the connection list, not from the overview: a filtered or
+  // truncated overview would otherwise shrink the very list used to widen it.
+  const connectionOptions = [
+    ...(connections.data ?? []).map((c) => ({ id: c.id, name: c.name })),
+    ...(groups.some((g) => g.connection.isSystem) || connectionFilter === SYSTEM_CONNECTION_ID
+      ? [{ id: SYSTEM_CONNECTION_ID, name: C.systemName }]
+      : []),
+  ];
   const inScope = groups.filter((g) => connectionFilter === 'all' || g.id === connectionFilter);
   const scopedRows = inScope.flatMap((g) => g.allRows.filter(matchesSearch));
   const counts: Record<HealthFilter, number> = {
@@ -196,16 +241,28 @@ export function CursorsListPage(): ReactElement {
     problem: scopedRows.filter((r) => isProblem(r.health)).length,
     ok: scopedRows.filter((r) => !isProblem(r.health)).length,
   };
-  const problems = groups.flatMap((g) => g.allRows.filter((r) => isProblem(r.health)).map((r) => ({ group: g, row: r })));
+  const problems = groups.flatMap((g) =>
+    g.allRows.filter((r) => isProblem(r.health)).map((r) => ({ group: g, row: r }))
+  );
 
   const visibleGroups = inScope
     .map((g) => ({ ...g, rows: g.allRows.filter((r) => matchesSearch(r) && matchesHealth(r)) }))
-    .filter((g) => g.rows.length > 0 || (g.writeMarks !== null && health !== 'problem') || (g.pushes && !q && health === 'all'))
-    .sort((a, b) => b.allRows.filter((r) => isProblem(r.health)).length - a.allRows.filter((r) => isProblem(r.health)).length);
+    .filter(
+      (g) =>
+        g.rows.length > 0 ||
+        (g.writeMarks !== null && health !== 'problem') ||
+        (g.pushes && !q && health === 'all')
+    )
+    .sort(
+      (a, b) =>
+        b.allRows.filter((r) => isProblem(r.health)).length -
+        a.allRows.filter((r) => isProblem(r.health)).length
+    );
 
   const selectedGroup = selected ? groups.find((g) => g.id === selected.groupId) ?? null : null;
   const selectedView = selected
-    ? (selectedGroup?.allRows.find((r) => r.cursor.cursorKey === selected.view.cursor.cursorKey) ?? selected.view)
+    ? selectedGroup?.allRows.find((r) => r.cursor.cursorKey === selected.view.cursor.cursorKey) ??
+      selected.view
     : null;
   const clearFilters = (): void => {
     setSearch('');
@@ -266,7 +323,10 @@ export function CursorsListPage(): ReactElement {
           </div>
           <ul className="sync-progress__attention-list">
             {(allProblems ? problems : problems.slice(0, PROBLEMS_SHOWN)).map(({ group, row }) => (
-              <li key={`${group.id}:${row.cursor.cursorKey}`} className="sync-progress__attention-item">
+              <li
+                key={`${group.id}:${row.cursor.cursorKey}`}
+                className="sync-progress__attention-item"
+              >
                 <StatusBadge tone={row.health.tone} withDot>
                   {row.health.label}
                 </StatusBadge>
@@ -314,9 +374,9 @@ export function CursorsListPage(): ReactElement {
             }}
           >
             <option value="all">{C.allConnections}</option>
-            {groups.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.connection.name}
+            {connectionOptions.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
               </option>
             ))}
           </Select>
@@ -343,9 +403,30 @@ export function CursorsListPage(): ReactElement {
               setParam('health', value === 'all' ? null : value);
             }}
             options={[
-              { value: 'all', label: <>{C.filterAll} <span className="sync-progress__count">{counts.all}</span></> },
-              { value: 'problem', label: <>{C.filterProblem} <span className="sync-progress__count">{counts.problem}</span></> },
-              { value: 'ok', label: <>{C.filterOk} <span className="sync-progress__count">{counts.ok}</span></> },
+              {
+                value: 'all',
+                label: (
+                  <>
+                    {C.filterAll} <span className="sync-progress__count">{counts.all}</span>
+                  </>
+                ),
+              },
+              {
+                value: 'problem',
+                label: (
+                  <>
+                    {C.filterProblem} <span className="sync-progress__count">{counts.problem}</span>
+                  </>
+                ),
+              },
+              {
+                value: 'ok',
+                label: (
+                  <>
+                    {C.filterOk} <span className="sync-progress__count">{counts.ok}</span>
+                  </>
+                ),
+              },
             ]}
           />
         </div>
@@ -372,7 +453,11 @@ export function CursorsListPage(): ReactElement {
       ) : visibleGroups.length === 0 ? (
         <div className="sync-progress__nomatch">
           {C.noMatch}{' '}
-          <button type="button" className="card-button-reset sync-progress__help-link" onClick={clearFilters}>
+          <button
+            type="button"
+            className="card-button-reset sync-progress__help-link"
+            onClick={clearFilters}
+          >
             {C.clearFilters}
           </button>
         </div>
@@ -384,7 +469,10 @@ export function CursorsListPage(): ReactElement {
               <section key={g.id} className="sync-progress__group" aria-label={g.connection.name}>
                 <header className="sync-progress__group-head">
                   <span className="sync-progress__entity">
-                    <ConnectionDot name={g.connection.isSystem ? null : g.connection.name} platformType={g.connection.platformType} />
+                    <ConnectionDot
+                      name={g.connection.isSystem ? null : g.connection.name}
+                      platformType={g.connection.platformType}
+                    />
                     <span className="sync-progress__entity-name">{g.connection.name}</span>
                     {g.role ? <span className="sync-progress__entity-meta">{g.role}</span> : null}
                   </span>
@@ -431,7 +519,10 @@ export function CursorsListPage(): ReactElement {
                           explain('s-orders');
                         }}
                       >
-                        {C.colSync} <span className="sync-progress__qmark" aria-hidden="true">?</span>
+                        {C.colSync}{' '}
+                        <span className="sync-progress__qmark" aria-hidden="true">
+                          ?
+                        </span>
                       </button>
                       <button
                         type="button"
@@ -440,7 +531,10 @@ export function CursorsListPage(): ReactElement {
                           explain('p-readupto');
                         }}
                       >
-                        {C.colProgress} <span className="sync-progress__qmark" aria-hidden="true">?</span>
+                        {C.colProgress}{' '}
+                        <span className="sync-progress__qmark" aria-hidden="true">
+                          ?
+                        </span>
                       </button>
                       <button
                         type="button"
@@ -449,7 +543,10 @@ export function CursorsListPage(): ReactElement {
                           explain('h-ok');
                         }}
                       >
-                        {C.colHealth} <span className="sync-progress__qmark" aria-hidden="true">?</span>
+                        {C.colHealth}{' '}
+                        <span className="sync-progress__qmark" aria-hidden="true">
+                          ?
+                        </span>
                       </button>
                       <span>{C.colLastMoved}</span>
                       <span />
@@ -461,7 +558,7 @@ export function CursorsListPage(): ReactElement {
                         showKeys={showKeys}
                         ago={ago}
                         formatWhen={formatWhen}
-        copy={C}
+                        copy={C}
                         onOpen={() => {
                           setSelected({ view: row, groupId: g.id });
                         }}
@@ -477,7 +574,7 @@ export function CursorsListPage(): ReactElement {
                     showKeys={showKeys}
                     ago={ago}
                     formatWhen={formatWhen}
-        copy={C}
+                    copy={C}
                     toView={toViewFor(g)}
                     onOpen={(view) => {
                       setSelected({ view, groupId: g.id });

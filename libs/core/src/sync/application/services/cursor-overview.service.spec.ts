@@ -19,7 +19,9 @@ const cursor = (connectionId: string, cursorKey: string, value: string): Connect
 
 function setup(): {
   service: CursorOverviewService;
-  cursors: jest.Mocked<Pick<ConnectionCursorRepositoryPort, 'findMany' | 'summarizeByKeyPrefix' | 'findOne' | 'set'>>;
+  cursors: jest.Mocked<
+    Pick<ConnectionCursorRepositoryPort, 'findMany' | 'summarizeByKeyPrefix' | 'findOne' | 'set'>
+  >;
   jobs: jest.Mocked<Pick<SyncJobRepositoryPort, 'findLatestByConnectionsAndJobTypes'>>;
   locks: jest.Mocked<Pick<SyncLockPort, 'acquire' | 'release'>>;
 } {
@@ -34,7 +36,7 @@ function setup(): {
   const service = new CursorOverviewService(
     cursors as unknown as ConnectionCursorRepositoryPort,
     jobs as unknown as SyncJobRepositoryPort,
-    locks as unknown as SyncLockPort,
+    locks as unknown as SyncLockPort
   );
   return { service, cursors, jobs, locks };
 }
@@ -43,14 +45,29 @@ describe('CursorOverviewService', () => {
   describe('getOverview', () => {
     it('should pair each cursor with the latest run of its writer job when one exists', async () => {
       const { service, cursors, jobs } = setup();
-      cursors.findMany.mockResolvedValue({ items: [cursor('c1', 'allegro.orders.lastEventId', '42')], total: 1 });
+      cursors.findMany.mockResolvedValue({
+        items: [cursor('c1', 'allegro.orders.lastEventId', '42')],
+        total: 1,
+      });
       jobs.findLatestByConnectionsAndJobTypes.mockResolvedValue([
-        { id: 'j1', connectionId: 'c1', jobType: 'marketplace.orders.poll', status: 'dead', outcome: null, updatedAt: AT, lastError: '401' } as never,
+        {
+          id: 'j1',
+          connectionId: 'c1',
+          jobType: 'marketplace.orders.poll',
+          status: 'dead',
+          outcome: null,
+          updatedAt: AT,
+          lastError: '401',
+        } as never,
       ]);
 
       const result = await service.getOverview();
 
-      expect(result.connections[0].cursors[0].lastRun).toMatchObject({ jobId: 'j1', status: 'dead', lastError: '401' });
+      expect(result.connections[0].cursors[0].lastRun).toMatchObject({
+        jobId: 'j1',
+        status: 'dead',
+        lastError: '401',
+      });
       expect(result.connections[0].cursors[0].family).toBe('event-bookmark');
     });
 
@@ -63,15 +80,38 @@ describe('CursorOverviewService', () => {
 
       const result = await service.getOverview();
 
-      expect(cursors.findMany.mock.calls[0][0]).toEqual({ excludeKeyPrefix: 'inventory.offerQuantity.observedAt:offer:' });
+      expect(cursors.findMany.mock.calls[0][0]).toEqual({
+        excludeKeyPrefix: 'inventory.offerQuantity.observedAt:offer:',
+      });
       expect(result.connections).toEqual([
-        expect.objectContaining({ connectionId: 'c2', cursors: [], writeMarks: expect.objectContaining({ count: 3 }) }),
+        expect.objectContaining({
+          connectionId: 'c2',
+          cursors: [],
+          writeMarks: expect.objectContaining({ count: 3 }),
+        }),
       ]);
+    });
+
+    it('should read and summarise only one connection when a connection filter is given', async () => {
+      const { service, cursors } = setup();
+      cursors.findMany.mockResolvedValue({ items: [], total: 0 });
+      cursors.summarizeByKeyPrefix.mockResolvedValue([
+        { connectionId: 'c1', count: 2, oldestValue: 'a', newestValue: 'b', lastUpdatedAt: AT },
+        { connectionId: 'c2', count: 9, oldestValue: 'a', newestValue: 'b', lastUpdatedAt: AT },
+      ]);
+
+      const result = await service.getOverview({ connectionId: 'c1' });
+
+      expect(cursors.findMany.mock.calls[0][0]).toMatchObject({ connectionId: 'c1' });
+      expect(result.connections.map((c) => c.connectionId)).toEqual(['c1']);
     });
 
     it('should report truncation when more cursors exist than were read', async () => {
       const { service, cursors } = setup();
-      cursors.findMany.mockResolvedValue({ items: [cursor('c1', 'allegro.orders.lastEventId', '1')], total: 5000 });
+      cursors.findMany.mockResolvedValue({
+        items: [cursor('c1', 'allegro.orders.lastEventId', '1')],
+        total: 5000,
+      });
 
       await expect(service.getOverview()).resolves.toMatchObject({ truncated: true });
     });
@@ -85,7 +125,11 @@ describe('CursorOverviewService', () => {
       cursors.findOne.mockResolvedValue(cursor('c1', passKey, 'cycle:120'));
       locks.acquire.mockResolvedValue('tok' as never);
 
-      const result = await service.rewind({ connectionId: 'c1', cursorKey: passKey, target: 'restart-pass' });
+      const result = await service.rewind({
+        connectionId: 'c1',
+        cursorKey: passKey,
+        target: 'restart-pass',
+      });
 
       expect(locks.acquire).toHaveBeenCalledWith('master:product:sweep:c1', expect.any(Number));
       expect(cursors.set).toHaveBeenCalledWith('c1', passKey, '');
@@ -98,7 +142,9 @@ describe('CursorOverviewService', () => {
       cursors.findOne.mockResolvedValue(cursor('c1', passKey, 'cycle:120'));
       locks.acquire.mockResolvedValue(null);
 
-      await expect(service.rewind({ connectionId: 'c1', cursorKey: passKey, target: 'restart-pass' })).rejects.toMatchObject({
+      await expect(
+        service.rewind({ connectionId: 'c1', cursorKey: passKey, target: 'restart-pass' })
+      ).rejects.toMatchObject({
         reason: 'run-in-progress',
       });
       expect(cursors.set).not.toHaveBeenCalled();
@@ -108,7 +154,9 @@ describe('CursorOverviewService', () => {
       const { service, cursors } = setup();
       cursors.findOne.mockResolvedValue(cursor('c1', passKey, ''));
 
-      await expect(service.rewind({ connectionId: 'c1', cursorKey: passKey, target: 'restart-pass' })).rejects.toMatchObject({
+      await expect(
+        service.rewind({ connectionId: 'c1', cursorKey: passKey, target: 'restart-pass' })
+      ).rejects.toMatchObject({
         reason: 'pass-not-open',
       });
     });
@@ -117,7 +165,11 @@ describe('CursorOverviewService', () => {
       const { service, cursors } = setup();
       cursors.findOne.mockResolvedValue(cursor('c1', 'allegro.offerStatus.scanOffset', '600'));
 
-      await service.rewind({ connectionId: 'c1', cursorKey: 'allegro.offerStatus.scanOffset', target: 'restart-check' });
+      await service.rewind({
+        connectionId: 'c1',
+        cursorKey: 'allegro.offerStatus.scanOffset',
+        target: 'restart-check',
+      });
 
       expect(cursors.set).toHaveBeenCalledWith('c1', 'allegro.offerStatus.scanOffset', '0');
     });
@@ -129,7 +181,9 @@ describe('CursorOverviewService', () => {
     ] as const)('should refuse %s with %s as %s', async (cursorKey, target, reason) => {
       const { service } = setup();
 
-      const error = await service.rewind({ connectionId: 'c1', cursorKey, target }).catch((e: unknown) => e);
+      const error = await service
+        .rewind({ connectionId: 'c1', cursorKey, target })
+        .catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(CursorRewindRefusedError);
       expect(error).toMatchObject({ reason });
@@ -140,7 +194,11 @@ describe('CursorOverviewService', () => {
       cursors.findOne.mockResolvedValue(null);
 
       await expect(
-        service.rewind({ connectionId: 'c1', cursorKey: 'allegro.offerStatus.scanOffset', target: 'restart-check' }),
+        service.rewind({
+          connectionId: 'c1',
+          cursorKey: 'allegro.offerStatus.scanOffset',
+          target: 'restart-check',
+        })
       ).rejects.toMatchObject({ reason: 'cursor-not-found' });
     });
   });
