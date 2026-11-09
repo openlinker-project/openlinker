@@ -289,6 +289,9 @@ export const allegroOfferValidation: OfferValidationContribution = {
       } else if (
         input.catalogueConsulted === true &&
         !input.willLinkProductCard &&
+        // A card WAS found, only set aside for the operator's mapping (#3994) -
+        // "not in the catalogue" would be false.
+        input.barcodeMatchedCatalogue !== true &&
         !blockers.includes(ALLEGRO_SIBLINGS_WITHOUT_CARD_BLOCKER)
       ) {
         // Only meaningful when a lookup actually ran, and silent when the
