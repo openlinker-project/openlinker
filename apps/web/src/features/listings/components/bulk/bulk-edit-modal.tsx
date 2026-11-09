@@ -515,6 +515,23 @@ function withoutAutoFilledParams(
   return out;
 }
 
+/**
+ * Focus the parameter field labelled `name` inside `root` (#4003). Parameter
+ * controls carry their marketplace name as `aria-label` (a range control adds
+ * " from"), which is the only handle the blocker list has on them. Returns
+ * whether a field was found, so the caller can try another scope.
+ */
+function focusParameterField(root: ParentNode | null, name: string): boolean {
+  const selector = [name, `${name} from`]
+    .map((label) => `[aria-label="${label.replace(/"/g, '\\"')}"]`)
+    .join(', ');
+  const field = root?.querySelector<HTMLElement>(selector) ?? null;
+  if (!field) return false;
+  field.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  field.focus({ preventScroll: true });
+  return true;
+}
+
 /** Same URLs in the same order - the published list is ordered, so order matters. */
 function sameImageList(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((url, i) => url === b[i]);
@@ -653,6 +670,18 @@ function BulkEditModalForm({
       cancelAnimationFrame(frame);
     };
   }, [focusField, scope]);
+
+  // A missing-parameter token whose field lives on the shared base (#4003)
+  // switches scope and asks for the field by name. An effect runs after the
+  // base scope has committed, so the field is in the DOM by then - no frame
+  // counting. Cleared on every run: a name the base does not render either
+  // must not focus something later, out of the blue.
+  const [pendingParameterFocus, setPendingParameterFocus] = useState<string | null>(null);
+  useEffect(() => {
+    if (pendingParameterFocus === null) return;
+    focusParameterField(document.querySelector('[role="dialog"]'), pendingParameterFocus);
+    setPendingParameterFocus(null);
+  }, [pendingParameterFocus, scope]);
 
   // Per-variant edit model + inclusion (source of truth for override presence).
   const [variantEdits, setVariantEdits] = useState<Record<string, VariantEdit>>(() => {
@@ -1432,6 +1461,10 @@ function BulkEditModalForm({
                       onParamChange={(paramId, value) => setVariantParam(v.variantId, paramId, value)}
                       onIncludedChange={(next) => setIncluded((prev) => ({ ...prev, [v.variantId]: next }))}
                       onFixOnBase={() => setScope('base')}
+                      onJumpToBaseParameter={(name) => {
+                        setScope('base');
+                        setPendingParameterFocus(name);
+                      }}
                       // The product-tier fix (#2240): switch to the shared scope
                       // AND open the picker, so one click lands on the control
                       // instead of on a scope the operator then has to read.
@@ -2254,6 +2287,8 @@ interface VariantScopeFormProps {
   onParamChange: (paramId: string, value: FormParameterValue) => void;
   onIncludedChange: (next: boolean) => void;
   onFixOnBase: () => void;
+  /** Open the shared base and focus the parameter field with this name (#4003). */
+  onJumpToBaseParameter: (name: string) => void;
   /**
    * Set the PRODUCT-tier category, covering every sibling that has no override
    * of its own (#2240). The primary fix for a category blocker: the submit pins
@@ -2300,6 +2335,7 @@ function VariantScopeForm({
   onParamChange,
   onIncludedChange,
   onFixOnBase,
+  onJumpToBaseParameter,
   onSetProductCategory,
   variantCount,
   destinationName,
@@ -2442,23 +2478,8 @@ function VariantScopeForm({
   // parameters usually live on the shared base, so when this variant's form
   // does not render the field, switch to the base scope and focus it there.
   const focusParameter = (name: string): void => {
-    const selector = [name, `${name} from`]
-      .map((label) => `[aria-label="${label.replace(/"/g, '\\"')}"]`)
-      .join(', ');
-    const focus = (root: ParentNode | null): boolean => {
-      const field = root?.querySelector<HTMLElement>(selector) ?? null;
-      if (!field) return false;
-      field.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
-      field.focus({ preventScroll: true });
-      return true;
-    };
-    if (focus(document.querySelector(`[data-form="${variant.variantId}"]`))) return;
-    onFixOnBase();
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        focus(document.querySelector('[role="dialog"]'));
-      });
-    });
+    if (focusParameterField(document.querySelector(`[data-form="${variant.variantId}"]`), name)) return;
+    onJumpToBaseParameter(name);
   };
   const optionalParams = visibleParams.filter((p) => !p.required);
 
