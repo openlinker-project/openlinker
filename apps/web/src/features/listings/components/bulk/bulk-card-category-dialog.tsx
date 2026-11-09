@@ -20,6 +20,7 @@
  * @module apps/web/src/features/listings/components/bulk
  */
 import type { ReactElement } from 'react';
+import { interpolate, renderRich, useMessages } from '../../../../shared/i18n';
 import { Button } from '../../../../shared/ui';
 import {
   Dialog,
@@ -81,11 +82,13 @@ export function BulkCardCategoryDialog({
   onUseCard,
   onEditProduct,
 }: BulkCardCategoryDialogProps): ReactElement {
+  const copy = useMessages('listings').bulkReview.cardCategoryDialog;
   const mapped = useCategoryPathQuery(connectionId, mappedCategoryId);
   const cardPath = useCategoryPathQuery(connectionId, card.allegroCategoryId);
   const loading = mapped.isPending || cardPath.isPending;
-  const mappedNodes = withFallback(mapped.data, mappedCategoryId);
-  const cardNodes = withFallback(cardPath.data, card.allegroCategoryId);
+  const fallbackName = (id: string): string => interpolate(copy.categoryFallback, { id });
+  const mappedNodes = withFallback(mapped.data, mappedCategoryId, fallbackName);
+  const cardNodes = withFallback(cardPath.data, card.allegroCategoryId, fallbackName);
   // Only compare paths that are actually known: an unsynced path is a single
   // fallback node and would always "share nothing", which is not a finding.
   const comparable = (mapped.data?.length ?? 0) > 0 && (cardPath.data?.length ?? 0) > 0;
@@ -94,39 +97,48 @@ export function BulkCardCategoryDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="cat-fork-dialog" aria-describedby="cat-fork-dialog-desc">
-        <DialogTitle>Your mapping and the barcode disagree</DialogTitle>
+        <DialogTitle>{copy.title}</DialogTitle>
         <DialogDescription id="cat-fork-dialog-desc" className="cat-fork-dialog__lede">
-          <strong>{subject}</strong>
-          {ean ? (
-            <>
-              {' '}
-              (barcode <span className="cat-fork-dialog__ean">{ean}</span>)
-            </>
-          ) : null}{' '}
-          matched a catalog product on {destinationName} that sits in another category. Your mapping is
-          used and the catalog product is not linked.
+          {renderRich(
+            ean ? copy.lede : copy.ledeNoEan,
+            {
+              subject: (chunk) => <strong>{chunk}</strong>,
+              ean: (chunk) => <span className="cat-fork-dialog__ean">{chunk}</span>,
+            },
+            { subject, ean: ean ?? '', destination: destinationName },
+          )}
         </DialogDescription>
 
         <figure className="cat-fork" aria-busy={loading}>
           <div className={shared.length > 0 ? 'cat-fork__trunk' : 'cat-fork__trunk cat-fork__trunk--none'}>
             {loading
-              ? 'Loading categories…'
+              ? copy.loading
               : shared.length > 0
                 ? shared.map((n) => n.name).join(' › ')
                 : comparable
-                  ? 'No shared branch: these are different parts of the catalog'
-                  : 'Category paths not synced yet'}
+                  ? copy.noSharedBranch
+                  : copy.notSynced}
           </div>
           <ul className="cat-fork__branches">
-            <Branch nodes={restA} kind="used" tag="In use" note="Your category mapping" />
-            <Branch nodes={restB} kind="other" tag="Barcode match" note={`${destinationName} catalog product`} />
+            <Branch
+              nodes={restA}
+              kind="used"
+              tag={copy.inUse}
+              note={copy.yourMapping}
+              leafIdLabel={copy.leafId}
+            />
+            <Branch
+              nodes={restB}
+              kind="other"
+              tag={copy.barcodeMatch}
+              note={interpolate(copy.catalogProduct, { destination: destinationName })}
+              leafIdLabel={copy.leafId}
+            />
           </ul>
         </figure>
 
         <p className="cat-fork-dialog__note">
-          {canAdoptCard
-            ? 'Switch only if this barcode really belongs to this product. The offer then links the catalog product and takes its name, parameters and photos.'
-            : 'All variants of this product list under one category, so this variant cannot switch on its own. To move the whole product, change its category in the editor.'}
+          {canAdoptCard ? copy.adoptNote : copy.siblingNote}
         </p>
 
         <DialogFooter>
@@ -139,7 +151,7 @@ export function BulkCardCategoryDialog({
                 onOpenChange(false);
               }}
             >
-              Use catalog category
+              {copy.useCard}
             </Button>
           ) : (
             <Button
@@ -149,11 +161,11 @@ export function BulkCardCategoryDialog({
                 onEditProduct();
               }}
             >
-              Edit product
+              {copy.editProduct}
             </Button>
           )}
           <Button tone="primary" onClick={() => onOpenChange(false)}>
-            Keep my mapping
+            {copy.keepMapping}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -161,8 +173,12 @@ export function BulkCardCategoryDialog({
   );
 }
 
-function withFallback(nodes: readonly PathNode[] | undefined, id: string): PathNode[] {
-  return nodes && nodes.length > 0 ? [...nodes] : [{ id, name: `Category ${id}` }];
+function withFallback(
+  nodes: readonly PathNode[] | undefined,
+  id: string,
+  fallbackName: (id: string) => string,
+): PathNode[] {
+  return nodes && nodes.length > 0 ? [...nodes] : [{ id, name: fallbackName(id) }];
 }
 
 function Branch({
@@ -170,11 +186,14 @@ function Branch({
   kind,
   tag,
   note,
+  leafIdLabel,
 }: {
   nodes: readonly PathNode[];
   kind: 'used' | 'other';
   tag: string;
   note: string;
+  /** "ID {id}" template for the leaf's id. */
+  leafIdLabel: string;
 }): ReactElement {
   const leaf = nodes[nodes.length - 1];
   const between = nodes.slice(0, -1);
@@ -189,7 +208,7 @@ function Branch({
       <div className="cat-fork__meta">
         <span className="cat-fork__tag">{tag}</span>
         <span className="cat-fork__note">{note}</span>
-        {leaf ? <span className="cat-fork__id">ID {leaf.id}</span> : null}
+        {leaf ? <span className="cat-fork__id">{interpolate(leafIdLabel, { id: leaf.id })}</span> : null}
       </div>
     </li>
   );
