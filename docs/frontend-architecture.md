@@ -709,9 +709,9 @@ An API error carries a stable `code` (and `params`, `fields`, `providerMessage`)
 
 It is never blank, so a caller passes no fallback string. A provider refusal (`PROVIDER_REJECTED`) shows a translated prefix plus the provider's own words verbatim, and in a development build an untranslated code reads `[untranslated:<CODE>] <message>`. Branch on `error.code` (or a typed reader over it), never on the message text. A form maps a 400's `fields` with `applyFieldErrors`.
 
-Stored English sentences that have no code yet (`sync_jobs.lastError`, webhook `dlqReason`, a connection test's `message`, #3866) are shown raw, labelled with `ui.apiError.technicalDetails` when they stand alone as a sentence.
+Stored English sentences that have no code yet (`sync_jobs.lastError`, webhook `dlqReason`, a failed connection test's `message`, #3866), and a provider's own words the error carries only in `message`, are shown raw through `ui.apiError.technicalDetailsWith` (`Technical details (not translated): {details}`). A successful connection test shows no message, since its title already says it passed.
 
-**Guard:** two `no-restricted-syntax` selectors (`API_ERROR_MESSAGE_SYNTAX` in `.eslintrc.js`) fail on `x.error.message` and on `error.message` / `fooError.message` in `app`, `features`, `pages`, `plugins` and `shared/ui`, outside tests. Form field errors (`fieldState.error.message`) and copy objects (`copy.error.message`) are not matched. Any other legitimate read (a non-API error, a value written to `details`) carries an `eslint-disable-next-line no-restricted-syntax -- <reason>`.
+**Guard:** two `no-restricted-syntax` selectors (`API_ERROR_MESSAGE_SYNTAX` in `.eslintrc.js`) fail on `x.error.message` and on `error.message` / `fooError.message` in `app`, `features`, `pages`, `plugins` and `shared/ui`, outside tests. Form field errors (`fieldState.error.message`) and copy objects (`copy.error.message`) are not matched. Any other legitimate read (a non-API error, a value written to `details`) carries an `eslint-disable-next-line no-restricted-syntax -- <reason>`. `scripts/check-i18n-lint-rule.mjs` resolves the real config for a `.ts` and a `.tsx` in each covered folder and runs fixtures through it, so a later override that replaces `no-restricted-syntax` cannot silence the guard while `pnpm lint` stays green.
 
 ### Product rules for copy
 

@@ -140,7 +140,7 @@ export function GenerateLabelForm({
   onCancel,
 }: GenerateLabelFormProps): ReactElement {
   const ordersCopy = useMessages('orders');
-  const technicalDetails = useMessages('ui').apiError.technicalDetails;
+  const technicalDetails = useMessages('ui').apiError.technicalDetailsWith;
   const copy = ordersCopy.generateLabelForm;
   const schema = useMemo(() => createGenerateLabelSchema(copy.validation), [copy]);
   const snapshot = parseOrderSnapshot(order.orderSnapshot);
@@ -574,7 +574,7 @@ export function GenerateLabelForm({
             {describeApiError(mutation.error, 'orders')}
           </p>
           {carrierDetail ? (
-            <p className="generate-label-form__error-detail">{`${technicalDetails}: ${carrierDetail}`}</p>
+            <p className="generate-label-form__error-detail">{interpolate(technicalDetails, { details: carrierDetail })}</p>
           ) : null}
           <StructuredErrorList errors={extractShippingFieldErrors(mutation.error)} />
           <ShippingTraceReference traceId={extractShippingTraceId(mutation.error)} />

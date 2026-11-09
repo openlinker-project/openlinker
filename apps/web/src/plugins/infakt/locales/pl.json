@@ -111,7 +111,7 @@
     "persistErrorHint": "wybierz je ponownie na ekranie edycji połączenia.",
     "test": {
       "failed": "Test połączenia nieudany",
-      "latency": "{message} ({ms}ms)",
+      "latency": "({ms}ms)",
       "passed": "Test połączenia udany",
       "run": "Przetestuj połączenie",
       "running": "Testowanie…",

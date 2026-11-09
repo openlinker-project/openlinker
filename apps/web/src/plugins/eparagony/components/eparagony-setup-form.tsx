@@ -252,7 +252,7 @@ export function EparagonySetupForm({
             tone={testResult.success ? 'success' : 'error'}
             title={testResult.success ? copy.test.passed : copy.test.failed}
           >
-            {`${uiCopy.apiError.technicalDetails}: ${testResult.message}`}
+            {testResult.success ? null : interpolate(uiCopy.apiError.technicalDetailsWith, { details: testResult.message })}
             {typeof testResult.latencyMs === 'number'
               ? interpolate(copy.test.latency, { ms: testResult.latencyMs })
               : null}

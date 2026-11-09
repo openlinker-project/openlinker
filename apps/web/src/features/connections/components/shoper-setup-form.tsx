@@ -225,7 +225,7 @@ export function ShoperSetupForm(): ReactElement {
               tone={testResult.success ? 'success' : 'error'}
               title={testResult.success ? copy.testPassed : copy.testFailed}
             >
-              {`${uiCopy.apiError.technicalDetails}: ${testResult.message}`}
+              {testResult.success ? null : interpolate(uiCopy.apiError.technicalDetailsWith, { details: testResult.message })}
               {typeof testResult.latencyMs === 'number'
                 ? ` ${interpolate(copy.latency, { ms: format.number(testResult.latencyMs) })}`
                 : null}

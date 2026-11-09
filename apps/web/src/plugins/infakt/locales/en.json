@@ -111,7 +111,7 @@
     "persistErrorHint": "re-pick it from the connection's edit screen.",
     "test": {
       "failed": "Connection test failed",
-      "latency": "{message} ({ms}ms)",
+      "latency": "({ms}ms)",
       "passed": "Connection test passed",
       "run": "Test connection",
       "running": "Testing…",

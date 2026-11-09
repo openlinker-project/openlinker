@@ -83,7 +83,7 @@ export function OrderCorrectionProposalDialog({
 }: OrderCorrectionProposalDialogProps): ReactElement {
   const discount = kind === 'order.discount_correction';
   const copy = useMessages('orders').orderCorrectionProposal;
-  const technicalDetails = useMessages('ui').apiError.technicalDetails;
+  const technicalDetails = useMessages('ui').apiError.technicalDetailsWith;
   const format = useFormat();
   const price = (value: number): string =>
     format.number(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -141,7 +141,7 @@ export function OrderCorrectionProposalDialog({
             {describeApiError(mutation.error, 'orders')}
             {errorDetail ? (
               <p className="muted-text" data-testid="order-correction-error-detail">
-                {`${technicalDetails}: ${errorDetail}`}
+                {interpolate(technicalDetails, { details: errorDetail })}
               </p>
             ) : null}
           </Alert>

@@ -52,14 +52,19 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
   async function handleTest(): Promise<void> {
     try {
       const result = await testConnection.mutateAsync(connection.id);
-      const details = `${uiCopy.apiError.technicalDetails}: ${result.message}`;
+      if (result.success) {
+        showToast({
+          tone: 'success',
+          description: interpolate(copy.test.ok, { ms: format.number(result.latencyMs) }),
+        });
+        return;
+      }
+      const details = interpolate(uiCopy.apiError.technicalDetailsWith, { details: result.message });
       showToast({
-        tone: result.success ? 'success' : 'error',
-        title: result.success
-          ? interpolate(copy.test.ok, { ms: format.number(result.latencyMs) })
-          : copy.test.failed,
+        tone: 'error',
+        title: copy.test.failed,
         description:
-          result.success || result.status === undefined
+          result.status === undefined
             ? details
             : interpolate(copy.test.failedWithStatus, {
                 message: details,

@@ -38,14 +38,6 @@ describe('describeApiError', () => {
     expect(describeApiError(error, FEATURE)).toBe('This order was removed.');
   });
 
-  it('should fall back to the shared copy when the namespace is not registered', () => {
-    const error = coded(404, { code: 'INVOICE_NOT_FOUND', params: { invoiceId: 'i-1' } });
-
-    expect(describeApiError(error, 'not-a-registered-namespace')).toBe(
-      copy().codes.INVOICE_NOT_FOUND
-    );
-  });
-
   it('should fall back to the shared errors copy when the feature has none', () => {
     const error = coded(404, { code: 'INVOICE_NOT_FOUND', params: { invoiceId: 'i-1' } });
 

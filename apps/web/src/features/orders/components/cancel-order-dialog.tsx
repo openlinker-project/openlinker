@@ -99,7 +99,7 @@ export function CancelOrderDialog({
   onGoToShipment,
 }: CancelOrderDialogProps): ReactElement {
   const copy = useMessages('orders').cancelOrderDialog;
-  const technicalDetails = useMessages('ui').apiError.technicalDetails;
+  const technicalDetails = useMessages('ui').apiError.technicalDetailsWith;
   const plural = usePlural();
   const schema = useMemo(() => createCancelOrderSchema(copy.validation), [copy.validation]);
   const mutation = useCancelOrderMutation();
@@ -240,7 +240,7 @@ export function CancelOrderDialog({
             </DialogDescription>
             {refusalDetail ? (
               <p className="muted-text" data-testid="order-cancel-refusal-detail">
-                {`${technicalDetails}: ${refusalDetail}`}
+                {interpolate(technicalDetails, { details: refusalDetail })}
               </p>
             ) : null}
             <Alert tone="info" title={copy.label.whatToDo}>
@@ -322,7 +322,7 @@ export function CancelOrderDialog({
             {describeApiError(mutation.error, 'orders')}
             {refusalDetail ? (
               <p className="muted-text" data-testid="order-cancel-refusal-detail">
-                {`${technicalDetails}: ${refusalDetail}`}
+                {interpolate(technicalDetails, { details: refusalDetail })}
               </p>
             ) : null}
           </Alert>

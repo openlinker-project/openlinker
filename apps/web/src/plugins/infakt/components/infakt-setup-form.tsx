@@ -354,12 +354,10 @@ export function InfaktSetupForm(): ReactElement {
               tone={testResult.success ? 'success' : 'error'}
               title={testResult.success ? copy.test.passed : copy.test.failed}
             >
+              {testResult.success ? null : interpolate(uiCopy.apiError.technicalDetailsWith, { details: testResult.message })}
               {typeof testResult.latencyMs === 'number'
-                ? interpolate(copy.test.latency, {
-                    message: `${uiCopy.apiError.technicalDetails}: ${testResult.message}`,
-                    ms: testResult.latencyMs,
-                  })
-                : `${uiCopy.apiError.technicalDetails}: ${testResult.message}`}
+                ? ` ${interpolate(copy.test.latency, { ms: testResult.latencyMs })}`
+                : null}
             </Alert>
           ) : null}
           {testConnection.error ? (

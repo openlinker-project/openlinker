@@ -118,7 +118,7 @@ export function SyncJobDetailPage(): ReactElement {
   const write = useWriteAccess('sync:write', demoMode);
   const { showToast } = useToast();
   const copy = useMessages('sync-jobs').syncJobDetailPage;
-  const technicalDetails = useMessages('ui').apiError.technicalDetails;
+  const technicalDetails = useMessages('ui').apiError.technicalDetailsWith;
   const plural = usePlural();
 
   if (query.isLoading) {
@@ -185,8 +185,9 @@ export function SyncJobDetailPage(): ReactElement {
         >
           {job.lastError ? (
             <span className="mono-text">
-              {`${technicalDetails}: `}
-              {job.lastError.length > 240 ? `${job.lastError.slice(0, 240)}…` : job.lastError}
+              {interpolate(technicalDetails, {
+                details: job.lastError.length > 240 ? `${job.lastError.slice(0, 240)}…` : job.lastError,
+              })}
             </span>
           ) : (
             copy.noError
