@@ -18646,6 +18646,164 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   line-height: 1.5;
 }
 
+/* ── Order payment panel (#3963) ──
+   One headline, a quiet progress line, one word per shop. The status words use
+   a dot plus text, so colour is never the only signal. */
+.order-payment-panel { display: grid; gap: var(--space-3); }
+.order-payment-panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+}
+.order-payment-panel__lead { display: grid; gap: 2px; min-width: 0; }
+.order-payment-panel__headline {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.2;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.order-payment-panel__headline--ok { color: var(--status-success-fg); }
+.order-payment-panel__headline--warn { color: var(--status-warning-fg); }
+.order-payment-panel__meta { margin: 0; font-size: 0.8125rem; color: var(--text-secondary); }
+.order-payment-panel__progress { display: grid; gap: 6px; min-width: 180px; }
+.order-payment-panel__progress-label { font-size: 0.75rem; color: var(--text-secondary); text-align: right; }
+.order-payment-panel__track {
+  display: block;
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--bg-surface-muted);
+  overflow: hidden;
+}
+.order-payment-panel__fill { display: block; height: 100%; border-radius: inherit; background: var(--status-info-fg); }
+.order-payment-panel__fill--done { background: var(--status-success-fg); }
+.order-payment-panel__shops {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  border-top: 1px solid var(--border-subtle);
+}
+.order-payment-panel__shop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.order-payment-panel__state {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1) var(--space-3);
+}
+.order-payment-panel__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.order-payment-panel__dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.order-payment-panel__status--ok .order-payment-panel__dot { background: var(--status-success-fg); }
+.order-payment-panel__status--busy .order-payment-panel__dot {
+  background: var(--status-info-fg);
+  animation: order-payment-pulse 1.6s ease-in-out infinite;
+}
+.order-payment-panel__status--warn { color: var(--status-warning-fg); }
+.order-payment-panel__status--warn .order-payment-panel__dot { background: var(--status-warning-fg); }
+.order-payment-panel__status--muted { color: var(--text-secondary); }
+.order-payment-panel__status--muted .order-payment-panel__dot { box-shadow: inset 0 0 0 1.5px var(--text-muted); }
+.order-payment-panel__helper { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
+.order-payment-panel__foot { margin: 0; font-size: 0.75rem; color: var(--text-muted); }
+.order-payment-panel__alert-actions { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); }
+@keyframes order-payment-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) {
+  .order-payment-panel__status--busy .order-payment-panel__dot { animation: none; }
+}
+@media (max-width: 560px) {
+  .order-payment-panel__shop { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
+  .order-payment-panel__state { justify-content: flex-start; }
+  .order-payment-panel__progress { min-width: 0; width: 100%; }
+  .order-payment-panel__progress-label { text-align: left; }
+}
+
+/* ── Payment not sent to shop: list marker + bulk bar (#3963) ── */
+.order-payment-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--status-warning-fg);
+}
+.order-payment-marker__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--status-warning-fg); flex: none; }
+.order-payment-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--status-warning-border);
+  border-radius: var(--radius-md);
+  background: var(--status-warning-soft);
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+}
+.order-payment-bulk__actions { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); }
+
+/* ── "When the buyer pays later" connection setting (#3963) ── */
+.payment-writeback-section__options { border: 0; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.payment-writeback-section__option {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  cursor: pointer;
+}
+.payment-writeback-section__option--on { border-color: var(--accent-primary); }
+.payment-writeback-section__option input { margin: 3px 0 0; accent-color: var(--accent-primary); }
+.payment-writeback-section__option:has(input:focus-visible) { box-shadow: var(--shadow-focus); }
+.payment-writeback-section__body { display: grid; gap: 4px; min-width: 0; }
+.payment-writeback-section__title {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.payment-writeback-section__rec { font-size: 0.75rem; font-weight: 500; color: var(--status-success-fg); }
+.payment-writeback-section__hint { font-size: 0.8125rem; color: var(--text-secondary); }
+.payment-writeback-section__field {
+  display: grid;
+  gap: 4px;
+  margin-top: var(--space-2);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.payment-writeback-section__field .select { max-width: 320px; }
+.payment-writeback-section__facts {
+  margin: var(--space-3) 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
 /* Delivery panel */
 .order-delivery__card {
   display: grid;

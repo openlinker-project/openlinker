@@ -7,6 +7,7 @@
  */
 
 import type { IOrderChangeService } from '../order-change.service.interface';
+import type { IPaymentWritebackService } from '../../interfaces/payment-writeback.service.interface';
 import type { IOrderCancellationEffectsService } from '../../interfaces/order-cancellation-effects.service.interface';
 import { OrderIngestionService } from '../order-ingestion.service';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
@@ -89,6 +90,7 @@ describe('OrderIngestionService', () => {
   >;
   let connections: jest.Mocked<Pick<ConnectionPort, 'list'>>;
   let cancellationEffects: { applyEffects: jest.Mock };
+  let paymentWriteback: { planAfterSync: jest.Mock };
 
   const connectionId = 'connection-123';
   const cursorKey = 'allegro.orders.lastEventId';
@@ -242,6 +244,7 @@ describe('OrderIngestionService', () => {
         correctionUnavailableReason: null,
       }),
     };
+    paymentWriteback = { planAfterSync: jest.fn().mockResolvedValue(undefined) };
     service = new OrderIngestionService(
       integrationsService,
       syncCursors as unknown as ISyncCursorsService,
@@ -263,7 +266,8 @@ describe('OrderIngestionService', () => {
       connections as unknown as ConnectionPort,
       routerResolver,
       orderChanges as unknown as IOrderChangeService,
-      cancellationEffects as unknown as IOrderCancellationEffectsService
+      cancellationEffects as unknown as IOrderCancellationEffectsService,
+      paymentWriteback as unknown as IPaymentWritebackService
     );
   });
 
@@ -537,6 +541,32 @@ describe('OrderIngestionService', () => {
       identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_test');
       orderSource.getOrder.mockResolvedValue(baseIncoming);
       integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+    });
+
+    it('should plan the payment writeback with this run\'s results after the sync settled (#3963)', async () => {
+      const results = [
+        {
+          destinationConnectionId: 'dest-1',
+          status: 'success' as const,
+          orderRef: { orderId: '1027' },
+          created: false,
+        },
+      ];
+      orderSyncService.syncOrder.mockResolvedValue(results);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-42');
+
+      expect(paymentWriteback.planAfterSync).toHaveBeenCalledTimes(1);
+      expect(paymentWriteback.planAfterSync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          order: expect.objectContaining({ id: 'ol_order_test' }),
+          sourceConnectionId: connectionId,
+          results,
+        })
+      );
+      expect(orderSyncService.syncOrder.mock.invocationCallOrder[0]).toBeLessThan(
+        paymentWriteback.planAfterSync.mock.invocationCallOrder[0]
+      );
     });
 
     it('calls onOrderTransition at the terminal path with the in-scope sourceEventId as the 3rd arg', async () => {
