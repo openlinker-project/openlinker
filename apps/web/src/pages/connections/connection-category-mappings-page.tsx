@@ -46,6 +46,7 @@ import { usePlatforms } from '../../shared/plugins';
 import { interpolate, useMessages, usePlural } from '../../shared/i18n';
 import type { AllegroCategory } from '../../features/mappings/api/mappings.types';
 import { bucketCount, captureDemoEvent } from '../../features/demo';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const MARKETPLACE_PICK_STORAGE_PREFIX = 'openlinker.categoryMappings.lastMarketplace.';
 
@@ -244,7 +245,7 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
   if (loadError) {
     return (
       <PageLayout backTo={backTo} title={pageTitle}>
-        <ErrorState title={copy.errorTitle} message={loadError.message} />
+        <ErrorState title={copy.errorTitle} message={describeApiError(loadError, 'connections')} />
       </PageLayout>
     );
   }

@@ -53,6 +53,7 @@ import {
   toUpdateInput,
   type NumberingFormValues,
 } from './ksef-numbering.schema';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface KsefNumberingEditorProps {
   connectionId: string;
@@ -150,8 +151,8 @@ export function KsefNumberingEditor({
 
   const isPending = createSeries.isPending || updateSeries.isPending;
 
-  const validationMessages = Object.values(errors).flatMap((error) =>
-    error && 'message' in error && error.message ? [String(error.message)] : [],
+  const validationMessages = Object.values(errors).flatMap((fieldError) =>
+    fieldError && 'message' in fieldError && fieldError.message ? [String(fieldError.message)] : [],
   );
 
   const loweringNextNumber =
@@ -197,7 +198,7 @@ export function KsefNumberingEditor({
         form.setError(SERVER_ISSUE_FIELD, { type: 'server', message: joined });
         patternInputRef.current?.focus({ preventScroll: prefersReducedMotion });
       } else {
-        setTopLevelError(error instanceof Error ? error.message : copy.saveError.fallback);
+        setTopLevelError(describeApiError(error, 'ksef'));
       }
     }
   });

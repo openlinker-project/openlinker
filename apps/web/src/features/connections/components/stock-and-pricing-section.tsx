@@ -514,6 +514,7 @@ export function StockAndPricingSection({
               <FormField
                 label={copy.location.label}
                 name="stockLocationOverride"
+                /* eslint-disable-next-line no-restricted-syntax -- a form field error from the resolver, already translated */
                 error={locationOverrideError?.message}
                 description={copy.location.description}
               >

@@ -62,8 +62,9 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import { interpolate, renderRich } from '../../../shared/i18n';
+import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
 import { useEparagonyMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 /** Copy sub-key for each document lane's checkbox, in product order. */
 const DOCUMENT_CHOICE_KEYS = {
@@ -119,6 +120,7 @@ export function EparagonySetupForm({
   onDocumentCapabilitiesChange,
 }: EparagonySetupFormProps = {}): ReactElement {
   const copy = useEparagonyMessages().eparagonySetupForm;
+  const uiCopy = useMessages('ui');
   const createConnection = useCreateConnectionMutation();
   const testConnection = useTestConnectionMutation();
   const navigate = useNavigate();
@@ -162,8 +164,8 @@ export function EparagonySetupForm({
   );
   const addressPartRequired = eparagonySetupMessage('addressPartRequired');
   const validationMessages = [
-    ...Object.values(errors).flatMap((error) =>
-      error?.message && error.message !== addressPartRequired ? [String(error.message)] : [],
+    ...Object.values(errors).flatMap((fieldError) =>
+      fieldError?.message && fieldError.message !== addressPartRequired ? [String(fieldError.message)] : [],
     ),
     // One summary line for the whole address, rather than one "Required." per empty part.
     ...(hasAddressError ? [copy.addressSummary] : []),
@@ -250,7 +252,7 @@ export function EparagonySetupForm({
             tone={testResult.success ? 'success' : 'error'}
             title={testResult.success ? copy.test.passed : copy.test.failed}
           >
-            {testResult.message}
+            {`${uiCopy.apiError.technicalDetails}: ${testResult.message}`}
             {typeof testResult.latencyMs === 'number'
               ? interpolate(copy.test.latency, { ms: testResult.latencyMs })
               : null}
@@ -258,7 +260,7 @@ export function EparagonySetupForm({
         ) : null}
         {testConnection.error ? (
           <Alert tone="error" title={copy.test.unableToTest}>
-            {testConnection.error.message}
+            {describeApiError(testConnection.error, 'eparagony')}
           </Alert>
         ) : null}
         <div className="form-actions">
@@ -285,7 +287,7 @@ export function EparagonySetupForm({
       ) : null}
       {createConnection.error ? (
         <Alert tone="error" title={copy.unableToCreate}>
-          {createConnection.error.message}
+          {describeApiError(createConnection.error, 'eparagony')}
           {unmatchedServerErrors.length > 0 ? (
             <ul>
               {unmatchedServerErrors.map((line) => (

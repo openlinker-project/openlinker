@@ -53,7 +53,6 @@
     "rejectedFallback": "KSeF rejected this invoice.",
     "resend": "Resend to KSeF",
     "resendFailed": "Re-send failed",
-    "resendFailedDesc": "Could not re-send the invoice to KSeF.",
     "resendSuccess": "Re-sent to KSeF",
     "resendSuccessDesc": "inFakt is submitting this invoice to KSeF again. Its clearance status will refresh shortly.",
     "resending": "Re-sending…",

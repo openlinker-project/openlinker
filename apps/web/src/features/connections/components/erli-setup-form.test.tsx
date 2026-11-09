@@ -14,6 +14,7 @@ import {
   renderWithProviders,
 } from '../../../test/test-utils';
 import { ErliSetupForm } from './erli-setup-form';
+import { getMessages } from '../../../shared/i18n';
 
 const SHIPPING_DEFAULT = {
   name: 'Shipping',
@@ -190,7 +191,7 @@ describe('ErliSetupForm', () => {
     fireEvent.click(testButton);
 
     expect(await screen.findByText('Unable to test connection')).toBeInTheDocument();
-    expect(screen.getByText(/Network unreachable/)).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
     // The success/fail result alert must NOT appear on the rejected path.
     expect(screen.queryByText('Connection test passed')).not.toBeInTheDocument();
     expect(screen.queryByText('Connection test failed')).not.toBeInTheDocument();

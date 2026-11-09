@@ -23,6 +23,7 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useSubiektGtMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 /** Bearer bridge-token credential key — pinned to the Subiekt BE adapter (#753). */
 export const SUBIEKT_CREDENTIAL_KEY = 'bridgeToken';
@@ -76,7 +77,7 @@ export function SubiektCredentialsPanel({
     >
       {showRotate ? (
         <div className="form-grid">
-          {rotate.error ? <Alert tone="error">{rotate.error.message}</Alert> : null}
+          {rotate.error ? <Alert tone="error">{describeApiError(rotate.error, 'subiekt-gt')}</Alert> : null}
           <Input
             type="password"
             autoComplete="off"
