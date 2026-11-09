@@ -36,7 +36,13 @@
  *
  * @module features/listings/components/allegro
  */
-import { formatPlural, getLocale, getMessages, interpolate } from '../../../../shared/i18n';
+import {
+  formatPlural,
+  getBcp47Locale,
+  getLocale,
+  getMessages,
+  interpolate,
+} from '../../../../shared/i18n';
 import type {
   OfferBlockerCopy,
   OfferBlockerDescribeContext,
@@ -279,7 +285,7 @@ export const allegroOfferValidation: OfferValidationContribution = {
       return {
         title: copy.title,
         detail: interpolate(formatPlural(affected, copy.detail, getLocale()), {
-          total: total.toLocaleString(),
+          total: total.toLocaleString(getBcp47Locale(getLocale())),
         }),
         action: { label: copy.action, href: allegroSalesCenterUrl(connectionConfig) },
       };

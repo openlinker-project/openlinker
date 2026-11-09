@@ -43,18 +43,43 @@
         "accountRefused": {
           "action": "Otwórz Sales Center Allegro",
           "detail": {
-            "few": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów batch bez zmian.",
-            "many": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów batch bez zmian.",
-            "one": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów batch bez zmian.",
-            "other": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów batch bez zmian."
+            "few": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów partię bez zmian.",
+            "many": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów partię bez zmian.",
+            "one": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów partię bez zmian.",
+            "other": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów partię bez zmian."
           },
           "title": "Allegro odrzuciło te oferty, bo konto sprzedawcy nie może sprzedawać."
         }
       },
       "recovery": {
-        "accountOnly": "Ponów batch dokładnie tak, jak został zapisany, gdy konto znów będzie mogło sprzedawać."
+        "accountOnly": "Ponów partię dokładnie tak, jak został zapisany, gdy konto znów będzie mogło sprzedawać."
       },
       "triage": {
+        "failedNothingLive": {
+          "few": "{n} warianty nie przeszły. Nic nie zostało opublikowane.",
+          "many": "{n} wariantów nie przeszło. Nic nie zostało opublikowane.",
+          "one": "{n} wariant nie przeszedł. Nic nie zostało opublikowane.",
+          "other": "{n} wariantu nie przeszło. Nic nie zostało opublikowane."
+        },
+        "failedOfTotal": {
+          "few": "Nie przeszło {failed} z {n} wariantów.",
+          "many": "Nie przeszło {failed} z {n} wariantów.",
+          "one": "Nie przeszło {failed} z {n} wariantu.",
+          "other": "Nie przeszło {failed} z {n} wariantów."
+        },
+        "failedSoFar": {
+          "few": "Do tej pory nie przeszły {n} warianty.",
+          "many": "Do tej pory nie przeszło {n} wariantów.",
+          "one": "Do tej pory nie przeszedł {n} wariant.",
+          "other": "Do tej pory nie przeszło {n} wariantu."
+        },
+        "fixAndResubmit": "Popraw i wyślij ponownie ({n})",
+        "liveOffers": {
+          "few": "{n} oferty są aktywne.",
+          "many": "{n} ofert jest aktywnych.",
+          "one": "{n} oferta jest aktywna.",
+          "other": "{n} oferty jest aktywnej."
+        },
         "offerCause": {
           "few": "{n} warianty odrzucono z powodu danych oferty",
           "many": "{n} wariantów odrzucono z powodu danych oferty",
@@ -62,8 +87,11 @@
           "other": "{n} wariantu odrzucono z powodu danych oferty"
         },
         "offerDetail": "Otwórz je w kreatorze z zaznaczonymi wariantami, popraw dane i wyślij ponownie.",
+        "opensInNewTab": "(otwiera się w nowej karcie)",
         "retryCause": "Ponów bez zmian",
-        "retryDetail": "Uruchamia ponownie każdy nieudany wariant dokładnie tak, jak go zapisano. Dla błędów, które mogą przejść za drugim razem."
+        "retryDetail": "Uruchamia ponownie każdy nieudany wariant dokładnie tak, jak go zapisano. Dla błędów, które mogą przejść za drugim razem.",
+        "retryUnchanged": "Ponów bez zmian ({n})",
+        "retrying": "Ponawianie…"
       }
     },
     "bulkBlockers": {

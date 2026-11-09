@@ -49,13 +49,33 @@
         "accountOnly": "Re-run the batch exactly as saved once the account can sell again."
       },
       "triage": {
+        "failedNothingLive": {
+          "one": "{n} variant failed. Nothing went live.",
+          "other": "{n} variants failed. Nothing went live."
+        },
+        "failedOfTotal": {
+          "one": "{failed} of {n} variant failed.",
+          "other": "{failed} of {n} variants failed."
+        },
+        "failedSoFar": {
+          "one": "{n} variant has failed so far.",
+          "other": "{n} variants have failed so far."
+        },
+        "fixAndResubmit": "Fix and resubmit ({n})",
+        "liveOffers": {
+          "one": "{n} offer is live.",
+          "other": "{n} offers are live."
+        },
         "offerCause": {
           "one": "{n} variant was refused for its offer data",
           "other": "{n} variants were refused for their offer data"
         },
         "offerDetail": "Open them in the wizard with those variants selected, fix the data and submit again.",
+        "opensInNewTab": "(opens in a new tab)",
         "retryCause": "Retry without changes",
-        "retryDetail": "Re-runs every failed variant exactly as saved. Use it for errors that may pass on a second try."
+        "retryDetail": "Re-runs every failed variant exactly as saved. Use it for errors that may pass on a second try.",
+        "retryUnchanged": "Retry unchanged ({n})",
+        "retrying": "Retrying…"
       }
     },
     "bulkBlockers": {

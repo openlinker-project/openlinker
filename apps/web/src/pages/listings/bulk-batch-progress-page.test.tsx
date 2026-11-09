@@ -183,6 +183,46 @@ describe('BulkBatchProgressPage', () => {
     );
   });
 
+  it('should not claim nothing went live while the batch is still running (#4004)', async () => {
+    const refusal = { code: 'SellerAccountWithSellBlockadeException', message: 'Konto zablokowane.' };
+    const apiClient = createMockApiClient({
+      connections: {
+        list: vi.fn().mockResolvedValue([
+          {
+            id: 'conn_1',
+            name: 'Allegro sandbox',
+            platformType: 'allegro',
+            status: 'active',
+            config: { environment: 'sandbox' },
+            credentialsBacked: true,
+            adapterKey: 'allegro.publicapi.v1',
+            enabledCapabilities: ['OfferManager'],
+            supportedCapabilities: ['OfferManager'],
+            createdAt: '2026-01-01T00:00:00Z',
+            updatedAt: '2026-01-01T00:00:00Z',
+          },
+        ]),
+      },
+      listings: {
+        getBulkBatch: vi.fn().mockResolvedValue(
+          makeBatch({
+            status: 'running',
+            totalCount: 3,
+            succeededCount: 0,
+            failedCount: 1,
+            records: [failedRecord({ id: 'rec_a', errors: [refusal] })],
+          }),
+        ),
+      },
+    });
+
+    renderPage(apiClient);
+
+    expect(await screen.findByText('1 variant has failed so far.')).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing went live/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Retry unchanged/ })).not.toBeInTheDocument();
+  });
+
   it('does not show the recovery bar when batch is still running', async () => {
     const apiClient = createMockApiClient({
       listings: {

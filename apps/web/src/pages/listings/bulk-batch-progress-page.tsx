@@ -35,7 +35,7 @@ import { useBulkBatchQuery } from '../../features/listings/hooks/use-bulk-batch-
 import { useBulkRetryFailedMutation } from '../../features/listings/hooks/use-bulk-retry-failed-mutation';
 import { useConnectionsQuery } from '../../features/connections';
 import { splitAccountLevelFailures } from '../../features/listings/lib/account-level-failures';
-import { interpolate, useMessages, usePlural } from '../../shared/i18n';
+import { interpolate, useFormat, useMessages, usePlural } from '../../shared/i18n';
 import { usePlatform } from '../../shared/plugins';
 import {
   TERMINAL_BULK_BATCH_STATUSES,
@@ -63,6 +63,7 @@ export function BulkBatchProgressPage(): ReactElement {
   );
   const copy = useMessages('listings').bulkBatch;
   const plural = usePlural();
+  const { number: formatCount } = useFormat();
   const batchConnection = connectionsQuery.data?.find((c) => c.id === query.data?.connectionId);
   const accountRefusal = usePlatform(batchConnection?.platformType)?.offerValidation
     ?.accountLevelRefusal;
@@ -270,9 +271,13 @@ export function BulkBatchProgressPage(): ReactElement {
       {showAccountRow || showRecovery ? (
         <section className="batch-triage" aria-labelledby="batch-triage-title">
           <h2 className="batch-triage__title" id="batch-triage-title">
-            {batch.succeededCount === 0
-              ? `${batch.failedCount.toLocaleString()} ${batch.failedCount === 1 ? 'variant' : 'variants'} failed. Nothing went live.`
-              : `${batch.failedCount.toLocaleString()} of ${batch.totalCount.toLocaleString()} variants failed. ${batch.succeededCount.toLocaleString()} ${batch.succeededCount === 1 ? 'offer is' : 'offers are'} live.`}
+            {!isTerminal
+              ? plural(batch.failedCount, copy.triage.failedSoFar)
+              : batch.succeededCount === 0
+                ? plural(batch.failedCount, copy.triage.failedNothingLive)
+                : `${plural(batch.totalCount, copy.triage.failedOfTotal, {
+                    failed: formatCount(batch.failedCount),
+                  })} ${plural(batch.succeededCount, copy.triage.liveOffers)}`}
           </h2>
           <ul className="batch-triage__list">
             {showAccountRow && accountNotice ? (
@@ -299,7 +304,9 @@ export function BulkBatchProgressPage(): ReactElement {
                       target="_blank"
                       rel="noreferrer"
                     >
-                      {accountNotice.action.label} ↗
+                      {accountNotice.action.label}
+                      <span aria-hidden="true"> ↗</span>
+                      <span className="sr-only"> {copy.triage.opensInNewTab}</span>
                     </a>
                   </div>
                 ) : null}
@@ -329,12 +336,12 @@ export function BulkBatchProgressPage(): ReactElement {
                         batchId: batch.id,
                       })}
                     >
-                      Fix and resubmit ({offerFailedCount.toLocaleString()})
+                      {interpolate(copy.triage.fixAndResubmit, { n: formatCount(offerFailedCount) })}
                     </Link>
                   ) : (
                     <ReadOnlyLock active={write.demoReadOnly} message={DEMO_LOCK_MESSAGE}>
                       <Button tone="primary" className="button--sm" disabled>
-                        Fix and resubmit ({offerFailedCount.toLocaleString()})
+                        {interpolate(copy.triage.fixAndResubmit, { n: formatCount(offerFailedCount) })}
                       </Button>
                     </ReadOnlyLock>
                   )}
@@ -359,8 +366,8 @@ export function BulkBatchProgressPage(): ReactElement {
                       disabled={!write.canWrite || retryMutation.isPending}
                     >
                       {retryMutation.isPending
-                        ? 'Retrying…'
-                        : `Retry unchanged (${batch.failedCount.toLocaleString()})`}
+                        ? copy.triage.retrying
+                        : interpolate(copy.triage.retryUnchanged, { n: formatCount(batch.failedCount) })}
                     </Button>
                   </ReadOnlyLock>
                 </div>

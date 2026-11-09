@@ -1,4 +1,7 @@
 {
+  "listings:bulkBatch.triage.fixAndResubmit": 34,
+  "listings:bulkBatch.triage.retryUnchanged": 30,
+  "listings:bulkBatch.triage.retrying": 30,
   "listings:bulkBlockers.panel.advisoryNote": 22,
   "listings:bulkBlockers.panel.openSharedBase": 28,
   "listings:bulkBlockers.panel.setCategoryForAll": 40,
