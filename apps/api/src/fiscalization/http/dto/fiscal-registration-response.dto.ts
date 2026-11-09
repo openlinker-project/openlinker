@@ -100,6 +100,20 @@ export class FiscalRegistrationResponseDto {
   @ApiProperty({ description: 'The exactly-once key this registration is held under' })
   idempotencyKey!: string;
 
+  @ApiProperty({
+    description:
+      '0-based attempt at this (connection, order) receipt (#3960). A refused attempt is final; ' +
+      'asking again creates the next attempt as its own record.',
+  })
+  attempt!: number;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The refused attempt this one follows, or null for a first attempt (#3960).',
+  })
+  previousAttemptId!: string | null;
+
   @ApiProperty({ description: 'pending | registering | registered | failed' })
   status!: FiscalRegistrationStatus;
 

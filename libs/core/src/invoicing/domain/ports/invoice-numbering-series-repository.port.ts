@@ -114,4 +114,33 @@ export interface InvoiceNumberingSeriesRepositoryPort {
     /** Provider max document-number length; over-length renders throw (#11). Absent = no limit. */
     maxDocumentNumberLength?: number;
   }): Promise<AllocatedNumber>;
+
+  /**
+   * Move a refused invoice's number onto the attempt that follows it (#3960).
+   *
+   * A refused attempt already holds the number it was allocated. Allocating a
+   * fresh number for the next attempt leaves that one as a gap in the
+   * sequence, which the gap audit reports. So, WHEN IT IS SAFE, the next
+   * attempt takes the number instead: one transaction locks the predecessor,
+   * clears its number, then writes it onto the successor (two statements, in
+   * that order, because the unique number indexes check each row immediately).
+   *
+   * It is safe only when the number provably never left OpenLinker
+   * (`canInheritRefusedDocumentNumber`): a terminal refusal whose failure code
+   * says the adapter refused BEFORE contacting the provider. A plain
+   * `failed` + `rejected` is not enough, because some adapters reach it after
+   * the provider (or a relay) accepted the request and later reported an
+   * error, by which time the number may be recorded there; reusing it could
+   * be refused as a duplicate or put one number on two documents. A gap is the
+   * recoverable outcome, a duplicate number is not, so doubt means no move.
+   *
+   * Moves nothing and returns `null` unless that rule holds, the predecessor is
+   * numbered from `seriesId`, and the successor has no number yet. The caller
+   * then allocates a fresh number, and the old one stays an audited gap.
+   */
+  inheritNumber(input: {
+    fromRecordId: string;
+    toRecordId: string;
+    seriesId: string;
+  }): Promise<AllocatedNumber | null>;
 }
