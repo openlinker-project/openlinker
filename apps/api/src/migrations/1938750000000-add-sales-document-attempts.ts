@@ -26,8 +26,8 @@ const TABLES = [
   { table: 'invoice_records', index: 'UQ_invoice_records_previous_attempt' },
 ] as const;
 
-export class AddSalesDocumentAttempts1938700000000 implements MigrationInterface {
-  name = 'AddSalesDocumentAttempts1938700000000';
+export class AddSalesDocumentAttempts1938750000000 implements MigrationInterface {
+  name = 'AddSalesDocumentAttempts1938750000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     for (const { table, index } of TABLES) {
