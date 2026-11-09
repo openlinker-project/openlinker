@@ -6,7 +6,7 @@
  *
  * @module features/language
  */
-export { LanguageSwitch, LanguageToggle, restoreFocusAfterLanguageChange } from './components/language-switch';
-export type { LanguageSwitchProps, LanguageToggleProps } from './components/language-switch';
+export { LanguageMenuList, LanguageSwitch, restoreFocusAfterLanguageChange } from './components/language-switch';
+export type { LanguageMenuListProps, LanguageSwitchProps } from './components/language-switch';
 export { LANGUAGE_OPTIONS, useLanguageOptions } from './hooks/use-language-options';
 export type { LanguageOption } from './hooks/use-language-options';

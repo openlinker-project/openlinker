@@ -406,8 +406,11 @@ describe('AppShell', () => {
 
     await user.click(await screen.findByRole('button', { name: /Account menu for/i }));
 
-    const language = await screen.findByRole('radiogroup', { name: 'Language' });
-    expect(within(language).getByRole('radio', { name: /English/ })).toHaveAttribute('aria-checked', 'true');
+    const language = await screen.findByRole('listbox', { name: 'Language' });
+    expect(within(language).getByRole('option', { name: /English/ })).toHaveAttribute('aria-selected', 'true');
+    // First section of the menu, above Theme.
+    const theme = screen.getByRole('radiogroup', { name: 'Theme' });
+    expect(language.compareDocumentPosition(theme) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('opens the mobile drawer when the hamburger is clicked', async () => {
