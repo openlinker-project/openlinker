@@ -95,6 +95,12 @@ export interface MarketplaceOfferQuantityUpdatePayloadV1 {
    * before it existed stays valid and writes unguarded, exactly as before.
    */
   observedAt?: string;
+  /**
+   * The internal variant the quantity belongs to (#4062), recorded with the
+   * push so the stock history can say what was sent for a change. Optional: a
+   * legacy job and the stale-offer pause carry none.
+   */
+  productVariantId?: string;
 }
 
 export interface MarketplaceOfferFieldUpdatePayloadV1 {

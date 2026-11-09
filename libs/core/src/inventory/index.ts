@@ -351,6 +351,15 @@ export {
   INVENTORY_MOVEMENT_RETENTION_DAYS_DEFAULT,
 } from './domain/types/inventory-movement.types';
 
+// What OpenLinker sent each channel (#4062)
+export {
+  ChannelQuantityPushOutcomeValues,
+  ChannelQuantityPushOutcome,
+  ChannelQuantityPush,
+  AppendChannelQuantityPushInput,
+  LastChannelQuantityPush,
+} from './domain/types/channel-quantity-push.types';
+
 // Offer quantity write-order guard (#2617)
 export {
   OFFER_QUANTITY_WRITE_LOCK_TTL_MS,

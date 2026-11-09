@@ -212,6 +212,13 @@ export class InventoryController {
             quantity: c.channelShows.quantity,
             observedAt: c.channelShows.observedAt?.toISOString() ?? null,
           },
+          lastSent: c.lastSent
+            ? {
+                quantity: c.lastSent.quantity,
+                outcome: c.lastSent.outcome,
+                pushedAt: c.lastSent.pushedAt.toISOString(),
+              }
+            : null,
         })),
       })),
       generatedAt: new Date().toISOString(),
