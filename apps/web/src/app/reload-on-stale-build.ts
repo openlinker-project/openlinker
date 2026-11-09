@@ -41,7 +41,15 @@ export function reloadOnceForStaleBuild({ storage, now, reload }: StaleBuildRelo
     // Storage unavailable (private mode, blocked): still reload once per load.
   }
   const at = now();
-  if (at - last < STALE_BUILD_RELOAD_WINDOW_MS) return false;
+  if (at - last < STALE_BUILD_RELOAD_WINDOW_MS) {
+    // A second failure this soon is not a stale build, and the router's error
+    // screen alone would leave a persistently broken deploy invisible in the
+    // console. The web app has no shared logger; console.warn is its channel.
+    console.warn(
+      `Stale-build reload suppressed: a chunk failed to load again ${at - last} ms after the last reload.`,
+    );
+    return false;
+  }
   try {
     storage?.setItem(STALE_BUILD_RELOAD_KEY, String(at));
   } catch {

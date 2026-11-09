@@ -29,8 +29,12 @@ describe('reloadOnceForStaleBuild', () => {
     const storage = memoryStorage({ [STALE_BUILD_RELOAD_KEY]: '100000' });
     const reload = vi.fn();
 
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
     expect(reloadOnceForStaleBuild({ storage, now: () => 100_000 + STALE_BUILD_RELOAD_WINDOW_MS - 1, reload })).toBe(false);
     expect(reload).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Stale-build reload suppressed'));
+    warn.mockRestore();
   });
 
   it('should reload again once the window has passed (the next deploy)', () => {

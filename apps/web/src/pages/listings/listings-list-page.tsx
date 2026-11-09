@@ -911,7 +911,13 @@ export function ListingsListPage(): ReactElement {
                           either (#3164 review): unknown is a skeleton,
                           unavailable a dash. */}
                       {priceChangesCountUnavailable ? (
-                        '—'
+                        <span
+                          role="img"
+                          aria-label={copy.views.countUnavailable}
+                          title={copy.views.countUnavailable}
+                        >
+                          -
+                        </span>
                       ) : priceChangesOpenCount === null ? (
                         <span className="tabs__count-skeleton" aria-hidden="true" />
                       ) : (

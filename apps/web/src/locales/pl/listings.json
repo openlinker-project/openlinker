@@ -1607,6 +1607,7 @@
     "views": {
       "all": "Wszystkie oferty",
       "ariaLabel": "Widoki ofert",
+      "countUnavailable": "Liczba niedostępna",
       "priceChanges": "Zmiany cen"
     }
   },
