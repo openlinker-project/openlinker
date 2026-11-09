@@ -2608,6 +2608,86 @@
     "cashOnDelivery": "Za pobraniem",
     "online": "Płatność online"
   },
+  "paymentWriteback": {
+    "bulkRegionLabel": "Płatność nie trafiła do sklepu",
+    "bulkSummary": {
+      "few": "{n} zamówienia. Ich sklepy nadal pokazują je jako nieopłacone.",
+      "many": "{n} zamówień. Ich sklepy nadal pokazują je jako nieopłacone.",
+      "one": "{n} zamówienie. Jego sklep nadal pokazuje je jako nieopłacone.",
+      "other": "{n} zamówienia. Ich sklepy nadal pokazują je jako nieopłacone."
+    },
+    "cancelledBody": "Zamówienie pozostaje anulowane, a sklepy nie zostały zmienione. Sprawdź zwrot pieniędzy na marketplace.",
+    "cancelledTitle": "Kupujący opłacił anulowane zamówienie",
+    "cashOnDelivery": "Za pobraniem",
+    "chipLabel": "Płatność",
+    "chipValue": "Nie trafiła do sklepu",
+    "filterCheck": "Płatność nie trafiła do sklepu",
+    "filterQuick": "Płatność nie trafiła do sklepu",
+    "handledDone": {
+      "few": "Oznaczono {n} zamówienia jako obsłużone",
+      "many": "Oznaczono {n} zamówień jako obsłużone",
+      "one": "Oznaczono {n} zamówienie jako obsłużone",
+      "other": "Oznaczono {n} zamówienia jako obsłużone"
+    },
+    "handledDoneDetail": "Te zamówienia nie są już widoczne w filtrze „Płatność nie trafiła do sklepu”.",
+    "listMarker": "Płatność nie trafiła do <shop></shop>",
+    "listMarkerGeneric": "Płatność nie trafiła do sklepu",
+    "markHandled": "Oznacz jako obsłużone",
+    "markHandledFailed": "Nie udało się oznaczyć jako obsłużone",
+    "notPaidYet": "Jeszcze nieopłacone",
+    "notTracked": {
+      "few": "<shops></shops> nie śledzą płatności.",
+      "many": "<shops></shops> nie śledzą płatności.",
+      "one": "<shops></shops> nie śledzi płatności.",
+      "other": "<shops></shops> nie śledzą płatności."
+    },
+    "paidAfterCancellation": "Opłacone po anulowaniu",
+    "paidOn": "Opłacone w {source}",
+    "paidOnUnknown": "Opłacone",
+    "panelTitle": "Płatność",
+    "problemBody": "Ponów próbę albo sam oznacz zamówienie w sklepie jako opłacone.",
+    "problemTitleMany": {
+      "few": "{n} sklepy nadal pokazują to zamówienie jako nieopłacone",
+      "many": "{n} sklepów nadal pokazuje to zamówienie jako nieopłacone",
+      "one": "{n} sklep nadal pokazuje to zamówienie jako nieopłacone",
+      "other": "{n} sklepu nadal pokazuje to zamówienie jako nieopłacone"
+    },
+    "problemTitleOne": "<shop></shop> nadal pokazuje to zamówienie jako nieopłacone",
+    "progress": "Zaktualizowane sklepy: {done} z {total}",
+    "retryDone": {
+      "few": "Dodano do kolejki {n} aktualizacje sklepów",
+      "many": "Dodano do kolejki {n} aktualizacji sklepów",
+      "one": "Dodano do kolejki {n} aktualizację sklepu",
+      "other": "Dodano do kolejki {n} aktualizacji sklepów"
+    },
+    "retryDoneDetail": "OpenLinker za chwilę oznaczy zamówienie w sklepie jako opłacone.",
+    "retryFailed": "Nie udało się ponowić",
+    "retryNow": "Ponów teraz",
+    "retrying": "Ponawianie…",
+    "row": {
+      "awaiting": "Czeka na płatność",
+      "cod": "Za pobraniem",
+      "codHelper": "Nie oznaczono jako opłacone",
+      "createdPaid": "Opłacone przy utworzeniu",
+      "handled": "Obsłużone",
+      "handledHelper": "Oznaczono jako obsłużone",
+      "notSent": "Nie wysłano",
+      "notSentCancelled": "Zamówienie anulowane",
+      "notSentNoTotal": "Nieznana kwota zamówienia",
+      "notSentRefunded": "Pieniądze zwrócone",
+      "notSentRejected": "Sklep to odrzucił",
+      "notSentStopped": "Ponawianie zatrzymane",
+      "notTracked": "Bez śledzenia płatności",
+      "paidInShop": "Opłacone w sklepie",
+      "retrying": "Ponawianie",
+      "retryingHelper": "Sklep nie odpowiedział",
+      "sending": "Aktualizowanie",
+      "skippedBySetting": "Po Twojej stronie",
+      "skippedBySettingHelper": "Ustawiono, by nie zmieniać płatności",
+      "unknown": "Nieznany stan"
+    },
+    "shopsLabel": "Płatność w każdym sklepie"
+  },
   "refundConfirmation": {
     "amountHint": "Kwota, którą faktycznie zwrócono. OpenLinker jej nie oblicza.",
     "amountInvalid": "Podaj kwotę, np. 12.50.",

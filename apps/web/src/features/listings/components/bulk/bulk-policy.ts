@@ -175,6 +175,12 @@ export function stockPolicyEquals(a: StockPolicy, b: StockPolicy): boolean {
 export interface ComputeBlockersInput {
   hasVariant: boolean;
   /**
+   * A catalogue card matched in a different category than the operator's
+   * mapping and the operator has not picked a category since (#3994). Emits the
+   * advisory `card-category-differs` chip; never gates the row.
+   */
+  cardInOtherCategory?: boolean;
+  /**
    * Per-variant category outcome. The Resolve step synthesizes `{ kind: 'no-ean' }`
    * for variant rows without a barcode (no BE call); `undefined` is treated
    * defensively as `no-match`.
@@ -252,6 +258,8 @@ export interface ComputeBlockersInput {
   barcode?: string | null;
   /** Whether a catalogue lookup actually ran for this batch (#2211/#2243). */
   catalogueConsulted?: boolean;
+  /** The barcode matched a catalogue product that was set aside for the mapping (#3994). */
+  barcodeMatchedCatalogue?: boolean;
   /** Included siblings of this row's product that would create their own card (#2243). */
   siblingsWithoutCatalogueCard?: number;
   /** Included sibling count for the row's product; 1 ⇒ nothing to group (#2243). */
@@ -312,6 +320,13 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
     }
   }
 
+  // Advisory, independent of `hasCategoryOverride`: a multi-variant sibling
+  // always carries the product-tier category, which would otherwise hide the
+  // disagreement on exactly the rows where a card was set aside (#3994).
+  if (input.cardInOtherCategory) {
+    blockers.push('card-category-differs');
+  }
+
   // Platform-specific blockers (#1096) - declared once per marketplace via its
   // `offerValidation` contribution and emitted as open-world namespaced ids
   // (e.g. `allegro:needs-product-parameters` (#810), `erli:missing-image`). The
@@ -329,6 +344,7 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
         suppliedParameters: input.suppliedParameters,
         barcode: input.barcode,
         catalogueConsulted: input.catalogueConsulted,
+        barcodeMatchedCatalogue: input.barcodeMatchedCatalogue,
         siblingsWithoutCatalogueCard: input.siblingsWithoutCatalogueCard,
         includedSiblingCount: input.includedSiblingCount,
       }),
@@ -675,6 +691,26 @@ export function productCategoryIdOf(row: BulkWizardRow): string | null {
 }
 
 /**
+ * The category one sibling would actually submit under (#2240): a per-variant
+ * override wins, then the product-tier value the family pin uses, then the
+ * variant's own resolution. Shared by the readiness check and the Review step's
+ * Category column (#3994), so what the row shows is what the submit sends.
+ */
+export function submitCategoryIdOf(row: BulkWizardRow, variant: BulkVariantRow): string | null {
+  return variant.override.overrides?.categoryId ?? productCategoryIdOf(row) ?? variant.resolvedCategoryId;
+}
+
+/**
+ * Whether the operator picked this variant's category in the wizard (#3994) -
+ * on the variant itself or at the product tier. Deliberately NOT
+ * `productCategoryIdOf`, which also returns the RESOLVED category: a resolved
+ * value is what the chip questions, so it cannot also be what silences it.
+ */
+export function operatorPickedCategory(row: BulkWizardRow, variant: BulkVariantRow): boolean {
+  return Boolean(variant.override.overrides?.categoryId || row.override.overrides?.categoryId);
+}
+
+/**
  * Recompute one sibling's blocker set from its own EAN + master values + the
  * batch policies (#1741). Mirrors `recomputeRowBlockers` but keyed on the
  * per-variant row. `no-master-stock` is downgraded for multi-variant siblings -
@@ -698,12 +734,12 @@ export function recomputeVariantBlockers(
   // did before #2240 - made the shared category unable to clear a sibling's
   // blocker even though the submit was about to pin it.
   const productCategoryId = productCategoryIdOf(row);
-  const submitCategoryId =
-    variant.override.overrides?.categoryId ?? productCategoryId ?? variant.resolvedCategoryId;
+  const submitCategoryId = submitCategoryIdOf(row, variant);
   const coverage = siblingCardCoverage(row);
   const blockers = computeBlockers({
     hasVariant: true,
     categoryResult: variantCategoryResult(variant, submitCategoryId),
+    cardInOtherCategory: variant.overriddenCard !== null && !operatorPickedCategory(row, variant),
     productCategoryId,
     // Per-product policy (on the shared-base override) wins over the batch (#1741).
     pricingPolicy: effectivePricingPolicy(row.override, config.pricingPolicy),
@@ -728,6 +764,7 @@ export function recomputeVariantBlockers(
     suppliedParameters: variant.override.overrides?.parameters,
     barcode: effectiveVariantEan(variant),
     catalogueConsulted: context.catalogueConsulted,
+    barcodeMatchedCatalogue: variant.overriddenCard !== null,
     siblingsWithoutCatalogueCard: coverage.withoutCard,
     includedSiblingCount: coverage.included,
     categorySchemaUnavailable:

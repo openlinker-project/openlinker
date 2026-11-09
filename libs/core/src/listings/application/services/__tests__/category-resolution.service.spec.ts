@@ -42,8 +42,9 @@ describe('CategoryResolutionService', () => {
     service = module.get(CategoryResolutionService);
   });
 
-  it('should resolve via auto_detect when barcode matches a category', async () => {
+  it('should resolve via auto_detect when barcode matches a category and no mapping exists', async () => {
     marketplace.matchCategoryByBarcode.mockResolvedValue('allegro-cat-123');
+    mappingConfig.resolveDestinationCategory.mockResolvedValue(null);
 
     const result = await service.resolveCategory({
       connectionId: 'conn-1',
@@ -57,7 +58,38 @@ describe('CategoryResolutionService', () => {
       method: 'auto_detect',
     });
     expect(marketplace.matchCategoryByBarcode).toHaveBeenCalledWith('5901234123457');
-    expect(mappingConfig.resolveDestinationCategory).not.toHaveBeenCalled();
+  });
+
+  it('should keep auto_detect when the barcode category equals the mapped category', async () => {
+    marketplace.matchCategoryByBarcode.mockResolvedValue('allegro-cat-123');
+    mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-123');
+
+    const result = await service.resolveCategory({
+      connectionId: 'conn-1',
+      barcode: '5901234123457',
+      sourceCategoryIds: ['ps-cat-1'],
+    });
+
+    expect(result.method).toBe('auto_detect');
+    expect(result.destinationCategoryId).toBe('allegro-cat-123');
+  });
+
+  it('should resolve via category_mapping when the barcode category disagrees with the mapping', async () => {
+    // #3994: an explicit mapping beats a barcode inference.
+    marketplace.matchCategoryByBarcode.mockResolvedValue('allegro-powerbanki');
+    mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-t-shirty');
+
+    const result = await service.resolveCategory({
+      connectionId: 'conn-1',
+      barcode: '5901234000017',
+      sourceCategoryIds: ['ps-tshirts'],
+    });
+
+    expect(result).toEqual({
+      destinationCategoryId: 'allegro-t-shirty',
+      provenance: 'borrows',
+      method: 'category_mapping',
+    });
   });
 
   it('should fall back to category_mapping when auto-detect returns null', async () => {
