@@ -317,6 +317,17 @@ export interface OrderSyncStatus {
 
 export interface OrderRecord {
   internalOrderId: string;
+  /**
+   * Why OpenLinker did NOT route this order to the pack bench while the OMS
+   * is on (#3455/#3487/#3488): `own-shop-order`, `shipped-by-other-system`,
+   * `mirrored-before-routing`, `source-fulfilled`. Not a hold.
+   */
+  fulfillmentRoutingSkipReason?: string | null;
+  /** Why routing is HOLDING the order in OpenLinker (#3485), e.g. `routing-refused`. */
+  fulfillmentBlockReason?: string | null;
+  fulfillmentBlockDetail?: string | null;
+  /** The order's live work objects (#3482); absent when it has none. */
+  handledInOpenLinker?: { stage: string; workCount: number; assignment: string; assignedToUserId: string | null };
   /** The durable cancellation marker; `null` while the order stands. */
   cancelledAt?: string | null;
   customerId: string | null;
@@ -1331,4 +1342,23 @@ export interface DocumentEmailDeliveryView {
   outcome: 'sent' | 'failed';
   failureReason: string | null;
   createdAt: string;
+}
+
+/** One work object on `GET /fulfillment/works` (#2406) - the fields the specs read. */
+export interface FulfillmentWorkView {
+  id: string;
+  orderId: string;
+  orderReference: string | null;
+  status: string;
+  requestStatus: string;
+  assignedToUserId: string | null;
+  lines: Array<{ productVariantId: string | null; totalQuantity: number }>;
+}
+
+/** `GET /fulfillment/works` (#2406). */
+export interface FulfillmentWorkPage {
+  works: FulfillmentWorkView[];
+  total: number;
+  limit: number;
+  offset: number;
 }

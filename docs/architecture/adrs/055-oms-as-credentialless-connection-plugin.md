@@ -86,6 +86,20 @@ when the repo's history goes public.
 option expires when the repository's history goes public; past that date only the in-repo
 license-split remains.
 
+## Amendment (#3483, 2026-10-01): under the OL-OMS posture OpenLinker is the order's system of record
+
+Shipping the OMS as an ordinary connection-backed plugin (this ADR) is about *how* it is wired. A
+consequence for *what it owns* was left unstated and is stated here: when the OL-OMS holds the
+sourcing authority and OpenLinker executes the work, **OpenLinker is the system of record for that
+order**. The order is not created in the product master. The master only has its stock lowered, by an
+idempotent `order_sale` adjustment (ADR-061 amendment, #3453). This is a property of the OL-OMS
+posture, not of the plugin seam: a third-party OMS reached through the same seam is a different
+system, and the destination shops it routes to still receive the order.
+
+Four classes of order stay outside OpenLinker's routing and keep today's path (#3487 source is a
+product master, #3488 `omp_fulfilled`, #3455 already mirrored before the switch), and an order the
+router cannot place is held in OpenLinker rather than mirrored (#3485).
+
 ## References
 
 - Related issues: #1943, #576

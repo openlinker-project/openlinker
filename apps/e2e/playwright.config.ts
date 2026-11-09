@@ -70,6 +70,13 @@
  *   - `g11`          - G11 product and analytics suite (#3591): variant pictures,
  *                      cost price, margin, cost work list, CSV export. Mutating;
  *                      reads its stand from `E2E_G11_SETUP`. `retries: 0`.
+ *   - `oms-onboarding-mockup` - the committed OMS onboarding wizard mockup,
+ *                      one screenshot per state (#3458). Opens the file over
+ *                      `file://`, needs no stack. `retries: 1`.
+ *   - `oms-onboarding` - the live `/settings/packing` wizard against the
+ *                      mockup, plus what packing does to orders (#3458).
+ *                      Mutating parts are opt-in (`E2E_OMS_ONBOARDING_WALK`,
+ *                      `E2E_ATTENDED`). `retries: 0`.
  *   - `wizard-blockers` - category-blocker states in the same wizard (#2240):
  *                      which cause is reported, where the fix lives, and what
  *                      the confirmation says about variants that will not be
@@ -372,6 +379,26 @@ export default defineConfig({
       // so `retries: 0`.
       name: 'pricing',
       testMatch: /pricing\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // OMS onboarding mockup baselines (#3458): the repo-committed mockup over
+      // `file://`, so no stack, no auth and no `setup` dependency. Read-only.
+      name: 'oms-onboarding-mockup',
+      testMatch: /oms-onboarding\/mockup-baselines\.spec\.ts/,
+      retries: 1,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      // The live OMS onboarding wizard (#3458). `live-step-1` is read-only
+      // (only the connections list is rewritten in the browser); `live-walk`
+      // turns packing on and off and creates a packer; `golden-path` buys on
+      // Allegro and synthesizes a PrestaShop order. `retries: 0`: a retry
+      // would buy or create a second time.
+      name: 'oms-onboarding',
+      testMatch: /oms-onboarding\/(live-step-1|live-walk|golden-path)\.spec\.ts/,
       retries: 0,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
