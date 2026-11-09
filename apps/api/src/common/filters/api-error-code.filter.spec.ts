@@ -126,6 +126,51 @@ describe('ApiErrorCodeFilter', () => {
     });
   });
 
+  it('should keep the 4xx status and message of an error raised outside Nest', () => {
+    const { host, status, json } = createHost();
+    const tooLarge = Object.assign(new Error('request entity too large'), {
+      statusCode: 413,
+      status: 413,
+      expose: true,
+      type: 'entity.too.large',
+    });
+
+    filter.catch(tooLarge, host);
+
+    expect(status).toHaveBeenCalledWith(413);
+    expect(json).toHaveBeenCalledWith({
+      statusCode: 413,
+      message: 'request entity too large',
+      code: 'HTTP_413',
+    });
+  });
+
+  it('should read the status field when statusCode is absent', () => {
+    const { host, status, json } = createHost();
+
+    filter.catch(Object.assign(new Error('unsupported charset "X"'), { status: 415 }), host);
+
+    expect(status).toHaveBeenCalledWith(415);
+    expect(json).toHaveBeenCalledWith(expect.objectContaining({ code: 'HTTP_415' }));
+  });
+
+  it.each([
+    ['a 5xx status', { statusCode: 503 }],
+    ['an unexposed message', { statusCode: 400, expose: false }],
+    ['a non-numeric status', { statusCode: '400' }],
+  ])('should answer an error with %s as a generic 500', (_label, extra) => {
+    const { host, status, json } = createHost();
+
+    filter.catch(Object.assign(new Error('db host 10.0.0.5 refused'), extra), host);
+
+    expect(status).toHaveBeenCalledWith(500);
+    expect(json).toHaveBeenCalledWith({
+      statusCode: 500,
+      message: 'Internal server error',
+      code: 'INTERNAL_ERROR',
+    });
+  });
+
   it('should answer a thrown non-error value the same way', () => {
     const { host, json } = createHost();
 
