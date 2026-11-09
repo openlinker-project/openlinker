@@ -30,10 +30,16 @@ import {
   cancelShipmentCopy,
   type Shipment,
 } from '../../shipments';
+import { useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { PaymentStatus } from '../api/order-snapshot.schema';
+import type {
+  GenerateLabelBlock,
+  GenerateLabelBlockInput,
+  ShipmentActionButtonsCopy,
+} from './shipment-action-buttons.types';
 
 interface ShipmentActionButtonsProps {
   /** Current active shipment row; `null` when the order has no shipment yet. */
@@ -74,10 +80,18 @@ interface ShipmentActionButtonsProps {
  * auto-open guard, which must apply the same payment gate this button does
  * rather than opening the form unconditionally.
  */
-export const PAYMENT_BLOCKS_DISPATCH: ReadonlySet<PaymentStatus> = new Set(['awaiting', 'refunded']);
+export const PAYMENT_BLOCKS_DISPATCH: ReadonlySet<PaymentStatus> = new Set([
+  'awaiting',
+  'refunded',
+]);
 
-/** Why "Generate label" is unavailable right now. */
-export type GenerateLabelBlock = 'permission' | 'state' | 'post-waybill' | 'route' | 'payment';
+const BLOCK_REASON_KEY = {
+  permission: 'permission',
+  state: 'state',
+  'post-waybill': 'postWaybill',
+  route: 'route',
+  payment: 'payment',
+} as const satisfies Record<GenerateLabelBlock, keyof ShipmentActionButtonsCopy['blockReason']>;
 
 /**
  * Operator-facing sentence per block reason (#1905).
@@ -87,21 +101,11 @@ export type GenerateLabelBlock = 'permission' | 'state' | 'post-waybill' | 'rout
  * `?retryShipmentId=` landing tells the operator the same thing the greyed
  * button does instead of silently doing nothing.
  */
-export const GENERATE_LABEL_BLOCK_REASON: Record<GenerateLabelBlock, string> = {
-  permission: 'Generating a label needs the shipments:write permission.',
-  state: 'Generate label is not available in this shipment state.',
-  'post-waybill':
-    'That shipment already holds a carrier waybill - regenerating would buy a second label. Cancel it with the carrier first.',
-  route: "Routed carrier isn't available to dispatch - resolve delivery routing first.",
-  payment: 'Cannot regenerate yet - awaiting payment.',
-};
-
-export interface GenerateLabelBlockInput {
-  /** `null` ⇒ no shipment row yet (the first-label case). */
-  shipment: Shipment | null;
-  canWrite: boolean;
-  paymentBlocksDispatch: boolean;
-  routeUnavailable: boolean;
+export function generateLabelBlockReason(
+  block: GenerateLabelBlock,
+  copy: ShipmentActionButtonsCopy
+): string {
+  return copy.blockReason[BLOCK_REASON_KEY[block]];
 }
 
 /**
@@ -138,6 +142,7 @@ export function ShipmentActionButtons({
   onGenerateLabelClick,
   routeUnavailable = false,
 }: ShipmentActionButtonsProps): ReactElement {
+  const copy = useMessages('orders').shipmentActionButtons;
   const cancelMutation = useCancelShipmentMutation();
   const notifyMutation = useNotifyDispatchedMutation();
   const labelDownload = useLabelDownload();
@@ -156,7 +161,7 @@ export function ShipmentActionButtons({
   if (shipment !== null && shipment.shippingMethod === 'omp') {
     return (
       <div className="shipment-action-buttons">
-        <span className="text-muted">Fulfilled by destination</span>
+        <span className="text-muted">{copy.fulfilledByDestination}</span>
       </div>
     );
   }
@@ -176,9 +181,7 @@ export function ShipmentActionButtons({
   // Label download needs both a retrievable lifecycle state AND a persisted
   // label ref (the "a label was generated" marker).
   const canDownloadLabel =
-    shipment !== null &&
-    shipment.labelPdfRef !== null &&
-    CAN_DOWNLOAD_LABEL.has(shipment.status);
+    shipment !== null && shipment.labelPdfRef !== null && CAN_DOWNLOAD_LABEL.has(shipment.status);
 
   const handleDownloadLabel = (): void => {
     if (!shipment) return;
@@ -190,7 +193,9 @@ export function ShipmentActionButtons({
     });
   };
 
-  const carrierName = getCarrierDisplayName(shipment?.carrier ?? null) ?? 'the carrier';
+  const carrierName = getCarrierDisplayName(shipment?.carrier ?? null) ?? copy.carrierFallback;
+  const blockReason =
+    generateBlock === null ? undefined : generateLabelBlockReason(generateBlock, copy);
   const cancelCopy = cancelShipmentCopy(shipment?.status ?? 'draft', carrierName);
 
   return (
@@ -201,16 +206,12 @@ export function ShipmentActionButtons({
           className="button--sm"
           onClick={onGenerateLabelClick}
           disabled={!canGenerate}
-          aria-label={
-            generateBlock === null
-              ? 'Generate shipping label'
-              : GENERATE_LABEL_BLOCK_REASON[generateBlock]
-          }
+          aria-label={blockReason ?? copy.generateAria}
           // `title` as well as `aria-label` (#1905): a sighted mouse user
           // otherwise sees a greyed button with no reason anywhere on screen.
-          title={generateBlock === null ? undefined : GENERATE_LABEL_BLOCK_REASON[generateBlock]}
+          title={blockReason}
         >
-          Generate label
+          {copy.generate}
         </Button>
         <Button
           tone="danger"
@@ -218,7 +219,7 @@ export function ShipmentActionButtons({
           onClick={() => setCancelDialogOpen(true)}
           disabled={!canCancel || cancelMutation.isPending}
         >
-          Cancel
+          {copy.cancel}
         </Button>
         <Button
           tone="secondary"
@@ -226,20 +227,16 @@ export function ShipmentActionButtons({
           onClick={() => setNotifyDialogOpen(true)}
           disabled={!canNotify || notifyMutation.isPending}
         >
-          Mark dispatched
+          {copy.markDispatched}
         </Button>
         <Button
           tone="secondary"
           className="button--sm"
           onClick={handleDownloadLabel}
           disabled={!canDownloadLabel || labelDownload.isDownloading}
-          aria-label={
-            canDownloadLabel
-              ? 'Download shipping label'
-              : 'Download label not available in this state'
-          }
+          aria-label={canDownloadLabel ? copy.downloadAria : copy.downloadUnavailable}
         >
-          {labelDownload.isDownloading ? 'Downloading…' : 'Download label'}
+          {labelDownload.isDownloading ? copy.downloading : copy.download}
         </Button>
       </div>
 
@@ -248,7 +245,7 @@ export function ShipmentActionButtons({
           <ConfirmDialog
             open={cancelDialogOpen}
             onOpenChange={setCancelDialogOpen}
-            title="Cancel this shipment?"
+            title={copy.cancelDialog.title}
             description={
               <>
                 {cancelCopy.effect}
@@ -260,8 +257,10 @@ export function ShipmentActionButtons({
                 ) : null}
               </>
             }
-            confirmLabel={cancelMutation.isPending ? 'Cancelling…' : 'Cancel shipment'}
-            cancelLabel="Keep"
+            confirmLabel={
+              cancelMutation.isPending ? copy.cancelDialog.confirming : copy.cancelDialog.confirm
+            }
+            cancelLabel={copy.cancelDialog.keep}
             tone="danger"
             isConfirming={cancelMutation.isPending}
             onConfirm={() => {
@@ -273,16 +272,12 @@ export function ShipmentActionButtons({
           <ConfirmDialog
             open={notifyDialogOpen}
             onOpenChange={setNotifyDialogOpen}
-            title="Manually mark as dispatched?"
-            description={
-              <>
-                This fires the source-marketplace notification and updates the destination
-                fulfillment state. Use this only when the automatic dispatch flow has stalled —
-                the normal path is automatic via the carrier&apos;s status sync.
-              </>
+            title={copy.notifyDialog.title}
+            description={copy.notifyDialog.description}
+            confirmLabel={
+              notifyMutation.isPending ? copy.notifyDialog.confirming : copy.notifyDialog.confirm
             }
-            confirmLabel={notifyMutation.isPending ? 'Notifying…' : 'Mark dispatched'}
-            cancelLabel="Cancel"
+            cancelLabel={copy.notifyDialog.cancel}
             tone="default"
             isConfirming={notifyMutation.isPending}
             onConfirm={() => {

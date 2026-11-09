@@ -59,13 +59,19 @@ import {
   readSellerAddressParts,
   type SellerAddressPart,
 } from './eparagony-seller';
+import { getEparagonyMessages } from './messages';
+
+type EparagonyConnectionConfigKey = keyof ReturnType<
+  typeof getEparagonyMessages
+>['eparagonyConnectionConfig'];
 
 /**
- * One word, on purpose: it renders under a field four characters wide, and the
- * section's own description already says which parts an address needs. The
- * red outline plus "Required." is the whole message there.
+ * Zod `{ error }` parameter read when a value is validated, not when this
+ * module loads, so the schema shape still speaks the active language.
  */
-const SELLER_ADDRESS_MISSING_MESSAGE = 'Required.';
+function msg(key: EparagonyConnectionConfigKey): { error: () => string } {
+  return { error: () => getEparagonyMessages().eparagonyConnectionConfig[key] };
+}
 
 declare module '../../shared/plugins/plugin.types' {
   interface PluginEditConnectionFields {
@@ -157,13 +163,8 @@ const eparagonySchemaShape: ConnectionConfigContribution['schemaShape'] = {
       z
         .string()
         .trim()
-        .regex(
-          /^\d+(\.\d+)?(e[+-]?\d+)?$/i,
-          'Poll timeout must be a number of milliseconds.',
-        )
-        .refine((value) => Number(value) > 0, {
-          message: 'Poll timeout must be greater than zero.',
-        }),
+        .regex(/^\d+(\.\d+)?(e[+-]?\d+)?$/i, msg('pollTimeoutNotNumber'))
+        .refine((value) => Number(value) > 0, msg('pollTimeoutNotPositive')),
       z.literal(''),
     ])
     .optional(),
@@ -187,9 +188,7 @@ const eparagonySchemaShape: ConnectionConfigContribution['schemaShape'] = {
   eparagonyMerchantCountry: z
     .string()
     .trim()
-    .refine((value) => value === '' || /^[A-Za-z]{2}$/.test(value), {
-      message: 'Use the two-letter country code, for example PL.',
-    })
+    .refine((value) => value === '' || /^[A-Za-z]{2}$/.test(value), msg('countryCode'))
     .optional(),
 };
 
@@ -211,7 +210,10 @@ function refineSellerAddress(values: Record<string, unknown>, ctx: RefinementCtx
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: [SELLER_ADDRESS_FORM_FIELDS[part]],
-        message: SELLER_ADDRESS_MISSING_MESSAGE,
+        // One word, on purpose: it renders under a field four characters wide,
+        // and the section's own description already says which parts an
+        // address needs.
+        message: getEparagonyMessages().eparagonyConnectionConfig.sellerAddressPartRequired,
       });
     }
   }
@@ -229,9 +231,7 @@ function httpsUrlField(): z.ZodTypeAny {
   return z
     .string()
     .trim()
-    .refine((value) => value === '' || isHttpsUrl(value), {
-      message: 'Must be a valid https:// URL.',
-    })
+    .refine((value) => value === '' || isHttpsUrl(value), msg('httpsUrl'))
     .optional();
 }
 

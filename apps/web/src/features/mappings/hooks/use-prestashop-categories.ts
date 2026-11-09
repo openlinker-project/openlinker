@@ -8,6 +8,7 @@
 
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
+import { getMessages, interpolate } from '../../../shared/i18n';
 
 export interface PrestashopCategoryFlat {
   id: string;
@@ -26,7 +27,7 @@ export function usePrestashopCategoriesQuery(connectionId: string): UseQueryResu
         .filter((cat) => cat.depth > 0)
         .map(({ id, name, parentId, depth }) => ({
           id,
-          name: name || `Category ${id}`,
+          name: name || interpolate(getMessages('mappings').usePrestashopCategories.fallbackName, { id }),
           parentId,
           depth,
         }));

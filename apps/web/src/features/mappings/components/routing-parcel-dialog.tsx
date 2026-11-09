@@ -26,7 +26,7 @@ import {
   validateDraft,
   type ParcelProfileDraft,
 } from '../lib/parcel-profile';
-import { PARCEL_COPY } from '../lib/parcel-profile.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
 
 // Select value for the free-text escape hatch. It never reaches the draft: the
 // draft's `template` holds the typed code, the select only tracks the mode.
@@ -47,6 +47,7 @@ export function RoutingParcelDialog({
   onApply,
   onOpenChange,
 }: RoutingParcelDialogProps): ReactElement {
+  const copy = useMessages('mappings').parcelProfile;
   const [draft, setDraft] = useState<ParcelProfileDraft>(initial);
   // A stored code outside the listed sizes opens in free-text mode, so opening
   // the dialog never silently rewrites it.
@@ -85,34 +86,34 @@ export function RoutingParcelDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent aria-describedby="routing-parcel-desc">
-        <DialogTitle>{PARCEL_COPY.sectionTitle}</DialogTitle>
+        <DialogTitle>{copy.sectionTitle}</DialogTitle>
         <DialogDescription id="routing-parcel-desc">
-          {methodLabel}. {PARCEL_COPY.sectionHint}
+          {interpolate(copy.sectionHintWithMethod, { method: methodLabel })}
         </DialogDescription>
 
-        <FormField label={PARCEL_COPY.templateLabel} name="parcelTemplate">
+        <FormField label={copy.templateLabel} name="parcelTemplate">
           <Select
             value={customTemplate ? OTHER_TEMPLATE_OPTION : draft.template}
             onChange={(e) => handleTemplateSelect(e.target.value)}
           >
-            <option value="">{PARCEL_COPY.templateNone}</option>
+            <option value="">{copy.templateNone}</option>
             {PARCEL_TEMPLATE_OPTIONS.map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>
             ))}
-            <option value={OTHER_TEMPLATE_OPTION}>{PARCEL_COPY.templateOther}</option>
+            <option value={OTHER_TEMPLATE_OPTION}>{copy.templateOther}</option>
           </Select>
         </FormField>
 
         {customTemplate && (
-          <FormField label={PARCEL_COPY.customTemplateLabel} name="parcelTemplateCode">
+          <FormField label={copy.customTemplateLabel} name="parcelTemplateCode">
             <Input value={draft.template} onChange={(e) => set('template')(e.target.value)} />
           </FormField>
         )}
 
         <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-          <FormField label={PARCEL_COPY.lengthLabel} name="parcelLength">
+          <FormField label={copy.lengthLabel} name="parcelLength">
             <Input
               type="number"
               inputMode="decimal"
@@ -122,7 +123,7 @@ export function RoutingParcelDialog({
               onChange={(e) => set('lengthCm')(e.target.value)}
             />
           </FormField>
-          <FormField label={PARCEL_COPY.widthLabel} name="parcelWidth">
+          <FormField label={copy.widthLabel} name="parcelWidth">
             <Input
               type="number"
               inputMode="decimal"
@@ -132,7 +133,7 @@ export function RoutingParcelDialog({
               onChange={(e) => set('widthCm')(e.target.value)}
             />
           </FormField>
-          <FormField label={PARCEL_COPY.heightLabel} name="parcelHeight">
+          <FormField label={copy.heightLabel} name="parcelHeight">
             <Input
               type="number"
               inputMode="decimal"
@@ -144,7 +145,7 @@ export function RoutingParcelDialog({
           </FormField>
         </div>
 
-        <FormField label={PARCEL_COPY.weightLabel} name="parcelWeight">
+        <FormField label={copy.weightLabel} name="parcelWeight">
           <Input
             type="number"
             inputMode="decimal"
@@ -171,7 +172,7 @@ export function RoutingParcelDialog({
             }}
             disabled={isDraftEmpty(draft)}
           >
-            {PARCEL_COPY.clearAction}
+            {copy.clearAction}
           </Button>
           <Button
             tone="ghost"
@@ -179,10 +180,10 @@ export function RoutingParcelDialog({
               onOpenChange(false);
             }}
           >
-            {PARCEL_COPY.cancelAction}
+            {copy.cancelAction}
           </Button>
           <Button tone="primary" onClick={handleApply}>
-            {PARCEL_COPY.applyAction}
+            {copy.applyAction}
           </Button>
         </DialogFooter>
       </DialogContent>

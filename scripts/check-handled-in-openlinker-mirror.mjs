@@ -9,15 +9,16 @@
  *   libs/core/src/fulfillment/domain/types/fulfillment-block-reason.types.ts  (backend, authoritative)
  * and
  *   apps/web/src/features/orders/api/orders.types.ts                          (frontend mirror)
- * must hold the same literals in the same order, AND `WAITING_REASON_COPY`
- * (apps/web/.../handled-in-openlinker.copy.ts) must carry exactly one entry per
- * reason. The backend counts and filters "waiting in OpenLinker" with this list;
+ * must hold the same literals in the same order, AND
+ * `orders.handledInOpenLinker.waitingReasons` (apps/web/src/locales/en/orders.json)
+ * must carry exactly one entry per reason. The backend counts and filters "waiting in OpenLinker" with this list;
  * the frontend badges a row with the copy. A reason added on one side only would
  * be counted but never badged, or badged but never counted.
  *
  * Pair 2 - PACKING STAGES. `OrderWorkStageValues` in
  *   libs/core/src/fulfillment/domain/types/order-work-summary.types.ts
- * and the same name in orders.types.ts, plus `ORDER_WORK_STAGE_COPY`. A stage
+ * and the same name in orders.types.ts, plus
+ * `orders.handledInOpenLinker.workStages` in en/orders.json. A stage
  * added in core only renders nothing on the frontend (safe, but silent).
  *
  * SCOPE: arrays and object keys, compared TEXTUALLY - nothing about wording or
@@ -45,23 +46,41 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const repoRoot = join(__dirname, '..');
 
 const FRONTEND_FILE = join('apps', 'web', 'src', 'features', 'orders', 'api', 'orders.types.ts');
-const COPY_FILE = join('apps', 'web', 'src', 'features', 'orders', 'lib', 'handled-in-openlinker.copy.ts');
+const COPY_FILE = join('apps', 'web', 'src', 'locales', 'en', 'orders.json');
 const HEALTH_FIXTURES_CORE_FILE = join('libs', 'core', 'src', 'orders', 'testing', 'order-health.fixtures.ts');
 const HEALTH_FIXTURES_FE_FILE = join('apps', 'web', 'src', 'features', 'orders', 'lib', 'order-health.test.ts');
 const DOCS_REF = 'docs/plans/implementation-plan-orders-handled-in-openlinker-2.md';
+
+/**
+ * The keys of the copy object at `path` in a locale JSON file, with the 1-based
+ * line its first key sits on. `null` when the path is absent or not an object.
+ * COPIED from `check-destination-routing-reason-mirror.mjs` (see above).
+ */
+export function readJsonCopyKeys(src, path) {
+  let node = JSON.parse(src);
+  for (const segment of path) {
+    if (node === null || typeof node !== 'object' || !(segment in node)) return null;
+    node = node[segment];
+  }
+  if (node === null || typeof node !== 'object' || Array.isArray(node)) return null;
+  const keys = Object.keys(node);
+  const first = keys.length > 0 ? src.indexOf(`"${keys[0]}"`) : -1;
+  const line = first < 0 ? 1 : src.slice(0, first).split('\n').length;
+  return { line, keys };
+}
 
 const PAIRS = [
   {
     label: 'waiting reasons',
     backendFile: join('libs', 'core', 'src', 'fulfillment', 'domain', 'types', 'fulfillment-block-reason.types.ts'),
     declaration: 'WaitingFulfillmentBlockReasonValues',
-    copyDeclaration: 'WAITING_REASON_COPY',
+    copyPath: ['handledInOpenLinker', 'waitingReasons'],
   },
   {
     label: 'packing stages',
     backendFile: join('libs', 'core', 'src', 'fulfillment', 'domain', 'types', 'order-work-summary.types.ts'),
     declaration: 'OrderWorkStageValues',
-    copyDeclaration: 'ORDER_WORK_STAGE_COPY',
+    copyPath: ['handledInOpenLinker', 'workStages'],
   },
 ];
 
@@ -82,8 +101,7 @@ const PAIRS = [
  * Comments are therefore blanked to EQUAL-LENGTH whitespace before the bracket
  * is located, which keeps every offset — and so the reported line number —
  * identical to the raw source. Blanking is safe for a value array (kebab-case
- * literals); it is deliberately NOT applied to `parseCopyKeys`, whose input is
- * operator prose that may legitimately contain `//` or `*` inside a string.
+ * literals); copy is read from the locale JSON, so no prose ever reaches this parser.
  *
  * The sibling carries the same latent weakness and is left alone: it passes on
  * its current inputs, and editing a shipped invariant to fix a bug it does not
@@ -114,81 +132,6 @@ function parseReasonValues(content, name) {
 
   const line = content.slice(0, declMatch.index).split('\n').length;
   return { line, values };
-}
-
-/**
- * Extract the TOP-LEVEL keys of `export const <name> = { ... } satisfies ...;`.
- *
- * Brace-matched rather than regex-scanned, because a copy entry is itself an
- * object and a nested key must not be read as a reason id. String bodies are
- * skipped so a brace or a quote inside operator copy cannot end the scan early.
- * Returns `{ line, keys }`, or `null` when the declaration is absent.
- */
-function parseCopyKeys(content, name) {
-  const declRe = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*\\{`);
-  const declMatch = declRe.exec(content);
-  if (!declMatch) return null;
-
-  const open = declMatch.index + declMatch[0].length - 1;
-  const keys = [];
-  let depth = 0;
-  let quote = null;
-  let pendingKey = null;
-
-  for (let i = open; i < content.length; i += 1) {
-    const ch = content[i];
-
-    if (quote !== null) {
-      if (ch === '\\') {
-        i += 1;
-      } else if (ch === quote) {
-        quote = null;
-      }
-      continue;
-    }
-
-    if (ch === '/' && content[i + 1] === '/') {
-      i = content.indexOf('\n', i);
-      if (i === -1) break;
-      continue;
-    }
-    if (ch === '/' && content[i + 1] === '*') {
-      const end = content.indexOf('*/', i + 2);
-      if (end === -1) break;
-      i = end + 1;
-      continue;
-    }
-
-    if (ch === "'" || ch === '"') {
-      const end = findStringEnd(content, i);
-      if (end === -1) break;
-      if (depth === 1) pendingKey = content.slice(i + 1, end);
-      i = end;
-      continue;
-    }
-
-    if (ch === '{') {
-      depth += 1;
-      continue;
-    }
-    if (ch === '}') {
-      depth -= 1;
-      if (depth === 0) break;
-      continue;
-    }
-
-    if (ch === ':' && depth === 1 && pendingKey !== null) {
-      keys.push(pendingKey);
-      pendingKey = null;
-      continue;
-    }
-    if (ch === ',' && depth === 1) {
-      pendingKey = null;
-    }
-  }
-
-  const line = content.slice(0, declMatch.index).split('\n').length;
-  return { line, keys };
 }
 
 /** Index of the closing quote of the string literal starting at `start`. */
@@ -317,10 +260,9 @@ function selfCheck() {
     'X',
   );
   expect('bracket in a comment does not truncate', bracketed?.values.join(','), 'one,two');
-  const keys = parseCopyKeys(`export const C = {\n  'one': { label: 'x' },\n  two: { label: 'y' },\n} as const satisfies R;`, 'C');
-  // Unquoted keys (`packing:`) are not read by this parser, so the copy tables
-  // this guard reads MUST quote every key. Pinned so that limit is visible.
-  expect('parser reads quoted copy keys only', keys?.keys.join(','), 'one');
+  const json = '{\n  "a": {\n    "b": {\n      "one": { "label": "x" }\n    }\n  }\n}';
+  expect('json reader reads copy keys', readJsonCopyKeys(json, ['a', 'b'])?.keys.join(','), 'one');
+  expect('json reader rejects a missing path', readJsonCopyKeys(json, ['a', 'c']), null);
 
   if (failures.length > 0) {
     console.error('✗ check-handled-in-openlinker-mirror self-check FAILED');
@@ -347,7 +289,8 @@ async function main() {
     const backendSrc = await readFile(join(repoRoot, pair.backendFile), 'utf8');
     const backend = parseReasonValues(backendSrc, pair.declaration);
     const frontend = parseReasonValues(frontendSrc, pair.declaration);
-    const copy = parseCopyKeys(copySrc, pair.copyDeclaration);
+    const copyDeclaration = pair.copyPath.join('.');
+    const copy = readJsonCopyKeys(copySrc, pair.copyPath);
 
     // An EMPTY parse is fatal: `diffReasonValues([], [])` is ok, so a parser that
     // read nothing would otherwise pass while asserting nothing (#2673).
@@ -358,13 +301,14 @@ async function main() {
     };
     need(backend, pair.backendFile, pair.declaration, '[');
     need(frontend, FRONTEND_FILE, pair.declaration, '[');
-    need(copy, COPY_FILE, pair.copyDeclaration, '{');
+    if (!copy) fatal.push(`${COPY_FILE}: could not find the \`${copyDeclaration}\` object`);
+    else need(copy, COPY_FILE, copyDeclaration, '{');
     if (!backend || !frontend || !copy || backend.values.length === 0) continue;
 
     const drift = diffReasonValues(backend.values, frontend.values);
     const copyDrift = diffCopyCoverage(backend.values, copy.keys);
     if (!drift.ok) drifts.push({ where: `${pair.backendFile}:${backend.line} vs ${FRONTEND_FILE}:${frontend.line}`, issues: drift.issues });
-    if (!copyDrift.ok) drifts.push({ where: `${COPY_FILE}:${copy.line} (${pair.copyDeclaration})`, issues: copyDrift.issues });
+    if (!copyDrift.ok) drifts.push({ where: `${COPY_FILE}:${copy.line} (${copyDeclaration})`, issues: copyDrift.issues });
   }
 
   // Pair 3 - the shared health fixtures. An EMPTY parse is fatal for the same

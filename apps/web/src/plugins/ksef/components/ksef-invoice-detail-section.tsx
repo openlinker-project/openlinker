@@ -37,7 +37,7 @@ import {
 } from '../../../features/invoicing';
 import type { RegulatoryStatus } from '../../../features/invoicing';
 import { KsefFa3View } from './ksef-fa3-view';
-import { KSEF_REGULATORY_STATUS_LABELS } from '../lib/ksef-regulatory-status-labels';
+import { getKsefRegulatoryStatusLabels } from '../lib/ksef-regulatory-status-labels';
 import { Button } from '../../../shared/ui/button';
 import { CopyableId } from '../../../shared/ui/copyable-id';
 import {
@@ -49,7 +49,7 @@ import {
   DialogTitle,
 } from '../../../shared/ui/dialog';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { useTranslation } from '../../../shared/i18n';
+import { useKsefMessages } from '../messages';
 
 /**
  * Clearance statuses in which a document is still waiting for its KSeF number,
@@ -67,7 +67,7 @@ const AWAITING_KSEF_NUMBER_STATUSES: ReadonlyArray<RegulatoryStatus> = [
 export function KsefInvoiceDetailSection({
   invoice,
 }: InvoiceDetailSectionProps): ReactElement | null {
-  const { t } = useTranslation();
+  const copy = useKsefMessages().ksefInvoiceDetailSection;
   const upoDownload = useRegulatoryConfirmationDownload();
   const upoPreview = useRegulatoryConfirmationPreview();
   const fa3 = useInvoiceSourceDocument();
@@ -103,10 +103,10 @@ export function KsefInvoiceDetailSection({
     if (!ok) {
       showToast({
         tone: 'error',
-        title: t('invoice.ksef.upoPreviewFailed', 'UPO preview failed'),
+        title: copy.upoPreviewFailed,
         description:
           upoPreview.error?.message ??
-          t('invoice.ksef.upoPreviewFailedDesc', 'Could not fetch the confirmation document.'),
+          copy.upoPreviewFailedDesc,
       });
     }
   }
@@ -116,10 +116,10 @@ export function KsefInvoiceDetailSection({
     if (!ok) {
       showToast({
         tone: 'error',
-        title: t('invoice.ksef.upoDownloadFailed', 'UPO download failed'),
+        title: copy.upoDownloadFailed,
         description:
           upoDownload.error?.message ??
-          t('invoice.ksef.upoDownloadFailedDesc', 'Could not fetch the confirmation document.'),
+          copy.upoDownloadFailedDesc,
       });
     }
   }
@@ -132,9 +132,9 @@ export function KsefInvoiceDetailSection({
     if (err) {
       showToast({
         tone: 'error',
-        title: t('invoice.ksef.fa3ViewFailed', 'FA(3) preview failed'),
+        title: copy.fa3ViewFailed,
         description:
-          err.message ?? t('invoice.ksef.fa3ViewFailedDesc', 'Could not fetch the document.'),
+          err.message ?? copy.fa3ViewFailedDesc,
       });
     }
   }
@@ -145,9 +145,9 @@ export function KsefInvoiceDetailSection({
     if (err) {
       showToast({
         tone: 'error',
-        title: t('invoice.ksef.fa3XmlFailed', 'FA(3) XML download failed'),
+        title: copy.fa3XmlFailed,
         description:
-          err.message ?? t('invoice.ksef.fa3XmlFailedDesc', 'Could not fetch the source document.'),
+          err.message ?? copy.fa3XmlFailedDesc,
       });
     }
   }
@@ -162,19 +162,19 @@ export function KsefInvoiceDetailSection({
         )}`.trim()}
       >
         <h4 className="invoice-detail-section__title">
-          {t('invoice.ksef.sectionTitle', 'KSeF · National e-Invoicing System')}
+          {copy.sectionTitle}
         </h4>
 
         {hasRegulatoryData ? (
           <div className="slot-row">
             <div>
               <div className="slot-row__label">
-                {t('invoice.ksef.clearanceStatus', 'Clearance status')}
+                {copy.clearanceStatus}
               </div>
             </div>
             <RegulatoryStatusBadge
               status={invoice.regulatoryStatus}
-              labelOverrides={KSEF_REGULATORY_STATUS_LABELS}
+              labelOverrides={getKsefRegulatoryStatusLabels()}
             />
           </div>
         ) : null}
@@ -185,10 +185,10 @@ export function KsefInvoiceDetailSection({
           <div className="slot-row">
             <div>
               <div className="slot-row__label">
-                {t('invoice.ksef.rejectionDetail', 'Rejection detail')}
+                {copy.rejectionDetail}
               </div>
               <div className="slot-row__hint">
-                {t('invoice.ksef.rejectionDetailHint', 'Reported by the authority (KSeF)')}
+                {copy.rejectionDetailHint}
               </div>
             </div>
             <span className="text-danger" role="status">
@@ -201,10 +201,10 @@ export function KsefInvoiceDetailSection({
           <div className="slot-row">
             <div>
               <div className="slot-row__label">
-                {t('invoice.ksef.documentNumber', 'Invoice number')}
+                {copy.documentNumber}
               </div>
               <div className="slot-row__hint">
-                {t('invoice.ksef.documentNumberHint', 'Assigned by OpenLinker at issue')}
+                {copy.documentNumberHint}
               </div>
             </div>
             <span className="mono-text">{documentNumber}</span>
@@ -213,9 +213,9 @@ export function KsefInvoiceDetailSection({
 
         <div className="slot-row">
           <div>
-            <div className="slot-row__label">{t('invoice.ksef.number', 'KSeF number')}</div>
+            <div className="slot-row__label">{copy.number}</div>
             <div className="slot-row__hint">
-              {t('invoice.ksef.numberHint', 'Authority-assigned on clearance')}
+              {copy.numberHint}
             </div>
             {/* Art. 108g (transitional from 2026): a bank transfer paying a KSeF
                 invoice must carry this 35-character KSeF number in the payment
@@ -223,10 +223,7 @@ export function KsefInvoiceDetailSection({
                 into the transfer — OpenLinker does not initiate the transfer. */}
             {ksefNumber ? (
               <div className="slot-row__hint">
-                {t(
-                  'invoice.ksef.art108gHint',
-                  'Art. 108g: include this KSeF number in the bank-transfer title when paying this invoice.',
-                )}
+                {copy.art108gHint}
               </div>
             ) : null}
           </div>
@@ -234,7 +231,7 @@ export function KsefInvoiceDetailSection({
             <CopyableId id={ksefNumber} label={ksefNumber} />
           ) : (
             <span className="text-muted">
-              {t('invoice.ksef.numberPending', 'Pending')}
+              {copy.numberPending}
             </span>
           )}
         </div>
@@ -242,12 +239,12 @@ export function KsefInvoiceDetailSection({
         <div className="slot-row">
           <div>
             <div className="slot-row__label">
-              {t('invoice.ksef.upoLabel', 'Official receipt (UPO)')}
+              {copy.upoLabel}
             </div>
             <div className="slot-row__hint">
               {isAccepted
-                ? t('invoice.ksef.upoHint', 'Proof of clearance')
-                : t('invoice.ksef.upoHintPending', 'Available once cleared')}
+                ? copy.upoHint
+                : copy.upoHintPending}
             </div>
           </div>
           {isAccepted ? (
@@ -259,8 +256,8 @@ export function KsefInvoiceDetailSection({
                 disabled={upoPreview.isLoading}
               >
                 {upoPreview.isLoading
-                  ? t('common.loading', 'Loading…')
-                  : t('invoice.ksef.upoPreview', 'Preview')}
+                  ? copy.loading
+                  : copy.upoPreview}
               </Button>
               <Button
                 tone="ghost"
@@ -269,12 +266,12 @@ export function KsefInvoiceDetailSection({
                 disabled={upoDownload.isDownloading}
               >
                 {upoDownload.isDownloading
-                  ? t('invoice.ksef.upoDownloading', 'Downloading…')
-                  : t('invoice.ksef.upoDownload', 'Download UPO')}
+                  ? copy.upoDownloading
+                  : copy.upoDownload}
               </Button>
             </span>
           ) : (
-            <span className="text-muted">—</span>
+            <span className="text-muted">{copy.emptyCell}</span>
           )}
         </div>
 
@@ -287,25 +284,16 @@ export function KsefInvoiceDetailSection({
           // automatic send.
           <div className="ksef-verification-pending" role="note">
             <div className="ksef-verification-pending__frame">
-              {t(
-                'invoice.ksef.verificationPendingFrame',
-                'Verification code appears once KSeF assigns the number',
-              )}
+              {copy.verificationPendingFrame}
             </div>
             <div className="ksef-verification-pending__text">
               <strong>
-                {t('invoice.ksef.verificationPendingLabel', 'Verification code (KOD I)')}
+                {copy.verificationPendingLabel}
               </strong>
               <span>
                 {invoice.regulatoryStatus === 'pending-submission'
-                  ? t(
-                      'invoice.ksef.verificationPendingNotSent',
-                      'This invoice has not reached KSeF yet. The code appears here once KSeF accepts it and assigns its number.',
-                    )
-                  : t(
-                      'invoice.ksef.verificationPendingHint',
-                      'KSeF has received this invoice and has not assigned its number yet. OpenLinker checks for it automatically; the code appears here once the number is assigned.',
-                    )}
+                  ? copy.verificationPendingNotSent
+                  : copy.verificationPendingHint}
               </span>
             </div>
           </div>
@@ -316,10 +304,10 @@ export function KsefInvoiceDetailSection({
             <div className="slot-row">
               <div>
                 <div className="slot-row__label">
-                  {t('invoice.ksef.fa3Label', 'FA(3) document')}
+                  {copy.fa3Label}
                 </div>
                 <div className="slot-row__hint">
-                  {t('invoice.ksef.fa3Hint', 'Human-readable + source XML')}
+                  {copy.fa3Hint}
                 </div>
               </div>
               <span className="slot-row__actions">
@@ -330,8 +318,8 @@ export function KsefInvoiceDetailSection({
                   disabled={fa3.isLoadingView}
                 >
                   {fa3.isLoadingView
-                    ? t('common.loading', 'Loading…')
-                    : t('invoice.ksef.fa3View', 'View')}
+                    ? copy.loading
+                    : copy.fa3View}
                 </Button>
                 <Button
                   tone="ghost"
@@ -340,18 +328,18 @@ export function KsefInvoiceDetailSection({
                   disabled={fa3.isDownloadingXml}
                 >
                   {fa3.isDownloadingXml
-                    ? t('invoice.ksef.fa3Downloading', 'Downloading…')
-                    : t('invoice.ksef.fa3DownloadXml', 'Download XML')}
+                    ? copy.fa3Downloading
+                    : copy.fa3DownloadXml}
                 </Button>
               </span>
             </div>
 
             <div className="doc-preview">
               <span className="doc-preview__chip">
-                {t('invoice.ksef.fa3Preview', 'FA(3) preview')}
+                {copy.fa3Preview}
               </span>
               {fa3.viewError || viewParseFailed ? (
-                <span>{t('invoice.ksef.fa3ViewError', "Preview failed. Click 'View' to retry.")}</span>
+                <span>{copy.fa3ViewError}</span>
               ) : fa3.viewText !== null ? (
                 <KsefFa3View
                   xmlText={fa3.viewText}
@@ -360,7 +348,7 @@ export function KsefInvoiceDetailSection({
                   onParseError={handleFa3ParseError}
                 />
               ) : (
-                <span>{t('invoice.ksef.fa3PreviewPlaceholder', "Click 'View' to load the invoice.")}</span>
+                <span>{copy.fa3PreviewPlaceholder}</span>
               )}
             </div>
           </>
@@ -376,25 +364,19 @@ export function KsefInvoiceDetailSection({
       >
         {upoPreviewState !== null ? (
           <DialogContent className="dialog__content--wide" aria-describedby="ksef-upo-preview-desc">
-            <DialogTitle>{t('invoice.ksef.upoDialogTitle', 'UPO confirmation')}</DialogTitle>
+            <DialogTitle>{copy.upoDialogTitle}</DialogTitle>
             <DialogDescription id="ksef-upo-preview-desc">
-              {t(
-                'invoice.ksef.upoDialogDesc',
-                'Official confirmation (UPO) for this KSeF invoice.',
-              )}
+              {copy.upoDialogDesc}
             </DialogDescription>
             {upoPreviewState.kind === 'unsupported' ? (
               <p className="ksef-upo-preview__unsupported">
-                {t(
-                  'invoice.ksef.upoPreviewUnsupported',
-                  'This confirmation can\'t be previewed inline. Use "Download UPO" to open it.',
-                )}
+                {copy.upoPreviewUnsupported}
               </p>
             ) : (
               <iframe
                 className="ksef-upo-preview__frame"
                 src={upoPreviewState.objectUrl}
-                title={t('invoice.ksef.upoFrameTitle', 'UPO confirmation preview')}
+                title={copy.upoFrameTitle}
                 // `allow-same-origin` is required for the browser's built-in PDF renderer
                 // (Chrome/Firefox) to display a blob: URL for PDF content. Without it
                 // sandbox="" blocks the PDF plugin and the frame renders blank.
@@ -411,13 +393,13 @@ export function KsefInvoiceDetailSection({
                   disabled={upoDownload.isDownloading}
                 >
                   {upoDownload.isDownloading
-                    ? t('invoice.ksef.upoDownloading', 'Downloading…')
-                    : t('invoice.ksef.upoDownload', 'Download UPO')}
+                    ? copy.upoDownloading
+                    : copy.upoDownload}
                 </Button>
               ) : null}
               <DialogClose asChild>
                 <Button tone="secondary" className="button--sm">
-                  {t('common.close', 'Close')}
+                  {copy.close}
                 </Button>
               </DialogClose>
             </DialogFooter>

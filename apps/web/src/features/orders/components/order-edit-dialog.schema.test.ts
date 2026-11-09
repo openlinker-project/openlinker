@@ -10,8 +10,8 @@ import {
   buildOrderEditSchema,
   detectChangedSections,
   planOrderEdits,
-  type OrderEditFormValues,
 } from './order-edit-dialog.schema';
+import type { OrderEditFormValues } from './order-form.types';
 
 const snapshot = parseOrderSnapshot({
   orderNumber: 'ALG-1',
@@ -83,7 +83,7 @@ describe('detectChangedSections', () => {
         ],
         discountValue: '15.00',
       }),
-      initial,
+      initial
     );
     expect([...changed].sort()).toEqual(['address', 'delivery', 'discount', 'lines']);
   });
@@ -101,9 +101,15 @@ describe('detectChangedSections', () => {
 
   it('should treat a blank discount as untouched, and the same amount as unchanged', () => {
     const withDiscount = { ...initial, discountValue: '15.00' };
-    expect(detectChangedSections({ ...withDiscount, discountValue: '' }, withDiscount).size).toBe(0);
-    expect(detectChangedSections({ ...withDiscount, discountValue: '15' }, withDiscount).size).toBe(0);
-    expect(detectChangedSections({ ...withDiscount, discountValue: '0' }, withDiscount).has('discount')).toBe(true);
+    expect(detectChangedSections({ ...withDiscount, discountValue: '' }, withDiscount).size).toBe(
+      0
+    );
+    expect(detectChangedSections({ ...withDiscount, discountValue: '15' }, withDiscount).size).toBe(
+      0
+    );
+    expect(
+      detectChangedSections({ ...withDiscount, discountValue: '0' }, withDiscount).has('discount')
+    ).toBe(true);
   });
 });
 
@@ -115,7 +121,7 @@ describe('schema', () => {
           { orderLineId: 'line_a', quantity: '4' },
           { orderLineId: 'line_b', quantity: '2' },
         ],
-      }),
+      })
     );
     expect(result.success).toBe(false);
     expect(JSON.stringify(result.error?.issues)).toContain('Can only go down: at most 3');
@@ -128,7 +134,7 @@ describe('schema', () => {
           { orderLineId: 'line_a', quantity: '0' },
           { orderLineId: 'line_b', quantity: '0' },
         ],
-      }),
+      })
     );
     expect(result.success).toBe(false);
     expect(JSON.stringify(result.error?.issues)).toContain('at least one item');
@@ -142,12 +148,16 @@ describe('schema', () => {
             { orderLineId: 'line_a', quantity: '1.5' },
             { orderLineId: 'line_b', quantity: '2' },
           ],
-        }),
-      ).success,
+        })
+      ).success
     ).toBe(false);
     expect(schema.safeParse(values({ discountValue: 'abc' })).success).toBe(false);
-    expect(schema.safeParse(values({ discountMode: 'percent', discountValue: '120' })).success).toBe(false);
-    expect(schema.safeParse(values({ discountMode: 'percent', discountValue: '10' })).success).toBe(true);
+    expect(
+      schema.safeParse(values({ discountMode: 'percent', discountValue: '120' })).success
+    ).toBe(false);
+    expect(schema.safeParse(values({ discountMode: 'percent', discountValue: '10' })).success).toBe(
+      true
+    );
   });
 
   it('should require the address essentials only once the address is changed', () => {
@@ -159,11 +169,11 @@ describe('schema', () => {
   it('should not block an unrelated edit on a record with no stored address', () => {
     const bare = buildOrderEditInitialValues(
       parseOrderSnapshot({ items: [{ id: 'l', quantity: 2, price: 1 }] }),
-      null,
+      null
     );
     const bareSchema = buildOrderEditSchema(bare, { l: 2 });
     expect(
-      bareSchema.safeParse({ ...bare, lines: [{ orderLineId: 'l', quantity: '1' }] }).success,
+      bareSchema.safeParse({ ...bare, lines: [{ orderLineId: 'l', quantity: '1' }] }).success
     ).toBe(true);
   });
 });
@@ -180,7 +190,7 @@ describe('planOrderEdits', () => {
         discountValue: '15.00',
       }),
       initial,
-      { dryRun: true },
+      { dryRun: true }
     );
     expect(plan.map((p) => p.section)).toEqual(['address', 'lines', 'discount']);
     expect(plan.every((p) => p.edit.body.dryRun === true)).toBe(true);
@@ -195,7 +205,7 @@ describe('planOrderEdits', () => {
         ],
       }),
       initial,
-      { dryRun: false },
+      { dryRun: false }
     );
     expect(planned.edit).toEqual({
       kind: 'lines',
@@ -213,7 +223,7 @@ describe('planOrderEdits', () => {
         ],
       }),
       initial,
-      { dryRun: false },
+      { dryRun: false }
     );
     expect(planned.edit.body).toMatchObject({ acknowledgeAcceptedWork: true });
   });
@@ -224,7 +234,7 @@ describe('planOrderEdits', () => {
     const [percent] = planOrderEdits(
       values({ discountMode: 'percent', discountValue: '10' }),
       initial,
-      { dryRun: false },
+      { dryRun: false }
     );
     expect(percent.edit.body).toEqual({ percent: 10 });
   });
@@ -233,7 +243,7 @@ describe('planOrderEdits', () => {
     const [planned] = planOrderEdits(
       values({ discountValue: '15.00', acknowledgeAboveCeiling: true }),
       initial,
-      { dryRun: false },
+      { dryRun: false }
     );
     expect(planned.edit.body).toEqual({ amount: '15.00', acknowledgeAboveCeiling: true });
   });

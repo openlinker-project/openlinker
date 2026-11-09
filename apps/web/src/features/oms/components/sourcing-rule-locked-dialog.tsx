@@ -22,6 +22,7 @@
  */
 import type { ReactElement } from 'react';
 
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -32,7 +33,7 @@ import {
   DialogTitle,
 } from '../../../shared/ui/dialog';
 import type { SourcingRule } from '../api/sourcing-rules.types';
-import { sourcingRuleNameLabel } from '../lib/sourcing-rule.copy';
+import { sourcingRuleNameLabel } from '../lib/sourcing-rule-labels';
 
 export interface SourcingRuleLockedDialogProps {
   open: boolean;
@@ -48,25 +49,22 @@ export function SourcingRuleLockedDialog({
   rule,
   onDelete,
 }: SourcingRuleLockedDialogProps): ReactElement | null {
+  const copy = useMessages('oms-core').sourcingRuleLockedDialog;
   if (rule === undefined) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent aria-describedby="sourcing-rule-locked-description">
-        <DialogTitle>Cannot edit &ldquo;{sourcingRuleNameLabel(rule.name)}&rdquo;</DialogTitle>
+        <DialogTitle>
+          {interpolate(copy.title, { label: sourcingRuleNameLabel(rule.name) })}
+        </DialogTitle>
         <DialogDescription id="sourcing-rule-locked-description">
-          This version of OpenLinker does not recognise this rule.
+          {copy.description}
         </DialogDescription>
 
         <div className="dialog__body">
-          <Alert tone="warning">
-            It is saved, but it is not being used — orders route as if it were not here. Editing it
-            would make it look active again, which would not be true.
-          </Alert>
-          <p className="muted-text">
-            Delete it and add a new rule instead. Its type and name are stored exactly as they were
-            written, so they are worth quoting if you report this.
-          </p>
+          <Alert tone="warning">{copy.notUsed}</Alert>
+          <p className="muted-text">{copy.remedy}</p>
           <p className="mono-text">
             {rule.kind} · {rule.name}
           </p>
@@ -74,7 +72,7 @@ export function SourcingRuleLockedDialog({
 
         <DialogFooter>
           <Button tone="secondary" onClick={() => onOpenChange(false)}>
-            Close
+            {copy.close}
           </Button>
           {onDelete === undefined ? null : (
             <Button
@@ -84,7 +82,7 @@ export function SourcingRuleLockedDialog({
                 onDelete(rule);
               }}
             >
-              Delete rule
+              {copy.deleteRule}
             </Button>
           )}
         </DialogFooter>

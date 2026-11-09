@@ -32,7 +32,7 @@ import {
   type ResolvedCopy,
 } from '../../shared/i18n';
 
-export type SystemHealthCopy = ResolvedCopy<Messages['insights']>['systemHealth'];
+export type SystemHealthCopy = ResolvedCopy<Messages['analytics']>['insightsPage']['systemHealth'];
 
 const SEVERITY: Record<ServiceStatus, number> = { error: 0, warning: 1, ok: 2 };
 
@@ -125,7 +125,7 @@ export function SystemHealthList({
   connectionById: ReadonlyMap<string, Connection>;
 }): ReactElement {
   const platforms = usePlatforms();
-  const copy = useMessages('insights').systemHealth;
+  const copy = useMessages('analytics').insightsPage.systemHealth;
   const plural = usePlural();
   const core = coreServices(data);
   const connected = sortConnectedSystems(data.connections ?? []);

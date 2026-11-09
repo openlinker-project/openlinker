@@ -517,7 +517,7 @@ describe('EditConnectionForm', () => {
           (select as HTMLSelectElement).querySelectorAll('option'),
         ).map((o) => o.textContent ?? '');
         expect(options).toContain('Click and collect');
-        expect(options).toContain('OpenLinker Dynamic — exact Allegro cost');
+        expect(options).toContain('OpenLinker Dynamic - exact Allegro cost');
       });
 
       it('does NOT show the no-fallback warning when OL Dynamic is installed', async () => {

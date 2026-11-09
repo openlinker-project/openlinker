@@ -29,7 +29,7 @@ function row(
   return { connection, deadJobCount };
 }
 
-const copy = messagesIn('insights', 'en').connectionHealth;
+const copy = messagesIn('analytics', 'en').insightsPage.connectionHealth;
 const plural: PluralFn = (count, forms, params) => formatPlural(count, forms, 'en', params);
 
 describe('connection health (#4016)', () => {
@@ -96,7 +96,7 @@ describe('connection health (#4016)', () => {
 
   it('should write the summary in Polish with the right plural form', async () => {
     await loadMessages('pl');
-    const plCopy = messagesIn('insights', 'pl').connectionHealth;
+    const plCopy = messagesIn('analytics', 'pl').insightsPage.connectionHealth;
     const plPlural: PluralFn = (count, forms, params) => formatPlural(count, forms, 'pl', params);
     const summary = summarizeConnectionHealth([row('A', 4), row('B', 1), row('C', 0), row('D', 0)]);
     expect(describeConnectionHealth(summary, plCopy, plPlural)).toBe(

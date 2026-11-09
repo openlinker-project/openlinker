@@ -14,8 +14,8 @@ import {
   isHandledInOpenLinker,
   needsPackerNames,
   showsPackingStage,
+  WAITING_REASON_TONE,
 } from './handled-in-openlinker';
-import { WAITING_REASON_COPY } from './handled-in-openlinker.copy';
 
 describe('derivePackingStage', () => {
   it.each([
@@ -48,8 +48,8 @@ describe('deriveWaiting', () => {
   });
 
   it('should keep the routing error red and every other waiting reason a warning', () => {
-    expect(WAITING_REASON_COPY['routing-failed'].tone).toBe('error');
-    expect(WAITING_REASON_COPY['routing-refused'].tone).toBe('warning');
+    expect(WAITING_REASON_TONE['routing-failed']).toBe('error');
+    expect(WAITING_REASON_TONE['routing-refused']).toBe('warning');
   });
 
   it('should return null when nothing holds the order', () => {

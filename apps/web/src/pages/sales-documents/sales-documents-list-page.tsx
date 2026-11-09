@@ -41,7 +41,6 @@ import { Select } from '../../shared/ui/select';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { EmptyValue } from '../../shared/ui/empty-value';
 import { DocumentKindGlyph } from '../../shared/ui/document-kind-glyph';
-import { formatAmount } from '../../shared/format/format-amount';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import {
   useSalesDocumentsListQuery,
@@ -54,6 +53,7 @@ import { ConnectionCell, useConnectionsQuery } from '../../features/connections'
 import { OrderIdentityCell } from '../../features/orders';
 import { InvoiceStatusValues } from '../../features/invoicing';
 import { FiscalRegistrationStatusValues } from '../../features/fiscalization';
+import { interpolate, useFormat, useMessages } from '../../shared/i18n';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -76,26 +76,12 @@ function isTaxIdFilter(value: string | null): value is TaxIdFilter {
   return value !== null && (TAX_ID_VALUES as readonly string[]).includes(value);
 }
 
-const KIND_LABEL: Record<string, string> = {
-  invoice: 'Invoice',
-  'fiscal-receipt': 'Fiscal receipt',
-};
-
 // Status is matched against whichever vocabulary `kind` selects (backend
 // DTO docblock: "with `kind` unset it must accept EITHER vocabulary"). The
 // options offered here are therefore kind-scoped, so an operator is never
 // shown a status word that cannot match a single row on the current
 // filter — with no `kind` selected, both vocabularies are offered, since
 // the backend accepts either.
-const STATUS_LABEL: Record<string, string> = {
-  pending: 'Pending',
-  issuing: 'Issuing',
-  issued: 'Issued',
-  failed: 'Failed',
-  registering: 'Registering',
-  registered: 'Registered',
-};
-
 function statusOptionsForKind(kind: ConcreteDocumentKind | undefined): readonly string[] {
   if (kind === 'invoice') return InvoiceStatusValues;
   if (kind === 'fiscal-receipt') return FiscalRegistrationStatusValues;
@@ -103,6 +89,14 @@ function statusOptionsForKind(kind: ConcreteDocumentKind | undefined): readonly 
 }
 
 export function SalesDocumentsListPage(): ReactElement {
+  const messages = useMessages('sales-documents');
+  const copy = messages.salesDocumentsListPage;
+  const format = useFormat();
+  const kindLabels: Record<string, string> = {
+    invoice: messages.documentKind.invoice,
+    'fiscal-receipt': messages.documentKind.fiscalReceipt,
+  };
+  const statusLabels: Record<string, string> = copy.status;
   const [searchParams, setSearchParams] = useSearchParams();
   const isAdmin = useIsAdmin();
 
@@ -207,31 +201,31 @@ export function SalesDocumentsListPage(): ReactElement {
     // `formatAmount` (#3309 review, SUGGESTION), not a hardcoded
     // `.toFixed(2)`: a bare two-decimal render is wrong for a zero-decimal
     // currency (JPY) and short a digit for a three-decimal one (KWD).
-    return <span className="mono-text tabular">{formatAmount(item.amount.value, item.amount.currency)}</span>;
+    return <span className="mono-text tabular">{format.money(item.amount.value, item.amount.currency)}</span>;
   };
 
   const columns: DataTableColumn<SalesDocumentListItem>[] = [
     {
       id: 'orderId',
       lines: 2,
-      header: 'Order',
+      header: copy.columns.order,
       cell: (item) => <OrderIdentityCell orderId={item.orderId} />,
       accessor: (item) => item.orderId,
     },
     {
       id: 'kind',
-      header: 'Kind',
+      header: copy.columns.kind,
       cell: (item) => (
         <span className="invoice-document-cell">
           <DocumentKindGlyph kind={item.document.kind} />
-          <span>{KIND_LABEL[item.document.kind] ?? item.document.kind}</span>
+          <span>{kindLabels[item.document.kind] ?? item.document.kind}</span>
         </span>
       ),
       accessor: (item) => item.document.kind,
     },
     {
       id: 'status',
-      header: 'Status',
+      header: copy.columns.status,
       cell: (item) => (
         <SalesDocumentListCell
           orderId={item.orderId}
@@ -243,13 +237,13 @@ export function SalesDocumentsListPage(): ReactElement {
     },
     {
       id: 'amount',
-      header: 'Amount',
+      header: copy.columns.amount,
       cell: renderAmount,
       accessor: (item) => item.amount?.value ?? 0,
     },
     {
       id: 'connection',
-      header: 'Connection',
+      header: copy.columns.connection,
       cell: (item) => (
         <ConnectionCell
           connectionId={item.connectionId}
@@ -261,7 +255,7 @@ export function SalesDocumentsListPage(): ReactElement {
     },
     {
       id: 'createdAt',
-      header: 'Created',
+      header: copy.columns.created,
       cell: (item) => <TimeDisplay iso={item.document.identity.createdAt} format="date" />,
       accessor: (item) => item.document.identity.createdAt,
     },
@@ -272,60 +266,60 @@ export function SalesDocumentsListPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow="Operations"
-      title="Sales documents"
-      description="Every issued invoice and registered fiscal receipt across connections, in one place."
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
       actions={
         <div className="toolbar__group">
           {/* Admin-only because the routing page is (#3656): anyone else would
               click through to "Admin role required". */}
           {isAdmin ? (
             <Link className="button button--secondary" to="/settings/sales-documents">
-              Manage routing
+              {copy.manageRouting}
             </Link>
           ) : null}
           {/* Bulk actions (batch retry, bulk issue) live only on the per-kind
               `/invoices` list today — see the file header — so this stays
               reachable rather than silently dropped. */}
           <Link className="button button--secondary" to="/invoices">
-            Manage invoices
+            {copy.manageInvoices}
           </Link>
         </div>
       }
     >
       <div className="toolbar">
         <Select
-          aria-label="Filter by kind"
+          aria-label={copy.filters.kind}
           value={kind ?? ''}
           onChange={(e) => setKindFilter(e.target.value)}
         >
-          <option value="">All kinds</option>
+          <option value="">{copy.filters.allKinds}</option>
           {CONCRETE_DOCUMENT_KIND_VALUES.map((k) => (
             <option key={k} value={k}>
-              {KIND_LABEL[k] ?? k}
+              {kindLabels[k] ?? k}
             </option>
           ))}
         </Select>
 
         <Select
-          aria-label="Filter by status"
+          aria-label={copy.filters.status}
           value={status ?? ''}
           onChange={(e) => setFilter('status', e.target.value)}
         >
-          <option value="">All statuses</option>
+          <option value="">{copy.filters.allStatuses}</option>
           {statusOptionsForKind(kind).map((s) => (
             <option key={s} value={s}>
-              {STATUS_LABEL[s] ?? s}
+              {statusLabels[s] ?? s}
             </option>
           ))}
         </Select>
 
         <Select
-          aria-label="Filter by connection"
+          aria-label={copy.filters.connection}
           value={connectionId ?? ''}
           onChange={(e) => setFilter('connectionId', e.target.value)}
         >
-          <option value="">All connections</option>
+          <option value="">{copy.filters.allConnections}</option>
           {connections.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -334,44 +328,44 @@ export function SalesDocumentsListPage(): ReactElement {
         </Select>
 
         <Select
-          aria-label="Filter by buyer tax ID"
+          aria-label={copy.filters.taxId}
           value={taxId ?? ''}
           onChange={(e) => setFilter('taxId', e.target.value)}
         >
-          <option value="">All buyer tax IDs</option>
-          <option value="with">With tax ID</option>
-          <option value="without">Without tax ID</option>
+          <option value="">{copy.filters.allTaxIds}</option>
+          <option value="with">{copy.filters.withTaxId}</option>
+          <option value="without">{copy.filters.withoutTaxId}</option>
         </Select>
 
         <Input
           type="search"
-          placeholder="Order id, document number…"
-          aria-label="Search"
+          placeholder={copy.filters.searchPlaceholder}
+          aria-label={copy.filters.search}
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
         />
 
         <Input
           type="date"
-          aria-label="Issued from"
+          aria-label={copy.filters.issuedFrom}
           value={issuedFrom ?? ''}
           onChange={(e) => setFilter('issuedFrom', e.target.value)}
         />
         <Input
           type="date"
-          aria-label="Issued to"
+          aria-label={copy.filters.issuedTo}
           value={issuedTo ?? ''}
           onChange={(e) => setFilter('issuedTo', e.target.value)}
         />
       </div>
 
       {query.isLoading ? (
-        <DataTableSkeleton columns={columns} label="Loading sales documents…" />
+        <DataTableSkeleton columns={columns} label={copy.loading} />
       ) : query.error ? (
         <ErrorState
-          title="Unable to load sales documents"
+          title={copy.loadError}
           message={query.error.message}
-          action={<Button onClick={() => void query.refetch()}>Retry</Button>}
+          action={<Button onClick={() => void query.refetch()}>{copy.retry}</Button>}
         />
       ) : items.length === 0 && cursorStack.length > 0 ? (
         // Reached only by clicking Next off a loaded table (#3309 review,
@@ -383,9 +377,9 @@ export function SalesDocumentsListPage(): ReactElement {
         // `liveRegion` stays at the default "polite": this is a transition
         // from a prior loaded table, not an initial-load landing.
         <EmptyState
-          title="No more documents"
-          message="You've reached the end of this list."
-          action={<Button onClick={goPrev}>Back</Button>}
+          title={copy.end.title}
+          message={copy.end.message}
+          action={<Button onClick={goPrev}>{copy.end.back}</Button>}
         />
       ) : items.length === 0 ? (
         <EmptyState
@@ -393,30 +387,28 @@ export function SalesDocumentsListPage(): ReactElement {
           // nothing to transition from); every other empty arm here is
           // reached from a prior loaded table and keeps the "polite" default.
           liveRegion={hasFilters ? undefined : 'off'}
-          title="No sales documents found"
-          message={
-            hasFilters
-              ? 'No documents match the current filters. Try clearing some filters.'
-              : 'No invoices or fiscal receipts have been issued yet.'
-          }
+          title={copy.empty.title}
+          message={hasFilters ? copy.empty.filtered : copy.empty.none}
         />
       ) : (
         <>
           <DataTable
-            caption="Sales documents"
+            caption={copy.title}
             columns={columns}
             rows={[...items]}
             rowKey={(item) => `${item.document.kind}:${item.document.identity.recordId}`}
           />
 
           <div className="pagination">
-            <span className="text-muted">Showing {items.length}</span>
+            <span className="text-muted">
+              {interpolate(copy.showing, { count: format.number(items.length) })}
+            </span>
             <div className="pagination__actions">
               <Button disabled={cursorStack.length === 0} onClick={goPrev}>
-                Previous
+                {copy.previous}
               </Button>
               <Button disabled={!query.data?.nextCursor} onClick={goNext}>
-                Next
+                {copy.next}
               </Button>
             </div>
           </div>

@@ -23,6 +23,7 @@
  */
 import type { ReactElement } from 'react';
 
+import { formatPlural, getLocale, getMessages, interpolate, useMessages } from '../../../shared/i18n';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { WAYBILL_RELAY_REASON_LABEL, type WaybillRelay } from '../api/shipments.types';
 
@@ -40,20 +41,20 @@ export interface WaybillRelayStuckBadgeProps {
  * observed.
  */
 export function describeWaybillRelayStuck(waybillRelay: WaybillRelay): string {
-  const attempts = `${waybillRelay.failureCount} attempt${waybillRelay.failureCount === 1 ? '' : 's'}`;
+  const copy = getMessages('shipments').waybillRelayStuckBadge;
   const cause =
     waybillRelay.lastFailureReason === null
       ? null
       : WAYBILL_RELAY_REASON_LABEL[waybillRelay.lastFailureReason];
-  const base = `The tracking number has not reached the sales channel after ${attempts}`;
   return cause === null
-    ? `${base}. The buyer has not been notified.`
-    : `${base} - last failure: ${cause}. The buyer has not been notified.`;
+    ? formatPlural(waybillRelay.failureCount, copy.withoutCause, getLocale())
+    : formatPlural(waybillRelay.failureCount, copy.withCause, getLocale(), { cause });
 }
 
 export function WaybillRelayStuckBadge({
   waybillRelay,
 }: WaybillRelayStuckBadgeProps): ReactElement | null {
+  const copy = useMessages('shipments').waybillRelayStuckBadge;
   // Absence and not-escalated are both "render nothing", but they are different
   // facts and only the backend can tell them apart - so neither is asserted here.
   if (waybillRelay === null || !waybillRelay.stuck) {
@@ -68,8 +69,11 @@ export function WaybillRelayStuckBadge({
     // `title` is not reliably exposed by assistive tech.
     <span title={description}>
       <StatusBadge tone="error" withDot compact>
-        Tracking not sent
-        <span className="sr-only"> — {description}</span>
+        {copy.badge}
+        <span className="sr-only">
+          {' '}
+          {interpolate(copy.srDescription, { description })}
+        </span>
       </StatusBadge>
     </span>
   );

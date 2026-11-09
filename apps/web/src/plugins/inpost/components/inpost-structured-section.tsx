@@ -28,8 +28,8 @@ import type { ReactElement } from 'react';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
-import { useTranslation } from '../../../shared/i18n';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
+import { useInpostMessages } from '../messages';
 
 export function InpostStructuredSection({
   form,
@@ -37,7 +37,7 @@ export function InpostStructuredSection({
   syncStructuredToJson,
   syncInpostSenderAddressToJson,
 }: StructuredConfigSectionProps): ReactElement {
-  const { t } = useTranslation();
+  const copy = useInpostMessages().settings;
 
   // Re-serialize the whole sender address after writing a single nested field.
   // Gated on the host serializer being threaded in (always is, today) and on
@@ -49,13 +49,10 @@ export function InpostStructuredSection({
   return (
     <>
       <FormField
-        label={t('inpost.settings.environment.label', 'Environment')}
+        label={copy.environment.label}
         name="inpostEnvironment"
         error={form.formState.errors.inpostEnvironment?.message}
-        description={t(
-          'inpost.settings.environment.description',
-          'ShipX target environment. Use Sandbox to verify before switching to Production.',
-        )}
+        description={copy.environment.description}
       >
         <Select
           value={form.watch('inpostEnvironment') ?? ''}
@@ -63,22 +60,17 @@ export function InpostStructuredSection({
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.inpostEnvironment)}
         >
-          <option value="">{t('inpost.settings.environment.unset', '— not set —')}</option>
-          <option value="sandbox">{t('inpost.settings.environment.sandbox', 'Sandbox')}</option>
-          <option value="production">
-            {t('inpost.settings.environment.production', 'Production')}
-          </option>
+          <option value="">{copy.environment.unset}</option>
+          <option value="sandbox">{copy.environment.sandbox}</option>
+          <option value="production">{copy.environment.production}</option>
         </Select>
       </FormField>
 
       <FormField
-        label={t('inpost.settings.organizationId.label', 'Organization ID')}
+        label={copy.organizationId.label}
         name="inpostOrganizationId"
         error={form.formState.errors.inpostOrganizationId?.message}
-        description={t(
-          'inpost.settings.organizationId.description',
-          'ShipX organization id — a URL path parameter on every shipment endpoint.',
-        )}
+        description={copy.organizationId.description}
       >
         <Input
           className="mono-text"
@@ -91,27 +83,24 @@ export function InpostStructuredSection({
       </FormField>
 
       <FormField
-        label={t('inpost.settings.apiBaseUrl.label', 'OpenLinker public API base URL (optional)')}
+        label={copy.apiBaseUrl.label}
         name="openlinkerCallbackBaseUrl"
         error={form.formState.errors.openlinkerCallbackBaseUrl?.message}
-        description={t(
-          'inpost.settings.apiBaseUrl.description',
-          "OpenLinker's public API URL that serves inbound webhooks (POST /webhooks) — this is where InPost delivers tracking events, so it must be the API host, not this admin UI. Leave blank only when the API and this UI share one origin (e.g. behind a single reverse proxy); otherwise set the API's public base URL. Drives the webhook URL shown in the setup runbook below.",
-        )}
+        description={copy.apiBaseUrl.description}
       >
         <Input
           value={form.watch('openlinkerCallbackBaseUrl') ?? ''}
           onChange={(event) =>
             syncStructuredToJson('openlinkerCallbackBaseUrl', event.target.value)
           }
-          placeholder="https://api.openlinker.example"
+          placeholder={copy.apiBaseUrl.placeholder}
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.openlinkerCallbackBaseUrl)}
         />
       </FormField>
 
       <FormField
-        label={t('inpost.settings.sender.name.label', 'Sender name (optional)')}
+        label={copy.sender.name.label}
         name="inpostSenderAddress.name"
         error={form.formState.errors.inpostSenderAddress?.name?.message}
       >
@@ -121,14 +110,14 @@ export function InpostStructuredSection({
             form.setValue('inpostSenderAddress.name', event.target.value, { shouldDirty: true });
             onSenderAddressChange();
           }}
-          placeholder="Sklep ACME"
+          placeholder={copy.sender.name.placeholder}
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.inpostSenderAddress?.name)}
         />
       </FormField>
 
       <FormField
-        label={t('inpost.settings.sender.email.label', 'Sender email')}
+        label={copy.sender.email.label}
         name="inpostSenderAddress.email"
         error={form.formState.errors.inpostSenderAddress?.email?.message}
       >
@@ -138,14 +127,14 @@ export function InpostStructuredSection({
             form.setValue('inpostSenderAddress.email', event.target.value, { shouldDirty: true });
             onSenderAddressChange();
           }}
-          placeholder="magazyn@acme.pl"
+          placeholder={copy.sender.email.placeholder}
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.inpostSenderAddress?.email)}
         />
       </FormField>
 
       <FormField
-        label={t('inpost.settings.sender.phone.label', 'Sender phone')}
+        label={copy.sender.phone.label}
         name="inpostSenderAddress.phone"
         error={form.formState.errors.inpostSenderAddress?.phone?.message}
       >
@@ -163,7 +152,7 @@ export function InpostStructuredSection({
       </FormField>
 
       <FormField
-        label={t('inpost.settings.sender.street.label', 'Street')}
+        label={copy.sender.street.label}
         name="inpostSenderAddress.address.street"
         error={form.formState.errors.inpostSenderAddress?.address?.street?.message}
       >
@@ -175,14 +164,14 @@ export function InpostStructuredSection({
             });
             onSenderAddressChange();
           }}
-          placeholder="ul. Magazynowa"
+          placeholder={copy.sender.street.placeholder}
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.inpostSenderAddress?.address?.street)}
         />
       </FormField>
 
       <FormField
-        label={t('inpost.settings.sender.buildingNumber.label', 'Building number')}
+        label={copy.sender.buildingNumber.label}
         name="inpostSenderAddress.address.buildingNumber"
         error={form.formState.errors.inpostSenderAddress?.address?.buildingNumber?.message}
       >
@@ -202,7 +191,7 @@ export function InpostStructuredSection({
       </FormField>
 
       <FormField
-        label={t('inpost.settings.sender.city.label', 'City')}
+        label={copy.sender.city.label}
         name="inpostSenderAddress.address.city"
         error={form.formState.errors.inpostSenderAddress?.address?.city?.message}
       >
@@ -214,17 +203,17 @@ export function InpostStructuredSection({
             });
             onSenderAddressChange();
           }}
-          placeholder="Warszawa"
+          placeholder={copy.sender.city.placeholder}
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.inpostSenderAddress?.address?.city)}
         />
       </FormField>
 
       <FormField
-        label={t('inpost.settings.sender.postCode.label', 'Postcode')}
+        label={copy.sender.postCode.label}
         name="inpostSenderAddress.address.postCode"
         error={form.formState.errors.inpostSenderAddress?.address?.postCode?.message}
-        description={t('inpost.settings.sender.postCode.description', 'PL format NN-NNN (e.g. 00-001).')}
+        description={copy.sender.postCode.description}
       >
         <Input
           {...form.register('inpostSenderAddress.address.postCode')}
@@ -242,10 +231,10 @@ export function InpostStructuredSection({
       </FormField>
 
       <FormField
-        label={t('inpost.settings.sender.countryCode.label', 'Country')}
+        label={copy.sender.countryCode.label}
         name="inpostSenderAddress.address.countryCode"
         error={form.formState.errors.inpostSenderAddress?.address?.countryCode?.message}
-        description={t('inpost.settings.sender.countryCode.description', 'ISO 3166-1 alpha-2 (e.g. PL).')}
+        description={copy.sender.countryCode.description}
       >
         <Input
           {...form.register('inpostSenderAddress.address.countryCode')}

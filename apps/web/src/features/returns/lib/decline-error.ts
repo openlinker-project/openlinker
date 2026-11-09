@@ -18,7 +18,7 @@
  * @module apps/web/src/features/returns/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
-import { RETURN_DECLINE_ERROR_COPY } from './return-detail.copy';
+import { getMessages, interpolate } from '../../../shared/i18n';
 
 /**
  * The blocked downstream trigger, read from the 409 body.
@@ -37,29 +37,30 @@ export function readBlockedTrigger(error: unknown): string | null {
 
 /** One sentence describing why the decline did not go through. */
 export function describeDeclineError(error: unknown): string {
+  const copy = getMessages('returns').detail.declineError;
   if (!(error instanceof ApiError)) {
     return error instanceof Error && error.message.length > 0
       ? error.message
-      : RETURN_DECLINE_ERROR_COPY.generic;
+      : copy.generic;
   }
 
   if (error.status === 404) {
-    return RETURN_DECLINE_ERROR_COPY.notFound;
+    return copy.notFound;
   }
 
   if (error.status === 409) {
     const trigger = readBlockedTrigger(error);
     return trigger === null
-      ? RETURN_DECLINE_ERROR_COPY.conflictPrefix
-      : `${RETURN_DECLINE_ERROR_COPY.conflictPrefix} ${RETURN_DECLINE_ERROR_COPY.conflictTriggerPrefix} ${trigger}`;
+      ? copy.conflictPrefix
+      : interpolate(copy.conflictWithTrigger, { trigger });
   }
 
   if (error.status === 400) {
     // The adapter's own words — see the module docblock.
     return error.message.length > 0
-      ? `${RETURN_DECLINE_ERROR_COPY.unsupported} ${error.message}`
-      : RETURN_DECLINE_ERROR_COPY.unsupported;
+      ? interpolate(copy.unsupportedWithReason, { reason: error.message })
+      : copy.unsupported;
   }
 
-  return error.message.length > 0 ? error.message : RETURN_DECLINE_ERROR_COPY.generic;
+  return error.message.length > 0 ? error.message : copy.generic;
 }

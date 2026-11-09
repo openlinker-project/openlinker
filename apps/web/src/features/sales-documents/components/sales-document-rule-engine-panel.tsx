@@ -64,7 +64,7 @@ import { useMemo, useState, type ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { Combobox, type ComboboxOption } from '../../../shared/ui/combobox';
 import { localizedCountries } from '../../../shared/format/format-country';
-import { useLocale } from '../../../shared/i18n';
+import { useLocale, useMessages } from '../../../shared/i18n';
 import { SalesDocumentCountryRoutingDialog } from './sales-document-country-routing-dialog';
 import { SalesDocumentMarketSection } from './sales-document-market-section';
 import { useSalesDocumentMarketsQuery } from '../hooks/use-sales-document-markets-query';
@@ -77,6 +77,7 @@ interface RoutingDialogState {
 }
 
 export function SalesDocumentRuleEnginePanel(): ReactElement {
+  const copy = useMessages('sales-documents').salesDocumentRuleEnginePanel;
   const [routingDialog, setRoutingDialog] = useState<RoutingDialogState | null>(null);
   const [draftCountry, setDraftCountry] = useState<string | null>(null);
   const marketsQuery = useSalesDocumentMarketsQuery();
@@ -113,9 +114,9 @@ export function SalesDocumentRuleEnginePanel(): ReactElement {
         label: country.name,
         hint: country.code,
         disabled: existingCountries.has(country.code),
-        disabledReason: 'Already in the list above',
+        disabledReason: copy.alreadyListed,
       })),
-    [existingCountries, locale],
+    [existingCountries, locale, copy.alreadyListed],
   );
 
   // A country not yet in the list (no orders, no config) has nowhere to
@@ -137,11 +138,10 @@ export function SalesDocumentRuleEnginePanel(): ReactElement {
   return (
     <div className="page-section" style={{ marginTop: 'var(--space-6)' }}>
       <header style={{ marginBottom: 'var(--space-4)' }}>
-        <p className="eyebrow">Sales documents routing</p>
-        <h3 className="detail-section__title">What each market issues</h3>
+        <p className="eyebrow">{copy.eyebrow}</p>
+        <h3 className="detail-section__title">{copy.title}</h3>
         <p className="page-description">
-          Legal responsibility for what a sale requires stays with the operator — OpenLinker
-          executes the configured routing, it doesn&apos;t decide tax obligations.
+          {copy.description}
         </p>
       </header>
 
@@ -153,14 +153,14 @@ export function SalesDocumentRuleEnginePanel(): ReactElement {
 
       <div className="sales-document-add-market-row">
         <Combobox
-          ariaLabel="New market country"
+          ariaLabel={copy.newMarketLabel}
           className="sales-document-add-market-row__input"
           options={countryOptions}
           value={draftCountry ? { kind: 'dictionary', ids: [draftCountry] } : null}
           onChange={(next) =>
             setDraftCountry(next?.kind === 'dictionary' ? (next.ids[0] ?? null) : null)
           }
-          placeholder="Search a country…"
+          placeholder={copy.searchPlaceholder}
         />
         <Button
           tone="secondary"
@@ -168,7 +168,7 @@ export function SalesDocumentRuleEnginePanel(): ReactElement {
           disabled={draftCountry === null}
           onClick={submitAddMarket}
         >
-          Add a market
+          {copy.addMarket}
         </Button>
       </div>
 
@@ -182,9 +182,9 @@ export function SalesDocumentRuleEnginePanel(): ReactElement {
        */}
       <div className="sales-document-rest-of-world-row">
         <div>
-          <p className="sales-document-rest-of-world-row__title">★ Rest of world</p>
+          <p className="sales-document-rest-of-world-row__title">{copy.restOfWorld.title}</p>
           <p className="muted-text">
-            The catch-all every unconfigured market above falls through to.
+            {copy.restOfWorld.description}
           </p>
         </div>
         <Button
@@ -192,7 +192,7 @@ export function SalesDocumentRuleEnginePanel(): ReactElement {
           className="button--sm"
           onClick={() => handleSelectCountry(SALES_DOCUMENT_REST_OF_WORLD_COUNTRY)}
         >
-          Configure →
+          {copy.restOfWorld.configure}
         </Button>
       </div>
 

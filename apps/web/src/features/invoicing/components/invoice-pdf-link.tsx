@@ -14,7 +14,7 @@
  * @module apps/web/src/features/invoicing/components
  */
 import type { ReactElement } from 'react';
-import { useTranslation } from '../../../shared/i18n';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { isSafeHttpUrl } from '../../../shared/lib/is-safe-http-url';
 
 interface InvoicePdfLinkProps {
@@ -23,7 +23,7 @@ interface InvoicePdfLinkProps {
 }
 
 export function InvoicePdfLink({ invoiceNumber, pdfUrl }: InvoicePdfLinkProps): ReactElement {
-  const { t } = useTranslation();
+  const copy = useMessages('invoicing').invoice.pdf;
 
   if (pdfUrl && isSafeHttpUrl(pdfUrl)) {
     return (
@@ -36,10 +36,7 @@ export function InvoicePdfLink({ invoiceNumber, pdfUrl }: InvoicePdfLinkProps): 
         // name-from-content, so without it a 20-row page exposes 20 links with
         // identical accessible names and a screen reader's link list is useless
         // (#2090). Doubly so now the number is a merged identity cell's headline.
-        aria-label={t(
-          'invoice.pdf.aria',
-          `Open invoice PDF for ${invoiceNumber} (opens in new tab)`
-        )}
+        aria-label={interpolate(copy.aria, { invoiceNumber: invoiceNumber ?? '' })}
       >
         <span className="mono-text">{invoiceNumber}</span>
       </a>

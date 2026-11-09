@@ -410,9 +410,9 @@ describe('InfaktStructuredSection', () => {
       expect(getBankAccounts).toHaveBeenCalledWith('conn-1');
       const select = await screen.findByLabelText('Bank account for Transfer invoices');
       expect(
-        screen.getByText('mBank — 61 1140 2004 0000 3002 0135 5387 (default in inFakt)'),
+        screen.getByText('mBank - 61 1140 2004 0000 3002 0135 5387 (default in inFakt)'),
       ).toBeInTheDocument();
-      expect(screen.getByText('Santander — 12 1090 1014 0000 0001 2345 6789')).toBeInTheDocument();
+      expect(screen.getByText('Santander - 12 1090 1014 0000 0001 2345 6789')).toBeInTheDocument();
       expect(select).toBeInTheDocument();
     });
 

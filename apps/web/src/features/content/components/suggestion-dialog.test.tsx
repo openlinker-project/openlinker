@@ -18,7 +18,7 @@ import {
   renderWithProviders,
 } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import type { SessionUser } from '../../../shared/auth/session.types';
 import type { SuggestionResponse } from '../api/content.types';
 
@@ -274,7 +274,7 @@ describe('SuggestionDialog', () => {
       // hidden `role="tooltip"` a11y duplicate) — `findByText` would match
       // both and throw. Query the unique `role="tooltip"` node instead.
       const tooltip = await screen.findByRole('tooltip');
-      expect(tooltip).toHaveTextContent(DEMO_READ_ONLY_ACTION_MESSAGE);
+      expect(tooltip).toHaveTextContent(demoReadOnlyActionMessage());
       expect(captureDemoEvent).toHaveBeenCalledWith('demo_ai_suggest_attempted', {
         channel: 'master',
       });

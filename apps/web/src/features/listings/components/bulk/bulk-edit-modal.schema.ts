@@ -9,12 +9,20 @@
  * (`BulkCategoryChooseModal`, `CategoryParametersStep`) already read via
  * `useFormContext()` (`categoryId`, `parameters`).
  *
+ * Messages come from the `listings.bulkEditModal.validation` copy, read when the
+ * schema is built, so build it inside the component rather than at module level.
+ *
  * @module apps/web/src/features/listings/components/bulk
  */
 import { z } from 'zod';
 
-// Offer title cap (Allegro's is 75). The copy is parametrized by platform in
-// the component; the numeric cap is shared across supported marketplaces.
+import type { Messages, ResolvedCopy } from '../../../../shared/i18n';
+
+/** The `listings.bulkEditModal.validation` copy. */
+export type BulkEditModalValidationCopy =
+  ResolvedCopy<Messages['listings']>['bulkEditModal']['validation'];
+
+// Offer title cap (Allegro's is 75), shared across supported marketplaces.
 const TITLE_MAX = 75;
 const DESCRIPTION_MAX = 50_000;
 
@@ -25,13 +33,16 @@ const DESCRIPTION_MAX = 50_000;
  * valid because it resolves server-side at submit (override -> barcode ->
  * configured category mapping, ADR-025 §3).
  */
-export function makeBulkEditModalSchema(requireCategory: boolean) {
+export function makeBulkEditModalSchema(
+  requireCategory: boolean,
+  copy: BulkEditModalValidationCopy,
+) {
   return z.object({
-    title: z.string().trim().min(1, 'Title is required').max(TITLE_MAX),
+    title: z.string().trim().min(1, copy.titleRequired).max(TITLE_MAX),
     // Both branches are `ZodString`, so the inferred object type is identical
     // regardless of `requireCategory` - only the runtime validation differs.
     categoryId: requireCategory
-      ? z.string().trim().min(1, 'Category is required')
+      ? z.string().trim().min(1, copy.categoryRequired)
       : z.string().trim(),
     // Hidden field - set when the operator picks a multi-match candidate so the
     // offer links that card (#810/#808). Cleared on a manual category change.
@@ -48,9 +59,9 @@ export function makeBulkEditModalSchema(requireCategory: boolean) {
     priceAmount: z
       .string()
       .trim()
-      .regex(/^(\d+([.,]\d{1,2})?)?$/, 'Use a decimal price, e.g. 79.00'),
+      .regex(/^(\d+([.,]\d{1,2})?)?$/, copy.priceFormat),
     // Only consumed by the simple-product flat form; base scope leaves it 0.
-    stock: z.coerce.number().int().min(0, 'Stock cannot be negative'),
+    stock: z.coerce.number().int().min(0, copy.stockNegative),
     publishImmediately: z.boolean(),
     // Permissive object - `CategoryParametersStep` owns its per-field shape and
     // the submit serialiser (`categoryParametersToOfferParameters`).
@@ -58,11 +69,7 @@ export function makeBulkEditModalSchema(requireCategory: boolean) {
   });
 }
 
-/**
- * Default (category-required, Allegro) schema. Preserves the const export + the
- * type derivations below for existing consumers and tests.
- */
-export const bulkEditModalSchema = makeBulkEditModalSchema(true);
+type BulkEditModalSchema = ReturnType<typeof makeBulkEditModalSchema>;
 
-export type BulkEditModalValues = z.input<typeof bulkEditModalSchema>;
-export type BulkEditModalSubmission = z.output<typeof bulkEditModalSchema>;
+export type BulkEditModalValues = z.input<BulkEditModalSchema>;
+export type BulkEditModalSubmission = z.output<BulkEditModalSchema>;

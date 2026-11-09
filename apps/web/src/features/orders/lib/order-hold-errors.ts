@@ -12,6 +12,7 @@
  * @module apps/web/src/features/orders/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 
 /** Read the backend's `error` code off a conflict body, if it carries one. */
 function readErrorCode(error: unknown): string | null {
@@ -32,9 +33,9 @@ function readErrorCode(error: unknown): string | null {
 export function describeHoldWriteError(error: unknown, fallback: string): string {
   switch (readErrorCode(error)) {
     case 'ORDER_ALREADY_ON_HOLD':
-      return 'This order is already on hold. The open hold is being loaded now.';
+      return getMessages('orders').holds.errors.alreadyOnHold;
     case 'HOLD_ALREADY_RELEASED':
-      return 'This hold was already released. The order is being reloaded now.';
+      return getMessages('orders').holds.errors.alreadyReleased;
     default:
       return (error instanceof Error && error.message) || fallback;
   }

@@ -16,7 +16,7 @@ import { Link } from 'react-router-dom';
 import { ConnectionChip, readConnectionEnvironment } from '../../features/connections';
 import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
-import { useMessages, usePlural } from '../../shared/i18n';
+import { renderRich, useMessages, usePlural } from '../../shared/i18n';
 import {
   CONNECTION_STATUS_LABEL_KEY,
   bucketOf,
@@ -32,7 +32,8 @@ export function ConnectionHealthList({
   rows: readonly ConnectionHealthRow[];
 }): ReactElement {
   const platforms = usePlatforms();
-  const copy = useMessages('insights').connectionHealth;
+  const pageCopy = useMessages('analytics').insightsPage;
+  const copy = pageCopy.connectionHealth;
   const plural = usePlural();
   const sorted = useMemo(() => sortConnectionHealthRows(rows), [rows]);
   const summary = useMemo(() => summarizeConnectionHealth(rows), [rows]);
@@ -40,7 +41,9 @@ export function ConnectionHealthList({
   if (rows.length === 0) {
     return (
       <p className="muted-text">
-        {copy.empty} <Link to="/connections/new">{copy.emptyAction}</Link>
+        {renderRich(pageCopy.noConnections, {
+          link: (text: string) => <Link to="/connections/new">{text}</Link>,
+        })}
       </p>
     );
   }
@@ -70,14 +73,10 @@ export function ConnectionHealthList({
         </div>
         <ul className="health-legend" aria-hidden="true">
           {summary.attention > 0 ? (
-            <li className="health-legend__item health-legend__item--attention">
-              {attentionText}
-            </li>
+            <li className="health-legend__item health-legend__item--attention">{attentionText}</li>
           ) : null}
           {summary.healthy > 0 ? (
-            <li className="health-legend__item health-legend__item--healthy">
-              {healthyText}
-            </li>
+            <li className="health-legend__item health-legend__item--healthy">{healthyText}</li>
           ) : null}
           {summary.off > 0 ? (
             <li className="health-legend__item health-legend__item--off">{offText}</li>

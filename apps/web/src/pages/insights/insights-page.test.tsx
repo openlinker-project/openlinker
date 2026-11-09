@@ -476,7 +476,7 @@ describe('InsightsPage', () => {
 
       await screen.findByText('some › failing › job');
       const retryButton = await screen.findByRole('button', {
-        name: /Retry — some › failing › job on Main PrestaShop Store/,
+        name: /Retry - some › failing › job on Main PrestaShop Store/,
       });
       fireEvent.click(retryButton);
 
@@ -511,7 +511,7 @@ describe('InsightsPage', () => {
       renderWithProviders(<InsightsPage />, { apiClient });
 
       const retryButton = await screen.findByRole('button', {
-        name: /Retry — bulk › failing › job on Main PrestaShop Store/,
+        name: /Retry - bulk › failing › job on Main PrestaShop Store/,
       });
       fireEvent.click(retryButton);
 
@@ -541,7 +541,7 @@ describe('InsightsPage', () => {
       renderWithProviders(<InsightsPage />, { apiClient });
 
       const retryButton = await screen.findByRole('button', {
-        name: /Retry — partial › retry › job on Main PrestaShop Store/,
+        name: /Retry - partial › retry › job on Main PrestaShop Store/,
       });
       fireEvent.click(retryButton);
 
@@ -573,7 +573,7 @@ describe('InsightsPage', () => {
       renderWithProviders(<InsightsPage />, { apiClient });
 
       const retryButton = await screen.findByRole('button', {
-        name: /Retry — racy › job on Main PrestaShop Store/,
+        name: /Retry - racy › job on Main PrestaShop Store/,
       });
       fireEvent.click(retryButton);
 

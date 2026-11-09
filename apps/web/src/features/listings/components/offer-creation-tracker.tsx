@@ -14,8 +14,11 @@
  *
  * @module apps/web/src/features/listings/components
  */
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { Button } from '../../../shared/ui/button';
+import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
+import { usePlatforms } from '../../../shared/plugins';
+import { resolvePlatformLabel } from '../../mappings';
 import { useOfferCreationStatusQuery } from '../hooks/use-offer-creation-status-query';
 import { TERMINAL_OFFER_CREATION_STATUSES } from '../api/listings.types';
 import { buildAllegroSellerPanelUrl } from '../lib/allegro-seller-panel-url';
@@ -49,18 +52,37 @@ export function OfferCreationTracker({
   marketplaceEnvironment,
   onDismiss,
 }: OfferCreationTrackerProps): ReactElement {
+  const copy = useMessages('listings').offerCreationTracker;
   const query = useOfferCreationStatusQuery(connectionId, offerCreationRecordId);
+  // The operator needs to know WHICH channel holds the draft, so the sentence
+  // names it from the plugin registry; with no known platform it falls back
+  // to the generic wording rather than inventing a name.
+  const platforms = usePlatforms();
+  const platform = marketplacePlatformType
+    ? resolvePlatformLabel(platforms, marketplacePlatformType)
+    : undefined;
+  // The external id sits in mono inside the sentence, so it is passed as a
+  // value and wrapped by the `<id>` tag rather than concatenated.
+  const withExternalId = (withId: string, withoutId: string, externalId: string | null): ReactNode =>
+    externalId
+      ? renderRich(withId, { id: (text) => <span className="mono-text">{text}</span> }, {
+          externalId,
+          platform: platform ?? '',
+        })
+      : interpolate(withoutId, { platform: platform ?? '' });
+  const draftCopy = platform ? copy.draft.onPlatform : copy.draft.anyPlatform;
+  const reusedCopy = platform ? copy.reused.onPlatform : copy.reused.anyPlatform;
 
   if (query.isLoading) {
     return (
       <section className="offer-creation-tracker" aria-live="polite">
         <div className="offer-creation-tracker__header">
-          <span className="offer-creation-tracker__label">Offer creation</span>
+          <span className="offer-creation-tracker__label">{copy.label}</span>
           <span className="mono-text offer-creation-tracker__id" title={offerCreationRecordId}>
             {offerCreationRecordId}
           </span>
         </div>
-        <p className="offer-creation-tracker__body">Loading status…</p>
+        <p className="offer-creation-tracker__body">{copy.loading}</p>
       </section>
     );
   }
@@ -75,13 +97,13 @@ export function OfferCreationTracker({
     return (
       <section className="offer-creation-tracker offer-creation-tracker--error" aria-live="polite">
         <div className="offer-creation-tracker__header">
-          <span className="offer-creation-tracker__label">Offer creation</span>
+          <span className="offer-creation-tracker__label">{copy.label}</span>
           <Button tone="ghost" onClick={onDismiss}>
-            Dismiss
+            {copy.dismiss}
           </Button>
         </div>
         <p className="offer-creation-tracker__body">
-          Unable to load status: {query.error.message}
+          {interpolate(copy.loadFailed, { message: query.error.message })}
         </p>
       </section>
     );
@@ -106,80 +128,55 @@ export function OfferCreationTracker({
       aria-live="polite"
     >
       <div className="offer-creation-tracker__header">
-        <span className="offer-creation-tracker__label">Offer creation</span>
+        <span className="offer-creation-tracker__label">{copy.label}</span>
         <OfferCreationStatusBadge status={record.status} />
         <span className="mono-text offer-creation-tracker__id" title={record.id}>
           {record.id}
         </span>
         {showDismiss ? (
           <Button tone="ghost" onClick={onDismiss}>
-            Dismiss
+            {copy.dismiss}
           </Button>
         ) : null}
       </div>
 
       {!isTerminal ? (
-        <p className="offer-creation-tracker__body">
-          Still processing — the status will update automatically.
-        </p>
+        <p className="offer-creation-tracker__body">{copy.processing}</p>
       ) : null}
 
       {record.status === 'active' ? (
         <p className="offer-creation-tracker__body">
-          Offer is live
-          {record.externalOfferId ? (
-            <>
-              {' '}· external id{' '}
-              <span className="mono-text">{record.externalOfferId}</span>
-            </>
-          ) : null}
-          .
+          {withExternalId(copy.live.withId, copy.live.withoutId, record.externalOfferId)}
         </p>
       ) : null}
 
       {record.status === 'reused' ? (
         <p className="offer-creation-tracker__body">
-          Offer already existed on the marketplace — reused the existing listing
-          {record.externalOfferId ? (
-            <>
-              {' '}· external id{' '}
-              <span className="mono-text">{record.externalOfferId}</span>
-            </>
-          ) : null}
-          .
+          {withExternalId(reusedCopy.withId, reusedCopy.withoutId, record.externalOfferId)}
         </p>
       ) : null}
 
       {record.status === 'draft' ? (
         <>
           <p className="offer-creation-tracker__body">
-            Offer created as a draft on Allegro
-            {record.externalOfferId ? (
-              <>
-                {' '}· external id{' '}
-                <span className="mono-text">{record.externalOfferId}</span>
-              </>
-            ) : null}
-            .
+            {withExternalId(draftCopy.withId, draftCopy.withoutId, record.externalOfferId)}
             {sellerPanelUrl ? (
               <>
                 {' '}
                 <a href={sellerPanelUrl} target="_blank" rel="noopener noreferrer">
-                  Open in Allegro seller panel
+                  {interpolate(copy.draft.openSellerPanel, { platform: platform ?? '' })}
                 </a>
               </>
             ) : null}
           </p>
           {record.errors && record.errors.length > 0 ? (
             <>
-              <p className="offer-creation-tracker__body">
-                Allegro reported validation issues that block publishing:
-              </p>
+              <p className="offer-creation-tracker__body">{copy.draft.validationIssues}</p>
               <OfferCreationErrorList errors={record.errors} />
             </>
           ) : (
             <p className="offer-creation-tracker__body offer-creation-tracker__body--muted">
-              No inline validation issues — publish manually in the Allegro seller panel.
+              {interpolate(draftCopy.noValidationIssues, { platform: platform ?? '' })}
             </p>
           )}
         </>
@@ -187,10 +184,7 @@ export function OfferCreationTracker({
 
       {record.status === 'failed' ? (
         <>
-          <p className="offer-creation-tracker__body">
-            Offer creation failed. Review the errors below and submit a new offer with
-            the corrected values.
-          </p>
+          <p className="offer-creation-tracker__body">{copy.failed}</p>
           <OfferCreationErrorList errors={record.errors} />
         </>
       ) : null}

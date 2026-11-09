@@ -1,0 +1,236 @@
+{
+  "attention": {
+    "badges": {
+      "at-risk": "Zagrożone",
+      "blocked": "Zablokowane",
+      "not-matched": "Niedopasowane",
+      "stopped": "Zatrzymane"
+    },
+    "reasons": {
+      "availability-unknown": {
+        "action": "Otwórz wymienione poniżej połączenia i zostaw tylko jedno z nich jako odpowiedzialne za stan magazynowy.",
+        "body": "Dwa systemy twierdzą, że odpowiadają za stan magazynowy, więc OpenLinker nie będzie zgadywać. Publikowanie tych produktów jest wstrzymane.",
+        "title": "Nie wiadomo, jaki stan magazynowy publikować",
+        "titleFallback": "Nie wiadomo, jaki stan magazynowy publikować"
+      },
+      "fulfillment-unaccepted": {
+        "action": "Otwórz zamówienie, aby zobaczyć odpowiedź każdego miejsca, a potem wyślij je samodzielnie.",
+        "body": "Każde miejsce, które mogło je wysłać, odmówiło. Zamówienie czeka na Twoją decyzję.",
+        "title": "Nikt nie przyjął realizacji zamówienia {ref}",
+        "titleFallback": "Nikt nie przyjął realizacji tego zamówienia"
+      },
+      "line-unfulfillable": {
+        "action": "Otwórz zamówienie i zwróć pieniądze za pozycje, których nie da się wysłać, lub przyjmij ich zwrot.",
+        "body": "Żadne miejsce, które może wysyłać do tego kupującego, nie ma tego towaru na stanie. To decyzja o zwrocie pieniędzy lub zwrocie towaru, a nie coś, co OpenLinker może naprawić.",
+        "title": "Pozycji zamówienia {ref} ({n}) nie da się wysłać z żadnego miejsca",
+        "titleFallback": "Części pozycji tego zamówienia nie da się wysłać z żadnego miejsca"
+      },
+      "reservation-shortfall": {
+        "action": "Otwórz zamówienie, a potem sprawdź produkt, aby zobaczyć, ile zostało na stanie.",
+        "body": "Stan w głównym systemie magazynowym spadł poniżej tego, co obiecano temu zamówieniu. Nic nie zostało po cichu zmniejszone - zagrożone jest właśnie to zamówienie.",
+        "title": "Zamówieniu {ref} brakuje {n} × {sku}",
+        "titleFallback": "Temu zamówieniu brakuje towaru"
+      },
+      "restock-blocked": {
+        "action": "Otwórz zwrot, aby zobaczyć, który system odmówił i z jakim komunikatem.",
+        "body": "System, do którego należy ten stan magazynowy, odmówił przyjęcia zwróconego towaru na stan. Nic nie zostało dodane i nic nie zostało utracone.",
+        "title": "Towar nie został przyjęty na stan.",
+        "titleFallback": "Towar nie został przyjęty na stan."
+      },
+      "return-unmatched": {
+        "action": "Nic nie trzeba robić. Jeśli zamówienie dotrze później, OpenLinker dopasuje je automatycznie.",
+        "body": "OpenLinker nigdy nie widział zamówienia, do którego należy ten zwrot, więc nic się na jego podstawie nie uruchamia - żadnej zmiany stanu, zwrotu pieniędzy ani faktury korygującej.",
+        "title": "Ten zwrot nie jest dopasowany do zamówienia.",
+        "titleFallback": "Ten zwrot nie jest dopasowany do zamówienia."
+      },
+      "returns-disposition-ambiguous": {
+        "action": "Otwórz wymienione poniżej połączenia i zostaw decyzję tylko jednemu z nich.",
+        "body": "Dwa systemy są ustawione do podejmowania decyzji, więc OpenLinker nie wykonuje żadnej z nich. Zwroty są nadal rejestrowane, ale nic nie jest automatycznie przyjmowane na stan ani utylizowane.",
+        "title": "Nic nie decyduje, co dzieje się ze zwrotami z {channel}",
+        "titleFallback": "Nic nie decyduje, co dzieje się z tymi zwrotami"
+      },
+      "routing-stuck": {
+        "action": "Zwykle nic nie trzeba robić. Jeśli stan się utrzymuje lub powraca, sprawdź połączenie, które decyduje, gdzie pakowane są zamówienia.",
+        "body": "OpenLinker zapytał, gdzie spakować to zamówienie, i nie dostał odpowiedzi na czas, więc przestał czekać i wybierze ponownie. W międzyczasie OpenLinker nie utworzył dla niego żadnej pracy przy pakowaniu.",
+        "title": "Wybór miejsca pakowania zamówienia {ref} utknął",
+        "titleFallback": "Wybór miejsca pakowania tego zamówienia utknął"
+      },
+      "sourcing-ambiguous": {
+        "action": "Otwórz wymienione poniżej połączenia i zostaw decyzję tylko jednemu z nich.",
+        "body": "Dwa systemy są ustawione do podejmowania decyzji, więc OpenLinker nie wykonuje żadnej z nich. Zamówienia są wysyłane tak jak wcześniej.",
+        "title": "Nic nie decyduje, skąd wysyłane są zamówienia z {channel}",
+        "titleFallback": "Nic nie decyduje, skąd wysyłane są te zamówienia"
+      },
+      "stock-decrement-blocked": {
+        "action": "Otwórz zamówienie, a potem sprawdź stan magazynowy jego produktów w sklepie i w razie potrzeby popraw go tam.",
+        "body": "OpenLinker nie mógł obniżyć stanu magazynowego dla tej sprzedaży w sklepie, do którego należy produkt, albo nie ma pewności, że zmiana została zapisana. Sklep może nadal pokazywać te produkty jako dostępne.",
+        "title": "Stan magazynowy dla zamówienia {ref} nie został obniżony w sklepie",
+        "titleFallback": "Stan magazynowy dla tego zamówienia nie został obniżony w sklepie"
+      }
+    },
+    "section": {
+      "description": "Czynności, które OpenLinker przestał wykonywać, i na co każda z nich czeka.",
+      "empty": "Nic nie utknęło. OpenLinker podejmuje wszystkie decyzje, które mu powierzono.",
+      "heading": "Wymaga uwagi",
+      "ordersLabel": "Zamówienia, których to dotyczy",
+      "statesLabel": "Niepodejmowane decyzje",
+      "unknownNote": "Część poniższych pozycji zapisała nowsza wersja OpenLinker, więc są widoczne, ale nie są wliczane powyżej."
+    },
+    "unknown": {
+      "action": "Zaktualizuj OpenLinker, aby zobaczyć, co to jest.",
+      "badgeLabel": "Nierozpoznane",
+      "body": "Zapisała to nowsza wersja OpenLinker. Jest przechowywane, ale nie jest tu wliczane.",
+      "title": "OpenLinker zatrzymał się z powodu, którego ta wersja nie rozpoznaje"
+    }
+  },
+  "whoDecides": {
+    "answers": {
+      "cannotTell": "OpenLinker nie potrafi tego ustalić",
+      "configuredElsewhere": "Ustawiane w sekcji Kierowanie dokumentów sprzedaży",
+      "defaultToday": "Tam, gdzie zamówienie trafia obecnie",
+      "manual": "Obsługujesz to ręcznie",
+      "nobodyToRoute": "Każdy sklep decyduje sam (nie ma czego kierować)",
+      "openlinker": "OpenLinker",
+      "separator": " · ",
+      "unnamedConnection": "Połączenie"
+    },
+    "page": {
+      "backLabel": "Ustawienia",
+      "errorMessage": "Coś poszło nie tak podczas odczytu konfiguracji. Spróbuj ponownie za chwilę.",
+      "errorTitle": "Nie udało się wczytać tej strony",
+      "eyebrow": "Ustawienia",
+      "lede": "OpenLinker, sklep, marketplace'y i magazyn decydują o różnych rzeczach. Ta strona pokazuje, kto o czym decyduje teraz, i pozwala przekazać część tych decyzji OpenLinkerowi - albo zostawić je tam, gdzie są.",
+      "loading": "Ustalanie, kto o czym decyduje…",
+      "loadingTitle": "Kto o czym decyduje",
+      "presetsEyebrow": "Wybierz układ",
+      "presetsHeading": "Jak to ma działać?",
+      "prospectiveOnly": "Zmiana wpływa tylko na to, co dzieje się od teraz. Wszystko, co już trwa - zamówienie już wysłane do sklepu, kupiona etykieta - zachowuje obecny układ do zakończenia.",
+      "questionsCounter": "7 decyzji",
+      "questionsEyebrow": "Obecnie",
+      "questionsHeading": "Kto o czym decyduje",
+      "retryLabel": "Spróbuj ponownie",
+      "title": "Kto o czym decyduje"
+    },
+    "presetActions": {
+      "ambiguousMessage": "W takim układzie dwa systemy decydowałyby o tym samym, więc OpenLinker nie podjąłby żadnej z tych decyzji. Otwórz wymienione poniżej połączenia i zostaw tylko jedno z nich jako odpowiedzialne.",
+      "ambiguousTitle": "Nic nie zostało zmienione",
+      "applyLabel": "Zapisz ten układ",
+      "applyingLabel": "Zapisywanie…",
+      "cancelLabel": "Anuluj",
+      "confirmLabel": "Zapisz",
+      "confirmTitle": "Zmienić, kto o czym decyduje?",
+      "failedMessage": "Nic nie zostało zmienione. Spróbuj ponownie za chwilę.",
+      "failedTitle": "Nie udało się tego zapisać",
+      "partialMessage": "Części połączeń nie udało się zaktualizować. Nic nie jest zepsute - wybierz ten sam układ ponownie, a OpenLinker dokończy resztę.",
+      "partialTitle": "Zapisano tylko część zmian",
+      "readOnly": "Tylko administrator może zmienić, kto o czym decyduje.",
+      "rejectedMessage": "Nic nie zostało zmienione. Ta wersja i serwer różnią się co do dostępnych układów - aktualizacja OpenLinker powinna to naprawić.",
+      "rejectedTitle": "OpenLinker nie przyjął tego wyboru",
+      "successMessage": "Zaktualizowano, kto o czym decyduje.",
+      "successTitle": "Zapisano",
+      "unreadableMessage": "Układ mógł zostać zapisany częściowo lub w całości - OpenLinker nie mógł odczytać odpowiedzi, aby to ustalić. Odśwież stronę, aby zobaczyć bieżący stan, a jeśli czegoś brakuje, wybierz ten sam układ ponownie.",
+      "unreadableTitle": "Nie udało się odczytać wyniku"
+    },
+    "presetCards": {
+      "keep-other-system": {
+        "bestIf": "masz już system magazynowy lub ERP, któremu ufasz i którego nie chcesz zastępować.",
+        "body": "Dotychczasowy system magazynowy lub zamówień nadal decyduje. OpenLinker zapewnia mu połączenie z marketplace'ami - oferty, publikację stanów magazynowych, pobieranie zamówień, przekazywanie statusów - oraz wystawia polskie faktury i paragony, czego ten system nie potrafi.",
+        "changes": "OpenLinker przestaje sam wyliczać stan, który można obiecać, i publikuje to, co przekaże mu ten system. Zwroty pieniędzy i dokumenty fiskalne i tak zostają w OpenLinker - tylko OpenLinker ma dane dostępowe, które pozwalają je wystawiać.",
+        "changesLabel": "Co to zmienia:",
+        "title": "Zostaw decyzje innemu systemowi"
+      },
+      "leave-as-they-are": {
+        "bestIf": "masz jeden sklep, jeden magazyn i nic w obecnej konfiguracji Ci nie przeszkadza.",
+        "body": "Sklep i marketplace'y nadal podejmują wszystkie decyzje, dokładnie tak jak teraz. OpenLinker je łączy, publikuje stany magazynowe i oferty, wystawia faktury i nie wchodzi w drogę.",
+        "changes": "Tak OpenLinker działa już teraz.",
+        "changesLabel": "Ten wybór niczego nie zmienia.",
+        "title": "Zostaw bez zmian"
+      },
+      "openlinker-decides": {
+        "bestIf": "sprzedajesz ten sam towar w więcej niż jednym kanale albo zdarzają się zamówienia, które lepiej byłoby zatrzymać przed wysyłką.",
+        "body": "OpenLinker staje się miejscem podejmowania decyzji: wylicza, ile towaru można bezpiecznie obiecać, wstrzymuje zamówienia, które nie powinny jeszcze wyjść, i decyduje, co dzieje się z towarem, który wraca. Sklep i przewoźnicy nadal wykonują pracę fizyczną.",
+        "changes": "OpenLinker zaczyna odejmować znane mu zamówienia od publikowanych stanów magazynowych i może wstrzymać zamówienie, tak aby nigdy nie trafiło do sklepu. Dotychczasowe przepływy stanów, zamówień i faktur pozostają bez zmian. Obecna konfiguracja zostaje zachowana, więc można do niej wrócić.",
+        "changesLabel": "Co to zmienia:",
+        "title": "Niech decyduje OpenLinker"
+      }
+    },
+    "presetChangeMeaning": {
+      "cannotTell": "Dwa systemy byłyby odpowiedzialne jednocześnie, więc OpenLinker nie decydowałby o niczym.",
+      "configuredElsewhere": "Pozostaje ustawiane na stronie Kierowanie dokumentów sprzedaży.",
+      "defaultToday": "Wraca do sytuacji, w której trafia tam, gdzie trafia obecnie.",
+      "holders": "Od teraz decydować o tym będą systemy wymienione powyżej.",
+      "manual": "Nic nie będzie o tym decydować automatycznie - obsłużysz to samodzielnie.",
+      "nobodyToRoute": "Sprzedajesz z jednego miejsca, więc nie będzie między czym wybierać.",
+      "openlinker": "Od teraz decydować o tym będzie OpenLinker."
+    },
+    "presetConfirm": {
+      "assignmentPreserved": "Systemy zachowują swoje ustawienia, więc można je później przywrócić, ponownie je włączając.",
+      "becomes": "zmienia się na",
+      "blockedIntro": "W takim układzie dwa systemy decydowałyby o tym samym, więc OpenLinker nie podjąłby żadnej z tych decyzji. Otwórz wymienione poniżej połączenia i zostaw tylko jedno z nich jako odpowiedzialne.",
+      "blockedTitle": "Tego nie można jeszcze zapisać",
+      "changesHeading": "Co się zmieni",
+      "loading": "Ustalanie, co by się zmieniło…",
+      "noChanges": "Zapisanie niczego nie zmieni - konfiguracja już działa w ten sposób.",
+      "retryLabel": "Spróbuj ponownie",
+      "unreadable": "Nie udało się ustalić, co by się zmieniło, więc nie można jeszcze tego zapisać. Spróbuj ponownie za chwilę."
+    },
+    "presetLabels": {
+      "bestIf": "Najlepsze, jeśli:",
+      "current": "Bieżący",
+      "unavailable": "Jeszcze niedostępne",
+      "unavailableReasonFallback": "Jeszcze niedostępne z powodu, którego ta wersja nie rozpoznaje.",
+      "whyCodeFallback": "OpenLinker zdecydował tak z powodu, którego ta wersja nie rozpoznaje."
+    },
+    "presetUnavailableReasons": {
+      "needs-a-system-that-can-take-over": "Wymaga systemu, który może przejąć decyzje. Najpierw go połącz."
+    },
+    "questionLabels": {
+      "availability": "Ile towaru można obiecać?",
+      "fulfillment-execution": "Kto kompletuje i wysyła?",
+      "order-lifecycle": "W jakim stanie jest zamówienie?",
+      "refund-trigger": "Kto zwraca pieniądze?",
+      "returns-disposition": "Co dzieje się ze zwróconym towarem?",
+      "sales-documents": "Kto wystawia faktury i paragony?",
+      "sourcing": "Skąd wysyłane jest zamówienie?"
+    },
+    "rowBadges": {
+      "always": "Zawsze",
+      "chosen": "Wybrane",
+      "default": "Domyślne",
+      "elsewhere": "Gdzie indziej",
+      "not-available": "Niedostępne",
+      "nothing-is-deciding": "Nic nie decyduje",
+      "nothing-to-route": "Nie ma czego kierować"
+    },
+    "rowDetail": {
+      "answerColumnLabel": "Kto decyduje",
+      "elsewhereLinkLabel": "Ustawiane w sekcji Kierowanie dokumentów sprzedaży",
+      "inactiveClaimMany": "Wyłączone połączenia nadal się do tego zgłaszają.",
+      "inactiveClaimOne": "Wyłączone połączenie nadal się do tego zgłasza.",
+      "lockedLabel": "Nie można przekazać",
+      "questionColumnLabel": "Decyzja",
+      "whyColumnLabel": "Dlaczego"
+    },
+    "tile": {
+      "chip": "Kto o czym decyduje",
+      "description": "Zobacz, który system odpowiada za stany magazynowe, zamówienia i zwroty - i przekaż dowolną z tych rzeczy OpenLinkerowi.",
+      "eyebrow": "Decyzje",
+      "linkLabel": "Otwórz",
+      "title": "Kto o czym decyduje"
+    },
+    "whyCodes": {
+      "a1-claimed-by-connection": "Ten system odpowiada za stan magazynowy zgodnie z Twoim ustawieniem.",
+      "a1-computed-from-master-minus-buffer": "Wyliczane z głównego systemu magazynowego minus zapas bezpieczeństwa. Nikt inny się do tego nie zgłosił.",
+      "a2-claimed-by-connection": "Ten system wybiera, skąd wysyłane są zamówienia, zgodnie z Twoim ustawieniem.",
+      "a2-single-origin-nothing-to-choose": "Sprzedajesz z jednego miejsca, więc nie ma między czym wybierać.",
+      "a3-claimed-by-connection": "Ten system odpowiada za kompletowanie i wysyłkę zgodnie z Twoim ustawieniem.",
+      "a3-lands-where-it-does-today": "Ten, do kogo trafia zamówienie, tak jak działa to obecnie.",
+      "a4-claimed-by-connection": "Ten system śledzi, na jakim etapie jest zamówienie, zgodnie z Twoim ustawieniem.",
+      "a4-derived-from-observed-facts": "OpenLinker ustala to na podstawie tego, co widzi - przesyłki, faktury, ustawionego wstrzymania.",
+      "a5-claimed-by-connection": "Ten system decyduje, co dzieje się ze zwrotami, zgodnie z Twoim ustawieniem.",
+      "a5-nothing-decides-yet-handled-by-hand": "Nic jeszcze o tym nie decyduje - zwroty obsługujesz ręcznie.",
+      "a6-only-ol-holds-payment-credentials": "Tylko OpenLinker ma dane dostępowe do płatności, więc tylko OpenLinker może to robić. Tej decyzji nie można przekazać.",
+      "a7-configured-under-sales-documents": "Ustawiane osobno dla każdego kraju w sekcji Kierowanie dokumentów sprzedaży."
+    }
+  }
+}

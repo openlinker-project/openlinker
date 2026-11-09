@@ -39,6 +39,7 @@ import {
   findSalesDocumentConnectionRoleGapFromRows,
 } from '../lib/find-sales-document-connection-role-gap';
 import { deriveSalesDocumentRows } from '../lib/derive-sales-document-rows';
+import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
 
 interface SalesDocumentTemplateScreenProps {
   country: string;
@@ -47,6 +48,7 @@ interface SalesDocumentTemplateScreenProps {
 export function SalesDocumentTemplateScreen({
   country,
 }: SalesDocumentTemplateScreenProps): ReactElement | null {
+  const copy = useMessages('sales-documents').salesDocumentTemplateScreen;
   const templateQuery = useSalesDocumentTemplateQuery(country);
   const connectionsQuery = useConnectionsQuery();
   const adopt = useAdoptSalesDocumentTemplateMutation();
@@ -54,7 +56,7 @@ export function SalesDocumentTemplateScreen({
   const [selections, setSelections] = useState<Record<string, string>>({});
 
   if (templateQuery.isLoading) {
-    return <LoadingState title="Checking for a starter template" message="" />;
+    return <LoadingState title={copy.loading} message="" />;
   }
 
   const template = templateQuery.data ?? null;
@@ -71,18 +73,25 @@ export function SalesDocumentTemplateScreen({
   return (
     <details className="template-accordion">
       <summary className="template-accordion__summary">
-        <span className="template-card__badge">Suggested starter template</span>
+        <span className="template-card__badge">{copy.badge}</span>
         <span className="template-accordion__hint">
-          A ready-made rule set for {template.country} — click to review
+          {interpolate(copy.hint, { country: template.country })}
         </span>
       </summary>
       <div className="template-card">
         <div className="template-card__head">
           <span className="template-card__source">
-            Sourced from public guidance —{' '}
-            <a href={template.sourceUrl} target="_blank" rel="noopener noreferrer">
-              {template.sourceLabel}
-            </a>
+            {renderRich(
+              copy.source,
+              {
+                link: (text) => (
+                  <a href={template.sourceUrl} target="_blank" rel="noopener noreferrer">
+                    {text}
+                  </a>
+                ),
+              },
+              { source: template.sourceLabel },
+            )}
           </span>
         </div>
 
@@ -111,13 +120,17 @@ export function SalesDocumentTemplateScreen({
                 </div>
                 <div className="frame-grid frame-grid--2" style={{ marginTop: 'var(--space-2)' }}>
                   <Select
-                    aria-label={`Connection for ${rule.label}`}
+                    aria-label={interpolate(copy.connectionFor, { rule: rule.label })}
                     value={selections[rule.slot] ?? ''}
                     onChange={(event) =>
                       setSelections((prev) => ({ ...prev, [rule.slot]: event.target.value }))
                     }
                   >
-                    <option value="">Select a {rule.requiredCapability} connection…</option>
+                    <option value="">
+                      {rule.requiredCapability === 'Invoicing'
+                        ? copy.selectInvoicing
+                        : copy.selectFiscalization}
+                    </option>
                     {capable.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -140,11 +153,7 @@ export function SalesDocumentTemplateScreen({
 
         {template.rules.some((rule) => rule.usesBuyerHasTaxId) ? (
           <Alert tone="warning">
-            Every rule above keys off whether the buyer has a tax ID — a fact only some sources
-            report. PrestaShop reports it only when the buyer filled in a VAT number on the
-            address; Allegro and Erli report it only when the buyer requested a VAT invoice;
-            WooCommerce reports it only if the store runs a supported VAT-number plugin. An order
-            whose source didn&apos;t assert a tax ID never matches these rules.
+            {copy.taxIdWarning}
           </Alert>
         ) : null}
 
@@ -154,7 +163,7 @@ export function SalesDocumentTemplateScreen({
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
           <Button tone="secondary" className="button--sm" onClick={() => setDismissed(true)}>
-            Start from scratch instead
+            {copy.dismiss}
           </Button>
           <Button
             className="button--sm"
@@ -176,7 +185,7 @@ export function SalesDocumentTemplateScreen({
                 .then(() => setDismissed(true))
             }
           >
-            {adopt.isPending ? 'Adopting…' : 'Review & adopt'}
+            {adopt.isPending ? copy.adopting : copy.adopt}
           </Button>
         </div>
       </div>

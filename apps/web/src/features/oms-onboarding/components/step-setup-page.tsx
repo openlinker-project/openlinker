@@ -12,7 +12,7 @@
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
@@ -52,7 +52,7 @@ export function StepSetupPage({
 }: StepSetupPageProps): ReactElement {
   const copy = COPY.setupSteps[stepKey];
   const skipped = state === 'skipped';
-  const disabledTitle = demoReadOnly ? DEMO_READ_ONLY_ACTION_MESSAGE : !canWrite ? COPY.adminOnly : undefined;
+  const disabledTitle = demoReadOnly ? demoReadOnlyActionMessage() : !canWrite ? COPY.adminOnly : undefined;
 
   return (
     <StepPanel

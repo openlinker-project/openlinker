@@ -3,7 +3,7 @@ import type { ConnectionHealthEntry } from '../../features/health/api/health.typ
 import { formatPlural, messagesIn, type PluralFn } from '../../shared/i18n';
 import { describeSystemHealth, sortConnectedSystems } from './system-health-list';
 
-const copy = messagesIn('insights', 'en').systemHealth;
+const copy = messagesIn('analytics', 'en').insightsPage.systemHealth;
 const plural: PluralFn = (count, forms, params) => formatPlural(count, forms, 'en', params);
 
 function entry(name: string, status: ConnectionHealthEntry['status']): ConnectionHealthEntry {

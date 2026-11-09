@@ -10,17 +10,13 @@
  * @module apps/web/src/features/posthog-settings/components
  */
 import { useState, type ReactElement } from 'react';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { usePosthogSettingsQuery } from '../hooks/use-posthog-settings-query';
 import { PosthogSettingsDialog } from './posthog-settings-dialog';
 
-const REGION_LABEL: Record<'eu' | 'us' | 'custom', string> = {
-  eu: 'EU Cloud',
-  us: 'US Cloud',
-  custom: 'Custom host',
-};
-
 export function PosthogSettingsTile(): ReactElement {
+  const copy = useMessages('posthog-settings').posthogSettingsTile;
   const query = usePosthogSettingsQuery();
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -28,21 +24,21 @@ export function PosthogSettingsTile(): ReactElement {
     <article className="panel panel--dense">
       <div className="panel__header">
         <div>
-          <p className="eyebrow">Product analytics</p>
-          <h3 className="section-title">PostHog</h3>
+          <p className="eyebrow">{copy.eyebrow}</p>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
-        <span className="panel__meta">Admin only</span>
+        <span className="panel__meta">{copy.adminOnly}</span>
       </div>
 
       {query.isLoading ? (
         <p className="muted-text" aria-live="polite">
-          Loading analytics settings…
+          {copy.loading}
         </p>
       ) : null}
 
       {query.isError ? (
         <p className="muted-text" role="alert">
-          Could not load analytics settings: {query.error.message}
+          {interpolate(copy.loadError, { message: query.error.message })}
         </p>
       ) : null}
 
@@ -50,41 +46,38 @@ export function PosthogSettingsTile(): ReactElement {
         <>
           <div className="toolbar__group posthog-settings-tile__badges">
             <span className={`context-chip context-chip--${query.data.enabled ? 'success' : 'neutral'}`}>
-              {query.data.enabled ? 'Enabled' : 'Disabled'}
+              {query.data.enabled ? copy.enabled : copy.disabled}
             </span>
             {query.data.wouldOverrideEnv ? (
-              <span className="context-chip context-chip--warning">Overrides env</span>
+              <span className="context-chip context-chip--warning">{copy.overridesEnv}</span>
             ) : null}
           </div>
 
           {query.data.enabled ? (
             <dl className="definition-list">
               <div>
-                <dt>Source</dt>
-                <dd>{query.data.wouldOverrideEnv ? 'Saved settings' : 'Environment'}</dd>
+                <dt>{copy.sourceLabel}</dt>
+                <dd>{query.data.wouldOverrideEnv ? copy.sourceSaved : copy.sourceEnvironment}</dd>
               </div>
               <div>
-                <dt>API key</dt>
-                <dd>{query.data.apiKeyConfigured ? 'Configured' : 'Not set'}</dd>
+                <dt>{copy.apiKeyLabel}</dt>
+                <dd>{query.data.apiKeyConfigured ? copy.configured : copy.notSet}</dd>
               </div>
               <div>
-                <dt>Region</dt>
-                <dd>{REGION_LABEL[query.data.region]}</dd>
+                <dt>{copy.regionLabel}</dt>
+                <dd>{copy.region[query.data.region]}</dd>
               </div>
               <div>
-                <dt>Autocapture</dt>
-                <dd>{query.data.autocapture ? 'On' : 'Off'}</dd>
+                <dt>{copy.autocaptureLabel}</dt>
+                <dd>{query.data.autocapture ? copy.on : copy.off}</dd>
               </div>
               <div>
-                <dt>Session recording</dt>
-                <dd>{query.data.sessionRecording ? 'On' : 'Off'}</dd>
+                <dt>{copy.sessionRecordingLabel}</dt>
+                <dd>{query.data.sessionRecording ? copy.on : copy.off}</dd>
               </div>
             </dl>
           ) : (
-            <p className="muted-text panel-copy">
-              Session recording and pageview capture are off. No PostHog script is loaded for demo
-              visitors.
-            </p>
+            <p className="muted-text panel-copy">{copy.disabledMessage}</p>
           )}
 
           <Button
@@ -94,7 +87,7 @@ export function PosthogSettingsTile(): ReactElement {
               setDialogOpen(true);
             }}
           >
-            Edit
+            {copy.edit}
           </Button>
 
           <PosthogSettingsDialog

@@ -1,0 +1,100 @@
+{
+  "aiProviderKeyDialog": {
+    "apiKeyLabel": "API key",
+    "cancel": "Cancel",
+    "description": "Stored encrypted at rest. Server-side only - never returned by the API.",
+    "placeholders": {
+      "anthropic": "sk-ant-...",
+      "openai": "sk-..."
+    },
+    "providers": {
+      "anthropic": "Anthropic",
+      "fake": "Fake",
+      "openai": "OpenAI"
+    },
+    "save": "Save key",
+    "saveErrorTitle": "Could not save the key",
+    "savedToastDescription": "Subsequent {provider} requests will use the new key.",
+    "savedToastTitle": "API key saved",
+    "saving": "Saving…",
+    "title": "Set {provider} API key",
+    "titleGeneric": "Set API key"
+  },
+  "aiProviderSettingsFormSchema": {
+    "apiKeyTooLong": "API key is too long (max {max} characters)",
+    "apiKeyTooShort": "API key must be at least {min} characters"
+  },
+  "aiProviderSettingsPage": {
+    "adminOnly": "Admin-only access.",
+    "adminRequiredMessage": "This page manages AI provider keys and routing - it requires an admin session.",
+    "adminRequiredTitle": "Admin role required",
+    "description": "Manage per-provider API keys and switch the active provider that handles AI requests.",
+    "errorTitle": "Unable to load provider settings",
+    "eyebrow": "AI",
+    "loadingMessage": "Reading current key resolution status…",
+    "loadingTitle": "Loading provider settings",
+    "noProviderBody": "AI suggestions will fail until a key is saved and a provider is activated. Until a provider is chosen here, OpenLinker uses the provider set in the server configuration.",
+    "noProviderTitle": "No AI provider configured",
+    "retry": "Retry",
+    "title": "Provider settings",
+    "unknownError": "Unknown error"
+  },
+  "aiProviderTable": {
+    "activeBadge": "Active",
+    "addKeyFirst": "Add a key first",
+    "cancel": "Cancel",
+    "caption": "Keys are stored encrypted at rest. The active provider is read on every request - switches take effect on the next AI call.",
+    "clear": "Clear",
+    "clearConfirmDescription": "The server falls back to its own configured key (if set) or reports no key configured. AI requests using this provider will fail until a new key is saved.",
+    "clearConfirmLabel": "Clear key",
+    "clearConfirmTitle": "Clear {provider} API key?",
+    "clearConfirmTitleGeneric": "Clear API key?",
+    "clearErrorTitle": "Could not clear the key",
+    "clearedToastDescription": "The server falls back to its own configured key, or none, for {provider}.",
+    "clearedToastTitle": "API key cleared",
+    "columns": {
+      "actions": "Actions",
+      "active": "Active",
+      "key": "Key",
+      "provider": "Provider",
+      "source": "Source",
+      "updated": "Updated"
+    },
+    "heading": "Providers",
+    "makeActive": "Make active",
+    "no": "No",
+    "notApplicable": "n/a",
+    "providers": {
+      "anthropic": {
+        "hint": "Claude - Vercel AI SDK",
+        "label": "Anthropic"
+      },
+      "fake": {
+        "hint": "Deterministic - no network",
+        "label": "Fake (offline stub)"
+      },
+      "openai": {
+        "hint": "GPT - Vercel AI SDK",
+        "label": "OpenAI"
+      }
+    },
+    "rotate": "Rotate",
+    "serverFallback": "server fallback",
+    "setKey": "Set key",
+    "sources": {
+      "db": "Stored encrypted",
+      "env": "Server fallback",
+      "none": "None"
+    },
+    "switchConfirmDescription": "Future AI requests will route through {provider}. In-flight requests already dispatched to {current} continue with that provider.",
+    "switchConfirmLabel": "Switch provider",
+    "switchConfirmTitle": "Switch active provider to {provider}?",
+    "switchConfirmTitleGeneric": "Switch active provider?",
+    "switchErrorTitle": "Could not switch provider",
+    "switchedToastDescription": "Subsequent AI requests route to {provider}.",
+    "switchedToastTitle": "Active provider switched",
+    "unknownError": "Unknown error",
+    "updatedBy": "by {user}",
+    "yes": "Yes"
+  }
+}

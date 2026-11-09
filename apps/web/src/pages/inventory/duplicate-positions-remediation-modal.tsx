@@ -18,6 +18,7 @@ import {
   DialogFooter,
   DialogTitle,
 } from '../../shared/ui/dialog';
+import { renderRich, useMessages, usePlural } from '../../shared/i18n';
 import { Button } from '../../shared/ui/button';
 import { Textarea } from '../../shared/ui/textarea';
 import { Alert } from '../../shared/ui/alert';
@@ -61,6 +62,8 @@ function RemediationDeleteBlock({
   group: DuplicatePositionGroup;
   deletion: RemediationDeletion;
 }): ReactElement {
+  const copy = useMessages('inventory').duplicatePositionsRemediationModal;
+  const plural = usePlural();
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -86,11 +89,8 @@ function RemediationDeleteBlock({
 
   if (!deletion.sql) return <></>;
 
-  const survivorNotePrefix =
-    group.liveRowCount > 0
-      ? 'Survivor (live, newest):'
-      : 'No live row in this group — keeping the newest overall per step 2:';
-  const copyLabel = `Copy DELETE statement for ${deletion.losers.length} loser row${deletion.losers.length === 1 ? '' : 's'}`;
+  const survivorNotePrefix = group.liveRowCount > 0 ? copy.survivorLive : copy.survivorNoLive;
+  const loserCount = deletion.losers.length;
 
   return (
     <>
@@ -98,8 +98,7 @@ function RemediationDeleteBlock({
         {survivorNotePrefix} <code>{deletion.survivor?.id}</code>
       </p>
       <p className="duplicate-positions-remediation-steps__sql-label">
-        DELETE for the {deletion.losers.length} loser row
-        {deletion.losers.length === 1 ? '' : 's'} in this group
+        {plural(loserCount, copy.sqlLabel)}
       </p>
       <Textarea readOnly rows={3} value={deletion.sql} />
       <div className="duplicate-positions-remediation-steps__sql-actions">
@@ -107,14 +106,11 @@ function RemediationDeleteBlock({
           tone="secondary"
           className="button--sm"
           onClick={handleCopy}
-          aria-label={copied ? `Copied ${copyLabel.replace(/^Copy /, '')}` : copyLabel}
+          aria-label={plural(loserCount, copied ? copy.copiedDelete : copy.copyDelete)}
         >
-          {copied ? 'Copied' : 'Copy'}
+          {copied ? copy.copied : copy.copy}
         </Button>
-        <span className="duplicate-positions-remediation-steps__sql-hint">
-          Nothing on this page runs this — re-confirm these ids are still current (re-run the
-          scan), then run it yourself.
-        </span>
+        <span className="duplicate-positions-remediation-steps__sql-hint">{copy.sqlHint}</span>
       </div>
     </>
   );
@@ -125,12 +121,17 @@ export function DuplicatePositionsRemediationModal({
   onOpenChange,
   group,
 }: DuplicatePositionsRemediationModalProps): ReactElement {
+  const copy = useMessages('inventory').duplicatePositionsRemediationModal;
+  const rich = {
+    strong: (text: string) => <strong>{text}</strong>,
+    code: (text: string) => <code>{text}</code>,
+  };
   const deletion = group ? buildRemediationDeleteSql(group) : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogTitle>Remediation guide (condensed)</DialogTitle>
+        <DialogTitle>{copy.title}</DialogTitle>
         {group ? (
           <DialogDescription className="mono-text">
             {group.productName ?? group.productId}
@@ -139,52 +140,30 @@ export function DuplicatePositionsRemediationModal({
         ) : null}
 
         <ol className="duplicate-positions-remediation-steps">
-          <li>
-            <strong>Pick the survivor.</strong> The live row (not stale) with the highest{' '}
-            <code>updatedAt</code> — normally the first row, since rows are newest-first.
-          </li>
-          <li>
-            <strong>Every row stale?</strong> Keep the newest and delete the rest, or delete the
-            whole group if the product is genuinely gone at the master.
-          </li>
-          <li>
-            <strong>Reconcile the survivor&rsquo;s quantity from the master</strong>, not from the
-            other rows — the next sync overwrites it anyway.
-          </li>
-          <li>
-            <strong>Delete the losers by primary key only.</strong> A <code>DELETE</code> keyed on
-            the position columns can&rsquo;t express &ldquo;all but one&rdquo; and empties the
-            whole group.
-          </li>
-          <li>
-            <strong>Re-run this report</strong> until <code>groupCount</code> reads 0, then proceed
-            to the migration.
-          </li>
+          <li>{renderRich(copy.steps.pick, rich)}</li>
+          <li>{renderRich(copy.steps.allStale, rich)}</li>
+          <li>{renderRich(copy.steps.reconcile, rich)}</li>
+          <li>{renderRich(copy.steps.deleteLosers, rich)}</li>
+          <li>{renderRich(copy.steps.rerun, rich)}</li>
         </ol>
 
-        <Alert tone="warning">
-          Never sum the duplicated quantities when reconciling — that recreates, by hand, the exact
-          over-count this report exists to catch, and the next sync won&rsquo;t correct it because
-          it will look like a real master figure.
-        </Alert>
+        <Alert tone="warning">{copy.neverSum}</Alert>
 
         {group && deletion?.sql ? (
           <RemediationDeleteBlock group={group} deletion={deletion} />
         ) : group ? null : (
           <p className="duplicate-positions-remediation-steps__note">
-            Open this from a specific group&rsquo;s row instead to get a ready-to-review{' '}
-            <code>DELETE</code> for that group&rsquo;s losers.
+            {renderRich(copy.openFromGroup, rich)}
           </p>
         )}
 
         <DialogFooter>
           <span className="duplicate-positions-remediation-steps__footer-hint">
-            This is an excerpt. The committed doc has the full ordering dependency, the stale-group
-            fallback and the SQL caveats.
+            {copy.footerHint}
           </span>
           <div className="duplicate-positions-remediation-steps__footer-actions">
             <Button tone="secondary" className="button--sm" onClick={() => onOpenChange(false)}>
-              Close
+              {copy.close}
             </Button>
             <a
               className="button button--sm"
@@ -192,7 +171,7 @@ export function DuplicatePositionsRemediationModal({
               target="_blank"
               rel="noopener noreferrer"
             >
-              Open full runbook →
+              {copy.openRunbook}
             </a>
           </div>
         </DialogFooter>

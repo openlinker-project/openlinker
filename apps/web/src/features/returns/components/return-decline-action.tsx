@@ -53,11 +53,11 @@ import { Textarea } from '../../../shared/ui/textarea';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useDeclineReturnMutation } from '../hooks/use-decline-return-mutation';
 import { describeDeclineError } from '../lib/decline-error';
-import {
-  RETURN_DECLINE_COPY,
-  RETURN_DECLINE_OUTCOME_COPY,
-} from '../lib/return-detail.copy';
+import { useMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import type { DeclineReturnResult, ReturnDetail } from '../api/returns.types';
+
+type DeclineCopy = ResolvedCopy<Messages['returns']>['detail']['decline'];
+type DeclineOutcomeCopy = ResolvedCopy<Messages['returns']>['detail']['declineOutcome'];
 
 /** Mirrors the request DTO's `@MaxLength(500)` so a long comment is caught here. */
 const COMMENT_MAX_LENGTH = 500;
@@ -81,36 +81,37 @@ interface ReturnDeclineActionProps {
  * so naming the source's capability first would answer a question the operator
  * did not have.
  */
-function resolveBlockedReason(detail: ReturnDetail): string | null {
+function resolveBlockedReason(detail: ReturnDetail, copy: DeclineCopy): string | null {
   if (detail.bucket === 'orphan') {
-    return RETURN_DECLINE_COPY.blockedOrphan;
+    return copy.blockedOrphan;
   }
   if (detail.declinedAt !== null) {
-    return RETURN_DECLINE_COPY.blockedAlreadyDeclined;
+    return copy.blockedAlreadyDeclined;
   }
   if (detail.declineAvailability.supported) {
     return null;
   }
   if (detail.declineAvailability.reason === 'no-source-return-id') {
-    return RETURN_DECLINE_COPY.blockedNoSourceReturnId;
+    return copy.blockedNoSourceReturnId;
   }
   if (detail.declineAvailability.reason === 'source-declares-no-decline') {
-    return RETURN_DECLINE_COPY.blockedSourceDeclaresNoDecline;
+    return copy.blockedSourceDeclaresNoDecline;
   }
   // A reason this build does not recognise, or none reported at all. It must not
   // read as "this channel has no decline" — that is a claim about the channel
   // that OpenLinker cannot make from a value it could not interpret.
-  return RETURN_DECLINE_COPY.blockedUnknownReason;
+  return copy.blockedUnknownReason;
 }
 
 /** The outcome copy for a result, falling back for a value this build predates. */
 function resolveOutcomeCopy(
   result: DeclineReturnResult,
+  outcomes: DeclineOutcomeCopy,
 ): { title: string; body: string } {
   const known = (
-    RETURN_DECLINE_OUTCOME_COPY as Record<string, { title: string; body: string } | undefined>
+    outcomes as Readonly<Record<string, { title: string; body: string } | undefined>>
   )[result.outcome];
-  return known ?? RETURN_DECLINE_OUTCOME_COPY.unknown;
+  return known ?? outcomes.unknown;
 }
 
 export function ReturnDeclineAction({
@@ -124,13 +125,15 @@ export function ReturnDeclineAction({
   const [commentError, setCommentError] = useState<string | undefined>(undefined);
   const [result, setResult] = useState<DeclineReturnResult | null>(null);
 
+  const returnsCopy = useMessages('returns');
+  const copy = returnsCopy.detail.decline;
   const mutation = useDeclineReturnMutation(detail.id);
 
   if (!writeAccess.visible) {
     return null;
   }
 
-  const blockedReason = resolveBlockedReason(detail);
+  const blockedReason = resolveBlockedReason(detail, copy);
   const isBlocked = blockedReason !== null;
   const isDisabled = isBlocked || writeAccess.demoReadOnly || mutation.isPending;
 
@@ -150,9 +153,9 @@ export function ReturnDeclineAction({
 
     const trimmedCode = reasonCode.trim();
     const nextReasonCodeError =
-      trimmedCode === '' ? RETURN_DECLINE_COPY.reasonCodeRequired : undefined;
+      trimmedCode === '' ? copy.reasonCodeRequired : undefined;
     const nextCommentError =
-      comment.length > COMMENT_MAX_LENGTH ? RETURN_DECLINE_COPY.commentTooLong : undefined;
+      comment.length > COMMENT_MAX_LENGTH ? copy.commentTooLong : undefined;
 
     setReasonCodeError(nextReasonCodeError);
     setCommentError(nextCommentError);
@@ -172,20 +175,20 @@ export function ReturnDeclineAction({
     );
   }
 
-  const outcomeCopy = result === null ? null : resolveOutcomeCopy(result);
+  const outcomeCopy = result === null ? null : resolveOutcomeCopy(result, returnsCopy.detail.declineOutcome);
 
   return (
     <section className="returns-decline">
-      <h2 className="section-title">{RETURN_DECLINE_COPY.sectionTitle}</h2>
+      <h2 className="section-title">{copy.sectionTitle}</h2>
 
       {/* Independent parts, never one ternary (#2100): the reason renders
           beside the button rather than replacing it, so a disabled action
           always carries its explanation. */}
       {blockedReason !== null ? <p className="text-muted">{blockedReason}</p> : null}
 
-      <ReadOnlyLock active={writeAccess.demoReadOnly} message={RETURN_DECLINE_COPY.readOnly}>
+      <ReadOnlyLock active={writeAccess.demoReadOnly} message={copy.readOnly}>
         <Button tone="danger" disabled={isDisabled} onClick={openDialog}>
-          {RETURN_DECLINE_COPY.action}
+          {copy.action}
         </Button>
       </ReadOnlyLock>
 
@@ -211,14 +214,14 @@ export function ReturnDeclineAction({
         }}
       >
         <DialogContent>
-          <DialogTitle>{RETURN_DECLINE_COPY.confirmTitle}</DialogTitle>
-          <DialogDescription>{RETURN_DECLINE_COPY.confirmBody}</DialogDescription>
+          <DialogTitle>{copy.confirmTitle}</DialogTitle>
+          <DialogDescription>{copy.confirmBody}</DialogDescription>
 
           <form onSubmit={handleSubmit}>
             <FormField
               name="reasonCode"
-              label={RETURN_DECLINE_COPY.reasonCodeLabel}
-              description={RETURN_DECLINE_COPY.reasonCodeDescription}
+              label={copy.reasonCodeLabel}
+              description={copy.reasonCodeDescription}
               error={reasonCodeError}
             >
               <Input
@@ -231,8 +234,8 @@ export function ReturnDeclineAction({
 
             <FormField
               name="comment"
-              label={RETURN_DECLINE_COPY.commentLabel}
-              description={RETURN_DECLINE_COPY.commentDescription}
+              label={copy.commentLabel}
+              description={copy.commentDescription}
               error={commentError}
             >
               <Textarea
@@ -257,12 +260,12 @@ export function ReturnDeclineAction({
                   setIsOpen(false);
                 }}
               >
-                {RETURN_DECLINE_COPY.cancel}
+                {copy.cancel}
               </Button>
               <Button type="submit" tone="danger" disabled={mutation.isPending}>
                 {mutation.isPending
-                  ? RETURN_DECLINE_COPY.submitting
-                  : RETURN_DECLINE_COPY.confirmAction}
+                  ? copy.submitting
+                  : copy.confirmAction}
               </Button>
             </DialogFooter>
           </form>

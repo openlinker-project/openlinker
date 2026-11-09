@@ -110,7 +110,7 @@ describe('AutomationRulesList', () => {
     // Not armed yet — the backend refuses this write without the flag anyway.
     expect(onSetActive).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole('button', { name: 'I understand — turn it on' }));
+    await user.click(screen.getByRole('button', { name: 'I understand - turn it on' }));
     expect(onSetActive).toHaveBeenCalledWith(blockedRule, true, true);
   });
 

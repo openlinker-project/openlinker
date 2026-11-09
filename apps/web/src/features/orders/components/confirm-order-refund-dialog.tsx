@@ -16,6 +16,7 @@
  */
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import {
   Dialog,
@@ -49,6 +50,7 @@ export function ConfirmOrderRefundDialog({
   currency,
   orderTotal,
 }: ConfirmOrderRefundDialogProps): ReactElement {
+  const copy = useMessages('orders').confirmOrderRefund;
   const { showToast } = useToast();
   const mutation = useRecordOrderRefundMutation();
   const [acknowledged, setAcknowledged] = useState(false);
@@ -81,7 +83,7 @@ export function ConfirmOrderRefundDialog({
       },
       {
         onSuccess: () => {
-          showToast({ tone: 'success', description: 'Refund recorded.' });
+          showToast({ tone: 'success', description: copy.recorded });
           onOpenChange(false);
         },
       },
@@ -91,14 +93,20 @@ export function ConfirmOrderRefundDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="order-hold-dialog" data-testid="order-refund-dialog">
-        <DialogTitle>Confirm a refund</DialogTitle>
-        <DialogDescription>
-          Record the refund you made to the buyer. OpenLinker does not move money.
-        </DialogDescription>
+        <DialogTitle>{copy.title}</DialogTitle>
+        <DialogDescription>{copy.description}</DialogDescription>
 
         {ceiling ? (
-          <Alert tone="warning" title="This is more than the order total" data-testid="order-refund-ceiling">
-            {`Refunds recorded so far: ${ceiling.alreadyRefunded} ${ceiling.currency}. You entered ${ceiling.requested} ${ceiling.currency}, which would take the total past the ${ceiling.ceiling} ${ceiling.currency} the buyer paid.`}
+          <Alert tone="warning" title={copy.ceiling.title} data-testid="order-refund-ceiling">
+            {interpolate(copy.ceiling.recorded, {
+              amount: ceiling.alreadyRefunded,
+              currency: ceiling.currency,
+            })}{' '}
+            {interpolate(copy.ceiling.entered, {
+              requested: ceiling.requested,
+              ceiling: ceiling.ceiling,
+              currency: ceiling.currency,
+            })}
             <label className="order-cancel-check">
               <input
                 type="checkbox"
@@ -108,7 +116,7 @@ export function ConfirmOrderRefundDialog({
                   setAcknowledged(event.target.checked);
                 }}
               />
-              <span>Record it anyway</span>
+              <span>{copy.ceiling.acknowledge}</span>
             </label>
           </Alert>
         ) : null}
@@ -119,7 +127,7 @@ export function ConfirmOrderRefundDialog({
           pending={mutation.isPending}
           error={
             mutation.isError && ceiling === null
-              ? readServerReason(mutation.error, 'Could not record the refund.')
+              ? readServerReason(mutation.error, copy.failed)
               : null
           }
           onSubmit={submit}

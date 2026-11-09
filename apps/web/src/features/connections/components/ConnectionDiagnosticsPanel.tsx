@@ -22,11 +22,11 @@
  *
  * @module features/connections/components
  */
-import type { ReactElement } from 'react';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
+import { useMemo, type ReactElement } from 'react';
 import { useConnectionDiagnosticsQuery } from '../hooks/use-connection-diagnostics-query';
 import type { ConnectionDiagnosticsSource, RecentJobSummary } from '../api/connections.types';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
-import { formatDateTime } from '../../../shared/format/format-date';
 import { Alert } from '../../../shared/ui/alert';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
@@ -34,13 +34,6 @@ import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-bad
 interface ConnectionDiagnosticsPanelProps {
   connectionId: string;
 }
-
-/** Operator-facing name for each source, for the "could not check" notice. */
-const SOURCE_LABEL: Record<ConnectionDiagnosticsSource, string> = {
-  syncJobs: 'sync jobs',
-  fiscalRegistrations: 'fiscal receipts',
-  invoices: 'invoices',
-};
 
 function toJobStatusTone(status: string): StatusBadgeTone {
   switch (status) {
@@ -57,43 +50,47 @@ function toJobStatusTone(status: string): StatusBadgeTone {
   }
 }
 
-function formatDate(value: string | null): string {
-  if (value === null) return 'Never';
-  return formatDateTime(value);
-}
-
-/**
- * The three states behind an activity timestamp. "Never" is a claim about the
- * operator's data and may only be made when every source was actually read.
- */
-function formatActivityDate(value: string | null, sourcesUnreadable: boolean): string {
-  if (value !== null) return formatDateTime(value);
-  return sourcesUnreadable ? 'Unknown' : 'Never';
-}
-
-function describeUnreadable(sources: ConnectionDiagnosticsSource[]): string {
-  // The fallback keeps an unrecognised source visible rather than printing
-  // `undefined`: the API's vocabulary is closed today, but this mirror of it
-  // is a copy, and a copy can fall behind.
-  const labels = sources.map((source) => SOURCE_LABEL[source] ?? source);
-  if (labels.length <= 1) return labels.join('');
-  return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
-}
-
-const jobColumns: DataTableColumn<RecentJobSummary>[] = [
-  { id: 'jobType', header: 'Job type', cell: (row) => <span className="mono-text">{row.jobType}</span> },
-  {
-    id: 'status',
-    header: 'Status',
-    cell: (row) => <StatusBadge tone={toJobStatusTone(row.status)}>{row.status}</StatusBadge>,
-  },
-  { id: 'attempts', header: 'Attempts', align: 'right', cell: (row) => row.attempts },
-  { id: 'lastError', header: 'Last error', cell: (row) => row.lastError ?? '-' },
-  { id: 'updatedAt', header: 'Updated', cell: (row) => formatDate(row.updatedAt) },
-];
-
 export function ConnectionDiagnosticsPanel({ connectionId }: ConnectionDiagnosticsPanelProps): ReactElement {
+  const copy = useMessages('connections').connectionDiagnosticsPanel;
+  const format = useFormat();
   const diagnosticsQuery = useConnectionDiagnosticsQuery(connectionId);
+
+  // A missing timestamp says "Never" - unless a source could not be read, in
+  // which case absence is not evidence and the honest answer is "Unknown".
+  const formatActivityDate = (value: string | null, sourcesUnreadable: boolean): string => {
+    if (value !== null) return format.dateTime(value);
+    return sourcesUnreadable ? copy.unknown : copy.never;
+  };
+
+  const describeUnreadable = (sources: ConnectionDiagnosticsSource[]): string =>
+    format.list(sources.map((source) => copy.sourceLabels[source] ?? source));
+
+  const jobColumns = useMemo<DataTableColumn<RecentJobSummary>[]>(
+    () => [
+      {
+        id: 'jobType',
+        header: copy.columns.jobType,
+        cell: (row) => <span className="mono-text">{row.jobType}</span>,
+      },
+      {
+        id: 'status',
+        header: copy.columns.status,
+        cell: (row) => (
+          <StatusBadge tone={toJobStatusTone(row.status)}>
+            {(copy.jobStatuses as Record<string, string>)[row.status] ?? row.status}
+          </StatusBadge>
+        ),
+      },
+      { id: 'attempts', header: copy.columns.attempts, align: 'right', cell: (row) => row.attempts },
+      { id: 'lastError', header: copy.columns.lastError, cell: (row) => row.lastError ?? '-' },
+      {
+        id: 'updatedAt',
+        header: copy.columns.updated,
+        cell: (row) => (row.updatedAt === null ? copy.never : format.dateTime(row.updatedAt)),
+      },
+    ],
+    [copy, format],
+  );
 
   // Absent means the API reported nothing to degrade, which is how every
   // response looked before #3179 — not an unknown of its own.
@@ -104,23 +101,23 @@ export function ConnectionDiagnosticsPanel({ connectionId }: ConnectionDiagnosti
     <div className="panel panel--dense">
       <div className="panel__header">
         <div>
-          <p className="eyebrow">Health</p>
-          <h3 className="section-title">Diagnostics</h3>
+          <p className="eyebrow">{copy.eyebrow}</p>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
-        <span className="panel__meta">Recent activity</span>
+        <span className="panel__meta">{copy.meta}</span>
       </div>
 
       {diagnosticsQuery.isLoading ? (
-        <LoadingState title="Loading diagnostics" message="Fetching recent job history." />
+        <LoadingState title={copy.loadingTitle} message={copy.loadingMessage} />
       ) : null}
 
       {diagnosticsQuery.error ? (
         <ErrorState
-          title="Unable to load diagnostics"
+          title={copy.errorTitle}
           message={diagnosticsQuery.error.message}
           action={
             <button type="button" className="button button--secondary" onClick={() => void diagnosticsQuery.refetch()}>
-              Retry
+              {copy.retry}
             </button>
           }
         />
@@ -129,22 +126,22 @@ export function ConnectionDiagnosticsPanel({ connectionId }: ConnectionDiagnosti
       {diagnosticsQuery.data ? (
         <>
           {hasUnreadableSources ? (
-            <Alert tone="warning" title="Some activity could not be checked">
-              We could not read this connection&apos;s {describeUnreadable(unreadableSources)} just
-              now, so the times below cover the remaining sources only. Unknown means we do not
-              know, not that nothing happened. Try again in a moment.
+            <Alert tone="warning" title={copy.unreadableTitle}>
+              {interpolate(copy.unreadableMessage, {
+                sources: describeUnreadable(unreadableSources),
+              })}
             </Alert>
           ) : null}
 
           <dl className="definition-list">
             <div>
-              <dt>Last succeeded</dt>
+              <dt>{copy.lastSucceeded}</dt>
               <dd>
                 {formatActivityDate(diagnosticsQuery.data.lastSucceededAt, hasUnreadableSources)}
               </dd>
             </div>
             <div>
-              <dt>Last failed</dt>
+              <dt>{copy.lastFailed}</dt>
               <dd>
                 {formatActivityDate(diagnosticsQuery.data.lastFailedAt, hasUnreadableSources)}
               </dd>
@@ -153,7 +150,7 @@ export function ConnectionDiagnosticsPanel({ connectionId }: ConnectionDiagnosti
 
           {diagnosticsQuery.data.recentErrors.length > 0 ? (
             <div className="diagnostics-errors">
-              <p className="eyebrow">Recent errors</p>
+              <p className="eyebrow">{copy.recentErrors}</p>
               <ul className="error-list">
                 {diagnosticsQuery.data.recentErrors.map((error, index) => (
                   <li key={`${index}-${error.slice(0, 20)}`} className="mono-text">{error}</li>
@@ -163,7 +160,7 @@ export function ConnectionDiagnosticsPanel({ connectionId }: ConnectionDiagnosti
           ) : null}
 
           <DataTable
-            caption="Recent sync jobs"
+            caption={copy.recentJobs}
             columns={jobColumns}
             rows={diagnosticsQuery.data.recentJobs}
             rowKey={(job) => job.id}

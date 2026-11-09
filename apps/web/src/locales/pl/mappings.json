@@ -1,0 +1,228 @@
+{
+  "allegroCategorySearch": {
+    "cancel": "Anuluj",
+    "clear": "Wyczyść mapowanie",
+    "save": "Zapisz mapowanie",
+    "saving": "Zapisywanie…",
+    "searchLabel": "Szukaj we wszystkich kategoriach",
+    "searchPlaceholder": "Szukaj we wszystkich kategoriach...",
+    "selected": "Wybrano:"
+  },
+  "attributeRulesPanel": {
+    "description": "Deterministyczne reguły tworzone przez operatora, które wypełniają atrybuty w kanale docelowym dla wielu produktów. Reguły są stosowane według priorytetu (niższy najpierw); dla tego samego atrybutu wygrywa późniejsza reguła, a reguły nadpisują bazowe mapowanie atrybutów.",
+    "empty": "Nie skonfigurowano jeszcze reguł. Dodaj regułę poniżej, aby automatycznie wypełniać atrybuty w kanale docelowym.",
+    "errorTitle": "Nie udało się wczytać reguł atrybutów",
+    "errors": {
+      "destinationRequired": "Nazwa atrybutu w kanale docelowym jest wymagana.",
+      "sourceRequired": "Klucz atrybutu źródłowego jest wymagany dla reguły kopiowania z przemapowaniem."
+    },
+    "eyebrow": "Konfiguracja",
+    "form": {
+      "add": "Dodaj regułę",
+      "adding": "Dodawanie…",
+      "category": "ID kategorii (opcjonalnie)",
+      "categoryLabel": "Zakres: ID kategorii w kanale docelowym",
+      "destination": "Atrybut docelowy",
+      "destinationLabel": "Nazwa atrybutu w kanale docelowym",
+      "destinationPlaceholder": "np. Marka",
+      "fixedValue": "Stała wartość",
+      "kind": "Rodzaj",
+      "kindLabel": "Rodzaj reguły",
+      "manufacturer": "Producent (opcjonalnie)",
+      "manufacturerLabel": "Zakres: producent",
+      "phrase": "Nazwa zawiera (opcjonalnie)",
+      "phraseLabel": "Zakres: fraza w nazwie produktu",
+      "placeValue": "Metadane źródła",
+      "placeValueLabel": "Źródło wartości",
+      "priority": "Priorytet",
+      "remap": "Przemapowanie wartości (źródło=cel)",
+      "remapLabel": "Przemapowanie wartości",
+      "remapPlaceholder": "36S=36, 38S=38",
+      "source": "Atrybut źródłowy",
+      "sourceLabel": "Klucz atrybutu źródłowego",
+      "sourcePlaceholder": "np. Rozmiar"
+    },
+    "kinds": {
+      "copy-remap": "Kopiuj i przemapuj wartość",
+      "fixed": "Stała wartość",
+      "place-value": "Wartość z metadanych"
+    },
+    "loading": {
+      "message": "Pobieranie skonfigurowanych reguł…",
+      "title": "Wczytywanie reguł atrybutów"
+    },
+    "placeValueSources": {
+      "ean": "EAN / kod kreskowy",
+      "manufacturer": "Producent",
+      "name": "Nazwa produktu",
+      "sku": "SKU",
+      "variant": "Nazwa wariantu",
+      "weight": "Waga"
+    },
+    "remove": "Usuń",
+    "removeLabel": "Usuń regułę dla {attribute}",
+    "scope": {
+      "allProducts": "wszystkie produkty",
+      "category": "kategoria {id}",
+      "manufacturer": "prod. „{value}”",
+      "phrase": "nazwa~„{value}”",
+      "sourceScoped": "zależne od źródła"
+    },
+    "summary": {
+      "copy": "kopiuj „{key}”",
+      "copyWithRemaps": {
+        "few": "kopiuj „{key}” ({n} przemapowania)",
+        "many": "kopiuj „{key}” ({n} przemapowań)",
+        "one": "kopiuj „{key}” ({n} przemapowanie)",
+        "other": "kopiuj „{key}” ({n} przemapowania)"
+      },
+      "fixed": "= „{value}”",
+      "placeValue": "z {source}"
+    },
+    "table": {
+      "actions": "Akcje",
+      "attribute": "Atrybut",
+      "fills": "Wypełnia",
+      "kind": "Rodzaj",
+      "label": "Reguły mapowania atrybutów",
+      "priority": "Priorytet",
+      "scope": "Zakres"
+    },
+    "title": "Reguły mapowania atrybutów"
+  },
+  "categoryMappingRow": {
+    "notMapped": "Niezmapowane"
+  },
+  "categoryMappingTree": {
+    "collapse": "Zwiń {name}",
+    "expand": "Rozwiń {name}",
+    "treeLabel": "Kategorie sklepu"
+  },
+  "mappingPairingBar": {
+    "candidate": "{name} ({platform})",
+    "candidateDisabled": "{name} ({platform}) - wyłączone",
+    "configure": "Konfiguruj",
+    "destination": "Kanał docelowy",
+    "groupLabel": "Powiązanie połączeń",
+    "noSource": "Brak powiązanego marketplace",
+    "noSourceMeta": "Powiązanie ustawia się w połączeniu z marketplace.",
+    "notLinked": "Niepowiązane",
+    "pickLabel": "Wybierz marketplace do konfiguracji",
+    "pickMeta": {
+      "few": "{n} marketplace są powiązane z {master}. Wybierz jeden i kliknij Konfiguruj.",
+      "many": "{n} marketplace jest powiązanych z {master}. Wybierz jeden i kliknij Konfiguruj.",
+      "one": "{n} marketplace jest powiązany z {master}. Wybierz go i kliknij Konfiguruj.",
+      "other": "{n} marketplace jest powiązanego z {master}. Wybierz jeden i kliknij Konfiguruj."
+    },
+    "pickPlaceholder": "Wybierz marketplace…",
+    "readyMeta": "Wynika z powiązania połączeń. <link>Zmień powiązanie</link>",
+    "source": "Źródło",
+    "unsupportedMeta": "Powiązanie ustawia się w połączeniu."
+  },
+  "mappingPanel": {
+    "actions": "Akcje",
+    "add": "Dodaj",
+    "allMapped": "Wszystkie wartości źródłowe są zmapowane.",
+    "dataErrorTitle": "Nie udało się wczytać mapowań",
+    "defaultDynamicSuffix": " - dynamiczne",
+    "defaultEmpty": "Nie skonfigurowano jeszcze mapowań. Zamówienia mogą być synchronizowane z wartościami domyślnymi. Dodaj mapowanie poniżej.",
+    "derivedCue": " - odczytywane jako {value}",
+    "duplicateSource": "Mapowanie dla tej wartości źródłowej już istnieje.",
+    "eyebrow": "Konfiguracja",
+    "focusHint": "Zmapuj <strong>{source}</strong> na {target} poniżej.",
+    "loading": {
+      "message": "Pobieranie dostępnych wartości…",
+      "title": "Wczytywanie opcji: {title}"
+    },
+    "optionsErrorTitle": "Nie udało się wczytać opcji",
+    "orphanedSource": "osierocona wartość źródłowa",
+    "remove": "Usuń",
+    "removeLabel": "Usuń mapowanie dla {source}",
+    "retry": "Ponów",
+    "save": "Zapisz mapowania",
+    "saving": "Zapisywanie…",
+    "select": "Wybierz: {label}",
+    "tableLabel": "Mapowania: {title}",
+    "tryAgain": "Spróbuj ponownie",
+    "unsaved": "Niezapisane zmiany"
+  },
+  "orderStatuses": {
+    "cancelled": "Anulowane",
+    "delivered": "Dostarczone",
+    "pending": "Oczekujące",
+    "processing": "W realizacji",
+    "refunded": "Zwrócono pieniądze",
+    "shipped": "Wysłane"
+  },
+  "parcelProfile": {
+    "applyAction": "Zastosuj",
+    "boxIncomplete": "Podaj razem długość, szerokość i wysokość albo zostaw wszystkie trzy puste.",
+    "boxSummary": "Karton {length} x {width} x {height} cm",
+    "cancelAction": "Anuluj",
+    "clearAction": "Wyczyść paczkę",
+    "columnHeader": "Domyślna paczka",
+    "customTemplateEmpty": "Wpisz kod rozmiaru przewoźnika albo wybierz rozmiar z listy.",
+    "customTemplateLabel": "Kod rozmiaru przewoźnika",
+    "editAction": "Edytuj paczkę",
+    "heightLabel": "Wysokość (cm)",
+    "lengthLabel": "Długość (cm)",
+    "noneSet": "Nie ustawiono",
+    "notPositive": "Wartości muszą być większe od zera.",
+    "sectionHintWithMethod": "{method}. Służy do wstępnego wypełnienia formularza etykiety i nadania zbiorczego dla zamówień wysyłanych tą metodą. Każdą wartość nadal można zmienić w zamówieniu.",
+    "sectionTitle": "Domyślna paczka dla tej metody dostawy",
+    "setAction": "Ustaw paczkę",
+    "sizeSummary": "Rozmiar {template}",
+    "templateLabel": "Rozmiar",
+    "templateNone": "Bez rozmiaru",
+    "templateOther": "Inny kod przewoźnika",
+    "templateTooLong": "Kod rozmiaru może mieć najwyżej {max} znaków.",
+    "tooLarge": "Długość, szerokość i wysokość mogą mieć najwyżej {max} cm każda.",
+    "weightLabel": "Waga (kg)",
+    "weightSummary": "{kg} kg",
+    "weightTooLarge": "Waga może wynosić najwyżej {max} kg.",
+    "widthLabel": "Szerokość (cm)"
+  },
+  "routingRulesPanel": {
+    "caption": "Reguły kierowania realizacji",
+    "columns": {
+      "change": "Zmień",
+      "method": "Metoda dostawy {source}",
+      "routed": "Kierowane do"
+    },
+    "defaultGeneric": "Domyślnie (platforma zarządzania zamówieniami)",
+    "defaultNamed": "{name} - domyślnie",
+    "description": "Wybierz, jak realizowana jest każda metoda dostawy {source}. Metody pozostają przy domyślnej platformie zarządzania zamówieniami, chyba że przekierujesz je do podłączonego przewoźnika lub obsługi dostawy marketplace.",
+    "divertOption": "{kind} · {name}",
+    "errorTitle": "Nie udało się wczytać konfiguracji kierowania",
+    "eyebrow": "Konfiguracja",
+    "loading": {
+      "message": "Pobieranie metod dostawy i zgodnych obsług realizacji…",
+      "title": "Wczytywanie kierowania realizacji"
+    },
+    "noMethods": "To połączenie nie zgłosiło żadnych metod dostawy do kierowania. Kierowanie będzie można skonfigurować, gdy źródło udostępni metody dostawy.",
+    "noProcessors": "Nie podłączono jeszcze zgodnych obsług realizacji. Każda metoda pozostaje przy ustawieniu domyślnym, dopóki nie dodasz połączenia z przewoźnikiem obsługiwanym przez OpenLinker lub z dostawą marketplace.",
+    "processorKinds": {
+      "ol_managed_carrier": "Przewoźnik obsługiwany przez OpenLinker",
+      "omp_fulfilled": "Platforma zarządzania zamówieniami",
+      "source_brokered": "Dostawa przez marketplace"
+    },
+    "processorSelectLabel": "Obsługa realizacji dla {method}",
+    "save": "Zapisz kierowanie",
+    "saving": "Zapisywanie…",
+    "title": "Kierowanie realizacji",
+    "tryAgain": "Spróbuj ponownie",
+    "unavailableBucket": "{name} (niedostępne)",
+    "unavailableOption": "{kind} · {name} (niedostępne)",
+    "unsaved": "Niezapisane zmiany"
+  },
+  "routingSplitBar": {
+    "legendLabel": "Metody dostawy według obsługi realizacji"
+  },
+  "useMappingPairing": {
+    "catalogMissing": "Nie znaleziono powiązanego połączenia z katalogiem. Sprawdź powiązanie katalogu w tym połączeniu.",
+    "notLinked": "To połączenie nie jest powiązane z katalogiem produktów. Ustaw jego katalog na stronie połączenia, aby skonfigurować mapowania."
+  },
+  "usePrestashopCategories": {
+    "fallbackName": "Kategoria {id}"
+  }
+}

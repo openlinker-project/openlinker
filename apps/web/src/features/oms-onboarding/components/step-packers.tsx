@@ -21,7 +21,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
 
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
@@ -185,7 +185,7 @@ export function PackerCreator({ packers, canWrite, demoReadOnly }: PackerCreator
             tone="secondary"
             data-testid="btn-add-packer"
             disabled={disabled}
-            title={demoReadOnly ? DEMO_READ_ONLY_ACTION_MESSAGE : !canWrite ? COPY.adminOnly : undefined}
+            title={demoReadOnly ? demoReadOnlyActionMessage() : !canWrite ? COPY.adminOnly : undefined}
           >
             {createUser.isPending ? COPY.step2.adding : COPY.step2.add}
           </Button>

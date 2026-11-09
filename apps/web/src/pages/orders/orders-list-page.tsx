@@ -41,11 +41,15 @@ import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge'
 import { MetricCard, type MetricCardTone } from '../../shared/ui/metric-card';
 import { useToast } from '../../shared/ui/toast-provider';
 import { formatShipBy, type ShipByLevel } from '../../shared/format/format-ship-by';
-import { useTranslation, getBcp47Locale } from '../../shared/i18n';
-import type { LocaleCode } from '../../shared/i18n';
+import {
+  interpolate,
+  useActiveLocale,
+  useFormat,
+  useMessages,
+  usePlural,
+} from '../../shared/i18n';
 import { useOrderRowsQuery } from '../../features/orders/hooks/use-orders-query';
 import { useOrdersTotal } from '../../features/orders/hooks/use-orders-total';
-import { formatPaginatedTotal } from '../../shared/hooks/use-paginated-total';
 import { ListPagination } from '../../shared/ui/list-pagination';
 import { useOrderStatusSummaryQuery } from '../../features/orders/hooks/use-order-status-summary-query';
 import { useOrderSlaSummaryQuery } from '../../features/orders/hooks/use-order-sla-summary-query';
@@ -61,14 +65,13 @@ import {
   showsPackingStage,
 } from '../../features/orders/lib/handled-in-openlinker';
 import { usePackersQuery } from '../../features/users';
-import { HANDLED_IN_OPENLINKER_COPY } from '../../features/orders/lib/handled-in-openlinker.copy';
 import { OrderHoldBadge } from '../../features/orders/components/order-hold-badge';
 import { OrderDestinationRoutingBadge } from '../../features/orders/components/order-destination-routing-badge';
 import { OrderEditedBadge } from '../../features/orders/components/order-edited-badge';
 import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { useIsAdmin, useWriteAccess } from '../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../shared/config/demo-mode';
 import { useDemoMode, useStoresPersonalData } from '../../features/system';
 import { captureDemoEvent } from '../../features/demo';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
@@ -95,11 +98,10 @@ import { BulkTagPopover } from '../../features/orders/components/bulk-tag-popove
 import { BulkCancelDialog } from '../../features/orders/components/bulk-cancel-dialog';
 import { BulkBuyerNoteReadDialog } from '../../features/orders/components/bulk-buyer-note-read-dialog';
 import {
-  BULK_ACTIONS_COPY,
   BULK_ORDER_ACTION_MAX,
   bulkSelectionBlockReason,
   splitBuyerNoteCandidates,
-} from '../../features/orders/lib/bulk-order-actions.copy';
+} from '../../features/orders/lib/bulk-order-actions';
 import { OrderExportDialog } from '../../features/orders/components/order-export-dialog';
 import { useOrderExportBackgroundToast } from '../../features/orders/hooks/use-order-export';
 import { OrderColumnVisibilityControl } from '../../features/orders/components/order-column-visibility-control';
@@ -120,11 +122,6 @@ import {
   type OrderFilterChipContext,
 } from '../../features/orders/lib/order-filter-descriptors';
 import {
-  ORDER_HEALTH_LABELS,
-  ORDERS_LIST_FILTERS_COPY,
-} from '../../features/orders/lib/orders-list-filters.copy';
-import { ORDERS_LIST_PAGE_COPY as PAGE_COPY } from '../../features/orders/lib/orders-list-page.copy';
-import {
   ConnectionChip,
   readConnectionEnvironment,
   useConnectionsQuery,
@@ -133,6 +130,7 @@ import {
 } from '../../features/connections';
 import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
+import { serverErrorText } from '../../features/orders/lib/server-error-text';
 
 const PAGE_SIZE = 20;
 
@@ -143,17 +141,17 @@ const PAGE_SIZE = 20;
  */
 interface HealthSegment {
   key: OrderHealthValue;
-  label: string;
   tone: MetricCardTone;
   countKey: keyof Omit<OrderHealthSummary, 'total'>;
 }
 
+/** The label is `orders.listFilters.healthLabels[key]`, shared with the `health` chip. */
 const HEALTH_SEGMENTS: readonly HealthSegment[] = [
-  { key: 'source_deleted', label: ORDER_HEALTH_LABELS.source_deleted, tone: 'error', countKey: 'sourceDeleted' },
-  { key: 'needs_attention', label: ORDER_HEALTH_LABELS.needs_attention, tone: 'error', countKey: 'needsAttention' },
-  { key: 'awaiting_mapping', label: ORDER_HEALTH_LABELS.awaiting_mapping, tone: 'warning', countKey: 'awaitingMapping' },
-  { key: 'awaiting_dispatch', label: ORDER_HEALTH_LABELS.awaiting_dispatch, tone: 'info', countKey: 'awaitingDispatch' },
-  { key: 'synced', label: ORDER_HEALTH_LABELS.synced, tone: 'success', countKey: 'synced' },
+  { key: 'source_deleted', tone: 'error', countKey: 'sourceDeleted' },
+  { key: 'needs_attention', tone: 'error', countKey: 'needsAttention' },
+  { key: 'awaiting_mapping', tone: 'warning', countKey: 'awaitingMapping' },
+  { key: 'awaiting_dispatch', tone: 'info', countKey: 'awaitingDispatch' },
+  { key: 'synced', tone: 'success', countKey: 'synced' },
 ];
 
 /**
@@ -175,16 +173,6 @@ const SHIP_BY_TONE: Record<ShipByLevel, StatusBadgeTone> = {
 };
 
 /**
- * Resolve the per-row total via the i18n seam (#612). Currency varies per row
- * so we instantiate per call; locale comes from the LocaleProvider.
- */
-function formatCurrency(amount: number, currency: string, locale: LocaleCode): string {
-  return new Intl.NumberFormat(getBcp47Locale(locale), { style: 'currency', currency }).format(
-    amount,
-  );
-}
-
-/**
  * Buyer identity for the customer cell (#939). Prefers the shipping-address
  * name; falls back to the buyer email when the source omits a name (so the cell
  * stays useful instead of blanking). `null` only when neither is present.
@@ -197,23 +185,17 @@ function customerName(parsed: ReturnType<typeof parseOrderSnapshot>): string | n
 }
 
 /**
- * Cockpit "data freshness" line — freshest `updatedAt` across visible rows,
- * rendered as a locale-aware HH:MM. Same locale-resolution path as
- * `formatCurrency` so the i18n seam stays single-source-of-truth.
+ * Cockpit "data freshness" instant - the freshest `updatedAt` across visible
+ * rows, or `null` when there is none. The page renders it as a locale-aware
+ * time through `useFormat`.
  */
-function formatFreshness(items: readonly OrderRecord[], locale: LocaleCode): string | null {
-  if (items.length === 0) return null;
+function freshestUpdate(items: readonly OrderRecord[]): string | null {
   let mostRecentMs = 0;
   for (const item of items) {
     const ms = Date.parse(item.updatedAt);
     if (Number.isFinite(ms) && ms > mostRecentMs) mostRecentMs = ms;
   }
-  if (mostRecentMs === 0) return null;
-  const time = new Intl.DateTimeFormat(getBcp47Locale(locale), {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(mostRecentMs));
-  return `Synced ${time}`;
+  return mostRecentMs === 0 ? null : new Date(mostRecentMs).toISOString();
 }
 
 /**
@@ -228,7 +210,14 @@ function hasTaxRateConflict(parsed: ReturnType<typeof parseOrderSnapshot>): bool
 }
 
 export function OrdersListPage(): ReactElement {
-  const { locale } = useTranslation();
+  const locale = useActiveLocale();
+  const format = useFormat();
+  const plural = usePlural();
+  const orders = useMessages('orders');
+  const serverSaid = orders.common.serverSaid;
+  const copy = orders.listPage;
+  const filterCopy = orders.listFilters;
+  const bulkCopy = orders.bulkActions;
   const { showToast } = useToast();
 
   // Every URL filter read/write lives in the hook (#3507); the page is layout.
@@ -324,17 +313,18 @@ export function OrdersListPage(): ReactElement {
     (ymd: string): string => {
       const [y, m, d] = ymd.split('-').map(Number);
       if (!y || !m || !d) return ymd;
-      return new Intl.DateTimeFormat(getBcp47Locale(locale), {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      }).format(new Date(y, m - 1, d));
+      return format.date(new Date(y, m - 1, d).toISOString());
     },
-    [locale],
+    [format],
   );
   const chipContext: OrderFilterChipContext = useMemo(
-    () => ({ connectionName: (id) => connectionNames.get(id), tagById: lookupTag, formatDay }),
-    [connectionNames, lookupTag, formatDay],
+    () => ({
+      connectionName: (id) => connectionNames.get(id),
+      tagById: lookupTag,
+      formatDay,
+      copy: orders,
+    }),
+    [connectionNames, lookupTag, formatDay, orders],
   );
   // One human line for the whole view — the filtered empty state and the
   // export dialog's "Current view" card name exactly what the chips name.
@@ -373,7 +363,7 @@ export function OrdersListPage(): ReactElement {
   // Resolve a connectionId to a human channel label (never undefined) for the
   // bulk-dispatch per-row source pill.
   const channelLabelForBulk = (connectionId: string): string =>
-    channelLabel(platformByConnection.get(connectionId)) ?? 'Source';
+    channelLabel(platformByConnection.get(connectionId)) ?? copy.sourceFallback;
 
   // ── Bulk dispatch selection (#1109) ───────────────────────────────────────
   // Local Set (not URL state — the URL would balloon on every checkbox toggle).
@@ -528,7 +518,7 @@ export function OrdersListPage(): ReactElement {
   );
   const shippedExcluded = selectedOrders.filter((o) => !isDispatchable(o)).length;
   const overCapExcluded = selectedOrders.length - shippedExcluded - dispatchOrders.length;
-  const selectionBlockReason = bulkSelectionBlockReason(selectedOrders.length);
+  const selectionBlockReason = bulkSelectionBlockReason(selectedOrders.length, bulkCopy);
   const noteSplit = useMemo(() => splitBuyerNoteCandidates(selectedOrders), [selectedOrders]);
   const selectAllTarget = Math.min(items.length, BULK_ORDER_ACTION_MAX);
   const selectedVisibleCount = selectedOrders.length;
@@ -588,8 +578,14 @@ export function OrdersListPage(): ReactElement {
         state={checked ? 'all' : 'none'}
         disabled={disabled}
         onToggle={() => { toggleSelectRow(order); }}
-        ariaLabel={checked ? `Unselect ${order.internalOrderId}` : `Select ${order.internalOrderId}`}
-        tooltip={disabled ? BULK_ACTIONS_COPY.selectionCapTooltip : undefined}
+        ariaLabel={interpolate(checked ? copy.row.unselect : copy.row.select, {
+          id: order.internalOrderId,
+        })}
+        tooltip={
+          disabled
+            ? interpolate(bulkCopy.selectionCapTooltip, { max: BULK_ORDER_ACTION_MAX })
+            : undefined
+        }
       />
     );
   }
@@ -606,11 +602,14 @@ export function OrdersListPage(): ReactElement {
             .join(' ')}
           onClick={() => { applySort(key); }}
           aria-pressed={active}
-          aria-label={
+          aria-label={interpolate(
             active
-              ? `${label}, sorted ${dir === 'asc' ? 'ascending' : 'descending'}`
-              : `${label}, sort`
-          }
+              ? dir === 'asc'
+                ? copy.sort.sortAscending
+                : copy.sort.sortDescending
+              : copy.sort.unsorted,
+            { label },
+          )}
         >
           {label}
           <span className="orders-sortbtn__ind" aria-hidden="true">
@@ -619,7 +618,7 @@ export function OrdersListPage(): ReactElement {
         </button>
       );
     },
-    [sort, dir, applySort],
+    [sort, dir, applySort, copy],
   );
 
   const columns: DataTableColumn<OrderRecord>[] = useMemo(
@@ -632,7 +631,7 @@ export function OrdersListPage(): ReactElement {
             state={headerCheckboxState}
             onToggle={toggleSelectHeader}
             ariaLabel={
-              headerCheckboxState === 'all' ? 'Unselect all visible orders' : 'Select all visible orders'
+              headerCheckboxState === 'all' ? copy.row.unselectAll : copy.row.selectAll
             }
           />
         ),
@@ -643,7 +642,7 @@ export function OrdersListPage(): ReactElement {
         id: 'order',
         // #2538 - OrderIdentityCell stacks a thumbnail, the order number and a meta line.
         lines: 2,
-        header: 'Order',
+        header: copy.columns.order,
         cell: (order) => {
           const sourcePlatform = platformByConnection.get(order.sourceConnectionId);
           const source = channelLabel(sourcePlatform);
@@ -693,14 +692,14 @@ export function OrdersListPage(): ReactElement {
                 </span>
               ) : null}
               {canRetry && failed ? (
-                <ReadOnlyLock active={retryWrite.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <ReadOnlyLock active={retryWrite.demoReadOnly} message={demoReadOnlyActionMessage()}>
                   <Button
                     tone="ghost"
                     className="button--sm orders-row-retry"
                     disabled={isRetrying || retryWrite.demoReadOnly}
                     onClick={() => { handleRetry(order.internalOrderId, failed.destinationConnectionId); }}
                   >
-                    {isRetrying ? 'Retrying…' : 'Retry'}
+                    {isRetrying ? copy.retry.retrying : copy.retry.action}
                   </Button>
                 </ReadOnlyLock>
               ) : null}
@@ -713,7 +712,7 @@ export function OrdersListPage(): ReactElement {
         // Non-sortable in react-table's model (#1713) — the header renders the
         // same per-label sort control as the merged columns, routed through
         // `applySort`, so every sortable header shares one affordance.
-        header: <span className="orders-sortstack">{sortLabel('Customer', 'customer')}</span>,
+        header: <span className="orders-sortstack">{sortLabel(copy.columns.customer, 'customer')}</span>,
         cell: (order) => {
           const parsed = parsedFor(order);
           const name = customerName(parsed);
@@ -736,7 +735,7 @@ export function OrdersListPage(): ReactElement {
       },
       {
         id: 'channel',
-        header: 'Channel',
+        header: copy.columns.channel,
         // Folds under the order name below 1024px (#1713) — the order cell then
         // renders the channel pill inline instead.
         hideBelow: 1024,
@@ -748,7 +747,7 @@ export function OrdersListPage(): ReactElement {
           // An order OpenLinker handles itself has no destination row; say where it
           // goes rather than leaving the target empty (#3482).
           const dest = isHandledInOpenLinker(order)
-            ? HANDLED_IN_OPENLINKER_COPY.channelDestination
+            ? orders.handledInOpenLinker.channelDestination
             : channelLabel(destPlatform);
           if (!source) return <span className="text-muted">—</span>;
           return (
@@ -768,9 +767,9 @@ export function OrdersListPage(): ReactElement {
         id: 'status',
         // Non-sortable in react-table's model (#1713) — header uses the shared
         // per-label sort control (see the customer column).
-        header: <span className="orders-sortstack">{sortLabel('Status', 'status')}</span>,
+        header: <span className="orders-sortstack">{sortLabel(copy.columns.status, 'status')}</span>,
         cell: (order) => {
-          const h = deriveOrderHealth(order);
+          const h = deriveOrderHealth(order, orders);
           return (
             <span className="orders-cell-stack">
               <StatusBadge tone={h.tone} withDot compact>
@@ -829,17 +828,17 @@ export function OrdersListPage(): ReactElement {
         // header. Not `sortable` — the header renders its own sort buttons.
         header: (
           <span className="orders-sortstack orders-sortstack--left">
-            {sortLabel('Shipment', 'fulfillment')}
-            {sortLabel('Ship-by', 'dispatchBy')}
+            {sortLabel(copy.columns.shipment, 'fulfillment')}
+            {sortLabel(copy.columns.shipBy, 'dispatchBy')}
           </span>
         ),
         cell: (order) => {
           const parsed = parsedFor(order);
-          const f = fulfillmentBadge(order.fulfillmentState);
+          const f = fulfillmentBadge(order.fulfillmentState, orders);
           // BE-owned SLA bucket drives the badge (#1108); the live countdown
           // stays client-side, falling back to the client-derived urgency for
           // older payloads without slaState.
-          const sla = slaBadge(order.slaState);
+          const sla = slaBadge(order.slaState, orders);
           const due = order.dispatchByAt ?? null;
           const view = formatShipBy(due);
           // Estimated ship-by qualifier (#1776): a muted "est." label when the
@@ -848,12 +847,8 @@ export function OrdersListPage(): ReactElement {
           // hover so the convention isn't sight-only, and rendered as the same
           // "est." text on every surface (order-detail, row-detail, list).
           const estMark = order.dispatchByEstimated ? (
-            <span
-              className="text-muted"
-              aria-label="Estimated"
-              title="OpenLinker estimate - not a marketplace-confirmed deadline"
-            >
-              est.{' '}
+            <span className="text-muted" aria-label={copy.estimated.aria} title={copy.estimated.title}>
+              {copy.estimated.mark}{' '}
             </span>
           ) : null;
           // Carrier at row level (#1617): the list can't fetch per-order
@@ -910,7 +905,7 @@ export function OrdersListPage(): ReactElement {
               {showsPackingStage(order) ? (
                 <OrderPackingStage
                   handled={order.handledInOpenLinker}
-                  who={derivePackerLabel(order.handledInOpenLinker, packerNameById)}
+                  who={derivePackerLabel(order.handledInOpenLinker, packerNameById, orders)}
                 />
               ) : null}
               {/* When the row offers "Generate label" the CTA is deferred to sit
@@ -961,7 +956,7 @@ export function OrdersListPage(): ReactElement {
                   <span className="orders-row-cta__plus" aria-hidden="true">
                     +
                   </span>{' '}
-                  Generate label
+                  {copy.generateLabel}
                 </Link>
               ) : null}
               {carrier ? (
@@ -986,19 +981,19 @@ export function OrdersListPage(): ReactElement {
         // header renders its own sort buttons.
         header: (
           <span className="orders-sortstack orders-sortstack--right">
-            {sortLabel('Total', 'total')}
-            {sortLabel('Payment', 'payment')}
-            {sortLabel('Created', 'createdAt')}
+            {sortLabel(copy.columns.total, 'total')}
+            {sortLabel(copy.columns.payment, 'payment')}
+            {sortLabel(copy.columns.created, 'createdAt')}
           </span>
         ),
         cell: (order) => {
           const parsed = parsedFor(order);
-          const pay = paymentBadge(parsed.paymentStatus);
+          const pay = paymentBadge(parsed.paymentStatus, orders);
           return (
             <span className="orders-cell-stack orders-cell-stack--end">
               {parsed.totals ? (
                 <span className="mono tabular orders-money-total">
-                  {formatCurrency(parsed.totals.total, parsed.totals.currency, locale)}
+                  {format.money(parsed.totals.total, parsed.totals.currency)}
                 </span>
               ) : (
                 <span className="text-muted">—</span>
@@ -1044,6 +1039,10 @@ export function OrdersListPage(): ReactElement {
     // `mutate` handle, so it doesn't need to be a dep.
     [
       locale,
+      // Every header, label and badge word reads the `orders` namespace.
+      orders,
+      copy,
+      format,
       platformByConnection,
       // `sourceChipChannel` reads it, so a connections refetch updates the sandbox mark (#3670).
       environmentByConnection,
@@ -1099,10 +1098,14 @@ export function OrdersListPage(): ReactElement {
       { internalOrderId, destinationConnectionId },
       {
         onSuccess: () => {
-          showToast({ tone: 'success', title: 'Retry queued', description: 'Sync re-enqueued.' });
+          showToast({
+            tone: 'success',
+            title: copy.retry.queuedTitle,
+            description: copy.retry.queuedDescription,
+          });
         },
         onError: (error) => {
-          showToast({ tone: 'error', title: 'Retry failed', description: error.message });
+          showToast({ tone: 'error', title: copy.retry.failedTitle, description: serverErrorText(serverSaid, error.message, '') });
         },
       },
     );
@@ -1111,14 +1114,15 @@ export function OrdersListPage(): ReactElement {
   // Known total needs no page; only the floor ("100+") needs the rows, and only
   // while the total is unknown (#2957 review, S2). `null` = render nothing.
   const resultCount =
-    totalStage.total !== null || query.data
-      ? formatPaginatedTotal(totalStage.total, query.data ? offset + query.data.items.length : null)
-      : null;
+    totalStage.total !== null
+      ? { value: totalStage.total, atLeast: false }
+      : query.data
+        ? { value: offset + query.data.items.length, atLeast: true }
+        : null;
 
-  const freshness = useMemo(
-    () => formatFreshness(query.data?.items ?? [], locale),
-    [query.data?.items, locale],
-  );
+  const freshestIso = useMemo(() => freshestUpdate(query.data?.items ?? []), [query.data?.items]);
+  const freshness =
+    freshestIso === null ? null : interpolate(copy.freshness, { time: format.time(freshestIso) });
 
   function refreshAll(): void {
     void query.refetch();
@@ -1151,17 +1155,36 @@ export function OrdersListPage(): ReactElement {
     // needed; the handler reads fresh state at fire-time via the closure.
   }, []);
 
-  const segmentCount = (segment: HealthSegment): string =>
-    summary ? String(summary[segment.countKey]) : '—';
+  const dispatchDefaultHint = interpolate(bulkCopy.dispatchDefaultHint, {
+    cap: BULK_DISPATCH_MAX_ITEMS,
+  });
+  const dispatchHint = interpolate(bulkCopy.dispatchHint, {
+    dispatchable: format.number(dispatchOrders.length),
+    selected: format.number(selectedOrders.length),
+    reasons: format.list(
+      [
+        shippedExcluded > 0 ? plural(shippedExcluded, bulkCopy.dispatchHintShipped) : null,
+        overCapExcluded > 0
+          ? plural(overCapExcluded, bulkCopy.dispatchHintOverCap, { cap: BULK_DISPATCH_MAX_ITEMS })
+          : null,
+      ].filter((part): part is string => part !== null),
+      'unit',
+    ),
+  });
+
+  const segmentCount = (segment: HealthSegment): string => {
+    const value = summary?.[segment.countKey];
+    return typeof value === 'number' ? format.number(value) : '—';
+  };
 
   return (
     <PageLayout
-      eyebrow={freshness ?? 'Operations'}
-      title="Orders"
+      eyebrow={freshness ?? copy.eyebrow}
+      title={copy.title}
       actions={
         <div className="button-group">
           {exportAccess.canWrite || exportAccess.demoReadOnly ? (
-            <ReadOnlyLock active={exportAccess.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock active={exportAccess.demoReadOnly} message={demoReadOnlyActionMessage()}>
               <Button
                 tone="secondary"
                 className="button--sm"
@@ -1171,7 +1194,7 @@ export function OrdersListPage(): ReactElement {
                   setExportOpen(true);
                 }}
               >
-                {PAGE_COPY.export}
+                {copy.export}
               </Button>
             </ReadOnlyLock>
           ) : null}
@@ -1181,7 +1204,7 @@ export function OrdersListPage(): ReactElement {
             onVisibleColumnIdsChange={setVisibleColumnIds}
           />
           <Button tone="ghost" className="button--sm" onClick={refreshAll}>
-            {PAGE_COPY.refresh}
+            {copy.refresh}
             <span className="button__shortcut">R</span>
           </Button>
         </div>
@@ -1199,7 +1222,7 @@ export function OrdersListPage(): ReactElement {
             filtersApi.setHealth(null);
           }}
         >
-          <MetricCard label={PAGE_COPY.allOrders} value={summary ? String(summary.total) : '—'} />
+          <MetricCard label={copy.allOrders} value={summary ? format.number(summary.total) : '—'} />
         </button>
         {HEALTH_SEGMENTS.map((segment) => (
           <button
@@ -1213,7 +1236,11 @@ export function OrdersListPage(): ReactElement {
               filtersApi.setHealth(segment.key);
             }}
           >
-            <MetricCard label={segment.label} tone={segment.tone} value={segmentCount(segment)} />
+            <MetricCard
+              label={filterCopy.healthLabels[segment.key]}
+              tone={segment.tone}
+              value={segmentCount(segment)}
+            />
           </button>
         ))}
       </div>
@@ -1232,12 +1259,12 @@ export function OrdersListPage(): ReactElement {
       />
 
       {query.isLoading ? (
-        <DataTableSkeleton columns={visibleColumns} rowAction label="Loading orders…" />
+        <DataTableSkeleton columns={visibleColumns} rowAction label={copy.loading} />
       ) : query.error ? (
         <ErrorState
-          title="Unable to load orders"
-          message={query.error.message}
-          action={<Button onClick={() => { void query.refetch(); }}>Retry</Button>}
+          title={copy.loadError}
+          message={serverErrorText(serverSaid, query.error.message, '')}
+          action={<Button onClick={() => { void query.refetch(); }}>{copy.retry.action}</Button>}
         />
       ) : (query.data?.items.length ?? 0) === 0 ? (
         health === 'needs_attention' ? (
@@ -1245,13 +1272,9 @@ export function OrdersListPage(): ReactElement {
           // itself the operator-visible signal — no separate announcement is needed.
           <EmptyState
             liveRegion="off"
-            title="All clear — nothing needs your attention"
-            message="No failed syncs or unmapped orders right now. New issues surface here the moment they happen."
-            action={
-              <Button onClick={filtersApi.clearAll}>
-                View all orders
-              </Button>
-            }
+            title={copy.empty.allClear.title}
+            message={copy.empty.allClear.message}
+            action={<Button onClick={filtersApi.clearAll}>{copy.empty.allClear.action}</Button>}
           />
         ) : filterState.rateConflict ? (
           /*
@@ -1267,13 +1290,9 @@ export function OrdersListPage(): ReactElement {
             segment that already announced itself.
           */
           <EmptyState
-            title="No rate conflicts in this view"
-            message="The other filters are still applied. Clear them to check the whole list."
-            action={
-              <Button onClick={filtersApi.clearAll}>
-                Clear filters
-              </Button>
-            }
+            title={copy.empty.rateConflict.title}
+            message={copy.empty.rateConflict.message}
+            action={<Button onClick={filtersApi.clearAll}>{copy.empty.rateConflict.action}</Button>}
           />
         ) : filterState.invoicingBlocked ? (
           /*
@@ -1287,13 +1306,9 @@ export function OrdersListPage(): ReactElement {
           */
           <EmptyState
             liveRegion="off"
-            title="Nothing is blocked"
-            message="No order's sales document is waiting on a routing decision right now."
-            action={
-              <Button onClick={filtersApi.clearAll}>
-                View all orders
-              </Button>
-            }
+            title={copy.empty.invoicingBlocked.title}
+            message={copy.empty.invoicingBlocked.message}
+            action={<Button onClick={filtersApi.clearAll}>{copy.empty.invoicingBlocked.action}</Button>}
           />
         ) : filterState.waitingInOpenLinker ? (
           /*
@@ -1301,24 +1316,16 @@ export function OrdersListPage(): ReactElement {
             up empty. Worded "in this view" because other filters may be on.
           */
           <EmptyState
-            title="Nothing is waiting in OpenLinker in this view"
-            message="No order here is held for missing stock, a missing address or a routing error. Other filters are still applied."
-            action={
-              <Button onClick={filtersApi.clearAll}>
-                Clear filters
-              </Button>
-            }
+            title={copy.empty.waiting.title}
+            message={copy.empty.waiting.message}
+            action={<Button onClick={filtersApi.clearAll}>{copy.empty.waiting.action}</Button>}
           />
         ) : filterState.onPackBench ? (
           /* #3482 - an empty pack bench is a good outcome too. */
           <EmptyState
-            title="Nothing on the pack bench in this view"
-            message="No order here is waiting to be packed or being packed. Other filters are still applied."
-            action={
-              <Button onClick={filtersApi.clearAll}>
-                Clear filters
-              </Button>
-            }
+            title={copy.empty.packBench.title}
+            message={copy.empty.packBench.message}
+            action={<Button onClick={filtersApi.clearAll}>{copy.empty.packBench.action}</Button>}
           />
         ) : filterState.routingBlocked ? (
           /*
@@ -1329,13 +1336,9 @@ export function OrdersListPage(): ReactElement {
             above, and worded "in this view" because other filters may be on.
           */
           <EmptyState
-            title="No routing problems in this view"
-            message="No order here was routed to a destination OpenLinker could not reach. Other filters are still applied."
-            action={
-              <Button onClick={filtersApi.clearAll}>
-                Clear filters
-              </Button>
-            }
+            title={copy.empty.routingBlocked.title}
+            message={copy.empty.routingBlocked.message}
+            action={<Button onClick={filtersApi.clearAll}>{copy.empty.routingBlocked.action}</Button>}
           />
         ) : debouncedSearch ? (
           /*
@@ -1347,11 +1350,11 @@ export function OrdersListPage(): ReactElement {
             arm's "clear filters" action.
           */
           <EmptyState
-            title={ORDERS_LIST_FILTERS_COPY.noResultsTitle(debouncedSearch)}
+            title={interpolate(filterCopy.noResults.title, { query: debouncedSearch })}
             message={
               storesPersonalData === false
-                ? ORDERS_LIST_FILTERS_COPY.noResultsMessageNoPii
-                : ORDERS_LIST_FILTERS_COPY.noResultsMessage
+                ? filterCopy.noResults.messageNoPii
+                : filterCopy.noResults.message
             }
             action={
               <Button
@@ -1359,7 +1362,7 @@ export function OrdersListPage(): ReactElement {
                   filtersApi.setSearch('');
                 }}
               >
-                {ORDERS_LIST_FILTERS_COPY.clearSearch}
+                {filterCopy.noResults.clearSearch}
               </Button>
             }
           />
@@ -1381,10 +1384,14 @@ export function OrdersListPage(): ReactElement {
             "polite" default for.
           */
           <EmptyState
-            title={ORDERS_LIST_FILTERS_COPY.noFilterResultsTitle}
-            message={ORDERS_LIST_FILTERS_COPY.noFilterResultsMessage(scopeDescription)}
+            title={filterCopy.noFilterResults.title}
+            message={
+              scopeDescription
+                ? interpolate(filterCopy.noFilterResults.message, { summary: scopeDescription })
+                : filterCopy.noFilterResults.messageNoSummary
+            }
             action={
-              <Button onClick={filtersApi.clearAll}>{ORDERS_LIST_FILTERS_COPY.clearFilters}</Button>
+              <Button onClick={filtersApi.clearAll}>{filterCopy.noFilterResults.clearFilters}</Button>
             }
           />
         ) : (
@@ -1392,11 +1399,11 @@ export function OrdersListPage(): ReactElement {
           // to transition from (an operator landing on an empty, never-synced deployment).
           <EmptyState
             liveRegion="off"
-            title="No orders found"
-            message="No order records have been synced yet."
+            title={copy.empty.noOrders.title}
+            message={copy.empty.noOrders.message}
             action={
               <Link className="button button--primary" to="/connections">
-                Manage connections
+                {copy.empty.noOrders.action}
               </Link>
             }
           />
@@ -1404,7 +1411,7 @@ export function OrdersListPage(): ReactElement {
       ) : (
         <>
           <DataTable
-            caption="Orders"
+            caption={copy.tableCaption}
             columns={visibleColumns}
             rows={query.data?.items ?? []}
             rowKey={(order) => order.internalOrderId}
@@ -1419,38 +1426,34 @@ export function OrdersListPage(): ReactElement {
               <BulkActionBar
                 data-testid="orders-bulk-bar"
                 count={selectedOrders.length}
-                itemNoun="order"
+                selectedLabel={copy.bulk.selected}
                 hint={
                   <span data-testid="orders-bulk-hint">
                     {selectionBlockReason ??
                       (dispatchOrders.length < selectedOrders.length
-                        ? BULK_ACTIONS_COPY.dispatchHint(
-                            dispatchOrders.length,
-                            selectedOrders.length,
-                            shippedExcluded,
-                            overCapExcluded,
-                            BULK_DISPATCH_MAX_ITEMS,
-                          )
+                        ? dispatchHint
                         : distinctSelectedSources > 1
-                          ? `${distinctSelectedSources} sources · ${BULK_ACTIONS_COPY.dispatchDefaultHint(BULK_DISPATCH_MAX_ITEMS)}`
-                          : BULK_ACTIONS_COPY.dispatchDefaultHint(BULK_DISPATCH_MAX_ITEMS))}
+                          ? plural(distinctSelectedSources, copy.bulk.multiSourceHint, {
+                              hint: dispatchDefaultHint,
+                            })
+                          : dispatchDefaultHint)}
                   </span>
                 }
                 actions={
                   <>
                     <Button tone="ghost" onClick={clearSelection}>
-                      Clear
+                      {copy.bulk.clear}
                     </Button>
                     {bulkVisible ? (
-                      <ReadOnlyLock active={bulkLocked} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                      <ReadOnlyLock active={bulkLocked} message={demoReadOnlyActionMessage()}>
                         <BulkTagPopover
                           selectedOrders={selectedOrders}
-                          disabledReason={bulkLocked ? DEMO_READ_ONLY_ACTION_MESSAGE : selectionBlockReason}
+                          disabledReason={bulkLocked ? demoReadOnlyActionMessage() : selectionBlockReason}
                         />
                       </ReadOnlyLock>
                     ) : null}
                     {bulkVisible ? (
-                      <ReadOnlyLock active={bulkLocked} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                      <ReadOnlyLock active={bulkLocked} message={demoReadOnlyActionMessage()}>
                         <Button
                           tone="secondary"
                           data-testid="orders-bulk-read"
@@ -1460,17 +1463,17 @@ export function OrdersListPage(): ReactElement {
                           title={
                             selectionBlockReason ??
                             (noteSplit.candidates.length === 0
-                              ? 'None of the selected orders has an unread buyer message'
+                              ? copy.bulk.noUnreadNote
                               : undefined)
                           }
                           onClick={() => { setBulkReadOpen(true); }}
                         >
-                          {BULK_ACTIONS_COPY.read.trigger}
+                          {bulkCopy.read.trigger}
                         </Button>
                       </ReadOnlyLock>
                     ) : null}
                     {bulkVisible && (isAdmin || bulkLocked) ? (
-                      <ReadOnlyLock active={bulkLocked} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                      <ReadOnlyLock active={bulkLocked} message={demoReadOnlyActionMessage()}>
                         <Button
                           tone="danger"
                           data-testid="orders-bulk-cancel"
@@ -1478,7 +1481,9 @@ export function OrdersListPage(): ReactElement {
                           title={selectionBlockReason ?? undefined}
                           onClick={() => { setBulkCancelOpen(true); }}
                         >
-                          {BULK_ACTIONS_COPY.cancel.trigger(selectedOrders.length)}
+                          {interpolate(bulkCopy.cancel.trigger, {
+                            count: format.number(selectedOrders.length),
+                          })}
                         </Button>
                       </ReadOnlyLock>
                     ) : null}
@@ -1490,17 +1495,19 @@ export function OrdersListPage(): ReactElement {
                           setExportOpen(true);
                         }}
                       >
-                        {PAGE_COPY.exportSelected(selectedOrders.length)}
+                        {interpolate(copy.exportSelected, {
+                          count: format.number(selectedOrders.length),
+                        })}
                       </Button>
                     ) : null}
                     <Button
                       tone="primary"
                       data-testid="orders-bulk-dispatch"
                       disabled={dispatchOrders.length === 0}
-                      title={dispatchOrders.length === 0 ? 'None of the selected orders can be dispatched' : undefined}
+                      title={dispatchOrders.length === 0 ? copy.bulk.noneDispatchable : undefined}
                       onClick={() => { setBulkOpen(true); }}
                     >
-                      Dispatch {dispatchOrders.length}
+                      {interpolate(copy.bulk.dispatch, { count: format.number(dispatchOrders.length) })}
                     </Button>
                   </>
                 }
@@ -1519,7 +1526,9 @@ export function OrdersListPage(): ReactElement {
                 />
               ),
               toggleLabel: (order, expanded) =>
-                `${expanded ? 'Collapse' : 'Expand'} details for order ${order.internalOrderId}`,
+                interpolate(expanded ? copy.row.collapseDetails : copy.row.expandDetails, {
+                  id: order.internalOrderId,
+                }),
             }}
             // Server-side ordering (#944/#1713): every sortable header (customer,
             // status, and the merged shipment/money columns) renders its own
@@ -1585,7 +1594,7 @@ export function OrdersListPage(): ReactElement {
               // is not a summary.
               summary: (order) => {
                 const parsed = parsedFor(order);
-                const pay = paymentBadge(parsed.paymentStatus);
+                const pay = paymentBadge(parsed.paymentStatus, orders);
                 const cust = customerName(parsed);
                 // Snapshot-only (#1776): method name → method id → pickup name.
                 const carrier =
@@ -1609,7 +1618,7 @@ export function OrdersListPage(): ReactElement {
                   processorAvailable: order.deliveryResolution?.processorAvailable,
                   cancelled: parsed.status === 'cancelled',
                 });
-                const fulfillment = fulfillmentBadge(order.fulfillmentState);
+                const fulfillment = fulfillmentBadge(order.fulfillmentState, orders);
                 // "Generate label" only when there's a live OL carrier route
                 // (#1799), same gate as the desktop cell — otherwise the passive
                 // fulfillment badge (shop-fulfilled / unmapped / disabled / etc.).
@@ -1618,20 +1627,20 @@ export function OrdersListPage(): ReactElement {
                   parsed.status !== 'cancelled' &&
                   !isHandledInOpenLinker(order) &&
                   hasLiveOlCarrierRoute(order.deliveryResolution);
-                const waiting = deriveWaiting(order);
+                const waiting = deriveWaiting(order, orders);
                 return (
                   <div className="orders-card-summary">
                     <dl className="orders-card-facts">
                       <div>
-                        <dt>Total</dt>
+                        <dt>{copy.cardFacts.total}</dt>
                         <dd className="mono tabular">
                           {parsed.totals
-                            ? formatCurrency(parsed.totals.total, parsed.totals.currency, locale)
+                            ? format.money(parsed.totals.total, parsed.totals.currency)
                             : '—'}
                         </dd>
                       </div>
                       <div>
-                        <dt>Payment</dt>
+                        <dt>{copy.cardFacts.payment}</dt>
                         <dd>
                           {pay ? (
                             <StatusBadge tone={pay.tone} withDot compact>
@@ -1643,11 +1652,11 @@ export function OrdersListPage(): ReactElement {
                         </dd>
                       </div>
                       <div>
-                        <dt>Stock</dt>
+                        <dt>{copy.cardFacts.stock}</dt>
                         <dd>
                           {/* SAME component as the desktop status cell. An
                               absent value renders an em dash, never a "fine"
-                              claim — see `stock-at-risk-copy.ts`. */}
+                              claim - see `lib/stock-at-risk.ts`. */}
                           <StockAtRiskBadge
                             shortfalls={order.reservationShortfalls}
                             layout="row"
@@ -1656,7 +1665,7 @@ export function OrdersListPage(): ReactElement {
                         </dd>
                       </div>
                       <div>
-                        <dt>Return</dt>
+                        <dt>{copy.cardFacts.return}</dt>
                         <dd>
                           {/* SAME component as the desktop status cell (#2998). */}
                           <OrderOpenReturnBadge
@@ -1667,7 +1676,7 @@ export function OrdersListPage(): ReactElement {
                         </dd>
                       </div>
                       <div>
-                        <dt>Document</dt>
+                        <dt>{copy.cardFacts.document}</dt>
                         <dd>
                           {/* SAME component as the desktop cell (#2552) — this
                               used to be a hand-duplicated parallel render
@@ -1685,12 +1694,12 @@ export function OrdersListPage(): ReactElement {
                         </dd>
                       </div>
                       <div>
-                        <dt>Customer</dt>
+                        <dt>{copy.cardFacts.customer}</dt>
                         <dd>{cust ?? '—'}</dd>
                       </div>
                       {order.hasBuyerNote === true ? (
                         <div className="orders-card-facts__wide">
-                          <dt>Buyer note</dt>
+                          <dt>{copy.cardFacts.buyerNote}</dt>
                           <dd>
                             <OrderBuyerNoteHint
                               hasBuyerNote={order.hasBuyerNote}
@@ -1702,17 +1711,17 @@ export function OrdersListPage(): ReactElement {
                       ) : null}
                       {showsPackingStage(order) ? (
                         <div>
-                          <dt>Packing</dt>
+                          <dt>{copy.cardFacts.packing}</dt>
                           <dd>
                             <OrderPackingStage
                               handled={order.handledInOpenLinker}
-                              who={derivePackerLabel(order.handledInOpenLinker, packerNameById)}
+                              who={derivePackerLabel(order.handledInOpenLinker, packerNameById, orders)}
                             />
                           </dd>
                         </div>
                       ) : isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
                         <div>
-                          <dt>Packed</dt>
+                          <dt>{copy.cardFacts.packed}</dt>
                           <dd>
                             {/* SAME component as the desktop cell. On a narrow
                                 viewport the desktop tick becomes a labelled fact,
@@ -1728,12 +1737,12 @@ export function OrdersListPage(): ReactElement {
                       )}
                       {waiting ? (
                         <div className="orders-card-facts__wide">
-                          <dt>{HANDLED_IN_OPENLINKER_COPY.waitingOnFact}</dt>
+                          <dt>{orders.handledInOpenLinker.waitingOnFact}</dt>
                           <dd title={waiting.hint}>{waiting.fact}</dd>
                         </div>
                       ) : null}
                       <div className="orders-card-facts__wide">
-                        <dt>Shipment</dt>
+                        <dt>{copy.cardFacts.shipment}</dt>
                         <dd>
                           <span className="orders-cell-stack">
                             {/* CTA deferred under the Awaiting-label chip, mirroring
@@ -1765,7 +1774,7 @@ export function OrdersListPage(): ReactElement {
                                 <span className="orders-row-cta__plus" aria-hidden="true">
                                   +
                                 </span>{' '}
-                                Generate label
+                                {copy.generateLabel}
                               </Link>
                             ) : null}
                             {carrier ? (
@@ -1781,10 +1790,10 @@ export function OrdersListPage(): ReactElement {
                 );
               },
               meta: (order) => {
-                const h = deriveOrderHealth(order);
+                const h = deriveOrderHealth(order, orders);
                 const shipBy = formatShipBy(order.dispatchByAt ?? null);
-                const sla = slaBadge(order.slaState);
-                const fulfillment = fulfillmentBadge(order.fulfillmentState);
+                const sla = slaBadge(order.slaState, orders);
+                const fulfillment = fulfillmentBadge(order.fulfillmentState, orders);
                 const failed = order.syncStatus.find((s) => s.status === 'failed');
                 const isRetrying =
                   retryMutation.isPending &&
@@ -1818,10 +1827,10 @@ export function OrdersListPage(): ReactElement {
                         {order.dispatchByEstimated ? (
                           <span
                             className="text-muted"
-                            aria-label="Estimated"
-                            title="OpenLinker estimate - not a marketplace-confirmed deadline"
+                            aria-label={copy.estimated.aria}
+                            title={copy.estimated.title}
                           >
-                            est.{' '}
+                            {copy.estimated.mark}{' '}
                           </span>
                         ) : null}
                         {shipBy.remaining}
@@ -1833,7 +1842,7 @@ export function OrdersListPage(): ReactElement {
                     retryWrite.visible ? (
                       <ReadOnlyLock
                         active={retryWrite.demoReadOnly}
-                        message={DEMO_READ_ONLY_ACTION_MESSAGE}
+                        message={demoReadOnlyActionMessage()}
                       >
                         <Button
                           tone="ghost"
@@ -1841,7 +1850,7 @@ export function OrdersListPage(): ReactElement {
                           disabled={isRetrying || retryWrite.demoReadOnly}
                           onClick={() => { handleRetry(order.internalOrderId, failed.destinationConnectionId); }}
                         >
-                          {isRetrying ? 'Retrying…' : 'Retry'}
+                          {isRetrying ? copy.retry.retrying : copy.retry.action}
                         </Button>
                       </ReadOnlyLock>
                     ) : null}

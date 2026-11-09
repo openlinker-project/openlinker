@@ -25,6 +25,7 @@ import {
   DialogContent,
   DialogTitle,
 } from '../../../../shared/ui/dialog';
+import { interpolate, useMessages } from '../../../../shared/i18n';
 
 export function BulkImageLightbox({
   src,
@@ -35,6 +36,8 @@ export function BulkImageLightbox({
   name: string;
   onClose: () => void;
 }): ReactElement {
+  const copy = useMessages('listings').bulkImageLightbox;
+  const imageLabel = interpolate(copy.imageLabel, { name });
   return (
     <Dialog
       open
@@ -48,13 +51,13 @@ export function BulkImageLightbox({
       <DialogContent
         className="lightbox-dialog-content"
         overlayClassName="lightbox-dialog-overlay"
-        aria-label={`${name} image`}
+        aria-label={imageLabel}
         aria-describedby={undefined}
       >
-        <DialogTitle className="sr-only">{name} image</DialogTitle>
+        <DialogTitle className="sr-only">{imageLabel}</DialogTitle>
         <img className="bulk-image-lightbox__img" src={src} alt={name} />
         <DialogClose asChild>
-          <button type="button" className="bulk-image-lightbox__close" aria-label="Close image">
+          <button type="button" className="bulk-image-lightbox__close" aria-label={copy.close}>
             &#10005;
           </button>
         </DialogClose>

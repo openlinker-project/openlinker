@@ -14,6 +14,7 @@
  * @module plugins/ksef/lib
  */
 import type { RegulatoryStatus } from '../../../features/invoicing';
+import { getKsefMessages } from '../messages';
 
 /**
  * `Partial` and NOT `Record`: the badge is rendered only behind the panel's
@@ -22,10 +23,13 @@ import type { RegulatoryStatus } from '../../../features/invoicing';
  * status it never sees. The prop is `Partial` too, and the badge falls back to
  * the shared neutral label per status for any key omitted here.
  */
-export const KSEF_REGULATORY_STATUS_LABELS: Partial<Record<RegulatoryStatus, string>> = {
-  'pending-submission': 'KSeF: awaiting submission',
-  submitted: 'KSeF: submitted',
-  cleared: 'KSeF: clearing',
-  accepted: 'KSeF: accepted',
-  rejected: 'KSeF: rejected',
-};
+export function getKsefRegulatoryStatusLabels(): Partial<Record<RegulatoryStatus, string>> {
+  const copy = getKsefMessages().ksefRegulatoryStatusLabels;
+  return {
+    'pending-submission': copy['pending-submission'],
+    submitted: copy.submitted,
+    cleared: copy.cleared,
+    accepted: copy.accepted,
+    rejected: copy.rejected,
+  };
+}

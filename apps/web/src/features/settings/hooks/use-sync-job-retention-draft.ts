@@ -14,6 +14,7 @@
  * @module apps/web/src/features/settings/hooks
  */
 import { useEffect, useState } from 'react';
+import { useMessages } from '../../../shared/i18n';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { OperationalSettingsView } from '../api/operational-settings.types';
 import {
@@ -53,6 +54,7 @@ export function useSyncJobRetentionDraft(
 ): SyncJobRetentionDraft {
   const mutation = useUpdateOperationalSettingsMutation();
   const { showToast } = useToast();
+  const copy = useMessages('settings').useSyncJobRetentionDraft;
   const [draft, setDraft] = useState<RetentionValues | null>(null);
 
   const saved = view === null ? null : toRetentionValues(view);
@@ -110,8 +112,8 @@ export function useSyncJobRetentionDraft(
           onSuccess: () => {
             showToast({
               tone: 'success',
-              title: 'Job retention saved',
-              description: 'The next clean-up uses the new windows.',
+              title: copy.savedToast.title,
+              description: copy.savedToast.description,
             });
           },
         }

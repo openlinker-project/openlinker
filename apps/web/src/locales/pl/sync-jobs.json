@@ -1,0 +1,275 @@
+{
+  "jobTypes": {
+    "analyticsCurrencyRecalculate": "Przelicz walutę raportów",
+    "automationTriggerDeadlineSweep": "Sprawdź terminy automatyzacji",
+    "destinationTaxonomySync": "Odśwież kategorie kanału docelowego",
+    "fiscalizationRegister": "Zarejestruj dokument sprzedaży",
+    "fulfillmentRoutingReapSweep": "Zamknij zablokowane decyzje kierowania",
+    "fulfillmentWorkAutoDispatch": "Kup etykietę nadawczą automatycznie",
+    "fulfillmentWorkDispatch": "Przekaż zadanie realizacji do magazynu",
+    "fulfillmentWorkRelaySweep": "Wyślij ponownie pominięte powiadomienia o nadaniu",
+    "fulfillmentWorkRerouteSweep": "Skieruj ponownie zamówienia czekające na towar",
+    "fulfillmentWorkRoute": "Skieruj zamówienie",
+    "fulfillmentWorkStatusSync": "Odczytaj postęp realizacji",
+    "fulfillmentWorkTimeoutSweep": "Zwolnij zadania realizacji bez odpowiedzi",
+    "inventoryPropagateToMarketplaces": "Wyślij stany magazynowe do kanałów",
+    "inventoryProvenanceBackfill": "Uzupełnij źródła stanów magazynowych",
+    "inventoryReservationsConsume": "Zamknij rezerwacje wysłanych zamówień",
+    "inventoryReservationsExpire": "Wygaś rezerwacje",
+    "inventoryReservationsShortfall": "Sprawdź zamówienia zagrożone spadkiem stanów",
+    "inventorySaleDecrement": "Zmniejsz stan po sprzedaży",
+    "inventorySaleDecrementReconcileSweep": "Odtwórz pominięte zmniejszenia stanów",
+    "invoicingIssue": "Wystaw fakturę",
+    "invoicingMarketplaceUpload": "Dołącz fakturę do zamówienia w marketplace",
+    "invoicingOfflineSubmissionResubmit": "Prześlij ponownie faktury offline",
+    "invoicingPaymentStatusRefreshByExternalId": "Odśwież status płatności faktury",
+    "invoicingPendingRecoverySweep": "Odzyskaj faktury zablokowane w trakcie wystawiania",
+    "invoicingRegulatoryStatusReconcile": "Sprawdź rozliczenie w urzędzie skarbowym",
+    "marketplaceFulfillmentStatusSync": "Odczytaj status realizacji w marketplace",
+    "marketplaceOfferCreate": "Utwórz ofertę",
+    "marketplaceOfferPauseStale": "Wstrzymaj oferty usuniętych produktów",
+    "marketplaceOfferPauseStaleSweep": "Sprawdź oferty usuniętych produktów",
+    "marketplaceOfferPollCreationStatus": "Sprawdź wynik tworzenia oferty",
+    "marketplaceOfferQuantityReconcile": "Potwierdź zmiany liczby sztuk w ofertach",
+    "marketplaceOfferQuantityUpdate": "Zaktualizuj liczbę sztuk w ofercie",
+    "marketplaceOfferRefreshSnapshot": "Odśwież migawkę oferty",
+    "marketplaceOfferStatusSync": "Synchronizuj status oferty",
+    "marketplaceOfferStockRestore": "Przywróć stan w ofercie",
+    "marketplaceOfferUpdateFields": "Zaktualizuj szczegóły oferty",
+    "marketplaceOffersSync": "Synchronizuj oferty z marketplace",
+    "marketplaceOrderFxStamp": "Przelicz zamówienie na walutę raportów",
+    "marketplaceOrderFxStampSweep": "Przelicz nieprzeliczone zamówienia",
+    "marketplaceOrderSync": "Synchronizuj zamówienie",
+    "marketplaceOrdersPoll": "Pobierz nowe zamówienia",
+    "marketplaceReturnSync": "Synchronizuj zwrot",
+    "marketplaceReturnsPoll": "Pobierz nowe zwroty",
+    "marketplaceReturnsStatusSync": "Odśwież otwarte zwroty",
+    "marketplaceShipmentStatusSync": "Synchronizuj status przesyłki",
+    "marketplaceShipmentSyncByExternalId": "Synchronizuj przesyłkę",
+    "marketplaceSourceFulfillmentStatusSync": "Odczytaj przesyłki utworzone w źródle",
+    "masterInventorySyncAll": "Synchronizuj wszystkie stany magazynowe",
+    "masterInventorySyncBatch": "Synchronizuj partię stanów magazynowych",
+    "masterInventorySyncByExternalId": "Synchronizuj stan jednego produktu",
+    "masterInventorySyncFromSweep": "Synchronizuj stan jednego produktu (zaplanowane)",
+    "masterProductReconcile": "Sprawdź usunięte produkty",
+    "masterProductSyncAll": "Synchronizuj wszystkie produkty",
+    "masterProductSyncBatch": "Synchronizuj partię produktów",
+    "masterProductSyncByExternalId": "Synchronizuj jeden produkt",
+    "masterProductSyncDelta": "Synchronizuj zmienione produkty",
+    "masterProductSyncFromSweep": "Synchronizuj jeden produkt (zaplanowane)",
+    "masterVariantsAutoMatch": "Dopasuj warianty do ofert",
+    "ordersExport": "Eksportuj zamówienia",
+    "ordersHoldsReconcile": "Napraw wstrzymania zamówień",
+    "ordersTaxRateBackfill": "Uzupełnij stawki VAT zamówień",
+    "pricingPropagateToMarketplaces": "Wyślij zmianę ceny do kanałów",
+    "returnsOrphanReconcile": "Dopasuj zwroty do zamówień",
+    "shippingPickupPointRefreshFrequent": "Odśwież punkty odbioru",
+    "shippingShipmentNotifyDispatched": "Powiadom marketplace o nadaniu paczki",
+    "shopProductPublish": "Opublikuj produkt w sklepie",
+    "shopProductStatusSync": "Synchronizuj status produktu w sklepie",
+    "subiektBridgeReachabilitySweep": "Sprawdź połączenie z systemem księgowym"
+  },
+  "syncJobDetailPage": {
+    "backTo": "Zadania w tle i logi",
+    "error": {
+      "notFound": "Nie znaleziono zadania w tle",
+      "title": "Nie udało się wczytać zadania w tle"
+    },
+    "eyebrow": "Zadania synchronizacji",
+    "failedAfter": {
+      "few": "Zadanie w tle nie powiodło się po {n} próbach",
+      "many": "Zadanie w tle nie powiodło się po {n} próbach",
+      "one": "Zadanie w tle nie powiodło się po {n} próbie",
+      "other": "Zadanie w tle nie powiodło się po {n} próby"
+    },
+    "fallbackTitle": "Szczegóły zadania w tle",
+    "fields": {
+      "attempts": "Próby",
+      "attemptsValue": "{attempts} / {max}",
+      "connection": "Połączenie",
+      "created": "Utworzono",
+      "deferredTotal": "Dotychczas odroczone",
+      "deferredValue": "{duration} (oczekiwanie na kanał docelowy, bez zużycia próby)",
+      "idempotencyKey": "Klucz idempotencji",
+      "jobId": "ID zadania w tle",
+      "jobType": "Typ zadania w tle",
+      "lastAttemptDuration": "Czas trwania ostatniej próby",
+      "lockedAt": "Zablokowano",
+      "lockedBy": "Zablokował",
+      "nextRun": "Następne uruchomienie",
+      "outcomeReason": "Przyczyna wyniku",
+      "status": "Status",
+      "updated": "Zaktualizowano"
+    },
+    "loading": {
+      "message": "Pobieranie szczegółów zadania w tle…",
+      "title": "Wczytywanie zadania w tle"
+    },
+    "noError": "Dla tego zadania w tle nie zapisano komunikatu o błędzie.",
+    "panels": {
+      "lastError": "Ostatni błąd",
+      "payload": "Dane"
+    },
+    "retry": "Ponów",
+    "retrying": "Ponawianie…",
+    "toast": {
+      "requeued": "Zadanie w tle {id}… ponownie w kolejce.",
+      "retryFailed": "Ponowienie nie powiodło się",
+      "retrying": "Ponawianie"
+    }
+  },
+  "syncJobStatusBadge": {
+    "businessFailure": "błąd biznesowy",
+    "outcomeReasons": {
+      "auto_dispatch_no_address": "brak adresu",
+      "auto_dispatch_no_delivery_method": "brak metody dostawy",
+      "auto_dispatch_no_dimensions": "brak wymiarów",
+      "auto_dispatch_no_weight": "brak wagi",
+      "auto_dispatch_not_enabled": "autoetykieta wyłączona",
+      "auto_dispatch_payload_invalid": "błędne dane zadania",
+      "auto_dispatch_shipment_claimed_by_sibling_work": "inna paczka ma etykietę",
+      "auto_dispatch_work_not_eligible": "zamówienie niegotowe",
+      "master_deleted": "usunięte w źródle"
+    },
+    "statuses": {
+      "dead": "martwe",
+      "queued": "w kolejce",
+      "running": "w toku",
+      "succeeded": "zakończone"
+    }
+  },
+  "syncJobsPage": {
+    "caption": "Zadania synchronizacji",
+    "columns": {
+      "attempts": "Próby",
+      "connection": "Połączenie",
+      "created": "Utworzono",
+      "deferred": "odroczone",
+      "deferredTitle": "Dotychczas odroczone o {duration}",
+      "duration": "Czas trwania",
+      "jobType": "Typ zadania",
+      "lastError": "Ostatni błąd",
+      "status": "Status"
+    },
+    "deadLetters": {
+      "columns": {
+        "attempts": "Próby",
+        "consumerGroup": "Grupa odbiorców",
+        "entryId": "ID wpisu",
+        "lastError": "Ostatni błąd",
+        "lastSeen": "Ostatnio widziany",
+        "stream": "Strumień"
+      },
+      "description": "Zdarzenia w tle, które wielokrotnie się nie powiodły i zostały zapisane tutaj, zamiast być ponawiane bez końca. Nie można ich jeszcze odtworzyć - przeanalizuj surowe pola poniżej.",
+      "errorTitle": "Nie udało się wczytać uszkodzonych wpisów strumienia",
+      "loading": "Wczytywanie uszkodzonych wpisów strumienia…",
+      "none": "Brak wpisów",
+      "pagination": {
+        "next": "Dalej",
+        "previous": "Wstecz",
+        "range": "Wyświetlono {from}-{to} z {total}"
+      },
+      "retry": "Ponów",
+      "title": "Uszkodzone wpisy strumienia"
+    },
+    "description": "Zadania w tle, które OpenLinker wykonuje dla połączeń. Użyj filtrów, aby znaleźć to, co się zatrzymało.",
+    "empty": {
+      "clearFilters": "Wyczyść filtry",
+      "filtered": "Żadne zadanie w tle nie pasuje do bieżących filtrów.",
+      "none": "Nie dodano jeszcze do kolejki żadnego zadania synchronizacji.",
+      "title": "Nie znaleziono zadań w tle"
+    },
+    "errorTitle": "Nie udało się wczytać zadań synchronizacji",
+    "errorToggle": {
+      "showFull": "Pokaż cały błąd",
+      "showLess": "Pokaż mniej"
+    },
+    "eyebrow": "Diagnostyka",
+    "filters": {
+      "allConnections": "Wszystkie połączenia",
+      "allJobTypes": "Wszystkie typy zadań w tle",
+      "allOutcomes": "Wszystkie wyniki",
+      "allStatuses": "Wszystkie statusy",
+      "connection": "Połączenie",
+      "group": "Filtruj zadania w tle",
+      "jobType": "Typ zadania",
+      "outcome": "Wynik",
+      "status": "Status"
+    },
+    "loading": "Wczytywanie zadań synchronizacji…",
+    "outcomes": {
+      "business_failure": "błąd biznesowy",
+      "ok": "ok"
+    },
+    "pagination": {
+      "next": "Dalej",
+      "previous": "Wstecz",
+      "range": "Wyświetlono {from}-{to} z {total}"
+    },
+    "retry": "Ponów",
+    "title": "Zadania synchronizacji"
+  },
+  "triggerSyncDialog": {
+    "cancel": "Anuluj",
+    "description": "Ręcznie dodaj zadanie synchronizacji do kolejki dla <strong>{connection}</strong>.",
+    "enqueueFailed": "Nie udało się dodać zadania w tle do kolejki",
+    "enqueuing": "Dodawanie do kolejki…",
+    "fieldRequired": "Pole {field} jest wymagane",
+    "fields": {
+      "cursorKey": "Klucz kursora",
+      "externalId": "ID zewnętrzne",
+      "maxInvoices": "Maks. liczba faktur",
+      "objectType": "Typ obiektu",
+      "pageLimit": "Limit strony",
+      "productId": "ID produktu"
+    },
+    "jobType": "Typ zadania w tle",
+    "jobs": {
+      "autoMatchVariants": {
+        "description": "Dopasuj warianty produktów do ofert w marketplace według kodu kreskowego.",
+        "label": "Automatycznie dopasuj warianty"
+      },
+      "pollOrders": {
+        "description": "Pobierz nowe zamówienia ze strumienia zdarzeń marketplace.",
+        "label": "Pobierz zamówienia z marketplace"
+      },
+      "propagateInventory": {
+        "description": "Wyślij bieżące stany magazynowe do wszystkich podłączonych marketplace.",
+        "label": "Wyślij stany magazynowe do marketplace"
+      },
+      "reconcileRegulatoryStatus": {
+        "description": "Zapytaj urząd skarbowy o status rozliczenia przesłanych faktur.",
+        "label": "Sprawdź status rozliczenia"
+      },
+      "syncAllInventory": {
+        "description": "Wylicz i synchronizuj stany magazynowe każdego produktu.",
+        "label": "Synchronizuj wszystkie stany magazynowe"
+      },
+      "syncAllProducts": {
+        "description": "Wylicz i synchronizuj każdy produkt z katalogu źródłowego.",
+        "label": "Synchronizuj wszystkie produkty"
+      },
+      "syncInventoryById": {
+        "description": "Synchronizuj stan pojedynczej pozycji według jej ID zewnętrznego.",
+        "label": "Synchronizuj stan według ID"
+      },
+      "syncOffers": {
+        "description": "Pobierz oferty z marketplace.",
+        "label": "Synchronizuj oferty z marketplace"
+      },
+      "syncProductById": {
+        "description": "Synchronizuj pojedynczy produkt według jego ID na platformie zewnętrznej.",
+        "label": "Synchronizuj produkt według ID"
+      }
+    },
+    "noTriggers": "Dla tego połączenia nie ma dostępnych synchronizacji do uruchomienia.",
+    "requiredField": "{field} *",
+    "title": "Uruchom synchronizację",
+    "toast": {
+      "description": "Uruchomiono „{job}” dla „{connection}”. ID zadania w tle: {jobId}",
+      "title": "Zadanie synchronizacji dodane do kolejki"
+    },
+    "trigger": "Uruchom",
+    "viewAllJobs": "Pokaż wszystkie zadania w tle"
+  }
+}

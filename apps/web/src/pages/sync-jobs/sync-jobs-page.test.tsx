@@ -7,6 +7,7 @@ import type {
   PaginatedSyncJobs,
   SyncJobFilters,
   SyncJobPagination,
+  JobType,
 } from '../../features/sync-jobs/api/sync-jobs.types';
 import { SYNC_JOBS_MAX_LIMIT } from '../../features/sync-jobs/api/sync-jobs.types';
 import type { Connection } from '../../features/connections/api/connections.types';
@@ -95,7 +96,7 @@ describe('SyncJobsPage', () => {
     renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
 
     expect(await screen.findByText(/1 \/ 3/)).toBeInTheDocument();
-    expect(screen.getAllByText('marketplace.orders.poll').length).toBeGreaterThan(1);
+    expect(screen.getAllByText('Fetch new orders').length).toBeGreaterThan(1);
   });
 
   it('renders the Diagnostics eyebrow so the header matches the sidebar group and breadcrumb', async () => {
@@ -215,7 +216,7 @@ describe('SyncJobsPage', () => {
     }
   });
 
-  it('should show the action of a dotted job type first and keep the full value in the DOM (#4016)', async () => {
+  it('should lead with the job type name and keep the full code under it (#4016)', async () => {
     const mockApi = createMockApiClient({
       syncJobs: { list: vi.fn().mockResolvedValue(sampleJobs) },
       connections: { list: vi.fn().mockResolvedValue([]) },
@@ -225,9 +226,32 @@ describe('SyncJobsPage', () => {
 
     await screen.findByText(/1 \/ 3/);
     const cell = container.querySelector('table .sync-job-type');
-    expect(cell?.querySelector('.sync-job-type__action')).toHaveTextContent('poll');
-    expect(cell?.querySelector('.sync-job-type__scope')).toHaveTextContent('marketplace.orders');
+    expect(cell).toHaveClass('sync-job-type--named');
+    expect(cell?.querySelector('.sync-job-type__action')).toHaveTextContent('Fetch new orders');
+    expect(cell?.querySelector('.sync-job-type__scope')).toHaveTextContent(
+      'marketplace.orders.poll'
+    );
     expect(cell).toHaveAttribute('title', 'marketplace.orders.poll');
+  });
+
+  it('should fall back to the code split when a job type has no name (#4016)', async () => {
+    const mockApi = createMockApiClient({
+      syncJobs: {
+        list: vi.fn().mockResolvedValue({
+          ...sampleJobs,
+          items: [{ ...sampleJobs.items[0], jobType: 'future.unknown.thing' as JobType }],
+        }),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    const { container } = renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
+
+    await screen.findByText(/1 \/ 3/);
+    const cell = container.querySelector('table .sync-job-type');
+    expect(cell).not.toHaveClass('sync-job-type--named');
+    expect(cell?.querySelector('.sync-job-type__action')).toHaveTextContent('thing');
+    expect(cell?.querySelector('.sync-job-type__scope')).toHaveTextContent('future.unknown');
   });
 
   it('should reveal the whole last error in place without opening the job (#4016)', async () => {
@@ -338,7 +362,7 @@ describe('SyncJobsPage', () => {
 
     const typeFilter = await screen.findByRole('combobox', { name: /^job type$/i });
     expect(
-      await screen.findByRole('option', { name: 'orders.export' }),
+      await screen.findByRole('option', { name: 'Export orders' }),
     ).toBeInTheDocument();
     expect(typeFilter).toHaveValue('orders.export');
     await waitFor(() => {

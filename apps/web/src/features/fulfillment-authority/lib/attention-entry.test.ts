@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { countAttentionEntries, toAttentionEntryView } from './attention-entry';
-import { ATTENTION_REASON_COPY, ATTENTION_UNKNOWN_COPY, attentionTitle } from './attention-reason.copy';
+import { ATTENTION_REASON_COPY, ATTENTION_UNKNOWN_COPY, attentionTitle } from './attention-reason-text';
 import { AuthorityAttentionReasonValues } from './attention-reason';
 
 describe('toAttentionEntryView', () => {

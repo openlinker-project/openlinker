@@ -25,9 +25,9 @@
  * @module apps/web/src/features/invoicing/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import type { CapabilityErrorBody, FailureCode } from '../api/invoicing.types';
 
-type Translate = (key: string, fallback: string) => string;
 
 const CAPABILITY_EXCEPTION_NAMES = new Set([
   'CapabilityNotEnabledException',
@@ -144,11 +144,12 @@ export function isMissingNumberingSeriesError(error: unknown): boolean {
   return body?.error === 'MissingNumberingSeriesException';
 }
 
-export function resolveIssueErrorMessage(error: unknown, t: Translate): string {
+export function resolveIssueErrorMessage(error: unknown): string {
+  const copy = getMessages('invoicing').invoice.error;
   // Branch order matters: the capability-disabled 400 (fixed copy, no PII echo)
   // MUST be tested before the generic 400 branch that surfaces `error.message`.
   if (isCapabilityDisabledError(error)) {
-    return t('invoice.error.capabilityDisabled', 'Invoicing is not enabled for this connection.');
+    return copy.capabilityDisabled;
   }
   if (error instanceof ApiError) {
     // Branches 2 + 3 (the ONLY two that echo the server message): a sanitised
@@ -163,14 +164,11 @@ export function resolveIssueErrorMessage(error: unknown, t: Translate): string {
       return error.message;
     }
     if (error.status === 403) {
-      return t(
-        'invoice.error.forbidden',
-        "You don't have permission to issue invoices - this action requires an administrator account.",
-      );
+      return copy.forbidden;
     }
     if (error.status === 409) {
-      return t('invoice.error.alreadyIssued', 'This order already has an issued invoice.');
+      return copy.alreadyIssued;
     }
   }
-  return t('invoice.error.generic', 'Could not issue the invoice. Please try again.');
+  return copy.generic;
 }

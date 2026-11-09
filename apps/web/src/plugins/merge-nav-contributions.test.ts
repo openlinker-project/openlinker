@@ -124,6 +124,65 @@ describe('mergePluginNavContributions', () => {
     ]);
   });
 
+  describe('when the base groups are shown in another language', () => {
+    function translatedGroups(): NavGroup[] {
+      return [
+        {
+          kind: 'live',
+          id: 'operations',
+          label: 'Operacje',
+          items: [{ to: '/', label: 'Analityka', end: true }],
+        },
+        {
+          kind: 'live',
+          label: 'Reporting',
+          items: [{ to: '/reports', label: 'Reports' }],
+        },
+      ];
+    }
+
+    function labelsOf(groups: NavGroup[], label: string): string[] | undefined {
+      const group = groups.find((g) => g.label === label);
+      return group?.kind === 'live' ? group.items.map((i) => i.label) : undefined;
+    }
+
+    it('should append a contribution that names the group by its English label', () => {
+      const result = mergePluginNavContributions(translatedGroups(), [
+        { groupLabel: 'Operations', to: '/x', label: 'X' },
+      ]);
+
+      expect(result).toHaveLength(2);
+      expect(labelsOf(result, 'Operacje')).toEqual(['Analityka', 'X']);
+    });
+
+    it('should append a contribution that names the group by its section key', () => {
+      const result = mergePluginNavContributions(translatedGroups(), [
+        { groupLabel: 'operations', to: '/x', label: 'X' },
+      ]);
+
+      expect(result).toHaveLength(2);
+      expect(labelsOf(result, 'Operacje')).toEqual(['Analityka', 'X']);
+    });
+
+    it('should append a contribution that names the group by its translated label', () => {
+      const result = mergePluginNavContributions(translatedGroups(), [
+        { groupLabel: 'Operacje', to: '/x', label: 'X' },
+      ]);
+
+      expect(labelsOf(result, 'Operacje')).toEqual(['Analityka', 'X']);
+    });
+
+    it('should match a group with no section key by its label only', () => {
+      const result = mergePluginNavContributions(translatedGroups(), [
+        { groupLabel: 'Reporting', to: '/y', label: 'Y' },
+        { groupLabel: 'reporting', to: '/z', label: 'Z' },
+      ]);
+
+      expect(labelsOf(result, 'Reporting')).toEqual(['Reports', 'Y']);
+      expect(labelsOf(result, 'reporting')).toEqual(['Z']);
+    });
+  });
+
   it('defaults to non-admin when isAdmin is omitted', () => {
     const contributions: NavContribution[] = [
       { groupLabel: 'Platform', to: '/secret', label: 'Secret', requiresRole: 'admin' },

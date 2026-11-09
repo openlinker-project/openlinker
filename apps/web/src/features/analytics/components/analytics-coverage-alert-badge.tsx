@@ -14,8 +14,9 @@
  * @module apps/web/src/features/analytics/components
  */
 import type { ReactElement } from 'react';
+import { useMessages } from '../../../shared/i18n';
 import { Button, Popover, PopoverContent, PopoverTrigger, StatusBadge } from '../../../shared/ui';
-import { hasCoverageAttention } from '../lib/data-coverage.copy';
+import { hasCoverageAttention } from '../lib/data-coverage.lib';
 import type { CoverageCategoryRow } from '../api/analytics-coverage.types';
 
 export const ANALYTICS_DATA_COVERAGE_ANCHOR_ID = 'analytics-data-coverage';
@@ -27,6 +28,7 @@ interface AnalyticsCoverageAlertBadgeProps {
 export function AnalyticsCoverageAlertBadge({
   categories,
 }: AnalyticsCoverageAlertBadgeProps): ReactElement | null {
+  const copy = useMessages('analytics').analyticsCoverageAlertBadge;
   if (!categories || !hasCoverageAttention(categories)) {
     return null;
   }
@@ -42,14 +44,14 @@ export function AnalyticsCoverageAlertBadge({
       <PopoverTrigger asChild>
         <button type="button" className="analytics-coverage-alert-badge__trigger">
           <StatusBadge tone="warning" withDot compact>
-            Needs attention
+            {copy.badge}
           </StatusBadge>
         </button>
       </PopoverTrigger>
       <PopoverContent className="analytics-coverage-alert-badge__content">
-        <p>Some Data Coverage checks need action — reporting figures on this page may be incomplete.</p>
+        <p>{copy.body}</p>
         <Button type="button" tone="secondary" onClick={scrollToCoverage}>
-          Go to Data Coverage
+          {copy.goTo}
         </Button>
       </PopoverContent>
     </Popover>

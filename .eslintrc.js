@@ -988,11 +988,18 @@ module.exports = {
     },
     {
       // No hardcoded user-facing text (ADR-081, #3859). Every word an operator
-      // reads comes from a `*.copy.ts` file in English and Polish. Enabled per
-      // folder as each one is migrated (#3868-#3885); add the folder here in
-      // the same PR that moves its copy.
-      files: ['apps/web/src/shared/ui/**/*.tsx'],
-      excludedFiles: ['**/*.test.tsx', '**/*.copy.ts'],
+      // reads comes from a locale file in English and Polish. On for every
+      // folder since #3891: a new screen cannot add hardcoded text.
+      files: [
+        'apps/web/src/app/**/*.tsx',
+        'apps/web/src/features/**/*.tsx',
+        'apps/web/src/pages/**/*.tsx',
+        'apps/web/src/plugins/**/*.tsx',
+        'apps/web/src/shared/**/*.tsx',
+      ],
+      // `pages/dev-ui` is the hidden design-system route (`/dev/ui`): its text
+      // describes components to developers and is never shown to an operator.
+      excludedFiles: ['**/*.test.tsx', '**/*.copy.ts', 'apps/web/src/pages/dev-ui/**'],
       plugins: ['i18next'],
       rules: {
         'i18next/no-literal-string': [
@@ -1012,7 +1019,7 @@ module.exports = {
                 /^\p{Emoji}+$/u,
                 '⌘K',
                 // \u2014 is the em dash glyph used as an empty-value marker.
-                '[•↗×⌕ⓘ…\u2014–→←›▼↑↓↵·✓⧉✕🔒+]+',
+                '[•↗×⌕ⓘ…\u2014–→←›▼↑↓↵·✓⧉✕🔒☰▸▾⤓‹●+]+',
                 'esc',
               ],
             },

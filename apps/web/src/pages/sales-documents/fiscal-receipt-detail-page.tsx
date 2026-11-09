@@ -25,8 +25,10 @@ import {
   FiscalReceiptStatusBadge,
   FiscalArtefactList,
 } from '../../features/fiscalization';
+import { useMessages } from '../../shared/i18n';
 
 export function FiscalReceiptDetailPage(): ReactElement {
+  const copy = useMessages('sales-documents').fiscalReceiptDetailPage;
   const { recordId } = useParams<{ recordId: string }>();
   const query = useFiscalRegistrationQuery(recordId ?? '');
   const connectionsQuery = useConnectionsQuery();
@@ -35,19 +37,19 @@ export function FiscalReceiptDetailPage(): ReactElement {
 
   if (query.isLoading) {
     return (
-      <PageLayout eyebrow="Operations" title="Fiscal receipt">
-        <p className="text-muted">Loading…</p>
+      <PageLayout eyebrow={copy.eyebrow} title={copy.title}>
+        <p className="text-muted">{copy.loading}</p>
       </PageLayout>
     );
   }
 
   if (query.error) {
     return (
-      <PageLayout eyebrow="Operations" title="Fiscal receipt">
+      <PageLayout eyebrow={copy.eyebrow} title={copy.title}>
         <ErrorState
-          title="Unable to load this fiscal receipt"
+          title={copy.loadError}
           message={query.error.message}
-          action={<Button onClick={() => void query.refetch()}>Retry</Button>}
+          action={<Button onClick={() => void query.refetch()}>{copy.retry}</Button>}
         />
       </PageLayout>
     );
@@ -56,13 +58,13 @@ export function FiscalReceiptDetailPage(): ReactElement {
   const record = query.data;
   if (!record) {
     return (
-      <PageLayout eyebrow="Operations" title="Fiscal receipt">
+      <PageLayout eyebrow={copy.eyebrow} title={copy.title}>
         <EmptyState
-          title="Fiscal receipt not found"
-          message="This record does not exist, or you don't have access to it."
+          title={copy.notFound.title}
+          message={copy.notFound.message}
           action={
             <Link className="button button--primary" to="/sales-documents">
-              Back to sales documents
+              {copy.notFound.back}
             </Link>
           }
         />
@@ -73,29 +75,29 @@ export function FiscalReceiptDetailPage(): ReactElement {
   const displayStatus = deriveFiscalReceiptDisplayStatus(record);
 
   const fieldItems: KeyValueItem[] = [
-    { id: 'provider', label: 'Provider', value: record.providerType },
+    { id: 'provider', label: copy.fields.provider, value: record.providerType },
     {
       id: 'connection',
-      label: 'Connection',
+      label: copy.fields.connection,
       value: connectionsById.get(record.connectionId) ?? record.connectionId,
     },
-    { id: 'documentReference', label: 'Document reference', value: record.documentReference ?? '—' },
-    { id: 'providerReference', label: 'Provider reference', value: record.providerReference ?? '—' },
+    { id: 'documentReference', label: copy.fields.documentReference, value: record.documentReference ?? copy.empty },
+    { id: 'providerReference', label: copy.fields.providerReference, value: record.providerReference ?? copy.empty },
     {
       id: 'registeredAt',
-      label: 'Registered',
-      value: record.registeredAt ? <TimeDisplay iso={record.registeredAt} /> : '—',
+      label: copy.fields.registered,
+      value: record.registeredAt ? <TimeDisplay iso={record.registeredAt} /> : copy.empty,
     },
   ];
 
   return (
     <PageLayout
-      eyebrow="Operations"
-      title="Fiscal receipt"
+      eyebrow={copy.eyebrow}
+      title={copy.title}
       description={record.documentReference ?? record.id}
       actions={
         <Link className="orders-row-cta" to={`/orders/${record.orderId}#invoicing`}>
-          Open order
+          {copy.openOrder}
         </Link>
       }
     >

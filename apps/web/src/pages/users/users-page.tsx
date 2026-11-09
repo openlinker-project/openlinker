@@ -25,9 +25,8 @@ import { Select } from '../../shared/ui/select';
 import { useToast } from '../../shared/ui/toast-provider';
 import { useSession } from '../../shared/auth/use-session';
 import { useWriteAccess } from '../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../shared/config/demo-mode';
 import { useDemoMode, useSystemConfigQuery } from '../../features/system';
-import { renderRich, useMessages } from '../../shared/i18n';
 import { useUsersQuery } from '../../features/users/hooks/use-users-query';
 import { useApproveUserMutation } from '../../features/users/hooks/use-approve-user-mutation';
 import { useRejectUserMutation } from '../../features/users/hooks/use-reject-user-mutation';
@@ -37,6 +36,8 @@ import { PackStationLabelDialog } from '../../features/users/components/pack-sta
 import { useReactivateUserMutation } from '../../features/users/hooks/use-reactivate-user-mutation';
 import { useDeleteUserMutation } from '../../features/users/hooks/use-delete-user-mutation';
 import type { UserRole, UserStatus, UserSummary } from '../../features/users/api/users.types';
+import { ASSIGNABLE_ROLES, userRoleLabel, userStatusLabel } from '../../features/users';
+import { interpolate, renderRich, useFormat, useMessages } from '../../shared/i18n';
 
 const STATUS_TONE: Record<UserStatus, StatusBadgeTone> = {
   active: 'success',
@@ -60,11 +61,14 @@ interface UsersPageProps {
 
 export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement {
   const systemConfig = useSystemConfigQuery();
-  const loginCopy = useMessages('loginPageSettings');
+  const loginCopy = useMessages('login-page-settings');
   const [pendingRoles, setPendingRoles] = useState<Record<string, UserRole>>({});
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [labelDialogTarget, setLabelDialogTarget] = useState<UserSummary | null>(null);
   const { showToast } = useToast();
+  const copy = useMessages('users');
+  const format = useFormat();
+  const toasts = copy.toasts;
   const { session } = useSession();
   const currentUserId = session.user?.id ?? null;
   // #3404 — admin-only, same route as the role change above (`@Roles('admin')`).
@@ -136,45 +140,45 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
     const role = getRoleForPending(userId);
     try {
       await approveMutation.mutateAsync({ userId, input: { role } });
-      showToast({ tone: 'success', title: 'User approved', description: 'The user can now log in.' });
+      showToast({ tone: 'success', title: toasts.approved, description: toasts.approvedDescription });
     } catch {
-      showToast({ tone: 'error', title: 'Approval failed', description: 'Try again or check permissions.' });
+      showToast({ tone: 'error', title: toasts.approveFailed, description: toasts.approveFailedDescription });
     }
   }
 
   async function handleReject(userId: string): Promise<void> {
     try {
       await rejectMutation.mutateAsync(userId);
-      showToast({ tone: 'success', title: 'Registration rejected', description: 'The registration has been removed.' });
+      showToast({ tone: 'success', title: toasts.rejected, description: toasts.rejectedDescription });
     } catch {
-      showToast({ tone: 'error', title: 'Rejection failed', description: 'Try again.' });
+      showToast({ tone: 'error', title: toasts.rejectFailed, description: toasts.tryAgain });
     }
   }
 
   async function handleUpdateRole(userId: string, role: UserRole): Promise<void> {
     try {
       await updateRoleMutation.mutateAsync({ userId, role });
-      showToast({ tone: 'success', title: 'Role updated', description: `Role changed to ${role}.` });
+      showToast({ tone: 'success', title: toasts.roleUpdated, description: interpolate(toasts.roleUpdatedDescription, { role: userRoleLabel(role, copy) }) });
     } catch {
-      showToast({ tone: 'error', title: 'Role update failed', description: 'Try again.' });
+      showToast({ tone: 'error', title: toasts.roleUpdateFailed, description: toasts.tryAgain });
     }
   }
 
   async function handleDeactivate(userId: string): Promise<void> {
     try {
       await deactivateMutation.mutateAsync(userId);
-      showToast({ tone: 'success', title: 'User deactivated', description: 'The user can no longer log in.' });
+      showToast({ tone: 'success', title: toasts.deactivated, description: toasts.deactivatedDescription });
     } catch {
-      showToast({ tone: 'error', title: 'Deactivation failed', description: 'Try again.' });
+      showToast({ tone: 'error', title: toasts.deactivateFailed, description: toasts.tryAgain });
     }
   }
 
   async function handleReactivate(userId: string): Promise<void> {
     try {
       await reactivateMutation.mutateAsync(userId);
-      showToast({ tone: 'success', title: 'User reactivated', description: 'The user can log in again.' });
+      showToast({ tone: 'success', title: toasts.reactivated, description: toasts.reactivatedDescription });
     } catch {
-      showToast({ tone: 'error', title: 'Reactivation failed', description: 'Try again.' });
+      showToast({ tone: 'error', title: toasts.reactivateFailed, description: toasts.tryAgain });
     }
   }
 
@@ -182,9 +186,9 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
     try {
       await deleteMutation.mutateAsync(userId);
       setPendingDeleteId(null);
-      showToast({ tone: 'success', title: 'User deleted', description: 'The user has been removed.' });
+      showToast({ tone: 'success', title: toasts.deleted, description: toasts.deletedDescription });
     } catch {
-      showToast({ tone: 'error', title: 'Deletion failed', description: 'Try again.' });
+      showToast({ tone: 'error', title: toasts.deleteFailed, description: toasts.tryAgain });
     }
   }
 
@@ -192,40 +196,41 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
   const pendingColumns = useMemo<DataTableColumn<UserSummary>[]>(() => [
     {
       id: 'username',
-      header: 'Username',
+      header: copy.columns.username,
       cell: (row) => <span className="mono-text">{row.username}</span>,
     },
     {
       id: 'email',
-      header: 'Email',
+      header: copy.columns.email,
       cell: (row) => row.email ?? <span className="empty-value">—</span>,
     },
     {
       id: 'requested',
-      header: 'Requested',
+      header: copy.columns.requested,
       cell: (row) => (
         <span className="cell-meta mono-text tabular">
-          {new Date(row.createdAt).toLocaleDateString()}
+          {format.date(row.createdAt)}
         </span>
       ),
     },
     {
       id: 'approve',
-      header: 'Assign role & approve',
+      header: copy.columns.approve,
       cell: (row) => (
         <div className="table-actions">
           <Select
             className="select--sm"
-            aria-label="Role for approval"
+            aria-label={copy.roleForApproval}
             value={getRoleForPending(row.id)}
             onChange={(e) =>
               setPendingRoles((prev) => ({ ...prev, [row.id]: e.target.value as UserRole }))
             }
           >
-            <option value="viewer">Viewer</option>
-            <option value="operator">Operator</option>
-            <option value="packer">Packer</option>
-            <option value="admin">Admin</option>
+            {ASSIGNABLE_ROLES.map((role) => (
+              <option key={role} value={role}>
+                {userRoleLabel(role, copy)}
+              </option>
+            ))}
           </Select>
           <Button
             tone="primary"
@@ -233,7 +238,7 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
             onClick={() => void handleApprove(row.id)}
             disabled={approveMutation.isPending}
           >
-            Approve
+            {copy.approve}
           </Button>
         </div>
       ),
@@ -248,11 +253,11 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
           onClick={() => void handleReject(row.id)}
           disabled={rejectMutation.isPending}
         >
-          Reject
+          {copy.reject}
         </Button>
       ),
     },
-  ], [pendingRoles, approveMutation.isPending, rejectMutation.isPending]);
+  ], [pendingRoles, approveMutation.isPending, rejectMutation.isPending, copy, format]);
 
   // Columns for the All users tab: status badge, inline role select (auto-save),
   // member since, actions. Pending rows render role/actions read-only — role
@@ -262,54 +267,55 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
   const allUsersColumns = useMemo<DataTableColumn<UserSummary>[]>(() => [
     {
       id: 'username',
-      header: 'Username',
+      header: copy.columns.username,
       cell: (row) => <span className="mono-text">{row.username}</span>,
     },
     {
       id: 'email',
-      header: 'Email',
+      header: copy.columns.email,
       cell: (row) => row.email ?? <span className="empty-value">—</span>,
     },
     {
       id: 'status',
-      header: 'Status',
+      header: copy.columns.status,
       cell: (row) => (
-        <StatusBadge tone={STATUS_TONE[row.status]}>{row.status}</StatusBadge>
+        <StatusBadge tone={STATUS_TONE[row.status]}>{userStatusLabel(row.status, copy)}</StatusBadge>
       ),
     },
     {
       id: 'role',
-      header: 'Role',
+      header: copy.columns.role,
       cell: (row) =>
         row.id === currentUserId || row.status === 'pending' ? (
-          <span className="cell-meta">{row.role}</span>
+          <span className="cell-meta">{userRoleLabel(row.role, copy)}</span>
         ) : (
           <Select
             className="select--sm"
-            aria-label="Change role"
+            aria-label={copy.changeRole}
             value={row.role}
             onChange={(e) => void handleUpdateRole(row.id, e.target.value as UserRole)}
             disabled={updateRoleMutation.isPending}
           >
-            <option value="viewer">Viewer</option>
-            <option value="operator">Operator</option>
-            <option value="packer">Packer</option>
-            <option value="admin">Admin</option>
+            {ASSIGNABLE_ROLES.map((role) => (
+              <option key={role} value={role}>
+                {userRoleLabel(role, copy)}
+              </option>
+            ))}
           </Select>
         ),
     },
     {
       id: 'createdAt',
-      header: 'Member since',
+      header: copy.columns.memberSince,
       cell: (row) => (
         <span className="cell-meta mono-text tabular">
-          {new Date(row.createdAt).toLocaleDateString()}
+          {format.date(row.createdAt)}
         </span>
       ),
     },
     {
       id: 'packStationLabel',
-      header: 'Pack station',
+      header: copy.columns.packStation,
       /*
        * #3404. Its own column rather than an entry in "Actions", because the
        * VALUE is the useful part on a list - an admin scanning for the bench
@@ -323,12 +329,12 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
       cell: (row) => (
         <div className="table-actions">
           {row.packStationLabel === null || row.packStationLabel === '' ? (
-            <span className="text-muted">Not set</span>
+            <span className="text-muted">{copy.packStation.notSet}</span>
           ) : (
             <span className="cell-meta mono-text">{row.packStationLabel}</span>
           )}
           {packStationWrite.visible ? (
-            <ReadOnlyLock active={packStationWrite.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock active={packStationWrite.demoReadOnly} message={demoReadOnlyActionMessage()}>
               <Button
                 tone="ghost"
                 className="button--sm"
@@ -337,7 +343,9 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
                   setLabelDialogTarget(row);
                 }}
               >
-                {row.packStationLabel === null || row.packStationLabel === '' ? 'Set' : 'Change'}
+                {row.packStationLabel === null || row.packStationLabel === ''
+                  ? copy.packStation.set
+                  : copy.packStation.change}
               </Button>
             </ReadOnlyLock>
           ) : null}
@@ -346,11 +354,11 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
     },
     {
       id: 'actions',
-      header: 'Actions',
+      header: copy.columns.actions,
       cell: (row) => {
         if (row.id === currentUserId) return null;
         if (row.status === 'pending') {
-          return <span className="text-muted">Review in Pending tab</span>;
+          return <span className="text-muted">{copy.rowActions.reviewInPending}</span>;
         }
         return (
           <div className="table-actions">
@@ -361,7 +369,7 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
                 onClick={() => void handleDeactivate(row.id)}
                 disabled={deactivateMutation.isPending}
               >
-                Deactivate
+                {copy.rowActions.deactivate}
               </Button>
             )}
             {row.status === 'deactivated' && (
@@ -371,7 +379,7 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
                 onClick={() => void handleReactivate(row.id)}
                 disabled={reactivateMutation.isPending}
               >
-                Reactivate
+                {copy.rowActions.reactivate}
               </Button>
             )}
             <Button
@@ -379,13 +387,13 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
               className="button--sm"
               onClick={() => setPendingDeleteId(row.id)}
             >
-              Delete
+              {copy.rowActions.delete}
             </Button>
           </div>
         );
       },
     },
-  ], [currentUserId, updateRoleMutation.isPending, deactivateMutation.isPending, reactivateMutation.isPending]);
+  ], [currentUserId, updateRoleMutation.isPending, deactivateMutation.isPending, reactivateMutation.isPending, copy, format]);
 
   function renderPagination(page: number, setPage: (next: number) => void, total: number): ReactElement | null {
     const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -393,14 +401,14 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
     return (
       <div className="pagination">
         <span className="text-muted">
-          Page {page + 1} of {pageCount}
+          {interpolate(copy.pagination.pageOf, { page: page + 1, count: pageCount })}
         </span>
         <div className="pagination__actions">
           <Button disabled={page <= 0} onClick={() => setPage(page - 1)}>
-            Previous
+            {copy.pagination.previous}
           </Button>
           <Button disabled={page + 1 >= pageCount} onClick={() => setPage(page + 1)}>
-            Next
+            {copy.pagination.next}
           </Button>
         </div>
       </div>
@@ -415,22 +423,22 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
           error={allUsersQuery.error}
           onRetry={() => void allUsersQuery.refetch()}
           copy={{
-            error: { title: 'Unable to load users', message: allUsersQuery.error.message, retry: 'Retry' },
+            error: { title: copy.errors.loadFailed, message: allUsersQuery.error.message, retry: copy.errors.retry },
             denied: {
-              title: 'User management is for administrators',
-              message: 'Your role cannot see or change accounts. Ask an administrator if you need access.',
+              title: copy.errors.deniedTitle,
+              message: copy.errors.deniedMessage,
             },
           }}
         />
       );
     }
     if (allTotal === 0) {
-      return <EmptyState title="No users found" message="No users have registered yet." />;
+      return <EmptyState title={copy.empty.allTitle} message={copy.empty.allMessage} />;
     }
     return (
       <>
         <DataTable
-          caption="All users"
+          caption={copy.tabs.allCaption}
           rows={allUsers}
           columns={allUsersColumns}
           rowKey={(u) => u.id}
@@ -448,10 +456,10 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
           error={pendingUsersQuery.error}
           onRetry={() => void pendingUsersQuery.refetch()}
           copy={{
-            error: { title: 'Unable to load users', message: pendingUsersQuery.error.message, retry: 'Retry' },
+            error: { title: copy.errors.loadFailed, message: pendingUsersQuery.error.message, retry: copy.errors.retry },
             denied: {
-              title: 'User management is for administrators',
-              message: 'Your role cannot see or change accounts. Ask an administrator if you need access.',
+              title: copy.errors.deniedTitle,
+              message: copy.errors.deniedMessage,
             },
           }}
         />
@@ -460,15 +468,15 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
     if (pendingTotal === 0) {
       return (
         <EmptyState
-          title="No pending registrations"
-          message="New registration requests will appear here for you to approve or reject."
+          title={copy.empty.pendingTitle}
+          message={copy.empty.pendingMessage}
         />
       );
     }
     return (
       <>
         <DataTable
-          caption="Pending registrations"
+          caption={copy.tabs.pendingCaption}
           rows={pendingUsers}
           columns={pendingColumns}
           rowKey={(u) => u.id}
@@ -480,9 +488,9 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
 
   return (
     <PageLayout
-      eyebrow="Administration"
-      title="Users"
-      description="Manage user accounts and pending registrations."
+      eyebrow={copy.page.eyebrow}
+      title={copy.page.title}
+      description={copy.page.description}
     >
       {anyError ? <Alert tone="error">{anyError.message}</Alert> : null}
 
@@ -499,13 +507,13 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
       <Tabs defaultValue={defaultTab}>
         <TabsList>
           <TabsTrigger value="all">
-            All users
+            {copy.tabs.all}
             {allTotal > 0 && (
               <span className="tabs__count">{allTotal}</span>
             )}
           </TabsTrigger>
           <TabsTrigger value="pending">
-            Pending
+            {copy.tabs.pending}
             {pendingTotal > 0 && (
               <span className="tabs__count">{pendingTotal}</span>
             )}
@@ -527,10 +535,10 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
       <ConfirmDialog
         open={pendingDeleteId !== null}
         onOpenChange={(open) => { if (!open) setPendingDeleteId(null); }}
-        title="Delete user"
-        description="This will permanently delete the user account. This action cannot be undone."
+        title={copy.deleteDialog.title}
+        description={copy.deleteDialog.description}
         tone="danger"
-        confirmLabel="Delete"
+        confirmLabel={copy.deleteDialog.confirm}
         isConfirming={deleteMutation.isPending}
         onConfirm={() => {
           if (pendingDeleteId !== null) void handleDelete(pendingDeleteId);

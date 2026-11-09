@@ -4,6 +4,7 @@ import { useHandleAllegroCallback } from '../../features/allegro/hooks/use-handl
 import { ApiError } from '../../shared/api/api-error';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { useMessages } from '../../shared/i18n';
 
 function isOAuthStateInvalidError(error: unknown): boolean {
   if (!(error instanceof ApiError)) return false;
@@ -23,16 +24,17 @@ export function AllegroConnectCallbackPage(): ReactElement {
   const oauthError = searchParams.get('error');
 
   const callbackState = useHandleAllegroCallback(code, state);
+  const copy = useMessages('allegro-core').allegroConnectCallbackPage;
 
   function renderContent(): ReactElement {
     if (oauthError) {
       return (
         <ErrorState
-          title="Authorization denied"
-          message="You did not authorize OpenLinker on Allegro. No connection was created."
+          title={copy.denied.title}
+          message={copy.denied.message}
           action={
             <Link className="button" to="/connections/new/allegro">
-              Start over
+              {copy.denied.startOver}
             </Link>
           }
         />
@@ -42,11 +44,11 @@ export function AllegroConnectCallbackPage(): ReactElement {
     if (callbackState.status === 'idle' && (!code || !state)) {
       return (
         <ErrorState
-          title="Invalid callback"
-          message="The OAuth callback is missing required parameters. This may happen if you navigate here directly."
+          title={copy.invalid.title}
+          message={copy.invalid.message}
           action={
             <Link className="button" to="/connections/new/allegro">
-              Start setup
+              {copy.invalid.startSetup}
             </Link>
           }
         />
@@ -54,32 +56,32 @@ export function AllegroConnectCallbackPage(): ReactElement {
     }
 
     if (callbackState.status === 'idle' || callbackState.status === 'pending') {
-      return <LoadingState title="Completing authorization" message="Exchanging authorization code with Allegro…" />;
+      return <LoadingState title={copy.pending.title} message={copy.pending.message} />;
     }
 
     if (callbackState.status === 'error') {
       if (isOAuthStateInvalidError(callbackState.error)) {
         return (
           <ErrorState
-            title="Authorization already completed"
-            message="This authorization link was already used. Your Allegro connection should be active."
+            title={copy.alreadyCompleted.title}
+            message={copy.alreadyCompleted.message}
             action={
               <Link className="button" to="/connections">
-                View connections
+                {copy.alreadyCompleted.viewConnections}
               </Link>
             }
           />
         );
       }
       const message =
-        callbackState.error instanceof Error ? callbackState.error.message : 'Unknown error';
+        callbackState.error instanceof Error ? callbackState.error.message : copy.failed.unknown;
       return (
         <ErrorState
-          title="Authorization failed"
+          title={copy.failed.title}
           message={message}
           action={
             <Link className="button" to="/connections/new/allegro">
-              Try again
+              {copy.failed.tryAgain}
             </Link>
           }
         />
@@ -91,27 +93,27 @@ export function AllegroConnectCallbackPage(): ReactElement {
       <article className="panel panel--dense">
         <div className="panel__header">
           <div>
-            <p className="eyebrow">Success</p>
-            <h3 className="section-title">Connection created</h3>
+            <p className="eyebrow">{copy.success.eyebrow}</p>
+            <h3 className="section-title">{copy.success.title}</h3>
           </div>
-          <span className="panel__meta">Active</span>
+          <span className="panel__meta">{copy.success.active}</span>
         </div>
         <dl className="definition-list">
           <div>
-            <dt>Name</dt>
+            <dt>{copy.success.name}</dt>
             <dd>{connectionName}</dd>
           </div>
           <div>
-            <dt>Connection ID</dt>
+            <dt>{copy.success.connectionId}</dt>
             <dd className="mono-text">{connectionId}</dd>
           </div>
         </dl>
         <div className="form-actions">
           <Link className="button" to={`/connections/${connectionId}`}>
-            Go to connection
+            {copy.success.goToConnection}
           </Link>
           <Link className="button button--secondary" to="/connections">
-            View all connections
+            {copy.success.viewAll}
           </Link>
         </div>
       </article>
@@ -120,13 +122,13 @@ export function AllegroConnectCallbackPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow="OAuth callback"
-      title="Allegro authorization"
-      description="Processing the authorization response from Allegro."
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
       summary={
         <div className="toolbar__group">
-          <span className="toolbar-chip">OAuth 2.0</span>
-          <span className="toolbar-chip">Allegro API</span>
+          <span className="toolbar-chip">{copy.oauthChip}</span>
+          <span className="toolbar-chip">{copy.apiChip}</span>
         </div>
       }
     >

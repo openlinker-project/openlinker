@@ -68,7 +68,7 @@ import {
   describeCompletionRefusal,
   describeUndoCompletionRefusal,
 } from '../lib/bench-parcel-presentation';
-import { benchParcelCopy } from '../lib/bench-parcel.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { printBlob } from '../lib/bench-print';
 
 export interface BenchCompletionPanelProps {
@@ -88,6 +88,7 @@ export function BenchCompletionPanel({
   parcel,
 }: BenchCompletionPanelProps): ReactElement {
   const apiClient = useApiClient();
+  const copy = useMessages('bench').parcel.completion;
   const queryClient = useQueryClient();
   const documents = useBenchDocumentsQuery(workId);
   const complete = useBenchCompleteMutation();
@@ -117,7 +118,7 @@ export function BenchCompletionPanel({
             setUndoNotice(describeUndoCompletionRefusal(result.reason));
           },
           onError: () => {
-            setUndoNotice(benchParcelCopy.completion.undoFailed);
+            setUndoNotice(copy.undoFailed);
           },
         }
       );
@@ -126,7 +127,7 @@ export function BenchCompletionPanel({
     return (
       <div className="bench-parcel__completion">
         <p className="bench-parcel__completion-done" data-testid="bench-parcel-completed">
-          {benchParcelCopy.completion.doneNotice(formatAbsoluteTime(parcel.completedAt))}
+          {interpolate(copy.doneNotice, { time: formatAbsoluteTime(parcel.completedAt) })}
         </p>
         {undoNotice === null ? null : <Alert tone="warning">{undoNotice}</Alert>}
         <Button
@@ -135,9 +136,9 @@ export function BenchCompletionPanel({
           onClick={runUndo}
           data-testid="bench-parcel-undo-completion-action"
         >
-          {benchParcelCopy.completion.undoAction}
+          {copy.undoAction}
         </Button>
-        <p className="bench-parcel__completion-hint">{benchParcelCopy.completion.undoHint}</p>
+        <p className="bench-parcel__completion-hint">{copy.undoHint}</p>
       </div>
     );
   }
@@ -174,7 +175,7 @@ export function BenchCompletionPanel({
           setNotice(describeCompletionRefusal(result.reason));
         },
         onError: () => {
-          setNotice(benchParcelCopy.completion.failed);
+          setNotice(copy.failed);
         },
       }
     );
@@ -203,10 +204,10 @@ export function BenchCompletionPanel({
       .downloadInvoice(workId)
       .then((blob) => {
         if (printBlob(blob)) refreshAfterPrint();
-        else setPrintError(benchParcelCopy.completion.printFailed);
+        else setPrintError(copy.printFailed);
       })
       .catch(() => {
-        setPrintError(benchParcelCopy.completion.printFailed);
+        setPrintError(copy.printFailed);
       });
   };
 
@@ -214,7 +215,7 @@ export function BenchCompletionPanel({
     setPrintError(null);
     const shipmentId = documents.data?.label.shipmentId ?? null;
     if (shipmentId === null) {
-      setPrintError(benchParcelCopy.completion.printFailed);
+      setPrintError(copy.printFailed);
       return;
     }
     // Through the WORK, never the shipment id — this is the route that
@@ -224,10 +225,10 @@ export function BenchCompletionPanel({
       .downloadLabel(workId)
       .then((blob) => {
         if (printBlob(blob)) refreshAfterPrint();
-        else setPrintError(benchParcelCopy.completion.printFailed);
+        else setPrintError(copy.printFailed);
       })
       .catch(() => {
-        setPrintError(benchParcelCopy.completion.printFailed);
+        setPrintError(copy.printFailed);
       });
   };
 
@@ -241,12 +242,12 @@ export function BenchCompletionPanel({
   // button already gone).
   const confirmDescription =
     gaps.invoiceUnprinted && gaps.labelUnprinted
-      ? benchParcelCopy.completion.confirmBodyBoth
+      ? copy.confirmBodyBoth
       : gaps.invoiceUnprinted
-        ? benchParcelCopy.completion.confirmBodyInvoice
+        ? copy.confirmBodyInvoice
         : gaps.labelUnprinted
-          ? benchParcelCopy.completion.confirmBodyLabel
-          : benchParcelCopy.completion.confirmBodyNoneLeft;
+          ? copy.confirmBodyLabel
+          : copy.confirmBodyNoneLeft;
 
   return (
     <div className="bench-parcel__completion">
@@ -257,35 +258,35 @@ export function BenchCompletionPanel({
         onClick={handlePrimaryClick}
         data-testid="bench-parcel-complete-action"
       >
-        {benchParcelCopy.completion.action}
+        {copy.action}
       </Button>
-      <p className="bench-parcel__completion-hint">{benchParcelCopy.completion.hint}</p>
+      <p className="bench-parcel__completion-hint">{copy.hint}</p>
 
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title={benchParcelCopy.completion.confirmTitle}
+        title={copy.confirmTitle}
         description={confirmDescription}
         body={
           <>
-            <p>{benchParcelCopy.completion.confirmHint}</p>
+            <p>{copy.confirmHint}</p>
             {printError === null ? null : <Alert tone="warning">{printError}</Alert>}
             <div className="bench-parcel__completion-print-actions">
               {gaps.invoiceUnprinted ? (
                 <Button tone="secondary" onClick={printInvoice}>
-                  {benchParcelCopy.completion.printInvoiceAction}
+                  {copy.printInvoiceAction}
                 </Button>
               ) : null}
               {gaps.labelUnprinted ? (
                 <Button tone="secondary" onClick={printLabel}>
-                  {benchParcelCopy.completion.printLabelAction}
+                  {copy.printLabelAction}
                 </Button>
               ) : null}
             </div>
           </>
         }
-        confirmLabel={benchParcelCopy.completion.confirmAction}
-        cancelLabel={benchParcelCopy.completion.cancelAction}
+        confirmLabel={copy.confirmAction}
+        cancelLabel={copy.cancelAction}
         isConfirming={complete.isPending}
         onConfirm={() => {
           setConfirmOpen(false);

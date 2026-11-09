@@ -59,9 +59,11 @@ import {
   BenchWorkList,
   useBenchLayout,
 } from '../../features/bench';
+import { useMessages } from '../../shared/i18n';
 
 export function BenchPage(): ReactElement {
   // See the module docblock — page state, never a route.
+  const copy = useMessages('bench').parcel.mobile;
   const [openWorkId, setOpenWorkId] = useState<string | null>(null);
   // Compact only: the rail is a sheet over the parcel rather than a pane
   // beside it. Ignored on desktop, where the rail is always on screen.
@@ -112,7 +114,7 @@ export function BenchPage(): ReactElement {
                       }}
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
-                      Back to the box
+                      {copy.closeList}
                     </button>
                   </div>
                   <div className="bench-sheet__body">{list}</div>

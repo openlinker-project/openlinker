@@ -38,38 +38,50 @@ import {
   SYNC_JOBS_MAX_LIMIT,
 } from '../../features/sync-jobs/api/sync-jobs.types';
 import type { StreamDeadLetter } from '../../features/sync-jobs/api/stream-dead-letters.types';
+import { jobTypeLabel } from '../../features/sync-jobs/lib/job-type-label';
 
 // Capped by the backend validator on GET /sync/jobs (@Max(100)).
 const PAGE_SIZE = SYNC_JOBS_MAX_LIMIT;
 
-type SyncJobsCopy = ResolvedCopy<Messages['syncJobs']>;
+type SyncJobsCopy = ResolvedCopy<Messages['sync-jobs']>['syncJobsPage'];
+
+/** Breaks a dotted code only after a dot, never inside a segment. */
+function DottedCode({ code }: { code: string }): ReactElement {
+  return (
+    <>
+      {code.split('.').map((segment, i) => (
+        <span key={i}>
+          {i > 0 ? '.' : ''}
+          {i > 0 ? <wbr /> : null}
+          {segment}
+        </span>
+      ))}
+    </>
+  );
+}
 
 /**
- * Splits a dotted job type into the action an operator scans for (last
- * segment) and the namespace it belongs to. The column used to clip the
- * whole string to `fulfillment.work.au…`, cutting off exactly the part that
- * says what the job does (#4016).
+ * The job type as two lines. When the type has an operator-facing name
+ * (`jobTypeLabel`), that name leads and the full code sits under it; when it
+ * has none, the code's last segment - the part that says what the job does -
+ * leads and its namespace sits under it. Either way nothing is clipped: the
+ * column used to cut the whole string to `fulfillment.work.au…` (#4016).
  */
 function JobTypeCell({ jobType }: { jobType: string }): ReactElement {
+  const label = jobTypeLabel(jobType);
+  const named = label !== jobType;
   const cut = jobType.lastIndexOf('.');
-  const action = cut === -1 ? jobType : jobType.slice(cut + 1);
-  const scope = cut === -1 ? null : jobType.slice(0, cut);
+  const lead = named ? label : cut === -1 ? jobType : jobType.slice(cut + 1);
+  const sub = named ? jobType : cut === -1 ? null : jobType.slice(0, cut);
   return (
-    <span className="sync-job-type" title={jobType}>
-      <span className="sr-only">{jobType}</span>
+    <span className={`sync-job-type${named ? ' sync-job-type--named' : ''}`} title={jobType}>
+      <span className="sr-only">{named ? `${label} (${jobType})` : jobType}</span>
       <span className="sync-job-type__action" aria-hidden="true">
-        {action}
+        {lead}
       </span>
-      {scope ? (
+      {sub ? (
         <span className="sync-job-type__scope" aria-hidden="true">
-          {/* Break only after a dot, never inside a segment. */}
-          {scope.split('.').map((segment, i) => (
-            <span key={i}>
-              {i > 0 ? '.' : ''}
-              {i > 0 ? <wbr /> : null}
-              {segment}
-            </span>
-          ))}
+          <DottedCode code={sub} />
         </span>
       ) : null}
     </span>
@@ -86,7 +98,7 @@ function JobTypeCell({ jobType }: { jobType: string }): ReactElement {
  * a clipped error with no way to read it on a narrower window.
  */
 function LastErrorCell({ error }: { error: string }): ReactElement {
-  const copy = useMessages('syncJobs').error;
+  const copy = useMessages('sync-jobs').syncJobsPage.errorToggle;
   const [open, setOpen] = useState(false);
   const [clipped, setClipped] = useState(false);
   const textRef = useRef<HTMLSpanElement>(null);
@@ -210,10 +222,10 @@ function buildColumns(
               // throttling shop as simply stuck (#2613).
               <span
                 className="text-muted"
-                title={interpolate(copy.deferredFor, { duration: deferred })}
+                title={interpolate(copy.columns.deferredTitle, { duration: deferred })}
               >
                 {' '}
-                · {copy.deferred}
+                · {copy.columns.deferred}
               </span>
             ) : null}
           </>
@@ -262,7 +274,7 @@ function buildColumns(
 const DEAD_LETTER_PAGE_SIZE = 20;
 
 function buildDeadLetterColumns(
-  copy: SyncJobsCopy['poison']['columns']
+  copy: SyncJobsCopy['deadLetters']['columns']
 ): DataTableColumn<StreamDeadLetter>[] {
   return [
     {
@@ -318,9 +330,8 @@ function buildDeadLetterColumns(
  * action in this pass.
  */
 function StreamDeadLettersSection(): ReactElement {
-  const copy = useMessages('syncJobs').poison;
-  const showingTemplate = useMessages('syncJobs').showing;
-  const ui = useMessages('ui');
+  const pageCopy = useMessages('sync-jobs').syncJobsPage;
+  const copy = pageCopy.deadLetters;
   const deadLetterColumns = useMemo(() => buildDeadLetterColumns(copy.columns), [copy.columns]);
   const [offset, setOffset] = useState(0);
   const { sort, setSort } = useTableSort([{ id: 'lastSeenAt', desc: true }]);
@@ -349,7 +360,7 @@ function StreamDeadLettersSection(): ReactElement {
               <span className="text-muted"> ({countQuery.data.count})</span>
             ) : null}
           </h2>
-          <p className="poison-entries__hint">{copy.hint}</p>
+          <p className="poison-entries__hint">{copy.description}</p>
         </div>
         {isEmpty ? (
           <span className="poison-entries__none" data-testid="poison-entries-none">
@@ -365,7 +376,7 @@ function StreamDeadLettersSection(): ReactElement {
         <DataTableSkeleton columns={deadLetterColumns} label={copy.loading} />
       ) : listQuery.error ? (
         <ErrorState
-          title={copy.loadError}
+          title={copy.errorTitle}
           message={listQuery.error.message}
           action={
             <Button
@@ -373,14 +384,14 @@ function StreamDeadLettersSection(): ReactElement {
                 void listQuery.refetch();
               }}
             >
-              {ui.common.retry}
+              {pageCopy.retry}
             </Button>
           }
         />
       ) : isEmpty ? null : (
         <>
           <DataTable
-            caption={copy.caption}
+            caption={copy.title}
             columns={deadLetterColumns}
             rows={listQuery.data?.items ?? []}
             rowKey={(entry) => entry.id}
@@ -389,9 +400,9 @@ function StreamDeadLettersSection(): ReactElement {
           />
           <div className="pagination">
             <span className="text-muted">
-              {interpolate(showingTemplate, {
-                start: offset + 1,
-                end: Math.min(offset + DEAD_LETTER_PAGE_SIZE, total),
+              {interpolate(pageCopy.pagination.range, {
+                from: offset + 1,
+                to: Math.min(offset + DEAD_LETTER_PAGE_SIZE, total),
                 total,
               })}
             </span>
@@ -403,7 +414,7 @@ function StreamDeadLettersSection(): ReactElement {
                   setOffset(offset - DEAD_LETTER_PAGE_SIZE);
                 }}
               >
-                {ui.pagination.previous}
+                {pageCopy.pagination.previous}
               </Button>
               <Button
                 tone="secondary"
@@ -412,7 +423,7 @@ function StreamDeadLettersSection(): ReactElement {
                   setOffset(offset + DEAD_LETTER_PAGE_SIZE);
                 }}
               >
-                {ui.pagination.next}
+                {pageCopy.pagination.next}
               </Button>
             </div>
           </div>
@@ -423,8 +434,10 @@ function StreamDeadLettersSection(): ReactElement {
 }
 
 export function SyncJobsPage(): ReactElement {
-  const copy = useMessages('syncJobs');
-  const ui = useMessages('ui');
+  const copy = useMessages('sync-jobs').syncJobsPage;
+  const pageCopy = copy;
+  const statusLabels: Record<string, string | undefined> =
+    useMessages('sync-jobs').syncJobStatusBadge.statuses;
   const [searchParams, setSearchParams] = useSearchParams();
   const { sort, setSort } = useTableSort([{ id: 'createdAt', desc: true }]);
 
@@ -515,10 +528,10 @@ export function SyncJobsPage(): ReactElement {
               setFilter('status', e.target.value);
             }}
           >
-            <option value="">{copy.filters.all.statuses}</option>
+            <option value="">{copy.filters.allStatuses}</option>
             {JOB_STATUS_VALUES.map((s) => (
               <option key={s} value={s}>
-                {s}
+                {statusLabels[s] ?? s}
               </option>
             ))}
           </Select>
@@ -534,10 +547,10 @@ export function SyncJobsPage(): ReactElement {
               setFilter('jobType', e.target.value);
             }}
           >
-            <option value="">{copy.filters.all.jobTypes}</option>
+            <option value="">{copy.filters.allJobTypes}</option>
             {JOB_TYPE_VALUES.map((t) => (
               <option key={t} value={t}>
-                {t}
+                {jobTypeLabel(t)}
               </option>
             ))}
           </Select>
@@ -553,10 +566,10 @@ export function SyncJobsPage(): ReactElement {
               setFilter('outcome', e.target.value);
             }}
           >
-            <option value="">{copy.filters.all.outcomes}</option>
+            <option value="">{copy.filters.allOutcomes}</option>
             {JOB_OUTCOME_VALUES.map((o) => (
               <option key={o} value={o}>
-                {o === 'business_failure' ? 'business failure' : o}
+                {copy.outcomes[o]}
               </option>
             ))}
           </Select>
@@ -572,7 +585,7 @@ export function SyncJobsPage(): ReactElement {
               setFilter('connectionId', e.target.value);
             }}
           >
-            <option value="">{copy.filters.all.connections}</option>
+            <option value="">{copy.filters.allConnections}</option>
             {connections.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -583,7 +596,7 @@ export function SyncJobsPage(): ReactElement {
 
         {filtersActive ? (
           <Button tone="ghost" className="sync-jobs-filters__clear" onClick={clearFilters}>
-            {copy.clearFilters}
+            {copy.empty.clearFilters}
           </Button>
         ) : null}
       </div>
@@ -593,7 +606,7 @@ export function SyncJobsPage(): ReactElement {
         <DataTableSkeleton columns={columns} label={copy.loading} />
       ) : query.error ? (
         <ErrorState
-          title={copy.loadError}
+          title={copy.errorTitle}
           message={query.error.message}
           action={
             <Button
@@ -601,7 +614,7 @@ export function SyncJobsPage(): ReactElement {
                 void query.refetch();
               }}
             >
-              {ui.common.retry}
+              {pageCopy.retry}
             </Button>
           }
         />
@@ -630,7 +643,7 @@ export function SyncJobsPage(): ReactElement {
             sort={sort}
             onSortChange={setSort}
             cardView={{
-              title: (job) => job.jobType,
+              title: (job) => jobTypeLabel(job.jobType),
               subtitle: (job) => renderConnection(job.connectionId),
               meta: (job) => (
                 <SyncJobStatusBadge
@@ -645,9 +658,9 @@ export function SyncJobsPage(): ReactElement {
           {/* Pagination */}
           <div className="pagination">
             <span className="text-muted">
-              {interpolate(copy.showing, {
-                start: offset + 1,
-                end: Math.min(offset + PAGE_SIZE, total),
+              {interpolate(copy.pagination.range, {
+                from: offset + 1,
+                to: Math.min(offset + PAGE_SIZE, total),
                 total,
               })}
             </span>
@@ -659,7 +672,7 @@ export function SyncJobsPage(): ReactElement {
                   setOffset(offset - PAGE_SIZE);
                 }}
               >
-                {ui.pagination.previous}
+                {pageCopy.pagination.previous}
               </Button>
               <Button
                 tone="secondary"
@@ -668,7 +681,7 @@ export function SyncJobsPage(): ReactElement {
                   setOffset(offset + PAGE_SIZE);
                 }}
               >
-                {ui.pagination.next}
+                {pageCopy.pagination.next}
               </Button>
             </div>
           </div>

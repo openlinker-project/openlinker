@@ -36,12 +36,9 @@ import {
   SOURCE_LOCALE,
   type LocaleContextValue,
   type SupportedLocale,
-  type TranslationCatalog,
 } from './i18n.types';
 
 export const LocaleContext = createContext<LocaleContextValue | null>(null);
-
-const EMPTY_CATALOG: TranslationCatalog = Object.freeze({});
 
 interface LocaleProviderProps extends PropsWithChildren {
   /**
@@ -49,11 +46,6 @@ interface LocaleProviderProps extends PropsWithChildren {
    * deployment default.
    */
   locale?: SupportedLocale;
-  /**
-   * Catalog for the legacy `t(key, fallback)` seam (#612); new copy lives in
-   * typed copy files instead.
-   */
-  catalog?: TranslationCatalog;
 }
 
 function announceLocale(locale: SupportedLocale): void {
@@ -69,7 +61,6 @@ function initialLocale(pinned: SupportedLocale | undefined): SupportedLocale {
 
 export function LocaleProvider({
   locale: pinned,
-  catalog = EMPTY_CATALOG,
   children,
 }: LocaleProviderProps): ReactElement {
   const [locale, setLocaleState] = useState<SupportedLocale>(() => {
@@ -154,9 +145,8 @@ export function LocaleProvider({
       locale,
       setLocale,
       pseudo,
-      t: (key, fallback) => catalog[key] ?? fallback,
     }),
-    [locale, setLocale, pseudo, catalog],
+    [locale, setLocale, pseudo],
   );
 
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;

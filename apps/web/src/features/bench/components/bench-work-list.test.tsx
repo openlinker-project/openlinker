@@ -551,7 +551,7 @@ describe('BenchWorkList (#2416)', () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Take next task' }));
 
       expect(
-        await screen.findByText('Someone got there first. Try again — there may be more.')
+        await screen.findByText('Someone got there first. Try again - there may be more.')
       ).toBeInTheDocument();
       expect(screen.queryByText('Nothing unassigned right now.')).not.toBeInTheDocument();
     });
@@ -583,7 +583,7 @@ describe('BenchWorkList (#2416)', () => {
         await screen.findByText('That one is already assigned to someone. Try a different one.')
       ).toBeInTheDocument();
       expect(
-        screen.queryByText('Someone got there first. Try again — there may be more.')
+        screen.queryByText('Someone got there first. Try again - there may be more.')
       ).not.toBeInTheDocument();
     });
 

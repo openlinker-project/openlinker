@@ -34,6 +34,7 @@
 import type { ReactElement } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { interpolate, useMessages } from '../../shared/i18n';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { isPricingDestination, useConnectionQuery } from '../../features/connections';
 import { PricingAndSyncSection } from '../../features/connections/components/pricing-and-sync-section';
@@ -43,12 +44,13 @@ export function ConnectionPricingSyncPage(): ReactElement {
   const { connectionId = '' } = useParams();
   const [searchParams] = useSearchParams();
   const connectionQuery = useConnectionQuery(connectionId);
-  const backTo = { to: `/connections/${connectionId}`, label: 'Connection' } as const;
+  const copy = useMessages('connections').connectionPricingSyncPage;
+  const backTo = { to: `/connections/${connectionId}`, label: copy.eyebrow } as const;
 
   if (connectionQuery.isLoading) {
     return (
-      <PageLayout eyebrow="Connection" title="Pricing & sync" description="Loading connection…">
-        <LoadingState liveRegion="off" title="Loading" message="Fetching connection details." />
+      <PageLayout eyebrow={copy.eyebrow} title={copy.title} description={copy.loading.description}>
+        <LoadingState liveRegion="off" title={copy.loading.title} message={copy.loading.message} />
       </PageLayout>
     );
   }
@@ -57,13 +59,13 @@ export function ConnectionPricingSyncPage(): ReactElement {
     return (
       <PageLayout
         backTo={backTo}
-        eyebrow="Connection"
-        title="Pricing & sync"
-        description="Unable to load connection."
+        eyebrow={copy.eyebrow}
+        title={copy.title}
+        description={copy.error.description}
       >
         <ErrorState
-          title="Unable to load connection"
-          message={connectionQuery.error?.message ?? 'Unknown error'}
+          title={copy.error.title}
+          message={connectionQuery.error?.message ?? copy.error.unknown}
         />
       </PageLayout>
     );
@@ -77,13 +79,13 @@ export function ConnectionPricingSyncPage(): ReactElement {
     return (
       <PageLayout
         backTo={backTo}
-        eyebrow="Connection"
-        title="Pricing & sync"
-        description={`${connection.name} has nothing to configure here.`}
+        eyebrow={copy.eyebrow}
+        title={copy.title}
+        description={interpolate(copy.nothing.description, { name: connection.name })}
       >
         <EmptyState
-          title="Nothing to configure here"
-          message="Pricing & sync applies to a connection that can list marketplace offers, publish shop products, or supply a master catalogue. Enable one of those capabilities on this connection first."
+          title={copy.nothing.title}
+          message={copy.nothing.message}
         />
       </PageLayout>
     );
@@ -92,14 +94,14 @@ export function ConnectionPricingSyncPage(): ReactElement {
   return (
     <PageLayout
       backTo={backTo}
-      eyebrow="Connection"
-      title={`Pricing & sync — ${connection.name}`}
+      eyebrow={copy.eyebrow}
+      title={interpolate(copy.titleWithName, { name: connection.name })}
       description={
         isDestination && isSource
-          ? 'The default pricing rule and sync mode for this destination, plus how each destination this connection feeds adjusts the price.'
+          ? copy.descriptions.destinationAndSource
           : isDestination
-            ? 'The default pricing rule and sync mode for this destination, plus any per-source overrides.'
-            : "How each destination this connection feeds adjusts the price."
+            ? copy.descriptions.destination
+            : copy.descriptions.source
       }
     >
       {isDestination ? (

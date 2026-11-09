@@ -15,7 +15,7 @@
 import type { Connection, ConnectionStatus } from '../../features/connections';
 import type { Messages, PluralFn, ResolvedCopy } from '../../shared/i18n';
 
-export type ConnectionHealthCopy = ResolvedCopy<Messages['insights']>['connectionHealth'];
+export type ConnectionHealthCopy = ResolvedCopy<Messages['analytics']>['insightsPage']['connectionHealth'];
 
 export interface ConnectionHealthRow {
   connection: Connection;

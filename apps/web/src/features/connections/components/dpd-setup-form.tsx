@@ -37,8 +37,11 @@ import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { captureDemoEvent } from '../../demo';
+import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
+import { usePlatform } from '../../../shared/plugins';
 
-const STEP_LABELS = ['Account & credentials', 'Sender address', 'Review & connect'] as const;
+// Analytics step names, kept in English so events stay comparable across languages.
+const STEP_EVENT_IDS = ['Account & credentials', 'Sender address', 'Review & connect'] as const;
 
 const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<DpdSetupFormValues>>> = [
   ['name', 'login', 'password', 'environment', 'payerFid', 'masterFid'],
@@ -56,6 +59,14 @@ const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<DpdSetupFormValues>>> = [
 ];
 
 export function DpdSetupForm(): ReactElement {
+  const copy = useMessages('connections').dpdSetupForm;
+  const setupCopy = useMessages('connections').setup;
+  const platform = usePlatform('dpd')?.displayName ?? copy.platformFallback;
+  const STEP_LABELS = [
+    copy.steps.account,
+    copy.steps.sender,
+    copy.steps.review,
+  ];
   const createConnection = useCreateConnectionMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
@@ -91,7 +102,7 @@ export function DpdSetupForm(): ReactElement {
     setCompletedSteps((prev) => new Set(prev).add(stepIndex));
     captureDemoEvent('demo_connection_wizard_step_advanced', {
       platform: 'dpd',
-      step: STEP_LABELS[stepIndex],
+      step: STEP_EVENT_IDS[stepIndex],
     });
     setStepIndex((i) => Math.min(i + 1, STEP_LABELS.length - 1));
   }
@@ -118,8 +129,8 @@ export function DpdSetupForm(): ReactElement {
       form.reset(values, { keepValues: true, keepDirty: false });
       showToast({
         tone: 'success',
-        title: 'Connection created',
-        description: `DPD Polska connection "${created.name}" was created.`,
+        title: copy.createdTitle,
+        description: interpolate(copy.createdDescription, { platform, name: created.name }),
       });
       void navigate('/connections');
     } catch {
@@ -136,13 +147,13 @@ export function DpdSetupForm(): ReactElement {
       }
       summary={
         <dl className="wizard-review-list">
-          <dt>Name</dt>
+          <dt>{copy.review.name}</dt>
           <dd>{values.name || '—'}</dd>
-          <dt>Environment</dt>
-          <dd className="mono-text">{values.environment}</dd>
-          <dt>Payer FID</dt>
+          <dt>{copy.fields.environment.label}</dt>
+          <dd>{copy.environments[values.environment] ?? values.environment}</dd>
+          <dt>{copy.fields.payerFid.label}</dt>
           <dd className="mono-text">{values.payerFid || '—'}</dd>
-          <dt>Sender</dt>
+          <dt>{copy.review.sender}</dt>
           <dd>
             {values.senderCity ? `${values.senderCity}, ${values.senderCountryCode}` : '—'}
           </dd>
@@ -150,34 +161,32 @@ export function DpdSetupForm(): ReactElement {
       }
     >
       <form className="wizard-card" onSubmit={handleFormSubmit} noValidate>
-        <BackLink to="/connections/new" label="Connections" className="wizard-card__back" />
+        <BackLink to="/connections/new" label={setupCopy.connections} className="wizard-card__back" />
 
         {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
           <FormErrorSummary errors={validationMessages} />
         ) : null}
         {createConnection.error ? (
-          <Alert tone="error" title="Unable to create connection">
+          <Alert tone="error" title={copy.createError}>
             {createConnection.error.message}
           </Alert>
         ) : null}
 
         {stepIndex === 0 ? (
           <>
-            <Alert tone="info" title="Before you start">
-              You need your DPDServices REST <strong>login</strong> and <strong>password</strong>{' '}
-              plus your <strong>payer FID</strong> (account id). Use the sandbox environment to
-              verify before switching to production.
+            <Alert tone="info" title={copy.beforeYouStart.title}>
+              {renderRich(copy.beforeYouStart.body, { strong: (text) => <strong>{text}</strong> })}
             </Alert>
 
-            <FormField label="Connection name" name="name" error={form.formState.errors.name?.message}>
+            <FormField label={copy.fields.name.label} name="name" error={form.formState.errors.name?.message}>
               <Input
                 {...form.register('name')}
-                placeholder="DPD — main warehouse"
+                placeholder={interpolate(copy.fields.name.placeholder, { platform })}
                 invalid={Boolean(form.formState.errors.name)}
               />
             </FormField>
 
-            <FormField label="Login" name="login" error={form.formState.errors.login?.message}>
+            <FormField label={copy.fields.login.label} name="login" error={form.formState.errors.login?.message}>
               <Input
                 {...form.register('login')}
                 className="mono-text"
@@ -188,10 +197,10 @@ export function DpdSetupForm(): ReactElement {
             </FormField>
 
             <FormField
-              label="Password"
+              label={copy.fields.password.label}
               name="password"
               error={form.formState.errors.password?.message}
-              description="Stored securely on the server — never shown again after save."
+              description={copy.fields.password.description}
             >
               <Input
                 {...form.register('password')}
@@ -203,21 +212,21 @@ export function DpdSetupForm(): ReactElement {
             </FormField>
 
             <FormField
-              label="Environment"
+              label={copy.fields.environment.label}
               name="environment"
               error={form.formState.errors.environment?.message}
             >
               <Select {...form.register('environment')} invalid={Boolean(form.formState.errors.environment)}>
-                <option value="sandbox">Sandbox</option>
-                <option value="production">Production</option>
+                <option value="sandbox">{copy.environments.sandbox}</option>
+                <option value="production">{copy.environments.production}</option>
               </Select>
             </FormField>
 
             <FormField
-              label="Payer FID"
+              label={copy.fields.payerFid.label}
               name="payerFid"
               error={form.formState.errors.payerFid?.message}
-              description="Numeric account id (payerFID) sent on every shipment."
+              description={copy.fields.payerFid.description}
             >
               <Input
                 {...form.register('payerFid')}
@@ -228,10 +237,10 @@ export function DpdSetupForm(): ReactElement {
             </FormField>
 
             <FormField
-              label="Master FID (optional)"
+              label={copy.fields.masterFid.label}
               name="masterFid"
               error={form.formState.errors.masterFid?.message}
-              description="Only needed for multi-account DPD setups."
+              description={interpolate(copy.fields.masterFid.description, { platform })}
             >
               <Input
                 {...form.register('masterFid')}
@@ -247,60 +256,63 @@ export function DpdSetupForm(): ReactElement {
 
         {stepIndex === 1 ? (
           <>
-            <Alert tone="info" title="Sender address">
-              Printed on every DPD label as the return / sender address. Polish postal format{' '}
-              <span className="mono-text">NN-NNN</span>.
+            <Alert tone="info" title={copy.senderAddress.title}>
+              {renderRich(
+                copy.senderAddress.body,
+                { mono: (text) => <span className="mono-text">{text}</span> },
+                { platform },
+              )}
             </Alert>
 
-            <FormField label="Company (optional)" name="senderCompany" error={form.formState.errors.senderCompany?.message}>
-              <Input {...form.register('senderCompany')} placeholder="Sklep ACME" invalid={Boolean(form.formState.errors.senderCompany)} />
+            <FormField label={copy.fields.senderCompany.label} name="senderCompany" error={form.formState.errors.senderCompany?.message}>
+              <Input {...form.register('senderCompany')} placeholder={copy.fields.senderCompany.placeholder} invalid={Boolean(form.formState.errors.senderCompany)} />
             </FormField>
-            <FormField label="Contact name (optional)" name="senderName" error={form.formState.errors.senderName?.message}>
-              <Input {...form.register('senderName')} placeholder="Magazyn główny" invalid={Boolean(form.formState.errors.senderName)} />
+            <FormField label={copy.fields.senderName.label} name="senderName" error={form.formState.errors.senderName?.message}>
+              <Input {...form.register('senderName')} placeholder={copy.fields.senderName.placeholder} invalid={Boolean(form.formState.errors.senderName)} />
             </FormField>
-            <FormField label="Address" name="senderAddress" error={form.formState.errors.senderAddress?.message}>
-              <Input {...form.register('senderAddress')} placeholder="ul. Magazynowa 1" invalid={Boolean(form.formState.errors.senderAddress)} />
+            <FormField label={copy.fields.senderAddress.label} name="senderAddress" error={form.formState.errors.senderAddress?.message}>
+              <Input {...form.register('senderAddress')} placeholder={copy.fields.senderAddress.placeholder} invalid={Boolean(form.formState.errors.senderAddress)} />
             </FormField>
-            <FormField label="City" name="senderCity" error={form.formState.errors.senderCity?.message}>
-              <Input {...form.register('senderCity')} placeholder="Warszawa" invalid={Boolean(form.formState.errors.senderCity)} />
+            <FormField label={copy.fields.senderCity.label} name="senderCity" error={form.formState.errors.senderCity?.message}>
+              <Input {...form.register('senderCity')} placeholder={copy.fields.senderCity.placeholder} invalid={Boolean(form.formState.errors.senderCity)} />
             </FormField>
             <FormField
-              label="Postal code"
+              label={copy.fields.senderPostalCode.label}
               name="senderPostalCode"
               error={form.formState.errors.senderPostalCode?.message}
-              description="PL format NN-NNN (e.g. 00-001)."
+              description={copy.fields.senderPostalCode.description}
             >
               <Input {...form.register('senderPostalCode')} className="mono-text" placeholder="00-001" invalid={Boolean(form.formState.errors.senderPostalCode)} />
             </FormField>
-            <FormField label="Country" name="senderCountryCode" error={form.formState.errors.senderCountryCode?.message} description="ISO 3166-1 alpha-2 (e.g. PL).">
+            <FormField label={copy.fields.senderCountryCode.label} name="senderCountryCode" error={form.formState.errors.senderCountryCode?.message} description={copy.fields.senderCountryCode.description}>
               <Input {...form.register('senderCountryCode')} className="mono-text" placeholder="PL" maxLength={2} invalid={Boolean(form.formState.errors.senderCountryCode)} />
             </FormField>
-            <FormField label="Phone (optional)" name="senderPhone" error={form.formState.errors.senderPhone?.message}>
+            <FormField label={copy.fields.senderPhone.label} name="senderPhone" error={form.formState.errors.senderPhone?.message}>
               <Input {...form.register('senderPhone')} className="mono-text" placeholder="+48111222333" invalid={Boolean(form.formState.errors.senderPhone)} />
             </FormField>
-            <FormField label="Email (optional)" name="senderEmail" error={form.formState.errors.senderEmail?.message}>
-              <Input {...form.register('senderEmail')} placeholder="magazyn@acme.pl" invalid={Boolean(form.formState.errors.senderEmail)} />
+            <FormField label={copy.fields.senderEmail.label} name="senderEmail" error={form.formState.errors.senderEmail?.message}>
+              <Input {...form.register('senderEmail')} placeholder={copy.fields.senderEmail.placeholder} invalid={Boolean(form.formState.errors.senderEmail)} />
             </FormField>
           </>
         ) : null}
 
         {stepIndex === 2 ? (
           <dl className="wizard-review-list">
-            <dt>Name</dt>
+            <dt>{copy.review.name}</dt>
             <dd>{values.name || '—'}</dd>
-            <dt>Login</dt>
+            <dt>{copy.fields.login.label}</dt>
             <dd className="mono-text">{values.login || '—'}</dd>
-            <dt>Environment</dt>
-            <dd className="mono-text">{values.environment}</dd>
-            <dt>Payer FID</dt>
+            <dt>{copy.fields.environment.label}</dt>
+            <dd>{copy.environments[values.environment] ?? values.environment}</dd>
+            <dt>{copy.fields.payerFid.label}</dt>
             <dd className="mono-text">{values.payerFid || '—'}</dd>
             {values.masterFid ? (
               <>
-                <dt>Master FID</dt>
+                <dt>{copy.review.masterFid}</dt>
                 <dd className="mono-text">{values.masterFid}</dd>
               </>
             ) : null}
-            <dt>Sender</dt>
+            <dt>{copy.review.sender}</dt>
             <dd>
               {[values.senderAddress, values.senderPostalCode, values.senderCity, values.senderCountryCode]
                 .filter(Boolean)
@@ -313,18 +325,18 @@ export function DpdSetupForm(): ReactElement {
           <div className="wizard-actions__group">
             {stepIndex > 0 ? (
               <Button tone="secondary" type="button" onClick={goBack}>
-                Back
+                {setupCopy.back}
               </Button>
             ) : null}
           </div>
           <div className="wizard-actions__group">
             {stepIndex < STEP_LABELS.length - 1 ? (
               <Button key="next" type="button" onClick={() => void goNext()}>
-                Next
+                {setupCopy.next}
               </Button>
             ) : (
               <Button key="submit" type="submit" disabled={createConnection.isPending}>
-                {createConnection.isPending ? 'Creating...' : 'Create connection'}
+                {createConnection.isPending ? copy.creating : copy.create}
               </Button>
             )}
           </div>

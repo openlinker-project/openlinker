@@ -1,0 +1,622 @@
+{
+  "activity": {
+    "ariaLabel": "Oś czasu aktywności zwrotu",
+    "emptyMessage": "Przyjęcie, rozdysponowanie, odrzucenie i zwrot pieniędzy za ten zwrot pojawią się tutaj.",
+    "emptyTitle": "Nic jeszcze nie zapisano",
+    "errorMessage": "Przy tym zwrocie mogło się coś wydarzyć - OpenLinker nie mógł teraz tego odczytać.",
+    "errorTitle": "Nie udało się wczytać aktywności",
+    "forbiddenMessage": "Ta historia zawiera kwoty zwrotów pieniędzy, więc jest dostępna tylko dla kont obsługujących płatności. Pozostała część strony działa bez zmian.",
+    "forbiddenTitle": "Aktywność niedostępna dla tego konta",
+    "loading": "Wczytywanie aktywności…",
+    "loadingMessage": "Odczytywanie tego, co wydarzyło się przy tym zwrocie.",
+    "retry": "Spróbuj ponownie",
+    "sectionTitle": "Aktywność"
+  },
+  "apiErrors": {
+    "detailUnreadable": "Nie udało się odczytać zwrotu {returnId}",
+    "proposalUnreadable": "Nie udało się odczytać propozycji faktury korygującej.",
+    "resultUnreadable": "Serwer przyjął zmianę, ale odesłał wynik, którego ta wersja nie potrafi odczytać.",
+    "timelineUnreadable": "Nie udało się odczytać aktywności zwrotów dla tego zamówienia."
+  },
+  "authorizeReturnDialog": {
+    "cancel": "Jeszcze nie",
+    "confirm": "Zatwierdź",
+    "confirming": "Zatwierdzanie…",
+    "description": "Ten zwrot został zapisany przez Ciebie. Zatwierdzenie to znacznik audytowy potwierdzający, że naprawdę się wydarzył - nie wstrzymuje przyjęcia na stan ani zwrotu pieniędzy, które działają na zwrocie niezależnie.",
+    "genericError": "Nie udało się zatwierdzić. Spróbuj ponownie.",
+    "refusedAcknowledge": "Rozumiem",
+    "refusedBody": "Ten zwrot przyszedł ze źródła, które już o nim zdecydowało. OpenLinker zatwierdza tylko zwroty zapisane tutaj przez operatora.",
+    "refusedTitle": "Nie można zatwierdzić tego zwrotu",
+    "title": "Zatwierdzić ten zwrot?"
+  },
+  "custody": {
+    "dispose": {
+      "action": "Rozdysponuj",
+      "awaitingAttestation": "Na tej pozycji czeka na Ciebie zapis stanu - zobacz komunikat powyżej i oznacz go jako obsłużony, zanim przyjmiesz na stan kolejne sztuki. Te sztuki nadal możesz zutylizować.",
+      "cancel": "Anuluj",
+      "dispositionLabel": "Co się z nimi stało",
+      "heading": "Zapisz, co się stało z tymi sztukami",
+      "nonPositive": "Zapisz co najmniej jedną sztukę.",
+      "notWholeUnits": "Zapisz pełne sztuki.",
+      "noteLabel": "Notatka (opcjonalnie)",
+      "notePlaceholder": "np. porysowane pudełko",
+      "nothingToDispose": "Wszystkie przyjęte sztuki na tej pozycji zostały już obsłużone.",
+      "orphanBlocked": "Ten zwrot nie jest powiązany z zamówieniem, więc OpenLinker nigdzie nie doda towaru na stan. Te sztuki nadal możesz zutylizować.",
+      "overDisposition": {
+        "few": "Na tej pozycji zostały do obsłużenia tylko {n} przyjęte sztuki.",
+        "many": "Na tej pozycji zostało do obsłużenia tylko {n} przyjętych sztuk.",
+        "one": "Na tej pozycji została do obsłużenia tylko {n} przyjęta sztuka.",
+        "other": "Na tej pozycji zostało do obsłużenia tylko {n} przyjętej sztuki."
+      },
+      "pending": "Zapisywanie…",
+      "quantityHint": "Domyślnie wszystko, co przyjęto, a czego jeszcze nie obsłużono.",
+      "quantityLabel": "Sztuki",
+      "restockBlockedToast": "Zapisano - ale nie udało się dodać towaru na stan.",
+      "restockHelp": "Dodaje sztuki z powrotem na stan w systemie, który zarządza Twoim stanem magazynowym.",
+      "restockLabel": "Na stan",
+      "scrapHelp": "Odpisuje sztuki. Stan magazynowy się nie zmienia.",
+      "scrapLabel": "Utylizuj",
+      "submit": "Zapisz",
+      "success": "Rozdysponowanie zapisane."
+    },
+    "error": {
+      "byReason": {
+        "illegal-transition": "Ta pozycja jest już zakończona, więc nie można jej zmienić. Odśwież stronę, aby zobaczyć jej stan końcowy.",
+        "non-positive-quantity": "Zapisz co najmniej jedną pełną sztukę.",
+        "nothing-advised": "Źródło nie zgłosiło żadnych sztuk na tej pozycji, więc nie ma czego odpisać.",
+        "over-disposition": "To więcej sztuk, niż przyjęto na tej pozycji. Odśwież stronę, aby zobaczyć aktualne liczby.",
+        "over-receipt": "Zapisano więcej sztuk, niż zgłosił kupujący. Zapisz to, co dotarło, do zgłoszonej ilości, a dla reszty otwórz osobny zwrot.",
+        "partially-received": "Część sztuk na tej pozycji już dotarła, więc nie można jej odpisać. Obsłuż to, co dotarło - brak pozostaje widoczny względem zgłoszonej ilości.",
+        "restock-already-blocked": "Na tej pozycji już czeka na Ciebie zapis stanu - oznacz go jako obsłużony, zanim przyjmiesz na stan kolejne sztuki."
+      },
+      "conflict": "Ta pozycja zmieniła się od wczytania strony. Odśwież i spróbuj ponownie.",
+      "forbidden": "Twoje konto nie może zapisywać zmian w zwrotach.",
+      "generic": "Nie udało się zapisać zmiany. Nic nie zostało zapisane.",
+      "notFound": "Ta pozycja zwrotu już nie istnieje. Odśwież stronę."
+    },
+    "notReturned": {
+      "action": "Oznacz jako niezwrócone",
+      "cancel": "Wróć",
+      "confirm": "Odpisz pozycję",
+      "confirmBody": "Spowoduje to odpisanie pozycji. Użyj tego, gdy uznasz, że kupujący nie odeśle towaru - OpenLinker nigdy nie stwierdza tego sam.",
+      "confirmTitle": "Zapisać, że ta paczka nie dotrze?",
+      "noteLabel": "Notatka (opcjonalnie)",
+      "notePlaceholder": "Dlaczego nie wraca?",
+      "partiallyReceivedHint": "Część sztuk na tej pozycji już dotarła, więc nie można jej odpisać. Obsłuż to, co dotarło - brak pozostaje widoczny względem zgłoszonej ilości.",
+      "pending": "Zapisywanie…",
+      "success": "Pozycja odpisana."
+    },
+    "receive": {
+      "action": "Przyjmij",
+      "bulkAction": "Przyjmij wszystko wg zgłoszenia",
+      "bulkCancel": "Wróć",
+      "bulkConfirm": "Zapisz wszystkie przyjęcia",
+      "bulkConfirmBody": "Spowoduje to zapisanie pełnej brakującej ilości na każdej pozycji, która wciąż czeka na paczkę. Najpierw porównaj paczkę ze zgłoszonymi ilościami - każda pozycja zostanie zapisana jako faktyczne przyjęcie.",
+      "bulkConfirmTitle": "Zapisać wszystkie pozycje jako w pełni przyjęte?",
+      "bulkNothing": "Żadna pozycja nie czeka już na sztuki.",
+      "bulkPartial": "Części pozycji nie udało się zapisać. Te, które się nie powiodły, pozostały bez zmian.",
+      "bulkSuccess": "Zapisano przyjęcia na wszystkich oczekujących pozycjach.",
+      "cancel": "Anuluj",
+      "heading": "Zapisz, co dotarło",
+      "nonPositive": "Zapisz co najmniej jedną sztukę.",
+      "notWholeUnits": "Zapisz pełne sztuki.",
+      "noteLabel": "Notatka (opcjonalnie)",
+      "notePlaceholder": "Cokolwiek warto zapisać o tym przyjęciu",
+      "nothingOutstanding": "Wszystkie zgłoszone sztuki na tej pozycji już dotarły.",
+      "overReceipt": "Zapisano więcej sztuk, niż zgłosił kupujący. Zapisz to, co dotarło, do zgłoszonej ilości, a dla reszty otwórz osobny zwrot.",
+      "pending": "Zapisywanie…",
+      "quantityHint": "Domyślnie wszystko, co na tej pozycji jeszcze nie dotarło.",
+      "quantityLabel": "Przyjęte sztuki",
+      "readOnly": "Zapisywanie przyjęć jest wyłączone w wersji demo.",
+      "submit": "Zapisz przyjęcie",
+      "success": "Przyjęcie zapisane."
+    },
+    "restockTarget": {
+      "adapter-unresolved": "OpenLinker nie może teraz połączyć się z systemem, który zarządza Twoim stanem magazynowym, więc nie wie, gdzie trafiłyby te sztuki.",
+      "ambiguous-inventory-master": "{n} połączeń zarządza Twoim stanem magazynowym, więc OpenLinker nie będzie zgadywać, do którego zapisać - przyjęcie na stan będzie odrzucane, dopóki nie zostanie skonfigurowane dokładnie jedno.",
+      "ambiguous-owner": "{n} systemów głównych produktów przechowuje stan tego produktu, więc OpenLinker nie będzie zgadywać, do którego przywrócić sztuki.",
+      "no-inventory-master": "Żadne połączenie nie zarządza Twoim stanem magazynowym, więc przyjęcie na stan nie może nigdzie dodać sztuk. Utylizacja nadal działa.",
+      "no-position": "OpenLinker nie ma stanu tego produktu w żadnym podłączonym systemie głównym produktów, więc nie wie, gdzie trafiłyby te sztuki.",
+      "resolved": "Towar zostanie dodany na stan w {name}.",
+      "unattributed-owner": "Stan tego produktu nie ma jeszcze znanego właściciela - uruchom synchronizację stanów z systemu głównego produktów, a potem przyjmij na stan."
+    }
+  },
+  "detail": {
+    "decline": {
+      "action": "Odrzuć zwrot",
+      "blockedAlreadyDeclined": "Kanał zgłosił już ten zwrot jako odrzucony.",
+      "blockedNoSourceReturnId": "Ten zwrot nie ma identyfikatora w kanale - nie ma o co pytać. Zwroty zapisane przez Ciebie zawsze są w tym stanie.",
+      "blockedOrphan": "Ten zwrot nie jest powiązany z zamówieniem, więc nie można jeszcze nic o nim wysłać do kanału.",
+      "blockedSourceDeclaresNoDecline": "Ten kanał nie udostępnia sposobu odrzucenia zwrotu, więc OpenLinker nie ma czego wysłać.",
+      "blockedUnknownReason": "OpenLinker nie mógł ustalić, czy ten kanał przyjmuje odrzucenie, więc akcja jest wstrzymana, zamiast wysyłać ją w ciemno.",
+      "cancel": "Anuluj",
+      "commentDescription": "Niektóre kanały wymagają komentarza dla niektórych kodów i skracają go do własnego limitu.",
+      "commentLabel": "Komentarz (opcjonalnie)",
+      "commentTooLong": "Komentarz może mieć najwyżej 500 znaków.",
+      "confirmAction": "Wyślij odrzucenie",
+      "confirmBody": "Odrzucenie informuje kanał, że nie przyjmujesz tego zwrotu. Kanał decyduje, co dalej - OpenLinker zapisuje zgłoszony przez niego wynik.",
+      "confirmTitle": "Odrzucić ten zwrot?",
+      "readOnly": "Nie masz uprawnień do wprowadzania zmian.",
+      "reasonCodeDescription": "Własny kod kanału dla odrzucenia zwrotu. OpenLinker przekazuje go bez zmian; jeśli kanał go nie przyjmie, odpowiedź poniżej poda kody, które przyjmuje.",
+      "reasonCodeLabel": "Kod odrzucenia w kanale",
+      "reasonCodeRequired": "Wpisz kod odrzucenia używany przez kanał.",
+      "sectionTitle": "Odrzuć ten zwrot",
+      "submitting": "Wysyłanie…"
+    },
+    "declineError": {
+      "conflictPrefix": "Ten zwrot nie jest powiązany z zamówieniem, więc nie można go odrzucić.",
+      "conflictWithTrigger": "Ten zwrot nie jest powiązany z zamówieniem, więc nie można go odrzucić. Zablokowana akcja: {trigger}",
+      "generic": "Nie udało się wysłać odrzucenia.",
+      "notFound": "Ten zwrot już nie istnieje. Odśwież stronę, aby zobaczyć aktualną listę.",
+      "unsupported": "Nie można poprosić kanału o odrzucenie tego zwrotu.",
+      "unsupportedWithReason": "Nie można poprosić kanału o odrzucenie tego zwrotu. {reason}"
+    },
+    "declineOutcome": {
+      "already-declined": {
+        "body": "Ten zwrot był już odrzucony, więc nic nie zostało wysłane ponownie.",
+        "title": "Już odrzucony"
+      },
+      "decline-sent": {
+        "body": "Kanał otrzymał prośbę i jeszcze nie zgłosił wyniku. OpenLinker zapisze jego decyzję, gdy nadejdzie - do tego czasu ten zwrot nie jest odrzucony.",
+        "title": "Wysłano odrzucenie"
+      },
+      "declined": {
+        "body": "Kanał zgłosił odrzucenie jako fakt, wraz z czasem, w którym nastąpiło.",
+        "title": "Kanał odrzucił ten zwrot"
+      },
+      "in-flight": {
+        "body": "Wcześniejsza prośba dotycząca tego zwrotu jest nadal otwarta, więc druga nie została wysłana.",
+        "title": "Odrzucenie jest już w toku"
+      },
+      "refused": {
+        "body": "OpenLinker zapytał, a kanał odmówił. Jego własne słowa:",
+        "title": "Kanał odmówił"
+      },
+      "unknown": {
+        "body": "Prośba została wysłana. Otwórz ten zwrot ponownie za chwilę, aby zobaczyć, co zapisał kanał.",
+        "title": "Kanał odpowiedział w sposób, którego OpenLinker nie rozpoznaje"
+      }
+    },
+    "header": {
+      "authorized": "Zatwierdzony",
+      "channelReference": "Identyfikator w kanale",
+      "closed": "Zamknięty",
+      "declined": "Odrzucony",
+      "lastUpdated": "Ostatnia aktualizacja",
+      "noChannelReference": "Brak - ten zwrot nie ma identyfikatora w kanale",
+      "openLinkerId": "ID w OpenLinker",
+      "opened": "Otwarty",
+      "order": "Zamówienie",
+      "origin": "Pochodzenie",
+      "originOperator": "Zapisany przez Ciebie",
+      "originSource": "Zgłoszony przez kanał",
+      "source": "Źródło"
+    },
+    "lines": {
+      "advisedOnly": "{advised} zgłoszone przez kanał",
+      "collapseLine": "Zamknij {name}",
+      "custodyLabel": "Towar",
+      "empty": "Kanał nie zgłosił żadnych pozycji dla tego zwrotu.",
+      "expandLine": "Zapisz, co się stało z {name}",
+      "itemLabel": "Produkt",
+      "moneyLabel": "Pieniądze",
+      "notTrackedYet": "Jeszcze nieśledzone",
+      "notTrackedYetHint": "OpenLinker nie śledzi jeszcze towaru ani zwrotu pieniędzy przy zwrocie. Zapisuje to, co zgłasza kanał, a w kolejnej wersji zacznie to się zmieniać.",
+      "noteLabel": "Notatka",
+      "orderLineLabel": "Pozycja zamówienia",
+      "quantityLabel": "Zgłoszono",
+      "reasonLabel": "Powód",
+      "receivedLabel": "Przyjęto",
+      "receivedOfAdvised": "Przyjęto {received} z {advised}",
+      "restockedLabel": "Przyjęto na stan",
+      "scrappedLabel": "Zutylizowano",
+      "sectionTitle": "Co wróciło",
+      "tableCaption": "Zwrócone pozycje w kolejności zgłoszonej przez kanał",
+      "unmatchedLine": "Nie udało się dopasować do pozycji",
+      "unmatchedLineHint": "OpenLinker nie mógł ustalić, do której pozycji zamówienia należy ten zwrócony produkt. Zwrot i tak jest zapisany w całości.",
+      "unnamedItem": "Produkt bez nazwy",
+      "unreadableLines": {
+        "few": "{n} pozycji tego zwrotu nie udało się odczytać i nie są wyświetlane.",
+        "many": "{n} pozycji tego zwrotu nie udało się odczytać i nie są wyświetlane.",
+        "one": "1 pozycji tego zwrotu nie udało się odczytać i nie jest wyświetlana.",
+        "other": "{n} pozycji tego zwrotu nie udało się odczytać i nie są wyświetlane."
+      }
+    },
+    "orphanBanner": {
+      "matchAction": "Powiąż z zamówieniem",
+      "matchActionReadOnly": "Nie masz uprawnień do wprowadzania zmian.",
+      "reattribution": "Jeśli zamówienie zostanie pobrane później, OpenLinker automatycznie powiąże z nim ten zwrot, a akcje poniżej staną się dostępne.",
+      "safeHere": "Zwrot jest tu bezpieczny - nic nie przepadnie.",
+      "title": "Ten zwrot nie jest powiązany z zamówieniem."
+    },
+    "page": {
+      "backToList": "Zwroty",
+      "errorTitle": "Nie udało się wczytać zwrotu",
+      "eyebrow": "Operacje",
+      "loading": "Wczytywanie zwrotu…",
+      "loadingMessage": "Pobieranie zwrotu i jego pozycji.",
+      "notFoundMessage": "Ten zwrot nie istnieje albo został usunięty.",
+      "notFoundTitle": "Nie znaleziono zwrotu",
+      "retry": "Spróbuj ponownie",
+      "titleFallback": "Zwrot",
+      "unreadableMessage": "OpenLinker otrzymał ten zwrot, ale nie mógł go odczytać. To niezgodność wersji, a nie problem z samym zwrotem.",
+      "unreadableTitle": "Nie udało się odczytać zwrotu"
+    },
+    "rail": {
+      "custodyLabel": "Paczka",
+      "inDoubtNote": "OpenLinker zlecił ten zwrot pieniędzy, ale nie mógł potwierdzić, co się stało. Nie zwracaj pieniędzy ponownie - najpierw sprawdź w źródle.",
+      "independenceNote": "Te dwa stany zmieniają się niezależnie. Marketplace może zwrócić pieniądze kupującemu przed dotarciem paczki, a paczka może dotrzeć bez należnego zwrotu pieniędzy.",
+      "moneyLabel": "Pieniądze",
+      "refundedBy": "Potwierdził {sourceName}",
+      "refundedByUnknownSource": "Potwierdzone przez źródło"
+    },
+    "sourcePanel": {
+      "explainer": "To własne wartości kanału, zapisane dosłownie. OpenLinker ich nie tłumaczy ani nie interpretuje.",
+      "sectionTitle": "Co podaje kanał",
+      "statusLabel": "Status"
+    }
+  },
+  "list": {
+    "empty": {
+      "noMatches": {
+        "message": "Poszerz lub wyczyść filtry, aby zobaczyć dotychczas zapisane zwroty.",
+        "title": "Brak zwrotów pasujących do filtrów"
+      },
+      "none": {
+        "message": "Tutaj pojawią się zwroty zgłoszone przez podłączone kanały.",
+        "title": "Nie zapisano jeszcze żadnych zwrotów"
+      },
+      "notConfigured": {
+        "message": "Żaden z podłączonych kanałów nie zgłasza jeszcze zwrotów do OpenLinker. To stan konfiguracji, a nie błąd - ze zwrotami, które już masz, wszystko w porządku.",
+        "title": "Pobieranie zwrotów nie jest skonfigurowane"
+      },
+      "pastEnd": {
+        "action": "Wróć do pierwszej strony",
+        "message": "Ta strona wykracza poza koniec wyników.",
+        "title": "Na tej stronie nic nie ma"
+      }
+    },
+    "error": {
+      "retry": "Ponów",
+      "title": "Nie udało się wczytać zwrotów",
+      "unreadableEnvelopeMessage": "Odpowiedź przyszła w formacie, którego ta wersja OpenLinker nie potrafi odczytać, więc nie są wyświetlane żadne zwroty. Nie oznacza to, że żadne nie zostały zapisane.",
+      "unreadableTitle": "Nie udało się odczytać zwrotów"
+    },
+    "filter": {
+      "all": "Wszystko",
+      "allSources": "Wszystkie źródła",
+      "attributed": "Powiązane z zamówieniem",
+      "bucketGroupLabel": "Filtruj według powiązania",
+      "clear": "Wyczyść filtry",
+      "orphan": "Niepowiązane",
+      "sourceLabel": "Filtruj według połączenia źródłowego",
+      "withCount": "{label} ({count})"
+    },
+    "orphan": {
+      "badge": "Niepowiązany",
+      "explanation": "Zwroty dla zamówień, których OpenLinker nigdy nie widział. Są przechowywane, ale nic z nich nie wynika - żadna zmiana stanu, zwrot pieniędzy ani faktura korygująca - dopóki nie zostaną powiązane z zamówieniem.",
+      "short": "Brak pasującego zamówienia"
+    },
+    "page": {
+      "description": "Zwroty zgłoszone przez podłączone kanały, od najnowszych. OpenLinker zapisuje to, co podaje kanał, i tego nie reinterpretuje.",
+      "eyebrow": "Operacje",
+      "recordActionReadOnly": "Nie masz uprawnień do zapisywania zwrotów.",
+      "tableCaption": "Zwroty, od najnowszych",
+      "title": "Zwroty"
+    },
+    "pagination": {
+      "next": "Dalej",
+      "previous": "Wstecz"
+    },
+    "range": "Wyświetlono {from}-{to} z {total}",
+    "rangeWithUnreadable": "{range} · {unreadable}",
+    "row": {
+      "declined": "Odrzucony",
+      "noExternalId": "Brak identyfikatora w kanale",
+      "noExternalIdTitle": "Brak identyfikatora w kanale: {id}",
+      "openedLabel": "Otwarty",
+      "orderLabel": "Zamówienie",
+      "orderSummary": "Zamówienie {id}",
+      "orphanSummary": "Niepowiązany · {externalOrderId}",
+      "recordedAtFallback": "Pierwszy zapis w OpenLinker",
+      "recordedByYou": "Zapisany przez Ciebie",
+      "returnLabel": "Zwrot",
+      "sourceLabel": "Źródło",
+      "sourceStatusLabel": "Status w źródle",
+      "stageLabel": "Etap"
+    },
+    "segment": {
+      "allReturnsLabel": "Wszystkie zwroty",
+      "stripLabel": "Filtruj zwroty według tego, co trzeba zrobić"
+    },
+    "sourceStatus": {
+      "attribution": "Zgłoszone dosłownie przez kanał źródłowy. OpenLinker nie interpretuje tej wartości.",
+      "notReported": "Nie zgłoszono",
+      "notReportedHint": "Kanał źródłowy nie zgłosił statusu tego zwrotu.",
+      "prefix": "Źródło",
+      "value": "{prefix}: {status}"
+    },
+    "unreadableRows": {
+      "few": "{n} zwrotów na tej stronie nie udało się odczytać i nie są wyświetlane.",
+      "many": "{n} zwrotów na tej stronie nie udało się odczytać i nie są wyświetlane.",
+      "one": "{n} zwrotu na tej stronie nie udało się odczytać i nie jest wyświetlany.",
+      "other": "{n} zwrotu na tej stronie nie udało się odczytać i nie są wyświetlane."
+    }
+  },
+  "matchReturnDialog": {
+    "alreadyAttributedAcknowledge": "Rozumiem",
+    "alreadyAttributedBody": "Ktoś inny - inny operator albo automatyczne sprawdzenie OpenLinker - już powiązał ten zwrot z zamówieniem. Nie ma tu nic więcej do zrobienia.",
+    "alreadyAttributedTitle": "Już powiązany",
+    "cancel": "Anuluj",
+    "confirm": "Potwierdź powiązanie",
+    "confirming": "Powiązywanie…",
+    "description": "Wybierz ostatnie zamówienie poniżej albo wpisz bezpośrednio jego wewnętrzny identyfikator, jeśli go znasz.",
+    "fieldDescription": "Musi to być zamówienie, które OpenLinker już ma zapisane.",
+    "fieldLabel": "Zamówienie",
+    "fieldPlaceholder": "ol_order_… lub wybierz z ostatnich zamówień",
+    "fieldRequired": "Wpisz identyfikator zamówienia albo wybierz je z listy.",
+    "genericError": "Nie udało się powiązać. Spróbuj ponownie.",
+    "readOnly": "Powiązanie zwrotu z zamówieniem jest wyłączone w wersji demo.",
+    "resolvedOrder": "Zwrot zostanie powiązany z zamówieniem {orderNumber}.",
+    "title": "Którego zamówienia dotyczy ten zwrot?",
+    "unknownOrder": "OpenLinker nie ma zamówienia pasującego do \"{typed}\" - sprawdź je ponownie albo wybierz z listy.",
+    "warning": "Tego nie można cofnąć - sprawdź zamówienie przed potwierdzeniem."
+  },
+  "money": {
+    "panel": {
+      "action": "Potwierdź zwrot środków",
+      "cancel": "Anuluj",
+      "executedOther": "Zapisane przez OpenLinker.",
+      "executedOutOfBand": "Zapisane przez Ciebie. OpenLinker nie przesłał pieniędzy.",
+      "none": "Dla tego zwrotu nie zapisano jeszcze zwrotu pieniędzy.",
+      "orphanBlocked": "Ten zwrot nie jest powiązany z zamówieniem, więc nie można jeszcze zapisać dla niego zwrotu pieniędzy.",
+      "recordNotWritten": "Zwrot pieniędzy został zapisany dla tego zwrotu, ale nie udało się zapisać powiązanego zwrotu pieniędzy w zamówieniu. Stan płatności jest zapisany - nie potwierdzaj ponownie.",
+      "recordedTitle": "Zwroty pieniędzy zapisane dla tego zwrotu",
+      "refundLine": "{reason} - {executedBy}",
+      "sectionTitle": "Pieniądze",
+      "success": "Zwrot pieniędzy zapisany."
+    },
+    "refundCeiling": {
+      "acknowledge": "Zapisz mimo to",
+      "acknowledgeHint": "Zaznacz, aby świadomie zapisać zwrot pieniędzy, a potem potwierdź ponownie.",
+      "figures": "Suma zamówienia {ceiling} {currency}, już zwrócono {alreadyRefunded} {currency}, żądano {requested} {currency}.",
+      "title": "Ten zwrot pieniędzy przekracza sumę zamówienia"
+    },
+    "refundError": {
+      "byReason": {
+        "already-attempted": "Dla każdej pozycji tego zwrotu zwrot pieniędzy został już zapisany lub zlecony. Kolejny zwrot pieniędzy oznaczałby podwójną płatność dla kupującego.",
+        "no-lines": "Ten zwrot nie ma pozycji, dla których można zwrócić pieniądze.",
+        "outstanding-in-doubt": "Poprzednia próba zwrotu pieniędzy trafiła do źródła, a OpenLinker nie dowiedział się, czym się zakończyła. Potwierdź, co faktycznie zrobiło źródło, zanim spróbujesz ponownie - nie ponawiaj w ciemno."
+      },
+      "conflict": "Ten zwrot zmienił się od wczytania strony. Odśwież i spróbuj ponownie.",
+      "forbidden": "Twoje konto nie może zapisywać zwrotów pieniędzy.",
+      "generic": "Nie udało się zapisać zwrotu pieniędzy. Nic nie zostało zapisane.",
+      "notFound": "Ten zwrot już nie istnieje. Odśwież stronę."
+    }
+  },
+  "orderReturnsPanel": {
+    "emptyMessage": "Tutaj pojawią się zwroty zgłoszone do tego zamówienia.",
+    "emptyTitle": "Brak zwrotów dla tego zamówienia",
+    "errorMessage": "To zamówienie może mieć zwroty - OpenLinker nie mógł ich teraz odczytać. Nic poniżej nie jest informacją o nich.",
+    "errorTitle": "Nie udało się wczytać zwrotów",
+    "loading": "Wczytywanie zwrotów…",
+    "loadingMessage": "Odczytywanie zwrotów zapisanych dla tego zamówienia.",
+    "noChannelReference": "Brak identyfikatora w kanale",
+    "retry": "Spróbuj ponownie",
+    "sectionTitle": "Zwroty",
+    "truncated": "Wyświetlono {shown} z {total} zwrotów tego zamówienia.",
+    "unreadableMessage": "Odpowiedź nie odpowiadała temu, czego oczekuje ta wersja OpenLinker, więc nie są wyświetlane żadne zwroty. Nie oznacza to, że zamówienie ich nie ma.",
+    "unreadableTitle": "Nie udało się odczytać zwrotów",
+    "unscopedMessage": "Ta strona nie mogła ustalić, dla którego zamówienia wyszukać zwroty, więc żadnych nie pobrano. Nie jest to informacja o tym, czy zamówienie je ma.",
+    "unscopedTitle": "Zwroty nie zostały wczytane"
+  },
+  "orphanWorklist": {
+    "approvalScanTruncated": "Wyświetlono 100 najnowszych powiązanych zwrotów - starszy zwrot czekający na zatwierdzenie może się tu nie pojawić.",
+    "approveReadOnly": "Nie masz uprawnień do zatwierdzania zwrotów.",
+    "errorMessage": "OpenLinker nie mógł teraz odczytać tej listy. Nie jest to informacja o niej.",
+    "errorTitle": "Nie udało się wczytać",
+    "loading": "Sprawdzanie…",
+    "loadingMessage": "Odczytywanie listy zwrotów.",
+    "needsApprovalAction": "Przejrzyj i zatwierdź",
+    "needsApprovalDescription": "Te zwroty zostały zapisane przez Ciebie. Zatwierdzenie to znacznik audytowy potwierdzający, że naprawdę się wydarzyły - nie wstrzymuje przyjęcia na stan ani zwrotu pieniędzy.",
+    "needsApprovalEmpty": "Nic nie czeka na Twoje zatwierdzenie.",
+    "needsApprovalTitle": "Czeka na Twoje zatwierdzenie",
+    "needsOrderAction": "Powiąż z zamówieniem",
+    "needsOrderDescription": "OpenLinker nie może przyjąć tych zwrotów na stan, zwrócić za nie pieniędzy ani skorygować faktury, dopóki nie zostaną powiązane z zamówieniem.",
+    "needsOrderEmpty": "Nic nie czeka na powiązanie z zamówieniem.",
+    "needsOrderTitle": "Wymaga zamówienia",
+    "needsOrderTruncated": "Wyświetlono {shown} z {total} - kolejne czekają na powiązanie.",
+    "retry": "Ponów próbę",
+    "sectionTitle": "Wymaga uwagi",
+    "unreadableMessage": "Odpowiedź nie odpowiadała temu, czego oczekuje ta wersja OpenLinker, więc nic tu nie jest wyświetlane. Nie oznacza to, że nic nie ma.",
+    "unreadableTitle": "Nie udało się odczytać"
+  },
+  "proposal": {
+    "ambiguousBanner": "OpenLinker nie mógł ustalić, z której pozycji faktury pochodzą niektóre zwrócone produkty. Wybierz pozycję dla każdego z nich przed potwierdzeniem - decyduje to, którą pozycję poprawi faktura korygująca.",
+    "breakdownAutomatic": "Skorygowane automatycznie",
+    "breakdownCantCredit": "Jeszcze nie do korekty",
+    "breakdownNeedsPick": "Wymaga Twojego wyboru",
+    "candidate": "{name} - {quantity} × {unitPrice} ({taxRate})",
+    "candidatesDiffer": "Te pozycje różnią się ceną lub stawką VAT, więc wybór zmienia kwotę korekty.",
+    "cleanBanner": "Każda zwrócona pozycja pasuje dokładnie do jednej pozycji faktury.",
+    "handoff": "Przejrzyj i wystaw korektę",
+    "handoffConnectionStale": "Połączenie, które wystawiło tę fakturę, jest wyłączone albo nie jest już skonfigurowane do fakturowania - nie można stąd teraz wystawić korekty.",
+    "handoffDialogTitle": "Wystaw korektę",
+    "handoffLoading": "Wczytywanie opcji korekty…",
+    "handoffUnavailable": "Dla tej faktury nie ma jeszcze stąd dostępnej ścieżki korekty.",
+    "headlineEstimateNote": "Oszacowane na podstawie cen pozycji z faktury - kwoty na wystawionym dokumencie pochodzą od Twojego dostawcy fakturowania.",
+    "headlineLabel": "Łączna korekta",
+    "irreversible": "Wystawionej i wysłanej faktury korygującej nie można wycofać. Sprawdź każdą pozycję przed potwierdzeniem.",
+    "lineFallback": "Pozycja {n}",
+    "noAutoIssue": "OpenLinker nigdy nie wystawia faktury korygującej samodzielnie. Dopasowuje zwrócone pozycje do faktury i pokazuje, co znalazł; wystawienie zawsze zależy od Ciebie.",
+    "noMatchReasons": {
+      "ambiguous-invoice-line": "Tego zwrotu nie udało się automatycznie dopasować do dokładnie jednej pozycji faktury. Sprawdź fakturę ręcznie przed korektą.",
+      "disposition-not-confirmed": "Rozdysponowanie tych sztuk nie zostało jeszcze potwierdzone - odrzucone przyjęcie na stan wciąż czeka na obsłużenie.",
+      "no-line-by-name": "Żadna pozycja faktury nie ma takiej nazwy.",
+      "no-line-name": "Zwrócona pozycja nie ma nazwy, po której można dopasować.",
+      "quantity-exceeds-invoiced": "Zwrócono więcej sztuk, niż zafakturowano."
+    },
+    "orphanAbsent": "Dla niepowiązanego zwrotu nie przygotowuje się faktury korygującej. Najpierw powiąż go z zamówieniem.",
+    "outcomeBadges": {
+      "no-disposed-lines": "Jeszcze nic do korekty",
+      "no-invoice": "Brak faktury",
+      "no-line-snapshot": "Pozycje niezapisane",
+      "nothing-correctable": "Nic do korekty"
+    },
+    "outcomes": {
+      "no-disposed-lines": "Żadne zwrócone sztuki nie zostały jeszcze rozdysponowane.",
+      "no-invoice": "Dla tego zamówienia nie wystawiono faktury, więc nie ma czego korygować.",
+      "no-line-snapshot": "Faktura została wystawiona, zanim OpenLinker zaczął zapisywać jej pozycje, więc nie można ich dopasować automatycznie.",
+      "nothing-correctable": "Nic w tym zwrocie nie podlega jeszcze korekcie."
+    },
+    "readOnly": "Twoje konto widzi tę fakturę korygującą, ale nie może jej zapisać.",
+    "recordAction": "Zapisz do przeglądu",
+    "recordBlockedAmbiguous": "Co najmniej jedna pozycja wymaga wyboru, zanim będzie można to zapisać.",
+    "recordError": "Nie udało się zapisać propozycji. Spróbuj ponownie.",
+    "recordPending": "Zapisywanie…",
+    "recordSuccess": "Zapisano do przeglądu.",
+    "recordWhatCameBack": "Zapisz, co wróciło",
+    "recordedBadge": "Zapisano do przeglądu",
+    "reviewCta": "Potwierdź te dopasowania",
+    "sectionTitle": "Propozycja faktury korygującej",
+    "statusAmbiguous": "Wymaga Twojego wyboru",
+    "statusMatched": "Dopasowano",
+    "statusNoMatch": "Nieuwzględnione",
+    "viewInvoice": "Zobacz fakturę"
+  },
+  "recordReturnDialog": {
+    "cancel": "Anuluj",
+    "confirm": "Zapisz zwrot",
+    "confirming": "Zapisywanie…",
+    "connectionFieldDescription": "OpenLinker na tej podstawie ustala, gdzie produkt jest faktycznie zmapowany.",
+    "connectionFieldLabel": "Z którego połączenia?",
+    "connectionLoadingPlaceholder": "Wczytywanie połączeń…",
+    "connectionMismatchWarning": "To zamówienie przyszło przez {orderConnectionName}, ale wybrano inne połączenie - upewnij się, że to celowe.",
+    "connectionPlaceholder": "Wybierz kanał, którym przyszedł ten zwrot",
+    "connectionsLoadFailed": "Nie udało się wczytać listy połączeń, więc tego zwrotu nie można teraz zapisać.",
+    "description": "Dla kanału, który w ogóle nie przekazuje zwrotów. Wszystkie pola są wymagane - OpenLinker nie otworzy zwrotu bez informacji o zamówieniu, kanale i liczbie sztuk.",
+    "genericError": "Nie udało się zapisać zwrotu. Spróbuj ponownie.",
+    "itemFieldLabel": "Co wróciło?",
+    "itemFieldPlaceholder": "Nazwa produktu",
+    "lineRemovedByEdit": "Ten produkt został usunięty z zamówienia przez edycję w OpenLinker (ilość 0), więc nie można go zwrócić.",
+    "note": "Każde zapisanie otwiera nowy zwrot. Jeśli nie masz pewności, czy ten zwrot jest już zapisany, najpierw sprawdź listę.",
+    "orderFieldDescription": "Wybierz ostatnie zamówienie poniżej albo wpisz bezpośrednio jego wewnętrzny identyfikator.",
+    "orderFieldLabel": "Zamówienie",
+    "orderFieldPlaceholder": "ol_order_… lub wybierz z ostatnich zamówień",
+    "orderNotOnConnection": "OpenLinker nie ma mapowania tego zamówienia w tym połączeniu - wybierz połączenie, przez które zamówienie faktycznie przyszło.",
+    "quantityFieldLabel": "Ilość",
+    "reasonFieldLabel": "Powód",
+    "reasonPlaceholder": "Wybierz powód",
+    "skuFieldDescription": "OpenLinker przyjmuje na stan według SKU. Bez niego sztuk z tego zwrotu nigdy nie da się dodać z powrotem na stan.",
+    "skuFieldLabel": "SKU",
+    "skuFieldPlaceholder": "SKU",
+    "title": "Zapisz zwrot ręcznie",
+    "triggerLabel": "+ Zapisz zwrot",
+    "unknownOrder": "OpenLinker nie ma zamówienia pasującego do \"{typed}\" - sprawdź je ponownie albo wybierz z listy.",
+    "validation": {
+      "connectionRequired": "Wybierz kanał, którym przyszedł ten zwrot.",
+      "itemNameRequired": "Wpisz, co wróciło.",
+      "itemNameTooLong": "Nazwa produktu może mieć najwyżej {max} znaków.",
+      "orderRequired": "Wpisz identyfikator zamówienia albo wybierz je z listy.",
+      "quantityMin": "Ilość musi wynosić co najmniej {min}.",
+      "quantityWhole": "Ilość musi być liczbą całkowitą.",
+      "reasonRequired": "Wybierz powód.",
+      "skuRequired": "Wpisz SKU produktu - OpenLinker potrzebuje go, aby później przyjąć towar na stan.",
+      "skuTooLong": "SKU może mieć najwyżej {max} znaków."
+    }
+  },
+  "restockAttested": {
+    "byOther": "Towar dodany na stan ręcznie przez innego operatora {date}.",
+    "byYou": "Towar dodany na stan ręcznie przez Ciebie {date}.",
+    "disclaimer": "OpenLinker nie zmienił Twojego stanu magazynowego.",
+    "toast": "Zapisano, że stan magazynowy został obsłużony ręcznie."
+  },
+  "restockBlocked": {
+    "attest": "Oznacz stan jako obsłużony ręcznie",
+    "badge": "Przyjęcie zablokowane",
+    "body": "OpenLinker zapisał rozdysponowanie, ale <b>{connection}</b> nie przyjmuje od OpenLinker korekt stanu, więc Twój stan magazynowy się nie zmienił.",
+    "bodyUnknownConnection": "OpenLinker zapisał rozdysponowanie, ale <b>system zarządzający Twoim stanem magazynowym</b> nie przyjmuje od OpenLinker korekt stanu, więc Twój stan magazynowy się nie zmienił.",
+    "openConnection": "Otwórz {connection}",
+    "openUnknownConnection": "Otwórz system zarządzający Twoim stanem magazynowym",
+    "remedy": "Dodaj samodzielnie {quantity} × {sku} w {connection}, a potem oznacz to jako obsłużone.",
+    "remedyUnknownConnection": "Dodaj samodzielnie {quantity} × {sku} w systemie zarządzającym Twoim stanem magazynowym, a potem oznacz to jako obsłużone.",
+    "remedyUnknownSku": "Dodaj samodzielnie {quantity} × zwrócone sztuki w {connection}, a potem oznacz to jako obsłużone.",
+    "remedyUnknownSkuAndConnection": "Dodaj samodzielnie {quantity} × zwrócone sztuki w systemie zarządzającym Twoim stanem magazynowym, a potem oznacz to jako obsłużone.",
+    "title": "Towar nie został dodany na stan.",
+    "why": "Dlaczego tak się stało?",
+    "whyCollapse": "Ukryj"
+  },
+  "restockBlockedExplainer": {
+    "body": "Przywrócenie towaru na stan wymaga zapisu w systemie, który zarządza Twoim stanem magazynowym. <b>{connection}</b> przyjmuje od OpenLinker odczyty stanu, ale nie korekty stanu, więc OpenLinker zapisał Twoją decyzję i na tym poprzestał, zamiast twierdzić, że zrobił coś, czego nie zrobił.",
+    "bodyUnknownConnection": "Przywrócenie towaru na stan wymaga zapisu w systemie, który zarządza Twoim stanem magazynowym. <b>System zarządzający Twoim stanem magazynowym</b> przyjmuje od OpenLinker odczyty stanu, ale nie korekty stanu, więc OpenLinker zapisał Twoją decyzję i na tym poprzestał, zamiast twierdzić, że zrobił coś, czego nie zrobił.",
+    "heading": "OpenLinker może publikować Twój stan magazynowy, ale nie zawsze może go zmienić.",
+    "reassurance": "Nic nie przepadło: sztuki nadal są liczone jako przyjęte w tym zwrocie, a ten komunikat pozostanie, dopóki nie potwierdzisz, że stan został obsłużony."
+  },
+  "returnLineStateChips": {
+    "custody": {
+      "advised": "Zgłoszone",
+      "disposed": "Obsłużone",
+      "in_transit": "W drodze",
+      "not_returned": "Nie dotarło",
+      "received": "Przyjęte"
+    },
+    "money": {
+      "denied": "Zwrot pieniędzy odrzucony",
+      "in_doubt": "Wynik zwrotu pieniędzy niepotwierdzony",
+      "not_refundable": "Bez zwrotu pieniędzy",
+      "pending": "Pieniądze niezwrócone",
+      "refunded": "Zwrócono",
+      "triggered": "Zwrot pieniędzy zlecony"
+    }
+  },
+  "returnRow": {
+    "counterLine": "Przyjęto {received} z {expected}",
+    "stage": {
+      "awaiting_parcel": "Czeka na paczkę",
+      "declined": "Odrzucony",
+      "disposed": "Rozdysponowany",
+      "not_returned": "Niezwrócony",
+      "partially_received": "Częściowo przyjęty",
+      "received_awaiting_disposition": "Przyjęty - czeka na rozdysponowanie"
+    }
+  },
+  "returnSegments": {
+    "label": {
+      "all_open": "Otwarte",
+      "money_pending": "Pieniądze w toku",
+      "needs_disposition": "Do rozdysponowania",
+      "needs_receiving": "Do przyjęcia",
+      "orphans": "Niepowiązane"
+    }
+  },
+  "timeline": {
+    "authorized": "Zwrot zatwierdzony",
+    "byAnotherOperator": "inny operator",
+    "byOpenLinker": "OpenLinker",
+    "byOperator": "operator",
+    "byUnknownConnection": "nierozpoznane źródło",
+    "byYou": "Ty",
+    "closed": "Zwrot zamknięty",
+    "declined": "Zwrot odrzucony",
+    "dispose": "Zwrócony towar rozdysponowany",
+    "disposedAs": "Rozdysponowanie: {disposition}",
+    "matched": "Powiązano z zamówieniem",
+    "not_returned": "Oznaczono jako niezwrócone",
+    "opened": "Zwrot otwarty",
+    "quantityUnits": {
+      "few": "{n} sztuki",
+      "many": "{n} sztuk",
+      "one": "{n} sztuka",
+      "other": "{n} sztuki"
+    },
+    "receive": "Zwrot przyjęty",
+    "refundAmount": "{amount} {currency}",
+    "refundExecuted": "Wykonane przez OpenLinker w źródle.",
+    "refundRecordedOnly": "Zapisane przez operatora - OpenLinker nie przesłał pieniędzy i nie twierdzi, że to zrobił.",
+    "refund_confirmed": "Zwrot pieniędzy potwierdzony",
+    "restockBlocked": "Zapis stanu został odrzucony - sztuki nie wróciły jeszcze na stan.",
+    "returnReference": "Zwrot {externalReturnId}",
+    "stock_attestation": "Stan obsłużony ręcznie",
+    "unknownKind": "Aktywność zwrotu: {kind}"
+  }
+}

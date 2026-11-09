@@ -20,7 +20,8 @@ import { useState, type ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useIsAdmin, useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
+import { useMessages } from '../../../shared/i18n';
 import { useDemoMode } from '../../system';
 import type { OrderEditsView } from '../api/order-edit.types';
 import type { ParsedOrderSnapshot } from '../api/order-snapshot.schema';
@@ -55,6 +56,7 @@ export function OrderEditAction({
   shipped = false,
   ...dialogProps
 }: OrderEditActionProps): ReactElement | null {
+  const copy = useMessages('orders').orderEditAction;
   const demoMode = useDemoMode();
   const write = useWriteAccess('orders:write', demoMode);
   const isAdmin = useIsAdmin();
@@ -65,17 +67,17 @@ export function OrderEditAction({
 
   return (
     <>
-      <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+      <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
         <Button
           tone="secondary"
           disabled={write.demoReadOnly || amending}
-          title={amending ? 'A change to this order is already waiting for the channel.' : undefined}
+          title={amending ? copy.amendingTitle : undefined}
           data-testid="order-edit-button"
           onClick={() => {
             setOpen(true);
           }}
         >
-          Edit order
+          {copy.button}
         </Button>
       </ReadOnlyLock>
       <OrderEditDialog

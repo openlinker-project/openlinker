@@ -1,4 +1,13 @@
 import { useState, type ReactElement } from 'react';
+import {
+  interpolate,
+  renderRich,
+  useFormat,
+  useMessages,
+  type Formatters,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 import type { UseFormReturn } from 'react-hook-form';
 import { useResponsibleProducersQuery } from '../../allegro';
 import { useUploadSafetyAttachmentMutation } from '../../allegro';
@@ -57,6 +66,7 @@ export function AllegroSellerDefaultsSection({
   onChange,
   disabled = false,
 }: AllegroSellerDefaultsSectionProps): ReactElement {
+  const copy = useMessages('connections').allegroSellerDefaultsSection;
   const producersQuery = useResponsibleProducersQuery(connectionId);
 
   // The default safety-information type is seeded by the parent's
@@ -70,26 +80,23 @@ export function AllegroSellerDefaultsSection({
   return (
     <section className="seller-defaults" aria-labelledby="seller-defaults-heading">
       <header className="seller-defaults__header">
-        <p className="seller-defaults__eyebrow">Allegro seller defaults</p>
+        <p className="seller-defaults__eyebrow">{copy.eyebrow}</p>
         <h3 id="seller-defaults-heading" className="seller-defaults__title">
-          Required by Allegro for offer creation
+          {copy.title}
         </h3>
         <p className="seller-defaults__description">
-          Allegro requires a ship-from location and EU GPSR data
-          (Reg. 2023/988, mandatory since 13 Dec 2024) on every offer. These
-          defaults are sent on the inline-product path and used as a fallback
-          when smart-linking to an existing product card misses.
+          {copy.description}
         </p>
       </header>
 
       <div className="seller-defaults__group">
-        <h4 className="seller-defaults__group-title">Ship-from location</h4>
+        <h4 className="seller-defaults__group-title">{copy.location.title}</h4>
         <p className="seller-defaults__group-description">
-          Used as <code className="mono-text">body.location</code> on every offer.
+          {copy.location.description}
         </p>
 
         <FormField
-          label="Voivodeship"
+          label={copy.location.province}
           name="sellerDefaults.location.province"
           error={errors?.location?.province?.message}
         >
@@ -110,7 +117,7 @@ export function AllegroSellerDefaultsSection({
             }}
             disabled={disabled}
           >
-            <option value="">Select voivodeship…</option>
+            <option value="">{copy.location.provincePlaceholder}</option>
             {POLISH_VOIVODESHIP_VALUES.map((value) => (
               <option key={value} value={value}>
                 {POLISH_VOIVODESHIP_LABELS[value]}
@@ -121,7 +128,7 @@ export function AllegroSellerDefaultsSection({
 
         <div className="seller-defaults__row">
           <FormField
-            label="City"
+            label={copy.location.city}
             name="sellerDefaults.location.city"
             error={errors?.location?.city?.message}
           >
@@ -141,10 +148,10 @@ export function AllegroSellerDefaultsSection({
           </FormField>
 
           <FormField
-            label="Post code"
+            label={copy.location.postCode}
             name="sellerDefaults.location.postCode"
             error={errors?.location?.postCode?.message}
-            description="Polish format NN-NNN."
+            description={copy.location.postCodeHint}
           >
             <Input
               {...form.register('sellerDefaults.location.postCode')}
@@ -167,9 +174,9 @@ export function AllegroSellerDefaultsSection({
       <div className="seller-defaults__group">
         <div className="seller-defaults__group-head">
           <div>
-            <h4 className="seller-defaults__group-title">Responsible producer</h4>
+            <h4 className="seller-defaults__group-title">{copy.producer.title}</h4>
             <p className="seller-defaults__group-description">
-              EU GPSR registry entry from your Allegro seller account.
+              {copy.producer.description}
             </p>
           </div>
           <Button
@@ -178,12 +185,12 @@ export function AllegroSellerDefaultsSection({
             onClick={() => void producersQuery.refetch()}
             disabled={disabled || producersQuery.isFetching}
           >
-            {producersQuery.isFetching ? 'Refreshing…' : 'Refresh'}
+            {producersQuery.isFetching ? copy.producer.refreshing : copy.producer.refresh}
           </Button>
         </div>
 
         {producersQuery.error ? (
-          <Alert tone="error" title="Could not load responsible producers">
+          <Alert tone="error" title={copy.producer.errorTitle}>
             {producersQuery.error.message}
           </Alert>
         ) : null}
@@ -191,14 +198,13 @@ export function AllegroSellerDefaultsSection({
         {!producersQuery.isLoading &&
         !producersQuery.error &&
         (producersQuery.data ?? []).length === 0 ? (
-          <Alert tone="info" title="No responsible-producer entries yet">
-            Create a Responsible Producer in your Allegro seller panel, then
-            click Refresh.
+          <Alert tone="info" title={copy.producer.emptyTitle}>
+            {copy.producer.emptyBody}
           </Alert>
         ) : null}
 
         <FormField
-          label="Responsible producer"
+          label={copy.producer.title}
           name="sellerDefaults.responsibleProducerId"
           error={errors?.responsibleProducerId?.message}
         >
@@ -221,10 +227,10 @@ export function AllegroSellerDefaultsSection({
           >
             <option value="">
               {producersQuery.isLoading
-                ? 'Loading…'
+                ? copy.producer.loading
                 : (producersQuery.data ?? []).length === 0
-                  ? 'No entries'
-                  : 'Select an entry…'}
+                  ? copy.producer.noEntries
+                  : copy.producer.selectEntry}
             </option>
             {(producersQuery.data ?? []).map((entry) => (
               <option key={entry.id} value={entry.id}>
@@ -236,17 +242,13 @@ export function AllegroSellerDefaultsSection({
       </div>
 
       <div className="seller-defaults__group">
-        <h4 className="seller-defaults__group-title">Safety information</h4>
+        <h4 className="seller-defaults__group-title">{copy.safety.title}</h4>
         <p className="seller-defaults__group-description">
-          Pick <strong>None applies</strong> for products without GPSR safety
-          obligations, provide free-text safety details, or upload PDFs as
-          attachments. Some categories (cameras, electronics with batteries,
-          etc.) require <strong>TEXT</strong> or <strong>ATTACHMENTS</strong>
-          and reject the &quot;None applies&quot; option.
+          {renderRich(copy.safety.description, { strong: (text) => <strong>{text}</strong> })}
         </p>
 
         <FormField
-          label="Type"
+          label={copy.safety.type}
           name="sellerDefaults.safetyInformation.type"
           error={errors?.safetyInformation?.type?.message}
         >
@@ -262,18 +264,18 @@ export function AllegroSellerDefaultsSection({
             }}
             disabled={disabled}
           >
-            <option value="NO_SAFETY_INFORMATION">None applies</option>
-            <option value="TEXT">Provide safety information (text)</option>
-            <option value="ATTACHMENTS">Provide safety information (file)</option>
+            <option value="NO_SAFETY_INFORMATION">{copy.safety.options.none}</option>
+            <option value="TEXT">{copy.safety.options.text}</option>
+            <option value="ATTACHMENTS">{copy.safety.options.attachments}</option>
           </Select>
         </FormField>
 
         {safetyType === 'TEXT' ? (
           <FormField
-            label="Safety information description"
+            label={copy.safety.descriptionLabel}
             name="sellerDefaults.safetyInformation.description"
             error={errors?.safetyInformation?.description?.message}
-            description="Free text shown to buyers. 1–5000 characters; no HTML, newlines allowed."
+            description={copy.safety.descriptionHint}
           >
             <Textarea
               {...form.register('sellerDefaults.safetyInformation.description')}
@@ -347,6 +349,8 @@ function SafetyAttachmentsField({
   disabled: boolean;
   errorMessage?: string;
 }): ReactElement {
+  const copy = useMessages('connections').allegroSellerDefaultsSection.attachments;
+  const format = useFormat();
   const uploadMutation = useUploadSafetyAttachmentMutation();
   const [inlineError, setInlineError] = useState<string | null>(null);
 
@@ -374,7 +378,7 @@ function SafetyAttachmentsField({
       });
       onChange();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Upload failed';
+      const message = error instanceof Error ? error.message : copy.uploadFailed;
       setInlineError(message);
     }
   };
@@ -403,13 +407,16 @@ function SafetyAttachmentsField({
   const errorAlertMessage = inlineError ?? (apiError ? apiError.message : null);
   const fileLabel =
     attachments.length === 0
-      ? 'Safety information attachments'
-      : `Safety information attachments (${attachments.length}/${MAX_SAFETY_ATTACHMENTS})`;
+      ? copy.label
+      : interpolate(copy.labelCount, {
+          count: attachments.length,
+          max: MAX_SAFETY_ATTACHMENTS,
+        });
 
   return (
     <>
       {attachments.length > 0 ? (
-        <ul className="file-upload__list" aria-label="Uploaded safety attachments">
+        <ul className="file-upload__list" aria-label={copy.listLabel}>
           {attachments.map((att, index) => (
             <li key={att.id} className="file-upload__list-item">
               <span
@@ -419,7 +426,7 @@ function SafetyAttachmentsField({
                 {att.fileName ?? att.id}
               </span>
               <span className="file-upload__list-item-meta">
-                {att.sizeBytes !== undefined ? formatSize(att.sizeBytes) : null}
+                {att.sizeBytes !== undefined ? formatSize(copy, format, att.sizeBytes) : null}
               </span>
               <Button
                 type="button"
@@ -427,9 +434,9 @@ function SafetyAttachmentsField({
                 className="button--sm file-upload__list-item-remove"
                 onClick={() => removeAt(index)}
                 disabled={disabled}
-                aria-label={`Remove ${att.fileName ?? att.id}`}
+                aria-label={interpolate(copy.removeNamed, { name: att.fileName ?? att.id })}
               >
-                Remove
+                {copy.remove}
               </Button>
             </li>
           ))}
@@ -440,7 +447,7 @@ function SafetyAttachmentsField({
         label={fileLabel}
         name="sellerDefaults.safetyInformation.attachments"
         error={errorMessage}
-        description="Upload one or more PDF files. Allegro stores the file; OL keeps only the returned id."
+        description={copy.hint}
       >
         <FileUpload
           accept="application/pdf"
@@ -450,12 +457,8 @@ function SafetyAttachmentsField({
           disabled={disabled || atCap}
           busy={uploadMutation.isPending}
           invalid={Boolean(errorMessage) || Boolean(errorAlertMessage)}
-          label={atCap ? `Maximum ${MAX_SAFETY_ATTACHMENTS} attachments reached` : undefined}
-          hint={
-            atCap
-              ? 'Remove one to add another.'
-              : undefined
-          }
+          label={atCap ? interpolate(copy.maxReached, { max: MAX_SAFETY_ATTACHMENTS }) : undefined}
+          hint={atCap ? copy.removeToAdd : undefined}
         />
       </FormField>
 
@@ -464,8 +467,17 @@ function SafetyAttachmentsField({
   );
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+function formatSize(
+  copy: ResolvedCopy<Messages['connections']>['allegroSellerDefaultsSection']['attachments'],
+  format: Formatters,
+  bytes: number,
+): string {
+  const oneDecimal = { minimumFractionDigits: 1, maximumFractionDigits: 1 };
+  if (bytes < 1024) return interpolate(copy.size.bytes, { n: format.number(bytes) });
+  if (bytes < 1024 * 1024) {
+    return interpolate(copy.size.kilobytes, { n: format.number(bytes / 1024, oneDecimal) });
+  }
+  return interpolate(copy.size.megabytes, {
+    n: format.number(bytes / (1024 * 1024), oneDecimal),
+  });
 }

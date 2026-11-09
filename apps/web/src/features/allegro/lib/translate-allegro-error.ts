@@ -26,6 +26,7 @@ import type {
   StructuredError,
   StructuredErrorTranslation,
 } from '../../../shared/ui/structured-error-list';
+import { getMessages, interpolate, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 
 type Translator = (error: StructuredError) => StructuredErrorTranslation;
 
@@ -40,54 +41,40 @@ type Translator = (error: StructuredError) => StructuredErrorTranslation;
  * are matched against the full string Allegro returns — we don't strip the
  * prefix because Allegro's own docs use the full identifier.
  */
+function copy(): ResolvedCopy<Messages['allegro-core']>['translateAllegroError'] {
+  return getMessages('allegro-core').translateAllegroError;
+}
+
 const TRANSLATIONS: Record<string, Translator> = {
   // #2255 / #2249. The adapter already puts the permitted values in the
-  // message, so this only frames whose entry is probably wrong: when Allegro
-  // says the category allows 23% and OpenLinker sent 5%, the shop record is the
-  // likelier mistake, and the shop is where a fix serves every channel.
+  // message, so this only frames whose entry is probably wrong: when the
+  // marketplace says the category allows 23% and OpenLinker sent 5%, the shop
+  // record is the likelier mistake, and the shop is where a fix serves every channel.
   TAX_RATE_NOT_ALLOWED_IN_CATEGORY: (error) => ({
-    message:
-      `${error.message ?? 'This Allegro category does not allow the tax rate on this product.'} ` +
-      'Correct the rate in the shop and re-sync the product; OpenLinker never publishes an offer ' +
-      'with the rate omitted.',
+    message: interpolate(copy().taxRateNotAllowed, {
+      reason: error.message ?? copy().taxRateNotAllowedDefault,
+    }),
   }),
-  TAX_RATE_MISSING: () => ({
-    message:
-      'No tax rate is known for this product, so the offer cannot state what tax it charges. ' +
-      "Add the rate in the shop's catalogue and re-sync the product.",
-  }),
+  TAX_RATE_MISSING: () => ({ message: copy().taxRateMissing }),
   TAX_RATE_NOT_EXPRESSIBLE: (error) => ({
-    message:
-      error.message ??
-      'This channel cannot express the tax code on this product. Set a rate the channel supports, ' +
-        'or list the product where the code is supported.',
+    message: error.message ?? copy().taxRateNotExpressible,
   }),
-  SAFETY_INFO_NOT_DEFINED: () => ({
-    message:
-      "Allegro rejected the safety information for this category. Verify the discriminator (`type`) and re-save the connection's seller defaults. If the issue persists, the category likely requires a TEXT discriminator with substantive content rather than NO_SAFETY_INFORMATION.",
-  }),
+  SAFETY_INFO_NOT_DEFINED: () => ({ message: copy().safetyInfoNotDefined }),
   NO_SAFETY_INFORMATION_OPTION_NOT_ALLOWED: () => ({
-    message:
-      "This category requires substantive safety information. Edit the connection and choose 'Provide safety information (text)' with category-relevant content (battery warnings, age restrictions, CE/RoHS, etc.).",
+    message: copy().noSafetyInformationNotAllowed,
   }),
   UnknownJSONProperty: (error) => ({
     message: error.field
-      ? `OpenLinker sent a field Allegro doesn't recognize at \`${error.field}\`. This is usually a regression in the OL Allegro adapter. Please file an issue with the offer id.`
-      : "OpenLinker sent a field Allegro doesn't recognize. This is usually a regression in the OL Allegro adapter. Please file an issue with the offer id.",
+      ? interpolate(copy().unknownFieldAt, { field: error.field })
+      : copy().unknownField,
   }),
-  RESPONSIBLE_PRODUCER_NOT_SPECIFIED: () => ({
-    message: "Configure a Responsible Producer entry in the connection's seller defaults.",
-  }),
+  RESPONSIBLE_PRODUCER_NOT_SPECIFIED: () => ({ message: copy().responsibleProducerMissing }),
   // #486: incident on content publish — Business Account missing after-sales
-  // policies. Full namespaced code as Allegro returns it.
+  // policies. Full namespaced code as the marketplace returns it.
   'ConstraintViolationException.AfterSalesServiceConditionsRequiredByCompany': () => ({
-    message:
-      "Set after-sales policies (returns, warranty, implied warranty) on the connection-edit page or directly on the offer. Allegro requires them for Business Accounts.",
+    message: copy().afterSalesRequired,
   }),
-  UnsupportedLanguageInAcceptLanguageHeader: () => ({
-    message:
-      'OpenLinker sent an unsupported Accept-Language header. This is a regression — please file an issue.',
-  }),
+  UnsupportedLanguageInAcceptLanguageHeader: () => ({ message: copy().unsupportedLanguage }),
 };
 
 export function translateAllegroError(
