@@ -27,7 +27,10 @@ import {
 import { Input } from '../../../shared/ui/input';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { BundleProductPicker, type BundleProductChoice } from '../../bundles';
-import { GiftDocumentFormField, type GiftDocumentFormChoice } from '../../gift-documents';
+import { GiftFormOptions, type GiftFormOptionValue } from '../../gift-documents/components/gift-form-options';
+import { isGiftUnitPriceAmount } from '../../gift-documents/lib/gift-lines';
+import { useDocumentProvidersQuery } from '../../gift-documents/hooks/use-gift-documents-queries';
+import { zeroAvailability } from '../../gift-documents/lib/zero-availability';
 import { useAddGiftMutation } from '../hooks/use-gift-rules';
 import { giftCostText, readGiftCost } from '../lib/gift-cost';
 import { readAddGiftRefusal } from '../lib/gift-refusal';
@@ -63,14 +66,24 @@ export function AddGiftDialog({
   const mutation = useAddGiftMutation(internalOrderId);
   const [choice, setChoice] = useState<BundleProductChoice | null>(null);
   const [quantity, setQuantity] = useState('1');
-  const [form, setForm] = useState<GiftDocumentFormChoice | ''>('');
+  const [form, setForm] = useState<GiftFormOptionValue>('inherit');
+  const [customAmount, setCustomAmount] = useState('');
+  const providers = useDocumentProvidersQuery();
+  const zero = zeroAvailability(providers.data?.providers);
+  const documentsCopy = useMessages('gift-documents');
+  const zeroReason = zero.available
+    ? null
+    : zero.refusingProviderName
+      ? interpolate(documentsCopy.connection.zeroNotOffered, { provider: zero.refusingProviderName })
+      : documentsCopy.connection.zeroNoProvider;
 
   const { reset } = mutation;
   useEffect(() => {
     if (open) {
       setChoice(null);
       setQuantity('1');
-      setForm('');
+      setForm('inherit');
+      setCustomAmount('');
       reset();
     }
   }, [open, reset]);
@@ -92,12 +105,19 @@ export function AddGiftDialog({
   const refusal = mutation.isError ? readAddGiftRefusal(mutation.error) : null;
   const unready = notReady || refusal?.kind === 'not-ready';
   const closed = parcelClosed || refusal?.kind === 'parcel-closed' || unready;
-  const canSubmit = !closed && choice !== null && validQuantity && !mutation.isPending;
+  const normalizedAmount = customAmount.trim().replace(',', '.');
+  const customOk = form !== 'custom-price' || isGiftUnitPriceAmount(normalizedAmount);
+  const canSubmit = !closed && choice !== null && validQuantity && customOk && !mutation.isPending;
 
   const submit = (): void => {
     if (choice === null || !validQuantity) return;
     mutation.mutate(
-      { variantId: choice.variantId, quantity: qty, ...(form !== '' && { documentForm: form }) },
+      {
+        variantId: choice.variantId,
+        quantity: qty,
+        ...(form !== 'inherit' && { documentForm: form }),
+        ...(form === 'custom-price' && { documentUnitPrice: normalizedAmount }),
+      },
       {
         onSuccess: (result) => {
           showToast({
@@ -180,15 +200,21 @@ export function AddGiftDialog({
               onChange={(event) => setQuantity(event.target.value)}
             />
 
-            <label className="form-field__label" htmlFor="order-gift-dialog-doc-form">
-              {copy.addDialog.onDocument}
-            </label>
-            <GiftDocumentFormField
-              id="order-gift-dialog-doc-form"
-              data-testid="order-gift-dialog-doc-form"
+            <span className="form-field__label">{copy.addDialog.onDocument}</span>
+            <GiftFormOptions
+              name="order-gift-dialog-doc-form"
               value={form}
               disabled={closed}
+              inheritedForm="technical-cent"
+              zeroAvailable={zero.available}
+              zeroReason={zeroReason}
               onChange={setForm}
+              customPrice={{
+                amount: customAmount,
+                onAmountChange: setCustomAmount,
+                currency: currency ?? '',
+                label: copy.addDialog.customPriceLabel,
+              }}
             />
 
             <p className="text-muted" data-testid="order-gift-dialog-reason">

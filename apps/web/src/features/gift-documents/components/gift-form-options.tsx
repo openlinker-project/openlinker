@@ -12,7 +12,8 @@
 import type { ReactElement } from 'react';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import { GiftFormPickerValues, type GiftDocumentFormChoice } from '../lib/gift-lines';
+import { GiftDocumentFormChoiceValues, GiftFormPickerValues, type GiftDocumentFormChoice } from '../lib/gift-lines';
+import { Input } from '../../../shared/ui/input';
 import { useGiftFormLabels } from '../lib/use-gift-form-labels';
 
 export type GiftFormOptionValue = GiftDocumentFormChoice | 'inherit';
@@ -41,6 +42,16 @@ interface GiftFormOptionsProps {
   /** Why it cannot, when it cannot. */
   zeroReason: string | null;
   disabled?: boolean;
+  /**
+   * Also offer "own price" with an amount input (#3935). Off for the settings
+   * pickers, which have no amount to attach; on for a single gift added by hand.
+   */
+  customPrice?: {
+    amount: string;
+    onAmountChange: (amount: string) => void;
+    currency: string;
+    label: string;
+  };
 }
 
 export function GiftFormOptions({
@@ -52,6 +63,7 @@ export function GiftFormOptions({
   zeroAvailable,
   zeroReason,
   disabled = false,
+  customPrice,
 }: GiftFormOptionsProps): ReactElement {
   const copy = useMessages('gift-documents');
   const labels = useGiftFormLabels();
@@ -93,7 +105,7 @@ export function GiftFormOptions({
           <p className="gift-form-option__desc">{copy.connection.inheritDescription}</p>
         </li>
       ) : null}
-      {GiftFormPickerValues.map((form) => {
+      {(customPrice ? GiftDocumentFormChoiceValues : GiftFormPickerValues).map((form) => {
         const unavailable = form === 'show-zero' && !zeroAvailable;
         const isDefault = !withInherit && form === 'technical-cent';
         return (
@@ -133,6 +145,21 @@ export function GiftFormOptions({
             <p className="gift-form-option__desc">
               {unavailable && zeroReason ? zeroReason : labels.description(form)}
             </p>
+            {form === 'custom-price' && customPrice && value === 'custom-price' ? (
+              <label className="gift-form-option__amount">
+                <span className="form-field__label">{customPrice.label}</span>
+                <span className="gift-form-option__amount-input">
+                  <Input
+                    inputMode="decimal"
+                    value={customPrice.amount}
+                    disabled={disabled}
+                    data-testid="doc-gift-set-custom-price-amount"
+                    onChange={(event) => customPrice.onAmountChange(event.target.value)}
+                  />
+                  <span className="text-muted">{customPrice.currency}</span>
+                </span>
+              </label>
+            ) : null}
           </li>
         );
       })}

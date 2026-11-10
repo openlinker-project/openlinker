@@ -6,6 +6,7 @@
     "changeProduct": "Zmień",
     "closedBody": "Gratis można dodać, dopóki paczka nie jest zamknięta. Najpierw cofnij oznaczenie jako spakowane albo dodaj gratis do następnego zamówienia.",
     "closedTitle": "Paczka jest już zamknięta",
+    "customPriceLabel": "Cena gratisu na dokumencie",
     "description": "Gratis trafia tylko do tego zamówienia. Stan jest rezerwowany jak przy zwykłej pozycji.",
     "documentTitle": "Dokument sprzedaży jest już wystawiony",
     "documentWarning": "Dokument nie pokaże tego gratisu. Gratis i tak trafi do zamówienia.",

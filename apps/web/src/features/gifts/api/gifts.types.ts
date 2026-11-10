@@ -98,6 +98,8 @@ export interface AddGiftInput {
   variantId: string;
   quantity: number;
   documentForm?: GiftDocumentFormChoice;
+  /** Gross unit price per gift unit; required with `custom-price`. */
+  documentUnitPrice?: string;
   dryRun?: boolean;
 }
 

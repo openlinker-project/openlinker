@@ -6,6 +6,7 @@
     "changeProduct": "Change",
     "closedBody": "A gift can be added until the parcel is closed. Mark the order as not packed first, or add the gift to the next order.",
     "closedTitle": "The parcel is already closed",
+    "customPriceLabel": "Gift price on the document",
     "description": "The gift is added to this order only. It is held in stock like any other line.",
     "documentTitle": "A sales document is already issued",
     "documentWarning": "The document will not show this gift. The gift is still added to the order.",
