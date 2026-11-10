@@ -933,6 +933,7 @@ export function createMockApiClient(
       ...overrides.promotions,
     } as ApiClient['promotions'],
     bundles: {
+      findMany: vi.fn().mockResolvedValue([]),
       get: vi.fn(),
       history: vi.fn().mockResolvedValue([]),
       usedIn: vi.fn().mockResolvedValue([]),

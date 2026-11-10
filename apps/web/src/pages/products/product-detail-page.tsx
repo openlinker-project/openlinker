@@ -26,7 +26,7 @@ import { ApiError } from '../../shared/api/api-error';
 import { useConnectionsQuery, type Connection } from '../../features/connections';
 import { usePermission, useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
-import { useBundleQuery } from '../../features/bundles/hooks/use-bundle-queries';
+import { useBundleProbeQuery } from '../../features/bundles/hooks/use-bundle-queries';
 import { BundleGuide, BundleGuideButton } from '../../features/bundles/components/bundle-guide';
 import { useBundleUsedInManyQuery } from '../../features/bundles/hooks/use-bundle-queries';
 import { BundleProductView } from '../../features/bundles/components/bundle-product-view';
@@ -112,11 +112,12 @@ export function ProductDetailPage(): ReactElement {
   const canAdjustStock = usePermission('inventory:write');
   const bundleCopy = useMessages('bundles');
   const bundleWrite = useWriteAccess('bundles:write', demoMode);
-  // A 404 here means "not a bundle" (an answer, not a failure). Only the first
-  // variant is asked, so a multi-variant product whose later variant is the
-  // bundle still offers the action.
-  const bundleProbe = useBundleQuery(query.data?.variants?.[0]?.id);
-  const isBundle = bundleProbe.isSuccess;
+  // A lookup that answers an empty list for a plain product, so an ordinary
+  // product page never prints a 404. Only the first variant is asked, so a
+  // multi-variant product whose later variant is the bundle still offers the action.
+  const firstVariantId = query.data?.variants?.[0]?.id;
+  const bundleProbe = useBundleProbeQuery(firstVariantId ? [firstVariantId] : []);
+  const isBundle = (bundleProbe.data?.length ?? 0) > 0;
   const usedInVariantIds = (query.data?.variants ?? []).map((variant) => variant.id);
   const usedIn = useBundleUsedInManyQuery(isBundle ? [] : usedInVariantIds);
   const bundleCount = new Set((usedIn.data ?? []).map((entry) => entry.bundleVariantId)).size;

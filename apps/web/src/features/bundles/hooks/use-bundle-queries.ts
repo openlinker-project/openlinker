@@ -5,7 +5,7 @@
  */
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { bundlesQueryKeys } from '../api/bundles.query-keys';
-import type { BundleCreationTarget, BundleDetail, BundleHistoryEntry, BundleUsedIn } from '../api/bundles.types';
+import type { BundleCreationTarget, BundleDefinition, BundleDetail, BundleHistoryEntry, BundleUsedIn } from '../api/bundles.types';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import type { ApiError } from '../../../shared/api/api-error';
 
@@ -18,6 +18,24 @@ export function useBundleQuery(
     queryFn: () => apiClient.bundles.get(variantId ?? ''),
     enabled: Boolean(variantId),
     retry: false,
+  });
+}
+
+/**
+ * Whether any of these variants is a bundle, asked as a lookup that answers an
+ * empty list for a plain product: `GET :variantId` answers 404 there, which the
+ * browser prints as a red error on every ordinary product page.
+ */
+export function useBundleProbeQuery(
+  variantIds: readonly string[]
+): UseQueryResult<BundleDefinition[], ApiError> {
+  const apiClient = useApiClient();
+  return useQuery<BundleDefinition[], ApiError>({
+    queryKey: bundlesQueryKeys.probe(variantIds),
+    queryFn: () => apiClient.bundles.findMany(variantIds),
+    enabled: variantIds.length > 0,
+    retry: false,
+    staleTime: 30_000,
   });
 }
 

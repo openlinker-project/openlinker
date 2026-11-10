@@ -21,6 +21,8 @@ interface ApiRequest {
 }
 
 export interface BundlesApi {
+  /** The definitions among these variants; empty means none is a bundle (no 404 probe). */
+  findMany: (variantIds: readonly string[]) => Promise<BundleDefinition[]>;
   get: (variantId: string) => Promise<BundleDetail>;
   history: (variantId: string) => Promise<BundleHistoryEntry[]>;
   usedIn: (variantId: string) => Promise<BundleUsedIn[]>;
@@ -40,6 +42,8 @@ export interface BundlesApi {
 
 export function createBundlesApi(request: ApiRequest): BundlesApi {
   return {
+    findMany: (variantIds) =>
+      request<BundleDefinition[]>(`/bundle-definitions?variantIds=${encodeURIComponent(variantIds.join(','))}`),
     get: (variantId) => request<BundleDetail>(`/bundle-definitions/${encodeURIComponent(variantId)}`),
     history: (variantId) =>
       request<BundleHistoryEntry[]>(`/bundle-definitions/${encodeURIComponent(variantId)}/history`),

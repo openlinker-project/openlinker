@@ -306,7 +306,7 @@ describe('ProductDetailPage', () => {
   it('should offer Make a bundle from this, linking with the product as component', async () => {
     const mockApi = createMockApiClient({
       products: { getById: vi.fn().mockResolvedValue(sampleProduct) },
-      bundles: { get: vi.fn().mockRejectedValue(new Error('not a bundle')) },
+      bundles: { findMany: vi.fn().mockResolvedValue([]), get: vi.fn() },
     });
     renderDetailPage(mockApi, true);
     const action = await screen.findByTestId('product-detail-make-bundle');
@@ -314,17 +314,20 @@ describe('ProductDetailPage', () => {
       'href',
       '/products/bundles/new?componentProduct=ol_product_abc123',
     );
+    // A plain product is asked through the lookup that answers an empty list; the 404 probe is never fired.
+    expect(mockApi.bundles.findMany).toHaveBeenCalled();
+    expect(mockApi.bundles.get).not.toHaveBeenCalled();
   });
 
   it('should not offer Make a bundle when the product is itself a bundle', async () => {
     const mockApi = createMockApiClient({
       products: { getById: vi.fn().mockResolvedValue(sampleProduct) },
-      bundles: { get: vi.fn().mockResolvedValue({ variantId: 'v', version: 1, components: [], componentAvailability: [] }) },
+      bundles: { findMany: vi.fn().mockResolvedValue([{ variantId: 'v', version: 1, components: [] }]), get: vi.fn() },
     });
     renderDetailPage(mockApi, true);
     await screen.findAllByText('Test Product');
     await waitFor(() => {
-      expect(mockApi.bundles.get).toHaveBeenCalled();
+      expect(mockApi.bundles.findMany).toHaveBeenCalled();
     });
     await waitFor(() => {
       expect(screen.queryByTestId('product-detail-make-bundle')).toBeNull();
