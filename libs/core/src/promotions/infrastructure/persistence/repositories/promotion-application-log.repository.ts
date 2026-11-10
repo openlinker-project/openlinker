@@ -62,6 +62,29 @@ export class PromotionApplicationLogRepository implements PromotionApplicationLo
     return row === null ? null : this.toDomain(row);
   }
 
+  async findOrderIdsNeedingAttention(limit: number): Promise<string[]> {
+    const rows: { internalOrderId: string }[] = await this.orm.query(
+      `SELECT DISTINCT latest."internalOrderId"
+         FROM (
+           SELECT DISTINCT ON ("internalOrderId", "promotionId")
+                  "internalOrderId", outcome, reason, "dismissedAt"
+             FROM promotion_applications
+            ORDER BY "internalOrderId", "promotionId", "createdAt" DESC
+         ) latest
+        WHERE latest.outcome <> 'applied'
+          AND latest."dismissedAt" IS NULL
+          AND (latest.outcome = 'failed'
+               OR latest.reason IS NULL
+               OR latest.reason NOT IN (
+                 'customer-limit-reached', 'customer-unknown',
+                 'below-per-unit-threshold', 'superseded-by-earlier-rule',
+                 'gift-already-in-order'))
+        LIMIT $1`,
+      [limit],
+    );
+    return rows.map((row) => row.internalOrderId);
+  }
+
   async dismiss(id: string, userId: string, at: Date): Promise<PromotionApplicationRecord | null> {
     await this.orm.update({ id }, { dismissedAt: at, dismissedByUserId: userId });
     return this.findById(id);

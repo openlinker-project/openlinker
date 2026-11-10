@@ -63,6 +63,7 @@ export const benchParcelLineSchema = z.object({
     .object({ lineId: z.string(), name: nullableString, giftSlot: z.boolean().optional() })
     .nullish()
     .transform((value) => value ?? null),
+  gift: z.boolean().optional().default(false),
   productVariantId: z.string(),
   name: nullableString,
   sku: nullableString,

@@ -655,6 +655,28 @@ export class OrderRecordRepository
       );
     }
 
+    if (filters.giftNotAdded !== undefined) {
+      const ids = filters.giftNotAddedOrderIds ?? [];
+      if (ids.length > 0) {
+        qb.andWhere(
+          filters.giftNotAdded
+            ? 'rec."internalOrderId" IN (:...giftNotAddedOrderIds)'
+            : 'rec."internalOrderId" NOT IN (:...giftNotAddedOrderIds)',
+          { giftNotAddedOrderIds: ids }
+        );
+      } else if (filters.giftNotAdded) {
+        qb.andWhere('1 = 0');
+      }
+    }
+
+    if (filters.giftShopRejected !== undefined) {
+      qb.andWhere(
+        filters.giftShopRejected
+          ? OrderRecordRepository.GIFT_SHOP_REJECTED
+          : `NOT (${OrderRecordRepository.GIFT_SHOP_REJECTED})`
+      );
+    }
+
     if (filters.omsAttention !== undefined) {
       // #2353 - the OMS inert-state axis, ANDed with `health` exactly like
       // `salesDocumentBlocked` and `taxRateConflict`. It is NOT the
@@ -955,6 +977,9 @@ export class OrderRecordRepository
     const openReturnIds = filters.openReturnOrderIds ?? [];
     const hasOpenReturn =
       openReturnIds.length > 0 ? `rec."internalOrderId" IN (:...summaryOpenReturnIds)` : 'FALSE';
+    const giftNotAddedIds = filters.giftNotAddedOrderIds ?? [];
+    const giftNotAdded =
+      giftNotAddedIds.length > 0 ? `rec."internalOrderId" IN (:...summaryGiftNotAddedIds)` : 'FALSE';
     const notShipped = OrderRecordRepository.NOT_SHIPPED;
     // SLA overdue OR at risk == not shipped with a deadline at or before the
     // at-risk cutoff - the union of `applySlaFilter`'s two arms.
@@ -982,6 +1007,8 @@ export class OrderRecordRepository
       .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_ACTIONABLE_BUYER_NOTE})`, 'has_buyer_note')
       .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_GIFT})`, 'with_gift')
       .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_BUNDLE})`, 'with_bundle')
+      .addSelect(`COUNT(*) FILTER (WHERE ${giftNotAdded})`, 'gift_not_added')
+      .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.GIFT_SHOP_REJECTED})`, 'gift_shop_rejected')
       .addSelect(`COUNT(*) FILTER (WHERE ${dueSoon})`, 'due_within_24h')
       .addSelect(`COUNT(*) FILTER (WHERE (${slaLate}) OR (${dueSoon}))`, 'attention_late_to_ship')
       .addSelect(`COUNT(*) FILTER (WHERE ${stuck})`, 'attention_stuck')
@@ -990,6 +1017,7 @@ export class OrderRecordRepository
         summaryDueBefore: new Date(now.getTime() + DUE_WITHIN_WINDOW_MS),
         summarySlaCutoff: new Date(now.getTime() + SLA_AT_RISK_WINDOW_MS),
         ...(openReturnIds.length > 0 ? { summaryOpenReturnIds: openReturnIds } : {}),
+        ...(giftNotAddedIds.length > 0 ? { summaryGiftNotAddedIds: giftNotAddedIds } : {}),
       });
 
     OrderRecordRepository.applySummaryScope(qb, filters);
@@ -1026,6 +1054,8 @@ export class OrderRecordRepository
         has_buyer_note: string;
         with_gift: string;
         with_bundle: string;
+        gift_not_added: string;
+        gift_shop_rejected: string;
         due_within_24h: string;
         attention_late_to_ship: string;
         attention_stuck: string;
@@ -1059,6 +1089,8 @@ export class OrderRecordRepository
       hasBuyerNote: Number(raw?.has_buyer_note ?? 0),
       withGift: Number(raw?.with_gift ?? 0),
       withBundle: Number(raw?.with_bundle ?? 0),
+      giftNotAdded: Number(raw?.gift_not_added ?? 0),
+      giftShopRejected: Number(raw?.gift_shop_rejected ?? 0),
       dueWithin24h: Number(raw?.due_within_24h ?? 0),
       bySource,
       attention: {
@@ -2140,6 +2172,10 @@ export class OrderRecordRepository
    * into `lineExpansion` at ingestion. Same signal the gift report's bundle scope reads.
    */
   private static readonly HAS_BUNDLE = `rec."lineExpansion" IS NOT NULL`;
+
+  /** "Shop rejected the gift" (#3935): a gift order whose destination sync failed. */
+  private static readonly GIFT_SHOP_REJECTED =
+    `(${OrderRecordRepository.HAS_GIFT} AND rec."syncStatus" @> '[{"status":"failed"}]'::jsonb)`;
 
   private static readonly IS_SALES_DOCUMENT_BLOCKED =
     OrderRecordRepository.buildSalesDocumentBlockedPredicate();

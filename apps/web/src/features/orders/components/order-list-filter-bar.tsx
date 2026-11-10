@@ -455,6 +455,22 @@ export function OrderListFilterBar({
           }}
         />
         <FilterCheck
+          label={giftCopy.filter.notAddedCheck}
+          checked={state.giftNotAdded}
+          count={summary?.giftNotAdded}
+          onChange={() => {
+            filtersApi.toggle('giftNotAdded');
+          }}
+        />
+        <FilterCheck
+          label={giftCopy.filter.shopRejectedCheck}
+          checked={state.giftShopRejected}
+          count={summary?.giftShopRejected}
+          onChange={() => {
+            filtersApi.toggle('giftShopRejected');
+          }}
+        />
+        <FilterCheck
           label={COPY.checks.buyerNote}
           checked={state.hasBuyerNote}
           count={summary?.hasBuyerNote}

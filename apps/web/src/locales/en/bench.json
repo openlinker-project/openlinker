@@ -28,6 +28,10 @@
     },
     "warning": "You'll be signed out in {seconds}s - tap anywhere to stay signed in."
   },
+  "page": {
+    "lede": "Parcels directed to this bench, most urgent first. Bundles are split into the units you really put in the box.",
+    "title": "Packing"
+  },
   "parcel": {
     "activity": {
       "heading": "Recent activity",
@@ -528,6 +532,10 @@
       "summary": {
         "one": "Parcel {parcelIndex} of {parcelTotal} · {n} item, {unitsToVerify} units to scan",
         "other": "Parcel {parcelIndex} of {parcelTotal} · {n} items, {unitsToVerify} units to scan"
+      },
+      "withGift": {
+        "one": "+{n} with a gift",
+        "other": "+{n} with a gift"
       }
     },
     "scan": {

@@ -132,6 +132,18 @@ export class BenchParcelNotAtThisBenchError extends Error {
  * lines for the bundle's NAME only (what the buyer saw); the grouping itself
  * comes from the order's frozen expansion.
  */
+/**
+ * Commercial line ids that are a gift by themselves (#3935): a promotion's,
+ * the channel's or an operator's gift line, not a component of a bundle. No price
+ * or cost is read: the bench shows the marker only.
+ */
+function standaloneGiftLineIds(order: OrderRecord | undefined): ReadonlySet<string> {
+  if (order === undefined) {
+    return new Set();
+  }
+  return new Set(order.orderItems.filter((item) => item.gift !== undefined).map((item) => item.id));
+}
+
 function bundleOf(
   order: OrderRecord | undefined
 ): Map<string, { lineId: string; name: string | null; giftSlot: boolean }> {
@@ -978,7 +990,9 @@ export class BenchParcelService implements IBenchParcelService {
     state: ParcelVerificationState,
     orderRead: Promise<OrderRecord | undefined>
   ): Promise<BenchParcelLineView[]> {
-    const bundleByComponentLine = bundleOf(await orderRead);
+    const orderForLines = await orderRead;
+    const bundleByComponentLine = bundleOf(orderForLines);
+    const giftLineIds = standaloneGiftLineIds(orderForLines);
     const variantIds = [...new Set(work.lines.map((line) => line.productVariantId))];
     const variants =
       variantIds.length === 0 ? [] : await this.products.getVariantsByIds(variantIds);
@@ -1002,6 +1016,7 @@ export class BenchParcelService implements IBenchParcelService {
       return {
         workLineId: line.id,
         bundle: bundleByComponentLine.get(line.orderLineId) ?? null,
+        gift: giftLineIds.has(line.orderLineId),
         productVariantId: line.productVariantId,
         // `null`, never a placeholder that reads like a name: a variant absent
         // from the catalogue is a fact the packer can act on (match the codes),

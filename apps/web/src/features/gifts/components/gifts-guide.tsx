@@ -1,93 +1,46 @@
 /**
  * GiftsGuide (#3935)
  *
- * The "How gifts and bundles work" button and its drawer, for the orders list
- * and the order detail. One component, two variants: the words differ, the
- * mechanics (button, drawer, `?` key) are the shared GuideDrawer's.
+ * The "How gifts and bundles work" button and its drawer, one component for the
+ * six surfaces that carry gifts or bundles (orders list and detail, return
+ * detail, pack bench, stock movements). The words are per variant in the `gifts`
+ * namespace; the mechanics (button, drawer, `?` key, deep link) are the shared
+ * GuideDrawer's.
  *
  * @module apps/web/src/features/gifts/components
  */
 import { useCallback, useState, type ReactElement } from 'react';
 import { useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
-import { GuideDrawer, useGuideShortcut, type GuideSection } from '../../../shared/ui/guide-drawer';
+import { GuideDrawer, useGuideShortcut } from '../../../shared/ui/guide-drawer';
+
+export type GiftsGuideVariant = 'list' | 'detail' | 'returns' | 'bench' | 'stock';
 
 export interface GiftsGuideProps {
-  variant: 'list' | 'detail';
+  variant: GiftsGuideVariant;
+  /** Registers the `?` shortcut. Off where the page already binds `?` itself. */
+  shortcut?: boolean;
+  className?: string;
 }
 
-export function GiftsGuide({ variant }: GiftsGuideProps): ReactElement {
+export function GiftsGuide({ variant, shortcut = true, className }: GiftsGuideProps): ReactElement {
   const copy = useMessages('gifts').guide;
+  const text = copy.variants[variant];
   const [open, setOpen] = useState(false);
   const openGuide = useCallback(() => {
     setOpen(true);
   }, []);
-  useGuideShortcut(openGuide);
-
-  const sections: readonly GuideSection[] =
-    variant === 'list'
-      ? [
-          {
-            id: 'marks',
-            title: copy.list.s1.title,
-            tag: copy.list.s1.tag,
-            body: (
-              <>
-                <p>{copy.list.s1.gift}</p>
-                <p>{copy.list.s1.bundle}</p>
-                <p>{copy.list.s1.missing}</p>
-              </>
-            ),
-          },
-          {
-            id: 'filters',
-            title: copy.list.s2.title,
-            tag: copy.list.s2.tag,
-            body: (
-              <>
-                <p>{copy.list.s2.quick}</p>
-                <p>{copy.list.s2.attention}</p>
-              </>
-            ),
-          },
-        ]
-      : [
-          {
-            id: 'lines',
-            title: copy.detail.s1.title,
-            tag: copy.detail.s1.tag,
-            body: (
-              <>
-                <p>{copy.detail.s1.bundle}</p>
-                <p>{copy.detail.s1.gift}</p>
-                <p>{copy.detail.s1.source}</p>
-              </>
-            ),
-          },
-          {
-            id: 'missing',
-            title: copy.detail.s2.title,
-            tag: copy.detail.s2.tag,
-            body: (
-              <>
-                <p>{copy.detail.s2.skip}</p>
-                <p>{copy.detail.s2.manual}</p>
-              </>
-            ),
-          },
-          {
-            id: 'document',
-            title: copy.detail.s3.title,
-            tag: copy.detail.s3.tag,
-            body: <p>{copy.detail.s3.body}</p>,
-          },
-        ];
-  const text = variant === 'list' ? copy.list : copy.detail;
+  useGuideShortcut(shortcut ? openGuide : noop);
 
   return (
     <>
-      <Button tone="secondary" className="button--sm" onClick={openGuide} data-testid="gifts-guide-open">
-        {copy.button}
+      <Button
+        tone="secondary"
+        className={['button--sm', className].filter(Boolean).join(' ')}
+        onClick={openGuide}
+        data-testid="gifts-guide-open"
+      >
+        {text.button}
         <span className="button__shortcut" aria-hidden="true">
           ?
         </span>
@@ -98,9 +51,26 @@ export function GiftsGuide({ variant }: GiftsGuideProps): ReactElement {
         kicker={copy.kicker}
         title={text.title}
         intro={text.intro}
-        sections={sections}
+        sections={Object.entries(text.sections).map(([id, section]) => ({
+          id,
+          title: section.title,
+          tag: section.tag,
+          body: (
+            <>
+              {Object.entries(section)
+                .filter(([key]) => /^p\d+$/.test(key))
+                .map(([key, paragraph]) => (
+                  <p key={key}>{paragraph}</p>
+                ))}
+            </>
+          ),
+        }))}
         footerHint={copy.footer}
       />
     </>
   );
+}
+
+function noop(): void {
+  /* shortcut disabled */
 }

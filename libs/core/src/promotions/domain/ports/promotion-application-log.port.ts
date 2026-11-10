@@ -28,6 +28,14 @@ export interface PromotionApplicationLogPort {
   findByOrder(internalOrderId: string, limit: number): Promise<PromotionApplicationRecord[]>;
   findByPromotion(promotionId: string, limit: number): Promise<PromotionApplicationRecord[]>;
   findById(id: string): Promise<PromotionApplicationRecord | null>;
+  /**
+   * Internal ids of orders where the latest application of some promotion did
+   * not give its gift for a reason a person may need to act on (a failure, a
+   * missing stock, an exhausted limit) and nobody has handled it yet. Reasons
+   * that explain a promotion behaving as configured (below the threshold,
+   * customer limit, superseded, gift already in the order) are not listed.
+   */
+  findOrderIdsNeedingAttention(limit: number): Promise<string[]>;
   /** Mark a record handled by a person; the record itself is unchanged. `null` when absent. */
   dismiss(id: string, userId: string, at: Date): Promise<PromotionApplicationRecord | null>;
 }

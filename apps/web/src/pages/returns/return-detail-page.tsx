@@ -46,6 +46,8 @@ import { ConnectionEntityLabel, useConnectionsQuery } from '../../features/conne
 // imports are a documented gap, not an allowance (tech-lead review on
 // #3285, SUGGESTION).
 import { useDemoMode } from '../../features/system';
+import { GiftsGuide } from '../../features/gifts';
+import { shortenId } from '../../shared/ui/entity-label';
 import { useMessages, type Messages, type ResolvedCopy } from '../../shared/i18n';
 import {
   ReturnCustodyPanel,
@@ -110,7 +112,7 @@ function buildHeaderItems(
       value:
         detail.internalOrderId !== null ? (
           <Link to={`/orders/${detail.internalOrderId}`} className="link mono-text">
-            {detail.internalOrderId}
+            {shortenId(detail.internalOrderId)}
           </Link>
         ) : (
           // Never a blank: the orphan banner above carries the explanation, and
@@ -289,11 +291,14 @@ export function ReturnDetailPage(): ReactElement {
       title={detail.externalReturnId ?? pageCopy.titleFallback}
       backTo={{ to: '/returns', label: pageCopy.backToList }}
       actions={
-        detail.declinedAt !== null ? (
-          <StatusBadge tone="warning" compact>
-            {rowCopy.declined}
-          </StatusBadge>
-        ) : null
+        <>
+          <GiftsGuide variant="returns" />
+          {detail.declinedAt !== null ? (
+            <StatusBadge tone="warning" compact>
+              {rowCopy.declined}
+            </StatusBadge>
+          ) : null}
+        </>
       }
     >
       {/* ONE `detail.bucket === 'orphan'` check for both the banner and its
@@ -336,7 +341,19 @@ export function ReturnDetailPage(): ReactElement {
         </>
       ) : null}
 
-      <KeyValueList items={buildHeaderItems(detail, connection?.name ?? null, returnsCopy)} />
+      <dl className="returns-detail__strip">
+        {buildHeaderItems(detail, connection?.name ?? null, returnsCopy)
+          .filter((item) => item.id !== 'openLinkerId' && item.id !== 'updated')
+          .map((item) => (
+            <div key={item.id} className="returns-detail__fact">
+              <dt className="returns-detail__fact-label">{item.label}</dt>
+              <dd className="returns-detail__fact-value">{item.value}</dd>
+            </div>
+          ))}
+      </dl>
+
+      <div className="returns-detail__cols">
+      <div className="returns-detail__main">
 
       <section className="returns-detail__lines">
         <h2 className="section-title">{linesCopy.sectionTitle}</h2>
@@ -357,7 +374,9 @@ export function ReturnDetailPage(): ReactElement {
       </section>
 
       <ReturnGiftsPanel returnId={detail.id} writeAccess={writeAccess} />
+      </div>
 
+      <div className="returns-detail__side">
       <ReturnMoneyPanel detail={detail} writeAccess={writeAccess} />
 
       {/* Section 5 of 8, at the shipped #correction anchor, between Money and
@@ -387,6 +406,13 @@ export function ReturnDetailPage(): ReactElement {
         />
       ) : null}
 
+      <ReturnDeclineAction detail={detail} writeAccess={writeAccess} />
+
+      {/* #2646 — returns spec § 5's activity panel, last in the panel order:
+          the record, then what came back, then the money, then the channel's
+          own word, then the action, and finally what has actually happened.
+          Works for an orphan, which is why it is keyed on the return. */}
+      <ReturnActivityTimeline returnId={detail.id} />
       <section className="returns-detail__source">
         <h2 className="section-title">{sourcePanelCopy.sectionTitle}</h2>
         <p className="text-muted">{sourcePanelCopy.explainer}</p>
@@ -406,13 +432,8 @@ export function ReturnDetailPage(): ReactElement {
         />
       </section>
 
-      <ReturnDeclineAction detail={detail} writeAccess={writeAccess} />
-
-      {/* #2646 — returns spec § 5's activity panel, last in the panel order:
-          the record, then what came back, then the money, then the channel's
-          own word, then the action, and finally what has actually happened.
-          Works for an orphan, which is why it is keyed on the return. */}
-      <ReturnActivityTimeline returnId={detail.id} />
+      </div>
+      </div>
     </PageLayout>
   );
 }

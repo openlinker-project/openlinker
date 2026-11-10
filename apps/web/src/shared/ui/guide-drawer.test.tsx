@@ -35,6 +35,17 @@ describe('GuideDrawer', () => {
   });
 });
 
+describe('GuideDrawer deep link', () => {
+  it('should mark the targeted section for the highlight', () => {
+    render(
+      <GuideDrawer open onOpenChange={() => undefined} title="Guide" intro="Intro" sections={sections} initialSectionId="b" />,
+    );
+
+    expect(document.getElementById('guide-b')).toHaveAttribute('data-focus', 'true');
+    expect(document.getElementById('guide-a')).not.toHaveAttribute('data-focus');
+  });
+});
+
 describe('useGuideShortcut', () => {
   it('should call onOpen on ? but not while typing', () => {
     const onOpen = vi.fn();

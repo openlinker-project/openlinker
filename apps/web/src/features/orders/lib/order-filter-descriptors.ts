@@ -113,6 +113,10 @@ export interface OrderListFilterState {
   withGift: boolean;
   /** `?withBundle=true` - only orders carrying a bundle (#3935). */
   withBundle: boolean;
+  /** `?giftNotAdded=true` - a promotion could not give its gift and nobody handled it (#3935). */
+  giftNotAdded: boolean;
+  /** `?giftShopRejected=true` - a gift order the shop refused (#3935). */
+  giftShopRejected: boolean;
   tag?: string;
   untagged: boolean;
   /** The URL value (updates every keystroke); the query uses a debounced copy. */
@@ -384,6 +388,26 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
       return single('withBundle', copy.bundleChipLabel, s.withBundle ? copy.bundleChipValue : null);
     },
   },
+  giftNotAdded: {
+    param: 'giftNotAdded',
+    group: 'exceptions',
+    analyticsName: 'gift_not_added',
+    isActive: (s) => s.giftNotAdded,
+    chip: (s) => {
+      const copy = getMessages('gifts').filter;
+      return single('giftNotAdded', copy.notAddedChipLabel, s.giftNotAdded ? copy.chipValueYes : null);
+    },
+  },
+  giftShopRejected: {
+    param: 'giftShopRejected',
+    group: 'exceptions',
+    analyticsName: 'gift_shop_rejected',
+    isActive: (s) => s.giftShopRejected,
+    chip: (s) => {
+      const copy = getMessages('gifts').filter;
+      return single('giftShopRejected', copy.shopRejectedChipLabel, s.giftShopRejected ? copy.chipValueYes : null);
+    },
+  },
   // `tag` and `untagged` are mutually exclusive by convention; removing either
   // chip clears BOTH params in one write so a stale pair can never survive.
   tag: {
@@ -480,6 +504,8 @@ export function parseOrderListFilterState(params: URLSearchParams): OrderListFil
     hasBuyerNote: params.get('hasBuyerNote') === 'true',
     withGift: params.get('withGift') === 'true',
     withBundle: params.get('withBundle') === 'true',
+    giftNotAdded: params.get('giftNotAdded') === 'true',
+    giftShopRejected: params.get('giftShopRejected') === 'true',
     tag: params.get('tag') || undefined,
     untagged: params.get('untagged') === 'true',
     search: params.get('search') ?? '',
@@ -505,6 +531,8 @@ export const ORDER_TOGGLE_FILTER_VALUES = {
   hasBuyerNote: 'true',
   withGift: 'true',
   withBundle: 'true',
+  giftNotAdded: 'true',
+  giftShopRejected: 'true',
 } as const satisfies Partial<Record<NarrowingOrderFilterKey, string>>;
 
 export type OrderToggleFilterKey = keyof typeof ORDER_TOGGLE_FILTER_VALUES;
@@ -540,6 +568,8 @@ export function toOrderQueryFilters(
     hasBuyerNote: state.hasBuyerNote ? true : undefined,
     withGift: state.withGift ? true : undefined,
     withBundle: state.withBundle ? true : undefined,
+    giftNotAdded: state.giftNotAdded ? true : undefined,
+    giftShopRejected: state.giftShopRejected ? true : undefined,
     tag: state.tag,
     untagged: state.untagged ? true : undefined,
   };

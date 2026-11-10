@@ -983,6 +983,14 @@
           "desc": "Read it before you pack.",
           "label": "Buyer left a note"
         },
+        "giftNotAdded": {
+          "desc": "A promotion was meant to add a gift but could not. The order goes on without it.",
+          "label": "Gift not added"
+        },
+        "giftShopRejected": {
+          "desc": "The shop refused the order because of the gift line.",
+          "label": "Shop rejected the gift"
+        },
         "omsStopped": {
           "desc": "OpenLinker could not decide something and needs you.",
           "label": "OpenLinker stopped"

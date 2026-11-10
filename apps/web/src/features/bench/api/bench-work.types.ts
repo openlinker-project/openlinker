@@ -47,6 +47,8 @@ export interface BenchWork {
    * them. May be empty: every line cancelled to zero, or a parcel with none.
    */
   items: BenchWorkItem[];
+  /** Units of this parcel that are gifts (#3935). 0 from an API that predates it. */
+  giftUnits?: number;
   /** Units to confirm against the box. Never a readiness claim. */
   unitsToVerify: number;
   /** `packable` | `held` | `cancelled`, or an unrecognised value from a newer API. */

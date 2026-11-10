@@ -59,16 +59,32 @@ import {
   BenchWorkList,
   useBenchLayout,
 } from '../../features/bench';
+import { GiftsGuide } from '../../features/gifts';
 import { useMessages } from '../../shared/i18n';
 
 export function BenchPage(): ReactElement {
   // See the module docblock — page state, never a route.
-  const copy = useMessages('bench').parcel.mobile;
+  const benchCopy = useMessages('bench');
+  const copy = benchCopy.parcel.mobile;
+  const pageCopy = benchCopy.page;
   const [openWorkId, setOpenWorkId] = useState<string | null>(null);
   // Compact only: the rail is a sheet over the parcel rather than a pane
   // beside it. Ignored on desktop, where the rail is always on screen.
   const [listOpen, setListOpen] = useState(false);
   const layout = useBenchLayout();
+
+  const header = (
+    <header className="page-header page-header--split bench-page-header" data-testid="bench-page-header">
+      <div className="page-header__content">
+        <p className="eyebrow">{benchCopy.work.header.eyebrow}</p>
+        <h1 className="page-title">{pageCopy.title}</h1>
+        <p className="page-description">{pageCopy.lede}</p>
+      </div>
+      <div className="page-header__actions">
+        <GiftsGuide variant="bench" />
+      </div>
+    </header>
+  );
 
   const list = (
     <BenchWorkList
@@ -84,6 +100,7 @@ export function BenchPage(): ReactElement {
     return (
       <BenchSurface>
         <div className="bench-shell bench-shell--compact">
+          {header}
           <BenchMetricRow />
           {openWorkId === null ? (
             <div className="bench-panel">{list}</div>
@@ -132,6 +149,7 @@ export function BenchPage(): ReactElement {
       <div className="bench-shell">
         {/* #3413 (epic #3401). Above the grid, not inside the rail: it is a
             fact about the whole bench, and the mockup puts it there. */}
+        {header}
         <BenchMetricRow />
         <section className="bench-grid" data-testid="bench-grid">
           <aside className="bench-panel bench-rail">{list}</aside>

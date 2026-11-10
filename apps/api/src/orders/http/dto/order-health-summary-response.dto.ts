@@ -176,6 +176,19 @@ export class OrderHealthSummaryResponseDto {
   })
   withBundle!: number;
 
+  @ApiPropertyOptional({
+    description:
+      'Orders where a promotion could not give its gift and nobody handled it (#3935) - the ?giftNotAdded=true ' +
+      'predicate. Absent when the promotion log could not be read: the count is unknown, never 0.',
+  })
+  giftNotAdded?: number;
+
+  @ApiProperty({
+    description:
+      'Orders with a gift line the shop refused (#3935) - the ?giftShopRejected=true predicate.',
+  })
+  giftShopRejected!: number;
+
   @ApiProperty({
     description:
       'Orders with a ship-by deadline within the next 24 hours or already past (#4025) - the ' +

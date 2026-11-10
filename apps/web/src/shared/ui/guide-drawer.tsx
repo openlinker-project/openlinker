@@ -12,7 +12,7 @@
  *
  * @module shared/ui
  */
-import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { SidePanel } from './side-panel';
 
 export interface GuideSection {
@@ -31,7 +31,11 @@ export interface GuideDrawerProps {
   title: string;
   intro: string;
   sections: readonly GuideSection[];
-  /** Section opened first; the others start closed. Defaults to the first. */
+  /**
+   * Section opened first; the others start closed. Defaults to the first. A
+   * given id (a HelpHint deep link) also scrolls to the section and flashes it
+   * once, so the operator sees which part answers their question.
+   */
   initialSectionId?: string | null;
   /** Footer hint, e.g. "Press ? on this page to open the guide, Esc closes." */
   footerHint?: ReactNode;
@@ -78,6 +82,26 @@ export function GuideDrawer({
     if (open) setOpenIds(new Set(firstId ? [firstId] : []));
   }, [open, firstId]);
 
+  const flashRef = useRef<HTMLLIElement | null>(null);
+  const [flashId, setFlashId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open || initialSectionId === undefined || initialSectionId === null) {
+      setFlashId(null);
+      return;
+    }
+    setFlashId(initialSectionId);
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const timer = window.setTimeout(
+      () => {
+        flashRef.current?.scrollIntoView?.({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
+      },
+      reduced ? 0 : 320,
+    );
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [open, initialSectionId]);
+
   const toggle = (id: string): void => {
     setOpenIds((current) => {
       const next = new Set(current);
@@ -107,8 +131,10 @@ export function GuideDrawer({
             <li
               key={section.id}
               id={`guide-${section.id}`}
+              ref={section.id === flashId ? flashRef : undefined}
               className="guide-drawer__section"
               data-open={expanded}
+              data-focus={section.id === flashId ? 'true' : undefined}
             >
               <button
                 type="button"

@@ -1072,6 +1072,9 @@ export interface OrderHealthSummary {
   /** Orders carrying a gift line / a bundle (#3935); the `withGift` / `withBundle` predicates. */
   withGift?: number;
   withBundle?: number;
+  /** Orders whose promotion gift was not added; absent when unknown (#3935). */
+  giftNotAdded?: number;
+  giftShopRejected?: number;
   dueWithin24h?: number;
   /** Order count per source connection id, with the source scope itself removed. Absent id = no orders. */
   bySource?: Record<string, number>;
@@ -1195,6 +1198,9 @@ export interface OrderFilters {
   withGift?: boolean;
   /** "With a bundle" filter (#3935), `?withBundle=`: orders carrying a bundle. */
   withBundle?: boolean;
+  /** "Gift not added" / "Shop rejected the gift" filters (#3935). */
+  giftNotAdded?: boolean;
+  giftShopRejected?: boolean;
   /** One tag id (#3532, D34), `?tag=`. Mutually exclusive with `untagged`. */
   tag?: string;
   /** "No tags" filter (#3532), `?untagged=`. Mutually exclusive with `tag`. */

@@ -1045,6 +1045,14 @@
           "desc": "Przeczytaj ją przed pakowaniem.",
           "label": "Kupujący zostawił notatkę"
         },
+        "giftNotAdded": {
+          "desc": "Promocja miała dodać gratis, ale się nie udało. Zamówienie idzie dalej bez niego.",
+          "label": "Gratis nie dodany"
+        },
+        "giftShopRejected": {
+          "desc": "Sklep nie przyjął zamówienia z pozycją gratisu.",
+          "label": "Sklep odrzucił gratis"
+        },
         "omsStopped": {
           "desc": "OpenLinker nie mógł czegoś rozstrzygnąć i potrzebuje Ciebie.",
           "label": "Zatrzymane przez OpenLinker"

@@ -326,6 +326,12 @@ function buildQuery(
     params.set('hasBuyerNote', String(filters.hasBuyerNote));
   }
   // #3940: boolean, same `!== undefined` guard as its neighbours.
+  if (filters?.giftNotAdded !== undefined) {
+    params.set('giftNotAdded', String(filters.giftNotAdded));
+  }
+  if (filters?.giftShopRejected !== undefined) {
+    params.set('giftShopRejected', String(filters.giftShopRejected));
+  }
   if (filters?.withBundle !== undefined) {
     params.set('withBundle', String(filters.withBundle));
   }

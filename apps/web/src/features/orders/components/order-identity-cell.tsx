@@ -112,7 +112,7 @@ export interface OrderIdentityCellProps {
 function GiftMark({ label, testId }: { label: string; testId: string }): ReactElement {
   return (
     <svg
-      className="orders-gift-mark"
+      className="orders-mark orders-mark--gift"
       role="img"
       aria-label={label}
       data-testid={testId}
@@ -133,7 +133,7 @@ function GiftMark({ label, testId }: { label: string; testId: string }): ReactEl
 function BundleMark({ label, testId }: { label: string; testId: string }): ReactElement {
   return (
     <svg
-      className="orders-bundle-mark"
+      className="orders-mark orders-mark--bundle"
       role="img"
       aria-label={label}
       data-testid={testId}
@@ -209,22 +209,26 @@ export function OrderIdentityCell({
           deliberately, PrestaShop and Erli never set it. */}
       <ProductThumbnail name={itemName ?? displayName} src={firstItemImageUrl} size="sm" />
       <span className="order-cell__body">
-        <EntityLabel
-          id={orderId}
-          name={displayName}
-          showId={false}
-          copyLabel={copyLabel}
-          copiedLabel={copiedLabel}
-          // `formatOrderRef` may have shortened line 1; without this the tooltip
-          // would show the shortened form and the full number would be
-          // unreachable to a sighted user (#2089). On the id-fallback branch
-          // (every Erli-sourced order) the same argument applies to the id:
-          // `shortenId` elides its middle, so `?? orderId` keeps the full value
-          // hoverable instead of clipboard-only (#2091).
-          nameTitle={trimmedNumber ?? orderId}
-          to={`/orders/${orderId}`}
-          onNavigate={onNavigate}
-        />
+        <span className="order-cell__headline">
+          <EntityLabel
+            id={orderId}
+            name={displayName}
+            showId={false}
+            copyLabel={copyLabel}
+            copiedLabel={copiedLabel}
+            // `formatOrderRef` may have shortened line 1; without this the tooltip
+            // would show the shortened form and the full number would be
+            // unreachable to a sighted user (#2089). On the id-fallback branch
+            // (every Erli-sourced order) the same argument applies to the id:
+            // `shortenId` elides its middle, so `?? orderId` keeps the full value
+            // hoverable instead of clipboard-only (#2091).
+            nameTitle={trimmedNumber ?? orderId}
+            to={`/orders/${orderId}`}
+            onNavigate={onNavigate}
+          />
+          {hasBundle ? <BundleMark label={giftCopy.filter.bundleRowIcon} testId={`orders-bundle-row-icon-${orderId}`} /> : null}
+          {hasGift ? <GiftMark label={giftCopy.filter.rowIcon} testId={`orders-gift-row-icon-${orderId}`} /> : null}
+        </span>
         {itemName ? (
           <span className="orders-items-line">
             <span className="text-muted orders-cell-sub orders-items-preview" title={itemName}>
@@ -235,8 +239,6 @@ export function OrderIdentityCell({
                 +{moreCount}
               </span>
             ) : null}
-            {hasBundle ? <BundleMark label={giftCopy.filter.bundleRowIcon} testId={`orders-bundle-row-icon-${orderId}`} /> : null}
-            {hasGift ? <GiftMark label={giftCopy.filter.rowIcon} testId={`orders-gift-row-icon-${orderId}`} /> : null}
           </span>
         ) : totalItems > 1 ? (
           /* Deviation 2 (see the file header): a known count with no name to
