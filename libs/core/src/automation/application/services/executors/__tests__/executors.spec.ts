@@ -8,7 +8,6 @@ import { AutomationActionValues } from '../../../../domain/types/automation-acti
 import type { AutomationSubjectFacts } from '../../../../domain/types/automation-facts.types';
 import { AutomationActionExecutorRegistry } from '../../automation-action-executor.registry';
 import type { AutomationDelegateResolverService } from '../../automation-delegate-resolver.service';
-import { InlineEvaluatedActionExecutorService } from '../inline-evaluated-action-executor.service';
 import { RelayStatusToSourceExecutorService } from '../relay-status-to-source-executor.service';
 import { SendEmailExecutorService } from '../send-email-executor.service';
 import {
@@ -504,7 +503,6 @@ describe('AutomationActionExecutorRegistry', () => {
     new RelayStatusToSourceExecutorService(stubResolver({})),
     new SendEmailExecutorService(stubResolver({})),
     new UnavailableActionExecutorService(),
-    new InlineEvaluatedActionExecutorService(),
   );
 
   it('should cover every declared action', () => {

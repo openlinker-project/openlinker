@@ -178,17 +178,6 @@ function evaluateCondition(
     case 'holdReason':
       if (facts.holdReason === undefined) return 'unknown';
       return facts.holdReason === condition.value ? 'true' : 'false';
-    case 'containsProduct':
-      if (facts.lineProductIds === undefined && facts.lineVariantIds === undefined) {
-        return 'unknown';
-      }
-      return (facts.lineProductIds ?? []).includes(condition.value) ||
-        (facts.lineVariantIds ?? []).includes(condition.value)
-        ? 'true'
-        : 'false';
-    case 'sourceConnectionIn':
-      if (facts.sourceConnectionId === undefined) return 'unknown';
-      return condition.values.includes(facts.sourceConnectionId) ? 'true' : 'false';
     case 'orderTotalGross': {
       if (facts.totalGross === undefined || facts.currency === undefined) return 'unknown';
       // Spec §5.5: no conversion, EVER. The rule simply does not match, and the

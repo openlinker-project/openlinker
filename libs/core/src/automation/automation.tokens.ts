@@ -23,5 +23,3 @@ export const AUTOMATION_RUN_RECORDER_TOKEN = Symbol('IAutomationRunRecorderServi
 export const AUTOMATION_RUN_REPOSITORY_TOKEN = Symbol('AutomationRunRepositoryPort');
 export const AUTOMATION_RUNS_READ_SERVICE_TOKEN = Symbol('IAutomationRunsReadService');
 
-export const GIFT_RULE_LEDGER_REPOSITORY_TOKEN = Symbol('GiftRuleLedgerPort');
-export const GIFT_RULE_SERVICE_TOKEN = Symbol('IGiftRuleService');

@@ -111,10 +111,6 @@ export class AutomationRuleOrmEntity {
   @Column({ type: 'timestamptz', nullable: true })
   moneyAckAt!: Date | null;
 
-  /** Explicit list order for gift rules ("do not combine" is defined against it); null for other rules. */
-  @Column({ type: 'int', nullable: true })
-  position!: number | null;
-
   /**
    * BEHAVIOURAL, not an audit stamp: the deadline sweep compares against it to
    * honour S3-9 ("a rule acts only on facts that occur after it was saved").

@@ -16,27 +16,25 @@ import {
 import { AutomationActionValues } from '../automation-action.types';
 import { AutomationTriggerValues } from '../automation-trigger.types';
 
-/** Spec §5.4, transcribed by hand. Columns in A1–A6 order, then add-gift (#3938). */
+/** Spec §5.4, transcribed by hand. Columns in A1–A6 order. */
 const SPEC_MATRIX: Record<string, readonly boolean[]> = {
   //                                   A1     A2     A3     A4     A5     A6
-  'order.hold.placed': [false, false, false, true, false, false, false],
-  'order.hold.released': [true, true, true, true, false, false, false],
-  'order.on_hold_for': [false, false, false, true, false, true, false],
-  'order.dispatch_deadline_near': [false, true, false, true, false, false, false],
-  'order.packed': [true, true, true, true, false, false, false],
-  'return.received': [false, false, false, true, false, false, false],
-  'return.disposed': [false, false, true, true, false, false, false],
-  'inventory.reservation_shortfall': [false, false, false, true, true, false, false],
+  'order.hold.placed': [false, false, false, true, false, false],
+  'order.hold.released': [true, true, true, true, false, false],
+  'order.on_hold_for': [false, false, false, true, false, true],
+  'order.dispatch_deadline_near': [false, true, false, true, false, false],
+  'order.packed': [true, true, true, true, false, false],
+  'return.received': [false, false, false, true, false, false],
+  'return.disposed': [false, false, true, true, false, false],
+  'inventory.reservation_shortfall': [false, false, false, true, true, false],
   // #3554: T9 per D8 (#3517); T10/T11 announce only.
-  'order.received': [false, false, false, true, true, false, false],
-  'order.shipped': [false, false, false, true, false, false, false],
-  'order.document_issued': [false, false, false, true, false, false, false],
-  // #3938: the gift rule's own trigger; add-gift is legal nowhere else.
-  'order.ingested': [false, false, false, false, false, false, true],
+  'order.received': [false, false, false, true, true, false],
+  'order.shipped': [false, false, false, true, false, false],
+  'order.document_issued': [false, false, false, true, false, false],
 };
 
 describe('automation legality matrix', () => {
-  it('should cover exactly the twelve triggers and seven actions (84 cells)', () => {
+  it('should cover exactly the eleven triggers and six actions (66 cells)', () => {
     expect(Object.keys(AUTOMATION_LEGAL_ACTIONS).sort()).toEqual([...AutomationTriggerValues].sort());
     let cells = 0;
     for (const trigger of AutomationTriggerValues) {
@@ -45,7 +43,7 @@ describe('automation legality matrix', () => {
       );
       cells += Object.keys(AUTOMATION_LEGAL_ACTIONS[trigger]).length;
     }
-    expect(cells).toBe(84);
+    expect(cells).toBe(66);
   });
 
   describe.each(AutomationTriggerValues)('trigger %s', (trigger) => {
@@ -81,8 +79,8 @@ describe('automation legality matrix', () => {
     ]);
   });
 
-  it('should make send-email legal for every trigger but the gift trigger', () => {
-    for (const trigger of AutomationTriggerValues.filter((t) => t !== 'order.ingested')) {
+  it('should make send-email legal for every trigger', () => {
+    for (const trigger of AutomationTriggerValues) {
       expect(isLegalAutomationPair(trigger, 'send-email')).toBe(true);
     }
   });

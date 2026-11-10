@@ -32,7 +32,6 @@ import { Injectable } from '@nestjs/common';
 import type { AutomationActionExecutorPort } from '../../domain/ports/automation-action-executor.port';
 import type { AutomationActionKind } from '../../domain/types/automation-action.types';
 import { RelayStatusToSourceExecutorService } from './executors/relay-status-to-source-executor.service';
-import { InlineEvaluatedActionExecutorService } from './executors/inline-evaluated-action-executor.service';
 import { SendEmailExecutorService } from './executors/send-email-executor.service';
 import { UnavailableActionExecutorService } from './executors/unavailable-action-executor.service';
 
@@ -44,7 +43,6 @@ export class AutomationActionExecutorRegistry {
     relayStatus: RelayStatusToSourceExecutorService,
     sendEmail: SendEmailExecutorService,
     unavailable: UnavailableActionExecutorService,
-    inline: InlineEvaluatedActionExecutorService,
   ) {
     this.byAction = {
       // A1/A2/A5/A6 have no operation an automation can reach — the reasons are
@@ -55,8 +53,6 @@ export class AutomationActionExecutorRegistry {
       'send-email': sendEmail,
       'place-hold': unavailable,
       'release-hold': unavailable,
-      // Evaluated inside order ingestion (#3938); never dispatched.
-      'add-gift': inline,
     } satisfies Record<AutomationActionKind, AutomationActionExecutorPort>;
   }
 

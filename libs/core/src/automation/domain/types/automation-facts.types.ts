@@ -71,11 +71,4 @@ export interface AutomationSubjectFacts {
    * as a non-match, because they are not statements about the operator's rule.
    */
   readonly holdReason?: HoldReason;
-  /**
-   * Internal product and variant ids of the order's COMMERCIAL lines (#3938),
-   * for `containsProduct`. Absent means "not asserted"; `[]` means "no lines".
-   */
-  readonly lineProductIds?: readonly string[];
-  readonly lineVariantIds?: readonly string[];
-
 }

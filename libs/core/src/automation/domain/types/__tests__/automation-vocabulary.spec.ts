@@ -34,8 +34,8 @@ import {
 const MALFORMED: unknown[] = [null, undefined, 0, '', 'x', [], [1], true, { field: 'nope' }];
 
 describe('automation trigger vocabulary', () => {
-  it('should declare exactly the twelve triggers when read (#3938 added order.ingested)', () => {
-    expect(AutomationTriggerValues).toHaveLength(12);
+  it('should declare exactly the eleven triggers when read', () => {
+    expect(AutomationTriggerValues).toHaveLength(11);
   });
 
   it('should classify exactly two triggers as deadline sweeps when read', () => {
@@ -91,8 +91,8 @@ describe('automation trigger config narrowing', () => {
 });
 
 describe('automation condition narrowing', () => {
-  it('should declare exactly the six condition fields when read (#3938 added two)', () => {
-    expect(AutomationConditionFieldValues).toHaveLength(6);
+  it('should declare exactly the four condition fields when read', () => {
+    expect(AutomationConditionFieldValues).toHaveLength(4);
   });
 
   it('should accept a well-formed condition of each field when narrowed', () => {
@@ -167,8 +167,8 @@ describe('automation condition narrowing', () => {
 });
 
 describe('automation action vocabulary', () => {
-  it('should declare exactly the seven actions when read (#3938 added add-gift)', () => {
-    expect(AutomationActionValues).toHaveLength(7);
+  it('should declare exactly the six actions when read', () => {
+    expect(AutomationActionValues).toHaveLength(6);
   });
 
   it('should mark exactly the two money actions irreversible when read', () => {

@@ -46,8 +46,6 @@ export const AutomationConditionFieldValues = [
   'orderCountry',
   'orderTotalGross',
   'holdReason',
-  'containsProduct',
-  'sourceConnectionIn',
 ] as const;
 
 export type AutomationConditionField = (typeof AutomationConditionFieldValues)[number];
@@ -72,16 +70,7 @@ export type AutomationCondition =
       readonly amount: string;
       readonly currency: string;
     }
-  | { readonly field: 'holdReason'; readonly op: 'eq'; readonly value: HoldReason }
-  /**
-   * The order has a line of this internal product or variant id (#3938). A bundle
-   * is a variant, so naming the bundle's variant matches an order that sold the
-   * set. Looking INSIDE a bundle's components is the skip-if-present seam (#3945),
-   * not this condition.
-   */
-  | { readonly field: 'containsProduct'; readonly op: 'eq'; readonly value: string }
-  /** The order's source connection is one of these (gifts "channels"; absent = all). */
-  | { readonly field: 'sourceConnectionIn'; readonly op: 'in'; readonly values: readonly string[] };
+  | { readonly field: 'holdReason'; readonly op: 'eq'; readonly value: HoldReason };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -119,17 +108,6 @@ export function isAutomationCondition(value: unknown): value is AutomationCondit
   }
   if (field === 'holdReason') {
     return op === 'eq' && isHoldReason(value.value);
-  }
-  if (field === 'containsProduct') {
-    return op === 'eq' && typeof value.value === 'string' && value.value.length > 0;
-  }
-  if (field === 'sourceConnectionIn') {
-    return (
-      op === 'in' &&
-      Array.isArray(value.values) &&
-      value.values.length > 0 &&
-      value.values.every((v) => typeof v === 'string' && v.length > 0)
-    );
   }
   return false;
 }

@@ -37,7 +37,7 @@ describe('AUTOMATION_ACTION_AVAILABILITY', () => {
     const available = AutomationActionValues.filter(
       (action) => availabilityForAction(action).availability === 'available',
     );
-    expect([...available].sort()).toEqual(['add-gift', 'relay-status-to-source', 'send-email']);
+    expect([...available].sort()).toEqual(['relay-status-to-source', 'send-email']);
   });
 
   it('should report send-email as available now that both hosts bind the mailer (#3552)', () => {

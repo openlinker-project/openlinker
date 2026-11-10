@@ -72,16 +72,5 @@ export function buildOrderAutomationFacts(
     // unknown-handling contract is written against `undefined`.
     totalGross: record.totalAmount ?? undefined,
     currency: record.currency ?? undefined,
-    // #3938: the COMMERCIAL lines (gift lines never satisfy a purchase condition).
-    // A record that is not `ready` has no resolved ids, so the facts stay absent
-    // rather than asserting "no lines".
-    ...(record.recordStatus === 'ready'
-      ? {
-          lineProductIds: record.orderItems.filter((i) => i.gift === undefined).map((i) => i.productId),
-          lineVariantIds: record.orderItems.flatMap((i) =>
-            i.gift === undefined && i.variantId !== undefined ? [i.variantId] : []
-          ),
-        }
-      : {}),
   };
 }

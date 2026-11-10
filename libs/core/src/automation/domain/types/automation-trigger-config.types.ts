@@ -85,7 +85,6 @@ export function isAutomationTriggerConfig(
     case 'order.received':
     case 'order.shipped':
     case 'order.document_issued':
-    case 'order.ingested':
       return Object.keys(value).length === 0;
     default: {
       // Exhaustiveness: a ninth trigger without a config rule is a compile error.

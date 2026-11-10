@@ -99,16 +99,6 @@ export class AutomationRule {
     /** Behavioural — the retroactivity floor for the deadline sweep (S3-9). */
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
-    /**
-     * Explicit list order, used ONLY by gift rules (#3938, gifts spec R3). #2358
-     * deliberately has no priority column - a silent tie-break on an action that
-     * spends money is what the #2047 lineage forbids - but "do not combine" is
-     * defined against a list the operator can see and reorder, so gift rules need
-     * one. `null` for every other rule, and for a gift rule nobody has ordered
-     * yet (it sorts after the positioned ones, then by creation time).
-     * Deliberately NOT part of `definitionHash`: moving a rule is not changing it.
-     */
-    public readonly position: number | null = null,
   ) {}
 
   /**

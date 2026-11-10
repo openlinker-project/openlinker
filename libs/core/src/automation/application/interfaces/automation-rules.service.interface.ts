@@ -102,12 +102,5 @@ export interface IAutomationRulesService {
   setMoneyAck(id: string, byUserId: string | null): Promise<AutomationRule>;
 
   /** @throws {AutomationRuleNotFoundError} */
-  /**
-   * Stamp list positions 1..N for every rule of one trigger (#3938). Exhaustive:
-   * the list must name exactly the trigger's rules once each, or
-   * `AutomationReorderMismatchError` is thrown and nothing is written.
-   */
-  reorderRules(trigger: AutomationTrigger, orderedIds: readonly string[]): Promise<void>;
-
   deleteRule(id: string): Promise<void>;
 }

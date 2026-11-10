@@ -90,11 +90,5 @@ export interface AutomationRuleRepositoryPort {
    *
    * @throws {AutomationRuleNotFoundError}
    */
-  /**
-   * Stamp `position` 1..N in the given order (#3938). One statement. The caller
-   * has already checked the list names exactly the rules it means to order.
-   */
-  setPositions(orderedIds: readonly string[]): Promise<void>;
-
   setMoneyAck(id: string, byUserId: string | null, at: Date | null): Promise<AutomationRule>;
 }

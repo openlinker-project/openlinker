@@ -52,7 +52,6 @@ export const AutomationTriggerValues = [
   'order.received',
   'order.shipped',
   'order.document_issued',
-  'order.ingested',
 ] as const;
 
 export type AutomationTrigger = (typeof AutomationTriggerValues)[number];
@@ -101,9 +100,6 @@ export const AUTOMATION_TRIGGER_FIRING_MODE = {
   'order.received': 'edge',
   'order.shipped': 'edge',
   'order.document_issued': 'edge',
-  // #3938: evaluated INLINE by the ingestion path (gift rules), never emitted
-  // through the dispatch seam. Declared 'edge' because it is one-shot per order.
-  'order.ingested': 'edge',
 } as const satisfies Record<AutomationTrigger, AutomationTriggerFiringMode>;
 
 /** Whether this trigger fires from a clock crossing a timestamp rather than from a write. */

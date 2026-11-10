@@ -109,8 +109,6 @@ export const AUTOMATION_ACTION_AVAILABILITY = {
     reason:
       'Order holds are not built yet (#2339), so an automation cannot lift one. Lift the hold from the order page.',
   },
-  // Evaluated inline at ingestion (#3938), so it is genuinely available to author.
-  'add-gift': { availability: 'available', reason: null },
 } as const satisfies Record<AutomationActionKind, AutomationActionAvailabilityEntry>;
 
 /** This build's availability for one action. */

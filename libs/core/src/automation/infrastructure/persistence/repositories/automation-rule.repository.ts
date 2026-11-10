@@ -153,18 +153,6 @@ export class AutomationRuleRepository implements AutomationRuleRepositoryPort {
     return this.saveTranslatingConflict(merged, input);
   }
 
-  async setPositions(orderedIds: readonly string[]): Promise<void> {
-    // One statement, so a reorder is never half applied.
-    if (orderedIds.length === 0) return;
-    await this.ormRepository.query(
-      `UPDATE "automation_rules" AS r
-          SET "position" = v.pos
-         FROM (SELECT unnest($1::uuid[]) AS id, generate_series(1, $2::int) AS pos) AS v
-        WHERE r."id" = v.id`,
-      [[...orderedIds], orderedIds.length]
-    );
-  }
-
   async delete(id: string): Promise<void> {
     await this.ormRepository.delete({ id });
   }
@@ -277,7 +265,6 @@ export class AutomationRuleRepository implements AutomationRuleRepositoryPort {
       entity.moneyAckAt,
       entity.createdAt,
       entity.updatedAt,
-      entity.position ?? null,
     );
   }
 }

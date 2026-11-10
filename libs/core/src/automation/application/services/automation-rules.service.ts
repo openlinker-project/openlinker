@@ -85,7 +85,6 @@ import { AutomationInvalidConditionError } from '../../domain/exceptions/automat
 import { AutomationInvalidTriggerConfigError } from '../../domain/exceptions/automation-invalid-trigger-config.error';
 import { AutomationRuleConflictError } from '../../domain/exceptions/automation-rule-conflict.error';
 import { AutomationRuleNotFoundError } from '../../domain/exceptions/automation-rule-not-found.error';
-import { AutomationReorderMismatchError } from '../../domain/exceptions/automation-reorder-mismatch.error';
 import { AutomationStepCountError } from '../../domain/exceptions/automation-step-count.error';
 
 /** Open-ended `effectiveTo` is effectively +infinity — the #2170 sentinel. */
@@ -201,25 +200,6 @@ export class AutomationRulesService implements IAutomationRulesService {
     return this.ruleRepository.findByTrigger(trigger);
   }
 
-  async reorderRules(trigger: AutomationTrigger, orderedIds: readonly string[]): Promise<void> {
-    const current = await this.ruleRepository.findByTrigger(trigger);
-    const known = new Set(current.map((rule) => rule.id));
-    const requested = new Set(orderedIds);
-    // Exhaustive on purpose: a partial list would leave the unnamed rules at
-    // stale positions while looking like it worked (the #2953 reorder rule).
-    if (
-      requested.size !== orderedIds.length ||
-      requested.size !== known.size ||
-      orderedIds.some((id) => !known.has(id))
-    ) {
-      throw new AutomationReorderMismatchError(
-        [...known].filter((id) => !requested.has(id)),
-        orderedIds.filter((id) => !known.has(id)),
-      );
-    }
-    await this.ruleRepository.setPositions(orderedIds);
-  }
-
   async deleteRule(id: string): Promise<void> {
     const existing = await this.ruleRepository.findById(id);
     if (existing === null) throw new AutomationRuleNotFoundError(id);
@@ -237,11 +217,6 @@ export class AutomationRulesService implements IAutomationRulesService {
     const triggerConfig = this.assertTriggerConfigWellFormed(input);
     const conditions = this.assertConditionsWellFormed(input.conditions);
     const actions = this.assertActionsWellFormed(input.actions);
-    // A gift rule is exactly one `add-gift` step (#3938): it is evaluated inline,
-    // so a second step beside it would never be reached.
-    if (input.trigger === 'order.ingested' && actions.length !== 1) {
-      throw new AutomationStepCountError(actions.length, 1, 1);
-    }
     this.assertPairsLegal(input.trigger, actions);
     this.assertConditionFieldsLegal(input.trigger, conditions);
 

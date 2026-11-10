@@ -47,7 +47,6 @@ export const AutomationActionValues = [
   'send-email',
   'place-hold',
   'release-hold',
-  'add-gift',
 ] as const;
 
 export type AutomationActionKind = (typeof AutomationActionValues)[number];
@@ -71,8 +70,6 @@ export const AUTOMATION_ACTION_IS_IRREVERSIBLE = {
   'send-email': false,
   'place-hold': false,
   'release-hold': false,
-  // Adding a gift line is reversible until the parcel is closed (gifts spec 4.5).
-  'add-gift': false,
 } as const satisfies Record<AutomationActionKind, boolean>;
 
 /** Whether this action must obey the #2047 at-most-one rule. */
@@ -102,59 +99,6 @@ export type AutomationEmailRecipient =
  * choose it is a second answer that can disagree with the first), and the relay
  * sends what OL knows rather than an operator-picked status vocabulary.
  */
-/**
- * How a sales document shows a gift (gifts spec section 8.2). Kept beside the
- * action rather than imported from `orders`, which already depends on this
- * context; a spec asserts the two lists are the same.
- */
-export const AutomationGiftDocumentFormValues = [
-  'technical-cent',
-  'priced-in',
-  'show-zero',
-  'omit',
-] as const;
-export type AutomationGiftDocumentForm = (typeof AutomationGiftDocumentFormValues)[number];
-
-/**
- * "For every unit bought" mode of a gift rule (gifts spec 4.1): the gift quantity
- * is `quantity x min(floor(units of the product / per), maxPerOrder)`.
- */
-export interface AutomationGiftPerUnit {
-  /** Internal product id whose units are counted. */
-  readonly productId: string;
-  /** Units of that product per gift batch; 1 is "every unit". */
-  readonly per: number;
-  /** Ceiling of gift batches in one order; `null` = none. */
-  readonly maxPerOrder: number | null;
-}
-
-/**
- * Add a gift line (#3938). **Evaluated inline at ingestion**, not dispatched: the
- * gift has to exist before reservation and routing, which the dispatch seam runs
- * after. The options are part of the rule's identity (they enter the definition
- * hash); the mutable state - units given, pause - is not, and lives in
- * `automation_gift_rule_state`.
- */
-export interface AutomationGiftAction {
-  readonly action: 'add-gift';
-  /** Internal product + variant of the gift line. */
-  readonly productId: string;
-  readonly variantId: string;
-  /** Units per batch. */
-  readonly quantity: number;
-  readonly perUnit: AutomationGiftPerUnit | null;
-  /** Unit cap for the whole rule; reaching it pauses the rule. `null` = no cap. */
-  readonly unitCap: number | null;
-  /** Skip when the gift product is already in the order (R5). */
-  readonly skipIfPresent: boolean;
-  /** A matching rule with this on stops the rules below it (R3). */
-  readonly doNotCombine: boolean;
-  /** Max gift units per resolved customer across all orders (R7); `null` = off. */
-  readonly customerLimit: number | null;
-  /** Per-gift document form; absent = "as in settings". */
-  readonly documentForm?: AutomationGiftDocumentForm;
-}
-
 export type AutomationAction =
   | { readonly action: 'issue-sales-document' }
   | {
@@ -185,8 +129,7 @@ export type AutomationAction =
       /** `null` = "any hold" (spec §5.3b A6's default). */
       readonly holdReason: HoldReason | null;
       readonly note: string;
-    }
-  | AutomationGiftAction;
+    };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -238,38 +181,7 @@ export function isAutomationAction(value: unknown): value is AutomationAction {
         // A6's note is REQUIRED — it mirrors the manual release (spec §5.3b).
         isNonEmptyString(value.note)
       );
-    case 'add-gift':
-      return isAutomationGiftAction(value);
     default:
       return false;
   }
-}
-
-function isPositiveInt(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0;
-}
-
-/** Narrow an untyped value into a well-formed {@link AutomationGiftAction}. */
-export function isAutomationGiftAction(value: unknown): value is AutomationGiftAction {
-  if (!isRecord(value) || value.action !== 'add-gift') return false;
-  if (!isNonEmptyString(value.productId) || !isNonEmptyString(value.variantId)) return false;
-  if (!isPositiveInt(value.quantity)) return false;
-  if (value.perUnit !== null) {
-    if (!isRecord(value.perUnit)) return false;
-    if (!isNonEmptyString(value.perUnit.productId) || !isPositiveInt(value.perUnit.per)) {
-      return false;
-    }
-    if (value.perUnit.maxPerOrder !== null && !isPositiveInt(value.perUnit.maxPerOrder)) {
-      return false;
-    }
-  }
-  if (value.unitCap !== null && !isPositiveInt(value.unitCap)) return false;
-  if (value.customerLimit !== null && !isPositiveInt(value.customerLimit)) return false;
-  if (typeof value.skipIfPresent !== 'boolean' || typeof value.doNotCombine !== 'boolean') {
-    return false;
-  }
-  return (
-    value.documentForm === undefined ||
-    (AutomationGiftDocumentFormValues as readonly unknown[]).includes(value.documentForm)
-  );
 }

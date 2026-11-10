@@ -246,7 +246,6 @@ describe('AutomationDispatchService', () => {
     // as a rule that silently never runs.
     expect([...AutomationActionValues].sort()).toEqual(
       [
-        'add-gift',
         'dispatch-shipment',
         'issue-sales-document',
         'place-hold',

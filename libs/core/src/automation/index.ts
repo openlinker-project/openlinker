@@ -40,12 +40,10 @@ export * from './domain/types/automation-legality.types';
 export * from './domain/types/automation-action-availability.types';
 export * from './domain/types/automation-evaluation.types';
 export * from './domain/types/automation-facts.types';
-export * from './domain/types/gift-rule.types';
 
 export * from './domain/domain-services/evaluate-automation-rules';
 export * from './domain/domain-services/gate-irreversible-automation-actions';
 export * from './domain/domain-services/render-automation-template';
-export * from './domain/domain-services/plan-gift-application';
 
 export * from './domain/entities/automation-rule.entity';
 export * from './domain/entities/automation-run.entity';
@@ -55,11 +53,9 @@ export * from './domain/ports/automation-action-executor.port';
 export * from './domain/ports/automation-rule-repository.port';
 export * from './domain/ports/automation-run-repository.port';
 export * from './domain/ports/automation-trigger-firing-repository.port';
-export * from './domain/ports/gift-rule-ledger.port';
 
 export * from './domain/exceptions/automation-rule-conflict.error';
 export * from './domain/exceptions/automation-rule-not-found.error';
-export * from './domain/exceptions/automation-reorder-mismatch.error';
 export * from './domain/exceptions/automation-invalid-condition.error';
 export * from './domain/exceptions/automation-invalid-action.error';
 export * from './domain/exceptions/automation-invalid-trigger-config.error';
@@ -96,12 +92,6 @@ export type {
   AutomationEmissionInput,
   AutomationEmissionResult,
 } from './application/interfaces/automation-trigger-emission.service.interface';
-export type {
-  IGiftRuleService,
-  GiftRuleView,
-  GiftLedgerSnapshot,
-} from './application/interfaces/gift-rule.service.interface';
-export { GiftRuleService } from './application/services/gift-rule.service';
 export { AutomationRulesService } from './application/services/automation-rules.service';
 export { AutomationRunsReadService } from './application/services/automation-runs-read.service';
 export { AutomationTriggerEmissionService } from './application/services/automation-trigger-emission.service';

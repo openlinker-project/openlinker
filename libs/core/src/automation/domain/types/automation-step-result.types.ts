@@ -21,7 +21,6 @@
  * @see docs/specs/product-spec-oms-wave2-operator-experience.md §5.6
  */
 import type { AutomationActionKind } from './automation-action.types';
-import type { GiftNonApplicationReason } from './gift-rule.types';
 
 /**
  * How one step ended.
@@ -101,12 +100,6 @@ export interface AutomationStepResult {
    * reader change.
    */
   readonly report?: AutomationStepReport;
-  /**
-   * Why an `add-gift` step added nothing, as a code (#3945). The sentence in
-   * `detail` stays for humans; readers key on this so a reworded sentence cannot
-   * change what the order page says. Absent on runs written before the field.
-   */
-  readonly reasonCode?: GiftNonApplicationReason;
   /** Set where the delegated operation enqueued a job — §5.6's third run-row link. */
   readonly syncJobId?: string;
   /**
