@@ -380,13 +380,13 @@ export function ConnectionDetailPage(): ReactElement {
       actions={
         connection ? (
           connection.platformType === OMS_PLATFORM_TYPE ? (
-            <div className="button-group">
+            <div className="button-group connection-actions">
               <Link className="button button--primary" to={PACKING_SETTINGS_PATH}>
                 {copy.packingSettings}
               </Link>
             </div>
           ) : (
-          <div className="button-group">
+          <div className="button-group connection-actions">
             <Link className="button button--primary" to={`/connections/${connectionId}/edit`}>
               {copy.actions.edit}
             </Link>
@@ -472,7 +472,7 @@ export function ConnectionDetailPage(): ReactElement {
       ) : null}
       {connection ? (
         <Tabs value={activeTab} onValueChange={handleTabChange}>
-          <TabsList>
+          <TabsList className="tabs__list--scroll">
             <TabsTrigger value="overview">{copy.tabs.overview}</TabsTrigger>
             <TabsTrigger value="health">{copy.tabs.health}</TabsTrigger>
             {isOms ? null : <TabsTrigger value="actions">{copy.tabs.actions}</TabsTrigger>}

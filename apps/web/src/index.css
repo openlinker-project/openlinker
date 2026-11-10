@@ -37630,3 +37630,21 @@ legend.analytics-settings-dialog__label {
 }
 .gift-filters .segmented-control__option,
 .gift-tbl__cap .segmented-control__option { text-transform: none; }
+
+/* Connection detail: header actions wrap and the tab strip scrolls inside itself on a phone (#3935) */
+.connection-actions { flex-wrap: wrap; }
+.tabs__list--scroll {
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.tabs__list--scroll::-webkit-scrollbar { display: none; }
+.tabs__list--scroll .tabs__trigger { flex: none; white-space: nowrap; }
+@media (width <= 640px) {
+  .tabs__list--scroll {
+    padding-right: 28px;
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  .page-header__actions:has(.connection-actions) { justify-self: start; max-width: 100%; }
+}
