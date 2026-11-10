@@ -35,6 +35,9 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
+import { BundleGuide } from '../../features/bundles/components/bundle-guide';
+import { GuideTrigger } from '../../shared/ui/help-hint';
+import { useGuideShortcut } from '../../shared/ui/guide-drawer';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -197,6 +200,8 @@ export function ProductsListPage(): ReactElement {
         ? 'exclude'
         : undefined;
   const bundleCopy = useMessages('bundles');
+  const [guideOpen, setGuideOpen] = useState(false);
+  useGuideShortcut(() => { setGuideOpen(true); });
   const bundleWrite = useWriteAccess('bundles:write', useDemoMode());
   const rawSort = searchParams.get('sort');
   const sortField = isSortField(rawSort) ? rawSort : DEFAULT_SORT;
@@ -919,7 +924,8 @@ export function ProductsListPage(): ReactElement {
       title={copy.title}
       description={interpolate(copy.description, { max: format.number(BULK_SELECTION_CAP) })}
       actions={
-        <>
+        <span className="page-header__actions--row">
+          <GuideTrigger label={bundleCopy.guide.trigger} onClick={() => { setGuideOpen(true); }} />
           {bundleWrite.canWrite ? (
             <Link
               className="button button--primary"
@@ -947,9 +953,10 @@ export function ProductsListPage(): ReactElement {
           >
             {copy.costPrices}
           </Link>
-        </>
+        </span>
       }
     >
+      <BundleGuide open={guideOpen} onOpenChange={setGuideOpen} />
       {!bundleWrite.canWrite ? (
         <Alert tone="info" title={bundleCopy.list.readonlyTitle} data-testid="bundle-list-readonly-notice">
           {bundleCopy.list.readonlyNotice}

@@ -24,6 +24,8 @@ export interface BundleComponentListProps {
   compact?: boolean;
   /** Link component names to their product pages. */
   linkNames?: boolean;
+  /** When set, each row gets `data-testid="{prefix}-line-{variantId}"`. */
+  testIdPrefix?: string;
 }
 
 export function BundleComponentList({
@@ -31,6 +33,7 @@ export function BundleComponentList({
   bundlesAvailable,
   compact = false,
   linkNames = true,
+  testIdPrefix,
 }: BundleComponentListProps): ReactElement {
   const copy = useMessages('bundles').view;
   return (
@@ -47,7 +50,11 @@ export function BundleComponentList({
         );
         const gift = component.giftSlot === true ? <span className="cx-tag cx-tag--gift">{copy.gift}</span> : null;
         return (
-          <li key={component.variantId} className={limiting ? 'is-lim' : undefined}>
+          <li
+            key={component.variantId}
+            className={limiting ? 'is-lim' : undefined}
+            data-testid={testIdPrefix ? `${testIdPrefix}-line-${component.variantId}` : undefined}
+          >
             <VariantThumbnail src={component.summary.imageUrl} name={name} size="sm" />
             {compact ? (
               <>

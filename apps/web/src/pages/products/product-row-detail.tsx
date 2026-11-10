@@ -119,6 +119,7 @@ export function ProductRowDetail({
 
   return (
     <div className="products-row-detail">
+      {product.bundle ? null : (
       <section className="peek-section" aria-labelledby={`${product.id}-variants`}>
         <h3 className="peek-section__title" id={`${product.id}-variants`}>
           {copy.variantsHeading}
@@ -142,6 +143,7 @@ export function ProductRowDetail({
           />
         )}
       </section>
+      )}
       {/* #3624 - what a bundle row is made of; mounted only while the peek is open. */}
       {product.bundle ? (
         <BundleComposition
