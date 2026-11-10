@@ -10,20 +10,34 @@
  */
 
 /**
- * How a sales document shows a gift slot (#3940, gifts spec 8.3 level 1). The
- * same four forms the orders context names; restated here because `products`
- * cannot import `orders` (which imports it). The orders side narrows again.
+ * The gift forms on a document: the ONE vocabulary orders, promotions and
+ * bundles share (restated here because `products` cannot import `orders`, which
+ * imports it). `gift-document-form-parity.spec.ts` keeps the lists equal.
  */
 export const BundleGiftDocumentFormValues = [
+  'technical-cent',
+  'custom-price',
+  'priced-in',
+  'show-zero',
+  'omit',
+] as const;
+
+/**
+ * What a bundle's gift slot may be set to. `custom-price` is a valid form but
+ * needs an amount, and a slot carries none (the definition freezes only the
+ * form), so it is not offered or accepted here; setting it would only fall back
+ * to the technical cent on the document.
+ */
+export const BundleGiftSlotFormValues = [
   'technical-cent',
   'priced-in',
   'show-zero',
   'omit',
 ] as const;
-export type BundleGiftDocumentForm = (typeof BundleGiftDocumentFormValues)[number];
+export type BundleGiftDocumentForm = (typeof BundleGiftSlotFormValues)[number];
 
 export function isBundleGiftDocumentForm(value: unknown): value is BundleGiftDocumentForm {
-  return typeof value === 'string' && (BundleGiftDocumentFormValues as readonly string[]).includes(value);
+  return typeof value === 'string' && (BundleGiftSlotFormValues as readonly string[]).includes(value);
 }
 
 /** One component of a bundle: units of a master variant per ONE bundle unit. */
