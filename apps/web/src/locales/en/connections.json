@@ -214,49 +214,6 @@
     "title": "Enabled roles",
     "updatedTitle": "Capabilities updated"
   },
-  "connectionCategoryMappingsPage": {
-    "desktopOnly": {
-      "body": "The category mapping editor pairs a category tree with a marketplace search side by side and needs a wider viewport. Open this page on a desktop or tablet in landscape mode to assign categories.",
-      "title": "Open on a desktop screen to edit categories"
-    },
-    "error": {
-      "title": "Unable to load"
-    },
-    "eyebrow": "Connection",
-    "loading": {
-      "message": "Fetching categories and mappings...",
-      "title": "Loading"
-    },
-    "mappedSummary": {
-      "one": "{mapped} of {n} category mapped",
-      "other": "{mapped} of {n} categories mapped"
-    },
-    "marketplaceHeading": "Marketplace category",
-    "marketplaceSelect": {
-      "label": "Marketplace connection",
-      "option": "{name} ({platform})",
-      "placeholder": "Select a marketplace connection…"
-    },
-    "noCategories": {
-      "message": "No categories were found for this connection. Make sure the shop has categories configured.",
-      "title": "No shop categories"
-    },
-    "noMarketplace": {
-      "addConnection": "Add connection",
-      "message": "Add a marketplace connection before mapping categories.",
-      "title": "No marketplace connection configured"
-    },
-    "pickCategory": {
-      "message": "Click a shop category on the left to assign a marketplace category.",
-      "title": "Select a category"
-    },
-    "pickMarketplace": {
-      "message": "Pick a marketplace connection above to browse its category tree.",
-      "title": "Select a marketplace connection"
-    },
-    "sourceHeading": "Shop categories",
-    "title": "Category mappings"
-  },
   "connectionCell": {
     "copiedId": "Copied connection ID",
     "copiedNamedId": "Copied connection ID for {name}",
