@@ -224,6 +224,12 @@
     "unknownReason": "{name}: nie znamy stanu produktu {component}, więc nie znamy też dostępności zestawu. Kanały mają ostatnią znaną ilość.",
     "unknownReasonGeneric": "{name}: nie znamy stanu jednego ze składników, więc nie znamy też dostępności zestawu. Kanały mają ostatnią znaną ilość.",
     "usedInBundle": "{n} x w zestawie {name}",
+    "usedInBundles": {
+      "few": "W {n} zestawach",
+      "many": "W {n} zestawach",
+      "one": "W {n} zestawie",
+      "other": "W {n} zestawu"
+    },
     "usedInGift": "jako gratis",
     "usedInIntro": "Ten produkt jest składnikiem zestawów. Zmiana jego stanu zmienia dostępność każdego z nich.",
     "usedInTitle": "W zestawach"

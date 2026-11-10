@@ -704,6 +704,11 @@ function ProductsListPageBody(): ReactElement {
                       {bundleCopy.list.bundleMark}
                     </span>
                   ) : null}
+                  {(product.usedInBundlesCount ?? 0) > 0 ? (
+                    <span className="cx-tag cx-tag--quiet" data-testid={`product-used-in-bundles-${product.sku ?? product.id}`}>
+                      {plural(product.usedInBundlesCount ?? 0, bundleCopy.list.usedInBundles)}
+                    </span>
+                  ) : null}
                   {(product.variantCount ?? 0) > 1 ? (
                     <StatusBadge tone="neutral" compact>
                       {plural(product.variantCount ?? 0, copy.row.variantsBadge)}

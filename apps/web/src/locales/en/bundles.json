@@ -214,6 +214,10 @@
     "unknownReason": "{name}: the stock of {component} is not known, so the availability of the bundle is not known either. Channels keep the last quantity they had.",
     "unknownReasonGeneric": "{name}: the stock of a component is not known, so the availability of the bundle is not known either. Channels keep the last quantity they had.",
     "usedInBundle": "{n} x in bundle {name}",
+    "usedInBundles": {
+      "one": "In {n} bundle",
+      "other": "In {n} bundles"
+    },
     "usedInGift": "as a gift",
     "usedInIntro": "This product is a component of bundles. Changing its stock changes the availability of each of them.",
     "usedInTitle": "Used in bundles"

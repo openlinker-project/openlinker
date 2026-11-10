@@ -324,6 +324,7 @@ export class ProductsController {
         externalIdLists,
         atpByProduct,
         bundleByProduct,
+        usedInBundles,
       ] = await Promise.all([
         this.inventoryQuery.getProductStockAggregates(ids),
         this.offerMappings.countListedVariantsByProducts(ids),
@@ -341,6 +342,7 @@ export class ProductsController {
         // #3621 - ONE batched read for the whole page, never per product.
         this.resolveProductAtp(ids, pageVariants),
         this.resolveBundleMarks(ids, pageVariants),
+        this.resolveUsedInBundlesCounts(pageVariants),
       ]);
 
       const aggregateByProduct = new Map(aggregates.map((a) => [a.productId, a]));
@@ -366,6 +368,8 @@ export class ProductsController {
         dto.variantCount = variantCounts.get(dto.id) ?? 0;
         dto.staleVariantCount = staleVariantCounts.get(dto.id) ?? 0;
         dto.bundle = bundleByProduct.get(dto.id) ?? null;
+        const usedInCount = usedInBundles?.get(dto.id);
+        if (usedInBundles !== null) dto.usedInBundlesCount = usedInCount ?? 0;
         dto.listingsCoverage = coverageByProduct.get(dto.id) ?? [];
         dto.externalIds = externalIdLists[i].map((e) => this.toExternalIdDto(e));
       });
@@ -377,6 +381,41 @@ export class ProductsController {
       limit,
       offset,
     };
+  }
+
+  /**
+   * How many live bundles use each listed product as a component (#3935), from
+   * one reverse lookup for the whole page. `null` when the read failed: a
+   * missing chip is not a claim that the product is in no bundle.
+   */
+  private async resolveUsedInBundlesCounts(
+    pageVariants: Promise<ProductVariant[]>
+  ): Promise<Map<string, number> | null> {
+    try {
+      const variants = await pageVariants;
+      const definitions = await chunkedRead(
+        variants.map((v) => v.id),
+        (ids) => this.bundleDefinitions.findCurrentContainingComponents(ids)
+      );
+      const productByVariant = new Map(variants.map((v) => [v.id, v.productId]));
+      const bundlesByProduct = new Map<string, Set<string>>();
+      for (const definition of definitions) {
+        for (const component of definition.components) {
+          const productId = productByVariant.get(component.variantId);
+          if (productId === undefined) continue;
+          const set = bundlesByProduct.get(productId) ?? new Set<string>();
+          set.add(definition.variantId);
+          bundlesByProduct.set(productId, set);
+        }
+      }
+      return new Map([...bundlesByProduct].map(([id, set]) => [id, set.size]));
+    } catch (error) {
+      this.logger.error(
+        'product_list_used_in_bundles_failed - listing without the in-bundle count',
+        (error as Error).stack
+      );
+      return null;
+    }
   }
 
   /**

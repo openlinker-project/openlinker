@@ -148,6 +148,8 @@ export interface Product {
    * when availability is unknown, the component whose stock OpenLinker lacks).
    */
   bundle?: ProductBundleMark | null;
+  /** How many live bundles use this product as a component; absent when unknown (#3935). */
+  usedInBundlesCount?: number;
 }
 
 export interface BundleComponentRef {

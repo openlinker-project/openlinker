@@ -203,4 +203,10 @@ export class ProductResponseDto {
       'Set when one of the product\'s variants is a bundle (#3624, list only): which variant, how many components, and which component limits or blocks its availability.',
   })
   bundle?: ProductBundleSummaryDto | null;
+
+  @ApiPropertyOptional({
+    description:
+      'How many live bundles list one of this product\'s variants as a component (list only). Absent when the count could not be read; 0 means none.',
+  })
+  usedInBundlesCount?: number;
 }
