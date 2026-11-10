@@ -107,6 +107,9 @@ export class OrderSyncService implements IOrderSyncService {
 
   async syncOrder(request: OrderSyncRequest): Promise<OrderSyncResult[]> {
     const { order, sourceConnectionId, sourceEventId } = request;
+    // #3607: stock sites read the physical products; the mirror keeps `order.items`.
+    const physicalProductIds =
+      request.physicalProductIds ?? order.items.map((item) => item.productId);
 
     this.logger.log(
       `Syncing order ${order.id} from source connection ${sourceConnectionId}${sourceEventId ? ` (event: ${sourceEventId})` : ''}`
@@ -342,6 +345,10 @@ export class OrderSyncService implements IOrderSyncService {
         // the order is refused for not reporting a figure the source DID
         // report. Spread conditionally so absence stays absence.
         ...(item.unitPriceGross !== undefined ? { unitPriceGross: item.unitPriceGross } : {}),
+        // #3929 - a destination may read `gift` to set a native flag; the mirror
+        // sends the line as it is. Absence stays absence.
+        ...(item.gift !== undefined ? { gift: item.gift } : {}),
+        ...(item.packQuantity !== undefined ? { packQuantity: item.packQuantity } : {}),
       })),
       totals: {
         subtotal: order.totals.subtotal,
@@ -448,7 +455,7 @@ export class OrderSyncService implements IOrderSyncService {
     // Runs BEFORE the post-sale refresh is enqueued, so that refresh - whose
     // `setInventory` propagates the master's lowered number - can only ever
     // read an ATP where the absorbed hold is already gone.
-    await this.consumeHoldsAbsorbedByDestinations(order, settled);
+    await this.consumeHoldsAbsorbedByDestinations(order, settled, physicalProductIds);
 
     // Best-effort post-sale close of the "it sold, so re-read the master and
     // propagate" loop (#2623). The sweep (`master.inventory.syncAll`) is the
@@ -465,7 +472,7 @@ export class OrderSyncService implements IOrderSyncService {
     if (anyDestinationSucceeded) {
       try {
         await this.postSaleInventoryRefresh.enqueue({
-          productIds: order.items.map((item) => item.productId),
+          productIds: physicalProductIds,
           // Byte-identical to the key this service used when the logic was
           // private here, so an order mid-flight across the deploy does not
           // re-enqueue under a new key.
@@ -536,9 +543,9 @@ export class OrderSyncService implements IOrderSyncService {
    */
   private async consumeHoldsAbsorbedByDestinations(
     order: OrderSyncRequest['order'],
-    settled: ReadonlyArray<PromiseSettledResult<SettledDestination>>
+    settled: ReadonlyArray<PromiseSettledResult<SettledDestination>>,
+    productIds: readonly string[]
   ): Promise<void> {
-    const productIds = order.items.map((item) => item.productId);
     for (const outcome of settled) {
       if (outcome.status !== 'fulfilled') continue;
       const { connectionId, created, lowersStock } = outcome.value;

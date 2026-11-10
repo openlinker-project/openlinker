@@ -1,0 +1,162 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/multi-box-items"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Multi-box items</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Multi-box items';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><div class="doc-container">
+  <h1 id="h1_445532169" class="beta" data-has-heading-anchor="true">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    Postage Definition: Parts (multi-box items)<a href="/articles/documentation/multi-box-items/a/h1_445532169" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/multi-box-items/a/h1_445532169&#39;,this);"></a></h1>
+  <p>
+    Some items, such as large furniture, require several packages. For example, you may be selling beds that consist of a headboard, mattress, footboard, headboard legs,&nbsp;footboard legs, etc. When ordered, a bed is a single item, but you need several packages to deliver it to the buyer, and each package needs its shipping label.
+  </p>
+  <p style="text-align: justify;">
+    The <em>Multi-Box Items</em> feature allows you to set the number of packages required to ship a single item. You also can set the weights, dimensions, and packaging type for each of the packages.
+  </p>
+  <p style="">
+    <img src="/resources/Storage/documentation/Screenshots/Inventory/MyInventory/EditProductDetails/EditItem_Parts.png" alt="" class="leftAlone"/>
+  </p>
+  <p style="text-align: justify;">
+    How to set up parts for multi-box items manually:
+  </p>
+  <ol style="text-align: justify;">
+    <li>In the <i>My Inventory</i> screen, click on the item to open the <i>Product Details</i> pop-up window.</li>
+    
+    <li>Switch to the <i>Postage Definition</i> tab.</li>
+    
+    <li>In the <i>Parts</i> section, click&nbsp;<span class="btn-old-gray"><span class="fa fa-plus">&nbsp;</span>Add New</span>&nbsp;
+    </li>
+    <li>
+      Add name. For example, headboard, footboard, mattress, etc.
+    </li>
+    <li>
+      Add dimensions.&nbsp;
+    </li>
+    <li>
+      Select packaging type.&nbsp;
+    </li>
+    <li>
+      Once all parts are added, click <em>Save</em>.
+    </li>
+  </ol>
+  <p style="text-align: justify;">
+    Select a part and click the <span class="btn-old-gray"><span class="fa fa-trash">&nbsp;D</span>elete</span>&nbsp;button to remove it.
+  </p>
+  <p style="text-align: justify;">
+    When <a rel="noopener" href="/articles/documentation/open-orders-print" target="_blank" onclick="return n(&#39;!documentation/open-orders-print&#39;,this);">printing orders</a> with multi-box items,&nbsp;there will be multiple labels printed for each item part present in <em>Postage Definition</em>.&nbsp;
+  </p>
+  <h4 style="text-align: justify;" id="h4__335472728" data-has-heading-anchor="true">
+    Adding parts in bulk
+  <a href="/articles/documentation/multi-box-items/a/h4__335472728" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/multi-box-items/a/h4__335472728&#39;,this);"></a></h4>
+  <p style="text-align: justify;">
+    You can use the drag&amp;drop import functionality to add item parts in bulk. To do that:
+  </p>
+  <ol style="text-align: justify;">
+    <li>
+      Prepare a CSV file.&nbsp;
+    </li>
+    <li>
+      Drag and drop the file into the <em>My Inventory</em> screen.&nbsp;
+    </li>
+    <li>
+      Select the <em>Stock Item Box</em> import type in the <em>Import Files </em>screen&nbsp;and click <span class="btn-blue">Next</span>
+      <br/>
+      <img src="/resources/Storage/documentation/Screenshots/Inventory/MyInventory/EditProductDetails/StockItemBoxImport.png" alt="" class="leftAlone" style=""/>
+    </li>
+    <li>
+      Complete <em>File Mapping</em>.
+      <br/>
+      <img src="/resources/Storage/documentation/Screenshots/Inventory/MyInventory/EditProductDetails/StockItemBoxImport_FileMapping.png" alt="" class="leftAlone" style=""/>
+    </li>
+    <li>
+      See below available for mapping fields. All obligatory fields are marked as <span class="fa fa-exclamation-triangle icon-background1">&nbsp;</span>.
+      <br/>
+      <ul>
+        <li>
+          <strong><span class="fa fa-exclamation-triangle icon-background1">&nbsp;</span>SKU</strong>: The SKU (item number) of an item as seen in <em>My Inventory</em>.&nbsp;
+        </li>
+        <li>
+          <strong><span class="fa fa-exclamation-triangle icon-background1">&nbsp;</span>Box Name</strong>: The name of the box. For example, headboard.&nbsp;
+        </li>
+        <li>
+          <strong><span class="fa fa-exclamation-triangle icon-background1">&nbsp;</span>Width</strong>: The width of the item's part.&nbsp;
+        </li>
+        <li>
+          <strong><span class="fa fa-exclamation-triangle icon-background1">&nbsp;</span>Height</strong>: The height of the item's part.&nbsp;
+        </li>
+        <li>
+          <strong><span class="fa fa-exclamation-triangle icon-background1">&nbsp;</span>Weight</strong>: The weight of the item's part.&nbsp;&nbsp;
+        </li>
+        <li>
+          <strong><span class="fa fa-exclamation-triangle icon-background1">&nbsp;</span>Depth</strong>: The depth of the item's part.
+        </li>
+        <li>
+          <strong><span class="fa fa-exclamation-triangle icon-background1">&nbsp;</span>Package Group Name</strong>: Linnworks <a rel="noopener" href="/articles/documentation/packaging-groups" target="_blank" onclick="return n(&#39;!documentation/packaging-groups&#39;,this);">packaging group</a>.&nbsp;
+        </li>
+        <li>
+          <strong><span class="fa fa-exclamation-triangle icon-background1">&nbsp;</span>Package Typ</strong><strong>e</strong>: Linnworks <a rel="noopener" href="/articles/documentation/packaging-groups" target="_blank" onclick="return n(&#39;!documentation/packaging-groups&#39;,this);">packaging type</a>.
+        </li>
+        <li>
+          <strong>Barcode</strong>: The barcode of an item.
+        </li>
+        <li>
+          <strong>Delete</strong>: Use this column to delete item parts using drag&amp;drop. See below for more details on how to delete item parts in bulk.
+        </li>
+      </ul>
+    </li>
+    <li>
+      Click <span class="btn-blue">Import</span><i> </i>and check the&nbsp;<em>Progress</em> section for information on the import status.
+    </li>
+  </ol>
+  <h4 style="text-align: justify;" id="h4__1625355933" data-has-heading-anchor="true">
+    Deleting parts in bulk
+  <a href="/articles/documentation/multi-box-items/a/h4__1625355933" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/multi-box-items/a/h4__1625355933&#39;,this);"></a></h4>
+  <p style="text-align: justify;">
+    You can use the same drag&amp;drop import to delete item parts in bulk. For that, you will need to:&nbsp;
+  </p>
+  <p style="text-align: justify;">
+    <strong>Step 1</strong>: Prepare a CSV file that contains the following columns:
+  </p>
+  <ul style="text-align: justify;">
+    <li>
+      <strong>SKU</strong>: The SKU you would like to delete parts from.
+    </li>
+    <li>
+      <strong>Box name</strong>: The name of the box to be deleted.
+    </li>
+    <li>
+      <strong>Delete</strong>: In this column, add the value TRUE.
+    </li>
+  </ul>
+  <p>
+    <img src="/resources/Storage/documentation/Screenshots/Inventory/MyInventory/EditProductDetails/MultiParts_delete.png" alt="" class="leftAlone"/>
+  </p>
+  <p style="text-align: justify;">
+    <strong>Step 2</strong>: Complete the same steps for importing the parts as described above.
+  </p>
+</div><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

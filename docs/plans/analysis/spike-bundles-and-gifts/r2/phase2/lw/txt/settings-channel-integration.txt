@@ -1,0 +1,37 @@
+=== settings-channel-integration | Channel Integration screen
+ 
+ Channel Integration screen 
+ Channel Integration Screen
+ A channel is either a website platform, shopping cart, or online marketplace that you receive orders through. Channel integration is a way of connecting Linnworks to a channel allowing interaction between the two platforms. 
+ To add new integrations and configure settings for existing integrations go to Settings > Channel Integration .
+ Buttons
+   Add New  - Click this to select and add a new channel integration. Each channel has specific guidelines and prerequisites for integration. Please check the respective channel Add New  section before starting the integration.
+ Grid View
+ Logo 
+ The logo of the sales channel the integration is connected with. Also known as the Source . 
+ Name 
+ The name of the specific integrations in Linnworks - also known as the SubSource .
+ For most channels, the name is added manually during integration. For others, like eBay, the SubSource name is generated automatically  The SubSource name cannot be edited after the integration is complete.
+ Enabled 
+ Toggle the button to enable or disable the channel.
+ When a channel is enabled, Linnworks can communicate with it - download orders, send stock updates, etc. When the channel is disabled, no communication occurs with the channel.
+ Inventory Sync 
+ Toggle the button to enable or disable inventory updates to the channel.
+ When enabled, Linnworks will submit inventory updates to the channel when the available stock level in Linnworks changes. When disabled, Linnworks will not send any stock updates to the sales channel.
+ This button opens the channel settings window to configure the integration. Each channel has different settings based on channel specifics and supported features. For full information, check the  respective integration  documentation.
+ This button opens the  Location Mapping window. Here you can select from which location stock is provided to the channel and into which location the channel orders are downloaded. See more here. 
+ This button opens the  Inventory Mapping screen. Here you can link items listed on the sales channel to the stock items in Linnworks for various updates to be possible*. See more here. 
+ This button opens the Payment Mapping screen. Here you can link payment methods available on the channel to Linnworks payment methods for record-keeping.  See more here.   
+ This button opens the Shipping Mapping screen. Here you can link shipping methods buyers select when placing the order, to Linnworks Postal Services to automatically assign services to orders. See more here.   
+ Use this button to delete the channel integration.
+ Deleting the channel removes associated channel linking, listing templates and configurators.
+ Deleting the channel does not remove associated orders, titles, descriptions, prices, or extended properties.
+  This feature may not be available for all integrations. Please check the respective channel integration documentation to check availability.  
+ See also:
+ List of available channel integrations 
+ Inventory Updates 
+ Location Mapping 
+ Inventory Mapping 
+ Payment Mapping 
+ Shipping Mapping 
+ 

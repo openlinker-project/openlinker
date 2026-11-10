@@ -1,0 +1,53 @@
+=== import-sku-linking | Import: Stock Item Linking
+ 
+ Import: Stock Item Linking 
+ Import Type: Stock Item Linking
+ The Stock Item Linking  import allows the import of inventory linking information into the Linnworks database. This is done per selling channel (Source / SubSource). It is possible to link more than one listing per channel to a single item in the Linnworks Inventory. This is done by including multiple rows for the SKU, Source, and SubSource but with a different linked SKU Custom Label.
+ Note! For channels with multiple channel locations like Shopify , use the  Stock Item Linking (with channel locations) import. 
+ Items linked via the  Stock Linking import will also be linked within orders that are currently present in the  Open Orders  screen. 
+ Available columns
+ The available columns below have been grouped by similar fields for convenience. They may appear in a different order when imported. The order can be changed on the Column Mapping screen of the import configurations. For more information on this, see our column mapping documentation .
+ Legend
+ Key
+ Description
+ This field is a compulsory requirement for import. The data must exist as a column in the CSV and be mapped to the named field.
+ This field relies on dependent data, which is a compulsory requirement for the import. If this field is included in the import, then the dependent fields must also be mapped.
+ When the field is included in the import, the additional named field(s) are not permitted to be mapped and included. The inclusion of both fields in the same import will prevent the import from executing.
+ Columns - Stock item
+ Key
+ Column
+ Description
+ Dependent fields
+ SKU
+ Unique identifier of the Linnworks inventory item that requires linking setting up.
+ Linked SKU Custom Label
+ The SKU / Item number which is used to uniquely identify the product for the selected Source / SubSource combinations.
+ Channel Reference Id 
+ Reference number provided by the channel. Only certain channels require the use of this Reference Id Ei. Amazon, BigCommerce, Magento, or WooCommerce.
+  Source / SubSource
+ Columns - Stock item linking
+ Key
+ Column
+ Description
+ Dependent fields
+ Source
+ The Linnworks Source for the sales channel, eg eBay / AMAZON / MAGENTO.
+ SubSource
+ The Linnworks SubSource for the integrated Channel that you wish to set up mapping for.
+ End When Stock
+ This enables you to force the listing to end when the stock level gets to the specified amount as opposed to the default value of zero and will override the value defined at a global level by the specific channel config. More details on End When can be found here .
+ Ignore Sync
+ Set this to TRUE to prevent Linnworks from submitting Stock Level changes. This is not recommended as changes in stock level due to sales from other channels will not be taken into account increasing the risk of overselling. To disable the setting, use the value FALSE.
+ Max Listed Quantity
+ This specifies the maximum level that will be sent to the channel and will override the value defined at a global level by the specific channel config. More details on Max Listed can be found here .
+ Stock Percentage
+ This will send a percentage of the currently available stock level to the sales channel and will override the value defined at a global level by the specific channel config. More details on Stock Percentage can be found here .
+ Example files
+ . .csv 
+ Empty template 
+ . .csv 
+ Sample with data 
+  Video tutorial 
+ If you prefer a visual explanation, this video tutorial walks you through the Stock Item Linking   feature   step by step. It can help clarify how the feature  works and answer any additional questions.
+ Video - Stock Item Linking Import 
+ 

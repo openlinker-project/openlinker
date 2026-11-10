@@ -86,6 +86,8 @@ function buildQuery(
   }
   if (filters?.connectionId) params.set('connectionId', filters.connectionId);
   if (filters?.hideFullyStale) params.set('hideFullyStale', 'true');
+  if (filters?.bundles) params.set('bundles', filters.bundles);
+  if (filters?.productId) params.set('productId', filters.productId);
   if (sort) {
     params.set('sort', sort.field);
     params.set('dir', sort.dir);

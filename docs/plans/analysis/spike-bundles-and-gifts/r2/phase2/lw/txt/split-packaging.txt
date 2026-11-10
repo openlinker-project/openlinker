@@ -1,0 +1,60 @@
+=== split-packaging | Split Packaging for Orders
+ 
+ Split Packaging for Orders 
+ Open Orders: How to Split Packaging 
+ Use the Split Packaging functionality when you need to ship different items from the same order using separate packages . Once the packaging for an order is split, each package can have a specific packaging type, weight, and dimensions. 
+ Printing a shipping label for orders with split packaging produces a separate shipping label for each package.
+ Currently, the Split Packaging functionality supports the following Packaging Selection Methods :
+ Take maximum dimensions of order items
+ Stack items vertically
+ Fit into packaging by weight
+ Selecting another method in Settings > General Settings > Units of measurement will prompt the system to use the previous version of the Split Packaging screen . 
+ A quick step-by-step guide
+ Go to Orders > Open Orders. 
+ Select the order by ticking the selection box.
+ Click the Actions button. Alternatively, double-click the order.
+ Click Shipping > Split Packaging .
+ In the Split Packaging screen, create the required packaging bins.
+ Click Save .
+ NB! If an order with split packaging is split into multiple orders , previously applied split packaging is automatically removed.
+ For a detailed step-by-step guide on splitting packaging for open orders, see below.
+ Step 1. Select an order and access Split Packaging
+ Select an open order by ticking the selection box on the left-hand side of the Open Orders screen. Then, click Actions (or right-click an order) and go to    Shipping >   Split Packaging .
+ You must always select one order to split packaging. Splitting packaging for several orders at once is not supported.
+ Step 2. The Split Packaging screen
+ If an order has not been split into different packages, all items will be displayed in one package by default. 
+ Step 2.1. 
+ Create individual packaging bins:
+ Select an item to move into a separate packaging. 
+ Specify the Move qty .
+ NB! If the Move qty exceeds the quantity of an item in the order, the screen will display an error message. 
+ In the Move to dropdown, select an existing packaging bin or a new packaging bin. 
+ To create a new packaging bin, select New Package + . 
+ Click   Move items 
+ Step 2.2.
+ Linnworks automatically assigns the appropriate Packaging Type based on the selected Packaging Method in Settings > General Setting > Units of measurement .
+ Once packaging for an order is split, every packaging bin will have a sequence number displayed as Packaging 1, Packaging 2, Packaging 3, and so on.
+ Step 2.3.
+ You can select an item from the packaging bin and move it to another or a new bin. Follow the same steps:
+ Select an item.
+ In the Move to drop-down, select the name of the existing packaging bin or click  New Package + to move an item into a new bin.
+ Click   Move items 
+ Removing a packaging bin
+ You can remove a packaging bin by clicking the delete    icon. All items from the deleted bin will be moved to the next available packaging bin. The sequence numbers of packages will be updated accordingly. 
+ Undo all
+ Use the Undo all  button to remove the split packaging for the order and place all items into the original package. Click the button and confirm the removal.
+ Manual adjustment 
+ The Split Packaging screen also allows adjusting packaging information manually. You can manually change: 
+ Packaging group
+ Packaging type
+ Packaging size (dimensions)
+ Total weight
+ Use the respective drop-down menus to change the required details. The icon    is displayed on the screen to indicate that that package has been adjusted manually.
+ Use the Recalculate button to revert any packaging details changes that were executed manually.
+ Step 3. Save the packaging split
+ Repeat all the steps above for each item from the order until all items are allocated to the appropriate packaging bins. Click Save to split the packaging.
+ Split Packaging for Composite Items
+ The Split Packaging screen supports composite items . When moving a composite item to a new packaging bin, all child items are automatically selected and disabled once a parent item is selected.
+ If you need to select and move child items only into a separate packaging bin, make sure to deselect the composite parent item.
+ When all child items are moved into a separate packaging bin from their parent item, the parent item will be removed from the Split Packaging screen.
+ 

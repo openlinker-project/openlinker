@@ -47,9 +47,33 @@ export class OrderLineCostDto {
   netEligible!: boolean;
 }
 
+export class OrderGiftSlotCostDto {
+  @ApiProperty({ description: 'The commercial (bundle) line id' })
+  lineId!: string;
+
+  @ApiProperty({ description: 'The component line id, {lineId}~c:{variantId}' })
+  componentLineId!: string;
+
+  @ApiProperty()
+  variantId!: string;
+
+  @ApiProperty()
+  quantity!: number;
+
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'What the gift units cost you, net, in the order currency; null when unknown.',
+  })
+  totalCostNet!: number | null;
+}
+
 export class OrderLineCostsResponseDto {
   @ApiProperty({ nullable: true, type: String })
   currency!: string | null;
+
+  @ApiProperty({ type: [OrderGiftSlotCostDto] })
+  giftSlots!: OrderGiftSlotCostDto[];
 
   @ApiProperty({ type: [OrderLineCostDto] })
   lines!: OrderLineCostDto[];

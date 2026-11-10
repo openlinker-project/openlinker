@@ -185,7 +185,9 @@ export function createMockApiClient(
 ): ApiClient {
   const core: CoreApiClient = {
     request: overrides.request ?? vi.fn(),
-    requestBlob: overrides.requestBlob ?? vi.fn(),
+    // Rejects by default: a surface asking for a proxied picture falls back to
+    // its placeholder, as it would when the API has no image.
+    requestBlob: overrides.requestBlob ?? vi.fn().mockRejectedValue(new Error('No image in this test')),
     requestFile: overrides.requestFile ?? vi.fn(),
     requestStream: overrides.requestStream ?? vi.fn(),
     adapters: {
@@ -915,6 +917,17 @@ export function createMockApiClient(
       clearCredentials: vi.fn().mockResolvedValue(undefined),
       ...overrides.posthogSettings,
     } as ApiClient['posthogSettings'],
+    bundles: {
+      get: vi.fn(),
+      history: vi.fn().mockResolvedValue([]),
+      usedIn: vi.fn().mockResolvedValue([]),
+      usedInMany: vi.fn().mockResolvedValue([]),
+      create: vi.fn(),
+      update: vi.fn(),
+      syncFromMaster: vi.fn(),
+      confirmMultipack: vi.fn(),
+      ...overrides.bundles,
+    } as ApiClient['bundles'],
     products: withTwoStageReads({
       list: vi.fn().mockResolvedValue({
         items: [],
@@ -1223,6 +1236,16 @@ export function createMockApiClient(
     // in gets the neutral "no returns yet" branch rather than the
     // configuration claim, which no test should assert by accident.
     returns: {
+      // A plain (non-bundle) line: the preview answers, and nothing blocks the restock.
+      getBundleReturnPreview: vi.fn().mockResolvedValue({
+        isBundle: false,
+        paidPerUnitGross: null,
+        components: [],
+        splitRefusal: null,
+        splitRefusalVariantIds: [],
+        returnedShareGross: null,
+        allegroRefundHintGross: null,
+      }),
       list: vi.fn().mockResolvedValue({
         items: [],
         total: 0,

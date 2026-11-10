@@ -42,6 +42,7 @@
  * @module libs/core/src/returns/application/services
  * @implements {IReturnCustodyService}
  */
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import {
   INTEGRATIONS_SERVICE_TOKEN,
@@ -78,6 +79,11 @@ import {
 import type { ReturnLine } from '../../domain/entities/return-line.entity';
 import type { ReturnRecord } from '../../domain/entities/return-record.entity';
 import type { ReturnLineEvent } from '../../domain/entities/return-line-event.entity';
+import { ReturnBundleRefusedError } from '../../domain/exceptions/return-bundle-refused.error';
+import {
+  keptAtStandaloneRefundHint,
+  splitBundleAmount,
+} from '../../domain/domain-services/bundle-return-split.domain-service';
 import { ReturnCustodyContendedError } from '../../domain/exceptions/return-custody-contended.error';
 import { ReturnRestockAlreadyBlockedError } from '../../domain/exceptions/return-restock-already-blocked.error';
 import { ReturnLineNotFoundError } from '../../domain/exceptions/return-line-not-found.error';
@@ -92,6 +98,9 @@ import {
 } from './return-custody-lock';
 import type {
   AttestStockResult,
+  BundleReturnInput,
+  BundleReturnPreview,
+  ReturnedBundleComponents,
   DisposeLineInput,
   DisposeLineResult,
   IReturnCustodyService,
@@ -278,6 +287,9 @@ export class ReturnCustodyService implements IReturnCustodyService {
         throw new ReturnRestockAlreadyBlockedError(lineId);
       }
 
+      if (input.bundle !== undefined) {
+        return await this.disposeBundleRestock(lineId, input, input.bundle, at);
+      }
       return await this.disposeRestock(lineId, input, at);
     } finally {
       await this.lock.release(returnCustodyLockKey(lineId), token);
@@ -301,13 +313,24 @@ export class ReturnCustodyService implements IReturnCustodyService {
 
     // One write per resolved act, each against a freshly locked row — the
     // counters accumulate, so they must not be computed from one stale read.
+    // The per-component acts of ONE bundle dispose share a group and moved no
+    // counter between them (#3933): the counters move once for the group, on the
+    // first of its acts attested here, never once per component.
+    const movedGroups = new Set<string>();
     for (const blocked of outstanding) {
+      const group = blocked.componentGroup;
+      const movesCounters = group === null || !movedGroups.has(group);
+      if (group !== null) {
+        movedGroups.add(group);
+      }
       const { event } = await this.repository.runLineWrite(lineId, ({ line }) => {
-        const outcome = applyReturnCustodyDisposition(line, {
-          quantity: blocked.quantity,
-          disposition: 'restock',
-          at,
-        });
+        const outcome = movesCounters
+          ? applyReturnCustodyDisposition(line, {
+              quantity: blocked.quantity,
+              disposition: 'restock',
+              at,
+            })
+          : null;
 
         return {
           event: {
@@ -767,6 +790,318 @@ export class ReturnCustodyService implements IReturnCustodyService {
   }
 
   /**
+   * Restock a returned BUNDLE line (#3933): one act, one adjustment and one
+   * idempotency key per returned component, so each component can succeed or
+   * block on its own and a retry of one cannot double-apply another.
+   *
+   * The act quantity stays in LINE units (the counters' unit); the master is
+   * adjusted by `quantity * perUnit`. The line counters move ONCE per dispose
+   * call, and only when every selected component's book took its units: a set
+   * whose second component was refused is not "restocked" (spec 5.4), and the
+   * attestation moves the counters once for the whole group.
+   */
+  private async disposeBundleRestock(
+    lineId: string,
+    input: DisposeLineInput,
+    bundle: BundleReturnInput,
+    at: Date
+  ): Promise<DisposeLineResult> {
+    const { line } = await this.requireLineWithRecord(lineId);
+    const all = bundle.components;
+    const selected =
+      bundle.returnedVariantIds === undefined
+        ? all
+        : all.filter((component) => bundle.returnedVariantIds?.includes(component.variantId));
+    const knownIds = new Set(all.map((component) => component.variantId));
+    const unknown = (bundle.returnedVariantIds ?? []).filter((id) => !knownIds.has(id));
+    if (all.length === 0 || selected.length === 0 || unknown.length > 0) {
+      throw new ReturnBundleRefusedError('bad-selection', unknown);
+    }
+
+    // Validation pass, free and pure - keeps an over-disposition from touching a book.
+    applyReturnCustodyDisposition(line, { quantity: input.quantity, disposition: 'restock', at });
+
+    const partial = selected.length < all.length;
+    const shares = partial ? await this.computeComponentShares(bundle) : null;
+    const group = randomUUID();
+    const blocks: RestockBlockedDetail[] = [];
+    let allApplied = true;
+    let lastEvent: ReturnLineEvent | null = null;
+
+    // Pass 1: EVERY component's act is persisted as in_doubt before the first
+    // master call (ADR-056's attempted-predicate ordering, for the group). A
+    // crash after component 1's book took its units then leaves the others
+    // visible as in_doubt, instead of leaving no trace of them so that a
+    // re-dispose restocks component 1 a second time.
+    const prepared: {
+      component: (typeof selected)[number];
+      plan: Awaited<ReturnType<ReturnCustodyService['planRestock']>>;
+      event: ReturnLineEvent;
+    }[] = [];
+    for (const component of selected) {
+      const plan = await this.planRestock(line, {
+        productId: component.productId,
+        variantId: component.variantId,
+      });
+      const share = shares?.get(component.variantId) ?? null;
+      const { event } = await this.repository.runLineWrite(lineId, ({ line: locked }) => {
+        applyReturnCustodyDisposition(locked, {
+          quantity: input.quantity,
+          disposition: 'restock',
+          at,
+        });
+        return {
+          event: {
+            returnId: locked.returnId,
+            returnLineId: locked.id,
+            kind: 'dispose' as const,
+            quantity: input.quantity,
+            disposition: 'restock' as ReturnDisposition,
+            restockState: 'in_doubt' as const,
+            restockBlockedReason: null,
+            restockBlockedDetail: null,
+            restockedBy: null,
+            masterConnectionId: plan.connectionId,
+            note: input.note ?? null,
+            actorUserId: input.actorUserId ?? null,
+            occurredAt: at,
+            attestedByEventId: null,
+            componentVariantId: component.variantId,
+            componentGroup: group,
+            componentShareGross: share === null ? null : share * input.quantity,
+          },
+          outcome: null,
+          disposition: null,
+          result: null,
+        };
+      });
+      prepared.push({ component, plan, event });
+    }
+
+    // Pass 2: cross the boundary and settle, one component at a time.
+    for (let index = 0; index < prepared.length; index += 1) {
+      const { component, plan, event } = prepared[index];
+      const isLast = index === prepared.length - 1;
+
+      const { outcome, resultingQuantity } = await this.writeMasterStock(
+        plan,
+        line,
+        input.quantity * component.perUnit,
+        event,
+        component.variantId
+      );
+      allApplied = allApplied && outcome.countsTowardRestocked;
+
+      lastEvent = await this.repository.settleLineRestock(
+        event.id,
+        lineId,
+        {
+          restockState: outcome.restockState,
+          restockBlockedReason: outcome.restockBlockedReason,
+          restockBlockedDetail: outcome.restockBlockedDetail,
+          restockedBy: outcome.restockedBy,
+        },
+        // Computed against the LOCKED row, on the last act only and only when
+        // every component so far was taken by its book.
+        (locked) =>
+          isLast && allApplied
+            ? applyReturnCustodyDisposition(locked, {
+                quantity: input.quantity,
+                disposition: 'restock',
+                at,
+              })
+            : null,
+        isLast && allApplied ? 'restock' : null
+      );
+
+      if (outcome.countsTowardRestocked && plan.kind === 'ready' && resultingQuantity !== null) {
+        await this.mirrorRestock(plan, line, resultingQuantity);
+      }
+      if (!outcome.countsTowardRestocked) {
+        this.logger.error(
+          `Return line ${lineId}: restock of component ${component.variantId} did not reach the ` +
+            `inventory master (${outcome.restockState}: ${outcome.restockBlockedReason ?? 'unknown'})`
+        );
+        blocks.push({
+          eventId: lastEvent.id,
+          returnLineId: line.id,
+          quantity: input.quantity * component.perUnit,
+          sku: component.sku ?? line.sku,
+          reason: outcome.restockBlockedReason ?? 'unknown',
+          detail: outcome.restockBlockedDetail,
+          connectionId: plan.connectionId,
+          connectionName: plan.connectionName,
+          state: outcome.restockState,
+        });
+      }
+    }
+
+    if (lastEvent === null) {
+      throw new ReturnBundleRefusedError('bad-selection');
+    }
+
+    return {
+      line: await this.requireLine(lineId),
+      event: lastEvent,
+      restockBlocked: blocks[0] ?? null,
+      restockBlockedComponents: blocks,
+    };
+  }
+
+  async previewBundleReturn(bundle: BundleReturnInput, quantity: number): Promise<BundleReturnPreview> {
+    const variants = await this.products.getVariantsByIds(
+      bundle.components.map((component) => component.variantId)
+    );
+    const byId = new Map(variants.map((variant) => [variant.id, variant]));
+    const standalone = (variantId: string): number | null => {
+      const price = byId.get(variantId)?.price;
+      return typeof price === 'number' && Number.isFinite(price) && price > 0 ? price : null;
+    };
+
+    let shares = new Map<string, { shareGross: number; basis: 'price' | 'cost' }>();
+    let splitRefusal: BundleReturnPreview['splitRefusal'] = null;
+    let splitRefusalVariantIds: string[] = [];
+    if (bundle.paidPerUnitGross === null) {
+      splitRefusal = 'bad-total';
+    } else {
+      const split = splitBundleAmount(
+        bundle.paidPerUnitGross,
+        bundle.components.map((component) => {
+          const variant = byId.get(component.variantId);
+          return {
+            variantId: component.variantId,
+            quantity: component.perUnit,
+            unitPrice: variant?.price ?? null,
+            unitCost:
+              variant?.netUnitCost === undefined || variant.netUnitCost === null
+                ? null
+                : Number(variant.netUnitCost),
+          };
+        })
+      );
+      if (split.status === 'refused') {
+        splitRefusal = split.reason === 'no-price-no-cost' ? 'no-split-basis' : 'bad-total';
+        splitRefusalVariantIds = split.variantIds;
+      } else {
+        shares = new Map(split.shares.map((share) => [share.variantId, share]));
+      }
+    }
+
+    const returned = new Set(bundle.returnedVariantIds ?? bundle.components.map((c) => c.variantId));
+    const kept = bundle.components.filter((component) => !returned.has(component.variantId));
+    const keptPrices = kept.map((component) => standalone(component.variantId));
+    const hintInputs =
+      bundle.paidPerUnitGross === null || keptPrices.some((price) => price === null)
+        ? null
+        : {
+            paidForSetGross: bundle.paidPerUnitGross * quantity,
+            keptStandaloneGross:
+              Math.round(
+                kept.reduce(
+                  (sum, component, index) =>
+                    sum + (keptPrices[index] ?? 0) * component.perUnit * quantity,
+                  0
+                ) * 100
+              ) / 100,
+          };
+    const hint =
+      hintInputs === null
+        ? null
+        : keptAtStandaloneRefundHint(hintInputs.paidForSetGross, hintInputs.keptStandaloneGross);
+
+    const returnedShare =
+      splitRefusal === null
+        ? Math.round(
+            bundle.components
+              .filter((component) => returned.has(component.variantId))
+              .reduce((sum, component) => sum + (shares.get(component.variantId)?.shareGross ?? 0), 0) *
+              quantity *
+              100
+          ) / 100
+        : null;
+
+    return {
+      components: bundle.components.map((component) => ({
+        variantId: component.variantId,
+        sku: component.sku ?? null,
+        perUnit: component.perUnit,
+        standaloneUnitPriceGross: standalone(component.variantId),
+        shareGross: shares.get(component.variantId)?.shareGross ?? null,
+        shareBasis: shares.get(component.variantId)?.basis ?? null,
+      })),
+      splitRefusal,
+      splitRefusalVariantIds,
+      returnedShareGross: returnedShare,
+      keptAtStandaloneRefundHintGross: hint,
+      hintInputs,
+    };
+  }
+
+  async listReturnedBundleComponents(returnId: string): Promise<ReturnedBundleComponents[]> {
+    const acts = await this.repository.findComponentActsForReturn(returnId);
+    const groups = new Map<string, ReturnLineEvent[]>();
+    for (const act of acts) {
+      if (act.componentGroup === null) continue;
+      const key = `${act.returnLineId}|${act.componentGroup}`;
+      groups.set(key, [...(groups.get(key) ?? []), act]);
+    }
+    const byLine = new Map<string, ReturnedBundleComponents>();
+    for (const group of groups.values()) {
+      const confirmed = group.every((act) =>
+        ['applied', 'deduplicated', 'handled_manually'].includes(act.restockState)
+      );
+      const partial = group.every((act) => act.componentShareGross !== null);
+      if (!confirmed || !partial) continue;
+      const lineId = group[0].returnLineId;
+      const entry = byLine.get(lineId) ?? { returnLineId: lineId, units: 0, returnedVariantIds: [] };
+      entry.units += group[0].quantity;
+      for (const act of group) {
+        if (act.componentVariantId !== null && !entry.returnedVariantIds.includes(act.componentVariantId)) {
+          entry.returnedVariantIds.push(act.componentVariantId);
+        }
+      }
+      byLine.set(lineId, entry);
+    }
+    return [...byLine.values()];
+  }
+
+  /**
+   * Gross share of ONE bundle unit's price per component, computed NOW from
+   * standalone prices (cost as the fallback). Refuses rather than guesses.
+   */
+  private async computeComponentShares(bundle: BundleReturnInput): Promise<Map<string, number>> {
+    if (bundle.paidPerUnitGross === null) {
+      throw new ReturnBundleRefusedError('bad-total');
+    }
+    const variants = await this.products.getVariantsByIds(
+      bundle.components.map((component) => component.variantId)
+    );
+    const byId = new Map(variants.map((variant) => [variant.id, variant]));
+    const split = splitBundleAmount(
+      bundle.paidPerUnitGross,
+      bundle.components.map((component) => {
+        const variant = byId.get(component.variantId);
+        return {
+          variantId: component.variantId,
+          quantity: component.perUnit,
+          unitPrice: variant?.price ?? null,
+          unitCost:
+            variant?.netUnitCost === undefined || variant.netUnitCost === null
+              ? null
+              : Number(variant.netUnitCost),
+        };
+      })
+    );
+    if (split.status === 'refused') {
+      throw new ReturnBundleRefusedError(
+        split.reason === 'no-price-no-cost' ? 'no-split-basis' : 'bad-total',
+        split.variantIds
+      );
+    }
+    return new Map(split.shares.map((share) => [share.variantId, share.shareGross]));
+  }
+
+  /**
    * Cross the boundary, and classify whatever comes back through the ONE seam.
    *
    * The key is `return:{returnId}:{lineId}:{seq}` — deterministic, built from
@@ -778,7 +1113,8 @@ export class ReturnCustodyService implements IReturnCustodyService {
     plan: RestockPlan,
     line: ReturnLine,
     quantity: number,
-    event: ReturnLineEvent
+    event: ReturnLineEvent,
+    componentVariantId?: string
   ): Promise<{ outcome: RestockOutcome; resultingQuantity: number | null }> {
     if (plan.kind === 'blocked') {
       // Never a silent pick, and never a write to a book OpenLinker cannot name.
@@ -794,7 +1130,12 @@ export class ReturnCustodyService implements IReturnCustodyService {
         // Deterministic, never wall-clock (#2368): built from the act's own
         // per-line sequence, so a retry of the same logical adjustment
         // recomputes the identical key and a deduping master recognises it.
-        idempotencyKey: `return:${line.returnId}:${line.id}:${event.seq}`,
+        idempotencyKey:
+          componentVariantId === undefined
+            ? `return:${line.returnId}:${line.id}:${event.seq}`
+            : // A component act is its own idempotent adjustment (#3933): the
+              // component id keeps two components of one dispose apart.
+              `return:${line.returnId}:${line.id}~c:${componentVariantId}:${event.seq}`,
       });
       return {
         outcome: classifyRestockSuccess(result),
@@ -987,7 +1328,10 @@ export class ReturnCustodyService implements IReturnCustodyService {
    * expired would be the wrong direction of failure. Never throws for a
    * modelled condition.
    */
-  private async planRestock(line: ReturnLine): Promise<RestockPlan> {
+  private async planRestock(
+    line: ReturnLine,
+    targetOverride?: { productId: string; variantId: string }
+  ): Promise<RestockPlan> {
     let entries: ReadonlyArray<{
       connectionId: string;
       connection: Connection;
@@ -1027,7 +1371,7 @@ export class ReturnCustodyService implements IReturnCustodyService {
       );
     }
 
-    const target = await this.resolveRestockTarget(line);
+    const target = targetOverride ?? (await this.resolveRestockTarget(line));
 
     if (classified.kind === 'one') {
       const { chosen } = classified;

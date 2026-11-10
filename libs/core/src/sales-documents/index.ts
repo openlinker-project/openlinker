@@ -105,6 +105,9 @@ export * from './domain/types/gross-price-eligibility.types';
 // rate suffix a receipt name carries (#3905, ADR-082). Import-free, here for the
 // same reason the shipping split is.
 export * from './domain/types/delivery-line.types';
+export * from './domain/types/gift-lines.types';
+export * from './domain/types/bundle-document-lines.types';
+export * from './domain/ports/capabilities/zero-value-line.capability';
 
 // #3550 - manual "send this document to the buyer": the shared vocabulary, the
 // timeline record and the service that writes and reads it.

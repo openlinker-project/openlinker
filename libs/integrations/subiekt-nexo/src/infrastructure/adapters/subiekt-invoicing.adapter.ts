@@ -75,6 +75,7 @@ import { toBridgeBuyer } from '../mappers/subiekt-buyer.mapper';
 import { toBridgeUpsertCustomerRequest } from '../mappers/subiekt-customer.mapper';
 import { toBridgeKorektaLine, toBridgeLines } from '../mappers/subiekt-line.mapper';
 import { toNeutralRegulatoryStatus } from '../mappers/subiekt-regulatory-status.mapper';
+import type { ZeroValueLineSupport } from '@openlinker/core/sales-documents';
 
 /** Provider identifier stamped onto returned `InvoiceRecord`s. */
 export const SUBIEKT_PROVIDER_TYPE = 'subiekt-nexo';
@@ -119,7 +120,8 @@ export class SubiektInvoicingAdapter
     CorrectionIssuer,
     BankAccountsReader,
     BankAccountDefaultSetter,
-    RegulatoryRecordLocator
+    RegulatoryRecordLocator,
+    ZeroValueLineSupport
 {
   /**
    * Connection-level defaults (#1324). All OPTIONAL — an unset field means the
@@ -145,6 +147,14 @@ export class SubiektInvoicingAdapter
     this.paymentMethod = config.defaultPaymentMethod;
     this.bankAccountId = config.bankAccountId;
     this.stanowiskoKasoweId = config.defaultStanowiskoKasoweId;
+  }
+
+  /**
+   * The provider does not accept a 0,00 line; a gift shown on its documents takes 0,01 from a paid line of the same rate instead.
+   * Read by the document mappers through `readZeroValueLineSupport` (#3930).
+   */
+  acceptsZeroValueLine(): boolean {
+    return false;
   }
 
   /**

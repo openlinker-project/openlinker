@@ -2,7 +2,7 @@
  * Product Detail Summary
  *
  * Shared quick-identity block for a product — a links strip (open the full
- * product page, jump to content editing) plus a compact fields grid
+ * product page, jump to content editing) plus a key-value table
  * (internal ID, source external ID, currency, stock sync time). Extracted
  * from `pages/products/product-row-detail.tsx` (#1720) so the Analytics Top
  * Products inline-expand panel (#2765) reuses the exact same markup/CSS
@@ -21,6 +21,8 @@
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { useMessages } from '../../../shared/i18n';
+import { CopyableId } from '../../../shared/ui/copyable-id';
+import { KeyValueList } from '../../../shared/ui/key-value-list';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import type { Product } from '../api/products.types';
 
@@ -58,39 +60,44 @@ export interface ProductDetailFieldsProps {
 export function ProductDetailFields({ productId, product }: ProductDetailFieldsProps): ReactElement {
   const source = product?.externalIds?.[0];
   const copy = useMessages('products').productDetailSummary.fields;
+  const dash = <span className="text-muted">-</span>;
 
+  // The shared key-value table (label column, value column, one row each)
+  // instead of a 4-up grid: an internal id is ~43 mono characters and wrapped
+  // into five broken lines in a quarter-width cell.
   return (
-    <div className="products-detail-fields">
-      <div className="products-detail-field">
-        <div className="products-detail-field__label">{copy.internalId}</div>
-        <div className="products-detail-field__value mono-text">{productId}</div>
-      </div>
-      <div className="products-detail-field">
-        <div className="products-detail-field__label">{copy.sourceExternalId}</div>
-        <div className="products-detail-field__value mono-text">
-          {source ? (
-            `${source.platformType} · ${source.externalId}`
+    <KeyValueList
+      className="products-detail-fields"
+      items={[
+        {
+          id: 'internal',
+          label: copy.internalId,
+          value: <CopyableId id={productId} />,
+        },
+        {
+          id: 'source',
+          label: copy.sourceExternalId,
+          value: source ? (
+            <CopyableId id={source.externalId} label={`${source.platformType} · ${source.externalId}`} />
           ) : (
-            <span className="text-muted">-</span>
-          )}
-        </div>
-      </div>
-      <div className="products-detail-field">
-        <div className="products-detail-field__label">{copy.currency}</div>
-        <div className="products-detail-field__value">
-          {product?.currency ?? <span className="text-muted">{copy.currencyNotSet}</span>}
-        </div>
-      </div>
-      <div className="products-detail-field">
-        <div className="products-detail-field__label">{copy.stockSynced}</div>
-        <div className="products-detail-field__value">
-          {product?.stockUpdatedAt ? (
+            dash
+          ),
+        },
+        {
+          id: 'currency',
+          label: copy.currency,
+          value: product?.currency ?? <span className="text-muted">{copy.currencyNotSet}</span>,
+        },
+        {
+          id: 'stock-synced',
+          label: copy.stockSynced,
+          value: product?.stockUpdatedAt ? (
             <TimeDisplay iso={product.stockUpdatedAt} format="datetime" />
           ) : (
-            <span className="text-muted">-</span>
-          )}
-        </div>
-      </div>
-    </div>
+            dash
+          ),
+        },
+      ]}
+    />
   );
 }

@@ -1,0 +1,43 @@
+=== product-details-composition | Composition
+ 
+ Composition 
+Product Details: Composition 
+ The Composition tab shows the details of the composite item and allows you to create such items manually. Composite items are virtual items that can be created in Linnworks. Rather than being a physical product, they are a collection of multiple SKUs much like a set of items.  Compositions can be created on this screen or in bulk with the  Stock Item Compositions import.
+  Available columns 
+ SKU : T he SKU / Item number of the Linnworks inventory item that is to be included as a child item in this composite. 
+ Item Title : The title of the composite child item.
+ Quantity : T   he amount of this child item to be included in the composition. 
+ Creating composite items 
+Open the My Inventory screen.
+Create a new SKU by clicking Add New. 
+Fill in the Item Number (SKU) and Item Title . Barcode is optional.
+A new window will open where further product details can be specified.
+Click the Composition tab.
+Click the Add New button.
+Use the search box at the top of the new window to find child items.
+Choose the required SKUs for the composite and click Select. 
+Multiple selections can be made by holding  Shift and clicking the first and the last item in the list.
+Use Ctrl + click to select several entries separately.
+The amount of each SKU in the composite can be altered by clicking the field in the Quantity column.
+Click Save. 
+ Now the composite group has been created.
+ To make Linnworks calculate the available stock of a composite group based on the available stock of the child SKUs, please do the following:
+Find the Composite Parent SKU in the My Inventory screen.
+Double click the corresponding row in the Minimum Level column and change the value to -1. 
+Alternatively, click the   icon to turn it   
+This changes the tracked status in all Linnworks locations. To set on a per-location basis, click the   icon
+These two methods instruct Linnworks to treat the item as 'Not Tracked' and calculate the stock level based on the available level of the child SKUs.
+For assistance with adding the Minimum Level or Tracked column to a My Inventory view, see our Working with Views documentation .
+ Note! If the composite is set to Not Tracked manually, i.e. the Minimum Level is set to -1, then the available quantity of a composite item will not update until one of the child SKUs changes their stock level. Altering the stock level of any child SKUs and then reverting them back to their original value will still update the available quantity for related composite items.
+ Creating composite items in bulk 
+ Composite parent SKUs can be created and linked to child SKUs in bulk using the CSV file import. This is done in a two-stage process:
+Both the parent and child SKU's need to be created first, via the  Inventory Import .
+For more information on this, please see our Inventory Import documentation. 
+The linking and setting of quantities required to build the composite are done via the  Stock Item Compositions Import. 
+For more information on this, please see our Stock Item Compositions Import documentation. 
+ Removing child items from the composition 
+Click the entry to highlight it.
+Click   Delete. 
+Click   Save. 
+ For more detailed information, please check the Composite Items guide . 
+ 

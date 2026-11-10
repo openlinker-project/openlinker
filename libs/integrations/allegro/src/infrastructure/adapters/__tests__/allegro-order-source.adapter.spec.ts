@@ -60,6 +60,45 @@ describe('AllegroOrderSourceAdapter', () => {
   // reads. Allegro composes `total` from `summary.totalToPay` while `subtotal`
   // is summed from the lines - so any whole-order coupon moves one and not the
   // other.
+  // #3929. Shape follows Allegro's `OfferProductSetReference` and the tutorial's
+  // product-set line (spike verify/allegro-line-price.md Q2): `quantity` counts
+  // sets sold, `productSet.products[].quantity` counts a product inside ONE set.
+  describe('packQuantity from offer.productSet (#3929)', () => {
+    function form(productSet: unknown): unknown {
+      return {
+        id: 'cf-1',
+        status: 'READY_FOR_PROCESSING',
+        buyer: { id: 'b1', email: 'b@example.com', login: 'b' },
+        payment: { type: 'ONLINE', finishedAt: '2026-09-01T10:00:00Z' },
+        lineItems: [
+          {
+            id: 'li-1',
+            offer: { id: 'off-1', name: 'Coffee 3-pack', ...(productSet ? { productSet } : {}) },
+            quantity: 2,
+            price: { amount: '76.00', currency: 'PLN' },
+            boughtAt: '2026-09-01T09:00:00Z',
+          },
+        ],
+        summary: { totalToPay: { amount: '152.00', currency: 'PLN' } },
+      };
+    }
+
+    it('sets packQuantity for a multipack offer and leaves quantity as sets sold', async () => {
+      (httpClient.get as jest.Mock).mockResolvedValue({
+        data: form({ products: [{ id: '9d689aa5-1111-4222-8333-444455556666', quantity: 3 }] }),
+      });
+      const order = await adapter.getOrder({ externalOrderId: 'cf-1' });
+      expect(order.items[0].packQuantity).toBe(3);
+      expect(order.items[0].quantity).toBe(2);
+    });
+
+    it('leaves the key absent for an offer with no product set', async () => {
+      (httpClient.get as jest.Mock).mockResolvedValue({ data: form(undefined) });
+      const order = await adapter.getOrder({ externalOrderId: 'cf-1' });
+      expect('packQuantity' in order.items[0]).toBe(false);
+    });
+  });
+
   describe('totals.discountTotal - naming the cause of a line-vs-total gap (#3365)', () => {
     function checkoutForm(overrides: Record<string, unknown>): unknown {
       return {

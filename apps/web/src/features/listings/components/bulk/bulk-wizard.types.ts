@@ -129,7 +129,7 @@ export interface BulkVariantRow {
   resolvedCategoryId: string | null;
   /** Catalogue card id from this variant's unique EAN match (#808). */
   resolvedProductCardId: string | null;
-  resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | null;
+  resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | 'first_component' | null;
   /**
    * A catalogue card matched this variant's EAN in a different category than
    * the operator's mapping, so the mapping was used and the card set aside
@@ -169,7 +169,7 @@ export interface BulkWizardRow {
    */
   resolvedProductCardId: string | null;
   /** How the category was resolved (telemetry / UI hint). */
-  resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | null;
+  resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | 'first_component' | null;
   /** Master variant price captured at resolve (`variant.price`). Null if unset. */
   masterPrice: number | null;
   /** Master stock summed across locations (availability endpoint). Null if absent. */

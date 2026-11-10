@@ -41,6 +41,7 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
       'missing-tax-rate',
       'tax-rate-conflict',
       'line-total-mismatch',
+      'bundle-split-unknown',
       'trigger-model-manual',
       'trigger-model-batched',
     ]);
@@ -68,6 +69,7 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
       'missing-tax-rate',
       'tax-rate-conflict',
       'line-total-mismatch',
+      'bundle-split-unknown',
     ]);
     expect(SalesDocumentAttentionReasonValues).not.toContain('trigger-model-manual');
     // #3583: an order waiting for its scheduled batch is a workflow, not a fault.

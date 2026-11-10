@@ -59,6 +59,10 @@ const nullableAttributes = z
 
 export const benchParcelLineSchema = z.object({
   workLineId: z.string(),
+  bundle: z
+    .object({ lineId: z.string(), name: nullableString, giftSlot: z.boolean().optional() })
+    .nullish()
+    .transform((value) => value ?? null),
   productVariantId: z.string(),
   name: nullableString,
   sku: nullableString,

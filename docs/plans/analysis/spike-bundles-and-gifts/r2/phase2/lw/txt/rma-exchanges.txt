@@ -1,0 +1,24 @@
+=== rma-exchanges | Exchanges
+ 
+ Exchanges 
+Processed Orders: Exchanges 
+ In some situations, you may need to exchange an item when your customer is not happy with the delivered item. Linnworks allows you to log an item that has already been returned for an exchange or book exchange for a later date. This will log the returned item or book a new return to be actioned later and create a new order for the exchanged item.
+ Step 1: Find the order 
+ Open the Processed Orders screen and locate the order you need to create an exchange for.  Right-click the order and select Action > Returns, Exchanges & Resends. 
+ Select the item you want to exchange and click   Add RMA . 
+ Step 2: Add an exchange 
+ The top of the New RMA screen shows details about the item you are processing an exchange for. The bottom half of the screen is split into three tabs:  Return , Exchange , and Resend . 
+Select the Exchange tab to add a new exchange.
+ Configure the exchange using the following fields:
+ Return to : The location/warehouse that the item will be returned to.
+ Return quantity : How many items are being returned.
+ Scrap Quantity : How many returned items will be scrapped.
+ Exchange for : The new item that will be sent to the buyer.
+ Exchange Quantity : The number of new items being sent to the buyer.
+ Exchange order location : The location that the new order will be fulfilled from.
+ Additional Cost : Any additional costs paid by the buyer.
+ Reason : The reason the item was returned.
+ Reason category : Custom category for the return. These categories can be managed by clicking the wrench    icon next to the Reason category field. These  categories are shared between returns, exchanges, and resends. 
+ Refund:  Add a refund if required. It is empty by default.
+ Once the fields are filled in, click  Add Exchange > Action or Book the exchange. For more information on what is the difference between   Book and   Action buttons see here .
+ 

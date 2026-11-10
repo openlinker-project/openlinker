@@ -40,7 +40,8 @@ function mapping(overrides: Partial<ExternalIdMapping> = {}): ExternalIdMapping 
 
 describe('StaleOfferPauseService', () => {
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
-  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant'>>;
+  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant' | 'getVariantsByIds'>>;
+  let bundleDefinitions: { findCurrentContainingComponents: jest.Mock; list: jest.Mock };
   let offerMappings: jest.Mocked<OfferMappingRepositoryPort>;
   let jobQueue: jest.Mocked<SyncJobQueuePort>;
   let service: StaleOfferPauseService;
@@ -52,6 +53,11 @@ describe('StaleOfferPauseService', () => {
 
     productsService = {
       getVariant: jest.fn().mockResolvedValue(makeVariant()),
+      getVariantsByIds: jest.fn().mockResolvedValue([]),
+    };
+    bundleDefinitions = {
+      findCurrentContainingComponents: jest.fn().mockResolvedValue([]),
+      list: jest.fn().mockResolvedValue([]),
     };
 
     offerMappings = {
@@ -78,8 +84,79 @@ describe('StaleOfferPauseService', () => {
       identifierMapping,
       productsService as unknown as IProductsService,
       offerMappings,
-      jobQueue
+      jobQueue,
+      bundleDefinitions as never
     );
+  });
+
+  describe('bundles with a stale component (#3931)', () => {
+    const bundle = {
+      variantId: 'ol_variant_set',
+      version: 1,
+      components: [
+        { variantId: 'ol_variant_a', productId: 'p-a', quantity: 1 },
+        { variantId: 'ol_variant_b', productId: 'p-b', quantity: 2 },
+      ],
+    };
+    const staleAt = new Date('2026-10-01T00:00:00.000Z');
+
+    it('should pause the bundle offers when a component is stale (event path)', async () => {
+      productsService.getVariant.mockResolvedValue(makeVariant({ isStale: true, staleAt }));
+      bundleDefinitions.findCurrentContainingComponents.mockResolvedValue([bundle]);
+      productsService.getVariantsByIds.mockResolvedValue([
+        { id: 'ol_variant_a', isStale: true, staleAt } as never,
+        { id: 'ol_variant_b', isStale: false } as never,
+      ]);
+      identifierMapping.getExternalIds.mockImplementation((_t: string, id: string) =>
+        Promise.resolve(
+          id === 'ol_variant_set' ? [mapping({ connectionId: 'conn-1', externalId: 'bundle-offer' })] : []
+        )
+      );
+
+      await service.pauseOffersForVariants({ variantIds: ['ol_variant_a'], correlationId: 'c' });
+
+      expect(jobQueue.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionId: 'conn-1',
+          payload: expect.objectContaining({ offerId: 'bundle-offer', quantity: 0 }),
+        })
+      );
+    });
+
+    it('should not pause a bundle whose component is no longer stale', async () => {
+      productsService.getVariant.mockResolvedValue(makeVariant({ isStale: false }));
+      bundleDefinitions.findCurrentContainingComponents.mockResolvedValue([bundle]);
+      productsService.getVariantsByIds.mockResolvedValue([
+        { id: 'ol_variant_a', isStale: false } as never,
+        { id: 'ol_variant_b', isStale: false } as never,
+      ]);
+
+      await service.pauseOffersForVariants({ variantIds: ['ol_variant_a'], correlationId: 'c' });
+
+      expect(jobQueue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('should find the bundle from persisted state in the sweep, for its own connection only', async () => {
+      bundleDefinitions.list.mockResolvedValue([bundle]);
+      productsService.getVariantsByIds.mockResolvedValue([
+        { id: 'ol_variant_b', isStale: true, staleAt } as never,
+      ]);
+      identifierMapping.getExternalIds.mockResolvedValue([
+        mapping({ connectionId: 'conn-1', externalId: 'offer-1' }),
+        mapping({ connectionId: 'conn-2', externalId: 'offer-2' }),
+      ]);
+
+      const result = await service.sweepConnection('conn-1', { limit: 10 });
+
+      expect(result.offersPaused).toBe(1);
+      expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
+      expect(jobQueue.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionId: 'conn-1',
+          payload: expect.objectContaining({ offerId: 'offer-1', quantity: 0 }),
+        })
+      );
+    });
   });
 
   describe('pauseOffersForVariants', () => {

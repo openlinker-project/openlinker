@@ -228,7 +228,8 @@ export class RoutingDryRunService implements IRoutingDryRunService {
       projection = projectOrderForRouting(
         orderFromReadySnapshot(record, { requireBuyer: false }),
         record.shippingAddressHash,
-        storePii
+        storePii,
+        record.physicalItems
       );
     } catch (error) {
       if (error instanceof OrderSnapshotUnavailableError) {

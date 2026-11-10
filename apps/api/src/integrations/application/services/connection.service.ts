@@ -10,7 +10,10 @@
  * @see {@link IConnectionService} for the interface
  * @see {@link ConnectionPort} for the core port
  */
-import { validateDeliveryOnDocumentsShape } from '@openlinker/core/sales-documents';
+import {
+  validateDeliveryOnDocumentsShape,
+  validateGiftOnDocumentsShape,
+} from '@openlinker/core/sales-documents';
 import { BadRequestException, HttpStatus, Injectable } from '@nestjs/common';
 import type { ApiErrorParams, KnownApiErrorCode } from '@openlinker/shared/errors';
 import { randomUUID } from 'node:crypto';
@@ -590,6 +593,25 @@ export class ConnectionService implements IConnectionService {
           })),
         }
       );
+    }
+  }
+
+  /**
+   * Core-owned shape check for `config.giftOnDocuments` (#3930). Plugin config
+   * validators ignore keys they do not know, so without this a typo'd form would
+   * persist and silently read back as the default. Absent or `null` stays absent.
+   */
+  private validateGiftOnDocumentsConfig(config: Record<string, unknown>): void {
+    const value = config.giftOnDocuments;
+    if (value === undefined || value === null) return;
+    const errors = validateGiftOnDocumentsShape(value);
+    if (errors.length > 0) {
+      throw new BadRequestException({
+        message: `Invalid config.giftOnDocuments: ${errors
+          .map((issue) => `${issue.path} ${issue.message}`)
+          .join('; ')}`,
+        errors,
+      });
     }
   }
 
@@ -1200,6 +1222,7 @@ export class ConnectionService implements IConnectionService {
         this.validatePaymentWritebackConfig(rest.config);
         this.validateAutoDispatchConfig(rest.config);
         await this.validateDeliveryOnDocumentsConfig(rest.config);
+        this.validateGiftOnDocumentsConfig(rest.config);
         this.validateBuyerEmailsConfig(rest.config, enabledCapabilities, undefined);
         this.validateSalesDocumentBatchConfig(rest.config);
         await this.validateStockLocationOverride(rest.config, undefined);
@@ -1506,6 +1529,7 @@ export class ConnectionService implements IConnectionService {
         this.validatePaymentWritebackConfig(patch.config);
         this.validateAutoDispatchConfig(patch.config);
         await this.validateDeliveryOnDocumentsConfig(patch.config);
+        this.validateGiftOnDocumentsConfig(patch.config);
         this.validateBuyerEmailsConfig(
           patch.config,
           patch.enabledCapabilities ?? existing.enabledCapabilities,

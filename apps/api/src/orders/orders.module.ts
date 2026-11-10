@@ -17,6 +17,7 @@ import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analyti
 import { InvoicingModule as CoreInvoicingModule } from '@openlinker/core/invoicing';
 import { MappingsModule as CoreMappingsModule } from '@openlinker/core/mappings';
 import { InventoryModule as CoreInventoryModule } from '@openlinker/core/inventory';
+import { ProductsModule as CoreProductsModule } from '@openlinker/core/products';
 import { ShippingModule as CoreShippingModule } from '@openlinker/core/shipping';
 import { ReturnsModule as CoreReturnsModule } from '@openlinker/core/returns';
 import { SyncModule as CoreSyncModule } from '@openlinker/core/sync';
@@ -81,6 +82,8 @@ import { FulfillmentApiModule } from '../fulfillment/fulfillment-api.module';
     CoreInvoicingModule,
     CoreMappingsModule,
     CoreInventoryModule,
+    // #3624: PRODUCTS_SERVICE_TOKEN + BUNDLE_DEFINITION_SERVICE_TOKEN for the order detail's bundle lines.
+    CoreProductsModule,
     CoreShippingModule,
     CoreReturnsModule,
     // CoreSyncModule (#3534) provides JOB_ENQUEUE_TOKEN — the export

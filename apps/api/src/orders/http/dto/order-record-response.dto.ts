@@ -60,6 +60,44 @@ import { SalesDocumentViewResponseDto } from './sales-document-view-response.dto
 import { SalesDocumentBlockParamsDto } from './sales-document-block-params.dto';
 
 
+export class OrderBundleComponentDto {
+  @ApiProperty({ description: 'Physical line id of the component' }) lineId!: string;
+  @ApiProperty() variantId!: string;
+  @ApiProperty() productId!: string;
+  @ApiPropertyOptional({ type: String, nullable: true }) name!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) sku!: string | null;
+  @ApiProperty({ description: 'Units for the whole line' }) quantity!: number;
+  @ApiProperty({ description: 'Units in ONE bundle unit' }) perUnit!: number;
+  @ApiPropertyOptional() giftSlot?: boolean;
+}
+
+export class OrderBundleLineDto {
+  @ApiProperty({ description: 'Commercial line id (the line the buyer paid for)' }) lineId!: string;
+  @ApiProperty() bundleVariantId!: string;
+  @ApiProperty({ description: 'Definition version the order was frozen with' }) version!: number;
+  @ApiProperty({
+    description:
+      'True when the bundle has been changed since this order was frozen: the order still ships the composition it holds.',
+  })
+  olderComposition!: boolean;
+  @ApiProperty({ type: [OrderBundleComponentDto] }) components!: OrderBundleComponentDto[];
+}
+
+export class OrderMultipackHoldDto {
+  @ApiProperty({ description: 'The channel line id' }) lineId!: string;
+  @ApiProperty({ description: 'Units of the product per unit ordered' }) packQuantity!: number;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'The offer title the channel sent' })
+  lineName!: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description: 'The variant the offer maps to; null when the offer is not mapped to one',
+  })
+  variantId!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) productName!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) sku!: string | null;
+}
+
 export class OrderRecordResponseDto {
   @ApiProperty({ description: 'Internal order ID (e.g. ol_order_...)' })
   internalOrderId!: string;
@@ -612,6 +650,29 @@ export class OrderRecordResponseDto {
       'DETAIL READ ONLY, same as activeHold above.',
   })
   holdHistory?: OrderHoldDto[];
+
+  @ApiPropertyOptional({
+    type: () => [OrderBundleLineDto],
+    description:
+      'The bundle lines of this order with the components they were frozen with (#3624). DETAIL READ ONLY. ' +
+      'Absent when the order holds no bundle.',
+  })
+  bundleLines?: OrderBundleLineDto[];
+
+  @ApiPropertyOptional({
+    type: () => OrderMultipackHoldDto,
+    description:
+      'Set while this order is held because a channel line sells several units of one product and no bundle defines them (#3624). ' +
+      'DETAIL READ ONLY. Names the product the offer maps to, which is what a "create bundle N x product" action needs.',
+  })
+  multipackHold?: OrderMultipackHoldDto;
+
+  @ApiPropertyOptional({
+    type: () => [OrderMultipackHoldDto],
+    description:
+      'Every held multipack line (#3520). An order can hold several; each needs its own confirmation. DETAIL READ ONLY.',
+  })
+  multipackHolds?: OrderMultipackHoldDto[];
 
   @ApiPropertyOptional({
     type: SalesDocumentViewResponseDto,

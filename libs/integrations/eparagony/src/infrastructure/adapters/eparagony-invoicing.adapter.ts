@@ -118,6 +118,7 @@ import {
   toIssuedDocumentSeller,
   toRegulatoryClearanceResult,
 } from './eparagony-invoice.mapper';
+import type { ZeroValueLineSupport } from '@openlinker/core/sales-documents';
 
 /**
  * The only neutral document type `issueInvoice` issues.
@@ -196,7 +197,7 @@ const ISSUED_STATUSES: readonly string[] = [EPARAGONY_STATUS_CONFIRMED, EPARAGON
 const DEFAULT_NUMBERING_TIME_ZONE = 'Europe/Warsaw';
 
 export class EparagonyInvoicingAdapter
-  implements InvoicingPort, RegulatoryStatusReader, CorrectionIssuer, DocumentNumberConsumer
+  implements InvoicingPort, RegulatoryStatusReader, CorrectionIssuer, DocumentNumberConsumer, ZeroValueLineSupport
 {
   /**
    * Marks eparagony as an OpenLinker-numbered provider (#3500): the vendor's
@@ -274,6 +275,14 @@ export class EparagonyInvoicingAdapter
     const status = await this.pollToSettledIssuance(documentToken, deadline, cmd.orderId);
 
     return this.toIssueResult(cmd, status, documentToken, documentLines);
+  }
+
+  /**
+   * The provider does not accept a 0,00 line; a gift shown on its documents takes 0,01 from a paid line of the same rate instead.
+   * Read by the document mappers through `readZeroValueLineSupport` (#3930).
+   */
+  acceptsZeroValueLine(): boolean {
+    return false;
   }
 
   /**

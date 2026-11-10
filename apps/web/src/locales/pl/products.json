@@ -308,10 +308,16 @@
     "viewerTitle": "Podgląd zdjęć: {name}"
   },
   "productRowDetail": {
+    "columns": {
+      "listedOn": "Wystawiony w",
+      "stock": "Stan",
+      "variant": "Wariant"
+    },
     "createOffer": "+ Utwórz ofertę",
     "deletedAtSource": "Usunięty w źródle",
     "ean": "EAN {ean}",
-    "liveMarketplaceStatus": "Bieżący status w marketplace",
+    "identifiersHeading": "Identyfikatory",
+    "liveMarketplaceStatus": "Oferty w marketplace",
     "loading": {
       "message": "Pobieranie stanów wariantów…",
       "title": "Wczytywanie wariantów"
@@ -323,8 +329,7 @@
       "notFound": "Nie znaleziono produktu",
       "title": "Nie udało się wczytać wariantów"
     },
-    "variantsHeading": "Warianty i stany",
-    "variantsHeadingWithCount": "Warianty i stany ({n})"
+    "variantsHeading": "Warianty i stany"
   },
   "productSourceSection": {
     "alsoMappedOn": "Zmapowany także w",
@@ -504,7 +509,13 @@
       "editContent": "Edytuj treść",
       "kicker": "Produkt",
       "listings": "Oferty",
+      "loadError": "Nie udało się wczytać produktu",
+      "loadingMessage": "Pobieranie stanów i ofert…",
+      "loadingTitle": "Wczytywanie produktu",
+      "notFound": "Tego produktu nie ma już w katalogu.",
+      "notFoundTitle": "Nie znaleziono produktu",
       "openProduct": "Otwórz produkt",
+      "retry": "Spróbuj ponownie",
       "stateAria": "Stan produktu",
       "stock": "Stan magazynowy",
       "taxRate": "Stawka VAT",

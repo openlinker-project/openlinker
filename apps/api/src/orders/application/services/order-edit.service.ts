@@ -599,7 +599,12 @@ export class OrderEditService implements IOrderEditService {
     }
 
     const shipments = await this.shipmentQuery.getOutboundByOrderId(input.internalOrderId);
-    const assessment = await this.fulfillmentEdit.assessForEdit(input.internalOrderId);
+    // #3607: a bundle line's units live on its component lines, so the guards
+    // are asked per commercial line through the frozen composition.
+    const assessment = await this.fulfillmentEdit.assessForEdit(
+      input.internalOrderId,
+      this.bundleComponentsByLine(record)
+    );
     await this.assertEditable(record, shipments, assessment, allowAfterShipping);
     const documentIssued = checksDocuments ? await this.hasIssuedDocument(record) : false;
 
@@ -933,6 +938,7 @@ export class OrderEditService implements IOrderEditService {
           orderId: written.internalOrderId,
           orderLineId: line.orderLineId,
           newQuantity: line.newQuantity,
+          components: written.componentsOfLine(line.orderLineId),
         });
         closedWorkIds.push(...lowered.closedParcels.map((closed) => closed.workId));
       } catch (error) {
@@ -962,6 +968,7 @@ export class OrderEditService implements IOrderEditService {
         lines: prepared.loweredLines.map((line) => ({
           orderLineId: line.orderLineId,
           quantity: line.newQuantity,
+          components: written.componentsOfLine(line.orderLineId),
         })),
       });
     } catch (error) {
@@ -978,6 +985,7 @@ export class OrderEditService implements IOrderEditService {
           internalOrderId: written.internalOrderId,
           orderLineId: line.orderLineId,
           units: line.removedUnits,
+          components: written.componentsOfLine(line.orderLineId),
           changeId,
         });
         stock.push({
@@ -995,6 +1003,18 @@ export class OrderEditService implements IOrderEditService {
       }
     }
     return { stock, workNarrowingFailures };
+  }
+
+  /** Bundle line id -> its frozen components, for the work assessment (#3607). */
+  private bundleComponentsByLine(
+    record: OrderRecord
+  ): Record<string, ReturnType<OrderRecord['componentsOfLine']>> {
+    const out: Record<string, ReturnType<OrderRecord['componentsOfLine']>> = {};
+    for (const item of record.orderItems) {
+      const components = record.componentsOfLine(item.id);
+      if (components.length > 0) out[item.id] = components;
+    }
+    return out;
   }
 
   private stampChange(

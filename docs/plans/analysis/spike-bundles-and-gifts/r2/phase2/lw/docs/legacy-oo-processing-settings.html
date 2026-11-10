@@ -1,0 +1,52 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/legacy-oo-processing-settings"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Legacy Open Orders screen: Order Processing settings</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Legacy Open Orders screen: Order Processing settings';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><div class="doc-container">
+<h1 id="h1_1119619778" data-has-heading-anchor="true">Order Book Settings - Order Processing<a href="/articles/documentation/legacy-oo-processing-settings/a/h1_1119619778" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/legacy-oo-processing-settings/a/h1_1119619778&#39;,this);"></a></h1>
+<p class="overview"><strong>Overview</strong><br/>This screen shows the settings that apply to order processing in Linnworks.net.</p>
+<div class="alert-info">
+  <b>Info!</b> You are currently looking at documentation for the <b>previous</b> version of the <i>Open Orders</i> screen. Keep in mind that some functions may differ from the newer, improved version. Check out the updated documentation <a href="/articles/documentation/open-orders" onclick="return n(&#39;!documentation/open-orders&#39;,this);">here</a> for details on the <b>new</b> <i>Open Orders</i> screen.&nbsp;
+</div>
+<h2 id="OrderProc" data-has-heading-anchor="true">Order Processing<a href="/articles/documentation/legacy-oo-processing-settings/a/OrderProc" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/legacy-oo-processing-settings/a/OrderProc&#39;,this);"></a></h2>
+<h3 id="APLabel" data-has-heading-anchor="true">Auto Print Label<a href="/articles/documentation/legacy-oo-processing-settings/a/APLabel" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/legacy-oo-processing-settings/a/APLabel&#39;,this);"></a></h3>
+<p>With this option enabled, the appropriate shipping label based on the Linnworks Postal service assigned the selected order will be automatically printed when the <strong>Process Order</strong> screen is opened. Be aware this this function will not print a shipping label if the Order has the shipping service "Default" assigned.</p>
+<h3 id="APInv" data-has-heading-anchor="true">Auto Print Invoice<a href="/articles/documentation/legacy-oo-processing-settings/a/APInv" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/legacy-oo-processing-settings/a/APInv&#39;,this);"></a></h3>
+<p>With this option enabled, the appropriate conditional invoice or the default invoice will be printed automatically when the the <strong>Process Order</strong> screen is opened.</p>
+<h3 id="Space" data-has-heading-anchor="true">Space Bar to Process Order<a href="/articles/documentation/legacy-oo-processing-settings/a/Space" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/legacy-oo-processing-settings/a/Space&#39;,this);"></a></h3>
+<p>With this option enabled, pressing <strong>Space Bar</strong>&nbsp;on the <a href="/articles/documentation/open-orders-process" onclick="return n(&#39;!documentation/open-orders-process&#39;,this);"><strong>Process Order Screen</strong></a>&nbsp;will process the order. This is not recommended to have enabled as accidentally pressing the Space Bar will process the order immediately.</p>
+<h3 id="barcode" data-has-heading-anchor="true">Process Order by Scanning Barcode<a href="/articles/documentation/legacy-oo-processing-settings/a/barcode" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/legacy-oo-processing-settings/a/barcode&#39;,this);"></a></h3>
+<p>With this option enabled, it is possible to scan a barcode to process an order on the Process Order screen instead of clicking the Process button.</p>
+<ul>
+<li>Enter a barcode in the box provided</li>
+<li>Ensure the barcode is unique eg "<em>PROCESS ORDER NOW</em>"</li>
+<li>Print a copy of the barcode and tape it to your Despatch station</li>
+<li>Now the Despatcher can scan the Order Barcode to find the order and when the Process Order is open scan the special barcode to process the order</li>
+</ul>
+<h3 id="BatchSize" data-has-heading-anchor="true">Order Process Batch Size<a href="/articles/documentation/legacy-oo-processing-settings/a/BatchSize" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/legacy-oo-processing-settings/a/BatchSize&#39;,this);"></a></h3>
+<p>It is possible, normally due to network instability, for order processing to fail when large numbers of orders are processed at once, due to timeouts. When processing large amounts of orders, they are batched in order to reduce the risk that timeouts will occur. If timeouts occur, lower the number of orders in the batch using the dropdown menu.</p>
+</div><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

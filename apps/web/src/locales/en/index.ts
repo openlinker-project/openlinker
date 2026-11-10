@@ -19,6 +19,8 @@ import app from './app.json';
 import auth from './auth.json';
 import automation from './automation.json';
 import bench from './bench.json';
+import bundleReturns from './bundle-returns.json';
+import bundles from './bundles.json';
 import buyerEmails from './buyer-emails.json';
 import connections from './connections.json';
 import content from './content.json';
@@ -66,6 +68,8 @@ export const en = {
   auth,
   automation,
   bench,
+  'bundle-returns': bundleReturns,
+  bundles,
   'buyer-emails': buyerEmails,
   connections,
   content,

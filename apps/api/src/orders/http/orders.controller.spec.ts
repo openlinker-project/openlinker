@@ -10,6 +10,8 @@ import {
   RefundRecordContendedException,
 } from '@openlinker/core/orders';
 import { Test } from '@nestjs/testing';
+import { IDENTIFIER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/identifier-mapping';
+import { BUNDLE_DEFINITION_SERVICE_TOKEN, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
 import { ParseUUIDPipe } from '@nestjs/common';
 import {
   BadRequestException,
@@ -109,6 +111,9 @@ describe('OrdersController', () => {
   let salesDocumentView: jest.Mocked<ISalesDocumentViewService>;
   let testFixtureService: jest.Mocked<IOrderTestFixtureService>;
   let fulfillmentWork: jest.Mocked<IFulfillmentWorkQueryService>;
+  let mockBundleProducts: { getVariantsByIds: jest.Mock; getProductsByIds: jest.Mock };
+  let mockBundleDefinitions: { findCurrentByVariantIds: jest.Mock };
+  let mockBundleMapping: { getInternalId: jest.Mock };
   let orderChanges: jest.Mocked<IOrderChangeService>;
   let orderCancellation: jest.Mocked<IOrderCancellationService>;
 
@@ -204,6 +209,9 @@ describe('OrdersController', () => {
       findSearchTextReindexPage: jest.fn(),
       rewriteSearchText: jest.fn(),
       claimShippedNotification: jest.fn(),
+      freezeLineExpansion: jest.fn(),
+      countOpenOrdersByBundleVersion: jest.fn(),
+      findHeldByReasonCode: jest.fn(),
       claimPaymentWriteback: jest.fn().mockResolvedValue(true),
       recordPaymentWriteback: jest.fn().mockResolvedValue(undefined),
       markPaymentWritebackHandled: jest.fn().mockResolvedValue(0),
@@ -293,10 +301,20 @@ describe('OrdersController', () => {
       assertTestFixturesAllowed: jest.fn(),
     };
 
+    mockBundleProducts = {
+      getVariantsByIds: jest.fn().mockResolvedValue([]),
+      getProductsByIds: jest.fn().mockResolvedValue([]),
+    };
+    mockBundleDefinitions = { findCurrentByVariantIds: jest.fn().mockResolvedValue([]) };
+    mockBundleMapping = { getInternalId: jest.fn().mockResolvedValue(null) };
+
     listOpenReturnOrderIds = jest.fn().mockResolvedValue([]);
     const module: TestingModule = await Test.createTestingModule({
       controllers: [OrdersController],
       providers: [
+        { provide: PRODUCTS_SERVICE_TOKEN, useValue: mockBundleProducts },
+        { provide: IDENTIFIER_MAPPING_SERVICE_TOKEN, useValue: mockBundleMapping },
+        { provide: BUNDLE_DEFINITION_SERVICE_TOKEN, useValue: mockBundleDefinitions },
         {
           provide: ORDER_RECORD_REPOSITORY_TOKEN,
           useValue: mockRepository,
@@ -1093,6 +1111,118 @@ describe('OrdersController', () => {
   });
 
   describe('getOrder', () => {
+    it('should list the bundle line components and flag an older composition (#3624)', async () => {
+      const withBundle = Object.create(mockOrder, {
+        bundleLines: {
+          value: [
+            {
+              lineId: 'L1',
+              bundleVariantId: 'v-set',
+              version: 1,
+              components: [
+                { lineId: 'L1~c:v-a', variantId: 'v-a', productId: 'p-a', quantity: 2, perUnit: 2 },
+                {
+                  lineId: 'L1~c:v-b',
+                  variantId: 'v-b',
+                  productId: 'p-b',
+                  quantity: 1,
+                  perUnit: 1,
+                  giftSlot: true,
+                },
+              ],
+            },
+          ],
+        },
+      }) as OrderRecord;
+      repository.findById.mockResolvedValue(withBundle);
+      mockBundleDefinitions.findCurrentByVariantIds.mockResolvedValue([
+        { variantId: 'v-set', version: 2, components: [] },
+      ]);
+      mockBundleProducts.getVariantsByIds.mockResolvedValue([
+        { id: 'v-a', productId: 'p-a', sku: 'A-1' },
+        { id: 'v-b', productId: 'p-b', sku: 'B-1' },
+      ]);
+      mockBundleProducts.getProductsByIds.mockResolvedValue([
+        { id: 'p-a', name: 'Kubek' },
+        { id: 'p-b', name: 'Lyzeczka' },
+      ]);
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.bundleLines).toHaveLength(1);
+      expect(result.bundleLines?.[0].olderComposition).toBe(true);
+      expect(
+        result.bundleLines?.[0].components.map((c) => [c.name, c.quantity, c.giftSlot])
+      ).toEqual([
+        ['Kubek', 2, undefined],
+        ['Lyzeczka', 1, true],
+      ]);
+    });
+
+    it('should name the product a held multipack offer maps to (#3624)', async () => {
+      const held = Object.create(mockOrder, {
+        recordStatus: { value: 'awaiting_mapping' },
+        mappingFailureReason: {
+          value: 'multipack without a bundle [multipack-without-bundle]: line sells 3 units',
+        },
+        rawMultipackLines: {
+          value: [
+            {
+              itemId: 'L1',
+              name: 'Kawa 3 opakowania',
+              packQuantity: 3,
+              productRef: { type: 'offer', externalId: 'OFFER-1' },
+            },
+          ],
+        },
+      }) as OrderRecord;
+      repository.findById.mockResolvedValue(held);
+      mockBundleMapping.getInternalId.mockResolvedValue('v-coffee');
+      mockBundleProducts.getVariantsByIds.mockResolvedValue([
+        { id: 'v-coffee', productId: 'p-coffee', sku: 'KAW-250-ETI' },
+      ]);
+      mockBundleProducts.getProductsByIds.mockResolvedValue([{ id: 'p-coffee', name: 'Kawa' }]);
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.multipackHold).toEqual({
+        lineId: 'L1',
+        packQuantity: 3,
+        lineName: 'Kawa 3 opakowania',
+        variantId: 'v-coffee',
+        productName: 'Kawa',
+        sku: 'KAW-250-ETI',
+      });
+    });
+
+    it('should surface every held multipack line, not only the first (#3520)', async () => {
+      const held = Object.create(mockOrder, {
+        recordStatus: { value: 'awaiting_mapping' },
+        mappingFailureReason: {
+          value: 'multipack without a bundle [multipack-without-bundle]: lines sell several units',
+        },
+        rawMultipackLines: {
+          value: [
+            { itemId: 'L1', name: 'A', packQuantity: 2, productRef: { type: 'offer', externalId: 'O1' } },
+            { itemId: 'L2', name: 'B', packQuantity: 3, productRef: { type: 'offer', externalId: 'O2' } },
+          ],
+        },
+      }) as OrderRecord;
+      repository.findById.mockResolvedValue(held);
+      mockBundleMapping.getInternalId.mockResolvedValue(null);
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.multipackHolds?.map((h) => h.lineId)).toEqual(['L1', 'L2']);
+      expect(result.multipackHold?.lineId).toBe('L1');
+    });
+
+    it('should leave bundleLines off an order without bundles (#3624)', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      const result = await controller.getOrder('ol_order_001');
+      expect(result.bundleLines).toBeUndefined();
+    });
+
     it('should return order record when found', async () => {
       repository.findById.mockResolvedValue(mockOrder);
 

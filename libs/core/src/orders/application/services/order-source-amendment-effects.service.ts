@@ -36,6 +36,7 @@ import {
   type IReservationService,
 } from '@openlinker/core/inventory';
 import { SYNC_LOCK_TOKEN, type SyncLockPort } from '@openlinker/core/sync';
+import type { ComponentLineRef } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
@@ -177,7 +178,9 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
     const items = record.orderItems;
     if (items.length === 0) return null;
 
-    const assessment = await this.fulfillmentEdit.assessForEdit(orderId);
+    // A bundle line's work sits on its component lines; the assessment folds
+    // them back so every figure below is per commercial line.
+    const assessment = await this.fulfillmentEdit.assessForEdit(orderId, bundleComponents(record));
     const plan = planSourceAmendment({
       effectiveByLine: effectiveQuantities(items),
       requiredByLine: assessment.requiredByLine,
@@ -249,6 +252,7 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
           orderId,
           orderLineId: line.orderLineId,
           newQuantity: line.to,
+          ...componentsFor(record, line.orderLineId),
         });
         closedParcels.push(...lowered.closedParcels);
       } catch (error) {
@@ -259,7 +263,7 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
       }
     }
 
-    if (await this.followUp(orderId, lines)) failed = true;
+    if (await this.followUp(orderId, record, lines)) failed = true;
 
     if (failed) {
       // Leave (or raise) the attention entry so the order is visible until a
@@ -279,12 +283,20 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
    * failed stock reversal: the work is already lower, so leaving the hold at the
    * old quantity under-publishes availability until something repairs it.
    */
-  private async followUp(orderId: string, lines: readonly SourceAmendmentLine[]): Promise<boolean> {
+  private async followUp(
+    orderId: string,
+    record: OrderRecord,
+    lines: readonly SourceAmendmentLine[]
+  ): Promise<boolean> {
     let failed = false;
     try {
       await this.reservations.narrowForOrder({
         orderRecordId: orderId,
-        lines: lines.map((line) => ({ orderLineId: line.orderLineId, quantity: line.to })),
+        lines: lines.map((line) => ({
+          orderLineId: line.orderLineId,
+          quantity: line.to,
+          ...componentsFor(record, line.orderLineId),
+        })),
       });
     } catch (error) {
       failed = true;
@@ -297,6 +309,7 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
           internalOrderId: orderId,
           orderLineId: line.orderLineId,
           targetUnits: line.to,
+          ...componentsFor(record, line.orderLineId),
         });
         if (reversed.status === 'failed') {
           failed = true;
@@ -329,7 +342,7 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
       from: quantity,
       to: quantity,
     }));
-    if (await this.followUp(orderId, lines)) {
+    if (await this.followUp(orderId, record, lines)) {
       await this.markAttention(orderId, 'apply-failed');
       return { outcome: 'failed', lines: [], cause: null, closedParcels: [] };
     }
@@ -429,6 +442,24 @@ export class OrderSourceAmendmentEffectsService implements IOrderSourceAmendment
 /** An earlier apply left its reservation or stock step undone (see `finishEarlierApply`). */
 function hasUnfinishedApply(record: OrderRecord): boolean {
   return record.omsAttention.some((entry) => entry.producer === PRODUCER && entry.detail === 'apply-failed');
+}
+
+/** Bundle line id -> its components, for the lines that are bundles (ADR-083). */
+function bundleComponents(record: OrderRecord): Record<string, ComponentLineRef[]> {
+  const out: Record<string, ComponentLineRef[]> = {};
+  for (const bundle of record.bundleLines) {
+    out[bundle.lineId] = record.componentsOfLine(bundle.lineId);
+  }
+  return out;
+}
+
+/** `{ components }` for a bundle line, nothing for an ordinary one. */
+function componentsFor(
+  record: OrderRecord,
+  orderLineId: string
+): { components?: ComponentLineRef[] } {
+  const components = record.componentsOfLine(orderLineId);
+  return components.length > 0 ? { components } : {};
 }
 
 function effectiveQuantities(items: OrderRecord['orderItems']): Record<string, number> {

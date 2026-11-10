@@ -1,0 +1,288 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/import-sku-linking"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Import: Stock Item Linking</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Import: Stock Item Linking';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><div class="doc-container">
+  <h1 id="h1_1924170304" data-has-heading-anchor="true">Import Type: Stock Item Linking
+  <a href="/articles/documentation/import-sku-linking/a/h1_1924170304" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/import-sku-linking/a/h1_1924170304&#39;,this);"></a></h1>
+  
+  <p>
+    The <i>Stock Item Linking</i>&nbsp;import allows the import of inventory linking information into the Linnworks database. This is done per <a href="/articles/documentation/channels" target="_blank" onclick="return n(&#39;!documentation/channels&#39;,this);">selling channel</a> (Source / SubSource). It is possible to link more than one listing per channel to a single item in the Linnworks Inventory. This is done by including multiple rows for the SKU, Source,&nbsp;and SubSource&nbsp;but with a different linked SKU Custom Label.</p><img src="/resources/Storage/documentation/Screenshots/Import%20Data%20New/StockItemLinking.png" alt="Import Type - Stock Item Linking" class="size-75" style="" loading="lazy"/><div class="alert-warning">
+    <strong>Note! </strong>For channels with multiple channel locations like <strong>Shopify</strong>,&nbsp;use the&nbsp;<a rel="noopener" href="/articles/documentation/import-sku-linking-locations" target="_blank" onclick="return n(&#39;!documentation/import-sku-linking-locations&#39;,this);"><em>Stock Item Linking (with channel locations)</em></a> import.&nbsp;
+  </div>
+  
+  <p>
+    <span>Items linked via the&nbsp;</span><i>Stock Linking </i>import&nbsp;will also be linked within orders that are currently present in the&nbsp;<em>Open Orders</em><span>&nbsp;screen.</span>
+  </p>
+  <h2 id="h2_706249838" style="" data-has-heading-anchor="true"><a name="AVAILABLECOLUMNS"></a>Available columns
+  <a href="/articles/documentation/import-sku-linking/a/h2_706249838" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/import-sku-linking/a/h2_706249838&#39;,this);"></a></h2>
+  <p>
+    The available columns below have been grouped by similar fields for convenience. They may appear in a different order when imported. The order can be changed on the <i>Column Mapping</i> screen of the import configurations. For more information on this, see our column mapping <a href="/articles/documentation/import-column-mapping" onclick="return n(&#39;!documentation/import-column-mapping&#39;,this);">documentation</a>.
+  </p>
+  <h4 id="h4__1346878651" data-has-heading-anchor="true">
+    Legend
+  <a href="/articles/documentation/import-sku-linking/a/h4__1346878651" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/import-sku-linking/a/h4__1346878651&#39;,this);"></a></h4>
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th width="5%">
+          Key
+        </th>
+        <th width="95%">
+          Description
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="text-align: center; vertical-align: middle;">
+          <span class="green-dot" title="Compulsory field"></span>
+        </td>
+        <td>
+          This field is a compulsory requirement for import. The data must exist as a column in the CSV and be mapped to the named field.
+        </td>
+      </tr>
+      <tr>
+        <td style="text-align: center; vertical-align: middle;">
+          <span class="blue-dot" title="Dependent fields required"></span>
+        </td>
+        <td>
+          This field relies on dependent data, which is a compulsory requirement for the import. If this field is included in the import, then the dependent fields must also be mapped.
+        </td>
+      </tr>
+      <tr>
+        <td style="text-align: center; vertical-align: middle;">
+          <span class="red-dot" title="Exclude forbidden fiels"></span>
+        </td>
+        <td>
+          When the field is included in the import, the additional named field(s) are not permitted to be mapped and included. The inclusion of both fields in the same import will prevent the import from executing.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <h4 id="h4_784910077" data-has-heading-anchor="true">
+    Columns - Stock item
+  <a href="/articles/documentation/import-sku-linking/a/h4_784910077" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/import-sku-linking/a/h4_784910077&#39;,this);"></a></h4>
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th width="5%">
+          Key
+        </th>
+        <th width="20%">
+          Column
+        </th>
+        <th width="55%">
+          Description
+        </th>
+        <th width="20%">
+          Dependent fields
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="text-align: center; vertical-align: middle;">
+          <span class="green-dot" title="Compulsory field"></span>
+        </td>
+        <td>
+          SKU
+        </td>
+        <td>
+          Unique identifier of the Linnworks inventory item that requires linking setting up.
+        </td>
+        <td>
+          &nbsp;
+        </td>
+      </tr>
+      <tr>
+        <td style="text-align: center; vertical-align: middle;">
+          <span class="green-dot" title="Compulsory field"></span>
+        </td>
+        <td>
+          Linked SKU Custom Label
+        </td>
+        <td>
+          The SKU / Item number which&nbsp;is used to uniquely identify the product for the selected Source / SubSource combinations.
+        </td>
+        <td>
+          &nbsp;
+        </td>
+      </tr>
+      <tr>
+        <td style="text-align: center; vertical-align: middle;">
+          <span class="blue-dot" title="Dependent fields required"></span>
+        </td>
+        <td>
+          <span>Channel Reference Id</span>
+        </td>
+        <td>
+          Reference number provided by the channel. Only certain channels require the use of this Reference Id Ei. Amazon, BigCommerce, Magento, or WooCommerce.
+          <br/>
+        </td>
+        <td>
+          &nbsp;Source / SubSource
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <h4 id="h4__1399998739" data-has-heading-anchor="true">
+    Columns - Stock item linking
+  <a href="/articles/documentation/import-sku-linking/a/h4__1399998739" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/import-sku-linking/a/h4__1399998739&#39;,this);"></a></h4>
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th width="5%">
+          Key
+        </th>
+        <th width="20%">
+          Column
+        </th>
+        <th width="55%">
+          Description
+        </th>
+        <th width="20%">
+          Dependent fields
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="text-align: center; vertical-align: middle;">
+          <span class="green-dot" title="Compulsory field"></span>
+        </td>
+        <td>
+          Source
+        </td>
+        <td>
+          The Linnworks Source for the sales channel, eg eBay / AMAZON / MAGENTO.
+        </td>
+        <td>
+          &nbsp;
+        </td>
+      </tr>
+      <tr>
+        <td style="text-align: center; vertical-align: middle;">
+          <span class="green-dot" title="Compulsory field"></span>
+        </td>
+        <td>
+          SubSource
+        </td>
+        <td>
+          The Linnworks SubSource for the integrated Channel that you wish to set up mapping for.
+        </td>
+        <td>
+          &nbsp;
+        </td>
+      </tr>
+      <tr>
+        <td>
+          &nbsp;
+        </td>
+        <td>
+          End When Stock
+        </td>
+        <td>
+          This enables you to force the listing to end when the stock level gets to the specified amount as opposed to the default value of zero and will override the value defined at a global level by the specific channel config. More details on End When can be found <a href="/articles/documentation/channels-inventory-updates/a/end-when" onclick="return n(&#39;!documentation/channels-inventory-updates/a/end-when&#39;,this);">here</a>.
+        </td>
+        <td>
+          &nbsp;
+        </td>
+      </tr>
+      <tr>
+        <td>
+          &nbsp;
+        </td>
+        <td>
+          Ignore Sync
+        </td>
+        <td>
+          Set this to TRUE to prevent Linnworks from submitting Stock Level changes. This is not recommended as changes in stock level due to sales from other channels will not be taken into account increasing the risk of overselling. To disable the setting, use the value FALSE.
+        </td>
+        <td>
+          &nbsp;
+        </td>
+      </tr>
+      <tr>
+        <td>
+          &nbsp;
+        </td>
+        <td>
+          Max Listed Quantity
+        </td>
+        <td>
+          This specifies the maximum level that will be sent to the channel and will override the value defined at a global level by the specific channel config. More details on Max Listed can be found <a href="/articles/documentation/channels-inventory-updates/a/max-listed" onclick="return n(&#39;!documentation/channels-inventory-updates/a/max-listed&#39;,this);">here</a>.
+        </td>
+        <td>
+          &nbsp;
+        </td>
+      </tr>
+      <tr>
+        <td>
+          &nbsp;
+        </td>
+        <td>
+          Stock Percentage
+        </td>
+        <td>
+          This will send a percentage of the currently available stock level to the sales channel and will override the value defined at a global level by the specific channel config. More details on Stock Percentage can be found <a href="/articles/documentation/channels-inventory-updates/a/stock-percentage" onclick="return n(&#39;!documentation/channels-inventory-updates/a/stock-percentage&#39;,this);">here</a>.
+        </td>
+        <td>
+          &nbsp;
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <h3 style="box-sizing: border-box; background-color: #ffffff;" id="h2_2061255229" data-has-heading-anchor="true">
+    Example files
+  <a href="/articles/documentation/import-sku-linking/a/h2_2061255229" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/import-sku-linking/a/h2_2061255229&#39;,this);"></a></h3>
+  <ul class="videos">
+    <li class="videos" style="width: 693px;">
+      <div class="youtube-vid clearfix">
+        <span class="csv" style="width: 30px; height: 30px;">.</span><span class="time" style="height: 30px;">.csv</span>
+      </div>
+      <span class="clearfix" style="box-sizing: border-box;"><a href="/resources/Storage/documentation/Files/StockItemLinking-Template1.csv" target="_top">Empty template</a></span>
+    </li>
+    <li class="videos" style="width: 693px;">
+      <div class="youtube-vid clearfix">
+        <span class="csv" style="width: 30px; height: 30px;">.</span><span class="time" style="height: 30px;">.csv</span>
+      </div>
+      <span class="clearfix" style="box-sizing: border-box;"><a href="/resources/Storage/documentation/Files/StockItemLinking-Sample.csv" target="_top">Sample with data</a></span>
+    </li>
+  </ul>
+</div>
+<h3 style="" id="h3_107008172" data-has-heading-anchor="true">
+  <span class="fa fa-video icon-background-purple"></span>&nbsp;Video tutorial<a href="/articles/documentation/import-sku-linking/a/h3_107008172" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/import-sku-linking/a/h3_107008172&#39;,this);"></a></h3>
+
+<p>
+  If you prefer a visual explanation,<font> this</font> video tutorial&nbsp;walks you through the <i>Stock Item Linking</i>&nbsp;<font>feature</font><font>&nbsp;</font>step by step. <font>It</font> can help clarify how the <font>feature&nbsp;</font>works and answer any additional questions.
+</p>
+<ul>
+  <li><a href="https://linnlearn.com/#/online-courses/8b1b5856-0072-4fdc-884a-4b9e3765e2b4" target="_blank">Video - Stock Item Linking Import</a></li>
+
+  </ul>
+<p><font color="#ff0000"></font></p><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

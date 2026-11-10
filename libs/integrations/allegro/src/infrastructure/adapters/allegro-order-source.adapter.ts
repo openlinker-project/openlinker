@@ -97,6 +97,7 @@ import type {
 } from '../../domain/types/allegro-customer-return.types';
 import { toIncomingReturn, toReturnFeedItem } from './allegro-customer-return.mapper';
 import { toNeutralTaxRate } from './allegro-tax-rate.mapper';
+import { toPackQuantity } from './allegro-pack-quantity.mapper';
 import {
   attachBillingDocumentLinkToAllegro,
   uploadBillingDocumentToAllegro,
@@ -1010,6 +1011,7 @@ export class AllegroOrderSourceAdapter
           // before this epic report nothing here at all, which is exactly the
           // gap the propagation half closes.
           const neutralTaxRate = toNeutralTaxRate(lineItem.tax);
+          const packQuantity = toPackQuantity(lineItem.offer.productSet);
           return {
             id: lineItem.id,
             productRef: { type: 'offer' as const, externalId: lineItem.offer.id },
@@ -1018,6 +1020,7 @@ export class AllegroOrderSourceAdapter
             sku: lineItem.offer.id,
             name: lineItem.offer.name,
             ...(neutralTaxRate ? { taxRate: neutralTaxRate } : {}),
+            ...(packQuantity !== undefined ? { packQuantity } : {}),
             // imageUrl intentionally omitted — Allegro's checkout-form endpoint
             // does not expose a product image URL. Future enrichment from the
             // internal product catalog is tracked as a separate follow-up.

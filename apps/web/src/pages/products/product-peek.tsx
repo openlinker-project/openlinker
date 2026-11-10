@@ -17,6 +17,7 @@ import { Link } from 'react-router-dom';
 import { renderRich, useMessages } from '../../shared/i18n';
 import { PeekPanel, PeekStateCard } from '../../shared/ui/peek-panel';
 import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
+import { ProductGallery } from '../../features/products/components/product-gallery';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import type { Product } from '../../features/products';
 
@@ -43,15 +44,31 @@ export interface ProductPeekProps {
   count: number;
   onNavigate: (step: -1 | 1) => void;
   onOpenChange: (open: boolean) => void;
+  /** Opens the panel before the view exists; defaults to `view !== null`. */
+  open?: boolean;
+  /** The body while `view` is null and the panel is open (loading, an error). */
+  placeholder?: ReactNode;
+  /** Opened on top of another peek; see `PeekPanel.stacked`. */
+  stacked?: boolean;
 }
 
-export function ProductPeek({ view, position, count, onNavigate, onOpenChange }: ProductPeekProps): ReactElement {
+export function ProductPeek({
+  view,
+  position,
+  count,
+  onNavigate,
+  onOpenChange,
+  open,
+  placeholder,
+  stacked,
+}: ProductPeekProps): ReactElement {
   const page = useMessages('products').productsListPage;
   const copy = page.peek;
   const product = view?.product;
   return (
     <PeekPanel
-      open={view !== null}
+      open={open ?? view !== null}
+      stacked={stacked}
       onOpenChange={onOpenChange}
       position={position}
       count={count}
@@ -114,17 +131,24 @@ export function ProductPeek({ view, position, count, onNavigate, onOpenChange }:
               </button>
             ) : null}
           </div>
-          <PeekStateCard
-            label={copy.stateAria}
-            rows={[
-              { label: copy.stock, value: view.stock },
-              { label: copy.listings, value: view.listings },
-              ...(view.taxRate ? [{ label: copy.taxRate, value: view.taxRate }] : []),
-            ]}
-          />
+          {/* The photos big enough to recognise the product, with the same
+              thumbnails and zoom as the product page (#4027 follow-up). */}
+          <div className="peek-panel__media">
+            <ProductGallery images={product.images ?? []} name={product.name} productId={product.id} />
+            <PeekStateCard
+              label={copy.stateAria}
+              rows={[
+                { label: copy.stock, value: view.stock },
+                { label: copy.listings, value: view.listings },
+                ...(view.taxRate ? [{ label: copy.taxRate, value: view.taxRate }] : []),
+              ]}
+            />
+          </div>
           {view.detail}
         </>
-      ) : null}
+      ) : (
+        (placeholder ?? null)
+      )}
     </PeekPanel>
   );
 }

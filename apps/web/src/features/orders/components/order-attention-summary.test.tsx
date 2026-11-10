@@ -50,13 +50,13 @@ describe('OrderAttentionSummary', () => {
     expect(group('toHandle')).toHaveTextContent('5');
   });
 
-  it('should show "—" for a group whose count is unknown, never 0', () => {
+  it('should show "-" for a group whose count is unknown, never 0', () => {
     const summary = { ...SUMMARY, attention: { lateToShip: 6, stuck: 7 } } as OrderHealthSummary;
     renderWithProviders(
       <OrderAttentionSummary filtersApi={filtersApi()} summary={summary} slaSummary={undefined} />
     );
 
-    expect(group('toHandle')).toHaveTextContent('—');
+    expect(group('toHandle')).toHaveTextContent('-');
     expect(group('toHandle')).not.toHaveTextContent('0');
   });
 

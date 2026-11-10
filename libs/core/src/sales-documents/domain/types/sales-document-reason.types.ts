@@ -153,6 +153,14 @@ export type SalesDocumentUnresolvedReason = (typeof SalesDocumentUnresolvedReaso
  * is upstream (correct the order, or teach its adapter to report the discount
  * that explains the gap), not a provider configuration change.
  *
+ * ALSO WRITTEN (#3934, ADR-083): `'bundle-split-unknown'` - a set sold at a
+ * price covering components that carry different tax rates cannot be presented
+ * on a document without guessing: a component's catalogue rate is unknown, or
+ * none of its price and cost is known to split the paid price by. Nothing is
+ * guessed, so the document is held. The remedy is upstream (read the rate or a
+ * price for the component in the shop / catalogue); the badge clears on the
+ * next transition once it is.
+ *
  * DECLARED BUT NEVER WRITTEN, each blocked on a prerequisite ADR-041 names:
  *   - `'missing-required-tax-id'` — needs a buyer tax id on the order contract;
  *     no such field exists on `Order` today.
@@ -170,6 +178,7 @@ export const SalesDocumentGateBlockReasonValues = [
   'missing-tax-rate',
   'tax-rate-conflict',
   'line-total-mismatch',
+  'bundle-split-unknown',
   'trigger-model-manual',
   'trigger-model-batched',
 ] as const;

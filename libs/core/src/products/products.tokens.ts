@@ -21,3 +21,7 @@ export const TAX_RATE_JOURNAL_SERVICE_TOKEN = Symbol('ITaxRateJournalService');
 // products -> listings module import.
 export const PRICE_CHANGE_OBSERVER_TOKEN = Symbol('PriceChangeObserverPort');
 
+// Bundle definitions (#3607, ADR-083).
+export const BUNDLE_DEFINITION_REPOSITORY_TOKEN = Symbol('BundleDefinitionRepositoryPort');
+export const BUNDLE_DEFINITION_SERVICE_TOKEN = Symbol('IBundleDefinitionService');
+export const BUNDLE_MASTER_SYNC_SERVICE_TOKEN = Symbol('IBundleMasterSyncService');

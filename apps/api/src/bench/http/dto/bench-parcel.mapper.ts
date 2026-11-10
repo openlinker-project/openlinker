@@ -43,6 +43,7 @@ export function toParcelResponseDto(view: BenchParcelView): BenchParcelResponseD
     completedAt: view.completedAt,
     lines: view.lines.map((line) => ({
       workLineId: line.workLineId,
+      bundle: line.bundle,
       productVariantId: line.productVariantId,
       name: line.name,
       sku: line.sku,

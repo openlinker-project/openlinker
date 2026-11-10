@@ -231,6 +231,28 @@ export class ProductRepository implements ProductRepositoryPort {
       );
     }
 
+    if (filters.bundleFilter) {
+      // One definition of "live bundle" for both arms, so only/exclude partition the set.
+      qb.andWhere(
+        `${filters.bundleFilter === 'exclude' ? 'NOT ' : ''}EXISTS (
+          SELECT 1 FROM product_variants pvb
+          WHERE pvb."productId" = product.id
+            AND EXISTS (
+              SELECT 1 FROM (
+                SELECT DISTINCT ON ("variantId") "variantId", "retiredAt"
+                FROM bundle_definitions
+                ORDER BY "variantId", "version" DESC
+              ) bd
+              WHERE bd."variantId" = pvb.id AND bd."retiredAt" IS NULL
+            )
+        )`
+      );
+    }
+
+    if (filters.productId) {
+      qb.andWhere('product.id = :productId', { productId: filters.productId });
+    }
+
     if (filters.sourceConnectionId) {
       // Product originates from (has a Product mapping on) this connection.
       qb.andWhere(

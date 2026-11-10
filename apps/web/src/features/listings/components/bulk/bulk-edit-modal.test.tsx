@@ -16,6 +16,7 @@ import { BulkEditModal } from './bulk-edit-modal';
 import type * as CategoryParametersStepModule from '../category-parameters-step';
 import type { BulkVariantRow, BulkWizardRow } from './bulk-wizard.types';
 import type { EanMatchCandidate } from '../../api/listings.types';
+import type { BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview';
 import type { Product, ProductVariant } from '../../../products';
 import type { Connection } from '../../../connections';
 
@@ -2412,5 +2413,81 @@ describe('BulkEditModal', () => {
       };
       expect(baseOverride.overrides?.platformParams?.deliveryPriceList).toBe('Kurier');
     });
+  });
+});
+
+describe('BulkEditModal for a bundle (#3520)', () => {
+  const bundle: BundleOfferPreviewOk = {
+    variantId: 'var_1',
+    status: 'ok',
+    suggestedCategoryId: '74035',
+    availableSets: 4,
+    limitingComponentVariantId: 'c1',
+    components: [
+      {
+        variantId: 'c1',
+        productId: 'p-c1',
+        name: 'Kawa 250 g',
+        sku: 'KAW-250',
+        quantity: 1,
+        giftSlot: false,
+        imageUrl: null,
+        mode: 'own-offer',
+        externalOfferId: '778',
+        cardCategoryId: '74035',
+        problems: [],
+      },
+      {
+        variantId: 'c2',
+        productId: 'p-c2',
+        name: 'Kubek 350 ml',
+        sku: 'KUB-350',
+        quantity: 1,
+        giftSlot: false,
+        imageUrl: null,
+        mode: 'new-product',
+        problems: [],
+      },
+    ],
+  };
+
+  function renderBundle(): void {
+    renderWithProviders(
+      <BulkEditModal
+        open
+        onOpenChange={() => undefined}
+        row={makeRow()}
+        connection={connection}
+        canBrowseCategories={true}
+        currency="PLN"
+        defaults={DEFAULTS}
+        onSave={vi.fn()}
+        bundles={new Map([['var_1', bundle]])}
+      />,
+    );
+  }
+
+  it('should say the product is a set instead of a simple product', () => {
+    renderBundle();
+    expect(screen.getByText('Set · 2 products')).toBeInTheDocument();
+    expect(screen.queryByText('Simple product · no variants')).not.toBeInTheDocument();
+  });
+
+  it('should list the components on the marketplace with their modes', () => {
+    renderBundle();
+    expect(screen.getByText('Set contents on Allegro')).toBeInTheDocument();
+    expect(screen.getByText('Kubek 350 ml')).toBeInTheDocument();
+    expect(screen.getByText('own offer 778')).toBeInTheDocument();
+    expect(screen.getByText('new product')).toBeInTheDocument();
+  });
+
+  it('should explain that a set needs no barcode of its own', () => {
+    renderBundle();
+    expect(screen.getByText(/A set does not need its own barcode/)).toBeInTheDocument();
+  });
+
+  it('should not ask for single-product category parameters', () => {
+    renderBundle();
+    expect(screen.queryByTestId('category-parameters-step')).not.toBeInTheDocument();
   });
 });

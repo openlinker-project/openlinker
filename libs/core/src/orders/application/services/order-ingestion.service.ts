@@ -44,6 +44,7 @@ import type {
 import {
   ORDER_SYNC_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
   ORDER_CHANGE_SERVICE_TOKEN,
@@ -51,6 +52,7 @@ import {
   ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
   PAYMENT_WRITEBACK_SERVICE_TOKEN,
 } from '../../orders.tokens';
+import { IOrderBundleDocumentService } from './order-bundle-document.service.interface';
 import { IPaymentWritebackService } from '../interfaces/payment-writeback.service.interface';
 import { IOrderCancellationEffectsService } from '../interfaces/order-cancellation-effects.service.interface';
 import { IOrderSourceAmendmentEffectsService } from '../interfaces/order-source-amendment-effects.service.interface';
@@ -64,7 +66,12 @@ import {
   IProductsService,
   PRODUCTS_SERVICE_TOKEN,
   TAX_RATE_JOURNAL_SERVICE_TOKEN,
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
+  expandBundleLines,
+  buildPackLineDefinitions,
   taxRateState,
+  type IBundleDefinitionService,
+  type LineExpansion,
   type ITaxRateJournalService,
   type StoredTaxRate,
   type TaxRateSource,
@@ -120,6 +127,11 @@ import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
 import type { OrderRecordStatus } from '../../domain/types/order-record.types';
 import type { ItemResolutionFailureKind } from './order-item-ref-resolver.types';
+import {
+  describeMultipackHold,
+  hasBundleDefinition,
+  isMultipackLine,
+} from './multipack-hold';
 import {
   projectOrderForRouting,
   type OrderRoutingProjection,
@@ -282,6 +294,13 @@ export class OrderIngestionService implements IOrderIngestionService {
     // runs it. Same module, no cycle.
     @Inject(ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN)
     private readonly cancellationEffects: IOrderCancellationEffectsService,
+    // #3607: the bundle definitions the physical line list is expanded from.
+    @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
+    private readonly bundleDefinitions: IBundleDefinitionService,
+    // #3934: the components a document shows for a bundle line when the source
+    // connection asks for the `components` form. Same module, no cycle.
+    @Inject(ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN)
+    private readonly bundleDocuments: IOrderBundleDocumentService,
     // #3961: carries a line change the source reports AFTER routing into the
     // packing work (or holds the box). Same module, no cycle; appended last.
     @Inject(ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN)
@@ -577,6 +596,30 @@ export class OrderIngestionService implements IOrderIngestionService {
 
     for (const item of incoming.items) {
       const result = await this.orderItemRefResolver.tryResolve(connectionId, item.productRef);
+      // A ready order with a frozen expansion was already decided: re-asking the
+      // LIVE definitions would flip a (possibly shipped) order back to held
+      // the day a definition or confirmation is retired.
+      const alreadyFrozen =
+        existing?.recordStatus === 'ready' && existing.lineExpansion != null;
+      if (result.resolved && !alreadyFrozen && isMultipackLine(item)) {
+        // #3929: held BEFORE anything reserves. Treating the line as one unit
+        // would reserve and ship a single unit for the price of several. The
+        // hold is level-triggered: every re-ingestion re-asks, so it releases
+        // itself once a bundle definition exists.
+        const defined = await hasBundleDefinition(
+          this.bundleDefinitions,
+          result.internalVariantId,
+          item.packQuantity
+        );
+        if (!defined) {
+          unresolvedRefs.push({
+            itemId: item.id,
+            reason: describeMultipackHold(item),
+            kind: 'multipack_without_bundle',
+          });
+          continue;
+        }
+      }
       if (result.resolved) {
         const tax = await this.resolveLineTaxRate(
           result.internalProductId,
@@ -613,6 +656,9 @@ export class OrderIngestionService implements IOrderIngestionService {
             ? { unitPriceGross: item.unitPriceGross }
             : {}),
           ...tax,
+          // #3929: absent stays absent, so an ordinary line is unchanged.
+          ...(item.gift !== undefined ? { gift: item.gift } : {}),
+          ...(item.packQuantity !== undefined ? { packQuantity: item.packQuantity } : {}),
         });
       } else {
         unresolvedRefs.push({ itemId: item.id, reason: result.reason, kind: result.kind });
@@ -676,6 +722,11 @@ export class OrderIngestionService implements IOrderIngestionService {
     // applied to this very write rather than a read taken a moment earlier.
     const order = applyOrderEditsToOrder(channelOrder, persisted?.orderEdits ?? null);
 
+    // #3607 (ADR-083): the physical line list, frozen ONCE before anything
+    // reserves, routes or decrements. Every stock site below reads it; the
+    // destination mirror and the documents keep `order.items`.
+    const physicalItems = await this.freezePhysicalItems(order, existing);
+
     // #3554 / D8: T9 `order.received`, once - only when the pre-persist read
     // found no record, so a re-poll, a webhook replay or a status update
     // re-ingesting the same order fires nothing. The ingestion lock (#906)
@@ -711,6 +762,7 @@ export class OrderIngestionService implements IOrderIngestionService {
     );
     await this.reserveOrderInventory(
       order,
+      physicalItems,
       connectionId,
       fulfillmentRouting,
       cancelledFromEarlySignal,
@@ -786,7 +838,8 @@ export class OrderIngestionService implements IOrderIngestionService {
       order,
       connectionId,
       persisted?.shippingAddressHash ?? null,
-      routingTarget
+      routingTarget,
+      physicalItems
     );
     await this.persistFulfillmentOutcome(order.id, routing);
 
@@ -827,6 +880,13 @@ export class OrderIngestionService implements IOrderIngestionService {
           order,
           sourceConnectionId: connectionId,
           sourceEventId,
+          // Only when a bundle expanded anything, so an order without one sends
+          // the byte-identical request it always did.
+          ...(physicalItems.some(
+            (item) => 'parentLineId' in item && item.parentLineId !== undefined
+          )
+            ? { physicalProductIds: physicalItems.map((item) => item.productId) }
+            : {}),
         });
       } catch (error) {
         // #3959 - no reachable destination is a fact about MIRRORING, not
@@ -838,7 +898,7 @@ export class OrderIngestionService implements IOrderIngestionService {
             connectionId,
             sourceEventId,
             existing?.taxRateEra ?? null,
-            persisted.buyerTaxId
+            persisted
           );
         }
         throw error;
@@ -974,7 +1034,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       connectionId,
       sourceEventId,
       existing?.taxRateEra ?? null,
-      persisted.buyerTaxId
+      persisted
     );
 
     return results;
@@ -996,7 +1056,7 @@ export class OrderIngestionService implements IOrderIngestionService {
     connectionId: string,
     sourceEventId: string | undefined,
     taxRateEra: OrderRecord['taxRateEra'] | null,
-    buyerTaxId: OrderRecord['buyerTaxId']
+    persisted: OrderRecord
   ): Promise<void> {
     // OL #1120 — auto-issue trigger (EV→SVC edge, ADR-026 §3). Fires STRICTLY at
     // the end of the authoritative source poll, AFTER per-destination status is
@@ -1036,7 +1096,8 @@ export class OrderIngestionService implements IOrderIngestionService {
         // (`existing === null`) still carries its correct three-state value on
         // `persisted`; reading `existing` here would silently answer
         // "not asserted" for every order's first ingestion.
-        buyerTaxId
+        persisted.buyerTaxId,
+        await this.bundleDocuments.resolveForDocuments(persisted, connectionId)
       );
       // #2100 (ADR-041 §54/§105): a block is never log-only. The trigger REPORTS
       // the outcome and this service — which owns the order record — writes it,
@@ -1165,6 +1226,48 @@ export class OrderIngestionService implements IOrderIngestionService {
   }
 
   /**
+   * Freeze the order's bundle expansion and return its physical line list
+   * (#3607, ADR-083 decisions 1-2). Written once: a re-poll or a later edit of
+   * a definition reads back what was stored: an already frozen order performs
+   * no definition read and no write. An order that was already `ready` before
+   * bundles existed was stamped with the EMPTY frozen expansion by the
+   * migration, so it keeps its commercial list through the same path. A `ready`
+   * row with NO expansion is therefore never pre-feature: it is an ingestion
+   * that persisted and crashed before freezing, and is frozen now.
+   *
+   * Deliberately NOT caught: continuing after a failed freeze would reserve at
+   * the commercial grain, i.e. a silent no-op for every component.
+   */
+  private async freezePhysicalItems(
+    order: Order,
+    existing: OrderRecord | null | undefined
+  ): Promise<Order['items']> {
+    if (existing?.lineExpansion != null) {
+      return expandBundleLines(order.items, existing.lineExpansion.definitions);
+    }
+    const variantIds = [
+      ...new Set(order.items.map((i) => i.variantId).filter((id): id is string => Boolean(id))),
+    ];
+    const definitions = await this.bundleDefinitions.findCurrentByVariantIds(variantIds);
+    // #3624: a multipack line (pack quantity N) expands to N units of its
+    // variant when confirmed, or to N x the bundle's components. Frozen with the
+    // rest, so confirming or changing something later never moves an open order.
+    const packPairs = order.items
+      .filter((i) => i.variantId !== undefined && (i.packQuantity ?? 1) > 1)
+      .map((i) => ({ variantId: i.variantId as string, packQuantity: i.packQuantity as number }));
+    const confirmed =
+      packPairs.length === 0
+        ? []
+        : await this.bundleDefinitions.findConfirmedMultipacks(packPairs);
+    const lineDefinitions = buildPackLineDefinitions(order.items, definitions, confirmed);
+    const frozen: LineExpansion = await this.orderRecordService.freezeLineExpansion(order.id, {
+      v: 1,
+      definitions: [...definitions, ...lineDefinitions],
+    });
+    return expandBundleLines(order.items, frozen.definitions);
+  }
+
+  /**
    * Decide whether fulfilment routing HOLDS this order (#2396, DESIGN §5.5).
    *
    * Three arms, per the issue:
@@ -1196,7 +1299,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     order: Order,
     connectionId: string,
     shippingAddressHash: string | null,
-    target: RoutingTarget
+    target: RoutingTarget,
+    physicalItems: readonly Order['items'][number][]
   ): Promise<FulfillmentInterceptOutcome> {
     try {
       switch (target.kind) {
@@ -1231,7 +1335,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       }
       const { holder, router } = target;
 
-      const projection = this.projectOrderForRouting(order, shippingAddressHash);
+      const projection = this.projectOrderForRouting(order, shippingAddressHash, physicalItems);
       if (projection === null) {
         // #3485 — HELD, not mirrored: the OMS is this order's router, so sending
         // it to the product masters instead would put it in every one of them.
@@ -1566,7 +1670,8 @@ export class OrderIngestionService implements IOrderIngestionService {
    */
   private projectOrderForRouting(
     order: Order,
-    shippingAddressHash: string | null
+    shippingAddressHash: string | null,
+    physicalItems: readonly Order['items'][number][]
   ): OrderRoutingProjection | null {
     // The reduction itself is the shared pure rule (#2954); only the PII flag is
     // read here. `getEnvBoolean`, NOT `getPiiConfig()`: the latter throws when
@@ -1575,7 +1680,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     return projectOrderForRouting(
       order,
       shippingAddressHash,
-      getEnvBoolean('OL_STORE_PII', true)
+      getEnvBoolean('OL_STORE_PII', true),
+      physicalItems
     );
   }
 
@@ -2290,6 +2396,7 @@ export class OrderIngestionService implements IOrderIngestionService {
    */
   private async reserveOrderInventory(
     order: Order,
+    physicalItems: readonly Order['items'][number][],
     connectionId: string,
     fulfillmentRouting: () => Promise<FulfillmentRoutingResolution | null>,
     alreadyCancelled = false,
@@ -2309,7 +2416,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       // Holding stock for an order that arrived already dead is pure noise.
       if (order.status === 'cancelled' || alreadyCancelled) return;
 
-      const lines: ReserveOrderLineInput[] = order.items
+      const lines: ReserveOrderLineInput[] = physicalItems
         .filter((item) => Boolean(item.productId) && item.quantity > 0)
         .map((item) => ({
           orderLineId: item.id,

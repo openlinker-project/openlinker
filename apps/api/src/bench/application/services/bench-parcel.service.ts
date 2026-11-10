@@ -144,6 +144,31 @@ export class BenchParcelNotAtThisBenchError extends Error {
   }
 }
 
+/**
+ * Component physical line id -> its bundle (#3624). Reads the commercial
+ * lines for the bundle's NAME only (what the buyer saw); the grouping itself
+ * comes from the order's frozen expansion.
+ */
+function bundleOf(
+  order: OrderRecord | undefined
+): Map<string, { lineId: string; name: string | null; giftSlot: boolean }> {
+  const result = new Map<string, { lineId: string; name: string | null; giftSlot: boolean }>();
+  if (order === undefined) {
+    return result;
+  }
+  for (const bundle of order.bundleLines) {
+    const name = order.orderItems.find((item) => item.id === bundle.lineId)?.name ?? null;
+    for (const component of bundle.components) {
+      result.set(component.lineId, {
+        lineId: bundle.lineId,
+        name,
+        giftSlot: component.giftSlot === true,
+      });
+    }
+  }
+  return result;
+}
+
 @Injectable()
 export class BenchParcelService implements IBenchParcelService {
   private readonly logger = new Logger(BenchParcelService.name);
@@ -231,7 +256,9 @@ export class BenchParcelService implements IBenchParcelService {
     if (workLine === undefined) return refused('no-such-line');
 
     const order = (await this.orders.findByIds([work.orderId]))[0];
-    const keep = (order?.orderItems ?? [])
+    // The PHYSICAL list: a bundle's work lines carry its component ids, which
+    // only the expansion knows (ADR-083). For an ordinary order the two lists agree.
+    const keep = (order?.physicalItems ?? [])
       .filter((item) => item.id === workLine.orderLineId)
       .reduce((sum, item) => sum + item.quantity, 0);
     await this.verification.voidSurplusOnLine({
@@ -874,10 +901,11 @@ export class BenchParcelService implements IBenchParcelService {
     work: FulfillmentWorkView,
     state: ParcelVerificationState
   ): Promise<BenchParcelView> {
+    const orderRead = this.orders.findByIds([work.orderId]).then((records) => records[0]);
     const [order, siblings, lines, packerNotesByOrder, acknowledgements] = await Promise.all([
-      this.orders.findByIds([work.orderId]).then((records) => records[0]),
+      orderRead,
       this.worklist.listSiblingWorkIds([work.orderId]),
-      this.describeLines(work, state),
+      this.describeLines(work, state, orderRead),
       this.notes.getPackerVisibleForOrders([work.orderId]),
       this.workQuery.listBuyerNoteAcknowledgements(work.orderId),
     ]);
@@ -971,8 +999,10 @@ export class BenchParcelService implements IBenchParcelService {
    */
   private async describeLines(
     work: FulfillmentWorkView,
-    state: ParcelVerificationState
+    state: ParcelVerificationState,
+    orderRead: Promise<OrderRecord | undefined>
   ): Promise<BenchParcelLineView[]> {
+    const bundleByComponentLine = bundleOf(await orderRead);
     const variantIds = [...new Set(work.lines.map((line) => line.productVariantId))];
     const variants =
       variantIds.length === 0 ? [] : await this.products.getVariantsByIds(variantIds);
@@ -995,6 +1025,7 @@ export class BenchParcelService implements IBenchParcelService {
       const counts = stateByLine.get(line.id);
       return {
         workLineId: line.id,
+        bundle: bundleByComponentLine.get(line.orderLineId) ?? null,
         productVariantId: line.productVariantId,
         // `null`, never a placeholder that reads like a name: a variant absent
         // from the catalogue is a fact the packer can act on (match the codes),

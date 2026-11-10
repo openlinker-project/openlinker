@@ -391,6 +391,35 @@ describe('OrderRecordService', () => {
       expect('unitPriceGross' in snapshotItems[0]).toBe(false);
     });
 
+    it('serialises gift and packQuantity into the snapshot, and keeps them absent otherwise (#3929)', async () => {
+      const order = createMockOrder();
+      order.items[0].gift = { source: 'channel', ruleRef: 'promo-1' };
+      order.items[0].packQuantity = 3;
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const snapshotItems = (
+        repository.upsertWithLineItems.mock.calls[0][0].orderSnapshot as {
+          items: Array<Record<string, unknown>>;
+        }
+      ).items;
+      expect(snapshotItems[0]).toMatchObject({
+        gift: { source: 'channel', ruleRef: 'promo-1' },
+        packQuantity: 3,
+      });
+
+      const plain = createMockOrder();
+      await service.persistOrder(plain, 'source-connection-123', 'event-457');
+      const plainItems = (
+        repository.upsertWithLineItems.mock.calls[1][0].orderSnapshot as {
+          items: Array<Record<string, unknown>>;
+        }
+      ).items;
+      expect('gift' in plainItems[0]).toBe(false);
+      expect('packQuantity' in plainItems[0]).toBe(false);
+    });
+
     it('keeps every tax key absent when the order line carries no rate (#2254)', async () => {
       const order = createMockOrder();
       expect(order.items[0].taxRate).toBeUndefined();

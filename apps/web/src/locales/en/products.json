@@ -278,10 +278,16 @@
     "viewerTitle": "{name} photo viewer"
   },
   "productRowDetail": {
+    "columns": {
+      "listedOn": "Listed on",
+      "stock": "Stock",
+      "variant": "Variant"
+    },
     "createOffer": "+ Create offer",
     "deletedAtSource": "Deleted at source",
     "ean": "EAN {ean}",
-    "liveMarketplaceStatus": "Live marketplace status",
+    "identifiersHeading": "Identifiers",
+    "liveMarketplaceStatus": "Marketplace offers",
     "loading": {
       "message": "Fetching variant stock...",
       "title": "Loading variants"
@@ -293,8 +299,7 @@
       "notFound": "Product not found",
       "title": "Unable to load variants"
     },
-    "variantsHeading": "Variants & stock",
-    "variantsHeadingWithCount": "Variants & stock ({n})"
+    "variantsHeading": "Variants & stock"
   },
   "productSourceSection": {
     "alsoMappedOn": "Also mapped on",
@@ -464,7 +469,13 @@
       "editContent": "Edit content",
       "kicker": "Product",
       "listings": "Listings",
+      "loadError": "Unable to load this product",
+      "loadingMessage": "Fetching stock and listings…",
+      "loadingTitle": "Loading product",
+      "notFound": "This product is no longer in the catalogue.",
+      "notFoundTitle": "Product not found",
       "openProduct": "Open product",
+      "retry": "Retry",
       "stateAria": "Product state",
       "stock": "Stock",
       "taxRate": "Tax rate",

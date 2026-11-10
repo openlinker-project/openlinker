@@ -12,13 +12,14 @@ import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { OfferManagerPort } from '@openlinker/core/listings';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { AVAILABILITY_SERVICE_TOKEN } from '@openlinker/core/inventory';
-import { PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
-import type { IProductsService, ProductVariant } from '@openlinker/core/products';
+import { BUNDLE_DEFINITION_SERVICE_TOKEN, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
+import type { IBundleDefinitionService, IProductsService, ProductVariant } from '@openlinker/core/products';
 
 import { OfferBuilderService } from '../offer-builder.service';
 import {
   ATTRIBUTE_PROJECTION_SERVICE_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
+  OFFER_MAPPING_REPOSITORY_TOKEN,
 } from '../../../listings.tokens';
 import type { ICategoryResolutionService } from '../../interfaces/category-resolution.service.interface';
 import type { IAttributeProjectionService } from '../../interfaces/attribute-projection.service.interface';
@@ -30,12 +31,18 @@ import { createFakeAvailabilityService } from './fake-availability-service';
 describe('OfferBuilderService', () => {
   let service: OfferBuilderService;
   let productsService: jest.Mocked<
-    Pick<IProductsService, 'getVariant' | 'getVariantsByProductId' | 'getEffectiveTaxRate' | 'getProduct'>
+    Pick<IProductsService, 'getVariant' | 'getVariantsByProductId' | 'getEffectiveTaxRate' | 'getProduct' | 'getVariantsByIds' | 'getVariantsByProductIds'>
   >;
   let connectionPort: jest.Mocked<Pick<ConnectionPort, 'get'>>;
   let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
   let categoryResolution: jest.Mocked<Pick<ICategoryResolutionService, 'resolveCategory'>>;
   let attributeProjection: jest.Mocked<IAttributeProjectionService>;
+  let bundleDefinitions: jest.Mocked<Pick<IBundleDefinitionService, 'get'>>;
+  let offerMappings: {
+    countByConnectionAndVariants: jest.Mock;
+    findMappingPage: jest.Mock;
+    findDeadFailedCreationOfferIds: jest.Mock;
+  };
   let productMaster: { getProduct: jest.Mock; resolveCategoriesForBatchByEan: jest.Mock };
 
   const emptyProjection: AttributeProjectionResult = {
@@ -68,6 +75,8 @@ describe('OfferBuilderService', () => {
     productsService = {
       getVariant: jest.fn().mockResolvedValue(defaultVariant),
       getVariantsByProductId: jest.fn().mockResolvedValue([defaultVariant]),
+      getVariantsByIds: jest.fn().mockResolvedValue([]),
+      getVariantsByProductIds: jest.fn().mockResolvedValue([]),
       // #2249 / ADR-077: no catalogue rate by default, so every command below
       // keeps its rate-less shape.
       getEffectiveTaxRate: jest
@@ -114,10 +123,19 @@ describe('OfferBuilderService', () => {
       project: jest.fn().mockResolvedValue(emptyProjection),
     };
 
+    bundleDefinitions = { get: jest.fn().mockResolvedValue(null) };
+    offerMappings = {
+      countByConnectionAndVariants: jest.fn().mockResolvedValue(new Map()),
+      findMappingPage: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+      findDeadFailedCreationOfferIds: jest.fn().mockResolvedValue([]),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OfferBuilderService,
         { provide: PRODUCTS_SERVICE_TOKEN, useValue: productsService },
+        { provide: BUNDLE_DEFINITION_SERVICE_TOKEN, useValue: bundleDefinitions },
+        { provide: OFFER_MAPPING_REPOSITORY_TOKEN, useValue: offerMappings },
         { provide: CONNECTION_PORT_TOKEN, useValue: connectionPort },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrationsService },
         { provide: CATEGORY_RESOLUTION_SERVICE_TOKEN, useValue: categoryResolution },
@@ -270,6 +288,198 @@ describe('OfferBuilderService', () => {
       });
 
       expect(result.productCardId).toBeNull();
+    });
+  });
+
+  describe('bundle product set (#3520)', () => {
+    const input = {
+      internalVariantId: VARIANT_ID,
+      connectionId: MARKETPLACE_CONN_ID,
+      stock: 10,
+      publishImmediately: false,
+    };
+
+    it('omits productSet for an ordinary variant', async () => {
+      const result = await service.buildCreateOfferCommand(input);
+      expect(result.productSet).toBeUndefined();
+    });
+
+    it('fills productSet in component order with quantities when the variant is a bundle', async () => {
+      bundleDefinitions.get.mockResolvedValue({
+        variantId: VARIANT_ID,
+        version: 1,
+        components: [
+          { variantId: 'v-b', productId: 'p-b', quantity: 2 },
+          { variantId: 'v-a', productId: 'p-a', quantity: 1, giftSlot: true },
+        ],
+      });
+      const byId: Record<string, unknown> = {
+        'v-a': { id: 'v-a', productId: 'p-a', ean: '111', gtin: null, images: ['https://x/a.jpg'] },
+        'v-b': { id: 'v-b', productId: 'p-b', ean: null, gtin: '222', images: null },
+      };
+      productsService.getVariant.mockImplementation(
+        (id: string) => Promise.resolve((byId[id] ?? defaultVariant) as ProductVariant)
+      );
+      productsService.getVariantsByIds.mockResolvedValue(
+        Object.values(byId) as ProductVariant[]
+      );
+      productsService.getVariantsByProductIds.mockResolvedValue(
+        Object.values(byId) as ProductVariant[]
+      );
+      productsService.getProduct.mockImplementation((id: string) =>
+        Promise.resolve({ id, name: `Name ${id}`, images: [`https://x/${id}.jpg`] } as never)
+      );
+
+      const result = await service.buildCreateOfferCommand(input);
+
+      expect(result.productSet).toEqual([
+        {
+          variantId: 'v-b',
+          productId: 'p-b',
+          quantity: 2,
+          name: 'Name p-b',
+          barcode: '222',
+          imageUrls: ['https://x/p-b.jpg'],
+          categoryId: 'allegro-cat-999',
+        },
+        {
+          variantId: 'v-a',
+          productId: 'p-a',
+          quantity: 1,
+          giftSlot: true,
+          name: 'Name p-a',
+          barcode: '111',
+          imageUrls: ['https://x/a.jpg', 'https://x/p-a.jpg'],
+          categoryId: 'allegro-cat-999',
+        },
+      ]);
+    });
+
+    it('gives a component with a live offer its offer id, and one without its own category and product parameters', async () => {
+      bundleDefinitions.get.mockResolvedValue({
+        variantId: VARIANT_ID,
+        version: 1,
+        components: [
+          { variantId: 'v-a', productId: 'p-a', quantity: 1 },
+          { variantId: 'v-b', productId: 'p-b', quantity: 1 },
+        ],
+      });
+      offerMappings.countByConnectionAndVariants.mockResolvedValue(new Map([['v-a', 1]]));
+      offerMappings.findMappingPage.mockResolvedValue({
+        items: [{ externalId: 'offer-dead' }, { externalId: 'offer-live' }],
+        total: 2,
+      });
+      offerMappings.findDeadFailedCreationOfferIds.mockResolvedValue(['offer-dead']);
+      attributeProjection.project.mockResolvedValue({
+        ...emptyProjection,
+        parameters: [
+          { id: '248811', values: ['Acme'], section: 'product' },
+          { id: '11323', values: ['new'], section: 'offer' },
+        ],
+      });
+      productsService.getVariant.mockImplementation((id: string) =>
+        Promise.resolve(
+          (id === VARIANT_ID
+            ? defaultVariant
+            : { id, productId: `p-${id.slice(2)}`, ean: '5901234123457', gtin: null }) as ProductVariant
+        )
+      );
+      productsService.getVariantsByIds.mockResolvedValue([
+        { id: 'v-a', productId: 'p-a', ean: '5901234123457', gtin: null },
+        { id: 'v-b', productId: 'p-b', ean: '5901234123457', gtin: null },
+      ] as unknown as ProductVariant[]);
+      productsService.getProduct.mockImplementation((id: string) =>
+        Promise.resolve({ id, name: `Name ${id}`, images: [] } as never)
+      );
+
+      const result = await service.buildCreateOfferCommand(input);
+      const [a, b] = result.productSet ?? [];
+
+      expect(a.existingOfferExternalId).toBe('offer-live');
+      expect(a.categoryId).toBeUndefined();
+      expect(b.existingOfferExternalId).toBeUndefined();
+      expect(b.categoryId).toBe('allegro-cat-999');
+      expect(b.parameters).toEqual([{ id: '248811', values: ['Acme'], section: 'product' }]);
+    });
+
+    it('refuses a bundle whose component no longer exists', async () => {
+      bundleDefinitions.get.mockResolvedValue({
+        variantId: VARIANT_ID,
+        version: 1,
+        components: [{ variantId: 'gone', productId: 'p-gone', quantity: 1 }],
+      });
+      productsService.getVariant.mockImplementation((id: string) =>
+        Promise.resolve(id === VARIANT_ID ? defaultVariant : null)
+      );
+      await expect(service.buildCreateOfferCommand(input)).rejects.toBeInstanceOf(
+        OfferBuilderValidationException
+      );
+    });
+
+    it('resolves components concurrently and keeps definition order', async () => {
+      bundleDefinitions.get.mockResolvedValue({
+        variantId: VARIANT_ID,
+        version: 1,
+        components: [
+          { variantId: 'v-a', productId: 'p-a', quantity: 1 },
+          { variantId: 'v-b', productId: 'p-b', quantity: 1 },
+        ],
+      });
+      productsService.getVariantsByIds.mockResolvedValue([
+        { id: 'v-a', productId: 'p-a', ean: '1', gtin: null },
+        { id: 'v-b', productId: 'p-b', ean: '2', gtin: null },
+      ] as unknown as ProductVariant[]);
+      productsService.getProduct.mockImplementation((id: string) =>
+        Promise.resolve({ id, name: `Name ${id}`, images: [] } as never)
+      );
+      // The first component's category resolution only settles after the second
+      // has STARTED, which a sequential loop could never satisfy.
+      let releaseFirst: () => void = () => undefined;
+      const firstGate = new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
+      categoryResolution.resolveCategory.mockImplementation(async (req: { barcode?: string | null }) => {
+        if (req.barcode === '1') {
+          await firstGate;
+        } else if (req.barcode === '2') {
+          releaseFirst();
+        }
+        return { destinationCategoryId: 'cat', provenance: 'owns', method: 'auto_detect' };
+      });
+
+      const result = await service.buildCreateOfferCommand(input);
+
+      expect(result.productSet?.map((c) => c.variantId)).toEqual(['v-a', 'v-b']);
+      expect(productsService.getVariantsByIds).toHaveBeenCalledTimes(1);
+    });
+
+    it('finds a live offer beyond the first page of mappings', async () => {
+      bundleDefinitions.get.mockResolvedValue({
+        variantId: VARIANT_ID,
+        version: 1,
+        components: [{ variantId: 'v-a', productId: 'p-a', quantity: 1 }],
+      });
+      offerMappings.countByConnectionAndVariants.mockResolvedValue(new Map([['v-a', 1]]));
+      const deadIds = Array.from({ length: 50 }, (_, i) => `dead-${i}`);
+      offerMappings.findDeadFailedCreationOfferIds.mockResolvedValue(deadIds);
+      offerMappings.findMappingPage.mockImplementation((_f: unknown, page: { offset: number }) =>
+        Promise.resolve(
+          page.offset === 0
+            ? { items: deadIds.map((externalId) => ({ externalId })), total: 51 }
+            : { items: [{ externalId: 'live-51' }], total: 51 }
+        )
+      );
+      productsService.getVariantsByIds.mockResolvedValue([
+        { id: 'v-a', productId: 'p-a', ean: '1', gtin: null },
+      ] as unknown as ProductVariant[]);
+      productsService.getProduct.mockImplementation((id: string) =>
+        Promise.resolve({ id, name: `Name ${id}`, images: [] } as never)
+      );
+
+      const result = await service.buildCreateOfferCommand(input);
+
+      expect(result.productSet?.[0].existingOfferExternalId).toBe('live-51');
+      expect(offerMappings.findMappingPage).toHaveBeenCalledTimes(2);
     });
   });
 

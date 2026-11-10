@@ -142,6 +142,7 @@ describe('SalesDocumentBatchService', () => {
       undefined,
       null,
       null,
+      undefined,
       { batchRun: { connectionId: CONNECTION, documentKinds: ['invoice'] } },
     );
     // `none` clears the queue marker, exactly as ingestion writes it.

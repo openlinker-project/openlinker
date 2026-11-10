@@ -453,7 +453,8 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
     return projectOrderForRouting(
       order,
       record.shippingAddressHash,
-      getEnvBoolean('OL_STORE_PII', true)
+      getEnvBoolean('OL_STORE_PII', true),
+      record.physicalItems
     );
   }
 

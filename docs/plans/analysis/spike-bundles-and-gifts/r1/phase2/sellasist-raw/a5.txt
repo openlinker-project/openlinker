@@ -1,0 +1,84 @@
+##### Akcje dla zamówień: Lista warunków i efektów dla automatyzacji – omówienie wraz z zastosowaniem | https://sellasist.pl/pomoc/akcje-dla-zamowien-lista-warunkow-i-efektow-omowienie-wraz-z-zastosowaniem/ | modified 2026-10-15
+Automatyzacja w Sellasist to narzędzie, które po odpowiednim skonfigurowaniu przez użytkownika, automatycznie wykonuje określone akcje w odpowiedzi na zmiany zachodzące w systemie. Jest to rozwiązanie, które znacząco przyspiesza proces obsługi klienta, poprzez automatyzację różnych czynności.
+ #### 
+ Jak działa automatyzacja w Sellasist? 
+ Automatyzacja w Sellasist działa na zasadzie warunków i akcji. Użytkownik może ustawić określone warunki, po spełnieniu których system automatycznie wykonuje zdefiniowane akcje. Na przykład, gdy klient złoży i opłaci zamówienie, status zamówienia może zostać automatycznie zmieniony na W realizacji.
+- Automatyzacja przyspiesza procesy związane z obsługą wysyłek, oszczędzając czas pracy.
+- Umożliwia efektywne zarządzanie stanami magazynowymi i cenami, a także monitoring zamówień.
+- Zmniejsza prawdopodobieństwo błędów, które mogą wystąpić przy wykonywaniu powtarzalnych czynności.
+- Automatyzacja różnych procesów: Obejmuje zarządzanie stanami magazynowymi, doliczanie marży do produktów, zmiany statusów zamówień, powiadomienia dla klientów, nadawanie przesyłek, monitoring paczek, obsługę wariantów produktów, przypisywanie parametrów po EAN, bezprzewodowe drukowanie dokumentów, wystawianie i wysyłanie faktur.
+- Aplikacja do kompletacji zamówień obsługiwana przez kolektory i smartfony, która pozwala na efektywne zbieranie i pakowanie produktów.
+- Sellasist cloud print: Tryb automatycznego drukowania umożliwia bezprzewodowe generowanie dokumentów handlowych.
+Automatyzacja pozwala na zarządzanie całą sprzedażą, obejmując obsługę zamówień, zarządzanie produktami, obsługę magazynu, zarządzanie wysyłkami, obsługę sklepów internetowych i dokumentów sprzedażowych.
+Automatyzacja w Sellasist jest więc kompleksowym narzędziem, które znacznie ułatwia i przyspiesza procesy, od zarządzania magazynem po obsługę klienta i realizację zamówień.
+Czym jest Automatyzacja? Jak działa Automatyzacja?
+Jak ustawić Automatyzację?
+ #### 
+ AKCJE DLA ZAMÓWIEŃ: 
+ WARUNKI:
+1. DANE ADRESOWE DOKUMENTU SPRZEDAŻY – warunek automatyzacji dla zamówień
+- Automatyzacja procesów związanych z weryfikacją danych adresowych pozwala na szybsze przetwarzanie zamówień.
+- Minimalizacja błędów ludzkich poprzez automatyczne sprawdzanie poprawności danych.
+- Umożliwia efektywniejsze zarządzanie zamówieniami, szczególnie przy dużej ilości transakcji.
+- Możliwość dostosowania komunikacji i procesów wysyłkowych do konkretnych potrzeb klientów na podstawie danych adresowych.
+Zobacz, jak skonfigurować warunek automatyzacji Dane adresowe dokumentu sprzedaży dla zamówień?
+2.  DANE ADRESOWE WYSYŁKI  – warunek automatyzacji dla zamówień 
+Warunek automatyzacji Dane adresowe wysyłki w Sellasist umożliwia sprawdzenie różnych elementów adresu. Możesz ustawić warunek, aby sprawdzić, czy dane takie jak np. imię, nazwisko, kod pocztowy, telefon są uzupełnione lub czy są puste.
+Dodatkowo możesz również sprawdzić czy te dane są uzupełnione prawidłowo czy nieprawidłowo.
+Aby sprawdzić więcej niż 1 element, np. jednocześnie imię i nazwisko, utwórz dwa osobne warunki – jeden dla imienia, a drugi dla nazwiska.
+Jak skonfigurować warunek automatyzacji Dane adresowe wysyłki dla zamówień? 
+3. DANE KLIENTA – warunek akcji automatycznej dla zamówień
+Warunek Dane klienta umożliwia sprawdzenie danych klienta przypisanego do zamówienia. Dzięki temu możesz automatycznie rozpoznawać zamówienia na podstawie adresu e-mail, numeru telefonu, numeru NIP lub przynależności klienta do określonych grup.
+W przypadku wyboru opcji E-mail, Telefon i NIP możesz określić, czy dane pole ma zawierać frazę, czy ma nie zawierać frazy, a następnie wpisać sprawdzaną wartość.
+W przypadku wyboru opcji Grupa klientów możesz określić, czy klient jest jednym z, czy nie jest jednym z członków wskazanych grup. Warunek pozwala wybrać jednocześnie wiele grup klientów.
+Przykład zastosowania: Załóżmy, że chcesz automatycznie oznaczać zamówienia złożone przez stałych klientów, dla których przygotowujesz specjalne oferty. W warunku Dane klienta wybierz pole Grupa klientów, opcję Jest jednym z, a następnie wskaż odpowiednie grupy. System automatycznie rozpozna takie zamówienia i wykona dla nich wybrane akcje automatyczne.
+Zobacz także: Więcej na temat warunku znajdziesz tutaj.
+4. DANE PRODUKTU – warunek akcji automatycznej dla zamówień
+Automatyzacja oparta na danych produktu może znacząco ułatwić procesy logistyczne i sprzedażowe w e-commerce.
+Oto kilka przykładów zastosowania warunku automatyzacji Dane produktu:
+- Automatyczne dobieranie metody wysyłki: Jeśli produkt ma np. symbol „XXL”, co oznacza duże gabaryty, system może automatycznie wybrać wysyłkę paletową, która jest odpowiednia dla dużych przedmiotów.
+- Zarządzanie promocjami: Produkty z określonym EAN mogą być automatycznie klasyfikowane do grupy produktów objętych promocją, co ułatwia ich identyfikację i przypisanie odpowiednich rabatów.
+- Kontrola zapasów: Produkty z konkretnym numerem katalogowym, które są często zamawiane, mogą wyzwalać automatyczne powiadomienia dla działu zaopatrzenia o konieczności uzupełnienia stanów magazynowych.
+- Personalizacja oferty: Na podstawie symbolu produktu, system może automatycznie generować rekomendacje produktów pokrewnych lub akcesoriów, które będą wyświetlane klientowi przy finalizacji zamówienia.
+- Optymalizacja procesów pakowania: Produkty z określonym symbolem mogą wymagać specjalnego pakowania, np. dodatkowych zabezpieczeń, co może być automatycznie komunikowane do działu pakowania.
+- Efektywna komunikacja z klientem: Dla produktów oznaczonych specjalnym symbolem, który może oznaczać dłuższy czas realizacji, system może automatycznie informować klienta o przewidywanym terminie dostawy.
+- Automatyczne przypisanie priorytetu: Zamówienia zawierające produkty z określonym EAN mogą być automatycznie oznaczane jako priorytetowe, co przyspiesza ich realizację.
+- Automatyczne generowanie dokumentów: Dla produktów z konkretnym numerem katalogowym, system może automatycznie generować specyficzne dokumenty, takie jak certyfikaty zgodności czy instrukcje obsługi.
+Zobacz, jak skonfigurować automatyzację  warunku Dane produktu dla akcji automatycznych zamówień.
+5. DATA ZŁOŻENIA – warunek akcji automatycznej dla zamówień.
+Załóżmy, że planujesz przeprowadzić promocję „XYZ”, która ma obowiązywać dla wszystkich zamówień złożonych między 1-10 czerwca. Ustawiasz warunek „data złożenia” w panelu Sellasist, aby akcja automatyczna dotyczyła zamówień złożonych w tym okresie. Gdy zamówienie zostanie złożone w tym czasie, system automatycznie może zmienić jego status na np. „Objęte promocją XYZ”. Dzięki temu, zamówienia te mogą być łatwo zidentyfikowane i przetworzone zgodnie z warunkami promocji.
+Innym przykładem może ustawienie priorytetów dla zamówień w zależności od daty złożenia. na przykład, chcesz nadać wyższy priorytet zamówieniom złożonym w ostatnim tygodniu przed świętami. Ustawiasz wtedy warunek „Data złożenia” tak, aby zamówienia złożone w tym okresie automatycznie otrzymywały status „Wysoki priorytet”.
+Zobacz, jak skonfigurować warunek DATA ZŁOŻENIA dla akcji automatycznych dla zamówień.
+6. DOKUMENT- warunek akcji automatycznej dla zamówień.
+Zobacz, jak skonfigurować warunek DOKUMENT dla akcji automatycznych dla zamówień.
+7. DOKUMENT SPRZEDAŻY W DODATKOWYM POLU – warunek automatyzacji dla zamówień.
+Załóżmy, że prowadzisz sklep internetowy oferujące spersonalizowane produkty, takie jak koszulki z nadrukiem na zamówienia. Klienci podczas składania zamówienia musza dołączyc plik z projektem graficznym, który ma zostać wykorzystany do realizacji ich indywidualnego zamówienia. W Sellasist możesz ustawić warunek automatyzacji, który sprawdza czy w dodatkowym polu zamówienia (typu dokument sprzedaży) został dołączony plik z profektem graficznym. jeżeli plik jest doręczony system automatycznie przekazuje zamówienie do realizacji.
+Zobacz, jak skonfigurować warunek automatyzacji Dokument sprzedaży w dodatkowym polu w akcjach dla zamówień. 
+8. DOKUMENT WYSTAWIONY – warunek akcji automatycznej dla zamówień.
+Załóżmy, że chcesz automatycznie informować klientów o wystawieniu faktury. Ustawiasz warunek „Dokument wystawiony” w Sellasist, aby akcja automatyczna dotyczyła zamówień, dla których została wystawiona faktura. Gdy faktura zostanie wystawiona dla danego zamówienia, system automatycznie wyśle powiadomienie do klienta z informacją o wystawieniu dokumentu sprzedaży wraz z załączoną fakturą.
+Innym przykładem może być automatyczne aktualizowanie statusu zamówienia po wystawieniu dokumentu sprzedaży. Na przykład możesz chcieć zmienić status zamówienia na „Wysłane” po wystawieniu faktury.
+Zobacz, jak skonfigurować warunek DOKUMENT WYSTAWIONY dla akcji automatycznych dla zamówień.
+9. KOMENTARZ DO ZAMÓWIENIA – warunek automatyzacji dla zamówień.
+Warunek Komentarz do zamówienia pozwala uruchamiać akcje automatyczne na podstawie treści wpisanej w komentarzu. Dzięki temu system może reagować np. na dodatkowe prośby, uwagi dotyczące dostawy, informacje o fakturze czy jakiekolwiek inne zdarzenie.
+W ramach warunku możesz sprawdzić, czy komentarz:
+- został uzupełniony: pole komentarza zawiera dowolną treść;
+- nie został uzupełniony: pole komentarza jest puste;
+- zawiera: komentarz zawiera wskazaną frazę lub jedną z podanych fraz;
+- nie zawiera: komentarz nie zawiera wskazanej frazy lub fraz.
+Dla warunków opartych o frazy możesz wpisać więcej niż jedną frazę. Domyślnie system uruchomi automatyzację, jeśli w komentarzu znajdzie dowolną z podanych fraz.
+Jeśli chcesz, aby akcja została wykonana tylko wtedy, gdy komentarz zawiera wszystkie wpisane frazy, zaznacz opcję Wszystkie podane frazy muszą spełnić warunek.
+Możesz także używać znaku wieloznacznego *, aby dopasowywać fragmenty słów. Na przykład, wpisanie faktur* pozwoli wykryć między innymi słowa faktura, faktury, fakturować.
+Przykład zastosowania: Jeśli komentarz zawiera frazę pilne, system może oznaczyć zamówienie jako priorytetowe. Jeśli komentarz zawiera frazę prezent, system może przenieść zamówienie do osobnego statusu wymagającego specjalnego pakowania.
+Zobacz, jak skonfigurować automatyzację warunku komentarza dla zamówień.
+10. LICZBA PACZEK (WEDŁUG ALLEGRO) – warunek akcji automatycznej dla zamówień.
+Warunek „Liczba paczek (według Allegro)” jest użyteczny w automatyzacji akcji dla zamówień dla odpowiedniego zarządzania logistyką i wysyłką.
+Załóżmy, że sprzedajesz na Allegro i chcesz automatycznie zarządzać procesem pakowania i wysyłki. Ustawiasz warunek „Liczba paczek (według Allegro)” w Sellasist, aby akcja automatyczna dotyczyła zamówień, które wymagają więcej niż 1 paczki do wysyłki. Na przykład, możesz ustawić, że dla zamówień, które składają się z trzech lub więcej paczek, system automatycznie wyśle powiadomienie do osoby pakującej o konieczności specjalnego zapakowania zamówienia. Może to być przydatne w przypadku dużych lub skomplikowanych zamówień, które wymagają dodatkowej uwagi podczas pakowania.
+Zobacz, jak skonfigurować warunek LICZBA PACZEK (WEDŁUG ALLEGRO) dla akcji automatycznych dla zamówień.
+11. LICZBA POZYCJI  – warunek akcji automatycznej dla zamówień.
+Warunek automatyzacji Liczba pozycji w systemie Sellasist to narzędzie, które ułatwia zarządzanie zamówieniami poprzez dokładną analizę ich składu. Dzięki temu warunkowi, możesz ustawić system tak, aby automatycznie sprawdzał, ile produków znajduje sie w każdym zamówieniu. 
+Warunek ten pozwala na ustalenie konkretnych kryteriów dla zamówień. Na przykład, możesz chcieć, aby system identyfikował zamówienia, które zawierają tylko jeden rodzaj produktu w określonej ilości, np. dwie sztuki. Jest to szczególnie przydatne, gdy chcesz monitorować specyficzne typy zamówień, takie jak te zawierające określoną liczbę produktów, co może być kluczowe w przypadku promocji lub zarządzania zapasami.
+ #### 
+ Przykład: 
+ Załóżmy, że chcesz śledzić zamówienia, w których klienci kupują tylko jeden rodzaj produktu, ale w ilościdwóch sztuk.
+Na przykład, interesują Cię zamówienia, g
+

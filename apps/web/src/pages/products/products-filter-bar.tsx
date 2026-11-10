@@ -34,6 +34,8 @@ const SORT_KEYS: readonly ProductListSortField[] = ['createdAt', 'updatedAt', 'n
 
 export type ProductTaxFilter = 'missing' | 'not-checked';
 
+export type ProductBundleView = 'only' | 'exclude';
+
 export interface ProductsFilterBarProps {
   searchInput: string;
   onSearchChange: (value: string) => void;
@@ -62,6 +64,10 @@ export interface ProductsFilterBarProps {
   hideStale: boolean;
   staleCount: number | undefined;
   onHideStaleChange: (value: boolean) => void;
+
+  /** #3624 - bundles view; no per-option count, the summary does not carry one. */
+  bundles: ProductBundleView | undefined;
+  onBundlesChange: (value: ProductBundleView | null) => void;
 
   /** Exact total, or a floor while the total is still counted; `null` while unknown. */
   resultCount: { value: number; atLeast: boolean } | null;
@@ -107,6 +113,8 @@ export function ProductsFilterBar(props: ProductsFilterBarProps): ReactElement {
     hideStale,
     staleCount,
     onHideStaleChange,
+    bundles,
+    onBundlesChange,
     resultCount,
     sort,
     dir,
@@ -116,6 +124,9 @@ export function ProductsFilterBar(props: ProductsFilterBarProps): ReactElement {
   } = props;
   const page = useMessages('products').productsListPage;
   const COPY = page.listFilters;
+  const bundleCopy = useMessages('bundles').list;
+  const bundleLabel = (value: ProductBundleView): string =>
+    value === 'only' ? bundleCopy.filterBundles : bundleCopy.filterWithoutBundles;
   const plural = usePlural();
   const searchRef = useRef<HTMLInputElement>(null);
   const filtersRef = useRef<HTMLButtonElement>(null);
@@ -164,6 +175,10 @@ export function ProductsFilterBar(props: ProductsFilterBarProps): ReactElement {
   if (taxValue) {
     const text = taxLabel(taxValue);
     chips.push({ key: 'tax', label: COPY.pills.taxRate, value: text, valueText: text, onRemove: () => { onTaxRateStateChange(null); } });
+  }
+  if (bundles) {
+    const text = bundleLabel(bundles);
+    chips.push({ key: 'bundles', label: bundleCopy.filterLabel, value: text, valueText: text, onRemove: () => { onBundlesChange(null); } });
   }
   if (hideStale) {
     chips.push({
@@ -316,6 +331,32 @@ export function ProductsFilterBar(props: ProductsFilterBarProps): ReactElement {
     });
   }
   sections.push({
+    id: 'bundles',
+    title: bundleCopy.filterLabel,
+    summary: summary(bundles ? bundleLabel(bundles) : null),
+    body: (
+      <FilterChecks role="radiogroup" aria-label={bundleCopy.filterLabel}>
+        <FilterCheck
+          type="radio"
+          name="products-bundles"
+          label={bundleCopy.filterAll}
+          checked={!bundles}
+          onChange={() => { onBundlesChange(null); }}
+        />
+        {(['only', 'exclude'] as const).map((value) => (
+          <FilterCheck
+            key={value}
+            type="radio"
+            name="products-bundles"
+            label={bundleLabel(value)}
+            checked={bundles === value}
+            onChange={() => { onBundlesChange(value); }}
+          />
+        ))}
+      </FilterChecks>
+    ),
+  });
+  sections.push({
     id: 'deleted',
     title: COPY.groups.deleted,
     summary: summary(hideStale ? COPY.pills.hidden : null, COPY.sectionShown),
@@ -389,6 +430,16 @@ export function ProductsFilterBar(props: ProductsFilterBarProps): ReactElement {
               onChange={onTaxRateStateChange}
             />
           ) : null}
+          <FilterDropdown<ProductBundleView>
+            label={bundleCopy.filterLabel}
+            anyLabel={bundleCopy.filterAll}
+            value={bundles ?? null}
+            options={[
+              { value: 'only', label: bundleCopy.filterBundles },
+              { value: 'exclude', label: bundleCopy.filterWithoutBundles },
+            ]}
+            onChange={onBundlesChange}
+          />
           <button
             ref={filtersRef}
             type="button"

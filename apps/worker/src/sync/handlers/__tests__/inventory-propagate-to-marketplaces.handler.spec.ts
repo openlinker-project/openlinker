@@ -39,7 +39,8 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
   let inventoryService: jest.Mocked<IInventoryService>;
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
   let integrationsService: jest.Mocked<IIntegrationsService>;
-  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant'>>;
+  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant' | 'getVariantsByIds'>>;
+  let bundleDefinitions: { findCurrentContainingComponents: jest.Mock };
   let availabilityService: jest.Mocked<IAvailabilityService>;
   let orderRoutingRetry: {
     rerouteHeldOrdersForVariant: jest.Mock;
@@ -104,7 +105,9 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
 
     productsService = {
       getVariant: jest.fn().mockResolvedValue(null),
+      getVariantsByIds: jest.fn().mockResolvedValue([]),
     };
+    bundleDefinitions = { findCurrentContainingComponents: jest.fn().mockResolvedValue([]) };
 
     availabilityService = {
       getPromisableQuantities: jest.fn(),
@@ -125,7 +128,8 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       integrationsService,
       productsService as unknown as IProductsService,
       availabilityService,
-      orderRoutingRetry as unknown as IOrderRoutingRetryService
+      orderRoutingRetry as unknown as IOrderRoutingRetryService,
+      bundleDefinitions as never
     );
   });
 
@@ -149,6 +153,60 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       lastError: null,
       createdAt: new Date(),
       updatedAt: new Date(),
+    });
+
+    describe('bundles fed by the changed component (#3931)', () => {
+      it('should enqueue one propagation per bundle containing the component', async () => {
+        bundleDefinitions.findCurrentContainingComponents.mockResolvedValue([
+          { variantId: 'set-variant', version: 1, components: [] },
+        ]);
+        productsService.getVariantsByIds.mockResolvedValue([
+          { id: 'set-variant', productId: 'set-product' } as never,
+        ]);
+
+        await handler.execute(
+          createJob({
+            productId: 'product-id',
+            variantId: 'variant-id',
+            inventoryUpdatedAt: '2026-10-27T10:00:00.000Z',
+          })
+        );
+
+        expect(bundleDefinitions.findCurrentContainingComponents).toHaveBeenCalledWith(['variant-id']);
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+          expect.objectContaining({
+            jobType: 'inventory.propagateToMarketplaces',
+            payload: {
+              productId: 'set-product',
+              variantId: 'set-variant',
+              inventoryUpdatedAt: '2026-10-27T10:00:00.000Z',
+            },
+            idempotencyKey:
+              'inventory:propagate:set-product:set-variant:2026-10-27T10:00:00.000Z',
+          })
+        );
+      });
+
+      it('should enqueue nothing extra for a variant that feeds no bundle', async () => {
+        await handler.execute(createJob({ productId: 'product-id', variantId: 'variant-id' }));
+        expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+      });
+
+      it('should still propagate bundles when the changed component is stale (known zero pauses them)', async () => {
+        productsService.getVariant.mockResolvedValue({ isStale: true } as never);
+        bundleDefinitions.findCurrentContainingComponents.mockResolvedValue([
+          { variantId: 'set-variant', version: 1, components: [] },
+        ]);
+        productsService.getVariantsByIds.mockResolvedValue([
+          { id: 'set-variant', productId: 'set-product' } as never,
+        ]);
+
+        await handler.execute(createJob({ productId: 'product-id', variantId: 'variant-id' }));
+
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+          expect.objectContaining({ payload: expect.objectContaining({ variantId: 'set-variant' }) })
+        );
+      });
     });
 
     describe('re-routing held orders on a stock change (#3558)', () => {

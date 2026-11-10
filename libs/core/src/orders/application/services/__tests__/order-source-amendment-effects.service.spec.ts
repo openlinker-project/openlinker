@@ -19,6 +19,8 @@ interface RecordShape {
   fulfillmentState: string | null;
   lastAmendmentChanges: unknown[] | null;
   omsAttention: Array<{ producer: string; reason: string; detail?: string }>;
+  bundleLines: unknown[];
+  componentsOfLine: (lineId: string) => unknown[];
 }
 
 function record(overrides: Partial<RecordShape> = {}): RecordShape {
@@ -33,6 +35,8 @@ function record(overrides: Partial<RecordShape> = {}): RecordShape {
     fulfillmentState: 'not-shipped',
     lastAmendmentChanges: [{ kind: 'line-quantity-changed', lineId: 'li_1', fromQuantity: 2, toQuantity: 1 }],
     omsAttention: [],
+    bundleLines: [],
+    componentsOfLine: () => [],
     ...overrides,
   };
 }
@@ -146,6 +150,29 @@ describe('OrderSourceAmendmentEffectsService (#3961)', () => {
       });
       expect(lock.acquire).toHaveBeenCalledWith(`order:edit:${ORDER_ID}`, expect.any(Number));
       expect(lock.release).toHaveBeenCalled();
+    });
+
+    it('should hand a bundle line its components at every step (ADR-083)', async () => {
+      const components = [
+        { componentLineId: 'li_1~c:va', perUnit: 2 },
+        { componentLineId: 'li_1~c:vb', perUnit: 1 },
+      ];
+      orderRecords.getOrderRecord.mockResolvedValue(
+        record({
+          bundleLines: [{ lineId: 'li_1' }],
+          componentsOfLine: (lineId: string) => (lineId === 'li_1' ? components : []),
+        })
+      );
+
+      await service.reconcile({ internalOrderId: ORDER_ID });
+
+      expect(fulfillmentEdit.assessForEdit).toHaveBeenCalledWith(ORDER_ID, { li_1: components });
+      expect(fulfillmentEdit.lowerLineQuantity).toHaveBeenCalledWith(
+        expect.objectContaining({ orderLineId: 'li_1', components })
+      );
+      expect(saleReversal.reverseLineToTarget).toHaveBeenCalledWith(
+        expect.objectContaining({ orderLineId: 'li_1', components })
+      );
     });
 
     it('should report the parcels the lowered quantity closed, so the host can relay them', async () => {

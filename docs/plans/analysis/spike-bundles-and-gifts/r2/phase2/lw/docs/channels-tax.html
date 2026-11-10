@@ -1,0 +1,62 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/channels-tax"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Channel features: Channel Tax</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Channel features: Channel Tax';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span>
+  <h1 id="h1__750025609" data-has-heading-anchor="true">
+    Channel Tax Settings
+  <a href="/articles/documentation/channels-tax/a/h1__750025609" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-tax/a/h1__750025609&#39;,this);"></a></h1>
+  <p>
+    There are two ways how Linnworks can work with the tax settings:
+  </p>
+  <ul>
+    <li>
+      Ignore channel tax settings and use Linnworks tax settings.
+    </li>
+    <li>
+      Ignore Linnworks tax settings and take all tax information from the order XML.
+    </li>
+  </ul>
+  <p>
+    Go to <em>Settings &gt; Channel Integration &gt; Edit Channel settings</em>&nbsp;to select your preferred method.
+  </p>
+  <p>
+    <img src="/resources/Storage/documentation/Screenshots/Channels/UseChannelTax.png" alt="Use Channel tax Setting" class="leftAlone"/>
+  </p>
+  <div class="alert-warning">
+    <strong>NB!</strong>&nbsp;The exact name of the setting may vary from channel to channel.
+    <br/><br/>
+    For <strong>Amazon</strong>, the&nbsp;<em>Use Channel Tax&nbsp;</em>setting is<span>&nbsp;linked to the <em>Vat/Tax Calculation Services</em>. Further details are available in the <a href="/articles/documentation/amazon-settings" onclick="return n(&#39;!documentation/amazon-settings&#39;,this);">Amazon channel settings documentation</a>.</span>
+  </div>
+  <ul>
+    <li>
+      If <em>Use channel tax setting</em> is <span style="font-weight: normal;"><b>enabled</b>,</span>&nbsp;Linnworks will not perform any calculations, all the price, tax, discount, and total values will be taken from the channel order details.
+    </li>
+    <li>
+      If the&nbsp;<em>Use channel tax setting</em> is <span style="font-weight: normal;"><b>disabled</b>,</span>&nbsp;Linnworks will ignore any tax settings from the channel. Once the order is downloaded, the tax rate of the Linnworks item will be checked.&nbsp;If the stock item does not have a specific tax rate applied the system will use the default tax rate for the order country that is set up in<em> Settings &gt; General Settings &gt; Manage Countries.</em> In this case, Linnworks will take the unit price of the ordered item from the order XML and add the country tax on top of the unit price.</li>
+  </ul>
+<h4 style="" id="h4_1529873738" data-has-heading-anchor="true">See also:<a href="/articles/documentation/channels-tax/a/h4_1529873738" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-tax/a/h4_1529873738&#39;,this);"></a></h4><ul><li><a href="/articles/documentation/open-orders-order-calculations" onclick="return n(&#39;!documentation/open-orders-order-calculations&#39;,this);">Order Calculations</a></li><li><a href="/articles/documentation/general-settings-manage-countries" onclick="return n(&#39;!documentation/general-settings-manage-countries&#39;,this);">Manage Countries</a><br/></li></ul><p><br/></p><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

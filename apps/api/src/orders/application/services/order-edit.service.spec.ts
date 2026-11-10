@@ -383,18 +383,66 @@ describe('OrderEditService (#3542)', () => {
       const result = await service.editLines(lowerL1);
 
       expect(calls).toEqual(['open', 'overlay', 'work', 'reservation', 'stock', 'confirm']);
-      expect(fulfillment.lowerLineQuantity).toHaveBeenCalledWith({ orderId: ORDER_ID, orderLineId: 'l1', newQuantity: 1 });
+      expect(fulfillment.lowerLineQuantity).toHaveBeenCalledWith({ orderId: ORDER_ID, orderLineId: 'l1', newQuantity: 1, components: [] });
       expect(reservations.narrowForOrder).toHaveBeenCalledWith({
         orderRecordId: ORDER_ID,
-        lines: [{ orderLineId: 'l1', quantity: 1 }],
+        lines: [{ orderLineId: 'l1', quantity: 1, components: [] }],
       });
       expect(reversal.reverseLineQuantity).toHaveBeenCalledWith({
         internalOrderId: ORDER_ID,
         orderLineId: 'l1',
         units: 2,
+        components: [],
         changeId: 'chg-1',
       });
       expect(result.stock).toEqual([{ orderLineId: 'l1', stockRestored: true, detail: null }]);
+    });
+
+    it('should release every component when a bundle line is edited to 0 (#3520)', async () => {
+      const expansion = {
+        v: 1 as const,
+        definitions: [
+          {
+            variantId: 'v-set',
+            version: 1,
+            components: [
+              { variantId: 'v-a', productId: 'pa', quantity: 2 },
+              { variantId: 'v-b', productId: 'pb', quantity: 1 },
+            ],
+          },
+        ],
+      };
+      const items = [
+        { id: 'l1', productId: 'p1', variantId: 'v-set', quantity: 3, price: 10 },
+        { id: 'l2', productId: 'p2', quantity: 1, price: 20 },
+      ];
+      orderRecords.getOrderRecord.mockResolvedValue(
+        recordWithSnapshot({ ...channelSnapshot(), items }, { lineExpansion: expansion })
+      );
+      orderRecords.applyOrderEdit.mockImplementation(() => {
+        calls.push('overlay');
+        return Promise.resolve(
+          recordWithSnapshot(
+            { ...channelSnapshot(), items: items.filter((i) => i.id !== 'l1') },
+            { lineExpansion: expansion, channelSnapshotRaw: { ...channelSnapshot(), items } } as never
+          )
+        );
+      });
+
+      await service.editLines({ ...base, lines: [{ orderLineId: 'l1', quantity: 0 }], acknowledgeAcceptedWork: false });
+
+      const components = [
+        { componentLineId: 'l1~c:v-a', perUnit: 2 },
+        { componentLineId: 'l1~c:v-b', perUnit: 1 },
+      ];
+      expect(fulfillment.lowerLineQuantity).toHaveBeenCalledWith(
+        expect.objectContaining({ orderLineId: 'l1', newQuantity: 0, components })
+      );
+      expect(reservations.narrowForOrder).toHaveBeenCalledWith({
+        orderRecordId: ORDER_ID,
+        lines: [{ orderLineId: 'l1', quantity: 0, components }],
+      });
+      expect(reversal.reverseLineQuantity).toHaveBeenCalledWith(expect.objectContaining({ orderLineId: 'l1', components }));
     });
 
     it('should report not-applicable when nothing was ever decremented', async () => {

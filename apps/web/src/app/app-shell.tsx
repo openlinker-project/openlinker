@@ -146,10 +146,10 @@ export function SidebarNav({
   );
 }
 
-export function SidebarBrand(): ReactElement {
+export function SidebarBrand({ className = '' }: { className?: string }): ReactElement {
   const copy = useMessages('app');
   return (
-    <div className="shell-brand">
+    <div className={['shell-brand', className].filter(Boolean).join(' ')}>
       <img
         className="shell-brand__mark"
         src="/openlinker-logo.svg"
@@ -327,7 +327,9 @@ export function ShellTopbar({
         </button>
       ) : null}
 
-      {showBrand ? <SidebarBrand /> : null}
+      {/* On an ultrawide screen the brand moves out of the sidebar box into
+          the bar, above the sidebar; CSS shows this copy only there. */}
+      {showBrand ? <SidebarBrand /> : <SidebarBrand className="shell-brand--wide" />}
 
       <nav aria-label={copy.shell.breadcrumb} className="shell-crumbs">
         <span className="shell-crumbs__group">{crumbs.group}</span>

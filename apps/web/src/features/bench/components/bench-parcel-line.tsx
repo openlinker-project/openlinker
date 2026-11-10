@@ -36,9 +36,9 @@ import type { ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { BenchParcelLine } from '../api/bench-parcel.types';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { formatVariantAttributes, narrowAttributes } from '../../../shared/lib/variant-attributes';
 import { benchLineState, type BenchLineState } from '../lib/bench-parcel-presentation';
-import { interpolate, useMessages } from '../../../shared/i18n';
 import {
   formatBenchBinCode,
   formatBenchDimensions,
@@ -111,7 +111,11 @@ export function BenchParcelLineRow({
   pendingCount = 0,
   unreachable = false,
 }: BenchParcelLineRowProps): ReactElement {
+  const bundleCopy = useMessages('bundles');
   const copy = useMessages('bench').parcel;
+  // #3934: the gift slot of a set is told to the packer as a gift. Never a price
+  // or a cost: the bench shows neither, and cost is margin data a packer may not read.
+  const isGiftSlot = line.bundle?.giftSlot === true;
   const state = benchLineState(line);
   const pending = pendingCount > 0;
   const remaining = Math.max(0, line.requiredQuantity - line.verifiedQuantity);
@@ -144,8 +148,20 @@ export function BenchParcelLineRow({
           distinguishing attributes under it. */}
       <div className="bench-parcel-line__identity">
         <span className="bench-parcel-line__name">
-          {line.name ?? copy.lines.unnamed}
+          {isGiftSlot
+            ? interpolate(bundleCopy.bench.includeGift, {
+                name: line.name ?? copy.lines.unnamed,
+              })
+            : (line.name ?? copy.lines.unnamed)}
         </span>
+        {isGiftSlot ? (
+          <span
+            className="text-muted"
+            data-testid={`bench-line-gift-${line.sku ?? line.workLineId}`}
+          >
+            {bundleCopy.order.giftMark}
+          </span>
+        ) : null}
         {visibleAttributes === null ? null : (
           <span className="bench-parcel-line__attributes">
             {formatVariantAttributes(visibleAttributes)}

@@ -1,0 +1,82 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/kaufland-settings"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Kaufland: Configure channel settings</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Kaufland: Configure channel settings';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>
+<h1 id="h1_918240751" data-has-heading-anchor="true">
+  Kaufland: How to Configure<a href="/articles/documentation/kaufland-settings/a/h1_918240751" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/kaufland-settings/a/h1_918240751&#39;,this);"></a></h1>
+<p>Linnworks integration has multiple settings that allow precise control of how Linnworks interacts with Kaufland. This guide will help you to configure your Kaufland to make sure Linnworks is doing what is required.</p>
+<p>Once the channel is added, click on the&nbsp;<i>pen&nbsp;<span class="fa fa-pencil">&nbsp;</span>&nbsp;</i>icon in the channel integration screen for the required Kaufland integration.</p>
+<img src="/resources/Storage/documentation/Screenshots/Channels/ChannelConfig.png" alt="Channel Config" class="leftAlone" loading="lazy"/><h3 id="h2__999491287" style="" data-has-heading-anchor="true"><a name="Options"></a>Available for the configuration settings<a href="/articles/documentation/kaufland-settings/a/h2__999491287" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/kaufland-settings/a/h2__999491287&#39;,this);"></a></h3>
+<h4 style="" id="h4_767759945" data-has-heading-anchor="true">Account<a href="/articles/documentation/kaufland-settings/a/h4_767759945" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/kaufland-settings/a/h4_767759945&#39;,this);"></a></h4><ul>
+  <li><b>Enabled:</b> Tick this option to allow communication between Linnworks and Kaufland. Without this ticked, no information will be sent to Kaufland or received from&nbsp;Kaufland.</li>
+  <li><b>Client key:</b> The Client Key from the Kaufland API credentials for this Kaufland account.</li>
+  <li><b>Secret key: </b>The Secret Key from the Kaufland API credentials for this Kaufland account.</li>
+  <li><b>Storefront:</b> This is the store that is integrated with Linnworks. Inventory and orders from this store will be synchronized with your Linnworks account.</li>
+  <li><b>Test:</b> Used to confirm the supplied credentials work correctly, allowing communication between Kaufland and Linnworks.</li>
+  <li><b>Reauthorize: </b> This button will trigger to reauthorize your tokens if required.<br/></li>
+  </ul>
+<h4 style="" id="h4_51037994" data-has-heading-anchor="true">Inventory<a href="/articles/documentation/kaufland-settings/a/h4_51037994" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/kaufland-settings/a/h4_51037994&#39;,this);"></a></h4><ul>
+  <li><b>Update inventory:</b> Allow Linnworks to submit changes in stock levels to Kaufland.&nbsp;Linnworks supports multiple stock locations for additional warehouses/fulfillment centers/suppliers. Ensure you set which Linnworks locations are used when submitting changes in stock levels to your channel via the&nbsp;<i><a href="/articles/documentation/channels-location-mapping" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);">Location Mapping</a></i>&nbsp;screen accessed from the main&nbsp;<i><a href="/articles/documentation/channel-integration-screen" onclick="return n(&#39;!documentation/channel-integration-screen&#39;,this);">Channel Integration</a></i>&nbsp;screen.</li>
+  <li><b>Price change:</b> Price Change is designed to speed up updating the sales channel once a Linnworks stock item has had its listing price updated and saved. For more details, go to the <i><a class="ss-broken" href="/articles/documentation/channels-price-change" onclick="return n(&#39;!documentation/channels-price-change&#39;,this);">Price Change</a></i>&nbsp;guide.</li>
+  <li><b>Max listed:</b>&nbsp;<span>This specifies the maximum level sent to the channel.&nbsp;</span>
+    For more details, go to the&nbsp;<i><a href="/articles/documentation/channels-inventory-updates/a/max-listed" onclick="return n(&#39;!documentation/channels-inventory-updates/a/max-listed&#39;,this);">Max Listed</a></i>&nbsp;guide.</li>
+  <li><b>Stock percentage:</b>&nbsp;This will send a percentage of the currently available stock level to the sales channel. For more details, go to the&nbsp;<i><a href="/articles/documentation/channels-inventory-updates/a/stock-percentage" onclick="return n(&#39;!documentation/channels-inventory-updates/a/stock-percentage&#39;,this);">Stock Percentage</a></i>&nbsp;guide.</li>
+  <li><b>End when:</b>&nbsp;<span>This enables you to force the listing to end when the stock level gets to the specified amount instead of the default value of zero.&nbsp;</span>
+    For more details, go to the&nbsp;<i><a href="/articles/documentation/channels-inventory-updates/a/end-when" onclick="return n(&#39;!documentation/channels-inventory-updates/a/end-when&#39;,this);">End When</a></i>&nbsp;guide.<p><br/></p></li>
+</ul>
+<h4 style="" id="h4__1184546515" data-has-heading-anchor="true">Listings<a href="/articles/documentation/kaufland-settings/a/h4__1184546515" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/kaufland-settings/a/h4__1184546515&#39;,this);"></a></h4><ul><li style="width: 747px;"><b>Auto-link by SKU:&nbsp;</b>If enabled, Linnworks will automatically link unmatched channel SKUs to matching Linnworks SKUs during&nbsp;<u>order download</u>&nbsp;or the&nbsp;<u>mapping sync</u>&nbsp;(runs ~every 12 hours). Once linked,&nbsp;<a href="/articles/documentation/channels-inventory-updates" onclick="return n(&#39;!documentation/channels-inventory-updates&#39;,this);">inventory sync</a>&nbsp;is triggered. You can check&nbsp;<a href="/articles/documentation/channels-inventory-mapping/a/h4_1759825364" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4_1759825364&#39;,this);">this guide</a>&nbsp;for full details on how this feature works.&nbsp;</li>
+  <li><b>Listing download in progress: </b>This tick box will tick itself if a Listing Update has begun.</li>
+  <li><b>Listing download start time:</b> This will show the date and time when the update has begun.</li>
+  <li><b>Last manual download:</b> This will show the date and time of when the last manual update was run.</li>
+  <li><b>Listing download estimated completion:</b> This will give you an estimate of when the listings download will be complete – the time can vary depending on server speeds and the number of listings.</li>
+  <li><b>Download listings: </b>Click this button to force Linnworks to request an update from the channel for your active listings.</li>
+</ul>
+<p>Linnworks is designed to update listings on the spamming page once every 12 hours. If for any reason, this has not happened, the <span class="btn-gray">Download listings</span> button can be used to force the update manually.</p><h4 style="" id="h4__784112042" data-has-heading-anchor="true">Order<a href="/articles/documentation/kaufland-settings/a/h4__784112042" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/kaufland-settings/a/h4__784112042&#39;,this);"></a></h4><ul>
+  <li><b>Dispatch notes:</b> After processing orders in Linnworks, a dispatch notification, tracking number (if available), and the selected shipping vendor will be submitted to the channel. When the option is disabled, no dispatch information will be submitted to Kaufland.
+  </li>
+  <li>
+    <b>Order sync date [UTC]:</b> This shows the date and time when Linnworks last synchronized with the channel.</li>
+</ul>
+<h4 id="h4_15828802" data-has-heading-anchor="true">
+  Next steps:
+<a href="/articles/documentation/kaufland-settings/a/h4_15828802" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/kaufland-settings/a/h4_15828802&#39;,this);"></a></h4>
+<ul>
+  <li>
+    <a href="/articles/documentation/channels-location-mapping" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);">Location Mapping</a>
+  </li>
+  <li>
+    <a href="/articles/documentation/channels-inventory-mapping" onclick="return n(&#39;!documentation/channels-inventory-mapping&#39;,this);">Inventory Mapping</a>
+  </li>
+  <li>
+    <a href="/articles/documentation/channels-payment-mapping" onclick="return n(&#39;!documentation/channels-payment-mapping&#39;,this);">Payment Mapping</a>
+  </li>
+  <li>
+    <a href="/articles/documentation/channels-shipping-mapping" onclick="return n(&#39;!documentation/channels-shipping-mapping&#39;,this);">Shipping Mapping</a>
+  </li>
+</ul><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

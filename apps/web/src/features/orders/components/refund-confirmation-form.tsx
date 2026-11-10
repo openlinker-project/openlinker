@@ -39,7 +39,7 @@
  * @module apps/web/src/features/orders/components
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMemo, type ReactElement } from 'react';
+import { useMemo, type ReactElement, type ReactNode } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { z } from 'zod/v4';
 
@@ -81,6 +81,13 @@ interface RefundConfirmationFormProps {
   error: string | null;
   onSubmit: (input: RefundConfirmationSubmission) => void;
   onCancel?: () => void;
+  /**
+   * An OPTIONAL suggestion rendered under the amount field (#3933). The caller
+   * receives `apply`, which puts a value in the field only when the operator
+   * triggers it - the field itself still starts empty and is never filled by the
+   * form, so a suggestion can never become the default.
+   */
+  renderAmountSuggestion?: (apply: (amount: string) => void) => ReactNode;
 }
 
 /**
@@ -113,6 +120,7 @@ export function RefundConfirmationForm({
   error,
   onSubmit,
   onCancel,
+  renderAmountSuggestion,
 }: RefundConfirmationFormProps): ReactElement {
   const copy = useMessages('orders').refundConfirmation;
   const schema = useMemo(() => createRefundConfirmationSchema(copy), [copy]);
@@ -120,6 +128,7 @@ export function RefundConfirmationForm({
     formState: { errors },
     handleSubmit,
     register,
+    setValue,
   } = useForm<RefundFormValues>({
     resolver: zodResolver(schema),
     // EMPTY. See the module docblock — this is a decision, not a gap.
@@ -169,6 +178,10 @@ export function RefundConfirmationForm({
         >
           <Input inputMode="decimal" placeholder="0.00" {...register('amount')} />
         </FormField>
+
+        {renderAmountSuggestion?.((amount) =>
+          setValue('amount', amount, { shouldDirty: true, shouldValidate: true })
+        )}
 
         {/* Context, never a suggestion — and labelled as the ORDER total so it
             cannot be misread as an amount OpenLinker computed for this refund. */}

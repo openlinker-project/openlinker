@@ -371,6 +371,10 @@
     "title": "Fiscal receipt"
   },
   "gateReasons": {
+    "bundle-split-unknown": {
+      "detail": "A set in this order contains items with different tax rates, but a rate or a price needed to split it is unknown, so nothing was issued. Fix the rate or price in the shop; the order is retried on its next update.",
+      "short": "Set cannot be split"
+    },
     "line-total-mismatch": {
       "detail": "The order's items do not add up to the total it reports, so no document can be issued automatically. A discount the marketplace applied to the whole order is the usual cause.",
       "short": "Amounts do not add up"

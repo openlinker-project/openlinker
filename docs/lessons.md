@@ -23,6 +23,30 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## Check that every source actually produces the key a design is keyed on
+
+**Context**: #3520 bundles expand per order line, keyed on the line's `variantId`.
+
+**Problem**: simple products from PrestaShop and WooCommerce arrived product-level only (`internalProductId`, no `internalVariantId`), because the resolver never applied the lone-variant precedence master inventory sync already uses (#822). Bundle expansion, gift rules, reservations and the Shoper mirror all silently skipped those lines; only a live E2E run showed it.
+
+**Rule**: when a design keys on a field, verify against each source's real payload that the field is populated. Resolve a product-only ref to its lone variant in the resolver (`withLoneVariant`), once, rather than in each consumer.
+
+**Applies to**: `libs/core/src/orders/application/services/order-item-ref-resolver.service.ts`, anything keyed on a line's variant.
+
+**Source**: #3520, PR #3957
+
+## Check what an offer is MAPPED to before designing a fix that keys on its variant
+
+**Context**: #3929 held an Allegro multipack (one offer sells 3 units of one product) until the operator defined a bundle "3 x product" (#3607).
+
+**Problem**: the offer maps to the product's own variant, and a bundle is a separate variant whose component cannot be itself. So creating the bundle could never release the held order: ingestion kept asking about the offer's variant, which still had no definition. The design read well on paper and every unit test passed; only wiring the UI action end to end showed it.
+
+**Rule**: when a fix is keyed on "the variant of this line", confirm which variant the channel line resolves to before choosing the key. A multipack is now a one-click confirmation stored per (variant, pack size), frozen into the order's component list (ADR-083).
+
+**Applies to**: `libs/core/src/orders/application/services/multipack-hold.ts`, bundle definitions, any per-line hold.
+
+**Source**: #3929, #3624
+
 ## Never send one receipt line name at two VAT rates - the fiscal printer locks the name for good
 
 **Context**: eparagony.pl relays receipts to a physical fiscal printer. OpenLinker sent the delivery line as `Shipping` on every receipt while its VAT rate followed the basket (23% one day, 5% the next, both on one mixed-rate receipt).
@@ -2931,3 +2955,15 @@ including the zero-row case.
 repositories.
 
 **Source**: #3542, fixed in 20362a600.
+
+## Keep the API's keep-alive longer than the browser's, or a reused socket fails with no response
+
+**Context**: `/orders`, `/products` and `/listings` on a local stack, the browser on the Windows host and the API in Docker under WSL2. Firefox logged "Cross-Origin Request Blocked … CORS request did not succeed. Status code: (null)" when switching pages after a pause.
+
+**Problem**: it is not a CORS header problem. "Did not succeed" with a null status means the request got no response at all. Node's `http.Server` closes an idle keep-alive socket after 5 s, while a browser keeps one for reuse much longer. A request sent on a socket the server just closed fails at the transport level, and Firefox files every such cross-origin failure under CORS. It did not reproduce from a headless browser inside WSL, so the transport hop is part of it. Cancelling superseded queries is not a fix: an aborted cross-origin request produces the same console line.
+
+**Rule**: set `server.keepAliveTimeout` above the browser's idle window (65 s) and `headersTimeout` above that, in `apps/api/src/main.ts`. Before chasing CORS config, check the status: a real CORS refusal has one, a transport failure has none.
+
+**Applies to**: `apps/api/src/main.ts`, any reverse proxy in front of the API, CORS bug reports.
+
+**Source**: #4058

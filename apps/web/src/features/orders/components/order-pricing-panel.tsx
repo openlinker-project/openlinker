@@ -15,6 +15,7 @@ import { StatusBadge } from '../../../shared/ui/status-badge';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import type { OrderEditsView } from '../api/order-edit.types';
+import type { OrderBundleLine } from '../api/orders.types';
 import type { ParsedOrderItem, ParsedOrderTotals } from '../api/order-snapshot.schema';
 import { OrderLineItemsPanel } from './order-line-items-panel';
 import { OrderTotalsPanel } from './order-totals-panel';
@@ -28,6 +29,8 @@ interface OrderPricingPanelProps {
   edits?: OrderEditsView | null;
   /** Display name of the source connection, for "the buyer paid X on <channel>". */
   channelName?: string | null;
+  /** The bundle lines with their frozen components (#3624). */
+  bundleLines?: readonly OrderBundleLine[];
 }
 
 export function OrderPricingPanel({
@@ -36,6 +39,7 @@ export function OrderPricingPanel({
   internalOrderId,
   edits,
   channelName,
+  bundleLines,
 }: OrderPricingPanelProps): ReactElement {
   const copy = useMessages('orders').orderPricing;
   const format = useFormat();
@@ -56,6 +60,7 @@ export function OrderPricingPanel({
           totals={totals}
           internalOrderId={internalOrderId}
           channelQuantities={channelQuantities}
+          bundleLines={bundleLines}
         />
       ) : null}
 

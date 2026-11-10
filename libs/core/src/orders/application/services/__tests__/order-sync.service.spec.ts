@@ -280,6 +280,30 @@ describe('OrderSyncService', () => {
       expect('taxRate' in command.items[0]).toBe(false);
     });
 
+    it('carries gift and packQuantity onto the destination command, absent when unset (#3929)', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      const order = createOrder();
+      order.items[0].gift = { source: 'ol-rule' };
+      order.items[0].packQuantity = 2;
+
+      await service.syncOrder({ order, sourceConnectionId: 'source-1', sourceEventId: 'e-1' });
+      const [command] = adapter.createOrder.mock.calls[0];
+      expect(command.items[0].gift).toEqual({ source: 'ol-rule' });
+      expect(command.items[0].packQuantity).toBe(2);
+
+      const plainAdapter = makeAdapter({ orderId: 'dest_order_790', orderNumber: 'DEST-002' });
+      registerDestinations([{ connectionId: 'dest-b', adapter: plainAdapter }]);
+      await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        sourceEventId: 'e-2',
+      });
+      const [plain] = plainAdapter.createOrder.mock.calls[0];
+      expect('gift' in plain.items[0]).toBe(false);
+      expect('packQuantity' in plain.items[0]).toBe(false);
+    });
+
     it('leaves the gross keys absent when the source reported none', async () => {
       const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
       registerDestinations([{ connectionId: 'dest-a', adapter }]);
@@ -347,6 +371,8 @@ describe('OrderSyncService', () => {
         unitPriceGross: { projected: true },
         taxRate: { projected: true },
         taxRateCountry: { projected: true },
+        gift: { projected: true },
+        packQuantity: { projected: true },
         imageUrl: {
           withheld:
             'reserved for future enrichment - no adapter sets it on ingestion and no destination reads it',
@@ -383,6 +409,8 @@ describe('OrderSyncService', () => {
           taxSource: 'shop',
           taxRateReadAt: '2026-10-01T00:00:00.000Z',
           taxRateChannel: '8',
+          gift: { source: 'channel' },
+          packQuantity: 3,
         };
         const order = createOrder();
         order.items = [fullItem];

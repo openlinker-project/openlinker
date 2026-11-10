@@ -25,7 +25,13 @@ import type { BulkVariantRow, BulkWizardRow } from './bulk-wizard.types';
 import { operatorPickedCategory, productCategoryIdOf, submitCategoryIdOf } from './bulk-policy';
 
 /** Where the submitted category came from. */
-export type CategorySource = 'picked' | 'shared' | 'mapping' | 'card' | 'card-agrees';
+export type CategorySource =
+  | 'picked'
+  | 'shared'
+  | 'mapping'
+  | 'card'
+  | 'card-agrees'
+  | 'first-component';
 
 /** The copy key of each source: locale keys cannot carry the hyphen. */
 const SOURCE_COPY_KEY = {
@@ -34,6 +40,7 @@ const SOURCE_COPY_KEY = {
   mapping: 'mapping',
   card: 'card',
   'card-agrees': 'cardAgrees',
+  'first-component': 'firstComponent',
 } as const satisfies Record<CategorySource, string>;
 
 /**
@@ -68,6 +75,7 @@ function sourceOfResolution(variant: BulkVariantRow): CategorySource | null {
   if (variant.resolutionMethod === 'category_mapping') return 'mapping';
   if (variant.resolutionMethod === 'auto_detect') return variant.mappingAgrees ? 'card-agrees' : 'card';
   if (variant.resolutionMethod === 'manual') return 'picked';
+  if (variant.resolutionMethod === 'first_component') return 'first-component';
   return null;
 }
 

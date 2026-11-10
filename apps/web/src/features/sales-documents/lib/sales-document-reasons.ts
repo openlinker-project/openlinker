@@ -132,6 +132,9 @@ export const SALES_DOCUMENT_UNRESOLVED_REASON_COPY = {
  *   guess a rate, so the backend closes the manual paths too.
  * - `tax-rate-conflict` is declared but never written (#2245 F1); its copy never
  *   claims a hold.
+ * - `bundle-split-unknown` (ADR-083): a set sold at one price whose components carry
+ *   different tax rates cannot be split when a rate or a price is unknown; nothing
+ *   is guessed on a fiscal document, so the remedy is upstream and no action is kept.
  * - `trigger-model-manual` is neutral on purpose: manual is the default trigger
  *   model, so counting it would put a large red number on a healthy install.
  * - `trigger-model-batched` (#3583): the order waits in its connection's batch
@@ -139,6 +142,7 @@ export const SALES_DOCUMENT_UNRESOLVED_REASON_COPY = {
  *   manual, and the manual action stays for an order that should not wait.
  */
 export const SALES_DOCUMENT_GATE_REASON_COPY = {
+  'bundle-split-unknown': gateEntry('bundle-split-unknown', 'error', false),
   'unresolved-routing': gateEntry('unresolved-routing', 'error', false),
   'missing-required-tax-id': gateEntry('missing-required-tax-id', 'warning', false),
   'line-total-mismatch': gateEntry('line-total-mismatch', 'error', false),

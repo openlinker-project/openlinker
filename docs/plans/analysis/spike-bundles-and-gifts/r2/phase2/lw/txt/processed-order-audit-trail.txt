@@ -1,0 +1,25 @@
+=== processed-order-audit-trail | Audit Trail
+ 
+ Audit Trail 
+Processed Orders: Audit Trail
+ The Audit Trail  displays any processes that were completed for an order such as rules engine evaluations, despatch notes sent to the channels, invoices being printed, etc.
+ How to access Audit Trail 
+ Audit trails are saved for every order in Linnworks. To view an audit trail, you must first open  Orders > Processed Orders and then find an order you wish to view.
+ Viewing the Audit Trail 
+ To view the Audit Trail of an order:
+ Find the order you want to view the audit trail. For more information on search options, see this guide .
+ Click the plus      icon to expand the order.
+Click on the   Audit Trail tab . 
+ Audit Trail records 
+ The Audit Trail contains entries for all stages of the order life cycle. Entries are added to the trail in the following format:
+ Column 
+ Description 
+ Date 
+ The date and time that the entry was logged. 
+ Description 
+ This is an overview of the action. 
+ Note 
+ This is a more detailed description of the action. 
+ User 
+ This is the user that made the action. This will either be the email address of the logged-in user or actions by Linnworks which will appear as either System or No User . 
+ 

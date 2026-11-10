@@ -171,3 +171,11 @@ export type {
   SegmentedSwitchProps,
 } from './segmented-switch';
 export { SNAPPY_SPRING, THUMB_SPRING, ENTRANCE_GROUP, ENTRANCE_ITEM } from './motion-presets';
+export { GuideDrawer, useGuideShortcut } from './guide-drawer';
+export type { GuideDrawerProps, GuideSection } from './guide-drawer';
+export { GuideTrigger, HelpHint } from './help-hint';
+export { ComposerSection } from './composer-section';
+export { ReadbackSentence } from './readback-sentence';
+export { SaveButton } from './save-button';
+export type { SaveButtonState } from './save-button';
+export { StickyActionBar } from './sticky-action-bar';

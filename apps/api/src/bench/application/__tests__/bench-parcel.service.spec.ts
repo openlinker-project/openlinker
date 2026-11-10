@@ -104,6 +104,8 @@ function harness(options: {
   /** #3538 - the order's note as `OrderRecord.buyerNoteState` reads it. */
   buyerNoteState?: string | null;
   hasBuyerNote?: boolean;
+  /** #3624 - the order's bundle lines as `OrderRecord.bundleLines` derives them. */
+  bundleLines?: Array<{ lineId: string; components: Array<{ lineId: string; giftSlot?: boolean }> }>;
   acknowledgements?: Array<{
     workId: string;
     acknowledgedAt: Date;
@@ -173,6 +175,8 @@ function harness(options: {
         internalOrderId: 'ol_order_1',
         buyerNoteState: options.buyerNoteState,
         hasBuyerNote: options.hasBuyerNote ?? options.buyerNoteState !== undefined,
+        bundleLines: options.bundleLines ?? [],
+        orderItems: options.bundleLines === undefined ? [] : [{ id: 'L1', name: 'Zestaw poranny' }],
         orderSnapshot: {
           orderNumber: 'OL-4471',
           shippingAddress: {
@@ -635,6 +639,38 @@ describe('BenchParcelService (#2418)', () => {
     });
   });
 
+  describe('bundle components (#3624)', () => {
+    it('should name the bundle a component line belongs to, and leave ordinary lines unmarked', async () => {
+      const { service } = harness({
+        work: workView({
+          lines: [
+            { id: 'line-1', orderLineId: 'L1~c:ol_variant_1', productVariantId: 'ol_variant_1', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 },
+            { id: 'line-2', orderLineId: 'L2', productVariantId: 'ol_variant_2', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 },
+          ],
+        } as Partial<FulfillmentWorkView>),
+        bundleLines: [{ lineId: 'L1', components: [{ lineId: 'L1~c:ol_variant_1' }] }],
+      });
+      const parcel = await service.getParcel('work-1');
+      expect(parcel.lines[0].bundle).toEqual({ lineId: 'L1', name: 'Zestaw poranny', giftSlot: false });
+      expect(parcel.lines[1].bundle).toBeNull();
+    });
+
+    it('should mark the gift slot component from the frozen expansion (#3934)', async () => {
+      const { service } = harness({
+        work: workView({
+          lines: [
+            { id: 'line-1', orderLineId: 'L1~c:ol_variant_1', productVariantId: 'ol_variant_1', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 },
+          ],
+        } as Partial<FulfillmentWorkView>),
+        bundleLines: [
+          { lineId: 'L1', components: [{ lineId: 'L1~c:ol_variant_1', giftSlot: true }] },
+        ],
+      });
+      const parcel = await service.getParcel('work-1');
+      expect(parcel.lines[0].bundle?.giftSlot).toBe(true);
+    });
+  });
+
   describe('story D4 — the projection an interruption watches', () => {
     it('carries exactly the fields it is supposed to and no others', async () => {
       // This list IS the D4 guarantee: an interruption fires when this
@@ -697,6 +733,7 @@ describe('BenchParcelService (#2418)', () => {
         [
           'attributes',
           'binCode',
+          'bundle',
           'ean',
           'gtin',
           'heightMm',
@@ -1383,7 +1420,13 @@ describe('BenchParcelService (#2418)', () => {
         activeHolds: [{ fromSourceChange: true } as FulfillmentWorkView['activeHolds'][number]],
       });
     const orderAsking = (quantity: number): OrderRecord =>
-      ({ internalOrderId: 'ol_order_1', orderItems: [{ id: 'ol_line_1', quantity }], orderSnapshot: {} }) as unknown as OrderRecord;
+      ({
+        internalOrderId: 'ol_order_1',
+        orderItems: [{ id: 'ol_line_1', quantity }],
+        physicalItems: [{ id: 'ol_line_1', quantity }],
+        bundleLines: [],
+        orderSnapshot: {},
+      }) as unknown as OrderRecord;
 
     it('should void the line down to what the order now asks for, re-check, and relay a box that closed', async () => {
       const closedAt = new Date('2026-11-09T10:00:00Z');

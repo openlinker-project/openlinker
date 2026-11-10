@@ -565,6 +565,12 @@ export interface ReturnRepositoryPort {
   findOutstandingRestockEventsForReturn(returnId: string): Promise<ReturnLineEvent[]>;
 
   /**
+   * Every per-component dispose act of a return (#3933), oldest first per line.
+   * The correction proposal's input for crediting a partially returned bundle.
+   */
+  findComponentActsForReturn(returnId: string): Promise<ReturnLineEvent[]>;
+
+  /**
    * Every stock attestation on a return, oldest first (#2381).
    *
    * The counterpart to the outstanding read, and NOT derivable from it: attesting

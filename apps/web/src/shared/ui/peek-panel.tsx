@@ -28,6 +28,11 @@ export interface PeekPanelProps {
   onNavigate: (step: -1 | 1) => void;
   /** Changes when the shown row changes, so the body scrolls back to the top. */
   bodyKey?: string;
+  /**
+   * Opened on top of another peek (a product from an order line): it stacks
+   * above it and adds no second dimming, since the one below already dims.
+   */
+  stacked?: boolean;
   children: ReactNode;
 }
 
@@ -53,6 +58,7 @@ export function PeekPanel({
   onNavigate,
   bodyKey,
   children,
+  stacked = false,
 }: PeekPanelProps): ReactElement {
   const copy = useMessages('ui').peekPanel;
   const hasPrevious = position > 1;
@@ -81,6 +87,7 @@ export function PeekPanel({
       open={open}
       onOpenChange={onOpenChange}
       width={560}
+      elevated={stacked}
       className="peek-panel"
       closeIcon
       closeLabel={copy.close}

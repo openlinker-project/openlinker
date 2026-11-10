@@ -112,6 +112,8 @@ export const MARGIN_ANALYTICS_SERVICE_TOKEN = Symbol('IMarginAnalyticsService');
 // Cost coverage + the missing-cost work list (#3588, mockup M30).
 export const COST_COVERAGE_SERVICE_TOKEN = Symbol('ICostCoverageService');
 export const ORDER_LINE_COST_SERVICE_TOKEN = Symbol('IOrderLineCostService');
+// Bundle components for documents and the gift slot cost read (#3934).
+export const ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN = Symbol('IOrderBundleDocumentService');
 // Analytics display-currency conversion read model (#2458, ADR-064).
 export const DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN = Symbol(
   'IDisplayCurrencyConversionService'

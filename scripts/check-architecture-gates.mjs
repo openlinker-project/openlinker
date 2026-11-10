@@ -169,6 +169,10 @@ const KNOWN_CONFIG_KNOBS = new Map([
     { helper: 'readDeliveryOnDocuments', key: 'config.deliveryOnDocuments' },
   ],
   [
+    'libs/core/src/sales-documents/domain/types/gift-lines.types.ts',
+    { helper: 'readGiftLineForm', key: 'config.giftOnDocuments' },
+  ],
+  [
     'libs/core/src/sales-documents/domain/types/batch-schedule.types.ts',
     { helper: 'readBatchSchedule', key: 'config.salesDocument.batchSchedules[kind]' },
   ],
@@ -421,6 +425,14 @@ const NON_KNOBS = new Map([
 //
 // Both landed together, so the threshold is 14: one more for each knob.
 //
+// #3930 (ADR-083) raised it to 15 for `config.giftOnDocuments` - how a gift line
+// appears on receipts and invoices (omit, show at 0.00, priced in, internal
+// record). It sits beside `config.deliveryOnDocuments` on the order-source
+// connection for the same reason: the operator decides it per sales channel,
+// and the document provider's own declaration (`ZeroValueLineSupport`) narrows
+// which forms are offered. The #1032 question still stands; raised by one so the
+// next knob asks again.
+//
 // #3963 raised it to 15 for `config.paymentWriteback` - whether a payment that
 // arrives after a shop got the order is marked paid there, and which shop state
 // "paid" lands on. Per connection by nature: it is a fact about ONE destination
@@ -429,25 +441,12 @@ const NON_KNOBS = new Map([
 // Registered rather than excused; the #1032 question still stands, and the
 // number is raised by one so the next knob asks again.
 //
-// Both landed together, so the threshold is 16: one more for each knob.
-//
-// #3583 raised it for `config.salesDocument.batchSchedules[kind]` -
-// when a connection that batches a document kind runs its queue (daily at a
-// time, every N hours, month end).
-// Registered, not excused, on the same grounds as its predecessors:
-//
-// 1. `batch-schedule.types.ts` is a pure-rules file in the `sales-documents`
-//    leaf, with no persistence and no binding; a shared rules model needs both.
-// 2. It has to be PER CONNECTION and per kind: #3515's whole point is that one
-//    connection batches invoices monthly while issuing receipts at once, and
-//    a deployment-wide setting cannot say that.
-// 3. The consolidation still has its owner (#2169); this buys exactly one more
-//    knob before the gate fires again.
-//
-// What it adds to the list the consolidation must cover: the first knob that
-// is a SCHEDULE (wall-clock times in a time zone stored with the value), not a
-// switch or a number. A reviewer who disagrees should push back on THIS raise.
-const KNOB_THRESHOLD = 16;
+// Two knobs landed on separate branches and met here: the gift-line form
+// (#3930) and the batch schedule (#3583), so the registry holds 16 and the
+// threshold is raised to 17: one more for each knob, on the same grounds as
+// their predecessors (a pure-rules file in a leaf, no persistence, consolidation
+// still owned by #2169). The next knob asks again.
+const KNOB_THRESHOLD = 17;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);
@@ -469,6 +468,8 @@ const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);
 const NON_RUNGS = new Set([
   'product-tax-rate-reader.capability.ts',
   'bulk-product-reader.capability.ts',
+  // Reads a bundle's composition; says nothing about master freshness (#3932).
+  'bundle-reader.capability.ts',
 ]);
 
 /** ADR-048: "a third rung appearing is the signal to revisit the ladder." */

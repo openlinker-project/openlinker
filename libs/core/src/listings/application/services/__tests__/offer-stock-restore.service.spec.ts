@@ -82,6 +82,7 @@ function item(offerId: string, quantity: number): UpdateOfferQuantityCommand {
 }
 
 describe('OfferStockRestoreService', () => {
+  let bundleDefinitions: { findCurrentContainingComponents: jest.Mock };
   let service: OfferStockRestoreService;
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let orderRecordService: jest.Mocked<IOrderRecordService>;
@@ -170,6 +171,8 @@ describe('OfferStockRestoreService', () => {
       getProductStockAggregates: jest.fn(),
     } as unknown as jest.Mocked<IInventoryQueryService>;
 
+    bundleDefinitions = { findCurrentContainingComponents: jest.fn().mockResolvedValue([]) };
+
     service = new OfferStockRestoreService(
       integrationsService,
       orderRecordService,
@@ -178,13 +181,44 @@ describe('OfferStockRestoreService', () => {
       inventorySync,
       reservations,
       shipments,
-      saleReversal
+      saleReversal,
+      bundleDefinitions as never
     );
   });
 
   function orderRecord(items: Array<{ variantId?: string }>): OrderRecord {
-    return { orderSnapshot: { items } } as unknown as OrderRecord;
+    return { orderSnapshot: { items }, physicalItems: [] } as unknown as OrderRecord;
   }
+
+  it('should also republish the bundle offers a restored component feeds (#3931)', async () => {
+    orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
+    bundleDefinitions.findCurrentContainingComponents.mockResolvedValue([
+      { variantId: VARIANT_B, version: 1, components: [] },
+    ]);
+    offerMappings.findMappingPage
+      .mockResolvedValueOnce({ items: [mapping(VARIANT_A, OFFER_A)], total: 1 })
+      .mockResolvedValueOnce({ items: [mapping(VARIANT_B, OFFER_B)], total: 1 });
+    inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(
+      availability([
+        [VARIANT_A, 5],
+        [VARIANT_B, 2],
+      ])
+    );
+
+    await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+    expect(inventoryQuery.getAvailabilityByVariantIds).toHaveBeenCalledWith(
+      expect.arrayContaining([VARIANT_A, VARIANT_B])
+    );
+    expect(inventorySync.updateOfferQuantities).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      expect.objectContaining({
+        items: expect.arrayContaining([
+          expect.objectContaining({ offerId: OFFER_B, quantity: 2 }),
+        ]),
+      })
+    );
+  });
 
   it('should write each restore through the ordered quantity seam, not the restorer', async () => {
     orderRecordService.getOrderRecord.mockResolvedValue(

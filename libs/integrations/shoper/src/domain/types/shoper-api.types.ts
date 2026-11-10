@@ -561,6 +561,20 @@ export interface ShoperOrderLineRow {
   readonly ean?: string | null;
   readonly tax?: string | null;
   readonly tax_value?: string | number | null;
+  /**
+   * `'1'` on the PARENT line of a Shoper bundle (zestaw), `'0'` on an ordinary
+   * line (live-verified 4 Nov 2026). Child rows carry no `type` at all.
+   */
+  readonly type?: string | number | null;
+  /**
+   * A bundle's component lines, NESTED in the parent row (live-verified 4 Nov
+   * 2026). The `order-products` list never returns them as top-level rows, so a
+   * flat read already sees the parent alone. Each child is priced `0.00`: the
+   * parent line carries the whole price. A child has no field naming its parent;
+   * the nesting is the only link, which is why the mapper reads `children` off
+   * the parent and never tries to re-attach flattened rows.
+   */
+  readonly children?: readonly ShoperOrderLineRow[] | null;
 }
 
 /** A `GET /statuses` row: `type` is the coarse lifecycle (1 new, 2 processing, 3 shipped, 4 terminal). */

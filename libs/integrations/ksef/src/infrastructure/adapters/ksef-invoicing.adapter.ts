@@ -149,7 +149,7 @@ import { mapKsefStatusToRegulatoryStatus } from './ksef-clearance-status.mapper'
 import { isKsefUnavailable, NON_RETRYABLE_KSEF_STATUS_CODES } from './ksef-availability';
 import { KsefApiException } from '../../domain/exceptions/ksef-api.exception';
 import type { KsefInvoicingAdapterOptions } from './ksef-invoicing-adapter.types';
-import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
+import { isTaxRateEnforced, type ZeroValueLineSupport } from '@openlinker/core/sales-documents';
 import { resolveBuyerIdSchemeTag } from '../fa3/domain/fa3-buyer-id.mapper';
 import { stampPreSubmitRefusal, type KsefSubmitProgress } from './ksef-pre-submit-refusal';
 import { toCalendarDate } from '@openlinker/shared/date';
@@ -255,7 +255,8 @@ export class KsefInvoicingAdapter
     DocumentNumberConsumer,
     OfflineResubmitter,
     RegulatoryRecordLocator,
-    RegulatoryVerificationLinkReader
+    RegulatoryVerificationLinkReader,
+    ZeroValueLineSupport
 {
   private readonly logger = new Logger(KsefInvoicingAdapter.name);
 
@@ -345,6 +346,14 @@ export class KsefInvoicingAdapter
     this.exchangeRateResolver = options.exchangeRateResolver;
     this.allowCrossBorder = options.allowCrossBorder ?? false;
     this.annotationsDefault = options.annotationsDefault;
+  }
+
+  /**
+   * The provider accepts a line priced 0,00, so a gift can be shown as one.
+   * Read by the document mappers through `readZeroValueLineSupport` (#3930).
+   */
+  acceptsZeroValueLine(): boolean {
+    return true;
   }
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {

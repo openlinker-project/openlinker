@@ -163,6 +163,8 @@ export type {
 
 export type {
   IFulfillmentOrderEditService,
+  LineComponentRef,
+  LineComponentsByLine,
   HoldForSourceChangeInput,
   HoldForSourceChangeResult,
   ReleaseSourceChangeHoldsResult,

@@ -2747,6 +2747,13 @@
   },
   "peek": {
     "billing": "Rozliczenie",
+    "columns": {
+      "open": "Otwórz produkt",
+      "price": "Cena",
+      "product": "Produkt",
+      "quantity": "Ilość",
+      "total": "Razem"
+    },
     "copyReference": "Kopiuj numer zamówienia",
     "customer": "Klient",
     "description": "Podsumowanie zamówienia. Strzałki albo J i K przechodzą między zamówieniami.",
@@ -2755,6 +2762,7 @@
     "generateLabel": "Wygeneruj etykietę",
     "invoice": "Faktura",
     "itemPrice": "{quantity} × {price}",
+    "itemUnmapped": "Jeszcze niepowiązany z produktem z katalogu",
     "items": "Pozycje",
     "kicker": "Zamówienie",
     "money": "Płatność",

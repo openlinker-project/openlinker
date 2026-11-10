@@ -34,6 +34,8 @@ export type {
   OfferBlockerDescribeContext,
   OfferBlockerDescriptor,
   OfferRowValidationInput,
+  OfferRowBundleInput,
+  OfferRowBundleComponent,
   OfferBlockerField,
   CategoryParameterLike,
   SuppliedParameterLike,

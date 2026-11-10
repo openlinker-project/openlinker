@@ -32,6 +32,15 @@ export interface OrderSyncRequest {
   sourceEventId?: string;
 
   /**
+   * The product ids of the order's PHYSICAL lines (#3607, ADR-083), when a
+   * bundle expanded them. Absent means the physical list equals `order.items`
+   * and the commercial product ids are used. Only the stock-facing steps read
+   * it (the post-sale master refresh and the absorbed-hold consume); the
+   * destination mirror keeps `order.items`.
+   */
+  physicalProductIds?: readonly string[];
+
+  /**
    * Optional routing filter — the destinations a router selected for this order
    * (#2397, design §5.5).
    *

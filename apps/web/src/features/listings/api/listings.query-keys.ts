@@ -98,6 +98,8 @@ export const listingsQueryKeys = {
    * in each item's category and EAN override, because a rule can be scoped to a
    * category and a `place-value` rule can read the EAN.
    */
+  bundleOfferPreview: (connectionId: string, signature: string) =>
+    ['listings', 'bundleOfferPreview', connectionId, signature] as const,
   attributeProjectionPreview: (connectionId: string, signature: string) =>
     ['listings', 'attributeProjectionPreview', connectionId, signature] as const,
 };

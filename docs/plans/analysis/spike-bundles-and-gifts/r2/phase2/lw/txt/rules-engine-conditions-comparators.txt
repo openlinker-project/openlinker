@@ -1,0 +1,212 @@
+=== rules-engine-conditions-comparators | Rules Engine Conditions and Comparators
+ 
+ Rules Engine Conditions and Comparators 
+Rules Engine: Conditions and Comparators
+ Rules Engine provides different conditions that can be used to evaluate orders. This page gives an overview of all available conditions with a description of each.
+ Rules Engine conditions
+ In the sections below, all possible conditions that can be evaluated by a rule are given. Note that some conditions may be too restrictive to be useful in more than one or two specific situations. For example, using a condition based on the first line of the shipping address would probably not be a very constructive use of a rule. Whereas basing a rule on conditions such as Country, Shipping Cost, or Source would more likely be beneficial.
+ Order Level
+ Condition 
+ Description 
+ Address line 1 
+ Address line 1 of the order shipping address.
+ Address line 2 
+ Address line 2 of the order shipping address.
+ Address line 3 
+ Address line 3 of the order shipping address.
+ Company 
+ Company name used from the shipping address.
+ Delivery end day 
+ Used for Amazon Scheduled Delivery only.  The end day of the scheduled delivery.
+ Delivery end hour 
+ Used for Amazon Scheduled Delivery only.  Last hour of the scheduled delivery in a format of 0 to 23.
+ Delivery end minute 
+ Used for Amazon Scheduled Delivery only.  Last-minute of the scheduled delivery in a format of 0 to 59.
+ Delivery start day 
+ Used for Amazon Scheduled Delivery only.  First day of the scheduled delivery. 
+ Delivery start hour 
+ Used for Amazon Scheduled Delivery only.  The first hour of the scheduled delivery is in a format of 0 to 23.
+ Delivery start minute 
+ Used for Amazon Scheduled Delivery only.  The first minute of the scheduled delivery is in a format of 0 to 59.
+ Despatch by day 
+ Used for Amazon Scheduled Delivery only. The last day of the scheduled delivery.
+ Despatch by hour 
+ Used for Amazon Scheduled Delivery only. The last hour of the scheduled delivery is in a format of 0 to 23.
+ Despatch by minute 
+ Used for Amazon Scheduled Delivery only. The last-minute of the scheduled delivery in a format of 0 to 59.
+ E-mail address 
+ Email used for dispatching purposes.
+ Identifier 
+ A custom identifier created in Settings > General Settings > Order Settings .
+ Is merged 
+ This condition can be used to identify orders that were created by merging two or more orders. See this guide for examples of how and when it can be used in the Rules Engine .
+ Location 
+   The name of the Linnworks location, where an order is downloaded. 
+ Order created by split 
+ This condition can be used to identify child orders that were created as a result of splitting a parent order. See this guide for examples of how and when it can be used in the Rules Engine .
+ Order currency 
+ This is the currency used on order or set in the channel config for that sales channel.
+ Order folder 
+ The folder that the order has been assigned to.
+ Order has been split 
+ This condition can be used to identify parent orders that have been split into one or more child orders. See this guide for examples of how and when it can be used in the Rules Engine .
+ Order note 
+ This is a list of notes appended to an order.
+ Order note count 
+ The number of notes on the order.
+ Order tag 
+ This is the order tag that has been assigned to the order.
+ Packaging group 
+ This is the name of the packaging group that has been assigned to the order.
+ Packaging type 
+ This is the specific packaging chosen for the order.
+ Packaging weight 
+ This is the weight of the packaging used for the order.
+ Postal Code 
+ This is the shipping postcode or ZIP code entered on the order.
+ Postal service name 
+ This is the Linnworks Postal Service that has been assigned to the order.
+ Postal service vendor 
+ This is the name of the courier associated with the Linnworks Postal Service that has been assigned to the order.
+ Received day 
+ The weekday on which the order was placed on the sales channel. 
+ Received hour 
+ The date and time at which the order was placed on the sales channel. 
+ Received minute 
+ The date and time at which the order was placed on the sales channel. 
+ Region 
+ This is the region, such as county or state, used when the order is despatched.
+ Shipping cost 
+ The shipping cost, as downloaded from the channel.
+ Shipping country 
+ Country of the address used for shipping purposes.
+ Source 
+ This is the channel the order has been downloaded or imported from. Orders placed within Linnworks will display as DIRECT.
+ Split package count 
+ Amount of separate packets that should be shipped for the same order.
+ Status 
+ Here, you can select one of the statuses below:
+ Other
+Paid
+Return
+Pending
+Resend
+ Subsource 
+ The SubSource shows the specific integration the order was downloaded from.
+ Subtotal 
+ This is the sum of all the line costs for the order, exclusive of tax.
+ Total charge 
+ This is the total cost of the order including tax and postage.
+ Total depth 
+ This is the total depth of the order taken from order dimensions.
+ Total height 
+ This is the total height of the order taken from order dimensions.
+ Total item weight 
+ This is the total weight of all the order items in the order, excluding packaging.
+ Total weight 
+ This is the total weight of the order, including packaging.
+ Total width 
+ This is the total width of the order taken from order dimensions.
+ Town 
+ Town of the address used when the order is despatched.
+ Item level
+ When a rule condition is based on the item level and the order contains multiple items, the action associated with the rule will still execute based on at least one of the items matching a rule requirement. If the order could potentially match multiple conditions within the same rule it will prioritize based on the first rule that is matched. The rules are checked in order from the top of the screen to the bottom.
+ Condition 
+ Description 
+ Category 
+ This is the Linnworks category that is assigned to the Linnworks inventory item.
+ Channel SKU 
+ This is the SKU used on the sales channel for this order item, which may differ from the standard Linnworks Item Number.
+ Default postal service 
+ The preferred postal service for the Linnworks inventory item.
+ Extended property value 
+ The extended property name should be specified and then the rule is based on the value. 
+ Has composites 
+ This can either be True or False, based on whether the item is a composite parent.
+ Has unlinked items 
+ This can either be True or False, based on whether the order items have all been mapped to a Linnworks stock item.
+ Item count 
+ This is the number of items that are on order, multiplied by the quantities of those items ordered.
+ Item count (no children) 
+ This is the number of order items, not including the child items of composites, multiplied by the quantity of the items ordered.
+ Item count (no parents) 
+ This is the number of items, not including composite parents, that have been ordered, multiplied by the number of items ordered.
+ Item title 
+ The title for the Linnworks inventory item (found on the General tab).
+ Line count (no children) 
+ This is the number of unique items ordered, not including children of composite items.
+ Line count (no parents) 
+ This is the number of unique items ordered, not including parents of composite items.
+ Line count (total) 
+ This is the total number of unique items ordered, including both parent and child items.
+ Max depth 
+ This will compare with the largest Item Depth value from all the stock items linked to items within the order.
+ Max height 
+ This will compare with the largest Item Height value from all the stock items linked to items within the order.
+ Max weight 
+ This will compare with the largest Item Weight value from all the stock items linked to items within the order.
+ Max width 
+ This will compare with the largest Item Width value from all the stock items linked to items within the order.
+ SKU 
+ The SKU / Item number for the Linnworks inventory item.
+ An example of using Extended Property as a comparator 
+ Let's say you have a number of stock items that are fragile and need special attention when it comes to dispatching to ensure a suitable shipping service is used. If there is an extended property on one of the linked stock items with a type Attribute , named Fragile , which has a value of TRUE , it would be possible to add the following rule:
+ Open the screen by going to Orders > Rules Engine .
+ Either create a new rule or edit an existing rule.
+ Click   Add New 
+ Name the condition.
+ Select Extended property value as a comparator. 
+ Type the name of the extended property and either select the correct name from the dropdown or click the     icon.
+ Select the appropriate condition. In this ca se, equals . 
+ Enter the appropriate property value. In this case,  TRUE . And save the condition.
+ It is then possible to add an action such as Assign to a folder  so that the order will stand out from other orders in your Linnworks system   or use the action  Assign postal service so that the order automatically will be sent using an appropriate service.
+ List of comparators 
+ Below is a list of comparators that can be used when designing rules. The upper table is for use with single conditions, such as FruitType = banana. The second table is for where multiple comparisons need to be made, such as FruitType = Apple or Banana or Strawberry. The multiple comparators are functionally identical to their single comparison equivalents. 
+ Single comparison 
+ Single comparator 
+ Description 
+ equals 
+ Used to select values that match the given constraint.
+ does not equal 
+ Used to select values that do not match the given constraint.
+ starts with 
+ This makes a text comparison where the value has to begin with the given constraint.
+ does not start with 
+ This makes a text comparison where the value must not begin with the given constraint.
+ ends with 
+ This makes a text comparison where the last characters of the value must match the given constraint characters.
+ does not end with 
+ This makes a text comparison where the last characters of the value must match the given constraint characters.
+ contains 
+ This makes a text comparison where the value must have the constraining string incorporated within it.
+ does not contain 
+ This makes a text comparison where the value must not have the constraining string incorporated within it.
+ matches (regex) 
+ This allows you to have a constraint written in regex that must evaluate to be true.
+ does not match (regex) 
+ This allows you to have a constraint written in regex that must evaluate to be false.
+ Multiple comparisons
+ Multiple comparators 
+ Description 
+ matches one of 
+ Multiple equivalents of equals. 
+ doesn't match any of 
+ Multiple equivalents of does not equal. 
+ starts with one of 
+ Multiple equivalents of starts with. 
+ does not start with any of 
+ Multiple equivalents of does not start with. 
+ ends with one of 
+ Multiple equivalents of ends with.
+ does not end with any of 
+ Multiple equivalents of does not end with. 
+ contains one of 
+ Multiple equivalents of contains. 
+ does not contain any of 
+ Multiple equivalents of does not contain. 
+ matches one of (regex) 
+ Multiple equivalents of matches (regex). 
+ doesn't match any of (regex) 
+ Multiple equivalents of does not match (regex). 
+ For additional info about the  Rules Engine logic, check our guide here .
+ 

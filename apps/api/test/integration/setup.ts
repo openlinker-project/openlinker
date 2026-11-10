@@ -86,6 +86,11 @@ const harness = createIntegrationTestHarness({
     // cannot reach it; a claim left by one case would otherwise make the next
     // case's decrement a no-op.
     'inventory_sale_decrements',
+    // #3607 - bundle compositions. No foreign key (a definition is keyed by a
+    // variant id by value), so the CASCADE closure walk cannot reach it.
+    'bundle_definitions',
+    // #3624 - multipack confirmations, keyed by value like the definitions.
+    'multipack_confirmations',
     // #3565 — the stock movement ledger. No foreign key (an audit record
     // outlives what it names), so the CASCADE walk cannot reach it.
     'inventory_movements',

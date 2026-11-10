@@ -67,6 +67,7 @@ import { OrderTestFixtureService } from './application/services/order-test-fixtu
 import { MarginAnalyticsService } from './application/services/margin-analytics.service';
 import { CostCoverageService } from './application/services/cost-coverage.service';
 import { OrderLineCostService } from './application/services/order-line-cost.service';
+import { OrderBundleDocumentService } from './application/services/order-bundle-document.service';
 import { TaxCoverageDetectionService } from './application/services/tax-coverage-detection.service';
 import { DisplayCurrencyConversionService } from './application/services/display-currency-conversion.service';
 import {
@@ -97,6 +98,7 @@ import {
   MARGIN_ANALYTICS_SERVICE_TOKEN,
   COST_COVERAGE_SERVICE_TOKEN,
   ORDER_LINE_COST_SERVICE_TOKEN,
+  ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
   ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
   BUYER_EMAIL_DELIVERY_REPOSITORY_TOKEN,
   BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN,
@@ -239,6 +241,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     MarginAnalyticsService,
     CostCoverageService,
     OrderLineCostService,
+    OrderBundleDocumentService,
     DisplayCurrencyConversionService,
     OrderCancellationSignalRepository,
     OrderColumnPresetRepository,
@@ -409,6 +412,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       useExisting: OrderLineCostService,
     },
     {
+      provide: ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+      useExisting: OrderBundleDocumentService,
+    },
+    {
       provide: DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
       useExisting: DisplayCurrencyConversionService,
     },
@@ -505,6 +512,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // Exported so `/products/cost-coverage` and the cost work list can inject the cost reads (#3588).
     COST_COVERAGE_SERVICE_TOKEN,
     ORDER_LINE_COST_SERVICE_TOKEN,
+    ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
     // Exported so the `/analytics` display-currency read surface (a later
     // phase of #2452) can inject this seam (#2458, ADR-064).
     DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,

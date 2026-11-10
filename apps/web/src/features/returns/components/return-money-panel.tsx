@@ -37,6 +37,7 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { RefundConfirmationForm, describeRefundReason } from '../../orders';
 import { describeRefundError, readRefundCeilingExceeded } from '../lib/refund-error';
 import type { RefundCeilingExceededDetails } from '../lib/refund-error';
+import { BundleRefundHint } from './bundle-refund-hint';
 import { useConfirmReturnRefundMutation } from '../hooks/use-return-custody-mutations';
 import type { ReturnDetail } from '../api/returns.types';
 
@@ -93,6 +94,13 @@ export function ReturnMoneyPanel({ detail, writeAccess }: ReturnMoneyPanelProps)
           {open ? (
             <RefundConfirmationForm
               currency={detail.orderCurrency}
+              renderAmountSuggestion={(apply) => (
+                <BundleRefundHint
+                  currency={detail.orderCurrency}
+                  onUse={apply}
+                  returnId={detail.id}
+                />
+              )}
               error={error}
               onCancel={() => {
                 setOpen(false);

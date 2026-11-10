@@ -262,6 +262,9 @@ describe('Return Custody Writes Integration', () => {
       expect(columns.map((c) => c.column_name)).toEqual([
         'actorUserId',
         'attestedByEventId',
+        'componentGroup',
+        'componentShareGross',
+        'componentVariantId',
         'createdAt',
         'disposition',
         'id',

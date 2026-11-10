@@ -74,6 +74,97 @@ describe('FulfillmentOrderEditService (#3542)', () => {
   });
 
   describe('lowerLineQuantity', () => {
+    it('should lower every component of a bundle line to newQuantity * perUnit (#3607)', async () => {
+      works.findByOrderId.mockResolvedValue([
+        work('w1', [
+          { orderLineId: 'l1~c:va', total: 6 },
+          { orderLineId: 'l1~c:vb', total: 3 },
+        ]),
+      ] as never);
+
+      const result = await service.lowerLineQuantity({
+        orderId: 'o1',
+        orderLineId: 'l1',
+        newQuantity: 1,
+        components: [
+          { componentLineId: 'l1~c:va', perUnit: 3 },
+          { componentLineId: 'l1~c:vb', perUnit: 1 },
+        ],
+      });
+
+      expect(works.recordLineProgress).toHaveBeenCalledWith(
+        expect.objectContaining({ orderLineId: 'l1~c:va', cancelledDelta: 3 })
+      );
+      expect(works.recordLineProgress).toHaveBeenCalledWith(
+        expect.objectContaining({ orderLineId: 'l1~c:vb', cancelledDelta: 2 })
+      );
+      expect(result.outcome).toBe('applied');
+      expect(result.cancelledUnits).toBe(5);
+    });
+
+    it('should refuse the whole bundle edit before writing when one component already shipped (#3607)', async () => {
+      works.findByOrderId.mockResolvedValue([
+        work('w1', [
+          { orderLineId: 'l1~c:va', total: 6 },
+          { orderLineId: 'l1~c:vb', total: 3, fulfilled: 3 },
+        ]),
+      ] as never);
+
+      await expect(
+        service.lowerLineQuantity({
+          orderId: 'o1',
+          orderLineId: 'l1',
+          newQuantity: 1,
+          components: [
+            { componentLineId: 'l1~c:va', perUnit: 3 },
+            { componentLineId: 'l1~c:vb', perUnit: 1 },
+          ],
+        })
+      ).rejects.toThrow(RangeError);
+      expect(works.recordLineProgress).not.toHaveBeenCalled();
+    });
+
+    it('should report the units the line cannot be lowered below, in agreement with the write guard (#3520)', async () => {
+      works.findByOrderId.mockResolvedValue([
+        work('w1', [
+          { orderLineId: 'l1~c:va', total: 6, fulfilled: 4 },
+          { orderLineId: 'l1~c:vb', total: 3, fulfilled: 3 },
+        ]),
+      ] as never);
+      const components = [
+        { componentLineId: 'l1~c:va', perUnit: 3 },
+        { componentLineId: 'l1~c:vb', perUnit: 1 },
+      ];
+
+      const assessment = await service.assessForEdit('o1', { l1: components });
+      const floor = assessment.fulfilledByLine.l1;
+
+      // Lowering to the assessed floor passes the write guard; one below is refused.
+      await expect(service.lowerLineQuantity({ orderId: 'o1', orderLineId: 'l1', newQuantity: floor, components })).resolves.toBeDefined();
+      await expect(
+        service.lowerLineQuantity({ orderId: 'o1', orderLineId: 'l1', newQuantity: floor - 1, components })
+      ).rejects.toThrow(RangeError);
+    });
+
+    it('should report a bundle line fulfilled in whole bundles in assessForEdit (#3607)', async () => {
+      works.findByOrderId.mockResolvedValue([
+        work('w1', [
+          { orderLineId: 'l1~c:va', total: 6, fulfilled: 4 },
+          { orderLineId: 'l1~c:vb', total: 3, fulfilled: 3 },
+        ]),
+      ] as never);
+
+      const assessment = await service.assessForEdit('o1', {
+        l1: [
+          { componentLineId: 'l1~c:va', perUnit: 3 },
+          { componentLineId: 'l1~c:vb', perUnit: 1 },
+        ],
+      });
+
+      // Conservative: component vb has 3 units out, so no fewer than 3 bundles remain.
+      expect(assessment.fulfilledByLine).toEqual({ l1: 3 });
+    });
+
     it('should cancel the difference on the work line and never touch totalQuantity', async () => {
       works.findByOrderId.mockResolvedValue([work('w1', [{ orderLineId: 'l1', total: 5 }])] as never);
 
@@ -311,6 +402,32 @@ describe('FulfillmentOrderEditService (#3542)', () => {
       const assessment = await service.assessForEdit('o1');
 
       expect(assessment.verifiedByLine).toEqual({ l1: 2 });
+    });
+  });
+
+  describe('assessForEdit - bundle lines fold to commercial grain (#3961, #3607)', () => {
+    it('should report required and verified units in whole bundles', async () => {
+      works.findByOrderId.mockResolvedValue([
+        work('w1', [
+          { orderLineId: 'l1~c:va', total: 6 },
+          { orderLineId: 'l1~c:vb', total: 2 },
+        ]),
+      ] as never);
+      works.countParcelVerifications.mockResolvedValue([
+        { workLineId: 'w1-l1~c:va', verifiedQuantity: 5 },
+        { workLineId: 'w1-l1~c:vb', verifiedQuantity: 2 },
+      ]);
+
+      const assessment = await service.assessForEdit('o1', {
+        l1: [
+          { componentLineId: 'l1~c:va', perUnit: 3 },
+          { componentLineId: 'l1~c:vb', perUnit: 1 },
+        ],
+      });
+
+      expect(assessment.requiredByLine).toEqual({ l1: 2 });
+      // va has 5 of 3-per-bundle = 1 whole bundle; the box has verified one set.
+      expect(assessment.verifiedByLine).toEqual({ l1: 1 });
     });
   });
 

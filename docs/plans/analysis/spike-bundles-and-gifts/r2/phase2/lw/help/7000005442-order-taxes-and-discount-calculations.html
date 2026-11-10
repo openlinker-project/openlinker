@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+       
+        <!--[if lt IE 7]><html class="no-js ie6 theme-switcher-launched dew-dsm-theme " lang="en" dir="ltr" data-date-format="non_us"><![endif]-->       
+        <!--[if IE 7]><html class="no-js ie7 theme-switcher-launched dew-dsm-theme " lang="en" dir="ltr" data-date-format="non_us"><![endif]-->       
+        <!--[if IE 8]><html class="no-js ie8 theme-switcher-launched dew-dsm-theme " lang="en" dir="ltr" data-date-format="non_us"><![endif]-->       
+        <!--[if IE 9]><html class="no-js ie9 theme-switcher-launched dew-dsm-theme " lang="en" dir="ltr" data-date-format="non_us"><![endif]-->       
+        <!--[if IE 10]><html class="no-js ie10 theme-switcher-launched dew-dsm-theme " lang="en" dir="ltr" data-date-format="non_us"><![endif]-->       
+        <!--[if (gt IE 10)|!(IE)]><!--><html class="no-js  theme-switcher-launched dew-dsm-theme " lang="en" dir="ltr" data-date-format="non_us"><!--<![endif]-->
+	<head>
+		
+		<!-- Title for the page -->
+<title> Order taxes and discount calculations : Support Center </title>
+
+<!-- Meta information -->
+
+      <meta charset="utf-8" />
+      <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+      <meta name="description" content= "" />
+      <meta name="author" content= "" />
+       <meta property="og:title" content="Order taxes and discount calculations" />  <meta property="og:url" content="https://help.linnworks.com/support/solutions/articles/7000005442-order-taxes-and-discount-calculations" />  <meta property="og:description" content="  Below you can find a description and the calculation logic used by Linnworks for tax and discount calculations for channel and direct orders. Examples are also provided for each scenario described.   Tax Rate  Line Tax  Shipping Tax  Discount   ..." />  <meta property="og:image" content="https://s3.eu-central-1.amazonaws.com/euc-cdn.freshdesk.com/data/helpdesk/attachments/production/7140349154/logo/3a8xxuvo6LCNGqvQgpHMyr9jJrreC2NVFQ.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&amp;amp;X-Amz-Credential=AKIAS6FNSMY2XLZULJPI%2F20261029%2Feu-central-1%2Fs3%2Faws4_request&amp;amp;X-Amz-Date=20261029T062137Z&amp;amp;X-Amz-Expires=604800&amp;amp;X-Amz-SignedHeaders=host&amp;amp;X-Amz-Signature=f0e077c372a6345605e28dd0f5f70a370cb1639ce0d1219287bce82fedde20ab" />  <meta property="og:site_name" content="Support Center" />  <meta property="og:type" content="article" />  <meta name="twitter:title" content="Order taxes and discount calculations" />  <meta name="twitter:url" content="https://help.linnworks.com/support/solutions/articles/7000005442-order-taxes-and-discount-calculations" />  <meta name="twitter:description" content="  Below you can find a description and the calculation logic used by Linnworks for tax and discount calculations for channel and direct orders. Examples are also provided for each scenario described.   Tax Rate  Line Tax  Shipping Tax  Discount   ..." />  <meta name="twitter:image" content="https://s3.eu-central-1.amazonaws.com/euc-cdn.freshdesk.com/data/helpdesk/attachments/production/7140349154/logo/3a8xxuvo6LCNGqvQgpHMyr9jJrreC2NVFQ.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&amp;amp;X-Amz-Credential=AKIAS6FNSMY2XLZULJPI%2F20261029%2Feu-central-1%2Fs3%2Faws4_request&amp;amp;X-Amz-Date=20261029T062137Z&amp;amp;X-Amz-Expires=604800&amp;amp;X-Amz-SignedHeaders=host&amp;amp;X-Amz-Signature=f0e077c372a6345605e28dd0f5f70a370cb1639ce0d1219287bce82fedde20ab" />  <meta name="twitter:card" content="summary" />  <meta name="keywords" content="Vat, Calculated, calculation, discount, shipping tax, postage tax, line tax, tax rate, vat rate" />  <link rel="canonical" href="https://help.linnworks.com/support/solutions/articles/7000005442-order-taxes-and-discount-calculations" /> 
+
+<!-- Responsive setting -->
+<link rel="apple-touch-icon" href="https://s3.eu-central-1.amazonaws.com/euc-cdn.freshdesk.com/data/helpdesk/attachments/production/7140349181/fav_icon/enHTUTcYzAA5xCdb3v-co4MyArdSmmKBLg.png" />
+        <link rel="apple-touch-icon" sizes="72x72" href="https://s3.eu-central-1.amazonaws.com/euc-cdn.freshdesk.com/data/helpdesk/attachments/production/7140349181/fav_icon/enHTUTcYzAA5xCdb3v-co4MyArdSmmKBLg.png" />
+        <link rel="apple-touch-icon" sizes="114x114" href="https://s3.eu-central-1.amazonaws.com/euc-cdn.freshdesk.com/data/helpdesk/attachments/production/7140349181/fav_icon/enHTUTcYzAA5xCdb3v-co4MyArdSmmKBLg.png" />
+        <link rel="apple-touch-icon" sizes="144x144" href="https://s3.eu-central-1.amazonaws.com/euc-cdn.freshdesk.com/data/helpdesk/attachments/production/7140349181/fav_icon/enHTUTcYzAA5xCdb3v-co4MyArdSmmKBLg.png" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" /> 
+
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.3/css/font-awesome.min.css" type="text/css">
+
+		
+		<!-- Adding meta tag for CSRF token -->
+		<meta name="csrf-param" content="authenticity_token" />
+<meta name="csrf-token" content="aImDzAnFrWZT6bqWdWhef733fhdmlHSfHyiSA+UqhSe8h2RuwUHfafCYOQyHM+knfzJnVgLlKancGwCR7HF13g==" />
+		<!-- End meta tag for CSRF token -->
+		
+		<!-- Fav icon for portal -->
+		<link rel='shortcut icon' href='https://s3.eu-central-1.amazonaws.com/euc-cdn.freshdesk.com/data/helpdesk/attachments/production/7140349181/fav_icon/enHTUTcYzAA5xCdb3v-co4MyArdSmmKBLg.png' />
+
+		<!-- Base stylesheet -->
+ 
+		<link rel="stylesheet" media="print" href="https://euc-assets5.freshdesk.com/assets/cdn/portal_print-6e04b27f27ab27faab81f917d275d593fa892ce13150854024baaf983b3f4326.css" />
+	  		<link rel="stylesheet" media="screen" href="https://euc-assets1.freshdesk.com/assets/cdn/portal_utils-109fa7ee525e7b77248cec6d76cfa5234c78c4a3e854da3e977304048efe186f.css" />
+
+		
+		<!-- Theme stylesheet -->
+
+		<link href="/support/theme.css?v=3&amp;d=1788773202" media="screen" rel="stylesheet" type="text/css">
+
+		<!-- Google font url if present -->
+		<link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:regular,italic,600,700,700italic|Open+Sans+Condensed:300,300italic,700' rel='stylesheet' type='text/css' nonce='+ol6ucJ7XRCdFdqZSyx2hg=='>
+
+		<!-- Including default portal based script framework at the top -->
+		<script src="https://euc-assets4.freshdesk.com/assets/cdn/portal_head_v2-42db32fda0d580ef2a2696d2a5027d91fc5799709f745764cc90fe00971eae55.js"></script>
+		<!-- Including syntexhighlighter for portal -->
+		<script src="https://euc-assets10.freshdesk.com/assets/cdn/prism-96c3735a6ff19327135da540127d6909048554034f47dd1901366ba2f1c038e9.js"></script>
+
+		
+
+		<!-- Access portal settings information via javascript -->
+		 <script type="text/javascript">     var portal = {"language":"en","name":"Support Center","contact_info":"","current_page_name":"article_view","current_tab":"solutions","vault_service":{"url":"https://vault-service-eu.freshworks.com/data","max_try":2,"product_name":"fd"},"current_account_id":391883,"preferences":{"bg_color":"#efefef","header_color":"#ffffff","help_center_color":"#f9f9f9","footer_color":"#777777","tab_color":"#5b7cfb","tab_hover_color":"#4c4b4b","btn_background":"#ffffff","btn_primary_background":"#6c6a6a","base_font":"Source Sans Pro","text_color":"#333333","headings_font":"Open Sans Condensed","headings_color":"#333333","link_color":"#049cdb","link_color_hover":"#036690","input_focus_ring_color":"#f4af1a","non_responsive":"false"},"image_placeholders":{"spacer":"https://euc-assets6.freshdesk.com/assets/misc/spacer.gif","profile_thumb":"https://euc-assets7.freshdesk.com/assets/misc/profile_blank_thumb-4a7b26415585aebbd79863bd5497100b1ea52bab8df8db7a1aecae4da879fd96.jpg","profile_medium":"https://euc-assets8.freshdesk.com/assets/misc/profile_blank_medium-1dfbfbae68bb67de0258044a99f62e94144f1cc34efeea73e3fb85fe51bc1a2c.jpg"},"falcon_portal_theme":false,"current_object_id":7000005442};     var attachment_size = 20;     var blocked_extensions = "";     var allowed_extensions = "";     var store = { 
+        ticket: {},
+        portalLaunchParty: {} };    store.portalLaunchParty.ticketFragmentsEnabled = true;    store.portalLaunchParty.localeWeekStartDatePickersEnabled = false;    store.pod = "eu-central-1";    store.region = "EU"; </script> 
+
+
+			
+	</head>
+	<body class="">
+            	
+		
+		
+		<script>
+  jQuery(document).ready(function(){
+    var current_page = "article_view";
+    
+    if(current_page == "profile_edit"){
+      //jQuery('#user_avatar_attributes_content').attr('disabled','true');
+      //jQuery('.btn.default-pic').css('display','none');
+      //jQuery('#user_name').attr('disabled','true');
+      //jQuery('#user_phone').attr('disabled','true');
+      jQuery('form').eq(1).css('display','none');
+      jQuery('.sidebar.content.rounded-6 h3').css('display','none');
+      //jQuery('.main.content.rounded-6.min-height-on-desktop h3').text('View Profile');
+      //jQuery('.info-data').eq(0).css('display','none')
+    } 
+  });
+
+	var fullName = "".split(' ');
+    var firstName = fullName[0] || "";
+    var lastName = (fullName.length == 1 ? "" : fullName[fullName.length - 1]) || "";
+    var email = "";
+    var plan = "";
+  
+  	var replyWaitTimeText = "New chats are generally assigned in under 10 minutes"; // 
+  
+	window.fcSettings =
+	{
+        token: "01c40607-a27e-46fe-b76a-61d5dafe97b8",
+        host: "https://wchat.eu.freshchat.com",
+        siteId: "LinnworksKB",
+        tags: ["support"],
+        firstName: firstName,
+        lastName: lastName,
+        email: email,
+        onInit: function ()
+        {
+            window.fcWidget.on
+            (
+                "widget:loaded",
+                function () 
+              	{
+                    // Uncomment to hide chat for all users
+                    //document.getElementById('fc_frame').style.display = 'none';
+                    //return;
+                  
+                    window.fcWidget.user.setProperties
+					(
+                      {
+                        firstName: firstName,
+                        lastName: lastName,
+                        email: email,
+                        "Plan": plan
+                      }
+                    );
+                  
+                  	if (!email) document.getElementById('fc_frame').style.display = 'none';
+                  	else document.getElementById('fc_frame').style.display = 'block';
+                  
+                    if (plan == "Linnworks Express" 
+                       || plan == "Linnworks Community"
+                       || plan == "Linnworks VL Customer"
+                       || plan == "Linnworks VL - eBusinessGuru"
+                       || plan == "Linnworks VL - 3PL"
+                       || plan == "Linnworks VL - eBay ES"
+                       || plan == "Linnworks VL - Pickitandpackit"
+                       || plan == "Linnworks Local Entry"
+                       || plan == "Linnworks Local Standard"
+                       || plan == "Linnworks Local Professional"
+                       || plan == "Linnworks Local Enterprise"
+                       || plan == "Linnworks Local (limited support)"
+                       || plan == "Linnworks Local") 
+                    {
+                    	document.getElementById('fc_frame').style.display = 'none';
+                    }
+                }
+            );
+            window.fcWidget.on
+            (
+                "widget:closed", 
+              	function () { }
+            );
+        },
+      	config:
+      	{
+        	content:
+            {
+              	headers:
+              	{
+                	channel_response:
+                	{
+                  		online:
+                  		{
+                    		minutes:
+                    		{
+                      			one: replyWaitTimeText,
+                      			more: replyWaitTimeText
+                    		},
+                    		hours:
+                    		{
+                      			one: replyWaitTimeText,
+                      			more: replyWaitTimeText,
+                    		}
+                  		}
+                	}
+              	}
+            }
+        }
+    };
+  
+</script>
+<script src="https://wchat.freshchat.com/js/widget.js" async></script>
+
+<div class="page page-layout">
+  <script>
+  jQuery(document).ready(function(){
+    var plan_type= "";
+    
+    if((plan_type=="Linnworks Express")||(plan_type=="Linnworks VL Customer")||(plan_type=="Linnworks VL - eBusinessGuru")||(plan_type=="Linnworks VL - 3PL")||(plan_type=="Linnworks VL - eBay ES")||(plan_type=="Linnworks VL - Pickitandpackit")||(plan_type=="Linnworks Local Entry")||(plan_type=="Linnworks Local Standard")||(plan_type=="Linnworks Local Professional")||(plan_type=="Linnworks Local Enterprise")||(plan_type=="Linnworks Local (limited support)")||(plan_type=="Linnworks Local")||(plan_type=="Linnworks Community")){
+      console.log(plan_type);
+      jQuery('#new-ticket-button a.btn-medium').hide();
+      current_url = window.location.href;
+      if(current_url.includes('tickets/new')){
+        console.log('redirection')
+          jQuery(window.location.replace("http://help.linnworks.com/support/home"));
+      }
+    }
+    
+    else if(plan_type=="Linnworks Anywhere Entry"){
+      console.log(plan_type);
+      jQuery.ajax({
+        url:"http://help.linnworks.com/support/tickets/filter?requested_by=0&wf_filter=open_or_pending",
+        type:'GET',
+        success: function(data){
+          jQuery('#url1').html(jQuery(data));
+          console.log(jQuery(data));
+          console.log("loaded");
+        }
+      });
+      check_list();
+    }
+    
+    else{
+      console.log(plan_type);
+      console.log('not hiding');
+    }
+  });
+  
+  function check_list(){
+    console.log('in check_list')
+      setTimeout(function(){    
+        if(jQuery("#url1 .c-list").length>0){
+          console.log("c-list exists");
+          jQuery("#helpdesk_ticket_submit").attr("disabled","true");
+        }
+        else{
+          console.log("c-list doesn't exist");
+          jQuery("#helpdesk_ticket_submit").removeAttr("disabled");
+        }
+      },700); 
+  }
+</script>
+    
+<header class="banner header-menu">
+  <div class="banner-wrapper">
+    <div class="nav-wrapper">
+      <a href="https://www.linnworks.com" class="logo"></a>
+      <a data-toggle-dom="#header-tabs" id="menu-icon" href="#" data-animated="true" class="mobile-icon-nav-menu show-in-mobile"></a>
+      
+      <nav class="nav-menu" id="header-tabs">
+        <ul>
+          <li class="nav-menu-title"><a href="http://www.linnworks.com/overview" class="nav-links">Overview</a></li>
+          <li class="nav-menu-title"><a href="http://www.linnworks.com/blog" class="nav-links">Blog</a></li>
+          
+        </ul>
+      </nav>
+    </div>
+  </div>
+</header>
+
+<div id="sticky_anchor"></div>
+<div id="sticky_head">
+  <nav class="page-tabs action-bar" >
+    
+    <a href="/support/home" class="help-center-tab show-in-mobile">Support Home</a>
+    <a data-toggle-dom="#page-tabs" id="menu-icon" href="#" data-animated="true" class="mobile-icon-nav-menu show-in-mobile"></a>
+    <div class="action-bar-wrapper">  
+      <div class="nav-link" id="page-tabs">
+        
+        
+        <a class="" href="/support/home">
+          
+          <i class="icon-home for-not-mobile"></i>Support Home 
+          
+        </a>
+        
+        
+        
+        <a class="active" href="/support/solutions">
+           
+          Solutions 
+          
+        </a>
+        
+        
+        <div id="new-ticket-button" class="show-in-mobile">
+          
+          <a href="/support/login">Login</a>
+          <a href="/support/tickets/new">New Support Ticket</a>
+          
+        </div>
+        </div>
+        <div id="new-ticket-button" class="for-not-mobile">
+          
+          <a href="/support/login">Login</a>
+          <a href="/support/tickets/new" class="btn-medium">New Support Ticket</a>
+          
+        </div>
+      </div>
+      
+   </nav>
+   
+   
+   <div id="url1" style="display: none">
+   </div>
+    
+
+
+  
+  <!-- Search and page links for the page -->
+  
+  <section class="help-center rounded-6"> 
+    <div class="hc-search">
+      <div class="hc-search-c">
+        <form class="hc-search-form print--remove" autocomplete="off" action="/support/search/solutions" id="hc-search-form" data-csrf-ignore="true">
+	<div class="hc-search-input">
+	<label for="support-search-input" class="hide">Enter your search term here...</label>
+		<input placeholder="Enter your search term here..." type="text"
+			name="term" class="special" value=""
+            rel="page-search" data-max-matches="10" id="support-search-input">
+	</div>
+	<div class="hc-search-button">
+		<button class="btn btn-primary" aria-label="Search" type="submit" autocomplete="off">
+			<i class="mobile-icon-search hide-tablet"></i>
+			<span class="hide-in-mobile">
+				Search
+			</span>
+		</button>
+	</div>
+</form>
+      </div>
+    </div>
+  </section>
+  
+</div>
+
+
+   
+
+
+<!-- Quick links -->
+
+
+<!-- Notifocation Messages for the page  -->
+ <div class="alert alert-with-close notice hide" id="noticeajax"></div> 
+
+<div class="c-wrapper">   
+  <div class="content min-height-on-desktop" id="article-show-7000005442">
+  
+  <div class="breadcrumbs">
+    <a href="/support/solutions"> Solution home </a>
+    <a href="/support/solutions/7000000721">Linnworks.net</a>
+    <a href="/support/solutions/folders/7000001557">Orders Linnworks.net</a>
+  </div>
+  
+  <div class="main content single-article-main min-height-on-desktop">
+    <b class="page-stamp page-stamp-article">
+      <b class="icon-page-article"></b>
+    </b>
+    <h2 class="single-article-title">Order taxes and discount calculations</h2>
+    <h4 class="modified-single-article">Modified on: Mon, 2 Mar, 2026 at  8:39 AM</h4>
+        <hr />
+      
+      
+         
+            
+         
+           
+      
+         
+            
+         
+           
+      
+         
+            
+         
+           
+      
+         
+            
+         
+           
+      
+         
+            
+         
+           
+      
+         
+            
+         
+           
+      
+         
+            
+         
+           
+      
+         
+            
+         
+           
+      
+         
+            
+         
+           
+      
+    
+    
+      
+      <div class="single-article-content article-body">
+        <div data-identifyelement="465" dir="ltr"><p class="fd-toc" style="text-align: justify;">Below you can find a description and the calculation logic used by Linnworks for tax and discount calculations for channel and direct orders. Examples are also provided for each scenario described.</p><ul><li style="text-align: justify;"><a href="#taxrate">Tax Rate</a></li><li style="text-align: justify;"><a href="#linetax">Line Tax</a></li><li style="text-align: justify;"><a href="#shippingtax">Shipping Tax</a></li><li style="text-align: justify;"><a href="#discount">Discount</a><br><br></li></ul><p><span data-identifyelement="554" id="taxrate" style="font-size: 18px;"><strong data-identifyelement="555">Tax Rate:</strong></span></p><p data-identifyelement="557" style="text-align: justify;"><br data-identifyelement="558"></p><p data-identifyelement="559" style="text-align: justify;"><span data-identifyelement="560" style="font-size: 14px;"><strong data-identifyelement="561">Channel orders</strong></span></p><p><span data-identifyelement="564" dir="ltr" style="font-size: 13px;">Some channel integrations (e.g. <a data-identifyelement="566" dir="ltr" href="https://www.linnworks.com/support/settings/channel-integration/channels/magento-2/configure/" rel="noreferrer" target="_blank">Magento</a>, <a data-identifyelement="567" href="https://www.linnworks.com/support/settings/channel-integration/channels/shopify/configure/" rel="noreferrer" target="_blank">Shopify</a>) have a <em data-identifyelement="568"><strong data-identifyelement="569">Use</strong>&nbsp;</em><strong data-identifyelement="570"><em data-identifyelement="571">c</em></strong><strong data-identifyelement="572"><em data-identifyelement="573">hannel&nbsp;</em></strong><em data-identifyelement="574"><strong data-identifyelement="575">tax&nbsp;</strong></em><em data-identifyelement="576"><strong data-identifyelement="577">settings&nbsp;</strong></em>option which enables to use the tax rate applied to the order on the channel directly. If this setting is enabled, the tax rate on the order in Linnworks will match the tax rate from the channel.&nbsp;</span></p><p data-identifyelement="578" style="text-align: justify;"><br data-identifyelement="579"><span data-identifyelement="580" style="font-size: 13px;">Please see the respective channel integration documentation for the available configuration settings from the list <a data-identifyelement="581" href="https://www.linnworks.com/support/settings/channel-integration/channels/" rel="noreferrer" target="_blank"><u data-identifyelement="582">here</u></a>.</span></p><p data-identifyelement="583" style="text-align: justify;"><br data-identifyelement="584"></p><p><span data-identifyelement="587" style="font-size: 13px;">If the channel integration <strong data-identifyelement="588">does not have</strong> this option or when the <strong data-identifyelement="589">s</strong><strong data-identifyelement="590">etting is&nbsp;</strong><strong data-identifyelement="591">disabled</strong>, the same logic is used that is applied to Direct orders as below.</span></p><p data-identifyelement="592" style="text-align: justify;"><br data-identifyelement="593"></p><p data-identifyelement="594" style="text-align: justify;"><span data-identifyelement="595" style="font-size: 14px;"><strong data-identifyelement="596">Direct orders</strong></span></p><p data-identifyelement="597" style="text-align: justify;">Linnworks uses the tax rate for items either:</p><ul data-identifyelement="598"><li data-identifyelement="599" style="text-align: justify;">Based on the <strong data-identifyelement="600">item</strong><strong data-identifyelement="601">&nbsp;Tax rate</strong> as specified in <a data-identifyelement="602" href="https://www.linnworks.com/support/inventory/my-inventory/edit-inventory-item/general/" rel="noreferrer" target="_blank"><em data-identifyelement="603">Product Details</em></a> (<em data-identifyelement="604">Inventory &gt; My Inventory &gt;&nbsp;</em>click on SKU <em data-identifyelement="605">&gt; General&nbsp;</em>tab)</li><li data-identifyelement="606" style="text-align: justify;">Or if <em data-identifyelement="607">Country specific rate&nbsp;</em>is enabled on the item instead of an item <em data-identifyelement="608">Tax&nbsp;</em>rate, the tax rate is taken based on the <strong data-identifyelement="609">order destination country</strong> tax rate as specified in the<em data-identifyelement="610">&nbsp;</em><a data-identifyelement="611" href="https://www.linnworks.com/support/settings/linnworks-general-settings/general-settings/manage-country-list/" rel="noreferrer" target="_blank"><em data-identifyelement="612">Countries</em> list</a> (<em data-identifyelement="613">Settings &gt; General Settings &gt; Default Settings &gt; Manage Countries</em>).<br><br></li></ul><p data-identifyelement="614" style="text-align: justify;"><strong data-identifyelement="615"><span data-identifyelement="616" style="font-size: 14px;"><u data-identifyelement="617">Scenario 1:</u></span></strong></p><ul data-identifyelement="620"><li data-identifyelement="621" style="text-align: justify;">Order destination country is Belgium.</li><li data-identifyelement="624" style="text-align: justify;">Order contains&nbsp;Product A.</li><li data-identifyelement="626" style="text-align: justify;">Product A has an item Tax rate of 15% added.</li></ul></div><p data-identifyelement="628" style="text-align: justify;"><br data-identifyelement="629"></p><p data-identifyelement="630" style="text-align: justify;"><img src="https://eucattachment.freshdesk.com/inline/attachment?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6NzA1MDM3MDI0NSwiZG9tYWluIjoibGlubndvcmtzZXUuZnJlc2hkZXNrLmNvbSIsImFjY291bnRfaWQiOjM5MTg4M30._0vinSA_6ot95rGuJ1IQJzYHp53wYZgJ2pvmboNflrc" style="width: 349px;" class="fr-dib fr-bordered" data-attachment="[object Object]" data-id="7050370245" data-identifyelement="631"></p><p data-identifyelement="632" style="text-align: justify;"><br data-identifyelement="633"></p><p data-identifyelement="634" style="text-align: justify;">Item Tax<strong data-identifyelement="635">&nbsp;</strong>takes priority over destination country tax rate, so the <em data-identifyelement="636">Tax Rate</em> on the order item line is taken from the item Tax value and is respectively added as 15%<em data-identifyelement="637">.</em></p><div data-identifyelement="465" dir="ltr"><p data-identifyelement="642" style="text-align: justify;"><br data-identifyelement="643"></p><p data-identifyelement="644" style="text-align: justify;"><br data-identifyelement="645"></p><p data-identifyelement="646" style="text-align: justify;"><strong data-identifyelement="647"><span data-identifyelement="648" style="font-size: 14px;"><u data-identifyelement="649">Scena</u></span><span style="font-size: 14px;"><u data-identifyelement="649">r</u></span><span data-identifyelement="648" style="font-size: 14px;"><u data-identifyelement="649">io 2:</u></span></strong></p><ul data-identifyelement="652"><li data-identifyelement="653" style="text-align: justify;">Order destination country is Belgium.</li><li data-identifyelement="656" style="text-align: justify;">Order contains&nbsp;Product B.</li><li data-identifyelement="658" style="text-align: justify;">Product B has <em data-identifyelement="660">Country specific rate&nbsp;</em>enabled.<br><br data-identifyelement="662"><img src="https://eucattachment.freshdesk.com/inline/attachment?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6NzA1MDM3MDMwOSwiZG9tYWluIjoibGlubndvcmtzZXUuZnJlc2hkZXNrLmNvbSIsImFjY291bnRfaWQiOjM5MTg4M30.RxRSFmgbdv8D1KV5jxu28nwA7NQw87V3HhVxe7P7Zec" style="width: 369px;" class="fr-dib fr-bordered" data-attachment="[object Object]" data-id="7050370309" data-identifyelement="663"><br><br data-identifyelement="665"></li><li data-identifyelement="666" style="text-align: justify;"><em data-identifyelement="667">Countries&nbsp;</em>list <em data-identifyelement="669">Tax Rate</em> for Belgium is specified as 21%</li></ul><p data-identifyelement="670" style="text-align: justify;"><br data-identifyelement="671"></p><p data-identifyelement="672" style="text-align: justify;"><img src="https://eucattachment.freshdesk.com/inline/attachment?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6NzA1MDM3MDMxOCwiZG9tYWluIjoibGlubndvcmtzZXUuZnJlc2hkZXNrLmNvbSIsImFjY291bnRfaWQiOjM5MTg4M30.Q_c_XuQx2ykJd_cH_XJyORJOKbuStqC7GPXl75OobeM" style="width: 558px;" class="fr-bordered fr-dib" data-attachment="[object Object]" data-id="7050370318" data-identifyelement="673"></p><p data-identifyelement="674" style="text-align: justify;"><br data-identifyelement="675"></p><p data-identifyelement="676" style="text-align: justify;">Product has no Item Tax specified, so <em data-identifyelement="678">Country specific rate</em> is taken from the <em data-identifyelement="680">Countries&nbsp;</em>list based on the&nbsp;order destination country&nbsp;and is respectively added as 21%<em data-identifyelement="682">.</em></p><p data-identifyelement="686" style="text-align: justify;"><br data-identifyelement="687"></p><p data-identifyelement="689" style="text-align: justify;"><br></p><p data-identifyelement="689" style="text-align: justify;"><strong><u><span style="font-size: 14px;">Scenario 3</span></u></strong></p><ul><li data-identifyelement="653" style="text-align: justify;">Order destination country is Belgium.</li><li data-identifyelement="656" style="text-align: justify;">Order contains&nbsp;Product A&nbsp;and Product B.</li><li data-identifyelement="656" style="text-align: justify;">Product A has an item Tax rate of 15% added while Product B has <em data-identifyelement="660">Country specific rate&nbsp;</em>enabled.</li><li style="text-align: justify;"><em data-identifyelement="667">Countries&nbsp;</em>list <em data-identifyelement="669">Tax Rate</em> for Belgium is specified as 21%.</li></ul><p style="text-align: justify;"><strong data-identifyelement="657"><br></strong></p><p data-identifyelement="676" style="text-align: justify;">Product A will use the item tax rate and Product B will use the <em data-identifyelement="678">Country specific rate</em> and the values are respectively added per line as 15% for Product A and 21%<em data-identifyelement="682">&nbsp;</em>for Product B:</p><p data-identifyelement="676" style="text-align: justify;"><br></p><p data-identifyelement="676" style="text-align: justify;"><br></p></div><div data-identifyelement="464" dir="ltr"><div data-identifyelement="465" dir="ltr"><p style="text-align: justify;"><strong data-identifyelement="476"><span data-identifyelement="477" id="linetax" style="font-size: 18px;">Line tax:</span></strong></p><p data-identifyelement="479" style="text-align: justify;"><br data-identifyelement="480"></p><p data-identifyelement="481" style="text-align: justify;"><strong data-identifyelement="482"><span data-identifyelement="483" style="font-size: 14px;">Channel orders</span></strong></p><ul data-identifyelement="562"><li data-identifyelement="563" style="text-align: justify;"><span data-identifyelement="564" style="font-size: 13px;">Some channel integrations (e.g. <a data-identifyelement="566" dir="ltr" href="https://www.linnworks.com/support/settings/channel-integration/channels/magento-2/configure/" rel="noreferrer" target="_blank">Magento</a>, <a data-identifyelement="567" href="https://www.linnworks.com/support/settings/channel-integration/channels/shopify/configure/" rel="noreferrer" target="_blank">Shopify</a>) have a <em data-identifyelement="568"><strong data-identifyelement="569">Use</strong>&nbsp;</em><strong data-identifyelement="570"><em data-identifyelement="571">c</em></strong><strong data-identifyelement="572"><em data-identifyelement="573">hannel&nbsp;</em></strong><em data-identifyelement="574"><strong data-identifyelement="575">tax&nbsp;</strong></em><em data-identifyelement="576"><strong data-identifyelement="577">settings&nbsp;</strong></em>option which enables to use the tax values to the order on the channel directly. If this setting is enabled, the tax values on the order in Linnworks will match the channel.&nbsp;</span></li></ul><p data-identifyelement="578" style="text-align: justify;"><br data-identifyelement="579"><span data-identifyelement="580" style="font-size: 13px;">Please see the respective channel integration documentation for the available configuration settings from the list <a data-identifyelement="581" href="https://www.linnworks.com/support/settings/channel-integration/channels/" rel="noreferrer" target="_blank"><u data-identifyelement="582">here</u></a>.</span></p><p data-identifyelement="583" style="text-align: justify;"><br data-identifyelement="584"></p><ul data-identifyelement="585"><li data-identifyelement="586" style="text-align: justify;"><span data-identifyelement="587" style="font-size: 13px;">If the channel integration <strong data-identifyelement="588">does not have</strong> this option or when the <strong data-identifyelement="589">s</strong><strong data-identifyelement="590">etting is&nbsp;</strong><strong data-identifyelement="591">disabled</strong>, then the logic used depends heavily on the channel integration or the marketplace region:</span><ul><li data-identifyelement="586" style="text-align: justify;"><span data-identifyelement="587" dir="ltr" style="font-size: 13px;">In the case of e.g. Magento which offer numerous settings on the backend for settings. Linnworks will do back calculations on orders depending on the values the channel sends in with the XML (<em>Open Orders &gt; View Order &gt; Properties &gt; Order XML</em>).</span></li><li data-identifyelement="586" style="text-align: justify;"><span data-identifyelement="587" style="font-size: 13px;">In the case of e.g. Amazon US, the channel will tell Linnworks that the prices are tax <strong>exclusive&nbsp;</strong>as is the usual norm for US marketplaces, while for Amazon UK the product prices are generally&nbsp;</span><strong data-identifyelement="485">inclusive&nbsp;</strong>of tax.</li></ul></li></ul><p><br></p><p>For cases where the normal practice is that the prices are inclusive of tax, the below calculations are used:</p><p data-identifyelement="484" style="text-align: justify;"><br></p><p data-identifyelement="484" style="text-align: justify;"><strong>Line Total =&nbsp;</strong>Unit Cost * Quantity</p><p data-identifyelement="484" style="text-align: justify;"><strong>Line Tax =&nbsp;</strong>Line Total - (Line Total / <a href="#note">(1 + Tax Rate)°&nbsp;</a></p><p data-identifyelement="484" style="text-align: justify;"><strong>Each (Ex Tax) =&nbsp;</strong>Unit Cost / <a href="#note">(1 + Tax Rate)°&nbsp;</a></p><p data-identifyelement="484" style="text-align: justify;"><br></p><p data-identifyelement="484" style="text-align: justify;"><strong><span style="font-size: 14px;">Example:</span></strong></p><table data-identifyelement="487" style="width: 100%; margin-right: calc(0%); margin-left: calc(0%);"><tbody data-identifyelement="488"><tr data-identifyelement="489"><td data-identifyelement="490" style="width: 32.8688%;"><div style="text-align: justify;"><strong data-identifyelement="491">Product A <br data-identifyelement="492"></strong></div></td><td data-identifyelement="493" rowspan="7" style="width: 67.015%;"><div style="text-align: justify;"><img src="https://eucattachment.freshdesk.com/inline/attachment?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6NzA1MDMzODk1NCwiZG9tYWluIjoibGlubndvcmtzZXUuZnJlc2hkZXNrLmNvbSIsImFjY291bnRfaWQiOjM5MTg4M30.DbPuCkgb19EXBZQXfV5c0U_DhLdQLk2G9-m_sdA7bMw" style="width: 482px;" class="fr-dib" data-attachment="[object Object]" data-id="7050338954" data-identifyelement="494"></div></td></tr><tr><td style="width: 32.8688%;"><strong>Quantity:</strong> 1</td></tr><tr data-identifyelement="495"><td data-identifyelement="496" style="width: 32.8688%;"><div style="text-align: justify;"><strong data-identifyelement="497">Unit Cost</strong>: £5.00</div></td></tr><tr data-identifyelement="498"><td data-identifyelement="499" style="width: 32.8688%;"><div style="text-align: justify;"><strong data-identifyelement="503">Tax Rate:&nbsp;</strong>20%</div></td></tr><tr data-identifyelement="501"><td data-identifyelement="502" style="width: 32.8688%;"><div style="text-align: justify;"><strong data-identifyelement="500">Line Total:&nbsp;</strong>5.00 * 1 = £5.00</div></td></tr><tr data-identifyelement="504"><td data-identifyelement="505" style="width: 32.8688%;"><div style="text-align: justify;"><strong data-identifyelement="506">Line Tax:&nbsp;</strong>5.00 - (5.00 / 1.2) = £0.83</div></td></tr><tr data-identifyelement="507"><td data-identifyelement="508" style="width: 32.8688%;"><div style="text-align: justify;"><strong data-identifyelement="509">Each (Ex Tax)</strong>: 5.00 / 1.2 = £4.17</div></td></tr></tbody></table>&nbsp;&nbsp;<p data-identifyelement="510" style="text-align: justify;"><span data-identifyelement="512" style="font-size: 14px;">For cases where the channel informs Linnworks that the prices are tax <strong>exclusive</strong>, please see the example below for Direct Orders with <em data-identifyelement="516">Direct orders tax is inclusive of the item price s</em>etting <strong>unticked</strong><em data-identifyelement="516">.</em></span></p><p data-identifyelement="510" style="text-align: justify;"><br></p><p data-identifyelement="510" style="text-align: justify;"><strong data-identifyelement="511"><span data-identifyelement="512" style="font-size: 14px;">Direct Orders</span></strong></p><p data-identifyelement="513" style="text-align: justify;">Direct Order unit costs can either be inclusive or exclusive of tax. This depends on your <a data-identifyelement="514" href="https://www.linnworks.com/support/settings/linnworks-general-settings/" rel="noreferrer" target="_blank">system settings</a> under <em data-identifyelement="515">Settings &gt; General Settings &gt; General &gt; Default tax settings &gt;&nbsp;</em><em data-identifyelement="516">Direct orders tax is inclusive of the item price.</em></p><br data-identifyelement="506"><ul data-identifyelement="517"><li data-identifyelement="518" style="text-align: justify;">When <strong data-identifyelement="519">ticked</strong>, the line totals will be calculated in the same method as for channel orders with tax inclusive prices in the example above.</li><li data-identifyelement="520" style="text-align: justify;">When <strong data-identifyelement="521">unticked</strong>, they will be calculated as below:</li></ul><p data-identifyelement="522" style="text-align: justify;"><br></p><p data-identifyelement="522" style="text-align: justify;"><strong>Line Total =</strong> Unit Cost * Quantity * <a href="#note">(1 + Tax Rate)°&nbsp;</a></p><p data-identifyelement="484" style="text-align: justify;"><strong>Line Tax =</strong> Unit Cost * Quantity * Tax Rate</p><div style="text-align: justify;"><strong data-identifyelement="548">Each (Ex Tax)</strong><strong data-identifyelement="549">&nbsp;=&nbsp;</strong>Unit Cost</div><p><br></p><p><strong>Example:</strong></p><table data-identifyelement="524" style="width: 100%;"><tbody data-identifyelement="525"><tr data-identifyelement="526"><td data-identifyelement="527" style="width: 32.8121%;"><div style="text-align: justify;"><strong data-identifyelement="528">Product A</strong></div></td><td data-identifyelement="529" rowspan="7" style="width: 67.1313%;"><div data-empty="true" style="text-align: justify;"><br data-identifyelement="530"></div><div style="text-align: justify;"><img src="https://eucattachment.freshdesk.com/inline/attachment?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6NzA1MDM2NTM4NywiZG9tYWluIjoibGlubndvcmtzZXUuZnJlc2hkZXNrLmNvbSIsImFjY291bnRfaWQiOjM5MTg4M30.YxSi-uuVbSKPRVTGwdMAnKu-DIWA-Qemql8pARJuIZ8" style="width: 472px;" class="fr-dib" data-attachment="[object Object]" data-id="7050365387" data-identifyelement="531"></div></td></tr><tr><td style="width: 32.8121%;"><strong>Quantity:</strong> 1</td></tr><tr data-identifyelement="532"><td data-identifyelement="533" style="width: 32.8121%;"><div style="text-align: justify;"><strong data-identifyelement="534">Unit Cost</strong>: £5.00</div></td></tr><tr data-identifyelement="535"><td data-identifyelement="536" style="width: 32.8121%;"><div style="text-align: justify;"><strong data-identifyelement="537">Tax Rate:<span style="color: rgb(0, 0, 0); font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, sans-serif; font-size: 13px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: justify; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px;  text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;">&nbsp;20%</span>&nbsp;</strong></div></td></tr><tr data-identifyelement="539"><td data-identifyelement="540" style="width: 32.8121%;"><div style="text-align: justify;"><strong data-identifyelement="537">Line Tota</strong><strong data-identifyelement="538">l:&nbsp;</strong>5.00 * 1 * 1.2<strong data-identifyelement="538">&nbsp;=&nbsp;</strong>£6.00</div></td></tr><tr data-identifyelement="543"><td data-identifyelement="544" style="width: 32.8121%;"><div style="text-align: justify;"><strong data-identifyelement="545">Line Tax:</strong>&nbsp; 5.00 * 1 * 0.2 = £1.00</div></td></tr><tr data-identifyelement="546"><td data-identifyelement="547" style="width: 32.8121%;"><div style="text-align: justify;"><strong data-identifyelement="548">Each (Ex Tax)</strong><strong data-identifyelement="549">:&nbsp;</strong>£5.00</div></td></tr></tbody></table><br data-identifyelement="510"><p data-identifyelement="553" style="text-align: justify;"><br></p></div><div data-identifyelement="465" dir="ltr" style="text-align: justify;"><strong><span id="shippingtax" style="font-size: 18px;">Shipping tax:</span></strong></div><div data-identifyelement="465" dir="ltr"><br data-identifyelement="562"><p data-identifyelement="730" style="text-align: justify;">The shipping tax is calculated based on the <strong>order destination country</strong> and the tax rate is taken from the <a data-identifyelement="611" href="https://www.linnworks.com/support/settings/linnworks-general-settings/general-settings/manage-country-list/" rel="noreferrer" target="_blank"><em data-identifyelement="612">Countries</em> list</a> (<em data-identifyelement="613">Settings &gt; General Settings &gt; Default Settings &gt; Manage Countries</em>).</p><p data-identifyelement="730" style="text-align: justify;"><br></p><p data-identifyelement="730" style="text-align: justify;"><span style="color: rgb(0, 0, 0); font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, sans-serif; font-size: 13px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: start; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px;  text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;">The&nbsp;</span><em style="box-sizing: border-box; font-style: italic; color: rgb(0, 0, 0); font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, sans-serif; font-size: 13px; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: start; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px;  text-decoration-style: initial; text-decoration-color: initial;"><strong style="box-sizing: border-box; font-weight: 700;">Shipping&nbsp;</strong></em><span style="color: rgb(0, 0, 0); font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, sans-serif; font-size: 13px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: start; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px;  text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;">under&nbsp;</span><em style="box-sizing: border-box; font-style: italic; color: rgb(0, 0, 0); font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, sans-serif; font-size: 13px; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: start; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px;  text-decoration-style: initial; text-decoration-color: initial;">Totals&nbsp;</em><span style="color: rgb(0, 0, 0); font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, sans-serif; font-size: 13px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: start; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px;  text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;">on an order displays shipping cost&nbsp;</span><strong style="box-sizing: border-box; font-weight: 700; color: rgb(0, 0, 0); font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, sans-serif; font-size: 13px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; letter-spacing: normal; orphans: 2; text-align: start; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px;  text-decoration-style: initial; text-decoration-color: initial;">excluding&nbsp;</strong><span style="color: rgb(0, 0, 0); font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, sans-serif; font-size: 13px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: start; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px;  text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;">tax. Calculated tax is then added to the&nbsp;</span><em style="box-sizing: border-box; font-style: italic; color: rgb(0, 0, 0); font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, sans-serif; font-size: 13px; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: start; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px;  text-decoration-style: initial; text-decoration-color: initial;"><strong style="box-sizing: border-box; font-weight: 700;">Tax&nbsp;</strong></em><span style="color: rgb(0, 0, 0); font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, sans-serif; font-size: 13px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: start; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px;  text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;">line under&nbsp;</span><em style="box-sizing: border-box; font-style: italic; color: rgb(0, 0, 0); font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, sans-serif; font-size: 13px; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: start; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px;  text-decoration-style: initial; text-decoration-color: initial;">Totals</em><span style="color: rgb(0, 0, 0); font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, sans-serif; font-size: 13px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: start; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px;  text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;">.</span></p><p data-identifyelement="730" style="text-align: justify;"><br></p><p style="text-align: justify;"><strong>Shipping =&nbsp;</strong>Shipping Cost / <a href="#note">(1 + Tax Rate)°&nbsp;</a></p><p style="text-align: justify;"><strong>Shipping Tax =&nbsp;</strong>Shipping Cost - Shipping</p><br data-identifyelement="564"><p data-identifyelement="731" style="text-align: justify;"><strong><u><span style="font-size: 14px;">Example</span></u></strong></p><ul><li style="text-align: justify;">Order destination country is Belgium.</li><li data-identifyelement="653" style="text-align: justify;">Belgium Tax Rate is specified as 21% in the <a data-identifyelement="611" href="https://www.linnworks.com/support/settings/linnworks-general-settings/general-settings/manage-country-list/" rel="noreferrer" target="_blank"><em data-identifyelement="612">Countries</em> list</a>.<br><br></li></ul></div><table style="width: 79%; margin-right: calc(9%); margin-left: calc(12%);"><tbody><tr><td style="width: 41.2079%;"><strong>Tax rate:</strong> 21%</td><td rowspan="4" style="width: 58.6373%;"><img src="https://eucattachment.freshdesk.com/inline/attachment?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6NzA1MDQwODUxNiwiZG9tYWluIjoibGlubndvcmtzZXUuZnJlc2hkZXNrLmNvbSIsImFjY291bnRfaWQiOjM5MTg4M30.oebMXi5GH1-dC75u49IGJxZTxcA68gsiF_HdLOwDVyw" style="width: 278px;" class="fr-dib fr-bordered" data-attachment="[object Object]" data-id="7050408516"></td></tr><tr><td style="width: 41.2079%;"><strong>Shipping Cost:</strong> £5.00</td></tr><tr><td style="width: 41.2079%;"><strong>Shipping:</strong> 5.00 / 1.21 = £4.13</td></tr><tr><td style="width: 41.2079%;"><div data-identifyelement="465" dir="ltr"><strong>Shipping Tax</strong>: 5.00 - 4.13 = &nbsp;£0.87</div></td></tr></tbody></table><p><br></p><div data-identifyelement="465" dir="ltr"><br data-identifyelement="577"><p style="text-align: justify;"><strong><span id="discount" style="font-size: 18px;">Discount:</span></strong></p><br data-identifyelement="579"><p data-identifyelement="737" style="text-align: justify;">The order discount is calculated backwards from the line total after removing the tax. This is the most accurate way of calculating accurate discount rates.</p></div><div data-identifyelement="465" dir="ltr" style="text-align: justify;"><br></div><div data-identifyelement="465" dir="ltr" style="text-align: justify;"><strong>Line Total ex tax =&nbsp;</strong>Line Total / <a href="#note">(1 + Tax Rate)°&nbsp;</a></div><p style="text-align: justify;"><strong>Discounted line total =&nbsp;</strong>(Line Total ex Tax - Line Total Ex Tax * Discount) * <a href="#note">(1 + Tax Rate)°</a></p><div data-identifyelement="465" dir="ltr" style="text-align: justify;"><br data-identifyelement="583"><p data-identifyelement="738" style="text-align: justify;"><strong><span style="font-size: 14px;">Example:</span></strong></p><p data-identifyelement="738" style="text-align: justify;"><br></p><table style="width: 49%; margin-right: calc(47%); margin-left: calc(4%);"><tbody><tr><td style="width: 100.0000%;"><strong>Discount:&nbsp;</strong>10%</td></tr><tr><td style="width: 100.0000%;"><strong>Line Total:</strong> £15.00</td></tr><tr><td style="width: 100.0000%;"><strong>Tax Rate:&nbsp;</strong>20%</td></tr><tr><td style="width: 100.0000%;"><strong>Line total Ex Tax:</strong> 15.00 / 1.2 = £12.50</td></tr><tr><td style="width: 100.0000%;"><strong>Discounted line total:&nbsp;</strong>(12.50 - 12.50 * 0.1) * 1.2 = £13.50</td></tr></tbody></table></div><div data-identifyelement="465" dir="ltr"><br></div><hr><p data-identifyelement="739" style="text-align: justify;"><span id="note" style="color: rgb(77, 81, 86); font-family: arial, sans-serif; font-size: 14px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px;  text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;"><strong>°</strong></span> <span style="font-size: 12px;"><strong>(1 + Tax Rate)&nbsp;</strong>refers to when it is needed to use a value of 1 + the tax rate in decimal values e.g. with Tax Rate 20% you would need to divide or multiply by 1 + 0.2 i.e. 1.2, with Tax Rate 9% it would be 1 + 0.09 i.e 1.09</span></p><p><br></p><p class="fd-toc" data-identifyelement="751" style="text-align: justify;"><br></p></div>
+      </div>
+      <hr />  
+      
+      <p class="article-vote" id="voting-container">
+        Did you find it helpful?
+        <span data-href="/support/solutions/articles/7000005442/thumbs_up" class="vote-up a-link" 
+        data-remote="true" data-method="put" data-update="#voting-container" 
+        data-update-with-message="Glad we could be helpful. Thanks for the feedback.">
+          Yes
+        </span>
+        <span data-href="/support/solutions/articles/7000005442/thumbs_down" class="vote-down a-link" 
+        data-remote="true" data-method="put" data-update="#vote-feedback-form"
+        data-hide-dom="#voting-container" data-show-dom="#vote-feedback-container">
+          No
+        </span>
+      </p>
+      <div class="hide" id="vote-feedback-container">
+        <div class="lead">Can you please tell us how we can improve this article?</div>
+        <div id="vote-feedback-form">
+          <div class="sloading loading-small loading-block"></div>
+        </div>
+      </div>  
+  </div>
+  
+    <div class="side-article-list sidebar content min-height-on-desktop article-list">
+       <h3 class="list-lead">
+			More articles in <span class='folder-name'> Orders Linnworks.net </span>
+		</h3>
+      <ul>			<li>
+				<div class="ellipsis">
+					<a href="/support/solutions/articles/7000004282-adding-tracking-numbers-to-orders">Adding tracking numbers to orders</a>
+				</div>
+			</li>
+			<li>
+				<div class="ellipsis">
+					<a href="/support/solutions/articles/7000085246-amazon-commercial-address-order-identifier">Amazon - Commercial Address Order Identifier</a>
+				</div>
+			</li>
+			<li>
+				<div class="ellipsis">
+					<a href="/support/solutions/articles/7000020105-amazon-despatch-notes">Amazon - Despatch Notes</a>
+				</div>
+			</li>
+			<li>
+				<div class="ellipsis">
+					<a href="/support/solutions/articles/7000031686-amazon-identifying-amazon-prime-orders">Amazon - Identifying Amazon Prime orders</a>
+				</div>
+			</li>
+			<li>
+				<div class="ellipsis">
+					<a href="/support/solutions/articles/7000064709-amazon-pending-orders">Amazon - Pending orders</a>
+				</div>
+			</li>
+			<li>
+				<div class="ellipsis">
+					<a href="/support/solutions/articles/7000031457-amazon-scheduled-delivery-dates">Amazon - Scheduled Delivery dates</a>
+				</div>
+			</li>
+			<li>
+				<div class="ellipsis">
+					<a href="/support/solutions/articles/7000005171-amazon-the-courier-for-the-order-is-set-to-standard-other-">Amazon - the courier for the order is set to &#39;Standard&#39;/&#39;Other&#39;</a>
+				</div>
+			</li>
+			<li>
+				<div class="ellipsis">
+					<a href="/support/solutions/articles/7000052845-amazon-why-do-my-amazon-orders-display-an-inaccurate-tax-rate-">Amazon - Why do my Amazon orders display an inaccurate tax rate?</a>
+				</div>
+			</li>
+			<li>
+				<div class="ellipsis">
+					<a href="/support/solutions/articles/7000067059-amazon-amazon-vendor-redacted-orders">Amazon &amp; Amazon Vendor - Redacted orders</a>
+				</div>
+			</li>
+			<li>
+				<div class="ellipsis">
+					<a href="/support/solutions/articles/7000059657-assigning-orders-to-folders">Assigning orders to folders</a>
+				</div>
+			</li>
+</ul><a href="/support/solutions/folders/7000001557" class="see-more">See all 85 articles</a>
+    </div>
+  
+</div>
+
+  <script>
+    jQuery('.list-lead .folder-name').hide();
+    jQuery('.list-lead').text('More articles');
+  </script>
+
+</div>
+
+<footer class="footer">
+  
+    
+  
+  
+    <div class="footer-area">
+        <div class="footer-wrapper">
+            <div class="footer-links">
+                <div class="fl-1">
+                     <ul>
+                         <li> Linnworks </li>
+                          <li><a href="http://www.linnworks.com/about-us">About Us</a></li>
+             			  <li><a href="https://linnworks.bamboohr.com/jobs/">Careers</a></li>
+             			  <li><a href="http://www.linnworks.com/partners">Partners</a></li>
+             			  
+                    </ul>
+                    
+                </div>
+                <div class="fl-2">
+                    <ul>
+                        <li> Top Features </li>
+               <li><a href="http://www.linnworks.com/inventory-management-software">Multi-channel Software</a></li>
+               <li><a href="https://www.linnworks.com/orders">Order Management</a></li>
+               <li><a href="http://www.linnworks.com/stock-control-software">Stock Control Software</a></li>
+               <li><a href="http://www.linnworks.com/custom-reporting">Reporting</a></li>
+               <li><a href="http://www.linnworks.com/shipping-management-software">Shipping Management</a></li>
+               <li><a href="https://www.linnworks.com/bulk-listing-tool">Bulk Listing Tool</a></li>
+               <li><a href="https://www.linnworks.com/inventory-management-software/ebay">eBay</a></li>
+               <li><a href="https://www.linnworks.com/inventory-management-software/amazon">Amazon</a></li>
+               <li><a href="http://www.linnworks.com/features/magento">Magento</a></li>
+               <li><a href="http://www.linnworks.com/features/bigcommerce">Bigcommerce</a></li>
+
+                    </ul>
+                </div>
+                <div class="fl-3">
+                 
+                    <ul>    
+                        <li> Support </li>
+                               <li><a href="http://help.linnworks.com/support/discussions" target="_blank">Support Forum</a></li>
+               <li><a href="http://www.linnworks.com/support">Documentation</a></li>
+               <li><a href="http://www.linnworks.com/linnworks-setup-implementation-services">Setup Services</a></li>
+               <li><a href="https://suggestions.linnworks.com/">Submit a Feature Request</a></li>
+               <li><a href="https://developer.linnworks.com/" target="_blank">Developers</a></li>
+                      <li><a href="http://status.linnworks.com/" target="_blank">System Status</a></li>
+                    </ul>
+                </div>
+                <div class="fl-4 show-in-mobile">
+                  <ul>
+                    <li>support@linnworks.com</li>
+                    <li class="fl-contact">Phone number</li>
+                  </ul>
+              </div>
+            </div>
+            <div class="footer-links links-right">
+                <div class="fl-4">
+                    <ul>
+                        <li> Contact Us </li>
+                      <li class="f-contact"> <i class="icon-call"></i><a href="tel:+442036517045"><p> 02033227375</p></a></li>
+                      <li class="f-contact"> <i class="icon-call"></i><a href="tel:+13473918948"><p> (347)391-2804</p></a></li>
+                        <li> 
+                            <i class="icon-mail"></i> 
+                            <span class="f-mail"> 
+                                <a href="mailto:support@linnworks.com"> support@linnworks.com </a> 
+                            </span> 
+                        </li>
+                        <li class="f-company f-company-usa">
+                            <i class="icon-location"></i>
+                            <p><b>UK Addresses</b></p>
+                            <span> 
+                                1 Old Market Avenue 1st Floor, Old Market Avenue, 
+                            </span>
+                            <span>    
+                                Chichester, West Sussex, England, PO19 1SP, UK
+                            </span>    
+
+
+                        </li>
+                        <li class="f-company">
+                            <i class="icon-location"></i>
+                            <p><b>Estonian Address</b></p>
+                            <span> 
+                                Lootsi 8, Tallinn, Estonia 10151
+                            </span>
+                          
+                          <li class="f-company f-company-usa">
+                            <i class="icon-location"></i>
+                          
+                           <p><b>US Address</b></p>
+                            <span> 
+                                2509 Plantside Dr, Louisville, KY 40299
+                              
+                             </span>
+                            
+                               </li>
+   
+                        </li>
+                    </ul>
+                </div>
+                <div class="fl-4  omega">
+                    <ul>
+                       <!-- <li> Subscribe to Freshdesk Insider </li>
+                        <li> <a> Get the latest news and refreshing updates delivered to your inbox </a> </li>
+                        <li class="subscribe">
+                            <input type="email" placeholder="Enter your email">
+                            <button> Subscribe </button>
+                        </li> -->
+                        <li> Connect with us </li>
+                        <li class="social-links"> <a href="https://www.linkedin.com/company/linnworks" target="_blank"><i class="icon-in"></i></a> </li>
+                        <li class="social-links"> <a href="https://www.facebook.com/linnsystems" target="_blank"><i class="icon-fb"></i></a> </li>
+                        <li class="social-links"> <a href="https://twitter.com/LINNWORKS" target="_blank"><i class="icon-twitter"></i></a> </li>
+                        <li class="social-links"> <a href="https://www.youtube.com/user/linnsystems" target="_blank"><i class="icon-tube"></i></a> </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-copyright-area">
+                <div class="footer-terms">
+                    <ul>
+                        <li><a href="http://www.linnworks.com/terms"> Terms of service </a></li>
+                        <li><a href="http://www.linnworks.com/linn-systems-privacy-policy"> Privacy Policy </a></li>
+                       
+                    </ul>
+                </div>
+                <div class="copy omega">
+                    <p> Copyright &copy;. All Rights Reserved. </p>
+                </div>
+            </div>
+        </div>
+    </div>
+  
+  
+</footer>
+
+
+
+
+<script type="text/javascript">
+  jQuery('.hc-search-input').prepend('<i class="icon-search"></i>');
+</script>
+
+
+
+
+
+<!-- Navbar Fixed Code -->
+
+<script type="text/javascript">
+  jQuery(window).scroll(function(e) {
+    var scroller_anchor = jQuery("#sticky_anchor").offset().top;
+    if (jQuery(this).scrollTop() >= scroller_anchor && jQuery('#sticky_head').css('position') != 'fixed') 
+      {   
+        jQuery('#sticky_head').removeClass('navbar-static').addClass('navbar-fixed');
+        var navbar_height = jQuery('#sticky_head').innerHeight();
+        jQuery('#sticky_anchor').css('height', navbar_height + 'px');
+        var sticky_height = jQuery('#sticky_head').height();
+        jQuery('.ui-autocomplete').css({'position': 'fixed', 'top' : sticky_height + 'px'});
+      } 
+    else if (jQuery(this).scrollTop() < scroller_anchor && jQuery('#sticky_head').css('position') != 'relative') 
+      {  
+        jQuery('#sticky_anchor').css('height', '0px');
+        jQuery('#sticky_head').removeClass('navbar-fixed').addClass('navbar-static');
+        var sticky_height = jQuery('#sticky_head').height();
+        var offset = sticky_height + jQuery('#sticky_head').offset().top;
+        jQuery('.ui-autocomplete').css({'position': 'absolute', 'top' : offset + 'px' })
+      }
+  });  
+</script>
+
+<script type="text/javascript">
+  jQuery(window).load(function(){
+    jQuery('.ui-autocomplete-input').attr('placeholder','Search for articles...');
+    });
+  
+</script> 
+
+
+
+			<script src="https://euc-assets7.freshdesk.com/assets/cdn/portal_bottom-b73c44e466aa3965e03cf71e5d6975d84b3034216400731ce54b77cd440b149a.js"></script>
+
+		<script src="https://euc-assets9.freshdesk.com/assets/cdn/redactor-eef0d60809765e5c12fb5df79e77faec248cc5f349dbeb7e46f29345562d4462.js"></script> 
+		<script src="https://euc-assets5.freshdesk.com/assets/cdn/lang/en-4a75f878b88f0e355c2d9c4c8856e16e0e8e74807c9787aaba7ef13f18c8d691.js"></script>
+		<!-- Realign jQuery UI's per-locale firstDay default with CLDR. Must stay after cdn/lang. -->
+		
+		<!-- for i18n-js translations -->
+  		<script src="https://euc-assets3.freshdesk.com/assets/cdn/i18n/portal/en-29627a12b788171ce22b27ff0d75f59ed16b93ed0d25d8ff8cc1050d1ebb377b.js"></script>
+		<!-- Including default portal based script at the bottom -->
+		<script nonce="+ol6ucJ7XRCdFdqZSyx2hg==">
+//<![CDATA[
+	
+	jQuery(document).ready(function() {
+					
+		// Setting the locale for moment js
+		moment.lang('en');
+
+		var validation_meassages = {"required":"This field is required.","remote":"Please fix this field.","email":"Please enter a valid email address.","url":"Please enter a valid URL.","date":"Please enter a valid date.","dateISO":"Please enter a valid date ( ISO ).","number":"Please enter a valid number.","digits":"Please enter only digits.","creditcard":"Please enter a valid credit card number.","equalTo":"Please enter the same value again.","two_decimal_place_warning":"Value cannot have more than 2 decimal digits","select2_minimum_limit":"Please type %{char_count} or more letters","select2_maximum_limit":"You can only select %{limit} %{container}","maxlength":"Please enter no more than {0} characters.","minlength":"Please enter at least {0} characters.","rangelength":"Please enter a value between {0} and {1} characters long.","range":"Please enter a value between {0} and {1}.","max":"Please enter a value less than or equal to {0}.","min":"Please enter a value greater than or equal to {0}.","select2_maximum_limit_jq":"You can only select {0} {1}","facebook_limit_exceed":"Your Facebook reply was over 8000 characters. You'll have to be more clever.","messenger_limit_exceeded":"Oops! You have exceeded Messenger Platform's character limit. Please modify your response.","not_equal_to":"This element should not be equal to","email_address_invalid":"One or more email addresses are invalid.","twitter_limit_exceed":"Oops! You have exceeded Twitter's character limit. You'll have to modify your response.","password_does_not_match":"The passwords don't match. Please try again.","valid_hours":"Please enter a valid hours.","reply_limit_exceed":"Your reply was over 2000 characters. You'll have to be more clever.","url_format":"Invalid URL format","url_without_slash":"Please enter a valid URL without '/'","link_back_url":"Please enter a valid linkback URL","requester_validation":"Please enter a valid requester details or <a href=\"#\" id=\"add_requester_btn_proxy\">add new requester.</a>","agent_validation":"Please enter valid agent details","email_or_phone":"Please enter a Email or Phone Number","upload_mb_limit":"Upload exceeds the available 15MB limit","invalid_image":"Invalid image format","atleast_one_role":"At least one role is required for the agent","invalid_time":"Invalid time.","remote_fail":"Remote validation failed","trim_spaces":"Auto trim of leading & trailing whitespace","hex_color_invalid":"Please enter a valid hex color value.","name_duplication":"The name already exists.","invalid_value":"Invalid value","invalid_regex":"Invalid Regular Expression","same_folder":"Cannot move to the same folder.","maxlength_255":"Please enter less than 255 characters","decimal_digit_valid":"Value cannot have more than 2 decimal digits","atleast_one_field":"Please fill at least {0} of these fields.","atleast_one_portal":"Select atleast one portal.","custom_header":"Please type custom header in the format -  header : value","same_password":"Should be same as Password","select2_no_match":"No matching %{container} found","integration_no_match":"no matching data...","time":"Please enter a valid time","valid_contact":"Please add a valid contact","field_invalid":"This field is invalid","select_atleast_one":"Select at least one option.","ember_method_name_reserved":"This name is reserved and cannot be used. Please choose a different name."}	
+
+		jQuery.extend(jQuery.validator.messages, validation_meassages );
+
+
+		jQuery(".call_duration").each(function () {
+			var format,time;
+			if (jQuery(this).data("time") === undefined) { return; }
+			if(jQuery(this).hasClass('freshcaller')){ return; }
+			time = jQuery(this).data("time");
+			if (time>=3600) {
+			 format = "hh:mm:ss";
+			} else {
+				format = "mm:ss";
+			}
+			jQuery(this).html(time.toTime(format));
+		});
+	});
+
+	// Shortcuts variables
+	var Shortcuts = {"global":{"help":"?","save":"mod+return","cancel":"esc","search":"/","status_dialog":"mod+alt+return","save_cuctomization":"mod+shift+s"},"app_nav":{"dashboard":"g d","tickets":"g t","social":"g e","solutions":"g s","forums":"g f","customers":"g c","reports":"g r","admin":"g a","ticket_new":"g n","compose_email":"g m"},"pagination":{"previous":"alt+left","next":"alt+right","alt_previous":"j","alt_next":"k"},"ticket_list":{"ticket_show":"return","select":"x","select_all":"shift+x","search_view":"v","show_description":"space","unwatch":"w","delete":"#","pickup":"@","spam":"!","close":"~","silent_close":"alt+shift+`","undo":"z","reply":"r","forward":"f","add_note":"n","scenario":"s"},"ticket_detail":{"toggle_watcher":"w","reply":"r","forward":"f","add_note":"n","close":"~","silent_close":"alt+shift+`","add_time":"m","spam":"!","delete":"#","show_activities_toggle":"}","properties":"p","expand":"]","undo":"z","select_watcher":"shift+w","go_to_next":["j","down"],"go_to_previous":["k","up"],"scenario":"s","pickup":"@","collaboration":"d"},"social_stream":{"search":"s","go_to_next":["j","down"],"go_to_previous":["k","up"],"open_stream":["space","return"],"close":"esc","reply":"r","retweet":"shift+r"},"portal_customizations":{"preview":"mod+shift+p"},"discussions":{"toggle_following":"w","add_follower":"shift+w","reply_topic":"r"}};
+	
+	// Date formats
+	var DATE_FORMATS = {"non_us":{"moment_date_with_week":"ddd, D MMM, YYYY","datepicker":"d M, yy","datepicker_escaped":"d M yy","datepicker_full_date":"D, d M, yy","mediumDate":"d MMM, yyyy"},"us":{"moment_date_with_week":"ddd, MMM D, YYYY","datepicker":"M d, yy","datepicker_escaped":"M d yy","datepicker_full_date":"D, M d, yy","mediumDate":"MMM d, yyyy"}};
+
+	var lang = { 
+		loadingText: "Please Wait...",
+		viewAllTickets: "View all tickets"
+	};
+
+
+//]]>
+</script> 
+
+		
+
+		<img src='/support/solutions/articles/7000005442-order-taxes-and-discount-calculations/hit' alt='Article views count' aria-hidden='true'/>
+		<script type="text/javascript">
+     		I18n.defaultLocale = "en";
+     		I18n.locale = "en";
+		</script>
+			
+    	
+
+
+		<!-- Include dynamic input field script for signup and profile pages (Mint theme) -->
+
+		<!-- Include portal disallowed links -->
+		
+	</body>
+</html>

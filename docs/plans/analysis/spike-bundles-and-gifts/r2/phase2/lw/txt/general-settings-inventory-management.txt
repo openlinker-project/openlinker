@@ -1,0 +1,16 @@
+=== general-settings-inventory-management | General Settings: Inventory Management
+ 
+ General Settings: Inventory Management 
+ Inventory Management
+ The Inventory management tab   contains the inventory and purchase order settings that the system will use when working with your inventory in Linnworks.net.    
+ Inventory settings
+ Default minimum level:  This is the minimum level that will automatically apply when a new item is created without a specific minimum level set. 
+ Activate the primary button via barcode: This  will give the user an alternative option when modifying a batch by  Add batch , creating a  new bin rack  screen, and/or booking in stock, to scan this barcode (inserted in the provided field) to perform the save or book in function, providing the information is valid. 
+ Scrapped Stock Consumption: By default, scrapped stock items are not included in consumption. Enable this to include scrap items in the inventory consumption statistics.   
+ Purchase orders
+ The default tax rate is 0:  This option controls whether tax is added to items when a Purchase Order is created. By default it is disabled. If enabled, items will be added to a PO with a VAT rate of 0. The tax can then be manually edited if necessary.  
+ Additional cost types:  Click  Manage Types  to add, edit or delete cost types that are defined in purchase orders. Click  here  for more details.
+  Video tutorial
+ If you prefer a visual explanation,  this  video tutorial will walk you through Linnworks's General Settings   step by step. It  can help clarify how to configure your Linnworks account and answer any additional questions.
+ Video - General Settings: Inventory Management Tab 
+ 

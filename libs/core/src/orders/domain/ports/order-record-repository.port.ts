@@ -7,6 +7,7 @@
  *
  * @module libs/core/src/orders/domain/ports
  */
+import type { LineExpansion } from '@openlinker/core/products';
 import type { OrderRecord } from '../entities/order-record.entity';
 import type { OrderLineItemDraft } from '../order-analytics-projection';
 import type {
@@ -51,6 +52,16 @@ import type {
   OrderSearchTextReindexRow,
   OrderSearchTextRewrite,
 } from '../types/order-search-text-reindex.types';
+
+/** Filter of {@link OrderRecordRepositoryPort.findHeldByReasonCode}. */
+export interface HeldOrdersFilter {
+  /** The bracketless reason code stored as `[code]` inside `mappingFailureReason`. */
+  reasonCode: string;
+  /** Only orders with a raw line sold as exactly this many units. */
+  packQuantity?: number;
+  /** Only orders with a raw line referencing one of these offers on the order's source connection. */
+  offerRefs?: readonly { connectionId: string; externalId: string }[];
+}
 
 /**
  * A held order and when its CURRENT hold began (#3485 review). The age bounds
@@ -199,6 +210,19 @@ export interface OrderRecordRepositoryPort {
     status: OrderRecord['syncStatus'][0],
     attempt: SyncAttempt
   ): Promise<void>;
+
+  /**
+   * One keyset page of the orders held with a given reason code (#3520), filtered
+   * in SQL: `recordStatus = 'awaiting_mapping'`, the `[code]` marker in
+   * `mappingFailureReason`, and optionally a raw line with this pack quantity /
+   * one of these offer refs. Ordered by `internalOrderId` and resumed with
+   * `afterId`, so a page the caller's own re-drives are about to shrink cannot
+   * step over a row (an advancing offset would).
+   */
+  findHeldByReasonCode(
+    filter: HeldOrdersFilter,
+    page: { afterId: string | null; limit: number }
+  ): Promise<OrderRecord[]>;
 
   /**
    * Find order records with filters and pagination
@@ -870,6 +894,25 @@ export interface OrderRecordRepositoryPort {
    * re-reads to tell which.
    */
   applyOrderEdit(input: ApplyOrderEditInput): Promise<OrderRecord | null>;
+
+  /**
+   * Freeze the order's bundle expansion once (#3607, ADR-083 decision 2). The
+   * sole writer of `lineExpansion`: a conditional write that only lands while
+   * the column is still NULL, and returns whatever is stored (the argument when
+   * this call wrote it, the earlier value otherwise).
+   */
+  freezeLineExpansion(internalOrderId: string, expansion: LineExpansion): Promise<LineExpansion>;
+
+  /**
+   * How many OPEN orders were frozen against each version of one bundle (#3624).
+   * Open = not cancelled and nothing shipped yet. Orders without a frozen
+   * expansion, or without this bundle in it, are not counted. One aggregate
+   * read; the answer is a list of `{version, count}` so the caller can tell the
+   * current version from the older ones.
+   */
+  countOpenOrdersByBundleVersion(
+    bundleVariantId: string
+  ): Promise<{ version: number; count: number }[]>;
 
   /**
    * Record that the source amended this order after ingestion (#2283) — writes

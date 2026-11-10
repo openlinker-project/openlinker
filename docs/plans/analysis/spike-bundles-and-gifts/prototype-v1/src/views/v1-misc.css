@@ -1,0 +1,17 @@
+/* Shared bits of the simple v1 views (bench, settings, report). Tokens only. */
+.v1-auto {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--border-strong, var(--border-default));
+  background: var(--bg-surface-hover);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.v1-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); }
+.v1-filters > * { min-width: 0; }
+.v1-row-mark { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.v1-wrap { white-space: normal; max-width: 36ch; display: block; }
+@media (min-width: 1100px) {
+  .v1-settings-split.cfg-split--aside { grid-template-columns: minmax(0, 1fr) 360px; }
+}

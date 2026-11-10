@@ -64,14 +64,18 @@ describe('InventorySaleDecrementHandler (#3453)', () => {
     ],
   };
 
-  const record = {
-    sourceConnectionId: 'conn-allegro',
-    isCancelled: false,
-    orderItems: [
+  const orderItems = [
       { id: 'line-1', productId: 'ol_product_1', variantId: 'ol_variant_1', quantity: 2, price: 10 },
       { id: 'line-2', productId: 'ol_product_2', quantity: 1, price: 10 },
       { id: 'line-3', productId: 'ol_product_3', variantId: 'ol_variant_3', quantity: 1, price: 10 },
-    ],
+  ];
+
+  // A non-bundle order: the physical lines are the order lines.
+  const record = {
+    sourceConnectionId: 'conn-allegro',
+    isCancelled: false,
+    orderItems,
+    physicalItems: orderItems,
   };
 
   const decremented = (overrides: Partial<DecrementForWorkResult> = {}): DecrementForWorkResult => ({

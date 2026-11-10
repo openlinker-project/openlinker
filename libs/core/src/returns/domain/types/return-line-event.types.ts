@@ -200,6 +200,10 @@ export interface CreateReturnLineEventInput {
   /** The adapter's own sentence, verbatim. Null when nothing was refused. */
   restockBlockedDetail: string | null;
   restockedBy: RestockedBy | null;
+  /** Bundle-component coordinates (#3933); all omitted for an act on the line itself. */
+  componentVariantId?: string | null;
+  componentGroup?: string | null;
+  componentShareGross?: number | null;
   /**
    * WHICH inventory master this attempt was made against.
    *

@@ -9,6 +9,7 @@
  * @module libs/core/src/inventory/application/types
  * @see docs/architecture/adrs/061-advisory-reservations-and-availability-authority.md
  */
+import type { ComponentLineRef } from '@openlinker/core/products';
 import type { ReservationAtpEffect, ReservationClaimOutcome } from '../../domain/types/reservation.types';
 
 /**
@@ -160,6 +161,13 @@ export interface CloseForOrderResult {
 export interface NarrowOrderLineInput {
   readonly orderLineId: string;
   readonly quantity: number;
+  /**
+   * The line's components when it is a bundle line (#3607, ADR-083 decision 6).
+   * The holds live on the component lines, so the target of each is
+   * `quantity * perUnit`; without this a bundle line would match no hold and
+   * the narrowing would silently do nothing.
+   */
+  readonly components?: readonly ComponentLineRef[];
 }
 
 export interface NarrowForOrderInput {

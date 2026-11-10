@@ -14,6 +14,7 @@
  */
 import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import { Test } from '@nestjs/testing';
+import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import {
   BadGatewayException,
   BadRequestException,
@@ -32,6 +33,7 @@ import {
 } from '@openlinker/core/fiscalization';
 import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization';
 import {
+  ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
   ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
   OrderRecord,
@@ -47,7 +49,11 @@ const NOW = new Date('2026-08-14T10:00:00.000Z');
 const CONNECTION_ID = '00000000-0000-0000-0000-0000000019a8';
 const ORDER_ID = 'ol_order_1';
 
-function orderRecord(): OrderRecord {
+function orderRecord(
+  items: Record<string, unknown>[] = [
+    { id: 'li_1', productId: 'p_1', quantity: 1, price: 100, name: 'Widget' },
+  ],
+): OrderRecord {
   return new OrderRecord(
     ORDER_ID,
     'cust_1',
@@ -56,7 +62,7 @@ function orderRecord(): OrderRecord {
     {
       id: ORDER_ID,
       status: 'processing',
-      items: [{ id: 'li_1', productId: 'p_1', quantity: 1, price: 100, name: 'Widget' }],
+      items,
       totals: {
         subtotal: 100,
         tax: 0,
@@ -120,6 +126,7 @@ describe('FiscalizationController', () => {
   let service: jest.Mocked<IFiscalRegistrationService>;
   let orders: jest.Mocked<Pick<IOrderRecordService, 'getOrderRecord' | 'markSalesDocumentBlock'>>;
   let documentEmails: { sendReceiptEmail: jest.Mock };
+  let integrations: { getCapabilityAdapter: jest.Mock };
 
   beforeEach(async () => {
     service = {
@@ -147,6 +154,7 @@ describe('FiscalizationController', () => {
     };
 
     documentEmails = { sendReceiptEmail: jest.fn() };
+    integrations = { getCapabilityAdapter: jest.fn().mockResolvedValue({}) };
 
     const moduleRef = await Test.createTestingModule({
       controllers: [FiscalizationController],
@@ -158,6 +166,11 @@ describe('FiscalizationController', () => {
           useValue: { get: jest.fn().mockResolvedValue({ config: {} }) },
         },
         { provide: ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN, useValue: documentEmails },
+        {
+          provide: ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+          useValue: { resolveForDocuments: jest.fn().mockResolvedValue(undefined) },
+        },
+        { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrations },
       ],
     }).compile();
 
@@ -333,6 +346,33 @@ describe('FiscalizationController', () => {
         }),
         expect.anything(),
       );
+    });
+
+    it('should take 0.01 from a paid line for a gift when the connection chose show and the adapter refuses zero (#3930)', async () => {
+      const giftRecord = orderRecord([
+        { id: 'li_1', productId: 'p_1', quantity: 1, price: 100, name: 'Widget' },
+        { id: 'g1', productId: 'p_g', quantity: 1, price: 0, name: 'Gift', gift: { source: 'channel' } },
+      ]);
+      orders.getOrderRecord.mockResolvedValue(giftRecord);
+      const connectionPort = controller['connectionPort'] as unknown as { get: jest.Mock };
+      connectionPort.get.mockResolvedValue({ config: { giftOnDocuments: { form: 'show' } } });
+      integrations.getCapabilityAdapter.mockResolvedValue({ acceptsZeroValueLine: () => false });
+
+      await controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID });
+
+      expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith(CONNECTION_ID, 'Fiscalization');
+      const cmd = service.requestRegistration.mock.calls[0][0];
+      expect(cmd.lines).toHaveLength(2);
+      expect(cmd.lines[1].unitPriceGross).toBeCloseTo(0.01);
+      const total = cmd.lines.reduce((n, l) => n + Math.round(l.quantity * l.unitPriceGross * 100), 0);
+      expect(total).toBe(10000);
+    });
+
+    it('should still register when the adapter cannot be resolved (#3930)', async () => {
+      orders.getOrderRecord.mockResolvedValue(orderRecord());
+      integrations.getCapabilityAdapter.mockRejectedValue(new Error('no adapter'));
+      await controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID });
+      expect(service.requestRegistration).toHaveBeenCalled();
     });
 
     it('should 404 for an unknown order', async () => {

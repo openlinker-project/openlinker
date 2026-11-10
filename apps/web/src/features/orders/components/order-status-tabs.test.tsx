@@ -38,7 +38,7 @@ describe('OrderStatusTabs', () => {
     renderWithProviders(<OrderStatusTabs value="synced" summary={SUMMARY} onChange={vi.fn()} />);
 
     const tabs = screen.getAllByRole('tab');
-    expect(tabs.map((tab) => tab.getAttribute('data-health'))).toEqual([
+    expect(tabs.map((tab) => tab.getAttribute('data-tab'))).toEqual([
       'all',
       'source_deleted',
       'needs_attention',
@@ -55,7 +55,7 @@ describe('OrderStatusTabs', () => {
   it('should show "—" rather than 0 while the summary is unknown', () => {
     renderWithProviders(<OrderStatusTabs value={undefined} summary={undefined} onChange={vi.fn()} />);
 
-    expect(screen.getAllByRole('tab')[0]).toHaveTextContent('—');
+    expect(screen.getAllByRole('tab')[0]).toHaveTextContent('-');
   });
 
   it('should move to the next tab with ArrowRight', () => {

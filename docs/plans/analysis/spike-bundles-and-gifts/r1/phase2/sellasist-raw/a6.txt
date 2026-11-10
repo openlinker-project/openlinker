@@ -1,0 +1,526 @@
+##### Czy Sellasist umożliwia wydruk paragonów za pomocą drukarki fiskalnej? | https://sellasist.pl/pomoc/czy-jest-mozliwy-wydruk-paragonu-przez-drukarke-fiskalna/ | modified 2025-04-03
+Tak, wydruk paragonu przez drukarkę fiskalną zintegrowaną z Sellasist jest możliwy.
+- Integracja drukarki fiskalnej z Sellasist jest prosta i nie zajmuje dużo czasu.
+- Po integracji, wydruk paragonów odbywa się automatycznie, co ułatwia zarządzanie sprzedażą. 
+- Dodatkowo, Sellasist oferuje wiele narzędzi do zarządzania sprzedażą, zamówieniami i produktami, co sprawia, że jest to kompleksowe rozwiązanie dla Twojego biznesu.
+ #### 
+ Jak zintegrować Sellasist z drukarką fiskalną? KROK 1: Załóż konto na Sellasist 
+ Możesz to zrobić tutaj ->. 
+ Jeśli posiadasz już sklep w Sellingo, możesz go zintegrować z Sellasist.
+KROK 2: Integracja z drukarką fiskalną. 
+Po założeniu konta Sellasist, możesz zintegrować swoją drukarkę fiskalną z systemem. Pamiętaj, że integracja jest płatna.  
+ #### 
+ UWAGA! 
+ Jeśli chcesz używać więcej niż jednej drukarki fiskalnej, skontaktuj się najpierw z firmą AppsBusters.
+Fiskalizator umożliwia elektroniczną fiskalizację paragonów w aplikacji Sellasist, co pozwala na zgodność z przepisami podatkowymi. To narzędzie ułatwia procesy fiskalne i eliminuje konieczność ręcznego wystawiania paragonów.
+Przejdź do bezpośredniego zakupu usługi AB Fiscal ->
+Dowiedz się jak skonfigurować usługę AB Fiscal ->
+[IMG:]
+ #### 
+ Jakub Maguza 
+ kontakt@appsbusters.pl
+appsbusters.pl
+Zintegruj Sellasist z wybranym programem magazynowo-księgowym!
+Jak uruchomić integracje z systemem ERP Subiekt, WF-Mag, Navireo, Syphony?
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Jak zintegrować Sellasist WMS z drukarką fiskalną? | https://sellasist.pl/pomoc/jak-zintegrowac-sellasist-wms-z-drukarka-fiskalna/ | modified 2022-06-01
+Sellasist możesz zintegrować z drukarkami fiskalnymi. Integracja znacznie upraszcza wystawianie i wydruk paragonów fiskalnych dla zamówień pochodzących z różnych źródeł sprzedaży. W ramach integracji obsługiwane są wszystkie drukarki Posnet oraz innych producentów drukarek opartych na protokole komunikacyjnym Thermal. 
+Integracja drukarki fiskalnej jest usługą
+płatną, którą zajmuje się firma Garisoft. W ramach usługi możliwa jest instalacja zdalna. 
+Jeśli chcesz podłączyć swoją drukarkę fiskalną do Sellasist, najpierw wygeneruj klucz API Sellasist. Zobacz jak -> Czym jest API? Jak w Sellasist wygenerować klucz API?
+Kiedy masz już niezbędny klucz skontaktuj się z firmą Garisoft.
+GARISOFT
+Adam Garstka Usługi Informatyczne
+adam@garisoft.pl
+tel. 664-978-539
+Garisoft.pl 
+ Sellasist założysz tutaj ->. 
+ W przypadku kiedy masz już założony sklep Sellingo i chcesz używać
+drukarki fiskalnej, możesz zintegrować sklep z Sellasist. Zakładając
+Sellasist, podaj te same dane, na które masz założony sklep. Możesz też
+po prostu zalogować się na swoje konto eSprzedaż, na którym masz sklep i
+ założyć Sellasist korzystając z zakładki Aktywuj nowe usługi. 
+ Zobacz jak zalogujesz się na konto eSprzedaż ->. 
+ Zobacz jak zintegrujesz sklep z Sellasist ->. 
+Czy można zintegrować Sellasist z zewnętrznym programem magazynowym?
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### eparagony.pl – Nowa integracja Erplink | https://sellasist.pl/pomoc/eparagonypl-nowa-integracja-erplink/ | modified 2025-10-01
+#### 
+ Co to są e-paragony? 
+ E-paragony to elektroniczne wersje tradycyjnych paragonów fiskalnych. Są one generowane cyfrowo i mogą być wysyłane bezpośrednio do klientów poprzez e-mail lub inne środki komunikacji elektronicznej. E-paragony są prawnie równoważne, co papierowe odpowiedniki i spełniają wszystkie wymagania dotyczące dokumentacji sprzedaży.
+Wystawiając eparagony, nie musisz już drukować wersji papierowej!
+ #### 
+ Korzyści z nowej integracji Erplink z eparagony.pl 
+- Nowy moduł Erplink: Dzięki nowemu modułowi integracji Erplink ujednolicono proces wszystkich integracji. Znacznie usprawniono działanie systemu i naprawiono liczne problemy względem starego modułu.
+- Oszczędność: Uruchomienie eparagonów pozwala na zmniejszenie kosztów pracy, papieru, energii czy amortyzacji i archiwizacji.
+- Ekologia: Redukcja zużycia papieru przyczynia się do ochrony środowiska.
+- Szybkość pracy: Automatyzacja procesu fiskalizacji znacznie przyspiesza obsługę klienta. 
+- Wygodna archiwizacja: Elektroniczne paragony są łatwe i wygodne do przechowywania i archiwizacji.
+- Nowoczesny wizerunek firmy: Używanie e-paragonów jest odbierane jako krok w kierunku nowoczesności.
+- Dostępność: Klienci mogą łatwo przechowywać e-paragony – dokument cyfrowy się nie zniszczy ani nie zgubi, co jest dużo wygodniejsze niż przechowywanie papierowych kopii.
+ #### 
+ UWAGA! 
+ Nowa integracja Erplink jest kompatybilna tylko z nowym modułem dla Dokumentów [Nowe] (więcej na temat nowego modułu dokumentów znajdziesz tutaj).
+E-paragony możesz łatwo zintegrować z Sellasist, co umożliwi automatyczne generowanie i wysyłanie paragonów bezpośrednio po dokonaniu transakcji.
+ #### 
+ Jak skonfigurować integrację eparagony.pl z Sellasist? Krok 1: Uzyskanie danych dostępowych od eparagony.pl 
+ Aby rozpocząć, odwiedź stronę Jak zacząć na eparagony.pl i postępuj zgodnie z ich instrukcjami.
+Pamiętaj! Dla integracji z Sellasist w formularzu rejestracji eparagony.pl wybierz Sellasist jako metodę integracji.
+ #### 
+ PROMOCJA! 
+ Zarejestruj usługę przez nasz link, a z kodem promocyjnym: Sellasist30 
+otrzymasz 30 dni bezpłatnego korzystania z usługi. 
+Pełny cennik usługi eparagony.pl dostępny TUTAJ
+Pomoc techniczna na: pomoc@eparagony.pl.
+Po zakończeniu procesu rejestracji otrzymasz od eparagony.pl na swój adres e-mailowy wszystkie dane dostępowe, potrzebne w kolejnych krokach podczas integracji z Sellasist.
+ #### 
+ Krok 2: Konfiguracja integracji w panelu Sellasist 
+ 1. Przejdź do zakładki Integracje -> Dodaj nową integrację.
+2. Wybierz eparagony.pl.
+[IMG:]
+[IMG:]
+Uwaga! Jeżeli wybierzesz serię dokumentów dla danej integracji, nie będziesz mógł już z niej skorzystać w innych integracjach. Możesz wybrać jedną serię dokumentów na integrację.
+Nazwa konta – wpisz dowolną nazwę konta.
+Serie dokumentów – wybierz spośród dostępnych serii. 
+Pamiętaj! Eparagony obsługują tylko serię Faktury oraz Paragony.
+pos_id – to ID punktu sprzedaży
+Id klienta – to ID użytkownika eparagony.pl
+Client secret – hasło do połączenie z eparagony.pl
+webhook_secret – klucz webhook
+Wszystkie dane otrzymasz po zarejestrowaniu od obsługi eparagony.pl
+Po uzupełnieniu danych możesz przetestować połączenie. Jeżeli wszystko działa poprawnie kliknij Zapisz. Integracja zostanie dodana.
+ #### 
+ Krok 3: Ustawienia integracji 
+ Po pomyślnej konfiguracji w zakładce Integracje pojawi się integracja eparagony.pl.
+Przejdź do zakładki i skonfiguruj dostępne opcje integracji:
+[IMG:]
+1. Mapowanie metod płatności.
+[IMG:]
+Powiąż metody płatności Sellasist z eparagony.
+2. Podstawowa konfiguracja.
+[IMG:]
+Skonfiguruj dane:
+[IMG:]
+Status błędu – Wybierz jaki status ma się ustawić w zamówieniu, po wystąpienia błędu przesyłania dokumentów.
+Pole dodatkowe zapisu linku do dokumentu – pole dodatkowe w zamówieniu do zapisu linków wystawionych dokumentów. Utwórz pole dodatkowe w zamówieniu, by dowiedzieć się więcej jak to zrobić przejdź do artykułu pomocy ->  
+Stawki VAT – wpisz stawki VAT, tak jak w swoim panelu eparagony.pl 
+Automatyczne wysyłanie paragonów – zaznaczając ten checkbox, każdy wystawiony paragon będzie automatycznie wysyłany do eparagony.pl. Jeżeli go nie zaznaczysz, każdy dokument trzeba będzie zaakceptować ręcznie. 
+Automatyczne drukuj paragony – włącz, by automatycznie zlecać wydruk paragonu.
+Przypisywany numer dokumentu: Wybierz numer, który ma zostać nadany dokumentowi Sellasist.
+Zobacz także:Kliknij tutaj, aby zobaczyć wygląd e-paragonu.
+Po skonfigurowaniu ustawień, kliknij Zapisz.
+ #### 
+ Jak wystawić e-paragon? 
+ 1. Skonfiguruj serie dokumentów dla nowego modułu. By dowiedzieć się więcej, przejdź do artykułu pomocy ->
+2. Przejdź do edycji zamówienia (Zamówienia -> Zamówienia -> Edycja wybranego zamówienia)
+3. Kliknij Dokumenty [Nowe] -> Wystaw dokument sprzedażowy a następnie wybierz odpowiednią serię.
+[IMG:]
+[IMG:]
+4.  E-paragon zostanie wystawiony. Numer znajdziesz w:
+- edycji zamówienia w sekcji Wysyłka i płatności: 
+[IMG:]
+- w logach czynności, które znajdują się na dole strony, w edycji zamówienia: 
+[IMG:]
+- w zakładce Dokumenty [Nowe] -> Dokumenty sprzedaży:
+[IMG:]
+ #### 
+ Automatyczne generowanie dokumentów 
+ Dokumenty możesz wygenerować w pełni automatycznie. Przejdź do zakładki Zamówienia → Akcje automatyczne i dodaj nową akcję automatyczną.
+Warunek:
+[IMG:]
+[BETA] Dokument z serią wystawiony – Warunek zostanie spełniony, w zależności od wyboru statusu dokumentu. 
+- Opcja: został wystawiony
+Jeśli w zamówieniu będzie wystawiony dokument z jedną z zaznaczonych serii. Jeśli potrzebujesz sprawdzić, czy w zamówieniu są dwa dokumenty z wybranymi seriami – dodaj dwa warunki.
+- Opcja: nie został wystawiony
+Warunek zostanie spełniony, jeśli w zamówieniu nie będzie wystawionego żadnego dokumentu z zaznaczonymi seriami.
+Efekt:
+[IMG:]
+[BETA] Wystaw dokument z serią – po spełnieniu warunku zostanie utworzony dokument z wybranej serii. W opcjach dodatkowych możesz wybrać własny termin płatności, własną datę sprzedaży oraz wybrać konkretne stanowisko druku. Więcej o konfiguracji stanowisk druku dowiesz się w tym artykule pomocy ->
+ #### 
+ Link do e-paragonu: 
+ Jeżeli nie wybrałeś Automatyczne wysyłanie paragonów przejdź do zakładki Dokumenty [Nowe] -> Dokumenty sprzedaży i kliknij ikonę przesyłania przy wybranym paragonie.
+[IMG:]
+W sekcji status zewnętrzny pojawi się informacja z nazwą serwisu i statusie przesyłania. Jeżeli pojawi się błąd podczas wysyłania paragonu do serwisu, w tym miejscu znajdziesz również status z informacjami o błędzie:
+[IMG:]
+- Link do e-paragonu jest dostępny w polu dodatkowym zamówienia:
+1. Przejdź do Zamówienia -> Zamówienia -> edycja wybranego zamówienia 
+2. Skopiuj link w sekcji Dodatkowe pola z utworzonego pola dodatkowego.
+[IMG:]
+3. Wklej link do okna przeglądarki:
+[IMG:]
+ #### 
+ Szablony wiadomości - eparagony.pl 
+ W zakładce Administracja -> Szablony wiadomości na liście zmiennych znajdziesz nową zmienną dla eparagony.pl:
+{eparagony_link} – link do eparagonu w nowym systemie
+[IMG:]
+Dzięki zmiennym w wygodny sposób możesz stworzyć szablon dla klienta, w którym automatycznie podstawi się link do konkretnego paragonu.
+ #### 
+ Powiązane artykuły 
+ Jak utworzyć dodatkowe pola na karcie zamówień w Sellasist?
+Szablony wiadomości
+ Dokumenty sprzedażowe i magazynowe – nowy moduł w Sellasist
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Jak skonfigurować paragony? Jak wystawić paragon? | https://sellasist.pl/pomoc/jak-skonfigurowac-paragony-jak-wystawic-paragon/ | modified 2026-03-17
+Paragon możesz wystawić z poziomu karty zamówienia, ręcznie lub automatycznie. Możesz dodać też paragon ręcznie bezpośrednio z karty Paragony.
+ #### 
+ Gdzie znajdę paragony? 
+Listę paragonów znajdziesz w Dokumenty [Nowe] -> Dokumenty sprzedaży. Zostanie wczytana lista wszystkich paragonów. 
+[IMG:]
+Możesz wyeksportować paragony wystawione w danym okresie czasu klikając przycisk Eksportuj.
+[IMG:]
+Za pomocą akcji masowych możesz szybko wykonać na zaznaczonych paragonach wybrane przez siebie akcje automatyczne, takie jak masowe wysyłanie paragonów, eksport danych do Excela, eksport plików obsługiwanych przez biura rachunkowe, generowanie plików PDF, pobieranie i drukowanie.
+Wybierając z rozwijanej listy łatwo możesz wyświetlić wszystkie paragony wystawione w danym miesiącu, lub roku. Dzięki filtrom możesz wyszukać paragon po nazwie, nr zamówienia, nr paragonu, dacie utworzenia lub statusie.  
+[IMG:]
+Przy każdym dokumencie znajdziesz przyciski, które pozwolą Ci przejść do edycji paragonów, wydrukować, usunąć wybrane paragony.
+[IMG:]
+Wystawianie paragonu z karty zamówienia
+ 1. Przejdź do zakładki Zamówienia ⇨ Zamówienia.
+ 2. Edytuj zamówienie, do którego chcesz wystawić paragon.
+3. Najedź myszą na opcję Dokumenty [Nowe] i kliknij Wystaw dokument sprzedażowy.
+[IMG:]
+4. Wybierz z listy odpowiednią serię dokumentu i zatwierdź wybór.
+[IMG:]
+5. Paragon zostanie wystawiony. Wystawiony paragon znajdziesz w Dokumenty [Nowe] ⇨ Dokumenty sprzedażowe. Możesz go tam edytować, jeśli potrzebujesz jeszcze uzupełnić, dodać lub usunąć
+ produkty, zmienić dane. Możesz też dodać Dodatkowy Opis, który będzie
+wydrukowany na dole paragonu. Mogą to być podziękowania za transakcję,
+albo np. kod rabatowy dla klienta.
+Ręczne wystawianie paragonu
+ 1. Przejdź do zakładki Dokumenty [Nowe] ⇨ Dokumenty sprzedażowe.
+ 2. Kliknij ikonę plusa i wybierz Paragon.
+[IMG:]
+3. Wypełnij formularz.
+[IMG:]
+ 4. Kiedy uzupełnisz już wszystkie dane, ręcznie lub automatycznie. Kliknij niebieski klawisz Zapisz.
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Obsługa KSeF — Konfiguracja integracji z KSeF w Sellasist | https://sellasist.pl/pomoc/obsluga-ksef-konfiguracja-integracji-z-ksef-w-sellasist/ | modified 2026-04-03
+KSeF (Krajowy System e-Faktur) to centralny system teleinformatyczny, za pomocą którego wystawiasz, odbierasz i przechowujesz faktury ustrukturyzowane w jednolitym formacie. KSeF powstał po to, aby ujednolicić obieg faktur, ograniczyć błędy i nadużycia oraz zautomatyzować proces fakturowania.
+ #### 
+ Jak działa KSeF? 
+ Faktura jest wystawiana w systemie sprzedażowym lub księgowym jako plik XML zgodny ze schemą KSeF FA (3) i przesyłana do krajowego systemu przez API. KSeF weryfikuje poprawność danych, a po pozytywnej walidacji nadaje fakturze numer KSeF i uznaje ją za wystawioną.
+ #### 
+ Co zmienia KSeF? 
+ KSeF wprowadza centralny, ujednolicony obieg faktur, do którego dostęp mają zarówno wystawca, jak i nabywca. Zmienia się moment uznania faktury za wystawioną, sposób jej weryfikacji oraz obsługa numeracji i korekt. Proces fakturowania staje się bardziej zautomatyzowany, ale jednocześnie wymaga większej dbałości o poprawność danych już na etapie wystawiania dokumentu.
+ #### 
+ Konfiguracja Zanim zaczniesz: Ważna informacja dotycząca obsługi KSeF w Sellasist 
+ Obsługa KSeF w Sellasist przeznaczona jest wyłącznie dla użytkowników korzystających z nowego modułu dokumentów, którzy nie korzystają z zewnętrznych integracji księgowych.
+W przypadku aktywnej integracji z zewnętrznym systemem ERP, obsługa KSeF powinna być skonfigurowana bezpośrednio po stronie tego systemu. Pozwala to uniknąć niejednoznacznych sytuacji, takich jak równoległe przesyłanie dokumentów do KSeF z różnych źródeł czy rozbieżności w statusach faktur.
+Stary moduł dokumentów nie jest już wspierany, dlatego obsługa KSeF nie została i nie będzie w nim wdrożona.
+ #### 
+ Podłączanie konta KSeF w Sellasist 
+ Aby podłączyć konto KSeF w Sellasist, należy wygenerować dane dostępowe (token oraz certyfikaty), a następnie uzupełnić je w panelu Sellasist.
+ #### 
+ Dane dostępowe z KSeF 
+ 1. Przejdź na stronę KSeF i zaloguj się do swojego panelu.
+Wskazówka: Niniejsza instrukcja przedstawia logowanie w ogólnodostępnym środowisku testowym KSeF. W środowisku testowym posługuj się wyłącznie zanonimizowanymi, fikcyjnymi danymi.
+[IMG:]
+2. Przejdź do zakładki Tokeny → Generuj token.
+[IMG:]
+W formularzu wprowadź dowolną nazwę tokenu oraz zaznacz uprawnienia:
+- wystawianie faktur
+- przeglądanie faktur
+Po wypełnieniu formularza kliknij przycisk Generuj token.
+Na ekranie zobaczysz wygenerowany token.
+[IMG:]
+Skopiuj token i otwórz Sellasist w nowej karcie przeglądarki. Nie zamykaj okna z panelem KSeF.
+ #### 
+ Dodawanie konta 
+ 1. Przejdź do Dokumenty [Nowe] → Konta KSeF i kliknij przycisk z ikoną plusa.
+Uwaga: Dodaj konto wyłącznie, jeśli KSeF nie jest podłączony w innym systemie i chcesz obsługiwać go tylko przez Sellasist.
+[IMG:]
+2. Na ekranie zobaczysz formularz dodawania nowego konta KSeF.
+[IMG:]
+ #### 
+ Sekcja: Konfiguracja integracji 
+ 1. Wypełnij podstawowe dane formularza.
+[IMG:]
+- Login KSeF (NIP): Twój NIP
+- Token: Wygenerowany i skopiowany token z panelu KSeF
+- Środowisko: Środowisko, z którym chcesz połączyć to konto (pamiętaj, aby w środowisku przedprodukcyjnym korzystać wyłącznie z fikcyjnych danych)
+- Automatyczne wysyłanie dokumentów: Aktywacja/dezaktywacja automatycznego wysyłania wystawionych dokumentów do KSeF
+- Przekazuj informacje z dodatkowego opisu do KSeF (Stopka faktury): Włącz/wyłącz przekazywanie informacji z dodatkowego opisu do pola Stopka faktury w KSeF
+- Wysyłaj tylko faktury z NIP: Aktywacja/dezaktywacja wysyłania do KSeF wyłącznie faktur dla kontrahentów z podanym NIP
+- Nie dodawaj numerów EAN do KSeF: Zaznacz, aby numery EAN (GTIN) produktów nie były przesyłane do KSeF w wierszach faktury.
+- Nie pokazuj kodów offline na wydrukach: Zaznacz, aby faktury nieprzesłane do KSeF nie zawierały kodów offline w domyślnych szablonach wydruków.
+2. Aby uzyskać certyfikat, klucz prywatny i hasło do klucza prywatnego, ponownie otwórz kartę z panelem KSeF i przejdź do Certyfikaty → Wnioskuj o certyfikat.
+Wskazówka: Certyfikat umożliwia wygenerowanie kodu QR pozwalającego zweryfikować wystawcę dokumentu i jest wymagany do wystawiania faktur w trybie offline, np. gdy dokumenty są wysyłane do KSeF z opóźnieniem lub API KSeF jest chwilowo niedostępne.
+W formularzu wprowadź dowolną nazwę certyfikatu, utwórz hasło i kliknij przycisk Generuj.
+[IMG:]
+Przeglądarka poprosi o zapisanie pliku z kluczem prywatnym. Zapisz plik.
+[IMG:]
+Na ekranie zobaczysz wniosek o wydanie certyfikatu.
+[IMG:]
+- Przeznaczenie certyfikatu: Zaznacz opcję Podpis linku do weryfikacji wystawcy
+- Certyfikat ważny od: Ustaw datę, od której będzie ważny Twój certyfikat.
+Po wypełnieniu wniosku kliknij przycisk Wyślij wniosek o wydanie certyfikatu.
+Wskazówka: Proces wydawania certyfikatu może potrwać kilka minut.
+Pobierz i zapisz certyfikat.
+[IMG:]
+[IMG:]
+Wróć do częściowo uzupełnionego formularza dodawania konta KSeF w Sellasist.
+3. Wypełnij pozostałe dane formularza.
+[IMG:]
+- Certyfikat – podpis linku do weryfikacji wystawcy: Wgraj swój plik z rozszerzeniem .crt
+- Klucz prywatny: Wgraj swój plik z rozszerzeniem .key
+- Hasło do klucza prywatnego: Wpisz hasło utworzone w kroku 2.
+- Data uruchomienia KSeF: Ustal datę, od której wystawione dokumenty mają posiadać kody QR KSeF na wydrukach.
+ #### 
+ Sekcja: Przypisane serie KSeF 
+ Wybierz serie dokumentów, które chcesz obsługiwać w ramach dodawanego konta KSeF w Sellasist. Wybrane serie będą wykorzystywane do wystawiania i wysyłania dokumentów do KSeF.
+[IMG:]
+Uwaga: Jeśli dana seria dokumentów jest powiązana z systemem ERP (np. wFirma czy inFakt), jej wybór będzie niedostępny.
+Po zapisaniu formularza, na liście kont KSeF zobaczysz nową pozycję.
+[IMG:]
+ #### 
+ Mapowanie metod płatności 
+ [IMG:]
+Zmapuj metody płatności w Sellasist z metodami w KSeF. Metoda płatności będzie widoczna na dole wydruku w KSeF.
+ #### 
+ Serie dokumentów a konto KSeF 
+ Informację na temat aktywnego konta KSeF dla danej serii dokumentu znajdziesz, przechodząc do Dokumenty [Nowe] → Serie dokumentów → Wybrana seria.
+[IMG:]
+Jeśli dana seria dokumentu posiada podpięte konto KSeF, w jej ustawieniach znajdziesz numer konta (screen poniżej).
+[IMG:]
+Jeśli dana seria dokumentu nie posiada podpiętego konta KSeF, w jej ustawieniach możesz przejść bezpośrednio do dodawania nowego konta (screen poniżej).
+[IMG:]
+ #### 
+ Statusy i wysyłka dokumentów sprzedaży do KSeF Statusy KSeF dokumentów sprzedaży 
+ [IMG:]
+Każdy dokument sprzedaży wystawiany w Sellasist posiada 3 dodatkowe kolumny związane z KSeF:
+- Status KSeF: Informacja o aktualnym etapie obsługi dokumentu w KSeF (np. Oczekujące, W trakcie przetwarzania czy Zaakceptowane). Szczegóły statusu znajdziesz, najeżdżając kursorem na ikonę informacyjną przy konkretnej pozycji.
+[IMG:]
+- Numer KSeF: Unikalny numer nadany przez KSeF po poprawnym przyjęciu faktury. Jego obecność oznacza, że dokument został zaakceptowany przez system.
+- Data akceptacji KSeF: data i godzina przyjęcia faktury w KSeF, od której dokument jest uznawany za wystawiony.
+Uwaga: W przypadku błędu API po stronie KSeF, Sellasist podejmie łącznie 5 prób przesłania dokumentu sprzedaży w odstępie co 30 minut. Jeśli wszystkie próby zakończą się niepowodzeniem, przesyłanie dokumentu należy ponawiać ręcznie. Więcej na temat ręcznego przesyłania dokumentów do KSeF znajdziesz w następnej sekcji.
+Wskazówka: Listę dokumentów możesz filtrować także według wyżej wymienionych kolumn.
+Szczegółowy status KSeF dla danego dokumentu sprzedaży znajdziesz także, przechodząc do edycji dokumentu (Dokumenty [Nowe] → Dokumenty sprzedaży → Wybrany dokument).
+[IMG:]
+Jeśli dokument został zaakceptowany, w szczegółach znajdziesz jego numer i status (screen poniżej).
+[IMG:]
+ #### 
+ Ręczne wysyłanie dokumentów do KSeF 
+ Jeśli podczas przesyłania dokumentu wystąpił błąd, w jego szczegółach znajdziesz informację o błędzie i przycisk Wyślij do KSeF umożliwiający ręczne ponowienie wysyłki (screen poniżej).
+[IMG:]
+Jeśli z jakiegoś powodu ręczne ponawianie wysyłki nie przynosi efektu, możesz samodzielnie przypisać numer KSeF (awaryjnie). W tym celu:
+1. Kliknij przycisk Pobierz XML.
+[IMG:]
+2. Zapisz plik.
+[IMG:]
+3. Przejdź do panelu KSeF i wgraj dokument ręcznie (Faktury → Wczytaj fakturę → Dodaj plik).
+[IMG:]
+4. Skopiuj uzyskany numer faktury, wróć do szczegółów dokumentu w Sellasist i wklej numer do pola Numer KSeF.
+[IMG:]
+Na koniec kliknij przycisk Przypisz nr ręcznie.
+ #### 
+ Masowe wysyłanie dokumentów do KSeF 
+ Aby ręcznie wysłać do KSeF wiele dokumentów na raz, przejdź na listę dokumentów sprzedaży i zaznacz wybrane pozycje. Następnie z rozwijanej listy akcji masowych wybierz Zleć/Ponów wysyłkę do KSeF i kliknij przycisk Wykonaj.
+[IMG:]
+ #### 
+ Wydruki dokumentów 
+ Uwaga: Jeśli posiadasz integrację z zewnętrznym systemem ERP, do którego przekazujesz dokumenty wystawione w Sellasist, ich wydruki (PDF) należy dostarczać kupującym wyłącznie z tego zewnętrznego systemu. W takim przypadku możesz pobierać wygenerowane dokumenty z systemu ERP do pola dodatkowego w Sellasist i zautomatyzować ich wysyłkę do kupujących. Więcej na temat pól dodatkowych znajdziesz tutaj i tutaj.
+Uwaga: Standardowy, niezmodyfikowany szablon wydruku dla dokumentów sprzedaży domyślnie zawiera wymagane kody QR. Jeśli jednak posiadasz zmodyfikowany szablon wydruku, upewnij się, że zawiera on fragment kodu odpowiadający za umieszczenie na nim kodów QR. Szczegółową instrukcję dodawania kodu znajdziesz w tym artykule, w sekcji Zmodyfikowany szablon a kody QR KSeF.
+ #### 
+ Tryb online 
+ Tryb online dla dokumentów KSeF polega na automatycznym przesyłaniu faktur do KSeF bezpośrednio po ich wystawieniu. Po poprawnej weryfikacji, dokument otrzymuje numer KSeF i status akceptacji. Jest to domyślny i rekomendowany tryb pracy.
+W tym trybie na dokumencie zostaje umieszczony jeden kod QR prowadzący bezpośrednio do faktury w systemie KSeF, który umożliwia jej weryfikację na podstawie nadanego numeru.
+Wskazówka: Jeśli automatyczne przesyłanie dokumentu do KSeF się nie powiedzie, Sellasist wystawi go w trybie offline, aby nie blokować dalszych procesów związanych z realizacją zamówienia.
+[IMG:]
+ #### 
+ Tryb offline 
+ Tryb offline dla dokumentów KSeF umożliwia wystawianie faktur bez natychmiastowego przesyłania ich do KSeF, np. w przypadku czasowej niedostępności API. Dokumenty są zapisywane w systemie, a następnie przekazywane do KSeF w późniejszym terminie, zgodnie z obowiązującymi zasadami.
+W tym trybie na dokumencie zostają umieszczone dwa kody QR, ponieważ w momencie wystawienia faktura nie znajduje się jeszcze w KSeF i nie posiada nadanego numeru. Jeden kod pozwala zweryfikować wystawcę dokumentu (certyfikat), a drugi umożliwia weryfikację faktury w KSeF po jej późniejszym przesłaniu i zaakceptowaniu przez system.
+Wskazówka: Dokument wystawiony w trybie offline zachowa takie oznaczenie nawet po zaakceptowaniu go w KSeF. Taki dokument jest równie ważny, co dokument wystawiony w trybie online.
+[IMG:]
+Sprawdź także: Więcej na temat szablonów wydruków dokumentów sprzedażowych znajdziesz w tym artykule.
+ #### 
+ Walidacja i automatyczne wysyłanie dokumentów sprzedaży Walidacja przed wysłaniem dokumentów do Allegro 
+ Aby wysyłać do Allegro wyłącznie dokumenty zaakceptowane w KSeF:
+1. Przejdź do Integracje → Allegro i przy wybranym koncie kliknij przycisk Ustawienia zamówień.
+[IMG:]
+2. W sekcji Ustawienia dokumentów zaznacz opcję Poczekaj na numer KSeF.
+[IMG:]
+ #### 
+ Akcje automatyczne 
+ Z akcjami automatycznymi możesz wykorzystać status dokumentu w KSeF jako warunek wykonania dalszych działań — np. wysłanie powiadomienia z fakturą do kupującego. Dzięki temu uruchomisz konkretne procesy dopiero wtedy, gdy dokument osiągnie określony etap przetwarzania w KSeF.
+Uwaga: Zaleca się dodanie warunku [Nowe] Status KSeF dokumentu z serią do akcji automatycznej związanej z wysyłaniem powiadomień zawierających dokument sprzedaży.
+Wskazówka: System przesyła dokumenty do KSeF co 5 minut. Po wysłaniu dokumentu, Sellasist regularnie sprawdza jego status. Jeśli dokument nie został przetworzony, jego status jest ponow
+
+##### Szablony wydruków z opcją grupowania i sortowania produktów | https://sellasist.pl/pomoc/szablony-wydrukow-z-opcja-grupowania-i-sortowania-produktow/ | modified 2025-10-02
+Dotychczas zbieranie produktów wymagało przygotowania osobnego wydruku dla każdego zamówienia. Przy większej liczbie zleceń oznaczało to konieczność korzystania z wielu dokumentów. Dlatego stworzyliśmy dwa nowe szablony, które grupują i sortują produkty z wielu zamówień w jednej zbiorczej tabeli, znacznie usprawniając proces zbierania.
+ #### 
+ Konfiguracja 
+ Aby skonfigurować szablon wydruku z funkcją grupowania produktów:
+1. Przejdź do Administracja → Szablony wydruków i kliknij przycisk Dodaj szablon.
+[IMG:]
+2. Z rozwijanej listy modułów wybierz Zamówienia.
+[IMG:]
+3. Wpisz nazwę szablonu i kliknij przycisk Przeglądaj, aby wybrać gotowy szablon.
+[IMG:]
+4. Na liście znajdziesz dwa dodatkowe szablony:
+- Zbieranie – grupowanie: EAN – sortowanie: Lokalizacja
+- Zbieranie – grupowanie: Symbol – sortowanie: Nazwa produktu
+[IMG:]
+ #### 
+ Zbieranie – grupowanie: EAN – sortowanie: Lokalizacja 
+ Jeżeli ten sam produkt z identycznym kodem EAN występuje w kilku zamówieniach, jego liczba zostanie zsumowana i przedstawiona w tabeli jako jedna pozycja. Jeśli produkt nie ma kodu EAN, system pogrupuje go według nazwy. Następnie wszystkie produkty zostaną posortowane według lokalizacji.
+[IMG:]
+ #### 
+ Zbieranie – grupowanie: Symbol – sortowanie: Nazwa produktu 
+ Jeżeli ten sam produkt z identycznym symbolem występuje w kilku zamówieniach, jego liczba zostanie zsumowana i przedstawiona w tabeli jako jedna pozycja. Jeśli produkt nie ma symbolu, system pogrupuje go według nazwy. Następnie wszystkie produkty zostaną posortowane według nazwy produktu.
+[IMG:]
+ #### 
+ Własne ustawienia szablonu 
+ Uwaga: W szablonach wydruków nie można używać znacznika script. Obsługa kodu JavaScript jest wyłączona.
+Jeśli potrzebujesz innych zasad grupowania lub sortowania produktów, możesz je skonfigurować, wprowadzając kilka prostych zmian w kodzie.
+ #### 
+ Własne ustawienia grupowania (na przykładzie EAN) 
+ Aby zmienić sposób grupowania produktów, znajdź widoczny na screenie fragment kodu. Następnie zastąp obie zaznaczone na niebiesko zmienne ean nazwą właściwości, według której chcesz grupować produkty. Listę dostępnych właściwości znajdziesz po prawej stronie konfiguratora.
+Możesz zmienić także właściwość używaną zastępczo, gdy produkt nie ma wartości głównej — np. kodu EAN. W tym celu zastąp zaznaczoną na zielono zmienną product_name nazwą wybranej właściwości.
+[IMG:]
+Uwaga: Zmień wyłącznie nazwę właściwości. Wszystkie pozostałe znaki, w tym kropki, spacje i znaki specjalne, muszą pozostać bez zmian.
+ #### 
+ Własne ustawienia sortowania (na przykładzie lokalizacji) 
+ Aby zmienić sposób sortowania produktów, znajdź wskazany fragment kodu. Następnie zastąp obie zaznaczone na niebiesko zmienne location nazwą właściwości, według której chcesz sortować produkty. Listę dostępnych właściwości znajdziesz po prawej stronie konfiguratora.
+Uwaga: Zmień wyłącznie nazwę właściwości. Wszystkie pozostałe znaki, w tym kropki, spacje i znaki specjalne, muszą pozostać bez zmian.
+ #### 
+ Powiązane artykuły 
+ Sellasist Cloud Print – drukowanie online
+Czym są szablony wydruków i jak je konfigurować?
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Dokumenty sprzedażowe i magazynowe – nowy moduł w Sellasist | https://sellasist.pl/pomoc/dokumenty-sprzedazowe-i-magazynowe-nowy-modul-w-sellasist/ | modified 2026-11-03
+Nowy moduł dokumentów to środowisko, które usprawnia codzienną pracę i zwiększa kontrolę nad gospodarką magazynową. Umożliwia kompleksowe zarządzanie dokumentami sprzedażowymi i magazynowymi, elastyczne konfigurowanie serii oraz obsługę wielu firm.
+W nowym module możesz wystawiać i obsługiwać następujące dokumenty:
+ #### 
+ Dokumenty sprzedaży: 
+- FV (faktura VAT) — podstawowy dokument sprzedaży.
+- FV/WDT (faktura VAT WDT) — dokument stosowany przy wewnątrzwspólnotowej dostawie towarów.
+- FV/EXPORT (faktura VAT eksportowa) — dokument stosowany przy sprzedaży towarów poza terytorium Unii Europejskiej.
+- FV/MARŻA (faktura VAT marża) — dokument stosowany przy sprzedaży towarów lub usług objętych procedurą VAT marża, w której podatek naliczany jest od marży, a nie od całej wartości sprzedaży.
+- FV/OSS (faktura VAT OSS) — dokument umożliwiający rozliczenie VAT w jednym państwie bez konieczności rejestrowania się jako podatnik VAT w innych państwach członkowskich.
+Wskazówka: Aby skonfigurować fakturę VAT OSS, podczas edycji serii w zakładce Dokumenty [Nowe] → Serie dokumentów wybierz podtyp Faktura i zaznacz checkbox Dokument OSS.
+- PAR (paragon fiskalny) — dokument służący do rejestrowania sprzedaży detalicznej.
+Wskazówka: Jeśli korzystasz z zewnętrznych drukarek fiskalnych, np. abfiscal, zaktualizuj ustawienia po stronie integratora. W razie potrzeby skontaktuj się z dostawcą integracji.
+- RACH (rachunek) — dokument potwierdzający sprzedaż lub wykonanie usługi, stosowany głównie przez podmioty niebędące płatnikami VAT.
+- PRO (faktura proforma) — dokument informujący o warunkach planowanej transakcji, wystawiany przed właściwym dokumentem.
+- KOR (faktura korygująca) — dokument służący do korygowania wcześniej wystawionej faktury.
+ #### 
+ Dokumenty magazynowe: 
+- RZ (rezerwacja) — automatyczna rezerwacja towaru przy każdej sprzedaży.
+- PZ (przyjęcie zewnętrzne) — rejestrowanie dostaw i przyjęć towarów spoza firmy.
+- PW (przychód wewnętrzny) — rejestrowanie transferów między jednostkami przedsiębiorstwa.
+- WZ (wydanie zewnętrzne) — rejestrowanie wydania towaru w związku ze sprzedażą lub przekazaniem go w formie darowizny.
+- RW (rozchód wewnętrzny) — rejestrowanie zużycia materiałów na potrzeby firmy, np. podczas produkcji.
+ #### 
+ Co zyskasz z nowym modułem? Kompletny zestaw dokumentów 
+ Nowy moduł dokumentów w Sellasist umożliwia tworzenie i personalizowanie wszystkich typów dokumentów sprzedaży i magazynowych. Możesz definiować ich szablony, serie, numerację, pola dodatkowe oraz wygląd wydruków.
+Do dyspozycji masz gotowe wzory oraz możliwość tworzenia własnych szablonów z wykorzystaniem zmiennych systemowych. Moduł umożliwia także generowanie plików JPK, eksport danych w formatach EPP, CSV, XLSX, eksport do programu Comarch ERP Optima i innych systemów wykorzystywanych do prowadzenia ewidencji rozliczeń.
+Zobacz także: Więcej informacji na temat szablonów wydruków znajdziesz tutaj.
+ #### 
+ Pełna kontrola magazynowa 
+ Sposób aktualizowania stanów magazynowych zależy od konfiguracji sposobu zarządzania stanami. Możesz wdrożyć pełny obieg dokumentów magazynowych, w którym każda zmiana stanu wynika z odpowiedniego dokumentu, np. przyjęcia towaru.
+W zależności od wybranych ustawień, system może automatycznie rezerwować produkty po złożeniu zamówienia, a na karcie produktu wyświetlać informacje o powiązanych dokumentach. Takie rozwiązanie zapewnia większą kontrolę nad stanami magazynowymi i ogranicza ryzyko wystąpienia błędów.
+ #### 
+ Automatyzacja i wielofirmowość 
+ Możesz zautomatyzować wysyłanie powiadomień do klientów oraz powiązać wystawianie dokumentów z efektami magazynowymi. Przykładowo, po wystawieniu faktury system może automatycznie wygenerować dokument WZ.
+System umożliwia również tworzenie własnych scenariuszy działań. Dodatkowo, możesz obsługiwać wiele firm jednocześnie, przypisywać im osobne serie dokumentów oraz konfigurować procesy zgodnie z indywidualnymi potrzebami każdej firmy.
+ #### 
+ Moduł gotowy na integracje z ERP 
+ Nowy moduł umożliwia integrację z zewnętrznymi systemami, takimi jak Fakturownia, inFakt, wFirma, e-paragony czy IFIRMA. Lista obsługiwanych integracji będzie stopniowo rozszerzana.
+ #### 
+ Krok 1: Jak zacząć korzystać z nowych dokumentów? 
+ W panelu Sellasist znajdziesz zakładkę Dokumenty [Nowe].
+[IMG:]
+ #### 
+ Włączenie pełnej wersji z efektem magazynowym 
+ Efekt magazynowy jest domyślnie wyłączony.
+1. Aby włączyć efekt magazynowy, przejdź do Dokumenty [Nowe] → Dokumenty sprzedaży → przejdź do ustawień.
+[IMG:]
+2. W zakładce Gospodarka magazynowa, w sekcji Ustawienia podstawowe, znajdź ustawienie Sposób zarządzania stanami.
+[IMG:]
+Stanami magazynowymi możesz zarządzać w jeden z następujących sposobów:
+- Zarządzanie stanami tylko za pomocą dokumentów
+- Zarządzanie stanami bez użycia dokumentów
+- Zarządzanie stanami za pomocą dokumentów i ręcznej edycji
+ #### 
+ Zarządzanie stanami tylko za pomocą dokumentów 
+ Opcja Zarządzanie stanami tylko za pomocą dokumentów umożliwia zmianę stanów magazynowych wyłącznie przez wystawianie dokumentów magazynowych w Sellasist. W tym trybie każda zmiana ilości produktów wynika z obiegu dokumentów magazynowych. Wybór tej opcji może więc wymagać dostosowania dotychczasowego sposobu pracy do modelu opartego na dokumentach.
+Uwaga: Wybranie tej opcji wyłącza możliwość aktualizowania stanów magazynowych za pośrednictwem API. Jeśli po włączeniu tej konfiguracji dodasz integrację z systemem ERP, synchronizacja stanów magazynowych z ERP do Sellasist nie będzie wykorzystywana.
+ #### 
+ Zarządzanie stanami bez użycia dokumentów 
+ Po wybraniu opcji Zarządzanie stanami bez użycia dokumentów stan magazynowy jest aktualizowany na podstawie zamówień. Oznacza to, że sprzedaż produktów powoduje automatyczne zmniejszenie ich stanów magazynowych.
+Uwaga: Dokument PZ (przyjęcie zewnętrzne) zawsze zwiększa stan magazynowy, niezależnie od wybranego sposobu zarządzania stanami. Dzięki temu możesz przyjmować towary do magazynu za pomocą dokumentów PZ również wtedy, gdy dokumenty nie są wykorzystywane do standardowego zarządzania stanami.
+ #### 
+ Zarządzanie stanami za pomocą dokumentów i ręcznej edycji 
+ Opcja Zarządzanie stanami za pomocą dokumentów i ręcznej edycji pozwala ręcznie zmieniać stan produktu w katalogu oraz aktualizować go za pomocą dokumentów magazynowych.
+Uwaga: W tym trybie przychodzące zamówienia nie zmniejszają automatycznie stanu magazynowego. Aby zdjąć towar ze stanu, musisz wystawić do zamówienia odpowiedni dokument magazynowy.
+ #### 
+ Krok 2: Konfiguracja dokumentów 
+ Przejdź do zakładki Dokumenty [Nowe]. Znajdziesz w niej wszystkie funkcje nowego modułu dokumentów.
+ #### 
+ Serie dokumentów 
+ Konfigurację rozpocznij od utworzenia serii dokumentów. Pozwoli Ci to uporządkować dokumenty według określonych kryteriów oraz odpowiednio skonfigurować ich numerację.
+1. Przejdź do Dokumenty [Nowe] → Serie dokumentów. W tym miejscu możesz dodać nowe serie oraz skonfigurować istniejące.
+[IMG:]
+Wskazówka: Czerwone trójkąty widoczne przy seriach dokumentów oznaczają, że nie uzupełniono wszystkich wymaganych danych. Po ich uzupełnieniu oznaczenie zniknie.
+2. Aby dodać serię, kliknij przycisk z ikoną plusa. Jeśli chcesz edytować istniejącą serię, przy wybranej pozycji kliknij przycisk z ikoną ołówka.
+[IMG:]
+3. W formularzu skonfiguruj poszczególne ustawienia zgodnie ze swoimi potrzebami.
+ #### 
+ Sekcja "Ustawienia serii" 
+ Uwaga: Poszczególne opcje będą widoczne w zależności od wybranego typu serii i dalszej konfiguracji.
+[IMG:]
+[IMG:]
+[IMG:]
+[IMG:]
+- Nazwa serii: Wpisz dowolną nazwę serii, np. Faktura.
+- Prefix: Wpisz oznaczenie, które będzie wyświetlane przed numerem dokumentu, np. FV.
+- Suffix: Wpisz oznaczenie, które będzie wyświetlane po numerze dokumentu.
+- Kolor dla serii: Wybierz kolor serii dla wyróżnienia dokumentów w tabeli.
+- Typ: Wybierz, czy seria będzie dotyczyć dokumentów magazynowych, sprzedaży czy korekt:
+– Sprzedaż: Dokumenty, które nie wpływają na stan magazynowy.– Magazyn: Dokumenty, które wpływają na stan magazynowy.– Korekta: Dokumenty służące do korygowania innych dokumentów.
+- Podtyp: Wybierz konkretny podtyp dokumentu. Dostępne podtypy zależą od wybranego typu. Przykładowo, dla typu Sprzedaż możesz wybrać podtyp Faktura.
+- Rodzaj: Wybierz sposób określania rodzaju faktury. W przypadku wyboru opcji Automatycznie, system ustali właściwy rodzaj faktury na podstawie danych kupującego i odbiorcy. Możesz również wybrać konkretny, niezmienny rodzaj faktury (VAT, WDT, Eksport, OSS).
+- Dokument niefiskalny: Zaznacz tę opcję, aby oznaczyć dokument jako niefiskalny. Ustawienie jest wykorzystywane w integracji wFirma w przypadku dokumentów, które nie podlegają ewidencji sprzedaży.
+- Zbiorczy PZ dla zwrotów: Zaznacz tę opcję, aby system — zamiast osobnych dokumentów — generował jeden zbiorczy dokument PZ obejmujący wszystkie zwroty przyjęte danego dnia. Opcja jest niedostępna, jeśli zwroty obsługuje inna seria dokumentów magazynowych typu Przyjęcie zewnętrzne.
+- PZ transferowy: Zaznacz tę opcję, jeśli seria dokumentów PZ ma być wykorzystywana do obsługi przyjęć transferowych w procesie cross-dockingu.
+- Odblokuj edycję stawki VAT: Zaznacz, aby podczas dodawania pozycji do dokumentu PZ umożliwić zmianę stawki VAT produktu.
+- Zezwalaj na edycję PZ po akceptacji dokumentu: Zaznacz, aby umożliwić edycję zatwierdzonego dokumentu PZ, pod warunkiem że zmiany nie wpłyną na ilość ani daty towarów, które zostały już sprzedane.
+- Dokument OSS: Zaznacz, jeśli seria dokumentów jest dla typu OSS.
+- Seria korekty dokumentu: Z listy rozwijanej wybierz serię, która będzie wykorzystywana do wystawiania korekt dokumentów.
+- Tryb realizacji rezerwacji: Wybierz, co ma się stać z dokumentem rezerwacji po jego realizacji:
+– Realizacja: Dokument pozostanie w systemie i zostanie oznaczony jako zrealizowany.– Usuwanie: Dokument zostanie usunięty z systemu.
+- Serie WZ do realizacji rezerwacji: Wybierz serie dokumentów WZ, których wystawienie będzie realizowało rezerwację. Dokument WZ możesz wystawić ręcznie lub wygenerować automatycznie po wystawieniu faktury.
+- Szablon wydruku dokumentu: Pozostaw szablon domyślny lub wybierz własny szablon utworzony w zakładce Administracja → Szablony wydruków.
+- Wysyłka powiadomienia e-mail: Zaznacz tę opcję, jeśli dokument ma być wysyłany pocztą elektroniczną.
+- Szablon wiadomości e-mail: Wybierz szablon wiadomości, w której będzie wysyłany dokument. Szablony skonfigurujesz w zakładce Administracja → Szablony wiadomości (więcej na temat szablonów wiadomości znajdziesz tutaj).
+- Czas wysyłki: Określ, kiedy dokument ma zostać wysłany pocztą elektroniczną.
+- Status zamówienia do wysłania powiadomienia z dokumentem: Wybierz status zamówienia, w którym system będzie wysyłał powiadomienie e-mail do kupującego.
+- Sposób usunięcia dokumentów: Określ, czy podczas usuwania dokumentu z tej serii system ma wymagać podania przyczyny.
+- Źródło VAT: Wybierz źródło stawek VAT dla pozycji dokumentu. Stawki mogą być pobierane z zamówienia albo magazynu Sellasist. Możesz również ustawić dokładną stawkę VAT dla całej serii lub zastosować domyślną stawkę VAT kraju dostawy.
+- Kierunek przeliczania cen: Wybierz sposób przeliczania cen przy zmianie stawki podatku VAT (brutto → netto albo netto → brutto).
+- Data sprzedaży na dokumencie: Wybierz datę, która będzie umieszczana na dokumencie jako data sprzedaży.
+- Niepowiązany produkt: Pobierz VAT z zamówienia: Zaznacz tę opcję, aby przy braku powiązania produktu system automatycznie pobierał stawkę VAT z zamówienia.
+- Stawka VAT: Wybierz konkretną stawkę VAT, która będzie stosowana do pozycji dokumentu. Pole jest wykorzystywane w zależności od ustawienia wybranego jako źródło VAT.
+- Podstawa zwolnienia od podatku: Wybierz podstawę prawną zwolnienia z VAT dla dokumentów zawierających pozycje zwolnione z podatku.
+- Podstawa procedury marży: Wybierz rodzaj procedury marży stosowanej przy wystawianiu faktur. Informacja ta będzie przekazywana do KSeF wraz z danymi faktury.
+- Źród
+

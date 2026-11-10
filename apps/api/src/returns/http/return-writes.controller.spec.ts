@@ -165,6 +165,155 @@ describe('ReturnWritesController', () => {
       expect(result.line.quantityRestocked).toBe(0);
     });
 
+    describe('bundle line (#3933)', () => {
+      const order = {
+        orderItems: [{ id: 'l1', price: 100, unitPriceGross: 120, quantity: 1 }],
+        taxTreatment: null,
+        lineExpansion: {
+          definitions: [
+            {
+              variantId: 'bundle',
+              components: [
+                { variantId: 'v-a', productId: 'p-a', quantity: 2 },
+                { variantId: 'v-b', productId: 'p-b', quantity: 1 },
+              ],
+            },
+          ],
+        },
+        componentsOfLine: jest.fn().mockReturnValue([
+          { componentLineId: 'l1~c:v-a', perUnit: 2 },
+          { componentLineId: 'l1~c:v-b', perUnit: 1 },
+        ]),
+      };
+
+      beforeEach(() => {
+        returns.getReturn.mockResolvedValue({
+          id: RETURN_ID,
+          internalOrderId: 'ol_order_1',
+          lines: [{ id: LINE_ID, resolvedOrderLineId: 'l1' }],
+        });
+        orderRecords.getOrderRecord.mockResolvedValue(order);
+        custody.disposeLine.mockResolvedValue({
+          line: buildLine(),
+          event: { id: 'e' },
+          restockBlocked: null,
+          restockBlockedComponents: [],
+        });
+      });
+
+      it('should hand the composition to the service from the order, with the gross price paid', async () => {
+        await controller.disposeLine(
+          RETURN_ID,
+          LINE_ID,
+          { quantity: 1, disposition: 'restock', returnedVariantIds: ['v-b'] },
+          USER
+        );
+
+        expect(custody.disposeLine).toHaveBeenCalledWith(
+          LINE_ID,
+          expect.objectContaining({
+            bundle: {
+              paidPerUnitGross: 120,
+              components: [
+                { productId: 'p-a', variantId: 'v-a', perUnit: 2 },
+                { productId: 'p-b', variantId: 'v-b', perUnit: 1 },
+              ],
+              returnedVariantIds: ['v-b'],
+            },
+          })
+        );
+      });
+
+      it('should refuse a component selection on a line that is not a bundle', async () => {
+        order.componentsOfLine.mockReturnValueOnce([]);
+
+        await expect(
+          controller.disposeLine(
+            RETURN_ID,
+            LINE_ID,
+            { quantity: 1, disposition: 'restock', returnedVariantIds: ['v-b'] },
+            USER
+          )
+        ).rejects.toMatchObject({ reason: 'bad-selection' });
+        expect(custody.disposeLine).not.toHaveBeenCalled();
+      });
+
+      it('should sum the formula hint over partially returned sets and apply nothing', async () => {
+        custody.listReturnedBundleComponents = jest
+          .fn()
+          .mockResolvedValue([{ returnLineId: LINE_ID, units: 1, returnedVariantIds: ['v-b'] }]);
+        custody.previewBundleReturn = jest.fn().mockResolvedValue({
+          keptAtStandaloneRefundHintGross: 25,
+          hintInputs: { paidForSetGross: 64.99, keptStandaloneGross: 39.99 },
+        });
+
+        const result = await controller.bundleRefundHint(RETURN_ID);
+
+        expect(result).toEqual({
+          applicable: true,
+          hintGross: 25,
+          paidForSetGross: 64.99,
+          keptStandaloneGross: 39.99,
+        });
+        expect(refunds.triggerRefund).not.toHaveBeenCalled();
+      });
+
+      it('should load the return and the order once however many bundle lines it has', async () => {
+        returns.getReturn.mockResolvedValue({
+          id: RETURN_ID,
+          internalOrderId: 'ol_order_1',
+          lines: [
+            { id: LINE_ID, resolvedOrderLineId: 'l1' },
+            { id: 'line-2', resolvedOrderLineId: 'l1' },
+          ],
+        });
+        orderRecords.getOrderRecord.mockResolvedValue(order);
+        custody.listReturnedBundleComponents = jest.fn().mockResolvedValue([
+          { returnLineId: LINE_ID, units: 1, returnedVariantIds: ['v-b'] },
+          { returnLineId: 'line-2', units: 1, returnedVariantIds: ['v-b'] },
+        ]);
+        custody.previewBundleReturn = jest.fn().mockResolvedValue({
+          keptAtStandaloneRefundHintGross: 25,
+          hintInputs: { paidForSetGross: 64.99, keptStandaloneGross: 39.99 },
+        });
+        returns.getReturn.mockClear();
+        orderRecords.getOrderRecord.mockClear();
+
+        await controller.bundleRefundHint(RETURN_ID);
+
+        expect(returns.getReturn).toHaveBeenCalledTimes(1);
+        expect(orderRecords.getOrderRecord).toHaveBeenCalledTimes(1);
+        expect(custody.previewBundleReturn).toHaveBeenCalledTimes(2);
+      });
+
+      it('should report the hint as not applicable when no set came back partially', async () => {
+        custody.listReturnedBundleComponents = jest.fn().mockResolvedValue([]);
+
+        await expect(controller.bundleRefundHint(RETURN_ID)).resolves.toMatchObject({
+          applicable: false,
+          hintGross: null,
+        });
+      });
+
+      it('should preview the split and the hint without writing', async () => {
+        custody.previewBundleReturn = jest.fn().mockResolvedValue({
+          components: [],
+          splitRefusal: null,
+          splitRefusalVariantIds: [],
+          returnedShareGross: 40,
+          keptAtStandaloneRefundHintGross: 40,
+        });
+
+        const result = await controller.previewBundleReturn(RETURN_ID, LINE_ID, {
+          returnedVariantIds: 'v-b',
+          quantity: 1,
+        });
+
+        expect(result).toMatchObject({ isBundle: true, allegroRefundHintGross: 40 });
+        expect(custody.disposeLine).not.toHaveBeenCalled();
+      });
+    });
+
     it('should report null restockBlocked on an applied disposition', async () => {
       custody.disposeLine.mockResolvedValue({
         line: buildLine({ quantityScrapped: 2, disposition: 'scrap' }),

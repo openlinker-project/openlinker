@@ -1,0 +1,142 @@
+== gratis 0
+== prezent 12
+3747 Wideoprezentacja usługi Sellasist.pl https://sellasist.pl/pomoc/wideoprezentacja-uslugi-sellasistpl/
+4403 Jak oznaczyć produkt jako polecany? https://sellasist.pl/pomoc/jak-oznaczyc-produkt-jako-polecany/
+4401 Jak oznaczyć produkt jako Bestseller? https://sellasist.pl/pomoc/jak-oznaczyc-produkt-jako-bestseller/
+4385 Jak oznaczyć produkt jako Nowość? https://sellasist.pl/pomoc/jak-oznaczyc-produkt-jako-nowosc/
+4250 Jak dodać inspiracje w sklepie internetowym Sellingo? Czym są inspiracje? https://sellasist.pl/pomoc/jak-dodac-inspiracje-w-sklepie-internetowym-sellingo-czym-sa-inspiracje/
+4242 Jak dodać kolejną walutę w Sellasist? https://sellasist.pl/pomoc/jak-dodac-kolejna-walute-w-sellasist/
+4232 Jak ustawić kursy walut w Sellasist? https://sellasist.pl/pomoc/jak-ustawic-kursy-walut-w-sellasist/
+4229 Jak wstawić film do opisu produktu w Sellasist? https://sellasist.pl/pomoc/jak-wstawic-film-do-opisu-produktu-w-sellasist/
+3778 Jak stworzyć Warianty graficzne? Jak przypisać zdjęcie do Wariantu? https://sellasist.pl/pomoc/jak-stworzyc-warianty-graficzne-jak-przypisac-zdjecie-do-wariantu/
+3746 Od czego zacząć pracę z Sellasist? Wideoporadnik Krok po Kroku https://sellasist.pl/pomoc/od-czego-zaczac-prace-z-sellasist-wideoporadnik-krok-po-kroku/
+3694 Jak dodać język w sklepie zintegrowanym z Sellasist? Jak dodać język w Sellasist? https://sellasist.pl/pomoc/jak-dodac-jezyk-w-sklepie-zintegrowanym-z-sellasist-jak-dodac-jezyk-w-sellasist/
+3631 Czym są atrybuty? Jak je utworzyć, a następnie przypisać do produktu? https://sellasist.pl/pomoc/czym-sa-atrybuty-jak-je-utworzyc-a-nastepnie-przypisac-do-produktu/
+== 0 zł 74
+8699 Przyjęcie magazynowe z jednoczesnym rozlokowaniem towaru https://sellasist.pl/pomoc/przyjecie-magazynowe-z-jednoczesnym-rozlokowaniem-towaru/
+8667 Rozlokowanie — Nowy tryb w Sellasist WMS https://sellasist.pl/pomoc/rozlokowanie-nowy-tryb-w-sellasist-wms/
+4577 DATA ZŁOŻENIA – warunek akcji automatycznej dla zamówień https://sellasist.pl/pomoc/data-zlozenia-warunek-akcji-automatycznej-dla-zamowien/
+4299 Jak włączyć tryb rozlokowania produktów w Sellasist WMS? https://sellasist.pl/pomoc/jak-wlaczyc-tryb-rozlokowania-produktow-w-sellasist-wms/
+3717 Czy Sellasist umożliwia wydruk paragonów za pomocą drukarki fiskalnej? https://sellasist.pl/pomoc/czy-jest-mozliwy-wydruk-paragonu-przez-drukarke-fiskalna/
+3711 Czy istnieje możliwość wygenerowania spisu przedmiotów z transakcji? https://sellasist.pl/pomoc/czy-istnieje-mozliwosc-wygenerowania-spisu-przedmiotow-z-transakcji/
+3670 Jak umieścić numer konta w powiadomieniu o złożeniu zamówienia? https://sellasist.pl/pomoc/jak-umiescic-numer-konta-w-powiadomieniu-o-zlozeniu-zamowienia/
+3736 Ile kosztuje integracja z hurtownią? Z jakimi hurtowniami mogę zintegrować Sellasist? https://sellasist.pl/pomoc/ile-kosztuje-integracja-z-hurtownia-z-jakimi-hurtowniami-moge-zintegrowac-sellasist/
+4776 Instrukcja konfiguracji nowego modułu integracji Sellasist i Empik https://sellasist.pl/pomoc/instrukcja-konfiguracji-nowego-modulu-integracji-sellasist-i-empik/
+4768 Instrukcja konfiguracji nowego modułu integracji Sellasist i Morele https://sellasist.pl/pomoc/instrukcja-konfiguracji-nowego-modulu-integracji-sellasist-i-morele/
+4755 Instrukcja konfiguracji nowego modułu integracji Sellasist i Castorama https://sellasist.pl/pomoc/instrukcja-konfiguracji-nowego-modulu-integracji-sellasist-i-castorama/
+4754 Instrukcja konfiguracji nowego modułu integracji Sellasist Redcart https://sellasist.pl/pomoc/instrukcja-konfiguracji-nowego-modulu-integracji-sellasist-redcart/
+4753 Instrukcja konfiguracji nowego modułu integracji Sellasist i Black Red White https://sellasist.pl/pomoc/instrukcja-konfiguracji-nowego-modulu-integracji-sellasist-i-black-red-white/
+4737 Czym jest nowy Menedżer Wysyłek? Jak zamówić podjazd kuriera do zamówienia w nowym module? https://sellasist.pl/pomoc/czym-jest-nowy-menadzer-wysylek-jak-zamowic-podjazd-kuriera-do-zamowienia-w-nowym-module/
+4725 Instrukcja konfiguracji nowego modułu integracji Sellasist i Home&You https://sellasist.pl/pomoc/instrukcja-konfiguracji-nowego-modulu-integracji-sellasist-i-homeyou/
+4724 Instrukcja konfiguracji nowego modułu integracji Sellasist i Shoper https://sellasist.pl/pomoc/instrukcja-konfiguracji-nowego-modulu-integracji-sellasist-i-shoper/
+4723 Instrukcja konfiguracji nowego modułu integracji Sellasist i Erli https://sellasist.pl/pomoc/instrukcja-konfiguracji-nowego-modulu-integracji-sellasist-i-erli/
+4721 Instrukcja konfiguracji nowego modułu integracji Sellasist i Decathlon https://sellasist.pl/pomoc/instrukcja-konfiguracji-nowego-modulu-integracji-sellasist-i-decathlon/
+4720 Jak masowo zablokować wznawianie ofert Allegro? https://sellasist.pl/pomoc/jak-masowo-zablokowac-wznawianie-ofert-allegro/
+4719 Instrukcja konfiguracji nowego modułu integracji Sellasist i Modivo https://sellasist.pl/pomoc/instrukcja-konfiguracji-nowego-modulu-integracji-sellasist-i-modivo/
+4718 Instrukcja konfiguracji nowego modułu integracji Sellasist i Sky-Shop https://sellasist.pl/pomoc/instrukcja-konfiguracji-nowego-modulu-integracji-sellasist-i-sky-shop/
+4717 Instrukcja konfiguracji nowego modułu integracji Sellasist i eBay https://sellasist.pl/pomoc/instrukcja-konfiguracji-nowego-modulu-integracji-sellasist-i-ebay/
+4705 Instrukcja konfiguracji integracji Sellasist z Amazon https://sellasist.pl/pomoc/instrukcja-konfiguracji-nowego-modulu-integracji-sellasist-i-amazon/
+4704 Konfigurator trybu zbierania – Optymalizacja pracy magazynu z Sellasist WMS https://sellasist.pl/pomoc/konfigurator-zbierania/
+4696 Instrukcja konfiguracji nowego modułu integracji Sellasist i InPost Fresh https://sellasist.pl/pomoc/instrukcja-konfiguracji-nowego-modulu-integracji-sellasist-i-inpost-fresh/
+4695 Instrukcja konfiguracji nowego modułu integracji Sellasist i OTTO Market https://sellasist.pl/pomoc/instrukcja-konfiguracji-nowego-modulu-integracji-sellasist-i-otto-market/
+4689 Instrukcja konfiguracji nowego modułu integracji Sellasist i Kaufland https://sellasist.pl/pomoc/instrukcja-konfiguracji-nowego-modulu-integracji-sellasist-i-kaufland/
+4687 Instrukcja konfiguracji integracji Sellasist i shopGold https://sellasist.pl/pomoc/instrukcja-konfiguracji-integracji-sellasist-i-shopgold/
+4684 Instrukcja konfiguracji nowego modułu integracji Sellasist i eMAG https://sellasist.pl/pomoc/instrukcja-konfiguracji-nowego-modulu-integracji-sellasist-i-emag/
+4659 Instrukcja konfiguracji nowego modułu integracji Sellasist i IdoSell https://sellasist.pl/pomoc/instrukcja-konfiguracji-nowego-modulu-integracji-sellasist-i-idosell/
+4480 Jak oznaczyć fakturę JPK https://sellasist.pl/pomoc/jak-wystawic-faktuje-jpk-vat/
+4462 Edytor blokowy opisów produktów https://sellasist.pl/pomoc/czym-jest-edytor-blokowy-w-sellasist-jak-uzyc-edytora-blokowego/
+4452 Jak korzystać ze Statystyk? https://sellasist.pl/pomoc/jak-korzystac-ze-statystyk/
+4423 Jak w Sellasist przesłać numer listu przewozowego do Allegro? https://sellasist.pl/pomoc/jak-w-sellasist-przeslac-numer-listu-przewozowego-do-allegro/
+4420 Jak nadać przesyłki za pomocą Erli? https://sellasist.pl/pomoc/jak-nadac-przesylke-erli/
+4415 Jak włączyć Pola cenowe dla grupy klientów? https://sellasist.pl/pomoc/jak-wlaczyc-pola-cenowe-dla-grupy-klientow/
+4413 Jak działa podział wagi całkowitej na paczki? https://sellasist.pl/pomoc/jak-dziala-podzial-wagi-calkowitej-na-paczki/
+4412 Jak w Sellasist ustawić Sekcję Pasuje do dla ofert Allegro? https://sellasist.pl/pomoc/jak-w-sellasist-ustawic-sekcje-pasuje-do-dla-ofert-allegro/
+4397 Jak aktywować i skonfigurować integrację z hurtownią (hurtownie API) ? https://sellasist.pl/pomoc/jak-aktywowac-i-skonfigurowac-integracje-z-hurtownia-hurtownie-api/
+4390 Jak w Sellasist utworzyć powiadomienia dodawane na karcie zamówienia? https://sellasist.pl/pomoc/jak-w-sellasist-utworzyc-powiadomienia-dodawane-na-karcie-zamowienia/
+4368 Jak masowo ustawić jednostkę miar lub wag dla produktów? https://sellasist.pl/pomoc/jak-masowo-ustawic-jednostke-miar-lub-wag-dla-produktow/
+4352 Jak włączyć aktywator szablonów nadania? https://sellasist.pl/pomoc/jak-wlaczyc-aktywator-szablonow-nadania/
+4339 Jak masowo zmienić ceny w produktach? https://sellasist.pl/pomoc/jak-masowo-zmienic-ceny-w-produktach/
+4336 Jak w Sellasist skonfigurować program rabatowy według wartości koszyka? https://sellasist.pl/pomoc/jak-w-sellasist-skonfigurowac-program-rabatowy-wedlug-wartosci-koszyka/
+4315 Jak masowo wystawić oferty Shopee? https://sellasist.pl/pomoc/jak-masowo-wystawic-oferty-shopee/
+4300 Czym jest pojemność i objętość w Sellasist WMS? https://sellasist.pl/pomoc/czym-jest-pojemnosc-i-objetosc-w-sellasist-wms/
+4282 Jak nadać przesyłki Shopee? https://sellasist.pl/pomoc/jak-nadac-przesylki-shopee/
+4280 Jak włączyć tryb podglądu w Sellasist WMS? https://sellasist.pl/pomoc/jak-wlaczyc-tryb-podgladu-w-sellasist-wms/
+4275 Jak zaimportować zamówienia ze Shopee do Sellasist? https://sellasist.pl/pomoc/jak-zaimportowac-zamowienia-ze-shopee-do-sellasist/
+4265 Czym jest menadżer wysyłek? Jak zamówić podjazd kuriera do zamówienia? https://sellasist.pl/pomoc/czym-jest-menadzer-wysylek-jak-zamowic-podjazd-kuriera-do-zamowienia/
+4264 Jak w Sellasist przypisać metodę płatności do klienta lub grupy klientów? https://sellasist.pl/pomoc/jak-w-sellasist-przypisac-metode-platnosci-do-klienta-lub-grupy-klientow/
+4258 Czym są grupy powiązanych? Jak w Sellasist dodać grupę powiązanych? https://sellasist.pl/pomoc/czym-sa-grupy-powiazanych-jak-w-sellasist-dodac-grupe-powiazanych/
+4250 Jak dodać inspiracje w sklepie internetowym Sellingo? Czym są inspiracje? https://sellasist.pl/pomoc/jak-dodac-inspiracje-w-sklepie-internetowym-sellingo-czym-sa-inspiracje/
+4226 Integracja Apaczka w Sellasist https://sellasist.pl/pomoc/jak-uruchomic-integracje-z-apaczka-w-sellasist/
+4210 Czym jest czarna lista allegro? Jak dodawać klientów na czarnej liście? https://sellasist.pl/pomoc/czym-jest-czarna-lista-allegro-jak-dodawac-klientow-na-czarnej-liscie/
+4187 Jak ustawić typ konta Allegro? https://sellasist.pl/pomoc/jak-ustawic-typ-konta-allegro/
+4173 Jak usunąć konto Allegro? https://sellasist.pl/pomoc/jak-usunac-konto-allegro/
+4149 Czym są oferty wielowariantowe? Jak skonfigurować wielowariantowość? https://sellasist.pl/pomoc/czym-sa-oferty-wielowariantowe-jak-skonfigurowac-wielowariantowosc/
+4100 Jak w Sellasist dodać metodę dostawy za pobraniem? https://sellasist.pl/pomoc/jak-w-sellasist-dodac-metode-dostawy-za-pobraniem/
+4091 Jak aktualizować produkty przy użyciu importera? https://sellasist.pl/pomoc/jak-aktualizowac-produkty-przy-uzyciu-importera/
+4041 Jak zaimportować produkty z pliku do Sellasist? Jak użyć importera plików? https://sellasist.pl/pomoc/jak-zaimportowac-produkty-z-pliku-do-sellasist-jak-uzyc-importera-plikow/
+4019 Jak automatycznie wystąpić o zwrot prowizji z Allegro? https://sellasist.pl/pomoc/jak-automatycznie-wystapic-o-zwrot-prowizji-z-allegro/
+4014 Jak utworzyć link do sledzenia przesyłki? https://sellasist.pl/pomoc/jak-utworzyc-link-do-sledzenia-przesylki/
+3999 Czym są funkcje eksperymentalne? https://sellasist.pl/pomoc/czym-sa-funkcje-eksperymentalne/
+3993 Jak uruchomić integrację z Cashbill? https://sellasist.pl/pomoc/jak-uruchomic-integracje-z-cashbill/
+3952 Jak stworzyć kod rabatowy wysyłany po zapisaniu się do newslettera – integracja z Sellingo.pl? https://sellasist.pl/pomoc/jak-stworzyc-kod-rabatowy-wysylany-po-zapisaniu-sie-do-newslettera-integracja-z-sellingopl/
+3866 Jak masowo wystawić oferty Allegro? https://sellasist.pl/pomoc/jak-masowo-wystawic-oferty-allegro/
+3856 Jak w Sellasist dodać do powiadomienia numer listu przewozowego przesyłki? https://sellasist.pl/pomoc/jak-w-sellasist-dodac-do-powiadomienia-numer-listu-przewozowego-przesylki/
+3775 Jak skonifgurować moduł faktur? Jak zmienić ustawienia faktur? https://sellasist.pl/pomoc/jak-skonifgurowac-modul-faktur-jak-zmienic-ustawienia-faktur/
+3749 Jak uruchomić integrację z Subiekt GT? https://sellasist.pl/pomoc/jak-uruchomic-integracje-z-subiekt-gt/
+3745 Jak wygenerować Spis z natury? https://sellasist.pl/pomoc/jak-wygenerowac-spis-z-natury/
+3743 Jak efektywnie zarządzać zdjęciami produktów na różnych platformach sprzedażowych? https://sellasist.pl/pomoc/jak-dodac-rozne-zdjecia-tego-samego-produktu-na-roznych-sklepach-i-ofertach-allegroebay/
+3730 Jak użyć integracji z Bankiem, tak aby można było automatycznie dopasować przelew do zamówienia? https://sellasist.pl/pomoc/jak-uzyc-integracji-z-bankiem-tak-aby-mozna-bylo-automatycznie-dopasowac-przelew-do-zamowienia/
+3646 Jak skonfigurować zewnętrzne konto pocztowe? https://sellasist.pl/pomoc/jak-skonfigurowac-zewnetrzne-konto-pocztowe/
+== promocja 1
+3761 Jak włączyć promocję na produkty wybranego producenta? https://sellasist.pl/pomoc/jak-wlaczyc-promocje-na-produkty-wybranego-producenta/
+== produkt powiązany 4
+8677 Produkt powiązany z hurtownią – warunek akcji automatycznej dla zamówień https://sellasist.pl/pomoc/produkt-powiazany-z-hurtownia-warunek-akcji-automatycznej-dla-zamowien/
+4075 Czym jest produktyzacja Allegro? Jak w Sellasist dodać zestaw parametrów powiązany z produktem Allegro? https://sellasist.pl/pomoc/czym-jest-produktyzacja-allegro-jak-w-sellasist-dodac-zestaw-parametrow-powiazany-z-produktem-allegro/
+4258 Czym są grupy powiązanych? Jak w Sellasist dodać grupę powiązanych? https://sellasist.pl/pomoc/czym-sa-grupy-powiazanych-jak-w-sellasist-dodac-grupe-powiazanych/
+3663 Czym są i jak działają Powiązania w Produktach? https://sellasist.pl/pomoc/czym-sa-i-jak-dzialaja-powiazania-w-produktach/
+== dodaj produkt 3
+4745 Dodaj produkt — Efekt akcji automatycznej dla zamówień https://sellasist.pl/pomoc/dodaj-produkt-efekt-automatyzacji-dla-zamowien/
+3742 Jak dodać różne opisy tego samego produktu do różnych sklepów i ofert Allegro? https://sellasist.pl/pomoc/jak-dodac-rozne-opisy-tego-samego-produktu-do-roznych-sklepow-i-ofert-allegroebay/
+4691 Osoby odpowiedzialne – GPSR https://sellasist.pl/pomoc/osoby-odpowiedzialne/
+== paragon 6
+4791 eparagony.pl – Nowa integracja Erplink https://sellasist.pl/pomoc/eparagonypl-nowa-integracja-erplink/
+4559 WYŚLIJ POWIADOMIENIE TYPU FAKTURA LUB PARAGON – efekt automatyzacji dla zamówień https://sellasist.pl/pomoc/wyslij-powiadomienie-typu-faktura-lub-paragon-efekt-automatyzacji-dla-zamowien/
+4486 Automatyczne wystawianie Korekt paragonów w Sellasist https://sellasist.pl/pomoc/automatyczne-wystawianie-korekt-paragonow-w-sellasist/
+4479 Jak utworzyć korektę paragonu? https://sellasist.pl/pomoc/jak-utworzyc-korekte-paragonu/
+4467 Jak skonfigurować paragony? Jak wystawić paragon? https://sellasist.pl/pomoc/jak-skonfigurowac-paragony-jak-wystawic-paragon/
+3717 Czy Sellasist umożliwia wydruk paragonów za pomocą drukarki fiskalnej? https://sellasist.pl/pomoc/czy-jest-mozliwy-wydruk-paragonu-przez-drukarke-fiskalna/
+== drukarka fiskalna 1
+4278 Jak zintegrować Sellasist WMS z drukarką fiskalną? https://sellasist.pl/pomoc/jak-zintegrowac-sellasist-wms-z-drukarka-fiskalna/
+== zwrot 12
+8682 Status zwrotu — Warunek automatyzacji dla zamówień https://sellasist.pl/pomoc/status-zwrotu-warunek-automatyzacji-dla-zamowien/
+8652 Utwórz zwrot — Efekt akcji automatycznej dla zamówień https://sellasist.pl/pomoc/utworz-zwrot-efekt-akcji-automatycznej-dla-zamowien/
+4901 Cross-docking zwrotów w WMS — Konfiguracja i zasady działania https://sellasist.pl/pomoc/cross-docking-zwrotow-w-wms-konfiguracja-i-zasady-dzialania/
+4900 Automatyczne tworzenie Przyjęcia Zewnętrznego dla zwrotów https://sellasist.pl/pomoc/automatyczne-tworzenie-przyjecia-zewnetrznego-dla-zwrotow/
+4799 ZMIEŃ STATUS ZWROTU — efekt automatyzacji dla zamówień https://sellasist.pl/pomoc/zmien-status-zwrotu-efekt-automatyzacji-dla-zamowien/
+4767 Jak skonfigurować kartę zwrotów zamówień? https://sellasist.pl/pomoc/jak-skonfigurowac-karte-zwrotow-zamowien/
+4682 Nowy moduł zwrotów zamówień https://sellasist.pl/pomoc/nowy-modul-zwrotow-zamowien/
+4382 Jak dokonać zwrotu płatności i produktów w zamówieniach z Allegro? https://sellasist.pl/pomoc/jak-dokonac-zwrotu-produktow-i-platnosci-w-zamowieniach-z-allegro/
+4301 Jak włączyć tryb zwrotów i reklamacji? https://sellasist.pl/pomoc/jak-wlaczyc-tryb-zwrotow-i-reklamacji/
+4268 Jak dodać zwrot zamówienia? https://sellasist.pl/pomoc/jak-dodac-zwrot-zamowienia/
+4019 Jak automatycznie wystąpić o zwrot prowizji z Allegro? https://sellasist.pl/pomoc/jak-automatycznie-wystapic-o-zwrot-prowizji-z-allegro/
+3991 Jak anulować zamówienie oczekujące i uzyskać zwrot prowizji z Allegro? https://sellasist.pl/pomoc/jak-anulowac-zamowienie-oczekujace-i-uzyskac-zwrot-prowizji-z-allegro/
+== rabat 14
+4431 Jak działają Rabaty Indywidualne dla Klientów w Sellasist? https://sellasist.pl/pomoc/jak-dzialaja-rabaty-indywidualne-dla-klientow-w-sellasist/
+4336 Jak w Sellasist skonfigurować program rabatowy według wartości koszyka? https://sellasist.pl/pomoc/jak-w-sellasist-skonfigurowac-program-rabatowy-wedlug-wartosci-koszyka/
+4169 Czym są rabaty na zamówienia Allegro? Jak ustawić rabat? https://sellasist.pl/pomoc/czym-sa-rabaty-na-zamowienia-allegro-jak-ustawic-rabat/
+4161 Jak przypisać indywidualny rabat do klienta w Sellasist? https://sellasist.pl/pomoc/jak-przypisac-indywidualny-rabat-do-klienta-w-sellasist/
+4155 Jak wygenerować kod rabatowy w Sellasist? https://sellasist.pl/pomoc/jak-wygenerowac-kod-rabatowy-w-sellasist/
+4143 Jak sprawdzić statystyki kodów rabatowych w sklepie Sellingo? https://sellasist.pl/pomoc/jak-sprawdzic-statystyki-kodow-rabatowych-w-sklepie-sellingo/
+4142 Jak sprawdzić statystyki kodów rabatowych? https://sellasist.pl/pomoc/jak-sprawdzic-statystyki-kodow-rabatowych/
+3954 Jak włączyć wysyłanie kodów rabatowych po zapisaniu do newslettera? https://sellasist.pl/pomoc/jak-wlaczyc-wysylanie-kodow-rabatowych-po-zapisaniu-do-newslettera/
+3953 Jak dodać kod rabatowy do powiadomienia o zapisaniu się do newslettera? https://sellasist.pl/pomoc/jak-dodac-kod-rabatowy-do-powiadomienia-o-zapisaniu-sie-do-newslettera/
+3952 Jak stworzyć kod rabatowy wysyłany po zapisaniu się do newslettera – integracja z Sellingo.pl? https://sellasist.pl/pomoc/jak-stworzyc-kod-rabatowy-wysylany-po-zapisaniu-sie-do-newslettera-integracja-z-sellingopl/
+3664 Jak działają Rabaty Indywidualne dla Klientów? https://sellasist.pl/pomoc/jak-dzialaja-rabaty-indywidualne-dla-klientow/
+3650 Jak stworzyć kod rabatowy wysyłany po zapisaniu się do newslettera? https://sellasist.pl/pomoc/jak-stworzyc-kod-rabatowy-wysylany-po-zapisaniu-sie-do-newslettera/
+4333 Jak skonfigurować programy lojalnościowe w Sellasist? https://sellasist.pl/pomoc/jak-skonfigurowac-programy-lojalnosciowe-w-sellasist/
+4165 Czym są cenniki hurtowe? Jak dodać cennik hurtowy? https://sellasist.pl/pomoc/czym-sa-cenniki-hurtowe-jak-dodac-cennik-hurtowy/
+== wielopak 1
+4246 Jak sprzedawać w wielopaku? Czym są produkty zależne? https://sellasist.pl/pomoc/jak-sprzedawac-w-wielopaku-czym-sa-produkty-zalezne/
+== zestawy promocyjne 1
+3762 Jak stworzyć zestawy promocyjne Allegro? https://sellasist.pl/pomoc/jak-stworzyc-zestawy-promocyjne-allegro/
+== kompletacja 0

@@ -1,0 +1,48 @@
+=== stock-pickwave | Linnworks Mobile Stock Pickwave
+ 
+ Linnworks Mobile Stock Pickwave 
+ How to Complete Stock Pickwaves
+ This guide is for warehouse workers who use mobile devices with scanners to pick items for warehouse transfers ( stock requests or FBA transfers ). In Linnworks Mobile, these are called stock pickwaves. 
+ The guide provides a step-by-step explanation of completing a stock pickwave, from assigning it to yourself to finishing it.
+ Step 1: Access the Pickwaves screen
+ Open the menu on your mobile device and select  WT picks  in the Stock  section.
+ Step 2: Locate the pickwave
+ The  Mine  tab lists all pickwaves assigned to you. Select the pickwave you will be picking. 
+ If you have no pickwaves assigned to you, open the  All  tab and see if there are any unallocated pickwaves (unassigned). You can assign an unallocated pickwave to yourself by tapping on it and then confirming the assignment in the pop-up. 
+ Step 3: Review pickwave info
+ In the  Pickwave Process  screen, you can view the following information:
+An image of an item (main image of the item in Linnworks)
+SKU
+Title
+Binrack code (at the top)
+Batch number
+Number of items that need to be picked
+Number of items that are picked already
+ At the top of the screen, you can also see the ID of the pickwave and its progress. 
+ Swiping left or right will allow you to switch between items that need to be picked to complete this pickwave.
+ Step 4: Pick items
+ Start picking items. You can scan an item's SKU, barcode, or another identifier to start picking this item. The scanned identifier will be added to the search field. Tap the  Search  icon to proceed further.
+ You can also find the SKU from the list under the  Search  field, tap on it, and enter the number of the items you picked. There are three count screens available, and you need to swipe left or right to switch between them:
+ Keypad screen : A detailed guide on how to use this screen is here . 
+ Box count screen : A detailed guide on how to use this screen is here . 
+ Scanning screen : A detailed guide on how to use this screen is here . 
+ Swipe left or right to switch between the screens.
+ Step 5: Skip some items if necessary
+ When picking items for  stock requests  or  FBA transfers , the pickwave's skipping functionality provides a few extra options compared to what is available for order pickwaves . Click on the three dots icon and select one of the options below:
+ Skip Item : This will skip an individual item from picking.
+ Item Not Found : This will mark an item as not found.
+ Skip Group : This will skip a group of items from picking.
+ Group Not Found : This will mark a group of items as not found.
+ The pickwave with the skipped/not found items will be available in the Picking tab. 
+ To return to this pickwave later, open the Pickwave screen, switch to the Picking tab, and tap the pickwave to pick items that were skipped/not found once they are available.
+ Step 6: Input the picked quantity
+ NB!  You cannot input  zero (0)  or a number  larger  than requested in the order.
+ Tap on the item you are picking and input the quantity picked using either the keypad screen, box count screen, or scanning screen. Swipe left or right to switch between them. Full description of how these screens work is  here . 
+ After you have entered the quantity, tap the  Update Quantity  button. 
+ You can also tap the Pick button to mark this item as picked without entering the quantity.
+ Repeat the same for all items that need to be picked by tapping Next .
+ Step 7: Finish a pickwave
+ After you have picked all items, click  Finish .
+ The pickwave will now be moved to the  Complete  tab and marked with the appropriate tag.
+ Stock pickwaves are cleared from the screen once they are fully finished. Also, the Stock > Pickwaves screen automatically refreshes every 5 minutes to make sure you have the most recent information displayed on the screen.
+ 

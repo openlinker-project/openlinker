@@ -14,7 +14,18 @@
  * @module apps/api/src/returns/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import {
   ReturnCustodyStateValues,
   ReturnDispositionValues,
@@ -64,6 +75,19 @@ export class DisposeReturnLineDto {
   })
   @IsIn(ReturnDispositionValues)
   disposition!: ReturnDisposition;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Bundle lines only (#3933): the component variants that came back. Absent means the whole ' +
+      'set. A restock writes one adjustment per listed component.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  returnedVariantIds?: string[];
 
   @ApiPropertyOptional({ description: 'Operator note.', maxLength: NOTE_MAX_LENGTH })
   @IsOptional()
@@ -184,6 +208,100 @@ export class DisposeReturnLineResponseDto {
       'attests. `null` on every scrap and every applied restock.',
   })
   restockBlocked!: RestockBlockedResponseDto | null;
+
+  @ApiProperty({
+    type: [RestockBlockedResponseDto],
+    description:
+      'Bundle restocks (#3933): every component whose write was refused. Empty for ordinary lines. ' +
+      'Quantities are in component units.',
+  })
+  restockBlockedComponents!: RestockBlockedResponseDto[];
+}
+
+export class BundleReturnPreviewQueryDto {
+  @ApiPropertyOptional({
+    description: 'Comma-separated component variant ids that came back. Absent means all.',
+  })
+  @IsOptional()
+  @IsString()
+  returnedVariantIds?: string;
+
+  @ApiPropertyOptional({ description: 'Bundle units returned. Defaults to 1.', minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  quantity?: number;
+}
+
+export class BundleReturnComponentDto {
+  @ApiProperty() variantId!: string;
+  @ApiProperty({ nullable: true }) sku!: string | null;
+  @ApiProperty({ description: 'Units of this component per ONE bundle unit.' }) perUnit!: number;
+  @ApiProperty({ nullable: true }) standaloneUnitPriceGross!: number | null;
+  @ApiProperty({ nullable: true }) shareGross!: number | null;
+  @ApiProperty({ nullable: true, enum: ['price', 'cost'] }) shareBasis!: 'price' | 'cost' | null;
+}
+
+export class BundleReturnPreviewResponseDto {
+  @ApiProperty({
+    description: 'False for an ordinary line: the other fields are then empty.',
+  })
+  isBundle!: boolean;
+
+  @ApiProperty({ nullable: true, description: 'Gross price paid for ONE bundle unit.' })
+  paidPerUnitGross!: number | null;
+
+  @ApiProperty({ type: [BundleReturnComponentDto] })
+  components!: BundleReturnComponentDto[];
+
+  @ApiProperty({ nullable: true, enum: ['no-split-basis', 'bad-total'] })
+  splitRefusal!: 'no-split-basis' | 'bad-total' | null;
+
+  @ApiProperty({ type: [String], description: 'Components with neither a price nor a cost.' })
+  splitRefusalVariantIds!: string[];
+
+  @ApiProperty({ nullable: true }) returnedShareGross!: number | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'The Allegro formula as a HINT: paid for the set minus the full standalone price of what the ' +
+      'buyer keeps, minimum 0. Never applied by default; the refund amount stays the operator field.',
+  })
+  allegroRefundHintGross!: number | null;
+}
+
+export class ConfirmReturnLineOrderLineDto {
+  @ApiProperty({ description: 'The order line the operator confirms this return line belongs to.' })
+  @IsString()
+  orderLineId!: string;
+}
+
+export class ReturnLineOrderLineCandidateDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() price!: number;
+  @ApiProperty() quantity!: number;
+  @ApiProperty({ nullable: true }) sku!: string | null;
+}
+
+export class ReturnLineOrderLineSuggestionResponseDto {
+  @ApiProperty({ type: [ReturnLineOrderLineCandidateDto] })
+  candidates!: ReturnLineOrderLineCandidateDto[];
+
+  @ApiProperty({ nullable: true, description: 'OpenLinker suggestion; never applied without confirmation.' })
+  suggestedOrderLineId!: string | null;
+
+  @ApiProperty({ nullable: true, enum: ['price-match', 'highest-price'] })
+  basis!: 'price-match' | 'highest-price' | null;
+
+  @ApiProperty({ nullable: true, description: 'Set when the line is already resolved.' })
+  alreadyResolvedOrderLineId!: string | null;
+}
+
+export class ConfirmReturnLineOrderLineResponseDto {
+  @ApiProperty({ description: 'False when the line was already resolved; the stored answer is unchanged.' })
+  claimed!: boolean;
 }
 
 export class AttestReturnLineStockResponseDto {
@@ -195,4 +313,25 @@ export class AttestReturnLineStockResponseDto {
     description: 'One attestation act per outstanding act it resolved.',
   })
   eventIds!: string[];
+}
+
+export class BundleRefundHintResponseDto {
+  @ApiProperty({
+    description:
+      'True when part of a bundle came back component by component. False means there is nothing ' +
+      'for the Allegro formula to say, and no hint is shown.',
+  })
+  applicable!: boolean;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'The Allegro formula as a HINT: paid for the set minus the full standalone price of what the ' +
+      'buyer keeps, minimum 0. Null when a kept component has no price of its own. Never applied ' +
+      'by default; the refund amount stays the operator field.',
+  })
+  hintGross!: number | null;
+
+  @ApiProperty({ nullable: true }) paidForSetGross!: number | null;
+  @ApiProperty({ nullable: true }) keptStandaloneGross!: number | null;
 }

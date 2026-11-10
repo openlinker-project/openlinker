@@ -1,0 +1,168 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/shopify-settings"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Shopify: Configure channel settings</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Shopify: Configure channel settings';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><div class="doc-container">
+  <h1 id="h1__903202655" data-has-heading-anchor="true">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>Shopify: How to Configure<a href="/articles/documentation/shopify-settings/a/h1__903202655" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/shopify-settings/a/h1__903202655&#39;,this);"></a></h1>
+  <p style="text-align: justify;">
+    Linnworks integration has multiple settings that allow detailed control of how Linnworks interacts with Shopify. This guide will help you configure your Shopify channel to ensure Linnworks is doing what is required.
+  </p>
+  <p style="text-align: justify;">
+    Once the channel is added, click the <i>pen&nbsp;<span class="fa fa-pencil">&nbsp;</span>&nbsp;</i>icon in the channel integration screen for the required Shopify integration.</p>
+  <p style=""><img src="/resources/Storage/documentation/Screenshots/Channels/ChannelConfig.png" alt="Channel Config" class="leftAlone" loading="lazy"/></p>
+  <h3 style="text-align: justify;" id="h4_739406941" data-has-heading-anchor="true">Available for the configuration settings
+  <a href="/articles/documentation/shopify-settings/a/h4_739406941" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/shopify-settings/a/h4_739406941&#39;,this);"></a></h3>
+  <h4 style="text-align: justify;" id="h4__1977125426" data-has-heading-anchor="true">
+    Account<a href="/articles/documentation/shopify-settings/a/h4__1977125426" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/shopify-settings/a/h4__1977125426&#39;,this);"></a></h4>
+  <ul style="text-align: justify;">
+    <li>
+      <b>Enabled:</b> Tick this setting to allow communication between Linnworks and Shopify. Without this ticked, no information will be sent to the channel or received from&nbsp;the channel.</li>
+    <li>
+      <b>Site URL:</b> Your site URL needs to be your Shopify subdomain, NOT your website domain. For example, linnworks.myshopify.com.</li>
+    <li>
+      <b>API key:&nbsp;</b>The private apps API key as provided by Shopify.</li>
+    <li><span></span>
+    <b>API password: </b>The Private Apps API Password as provided by Shopify.</li>
+    <li><span></span>
+    <b>Test: </b>Used to confirm the supplied credentials work correctly, allowing communication between Shopify and Linnworks.&nbsp;</li>
+    </ul>
+  <h4 style="" id="h4__784112042" data-has-heading-anchor="true">
+    Order<a href="/articles/documentation/shopify-settings/a/h4__784112042" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/shopify-settings/a/h4__784112042&#39;,this);"></a></h4>
+  <ul style="text-align: justify;">
+    <li><b>Dispatch notes: </b>After processing the order in Linnworks, a dispatch notification and tracking number (if available) will be submitted to the channel. When the option is disabled, no dispatch information will be submitted to Shopify.&nbsp;
+      <ul>
+        <li>
+          Where possible, Linnworks will attempt to match the Carrier/Vendor name to those predefined by Shopify. However, if no match is found, the Vendor's name, as defined in Linnworks, will be submitted to Shopify.</li>
+      </ul>
+    </li>
+    <li><b>Cancellation notes:&nbsp;</b>When
+      <span> enabled, Linnworks will send order cancellation notes to your sales channel once the order is partially or fully canceled.</span>
+    </li>
+    <li>
+      <b>Order refund:</b> Refunds will only be issued on&nbsp;Shopify when this option is enabled. Only orders with the status of Shipped can be refunded, and the value being refunded must be less than or equal to the amount the customer paid.
+    </li>
+    <li>
+      <b>Notify customer:</b> Tick this setting to notify customers of order changes (e.g., dispatch, cancellations, refunds).
+    </li>
+    <li>
+      <b>Notify POS customer:</b> Tick this setting to notify POS customers of order changes.</li>
+    <li><b>Notify collection customer:</b>&nbsp;Enabling this setting will notify pickup in-store customers of order changes, for example, order dispatch. This relates to Shopify collection orders only. Full details are <a href="/articles/documentation/shopify-bopis/a/h3__1012514547" onclick="return n(&#39;!documentation/shopify-bopis/a/h3__1012514547&#39;,this);">here</a>.</li>
+    <li>
+      <b>Use channel tax settings:</b>&nbsp;When enabled, Linnworks will use the tax percentage directly from the Shopify order data when downloaded to Linnworks. If the option is not enabled, Linnworks will back-calculate tax based on the stock item or country tax defined in Linnworks.</li><li><b>Order sync date:</b> The date and time when Linnworks last synchronized with the channel.&nbsp;</li>
+    <li>
+      <b>Save discount information:</b> If enabled, Linnworks saves additional Discount information in notes.</li>
+    <li>
+      <b>Download unpaid orders</b><span style="font-weight: normal;"><b>:</b></span>&nbsp;I<span>f enabled, Linnworks will download unpaid orders from Shopify.</span>
+    </li>
+    <li><b>Download on hold orders:</b> If enabled, Linnworks will download fully on hold orders from Shopify as unpaid and parked. These orders will update to paid once the on hold status is removed from at least one line item on Shopify.<span><br/></span>
+    </li>
+    <li><span></span>
+    <b>Treat authorized payment as paid:</b>&nbsp;When enabled, orders with financial status Authorized on Shopify are downloaded as Paid in Linnworks.<br/><div class="alert-warning"><span style="font-weight: normal;"><b><span class="fa fa-pen-square icon-background-yellow"></span>&nbsp;Note: </b></span> The&nbsp;<i>Download unpaid orders</i>&nbsp;setting must first be enabled to be able to enable and use the <i>Treat authorized payment as paid </i>setting.</div></li>
+    <li>
+      <b>Download processed orders</b><span style="font-weight: normal;"><b>:</b></span>&nbsp;If enabled, Linnworks will download Shopify orders shipped during the past <em>30 days</em>&nbsp;(only orders that do not exist in Linnworks) and mark them as processed. <strong>Note:</strong>&nbsp;This option will not deduct stock levels in Linnworks. All the downloaded orders will be added to the <em>Processed Orders</em> screen. The <i>Rules Engine</i> will still run on these orders. If you need to import shipped orders older than 30 days, please see this&nbsp;<a rel="noopener" href="https://help.linnworks.com/support/solutions/articles/7000005383" target="_blank">guide</a>.
+    </li>
+    <li id="processposorders"><b>Process POS orders:</b>&nbsp;
+      <span> If enabled, Linnworks will process all <u>unshipped/unfulfilled</u> orders identified as from the point of sale (POS) source during order download. <b>N</b><strong>ote:</strong>&nbsp;This option will deduct stock levels in Linnworks.</span>
+    <ul style="text-align: justify;"><li id="processposorders" class="alert-warning" style="border-color: #ffcc99;">&nbsp;
+      <span><b><span class="fa fa-info-circle icon-background-yellow"></span>&nbsp;Info:</b>&nbsp;</span>
+    There are currently two ways to handle Shopify POS orders in Linnworks:<ul style="text-align: justify;"><li id="processposorders">Set POS orders as <u>unfulfilled</u>&nbsp;<b>on Shopify</b> – Enable the <u><i>Process POS Orders</i></u> setting <b>in Linnworks</b>. This will deduct stock for all POS orders from the correct locations based on <a href="/articles/documentation/channels-location-mapping/a/h3_27006373" onclick="return n(&#39;!documentation/channels-location-mapping/a/h3_27006373&#39;,this);">location mapping</a>.</li>
+    <li id="processposorders">Set POS orders as <u>fulfilled</u>&nbsp;<b>on Shopify</b> – Enable the <u><i>Download Processed Orders</i></u> setting <b>in Linnworks</b>. In this case, stock will not be deducted in Linnworks. See above for a full explanation of the <i>Download Processed Orders</i> setting.<br/></li>
+    </ul>
+  </li>
+    </ul>
+  </li>
+    <li><b>Download order fraud risks:</b>&nbsp;If enabled, Linnworks will download the order fraud risks and PARK any order based on the selection in the <i>Order Fraud Risk Park Level</i> setting (see below), including and higher than the risk selected.&nbsp;</li>
+  <li><b>Split Orders by Shopify Fulfillments:</b>&nbsp;If enabled, Linnworks will create each fulfillment order from Shopify as a separate order in Linnworks, independent of location mapping.
+    <ul>
+      <li>When the toggle is <b>off</b> (the default for customers upgrading from REST to GraphQL; see the <a href="https://help.linnworks.com/support/solutions/articles/7000097203-shopify-integration-upgrade-to-graphql-in-linnworks" target="_blank">Shopify Integration Upgrade to GraphQL guide here</a>):
+        <ul>
+          <li>All fulfillment orders mapped to the same Linnworks download location are combined into a single Linnworks order matching pre-migration behavior.</li>
+          <li>No <i>Block from Merge</i> flag is applied.</li>
+          <li>Orders mapped to different Linnworks locations are still saved as separate orders (this also matches pre-migration behavior).</li>
+        </ul>
+      </li>
+      <li>When the toggle is <b>on</b> (the default for new Shopify integrations created on GraphQL):
+        <ul>
+          <li>Each Shopify fulfillment order is saved as its own Linnworks order, regardless of location mapping.</li>
+          <li><i>Block from Merge</i> is applied to orders that are part of a multi-fulfillment Shopify order.</li>
+          <li>Related fulfillment orders are linked via order relationships.</li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+  <li><b>Order fraud risk park level:</b> Here, you can select the park level. The order will be parked if the fraud risk level matches this level or higher. The setting defaults to <b>medium</b>.</li>
+  <li>
+      <span><em></em></span>
+    <b>Download order metafields:</b> If enabled, Linnworks will download order meta fields from Shopify and save them as <a href="/articles/documentation/open-orders-create-edit/a/CreateNewOrder_ExtendedProperties" onclick="return n(&#39;!documentation/open-orders-create-edit/a/CreateNewOrder_ExtendedProperties&#39;,this);">order extended properties</a> on respective orders in Linnworks.</li>
+  <li><b>Download order fulfillment:</b>&nbsp;This setting  cannot be changed. It is visible to indicate the elements automatically downloaded with order data. Linnworks downloads the order fulfillments to place orders in the correct location when using <a href="/articles/documentation/shopify-bopis" onclick="return n(&#39;!documentation/shopify-bopis&#39;,this);">multi-location on Shopify</a>.&nbsp;</li>
+  <li><b>Download order transactions:</b>&nbsp;This setting  cannot be changed. It is visible to indicate the elements automatically downloaded with order data. Linnworks downloads order transactions to ensure that <a href="/articles/documentation/channels-payment-mapping" onclick="return n(&#39;!documentation/channels-payment-mapping&#39;,this);">payment methods can be properly mapped</a>.&nbsp;</li>
+  </ul>
+  <h4 style="" id="h4_1543656168" data-has-heading-anchor="true">Inventory - Extract Inventory<a href="/articles/documentation/shopify-settings/a/h4_1543656168" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/shopify-settings/a/h4_1543656168&#39;,this);"></a></h4><ul><li><div><b>Download full listings:</b>&nbsp;Enable this setting to download, in the background, information about your listings, such as SKU, title, extended properties, and images, so you can create your items instantly via the&nbsp;<a href="/articles/documentation/extract-inventory" target="_blank" onclick="return n(&#39;!documentation/extract-inventory&#39;,this);"><em>Extract Inventory</em></a>&nbsp;tool.&nbsp;</div></li><li><div><div><b>Variation mapping Extended Property name:</b>&nbsp;The extended property name specified in this field will match a <a href="/articles/documentation/inventory-variations/a/variations_variationparent" onclick="return n(&#39;!documentation/inventory-variations/a/variations_variationparent&#39;,this);">Linnworks variation parent</a> item to a specific Shopify variation listing. Add this extended property to a Linnworks variation parent with a Shopify listing handle as the value. This will match it up in the <i><a href="/articles/documentation/extract-inventory-from-shopify" onclick="return n(&#39;!documentation/extract-inventory-from-shopify&#39;,this);">Extract Inventory</a></i> for the given subsource. If left empty or if a listing is already matched to an item by SKU, then this mapping is not used. See <a href="/articles/documentation/extract-inventory-from-shopify/a/h5__297100059" onclick="return n(&#39;!documentation/extract-inventory-from-shopify/a/h5__297100059&#39;,this);">this guide</a> for a detailed explanation of this setting's usage.</div></div></li></ul><h4 style="text-align: justify;" id="h4_51037994" data-has-heading-anchor="true">
+    Inventory<a href="/articles/documentation/shopify-settings/a/h4_51037994" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/shopify-settings/a/h4_51037994&#39;,this);"></a></h4>
+  <ul>
+    <li style="text-align: justify;">
+      <b>Update inventory:</b>&nbsp;Allow Linnworks to submit changes in stock levels to Shopify. Linnworks supports multiple stock locations for additional warehouses/fulfillment centers/suppliers. Ensure you set which Linnworks locations are used when submitting changes in stock levels to your channel via the <em><a href="/articles/documentation/channels-location-mapping" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);">Location Mapping</a></em> screen accessed from the main <em><a href="/articles/documentation/channel-integration-screen" onclick="return n(&#39;!documentation/channel-integration-screen&#39;,this);">Channel Integration</a></em> screen.
+    </li>
+    <li style="text-align: justify;">
+      <b>Max listed:</b><span>&nbsp;T</span><span>his specifies the maximum level sent to the channel.&nbsp;</span>
+      For more details, go to the&nbsp;<i><a href="/articles/documentation/channels-inventory-updates/a/max-listed" onclick="return n(&#39;!documentation/channels-inventory-updates/a/max-listed&#39;,this);">Max Listed</a></i>&nbsp;guide.</li>
+    <li style="text-align: justify;">
+      <b>Stock percentage:</b>&nbsp;This will send a percentage of the currently available stock level to the sales channel. For more details, go to the&nbsp;<i><a href="/articles/documentation/channels-inventory-updates/a/stock-percentage" onclick="return n(&#39;!documentation/channels-inventory-updates/a/stock-percentage&#39;,this);">Stock Percentage</a></i>&nbsp;guide.</li>
+    <li>
+      <b>End when:</b><span>&nbsp;T</span><span>his enables you to force the listing to end when the stock level gets to the specified amount instead of the default value of zero.&nbsp;</span>
+      For more details, go to the&nbsp;<i><a href="/articles/documentation/channels-inventory-updates/a/end-when" onclick="return n(&#39;!documentation/channels-inventory-updates/a/end-when&#39;,this);">End When</a></i>&nbsp;guide.</li></ul><h4 style="" id="h4__733860040" data-has-heading-anchor="true">Inventory - Price Change<a href="/articles/documentation/shopify-settings/a/h4__733860040" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/shopify-settings/a/h4__733860040&#39;,this);"></a></h4><ul><li><b>Price change:</b>&nbsp;Designed to automate updating the sales channel once a Linnworks stock item's listing price is updated and saved. For more details, go to the <i><a href="/articles/documentation/channels-price-change" onclick="return n(&#39;!documentation/channels-price-change&#39;,this);">Price Change</a></i> guide.</li>
+     </ul><h4 style="" id="h4__1184546515" data-has-heading-anchor="true">Listings<a href="/articles/documentation/shopify-settings/a/h4__1184546515" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/shopify-settings/a/h4__1184546515&#39;,this);"></a></h4><ul><li style="width: 747px;"><b>Auto-link by SKU:&nbsp;</b>If enabled, Linnworks will automatically link unmatched channel SKUs to matching Linnworks SKUs during&nbsp;<u>order download</u>&nbsp;or the&nbsp;<u>mapping sync</u>&nbsp;(runs ~every 12 hours). Once linked,&nbsp;<a href="/articles/documentation/channels-inventory-updates" onclick="return n(&#39;!documentation/channels-inventory-updates&#39;,this);">inventory sync</a>&nbsp;is triggered. You can check&nbsp;<a href="/articles/documentation/channels-inventory-mapping/a/h4_1759825364" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4_1759825364&#39;,this);">this guide</a>&nbsp;for full details on how this feature works.&nbsp;</li><li><b>Listing download in progress:</b> This&nbsp;box will tick itself if a Listing Update has begun.</li>
+        <li>
+          <b>Listing download start time:</b> This will show the date and time the update begins.</li>
+        <li>
+          <b>Last listing download completion time:</b>This field shows when the last listing download was completed (launched via the <em>Download Listings</em> button).
+        </li>
+        <li>
+          <b>Listing download estimated completion:</b> This will give you an estimate of when the listings download will be complete – the time can vary depending on server speeds and the number of listings.</li>
+        <li>
+          <b>Download listings:</b>&nbsp;Click this button to force Linnworks to request an update for your active listings from the channel.</li>
+      </ul><h4 id="h4_15828802" data-has-heading-anchor="true">
+    Next steps:
+  <a href="/articles/documentation/shopify-settings/a/h4_15828802" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/shopify-settings/a/h4_15828802&#39;,this);"></a></h4>
+  <ul>
+    <li>
+      <a href="/articles/documentation/channels-location-mapping" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);">Location Mapping</a>
+    </li>
+    <li>
+      <a href="/articles/documentation/channels-inventory-mapping" onclick="return n(&#39;!documentation/channels-inventory-mapping&#39;,this);">Inventory Mapping</a>
+    </li>
+    <li>
+      <a href="/articles/documentation/channels-payment-mapping" onclick="return n(&#39;!documentation/channels-payment-mapping&#39;,this);">Payment Mapping</a>
+    </li>
+    <li>
+      <a href="/articles/documentation/channels-shipping-mapping" onclick="return n(&#39;!documentation/channels-shipping-mapping&#39;,this);">Shipping Mapping</a></li></ul>
+      
+    
+  
+</div><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

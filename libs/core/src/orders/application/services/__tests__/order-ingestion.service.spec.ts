@@ -6,6 +6,7 @@
  * @module libs/core/src/orders/application/services/__tests__
  */
 
+import type { IBundleDefinitionService } from '@openlinker/core/products';
 import type { IOrderChangeService } from '../order-change.service.interface';
 import type { IPaymentWritebackService } from '../../interfaces/payment-writeback.service.interface';
 import type { IOrderCancellationEffectsService } from '../../interfaces/order-cancellation-effects.service.interface';
@@ -61,6 +62,7 @@ const routerResolver: FulfillmentRouterResolverPort = {
 
 describe('OrderIngestionService', () => {
   let service: OrderIngestionService;
+  let bundleDefinitions: { findCurrentByVariantIds: jest.Mock; findConfirmedMultipacks: jest.Mock };
 
   let integrationsService: jest.Mocked<IIntegrationsService>;
   // Only the two methods the SUT actually calls — tight Pick<> mock surface
@@ -158,6 +160,7 @@ describe('OrderIngestionService', () => {
       persistIncomingSnapshot: jest.fn().mockResolvedValue({ cancelledAt: null }),
       updateSyncStatus: jest.fn().mockResolvedValue(undefined),
       getOrderRecord: jest.fn(),
+      freezeLineExpansion: jest.fn().mockImplementation((_id: string, e: unknown) => Promise.resolve(e)),
       notifyOrderReceived: jest.fn().mockResolvedValue(undefined),
       findMany: jest.fn(),
       findByIds: jest.fn(),
@@ -246,6 +249,10 @@ describe('OrderIngestionService', () => {
         correctionUnavailableReason: null,
       }),
     };
+    bundleDefinitions = {
+      findCurrentByVariantIds: jest.fn().mockResolvedValue([]),
+      findConfirmedMultipacks: jest.fn().mockResolvedValue([]),
+    };
     sourceAmendmentEffects = {
       reconcile: jest.fn().mockResolvedValue({ outcome: 'nothing-to-do', lines: [], cause: null }),
       accept: jest.fn(),
@@ -273,6 +280,8 @@ describe('OrderIngestionService', () => {
       routerResolver,
       orderChanges as unknown as IOrderChangeService,
       cancellationEffects as unknown as IOrderCancellationEffectsService,
+      bundleDefinitions as unknown as IBundleDefinitionService,
+      { resolveForDocuments: jest.fn().mockResolvedValue(undefined) } as never,
       sourceAmendmentEffects as unknown as IOrderSourceAmendmentEffectsService,
       paymentWriteback as unknown as IPaymentWritebackService
     );
@@ -339,6 +348,45 @@ describe('OrderIngestionService', () => {
       expect(reservationService.reserveForOrder.mock.invocationCallOrder[0]).toBeLessThan(
         orderSyncService.syncOrder.mock.invocationCallOrder[0]
       );
+    });
+
+    it('should freeze the expansion and reserve the COMPONENTS of a bundle line (#3607)', async () => {
+      const definition = {
+        variantId: 'ol_variant_1',
+        version: 1,
+        components: [
+          { variantId: 'ol_variant_a', productId: 'ol_product_a', quantity: 3 },
+          { variantId: 'ol_variant_b', productId: 'ol_product_b', quantity: 1 },
+        ],
+      };
+      bundleDefinitions.findCurrentByVariantIds.mockResolvedValue([definition]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.freezeLineExpansion).toHaveBeenCalledWith('ol_order_res', {
+        v: 1,
+        definitions: [definition],
+      });
+      expect(orderRecordService.freezeLineExpansion.mock.invocationCallOrder[0]).toBeLessThan(
+        reservationService.reserveForOrder.mock.invocationCallOrder[0]
+      );
+      expect(reservationService.reserveForOrder.mock.calls[0][0].lines).toEqual([
+        expect.objectContaining({
+          orderLineId: 'line-1~c:ol_variant_a',
+          productId: 'ol_product_a',
+          productVariantId: 'ol_variant_a',
+          quantity: 6,
+        }),
+        expect.objectContaining({
+          orderLineId: 'line-1~c:ol_variant_b',
+          productId: 'ol_product_b',
+          quantity: 2,
+        }),
+      ]);
+      // The destination mirror keeps the commercial line.
+      expect(orderSyncService.syncOrder.mock.calls[0][0].order.items).toEqual([
+        expect.objectContaining({ id: 'line-1', variantId: 'ol_variant_1' }),
+      ]);
     });
 
     it('should stamp diagnostic on the omp_fulfilled topology', async () => {
@@ -1315,7 +1363,8 @@ describe('OrderIngestionService', () => {
         connectionId,
         'evt-3959',
         null,
-        '5213796333'
+        '5213796333',
+        undefined
       );
       expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith('ol_order_test', null, {
         action: 'set',
@@ -1849,6 +1898,113 @@ describe('OrderIngestionService', () => {
       });
       expect(persistedOrder.items[1].name).toBeUndefined();
       expect(persistedOrder.items[1].imageUrl).toBeUndefined();
+    });
+
+    it('holds a multipack line without a bundle as awaiting_mapping, before any reservation (#3929)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...incomingWithItems,
+        items: [{ ...incomingWithItems.items[0], packQuantity: 3 }, incomingWithItems.items[1]],
+      });
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-1', internalVariantId: 'v-1' })
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-2', internalVariantId: 'v-2' });
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId)
+      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+
+      expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith(
+        'ol_order_item_test',
+        {
+          status: 'awaiting_mapping',
+          reason: expect.stringContaining('[multipack-without-bundle]'),
+        }
+      );
+      expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+      expect(reservationService.reserveForOrder).not.toHaveBeenCalled();
+    });
+
+    it('does not re-hold a ready order whose expansion is frozen when the confirmation is retired (#3520)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...incomingWithItems,
+        items: [{ ...incomingWithItems.items[0], packQuantity: 3 }, incomingWithItems.items[1]],
+      });
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-1', internalVariantId: 'v-1' })
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-2', internalVariantId: 'v-2' });
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        recordStatus: 'ready',
+        lineExpansion: { v: 1, definitions: [] },
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.markItemResolutionFailure).not.toHaveBeenCalled();
+      expect(orderRecordService.persistOrder).toHaveBeenCalled();
+      expect(bundleDefinitions.findCurrentByVariantIds).not.toHaveBeenCalled();
+      expect(orderRecordService.freezeLineExpansion).not.toHaveBeenCalled();
+    });
+
+    it('freezes a ready order that has no expansion yet: a crash between persist and freeze is not pre-feature (#3520)', async () => {
+      orderSource.getOrder.mockResolvedValue({ ...incomingWithItems });
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-1', internalVariantId: 'v-1' })
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-2', internalVariantId: 'v-2' });
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        recordStatus: 'ready',
+        lineExpansion: null,
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.freezeLineExpansion).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets a confirmed multipack through and freezes it as N units of its own variant (#3624)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...incomingWithItems,
+        items: [{ ...incomingWithItems.items[0], packQuantity: 3 }, incomingWithItems.items[1]],
+      });
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-1', internalVariantId: 'v-1' })
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-2', internalVariantId: 'v-2' });
+      bundleDefinitions.findConfirmedMultipacks.mockResolvedValue([
+        { variantId: 'v-1', packQuantity: 3 },
+      ]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.markItemResolutionFailure).not.toHaveBeenCalled();
+      const frozen = orderRecordService.freezeLineExpansion.mock.calls[0][1];
+      expect(frozen.definitions).toEqual([
+        expect.objectContaining({
+          lineId: 'item-1',
+          variantId: 'v-1',
+          components: [{ variantId: 'v-1', productId: 'p-1', quantity: 3 }],
+        }),
+      ]);
+    });
+
+    it('carries gift and packQuantity onto the resolved line when not held (#3929)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...incomingWithItems,
+        items: [
+          { ...incomingWithItems.items[0], gift: { source: 'cart-rule' as const } },
+          incomingWithItems.items[1],
+        ],
+      });
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-1', internalVariantId: 'v-1' })
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-2', internalVariantId: 'v-2' });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      const items = orderRecordService.persistOrder.mock.calls[0][0].items;
+      expect(items[0].gift).toEqual({ source: 'cart-rule' });
+      expect('packQuantity' in items[0]).toBe(false);
+      expect('gift' in items[1]).toBe(false);
     });
 
     it('partial unresolved: persistIncomingSnapshot called, MissingOrderItemMappingError thrown, persistOrder NOT called', async () => {

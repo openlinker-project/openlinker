@@ -20,9 +20,16 @@ export class InsufficientAvailabilityError extends Error {
     public readonly inventoryItemId: string,
     public readonly requestedQuantity: number,
     public readonly availableQuantity: number,
+    /**
+     * The order line that asked (#3607). For a bundle line this is the
+     * COMPONENT line id (`{lineId}~c:{variantId}`), which is how a shortfall
+     * names the component that is short rather than only a position id.
+     */
+    public readonly orderLineId?: string,
   ) {
     super(
-      `Insufficient available-to-promise on inventory item ${inventoryItemId}: ` +
+      `Insufficient available-to-promise on inventory item ${inventoryItemId}` +
+        `${orderLineId === undefined ? '' : ` (order line ${orderLineId})`}: ` +
         `requested ${requestedQuantity}, available ${availableQuantity}`,
     );
     this.name = 'InsufficientAvailabilityError';

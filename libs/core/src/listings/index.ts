@@ -73,6 +73,16 @@ export {
   ProjectedParameterSourceValues,
   ProjectedParameterOutcomeValues,
 } from './application/types/attribute-projection.types';
+export type { IBundleOfferPreviewService } from './application/interfaces/bundle-offer-preview.service.interface';
+export type {
+  BundleOfferPreviewInput,
+  BundleOfferPreviewItem,
+  BundleOfferPreviewEntry,
+  BundleOfferPreviewComponent,
+  BundleOfferPreviewFailure,
+  BundleOfferPreviewResult,
+} from './application/types/bundle-offer-preview.types';
+export { BundleOfferPreviewFailureValues } from './application/types/bundle-offer-preview.types';
 export type { IAttributeProjectionPreviewService } from './application/interfaces/attribute-projection-preview.service.interface';
 export type {
   AttributeProjectionPreviewInput,
@@ -270,6 +280,7 @@ export type {
   CreateOfferResultStatus,
   CreateOfferValidationError,
   OfferCondition,
+  OfferProductSetComponent,
   OfferVariantGroup,
   OfferVariantAttribute,
   SourceCategoryRef,
@@ -521,6 +532,17 @@ export type {
   SafetyAttachmentUploadResult,
 } from './domain/ports/capabilities/safety-attachment-uploader.capability';
 export { isSafetyAttachmentUploader } from './domain/ports/capabilities/safety-attachment-uploader.capability';
+export type {
+  ProductSetPlanner,
+  ProductSetPlanRequest,
+  ProductSetComponentPlan,
+  ProductSetComponentProblem,
+  ProductSetComponentMode,
+} from './domain/ports/capabilities/product-set-planner.capability';
+export {
+  isProductSetPlanner,
+  ProductSetComponentModeValues,
+} from './domain/ports/capabilities/product-set-planner.capability';
 export type { ResponsibleProducerReader } from './domain/ports/capabilities/responsible-producer-reader.capability';
 export { isResponsibleProducerReader } from './domain/ports/capabilities/responsible-producer-reader.capability';
 export type {

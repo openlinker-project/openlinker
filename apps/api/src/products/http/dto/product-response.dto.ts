@@ -11,6 +11,29 @@ import { ProductVariantResponseDto } from './product-variant-response.dto';
 import { ExternalIdMappingDto } from './external-id-mapping.dto';
 import { ProductListingsCoverageDto } from './product-listings-coverage.dto';
 
+export class BundleComponentRefDto {
+  @ApiProperty() variantId!: string;
+  @ApiPropertyOptional({ type: String, nullable: true }) name!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) sku!: string | null;
+}
+
+export class ProductBundleSummaryDto {
+  @ApiProperty({ description: 'The bundle variant' }) variantId!: string;
+  @ApiProperty() componentCount!: number;
+  @ApiPropertyOptional({
+    type: () => BundleComponentRefDto,
+    nullable: true,
+    description: 'The component that supports the fewest bundles; null when availability is unknown',
+  })
+  limitedBy!: BundleComponentRefDto | null;
+  @ApiPropertyOptional({
+    type: () => BundleComponentRefDto,
+    nullable: true,
+    description: 'The first component whose stock OpenLinker does not know; why availability is unknown',
+  })
+  unknownComponent!: BundleComponentRefDto | null;
+}
+
 export class ProductResponseDto {
   @ApiProperty({ description: 'Internal product ID' })
   id!: string;
@@ -172,4 +195,12 @@ export class ProductResponseDto {
       'are stale; compare against variantCount to tell "some" apart from "all" (#2447).',
   })
   staleVariantCount?: number;
+
+  @ApiPropertyOptional({
+    type: () => ProductBundleSummaryDto,
+    nullable: true,
+    description:
+      'Set when one of the product\'s variants is a bundle (#3624, list only): which variant, how many components, and which component limits or blocks its availability.',
+  })
+  bundle?: ProductBundleSummaryDto | null;
 }

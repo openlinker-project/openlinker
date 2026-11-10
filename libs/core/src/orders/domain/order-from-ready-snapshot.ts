@@ -33,6 +33,7 @@ import { OrderSnapshotUnavailableError } from './exceptions/order-snapshot-unava
 import { REDACTED_PLACEHOLDER } from './order-address-redaction';
 import { isTaxRateSource } from '@openlinker/core/products';
 import { isPaymentMethod } from './types/payment-method.types';
+import { readLineGift } from './types/incoming-order.types';
 import { isPaymentStatus } from './types/payment-status.types';
 
 /**
@@ -293,6 +294,18 @@ function readItems(value: unknown): OrderItem[] {
     // figure lands on a fiscal document and a NaN there is not recoverable.
     if (typeof item.unitPriceGross === 'number' && Number.isFinite(item.unitPriceGross)) {
       orderItem.unitPriceGross = item.unitPriceGross;
+    }
+    // #3929 - same allowlist trap: a multipack size lost on read would let the
+    // hold re-check treat the line as one unit and let it through. Only a
+    // finite value above zero is a pack size.
+    const gift = readLineGift(item.gift);
+    if (gift) orderItem.gift = gift;
+    if (
+      typeof item.packQuantity === 'number' &&
+      Number.isFinite(item.packQuantity) &&
+      item.packQuantity > 0
+    ) {
+      orderItem.packQuantity = item.packQuantity;
     }
     return orderItem;
   });

@@ -1,0 +1,23 @@
+=== channels-order-refunds | Channel features: Order Refunds
+ 
+ Channel features: Order Refunds 
+ Order Refunds
+ Linnworks allows users to record refunds in the system for reporting purposes. Apart from making internal system records about a refund, some channel integrations also allow sending the refund information back to the channel .  
+ In order to send refund info to a channel, you need to enable the following setting in the integration:  Settings > Channel Integration > Edit Channel Details > Order. 
+ Info!  This feature is available only for the following channels:  
+ Amazon 
+ Back Market 
+ BigCommerce 
+ eBay * 
+ Magento 2 
+ Mirakl 
+ Shopify 
+ Walmart 
+ * NB!  For eBay, this setti ng is called  Refund Notes . To use seller-initiated order refunds for eBay, you must be enrolled in the eBay Managed Payments program. For full instructions, see the following  guide . 
+ For other channels, the refund in Linnworks will allow you to keep a record of it in the system, but the actual refund will need to be raised and processed on the channel directly. 
+ Check the  Refunds documentation for a detailed guide on how to create a refund. 
+ See also:
+ Order Cancellation 
+ Refunds 
+ Returns & Refunds 
+ 

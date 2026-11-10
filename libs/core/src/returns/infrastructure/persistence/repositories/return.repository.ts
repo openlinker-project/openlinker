@@ -1503,6 +1503,18 @@ export class ReturnRepository implements ReturnRepositoryPort {
     return rows.map((row) => this.toLineEventDomain(row));
   }
 
+  async findComponentActsForReturn(returnId: string): Promise<ReturnLineEvent[]> {
+    const rows = await this.lineEvents
+      .createQueryBuilder('event')
+      .where('event."returnId" = :returnId', { returnId })
+      .andWhere(`event."kind" = 'dispose'`)
+      .andWhere('event."componentVariantId" IS NOT NULL')
+      .orderBy('event."returnLineId"', 'ASC')
+      .addOrderBy('event."seq"', 'ASC')
+      .getMany();
+    return rows.map((row) => this.toLineEventDomain(row));
+  }
+
   async findAttestationsForReturn(returnId: string): Promise<ReturnLineEvent[]> {
     const rows = await this.lineEvents
       .createQueryBuilder('event')
@@ -1810,6 +1822,12 @@ export class ReturnRepository implements ReturnRepositoryPort {
     entity.actorUserId = input.actorUserId;
     entity.occurredAt = input.occurredAt;
     entity.attestedByEventId = input.attestedByEventId;
+    entity.componentVariantId = input.componentVariantId ?? null;
+    entity.componentGroup = input.componentGroup ?? null;
+    entity.componentShareGross =
+      input.componentShareGross === undefined || input.componentShareGross === null
+        ? null
+        : input.componentShareGross.toFixed(2);
 
     const saved = await repo.save(entity);
     return this.toLineEventDomain(saved);
@@ -1861,7 +1879,10 @@ export class ReturnRepository implements ReturnRepositoryPort {
       entity.actorUserId,
       entity.occurredAt,
       entity.attestedByEventId,
-      entity.createdAt
+      entity.createdAt,
+      entity.componentVariantId,
+      entity.componentGroup,
+      entity.componentShareGross === null ? null : Number(entity.componentShareGross)
     );
   }
 

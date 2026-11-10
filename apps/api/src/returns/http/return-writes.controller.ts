@@ -51,6 +51,7 @@ import {
   Inject,
   Param,
   Post,
+  Query,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -73,10 +74,13 @@ import {
   RETURN_REFUND_LOCK_TTL_MS,
   RETURN_REFUND_SERVICE_TOKEN,
   RETURNS_SERVICE_TOKEN,
+  ReturnBundleRefusedError,
   ReturnLineNotFoundError,
   ReturnNotFoundError,
   describeCorrectionNoMatchReason,
   type AttestStockResult,
+  type BundleReturnInput,
+  type ResolvableOrderLine,
   type DisposeLineResult,
   type IReturnAuthorizeService,
   type IReturnCorrectionProposalService,
@@ -89,14 +93,20 @@ import {
   type ReturnCorrectionProposalResult,
   type ReturnLine,
 } from '@openlinker/core/returns';
+import { COMPONENT_LINE_ID_SEPARATOR } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import type {
-  RestockBlockedResponseDto,
-  ReturnLineCountersDto} from '../dto/return-custody.dto';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
+import type { RestockBlockedResponseDto, ReturnLineCountersDto } from '../dto/return-custody.dto';
 import {
+  BundleRefundHintResponseDto,
+  BundleReturnPreviewQueryDto,
+  BundleReturnPreviewResponseDto,
+  ConfirmReturnLineOrderLineDto,
+  ConfirmReturnLineOrderLineResponseDto,
+  ReturnLineOrderLineSuggestionResponseDto,
   AttestReturnLineStockDto,
   AttestReturnLineStockResponseDto,
   DisposeReturnLineDto,
@@ -104,7 +114,7 @@ import {
   MarkReturnLineNotReturnedDto,
   MarkReturnLineNotReturnedResponseDto,
   ReceiveReturnLineDto,
-  ReceiveReturnLineResponseDto
+  ReceiveReturnLineResponseDto,
 } from '../dto/return-custody.dto';
 import {
   AuthorizeReturnResponseDto,
@@ -117,6 +127,11 @@ import {
 } from '../dto/return-write.dto';
 import { ReturnCorrectionProposalResponseDto } from '../dto/return-correction-proposal.dto';
 import { refundAmountPrecision } from '../../orders/http/orders-errors';
+
+interface BundleReadContext {
+  record: NonNullable<Awaited<ReturnType<IReturnsService['getReturn']>>>;
+  order: NonNullable<Awaited<ReturnType<IOrderRecordService['getOrderRecord']>>>;
+}
 
 @ApiBearerAuth()
 @ApiTags('returns')
@@ -173,7 +188,8 @@ export class ReturnWritesController {
     const order = await this.orderRecords.getOrderRecord(dto.internalOrderId);
     const record = await this.returns.recordReturn({
       internalOrderId: dto.internalOrderId,
-      orderLines: order === null || order === undefined ? undefined : toRecordReturnOrderLines(order),
+      orderLines:
+        order === null || order === undefined ? undefined : toRecordReturnOrderLines(order),
       sourceConnectionId: dto.sourceConnectionId,
       lines: dto.lines.map((line) => ({
         sku: line.sku ?? null,
@@ -297,7 +313,7 @@ export class ReturnWritesController {
   @Post(':returnId/lines/:lineId/mark-not-returned')
   @Roles('admin', 'operator')
   @ApiOperation({
-    summary: 'Record that this line\'s parcel is not coming',
+    summary: "Record that this line's parcel is not coming",
     description:
       '**Always an operator act, never a timeout and never a sweep** (spec § 5.2) — a parcel that ' +
       'has not arrived is not the same fact as a parcel that is not coming, and only a human is in ' +
@@ -361,18 +377,207 @@ export class ReturnWritesController {
   ): Promise<DisposeReturnLineResponseDto> {
     await this.assertLineBelongsToReturn(returnId, lineId);
 
+    // The component list reaches `returns` as DATA read from the order here, never
+    // from the request: a client-named composition would let a caller restock
+    // stock the order never contained.
+    const bundle =
+      dto.disposition === 'restock'
+        ? await this.loadBundleInput(returnId, lineId, dto.returnedVariantIds)
+        : undefined;
+    if (bundle === undefined && dto.returnedVariantIds !== undefined) {
+      throw new ReturnBundleRefusedError('bad-selection', dto.returnedVariantIds);
+    }
+
     const result: DisposeLineResult = await this.custody.disposeLine(lineId, {
       quantity: dto.quantity,
       disposition: dto.disposition,
       note: dto.note ?? null,
       actorUserId: user.id,
+      ...(bundle === undefined ? {} : { bundle }),
     });
 
     return {
       line: this.toCountersDto(result.line),
       eventId: result.event.id,
       restockBlocked: this.toRestockBlockedDto(result.restockBlocked),
+      restockBlockedComponents: (result.restockBlockedComponents ?? [])
+        .map((detail) => this.toRestockBlockedDto(detail))
+        .filter((dtoItem): dtoItem is RestockBlockedResponseDto => dtoItem !== null),
     };
+  }
+
+  @Get(':returnId/lines/:lineId/bundle')
+  @Roles('admin', 'operator', 'viewer')
+  @ApiOperation({
+    summary: 'Price a (partial) return of a bundle line',
+    description:
+      "A read - nothing is written. For a bundle line: the components, each one's share of the set " +
+      'price computed NOW from standalone prices (cost as the fallback), and the Allegro-formula ' +
+      'refund HINT (paid for the set minus the full price of what the buyer keeps, minimum 0). The ' +
+      "hint is never applied by default; the refund amount remains the operator's field.",
+  })
+  @ApiResponse({ status: 200, type: BundleReturnPreviewResponseDto })
+  async previewBundleReturn(
+    @Param('returnId') returnId: string,
+    @Param('lineId') lineId: string,
+    @Query() query: BundleReturnPreviewQueryDto
+  ): Promise<BundleReturnPreviewResponseDto> {
+    await this.assertLineBelongsToReturn(returnId, lineId);
+    const returned = query.returnedVariantIds
+      ?.split(',')
+      .map((id) => id.trim())
+      .filter((id) => id !== '');
+    const bundle = await this.loadBundleInput(
+      returnId,
+      lineId,
+      returned !== undefined && returned.length > 0 ? returned : undefined
+    );
+    if (bundle === undefined) {
+      return {
+        isBundle: false,
+        paidPerUnitGross: null,
+        components: [],
+        splitRefusal: null,
+        splitRefusalVariantIds: [],
+        returnedShareGross: null,
+        allegroRefundHintGross: null,
+      };
+    }
+    const quantity = query.quantity ?? 1;
+    const preview = await this.custody.previewBundleReturn(bundle, quantity);
+    // The core field is marketplace-neutral; the wire name stays (the web client reads it).
+    const { keptAtStandaloneRefundHintGross, ...rest } = preview;
+    return {
+      isBundle: true,
+      paidPerUnitGross: bundle.paidPerUnitGross,
+      ...rest,
+      allegroRefundHintGross: keptAtStandaloneRefundHintGross,
+    };
+  }
+
+  @Get(':returnId/bundle-refund-hint')
+  @Roles('admin', 'operator', 'viewer')
+  @ApiOperation({
+    summary: 'The Allegro-formula refund hint for partially returned bundles',
+    description:
+      "A read. Sums, over the return's partially returned bundle lines, what was paid for the set " +
+      'minus the full price of what the buyer keeps (minimum 0 per line). A hint only: it is ' +
+      'never applied, and OpenLinker records a refund, it does not execute one.',
+  })
+  @ApiResponse({ status: 200, type: BundleRefundHintResponseDto })
+  async bundleRefundHint(
+    @Param('returnId') returnId: string
+  ): Promise<BundleRefundHintResponseDto> {
+    const sets = await this.custody.listReturnedBundleComponents(returnId);
+    if (sets.length === 0) {
+      return {
+        applicable: false,
+        hintGross: null,
+        paidForSetGross: null,
+        keptStandaloneGross: null,
+      };
+    }
+    let hint = 0;
+    let paid = 0;
+    let kept = 0;
+    const context = await this.loadBundleContext(returnId);
+    for (const set of sets) {
+      const bundle = await this.loadBundleInput(
+        returnId,
+        set.returnLineId,
+        set.returnedVariantIds,
+        context
+      );
+      if (bundle === undefined) {
+        return {
+          applicable: true,
+          hintGross: null,
+          paidForSetGross: null,
+          keptStandaloneGross: null,
+        };
+      }
+      const preview = await this.custody.previewBundleReturn(bundle, set.units);
+      if (preview.keptAtStandaloneRefundHintGross === null || preview.hintInputs === null) {
+        return {
+          applicable: true,
+          hintGross: null,
+          paidForSetGross: null,
+          keptStandaloneGross: null,
+        };
+      }
+      hint += preview.keptAtStandaloneRefundHintGross;
+      paid += preview.hintInputs.paidForSetGross;
+      kept += preview.hintInputs.keptStandaloneGross;
+    }
+    const round = (value: number): number => Math.round(value * 100) / 100;
+    return {
+      applicable: true,
+      hintGross: round(hint),
+      paidForSetGross: round(paid),
+      keptStandaloneGross: round(kept),
+    };
+  }
+
+  @Get(':returnId/lines/:lineId/order-line-suggestion')
+  @Roles('admin', 'operator', 'viewer')
+  @ApiOperation({
+    summary: 'Suggest the order line a return line belongs to',
+    description:
+      'For a line whose automatic resolution stayed ambiguous (the same offer on several order ' +
+      'lines, one of them in an offer-bundle discount): the candidates and one suggestion with its ' +
+      'basis. A read; the operator confirms through the confirm route.',
+  })
+  @ApiResponse({ status: 200, type: ReturnLineOrderLineSuggestionResponseDto })
+  async suggestOrderLine(
+    @Param('returnId') returnId: string,
+    @Param('lineId') lineId: string
+  ): Promise<ReturnLineOrderLineSuggestionResponseDto> {
+    const orderLines = await this.loadOrderLines(returnId, lineId);
+    const suggestion = await this.returns.suggestOrderLineForReturnLine(lineId, orderLines);
+    return {
+      candidates: suggestion.candidates.map((candidate) => ({
+        id: candidate.id,
+        price: candidate.price,
+        quantity: candidate.quantity,
+        sku: candidate.sku ?? null,
+      })),
+      suggestedOrderLineId: suggestion.suggestedOrderLineId,
+      basis: suggestion.basis,
+      alreadyResolvedOrderLineId: suggestion.alreadyResolvedOrderLineId,
+    };
+  }
+
+  @Post(':returnId/lines/:lineId/confirm-order-line')
+  @Roles('admin', 'operator')
+  @ApiOperation({
+    summary: 'Confirm the order line a return line belongs to',
+    description:
+      "The operator's confirmation of a suggestion. Goes through the same fill-in-when-empty claim " +
+      'as automatic resolution, so it can never overwrite an answer.',
+  })
+  @ApiResponse({ status: 201, type: ConfirmReturnLineOrderLineResponseDto })
+  @ApiResponse({ status: 400, description: "The order line is not one of the order's lines" })
+  async confirmOrderLine(
+    @Param('returnId') returnId: string,
+    @Param('lineId') lineId: string,
+    @Body() dto: ConfirmReturnLineOrderLineDto
+  ): Promise<ConfirmReturnLineOrderLineResponseDto> {
+    const orderLines = await this.loadOrderLines(returnId, lineId);
+    const result = await this.returns.confirmOrderLineForReturnLine(
+      lineId,
+      dto.orderLineId,
+      orderLines
+    );
+    if (!result.known) {
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'VALIDATION_FAILED',
+        "The order line is not one of this order's lines",
+        undefined,
+        { fields: [{ path: 'orderLineId', code: 'isKnownOrderLine' }] }
+      );
+    }
+    return { claimed: result.claimed };
   }
 
   @Post(':returnId/lines/:lineId/mark-stock-handled')
@@ -532,31 +737,34 @@ export class ReturnWritesController {
     }
 
     try {
-      const record = await this.orderRefunds.recordRefund({
-        internalOrderId: intent.internalOrderId,
-        amount: intent.amount,
-        currency: intent.currency,
-        reason: intent.reason,
-        note: intent.note,
-        recordedAt: intent.recordedAt,
-        executedBy: intent.executedBy,
-        // NOTE: `intent.providerRefundId` is deliberately NOT forwarded —
-        // `CreateRefundRecordInput` has no field for it. That is a real gap, not
-        // an omission here: the intent carries the value because a future
-        // `RefundExecutor` capability would report one, and `orders` will need a
-        // column before it can be stored. Today every shipped path is
-        // `operator_out_of_band`, where it is always null, so nothing is lost.
-        returnId: intent.returnId,
-        // Repeated here because the money state has already settled: a record
-        // write that re-refused an excess the operator just acknowledged would
-        // leave a refunded line with no RefundRecord (#3289).
-        acknowledgeAboveCeiling,
-        // Deterministic per ATTEMPT, so one attempt cannot insert twice and
-        // inflate `RefundSummary.totalAmount`. A second attempt claims different
-        // lines (the first attempt's are no longer attemptable), so a legitimate
-        // partial refund still gets its own key.
-        idempotencyKey: `return:${intent.returnId}:${[...result.claimedLineIds].sort().join('+')}`,
-      }, { orderLockHeld });
+      const record = await this.orderRefunds.recordRefund(
+        {
+          internalOrderId: intent.internalOrderId,
+          amount: intent.amount,
+          currency: intent.currency,
+          reason: intent.reason,
+          note: intent.note,
+          recordedAt: intent.recordedAt,
+          executedBy: intent.executedBy,
+          // NOTE: `intent.providerRefundId` is deliberately NOT forwarded —
+          // `CreateRefundRecordInput` has no field for it. That is a real gap, not
+          // an omission here: the intent carries the value because a future
+          // `RefundExecutor` capability would report one, and `orders` will need a
+          // column before it can be stored. Today every shipped path is
+          // `operator_out_of_band`, where it is always null, so nothing is lost.
+          returnId: intent.returnId,
+          // Repeated here because the money state has already settled: a record
+          // write that re-refused an excess the operator just acknowledged would
+          // leave a refunded line with no RefundRecord (#3289).
+          acknowledgeAboveCeiling,
+          // Deterministic per ATTEMPT, so one attempt cannot insert twice and
+          // inflate `RefundSummary.totalAmount`. A second attempt claims different
+          // lines (the first attempt's are no longer attemptable), so a legitimate
+          // partial refund still gets its own key.
+          idempotencyKey: `return:${intent.returnId}:${[...result.claimedLineIds].sort().join('+')}`,
+        },
+        { orderLockHeld }
+      );
 
       return {
         ...base,
@@ -658,6 +866,93 @@ export class ReturnWritesController {
     }
   }
 
+  /** The order's commercial lines, for the resolution routes. */
+  private async loadOrderLines(returnId: string, lineId: string): Promise<ResolvableOrderLine[]> {
+    await this.assertLineBelongsToReturn(returnId, lineId);
+    const record = await this.returns.getReturn(returnId);
+    if (record === null || record.internalOrderId === null) {
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'RETURN_NOT_ATTRIBUTED',
+        'The return is not attributed to an order'
+      );
+    }
+    const order = await this.orderRecords.getOrderRecord(record.internalOrderId);
+    if (order === null) {
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'ORDER_NOT_FOUND',
+        'The order of this return could not be read'
+      );
+    }
+    return order.orderItems;
+  }
+
+  /**
+   * The composition of a returned bundle line, read from the order's FROZEN
+   * expansion (#3933). `undefined` for an ordinary line or one whose order line
+   * is not resolved yet - nothing is guessed from the sku.
+   */
+  private async loadBundleContext(returnId: string): Promise<BundleReadContext | null> {
+    const record = await this.returns.getReturn(returnId);
+    if (record === null || record.internalOrderId === null) {
+      return null;
+    }
+    const order = await this.orderRecords.getOrderRecord(record.internalOrderId);
+    return order === null ? null : { record, order };
+  }
+
+  private async loadBundleInput(
+    returnId: string,
+    lineId: string,
+    returnedVariantIds: string[] | undefined,
+    // A caller looping over several lines of one return loads these once.
+    context?: BundleReadContext | null
+  ): Promise<BundleReturnInput | undefined> {
+    const loaded = context === undefined ? await this.loadBundleContext(returnId) : context;
+    if (loaded === null) {
+      return undefined;
+    }
+    const { record, order } = loaded;
+    const line = record.lines.find((candidate) => candidate.id === lineId);
+    if (line === undefined || typeof line.resolvedOrderLineId !== 'string') {
+      return undefined;
+    }
+    const refs = order.componentsOfLine(line.resolvedOrderLineId);
+    if (refs.length === 0) {
+      return undefined;
+    }
+    const definitions = order.lineExpansion?.definitions ?? [];
+    const catalogue = new Map(
+      definitions.flatMap((definition) =>
+        definition.components.map((component) => [component.variantId, component] as const)
+      )
+    );
+    const item = order.orderItems.find((candidate) => candidate.id === line.resolvedOrderLineId);
+    const components: BundleReturnInput['components'] = [];
+    for (const ref of refs) {
+      const variantId = ref.componentLineId.slice(
+        ref.componentLineId.indexOf(COMPONENT_LINE_ID_SEPARATOR) +
+          COMPONENT_LINE_ID_SEPARATOR.length
+      );
+      const known = catalogue.get(variantId);
+      if (known === undefined) {
+        return undefined;
+      }
+      components.push({ productId: known.productId, variantId, perUnit: ref.perUnit });
+    }
+    // A net-priced order with no reported gross has no honest gross to split.
+    const paid =
+      item === undefined
+        ? null
+        : item.unitPriceGross ?? (order.taxTreatment === 'exclusive' ? null : item.price);
+    return {
+      paidPerUnitGross: paid,
+      components,
+      ...(returnedVariantIds === undefined ? {} : { returnedVariantIds }),
+    };
+  }
+
   private toCountersDto(line: ReturnLine): ReturnLineCountersDto {
     return {
       id: line.id,
@@ -726,6 +1021,7 @@ export class ReturnWritesController {
                     ? null
                     : describeCorrectionNoMatchReason(line.noMatchReason),
                 candidatesPriceOrRateDiffer: line.candidatesPriceOrRateDiffer,
+                componentCredit: line.componentCredit ?? null,
               })),
             },
     };
@@ -762,7 +1058,9 @@ export class ReturnWritesController {
    * genuinely unknown ceiling (missing total or currency) is the service's
    * `unknown` verdict and still proceeds.
    */
-  private async resolveRefundCeilingContext(returnId: string): Promise<RefundCeilingContext | null> {
+  private async resolveRefundCeilingContext(
+    returnId: string
+  ): Promise<RefundCeilingContext | null> {
     try {
       const record = await this.returns.getReturn(returnId);
       const orderId = record?.internalOrderId ?? null;
@@ -800,7 +1098,9 @@ function toRecordReturnOrderLines(order: {
   orderSnapshot: Record<string, unknown>;
   channelSnapshot: Record<string, unknown>;
 }): RecordReturnOrderLines {
-  const read = (snapshot: Record<string, unknown>): Array<{
+  const read = (
+    snapshot: Record<string, unknown>
+  ): Array<{
     id: string;
     sku: string | null;
     name: string | null;

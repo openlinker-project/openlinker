@@ -256,6 +256,9 @@ describe('RoutingDryRunService', () => {
       h.getOrderRecord.mockResolvedValue({
         shippingAddressHash: 'h'.repeat(64),
         fulfillmentRoutingSkipReason: null,
+        physicalItems: [
+          { id: 'line-1', productId: 'ol_product_1', variantId: 'ol_variant_1', quantity: 2 },
+        ],
       });
       mockOrderFromReadySnapshot.mockReturnValue({
         items: [
@@ -280,6 +283,9 @@ describe('RoutingDryRunService', () => {
       h.getOrderRecord.mockResolvedValue({
         shippingAddressHash: null,
         fulfillmentRoutingSkipReason: 'own-shop-order',
+        physicalItems: [
+          { id: 'line-1', productId: 'ol_product_1', variantId: 'ol_variant_1', quantity: 1 },
+        ],
       });
       mockOrderFromReadySnapshot.mockReturnValue({
         items: [

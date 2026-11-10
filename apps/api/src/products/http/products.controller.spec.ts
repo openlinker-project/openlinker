@@ -11,7 +11,11 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PATH_METADATA } from '@nestjs/common/constants';
 import { ProductImageProxyService } from '../application/services/product-image-proxy.service';
 import { ProductsController, VariantsController } from './products.controller';
-import { PRODUCTS_SERVICE_TOKEN, TAX_RATE_JOURNAL_SERVICE_TOKEN } from '@openlinker/core/products';
+import {
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
+  PRODUCTS_SERVICE_TOKEN,
+  TAX_RATE_JOURNAL_SERVICE_TOKEN,
+} from '@openlinker/core/products';
 import type {
   IProductsService,
   ITaxRateJournalService,
@@ -201,6 +205,10 @@ describe('ProductsController', () => {
         { provide: OFFER_MAPPINGS_SERVICE_TOKEN, useValue: mockOfferMappings },
         { provide: SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN, useValue: mockShopProductMappings },
         { provide: TAX_RATE_JOURNAL_SERVICE_TOKEN, useValue: mockTaxRateJournal },
+        {
+          provide: BUNDLE_DEFINITION_SERVICE_TOKEN,
+          useValue: { findCurrentByVariantIds: jest.fn().mockResolvedValue([]) },
+        },
         // Stubbed rather than omitted: the controller takes it by CLASS, so an
         // absent provider fails the whole module and with it every test in this
         // file - which is how it went unnoticed, since nothing here exercises
@@ -1033,6 +1041,7 @@ describe('ProductsController', () => {
         taxRateState: 'missing' as const,
         connectionId: '11111111-1111-4111-8111-111111111111',
         hideFullyStale: true,
+        bundles: 'only' as const,
         unlistedOn: '22222222-2222-4222-8222-222222222222',
       };
 
@@ -1054,6 +1063,8 @@ describe('ProductsController', () => {
         stock: 'low',
         taxRateState: 'missing',
         hideFullyStale: true,
+        bundleFilter: 'only',
+        productId: undefined,
         unlistedOnConnectionIds: ['22222222-2222-4222-8222-222222222222'],
       });
       expect(counted).toEqual({ total: 42 });

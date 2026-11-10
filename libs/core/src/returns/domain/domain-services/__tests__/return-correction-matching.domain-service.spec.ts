@@ -439,3 +439,56 @@ describe('describeCorrectionNoMatchReason (#2374)', () => {
     }
   );
 });
+
+describe('classifyReturnCorrectionLines - a set presented as its components', () => {
+  // Set line `set` of 2 units: component a (2 per set) at 23, component b (1 per set) at 8.
+  const componentLines = (): CorrectionSnapshotLine[] => [
+    snapshotLine({ name: 'Soap', quantity: 4, taxRate: '23', orderLineId: 'set~c:a', bundleSetQuantity: 2 }),
+    snapshotLine({ name: 'Book', quantity: 2, taxRate: '8', orderLineId: 'set~c:b', bundleSetQuantity: 2 }),
+  ];
+
+  it('should credit EVERY component line when a whole set comes back', () => {
+    const results = classifyReturnCorrectionLines(
+      [line({ name: 'Gift set', quantityDisposed: 1, resolvedOrderLineId: 'set' })],
+      componentLines()
+    );
+
+    expect(results.map((r) => [r.componentVariantId, r.selectedOriginalLineNumber, r.newQuantity])).toEqual([
+      ['a', 1, 2],
+      ['b', 2, 1],
+    ]);
+    expect(results.every((r) => r.status === 'matched')).toBe(true);
+  });
+
+  it('should credit only the returned component line for a component returned on its own', () => {
+    const results = classifyReturnCorrectionLines(
+      [
+        line({
+          name: 'Gift set',
+          quantityDisposed: 0,
+          resolvedOrderLineId: 'set',
+          partialComponents: [{ variantId: 'b', bundleUnits: 1 }],
+        }),
+      ],
+      componentLines()
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      componentVariantId: 'b',
+      selectedOriginalLineNumber: 2,
+      newQuantity: 1,
+      status: 'matched',
+    });
+  });
+
+  it('should not guess when a component line does not say how many set units it covers', () => {
+    const [result] = classifyReturnCorrectionLines(
+      [line({ name: 'Gift set', quantityDisposed: 1, resolvedOrderLineId: 'set' })],
+      [snapshotLine({ name: 'Soap', quantity: 4, orderLineId: 'set~c:a' })]
+    );
+
+    expect(result.status).toBe('no-match');
+    expect(result.noMatchReason).toBe('ambiguous-invoice-line');
+  });
+});

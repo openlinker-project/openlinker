@@ -1,0 +1,138 @@
+=== amazon-settings | Amazon: Configure channel settings
+ 
+ Amazon: Configure channel settings 
+Amazon: How to Configure
+ Linnworks integration has multiple settings that allow precise control of how Linnworks interacts with Amazon. This guide will help you configure your Amazon to ensure Linnworks is doing what is required. 
+ Once the channel is added, click the pen    icon in the channel integration screen for the required Amazon integration. 
+ Available for the configuration settings 
+ Account
+ Enabled:  Tick this option to allow communication between Linnworks and Amazon. No information will be sent to or received from Amazon without this ticked.
+ Seller ID:  This is your Amazon Seller ID on the Amazon MWS page.
+ Marketplace:  Your country-specific Amazon Marketplace for orders.
+ Test:  Click to confirm the supplied credentials work correctly, allowing communication between Amazon and Linnworks. 
+ VAT/Tax Calculation Services
+ Enabled: Enable this checkbox to tell us you are using Amazon's VAT Calculation Service. 
+ Use Channel Tax: Toggled by the above setting. When ticked, Linnworks will use tax values calculated by Amazon during order download. This only applies to sellers enrolled in Amazon's  VAT Calculation Service .  
+ VCS Self-Invoice Upload: Yo u must be enrolled in VCS self-invoicing. Enable invoice & credit notes to be automatically uploaded to Amazon for VAT calculation service. 
+ VCS Invoice Upload (EU) Activation Date: L et us know the activation date you have set for self-invoicing. We will begin to upload invoices from this date. 
+ VCS Self-Invoice Template:  Firs t, you must set up Amazon VCS (VAT Calculation Service) template(s) in Linnworks Template Designer . All the templates will be available for selection in the drop-down menu. The template you will select will be used for uploads to this site. 
+ Invoice Document Upload (EU):   This setting depends on whether you use VCS. If you are using VCS/TCS, Amazon generates invoices, or the Self-Invoice Upload must be enabled above. 
+ Note:  Amazon supports creating and uploading invoices when a seller is enrolled in VCS and the order was placed on one of the following marketplaces: IE, ES, UK, FR, BE, NL, DE, IT.  
+ Ignore Facilitator Tax:  This setting will ignore marketplace facilitator taxes when calculating order totals and will not use VCS.
+ Order
+ Dispatch notes: After processing the order in Linnworks, a dispatch notification, tracking number (if available), and the selected Shipping Vendor will be submitted to the channel. When the option is disabled, no dispatch information will be forwarded to Amazon. Dispatch information is stored in the  Audit Trail . For Amazon, the following information may be shown: 
+ No Dispatch required:  This is shown if dispatch notes are disabled. 
+ Order Dispatch Submitted:  Added to the audit trail when a dispatch note is sent. 
+ Order Successfully Dispatched:  Added when Amazon has confirmed the dispatch request was accepted. 
+ Order Dispatch Failed:  This is shown as the reason for the failure of a dispatch note to send. Linnworks will attempt to resend the despatch note in the next 24 hours. 
+ Dispatch Rejected:  This can be added if the channel has been deleted or disabled.
+ Order Cancellations: Enable cancellations to be actioned on Amazon. 
+ Order Refunds:  If enabled, a refund actioned in Linnworks will create a new refund and process it on Amazon.
+ Linnworks will make up to 5 attempts to submit a refund request to Amazon. This information will once again be stored in the  Audit Trail  of the order. 
+ When a whole order is refunded, the Amazon order is canceled, and the refund is created and processed on Amazon.
+ If the order has been partially refunded, the item is canceled, and the customer is reimbursed for the canceled items only.
+ Not Disclosed Default Email:  Amazon does not disclose customers' email addresses and will often hide proxy email addresses. If an email address is available, Linnworks will use it, but this may involve a delay of up to 1 hour on a new order. If the email address is not specified, the email field will contain the text 'NOT DISCLOSED BY AMAZON.' If you enter an alternate email address here to replace that text, errors will not be caused if using Linnworks' Email Notification functionality. 
+ Amazon custom - Use the latest version available: Enable this setting to use the latest data feed version for more detailed and customized information. This may include additional order item details, where available.
+ Previous
+ New
+ s1a1_name, Name
+ s1a1_label, Add Name
+ s1a1_text, Mr Jones
+ s1a1_dimensions_width, 178
+ s1a1_dimensions_height, 44
+ s1a1_position_x, 130
+ s1a1_position_y, 209
+ s1a1_fontFamily, Arial
+ s1a1_fill, #000
+ Name_Add Name, Mr Jones
+ Name_Width, 178
+ Name_Height, 44
+ Name_X, 130
+ Name_Y, 209
+ Font Name, Arial
+ Font Colour, #000
+ Auto approve buyer cancellation requests:  When enabled, this setting automatically cancels orders in both Linnworks and Amazon when the buyer submits a cancellation request. The order will be marked as "Buyer Canceled" on Amazon, and Linnworks will update the status accordingly.  
+    Note:  Amazon does not allow sellers to reject buyer-requested cancellations if the setting is enabled. Orders will be automatically canceled in Linnworks. If the setting is disabled, Linnworks will park the canceled order and add a note indicating that action is required in Amazon.
+ Order sync date [UTC]:  The date and time of the most recently updated order that was amended in Linnworks during the last channel synchronization. 
+ Order Received UTC offset: 
+ Changes the Order Received Date logged against the Linnworks order by the value provided in hours.  
+ Inventory
+ Multi-location: This identifies if this Amazon integration uses multi-location inventory. A detailed guide about this feature is available here .
+ Update inventory: Allow Linnworks to submit changes in stock levels to Amazon. Linnworks supports multiple stock locations for additional warehouses/fulfillment centers/suppliers. Ensure you set which Linnworks locations are used when submitting changes in stock levels to Amazon via the  Location Mapping  screen accessed from the main  Channel Integration  screen.
+  Note:  Quantity is a global value in relationship with an SKU, so changes to stock levels are reflected in all marketplaces where the SKU is active. If multiple inventory feeds are processed for the same SKU in different marketplaces, the quantity of the last uploaded inventory feed from the seller reflects the global inventory level. Setting the item inventory level to 0 effectively sets the item quantity to 0 in all marketplaces and makes the item non-buyable. All listing information is still maintained in the system. More details are  here .
+ Max Listed:  This specifies the maximum level sent to the channel.  
+ For more details, go to the  Max Listed  guide.
+ Stock Percentage:  This will send a percentage of the currently available stock level to the sales channel. For more details, go to the  Stock Percentage  guide.
+ End When:   This enables you to force the listing to end when the stock level gets to the specified amount instead of the default value of zero.  
+ For more details, go to the  End When  guide.
+ Default Latency: 
+ This setting allows you to set latency ( Amazon definition:  The number of days between the order date and the ship date - a whole number between 1 and 30 ) for all items on this channel linked to Linnworks inventory items.
+ When latency exceeds 0, the shipping time (days) for all linked listings on the channel will be updated to reflect this delay. 
+ If Latency is set for the channel (value is above 0), but you are also using the  Product-Based Latency  setting, the product-based value will take priority over the channel default value. 
+ If latency is not set for the channel (value is 0) and you are not using the  Product-Based Latency  setting, no value will be submitted by Linnworks. The default value defined on Amazon will be used to update the listing. 
+ Latency values are submitted to Amazon during inventory level update syncs.
+ Product-Based Latency: T his setting allows you to set latency (See Default Latency ) for each product individually as an Extended Property. 
+ If product-based latency is not added as an EP for an item, Linnworks will look at the Default Latency  value. If the default value is above 0, the default value is submitted to Amazon. If the default value is not set (value is 0), Linnworks submits no value, and the default value defined on Amazon will be used to update the listing. 
+ Refer to the  How to work with Amazon Product Based Latency   guide for more details. 
+ Latency values are submitted to Amazon during inventory level update syncs.
+ Inventory Sync Date: Date of the last inventory update. 
+ Enable Multi-location : If your Amazon US integration does not use multi-locations, use this button to enable this functionality. A complete guide is here .
+ FBA
+ Enabled:  Tick this option to enable Amazon FBA. 
+ Inventory Sync Enabled:  Track changes made by Amazon to inventory in FBA (update the Linnworks location). Disable the FBA Inventory Sync Enabled setting for every channel except for the channel that controls the primary FBA location where all your orders will be fulfilled from. 
+ Download Refunds: Enable this setting to download refund data from Amazon and track how many FBA refunds you get on stock items.  
+ Download Returns: Enable this setting to download returns data from Amazon and track how many FBA returns you get on stock items.  
+ Use Detailed FBA Availability Level:  This option enables Linnworks to use a more detailed FBA report from Amazon to update the stock availability in Linnworks. Note: The setting is available only for North American marketplaces (US, CA, MX). 
+ Fulfillment Location:  The name of the auto-generated Linnworks location for managing FBA orders and inventory.
+ Review the  following documentation  for a more detailed explanation of these settings, including a complete guide on using FBA in Linnworks. 
+ Ignore "Non-Amazon" Sales Channel Orders:  If enabled, orders with a "Non-Amazon" sales channel ( FBA Removal Orders )  will not be downloaded into Linnworks. See here for a full explanation of this setting.
+ MCF
+ Send Declared Value:  This option will instruct Linnworks to send the total value of the order to Amazon when an order for a non-FBA listing is exported. This value will be sent using the currency in which the order was placed. 
+ Convert Currency:  This option will change the currency of the declared value from its original currency to the currency that FBA is expecting. Linnworks simply swaps the currency code and does not change the value per exchange rate. 
+ Send Composite Parent Items to Amazon:   For MCF orders only. When enabled, Linnworks will send the  composite parent item  to Amazon. If the setting is disabled, composite child items will be sent to Amazon. By default, this setting is disabled. 
+ Send Notification Email:  For MCF orders only. If enabled, Amazon will email the buyer an email notification about the shipment.
+ Blank Box:  Once enabled, the location for  Blank Box  orders and inventory will become available in the  My Inventory  and  Open Orders  screens. For more information on that is Blank Box, see this  guide . 
+  Note:  Blank Box enablement via API is currently only available in the US , Canada and UK . EU sellers should contact Amazon to enable the Blank Box feature. 
+ BlankBox Location:  The name of the auto-generated Linnworks location for managing Blank Box orders. For more information on what  Blank Box  is, see this  guide . 
+ Block Amazon Logistics:  This setting is only available when Blank Box is enabled (even if you do not plan to use the Blank Box feature). When enabled, any non-Amazon order with the BLOCK_AMZL extended property sent to an Amazon FBA location will tell Amazon not to use Amazon Logistics to fulfill this order. Note that a 5% charge from Amazon applies to orders blocking Amazon Logistics. The extended property to an order can be added manually or automatically using the  Rules Engine .  
+ The extended property details :
+ Property Name: BLOCK_AMZL
+ Property Value: True
+ Property Type: Boolean (but can be called anything)
+ Note:  This feature is currently only available for Amazon US integrations.
+ Amazon Smart Connect
+ Amazon Smart Connect allows you to download orders, print shipping labels, and manage inventory for Amazon Seller Flex and Amazon Easy Ship from a single location in Linnworks.
+ In this section, you will learn how to set up Amazon Seller Flex for your Linnworks account and how Amazon Easy Ship orders are handled. Shipping labels for both programs are printed using the Amazon Smart Connect shipping integration . 
+ Depending on whether Multi-location has been enabled in this section or not yet, you will see slightly different settings for Seller Flex . Note: Easy Ship can be used without the multi-location feature enabled ; it is required for Sellex Flex only.  
+ Before enabling Multi-location , you will see the following setting:
+ Easy Ship enabled:  Enabling Easy Ship here allows you to produce labels in Linnworks for EasyShip orders via the shipping integration . The Easy Ship shipping integration (specifically, Amazon Smart Connect) must be configured in your Linnworks account. For complete instructions, see here .
+ Enable Multi-Location : This button initiates the process, allowing you to enable Amazon Seller Flex order download and inventory sync in Linnworks (explained below). For additional configuration that must be completed after clicking this button, refer to  this guide . 
+  Important: 
+If the Enable Multi-location button is not visible under SmartConnect, contact the Linnworks Support Team to enable access by opening a ticket .
+ A complete step-by-step guide on setting up Amazon Seller Flex in Linnworks is available on the following link .
+ After enabling Multi-location , you will see additional settings: 
+ Seller Flex enabled:  Ticking the checkbox for this setting, along with  Inventory Sync Enabled  (below), enables Seller Flex in Linnworks. Completing the Seller Flex configuration in Linnworks involves additional steps, which are detailed in this guide .  
+ Inventory Sync enabled:  Ticking the checkbox for this setting, along with  Seller Flex enabled  (above), enables Seller Flex in Linnworks. Completing the Seller Flex configuration in Linnworks involves additional steps, which are detailed in this guide . 
+ Listings
+ Auto-link by SKU:  If enabled, Linnworks will automatically link unmatched channel SKUs to matching Linnworks SKUs during  order download  or the  mapping sync  (runs ~every 12 hours). Once linked,  inventory sync  is triggered. You can check  this guide  for full details on how this feature works. 
+ Download full listings :  Important for the  Extract Inventory  tool. Allows downloading complete information for the listings, including descriptions. 
+ Listings download in progress: This tick box will tick itself if a Listing Update has begun.
+ Listing download start time: This will show the date and time the update has started.
+ Last listing download completion time: The last listing download was completed (launched via the Download Listings button).
+ Listing download estimated completion: 
+ The estimated time the currently running listing download will finish. 
+ Download Listings:  C lick this button to force Linnworks to request an update for your active listings from the channel.
+ Inventory - Price Change
+ Price Change:  This setting is designed to speed up updating the sales channel once a Linnworks stock item has had its listing price updated and saved. For more details, go to the  Price Change  guide.
+ Report
+ Report Status:  Click the Report Status button to view the current status of reports requested from Amazon. The view will display the report type, the last time it was requested, and the current status. The statuses are:
+ Submitted:  Linnworks has submitted a request for a report.
+ Available:  T he report is available from Amazon, and Linnworks will download it soon.
+ Processed:  Linnworks has downloaded and processed the report. 
+ Next steps:
+ Location Mapping 
+ Inventory Mapping 
+ Payment Mapping 
+ Shipping Mapping 
+ Listing creation steps 
+ 

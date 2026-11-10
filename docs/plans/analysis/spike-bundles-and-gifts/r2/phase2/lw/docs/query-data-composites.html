@@ -1,0 +1,150 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/query-data-composites"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Query Data: Composite Export</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Query Data: Composite Export';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><h1 id="h1__1303447579" data-has-heading-anchor="true">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">Composite Export
+<a href="/articles/documentation/query-data-composites/a/h1__1303447579" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/query-data-composites/a/h1__1303447579&#39;,this);"></a></h1>
+<p>
+  The <i>Composite Export</i>&nbsp;report returns a list of <a href="/articles/documentation/inventory-composite-items" target="_blank" onclick="return n(&#39;!documentation/inventory-composite-items&#39;,this);">composite parent&nbsp;items</a> and the quantity of&nbsp;their child items. It is also possible to generate a list of composite parent items that contain the same child item.
+</p>
+
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/Dashboards/QueryData/Inventory/Composite%20Export.png" alt="Composite Export" class="leftAlone"/>
+</p>
+
+<h2 id="h2__914597041" data-has-heading-anchor="true">
+  Selection criteria
+<a href="/articles/documentation/query-data-composites/a/h2__914597041" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/query-data-composites/a/h2__914597041&#39;,this);"></a></h2>
+<p>
+  Linnworks includes items in the report&nbsp;based on the following criteria.</p>
+<h5 style="" id="h5_922718170" data-has-heading-anchor="true">Parameters<a href="/articles/documentation/query-data-composites/a/h5_922718170" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/query-data-composites/a/h5_922718170&#39;,this);"></a></h5>
+<p>Use the parameters below to configure this report:</p>
+<ul><li><span style="font-weight: normal;"><b>Child SKU</b></span>: Paste an SKU of a child item into the <i>Childsku </i>field to generate the list of composite parent items that contain this child item.&nbsp;</li>
+</ul><h5 style="" id="h5__441424431" data-has-heading-anchor="true">Rules<a href="/articles/documentation/query-data-composites/a/h5__441424431" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/query-data-composites/a/h5__441424431&#39;,this);"></a></h5>
+<p>This is the internal logic applied by the system to&nbsp;extract only those records that fulfill the specified criteria.</p>
+<ul><li> Only composite items and their children are included in the report.<br/></li>
+</ul><h2 style="" id="h3_78771565" data-has-heading-anchor="true">
+  How to generate the report: a step-by-step guide
+<a href="/articles/documentation/query-data-composites/a/h3_78771565" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/query-data-composites/a/h3_78771565&#39;,this);"></a></h2>
+<ol>
+  <li>
+    Select the&nbsp;<i>Composite Export</i> report in the <i>Query type</i> drop-down menu.&nbsp;
+  </li>
+  <li>Paste an SKU of a child item into the <i>Childsku </i>field if you need to generate the report with composite parent items that contain this child item. <ul><li><span style="font-weight: normal;"><b>NB!</b></span> Leaving the <i>Childsku</i> field blank will produce a report with&nbsp;all composite items that are available in your Linnworks account.</li>
+  </ul></li>
+  <li>
+    Click the <span class="btn-gray"><span class="fa fa-th">&nbsp;</span>Generate Report</span> button.&nbsp;This will generate and pre-load the report on the screen.&nbsp;</li>
+  <li>Click&nbsp;the <span class="btn-gray"><span class="fa fa-download">&nbsp;</span>Download (CSV file)</span>&nbsp;button when&nbsp;you need to download the report.
+  </li>
+</ol>
+<p>
+</p>
+<h2 id="h2_486669079" data-has-heading-anchor="true">
+  Reported values
+<a href="/articles/documentation/query-data-composites/a/h2_486669079" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/query-data-composites/a/h2_486669079&#39;,this);"></a></h2>
+<p>
+  The following values are returned by the report:
+</p>
+<table class="CHTable" cellspacing="0" cellpadding="0" style="width: 100%; border-collapse: collapse;">
+  <tbody>
+    <tr>
+      <td style="width: 162px;">
+        <span style="font-weight: normal;"><b><font color="#808080">Column Name</font></b>
+          <br/>
+        </span>
+      </td>
+      <td style="width: 672px;">
+        <span style="font-weight: normal;"><b><font color="#808080">Description</font></b>
+          <br/>
+        </span>
+      </td>
+    </tr>
+    <tr>
+      <td style="width: 162px;">
+        <span style="font-weight: normal;"><b>Parent SKU</b>
+          <br/>
+        </span>
+      </td>
+      <td style="width: 672px;">
+        <span style="font-weight: normal;">The Linnworks stock item number of the parent item.
+          <br/>
+        </span>
+      </td>
+    </tr>
+    <tr>
+      <td style="width: 162px;">
+        <span style="font-weight: normal;"><b>Parent Title</b>
+          <br/>
+        </span>
+      </td>
+      <td style="width: 672px;">
+        <span style="font-weight: normal;">The Linnworks stock item title of the parent item.
+          <br/>
+        </span>
+      </td>
+    </tr>
+    <tr>
+      <td style="width: 162px;">
+        <span style="font-weight: normal;"><b>Child SKU</b>
+          <br/>
+        </span>
+      </td>
+      <td style="width: 672px;">
+        <span style="font-weight: normal;">The Linnworks stock item number of a child that belongs to&nbsp;the parent item.
+          <br/>
+        </span>
+      </td>
+    </tr>
+    <tr>
+      <td style="width: 162px;">
+        <span style="font-weight: normal;"><b>Child Title</b>
+          <br/>
+        </span>
+      </td>
+      <td style="width: 672px;">
+        <span style="font-weight: normal;">The Linnworks stock item title for a child item that belongs to&nbsp;the parent item.
+          <br/>
+        </span>
+      </td>
+    </tr>
+    <tr>
+      <td style="width: 162px;">
+        <span style="font-weight: normal;"><b>Quantity</b>
+          <br/>
+        </span>
+      </td>
+      <td style="width: 672px;">
+        The quantity of this stock item that is included as part of the parent item.
+        <br/>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<br/><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

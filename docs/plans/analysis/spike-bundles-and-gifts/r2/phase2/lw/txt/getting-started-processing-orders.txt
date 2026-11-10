@@ -1,0 +1,16 @@
+=== getting-started-processing-orders | Getting Started: Processing orders
+ 
+ Getting Started: Processing orders 
+ Getting Started: Processing Orders 
+ Once all necessary actions have been completed - all documents are printed, the order is picked and packed - the order should be processed to transfer it from the Open Orders screen to Processed Orders .  Note: Keep in mind that a processed order cannot be edited or unprocessed.
+ Order processing should be done in Linnworks and not on your sales channels directly. If an order is processed on the channel first, then Linnworks either cannot send tracking information to the channel or may overwrite channel data once you process the order in Linnworks as well. 
+ For example, the dispatch date and time could be overwritten to match the data in Linnworks, which can cause issues with your stats and ratings. 
+ Pre-processing checks and processing settings 
+ As previously mentioned, Linnworks offers  Order Management Settings to assist with setting up an order management workflow that is most suitable for your needs. These settings are available under Settings > General Settings > Order Management .
+ The Pre-processing checks  settings can be used to ensure orders are not accidentally processed unless they meet all of your requirements e.g., the items on the order are in stock and all the needed documentation is printed. 
+ The Order processing section can be used to simplify the processing workflow or add extra checks prior to processing. For example, you can choose to have the shipping labels automatically printed when an order is processed or have the user verify the order weight before allowing processing.
+ Full details on all available  Order Management Settings are given  here. 
+ Note:  Compliance with the  Pre-processing checks  settings depends on which processing method you are using. The next step will provide a short overview of all available methods. 
+ Next step: 
+ Processing Methods 
+ 

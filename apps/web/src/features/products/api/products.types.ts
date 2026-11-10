@@ -142,6 +142,25 @@ export interface Product {
    * deleted" (#2447).
    */
   staleVariantCount?: number;
+  /**
+   * Set when one of the product's variants is a bundle (#3624, list only): the
+   * bundle variant, its component count, and the component that limits it (or,
+   * when availability is unknown, the component whose stock OpenLinker lacks).
+   */
+  bundle?: ProductBundleMark | null;
+}
+
+export interface BundleComponentRef {
+  variantId: string;
+  name: string | null;
+  sku: string | null;
+}
+
+export interface ProductBundleMark {
+  variantId: string;
+  componentCount: number;
+  limitedBy: BundleComponentRef | null;
+  unknownComponent: BundleComponentRef | null;
 }
 
 /** Per-connection listed-variant count for the cockpit Listings column (#1720). */
@@ -172,6 +191,10 @@ export interface ProductFilters {
   taxRateState?: 'missing' | 'not-checked' | 'known';
   /** Hide products where every variant is deleted at the master (#1599/#2447). */
   hideFullyStale?: boolean;
+  /** Bundle filter (#3624): only bundles, or everything except bundles. Absent = both. */
+  bundles?: 'only' | 'exclude';
+  /** Exactly this product: how a deep link opens a peek for a product off the current page. */
+  productId?: string;
 }
 
 /**

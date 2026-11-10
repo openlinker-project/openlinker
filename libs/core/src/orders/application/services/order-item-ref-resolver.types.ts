@@ -18,8 +18,14 @@ export interface ResolvedOrderItemProduct {
  *   ordinary "not synced yet" case — `awaiting_mapping`).
  * - `'source_deleted'`: the mapped variant is `isStale` — deleted at its
  *   master (#1599) — a permanently unresolvable ref, not a transient gap.
+ * - `'multipack_without_bundle'` (#3929): the ref resolved, but the line is a
+ *   multipack (`packQuantity > 1`) with no bundle definition. Raised by
+ *   ingestion, never by the resolver; it holds the order as `awaiting_mapping`.
  */
-export type ItemResolutionFailureKind = 'missing_mapping' | 'source_deleted';
+export type ItemResolutionFailureKind =
+  | 'missing_mapping'
+  | 'source_deleted'
+  | 'multipack_without_bundle';
 
 export type ItemResolutionResult =
   | ({ resolved: true } & ResolvedOrderItemProduct)

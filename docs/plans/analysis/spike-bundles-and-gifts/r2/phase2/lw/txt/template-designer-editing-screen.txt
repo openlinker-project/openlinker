@@ -1,0 +1,38 @@
+=== template-designer-editing-screen | Template Designer: Editing Screen
+ 
+ Template Designer: Editing Screen 
+Template Designer: Editing Screen
+ This guide describes the settings for editing a document template in the Template Designer screen.
+ To access the Editing screen: 
+Go to Settings > Template Designer. 
+Find the template that you would like to edit.
+Click the   Edit button. 
+ Size and positioning 
+ Header:  Clicking this will open the header editing window.
+Headers are template labels with a fixed position that can only be edited by clicking the Header button.
+For more information on editing labels, please see this guide .
+ Footer:  Clicking this will open the footer editing window.
+Footers are template labels with a fixed position that can only be edited by clicking the Footer button.
+For more information on editing labels, please see this guide .
+ Snap to grid:  Clicking this will restrict the placement of elements to a predefined, invisible grid on the template.
+ Printing Conditions:  Printing conditions control which template will be automatically selected when printing using the Template Defined  option. Clicking this will open the Printing Conditions window. For more information on printing conditions, please see this guide .
+ Print:  Clicking this will print the current template.
+ Left:  This is the absolute position in pixels for the selected element from the left edge of the page. Altering this will move the element horizontally across the page.
+ Top:  This is the absolute position in pixels for the selected element from the top edge of the page. Altering this will move the element vertically down the page.
+ Width:  This is the width of the selected element in pixels. Altering this will alter the width of the selected element.
+ Height:  This is the height of the selected element in pixels. Altering this will alter the height of the selected element.
+ Template settings
+ Name:  This is the name of the invoice.
+ NB! A default template cannot be renamed. You can create a copy of the default template if you wish to rename it.
+ Page Size:  This sets the page size for the invoice.
+ Selecting Page Size > Custom Size will open a new window to enter a custom paper size.
+ Orientation:  This sets the orientation of the page. You can select one of the two:
+Portrait
+Landscape
+ Virtual Printer:  This is the printer the template will print to when Linnworks uses this template for a document.
+For example, regardless of what computer the print was requested on, an invoice with an integrated shipping label can be set to print on a printer in your warehouse so that the invoice can be packed with the order and shipping label placed on the order packaging. For more information on Virtual Printer , see this guide .
+ Printer Overrides:  This button will allow you to define the physical printer used to print the document based on the Linnworks user requesting the print. For more information on Printer Overrides , see this guide .
+ Collate Copies:  When printing multiple copies of multi-page documents, collating documents will print an entire copy of the first document before printing the second. Non-collated documents will print all copies of one page, then all of the next page.
+ Returning to the main screen
+ To return to the main screen without saving changes, click Back . If there are unsaved changes, a warning will be displayed. Alternatively, to save your changes, click   Save .
+ 

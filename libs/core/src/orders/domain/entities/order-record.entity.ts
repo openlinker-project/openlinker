@@ -7,6 +7,15 @@
  *
  * @module domain/entities
  */
+import type { OrderBundleComponent, OrderBundleLine, RawMultipackLine } from '../types/order-bundle-line.types';
+import {
+  componentLineIdsFor,
+  componentRefsFor,
+  type ComponentLineRef,
+  expandBundleLines,
+  type LineExpansion,
+  type PhysicalLine,
+} from '@openlinker/core/products';
 import type { HoldReason } from '@openlinker/core/order-lifecycle';
 import type { OrderRecordStatus } from '../types/order-record.types';
 import type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
@@ -536,6 +545,14 @@ export class OrderRecord {
      */
     public readonly orderEdits: OrderEdits | null = null,
     /**
+     * The bundle definitions that applied to this order's lines at ingestion
+     * (#3607, ADR-083 decision 2), already coerced. `null` means no expansion
+     * was recorded, so the physical list equals the commercial one. Sole
+     * writer `freezeLineExpansion`; excluded from every ingestion statement.
+     * Read through {@link physicalItems}, never bare. Appended LAST.
+     */
+    public readonly lineExpansion: LineExpansion | null = null,
+    /**
      * Per-destination payment writeback record (#3963): whether a payment that
      * arrived after a shop got this order has reached that shop. Keyed by
      * destination connection id. Sole writers are the two narrow repository
@@ -847,7 +864,21 @@ export class OrderRecord {
    * those apart reads `orderSnapshot.items` itself.
    */
   get orderItems(): OrderItem[] {
-    const value = this.orderSnapshot.items;
+    return OrderRecord.readItems(this.orderSnapshot);
+  }
+
+  /**
+   * The lines exactly as the channel reported them (#3520), ignoring operator
+   * edits. A line the operator removed (edited to 0) is gone from
+   * {@link orderItems}, but its frozen components are still needed to release
+   * what it held.
+   */
+  private get channelItems(): OrderItem[] {
+    return OrderRecord.readItems(this.channelSnapshot);
+  }
+
+  private static readItems(snapshot: Record<string, unknown>): OrderItem[] {
+    const value = snapshot.items;
     if (!Array.isArray(value)) {
       return [];
     }
@@ -866,6 +897,123 @@ export class OrderRecord {
         Number.isFinite(price)
       );
     });
+  }
+
+  /**
+   * The physical line list (#3607, ADR-083): {@link orderItems} with every
+   * bundle line expanded to its frozen components. Pure derivation of already
+   * loaded fields (ADR-011). Every stock, reservation, routing and decrement
+   * site reads this; documents, the channel and the destination mirror keep the
+   * commercial {@link orderItems}. Follows a later quantity edit of the bundle
+   * line, because only the per-unit composition is frozen.
+   */
+  get physicalItems(): PhysicalLine<OrderItem>[] {
+    return expandBundleLines(this.orderItems, this.lineExpansion?.definitions ?? []);
+  }
+
+  /**
+   * The raw channel lines sold as several units of one product (#3624). Read
+   * from the unresolved snapshot, because a held order has no resolved items.
+   * Which of them is HELD is the caller's question (the reason code is persisted
+   * on `mappingFailureReason`); this only reports the shape.
+   */
+  get rawMultipackLines(): RawMultipackLine[] {
+    const value = this.orderSnapshot.items;
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    const lines: RawMultipackLine[] = [];
+    for (const item of value as unknown[]) {
+      if (typeof item !== 'object' || item === null) {
+        continue;
+      }
+      const { id, name, packQuantity, productRef } = item as Record<string, unknown>;
+      const ref = productRef as Record<string, unknown> | null | undefined;
+      if (
+        typeof id === 'string' &&
+        typeof packQuantity === 'number' &&
+        packQuantity > 1 &&
+        ref !== null &&
+        ref !== undefined &&
+        typeof ref.type === 'string' &&
+        typeof ref.externalId === 'string'
+      ) {
+        lines.push({
+          itemId: id,
+          name: typeof name === 'string' ? name : null,
+          packQuantity,
+          productRef: { type: ref.type as RawMultipackLine['productRef']['type'], externalId: ref.externalId },
+        });
+      }
+    }
+    return lines;
+  }
+
+  /**
+   * The bundle lines of this order with their frozen components (#3624). Empty
+   * when the order carries no bundle. Pure derivation of the frozen expansion.
+   */
+  get bundleLines(): OrderBundleLine[] {
+    const definitions = this.lineExpansion?.definitions ?? [];
+    if (definitions.length === 0) {
+      return [];
+    }
+    const byVariant = new Map(
+      definitions.filter((d) => d.lineId === undefined).map((d) => [d.variantId, d])
+    );
+    const physical = this.physicalItems;
+    const lines: OrderBundleLine[] = [];
+    for (const item of this.orderItems) {
+      const definition = item.variantId === undefined ? undefined : byVariant.get(item.variantId);
+      if (definition === undefined) {
+        continue;
+      }
+      const components = physical
+        .filter((line) => line.parentLineId === item.id)
+        .map((line) => {
+          const component: OrderBundleComponent = {
+            lineId: line.id,
+            variantId: line.variantId ?? '',
+            productId: line.productId,
+            quantity: line.quantity,
+            perUnit: item.quantity > 0 ? line.quantity / item.quantity : line.quantity,
+          };
+          if (line.giftSlot === true) {
+            component.giftSlot = true;
+          }
+          return component;
+        });
+      lines.push({
+        lineId: item.id,
+        bundleVariantId: definition.variantId,
+        version: definition.version,
+        components,
+      });
+    }
+    return lines;
+  }
+
+  /**
+   * The physical line ids a commercial line stands for: its component ids when
+   * it is a bundle line, otherwise just `[lineId]`. How the order-edit
+   * follow-ups reach the works, holds and decrements of a bundle line - nothing
+   * recovers a bundle line id by splitting a component id.
+   */
+  componentLineIdsOf(lineId: string): string[] {
+    return componentLineIdsFor(lineId, this.orderItems, this.lineExpansion?.definitions ?? []);
+  }
+
+  /**
+   * The components of one bundle line with their units per bundle unit; empty
+   * for a line that is not a bundle. The order-edit follow-ups scale by it.
+   */
+  componentsOfLine(lineId: string): ComponentLineRef[] {
+    // Looked up in the channel lines too: an edit to 0 drops the line from
+    // orderItems, and the follow-ups must still release its components.
+    const items = this.orderItems.some((i) => i.id === lineId)
+      ? this.orderItems
+      : this.channelItems;
+    return componentRefsFor(lineId, items, this.lineExpansion?.definitions ?? []);
   }
 
   /**

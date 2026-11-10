@@ -76,7 +76,7 @@ export interface BulkResolveVariantOutcome {
   blockers: readonly BulkRowBlocker[];
   resolvedCategoryId: string | null;
   resolvedProductCardId: string | null;
-  resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | null;
+  resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | 'first_component' | null;
   overriddenCard: EanMatchCardRef | null;
   mappingAgrees: boolean;
   masterPrice: number | null;

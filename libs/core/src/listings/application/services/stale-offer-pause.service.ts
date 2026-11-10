@@ -43,7 +43,13 @@ import {
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
   CORE_ENTITY_TYPE,
 } from '@openlinker/core/identifier-mapping';
-import { IProductsService, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
+import {
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
+  IProductsService,
+  PRODUCTS_SERVICE_TOKEN,
+  type BundleDefinition,
+  type IBundleDefinitionService,
+} from '@openlinker/core/products';
 import { SyncJobQueuePort, SYNC_JOB_QUEUE_TOKEN } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 import { OFFER_MAPPING_REPOSITORY_TOKEN } from '../../listings.tokens';
@@ -72,7 +78,9 @@ export class StaleOfferPauseService implements IStaleOfferPauseService {
     @Inject(OFFER_MAPPING_REPOSITORY_TOKEN)
     private readonly offerMappings: OfferMappingRepositoryPort,
     @Inject(SYNC_JOB_QUEUE_TOKEN)
-    private readonly jobQueue: SyncJobQueuePort
+    private readonly jobQueue: SyncJobQueuePort,
+    @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
+    private readonly bundleDefinitions: IBundleDefinitionService
   ) {}
 
   async pauseOffersForVariants(input: {
@@ -116,6 +124,14 @@ export class StaleOfferPauseService implements IStaleOfferPauseService {
       }
     }
 
+    // #3931: a bundle with a stale component cannot be fulfilled, so its offers
+    // are paused like the stale variant's own. Re-verified inside, never taken
+    // from the event.
+    const bundles = await this.bundleDefinitions.findCurrentContainingComponents(variantIds);
+    const bundleResult = await this.pauseBundles(bundles, undefined);
+    result.offersPaused += bundleResult.paused;
+    result.offersSkipped += bundleResult.skipped;
+
     this.logger.warn(
       `Stale-offer pause (trigger) complete: considered=${result.variantsConsidered}, stillStale=${result.variantsStillStale}, paused=${result.offersPaused}, skipped=${result.offersSkipped} (correlationId: ${correlationId})`
     );
@@ -152,10 +168,77 @@ export class StaleOfferPauseService implements IStaleOfferPauseService {
       }
     }
 
+    // The persisted-state half for bundles (#3931): a bundle whose component is
+    // stale has no stale variant of its own, so the variant sweep above cannot
+    // find it. Bundles are authored by hand and few, so reading them all is one
+    // small read per tick.
+    const bundleResult = await this.pauseBundles(
+      await this.bundleDefinitions.list(),
+      connectionId
+    );
+    result.variantsConsidered += bundleResult.considered;
+    result.variantsStillStale += bundleResult.considered;
+    result.offersPaused += bundleResult.paused;
+    result.offersSkipped += bundleResult.skipped;
+
     this.logger.debug(
       `Stale-offer pause (sweep) complete for connection ${connectionId}: found=${result.variantsConsidered}, paused=${result.offersPaused}, skipped=${result.offersSkipped}`
     );
     return result;
+  }
+
+  /**
+   * Pause the offers of every bundle that currently has a stale component.
+   *
+   * Reads the components' `isStale` flag fresh (the #1689 re-verify rule), keys
+   * the dedupe on the newest `staleAt` among them so a re-stale after a restock
+   * pauses again, and optionally restricts to one connection (the sweep).
+   */
+  private async pauseBundles(
+    bundles: readonly BundleDefinition[],
+    onlyConnectionId: string | undefined
+  ): Promise<{ considered: number; paused: number; skipped: number }> {
+    const counts = { considered: 0, paused: 0, skipped: 0 };
+    if (bundles.length === 0) return counts;
+
+    const componentIds = [
+      ...new Set(bundles.flatMap((bundle) => bundle.components.map((c) => c.variantId))),
+    ];
+    const variants = await this.productsService.getVariantsByIds(componentIds);
+    const staleAtById = new Map<string, Date>();
+    for (const variant of variants) {
+      if (variant.isStale === true && variant.staleAt) {
+        staleAtById.set(variant.id, variant.staleAt);
+      }
+    }
+
+    for (const bundle of bundles) {
+      const staleTimes = bundle.components
+        .map((c) => staleAtById.get(c.variantId))
+        .filter((d): d is Date => d !== undefined);
+      if (staleTimes.length === 0) continue;
+      counts.considered += 1;
+      const staleAt = new Date(Math.max(...staleTimes.map((d) => d.getTime())));
+
+      const offerMappings = await this.identifierMapping.getExternalIds(
+        CORE_ENTITY_TYPE.Offer,
+        bundle.variantId
+      );
+      for (const mapping of offerMappings) {
+        if (onlyConnectionId !== undefined && mapping.connectionId !== onlyConnectionId) continue;
+        const paused = await this.enqueuePause({
+          connectionId: mapping.connectionId,
+          externalOfferId: mapping.externalId,
+          staleAt,
+        });
+        if (paused) {
+          counts.paused += 1;
+        } else {
+          counts.skipped += 1;
+        }
+      }
+    }
+    return counts;
   }
 
   /**

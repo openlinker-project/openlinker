@@ -432,6 +432,9 @@ export class SalesDocumentBatchService implements ISalesDocumentBatchService {
         undefined,
         record.taxRateEra ?? null,
         record.buyerTaxId ?? null,
+        // No bundle presentation here: it is derived at ingestion from the
+        // incoming order, which a batch re-evaluation no longer has.
+        undefined,
         { batchRun: { connectionId: input.connectionId, documentKinds: input.documentKinds } },
       );
       await this.persistOutcome(entry.orderId, outcome);

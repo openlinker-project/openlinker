@@ -551,6 +551,7 @@ export class ReservationRepository implements ReservationRepositoryPort {
       claim.inventoryItemId,
       claim.quantity,
       Number(position.atp),
+      claim.orderLineId,
     );
   }
 

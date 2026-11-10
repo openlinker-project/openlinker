@@ -1,0 +1,372 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/template-designer-invoice"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Template Designer: Invoice</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Template Designer: Invoice';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><h1 id="h1__62465804" data-has-heading-anchor="true">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>
+
+Template Type: Invoice Template
+<a href="/articles/documentation/template-designer-invoice/a/h1__62465804" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-invoice/a/h1__62465804&#39;,this);"></a></h1>
+<p style="margin-left: 0px; margin-right: 0px; border-color: #000000;">
+  Linnworks allows you to customize invoice templates in the <i>Template Designer</i> screen. The invoice template&nbsp;can include a range of information&nbsp;as well as multiple invoice layouts can be configured. Invoice layouts other than <i>Default </i>can have <i><a href="/articles/documentation/template-designer-printing-conditions" onclick="return n(&#39;!documentation/template-designer-printing-conditions&#39;,this);">Printing Conditions</a></i> added to them&nbsp;to automate the selection of design where a seller uses different brands on different selling channels, etc.
+</p>
+<img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/TemplateInvoice.png" alt="Invoice Template" class="leftAlone" style="" loading="lazy"/>
+<p style="text-align: justify;">
+  Customized invoices can be either attached to emails or printed to send with an order. There are a number of template elements that are unique to invoices, which are described below.
+</p>
+<h2 id="h2_1724184633" data-has-heading-anchor="true">
+  Template settings 
+<a href="/articles/documentation/template-designer-invoice/a/h2_1724184633" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-invoice/a/h2_1724184633&#39;,this);"></a></h2>
+<p>
+  <span>In addition to the standard <i><a href="/articles/documentation/template-designer-editing-screen/a/h3_1724184633" target="_blank" onclick="return n(&#39;!documentation/template-designer-editing-screen/a/h3_1724184633&#39;,this);">Template Settings</a></i>, invoice templates include the <i><b>Label on new page</b></i> option. This allows you to print the invoice and shipping label separately, rather than using the <a href="/articles/documentation/template-designer-invoice/a/ShippingLabel" onclick="return n(&#39;!documentation/template-designer-invoice/a/ShippingLabel&#39;,this);">integrated <i>Shipping label</i> format</a> in the invoice template.&nbsp;</span><img src="/resources/Storage/documentation/package-slip/Package%20Slip%20-%20Label%20on%20the%20new%20page.png" alt="Package Slip - Label on the new page setting" class="leftAlone" loading="lazy"/> 
+</p>
+<p>
+  Enabling&nbsp;the<b><i> Label on new page</i></b> option allows you to print:&nbsp;
+</p>
+<ul class="regular-list">
+  <li>
+    The <b>invoice </b>on one page
+  </li>
+  <li>
+    The <b>shipping label</b> on a separate page&nbsp;
+  </li>
+</ul>
+<p>
+  This enhancement addresses a common request for separate invoice and label printing, while still supporting the existing integrated workflow.
+</p>
+<p>
+  For example, if you split an order into two packages and print the invoices, Linnworks generates the following sequence when the&nbsp;<i>Label on new page</i>&nbsp;setting is enabled:&nbsp;
+  <br/>
+</p>
+<p>
+</p>
+<ol>
+  <li>
+    Invoice for box 1   
+  </li>
+  <li>
+    Shipping label for box 1   
+  </li>
+  <li>
+    Invoice for box 2   
+  </li>
+  <li>
+    Shipping label for box 2   
+  </li>
+</ol>
+<p>
+  This setup ensures that each invoice is paired with its shipping label, making handling and shipping more efficient.
+</p>
+<h4 style="" id="h4__1827602420" data-has-heading-anchor="true">
+  Label on New Page &amp; Integrated Shipping Labels
+<a href="/articles/documentation/template-designer-invoice/a/h4__1827602420" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-invoice/a/h4__1827602420&#39;,this);"></a></h4>
+<p>
+  When the&nbsp;<i>Label on new page</i>&nbsp;setting is <u>disabled</u>,&nbsp;you can use the <a href="/articles/documentation/template-designer-invoice/a/ShippingLabel" onclick="return n(&#39;!documentation/template-designer-invoice/a/ShippingLabel&#39;,this);">integrated <i>Shipping label</i> element</a> inside the invoice template, as before. In this case, the label is embedded directly within the invoice layout.
+</p>
+<p>
+  <b>Important: These options are mutually exclusive </b>- you can use either the <i>Label on new page</i> option or the integrated <i>Shipping label</i> element,&nbsp;but not both at the same time.
+</p>
+<p>
+  What happens in the interface:
+</p>
+<ul class="regular-list">
+  <li>
+    If <i>Label on new page</i> is <u>enabled</u>:
+    <ul>
+      <li>
+        The <i>Shipping label</i> element will be greyed out.
+      </li>
+    </ul>
+  </li>
+  <li>
+    If the <i>Shipping label element</i> is already <u>added to the template</u>:
+    <ul>
+      <li>
+        The <i>Label on new page</i> option will be greyed out.
+      </li>
+    </ul>
+  </li>
+</ul>
+<p>
+  This ensures clarity and prevents conflicting configurations while giving you flexibility in how you prefer printing invoices and labels.
+  <br/>
+</p>
+<h2 id="available" style="text-align: justify;" data-has-heading-anchor="true">
+  Available elements
+<a href="/articles/documentation/template-designer-invoice/a/available" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-invoice/a/available&#39;,this);"></a></h2>
+<p style="text-align: justify;">
+  All templates can contain <a href="/articles/documentation/template-designer-elements/a/h4_1291509812" onclick="return n(&#39;!documentation/template-designer-elements/a/h4_1291509812&#39;,this);">images</a>, <a href="/articles/documentation/template-designer-elements/a/h4_1688468359" onclick="return n(&#39;!documentation/template-designer-elements/a/h4_1688468359&#39;,this);">labels, and variables</a>. In addition to these, the following pre-defined <a href="/articles/documentation/template-designer-elements/a/h4__1224102243" onclick="return n(&#39;!documentation/template-designer-elements/a/h4__1224102243&#39;,this);">table</a><i> </i>elements are available for use in invoice&nbsp;templates:
+</p>
+<ul style="text-align: justify;">
+  <li style="text-align: justify;">
+    <span style="color: #333333; font-family: &quot;Helvetica Neue&quot;, Arial, Helvetica, Geneva, sans-serif; font-size: 16px;"><b>Order Items</b></span>
+  </li>
+  <li>
+    <span style="font-weight: normal;"><b>Order Notes</b></span>
+    </li>
+</ul>
+<p style="text-align: justify;">
+  These can be customized by double-clicking the element on the template. Further information on customizing table elements can be found <a href="/articles/documentation/template-designer-elements/a/h4__1224102243" onclick="return n(&#39;!documentation/template-designer-elements/a/h4__1224102243&#39;,this);">here</a>. In addition to these tables, there are two more elements that are specific to invoices:
+</p>
+<ul style="text-align: justify;">
+  <li>
+    <span style="font-weight: normal;"><b>PPI Stamps
+      </b></span>
+  </li>
+  <li>
+    <span style="font-weight: normal;"><b>Integrated Shipping Labels</b></span>
+  </li>
+</ul>
+<h3 id="PPI" style="text-align: justify;" data-has-heading-anchor="true">
+  PPI Stamps
+<a href="/articles/documentation/template-designer-invoice/a/PPI" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-invoice/a/PPI&#39;,this);"></a></h3>
+<p style="text-align: justify;">
+  PPI stamps are stamps designed to be peeled off and fixed to the shipping label on the front of the package. The PPI stamps available in Linnworks are primarily Royal Mail services. Most couriers Linnworks has direct integration with, including Royal Mail, now offer shipping labels to be printed directly via the <i>Print Shipping Label</i>&nbsp;option when order is right-clicked in <i>Open Orders</i> or via the <i>Integrated Shipping Label</i>&nbsp;described in the section below.
+</p>
+<h4 id="UsingPPI" style="text-align: justify;" data-has-heading-anchor="true">
+  Using PPI Stamps
+<a href="/articles/documentation/template-designer-invoice/a/UsingPPI" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-invoice/a/UsingPPI&#39;,this);"></a></h4>
+<p>
+  <i>PPI Stamps</i> can be added to the&nbsp;template by the normal drag and drop method. To further adjust the element follow the steps below:
+  <br/>
+</p>
+<img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/PPIStampServices.png" alt="" class="leftAlone" style="" loading="lazy"/>
+<p>
+  <strong> </strong>
+</p>
+<ol style="text-align: justify;">
+  <li>
+    Double-click&nbsp;the element to open the config window that is shown above:
+    <ul>
+      <li>
+        <strong>Account Number:</strong>&nbsp;This is the account number you have with your courier.
+      </li>
+      <li>
+        <strong>Default PPI Stamp:</strong>&nbsp;This is the default PPI stamp that will be displayed on the template.
+      </li>
+      <li>
+        <strong>Add:</strong>&nbsp;click the <span class="btn-old-gray">Add</span>&nbsp;button to add stamps that can be used in place of the default stamp, if the Linnworks Postal Service Method on the order matches one of the additional services, the appropriate PPI stamp will be displayed, otherwise, the default PPI stamp is displayed.
+      </li>
+      <li>
+        The bottom section of the <i>Edit Label </i>window is a preview of the stamp, it will also show if the stamp will be cropped if the bounding box is too small.
+      </li>
+      <li>
+        <span style="font-weight: normal;">
+        </span>Once you are happy with the config, click<span style="font-weight: normal;">&nbsp;<span class="btn-old-blue"><span class="fa fa-check">&nbsp;</span>Ok</span></span>
+      </li>
+    </ul>
+  </li>
+  <li>
+    The bounding box should be altered such that the stamp is not&nbsp;cropped.
+    <ul>
+      <li>
+        For assistance with editing elements, please see <a href="/articles/documentation/template-designer-elements" onclick="return n(&#39;!documentation/template-designer-elements&#39;,this);">this guide</a>.
+      </li>
+    </ul>
+  </li>
+  <li>
+    Click <span style="font-weight: normal;" class="btn-old-blue"><span class="fa fa-check">&nbsp;</span>Save </span>on the template.
+  </li>
+</ol>
+<p class="alert-warning" style="border-color: #ffffff;">
+  <span style="font-weight: normal;"><b>Note!&nbsp;</b></span>For&nbsp;Royal Mail&nbsp;services, only stamps ending in RM should be used. Other stamps are an older style and don't include the 'Delivered by Royal Mail' section.
+  <br/>
+</p>
+<h3 id="ShippingLabel" style="text-align: justify;" data-has-heading-anchor="true">
+  Integrated Shipping Labels
+<a href="/articles/documentation/template-designer-invoice/a/ShippingLabel" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-invoice/a/ShippingLabel&#39;,this);"></a></h3>
+<p style="text-align: justify;">
+  <i>Integrated Shipping Labels</i> are designed to work with self-paper that contains a self-adhesive area&nbsp;designed to be peeled off and attached to the front of the parcel. They can be added to a template in the same way as other elements.
+</p>
+<h4 id="UsingISL" style="text-align: justify;" data-has-heading-anchor="true">
+  Using Integrated Shipping Labels
+<a href="/articles/documentation/template-designer-invoice/a/UsingISL" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-invoice/a/UsingISL&#39;,this);"></a></h4>
+<ol style="text-align: justify;">
+  <li>
+    Confirm the position of the label on your paper.
+    <ul>
+      <li class="alert-warning">
+        &nbsp;<span style="font-weight: normal;"><b>NB!</b></span> Integrated Shipping Labels in Linnworks are <span style="font-weight: normal;"><b>6x4</b></span><span style="font-weight: normal;">.</span>
+      </li>
+    </ul>
+  </li>
+  <li>
+    Place the element in the correct position on the page:
+    <ul>
+      <li>
+        The element can be made portrait by double-clicking the element and unchecking the <i>Landscape</i> option, then clicki<span style="font-weight: normal;">ng <span class="btn-old-blue"><span class="fa fa-check">&nbsp;</span>Ok</span></span>
+      </li>
+      <li>
+        When changing the element orientation, the bounding box will have to be altered appropriately&nbsp;or the label will be cropped.
+      </li>
+    </ul>
+  </li>
+  <li>
+    Print an invoice using the template with the integrated label:
+    <ul>
+      <li>
+        If the shipping service is using a courier that supports integrated labels, the request will be sent to the courier and the label details will be returned.
+      </li>
+      <li>
+        This will also add the tracking number to the order.
+      </li>
+      <li>
+        This may increase the time taken to print the invoice&nbsp;but this behavior is expected.
+      </li>
+    </ul>
+  </li>
+  <li>
+    Click <span class="btn-old-blue"><span class="fa fa-check">&nbsp;</span>Save</span><span style="font-weight: normal;">&nbsp;</span>on the template.
+  </li>
+</ol>
+<img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/ShippingLabelExample.png" alt="" class="leftAlone size-50" style="" loading="lazy"/>
+<h2 id="h2__787975843" data-has-heading-anchor="true">
+  Extended Properties (EPs)
+<a href="/articles/documentation/template-designer-invoice/a/h2__787975843" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-invoice/a/h2__787975843&#39;,this);"></a></h2>
+<p>
+  It is possible to have&nbsp;<i>Item Extended Properties</i> and <i>Order Extended Properties&nbsp;</i>printed on the invoice template.
+</p>
+<div class="alert-success" style="text-align: justify;">
+  <strong>Important!</strong>&nbsp;An extended property <span style="font-weight: normal;"><b>must exist</b></span> on an inventory item/order prior to being displayed and printed on the invoice template.&nbsp;
+</div>
+<h3 id="h3_2000926737" data-has-heading-anchor="true">
+  How to add item EPs
+<a href="/articles/documentation/template-designer-invoice/a/h3_2000926737" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-invoice/a/h3_2000926737&#39;,this);"></a></h3>
+<p style="text-align: justify;">
+  Item extended properties hold additional information about a product (for example, size, color, material, etc.) that you may want to display on the invoice. For further guidelines on how to do that see below.
+</p>
+<p style="">
+  <img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/InvoiceTemplate_ExtendedProperties.png" alt="" class="leftAlone size-75" style="" loading="lazy"/>
+</p>
+<div class="alert-danger" style="text-align: justify;">
+  <strong>NB!</strong>&nbsp;This functionality <strong>is not</strong> supported in the Desktop application. If you add extended properties to the invoice template in Linnworks.net and then print this invoice from Desktop, extended properties will <strong>not</strong>&nbsp;appear on the invoice.&nbsp; &nbsp;
+</div>
+<p style="text-align: justify;" id="h3__385873222">
+  To add item extended properties:
+</p>
+<ol>
+  <li style="text-align: justify;">
+    Double-click the <em>Order Items</em> table to open the <em>Edit Table</em> Screen.
+  </li>
+  <li style="text-align: justify;">
+    Click the <span class="btn-old-gray"><span class="fa fa-plus">&nbsp;</span>Add Extended Property</span> button to add the required extended property to the template.
+    <br/>
+    <div style="text-align: center;">
+      <img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/AddExtendedProperty.png" alt="" class="leftAlone" style="" loading="lazy"/>
+    </div>
+  </li>
+  <li>
+    Select <em>Property Type</em> from the drop-down menu. Property types include:
+    <ul>
+      <li>
+        <b>Attribute</b>
+      </li>
+      <li>
+        <span style="font-weight: normal;"><b>Channel
+          </b></span>
+      </li>
+      <li>
+        <span style="font-weight: normal;"><b>Compatibility
+          </b></span>
+      </li>
+      <li>
+        <span style="font-weight: normal;"><b>Condition
+          </b></span>
+      </li>
+      <li>
+        <span style="font-weight: normal;"><b>Fulfillment SKU
+          </b></span>
+      </li>
+      <li>
+        <span style="font-weight: normal;"><b>Other
+          </b></span>
+      </li>
+      <li>
+        <span style="font-weight: normal;"><b>Shipping&nbsp;
+          </b></span>
+      </li>
+      <li>
+        <span style="font-weight: normal;"><b>Stock Item Label</b></span>
+      </li>
+    </ul>
+  </li>
+  <li>
+    Select <i>Property Name</i>. This is the name of the unique property that you used when this extended property was created.
+    <br/>
+    <img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/PropertyTypeName.png" alt="" class="leftAlone" style="" loading="lazy"/>
+  </li>
+  <li>
+    Click <span class="btn-old-blue"><span class="fa fa-check">&nbsp;</span>Ok</span>
+  </li>
+  <p style="text-align: justify;">
+    Once selected, a new column will be added to the table with both the <em>header</em> and the <em>name</em> being displayed as the<em> extended property name</em>. When printed, the extended property cell will show the <em>extended property value</em>. This only works on the main table, not the sub-table.
+  </p>
+  <p style="text-align: justify;">
+  </p>
+</ol>
+<h3 style="box-sizing: border-box; background-color: #ffffff;" id="h3__1544766728" data-has-heading-anchor="true">
+  How to add order EPs
+<a href="/articles/documentation/template-designer-invoice/a/h3__1544766728" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-invoice/a/h3__1544766728&#39;,this);"></a></h3>
+<p style="box-sizing: border-box; background-color: #ffffff;">
+  Order extended properties store any additional information that is not saved in the&nbsp;<em style="box-sizing: border-box;">Order Information</em>&nbsp;section of the order and the&nbsp;<em style="box-sizing: border-box;">Template Designer</em>&nbsp;tool allows you to display these EPs on the invoice template.
+</p>
+<p id="h4_1174327631">
+  To add order EPs to the invoice template:
+</p>
+<ol style="box-sizing: border-box; margin-top: 0px; margin-bottom: 10px; background-color: #ffffff;">
+  <li style="box-sizing: border-box; width: 782.986px;">
+    <em style="box-sizing: border-box;">Go to Settings &gt; Template Designer &gt; Invoice Templates</em>.
+  </li>
+  <li style="box-sizing: border-box; width: 782.986px;">
+    Search for the required invoice template and click the&nbsp;<span style="box-sizing: border-box;" class="btn-old-gray">Edit</span>&nbsp;button.
+  </li>
+  <li style="box-sizing: border-box; width: 782.986px;">
+    Drag &amp; drop the&nbsp;<em style="box-sizing: border-box;">Labels and Variables</em>&nbsp;element from the left-side menu into the template.
+  </li>
+  <li style="box-sizing: border-box; width: 782.986px;">
+    Double-click the element to open the&nbsp;<em style="box-sizing: border-box;">Edit Label</em>&nbsp;pop-up.&nbsp;
+  </li>
+  <li style="box-sizing: border-box; width: 782.986px;">
+    Click the <span style="box-sizing: border-box;" class="btn-old-gray"><span class="fa fa-plus">&nbsp;</span>Extended Property</span>&nbsp;button at the top right-hand corner of the pop-up.
+    <br style="box-sizing: border-box;"/>
+    <img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/InvoiceTemplate_ExtendedProperty.png" alt="" class="leftAlone" style="" loading="lazy"/>
+  </li>
+  <li style="box-sizing: border-box; width: 782.986px;">
+    Select&nbsp;<em style="box-sizing: border-box;">Property Type</em>&nbsp;and&nbsp;<em style="box-sizing: border-box;">Property Name</em>&nbsp;and then click&nbsp;<span style="box-sizing: border-box;" class="btn-old-blue"><span class="fa fa-check">&nbsp;</span>Ok</span>
+    <br style="box-sizing: border-box;"/>
+    <img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/InvoiceTemplate_ExtendedPropertyAdd.png" alt="" class="leftAlone" style="" loading="lazy"/>
+  </li>
+  <li style="box-sizing: border-box; width: 782.986px;">
+    Click&nbsp;<span class="btn-old-blue"><span style="box-sizing: border-box;"><span class="fa fa-check">&nbsp;</span>Ok</span>&nbsp;</span>&nbsp;in the pop-up and then&nbsp;<span style="box-sizing: border-box;" class="btn-old-blue"><span class="fa fa-check">&nbsp;</span>Save</span>&nbsp;the template to apply changes.
+  </li>
+</ol>
+<p style="box-sizing: border-box; background-color: #ffffff;">
+  Now, when printing an invoice for an order with an extended property, that property will be printed as well.
+</p><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

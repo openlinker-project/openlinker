@@ -38,6 +38,7 @@
  *
  * @module libs/core/src/inventory/application/services
  */
+import type { ComponentLineRef } from '@openlinker/core/products';
 import { Inject, Injectable } from '@nestjs/common';
 
 import {
@@ -163,6 +164,9 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
     if (!Number.isInteger(input.units) || input.units <= 0) {
       throw new RangeError(`units must be a positive integer, got ${String(input.units)}`);
     }
+    if (input.components !== undefined && input.components.length > 0) {
+      return this.reverseComponents(input, input.components);
+    }
     const forLine = await this.lineRows(input.internalOrderId, input.orderLineId);
     const ownKey = buildEditReversalIdempotencyKey(input.changeId, input.orderLineId);
     const replay = this.replayOf(forLine, ownKey);
@@ -282,6 +286,40 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
       remaining -= take;
     }
     return { status: 'restored', units: restored, detail: null };
+  }
+
+  /**
+   * A bundle line's give-back (#3607): the decrements sit on the component
+   * lines, so each is reversed on its own idempotency key and the results sum
+   * back to ONE answer for the bundle line. One failed component fails the
+   * line, because a half-restored set is not "restored".
+   */
+  private async reverseComponents(
+    input: ReverseLineQuantityInput,
+    components: readonly ComponentLineRef[]
+  ): Promise<ReverseLineQuantityResult> {
+    const results: ReverseLineQuantityResult[] = [];
+    for (const component of components) {
+      results.push(
+        await this.reverseLineQuantity({
+          internalOrderId: input.internalOrderId,
+          orderLineId: component.componentLineId,
+          units: Math.round(input.units * component.perUnit),
+          changeId: input.changeId,
+        })
+      );
+    }
+    const failed = results.find((r) => r.status === 'failed');
+    const status = failed
+      ? 'failed'
+      : results.some((r) => r.status === 'restored')
+        ? 'restored'
+        : 'not-applicable';
+    return {
+      status,
+      units: results.reduce((sum, r) => sum + r.units, 0),
+      detail: failed?.detail ?? results.find((r) => r.detail !== null)?.detail ?? null,
+    };
   }
 
   /** Units each `(work, line)` has had given back by an edit, from the ledger's own rows. */

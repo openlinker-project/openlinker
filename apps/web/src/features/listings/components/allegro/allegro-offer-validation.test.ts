@@ -13,6 +13,9 @@ import { describe, expect, it } from 'vitest';
 
 import type { CategoryParameterLike } from '../../../../shared/plugins';
 import {
+  ALLEGRO_BUNDLE_CATEGORY_MISMATCH_BLOCKER,
+  ALLEGRO_BUNDLE_COMPONENT_GPSR_MISSING_BLOCKER,
+  ALLEGRO_BUNDLE_COMPONENT_MISSING_BLOCKER,
   describeNeedsProductParameters,
   ALLEGRO_EAN_UNVERIFIED_BLOCKER,
   ALLEGRO_IN_STORE_BARCODE_BLOCKER,
@@ -342,6 +345,24 @@ describe('allegroOfferValidation', () => {
         describe: expect.any(Function),
       },
       {
+        id: ALLEGRO_BUNDLE_COMPONENT_MISSING_BLOCKER,
+        field: 'bundle',
+        tone: 'error',
+        label: 'component cannot be listed',
+      },
+      {
+        id: ALLEGRO_BUNDLE_COMPONENT_GPSR_MISSING_BLOCKER,
+        field: 'bundle',
+        tone: 'error',
+        label: 'component safety data missing',
+      },
+      {
+        id: ALLEGRO_BUNDLE_CATEGORY_MISMATCH_BLOCKER,
+        field: 'bundle',
+        tone: 'error',
+        label: 'category differs from first component',
+      },
+      {
         id: ALLEGRO_EAN_UNVERIFIED_BLOCKER,
         field: 'ean',
         tone: 'warning',
@@ -502,6 +523,63 @@ describe('allegroOfferValidation', () => {
       ).toEqual([]);
     });
   });
+
+  describe('bundle as a product-set offer (#3520)', () => {
+    const component = (problems: { code: string; message: string }[] = []) => ({
+      variantId: 'v',
+      productId: 'p',
+      name: 'Kubek',
+      problems,
+    });
+    const bundleRow = (
+      components: ReturnType<typeof component>[],
+      suggested: string | null = '74035',
+      chosen: string | null = '74035',
+    ) => ({
+      ...base,
+      barcode: '5901234123457',
+      catalogueConsulted: true,
+      needsProductParameters: true,
+      bundle: { components, suggestedCategoryId: suggested, chosenCategoryId: chosen },
+    });
+
+    it('should raise nothing for a bundle whose components are all listable', () => {
+      expect(allegroOfferValidation.validateRow(bundleRow([component()]))).toEqual([]);
+    });
+
+    it('should skip the single-product barcode and parameter rules for a bundle', () => {
+      const blockers = allegroOfferValidation.validateRow(bundleRow([component()]));
+      expect(blockers).not.toContain(ALLEGRO_EAN_UNVERIFIED_BLOCKER);
+      expect(blockers).not.toContain(ALLEGRO_NEEDS_PRODUCT_PARAMETERS_BLOCKER);
+    });
+
+    it('should block when a component cannot be listed', () => {
+      expect(
+        allegroOfferValidation.validateRow(
+          bundleRow([component([{ code: 'PRODUCT_SET_COMPONENT_UNPUBLISHABLE', message: 'x' }])]),
+        ),
+      ).toEqual([ALLEGRO_BUNDLE_COMPONENT_MISSING_BLOCKER]);
+    });
+
+    it('should block when a component has no safety information', () => {
+      expect(
+        allegroOfferValidation.validateRow(
+          bundleRow([component([{ code: 'PRODUCT_SET_COMPONENT_GPSR_MISSING', message: 'x' }])]),
+        ),
+      ).toEqual([ALLEGRO_BUNDLE_COMPONENT_GPSR_MISSING_BLOCKER]);
+    });
+
+    it('should block when the category differs from the first component card category', () => {
+      expect(
+        allegroOfferValidation.validateRow(bundleRow([component()], '74035', '110886')),
+      ).toEqual([ALLEGRO_BUNDLE_CATEGORY_MISMATCH_BLOCKER]);
+    });
+
+    it('should not block on category while none is suggested or chosen', () => {
+      expect(allegroOfferValidation.validateRow(bundleRow([component()], null, '110886'))).toEqual([]);
+      expect(allegroOfferValidation.validateRow(bundleRow([component()], '74035', null))).toEqual([]);
+    });
+  });
 });
 
 describe('describeNeedsProductParameters (#4003)', () => {
@@ -532,6 +610,9 @@ describe('describeNeedsProductParameters (#4003)', () => {
 
   it('should give every Allegro blocker a sentence of its own', () => {
     for (const d of allegroOfferValidation.blockers) {
+      // The bundle blockers are worded by the host (`describeBundleBlocker`),
+      // which names the components; the plugin only declares the ids.
+      if (d.id.includes(':bundle-')) continue;
       expect(d.describe, d.id).toBeDefined();
     }
   });

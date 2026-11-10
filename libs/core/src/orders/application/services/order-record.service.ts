@@ -8,6 +8,7 @@
  * @module libs/core/src/orders/application/services
  * @implements {IOrderRecordService}
  */
+import type { LineExpansion } from '@openlinker/core/products';
 import { Injectable, Inject } from '@nestjs/common';
 import type { Order, OrderDispatchWindow } from '../../domain/types/order.types';
 import type { DeliveryCountryFact } from '../../domain/types/delivery-country-facts.types';
@@ -221,6 +222,12 @@ export class OrderRecordService implements IOrderRecordService {
         // passed while a PrestaShop order reached the destination adapter with
         // no gross price and was refused for not having one it HAD reported.
         ...(item.unitPriceGross !== undefined && { unitPriceGross: item.unitPriceGross }),
+        // #3929 - the third allowlist this projection has had to grow for: a
+        // gift flag or multipack size dropped here is lost at persistence time
+        // and every later read (hold re-check, destination mirror) sees an
+        // ordinary single-unit line. Absent stays absent.
+        ...(item.gift !== undefined && { gift: item.gift }),
+        ...(item.packQuantity !== undefined && { packQuantity: item.packQuantity }),
       })),
       totals: order.totals,
       shippingAddress: piiConfig.storePii
@@ -1290,6 +1297,19 @@ export class OrderRecordService implements IOrderRecordService {
   /** Merge one operator edit into the overlay (#3542); the repository owns the atomicity. */
   async applyOrderEdit(input: ApplyOrderEditInput): Promise<OrderRecord | null> {
     return this.repository.applyOrderEdit(input);
+  }
+
+  countOpenOrdersByBundleVersion(
+    bundleVariantId: string
+  ): Promise<{ version: number; count: number }[]> {
+    return this.repository.countOpenOrdersByBundleVersion(bundleVariantId);
+  }
+
+  async freezeLineExpansion(
+    internalOrderId: string,
+    expansion: LineExpansion
+  ): Promise<LineExpansion> {
+    return this.repository.freezeLineExpansion(internalOrderId, expansion);
   }
 
   /**

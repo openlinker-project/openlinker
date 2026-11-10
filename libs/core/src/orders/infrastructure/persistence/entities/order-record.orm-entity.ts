@@ -483,6 +483,18 @@ export class OrderRecordOrmEntity {
   orderEdits!: Record<string, unknown> | null;
 
   /**
+   * The bundle definitions frozen onto this order at ingestion (#3607, ADR-083
+   * decision 2). `NULL` = no expansion recorded (physical lines = commercial).
+   *
+   * Sole writer `OrderRecordRepository.freezeLineExpansion`, conditional on the
+   * column still being NULL. Named in NEITHER half of the ingestion upsert, so a
+   * re-poll can never replace it - which is what makes a later edit of a
+   * definition leave open orders alone.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  lineExpansion!: Record<string, unknown> | null;
+
+  /**
    * Per-order reporting-currency snapshot (#2124, ADR-040) — six columns
    * written ONLY by the two narrow, conditional UPDATEs on the repository
    * (`claimFxIntentIfAbsent`, `stampFxIfAbsent`). The ingestion upsert

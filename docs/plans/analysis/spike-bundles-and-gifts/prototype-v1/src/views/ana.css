@@ -1,0 +1,38 @@
+/* Analytics view (plan item 11). Prefix ana-. Tokens only. */
+.ana-stack { display: grid; gap: var(--space-4); margin-top: var(--space-4); min-width: 0; }
+.ana-stack-sm { display: grid; gap: var(--space-2); }
+.ana-panel { display: grid; gap: var(--space-3); min-width: 0; }
+.ana-subbar { margin: 0; }
+.ana-strong { font-weight: 600; color: var(--text-primary); }
+.ana-small { font-size: 0.8125rem; }
+.data-table__stack.ana-right, .ana-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; }
+.ana-right > * { white-space: nowrap; }
+.ana-inline { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; min-width: 0; }
+.ana-unknown { color: var(--status-warning-fg, var(--text-secondary)); font-size: 0.8125rem; }
+.ana-pln-hint { font-size: 0.75rem; }
+.ana-break { overflow-wrap: anywhere; }
+.ana-who-pays { margin: 0; }
+.ana-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.ana-split { display: inline-flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); }
+.ana-split__item { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; font-size: 0.8125rem; }
+.ana-components { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); font-size: 0.8125rem; color: var(--text-secondary); }
+.ana-components__item { display: inline-flex; align-items: center; gap: var(--space-1); }
+.ana-share { display: inline-block; width: 72px; max-width: 100%; height: 4px; border-radius: var(--radius-sm, 2px); background: var(--bg-shell); border: 1px solid var(--border-default); overflow: hidden; vertical-align: middle; }
+.ana-share__fill { display: block; height: 100%; background: var(--text-muted); }
+.ana-share--gift .ana-share__fill { background: color-mix(in oklch, var(--tag-violet) 70%, var(--text-primary)); }
+.ana-share--bundle .ana-share__fill { background: color-mix(in oklch, var(--tag-blue) 70%, var(--text-primary)); }
+.ana-row--attention > td:first-child { box-shadow: inset 3px 0 0 var(--status-warning-fg, var(--border-strong)); }
+.ana-chips { flex-wrap: wrap; }
+.ana-link { padding: 0 var(--space-1); min-height: 0; height: auto; vertical-align: baseline; }
+.ana-linkbtn { background: none; border: 0; padding: 0; color: var(--accent-primary, var(--text-primary)); text-decoration: underline; cursor: pointer; font: inherit; text-align: left; }
+.ana-linkbtn:focus-visible { outline: 2px solid var(--accent-primary, currentColor); outline-offset: 2px; }
+/* Polish copy is sentence case; the kit capitalises segmented options for English labels. */
+.ana-scope .segmented-control__option { text-transform: none; }
+/* Keep wide children (segmented controls, strips, charts) inside a 400 px viewport. */
+.ana-scope, .ana-scope .tabs, .ana-scope .tabs__content { min-width: 0; max-width: 100%; }
+.ana-stack { grid-template-columns: minmax(0, 1fr); }
+.ana-stack > *, .ana-panel > * { min-width: 0; max-width: 100%; }
+.ana-scope .segmented-control { flex-wrap: wrap; max-width: 100%; }
+.ana-scope .excl-note { white-space: normal; text-align: left; height: auto; line-height: 1.4; }
+.ana-scope .who-pays { flex-wrap: wrap; }
+.ana-scope .analytics-margin__trend svg { max-width: 100%; height: auto; }

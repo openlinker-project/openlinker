@@ -1,0 +1,34 @@
+=== query-data-composites | Query Data: Composite Export
+ 
+ Query Data: Composite Export 
+Composite Export
+ The Composite Export  report returns a list of composite parent items and the quantity of their child items. It is also possible to generate a list of composite parent items that contain the same child item.
+ Selection criteria
+ Linnworks includes items in the report based on the following criteria.
+ Parameters 
+ Use the parameters below to configure this report:
+ Child SKU : Paste an SKU of a child item into the Childsku field to generate the list of composite parent items that contain this child item. 
+ Rules 
+ This is the internal logic applied by the system to extract only those records that fulfill the specified criteria.
+ Only composite items and their children are included in the report.
+ How to generate the report: a step-by-step guide
+ Select the  Composite Export report in the Query type drop-down menu. 
+Paste an SKU of a child item into the Childsku field if you need to generate the report with composite parent items that contain this child item. 
+ NB! Leaving the Childsku field blank will produce a report with all composite items that are available in your Linnworks account.
+ Click the   Generate Report button. This will generate and pre-load the report on the screen. 
+Click the   Download (CSV file)  button when you need to download the report.
+ Reported values
+ The following values are returned by the report:
+ Column Name 
+ Description 
+ Parent SKU 
+ The Linnworks stock item number of the parent item.
+ Parent Title 
+ The Linnworks stock item title of the parent item.
+ Child SKU 
+ The Linnworks stock item number of a child that belongs to the parent item.
+ Child Title 
+ The Linnworks stock item title for a child item that belongs to the parent item.
+ Quantity 
+ The quantity of this stock item that is included as part of the parent item.
+ 

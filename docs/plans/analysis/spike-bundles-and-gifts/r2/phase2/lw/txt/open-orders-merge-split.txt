@@ -1,0 +1,99 @@
+=== open-orders-merge-split | Merge or Split Orders
+ 
+ Merge or Split Orders 
+Open Orders: How to Merge or Split
+ When orders are downloaded into Linnworks, it may be useful to merge multiple orders into a single order to ship items to the buyer more efficiently. In the same way, you can split one big order into multiple orders. This guide provides detailed instructions for both merging and splitting orders using Open Orders .
+ Merging orders
+ In the Open Orders screen, you can merge orders manually or you can enable the setting to automatically merge orders that are from the same customer and selling channel.
+ Prerequisites
+ To merge orders automatically or manually, the following prerequisites must be fulfilled:
+ Shipping details such as customer name and address must match (case sensitivity not applied).
+ All orders must be from the same selling channel (source & subsource).
+ All orders must be paid.
+ All orders must have the same currency.
+ All orders must have the same shipping service.
+A shipping label or invoice is not printed for all orders to be merged.
+All orders are not locked or parked.
+All orders must have Address1 and FullName filled in and not be empty.
+ Note!  Orders that are sent to a fulfillment center location   can not be merged.
+ If orders fail to meet the criteria, the following warning message will be displayed before the Merge screen opens:
+ Orders that cannot be merged will be highlighted in red and the Can Merge column will display the reason.
+ If the merge is not possible for multiple reasons, hover over the error to display full information in a tooltip.
+ Important! The despatch by date of merged orders gets set to the earliest despatch by date on the original orders.
+ Example:
+ Order 10001: 21st June 12:12
+ Order 10005: 22nd June 14:46
+ The despatch by date of the new order will be 21st June 12:12
+ Merging orders manually
+ To merge orders manually, follow the steps below.
+ Step 1
+ Select the required orders in the Open Orders screen. Click Actions  (or right-click orders) and go to Other Actions > Merge Order . 
+ Note!  Make sure that the setting that allows merging orders manually is enabled in the User Permissions screen. Otherwise, this action will be grayed out.
+ Step 2
+ Double-check the details in the Merge Orders screen. If necessary, change the shipping service for the merged order.
+ Step 3
+ Click the Merge button.
+ Orders that are merged will be given a new order id.
+ The reference number and external reference number on the new order will display MERGED.
+ Entries about the merge will be added to the History tab.
+ When orders are merged, they will trigger the Rules Engine module to run.
+ Similarly, scripts may also be triggered.
+ Merging orders automatically
+ Enabling the Order Merge setting instructs Linnworks to automatically merge orders that meet the order merge criteria . 
+ The setting can be enabled from  Settings > General Settings > Order Management > Order merge and split.  Once enabled the system will automatically look for and merge orders every  15 minutes .
+ Note! Amazon Prime orders will not be merged automatically. Though Amazon Prime orders can be merged manually it is not recommended because this can cause issues with label printing.
+ Blocking orders from merging
+ You can be in a situation when, for example, you need to automatically merge all orders except for those with a total of more than £500.
+ It is possible to block specific orders from being automatically merged:
+ By assigning a Block From Merge identifier manually. 
+By using the Rules Engine (RE) action - Block orders from merging . 
+ Using the  Block orders from merging action of the Rules Engine , the system will add to orders a Block From Merge identifier that blocks orders from being automatically merged when the Auto Merge Orders setting is enabled in Settings > General Settings > Orders Settings .
+ You can also add a  Block From Merge  identifier to orders manually by selecting the required orders > Actions (or right-click) >  Organise > Identifier > Assign Identifier > Block From Merge .
+ When automatically merging orders, the system will ignore orders with the Block From Merge identifier and not merge them. 
+ Manually merging orders with the Block From Merge identifier will prompt the following message:
+ Click Continue to remove the  Block From Merge identifier from selected orders and proceed with the merge. 
+ Click Cancel if you would like to stop the merge.
+ Splitting orders
+ The Split Order action allows you to split one big order into multiple orders. Open orders with only one item cannot be split into multiple orders.
+ Info!  Depending on the  Restrict Order Splitting setting available in Settings > General Settings > Order Settings, it may or may not be allowed to manually split orders placed not in the current month. For more information see here .
+ Composite Items  
+ Splitting an order with composite items to have child items contained in different orders is not supported. If you need multiple shipping labels printed for composite child items, use the split packaging functionality.
+ NB!  If an order has split packaging applied before the order split, the split packaging will be automatically removed.
+ Splitting orders manually
+ To split an order manually, follow the steps below.
+ Step 1
+ Select the required order in the Open Orders screen. Click Actions  (or right-click orders) and go to Other Actions > Split Order .
+ Step 2
+ The items from the selected order will appear at the top of the Split Order screen. 
+ Click and drag the item to the bottom pane. Use the Move field to specify the quantity of the item to be moved to a separate order.
+ It is possible to add other items to the newly created order by dragging and dropping them onto the order.
+ It is possible to create multiple new orders by dragging items to the bottom pane of the screen, avoiding the orders already there.
+ On each new order, use the drop-down menu to select the shipping service .
+ Step 3
+ Click Split Order .   Any items left in the upper pane will remain in the original order.
+ Auto split
+ In the Split Order screen, use the Auto Split button instead of dragging items to the bottom pane one by one. The automatic split can be done by: 
+ Weight
+ Default supplier
+ Out of stock 
+ Cost
+ By weight :  Click Auto Split > By Weight and specify a maximum weight for each individual order.
+ Note! If the entered maximum weight is less than the weight of any ordered item, the order will not split.
+ By default supplier :   Clicking Auto Split > By Default Supplier groups items   with the same default supplier into a new order.
+ By out of stock :   Clicking Auto Split > By Out of Stock  groups out-of-stock items into a new order.
+ By cost :   Click Auto Split > By Cost  and specify a maximum order cost:
+ The order is split based on the item's unit cost before tax.
+ Note! If the entered maximum cost is less than the cost of any ordered item, the order will not split.
+ One in each order
+ In the Split Order screen, click the One in Each Order button to split the order and have each item placed in a new separate order.
+ Clear all
+ Clicking Clear All at any point will remove the new order design and return all items to the original order.
+ Info! 
+ By default, an order created as a result of a split is automatically allocated to the same folder the original parent order was assigned to. Unless the setting Disable copying folders to split orders  is enabled in the Order Management Settings .
+ If an order contains order notes, these are saved for all split orders. 
+ When merging or splitting orders with  batched items , Linnworks assigns the same batch from the parent order to newly created orders. Therefore, FIFO rules are not altered.
+  Video tutorial 
+ If you prefer a visual explanation, this video tutorial walks you through the process of merging or splitting orders step by step. It can help clarify how everything works and answer any additional questions. 
+ Video - Order Management: using the split and merge functionality  
+ NB! For the documentation on the earlier version of the Open Order s screen, see here .
+ 

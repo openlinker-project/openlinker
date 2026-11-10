@@ -405,6 +405,10 @@
     "title": "Paragon fiskalny"
   },
   "gateReasons": {
+    "bundle-split-unknown": {
+      "detail": "Zestaw w tym zamówieniu zawiera pozycje o różnych stawkach VAT, ale brakuje stawki lub ceny potrzebnej do jego rozbicia, więc nic nie wystawiono. Popraw stawkę lub cenę w sklepie; zamówienie zostanie ponowione przy następnej aktualizacji.",
+      "short": "Zestawu nie można rozbić"
+    },
     "line-total-mismatch": {
       "detail": "Pozycje zamówienia nie sumują się do podanej w nim sumy, więc nie można automatycznie wystawić dokumentu. Zwykle przyczyną jest rabat, który marketplace naliczył na całe zamówienie.",
       "short": "Kwoty się nie sumują"

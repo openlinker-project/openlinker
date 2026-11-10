@@ -24,7 +24,10 @@
  * @see {@link AutoIssueTriggerService} for the implementation
  */
 import type { Order } from '@openlinker/core/orders';
-import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
+import type {
+  BundleDocumentPresentation,
+  SalesDocumentBlockOutcome,
+} from '@openlinker/core/sales-documents';
 import type { AutoIssueOptions } from '../../domain/types/invoice-trigger.types';
 
 export interface IAutoIssueTriggerService {
@@ -86,6 +89,7 @@ export interface IAutoIssueTriggerService {
     sourceEventId?: string,
     taxRateEra?: string | null,
     buyerTaxId?: string | null,
+    bundleDocument?: BundleDocumentPresentation,
     options?: AutoIssueOptions,
   ): Promise<SalesDocumentBlockOutcome>;
 }

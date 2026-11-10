@@ -11,6 +11,11 @@ import { minorUnitExponentFor, quantityScaledReconciliationEpsilon } from './shi
 export interface DiscountRoundingLine {
   quantity: number;
   unitPriceGross: number;
+  /**
+   * A gift line is never the place a rounding gap lands: that would put an
+   * invented amount on a free item. Callers keep the marker through this call.
+   */
+  isGift?: boolean;
 }
 
 /** The slice of the order totals it needs. */
@@ -59,7 +64,10 @@ export function reconcileDiscountRounding<T extends DiscountRoundingLine>(
   if (Math.abs(gapMinor) > quantityScaledReconciliationEpsilon(totals.currency, totalQuantity) * factor) {
     return result;
   }
-  const goodsIndexes = Array.from({ length: Math.min(goodsLineCount, result.length) }, (_, i) => i);
+  const goodsIndexes = Array.from(
+    { length: Math.min(goodsLineCount, result.length) },
+    (_, i) => i
+  ).filter((index) => result[index].isGift !== true);
   const fromMinor = (value: number): number => Number((value / factor).toFixed(exponent));
 
   const single = goodsIndexes.find(

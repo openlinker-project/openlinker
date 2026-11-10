@@ -24,7 +24,7 @@ import {
   type RoutingShipTo,
 } from '@openlinker/core/fulfillment';
 
-import type { Order } from './types/order.types';
+import type { Order, OrderItem } from './types/order.types';
 
 /** The ADR-062 allowlist projection handed to a router. */
 export interface OrderRoutingProjection {
@@ -36,7 +36,8 @@ export interface OrderRoutingProjection {
 export function projectOrderForRouting(
   order: Order,
   shippingAddressHash: string | null,
-  storePii: boolean
+  storePii: boolean,
+  physicalItems: readonly OrderItem[]
 ): OrderRoutingProjection | null {
   const shippingAddress = order.shippingAddress;
   if (shippingAddress === undefined) {
@@ -44,7 +45,7 @@ export function projectOrderForRouting(
   }
 
   return {
-    lines: order.items.map((item) => ({
+    lines: physicalItems.map((item) => ({
       orderLineId: item.id,
       // A work line needs a variant. `variantId` is optional on `OrderItem`, so
       // fall back to the product id rather than emitting a blank - a work

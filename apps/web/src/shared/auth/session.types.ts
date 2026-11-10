@@ -46,6 +46,8 @@ export const PermissionValues = [
   // dialog. Admin and operator only — an export takes buyer data out of the
   // system, so read access to /orders does not imply it.
   'orders:export',
+  // DISPLAY-ONLY (#3520): bundle/multipack write affordances (admin + operator).
+  'bundles:write',
 ] as const;
 
 export type Permission = (typeof PermissionValues)[number];

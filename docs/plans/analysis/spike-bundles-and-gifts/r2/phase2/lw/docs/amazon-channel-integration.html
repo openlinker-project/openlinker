@@ -1,0 +1,435 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/amazon-channel-integration"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Amazon channel integration</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Amazon channel integration';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><h1 id="h1_1757326147" data-has-heading-anchor="true">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>
+
+
+Amazon Channel Integration
+<a href="/articles/documentation/amazon-channel-integration/a/h1_1757326147" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-channel-integration/a/h1_1757326147&#39;,this);"></a></h1>
+
+<p>
+  Amazon integration allows you to connect to your Amazon seller account via API. The integration also supports working with FBA orders and inventory.
+</p>
+<div class="row">
+  <div class="main-intro">
+    <div class="CHBoxShowMore">
+      <div class="showMoreLabel nonPrintable" style="margin-top: 10px; margin-bottom: 10px; cursor: pointer; display:table" onclick="toggleBox(this)">
+        [+] <a id="supportedAMZ" href="javascript:void(0)" target="_top">List of Supported&nbsp;Amazon Marketplaces.
+        </a>
+      </div>
+      <div class="hideLabel Article_hiddenBlock nonPrintable" style="margin-top: 10px; margin-bottom: 10px; cursor: pointer; display:table" onclick="toggleBox(this)">
+        [-]
+        <a href="javascript:void(0)" target="_top">
+          Click to hide the list
+        </a>
+      </div>
+      <div class="showMoreContent Article_hiddenBlock" style="padding-left: 20px">
+        <p>
+        </p>
+        <ul class="grid">
+          <li>
+            Australia
+          </li>
+          <li>
+            com.au
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.com.au/" target="_blank">sellercentral.amazon.com.au</a>
+          </li>
+          <li>
+            Belgium
+          </li>
+          <li>
+            com.be
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.com.be/" target="_blank">sellercentral.amazon.com.be</a>
+          </li>
+          <li>
+            Brazil
+          </li>
+          <li>
+            com.br
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.com.br/" target="_blank">sellercentral.amazon.com.br</a>
+          </li>
+          <li>
+            Canada
+          </li>
+          <li>
+            ca
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.ca/" target="_blank">sellercentral.amazon.ca</a>
+          </li>
+          <li>
+            France
+          </li>
+          <li>
+            fr
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.fr/" target="_blank">sellercentral.amazon.fr</a>
+          </li>
+          <li>
+            Germany
+          </li>
+          <li>
+            de
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.de/" target="_blank">sellercentral.amazon.de</a>
+          </li>
+          <li>
+            India
+          </li>
+          <li>
+            in
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.in/" target="_blank">sellercentral.amazon.in</a>
+          </li>
+          <li>
+            Ireland
+          </li>
+          <li>
+            ie
+            <br/>
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.ie/" target="_blank">sellercentral.amazon.ie</a>
+          </li>
+          <li>
+            Italy
+          </li>
+          <li>
+            it
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.it/" target="_blank">sellercentral.amazon.it</a>
+          </li>
+          <li>
+            Japan
+          </li>
+          <li>
+            jp
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.co.jp/" target="_blank">sellercentral.amazon.co.jp</a>
+          </li>
+          <li>
+            Netherlands
+          </li>
+          <li>
+            nl
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.nl/" target="_blank">sellercentral.amazon.nl</a>
+          </li>
+          <li>
+            Mexico
+          </li>
+          <li>
+            mx
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.com.mx/" target="_blank">sellercentral.amazon.com.mx</a>
+          </li>
+          <li>
+            Poland
+          </li>
+          <li>
+            pl
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.pl/" target="_blank">sellercentral.amazon.pl</a>
+          </li>
+          <li>
+            Saudi Arabia
+          </li>
+          <li>
+            sa
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.sa/" target="_blank">sellercentral.amazon.sa</a>
+          </li>
+          <li>
+            Singapore
+          </li>
+          <li>
+            sg
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.sg/" target="_blank">sellercentral.amazon.sg</a>
+          </li>
+          <li>
+            South Africa
+          </li>
+          <li>
+            za
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.co.za/" target="_blank">sellercentral.amazon.co.za</a>
+          </li>
+          <li>
+            Spain
+          </li>
+          <li>
+            es
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.es/" target="_blank">sellercentral.amazon.es</a>
+          </li>
+          <li>
+            Sweden
+          </li>
+          <li>
+            se
+          </li>
+          <li>
+            <a href="http://sellercentral.amazon.se/" target="_blank">sellercentral.amazon.se</a>
+          </li>
+          <li>
+            Turkey
+          </li>
+          <li>
+            com.tr
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.com.tr/" target="_blank">sellercentral.amazon.com.tr</a>
+          </li>
+          <li>
+            UAE
+          </li>
+          <li>
+            ae
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.ae/" target="_blank">sellercentral.amazon.ae</a>
+          </li>
+          <li>
+            UK
+          </li>
+          <li>
+            co.uk
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.co.uk/" target="_blank">sellercentral.amazon.co.uk</a>
+          </li>
+          <li>
+            USA
+          </li>
+          <li>
+            com
+          </li>
+          <li>
+            <a href="https://sellercentral.amazon.com/" target="_blank">sellercentral.amazon.com</a>
+          </li>
+        </ul>
+        <p class="alert-warning" style="border-color: #e8e8e8;">
+          <strong><span class="fa fa-info-circle icon-background-yellow"></span>&nbsp;Note:</strong> Amazon Brazil, Japan, Singapore, Turkey, UAE, and Saudi Arabia sites do not currently support listing functionality, and therefore, listing creation via Linnworks is not possible for these marketplaces.
+        </p>
+      </div>
+    </div>
+  </div>
+  
+  <div class="main-logo">
+    <br/>
+  </div>
+</div>
+
+
+
+<div class="alert-success">
+  <span class="fa fa-info-circle icon-background-blue"></span>&nbsp;Amazon&nbsp;channel integration is a <b>Linnworks Direct&nbsp;</b>integration - developed, maintained, and supported by Linnworks.
+</div>
+
+
+
+
+
+<h3 id="h4__751493465" style="" data-has-heading-anchor="true">
+  Supported features
+<a href="/articles/documentation/amazon-channel-integration/a/h4__751493465" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-channel-integration/a/h4__751493465&#39;,this);"></a></h3>
+<table class="table-striped">
+  <tbody>
+    <tr>
+      <td>
+        <a href="/articles/documentation/channels-inventory-updates" target="_blank" onclick="return n(&#39;!documentation/channels-inventory-updates&#39;,this);">Inventory Updates</a>
+        <br/>
+      </td>
+      <td>
+        Linnworks can automatically send changes in stock levels to the channel.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/articles/documentation/channels-order-download" target="_blank" onclick="return n(&#39;!documentation/channels-order-download&#39;,this);">Order Download</a>
+        <br/>
+      </td>
+      <td>
+        Channel orders can be automatically downloaded into Linnworks.
+        <div class="alert-warning">
+          <span class="fa fa-info-circle icon-background-yellow"></span>&nbsp;To ensure order reports that Linnworks requests from Amazon return all relevant columns, enable the&nbsp;<i>Tax Collection Model </i>and <i>Tax Responsible Party</i>&nbsp;columns in   <i>Seller Central &gt; Order Reports &gt; Add or remove order report columns</i>.<span style="font-weight: normal;"></span>&nbsp;
+        </div>
+        <span style="font-weight: normal;"></span>&nbsp;
+        <br/>
+      </td>
+    </tr>
+    <tr>
+      <td width="20%">
+        <a href="/articles/documentation/channels-tax" target="_blank" onclick="return n(&#39;!documentation/channels-tax&#39;,this);">Channel Tax</a>
+      </td>
+      <td>
+        The channel provides tax information and settings displayed on orders in Linnworks during order download.
+      </td>
+    </tr>
+    <tr>
+      <td width="20%">
+        <a href="/articles/documentation/channels-inventory-mapping" target="_blank" onclick="return n(&#39;!documentation/channels-inventory-mapping&#39;,this);">Inventory Mapping</a>
+      </td>
+      <td>
+        Channel listings can be linked to Linnworks inventory items for stock level and price updates.
+      </td>
+    </tr>
+    <tr>
+      <td width="20%">
+        <a href="/articles/documentation/listing-creation-steps/a/lm_createlistings" target="_blank" onclick="return n(&#39;!documentation/listing-creation-steps/a/lm_createlistings&#39;,this);">Listing Creation</a>
+      </td>
+      <td>
+        New listings on the channel can be created via Linnworks. A complete guide on the Amazon listing tool is <a href="/smart/project-linnworks-documentation/amazon-configurator-old" target="_top">here</a>.
+        <br/>
+        Amazon also supports re-creating existing listings in Linnworks via the <i><a href="/articles/documentation/extract-inventory" onclick="return n(&#39;!documentation/extract-inventory&#39;,this);">Extract Inventory</a></i> tool.</td>
+    </tr>
+    <tr>
+      <td width="20%">
+        <a href="/articles/documentation/channels-location-mapping" target="_blank" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);">Location Mapping</a>
+      </td>
+      <td>
+        Orders can be downloaded, and inventory updates sent from specific locations. 
+        <ul class="regular-list">
+          <li>
+            Amazon FBA locations can be set up to work with FBA orders and inventory.<a href="/articles/documentation/amazon-fba" target="_blank" onclick="return n(&#39;!documentation/amazon-fba&#39;,this);"> See more here.</a>
+          </li>
+          <li>
+            The Amazon channel integration (US only) in Linnworks supports Multi-Location Inventory, for which location mapping must be set up in a particular way. <a href="/articles/documentation/amazon-multi-locations" onclick="return n(&#39;!documentation/amazon-multi-locations&#39;,this);">See more here</a>.
+          </li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td width="20%">
+        <a href="/articles/documentation/channels-order-cancellation" target="_blank" onclick="return n(&#39;!documentation/channels-order-cancellation&#39;,this);">Order Cancellation</a>
+      </td>
+      <td>
+        Orders can be canceled on the channel via Linnworks.
+      </td>
+    </tr>
+    <tr>
+      <td width="20%">
+        <a href="/articles/documentation/channels-order-dispatch" target="_blank" onclick="return n(&#39;!documentation/channels-order-dispatch&#39;,this);">Order Dispatch</a>
+      </td>
+      <td>
+        Orders on the channel can be marked as shipped and provided with the tracking number and shipping service name via Linnworks.
+      </td>
+    </tr>
+    
+    <tr>
+      <td width="20%">
+        <a href="/articles/documentation/channels-order-refunds" target="_blank" onclick="return n(&#39;!documentation/channels-order-refunds&#39;,this);">Order Refunds</a>
+      </td>
+      <td>
+        Orders can be refunded on the channel via Linnworks
+      </td>
+    </tr>
+    <tr>
+      <td width="20%">
+        <a href="/articles/documentation/channels-payment-mapping" target="_blank" onclick="return n(&#39;!documentation/channels-payment-mapping&#39;,this);">Payment Mapping</a>
+      </td>
+      <td>
+        Channel payment methods can be linked to Linnworks payment methods for the orders in Linnworks to display methods based on the channel selection.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/articles/documentation/channels-price-change" target="_blank" onclick="return n(&#39;!documentation/channels-price-change&#39;,this);">Price Change</a>
+      </td>
+      <td>
+        Prices on channel listings can be automatically updated via Linnworks.
+      </td>
+    </tr>
+    <tr>
+      <td width="20%">
+        <a href="/articles/documentation/channels-shipping-mapping" target="_blank" onclick="return n(&#39;!documentation/channels-shipping-mapping&#39;,this);">Shipping Mapping</a>
+      </td>
+      <td>
+        Channel shipping methods can be linked to Linnworks postal services for the orders in Linnworks to display the services based on the channel selection.
+      </td>
+    </tr>
+  </tbody>
+</table>
+<div class="row">
+  <div class="col-md-6">
+    <h4 id="h4_15828802" data-has-heading-anchor="true">
+      Next steps:
+    <a href="/articles/documentation/amazon-channel-integration/a/h4_15828802" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-channel-integration/a/h4_15828802&#39;,this);"></a></h4>
+    <ul>
+      <li>
+        <a href="/articles/documentation/amazon-add-new" onclick="return n(&#39;!documentation/amazon-add-new&#39;,this);">Add New</a>
+      </li>
+      <li>
+        <a href="/articles/documentation/amazon-settings" onclick="return n(&#39;!documentation/amazon-settings&#39;,this);">Settings</a>
+      </li>
+    </ul>
+  </div>
+  <div class="col-md-6">
+    <h4 style="" id="h4_234702287" data-has-heading-anchor="true">
+      Additional information:
+    <a href="/articles/documentation/amazon-channel-integration/a/h4_234702287" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-channel-integration/a/h4_234702287&#39;,this);"></a></h4>
+    <ul>
+      <li>
+        <a href="/articles/documentation/amazon-fba" onclick="return n(&#39;!documentation/amazon-fba&#39;,this);">Fulfillment by Amazon</a>
+      </li>
+      
+      <li>
+        <a href="/articles/documentation/amazon-fba" onclick="return n(&#39;!documentation/amazon-fba&#39;,this);"></a><a href="/articles/documentation/amazon-b2b-orders" onclick="return n(&#39;!documentation/amazon-b2b-orders&#39;,this);">Amazon B2B orders</a>
+      </li>
+      <li>
+        <a href="/articles/documentation/amazon-prime-orders" onclick="return n(&#39;!documentation/amazon-prime-orders&#39;,this);">Amazon Prime orders</a>
+      </li>
+      <li>
+        <a href="/smart/project-linnworks-documentation/amazon-configurator-old" target="_top">Amazon Listing Tool</a>
+      </li>
+    </ul>
+  </div>
+</div><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

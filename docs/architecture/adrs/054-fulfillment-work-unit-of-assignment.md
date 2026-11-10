@@ -96,6 +96,14 @@ only `RoutingInput`/`RoutingPlan` (with a `pending {decisionId}` arm for async D
 cross-rule conditions or arbitrary predicates) re-opens the no-rules-engine decision; a second
 executor needing batching re-opens the `awaiting_wave` deferral.
 
+## Amendment (#3606, 2026-11-04): work lines come from the physical order list
+
+`FulfillmentWork` lines were created from the order's lines one to one. With bundles ([ADR-083](./083-commercial-and-physical-order-lines.md)) an order has a commercial list (`order.items`) and a frozen physical list (`OrderRecord.physicalItems`), where a bundle line is expanded to its components. Work lines are now created from the physical list, so a work, its picks and its pack verification run at component grain (decision D3). The router input (`projectOrderForRouting`) projects the physical list, which also covers the ingestion intercept, the route handler and the dry run.
+
+A work line's `orderLineId` for a component is `{lineId}~c:{variantId}`. Nothing parses it; the bundle line id lives in the frozen expansion and is read through `componentLineIdsOf`. The routing conservation check compares the plan against `routingInput.lines`, so it stays consistent as long as the projection expands.
+
+Order edits on a bundle line must reach component work lines. `assessForEdit` and `lowerLineQuantity` in `FulfillmentOrderEditService` key work lines by `orderLineId`, so they take the component ids from `componentLineIdsOf` and sum back to the bundle line for the edit response. Without this the edit reports success and cancels no units. The executor port is untouched: it sends `workLineId`, never `orderLineId`. `shipment_lines` stay at the commercial grain.
+
 ## References
 
 - Related issues: #1032, #1917, #2170/#2298 (the proposed storage-shape amendment above)

@@ -88,7 +88,7 @@ export class InventorySaleDecrementHandler implements SyncJobHandler {
       return { outcome: 'ok' };
     }
 
-    const itemsById = new Map(record.orderItems.map((item) => [item.id, item]));
+    const itemsById = new Map(record.physicalItems.map((item) => [item.id, item]));
     const lines: SaleDecrementLineInput[] = [];
     for (const line of work.lines) {
       const quantity = line.totalQuantity - line.cancelledQuantity;

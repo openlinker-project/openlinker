@@ -9,6 +9,9 @@
   "allegroOfferValidation": {
     "blockers": {
       "addProductParams": "dodaj parametry produktu",
+      "bundleCategoryMismatch": "kategoria inna niż pierwszego składnika",
+      "bundleComponentGpsrMissing": "brak danych bezpieczeństwa składnika",
+      "bundleComponentMissing": "składnika nie da się wystawić",
       "eanNotInCatalogue": "EAN spoza katalogu",
       "inStoreBarcode": "kod wewnętrzny sklepu",
       "noPhoto": "brak zdjęcia",
@@ -330,6 +333,18 @@
       "unknownCategoryResult": "Nieznany wynik"
     },
     "describe": {
+      "bundleCategoryMismatch": {
+        "detail": "Użyj kategorii pierwszego składnika albo zmień kolejność składników.",
+        "title": "Kategoria oferty musi się zgadzać z kartą produktu pierwszego składnika na {destination}."
+      },
+      "bundleComponentGpsrMissing": {
+        "detail": "Uzupełnij je w produkcie albo ustaw wartości domyślne w połączeniu.",
+        "title": "{names} nie ma podmiotu odpowiedzialnego ani informacji o bezpieczeństwie."
+      },
+      "bundleComponentMissing": {
+        "detail": "Dodaj temu produktowi EAN pasujący do karty z katalogu, zdjęcie i mapowanie kategorii albo opublikuj go osobno, a potem wróć.",
+        "title": "{names} nie da się wystawić na {destination}."
+      },
       "cardCategoryDiffers": {
         "detail": "Używamy Twojego mapowania, a produkt z katalogu nie zostanie powiązany. Otwórz, aby porównać obie kategorie.",
         "title": "Kod kreskowy {ean} pasuje do produktu z katalogu {destination} w innej kategorii niż Twoje mapowanie kategorii."
@@ -992,6 +1007,7 @@
     "sourceHint": {
       "card": "Dopasowana przez kod kreskowy do produktu z katalogu. Żadne mapowanie kategorii nie obejmuje tego produktu.",
       "cardAgrees": "Dopasowana przez kod kreskowy do produktu z katalogu, który jest w kategorii wskazanej przez Twoje mapowanie.",
+      "firstComponent": "Wzięta z karty produktu pierwszego składnika zestawu. Sklep wymaga, żeby oferta się z nią zgadzała.",
       "mapping": "Ustalona na podstawie Twojego mapowania kategorii.",
       "picked": "Ta kategoria została wybrana w tym kreatorze.",
       "shared": "Wszystkie warianty produktu są wystawiane w jednej kategorii, więc ten wariant używa kategorii produktu."
@@ -999,6 +1015,7 @@
     "sourceLabel": {
       "card": "Katalog",
       "cardAgrees": "Katalog + mapowanie",
+      "firstComponent": "Z pierwszego składnika",
       "mapping": "Mapowanie",
       "picked": "Wybrana tutaj",
       "shared": "Wspólna"
@@ -1352,6 +1369,33 @@
     "discardAndLeave": "Odrzuć i wyjdź",
     "keepEditing": "Kontynuuj edycję",
     "title": "Opuścić tę partię?"
+  },
+  "bundleOffer": {
+    "categoryMismatch": "Kategoria różni się od karty produktu pierwszego składnika, a sklep wymaga, żeby były takie same.",
+    "collapse": "Ukryj skład zestawu {name}",
+    "compositionHeading": "Skład na {destination}",
+    "eanNotNeeded": "Zestaw nie potrzebuje własnego EAN. Kody mają jego produkty.",
+    "expand": "Pokaż skład zestawu {name}",
+    "gift": "gratis",
+    "insertComponentList": "Wstaw listę składników",
+    "limitedBy": "ogranicza: {name}",
+    "marker": {
+      "few": "Zestaw · {n} produkty",
+      "many": "Zestaw · {n} produktów",
+      "one": "Zestaw · {n} produkt",
+      "other": "Zestaw · {n} produktu"
+    },
+    "modes": {
+      "catalogCard": "karta z katalogu",
+      "missing": "nie da się wystawić",
+      "newProduct": "nowy produkt",
+      "ownOffer": "własna oferta",
+      "ownOfferWithId": "własna oferta {id}"
+    },
+    "noOwnEan": "bez własnego EAN",
+    "publishComponent": "Opublikuj składnik",
+    "quantity": "×{n}",
+    "useFirstComponentCategory": "Użyj kategorii pierwszego składnika"
   },
   "categoryLookup": {
     "idleTimeout": "Brak odpowiedzi z wyszukiwania kategorii przez {seconds} s."
@@ -1991,7 +2035,14 @@
     "notSyncedYet": "Niezsynchronizowana"
   },
   "offerPublicationStatusPanel": {
+    "caption": "Oferty tego produktu w marketplace",
     "checkStatus": "Sprawdź status",
+    "columns": {
+      "action": "Akcja",
+      "offer": "Oferta",
+      "status": "Status",
+      "synced": "Ostatnio sprawdzono"
+    },
     "emptyMessage": "Ten produkt nie jest jeszcze wystawiony w żadnym połączeniu z marketplace.",
     "emptyTitle": "Brak ofert w marketplace",
     "errorTitle": "Nie udało się wczytać statusu publikacji",
@@ -2000,8 +2051,7 @@
     "neverSynced": "Nigdy nie zsynchronizowano",
     "refresh": "Odśwież",
     "refreshing": "Odświeżanie…",
-    "retry": "Ponów",
-    "synced": "Zsynchronizowano <time></time>"
+    "retry": "Ponów"
   },
   "parameterRestrictions": {
     "aboveMax": "{name} może wynosić maks. {max}, a ta wartość to {value}.",

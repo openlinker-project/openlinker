@@ -79,7 +79,39 @@ export type OrderProvisioningResumeResult =
   | { status: 'skipped'; reason: ProvisioningResumeSkipReason }
   | { status: 'failed'; reason: 'enqueue-failed' };
 
+/** What a multipack release did across every order waiting for a bundle (#3624). */
+export interface MultipackReleaseResult {
+  /** Orders still held for a multipack with no bundle when the pass started. */
+  held: number;
+  /** Source-side re-syncs enqueued. */
+  enqueued: number;
+  /** Orders that could not be re-driven (no source id, or the enqueue failed). */
+  notResumed: number;
+  /**
+   * The scan hit its page budget with more held orders left. A short result is
+   * NOT "that was all of them"; the rest stay held and are re-driven by the next
+   * release or the order's own retry.
+   */
+  truncated: boolean;
+  /** The scan itself failed; `held` counts what was reached before it did. */
+  scanFailed: boolean;
+}
+
 export interface IOrderProvisioningResumeService {
+  /**
+   * Re-drive every order held with the `multipack-without-bundle` reason (#3624),
+   * now rather than at the next retry backoff. Called after a bundle definition
+   * is created. Level-triggered: ingestion re-asks the same question, so an order
+   * whose offer still resolves to a variant with no bundle simply stays held.
+   * Never throws for a modelled condition; truncation and a failed scan are
+   * reported on the result.
+   */
+  resumeMultipackHeldOrders(scope: {
+    variantId: string;
+    /** Omit to release every pack size of the variant (a bundle was just defined). */
+    packQuantity?: number;
+  }): Promise<MultipackReleaseResult>;
+
   /**
    * Re-enqueue the source-side `marketplace.order.sync` for one order, so a
    * provisioning run suppressed by a hold happens now that the hold is gone.

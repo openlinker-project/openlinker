@@ -1,0 +1,77 @@
+=== magento-2-settings | Magento 2: Configure channel settings
+ 
+ Magento 2: Configure channel settings 
+ Magento 2: How to Configure 
+ Linnworks integration has multiple settings that allow detailed control of how Linnworks interacts with Magento 2. This guide will help you configure your Magento 2 channel to ensure Linnworks is doing what is required. 
+ Once the channel is added, click the pen      icon in the channel integration screen for the required Magento 2 integration. 
+ Available for the configuration settings 
+ Account 
+ Enabled:   Tick this option to allow communication between Linnworks and Magento 2. Without this ticked, no information will be sent to the channel or received from it. Once  enabled, Linnworks will download orders from Magento 2 that have the status of processing on Magento 2. 
+ Site URL:    The domain of the Magento 2 site that is integrated. 
+ API URL:   The URL of where the API is - set as /rest/default/V1/ as standard. 
+ Consumer Key:    This is part of the API credentials obtained from Magento after creating a new integration on the Magento 2 backend. 
+ Consumer Secret:     This is part of the API credentials obtained from Magento after creating a new integration on the Magento 2 backend. 
+ Access Token:     This is part of the API credentials obtained from Magento after creating a new integration on the Magento 2 backend. 
+ Access Token Secret:   This is part of the API credentials obtained from Magento after creating a new integration on the Magento 2 backend. 
+ Work with Multi store:  Allows downloading orders per each Magento Multistore individually. Multi-stores are treated as locations in Linnworks. Multi stores are mapped to Linnworks locations, and orders are downloaded into these locations.
+  Note:  If Work with Multi store  is enabled , Work with specific Multi-store  and Store site ID  must remain disabled .
+ Work with specific Multi-store:  Allows downloading orders from one of your Multi stores. The multistore site ID is specified in the field below.
+ Store site ID:  Orders will be downloaded from a store with this site ID.
+ Test:   Click to confirm the supplied credentials work correctly, allowing communication between Magento 2 and Linnworks. If the main settings such as consumer key or API endpoint change, you can reset your channel with the new details by clicking the Test button and following the re-integration wizard.
+ Reauthorize:  T his  button will trigger the reauthorization of your tokens if required. 
+ Order 
+ Dispatch notes:  After processing orders in Linnworks, a dispatch notification, tracking number, and the selected shipping vendor will be submitted to the channel. This is then compared to a list of couriers on the channel and displayed if it matches a courier. If it does not match, then Custom is displayed on the order. If no tracking number is available, nothing is submitted. When the option is disabled, no dispatch information will be submitted to Magento.
+  Note:  The orders' status will only be marked as shipped if the version is 2.1.3 or higher.
+ Order sync date [UTC]:  T his shows the date and time when Linnworks last synchronized with the channel. 
+ High volume orders:    Tick this option if the channel deals with a high volume of orders, in the thousands, per day. This will then force orders to download in batches once an hour. This reduces the load on the server. 
+  Note:  If this option is used, orders that are deleted from Linnworks will not be redownloaded due to the way in which Linnworks will be looking for valid orders to download.
+ Use base currency:     This will force Linnworks to make use of the default store currency and prices as set in Magento 2 using the parameters in the downloaded order XML that are prefixed with Base . 
+ Use order state:     By  default, Linnworks downloads orders based on the status of the order {pending, processing} on Magento. By ticking this option, Linnworks will instead only download them based on state {new, processing} as defined on Magento. 
+ Order  State is an attribute internal to Magento. It differs from order status, but it can be mapped in the Magento settings. 
+ Several statuses can be mapped to one state. For example, an order's state of payment_review could be mapped to the status of payment_review and fraud.
+ Download pending orders:     Ticking this option will force Linnworks to download orders with pending status on Magento. If the  Use order state  setting is enabled, Linnworks will instead download orders where the state is set to new on Magento. 
+ Pending order from date:     Pending orders will be downloaded starting from the date you selected in this setting. 
+ Pending canceled from date: Linnworks will sync canceled orders from the date selected here.
+ Payment methods to download pending orders:     This allows for customization of when pending orders will be downloaded. 
+ For instance, if a customer was paying on the collection, but the order needed to be picked and packed in advance, then the payment method "cashondelivery", which by default is mapped as a pending order on Magento 2, could be set to download in Linnworks.
+ Download custom/configurable item options:  Enable to download custom/configurable item options. If unticked, Linnworks will not check for custom/configurable item options.
+ Ignore bundle child items : Use this option to ignore bundle child items during order download. Should only be enabled if the bundle parent has a linked SKU to a composite parent in Linnworks with the correct and exactly matching child items. When disabled, bundle child and parent items will be downloaded as separate items.
+ Ignore bundle parent items : Use this option to ignore bundle parent items during order download. This option should be used e.g. when the parent SKU is a virtual parent with a generated SKU.
+  Note:   Ignore Bundle Parent Items and Ignore Bundle Child Items cannot be enabled simultaneously. Only one setting can be used at a time. However, both options can be disabled, whether needed. 
+ Use Magento tax settings:     When enabled, Linnworks will use the tax percentage directly from the Magento order data when it is downloaded to Linnworks. If the option is not enabled Linnworks will back calculate tax based on the stock item tax or country tax as defined in Linnworks. 
+ Coupon control : This option is added to comply with  Only process an order if all items are linked setting from Settings > General Settings > Order Settings > Error Prevention. If the  Only process an order if all items are linked setting is enabled, select how Linnworks should treat coupons in the order: 
+ Line item :   
+ Show Coupon details as an order line item. 
+ Order note :  Sho w Coupon details as Additional Info. 
+ Ignore :  Do not save  Coupon details. 
+ Cancellation notes:  When enabled, Linnworks will send order cancellation notes to your sales channel once the order is partially or fully canceled (only unpaid orders can be canceled).
+ Refund notes: When e nabled,  Linnworks will send order refund notes to your sales channel once the order is partially or fully refunded.
+ Return notes:  When enabled, Linnworks will send order return notes to your sales channel once the order is partially or fully returned.
+ Magento email notification on despatch:  Enabling this  option will instruct Magento 2 to email the customer when the order is processed in Linnworks. 
+ Raise invoice after despatch:  When enabled,  o nce the order is complete on Magento 2, Linnworks will try to raise an invoice. This will trigger any payment capture actions on your payment gateway. 
+ Capture invoice after raise:  This option  relates to using pre-authorized payments/orders. 
+ Invoice prefix: This is the prefix given to invoices from this channel. The prefix is assigned when the channel is first integrated and can not be changed.
+ Inventory 
+ Update inventory: Allow Linnworks to submit changes in stock levels to Magento 2. Linnworks supports multiple stock locations for additional warehouses/fulfillment centers/suppliers. Ensure you set which Linnworks locations are used when submitting changes in stock levels to your channel via the Location Mapping screen accessed from the  Channel Integration screen.
+ Max listed:  This sp ecifies the maximum level sent to the channel.  
+ For more details, go to the  Max Listed  guide.
+ Stock percentage:  This will send a percentage of the currently available stock level to the sales channel. For more details, go to the  Stock Percentage  guide.
+ End when:  This en ables you to force the listing to end when the stock level gets to the specified amount instead of the default value of zero.  
+ For more details, go to the  End When  guide.
+ Do not mark as out-of-stock: Enabling this option will not mark SKUs with 0 available quantities as out-of-stock.
+ Inventory - Price Change 
+ Price change: Price Change is designed to automate updating the sales channel once a Linnworks stock item has had its listing price updated and saved. For more details, go to the Price Change guide.
+ Listings 
+ Auto-link by SKU:  If enabled, Linnworks will automatically link unmatched channel SKUs to matching Linnworks SKUs during  order download  or the  mapping sync  (runs ~every 12 hours). Once linked,  inventory sync  is triggered. You can check  this guide  for full details on how this feature works.
+ Listing download in progress:  This tick  box will tick itself if a Listing Update has begun. 
+ Listing download start time:  This will s how the date and time of when the update has begun. 
+ Last listing download completion time: The time when the last listing download was completed (launched via the Download listings button).
+ Listing download estimated completion:  This will give y ou an estimate of when the listings download will be complete – the time can vary depending on server speeds and the number of listings. 
+ Download listings:  Click this button to force Linnworks to request an update from the channel for your active listings.
+ Next steps:
+ Location Mapping 
+ Inventory Mapping 
+ Payment Mapping 
+ Shipping Mapping 
+ Listing creation steps 
+ 

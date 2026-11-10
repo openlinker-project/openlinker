@@ -30,7 +30,12 @@ import {
   AVAILABILITY_SERVICE_TOKEN,
 } from '@openlinker/core/inventory';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import { IProductsService, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
+import {
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
+  IProductsService,
+  PRODUCTS_SERVICE_TOKEN,
+  type IBundleDefinitionService,
+} from '@openlinker/core/products';
 import {
   IOrderRoutingRetryService,
   ORDER_ROUTING_RETRY_SERVICE_TOKEN,
@@ -78,7 +83,9 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
     @Inject(AVAILABILITY_SERVICE_TOKEN)
     private readonly availabilityService: IAvailabilityService,
     @Inject(ORDER_ROUTING_RETRY_SERVICE_TOKEN)
-    private readonly orderRoutingRetry: IOrderRoutingRetryService
+    private readonly orderRoutingRetry: IOrderRoutingRetryService,
+    @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
+    private readonly bundleDefinitions: IBundleDefinitionService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -299,6 +306,13 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         `Enqueued ${offerMappings.length} offer + ${enqueuedShopCount} shop-product quantity update job(s) for product ${payload.productId}`
       );
 
+      // #3931: a bundle is promised from its components, so a component write
+      // moves every bundle that contains it. One reverse lookup, one propagation
+      // per bundle; a bundle is never itself a component, so this cannot recurse.
+      if (payload.variantId) {
+        await this.propagateToBundles(payload.variantId, job, payload.inventoryUpdatedAt);
+      }
+
       // #3558: orders held because a line could not be fulfilled are re-routed
       // now rather than at the sweep's next tick. Runs AFTER the channel fan-out
       // so the stock write-back never waits on it. Best-effort and bounded (a
@@ -322,6 +336,55 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         error instanceof Error ? error : undefined
       );
     }
+  }
+
+  /**
+   * Enqueue a propagation for each bundle that contains `componentVariantId`.
+   *
+   * The key is the same location-free scheme `InventoryService` uses, keyed on
+   * the BUNDLE and the component's write stamp, so a component reported at N
+   * locations (or two components written in the same pull) collapses to one job
+   * per bundle and stamp. The component's stamp is carried as the bundle's
+   * observation: it orders concurrent bundle writes the same way (#2617).
+   *
+   * A failure to enqueue throws: this job is event-driven with no cron backstop,
+   * and swallowing it would leave the bundle offer at its last quantity.
+   */
+  private async propagateToBundles(
+    componentVariantId: string,
+    job: SyncJob,
+    inventoryUpdatedAt: string | null | undefined
+  ): Promise<void> {
+    const bundles = await this.bundleDefinitions.findCurrentContainingComponents([componentVariantId]);
+    if (bundles.length === 0) return;
+
+    const bundleVariants = await this.productsService.getVariantsByIds(
+      bundles.map((bundle) => bundle.variantId)
+    );
+    const productByVariant = new Map(bundleVariants.map((v) => [v.id, v.productId]));
+    const stamp = inventoryUpdatedAt ?? 'legacy';
+    for (const bundle of bundles) {
+      const bundleProductId = productByVariant.get(bundle.variantId);
+      if (bundleProductId === undefined) {
+        this.logger.warn(
+          `inventory_bundle_propagation_skipped variant=${bundle.variantId} - bundle variant no longer exists`
+        );
+        continue;
+      }
+      await this.jobEnqueue.enqueueJob({
+        jobType: 'inventory.propagateToMarketplaces',
+        connectionId: job.connectionId,
+        payload: {
+          productId: bundleProductId,
+          variantId: bundle.variantId,
+          ...(inventoryUpdatedAt ? { inventoryUpdatedAt } : {}),
+        },
+        idempotencyKey: `inventory:propagate:${bundleProductId}:${bundle.variantId}:${stamp}`,
+      });
+    }
+    this.logger.log(
+      `Enqueued propagation for ${bundles.length} bundle(s) containing variant ${componentVariantId}`
+    );
   }
 
   /**

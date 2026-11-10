@@ -8,6 +8,7 @@
  * @module libs/core/src/orders/infrastructure/persistence/repositories
  * @implements {OrderRecordRepositoryPort}
  */
+import { readLineExpansion, type LineExpansion } from '@openlinker/core/products';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { DataSource, EntityManager, SelectQueryBuilder } from 'typeorm';
@@ -26,6 +27,7 @@ import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
 import type {
   HeldOrderRef,
   OrderRecordRepositoryPort,
+  HeldOrdersFilter,
 } from '../../../domain/ports/order-record-repository.port';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { OrderLineItemDraft } from '../../../domain/order-analytics-projection';
@@ -258,6 +260,45 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .getRawMany<{ source_connection_id: string; earliest_at: Date }>();
 
     return new Map(rows.map((row) => [row.source_connection_id, row.earliest_at]));
+  }
+
+  async findHeldByReasonCode(
+    filter: HeldOrdersFilter,
+    page: { afterId: string | null; limit: number }
+  ): Promise<OrderRecord[]> {
+    if (filter.offerRefs !== undefined && filter.offerRefs.length === 0) {
+      return [];
+    }
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .where('rec.recordStatus = :held', { held: 'awaiting_mapping' })
+      // `[code]` is a literal marker, so the pattern's wildcards are only ours.
+      .andWhere('rec."mappingFailureReason" LIKE :marker', { marker: `%[${filter.reasonCode}]%` });
+    if (page.afterId !== null) {
+      qb.andWhere('rec.internalOrderId > :afterId', { afterId: page.afterId });
+    }
+    const itemConditions: string[] = [];
+    const params: Record<string, unknown> = {};
+    if (filter.packQuantity !== undefined) {
+      itemConditions.push(`(item->>'packQuantity')::numeric = :packQuantity`);
+      params.packQuantity = filter.packQuantity;
+    }
+    if (filter.offerRefs !== undefined) {
+      const refs = filter.offerRefs.map((ref, i) => {
+        params[`refConn${String(i)}`] = ref.connectionId;
+        params[`refExt${String(i)}`] = ref.externalId;
+        return `(rec."sourceConnectionId" = :refConn${String(i)} AND item->'productRef'->>'type' = 'offer' AND item->'productRef'->>'externalId' = :refExt${String(i)})`;
+      });
+      itemConditions.push(`(${refs.join(' OR ')})`);
+    }
+    if (itemConditions.length > 0) {
+      qb.andWhere(
+        `EXISTS (SELECT 1 FROM jsonb_array_elements(rec."orderSnapshot"->'items') item WHERE ${itemConditions.join(' AND ')})`,
+        params
+      );
+    }
+    const entities = await qb.orderBy('rec.internalOrderId', 'ASC').take(page.limit).getMany();
+    return entities.map((e) => this.toDomain(e));
   }
 
   async countOrdersByRoutingCountrySince(
@@ -3276,6 +3317,57 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * Freeze the order's bundle expansion (#3607). THE sole writer of
+   * `lineExpansion`; written once, at ingestion, before reservation. The
+   * `IS NULL` guard is the single-writer-once rule: a re-poll, a retry or a
+   * later definition edit changes nothing, and the stored value is returned.
+   */
+  async freezeLineExpansion(
+    internalOrderId: string,
+    expansion: LineExpansion
+  ): Promise<LineExpansion> {
+    const rows = (await this.repository.query(
+      `UPDATE "order_records" SET "lineExpansion" = $2::jsonb
+        WHERE "internalOrderId" = $1 AND "lineExpansion" IS NULL
+        RETURNING "lineExpansion"`,
+      [internalOrderId, JSON.stringify(expansion)]
+    )) as unknown[];
+    const updated = Array.isArray(rows[0]) ? (rows[0] as Record<string, unknown>[]) : rows;
+    if (updated.length > 0) {
+      return expansion;
+    }
+    const existing = (await this.repository.query(
+      `SELECT "lineExpansion" FROM "order_records" WHERE "internalOrderId" = $1`,
+      [internalOrderId]
+    )) as { lineExpansion: unknown }[];
+    return readLineExpansion(existing[0]?.lineExpansion) ?? expansion;
+  }
+
+  /**
+   * Open orders per frozen version of one bundle (#3624). Reads the frozen
+   * `lineExpansion` only - never the live definition - because the question is
+   * "which composition does this order ship with".
+   */
+  async countOpenOrdersByBundleVersion(
+    bundleVariantId: string
+  ): Promise<{ version: number; count: number }[]> {
+    const rows = (await this.repository.query(
+      `SELECT (def->>'version')::int AS version, COUNT(DISTINCT rec."internalOrderId")::int AS count
+         FROM "order_records" rec,
+              jsonb_array_elements(COALESCE(rec."lineExpansion"->'definitions', '[]'::jsonb)) AS def
+        WHERE rec."lineExpansion" @> jsonb_build_object(
+                'definitions', jsonb_build_array(jsonb_build_object('variantId', $1::text)))
+          AND def->>'variantId' = $1
+          AND rec."cancelledAt" IS NULL
+          AND (rec."fulfillmentState" IS NULL OR rec."fulfillmentState" = 'not-shipped')
+        GROUP BY (def->>'version')::int
+        ORDER BY version`,
+      [bundleVariantId]
+    )) as { version: number; count: number }[];
+    return rows.map((row) => ({ version: Number(row.version), count: Number(row.count) }));
+  }
+
+  /**
    * Merge one operator edit into the overlay (#3542). THE sole writer of
    * `orderEdits`; see `order-edits.types.ts`.
    *
@@ -3903,7 +3995,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // is read back from the same statement's RETURNING, so it is atomic with
       // the upsert - which is what lets `persistOrder` hand ingestion the overlay
       // that applied to THIS write rather than one read a moment earlier.
-      if (property === 'orderEdits') {
+      if (property === 'orderEdits' || property === 'lineExpansion') {
         continue;
       }
       entity[property] = EMPTY_COLUMN_DEFAULTS[property]?.() ?? null;
@@ -4230,6 +4322,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.buyerNoteChangedAt ?? null,
       orderEdits === null ? null : entity.orderSnapshot,
       orderEdits,
+      entity.recordStatus === 'ready' ? readLineExpansion(entity.lineExpansion) : null,
       // #3963 - coerced at the mapping boundary: an entry this build does not
       // recognise is absent, never present-and-unrenderable.
       readPaymentWriteback(entity.paymentWriteback),

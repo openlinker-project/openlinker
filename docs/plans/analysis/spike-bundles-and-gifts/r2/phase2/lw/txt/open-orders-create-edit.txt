@@ -1,0 +1,233 @@
+=== open-orders-create-edit | Create, View, Edit Open Orders
+ 
+ Create, View, Edit Open Orders 
+Open Orders: How to Create, View, Edit
+ This guide explains how to create open orders manually, view order information, and edit orders if necessary.
+  Note:  When you manually create open orders in the system, these orders are saved with the source DIRECT .  
+ Quick guide
+ See below for quick guides on how to create, view, and edit open orders.
+ To create a new open order :
+ Go to Orders > Open Orders. 
+ Click the  New Order  button.
+ Add order information.
+ Click  Save .
+ To view an existing open order :  
+ Find the order in  Open Orders. 
+ Select the order by ticking the selection box.
+ Click Actions > View Order . Alternatively, you can double-click the order.
+ View order information in the Order screen.
+ To edit an existing open order : 
+ Find the order in  Open Orders. 
+ Select the order by ticking the selection box.
+ Click Actions > View Order . Alternatively, you can double-click the order.
+ In the Order screen, click Edit. 
+ Adjust information.
+ Click Save .
+ The detailed guides on creating, viewing, and editing open orders are below.
+ How to create open orders
+ Once the selling  channel is integrated, channel orders will start being downloaded to Linnworks automatically based on your channel settings.  In some cases, you may need to create orders manually (for example, when you had a sale on the spot), which you are enabled to do in the  Open Orders  screen.  See below for the exact steps.
+ Step 1: access the screen
+ Go to Orders > Open Orders  to access the screen.
+ Step 2: create a new order
+ In the top right-hand corner of the screen, click the New Order  button, which opens the Order screen. 
+ Make sure the setting that allows creating direct orders is enabled in the User Permissions screen. Otherwise, this button will be grayed out.
+ Step 3: add order information
+ Fill in the sections below with the required order information.
+ Customer
+ Details
+ Items
+ Shipping & packaging
+ Notes
+ Properties
+ Payment
+ Note!  For visibility purposes, the selected section you are currently working in is highlighted in blue. 
+  Info:  When you click the New order button, the system opens the Items section first by default. 
+ Customer
+ In the Customer section, you can add or change the following shipping and billing information of the buyer:
+ Shipping Address 
+ Name
+ Company
+ Email
+ Phone
+ Address 1
+ Address 2
+ Address 3
+ Town
+ County/Region
+ Postcode
+ Country
+ Once you start typing, the system suggests a list of already existing customers with their details which you can select from the drop-down menu:
+ Billing Address  
+ In the Billing Address section, there is a checkbox Same as Shipping. Note that it is ticked by default when you are creating a new open order. 
+ Uncheck the box and click Edit existing or Enter new when the billing address differs from the shipping address.
+ In the Customer section, you can also use the   View on the map button to double-check the correctness of the address by viewing it on Google maps.
+ Click    when you need to close the Customer section in the Order screen.
+ Details
+ In the Details section, you can work with the following order information:
+ Source: For manually created orders, the source is DIRECT. Otherwise, the source field displays the channel from which the order is downloaded, e.g., AMAZON or EBAY. If you are editing an imported  order, the source displayed is DATAIMPORTEXPORT.
+  Note:  The source of an order cannot be changed.
+ Subsource: Use the subsource field to identify orders from different channels that have the same source. For example, the source could be AMAZON and the subsource - AmazonUK, AmazonUSA, etc.
+ Reference number: The primary reference number used by the sales channel to identify the order.
+ Secondary reference: An additional reference number for the order.
+ External reference: An additional reference number for the order.
+ Items
+ Use this section, to add items that were purchased by your buyer to the open order. You can add:
+ Products: These are the inventory items you sold. The items are taken from the  My Inventory screen . 
+ Services: It is an item that does not have a Linnworks SKU associated with it. For example, gift wrapping.
+ To add an item to the order:
+ Click the Add Product  button.
+ Search for a product by SKU or title.
+ Select the product from the list.
+ To add a service to the order:
+ Click the Add Service  button.
+ Type in the name of the service.
+ Add its cost.
+ Click Save. 
+ Sort Order Items
+ Organize your view by sorting the order items. Use the dropdown menus to select the sort type and direction. The system re-sorts the items when you change either option or click the 
+ button. By default, items are sorted by SKU (ascending). Keep in mind, the system does not save your last sorting preference. 
+ Use the available options to sort by:
+ SKU
+ Title
+ Added to order (the date and time the item was added to the open order)
+ Quantity
+ Unit cost
+ Total paid
+ Tax paid
+ Tax rate
+ Discount %
+ Sorting Direction:
+ Ascending
+ Descending
+ Quantity and cost
+ Use the quantity  box to increase or decrease the quantity of sold items. 
+ Use the cost  box to change the price of an item that was sold. 
+ Composite items, discounts, and additional info
+ Click    to access Subitems ,  Costs, and Additional Info tabs.
+ Subitems 
+ The Subitems tab is displayed when an item that was sold is a composite item . In this tab, you can view all child items from the composition.
+ Costs 
+ In the Costs tab, you can apply the discount or the tax rate on the order if needed. 
+ Additional info 
+ In the Additional Info tab, you can add extra information about the sold item if needed. 
+ To add information: 
+ Click the Add Info  button.
+ Type in Property .
+ Type in Value .
+ Click Save .
+ Click    when you need to remove an item from the order.
+ Shipping & packaging
+ Use this section to update shipping and packaging information for the order:
+ Packaging
+ Packaging group: The packaging group  that fits the order.
+ Packaging type: The packaging type  that fits the order.
+ Dimensions: The dimensions of purchased items. These can be entered manually as well.
+ Items weight: The weight of purchased items.
+ Packaging weight: The weight of the packaging .
+ Total weight: The total weight of the order. You can update the total weight manually. The weight will be divided between items and packaging weight.
+ Recalculate: click the  Recalculate button to revert any manual changes. The order packaging will be recalculated again according to the packaging method selected.
+ Shipping
+ Courier/Vendor: Provider of the shipping service. For example, Royal Mail .
+ Service: The name of the shipping service . For example,  Royal Mail 1st and 2nd Class .
+ Tracking number: The tracking number assigned to the order when the shipping label is printed. 
+ Note:  it is not recommended to change the tracking number manually.
+ Cancel shipping label: Use this button to cancel the shipping label that was printed for the order. Once canceled, you can print a new shipping label if needed.
+ Notes
+ Use the Notes section to add any vital information to the order. Once you open the section, you can view:
+ The text of the note.
+ The date when the note was added.
+ The user  this note was added by. 
+ If it is an external or a processing note:
+ External: Add the note as an external one if you need it to be visible on the invoice when it is printed for the order.
+ Processing: The note will appear in the Process screen when processing the order.
+ To add a note to an order:
+ Click the  Add Note button.
+ Add the text of the note.
+ Select if the note is external , processing , or both .
+ Click Save .
+ Click    when you need to remove the note from the order.
+ Properties
+ In the Properties section, you can add, change, or view:
+ Identifiers
+ Folders
+ Extended properties
+ Order XML
+ Identifiers
+ Identifiers must be first set up in Settings > General Settings > Order Management > Identifiers .
+ To add an identifier to an order:
+ Click the Add Identifier  button.
+ Search for the required identifier.
+ Select the identifier from the list.
+ Click    when you need to remove the identifier from the order.
+ Folders
+ Folders must be first set up in Settings > General Settings > Order Management > Folders .
+ To add an order to a folder:
+ Click the Add to Folder  button.
+ Select the folder from the list.
+ Click    when you need to remove the order from the folder.
+ Extended properties
+ Order extended properties are unique features that allow you to add and store any important order information that is not saved as order information in the main sections such as customer , items , shipping, properties, etc . 
+ For the most part, these are added to orders by automation such as scripts, macros, rules engine, applications or downloaded from selling channels. 
+ To add an extended property to open order manually:
+ Click the Add Extended Property  button. 
+ Specify type , name , and value .
+ Click Save .
+ Payment
+ Use the Payment section in the Order screen to update:
+ Currency: The currency of the order.
+ Payment status: The status of the order: unpaid , paid , pending , or  resend .
+ Payment method: The payment method used to pay for the order: PayPal, Stripe, bank transfer, etc.
+ Shipping cost: The cost paid for the shipping.
+ How to view open order details
+ Select the order in the Open Orders screen and click Actions > View Order . Alternatively, you can right-click the order to access the Actions menu and click View Order .
+ Order XML
+ When Linnworks saves an order, it downloads the information in the XML format. You can see this raw data in the Properties > Order XML section or by right-clicking the order > Other Actions > View Order XML.  For more information on the order's XML see here .
+  Note:  The order XML is available for orders from selling channels only. DIRECT orders do not have order XML.
+ History
+ In the History tab, you can see all actions that have been done on the order after its creation in Linnworks. In the top right-hand corner, use the Search field to look for a specific action.
+ The History tab displays:
+ The date when the action took place.
+ The type of action.
+ The note of the action.
+ The user who did the action.
+ Note:  If the action was done automatically by any Linnworks feature (for example, by the Rules Engine )  then SYSTEM will be displayed in the user column.
+ Totals
+ In the Totals section of the Order screen you can view:
+ Subtotals 
+ Items: The price for the items sold with the applied discount plus shipping cost.
+ Discounts: The sum of the discount if there was any applied.
+ Shipping : The shipping cost. 
+ Taxes 
+ Items : The sum of the tax paid on items. 
+ Shipping : The sum of the tax paid on shipping. 
+ Totals 
+ Items : The subtotal paid plus tax paid on items.  
+ Shipping : The shipping cost paid plus tax paid on shipping. 
+ Total : The subtotal paid plus tax paid on items plus shipping tax. 
+ How to edit open order details
+ The steps below explain how to modify an open order in the Open Orders screen if there is a requirement to update some of the order details.
+ Step 1
+ Select the order in the Open Orders screen and click Actions > View Order . Alternatively, double-click the order.
+ Step 2
+ In the top right-hand corner of the screen, click the   Edit  button:
+ Step 3
+ Update the required information and save the changes. There are two ways to save your changes:
+ Clicking  Save will save the changes while keeping the Edit Open Order screen open, allowing you to continue making updates to the order. When you are finished updating the order, you will need to close it manually via the Close button. 
+ Clicking Save & close will save the changes and close the Edit Open Order screen. You will then be redirected to the Open Orders screen, where all open orders are listed.
+ Info:  You can also use the Actions button to complete edits like changing order status, adding or removing order tags, identifiers, folders, updating shipping service, etc. More information on all actions that you can apply on orders in the Open Orders screen here . 
+  Video tutorial 
+ If you prefer a visual explanation, this video tutorial walks you through the process of creating and editing orders in Linnworks step by step. It can help clarify how everything works and answer any additional questions. 
+ Video - Creating and Editing Orders  
+ Related pages: 
+ Merge or Split Orders 
+ Split Packaging for Orders 
+ Collection Orders (BOPIS) 
+ Batch Assignment in Open Orders 
+  Note:  For the documentation on the earlier version of the Open Order s screen, see here:
+ Creating and editing orders 
+ Viewing open orders 
+ Audit trail 
+ Editing open orders 
+ Order notes 
+ Order extended properties 
+ 

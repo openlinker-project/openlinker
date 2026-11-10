@@ -12,6 +12,7 @@
  *
  * @module libs/core/src/inventory/application/services
  */
+import type { ComponentLineRef } from '@openlinker/core/products';
 import type {
   InventorySaleDecrementReason,
   InventorySaleDecrementStatus,
@@ -37,6 +38,11 @@ export interface ReverseLineQuantityInput {
   readonly orderLineId: string;
   /** Units the line was lowered by; the call gives back at most what was decremented. */
   readonly units: number;
+  /**
+   * The line's components when it is a bundle line (#3607): the decrements sit
+   * on the component lines, so each is given back `units * perUnit`.
+   */
+  readonly components?: readonly ComponentLineRef[];
   /** The order change that made the edit; the idempotency identity of the act. */
   readonly changeId: string;
 }

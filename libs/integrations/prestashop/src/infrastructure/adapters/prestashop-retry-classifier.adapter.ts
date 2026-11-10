@@ -99,6 +99,7 @@ import { PrestashopOrderStateUnresolvedException } from '../../domain/exceptions
 import { PrestashopInvalidFilterException } from '../../domain/exceptions/prestashop-invalid-filter.exception';
 import { PrestashopTruncatedReadException } from '../../domain/exceptions/prestashop-truncated-read.exception';
 import { PrestashopPackFilterIgnoredException } from '../../domain/exceptions/prestashop-pack-filter-ignored.exception';
+import { PrestashopPackUnreadableException } from '../../domain/exceptions/prestashop-pack-unreadable.exception';
 import { PrestashopOrFilterIgnoredException } from '../../domain/exceptions/prestashop-or-filter-ignored.exception';
 import { PrestashopOlModuleException } from '../../domain/exceptions/prestashop-ol-module.exception';
 
@@ -168,6 +169,7 @@ export class PrestashopRetryClassifierAdapter implements RetryClassifierPort {
       cause instanceof PrestashopTruncatedReadException ||
       cause instanceof PrestashopPackFilterIgnoredException ||
       cause instanceof PrestashopOrFilterIgnoredException ||
+      cause instanceof PrestashopPackUnreadableException ||
       // #3469 IMPORTANT-1 review — a non-idempotent write (createResource,
       // or importOrder once its own by-reference recovery lookup also
       // failed to find what may have been created) that failed with an

@@ -40,6 +40,7 @@ import {
   Post,
   Query,
   type HttpException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
@@ -60,7 +61,14 @@ import {
 } from '@openlinker/core/fiscalization';
 import { normalizeShippingLineName } from '@openlinker/core/invoicing';
 import { CONNECTION_PORT_TOKEN, ConnectionPort } from '@openlinker/core/identifier-mapping';
-import { readDeliveryOnDocuments, resolveDeliveryLine } from '@openlinker/core/sales-documents';
+import {
+  readDeliveryOnDocuments,
+  readGiftDocumentSettings,
+  BundleSplitUnknownError,
+  readZeroValueLineSupport,
+  resolveDeliveryLine,
+  type GiftDocumentSettings,
+} from '@openlinker/core/sales-documents';
 import type { DeliveryOnDocumentsConfig, ResolvedDeliveryLine } from '@openlinker/core/sales-documents';
 import type {
   FiscalRegistrationRecord,
@@ -68,14 +76,18 @@ import type {
   RegisterTransactionCommand,
 } from '@openlinker/core/fiscalization';
 import {
+  IOrderBundleDocumentService,
   IOrderDocumentEmailService,
   IOrderRecordService,
+  ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
   ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
   OrderSnapshotUnavailableError,
   orderFromReadySnapshot,
 } from '@openlinker/core/orders';
 import type { Order, OrderRecord } from '@openlinker/core/orders';
+import { INTEGRATIONS_SERVICE_TOKEN, IIntegrationsService } from '@openlinker/core/integrations';
+import type { FiscalizationPort } from '@openlinker/core/fiscalization';
 import { Logger } from '@openlinker/shared/logging';
 
 import { AcceptedFiscalRegistrationResponseDto } from './dto/accepted-fiscal-registration-response.dto';
@@ -123,7 +135,54 @@ export class FiscalizationController {
     private readonly connectionPort: ConnectionPort,
     @Inject(ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN)
     private readonly documentEmails: IOrderDocumentEmailService,
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrationsService: IIntegrationsService,
+    @Inject(ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN)
+    private readonly orderBundleDocuments: IOrderBundleDocumentService,
   ) {}
+
+  /**
+   * The Fiscalization adapter's `ZeroValueLineSupport` declaration (#3930), so a
+   * manual registration is composed exactly as the auto-issued one. `undefined`
+   * means the adapter declares nothing OR could not be resolved; the failure is
+   * logged and never fails the request.
+   */
+  private async resolveAcceptsZeroValueLine(connectionId: string): Promise<boolean | undefined> {
+    try {
+      return readZeroValueLineSupport(
+        await this.integrationsService.getCapabilityAdapter<FiscalizationPort>(
+          connectionId,
+          'Fiscalization',
+        ),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not resolve connection ${connectionId}'s Fiscalization adapter for its zero-value ` +
+          `line declaration; a gift is composed as if undeclared: ${
+            error instanceof Error ? error.name : 'UnknownError'
+          }`,
+      );
+      return undefined;
+    }
+  }
+
+  /**
+   * The gift settings the order-source connection chose (#3930), defaults when
+   * the lookup fails: a failed read must never break registration.
+   */
+  private async resolveGiftSettings(sourceConnectionId: string): Promise<GiftDocumentSettings> {
+    try {
+      const source = await this.connectionPort.get(sourceConnectionId);
+      return readGiftDocumentSettings(source.config);
+    } catch (error) {
+      this.logger.debug(
+        `Gift settings lookup failed for connection ${sourceConnectionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return readGiftDocumentSettings(undefined);
+    }
+  }
 
   /**
    * Resolve the delivery line for an order (#3905, ADR-082): the order-source
@@ -223,6 +282,12 @@ export class FiscalizationController {
           record.sourceConnectionId,
           dto.connectionId,
         ),
+        ...(await this.resolveGiftSettings(record.sourceConnectionId)),
+        bundleDocument: await this.orderBundleDocuments.resolveForDocuments(
+          record,
+          record.sourceConnectionId,
+        ),
+        acceptsZeroValueLine: await this.resolveAcceptsZeroValueLine(dto.connectionId),
         // #2260 review: a manual registration of a pre-rollout order must reach
         // the same verdict the manual invoice path does, so the marker travels
         // with the command rather than being re-derived (or lost) downstream.
@@ -465,6 +530,15 @@ export class FiscalizationController {
   private toHttpException(error: unknown): Error {
     if (error instanceof MissingIdempotencyKeyException) {
       return codedHttpError(HttpStatus.BAD_REQUEST, 'FISCAL_IDEMPOTENCY_KEY_MISSING', error.message);
+    }
+    if (error instanceof BundleSplitUnknownError) {
+      return new UnprocessableEntityException({
+        message: error.message,
+        error: 'BundleSplitUnknownError',
+        reason: 'bundle-split-unknown',
+        retryable: false,
+        lineId: error.lineId,
+      });
     }
     if (error instanceof InvalidFiscalLineError) {
       return codedHttpError(HttpStatus.UNPROCESSABLE_ENTITY, 'FISCAL_LINE_INVALID', error.message);

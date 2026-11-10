@@ -2595,6 +2595,13 @@
   },
   "peek": {
     "billing": "Billing",
+    "columns": {
+      "open": "Open product",
+      "price": "Price",
+      "product": "Product",
+      "quantity": "Qty",
+      "total": "Total"
+    },
     "copyReference": "Copy order number",
     "customer": "Customer",
     "description": "Order summary. Use the arrow keys or J and K to move between orders.",
@@ -2603,6 +2610,7 @@
     "generateLabel": "Generate label",
     "invoice": "Invoice",
     "itemPrice": "{quantity} × {price}",
+    "itemUnmapped": "Not linked to a catalogue product yet",
     "items": "Items",
     "kicker": "Order",
     "money": "Money",

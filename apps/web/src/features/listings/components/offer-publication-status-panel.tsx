@@ -23,11 +23,12 @@
  * @module apps/web/src/features/listings/components
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { Button } from '../../../shared/ui/button';
-import { renderRich, useMessages } from '../../../shared/i18n';
-import { EmptyState, ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
+import { useMessages } from '../../../shared/i18n';
+import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
+import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { listingsQueryKeys } from '../api/listings.query-keys';
 import type {
@@ -42,11 +43,14 @@ interface OfferPublicationStatusPanelProps {
   productId: string;
   /** Gate the fetch until the surface is visible (e.g. drawer expanded). */
   enabled?: boolean;
+  /** The next step offered beside the "no offers" line, e.g. Create offer. */
+  emptyAction?: ReactNode;
 }
 
 export function OfferPublicationStatusPanel({
   productId,
   enabled = true,
+  emptyAction,
 }: OfferPublicationStatusPanelProps): ReactElement | null {
   const copy = useMessages('listings').offerPublicationStatusPanel;
   const apiClient = useApiClient();
@@ -89,11 +93,16 @@ export function OfferPublicationStatusPanel({
   if (offers.length === 0) {
     // Now genuinely "no offers", not "no status": an offer that exists without
     // a snapshot comes back with a null status and renders a row below (#2039).
+    // A quiet line with the next step, not a full empty-state card: in a peek
+    // the card outweighed the facts it sat between.
     return (
-      <EmptyState
-        title={copy.emptyTitle}
-        message={copy.emptyMessage}
-      />
+      <div className="offer-publication-status__empty">
+        <div className="offer-publication-status__empty-text">
+          <strong>{copy.emptyTitle}</strong>
+          <span>{copy.emptyMessage}</span>
+        </div>
+        {emptyAction}
+      </div>
     );
   }
 
@@ -101,43 +110,63 @@ export function OfferPublicationStatusPanel({
     ? (refresh.variables as OfferPublicationStatusResponse | undefined)?.externalOfferId
     : undefined;
 
+  const columns: DataTableColumn<OfferPublicationStatusResponse>[] = [
+    {
+      id: 'status',
+      header: copy.columns.status,
+      cell: (offer) => <OfferPublicationStatusBadge status={offer.publicationStatus} compact />,
+    },
+    {
+      id: 'offer',
+      header: copy.columns.offer,
+      lines: 2,
+      cell: (offer) => (
+        <span className="offer-publication-status__offer">
+          <span className="offer-publication-status__id mono-text">{offer.externalOfferId}</span>
+          <OfferProblemList offer={offer} />
+        </span>
+      ),
+    },
+    {
+      id: 'synced',
+      header: copy.columns.synced,
+      hideBelow: 480,
+      cell: (offer) =>
+        offer.lastStatusSyncedAt === null ? (
+          <span className="text-muted">{copy.neverSynced}</span>
+        ) : (
+          <TimeDisplay iso={offer.lastStatusSyncedAt} format="relative" />
+        ),
+    },
+    {
+      id: 'action',
+      header: <span className="sr-only">{copy.columns.action}</span>,
+      align: 'right',
+      cell: (offer) => (
+        <Button
+          tone="ghost"
+          className="button--sm"
+          disabled={refresh.isPending}
+          onClick={() => refresh.mutate(offer)}
+        >
+          {pendingOfferId === offer.externalOfferId
+            ? copy.refreshing
+            : offer.publicationStatus === null
+              ? copy.checkStatus
+              : copy.refresh}
+        </Button>
+      ),
+    },
+  ];
+
   return (
-    <div className="offer-publication-status">
-      <ul className="offer-publication-status__list">
-        {offers.map((offer) => {
-          const isRefreshing = pendingOfferId === offer.externalOfferId;
-          const syncedAt = offer.lastStatusSyncedAt;
-          return (
-            <li key={`${offer.connectionId}:${offer.externalOfferId}`} className="offer-publication-status__row">
-              <OfferPublicationStatusBadge status={offer.publicationStatus} compact />
-              <span className="offer-publication-status__id mono-text">{offer.externalOfferId}</span>
-              <span className="sync-freshness">
-                <span className="sync-freshness__dot" aria-hidden="true" />
-                {syncedAt === null ? (
-                  copy.neverSynced
-                ) : (
-                  renderRich(copy.synced, {
-                    time: () => <TimeDisplay iso={syncedAt} format="relative" />,
-                  })
-                )}
-              </span>
-              <Button
-                tone="ghost"
-                disabled={refresh.isPending}
-                onClick={() => refresh.mutate(offer)}
-              >
-                {isRefreshing
-                  ? copy.refreshing
-                  : offer.publicationStatus === null
-                    ? copy.checkStatus
-                    : copy.refresh}
-              </Button>
-              <OfferProblemList offer={offer} />
-            </li>
-          );
-        })}
-      </ul>
-    </div>
+    <DataTable
+      className="peek-table offer-publication-status"
+      caption={copy.caption}
+      columns={columns}
+      rows={offers}
+      rowKey={(offer) => `${offer.connectionId}:${offer.externalOfferId}`}
+    />
   );
 }
 

@@ -19,6 +19,7 @@ import { PRODUCT_COST_READS_SERVICE_TOKEN } from './application/services/product
 import { ProductImageProxyService } from './application/services/product-image-proxy.service';
 import { ProductCostController } from './http/product-cost.controller';
 import { ProductsController, VariantsController } from './http/products.controller';
+import { BundleDefinitionsController } from './http/bundle-definitions.controller';
 
 @Module({
   // CoreInventoryModule + ListingsModule back the #1720 list-page display
@@ -39,7 +40,12 @@ import { ProductsController, VariantsController } from './http/products.controll
   ],
   // ProductCostController FIRST: its literal `variants/cost` and
   // `:productId/variant-costs` routes must win over `variants/:variantId` / `:id`.
-  controllers: [ProductCostController, ProductsController, VariantsController],
+  controllers: [
+    ProductCostController,
+    ProductsController,
+    VariantsController,
+    BundleDefinitionsController,
+  ],
   // #3340 follow-up — serves a product's picture from the shop, because the
   // url the catalogue sync stored is one only the backend can reach. See the
   // service's docblock.

@@ -76,6 +76,10 @@
  */
 import { Injectable, Inject } from '@nestjs/common';
 import {
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
+  type IBundleDefinitionService,
+} from '@openlinker/core/products';
+import {
   CapabilityNotSupportedException,
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
@@ -167,6 +171,8 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
     private readonly shipments: IShipmentQueryService,
     @Inject(INVENTORY_SALE_REVERSAL_SERVICE_TOKEN)
     private readonly saleReversal: IInventorySaleReversalService,
+    @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
+    private readonly bundleDefinitions: IBundleDefinitionService,
   ) {}
 
   async restoreStockForCancelledOrder(
@@ -347,7 +353,28 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
       return this.skipped(release, 'skipped-no-targets');
     }
 
-    const variantIds = this.collectVariantIds(record.orderSnapshot);
+    // #3607: a bundle line's stock lives on its components, so a cancellation
+    // restores the components' offers too. The commercial variants stay in the
+    // list - republishing a BUNDLE offer from component stock is #3931's.
+    const orderVariantIds = [
+      ...new Set([
+        ...this.collectVariantIds(record.orderSnapshot),
+        ...record.physicalItems
+          .map((item) => item.variantId)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0),
+      ]),
+    ];
+    // #3931: the restored component also feeds OTHER bundles that were not on
+    // this order, and their offers advertise a number derived from it. The
+    // availability read below is bundle-aware, so adding their variants here is
+    // all it takes to republish them.
+    const containingBundles =
+      orderVariantIds.length === 0
+        ? []
+        : await this.bundleDefinitions.findCurrentContainingComponents(orderVariantIds);
+    const variantIds = [
+      ...new Set([...orderVariantIds, ...containingBundles.map((bundle) => bundle.variantId)]),
+    ];
     if (variantIds.length === 0) {
       this.logger.debug(
         `Stock-restore skipped: order has no resolved variants [connectionId=${connectionId}, orderId=${internalOrderId}]`,

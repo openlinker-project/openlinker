@@ -1,0 +1,168 @@
+=== template-designer-printing-conditions | Template Designer: Printing Conditions
+ 
+ Template Designer: Printing Conditions 
+ Template Designer: Printing Conditions
+ Printing Conditions allow defining requirements that Linnworks uses to automatically select which template to print. These conditions are based on the use of logical operators to check against the set of requirements. As conditional templates, invoices specifically, are designed to only be printed when the conditions are met, they do not appear in the Print > Invoice > select a specific invoice template   from the drop-down lists.
+ For example, you sell products on two different marketplaces and they require different invoices to be printed. You can configure a condition that will be checking the marketplace (Source) of the order. If the condition is met, an appropriate template will be selected and printed. If no conditions are met, then the default template will be used for printing.
+ How printing conditions work
+ Similar to conditional formatting in template elements , the template itself can be made conditional. Linnworks will try and match a template by working through the list of available templates and picking the first one that matches the conditions set. If a specific template meets multiple sets of conditions, it is not possible to guarantee the same condition set will always be used. Therefore it is advisable to use condition sets with multiple conditions to ensure the correct template is printed.
+ Example:
+ #1. Template 1 Condition Set: [Source] <> 'AMAZON' AND [Source] <> 'EBAY' ( the source is not AMAZON and the source is not EBAY) 
+ #2. Template 2 Condition Set: [Source] = 'SHOPIFY' (the source is SHOPIFY)
+ In this example, the template associated with condition #2 will never be used as it is fulfilled by condition #1. To allow condition #2 to be used, condition #1 needs to changed to: 
+ [Source] <> 'AMAZON' AND [Source] <> 'EBAY' AND [Source] <> 'SHOPIFY' 
+ Applicable templates
+ The following template types can have printing conditions applied to them:
+ Consignments 
+ Invoice 
+ Purchase Order 
+ Warehouse Transfer 
+ Variables
+ When adding variables from the drop-down list, they will appear with square brackets around them. Whilst these brackets are not required in printing conditions, it is a good practice to use them.
+ NB!    [{FolderCollection}]  variable in printing conditions is an exceptional case and needs to be wrapped in LIKE syntax.  It cannot be used with an  equals  operator since the order can be assigned to multiple folders. 
+ Example:
+ [Source] = 'DIRECT' AND ([Categories] LIKE '%Clothing%' OR [Categories] LIKE '%Baby toys%') AND [FolderCollection] NOT LIKE '%Process ASAP%' 
+ Adding printing conditions
+ Linnworks must always have a default template available. The default template cannot have printing conditions applied to it so that there is always a non-conditional template available. If you wish to use the default template with printing conditions, please first make a copy. To access printing conditions, please do the following:
+ Edit a non-default template.
+ At the top of the screen, click the Printing Conditions button.
+ The  Condition Editor pop-up window will open allowing you to add your printing conditions. 
+ The example on the screenshot will print using this template for orders raised directly in Linnworks when their total value is over 20 of the order currency (Euros or USD). See the section below for more examples of printing conditions.
+ Click Check Syntax to ensure that the conditions are formatted correctly.
+ Click   Ok 
+ Click   Save 
+ Logical operators
+ The following table is a brief summary of the logical operators used in the evaluation of printing conditions. If the printing condition in a template is true for any particular order (or another appropriate document) it will be used. A brief explanation is given in each case. For further information and examples of AND , OR , LIKE , IN and wildcards, please see below.
+ Operator 
+ Example 
+ Explanation 
+ AND 
+ [Source]='EBAY' AND [cCountry]='UNITED KINGDOM' 
+ The AND operator is used to join variables such that the document must meet all conditions to use a particular template. The example would be true if the order came from eBay and is being delivered to somewhere in the UK.
+ OR 
+ [SubSource]='EBAY0' OR [SubSource]='EBAY1' 
+ The OR operator is used to give alternative conditions for which a template will be used. The example would be true if the order came from EBAY1 or EBAY0.
+ LIKE 
+ [cPostCode] LIKE 'PO19%' 
+ The LIKE operator is generally used for text-based comparisons where statements may be similar, but not identical This is often used with the wildcard operator (%) to refer to multiple possibilities. The example would be true if the order postcode began with PO19. The use of the wildcard means that Linnworks only evaluates against the first 4 characters, in this case.
+ NOT 
+ [cPostCode] NOT LIKE 'PO19%' 
+ The NOT operator is used to invert the meaning of LIKE or IN operators. The example would be true if the postcode did not begin with PO19.
+ IN 
+ [ShippingService] IN ('My Expedited', 'expressAM', 'express24') 
+ The IN operator is used to find a value in a list of given values. The example would be true if the order's shipping service matched any one of 'My Expedited', 'expressAM', or 'express24'.
+ = 
+ [Source]='EBAY' 
+ The = operator is used to do the exact comparison between values. The example would be true if the order came from eBay.
+ <> 
+ [Source]<>'Amazon' 
+ The <> operator is used to specify non-equivalence between two values. The example would be true if the order did not come from Amazon.
+ > 
+ [fTotalCharge]>100 
+ The > operator states that the first value is greater than the second. The example would be true if the order total was over 100 of the order currency.
+ < 
+ [fTax]<20 
+ The < operator states that the first value is less than the second. The example would be true if the order tax was less than 20 of the order currency.
+ >= 
+ [fTotalCharge]>=100 
+ The >= operator states that the first value is greater than or equal to the second. The example would be true if the order was 100 or more of the order currency.
+ <= 
+ [TotalWeight]<=1500 
+ The <= operator states that the first value is less than or equal to the second. The example would be true if the weight of the order is 1500 or less than the default order weight.
+ Using printing conditions
+ Printing conditions are constructed in a similar manner to other expression-based functionality in Template Designer . The following section will give some examples of common printing conditions for templates focussing on invoices.
+ Simple conditions
+ If you have multiple channels integrated, then you may want a specific invoice to be printed for a specific channel. To use the template only for orders from a particular eBay channel:
+ [SubSource]='EBAY0' 
+ Using LIKE conditions and wildcards
+ Whilst numerical values can be compared relatively easily, text entries are more difficult to compare. For unbound text strings, the LIKE operator offers options for easy comparison. LIKE statements are often used in conjunction with wildcards. A wildcard is used to represent any number of other characters before, after, or in the middle of the desired text string. Linnworks uses the percentage sign (%) as a wildcard.
+If there is a particular invoice to print for a large volume customer and orders come from one of several of their staff members, it would be possible to use their email address (@BigSpenders.fictional) to identify appropriate orders:
+ [cEmailAddress] LIKE '%@BigSpenders.fictional' 
+This will catch all orders that have a customer email address ending in @BigSpenders.fictional.
+ Alternatively, if you want particular product categories to print using a specific invoice they could be listed individually or using wildcards.
+If product categories are: Nail Varnish, Nail File, Nail Art, Nail Polish, Gel Nail Accessories:
+ [Categories] LIKE '%Nail%' 
+This would capture all of the above categories. It should be noted that this would also capture the category 'Screws and Nails' too.
+This is an extreme example, as you would need to be selling SKUs in both categories for this to happen.
+ Multiple conditions
+ If you have multiple channels that you want to use the same template for, it is possible to use the OR operator to add more options to a printing condition or the AND operator to add further requirements to a printing condition.
+ Printing from Amazon or eBay:
+ [Source]='AMAZON' OR [Source]='EBAY' 
+ This would print the template for all orders that are from any integrated Amazon or eBay channels. The Subsource variable can be used to specify certain channel integrations
+Printing based on Subsource:
+ [SubSource]='EBAY0' OR [SubSource]='Amazon UK' 
+ The AND operator can be used to restrict the printing conditions further. If your channel has strict requirements on despatch time, for instance, if orders with express shipping must be despatched in 48 hours, but the standard could be up to 72 hours, you may want to separate the express orders from the standard delivery orders.
+If you have your channel's express delivery mapped to the Linnworks Postal Method called "My Expedited":
+ [Source]='AMAZON' AND [ShippingService]='My Expedited' 
+This would print the template for all orders with a shipping method mapped to 'My Expedited'. Orders with other shipping methods would not be printed using this template.
+ Printing conditions allow granular control over what documents will be printed using a certain template. The example below will only print if the order was created directly in Linnworks and the order items come from either the clothing or baby toys categories. Furthermore, it must not be in the folder of orders called 'Process ASAP'.
+ [Source] = 'DIRECT' AND ([Categories] LIKE '%Clothing%' OR [Categories] LIKE '%Baby toys%') AND [FolderCollection] NOT LIKE '%Process ASAP%' 
+ Using parentheses
+ Using parentheses can group conditions together and evaluate them as one condition. One of the common uses for this could be identifying orders to be shipped to the non-mainland UK, such as Northern Ireland or the Scottish Isles. In the following example, the invoice should be printed for all non-mainland UK expedited orders. It is assumed that channel expedited shipping has been mapped to the Linnworks Postal Method; 'My Expedited'.
+ [ShippingService]='My Expedited' AND ([cCountry] <> 'United Kingdom' OR [cPostCode] LIKE 'BT%' OR [cPostCode] LIKE 'HS%' OR [cPostCode] LIKE 'ZE%') 
+ The list can be expanded using more OR statements to include other postcodes, such as Jersey, Guernsey, etc.
+ Implicit parentheses
+ When using the AND operator, implicit parentheses are placed around the variables on either side of the AND clause
+ [Source]='EBAY' AND [ShippingService]='express24' OR [Source]='AMAZON' AND [fTotalCharge]>100 
+ This template will print with either eBay orders with the shipping service 'express24' or Amazon orders over 100 of the order currency. It is being evaluated like:
+ ([Source]='EBAY' AND [ShippingService]='express24') OR ([Source]='AMAZON' AND [fTotalCharge]>100) 
+ Using the IN condition
+ The IN condition can be used to look for a value in a list of values. It can be combined with the NOT condition to check whether a value is not in a list. For instance, print a particular invoice if the shipping destination is in Europe:
+ [cCountry] IN ('United Kingdom', 'France', 'Germany', 'Portugal') 
+ This will look for the shipping country in the list of countries specified.
+ The list can be expanded to cater to more countries.
+ [cCountry] NOT IN ('United Kingdom', 'France', 'Germany', 'Portugal') 
+ This template will be used if the shipping country is not on the specified list.
+ The list can be expanded to cater to more countries.
+ Note! It is not possible to use Wildcards with the IN operator.
+ Bad examples
+ Syntax checking in printing conditions will not assess whether the rule will work as expected. Below are some examples of printing conditions where they will either not work or another method would be more robust.
+ [ShippingVendor]='Royal Mail' And [ShippingVendor]='DPD' 
+ An order can only have one shipping vendor, the AND clause will require both of these statements to be true.
+ If either of these vendors is valid then use:
+ ShippingVendor= 'Royal Mail' OR [ShippingVendor]='DPD' 
+ An alternative, more efficient, way which allows for easy expansion would be to use an IN statement:
+ [ShippingVendor] IN ('Royal Mail', 'DPD') 
+ [nOrderID]=100056 
+ This will only print on a specific order, but it sill may print using a different template if the order satisfies multiple templates' printing conditions.
+ To print an invoice for an order using a specific template, please see our guide on printing invoices .
+ Please note that invoices with printing conditions cannot be chosen as specific invoices.
+ General notes on using printing conditions and wildcards
+ In the example above, wildcards are used to capture large numbers of potential postcodes to determine orders that are not considered 'Mainland UK'. In the case of the Orkney Islands, they share a postcode with some of mainland Scotland. Using wildcards to exclude some postcodes should be done with care. If the condition KW1% is considered a 'Mainland' postcode, this would also capture KW15, KW16, and KW17, which are not.
+ When using categories as a printing condition, only one order item has to match the condition for that template to be used.
+ Conditional invoices do not appear in the "Print Specific Invoice" option from the drop-down in open orders. The reason for this is Specific Invoices are designed to be independent, whereas conditional invoices are designed to be printed based on a condition.
+ Template selection
+ Once a set of conditions has been fulfilled, no further conditions will be checked to see if it better suits your needs. Therefore be specific as possible when defining conditions making using multiple conditions and using inclusive operators such as ' = ' is always preferable to ' <> '. There is only a single instance where there is an exact match, but there can be many possibilities where something does not match resulting in an incorrect template selection.
+ Printing conditions are evaluated based on the order of creation of the templates, starting with the oldest.
+ Example:
+ Index
+ Template Name
+ Printing Condition
+ 1
+ Direct Orders
+ [Source]='Direct'  
+ 2
+ Direct Orders UK
+ [Source]='Direct' AND [cCountry] = 'United Kingdom'  
+ 3
+ Direct Orders UK >= £10
+ [Source]='Direct' AND [cCountry] = 'United Kingdom' AND [fTotalCharge] >= 10  
+ 4
+ Direct Orders UK < £10
+ [Source]='Direct' AND [cCountry] = 'United Kingdom' AND [fTotalCharge] < 10  
+ 5
+ Direct Orders ROW
+ [Source]='Direct' AND [cCountry] <> 'United Kingdom'  
+ In the above table, the index is the order in which the templates were created. In this case, Templates 2,3,4, and 5 will never be used as the condition in Invoice 1 has already been met. Invoice templates 1 and 2 are not required as they are too broad. Only invoice templates 3,4 and 5 should be added as they define clearly when they should be used.
+ It is possible to see the creation order of enabled invoice templates by going to Dashboards > Query Data > Custom Script and entering the following query:
+ Copy Code XQuery 
+ SELECT 
+[ TemplateName ], [ VisibilityCondition ], [ IsDefault ] 
+ FROM 
+[ system ] . [ template_header ] 
+ WHERE 
+ TemplateType = 'Invoice Template' AND bLogicalDelete = 0 AND Enabled = 1 
+ ORDER BY 
+ pkTemplateRowId 
+ The templates will be listed in order of their creation, with the oldest first.
+ 

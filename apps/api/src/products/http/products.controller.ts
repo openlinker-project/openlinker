@@ -30,8 +30,10 @@ import {
 } from '@nestjs/swagger';
 import { Response } from 'express';
 import {
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
   PRODUCTS_SERVICE_TOKEN,
   IProductsService,
+  type IBundleDefinitionService,
   TAX_RATE_JOURNAL_SERVICE_TOKEN,
   ITaxRateJournalService,
   resolveVariantDefaultImages,
@@ -79,7 +81,11 @@ import {
   productVariantNotFound,
 } from './products-errors';
 import { ListProductVariantsQueryDto } from './dto/list-product-variants-query.dto';
-import { ProductResponseDto } from './dto/product-response.dto';
+import {
+  ProductResponseDto,
+  type BundleComponentRefDto,
+  type ProductBundleSummaryDto,
+} from './dto/product-response.dto';
 import type { ProductVariantResponseDto } from './dto/product-variant-response.dto';
 import { ProductVariantSummaryResponseDto } from './dto/product-variant-summary-response.dto';
 import { PaginatedProductsResponseDto } from './dto/paginated-products-response.dto';
@@ -251,7 +257,10 @@ export class ProductsController {
     // #3340 follow-up — a concrete class, not a token: the proxy is an
     // interface-layer concern with one implementation and no port, exactly
     // like the trust-panel services one directory over.
-    private readonly productImages: ProductImageProxyService
+    private readonly productImages: ProductImageProxyService,
+    // #3624 - which listed products are bundles, for the list's bundle marks.
+    @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
+    private readonly bundleDefinitions: IBundleDefinitionService
   ) {}
 
   @AnyRole()
@@ -306,6 +315,11 @@ export class ProductsController {
     // ids (identifier mapping), all in parallel.
     if (rows.length > 0) {
       const ids = rows.map((p) => p.id);
+      // ONE variants read for the page, shared by the ATP and the bundle marks.
+      const pageVariants = this.productsService.getVariantsByProductIds(ids);
+      // A rejection is handled inside each consumer's own try/catch; this keeps
+      // an unobserved rejection from surfacing before either awaits it.
+      pageVariants.catch(() => undefined);
       const [
         aggregates,
         offerCoverage,
@@ -314,6 +328,7 @@ export class ProductsController {
         staleVariantCounts,
         externalIdLists,
         atpByProduct,
+        bundleByProduct,
       ] = await Promise.all([
         this.inventoryQuery.getProductStockAggregates(ids),
         this.offerMappings.countListedVariantsByProducts(ids),
@@ -329,7 +344,8 @@ export class ProductsController {
           ids.map((id) => this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, id))
         ),
         // #3621 - ONE batched read for the whole page, never per product.
-        this.resolveProductAtp(ids),
+        this.resolveProductAtp(ids, pageVariants),
+        this.resolveBundleMarks(ids, pageVariants),
       ]);
 
       const aggregateByProduct = new Map(aggregates.map((a) => [a.productId, a]));
@@ -354,6 +370,7 @@ export class ProductsController {
           : null;
         dto.variantCount = variantCounts.get(dto.id) ?? 0;
         dto.staleVariantCount = staleVariantCounts.get(dto.id) ?? 0;
+        dto.bundle = bundleByProduct.get(dto.id) ?? null;
         dto.listingsCoverage = coverageByProduct.get(dto.id) ?? [];
         dto.externalIds = externalIdLists[i].map((e) => this.toExternalIdDto(e));
       });
@@ -368,6 +385,88 @@ export class ProductsController {
   }
 
   /**
+   * Which products on the page are bundles, and what limits them (#3624).
+   * Page-scoped, batched reads only. A failed read degrades to "no marks" and
+   * logs: the list must stay usable, and a missing mark is not a claim.
+   */
+  private async resolveBundleMarks(
+    productIds: readonly string[],
+    pageVariants: Promise<ProductVariant[]>
+  ): Promise<Map<string, ProductBundleSummaryDto>> {
+    const marks = new Map<string, ProductBundleSummaryDto>();
+    try {
+      const variants = await pageVariants;
+      const definitions = await chunkedRead(
+        variants.map((v) => v.id),
+        (ids) => this.bundleDefinitions.findCurrentByVariantIds(ids)
+      );
+      if (definitions.length === 0) {
+        return marks;
+      }
+      const productByVariant = new Map(variants.map((v) => [v.id, v.productId]));
+      const componentIds = [
+        ...new Set(definitions.flatMap((d) => d.components.map((c) => c.variantId))),
+      ];
+      // A page can carry far more component variants than one IN-list should:
+      // chunk at the same cap resolveProductAtp uses.
+      const [availability, componentVariants] = await Promise.all([
+        chunkedRead(componentIds, (ids) => this.inventoryQuery.getAvailabilityByVariantIds(ids)),
+        chunkedRead(componentIds, (ids) => this.productsService.getVariantsByIds(ids)),
+      ]);
+      const products = await chunkedRead(
+        [...new Set(componentVariants.map((v) => v.productId))],
+        (ids) => this.productsService.getProductsByIds(ids)
+      );
+      const nameByProduct = new Map(products.map((p) => [p.id, p.name]));
+      const variantById = new Map(componentVariants.map((v) => [v.id, v]));
+      const atpByVariant = new Map<string, number | null>(
+        availability.map((a) => [a.productVariantId, a.availableToPromise])
+      );
+      const ref = (variantId: string): BundleComponentRefDto => {
+        const variant = variantById.get(variantId);
+        return {
+          variantId,
+          name: variant === undefined ? null : nameByProduct.get(variant.productId) ?? null,
+          sku: variant?.sku ?? null,
+        };
+      };
+      for (const definition of definitions) {
+        const productId = productByVariant.get(definition.variantId);
+        if (productId === undefined) {
+          continue;
+        }
+        let limitedBy: BundleComponentRefDto | null = null;
+        let unknownComponent: BundleComponentRefDto | null = null;
+        let fewest = Number.POSITIVE_INFINITY;
+        for (const component of definition.components) {
+          const atp = atpByVariant.get(component.variantId) ?? null;
+          if (atp === null) {
+            unknownComponent ??= ref(component.variantId);
+            continue;
+          }
+          const supported = Math.floor(atp / component.quantity);
+          if (supported < fewest) {
+            fewest = supported;
+            limitedBy = ref(component.variantId);
+          }
+        }
+        marks.set(productId, {
+          variantId: definition.variantId,
+          componentCount: definition.components.length,
+          limitedBy: unknownComponent === null ? limitedBy : null,
+          unknownComponent,
+        });
+      }
+    } catch (error) {
+      this.logger.error(
+        `product_list_bundle_marks_failed products=${String(productIds.length)} - listing without bundle marks`,
+        (error as Error).stack
+      );
+    }
+    return marks;
+  }
+
+  /**
    * Product-level available-to-promise for one page (#3621): the sum of its
    * variants' global-scope ATP, from one variants read and one availability
    * read for the whole page.
@@ -379,12 +478,13 @@ export class ProductsController {
    * the whole page to unknown rather than failing the product list.
    */
   private async resolveProductAtp(
-    productIds: readonly string[]
+    productIds: readonly string[],
+    pageVariants: Promise<ProductVariant[]>
   ): Promise<Map<string, ProductAtp>> {
     const result = new Map<string, ProductAtp>();
     const unknown: ProductAtp = { availableToPromise: null, provenance: 'unknown' };
     try {
-      const variants = await this.productsService.getVariantsByProductIds(productIds);
+      const variants = await pageVariants;
       const variantIds = variants.map((v) => v.id);
       // Chunked at the same 200-id cap the stock view and the availability
       // endpoint use, run sequentially: a page of 100 products can carry far
@@ -472,6 +572,8 @@ export class ProductsController {
       unlistedOnConnectionIds: this.parseUnlistedOn(query.unlistedOn),
       sourceConnectionId: query.connectionId,
       hideFullyStale: query.hideFullyStale,
+      bundleFilter: query.bundles,
+      productId: query.productId,
     };
   }
 
@@ -966,4 +1068,16 @@ export class VariantsController {
   ): ProductVariantResponseDto {
     return variantToDto(variant, productImages);
   }
+}
+
+/** Runs `read` over `ids` in `MAX_STOCK_VIEW_VARIANT_IDS`-sized chunks, sequentially. */
+export async function chunkedRead<T>(
+  ids: readonly string[],
+  read: (chunk: string[]) => Promise<readonly T[]>
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let i = 0; i < ids.length; i += MAX_STOCK_VIEW_VARIANT_IDS) {
+    out.push(...(await read(ids.slice(i, i + MAX_STOCK_VIEW_VARIANT_IDS))));
+  }
+  return out;
 }
