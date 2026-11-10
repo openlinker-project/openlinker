@@ -300,7 +300,7 @@ export function ReturnDetailPage(): ReactElement {
       title={detail.externalReturnId ?? pageCopy.titleFallback}
       backTo={{ to: '/returns', label: pageCopy.backToList }}
       actions={
-        <>
+        <div className="button-group">
           <GiftsGuide variant="returns" />
           <ReturnDeclineAction detail={detail} writeAccess={writeAccess} placement="header" notesTarget={declineNotes} />
           {detail.declinedAt !== null ? (
@@ -308,7 +308,7 @@ export function ReturnDetailPage(): ReactElement {
               {rowCopy.declined}
             </StatusBadge>
           ) : null}
-        </>
+        </div>
       }
     >
       {/* ONE `detail.bucket === 'orphan'` check for both the banner and its
