@@ -983,6 +983,14 @@
           "desc": "Read it before you pack.",
           "label": "Buyer left a note"
         },
+        "giftNotAdded": {
+          "desc": "A promotion was meant to add a gift but could not. The order goes on without it.",
+          "label": "Gift not added"
+        },
+        "giftShopRejected": {
+          "desc": "The shop refused the order because of the gift line.",
+          "label": "Shop rejected the gift"
+        },
         "omsStopped": {
           "desc": "OpenLinker could not decide something and needs you.",
           "label": "OpenLinker stopped"
@@ -2636,6 +2644,12 @@
     "details": "Details",
     "detailsAria": "Open details for order {ref}",
     "generateLabel": "Generate label",
+    "glance": {
+      "channel": "Channel",
+      "customer": "Customer",
+      "document": "Document",
+      "shipTo": "Ship by"
+    },
     "invoice": "Invoice",
     "itemPrice": "{quantity} × {price}",
     "itemUnmapped": "Not linked to a catalogue product yet",

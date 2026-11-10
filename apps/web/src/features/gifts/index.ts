@@ -5,6 +5,7 @@
  * and the notices that say why an order has no gift it should have. The
  * promotions that add gifts by rule live in `features/promotions`.
  */
+export { GiftsGuide } from './components/gifts-guide';
 export { GiftLineTag } from './components/gift-line-tag';
 export { AddGiftDialog } from './components/add-gift-dialog';
 export { OrderAddGiftAction } from './components/order-add-gift-action';

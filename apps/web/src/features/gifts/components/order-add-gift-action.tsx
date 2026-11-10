@@ -27,6 +27,8 @@ export interface OrderAddGiftActionProps {
   parcelClosed: boolean;
   notReady?: boolean;
   hasSalesDocument: boolean;
+  /** The connection issuing the sales document, once there is one. */
+  documentConnectionId?: string | null;
   /** Controlled open state, so the order's attention banner can open the same dialog. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;

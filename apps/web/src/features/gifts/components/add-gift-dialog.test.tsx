@@ -50,11 +50,39 @@ describe('AddGiftDialog', () => {
 
     await pickSpoon();
     fireEvent.change(screen.getByTestId('order-gift-dialog-qty'), { target: { value: '2' } });
-    fireEvent.change(screen.getByTestId('order-gift-dialog-doc-form'), { target: { value: 'priced-in' } });
+    fireEvent.click(screen.getByTestId('promotion-doc-priced-in'));
     fireEvent.click(screen.getByTestId('order-gift-dialog-submit'));
 
     await waitFor(() =>
       expect(addGiftToOrder).toHaveBeenCalledWith('ol_order_1', { variantId: 'v-spoon', quantity: 2, documentForm: 'priced-in' }),
+    );
+  });
+
+  it('should name the form the settings resolve to on the first card', async () => {
+    open(api({}));
+
+    // The install default is the technical cent unless settings say otherwise.
+    expect(await screen.findByTestId('promotion-doc-inherit')).toBeInTheDocument();
+    expect(screen.getByTestId('promotion-doc-inherit').closest('label')).toHaveTextContent(/As in settings/);
+  });
+
+  it('should send the amount with an own price and refuse an invalid amount', async () => {
+    const addGiftToOrder = vi.fn().mockResolvedValue({ dryRun: false, changeId: 'c1', gift: { lineKey: 'op-gift:c1', salesDocumentExists: false, reserved: true, onPickList: true } });
+    open(api({ addGiftToOrder }));
+
+    await pickSpoon();
+    fireEvent.click(screen.getByTestId('promotion-doc-custom-price'));
+    expect(screen.getByTestId('order-gift-dialog-submit')).toBeDisabled();
+    fireEvent.change(screen.getByTestId('promotion-doc-price'), { target: { value: '0,50' } });
+    fireEvent.click(screen.getByTestId('order-gift-dialog-submit'));
+
+    await waitFor(() =>
+      expect(addGiftToOrder).toHaveBeenCalledWith('ol_order_1', {
+        variantId: 'v-spoon',
+        quantity: 1,
+        documentForm: 'custom-price',
+        documentUnitPrice: '0.50',
+      }),
     );
   });
 

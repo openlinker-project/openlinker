@@ -56,6 +56,8 @@ const COMMERCIAL = {
 
 /** file (repo-relative, posix) -> why it may read the commercial lines. */
 export const ALLOWED = new Map([
+  ['apps/api/src/bench/application/services/bench-work.service.ts', 'reads which commercial lines are gifts to show a gift mark on a pack-bench row (#3935); display only, the picking quantities come from the frozen expansion'],
+  ['apps/api/src/inventory/http/inventory-movements.controller.ts', 'reads the order\'s gift lines to label a stock movement as a gift (#3935); a display read, no stock is touched'],
   ['apps/api/src/bench/application/services/bench-parcel.service.ts', 'reads the bundle line NAME the buyer saw to head a bundle group at the bench (#3624); the grouping itself comes from the frozen expansion'],
   ['apps/api/src/mcp/tools/read/get-order.tool.ts', COMMERCIAL.projection],
   ['apps/api/src/orders/application/services/order-edit.service.ts', COMMERCIAL.edit],

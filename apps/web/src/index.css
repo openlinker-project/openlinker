@@ -27197,6 +27197,43 @@ legend.analytics-settings-dialog__label {
    page's `.page-section` parent is already a grid with a gap, so an outer
    `margin-top` here would double-space the sections and put this page on a
    different rhythm from every other detail page. */
+.returns-detail__strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  margin: 0;
+}
+.returns-detail__fact { display: grid; gap: var(--space-1); min-width: 0; }
+.returns-detail__fact-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.returns-detail__fact-value { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.returns-detail__cols {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+.returns-line-goods { display: grid; gap: var(--space-1); justify-items: start; }
+.returns-line-goods__counts, .returns-line-item__reason { font-size: 0.75rem; }
+.returns-detail__main,
+.returns-detail__side {
+  overflow-x: clip;
+  display: grid;
+  gap: var(--space-6);
+  min-width: 0;
+}
+@media (max-width: 1100px) {
+  .returns-detail__cols { grid-template-columns: minmax(0, 1fr); }
+}
 .returns-detail__lines,
 .returns-detail__source,
 .returns-detail__activity,
@@ -36214,6 +36251,8 @@ legend.analytics-settings-dialog__label {
 .gift-form-option--active { border-color: var(--accent-primary-border); background: var(--accent-primary-soft); }
 .gift-form-option--disabled { opacity: 0.7; }
 .gift-form-option__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.gift-form-option__amount { display: grid; gap: var(--space-1); margin-top: var(--space-2); }
+.gift-form-option__amount-input { display: flex; align-items: center; gap: var(--space-2); max-width: 12rem; }
 .gift-form-option__desc { margin: 0; color: var(--text-secondary); font-size: 13px; }
 .gift-preview { display: grid; gap: var(--space-2); }
 .gift-preview__docs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
@@ -36388,10 +36427,47 @@ legend.analytics-settings-dialog__label {
   gap: var(--space-2);
   margin-top: var(--space-3);
 }
-.orders-gift-mark {
-  margin-left: var(--space-1);
-  color: var(--text-muted);
+
+/* ── Orders list: gift / bundle quick filter and row marks (#3935) ───────── */
+.order-cell__headline { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; }
+.orders-mark {
   flex: none;
+  padding: 1px var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.4;
+}
+.orders-mark--gift { color: var(--status-info-fg); background: var(--status-info-soft); border-color: var(--status-info-border); }
+.orders-mark--bundle { color: var(--accent-primary-soft-strong); background: var(--accent-primary-soft); border-color: var(--accent-primary-border); }
+.gift-quick-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 1.875rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.gift-quick-filter:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.gift-quick-filter:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.gift-quick-filter--on {
+  background: var(--status-info-soft);
+  color: var(--status-info-fg);
+  border-color: var(--status-info-border);
+}
+.gift-quick-filter__count {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
 }
 
 /* Return gift decisions are sentences ("Zostaje u klienta"), not one-word
@@ -38511,3 +38587,76 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .bulk-review__c-cat{min-width:0;overflow:hidden}
 .bundle-stock small{max-width:none;white-space:normal;text-align:right}
 .pm-rail .pm-log li{grid-template-columns:minmax(0,1fr)}.pm-log .cx-tag{white-space:normal;height:auto;justify-self:start;padding-block:2px}
+
+/* ── Gift marker chip on the bench and elsewhere (#3935) ─────────────────── */
+.gift-chip {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 1px var(--space-2);
+  border: 1px solid var(--status-info-border);
+  border-radius: var(--radius-sm);
+  background: var(--status-info-soft);
+  color: var(--status-info-fg);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.bench-work-row__gifts { font-size: 0.8125rem; color: var(--status-info-fg); }
+
+/* ── Stock movement peek (#3935) ─────────────────────────────────────────── */
+.stock-movement-peek__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+}
+.stock-movement-peek__facts dd { margin: var(--space-1) 0 0; }
+.stock-movement-peek__order { display: grid; gap: var(--space-1); }
+.stock-movement__gift-source { font-size: 0.8125rem; }
+
+/* Order peek: bundle components under their line (#3935). */
+.order-peek-items__row--component { background: var(--bg-surface-hover); }
+.order-peek-items__component { padding-left: var(--space-4); }
+.bundle-chip {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 1px var(--space-2);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary-soft-strong);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.returns-detail__disclosure-summary { cursor: pointer; font-weight: 600; }
+.returns-detail__disclosure[open] > .returns-detail__disclosure-summary { margin-bottom: var(--space-3); }
+.returns-decline--header { display: inline-flex; }
+.returns-detail__notes { display: grid; gap: var(--space-3); }
+.returns-detail__notes:empty { display: none; }
+
+/* Order peek: the mockup's who / where / by when / document block (#3935). */
+.peek-glance {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+}
+.peek-glance dd { margin: var(--space-1) 0 0; min-width: 0; }
+
+/* A labelled date input inside the joined filter group (#3935). */
+.joined-filters__field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+  border-right: 1px solid var(--border-subtle);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.joined-filters__field .control { height: 1.625rem; border: none; background: none; padding: 0 var(--space-1); }
+.joined-filters__field:last-child { border-right: none; }

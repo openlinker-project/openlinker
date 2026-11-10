@@ -28,6 +28,10 @@
     },
     "warning": "Wylogowanie za {seconds} s - dotknij dowolnego miejsca, aby sesja pozostała aktywna."
   },
+  "page": {
+    "lede": "Paczki skierowane na to stanowisko, od najpilniejszej. Zestawy rozpisane są na sztuki, które naprawdę kładziesz do pudełka.",
+    "title": "Pakowanie"
+  },
   "parcel": {
     "activity": {
       "heading": "Ostatnia aktywność",
@@ -546,6 +550,12 @@
         "many": "Paczka {parcelIndex} z {parcelTotal} · {n} produktów, sztuki do zeskanowania: {unitsToVerify}",
         "one": "Paczka {parcelIndex} z {parcelTotal} · {n} produkt, sztuki do zeskanowania: {unitsToVerify}",
         "other": "Paczka {parcelIndex} z {parcelTotal} · {n} produktu, sztuki do zeskanowania: {unitsToVerify}"
+      },
+      "withGift": {
+        "few": "+{n} z gratisem",
+        "many": "+{n} z gratisem",
+        "one": "+{n} z gratisem",
+        "other": "+{n} z gratisem"
       }
     },
     "scan": {

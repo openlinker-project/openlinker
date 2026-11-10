@@ -227,6 +227,7 @@
     "allConnections": "All connections",
     "allTypes": "All types",
     "attention": {
+      "bannerBody": "Totals may not include these changes yet. Open them and check the master system.",
       "body": "{parts}. The totals may not reflect these changes yet.",
       "inDoubt": "{n} unconfirmed",
       "onThisPage": "{parts} on this page. The totals may not reflect these changes yet.",
@@ -253,7 +254,7 @@
       "message": "Stock movements are visible to admins, operators and viewers. Ask an administrator if you need them.",
       "title": "Stock history is not available for your role"
     },
-    "description": "Every applied, refused, or unconfirmed change to a variant's stock - plus the reservations that set stock aside for orders.",
+    "description": "Every applied, refused or unconfirmed change to a variant's stock, and the reservations that set stock aside for orders. Gifts have a type of their own.",
     "empty": {
       "body": "Movements appear here once stock changes in a master connection or OpenLinker adjusts it.",
       "clearFilters": "Clear filters",
@@ -268,14 +269,39 @@
     "eyebrow": "Products",
     "filterMaster": "Filter by master connection",
     "filterType": "Filter by type",
+    "filters": "Type",
     "from": "From",
     "master": "Master connection",
+    "peek": {
+      "change": "Change",
+      "description": "Stock movement details",
+      "giftBody": "The customer pays 0.00 for it and its stock is reserved like an ordinary line.",
+      "giftFrom": {
+        "bundle-slot": "It is the free gift of a bundle.",
+        "cart-rule": "A shop cart rule added it.",
+        "channel": "The sales channel flagged it.",
+        "ol-rule": "A promotion in OpenLinker added it.",
+        "operator": "An operator added it by hand."
+      },
+      "giftTitle": "Where the gift comes from.",
+      "kicker": "Stock movement",
+      "master": "Master connection",
+      "openOrder": "Open order",
+      "order": "Order",
+      "seePromotion": "See promotion",
+      "status": "Status",
+      "system": "system",
+      "time": "Time",
+      "type": "Type",
+      "who": "By"
+    },
     "retry": "Retry",
     "scopeProduct": "Showing one product only.",
     "scopeVariant": "Showing one variant only.",
     "search": "Search SKU or variant name",
     "showAllProducts": "Show all products",
     "showAllVariants": "Show all variants",
+    "tabsAria": "Movements scope",
     "title": "Stock movement history",
     "to": "To",
     "type": "Type"
@@ -621,6 +647,13 @@
       "status": "Status",
       "time": "Time",
       "type": "Type"
+    },
+    "giftSource": {
+      "bundleSlot": "Gift in a bundle: {name}",
+      "cartRule": "Shop cart rule",
+      "channel": "Gift from the sales channel",
+      "operator": "Added by hand",
+      "promotion": "Promotion: {name}"
     },
     "new": "new",
     "notApplied": "Not applied",

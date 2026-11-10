@@ -398,6 +398,13 @@ export class OrderRecordResponseDto {
   hasBuyerNote!: boolean;
 
   @ApiProperty({
+    description:
+      'Whether the order froze at least one bundle definition at ingestion (#3935). On the SHARED ' +
+      'projection so the list can mark bundle orders without the detail-only bundle lines.',
+  })
+  hasBundle!: boolean;
+
+  @ApiProperty({
     enum: ['present', 'none', 'unknown'],
     description:
       'What the list can say about the buyer note without its text (#3538). `present` = `hasBuyerNote`; ' +

@@ -115,7 +115,7 @@ export function BenchParcelLineRow({
   const copy = useMessages('bench').parcel;
   // #3934: the gift slot of a set is told to the packer as a gift. Never a price
   // or a cost: the bench shows neither, and cost is margin data a packer may not read.
-  const isGiftSlot = line.bundle?.giftSlot === true;
+  const isGiftSlot = line.bundle?.giftSlot === true || line.gift === true;
   const state = benchLineState(line);
   const pending = pendingCount > 0;
   const remaining = Math.max(0, line.requiredQuantity - line.verifiedQuantity);
@@ -156,7 +156,7 @@ export function BenchParcelLineRow({
         </span>
         {isGiftSlot ? (
           <span
-            className="text-muted"
+            className="gift-chip"
             data-testid={`bench-line-gift-${line.sku ?? line.workLineId}`}
           >
             {bundleCopy.order.giftMark}

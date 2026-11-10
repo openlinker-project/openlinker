@@ -165,6 +165,26 @@ export function OrderAttentionSummary({
           },
         },
         {
+          id: 'gift-not-added',
+          ...ATTN.items.giftNotAdded,
+          tone: 'warning',
+          on: state.giftNotAdded,
+          count: summary?.giftNotAdded,
+          toggle: () => {
+            filtersApi.toggle('giftNotAdded');
+          },
+        },
+        {
+          id: 'gift-shop-rejected',
+          ...ATTN.items.giftShopRejected,
+          tone: 'error',
+          on: state.giftShopRejected,
+          count: summary?.giftShopRejected,
+          toggle: () => {
+            filtersApi.toggle('giftShopRejected');
+          },
+        },
+        {
           id: 'rate-conflict',
           ...ATTN.items.rateConflict,
           tone: 'warning',

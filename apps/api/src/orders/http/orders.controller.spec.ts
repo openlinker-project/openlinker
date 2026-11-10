@@ -65,6 +65,7 @@ import type {
 } from '@openlinker/core/mappings';
 import { SHIPMENT_QUERY_SERVICE_TOKEN } from '@openlinker/core/shipping';
 import { RETURNS_SERVICE_TOKEN } from '@openlinker/core/returns';
+import { PROMOTION_APPLICATION_LOG_TOKEN } from '@openlinker/core/promotions';
 import {
   FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
   type IFulfillmentWorkQueryService,
@@ -99,6 +100,7 @@ describe('OrdersController', () => {
   let parcelClosureNotifier: { notifyParcelClosed: jest.Mock; relayRecordedClose: jest.Mock };
   let paymentWritebackMock: { retry: jest.Mock; markHandled: jest.Mock };
   let listOpenReturnOrderIds: jest.Mock;
+  let findOrderIdsNeedingAttention: jest.Mock;
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
   let orderRecordService: jest.Mocked<IOrderRecordService>;
   let retryService: jest.Mocked<IOrderDestinationRetryService>;
@@ -309,6 +311,7 @@ describe('OrdersController', () => {
     mockBundleMapping = { getInternalId: jest.fn().mockResolvedValue(null) };
 
     listOpenReturnOrderIds = jest.fn().mockResolvedValue([]);
+    findOrderIdsNeedingAttention = jest.fn().mockResolvedValue([]);
     const module: TestingModule = await Test.createTestingModule({
       controllers: [OrdersController],
       providers: [
@@ -380,6 +383,10 @@ describe('OrdersController', () => {
             summarizeWorkForOrders: jest.fn().mockResolvedValue(new Map()),
             ...fulfillmentWorkQuery,
           },
+        },
+        {
+          provide: PROMOTION_APPLICATION_LOG_TOKEN,
+          useValue: { findOrderIdsNeedingAttention },
         },
         {
           provide: RETURNS_SERVICE_TOKEN,
@@ -1033,7 +1040,7 @@ describe('OrdersController', () => {
         awaitingDispatch: 9,
         salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
         waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
-        openReturn: 0, hasBuyerNote: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
+        openReturn: 0, hasBuyerNote: 0, withGift: 0, withBundle: 0, giftNotAdded: 0, giftShopRejected: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
       });
 
       const result = await controller.statusSummary({});
@@ -1053,7 +1060,7 @@ describe('OrdersController', () => {
         awaitingDispatch: 4,
         salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
         waitingInOpenLinker: 3, waitingInOpenLinkerOldestAt: new Date('2026-10-23T07:00:00Z'), onPackBench: 14,
-        openReturn: 0, hasBuyerNote: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
+        openReturn: 0, hasBuyerNote: 0, withGift: 0, withBundle: 0, giftNotAdded: 0, giftShopRejected: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
       });
 
       const result = await controller.statusSummary({});
@@ -1073,7 +1080,7 @@ describe('OrdersController', () => {
         awaitingDispatch: 0,
         salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
         waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
-        openReturn: 0, hasBuyerNote: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
+        openReturn: 0, hasBuyerNote: 0, withGift: 0, withBundle: 0, giftNotAdded: 0, giftShopRejected: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
       });
 
       await controller.statusSummary({
@@ -1094,7 +1101,7 @@ describe('OrdersController', () => {
         total: 4, sourceDeleted: 0, awaitingMapping: 0, needsAttention: 0, synced: 1, awaitingDispatch: 3,
         salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
         waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
-        openReturn: 2, hasBuyerNote: 1, dueWithin24h: 3, bySource: { 'conn-001': 4 },
+        openReturn: 2, hasBuyerNote: 1, withGift: 0, withBundle: 0, giftNotAdded: 0, giftShopRejected: 0, dueWithin24h: 3, bySource: { 'conn-001': 4 },
         attention: { lateToShip: 3, stuck: 0, toHandle: 2 },
       });
 
@@ -1114,7 +1121,7 @@ describe('OrdersController', () => {
         total: 0, sourceDeleted: 0, awaitingMapping: 0, needsAttention: 0, synced: 0, awaitingDispatch: 0,
         salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
         waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
-        openReturn: 0, hasBuyerNote: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
+        openReturn: 0, hasBuyerNote: 0, withGift: 0, withBundle: 0, giftNotAdded: 0, giftShopRejected: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
       });
 
       const result = await controller.statusSummary({});
@@ -2704,6 +2711,28 @@ describe('OrdersController', () => {
       const result = await controller.getOrder('ol_order_001');
 
       expect(result.buyerNoteAcknowledgements).toBeNull();
+    });
+
+    it('resolves the gift-not-added ids for ?giftNotAdded and passes them to the repository', async () => {
+      findOrderIdsNeedingAttention.mockResolvedValue(['ol_order_gift']);
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+      await controller.listOrders({ limit: 20, offset: 0, giftNotAdded: true });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ giftNotAdded: true, giftNotAddedOrderIds: ['ol_order_gift'] }),
+        expect.anything()
+      );
+    });
+
+    it('falls back to an empty id list when the promotion log cannot be read', async () => {
+      findOrderIdsNeedingAttention.mockRejectedValue(new Error('down'));
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+      await controller.listOrders({ limit: 20, offset: 0, giftNotAdded: true });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ giftNotAdded: true, giftNotAddedOrderIds: [] }),
+        expect.anything()
+      );
     });
 
     it('passes ?hasBuyerNote through to the repository filters', async () => {

@@ -41,6 +41,8 @@ export interface BenchParcelLine {
     /** The free gift of the set (#3934). Absent from an API that predates it. */
     readonly giftSlot?: boolean;
   } | null;
+  /** The line is itself a gift (#3935). False from an API that predates it. */
+  readonly gift?: boolean;
   readonly productVariantId: string;
   /** `null` when the variant is not in the catalogue — the codes are shown instead. */
   readonly name: string | null;

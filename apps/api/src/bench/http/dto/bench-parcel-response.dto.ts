@@ -76,6 +76,12 @@ export class BenchParcelLineResponseDto {
   })
   bundle!: BenchLineBundleResponseDto | null;
 
+  @ApiProperty({
+    description:
+      'The line is itself a gift (#3935): a promotion, the channel or an operator added it. A marker only, no price or cost.',
+  })
+  gift!: boolean;
+
   @ApiProperty({ description: 'Internal product-variant id (ol_variant_*)' })
   productVariantId!: string;
 

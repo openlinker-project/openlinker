@@ -105,26 +105,31 @@ export interface OrderIdentityCellProps {
    * name, so the filter's result is recognisable without opening the order.
    */
   hasGift?: boolean;
+  /** The order carries a bundle (#3935): a box mark beside the gift mark. */
+  hasBundle?: boolean;
 }
 
-function GiftMark({ label, testId }: { label: string; testId: string }): ReactElement {
+function MarkChip({
+  kind,
+  text,
+  label,
+  testId,
+}: {
+  kind: 'gift' | 'bundle';
+  text: string;
+  label: string;
+  testId: string;
+}): ReactElement {
   return (
-    <svg
-      className="orders-gift-mark"
+    <span
+      className={`orders-mark orders-mark--${kind}`}
       role="img"
       aria-label={label}
+      title={label}
       data-testid={testId}
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
     >
-      <title>{label}</title>
-      <rect x="2" y="6" width="12" height="8" rx="1" />
-      <path d="M1.5 4h13v2h-13zM8 4v10M8 4C6 4 4.5 3 5.5 2s2.5 1 2.5 2zM8 4c2 0 3.5-1 2.5-2S8 3 8 4z" />
-    </svg>
+      {text}
+    </span>
   );
 }
 
@@ -138,8 +143,10 @@ export function OrderIdentityCell({
   className = '',
   tags,
   hasGift = false,
+  hasBundle = false,
 }: OrderIdentityCellProps): ReactElement {
   const giftCopy = useMessages('gifts');
+  const bundleCopy = useMessages('bundles');
   const copy = useMessages('orders').identityCell;
   const plural = usePlural();
   const tagsCopy = useMessages('orders').orderTags;
@@ -186,22 +193,26 @@ export function OrderIdentityCell({
           deliberately, PrestaShop and Erli never set it. */}
       <ProductThumbnail name={itemName ?? displayName} src={firstItemImageUrl} size="sm" />
       <span className="order-cell__body">
-        <EntityLabel
-          id={orderId}
-          name={displayName}
-          showId={false}
-          copyLabel={copyLabel}
-          copiedLabel={copiedLabel}
-          // `formatOrderRef` may have shortened line 1; without this the tooltip
-          // would show the shortened form and the full number would be
-          // unreachable to a sighted user (#2089). On the id-fallback branch
-          // (every Erli-sourced order) the same argument applies to the id:
-          // `shortenId` elides its middle, so `?? orderId` keeps the full value
-          // hoverable instead of clipboard-only (#2091).
-          nameTitle={trimmedNumber ?? orderId}
-          to={`/orders/${orderId}`}
-          onNavigate={onNavigate}
-        />
+        <span className="order-cell__headline">
+          <EntityLabel
+            id={orderId}
+            name={displayName}
+            showId={false}
+            copyLabel={copyLabel}
+            copiedLabel={copiedLabel}
+            // `formatOrderRef` may have shortened line 1; without this the tooltip
+            // would show the shortened form and the full number would be
+            // unreachable to a sighted user (#2089). On the id-fallback branch
+            // (every Erli-sourced order) the same argument applies to the id:
+            // `shortenId` elides its middle, so `?? orderId` keeps the full value
+            // hoverable instead of clipboard-only (#2091).
+            nameTitle={trimmedNumber ?? orderId}
+            to={`/orders/${orderId}`}
+            onNavigate={onNavigate}
+          />
+          {hasBundle ? <MarkChip kind="bundle" text={bundleCopy.order.bundleMark} label={giftCopy.filter.bundleRowIcon} testId={`orders-bundle-row-icon-${orderId}`} /> : null}
+          {hasGift ? <MarkChip kind="gift" text={bundleCopy.order.giftMark} label={giftCopy.filter.rowIcon} testId={`orders-gift-row-icon-${orderId}`} /> : null}
+        </span>
         {itemName ? (
           <span className="orders-items-line">
             <span className="text-muted orders-cell-sub orders-items-preview" title={itemName}>
@@ -212,7 +223,6 @@ export function OrderIdentityCell({
                 +{moreCount}
               </span>
             ) : null}
-            {hasGift ? <GiftMark label={giftCopy.filter.rowIcon} testId={`orders-gift-row-icon-${orderId}`} /> : null}
           </span>
         ) : totalItems > 1 ? (
           /* Deviation 2 (see the file header): a known count with no name to

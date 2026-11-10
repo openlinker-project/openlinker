@@ -37,6 +37,7 @@
  *
  * @module apps/web/src/features/returns/components
  */
+import { createPortal } from 'react-dom';
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -71,6 +72,15 @@ interface ReturnDeclineActionProps {
    * No `returns:*` permission is introduced (returns spec §9).
    */
   writeAccess: { canWrite: boolean; demoReadOnly: boolean; visible: boolean };
+  /**
+   * `section` (default) is the page section with its explanation and outcome
+   * alert. `header` is the button alone for the page's action slot (#3935); its
+   * blocked reason and outcome alert are portalled into `notesTarget` so they
+   * stay readable next to the content rather than inside the header.
+   */
+  placement?: 'section' | 'header';
+  /** Where a `header` placement renders its reason and outcome. */
+  notesTarget?: HTMLElement | null;
 }
 
 /**
@@ -117,6 +127,8 @@ function resolveOutcomeCopy(
 export function ReturnDeclineAction({
   detail,
   writeAccess,
+  placement = 'section',
+  notesTarget = null,
 }: ReturnDeclineActionProps): ReactElement | null {
   const [isOpen, setIsOpen] = useState(false);
   const [reasonCode, setReasonCode] = useState('');
@@ -177,22 +189,44 @@ export function ReturnDeclineAction({
 
   const outcomeCopy = result === null ? null : resolveOutcomeCopy(result, returnsCopy.detail.declineOutcome);
 
+  const Wrapper = placement === 'header' ? 'span' : 'section';
+
   return (
-    <section className="returns-decline">
-      <h2 className="section-title">{copy.sectionTitle}</h2>
+    <Wrapper className={placement === 'header' ? 'returns-decline--header' : 'returns-decline'}>
+      {placement === 'header' ? null : <h2 className="section-title">{copy.sectionTitle}</h2>}
 
       {/* Independent parts, never one ternary (#2100): the reason renders
           beside the button rather than replacing it, so a disabled action
           always carries its explanation. */}
-      {blockedReason !== null ? <p className="text-muted">{blockedReason}</p> : null}
+      {blockedReason !== null && placement !== 'header' ? <p className="text-muted">{blockedReason}</p> : null}
+      {placement === 'header' && notesTarget !== null
+        ? createPortal(
+            <>
+              {blockedReason !== null ? <p className="text-muted">{blockedReason}</p> : null}
+              {outcomeCopy !== null && result !== null ? (
+                <Alert tone={result.outcome === 'refused' ? 'warning' : 'info'} title={outcomeCopy.title}>
+                  <p>{outcomeCopy.body}</p>
+                  {result.refusalReason !== null ? <p className="mono-text">{result.refusalReason}</p> : null}
+                </Alert>
+              ) : null}
+            </>,
+            notesTarget,
+          )
+        : null}
 
       <ReadOnlyLock active={writeAccess.demoReadOnly} message={copy.readOnly}>
-        <Button tone="danger" disabled={isDisabled} onClick={openDialog}>
+        <Button
+          tone={placement === 'header' ? 'secondary' : 'danger'}
+          className={placement === 'header' ? 'button--sm' : undefined}
+          disabled={isDisabled}
+          title={placement === 'header' ? (blockedReason ?? undefined) : undefined}
+          onClick={openDialog}
+        >
           {copy.action}
         </Button>
       </ReadOnlyLock>
 
-      {outcomeCopy !== null && result !== null ? (
+      {placement !== 'header' && outcomeCopy !== null && result !== null ? (
         <Alert
           tone={result.outcome === 'refused' ? 'warning' : 'info'}
           title={outcomeCopy.title}
@@ -271,6 +305,6 @@ export function ReturnDeclineAction({
           </form>
         </DialogContent>
       </Dialog>
-    </section>
+    </Wrapper>
   );
 }

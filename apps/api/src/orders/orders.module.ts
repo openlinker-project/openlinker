@@ -6,6 +6,7 @@
  *
  * @module apps/api/src/orders
  */
+import { PromotionsModule } from '@openlinker/core/promotions';
 import { Module } from '@nestjs/common';
 import {
   OrderChangesModule as CoreOrderChangesModule,
@@ -86,6 +87,8 @@ import { FulfillmentApiModule } from '../fulfillment/fulfillment-api.module';
     CoreProductsModule,
     CoreShippingModule,
     CoreReturnsModule,
+    // #3935 - PROMOTION_APPLICATION_LOG_TOKEN: the "gift not added" count and filter read the promotion log.
+    PromotionsModule,
     // CoreSyncModule (#3534) provides JOB_ENQUEUE_TOKEN — the export
     // controller enqueues its own `orders.export` driver job, the
     // `AnalyticsRemediationController` precedent.

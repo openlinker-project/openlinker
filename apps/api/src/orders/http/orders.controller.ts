@@ -162,6 +162,10 @@ import {
   type OpenReturnOrderSummary,
 } from '@openlinker/core/returns';
 import {
+  PROMOTION_APPLICATION_LOG_TOKEN,
+  type PromotionApplicationLogPort,
+} from '@openlinker/core/promotions';
+import {
   ORDER_CHANGE_SERVICE_TOKEN,
   ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
   ORDER_TAG_SERVICE_TOKEN,
@@ -311,6 +315,8 @@ export function toOrderRecordFilters(
     taxRateConflict: query.taxRateConflict,
     omsAttention: query.attention,
     withGift: query.withGift,
+    withBundle: query.withBundle,
+    giftShopRejected: query.giftShopRejected,
     omsAttentionReason: query.attentionReason,
     paymentNotSent: query.paymentNotSent,
     activeHoldReason: query.hold,
@@ -369,10 +375,11 @@ function assertCancelledPhaseAgree(
  */
 export async function enrichCrossContextFilters(
   filters: OrderRecordFilters,
-  query: { search?: string; openReturn?: boolean },
+  query: { search?: string; openReturn?: boolean; giftNotAdded?: boolean },
   shipmentQuery: IShipmentQueryService,
   returnsService: IReturnsService,
-  logger: Logger
+  logger: Logger,
+  promotionLog?: PromotionApplicationLogPort
 ): Promise<OrderRecordFilters> {
   const enriched: OrderRecordFilters = { ...filters };
 
@@ -408,8 +415,26 @@ export async function enrichCrossContextFilters(
     }
   }
 
+  if (query.giftNotAdded !== undefined && promotionLog !== undefined) {
+    enriched.giftNotAdded = query.giftNotAdded;
+    try {
+      enriched.giftNotAddedOrderIds = await promotionLog.findOrderIdsNeedingAttention(
+        GIFT_NOT_ADDED_ID_LIMIT
+      );
+    } catch (error) {
+      logger.error(
+        'Failed to resolve gift-not-added order ids for the ?giftNotAdded= filter',
+        (error as Error).stack
+      );
+      enriched.giftNotAddedOrderIds = [];
+    }
+  }
+
   return enriched;
 }
+
+/** Ceiling on the gift-not-added id list handed to the order query (#3935). */
+const GIFT_NOT_ADDED_ID_LIMIT = 5000;
 
 /**
  * The 409 `error` code for each routing-retry refusal (#3558). Upper-snake, the
@@ -472,6 +497,8 @@ export class OrdersController {
     private readonly shipmentQuery: IShipmentQueryService,
     // #2998 — the "open return" badge + filter; `returns` may not import
     // `orders` back, so the composition happens here.
+    @Inject(PROMOTION_APPLICATION_LOG_TOKEN)
+    private readonly promotionLog: PromotionApplicationLogPort,
     @Inject(RETURNS_SERVICE_TOKEN)
     private readonly returnsService: IReturnsService,
     // #3482 — the packing stage of an order OpenLinker handles itself. `orders`
@@ -536,10 +563,11 @@ export class OrdersController {
 
     const filters = await enrichCrossContextFilters(
       toOrderRecordFilters(query),
-      { search: query.search, openReturn: query.openReturn },
+      { search: query.search, openReturn: query.openReturn, giftNotAdded: query.giftNotAdded },
       this.shipmentQuery,
       this.returnsService,
-      this.logger
+      this.logger,
+      this.promotionLog
     );
 
     // `?withTotal=false` skips the COUNT entirely and the response OMITS
@@ -705,10 +733,11 @@ export class OrdersController {
     // total for.
     const filters = await enrichCrossContextFilters(
       toOrderRecordFilters(query),
-      { search: query.search, openReturn: query.openReturn },
+      { search: query.search, openReturn: query.openReturn, giftNotAdded: query.giftNotAdded },
       this.shipmentQuery,
       this.returnsService,
-      this.logger
+      this.logger,
+      this.promotionLog
     );
     const total = await this.orderRecordRepository.countMany(filters);
     return { total };
@@ -747,19 +776,36 @@ export class OrdersController {
         (error as Error).stack
       );
     }
+    // #3935 - the gift-not-added count reads the promotion application log;
+    // a failed read omits the count (unknown), never reports 0.
+    let giftNotAddedOrderIds: string[] = [];
+    let giftNotAddedKnown = true;
+    try {
+      giftNotAddedOrderIds = await this.promotionLog.findOrderIdsNeedingAttention(
+        GIFT_NOT_ADDED_ID_LIMIT
+      );
+    } catch (error) {
+      giftNotAddedKnown = false;
+      this.logger.error(
+        'Failed to resolve gift-not-added order ids for the health summary',
+        (error as Error).stack
+      );
+    }
     const summary = await this.orderRecordRepository.countByHealth({
+      giftNotAddedOrderIds,
       sourceConnectionId,
       customerId,
       createdFrom: createdFrom ? new Date(createdFrom) : undefined,
       createdTo: createdTo ? new Date(createdTo) : undefined,
       openReturnOrderIds,
     });
-    const { openReturn, attention, ...rest } = summary;
+    const { openReturn, attention, giftNotAdded, ...rest } = summary;
     const { toHandle, ...attentionKnown } = attention;
     // The wire carries an ISO string; the domain summary carries a Date (#2254).
     return {
       ...rest,
       ...(openReturnKnown ? { openReturn } : {}),
+      ...(giftNotAddedKnown ? { giftNotAdded } : {}),
       attention: openReturnKnown ? { ...attentionKnown, toHandle } : attentionKnown,
       salesDocumentBlockedOldestAt: summary.salesDocumentBlockedOldestAt?.toISOString() ?? null,
       waitingInOpenLinkerOldestAt: summary.waitingInOpenLinkerOldestAt?.toISOString() ?? null,
@@ -2119,6 +2165,7 @@ export class OrdersController {
       // read the list widens who may read the start of the buyer's note: decide
       // a list audience as if it were the note's audience.
       hasBuyerNote: order.hasBuyerNote,
+      hasBundle: (order.lineExpansion?.definitions.length ?? 0) > 0,
       buyerNoteState: classifyBuyerNoteForList(order.hasBuyerNote, order.buyerNoteState),
       buyerNotePreview: buildBuyerNotePreview(order.buyerNoteState),
       // The read marker is a timestamp, not free text, so the list may carry it:

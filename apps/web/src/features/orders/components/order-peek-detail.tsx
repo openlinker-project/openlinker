@@ -17,8 +17,17 @@ import { VariantThumbnail } from '../../products';
 import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { parseOrderSnapshot, type ParsedAddress } from '../api/order-snapshot.schema';
+import type { OrderBundleComponent } from '../api/orders.types';
+import { GiftLineTag, OrderGiftAttention } from '../../gifts';
+import { useOrderQuery } from '../hooks/use-order-query';
+import { useMessages as useBundleMessages } from '../../../shared/i18n';
 
 type ParsedItem = ReturnType<typeof parseOrderSnapshot>['items'][number];
+
+/** A peek row: an order line, or a component of a bundle line shown under it (#3935). */
+type PeekRow =
+  | { kind: 'item'; id: string; item: ParsedItem }
+  | { kind: 'component'; id: string; component: OrderBundleComponent };
 import type { OrderRecord } from '../api/orders.types';
 import { invoiceBadge } from '../lib/order-row';
 import { getBcp47Locale, interpolate, useLocale, useMessages } from '../../../shared/i18n';
@@ -53,9 +62,15 @@ export interface OrderPeekDetailProps {
    * top of the order peek, and a feature may not import a page.
    */
   onOpenProduct?: (productId: string) => void;
+  /**
+   * The mockup's first block: who, where, by when, and the document (#3935).
+   * The page supplies the channel chip and the document cell, the same
+   * renderers the row uses, so the peek and the row cannot disagree.
+   */
+  glance?: { channel: ReactNode; document: ReactNode };
 }
 
-export function OrderPeekDetail({ order, thumbLabel, onOpenProduct }: OrderPeekDetailProps): ReactElement {
+export function OrderPeekDetail({ order, thumbLabel, onOpenProduct, glance }: OrderPeekDetailProps): ReactElement {
   const COPY = useMessages('orders').peek;
   const buyerNote = useMessages('orders').buyerNote;
   const parsed = parseOrderSnapshot(order.orderSnapshot);
@@ -66,12 +81,37 @@ export function OrderPeekDetail({ order, thumbLabel, onOpenProduct }: OrderPeekD
       ? new Intl.NumberFormat(getBcp47Locale(locale), { style: 'currency', currency }).format(amount)
       : amount.toFixed(2);
 
-  const itemColumns: DataTableColumn<ParsedItem>[] = [
+  const bundleCopy = useBundleMessages('bundles');
+  const buyerName =
+    [parsed.shippingAddress?.firstName, parsed.shippingAddress?.lastName].filter(Boolean).join(' ') || null;
+  // The bundle components are frozen on the order and arrive with the detail read
+  // only; the list row says whether there is anything to fetch (#3935).
+  const detail = useOrderQuery(order.hasBundle === true ? order.internalOrderId : '');
+  const bundleLines = detail.data?.bundleLines ?? [];
+  const bundleLineIds = new Set(bundleLines.map((bundle) => bundle.lineId));
+  const peekRows: PeekRow[] = parsed.items.flatMap((item): PeekRow[] => [
+    { kind: 'item', id: item.id, item },
+    ...(bundleLines.find((bundle) => bundle.lineId === item.id)?.components ?? []).map(
+      (component): PeekRow => ({ kind: 'component', id: `${item.id}:${component.lineId}`, component }),
+    ),
+  ]);
+
+  const itemColumns: DataTableColumn<PeekRow>[] = [
     {
       id: 'product',
       header: COPY.columns.product,
       lines: 2,
-      cell: (item): ReactNode => {
+      cell: (row): ReactNode => {
+        if (row.kind === 'component') {
+          return (
+            <span className="order-peek-items__name order-peek-items__component">
+              <span className="order-peek-items__title">{row.component.name ?? row.component.sku ?? row.component.lineId}</span>
+              {row.component.sku ? <span className="mono-text text-muted">{row.component.sku}</span> : null}
+              {row.component.giftSlot === true ? <span className="gift-chip">{bundleCopy.order.giftMark}</span> : null}
+            </span>
+          );
+        }
+        const item = row.item;
         const name = item.name ?? item.sku ?? item.id;
         return (
           <span className="order-peek-items__product">
@@ -96,6 +136,10 @@ export function OrderPeekDetail({ order, thumbLabel, onOpenProduct }: OrderPeekD
               </span>
               {item.sku ? <span className="mono-text text-muted">{item.sku}</span> : null}
               {item.productId ? null : <span className="peek-panel__item-unmapped">{COPY.itemUnmapped}</span>}
+              {bundleLineIds.has(item.id) ? <span className="bundle-chip">{bundleCopy.order.bundleMark}</span> : null}
+              {item.gift ? (
+                <GiftLineTag lineKey={item.sku ?? item.id} gift={item.gift} currency={parsed.totals?.currency} />
+              ) : null}
             </span>
           </span>
         );
@@ -105,34 +149,43 @@ export function OrderPeekDetail({ order, thumbLabel, onOpenProduct }: OrderPeekD
       id: 'quantity',
       header: COPY.columns.quantity,
       align: 'right',
-      cell: (item) => <span className="tabular">{item.quantity}</span>,
+      cell: (row) => <span className="tabular">{row.kind === 'component' ? row.component.quantity : row.item.quantity}</span>,
     },
     {
       id: 'price',
       header: COPY.columns.price,
       align: 'right',
       hideBelow: 480,
-      cell: (item) => <span className="tabular">{money(item.price)}</span>,
+      cell: (row) =>
+        row.kind === 'component' ? (
+          <span className="text-muted">{bundleCopy.order.inBundlePrice}</span>
+        ) : (
+          <span className="tabular">{money(row.item.price)}</span>
+        ),
     },
     {
       id: 'total',
       header: COPY.columns.total,
       align: 'right',
-      cell: (item) => <span className="tabular order-peek-items__total">{money(item.price * item.quantity)}</span>,
+      cell: (row) =>
+        row.kind === 'component' ? null : (
+          <span className="tabular order-peek-items__total">{money(row.item.price * row.item.quantity)}</span>
+        ),
     },
     {
       id: 'go',
       header: <span className="sr-only">{COPY.columns.open}</span>,
       align: 'right',
       // The keyboard way in: the row click is mouse-only, this is a real button.
-      cell: (item) => {
-        const productId = item.productId;
+      cell: (row) => {
+        if (row.kind === 'component') return null;
+        const productId = row.item.productId;
         if (!productId || !onOpenProduct) return null;
         return (
           <button
             type="button"
             className="peek-arrow order-peek-items__go"
-            aria-label={interpolate(COPY.openProduct, { name: item.name ?? item.sku ?? item.id })}
+            aria-label={interpolate(COPY.openProduct, { name: row.item.name ?? row.item.sku ?? row.item.id })}
             onClick={() => {
               onOpenProduct(productId);
             }}
@@ -146,6 +199,13 @@ export function OrderPeekDetail({ order, thumbLabel, onOpenProduct }: OrderPeekD
 
   return (
     <>
+      <OrderGiftAttention
+        internalOrderId={order.internalOrderId}
+        shopRejected={
+          parsed.items.some((item) => item.gift != null) &&
+          (order.syncStatus ?? []).some((entry) => entry.status === 'failed')
+        }
+      />
       {order.hasBuyerNote === true ? (
         <dl className="peek-panel__note">
           <OrderRowBuyerNote internalOrderId={order.internalOrderId} />
@@ -155,6 +215,27 @@ export function OrderPeekDetail({ order, thumbLabel, onOpenProduct }: OrderPeekD
           <span className="eyebrow">{buyerNote.rowFieldLabel}</span>
           <p>{buyerNote.listUnknownHint}</p>
         </section>
+      ) : null}
+
+      {glance ? (
+        <dl className="peek-glance" data-testid="order-peek-glance">
+          <div>
+            <dt className="peek-section__title">{COPY.glance.customer}</dt>
+            <dd>{buyerName ?? EMPTY}</dd>
+          </div>
+          <div>
+            <dt className="peek-section__title">{COPY.glance.channel}</dt>
+            <dd>{glance.channel ?? EMPTY}</dd>
+          </div>
+          <div>
+            <dt className="peek-section__title">{COPY.glance.shipTo}</dt>
+            <dd>{order.dispatchByAt ? <TimeDisplay iso={order.dispatchByAt} format="datetime" /> : EMPTY}</dd>
+          </div>
+          <div>
+            <dt className="peek-section__title">{COPY.glance.document}</dt>
+            <dd>{glance.document}</dd>
+          </div>
+        </dl>
       ) : null}
 
       <section className="peek-section" aria-labelledby={`${order.internalOrderId}-items`}>
@@ -169,15 +250,19 @@ export function OrderPeekDetail({ order, thumbLabel, onOpenProduct }: OrderPeekD
             className="peek-table order-peek-items"
             caption={COPY.items}
             columns={itemColumns}
-            rows={parsed.items}
-            rowKey={(item) => item.id}
+            rows={peekRows}
+            rowKey={(row) => row.id}
             // A mapped line opens its product's peek on top of this one; an
             // unmapped one has no product to open, so it does nothing and says so.
-            onRowClick={(item) => {
-              if (item.productId && onOpenProduct) onOpenProduct(item.productId);
+            onRowClick={(row) => {
+              if (row.kind === 'item' && row.item.productId && onOpenProduct) onOpenProduct(row.item.productId);
             }}
-            rowClassName={(item) =>
-              item.productId && onOpenProduct ? 'order-peek-items__row--open' : 'order-peek-items__row--static'
+            rowClassName={(row) =>
+              row.kind === 'component'
+                ? 'order-peek-items__row--component'
+                : row.item.productId && onOpenProduct
+                  ? 'order-peek-items__row--open'
+                  : 'order-peek-items__row--static'
             }
           />
         )}

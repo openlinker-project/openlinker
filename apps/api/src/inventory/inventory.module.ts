@@ -13,6 +13,7 @@ import { UsersApiModule } from '../users/users.module';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { OperationalSettingsModule } from '@openlinker/core/operational-settings';
 import { OrdersModule } from '@openlinker/core/orders';
+import { PromotionsModule } from '@openlinker/core/promotions';
 import { ProductsModule as CoreProductsModule } from '@openlinker/core/products';
 import { ListingsModule } from '@openlinker/core/listings/services';
 // The HOST integrations module (apps/api): it re-exports the core one that
@@ -33,6 +34,7 @@ import { InventoryLocationsController } from './http/inventory-locations.control
     CoreProductsModule,
     ListingsModule,
     OrdersModule,
+    PromotionsModule,
     IdentifierMappingModule,
     OperationalSettingsModule,
     HostIntegrationsModule,

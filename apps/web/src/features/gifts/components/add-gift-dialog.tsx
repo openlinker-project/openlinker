@@ -27,7 +27,17 @@ import {
 import { Input } from '../../../shared/ui/input';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { BundleProductPicker, type BundleProductChoice } from '../../bundles';
-import { GiftDocumentFormField, type GiftDocumentFormChoice } from '../../gift-documents';
+import { useConnectionsQuery } from '../../connections';
+import {
+  GiftDocumentFormCards,
+  GiftDocumentFormChoiceValues,
+  isGiftUnitPriceAmount,
+  readGiftConnectionOverride,
+  resolveGiftDocumentForm,
+  useGiftDocumentSettingsQuery,
+  type GiftDocumentCardValue,
+  type GiftDocumentFormChoice,
+} from '../../gift-documents';
 import { useAddGiftMutation } from '../hooks/use-gifts';
 import { giftCostText, readGiftCost } from '../lib/gift-cost';
 import { readAddGiftRefusal } from '../lib/gift-refusal';
@@ -45,6 +55,8 @@ export interface AddGiftDialogProps {
   notReady?: boolean;
   /** A sales document already exists for the order. */
   hasSalesDocument: boolean;
+  /** The connection issuing the order's sales document, once there is one (#3935). */
+  documentConnectionId?: string | null;
 }
 
 export function AddGiftDialog({
@@ -56,6 +68,7 @@ export function AddGiftDialog({
   parcelClosed,
   notReady = false,
   hasSalesDocument,
+  documentConnectionId = null,
 }: AddGiftDialogProps): ReactElement {
   const copy = useMessages('gifts');
   const apiClient = useApiClient();
@@ -63,14 +76,29 @@ export function AddGiftDialog({
   const mutation = useAddGiftMutation(internalOrderId);
   const [choice, setChoice] = useState<BundleProductChoice | null>(null);
   const [quantity, setQuantity] = useState('1');
-  const [form, setForm] = useState<GiftDocumentFormChoice | ''>('');
+  const [form, setForm] = useState<GiftDocumentCardValue>('inherit');
+  const [customAmount, setCustomAmount] = useState('');
+  // The first card names the form the settings actually resolve to for this
+  // order: the issuing channel's own choice, else the install default.
+  const documentSettings = useGiftDocumentSettingsQuery();
+  const connections = useConnectionsQuery(undefined, { enabled: documentConnectionId !== null });
+  const documentConnection = connections.data?.find((c) => c.id === documentConnectionId);
+  const resolvedForm = resolveGiftDocumentForm(
+    undefined,
+    readGiftConnectionOverride(documentConnection?.config),
+    documentSettings.data?.giftDocumentForm,
+  ).form;
+  const inheritedForm = (GiftDocumentFormChoiceValues as readonly string[]).includes(resolvedForm)
+    ? (resolvedForm as GiftDocumentFormChoice)
+    : null;
 
   const { reset } = mutation;
   useEffect(() => {
     if (open) {
       setChoice(null);
       setQuantity('1');
-      setForm('');
+      setForm('inherit');
+      setCustomAmount('');
       reset();
     }
   }, [open, reset]);
@@ -92,12 +120,19 @@ export function AddGiftDialog({
   const refusal = mutation.isError ? readAddGiftRefusal(mutation.error) : null;
   const unready = notReady || refusal?.kind === 'not-ready';
   const closed = parcelClosed || refusal?.kind === 'parcel-closed' || unready;
-  const canSubmit = !closed && choice !== null && validQuantity && !mutation.isPending;
+  const normalizedAmount = customAmount.trim().replace(',', '.');
+  const customOk = form !== 'custom-price' || isGiftUnitPriceAmount(normalizedAmount);
+  const canSubmit = !closed && choice !== null && validQuantity && customOk && !mutation.isPending;
 
   const submit = (): void => {
     if (choice === null || !validQuantity) return;
     mutation.mutate(
-      { variantId: choice.variantId, quantity: qty, ...(form !== '' && { documentForm: form }) },
+      {
+        variantId: choice.variantId,
+        quantity: qty,
+        ...(form !== 'inherit' && { documentForm: form }),
+        ...(form === 'custom-price' && { documentUnitPrice: normalizedAmount }),
+      },
       {
         onSuccess: (result) => {
           showToast({
@@ -180,15 +215,19 @@ export function AddGiftDialog({
               onChange={(event) => setQuantity(event.target.value)}
             />
 
-            <label className="form-field__label" htmlFor="order-gift-dialog-doc-form">
-              {copy.addDialog.onDocument}
-            </label>
-            <GiftDocumentFormField
-              id="order-gift-dialog-doc-form"
-              data-testid="order-gift-dialog-doc-form"
+            <span className="form-field__label">{copy.addDialog.onDocument}</span>
+            <GiftDocumentFormCards
+              name="order-gift-dialog-doc-form"
+              aria-label={copy.addDialog.onDocument}
               value={form}
-              disabled={closed}
               onChange={setForm}
+              customPrice={customAmount}
+              onCustomPriceChange={setCustomAmount}
+              withInherit
+              inheritedForm={inheritedForm}
+              currency={currency}
+              disabled={closed}
+              invalidPrice={form === 'custom-price' && customAmount.trim() !== '' && !customOk}
             />
 
             <p className="text-muted" data-testid="order-gift-dialog-reason">

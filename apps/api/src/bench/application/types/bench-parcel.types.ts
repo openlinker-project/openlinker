@@ -91,6 +91,11 @@ export interface BenchParcelLineView {
     /** This component is the free gift of the set (#3934). Read from the frozen expansion. */
     readonly giftSlot: boolean;
   } | null;
+  /**
+   * The line is itself a gift (#3935): a promotion's, the channel's or an
+   * operator's. Marks the line for the packer; carries no price or cost.
+   */
+  readonly gift: boolean;
   readonly productVariantId: string;
   /**
    * What a packer reads on the shelf label — the PRODUCT's name.

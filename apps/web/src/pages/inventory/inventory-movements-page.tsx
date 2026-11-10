@@ -18,14 +18,18 @@ import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { interpolate, useFormat, useMessages, usePlural } from '../../shared/i18n';
-import { Chip } from '../../shared/ui/chip';
 import { Input } from '../../shared/ui/input';
-import { Select } from '../../shared/ui/select';
+import { StatusTabs } from '../../shared/ui/status-tabs';
+import { FilterDropdown, FilterGroup } from '../../shared/ui/filter-dropdown';
+import { GiftsGuide } from '../../features/gifts';
+import { StockMovementPeek } from '../../features/inventory/components/stock-movement-peek';
+import type { InventoryMovementRow } from '../../features/inventory/api/inventory-movements.types';
 import { ListPagination } from '../../shared/ui/list-pagination';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useConnectionsQuery } from '../../features/connections';
 import {
   useInventoryMovementsCountQuery,
+  useInventoryMovementsTabCount,
   useInventoryMovementsQuery,
 } from '../../features/inventory/hooks/use-inventory-movements-query';
 import { StockMovementsTable } from '../../features/inventory/components/stock-movements-table';
@@ -40,6 +44,7 @@ import {
   readMovementUrlState,
   toMovementFilters,
   type MovementChip,
+  type MovementUrlState,
 } from '../../features/inventory/lib/stock-movement-url-filters';
 
 const PAGE_SIZE = 20;
@@ -48,6 +53,10 @@ const SEARCH_DEBOUNCE_MS = 300;
 function usePageCopy(): { eyebrow: string; title: string; description: string } {
   const copy = useMessages('inventory').inventoryMovementsPage;
   return { eyebrow: copy.eyebrow, title: copy.title, description: copy.description };
+}
+
+function useScopeCount(state: MovementUrlState, chip: MovementChip): number | undefined {
+  return useInventoryMovementsTabCount(toMovementFilters({ ...state, chip, offset: 0 }));
 }
 
 export function InventoryMovementsPage(): ReactElement {
@@ -129,52 +138,86 @@ function InventoryMovementsContent(): ReactElement {
   const attentionTotal = totalStage.total ?? refused + inDoubt;
   const partial = totalStage.total !== null && totalStage.total > rows.length;
 
+  const counts = {
+    all: useScopeCount(state, 'all'),
+    attention: useScopeCount(state, 'attention'),
+    promised: useScopeCount(state, 'promised'),
+  };
+  const [peekKey, setPeekKey] = useState<string | null>(null);
+  const keyOf = (row: InventoryMovementRow): string => `${row.kind}:${row.id}`;
+  const peekIndex = peekKey === null ? -1 : rows.findIndex((row) => keyOf(row) === peekKey);
+  const peekRow = peekIndex >= 0 ? rows[peekIndex] : null;
+  const navigatePeek = (step: -1 | 1): void => {
+    const next = rows[peekIndex + step];
+    if (next !== undefined) setPeekKey(keyOf(next));
+  };
+
   return (
-    <PageLayout {...pageCopy}>
-      <div className="toolbar stock-movements-toolbar">
-        <div className="toolbar__group">
+    <PageLayout {...pageCopy} actions={<GiftsGuide variant="stock" />}>
+      <div className="list-statusbar">
+        <StatusTabs<MovementChip>
+          tabs={[
+            { key: null, label: copy.chips.all, count: counts.all },
+            { key: 'attention', label: copy.chips.attention, tone: 'warning', count: counts.attention },
+            { key: 'promised', label: copy.chips.promised, count: counts.promised },
+          ]}
+          value={state.chip === 'all' ? null : state.chip}
+          onChange={(next) => selectChip(next ?? 'all')}
+          aria-label={copy.tabsAria}
+        />
+      </div>
+
+      {(counts.attention ?? 0) > 0 && state.chip !== 'attention' ? (
+        <Alert
+          tone="warning"
+          title={plural(counts.attention ?? 0, copy.attention.title)}
+          data-testid="stock-movements-attention-banner"
+          action={
+            <Button tone="secondary" onClick={() => selectChip('attention')}>
+              {copy.chips.attention}
+            </Button>
+          }
+        >
+          {copy.attention.bannerBody}
+        </Alert>
+      ) : null}
+
+      <div className="list-toolbar stock-movements-toolbar">
+        <div className="list-search">
+          <span className="list-search__glyph" aria-hidden="true">
+            ⌕
+          </span>
           <Input
             type="search"
-            className="stock-movements-search"
             placeholder={copy.search}
             aria-label={copy.search}
             data-testid="stock-movements-search"
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
           />
-          <label className="stock-movements-field">
-            {copy.type}
-            <Select
-              aria-label={copy.filterType}
-              data-testid="stock-movements-filter-type"
-              value={state.type}
-              onChange={(event) => update({ type: event.target.value, chip: null })}
-            >
-              <option value="">{copy.allTypes}</option>
-              {MOVEMENT_TYPE_FILTER_VALUES.map((value) => (
-                <option key={value} value={value}>
-                  {movementTypeFilterLabel(value)}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <label className="stock-movements-field">
-            {copy.master}
-            <Select
-              aria-label={copy.filterMaster}
-              data-testid="stock-movements-filter-master"
-              value={state.master}
-              onChange={(event) => update({ master: event.target.value })}
-            >
-              <option value="">{copy.allConnections}</option>
-              {connections.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <label className="stock-movements-field">
+          <span className="button__shortcut list-search__kbd" aria-hidden="true">
+            /
+          </span>
+        </div>
+        <FilterGroup aria-label={copy.filters}>
+          <FilterDropdown
+            label={copy.type}
+            anyLabel={copy.allTypes}
+            value={state.type === '' ? null : state.type}
+            options={MOVEMENT_TYPE_FILTER_VALUES.map((value) => ({
+              value,
+              label: movementTypeFilterLabel(value),
+            }))}
+            onChange={(next) => update({ type: next ?? '', chip: null })}
+          />
+          <FilterDropdown
+            label={copy.master}
+            anyLabel={copy.allConnections}
+            value={state.master === '' ? null : state.master}
+            options={connections.map((c) => ({ value: c.id, label: c.name }))}
+            onChange={(next) => update({ master: next ?? '' })}
+          />
+          <label className="joined-filters__field">
             {copy.from}
             <Input
               type="date"
@@ -184,7 +227,7 @@ function InventoryMovementsContent(): ReactElement {
               onChange={(event) => update({ from: event.target.value })}
             />
           </label>
-          <label className="stock-movements-field">
+          <label className="joined-filters__field">
             {copy.to}
             <Input
               type="date"
@@ -194,31 +237,13 @@ function InventoryMovementsContent(): ReactElement {
               onChange={(event) => update({ to: event.target.value })}
             />
           </label>
-        </div>
-      </div>
-
-      <div className="toolbar page-summary" style={{ margin: 'var(--space-3) 0' }}>
-        <div className="toolbar__group">
-          <Chip active={state.chip === 'all'} data-testid="stock-movements-chip-all" onClick={() => selectChip('all')}>
-            {copy.chips.all}
-          </Chip>
-          <Chip
-            tone="warning"
-            active={state.chip === 'attention'}
-            data-testid="stock-movements-chip-attention"
-            onClick={() => selectChip('attention')}
-          >
-            {copy.chips.attention}
-          </Chip>
-          <Chip
-            tone="review"
-            active={state.chip === 'promised'}
-            data-testid="stock-movements-chip-promised"
-            onClick={() => selectChip('promised')}
-          >
-            {copy.chips.promised}
-          </Chip>
-        </div>
+        </FilterGroup>
+        <span className="list-toolbar__spacer" />
+        <span className="text-muted mono tabular list-results" data-testid="stock-movements-count" aria-live="polite">
+          {totalStage.total !== null
+            ? plural(totalStage.total, copy.count)
+            : interpolate(copy.countAtLeast, { n: rows.length })}
+        </span>
       </div>
 
       {state.productVariantId !== '' ? (
@@ -291,16 +316,13 @@ function InventoryMovementsContent(): ReactElement {
               })}
             </Alert>
           ) : null}
-          <p className="stock-movements-summary-line" data-testid="stock-movements-count">
-            {totalStage.total !== null
-              ? plural(totalStage.total, copy.count)
-              : interpolate(copy.countAtLeast, { n: rows.length })}
-          </p>
           <StockMovementsTable
             rows={rows}
             connectionNames={connectionNames}
             layout="global"
             caption={copy.caption}
+            onRowClick={(row) => setPeekKey(keyOf(row))}
+            activeKey={peekKey}
           />
           <ListPagination
             offset={state.offset}
@@ -313,6 +335,16 @@ function InventoryMovementsContent(): ReactElement {
           />
         </>
       )}
+      <StockMovementPeek
+        row={peekRow}
+        position={peekIndex + 1}
+        count={rows.length}
+        connectionNames={connectionNames}
+        onNavigate={navigatePeek}
+        onOpenChange={(open) => {
+          if (!open) setPeekKey(null);
+        }}
+      />
     </PageLayout>
   );
 }

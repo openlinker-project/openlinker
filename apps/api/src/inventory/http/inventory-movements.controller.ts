@@ -12,8 +12,11 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 import {
   INVENTORY_MOVEMENT_SERVICE_TOKEN,
   type IInventoryMovementService,
+  type InventoryHistoryRow,
   type InventoryMovementFilters,
 } from '@openlinker/core/inventory';
+import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService } from '@openlinker/core/orders';
+import { PROMOTION_SERVICE_TOKEN, type IPromotionService } from '@openlinker/core/promotions';
 import {
   USER_MANAGEMENT_SERVICE_TOKEN,
   type IUserManagementService,
@@ -21,6 +24,7 @@ import {
 import { PaginatedTotalResponseDto } from '../../common/dto/paginated-total-response.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
+  InventoryMovementGiftResponseDto,
   PaginatedInventoryMovementsResponseDto,
   toInventoryMovementResponseDto,
 } from './dto/inventory-movement-response.dto';
@@ -51,8 +55,86 @@ export class InventoryMovementsController {
     @Inject(INVENTORY_MOVEMENT_SERVICE_TOKEN)
     private readonly movements: IInventoryMovementService,
     @Inject(USER_MANAGEMENT_SERVICE_TOKEN)
-    private readonly users: IUserManagementService
+    private readonly users: IUserManagementService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orders: IOrderRecordService,
+    @Inject(PROMOTION_SERVICE_TOKEN)
+    private readonly promotions: IPromotionService
   ) {}
+
+  /**
+   * Where each gift movement came from (#3935), read off the order's gift line.
+   * Best-effort: a failed read leaves the rows without a source instead of
+   * failing the history, which is read-only evidence and re-readable.
+   */
+  private async giftSources(
+    rows: readonly InventoryHistoryRow[]
+  ): Promise<Map<string, InventoryMovementGiftResponseDto>> {
+    const result = new Map<string, InventoryMovementGiftResponseDto>();
+    // Movements that decrement a gift, and the reservations that set a gift aside
+    // for an order (#3935): both read the same gift line of the same order.
+    const giftRows = rows.filter(
+      (row) =>
+        row.sourceKind === 'order' &&
+        row.sourceRef !== null &&
+        (row.kind === 'reservation' || row.reason === 'gift' || row.reason === 'sale')
+    );
+    if (giftRows.length === 0) {
+      return result;
+    }
+    try {
+      const orderIds = [...new Set(giftRows.map((row) => row.sourceRef as string))];
+      const [orders, promotions] = await Promise.all([
+        this.orders.findByIds(orderIds),
+        this.promotions.list(),
+      ]);
+      const orderById = new Map(orders.map((order) => [order.internalOrderId, order]));
+      const nameById = new Map(promotions.map((view) => [view.promotion.id, view.promotion.name]));
+      for (const row of giftRows) {
+        const order = orderById.get(row.sourceRef as string);
+        const items = order?.orderItems ?? [];
+        const sameVariant = items.filter((item) => item.variantId === row.productVariantId);
+        const gifts = sameVariant.filter((item) => item.gift !== undefined);
+        // A reservation or a plain sale carries no gift reason: it is a gift only
+        // when every line of that variant on the order is one, so a paid line is
+        // never mislabelled.
+        const declaredGift = row.reason === 'gift';
+        const allGift = gifts.length > 0 && gifts.length === sameVariant.length;
+        const line =
+          declaredGift || allGift
+            ? (gifts[0] ?? items.find((item) => item.gift !== undefined))
+            : undefined;
+        if (line?.gift !== undefined) {
+          const ruleRef = line.gift.ruleRef ?? null;
+          const dto = new InventoryMovementGiftResponseDto();
+          dto.source = line.gift.source;
+          dto.promotionId = line.gift.source === 'ol-rule' ? ruleRef : null;
+          dto.promotionName = ruleRef === null ? null : (nameById.get(ruleRef) ?? null);
+          dto.bundleName = null;
+          result.set(row.id, dto);
+          continue;
+        }
+        // The free gift of a bundle is a component, not a gift line of its own.
+        for (const bundle of order?.bundleLines ?? []) {
+          const slot = bundle.components.find(
+            (component) => component.giftSlot === true && component.variantId === row.productVariantId
+          );
+          if (slot !== undefined && (declaredGift || sameVariant.length === 0)) {
+            const dto = new InventoryMovementGiftResponseDto();
+            dto.source = 'bundle-slot';
+            dto.promotionId = null;
+            dto.promotionName = null;
+            dto.bundleName = items.find((item) => item.id === bundle.lineId)?.name ?? null;
+            result.set(row.id, dto);
+            break;
+          }
+        }
+      }
+    } catch {
+      // Evidence only; see the method note.
+    }
+    return result;
+  }
 
   @Roles('admin', 'operator', 'viewer')
   @Get()
@@ -78,7 +160,8 @@ export class InventoryMovementsController {
       .map((row) => row.actorUserId)
       .filter((id): id is string => id !== null);
     const actorNames = actorIds.length > 0 ? await this.users.getDisplayNames(actorIds) : new Map<string, string>();
-    const items = rows.map((row) => toInventoryMovementResponseDto(row, actorNames));
+    const gifts = await this.giftSources(rows);
+    const items = rows.map((row) => toInventoryMovementResponseDto(row, actorNames, gifts));
 
     // Two branches so the response object does not CARRY `total` when it was not
     // asked for: an absent total and a genuine zero are different claims.

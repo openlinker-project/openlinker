@@ -61,7 +61,7 @@ describe('InventoryMovementsPage', () => {
   afterEach(cleanup);
 
   it('should render rows and the exact count inferred from a short page', async () => {
-    const countMovements = vi.fn();
+    const countMovements = vi.fn().mockResolvedValue({ total: 2 });
     const apiClient = createMockApiClient({
       inventory: { listMovements: vi.fn().mockResolvedValue(page([row(), row({ id: 'm2' })])), countMovements },
     });
@@ -69,7 +69,8 @@ describe('InventoryMovementsPage', () => {
 
     expect(await screen.findAllByTestId('stock-movement-row')).toHaveLength(2);
     expect(screen.getByTestId('stock-movements-count')).toHaveTextContent('2 results');
-    expect(countMovements).not.toHaveBeenCalled();
+    // The page's own total is inferred; only the three tab counts are requested.
+    expect(countMovements).toHaveBeenCalledTimes(3);
   });
 
   it('should never render a missing total as 0 while the count is pending', async () => {
@@ -108,12 +109,15 @@ describe('InventoryMovementsPage', () => {
 
   it('should read filters from the URL and write the type filter back to it', async () => {
     const listMovements = vi.fn().mockResolvedValue(page([row()]));
-    const apiClient = createMockApiClient({ inventory: { listMovements } });
+    const apiClient = createMockApiClient({
+      inventory: { listMovements, countMovements: vi.fn().mockResolvedValue({ total: 1 }) },
+    });
     renderMovements({ apiClient, route: '/inventory/movements?from=2026-09-19' });
 
     await screen.findAllByTestId('stock-movement-row');
     expect(screen.getByTestId('stock-movements-filter-from')).toHaveValue('2026-09-19');
-    await userEvent.selectOptions(screen.getByTestId('stock-movements-filter-type'), 'return_restock');
+    await userEvent.click(screen.getByRole('button', { name: /^Type/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /return/i }));
     await waitFor(() =>
       expect(listMovements).toHaveBeenLastCalledWith(
         expect.objectContaining({ reasons: ['return_restock'], from: new Date(2026, 8, 19, 0, 0, 0, 0).toISOString() }),
@@ -142,11 +146,12 @@ describe('InventoryMovementsPage', () => {
 
   it('should request only reservation rows for the Reserved only chip and offer no export', async () => {
     const listMovements = vi.fn().mockResolvedValue(page([]));
-    const apiClient = createMockApiClient({ inventory: { listMovements } });
+    const apiClient = createMockApiClient({
+      inventory: { listMovements, countMovements: vi.fn().mockResolvedValue({ total: 0 }) },
+    });
     renderMovements({ apiClient });
 
-    const chip = await screen.findByTestId('stock-movements-chip-promised');
-    expect(chip).toHaveTextContent('Reserved only');
+    const chip = await screen.findByRole('tab', { name: /Reserved only/ });
     await userEvent.click(chip);
     await waitFor(() =>
       expect(listMovements).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'promised' }), expect.anything()),
@@ -198,7 +203,10 @@ describe('InventoryMovementsPage', () => {
 
   it('should push a history entry when a filter changes so Back undoes it', async () => {
     const apiClient = createMockApiClient({
-      inventory: { listMovements: vi.fn().mockResolvedValue(page([row()])) },
+      inventory: {
+        listMovements: vi.fn().mockResolvedValue(page([row()])),
+        countMovements: vi.fn().mockResolvedValue({ total: 1 }),
+      },
     });
     // The harness mounts a MemoryRouter, so window.history is never touched; the
     // router's own history is what Back walks, which this probe drives.
@@ -224,7 +232,7 @@ describe('InventoryMovementsPage', () => {
     await screen.findAllByTestId('stock-movement-row');
     expect(screen.getByTestId('probe-search')).toHaveTextContent('');
 
-    await userEvent.click(screen.getByTestId('stock-movements-chip-attention'));
+    await userEvent.click(screen.getByRole('tab', { name: /Needs a look|Needs attention/ }));
     await waitFor(() =>
       expect(screen.getByTestId('probe-search').textContent).toContain('chip=attention')
     );
