@@ -64,7 +64,7 @@ export function useBundleOfferPreview(
       out.push(sorted.slice(i, i + BUNDLE_OFFER_PREVIEW_CHUNK));
     }
     return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `itemsKey` is the content of `items`.
+    // Deps are `itemsKey` on purpose: it is the content of `items`.
   }, [itemsKey]);
 
   const queries = useQueries({

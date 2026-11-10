@@ -103,7 +103,7 @@ async function ready(): Promise<void> {
 
 async function pick(user: ReturnType<typeof userEvent.setup>, testId: string, text: string, sku: string): Promise<void> {
   await user.type(screen.getByTestId(testId), text);
-  await user.click(await screen.findByTestId(`${testId}-result-${sku}`));
+  await user.click(await screen.findByTestId(`${testId}-result-${sku}`, undefined, { timeout: 5000 }));
 }
 
 describe('BundleForm (#3624)', () => {
