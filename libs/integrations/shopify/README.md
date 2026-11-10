@@ -3,11 +3,16 @@
 OpenLinker adapter for [Shopify](https://shopify.dev/docs/api/admin-graphql), Admin GraphQL API **2026-10**.
 
 **Status:** plugin foundation (#3974), **ProductMaster** (#3975), **InventoryMaster** (#3976), **OrderSource**
-with returns (#3977), **OrderProcessorManager** (#3978), **inbound webhooks** (#3981), **ProductPublisher** (#3979) and **OfferManager** stock write-back (#3980). The plugin registers the connection, the
-token handling, the GraphQL client, the connection tester and the retry / auth-failure classifiers. A capability
-enters `supportedCapabilities` together with the adapter that delivers it, in the issues of the
-"Shopify integration" milestone. Evidence base: spike #3928 (`SPIKE-3928-shopify-capabilities.md`) and the first
-spike #2879 (`docs/plans/analysis/SPIKE-2879-shopify-admin-api.md`).
+with returns (#3977), **OrderProcessorManager** (#3978), **ProductPublisher** (#3979), **OfferManager** stock
+write-back (#3980), **inbound webhooks** (#3981) and the connection page (#3982). Each capability entered
+`supportedCapabilities` together with the adapter that delivers it. Evidence base: spike #3928
+(`SPIKE-3928-shopify-capabilities.md`) and the first spike #2879 (`docs/plans/analysis/SPIKE-2879-shopify-admin-api.md`).
+
+- **Operator guide** (connecting a store, roles, options, webhooks): [`docs/setup-guide.md`](docs/setup-guide.md).
+- **Local test store** (create a free dev store, seed it, run the spike's probes):
+  [`docker/shopify/README.md`](../../../docker/shopify/README.md), `pnpm dev:stack:seed-shopify`.
+- **Ground rules** shared by every slice (one location, client credentials vs OAuth, variant groups without a lock,
+  pickup points as text, refunds opt-in): `docs/architecture-overview.md`, "Shopify adapter ground rules".
 
 | | |
 |---|---|
@@ -41,8 +46,8 @@ delivery-profile method names in the mapping UI (without it only methods seen on
 
 `refundsThroughShopify` (optional, boolean): a refund confirmed in OpenLinker is sent to Shopify (see OrderSource).
 
-`salesCountryIso2` is not on the setup form yet: set it in the connection's config (JSON) when the tax rate should be
-computed for a country other than the shop's own.
+`locationId`, `unmanagedStockQuantity`, `salesCountryIso2` and `refundsThroughShopify` are set on the connection edit
+page (#3982), not on the setup form.
 
 The OAuth install is started from the web setup page (`/connections/new/shopify`) and lands on
 `/integrations/shopify/connect/callback`; register that URL as an allowed redirection URL on the app. The API checks
