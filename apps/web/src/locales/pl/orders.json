@@ -444,7 +444,7 @@
     "keepOrder": "Zachowaj zamówienie",
     "label": {
       "goToShipment": "Przejdź do przesyłki",
-      "note": "Jeśli paczka jest już u kuriera, etykiety nie można unieważnić. Zajrzyj do paczki zamiast anulować.",
+      "note": "Jeśli przewoźnik nie anuluje przesyłki (paczka jest już potwierdzona albo u kuriera), anuluj paczkę w panelu przewoźnika albo przez obsługę klienta przewoźnika.",
       "stepCancelAgain": "Ponownie anuluj zamówienie.",
       "stepCancelShipment": "Anuluj przesyłkę. Spowoduje to unieważnienie etykiety u przewoźnika.",
       "title": "Najpierw anuluj przesyłkę",
@@ -1778,7 +1778,8 @@
         "fallbackReason": "Etykieta zawiera obecny adres i metodę dostawy.",
         "steps": {
           "1": "Anuluj przesyłkę. Spowoduje to unieważnienie etykiety u przewoźnika.",
-          "2": "Zmień zamówienie."
+          "2": "Zmień zamówienie.",
+          "3": "Jeśli przewoźnik nie anuluje przesyłki (paczka jest już potwierdzona), anuluj paczkę w panelu przewoźnika albo przez obsługę klienta przewoźnika."
         },
         "title": "Etykieta nadawcza jest już kupiona"
       },
