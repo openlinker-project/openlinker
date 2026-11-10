@@ -269,6 +269,21 @@ describe('BulkReviewStep', () => {
     const dot = chip.parentElement?.querySelector('.bulk-chip__dot');
     expect(dot).toHaveAttribute('aria-hidden', 'true');
   });
+  it('does not count an already-listed variant as ready, and does not offer to create it (#3935)', () => {
+    renderWithProviders(
+      <BulkReviewStep
+        rows={[makeRow('prod_1', [variantRow('v1')])]}
+        {...baseProps()}
+        alreadyListedVariantIds={new Set(['v1'])}
+      />,
+    );
+
+    expect(screen.getByTestId('bulk-summary-ready')).toHaveTextContent('0');
+    expect(screen.getByTestId('bulk-summary-excluded')).toHaveTextContent('1');
+    expect(screen.queryByText('Ready', { selector: '.bulk-chip' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Create offers/ })).toBeDisabled();
+  });
+
   describe('catalogue card vs category mapping (#3994)', () => {
     const card = { allegroCategoryId: 'cat-powerbanki', productCardId: 'card-power' };
     const setAside = (id: string): BulkVariantRow =>

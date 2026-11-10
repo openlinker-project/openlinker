@@ -282,7 +282,10 @@ export function BulkReviewStep({
   const [jumpIndex, setJumpIndex] = useState(-1);
   const [pendingScroll, setPendingScroll] = useState<string | null>(null);
 
-  const counts = useMemo(() => countBatch(rows, blockerChips), [rows, blockerChips]);
+  const counts = useMemo(
+    () => countBatch(rows, blockerChips, alreadyListedVariantIds),
+    [rows, blockerChips, alreadyListedVariantIds],
+  );
 
   // Per-variant reading of the rule preview (#3995), checked against the
   // category each variant submits under NOW - an answer for a category the
@@ -836,12 +839,12 @@ function ProductRow({
     let off = 0;
     for (const v of row.variants) {
       const r = variantReadiness(v, chips);
-      if (!r.included) off += 1;
+      if (!r.included || alreadyListedVariantIds.has(v.variantId)) off += 1;
       else if (r.ready) ready += 1;
       else attn += 1;
     }
     return { ready, attn, off };
-  }, [row.variants, chips]);
+  }, [row.variants, chips, alreadyListedVariantIds]);
 
   const productPrice =
     row.variants[0]?.masterPrice ?? row.masterPrice ?? null;
@@ -1300,6 +1303,15 @@ function VariantChips({
   // the same thing twice, in the column furthest from the category.
   const visible = variant.blockers.filter((b) => !CATEGORY_CELL_BLOCKERS.has(b));
   if (visible.length === 0) {
+    // Already listed there: skipped at intake, so never "ready" (the chip below names the destination).
+    if (alreadyListed) {
+      return (
+        <>
+          <Chip descriptor={chipFor('already-listed', chips)} head />
+          {dupChip}
+        </>
+      );
+    }
     return (
       <>
         <Chip descriptor={{ tone: 'success', label: copy.chips.ready, fixable: false }} head />
@@ -1503,13 +1515,16 @@ interface BatchCounts {
 function countBatch(
   rows: BulkWizardRow[],
   chips: Record<string, ChipDescriptor> = {},
+  alreadyListed: ReadonlySet<string> = new Set(),
 ): BatchCounts {
   let includedReady = 0;
   let includedNeedsAttention = 0;
   let excluded = 0;
   for (const row of rows) {
     for (const v of row.variants) {
-      if (!v.included) {
+      // An already-listed variant is skipped at intake (`filterAlreadyListed`), so
+      // it is neither ready nor in need of attention: it counts with the excluded.
+      if (!v.included || alreadyListed.has(v.variantId)) {
         excluded += 1;
         continue;
       }
