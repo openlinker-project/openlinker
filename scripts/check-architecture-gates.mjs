@@ -101,7 +101,12 @@ const MARKER_CONVENTION_STARTS_AT = 48;
 const KNOWN_CONFIG_KNOBS = new Map([
   [
     'libs/core/src/invoicing/domain/types/invoice-trigger.types.ts',
-    { helper: 'parseTriggerModel', key: 'config.invoicing.triggerModel' },
+    // #3582 widened this knob rather than adding one: the same trigger model,
+    // now per document kind, with the legacy key as its fallback.
+    {
+      helper: 'parseTriggerModel',
+      key: 'config.invoicing.triggerModel + config.salesDocument.triggerModels[kind]',
+    },
   ],
   [
     'libs/core/src/identifier-mapping/domain/types/stock-safety-buffer.types.ts',
@@ -162,6 +167,10 @@ const KNOWN_CONFIG_KNOBS = new Map([
   [
     'libs/core/src/sales-documents/domain/types/delivery-line.types.ts',
     { helper: 'readDeliveryOnDocuments', key: 'config.deliveryOnDocuments' },
+  ],
+  [
+    'libs/core/src/sales-documents/domain/types/batch-schedule.types.ts',
+    { helper: 'readBatchSchedule', key: 'config.salesDocument.batchSchedules[kind]' },
   ],
   [
     // #3963: "when the buyer pays later" - mark the destination order paid, or leave it.
@@ -419,7 +428,26 @@ const NON_KNOBS = new Map([
 // WooCommerce does not), so an install-wide setting could not name the state.
 // Registered rather than excused; the #1032 question still stands, and the
 // number is raised by one so the next knob asks again.
-const KNOB_THRESHOLD = 15;
+//
+// Both landed together, so the threshold is 16: one more for each knob.
+//
+// #3583 raised it for `config.salesDocument.batchSchedules[kind]` -
+// when a connection that batches a document kind runs its queue (daily at a
+// time, every N hours, month end).
+// Registered, not excused, on the same grounds as its predecessors:
+//
+// 1. `batch-schedule.types.ts` is a pure-rules file in the `sales-documents`
+//    leaf, with no persistence and no binding; a shared rules model needs both.
+// 2. It has to be PER CONNECTION and per kind: #3515's whole point is that one
+//    connection batches invoices monthly while issuing receipts at once, and
+//    a deployment-wide setting cannot say that.
+// 3. The consolidation still has its owner (#2169); this buys exactly one more
+//    knob before the gate fires again.
+//
+// What it adds to the list the consolidation must cover: the first knob that
+// is a SCHEDULE (wall-clock times in a time zone stored with the value), not a
+// switch or a number. A reviewer who disagrees should push back on THIS raise.
+const KNOB_THRESHOLD = 16;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);

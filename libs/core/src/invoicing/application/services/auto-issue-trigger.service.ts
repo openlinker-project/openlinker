@@ -51,22 +51,21 @@
  *     adapter-level discovery method yet (`FiscalizationPort` carries no
  *     `getSupportedDocumentTypes()` equivalent), so the structural check is
  *     the whole story for that kind today — documented, not silently skipped.
- *  4. Reads the winning connection's `config.invoicing.triggerModel`
- *     (`parseTriggerModel`) — reused verbatim for BOTH document kinds. The key
- *     predates the two-kind split and is historically named after invoicing
- *     only; ADR-041 decision 4 fixes the shape of `isPrimary` /
- *     `salesDocument.documentKind` but says nothing about renaming
- *     `triggerModel`, so this service treats it as "this connection's
- *     document-issuance trigger model" regardless of which kind it issues.
- *     Introducing a kind-scoped trigger-model key is a separate, out-of-scope
- *     config-shape decision.
+ *  4. Reads the winning connection's trigger model FOR THE RESOLVED KIND
+ *     (#3582, `resolveTriggerModelForKind`): `config.salesDocument.triggerModels[kind]`,
+ *     falling back to the legacy kind-agnostic `config.invoicing.triggerModel`,
+ *     then `manual`. One connection can therefore batch invoices and register
+ *     receipts at once, while an install that never set a kind-scoped value
+ *     resolves the same model for both kinds, exactly as before the split.
  *  5. Evaluates the transition against that trigger model (level-evaluated,
  *     D3, via `evaluateGate` — separating "not yet" from "not without a
  *     human", #2100): `auto-on-paid` / `auto-on-shipped` `proceed` when their
  *     condition holds and `waiting` otherwise (D6 + one-time viability log,
- *     F7); `manual` is `blocked`; `batched` throws
- *     `BatchedTriggerNotImplementedError`, mapped to a `trigger-model-batched`
- *     block by the PII-safe catch.
+ *     F7); `manual` is `blocked`; `batched` (#3583) waits until paid and is
+ *     then reported as a `trigger-model-batched` block naming its connection
+ *     and kind - the order's place in that connection's batch queue - except
+ *     inside that connection's own run (`options.batchRun`), where it proceeds
+ *     through the same enqueue as `auto-on-paid`.
  *  6. Composes the job payload from the clean in-hand `Order` and enqueues
  *     the matching job type with a deterministic key: `invoicing.issue` /
  *     `invoice:{connId}:{orderId}` for `'invoice'` (unchanged from before
@@ -102,8 +101,7 @@
  * `sourceEventId` (when present) — never the raw error / message / payload.
  * `error.message` is added ONLY for the allow-listed deterministic, PII-clean
  * errors (`InvalidBuyerProfileError`, `UnsupportedPriceTreatmentError`,
- * `InvalidFiscalLineError`, `UnsupportedFiscalPriceTreatmentError`,
- * `BatchedTriggerNotImplementedError`).
+ * `InvalidFiscalLineError`, `UnsupportedFiscalPriceTreatmentError`).
  *
  * ONE-WAY EDGE (F3): depends on `CONNECTION_PORT_TOKEN` (identifier-mapping),
  * `SYNC_JOBS_SERVICE_TOKEN` (sync), `INVOICE_SERVICE_TOKEN` (SAME context —
@@ -166,6 +164,8 @@ import type {
   SalesDocumentBlock,
   SalesDocumentBlockOutcome,
   SalesDocumentDecision,
+  SalesDocumentEnqueued,
+  SalesDocumentGateBlockReason,
   SalesDocumentKind,
   SalesDocumentRoutingCandidate,
   SalesDocumentUnresolvedReason,
@@ -207,18 +207,20 @@ import type {
 import type { IAutoIssueTriggerService } from './auto-issue-trigger.service.interface';
 import type { InvoicingPort } from '../../domain/ports/invoicing.port';
 import type {
+  AutoIssueBatchRunScope,
+  AutoIssueOptions,
   InvoiceTriggerModel,
   TriggerGateOutcome,
 } from '../../domain/types/invoice-trigger.types';
 import {
   BLOCK_REASON_BY_TRIGGER_MODEL,
-  parseTriggerModel,
+  isInBatchRun,
+  resolveTriggerModelForKind,
 } from '../../domain/types/invoice-trigger.types';
 import { normalizeShippingLineName } from '../../domain/types/shipping-line-label.types';
 import { invoiceIdempotencyKey } from '../../domain/types/invoice-idempotency-key.types';
 import { toIssueInvoiceCommand } from '../mappers/order-to-issue-invoice-command.mapper';
 import { toSalesDocumentOrderFacts } from '../mappers/order-to-sales-document-order-facts.mapper';
-import { BatchedTriggerNotImplementedError } from '../../domain/exceptions/batched-trigger-not-implemented.error';
 import type {
   InvoicingIssuePayloadV1,
   FiscalizationRegisterPayloadV1,
@@ -306,8 +308,17 @@ const PII_SAFE_ERROR_NAMES: ReadonlySet<string> = new Set([
   'UnsupportedPriceTreatmentError',
   'InvalidFiscalLineError',
   'UnsupportedFiscalPriceTreatmentError',
-  'BatchedTriggerNotImplementedError',
 ]);
+
+/** `none`, carrying what was enqueued (#3583) and the routing rule as before (#3186). */
+function withEnqueued(
+  matchedRuleId: string | undefined,
+  enqueued: SalesDocumentEnqueued,
+): SalesDocumentBlockOutcome {
+  return matchedRuleId !== undefined
+    ? { kind: 'none', matchedRuleId, enqueued }
+    : { kind: 'none', enqueued };
+}
 
 @Injectable()
 export class AutoIssueTriggerService implements IAutoIssueTriggerService {
@@ -468,16 +479,22 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     matchedRuleId?: string,
   ): Promise<SalesDocumentBlockOutcome> {
     try {
+      // `alreadyDocumented` (#3583) tells a batch run WHY nothing happened, so
+      // it records "already has a document" instead of a silent skip.
       const existing = await this.invoices.getLatestInvoiceForOrder(orderId);
       if (existing !== null && existing.blocksIssuanceElsewhere) {
-        return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
+        return matchedRuleId !== undefined
+          ? { kind: 'none', matchedRuleId, alreadyDocumented: true }
+          : { kind: 'none', alreadyDocumented: true };
       }
 
       const fiscalRegistrationService = this.resolveFiscalRegistrationService();
       if (fiscalRegistrationService !== null) {
         const registrations = await fiscalRegistrationService.getByOrderId(orderId);
         if (registrations.some((record) => record.blocksFurtherRegistration)) {
-          return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
+          return matchedRuleId !== undefined
+            ? { kind: 'none', matchedRuleId, alreadyDocumented: true }
+            : { kind: 'none', alreadyDocumented: true };
         }
       }
     } catch (error) {
@@ -500,7 +517,9 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceEventId?: string,
     taxRateEra?: string | null,
     buyerTaxId?: string | null,
+    options?: AutoIssueOptions,
   ): Promise<SalesDocumentBlockOutcome> {
+    const batchRun = options?.batchRun;
     // D8: only ACTIVE connections receive issuance jobs. The scheduler's
     // `status: 'active'` filter already excludes disabled/error/needs_reauth
     // connections. #2156: a candidate needs EITHER capability, not just
@@ -610,6 +629,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           sourceEventId,
           taxRateEra,
           buyerTaxId,
+          batchRun,
         );
     }
   }
@@ -956,6 +976,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceEventId?: string,
     taxRateEra?: string | null,
     buyerTaxId?: string | null,
+    batchRun?: AutoIssueBatchRunScope,
   ): Promise<SalesDocumentBlockOutcome> {
     const connection = connections.find((candidate) => candidate.id === decision.connectionId);
     if (
@@ -990,6 +1011,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         taxRateEra,
         decision.ruleId,
         buyerTaxId,
+        batchRun,
       );
     }
     if (decision.documentKind === 'fiscal-receipt') {
@@ -1002,6 +1024,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         taxRateEra,
         decision.ruleId,
         buyerTaxId,
+        batchRun,
       );
     }
 
@@ -1046,6 +1069,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     taxRateEra?: string | null,
     matchedRuleId?: string,
     buyerTaxId?: string | null,
+    batchRun?: AutoIssueBatchRunScope,
   ): Promise<SalesDocumentBlockOutcome> {
     const supported = await this.connectionSupportsInvoiceDocumentType(connection.id);
     if (!supported) {
@@ -1071,8 +1095,14 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     // swallows too, but defense in depth here keeps an invoicing fault from
     // surfacing as an order-ingestion failure).
     try {
-      const triggerModel = parseTriggerModel(connection.config.invoicing?.triggerModel);
-      this.warnOnceIfManualWinnerDisablesInstall(triggerModel, connection.id, eligibleCount);
+      // #3582: the model for THIS kind, falling back to the legacy key.
+      const triggerModel = resolveTriggerModelForKind(connection.config, 'invoice').model;
+      this.warnOnceIfManualWinnerDisablesInstall(
+        triggerModel,
+        connection.id,
+        eligibleCount,
+        'invoice',
+      );
 
       // #2248 (ADR-063 § 6): a line with no tax rate is checked BEFORE the
       // trigger-model gate, and deliberately so. On a `manual` connection both
@@ -1129,12 +1159,21 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         }
       }
 
-      const gate = this.evaluateGate(order, triggerModel, connection.id);
+      const gate = this.evaluateGate(
+        order,
+        triggerModel,
+        connection.id,
+        isInBatchRun(batchRun, connection.id, 'invoice'),
+      );
       if (gate.kind === 'waiting') {
         return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
       }
       if (gate.kind === 'blocked') {
-        return await this.reportBlock({ reason: gate.reason }, order.id, matchedRuleId);
+        return await this.reportBlock(
+          this.blockFromGate(gate.reason, connection.id, 'invoice'),
+          order.id,
+          matchedRuleId,
+        );
       }
 
       // F4: compose the deterministic key ONCE and thread it into BOTH the
@@ -1172,19 +1211,13 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       // (#3186) rides along here too, level-triggered exactly like the block
       // reason: it is what lets "Why this kind?" name the rule that decided
       // this order's document, once one issues.
-      return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
+      return withEnqueued(matchedRuleId, {
+        connectionId: connection.id,
+        documentKind: 'invoice',
+        idempotencyKey,
+      });
     } catch (error) {
       this.logIssuanceFailure(error, connection.id, order.id, sourceEventId);
-      if (error instanceof BatchedTriggerNotImplementedError) {
-        // The one error that IS an operator-visible block rather than a fault:
-        // OpenLinker cannot group this order into a batch yet, and no retry will
-        // change that until the feature ships or the operator picks another model.
-        return await this.reportBlock(
-          { reason: BLOCK_REASON_BY_TRIGGER_MODEL.batched },
-          order.id,
-          matchedRuleId,
-        );
-      }
       if (error instanceof InvalidInvoiceLineError) {
         // #3365 - the order's own lines do not sum to its own total, so no
         // document could state an amount without contradicting itself. This is
@@ -1233,13 +1266,18 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     taxRateEra?: string | null,
     matchedRuleId?: string,
     buyerTaxId?: string | null,
+    batchRun?: AutoIssueBatchRunScope,
   ): Promise<SalesDocumentBlockOutcome> {
     try {
-      // Reused verbatim from `config.invoicing.triggerModel` — see the
-      // file-level docstring point 4 for why this is deliberate, not an
-      // oversight.
-      const triggerModel = parseTriggerModel(connection.config.invoicing?.triggerModel);
-      this.warnOnceIfManualWinnerDisablesInstall(triggerModel, connection.id, eligibleCount);
+      // #3582: the receipt's own model, so a connection may batch invoices and
+      // still register receipts at once - see file-level docstring point 4.
+      const triggerModel = resolveTriggerModelForKind(connection.config, 'fiscal-receipt').model;
+      this.warnOnceIfManualWinnerDisablesInstall(
+        triggerModel,
+        connection.id,
+        eligibleCount,
+        'fiscal-receipt',
+      );
 
       // The same tax-rate gate `dispatchInvoice` runs, in the same position
       // (#2252). A receipt is not an invoice, but the reason an operator needs
@@ -1284,12 +1322,21 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         }
       }
 
-      const gate = this.evaluateGate(order, triggerModel, connection.id);
+      const gate = this.evaluateGate(
+        order,
+        triggerModel,
+        connection.id,
+        isInBatchRun(batchRun, connection.id, 'fiscal-receipt'),
+      );
       if (gate.kind === 'waiting') {
         return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
       }
       if (gate.kind === 'blocked') {
-        return await this.reportBlock({ reason: gate.reason }, order.id, matchedRuleId);
+        return await this.reportBlock(
+          this.blockFromGate(gate.reason, connection.id, 'fiscal-receipt'),
+          order.id,
+          matchedRuleId,
+        );
       }
 
       // ONE definition of the key, shared with every other caller that asks for
@@ -1318,16 +1365,13 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         runAfter: new Date(),
       });
       // Same level-triggered `matchedRuleId` (#3186) as `dispatchInvoice`.
-      return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
+      return withEnqueued(matchedRuleId, {
+        connectionId: connection.id,
+        documentKind: 'fiscal-receipt',
+        idempotencyKey,
+      });
     } catch (error) {
       this.logIssuanceFailure(error, connection.id, order.id, sourceEventId);
-      if (error instanceof BatchedTriggerNotImplementedError) {
-        return await this.reportBlock(
-          { reason: BLOCK_REASON_BY_TRIGGER_MODEL.batched },
-          order.id,
-          matchedRuleId,
-        );
-      }
       if (isFiscalLineError(error)) {
         // #3365 - the receipt half of the same fact. A fiscal registration may
         // not transmit lines that contradict their own total either, and the
@@ -1386,17 +1430,21 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     triggerModel: InvoiceTriggerModel,
     connectionId: string,
     eligibleCount: number,
+    documentKind: SalesDocumentKind,
   ): void {
     if (triggerModel !== 'manual' || eligibleCount < 2) {
       return;
     }
-    if (this.manualWinnerWarned.has(connectionId)) {
+    // Keyed per kind (#3582): a 'both' connection may be manual for one kind only.
+    const warnKey = `${connectionId}:${documentKind}`;
+    if (this.manualWinnerWarned.has(warnKey)) {
       return;
     }
-    this.manualWinnerWarned.add(connectionId);
+    this.manualWinnerWarned.add(warnKey);
     this.logger.warn(
-      `Winning sales-document connection ${connectionId} has triggerModel=manual, so NO ` +
-        `connection auto-issues on this install (${eligibleCount} candidates). Routing resolves ` +
+      `Winning sales-document connection ${connectionId} has triggerModel=manual for ` +
+        `'${documentKind}', so NO connection auto-issues that kind on this install ` +
+        `(${eligibleCount} candidates). Routing resolves ` +
         `the winner before the trigger model is read — a sibling candidate set to auto-on-paid is ` +
         `deliberately not consulted. Set the primary on the connection that should auto-issue, or ` +
         `leave this one the winner if manual issuing is intended.`,
@@ -1430,9 +1478,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    * Decide whether the trigger model qualifies for THIS transition
    * (level-evaluated, D3), separating "not yet" from "not without a human"
    * (#2100): `auto-on-paid` / `auto-on-shipped` `proceed` when their condition
-   * holds and `waiting` otherwise; `manual` is `blocked`; `batched` throws
-   * `BatchedTriggerNotImplementedError`, which the caller's PII-safe catch maps to
-   * a `trigger-model-batched` block. For `auto-on-shipped` on a non-shipped order
+   * holds and `waiting` otherwise; `manual` is `blocked`; `batched` (#3583)
+   * waits until paid, then is `blocked` as `trigger-model-batched` (the order is
+   * queued for its connection's next run) unless this call IS that run, where it
+   * proceeds. For `auto-on-shipped` on a non-shipped order
    * it emits the F7/D6 one-time viability warning (keyed by `connectionId`) so a
    * source that never surfaces `'shipped'` is operator-diagnosable. Reused
    * verbatim for BOTH document kinds (#2156) — the trigger-model vocabulary is
@@ -1442,6 +1491,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     order: Order,
     triggerModel: InvoiceTriggerModel,
     connectionId: string,
+    inBatchRun = false,
   ): TriggerGateOutcome {
     switch (triggerModel) {
       case 'auto-on-paid': {
@@ -1506,13 +1556,36 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         // "Issue invoice" affordance rather than in place of it).
         return { kind: 'blocked', reason: BLOCK_REASON_BY_TRIGGER_MODEL.manual };
       case 'batched':
-        // Deferred to a future issue — rejected cleanly, never silently ignored.
-        // Still thrown rather than returned so the existing PII-safe catch keeps
-        // logging it; the catch maps it to `trigger-model-batched`.
-        throw new BatchedTriggerNotImplementedError(
-          `Batched trigger model is not implemented (order ${order.id})`,
-        );
+        // #3583. Batching changes WHEN a document is issued, never whether the
+        // order qualifies: it qualifies when paid, exactly as `auto-on-paid`
+        // (M15 note 11), so an unpaid order is only `waiting` and is never queued.
+        if (order.paymentStatus !== PAYMENT_STATUS.Paid) {
+          return { kind: 'waiting' };
+        }
+        // Inside this connection's own run the order goes out through the SAME
+        // enqueue and the SAME idempotency key as an auto-issued one. Anywhere
+        // else it is queued: a `blocked` carrying the batched reason, which the
+        // attention count deliberately leaves out and which the caller persists
+        // with its target so the run can find it.
+        return inBatchRun
+          ? { kind: 'proceed' }
+          : { kind: 'blocked', reason: BLOCK_REASON_BY_TRIGGER_MODEL.batched };
     }
+  }
+
+  /**
+   * The block to report for a trigger-model gate outcome. A batched block names
+   * the connection and kind it is queued for (#3583); the other reasons stay as
+   * they were, so nothing new is persisted for them.
+   */
+  private blockFromGate(
+    reason: SalesDocumentGateBlockReason,
+    connectionId: string,
+    documentKind: SalesDocumentKind,
+  ): SalesDocumentBlock {
+    return reason === BLOCK_REASON_BY_TRIGGER_MODEL.batched
+      ? { reason, connectionId, documentKind }
+      : { reason };
   }
 
   /**

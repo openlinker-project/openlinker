@@ -322,8 +322,8 @@
     },
     "panel": {
       "fiscalReceipt": {
-        "blockBatchedBody": "OpenLinker cannot group this order into a batch, so it issued nothing. Register it by hand, or switch the connection to issue on payment.",
-        "blockBatchedTitle": "Not registered: batched fiscal registration is not available yet.",
+        "blockBatchedBody": "This connection issues in batches, so the next batch run will register this order. Register it now if it should not wait.",
+        "blockBatchedTitle": "Waiting for the next batch.",
         "blockCurrencyMismatchBody": "A matching rule compares this order's total against an amount defined in a different currency. OpenLinker never converts currencies for a fiscal decision, so nothing was registered automatically. Register this one by hand, or adjust the rule's threshold.",
         "blockCurrencyMismatchTitle": "Not registered: the order currency does not match the rule's threshold.",
         "blockManualBody": "Nothing is wrong - no receipt is issued automatically here. Register this one whenever you are ready.",
@@ -348,8 +348,8 @@
         "noPrimaryTitle": "Automatic fiscal registration is off for this order."
       },
       "invoice": {
-        "blockBatchedBody": "OpenLinker cannot group this order into a batch, so it issued nothing. Issue it by hand, or switch the connection to issue on payment.",
-        "blockBatchedTitle": "Not invoiced: batched invoicing is not available yet.",
+        "blockBatchedBody": "This connection issues in batches, so the next batch run will issue this invoice. Issue it now if it should not wait.",
+        "blockBatchedTitle": "Waiting for the next batch.",
         "blockCurrencyMismatchBody": "A matching rule compares this order's total against an amount defined in a different currency. OpenLinker never converts currencies for a fiscal decision, so nothing was invoiced automatically. Issue this one by hand, or adjust the rule's threshold.",
         "blockCurrencyMismatchTitle": "Not invoiced: the order currency does not match the rule's threshold.",
         "blockManualBody": "Nothing is wrong - no invoice is issued automatically here. Issue this one whenever you are ready.",
@@ -374,8 +374,8 @@
         "noPrimaryTitle": "Automatic invoicing is off for this order."
       },
       "mixed": {
-        "blockBatchedBody": "OpenLinker cannot group this order into a batch, so it issued nothing. Issue it by hand, or switch the connection to issue on payment.",
-        "blockBatchedTitle": "Not issued: batched sales-document issuance is not available yet.",
+        "blockBatchedBody": "This connection issues in batches, so the next batch run will issue this document. Issue it now if it should not wait.",
+        "blockBatchedTitle": "Waiting for the next batch.",
         "blockCurrencyMismatchBody": "A matching rule compares this order's total against an amount defined in a different currency. OpenLinker never converts currencies for a fiscal decision, so nothing was issued automatically. Issue this one by hand, or adjust the rule's threshold.",
         "blockCurrencyMismatchTitle": "Not issued: the order currency does not match the rule's threshold.",
         "blockManualBody": "Nothing is wrong - no document is issued automatically here. Issue this one whenever you are ready.",

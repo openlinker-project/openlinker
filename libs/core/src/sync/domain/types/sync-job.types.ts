@@ -253,6 +253,15 @@ export const JobTypeValues = [
   // Fiscalization (core-owned policy; executed by worker — #2156, ADR-041 decision 7)
   'fiscalization.register',
 
+  // Batch issuing (#3583). `tick` is the scheduler's 5-minute pass under the
+  // nil-UUID system connection: it reads every batched connection's schedule
+  // and enqueues one `run` per due slot, keyed by the slot so a slot runs once.
+  // `run` issues one connection's queue by enqueuing the ordinary
+  // `invoicing.issue` / `fiscalization.register` jobs; "Run now" enqueues the
+  // same job type. `connectionId` on a run is the batching connection.
+  'salesDocument.batch.tick',
+  'salesDocument.batch.run',
+
   // Tax-rate backfill sweep for pre-#2245 order_line_items rows (#2440).
   // Connection-scoped for the same reason `marketplace.order.fxStampSweep` is:
   // the fact is connection-agnostic, but `SyncJob.connectionId` is

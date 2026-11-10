@@ -157,6 +157,10 @@ export type { FulfillmentWorkDispatchPayloadV1 } from './domain/types/fulfillmen
 export type { FulfillmentWorkAutoDispatchPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkRoutePayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkTimeoutSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
+export type {
+  SalesDocumentBatchRunPayloadV1,
+  SalesDocumentBatchTickPayloadV1,
+} from './domain/types/sales-document-batch-job-payloads.types';
 export type { FulfillmentWorkRelaySweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkRerouteSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentRoutingReapSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';

@@ -196,6 +196,10 @@
         "onOfficeList": {
           "body": "It is in their list of orders that went out without a document - you do not need to write it down.",
           "title": "The office can see this one."
+        },
+        "waitingForBatch": {
+          "body": "This shop issues its documents in batches and this order is in the queue. Send the box; nobody needs to be told.",
+          "title": "The document comes with the next batch."
         }
       },
       "changeSizeAction": "Change size",

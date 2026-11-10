@@ -134,8 +134,9 @@ export const SALES_DOCUMENT_UNRESOLVED_REASON_COPY = {
  *   claims a hold.
  * - `trigger-model-manual` is neutral on purpose: manual is the default trigger
  *   model, so counting it would put a large red number on a healthy install.
- * - `trigger-model-batched`: batched issuing is not implemented, so the copy
- *   never promises a run and the manual action stays.
+ * - `trigger-model-batched` (#3583): the order waits in its connection's batch
+ *   queue for the next run. A configured workflow, not a fault, so neutral like
+ *   manual, and the manual action stays for an order that should not wait.
  */
 export const SALES_DOCUMENT_GATE_REASON_COPY = {
   'unresolved-routing': gateEntry('unresolved-routing', 'error', false),
@@ -144,7 +145,7 @@ export const SALES_DOCUMENT_GATE_REASON_COPY = {
   'missing-tax-rate': gateEntry('missing-tax-rate', 'warning', false),
   'tax-rate-conflict': gateEntry('tax-rate-conflict', 'warning', false),
   'trigger-model-manual': gateEntry('trigger-model-manual', 'neutral', true),
-  'trigger-model-batched': gateEntry('trigger-model-batched', 'warning', true),
+  'trigger-model-batched': gateEntry('trigger-model-batched', 'neutral', true),
 } satisfies Record<SalesDocumentGateBlockReasonValue, SalesDocumentGateReasonCopy>;
 
 /**

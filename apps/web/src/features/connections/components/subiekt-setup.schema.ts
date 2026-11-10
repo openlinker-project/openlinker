@@ -155,9 +155,9 @@ export function buildSubiektSetupSchema(identity: SubiektProductIdentity) {
         ])
         .optional(),
       bridgeToken: z.string().trim().optional(),
-      // Only the two usable values: `batched` throws
-      // `BatchedTriggerNotImplementedError`, and `auto-on-shipped` is
-      // meaningless for a connection that issues the document rather than
+      // Only the two values a first setup needs: `batched` (#3583) also needs a
+      // schedule, which is set on the batch issuing screen, and `auto-on-shipped`
+      // is meaningless for a connection that issues the document rather than
       // shipping the parcel.
       triggerModel: z.enum(['manual', 'auto-on-paid']),
     })
@@ -207,9 +207,10 @@ export function toCreateConnectionInput(
     // routing candidate at all, `chooseSalesDocumentDecision` answers null and
     // `AutoIssueTriggerService` returns `{kind:'none'}`. An order then carries
     // a ZK in Subiekt and no document, with no badge, no failed job and no log
-    // line an operator would read. `triggerModel` is the second gate:
-    // `parseTriggerModel` defaults to `manual`, so even a connection carrying
-    // the kind issues only by hand.
+    // line an operator would read. The trigger model is the second gate: it
+    // defaults to `manual`, so even a connection carrying the kind issues only
+    // by hand. It is written per kind (#3582,
+    // `salesDocument.triggerModels.invoice`), the key the gate reads first.
     //
     // No backend change is needed to write them - the Subiekt config-shape
     // validator runs `whitelist: false` and `CreateConnectionDto.config` is a
@@ -220,8 +221,7 @@ export function toCreateConnectionInput(
     // advertises `Fiscalization`, so `fiscal-receipt` (and `both`) would
     // resolve to `unsupported-document-kind-on-connection` - a picker offering
     // a value that cannot work.
-    salesDocument: { documentKind: 'invoice' },
-    invoicing: { triggerModel: values.triggerModel },
+    salesDocument: { documentKind: 'invoice', triggerModels: { invoice: values.triggerModel } },
   };
   if (typeof values.timeoutMs === 'number') {
     config.timeoutMs = values.timeoutMs;

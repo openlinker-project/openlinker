@@ -1,4 +1,294 @@
 {
+  "batch": {
+    "failureReason": {
+      "connectionNeedsReauth": "połączenie wymaga odnowienia",
+      "connectionNotActive": "połączenie nie jest aktywne",
+      "connectionNotFound": "połączenie już nie istnieje",
+      "queueReadFailed": "nie udało się odczytać kolejki"
+    },
+    "form": {
+      "every": "Co ile godzin",
+      "everyDescription": "Liczba godzin między uruchomieniami, licząc od 00:00.",
+      "frequencies": {
+        "daily": "Codziennie, o stałej godzinie",
+        "everyNHours": "Co N godzin",
+        "monthEnd": "Koniec miesiąca (tylko klienci firmowi)"
+      },
+      "frequency": "Częstotliwość",
+      "kinds": {
+        "fiscalReceipt": "Paragony fiskalne",
+        "invoice": "Faktury"
+      },
+      "monthEndDaily": "Zamówienia bez NIP w tym połączeniu są wystawiane codziennie o 23:00, więc żadne zamówienie nie zostaje bez dokumentu.",
+      "monthEndLastDay": "Uruchamia się w ostatnim dniu kalendarzowym miesiąca o 23:00 i wystawia dokumenty dla zamówień, w których kupujący podał NIP firmy.",
+      "monthEndTitle": "Klienci firmowi w ostatnim dniu miesiąca, pozostali codziennie",
+      "noScheduleWait": {
+        "fiscalReceipt": "Paragony fiskalne w kolejce czekają, aż zapiszesz harmonogram lub ręcznie uruchomisz partię.",
+        "invoice": "Faktury w kolejce czekają, aż zapiszesz harmonogram lub ręcznie uruchomisz partię."
+      },
+      "noScheduleYet": "Brak harmonogramu.",
+      "save": {
+        "fiscalReceipt": "Zapisz harmonogram paragonów fiskalnych",
+        "invoice": "Zapisz harmonogram faktur"
+      },
+      "saveFailed": "Nie udało się zapisać harmonogramu.",
+      "savedDescription": {
+        "fiscalReceipt": "Zaktualizowano harmonogram paragonów fiskalnych.",
+        "invoice": "Zaktualizowano harmonogram faktur."
+      },
+      "savedTitle": "Zapisano harmonogram",
+      "saving": "Zapisywanie…",
+      "time": "Godzina",
+      "timeZone": "Strefa czasowa",
+      "timeZoneDescription": "Powyższe godziny są liczone w tej strefie.",
+      "validation": {
+        "everyHours": "Wpisz liczbę całkowitą godzin od 1 do 24.",
+        "time": "Wpisz godzinę w formacie GG:MM, 24-godzinnym.",
+        "timeZone": "Wpisz strefę czasową, np. Europe/Warsaw."
+      }
+    },
+    "history": {
+      "caption": "Uruchomienia partii, od najnowszych",
+      "columns": {
+        "details": "Szczegóły",
+        "duration": "Czas trwania",
+        "orders": "Zamówienia",
+        "result": "Wynik",
+        "started": "Start",
+        "status": "Status"
+      },
+      "detailsButton": "Szczegóły",
+      "detailsLabel": "Szczegóły uruchomienia",
+      "detailsTitle": "{started}: szczegóły",
+      "didNotStart": "To uruchomienie nie wystartowało: {reason}.",
+      "emptyMessage": "Uruchomienia pojawią się tutaj, gdy wystartuje zaplanowane uruchomienie lub ktoś użyje „Uruchom teraz”.",
+      "emptyTitle": "Nie było jeszcze uruchomień",
+      "errorFallback": "Nie udało się odczytać uruchomienia.",
+      "errorTitle": "Nie udało się wczytać tego uruchomienia",
+      "itemsCaption": "Każde zamówienie w tym uruchomieniu i jego wynik",
+      "loadingDetail": "Odczytywanie wyniku każdego zamówienia.",
+      "metrics": {
+        "blocked": "Zablokowane",
+        "issued": "Wystawione",
+        "needsAttention": "Wymaga uwagi"
+      },
+      "nothingToIssue": "To uruchomienie nie miało nic do wystawienia.",
+      "nothingTouched": "Niczego w kolejce nie zmieniono.",
+      "orderCount": {
+        "few": "{n} zamówienia",
+        "many": "{n} zamówień",
+        "one": "{n} zamówienie",
+        "other": "{n} zamówienia"
+      },
+      "pending": {
+        "few": "{n} zamówienia czekają jeszcze na odpowiedź dostawcy {provider}.",
+        "many": "{n} zamówień czeka jeszcze na odpowiedź dostawcy {provider}.",
+        "one": "{n} zamówienie czeka jeszcze na odpowiedź dostawcy {provider}.",
+        "other": "{n} zamówienia czeka jeszcze na odpowiedź dostawcy {provider}."
+      }
+    },
+    "itemColumns": {
+      "buyer": "Kupujący",
+      "detail": "Szczegóły",
+      "order": "Zamówienie",
+      "outcome": "Wynik"
+    },
+    "itemDetail": {
+      "alreadyDocumented": "Ma już dokument w innym połączeniu.",
+      "blockedFallback": "Zablokowane przez reguły wystawiania.",
+      "failed": "{provider} odrzucił dokument.",
+      "inDoubt": "{provider} nie odpowiedział na czas, więc OpenLinker nie wie, czy dokument został utworzony.",
+      "inDoubtRetry": "Ponowienie nie utworzy duplikatu.",
+      "indeterminate": "Nie dało się go sprawdzić podczas uruchomienia.",
+      "indeterminateStays": "Zostaje w kolejce do następnego uruchomienia.",
+      "issued": "Wystawiono.",
+      "needsAttention": "Wysłano do wystawienia, ale nie zapisano żadnego dokumentu.",
+      "notRoutedHere": "Reguły nie kierują już tego zamówienia do tego połączenia, więc zostało pominięte.",
+      "openOrderCheck": "Otwórz zamówienie, aby to sprawdzić.",
+      "openOrderWhy": "Otwórz zamówienie, aby zobaczyć powód.",
+      "pending": "Wysłano do dostawcy, oczekiwanie na odpowiedź."
+    },
+    "itemOutcome": {
+      "blocked": "Zablokowane",
+      "failed": "Błąd",
+      "inDoubt": "Niepewne",
+      "issued": "Wystawiono",
+      "needsAttention": "Wymaga uwagi",
+      "pending": "Wystawianie",
+      "skipped": "Pominięte"
+    },
+    "page": {
+      "adminDescription": "Dostęp tylko dla administratora.",
+      "adminReason": "Wystawianie zbiorcze tworzy dokumenty fiskalne według harmonogramu.",
+      "adminRequirement": "Wymaga sesji administratora.",
+      "adminTitle": "Wymagana rola administratora",
+      "backLabel": "Kierowanie dokumentów sprzedaży",
+      "description": "Grupuje faktury i paragony tego połączenia w zaplanowane uruchomienia, zamiast wystawiać każdy dokument w chwili, gdy zamówienie spełni warunki.",
+      "eyebrow": "Ustawienia · Dokumenty sprzedaży",
+      "eyebrowShort": "Ustawienia",
+      "title": "Wystawianie zbiorcze",
+      "titleFor": "Wystawianie zbiorcze: {name}"
+    },
+    "queue": {
+      "blocked": "Zablokowane",
+      "blockedNote": "Takie zamówienia pojawiają się tutaj jako Zablokowane, zamiast po cichu znikać z kolejki.",
+      "caption": "Zamówienia w następnej partii",
+      "chip": "{label} · {count}",
+      "columns": {
+        "buyer": "Kupujący",
+        "order": "Zamówienie",
+        "placed": "Złożone",
+        "source": "Źródło",
+        "total": "Suma",
+        "willIssue": "Dokument"
+      },
+      "emptyMessage": "Zamówienia pojawiają się tutaj, gdy spełnią warunki (opłacone lub wysłane, zależnie od rynku), a to połączenie zostanie dla nich wybrane do wystawienia dokumentu sprzedaży.",
+      "emptyTitle": "Nic nie czeka na następną partię",
+      "filterLabel": "Filtruj następną partię",
+      "filters": {
+        "all": "Wszystkie",
+        "blocked": "Zablokowane",
+        "fiscalReceipt": "Paragon fiskalny",
+        "invoice": "Faktura"
+      },
+      "kinds": {
+        "fiscalReceipt": "Paragon fiskalny",
+        "invoice": "Faktura"
+      },
+      "noSecondDocument": "Partia nigdy nie tworzy drugiego dokumentu dla zamówienia, które już go ma.",
+      "nothingToRun": "Nie ma nic do uruchomienia",
+      "refusals": {
+        "connectionNeedsReauth": "Odnów to połączenie przed uruchomieniem partii.",
+        "connectionNotActive": "To połączenie nie jest aktywne, więc nie może wystawić partii.",
+        "connectionNotBatched": "To połączenie nie wystawia już żadnego dokumentu zbiorczo.",
+        "runInProgress": "Uruchomienie partii już trwa.",
+        "waitForIt": "Poczekaj, aż się zakończy."
+      },
+      "runFailed": "Nie udało się uruchomić partii.",
+      "runNow": "Uruchom teraz",
+      "runQueued": "Uruchomienie zostało dodane do kolejki i za chwilę się rozpocznie.",
+      "showingFirst": "Pokazano pierwsze {shown} z {total} zamówień w kolejce.",
+      "starting": "Uruchamianie…",
+      "untouched": {
+        "few": "{n} zamówienia w kolejce, bez zmian od ostatniego udanego uruchomienia.",
+        "many": "{n} zamówień w kolejce, bez zmian od ostatniego udanego uruchomienia.",
+        "one": "{n} zamówienie w kolejce, bez zmian od ostatniego udanego uruchomienia.",
+        "other": "{n} zamówienia w kolejce, bez zmian od ostatniego udanego uruchomienia."
+      }
+    },
+    "runResult": {
+      "blocked": {
+        "few": "{n} zablokowane",
+        "many": "{n} zablokowanych",
+        "one": "{n} zablokowane",
+        "other": "{n} zablokowanego"
+      },
+      "couldNotStart": "nie udało się uruchomić",
+      "inProgress": "w toku",
+      "interrupted": "zatrzymane przed zakończeniem",
+      "notIssued": {
+        "few": "{n} niewystawione",
+        "many": "{n} niewystawionych",
+        "one": "{n} niewystawione",
+        "other": "{n} niewystawionego"
+      },
+      "nothingEligible": "brak zamówień do wystawienia",
+      "sentToIssue": {
+        "few": "{n} wysłane do wystawienia",
+        "many": "{n} wysłanych do wystawienia",
+        "one": "{n} wysłane do wystawienia",
+        "other": "{n} wysłanego do wystawienia"
+      }
+    },
+    "runStatus": {
+      "completed": "Zakończone",
+      "completedWithIssues": "Zakończone z problemami",
+      "empty": "Nic do wystawienia",
+      "failedToStart": "Nie wystartowało",
+      "interrupted": "Przerwane",
+      "running": "W toku"
+    },
+    "running": {
+      "badge": "W toku",
+      "caption": "Zamówienia w trwającym uruchomieniu",
+      "elapsed": "trwa {elapsed}",
+      "inProgress": "Uruchomienie w toku…",
+      "lockNote": "Każde zamówienie jest wystawiane pod własną blokadą, więc dwa połączenia nigdy nie wystawią dokumentu dla tego samego zamówienia.",
+      "processed": {
+        "few": "Przetworzono {done} z {n} zamówień, po jednym naraz.",
+        "many": "Przetworzono {done} z {n} zamówień, po jednym naraz.",
+        "one": "Przetworzono {done} z {n} zamówienia, po jednym naraz.",
+        "other": "Przetworzono {done} z {n} zamówienia, po jednym naraz."
+      },
+      "progressLabel": "Postęp uruchomienia partii",
+      "queued": "W kolejce",
+      "runNowUnavailable": "„Uruchom teraz” będzie dostępne po zakończeniu tego uruchomienia.",
+      "startedAt": "Uruchomienie rozpoczęte o {time}"
+    },
+    "scheduleTab": {
+      "intro": "Każdy dokument wystawiany zbiorczo przez to połączenie ma własny harmonogram, więc paragony mogą wychodzić codziennie, a faktury czekać do końca miesiąca.",
+      "lastAndNext": "Ostatnie i następne uruchomienie",
+      "lastRun": "Ostatnie uruchomienie",
+      "nextRun": "Następne uruchomienie",
+      "nextRunValue": "{dateTime} ({until}) · {queued}",
+      "noSchedule": "Brak harmonogramu · {queued}",
+      "noneYet": "Jeszcze żadnego",
+      "offHowTo": "Aby użyć harmonogramu, ustaw „Kiedy wystawia” na Zbiorczo dla dokumentu w ustawieniach <link>Kierowanie dokumentów sprzedaży</link>.",
+      "offNone": "Żaden z jego dokumentów nie jest wystawiany zbiorczo.",
+      "offTitle": "Wystawianie zbiorcze jest wyłączone dla tego połączenia",
+      "onQueue": "Zamówienia czekają w kolejce i są wystawiane razem według poniższego harmonogramu.",
+      "onRouting": "OpenLinker nadal decyduje o fakturze lub paragonie fiskalnym dla każdego zamówienia na podstawie reguł: wystawianie zbiorcze zmienia tylko moment utworzenia dokumentu, nigdy jego rodzaj.",
+      "onTitle": "Wystawianie zbiorcze jest włączone",
+      "queued": {
+        "few": "{n} w kolejce",
+        "many": "{n} w kolejce",
+        "one": "{n} w kolejce",
+        "other": "{n} w kolejce"
+      },
+      "title": "Harmonogram"
+    },
+    "screen": {
+      "errorFallback": "Nie udało się odczytać połączenia.",
+      "errorTitle": "Nie udało się wczytać wystawiania zbiorczego",
+      "historyErrorTitle": "Nie udało się wczytać historii uruchomień",
+      "historyLoadingMessage": "Odczytywanie ostatnich uruchomień.",
+      "historyLoadingTitle": "Wczytywanie historii uruchomień",
+      "loadingMessage": "Odczytywanie harmonogramu i kolejki.",
+      "loadingTitle": "Wczytywanie wystawiania zbiorczego",
+      "queueErrorTitle": "Nie udało się wczytać kolejki",
+      "queueLoadingMessage": "Odczytywanie oczekujących zamówień.",
+      "queueLoadingTitle": "Wczytywanie kolejki",
+      "tabs": {
+        "history": "Historia uruchomień",
+        "nextBatch": "Następna partia",
+        "schedule": "Harmonogram"
+      },
+      "tabsLabel": "Wystawianie zbiorcze",
+      "unknownSource": "Nieznane źródło"
+    },
+    "timeUntil": {
+      "days": {
+        "few": "za {n} dni",
+        "many": "za {n} dni",
+        "one": "za {n} dzień",
+        "other": "za {n} dnia"
+      },
+      "dueNow": "teraz",
+      "hours": "za {hours} godz. {minutes} min",
+      "minutes": "za {minutes} min"
+    },
+    "unavailable": {
+      "authFailed": "Ostatnie żądanie nie przeszło uwierzytelnienia.",
+      "goToConnection": "Przejdź do połączenia",
+      "notActive": "Połączenie nie jest aktywne.",
+      "queueUnchanged": "Kolejka pozostaje bez zmian.",
+      "reconnectFirst": "Najpierw odnów połączenie.",
+      "runsFailUntilActive": "Zaplanowane uruchomienia nie wystartują, dopóki połączenie znów nie będzie aktywne.",
+      "runsFailUntilReconnected": "Zaplanowane uruchomienia nie wystartują, dopóki połączenie nie zostanie odnowione; błąd uwierzytelnienia nie jest ponawiany automatycznie.",
+      "titleNeedsReauth": "{name} wymaga odnowienia połączenia",
+      "titleNotActive": "{name} nie jest aktywne"
+    }
+  },
   "connectionRoleGap": "{name} nie ma jeszcze ustawionej roli w sekcji Podłączeni dostawcy. Ta reguła i tak będzie kierować samodzielnie, ale {name} będzie widoczne tutaj na liście ostrzeżeń kanałów docelowych, dopóki nie dostanie roli.",
   "countryReset": {
     "acknowledgment": "potwierdzenie braku dokumentu",
@@ -132,8 +422,8 @@
       "short": "Niezgodne stawki VAT"
     },
     "trigger-model-batched": {
-      "detail": "To połączenie ma ustawione wystawianie w partiach, a wystawianie w partiach nie jest jeszcze dostępne, więc nic nie zostało wystawione. Wystaw dokument ręcznie albo przełącz połączenie na wystawianie po opłaceniu.",
-      "short": "W partiach"
+      "detail": "To połączenie wystawia dokumenty zbiorczo. Zamówienie czeka w kolejce i wystawi je następne uruchomienie.",
+      "short": "Czeka na partię"
     },
     "trigger-model-manual": {
       "detail": "Ten dostawca wystawia dokumenty tylko na żądanie, więc nic nie zostało wystawione automatycznie.",
@@ -550,6 +840,8 @@
       "Fiscalization": "Fiskalizacja",
       "Invoicing": "Fakturowanie"
     },
+    "configureBatch": "Konfiguruj",
+    "configureBatchLabel": "Konfiguruj wystawianie zbiorcze dla {name}",
     "conflict": {
       "ambiguousNoPrimary": {
         "body": "Kilka połączeń wystawia dokument sprzedaży, ale żadne nie jest główne, więc OpenLinker nic nie wystawia dla nowych zamówień. Wybierz poniżej dokładnie jedno.",
@@ -595,7 +887,15 @@
       "trigger": "Wyzwalacz"
     },
     "title": "Podłączeni dostawcy",
-    "triggerHint": "Wyzwalacz jest wyszarzony w wierszu, który nie jest główny, bo wybór momentu nie ma znaczenia, dopóki połączenie faktycznie nie wystawia dokumentów.",
+    "triggerHint": "Wyzwalacz jest wyszarzony w wierszu, który nie jest główny, bo wybór momentu nie ma znaczenia, dopóki połączenie faktycznie nie wystawia dokumentów. Połączenie wystawiające oba rodzaje ma osobny wyzwalacz dla faktur i dla paragonów, więc faktury mogą czekać na partię, a paragony wychodzą od razu.",
+    "triggerKind": {
+      "fiscal-receipt": "Paragony",
+      "invoice": "Faktury"
+    },
+    "triggerKindLabel": {
+      "fiscal-receipt": "Kiedy {name} wystawia paragony",
+      "invoice": "Kiedy {name} wystawia faktury"
+    },
     "triggerLabel": "Kiedy wystawia {name}"
   },
   "salesDocumentsTile": {

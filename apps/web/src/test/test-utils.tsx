@@ -1149,6 +1149,20 @@ export function createMockApiClient(
       list: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
       ...overrides.salesDocumentList,
     } as ApiClient['salesDocumentList'],
+    // #3584 — batch issuing. Default: nothing scheduled, nothing queued, no runs.
+    salesDocumentBatch: {
+      getOverview: vi.fn().mockResolvedValue({
+        connectionId: '',
+        schedules: [],
+        queueCounts: {},
+        runningRun: null,
+      }),
+      getQueue: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+      listRuns: vi.fn().mockResolvedValue({ runs: [], total: 0 }),
+      getRun: vi.fn().mockResolvedValue(null),
+      startRun: vi.fn().mockResolvedValue({ jobId: 'job-1' }),
+      ...overrides.salesDocumentBatch,
+    } as ApiClient['salesDocumentBatch'],
     salesDocumentRules: {
       listRules: vi.fn().mockResolvedValue([]),
       createRule: vi.fn().mockResolvedValue(null),

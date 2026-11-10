@@ -167,8 +167,10 @@ export function resolveSalesDocumentBlockCopy(
   }
 
   if (reason === 'trigger-model-batched') {
+    // #3583: queued for the connection's next batch run - a workflow, not a
+    // fault, so quiet like manual.
     return {
-      tone: 'warning',
+      tone: 'info',
       title: c.blockBatchedTitle,
       body: c.blockBatchedBody,
       detail,

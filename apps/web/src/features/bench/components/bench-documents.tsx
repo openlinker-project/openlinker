@@ -102,6 +102,7 @@ function audienceCopy(
   > = {
     'on-office-list': copy.onOfficeList,
     'issued-on-request': copy.issuedOnRequest,
+    'waiting-for-batch': copy.waitingForBatch,
     'nobody-told': copy.nobodyTold,
   };
   return byAudience[audience];

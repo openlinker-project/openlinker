@@ -1206,6 +1206,51 @@ describe('ConnectionService', () => {
       });
     });
 
+    describe('config.salesDocument batch keys validation (#3582/#3583)', () => {
+      it('should accept a create with a kind-scoped trigger model and a valid schedule', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: {
+              ...payload.config,
+              salesDocument: {
+                triggerModels: { invoice: 'batched' },
+                batchSchedules: { invoice: { frequency: 'daily', time: '18:00' } },
+              },
+            },
+          })
+        ).resolves.toEqual(mockConnection);
+      });
+
+      it('should reject a create with an unrecognised kind-scoped trigger model', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, salesDocument: { triggerModels: { invoice: 'batch' } } },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject an update with a schedule the worker would silently read differently', async () => {
+        connectionPort.get.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.update('connection-123', {
+            config: {
+              baseUrl: 'https://shop.example.com',
+              salesDocument: {
+                batchSchedules: { invoice: { frequency: 'daily', time: '6pm' } },
+              },
+            },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+    });
+
     describe('fulfilment ownership flag validation (#2118)', () => {
       it('should accept a boolean flag and a cleared null on create', async () => {
         connectionPort.create.mockResolvedValue(mockConnection);

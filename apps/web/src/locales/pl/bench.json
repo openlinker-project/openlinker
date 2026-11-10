@@ -200,6 +200,10 @@
         "onOfficeList": {
           "body": "Jest na liście zamówień, które wyszły bez dokumentu - nie musisz tego zapisywać.",
           "title": "Biuro widzi to zamówienie."
+        },
+        "waitingForBatch": {
+          "body": "Ten sklep wystawia dokumenty zbiorczo, a to zamówienie jest w kolejce. Wyślij paczkę; nikogo nie trzeba powiadamiać.",
+          "title": "Dokument przyjdzie z następną partią."
         }
       },
       "changeSizeAction": "Zmień rozmiar",

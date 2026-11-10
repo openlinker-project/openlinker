@@ -3,19 +3,27 @@
  *
  * Per-connection trigger model that decides WHEN an order transition turns into
  * an issuance call (OL #1120). Country/regulatory-agnostic (ADR-026) — names a
- * lifecycle policy, not a tax concept. Persisted on `Connection.config` under
- * `config.invoicing.triggerModel` (no migration — `ConnectionConfig` is jsonb).
+ * lifecycle policy, not a tax concept, and despite the type's name it applies
+ * to every sales-document kind. Persisted on `Connection.config` (no migration
+ * — `ConnectionConfig` is jsonb), per document kind since #3582:
+ * `config.salesDocument.triggerModels[kind]`, falling back to the legacy
+ * kind-agnostic `config.invoicing.triggerModel`. `resolveTriggerModelForKind`
+ * is the only reader of that precedence.
  *
  * - `manual`         — never auto-issues; issuance is operator/API-driven.
  * - `auto-on-paid`   — enqueue issuance when the order is paid.
  * - `auto-on-shipped`— enqueue issuance when the order is shipped (honored only
  *   where the source adapter emits `'shipped'` inbound — see D6).
- * - `batched`        — DEFERRED to a future issue; rejected cleanly (never
- *   silently ignored) by the trigger service.
+ * - `batched`        — (#3583) qualifies when paid, like `auto-on-paid`, but
+ *   waits in its connection's batch queue and is issued by a scheduled or
+ *   operator-started batch run.
  *
  * @module libs/core/src/invoicing/domain/types
  */
-import type { SalesDocumentGateBlockReason } from '@openlinker/core/sales-documents';
+import type {
+  SalesDocumentGateBlockReason,
+  SalesDocumentKind,
+} from '@openlinker/core/sales-documents';
 
 export const InvoiceTriggerModelValues = [
   'manual',
@@ -37,6 +45,118 @@ export function parseTriggerModel(value: unknown): InvoiceTriggerModel {
   )
     ? (value as InvoiceTriggerModel)
     : 'manual';
+}
+
+/**
+ * The batch run a gate evaluation belongs to (#3583): the connection running
+ * and the kinds it issues. Only a `batched` order routed to THIS connection and
+ * one of THESE kinds proceeds; every other order is evaluated as usual.
+ */
+export interface AutoIssueBatchRunScope {
+  connectionId: string;
+  documentKinds: readonly SalesDocumentKind[];
+}
+
+export interface AutoIssueOptions {
+  batchRun?: AutoIssueBatchRunScope;
+}
+
+export function isInBatchRun(
+  batchRun: AutoIssueBatchRunScope | undefined,
+  connectionId: string,
+  documentKind: SalesDocumentKind,
+): boolean {
+  return (
+    batchRun !== undefined &&
+    batchRun.connectionId === connectionId &&
+    batchRun.documentKinds.includes(documentKind)
+  );
+}
+
+/** Which rung of the precedence produced a resolved trigger model (#3582). */
+export const TriggerModelSourceValues = ['kind', 'legacy', 'default'] as const;
+export type TriggerModelSource = (typeof TriggerModelSourceValues)[number];
+
+export interface ResolvedTriggerModel {
+  model: InvoiceTriggerModel;
+  source: TriggerModelSource;
+}
+
+function isInvoiceTriggerModel(value: unknown): value is InvoiceTriggerModel {
+  return (
+    typeof value === 'string' && (InvoiceTriggerModelValues as readonly string[]).includes(value)
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The trigger model that applies to ONE document kind on a connection (#3582).
+ *
+ * Precedence: `config.salesDocument.triggerModels[kind]` → the legacy
+ * kind-agnostic `config.invoicing.triggerModel` → `manual`. Each rung counts
+ * only when it holds a recognised model, so an unrecognised kind-scoped value
+ * falls through to the legacy one rather than straight to `manual`: a typo in
+ * the new key must not switch off issuing the legacy key still enables.
+ *
+ * The legacy rung is what keeps the split backward compatible: a connection
+ * that never set a kind-scoped value resolves the same model for every kind,
+ * exactly as before #3582. This is deliberately not `parseTriggerModel`, which
+ * collapses "unrecognised" into `manual` and would hide the fallback.
+ *
+ * The browser keeps a mirror of this rule
+ * (`apps/web/src/features/connections/lib/resolve-trigger-model-for-kind.ts`,
+ * the web bundle cannot import core, #591); both specs share one case table.
+ */
+export function resolveTriggerModelForKind(
+  config: unknown,
+  kind: SalesDocumentKind,
+): ResolvedTriggerModel {
+  const record = isRecord(config) ? config : {};
+  const salesDocument = isRecord(record.salesDocument) ? record.salesDocument : {};
+  const byKind = isRecord(salesDocument.triggerModels) ? salesDocument.triggerModels : {};
+
+  const scoped = byKind[kind];
+  if (isInvoiceTriggerModel(scoped)) {
+    return { model: scoped, source: 'kind' };
+  }
+
+  const invoicing = isRecord(record.invoicing) ? record.invoicing : {};
+  if (isInvoiceTriggerModel(invoicing.triggerModel)) {
+    return { model: invoicing.triggerModel, source: 'legacy' };
+  }
+
+  return { model: 'manual', source: 'default' };
+}
+
+/**
+ * Why `config.salesDocument.triggerModels` cannot be stored, or `null` when it
+ * can. The write-side twin of `resolveTriggerModelForKind`: the reader falls
+ * through an unrecognised value to the legacy key, so a typo would silently
+ * leave a kind on a model the operator did not choose. The connection form
+ * refuses it, but the raw config editor, curl and MCP do not go through the
+ * form (#2610), so the server refuses it too. An absent or `null` key is fine.
+ */
+export function describeInvalidTriggerModels(config: unknown): string | null {
+  const record = isRecord(config) ? config : {};
+  const salesDocument = record.salesDocument;
+  if (salesDocument === undefined || salesDocument === null) return null;
+  if (!isRecord(salesDocument)) return 'config.salesDocument must be an object';
+  const byKind = salesDocument.triggerModels;
+  if (byKind === undefined || byKind === null) return null;
+  if (!isRecord(byKind)) return 'config.salesDocument.triggerModels must be an object';
+  for (const [kind, value] of Object.entries(byKind)) {
+    if (value === null) continue;
+    if (!isInvoiceTriggerModel(value)) {
+      return (
+        `config.salesDocument.triggerModels.${kind} must be one of: ` +
+        InvoiceTriggerModelValues.join(', ')
+      );
+    }
+  }
+  return null;
 }
 
 /**

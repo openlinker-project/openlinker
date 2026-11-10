@@ -84,6 +84,12 @@ Add a row when a new domain term reaches the UI. Change a row only together with
 | Draft | Szkic | |
 | Publish | Opublikuj | |
 | Bulk | Zbiorczo | "Edycja zbiorcza", "Publikacja zbiorcza" |
+| Batch issuing | Wystawianie zbiorcze | sales documents issued together on a schedule |
+| Batch | Partia | one group of documents a run issues, as in "Następna partia" |
+| Run (of a batch) | Uruchomienie | "Uruchom teraz", "Historia uruchomień" |
+| Queue | Kolejka | orders waiting for the next batch |
+| Schedule | Harmonogram | |
+| Reconnect (a connection) | Odnów połączenie | the connection needs its credentials again |
 | Settings | Ustawienia | |
 | Sign in / sign out | Zaloguj się / Wyloguj się | |
 | Language | Język | |

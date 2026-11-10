@@ -5612,6 +5612,110 @@ a.delivery-rider-banner__button:focus-visible {
   gap: var(--space-5);
 }
 
+/* ── Per-kind trigger control (#3582) ── a connection issuing both kinds
+   stacks a labelled trigger select per kind in one table cell. */
+.sales-documents-panel__trigger {
+  display: grid;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
+/* ── Batch issuing screen (#3584, mockup M15) ── */
+.sales-documents-panel__configure {
+  display: inline-block;
+  font-size: 0.8125rem;
+}
+
+.batch-screen,
+.batch-schedule,
+.batch-queue,
+.batch-history {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.batch-screen > .tabs,
+.batch-screen [role='tabpanel'] {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.batch-schedule__forms {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.batch-schedule-form {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 34rem;
+}
+
+.batch-schedule-form__title {
+  margin: 0;
+}
+
+.batch-schedule-form__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.batch-queue__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.batch-queue__run {
+  margin-left: auto;
+}
+
+.batch-queue__reason {
+  display: block;
+  margin-top: 2px;
+}
+
+.batch-progress {
+  height: 8px;
+  margin: var(--space-2) 0;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+}
+
+.batch-progress__fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--status-info);
+  transition: width var(--duration-slow) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .batch-progress__fill {
+    transition: none;
+  }
+}
+
+.batch-history__row--current td {
+  background: var(--bg-surface-muted);
+}
+
+.batch-history__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-3) 0;
+}
+
+@media (max-width: 599.98px) {
+  .batch-history__metrics {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* #3657 — the archive confirmation stacks a consequence list, the typed-name
    field and an error alert; same grid+gap shape as the dialog bodies above. */
 .archive-connection-dialog__body {

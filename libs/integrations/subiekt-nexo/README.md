@@ -50,8 +50,9 @@ See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-cap
 ```json
 {
   "bridgeBaseUrl": "https://192.168.1.50:5005",
-  "invoicing": {
-    "triggerModel": "manual"
+  "salesDocument": {
+    "documentKind": "invoice",
+    "triggerModels": { "invoice": "manual" }
   }
 }
 ```
@@ -59,7 +60,7 @@ See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-cap
 | Field | Values | Notes |
 |---|---|---|
 | `bridgeBaseUrl` | HTTPS URL **without** `/api` | The adapter appends `/api/...` paths. If OpenLinker runs on a different host than the bridge, use the bridge machine's address, e.g. `https://192.168.1.50:5005` |
-| `invoicing.triggerModel` | `"manual"` \| `"auto-on-paid"` \| `"auto-on-shipped"` \| `"batched"` | `manual` = operator clicks Issue; others = worker-driven auto-issuance |
+| `salesDocument.triggerModels.invoice` (legacy fallback: `invoicing.triggerModel`) | `"manual"` \| `"auto-on-paid"` \| `"auto-on-shipped"` \| `"batched"` | `manual` = operator clicks Issue; others = worker-driven auto-issuance |
 
 ## Running the bridge
 

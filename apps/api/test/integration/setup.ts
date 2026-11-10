@@ -229,6 +229,10 @@ const harness = createIntegrationTestHarness({
     'order_tag_assignments',
     'order_tags',
     'order_exports',
+    // Batch issuing (#3583): the items' FK to the run exists in the migration
+    // only, so the synchronize-built schema has none; list both.
+    'sales_document_batch_run_items',
+    'sales_document_batch_runs',
     // automation_* (#2358) — the OMS automation v1 storage. NOTHING here
     // carries an FK: not runs/firings -> automation_rules (a deleted rule must
     // neither destroy its history nor be blocked by it), and not subjectId ->

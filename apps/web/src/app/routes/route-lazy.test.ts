@@ -140,8 +140,11 @@ const lazyRoutes = collectLazyRoutes([
  * #4029: `/register` joins `/login` under one eager layout route (so a tab
  * switch does not remount the card), which removes one lazy guest route, and
  * `/settings/login-page` adds one authenticated lazy route - net 0, still 78.
+ *
+ * #3584 adds the batch issuing screen (`settings/sales-documents/batches/:connectionId`), one
+ * lazy route, from 78 to 79.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 78;
+const EXPECTED_LAZY_ROUTE_COUNT = 79;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {
