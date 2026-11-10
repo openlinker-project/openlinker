@@ -35,6 +35,13 @@ interface OrderPricingPanelProps {
   documentConnectionId?: string | null;
 }
 
+/** The API reports the epoch when no operator edit stamped the overlay (a system-added gift only); that is "never edited", not 1 Jan 1970. */
+function hasEditInstant(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  const time = Date.parse(iso);
+  return Number.isFinite(time) && time > 0;
+}
+
 export function OrderPricingPanel({
   items,
   totals,
@@ -81,9 +88,12 @@ export function OrderPricingPanel({
 
       {edits && editedTotals ? (
         <p className="order-pricing__note" data-testid="order-edit-pricing-note">
-          {renderRich(copy.editedOn, {
-            time: () => <TimeDisplay iso={edits.editedAt} format="datetime" />,
-          })}{' '}
+          {hasEditInstant(edits.editedAt)
+            ? renderRich(copy.editedOn, {
+                time: () => <TimeDisplay iso={edits.editedAt} format="datetime" />,
+              })
+            : null}
+          {hasEditInstant(edits.editedAt) ? ' ' : null}
           {renderRich(
             channelName ? copy.buyerPaidOnChannel : copy.buyerPaidOnSalesChannel,
             { b: bold },
