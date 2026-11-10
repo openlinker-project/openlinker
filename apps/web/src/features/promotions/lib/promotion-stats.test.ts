@@ -20,6 +20,7 @@ const group = (over: Partial<GiftReportGroup>): GiftReportGroup => ({
   paidGross: 0,
   costNet: 40,
   unknownCostUnits: 0,
+  sourceConnectionIds: [],
   ...over,
 });
 

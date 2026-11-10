@@ -539,13 +539,18 @@ export type {
 export type { IGiftReportService } from './application/services/gift-report.service.interface';
 export {
   summarizeGiftReport,
+  bucketGiftCosts,
   GiftReportSourceFilterValues,
 } from './domain/types/gift-report.types';
 export type {
   BundleComponentDemandRow,
   BundleReport,
+  BundleReportComponent,
   BundleReportRow,
   GiftCostBasis,
+  GiftCostGranularity,
+  GiftCostPoint,
+  GiftCostSeries,
   GiftReportEntry,
   GiftReportFilters,
   GiftReportGroup,

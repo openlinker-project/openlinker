@@ -1,6 +1,7 @@
 {
   "cards": {
     "changeDefault": "Zmień domyślne",
+    "customPriceInvalid": "Wpisz cenę większą od 0, najwyżej z dwoma miejscami po przecinku.",
     "customPriceLabel": "Cena gratisu na dokumencie",
     "forms": {
       "custom-price": {
@@ -45,6 +46,38 @@
     "title": "Gratisy na dokumentach",
     "zeroNoProvider": "Niedostępne: żaden dostawca dokumentów tego kanału nie przyjmuje pozycji 0,00.",
     "zeroNotOffered": "Niedostępne: {provider} nie przyjmuje pozycji 0,00."
+  },
+  "connectionTab": {
+    "accepts": "Przyjmuje 0,00",
+    "asideAboveNone": "Żadna promocja nie ustawia własnej formy dla tego kanału.",
+    "asideAboveRule": "{promotion} ma własną formę: {form}.",
+    "asideAboveText": "Promocja albo miejsce w zestawie może ustawić własną formę i wtedy wygrywa z tym kanałem. Tu widać, kiedy do tego dochodzi.",
+    "asideAboveTitle": "Co jest wyżej",
+    "asideForGiftTitle": "Dla gratisu z tego kanału",
+    "asideForm": "Forma:",
+    "asideSourceDefault": "Domyślne w OpenLinker",
+    "asideSourceOwn": "Własna forma kanału",
+    "barMessage": "Masz niezapisane zmiany w tym kanale",
+    "fieldHelp": "Gratisy z tego kanału używają tej formy, chyba że sam gratis mówi inaczej. Przykład: zamówienie za 203,98 zł z kubkiem jako gratisem.",
+    "fieldLabel": "Forma gratisu",
+    "helpForm": "O: forma gratisu",
+    "invoices": "Faktury",
+    "noProviders": "Żaden dostawca dokumentów nie jest jeszcze podłączony.",
+    "providerAccepts": "Przyjmuje pozycję 0,00 i pokazuje ją tak, jak ją dostał.",
+    "providerRefuses": "Nie przyjmuje pozycji 0,00, więc „Pokazany jako 0,00” jest tu niedostępny.",
+    "providerUnknown": "Nie deklaruje, czy przyjmuje pozycję 0,00.",
+    "providersFooter": "Dostawców zmienisz w {link}.",
+    "providersFooterLink": "Dokumentach sprzedaży",
+    "receipts": "Paragony fiskalne",
+    "refuses": "Nie przyjmuje 0,00",
+    "savedLive": "Ustawienie kanału zapisane.",
+    "sectionOneTitle": "Gratis na dokumencie w tym kanale",
+    "sectionTwoTitle": "Kto wystawia dokumenty tego kanału",
+    "tagInherit": "jak w ustawieniach",
+    "tagOwn": "własna forma kanału",
+    "tagReadOnly": "tylko podgląd",
+    "taxNote": "Forma gratisu to decyzja podatkowa. Porozmawiaj z księgowym. Zmiana działa na dokumenty wystawiane od teraz.",
+    "unknown": "Brak deklaracji"
   },
   "default": {
     "bundleInfo": "Zestawy na dokumentach: jedna pozycja, gdy wszystkie elementy mają tę samą stawkę VAT, w przeciwnym razie każdy element w swojej stawce.",
@@ -117,6 +150,100 @@
     "receiptTitle": "Na paragonie",
     "title": "Podgląd dokumentu",
     "total": "Razem"
+  },
+  "settings": {
+    "acceptingMany": "{providers} pokażą pozycję 0,00 tak, jak ją dostały.",
+    "acceptingOne": "{provider} pokaże pozycję 0,00 tak, jak ją dostał.",
+    "barAria": "Niezapisane zmiany ustawień",
+    "barMessage": "Masz niezapisane zmiany",
+    "bundleText": "Zestaw trafia na dokument jako jedna pozycja, gdy wszystkie jego elementy mają tę samą stawkę VAT. W przeciwnym razie każdy element jest w swojej stawce. Gratis w zestawie bierze formę z tego ustawienia, chyba że jego miejsce w zestawie mówi inaczej.",
+    "bundleTitle": "Zestawy na dokumentach",
+    "documentsInvoices": "faktury",
+    "documentsMixed": "dokumenty",
+    "documentsReceipts": "paragony",
+    "fieldHelp": "Tak gratis wygląda na fakturze lub paragonie. Przykład: zamówienie za 203,98 zł z kubkiem jako gratisem.",
+    "fieldLabel": "Gratis na dokumencie",
+    "guide": {
+      "bundles": {
+        "item": "Zestaw na dokumencie",
+        "number": "04",
+        "summary": "jedna pozycja albo każdy element",
+        "text": "Jedna pozycja, gdy wszystkie elementy mają tę samą stawkę VAT. Gdy stawki się różnią, każdy element jest w swojej stawce.",
+        "title": "Zestawy"
+      },
+      "forms": {
+        "formText": "Wliczony proporcjonalnie: część płatności przechodzi na gratis. 0,01 zdjęte z najdroższej pozycji: suma się nie zmienia. Pokazany jako 0,00: tylko gdy dostawca przyjmuje pozycję zerową. Pominięty: gratisu nie ma na dokumencie, zapytaj księgowego. Własna cena: gratis z Twoją ceną, odjętą od najdroższej pozycji.",
+        "itemForm": "Forma gratisu",
+        "itemSum": "Suma bez zmian",
+        "number": "01",
+        "sumText": "Przy każdej formie suma dokumentu równa się temu, co zapłacił klient. Zmienia się tylko podział na pozycje.",
+        "summary": "wybierasz jedną",
+        "title": "Pięć form"
+      },
+      "precedence": {
+        "item": "Promocja, potem połączenie, potem domyślne",
+        "number": "02",
+        "summary": "od najbardziej szczegółowego",
+        "text": "Wygrywa pierwsze ustawienie, jakie znajdzie OpenLinker: forma przy samym gratisie, potem forma kanału, na końcu to ustawienie. Przy każdym gratisie zobaczysz, skąd pochodzi jego forma.",
+        "title": "Kolejność ustawień"
+      },
+      "providers": {
+        "item": "Pozycja 0,00",
+        "number": "03",
+        "summary": "co przyjmują",
+        "text": "Nie każdy dostawca przyjmuje pozycję zerową. Gdy wybrany dostawca jej nie przyjmuje, forma „Pokazany jako 0,00” jest dla niego niedostępna i widzisz dlaczego.",
+        "title": "Dostawcy dokumentów"
+      },
+      "since": {
+        "item": "Zmiana nie działa wstecz",
+        "number": "05",
+        "summary": "nie działa wstecz",
+        "text": "Nowa forma obowiązuje dokumenty wystawiane po zapisaniu. Wystawionych dokumentów OpenLinker nie zmienia.",
+        "title": "Od kiedy"
+      }
+    },
+    "guideButton": "Jak gratis trafia na dokument",
+    "guideLede": "Gratis zawsze trafia do zamówienia z ceną 0,00 zł. To, jak widać go na fakturze lub paragonie, wybierasz tutaj.",
+    "guideTitle": "Jak gratis trafia na dokument",
+    "helpForm": "O: gratis na dokumencie",
+    "helpPrecedence": "O: kolejność ustawień",
+    "nodeChannel": {
+      "key": "2 · Kanał",
+      "text": "Forma ustawiona na karcie „Gratisy na dokumentach” połączenia.",
+      "title": "Połączenie"
+    },
+    "nodeDefault": {
+      "key": "3 · Cały OpenLinker",
+      "text": "To ustawienie, które edytujesz tutaj.",
+      "title": "Domyślne"
+    },
+    "nodeRule": {
+      "key": "1 · Sam gratis",
+      "text": "Forma ustawiona w promocji, w miejscu na gratis w zestawie albo przy ręcznym dodaniu.",
+      "title": "Promocja"
+    },
+    "precedenceAria": "Kolejność ustawień",
+    "precedenceHelp": "Wygrywa ustawienie najbardziej szczegółowe. To domyślne działa tylko wtedy, gdy nic wyżej nie ustawiło formy.",
+    "precedenceTitle": "Skąd gratis bierze swoją formę",
+    "providerNoteLead": "Nie każdy dostawca przyjmie każdą formę.",
+    "refusingMany": "{providers} jej nie przyjmują, więc „Pokazany jako 0,00” będzie niedostępny w kanałach, które wystawiają {documents} przez nich.",
+    "refusingOne": "{provider} jej nie przyjmuje, więc „Pokazany jako 0,00” będzie niedostępny w kanałach, które wystawiają {documents} przez niego.",
+    "save": "Zapisz ustawienia",
+    "saved": "Zapisano",
+    "savedLive": "Ustawienia zapisane.",
+    "saving": "Zapisuję",
+    "saysChannel": "Wygrywa ustawienie kanału. Promocja nie ustawia formy, więc gratis bierze ją z karty połączenia.",
+    "saysDefault": "Wygrywa domyślne. Ani gratis, ani kanał nic nie ustawiają, więc forma jest taka, jaką wybrałeś powyżej.",
+    "saysRule": "Wygrywa promocja. Gratis z promocji, która ma własną formę, ignoruje ustawienia kanału i to domyślne.",
+    "scenarioAria": "Przykładowy gratis",
+    "scenarioChannel": "Tylko ustawienie kanału",
+    "scenarioDefault": "Nic nie ustawione",
+    "scenarioLabel": "Sprawdź",
+    "scenarioRule": "Promocja ustawia formę",
+    "sectionLead": "Domyślna forma dla całego OpenLinker.",
+    "sectionTitle": "Gratisy na dokumentach",
+    "taxNote": "Forma gratisu to decyzja podatkowa. Porozmawiaj z księgowym lub doradcą podatkowym. Zmiana działa na dokumenty wystawiane od teraz.",
+    "undo": "Cofnij"
   },
   "source": {
     "channel": "z ustawień {name}",

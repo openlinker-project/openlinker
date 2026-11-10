@@ -9,6 +9,8 @@ export type GiftDocumentFormSource = 'setting' | 'default';
 
 export interface GiftDocumentSettingsResponse {
   giftDocumentForm: GiftDocumentFormChoice;
+  /** The gross unit price a `custom-price` gift shows at; `null` for every other form. */
+  giftDocumentUnitPrice?: string | null;
   giftDocumentFormSource: GiftDocumentFormSource;
   updatedAt: string | null;
 }

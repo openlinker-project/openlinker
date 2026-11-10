@@ -26,6 +26,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { useMessages } from '../i18n/use-messages';
 
 export interface GuideItem {
   id: string;
@@ -66,6 +67,36 @@ const GuideContext = createContext<OpenGuide | null>(null);
 /** Opens the guide, optionally at an entry. `null` outside a `GuideProvider`. */
 export function useGuide(): OpenGuide | null {
   return useContext(GuideContext);
+}
+
+/** The page-header button that opens the guide; nothing outside a `GuideProvider`. */
+export function GuideButton({
+  label,
+  'data-testid': testId,
+}: {
+  label: string;
+  'data-testid'?: string;
+}): ReactElement | null {
+  const openGuide = useGuide();
+  if (openGuide === null) return null;
+  return (
+    <button
+      type="button"
+      className="button button--secondary button--sm pm-helpbtn"
+      data-testid={testId}
+      onClick={() => {
+        openGuide(null);
+      }}
+    >
+      <span className="pm-qmark" aria-hidden="true">
+        ?
+      </span>
+      {label}
+      <span className="button__shortcut" aria-hidden="true">
+        ?
+      </span>
+    </button>
+  );
 }
 
 function isTyping(target: EventTarget | null): boolean {
@@ -302,4 +333,52 @@ export function GuideProvider({ content, children }: GuideProviderProps): ReactE
       )}
     </GuideContext.Provider>
   );
+}
+
+export interface PageGuideProps {
+  title: string;
+  lede: string;
+  sections: readonly GuideSection[];
+  /** Sections open before an entry is asked for. */
+  defaultOpen?: readonly string[];
+  /** Extra footer content, e.g. a docs link. */
+  footerExtra?: ReactNode;
+  children: ReactNode;
+}
+
+/**
+ * A `GuideProvider` with the common chrome (eyebrow, close label, the "press ?"
+ * footer line) filled in from the shared copy, so a page hands it only its own
+ * title, lede and sections.
+ */
+export function PageGuide({
+  title,
+  lede,
+  sections,
+  defaultOpen,
+  footerExtra,
+  children,
+}: PageGuideProps): ReactElement {
+  const copy = useMessages('ui').guideDrawer;
+  const content = useMemo<GuideContent>(
+    () => ({
+      eyebrow: copy.eyebrow,
+      title,
+      lede,
+      closeLabel: copy.close,
+      footer: (
+        <>
+          <span>
+            {copy.footPress} <kbd className="pm-kbd">?</kbd> {copy.footOpen} <kbd className="pm-kbd">{copy.escKey}</kbd>{' '}
+            {copy.footClose}
+          </span>
+          {footerExtra}
+        </>
+      ),
+      sections,
+      ...(defaultOpen === undefined ? {} : { defaultOpen }),
+    }),
+    [copy, title, lede, sections, defaultOpen, footerExtra],
+  );
+  return <GuideProvider content={content}>{children}</GuideProvider>;
 }

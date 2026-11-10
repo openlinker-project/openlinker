@@ -1,48 +1,31 @@
 /**
  * SaveButton (#3935)
  *
- * A primary button with a save micro-state: the label slides out for a spinner
- * while the request runs, then for a check mark and "Saved" for a moment, then
- * back. The state follows the caller's mutation, so it is honest: the check
- * appears only after the server said yes, and an error sends the button straight
- * back to its label (the caller shows the error itself).
+ * A save action with its own three-state micro-animation: the label rolls up
+ * into a spinner while saving, then into a check mark that draws itself. The
+ * width is fixed so the button never jumps. The state is the caller's: pass it
+ * straight when it already has one, or derive it from a mutation with
+ * `useSaveButtonState`, which is honest (the check appears only after the server
+ * said yes, and an error sends the button straight back to its label).
  *
  * @module shared/ui
  */
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactElement } from 'react';
 
-export interface SaveButtonProps {
-  /** "Save changes". */
-  label: string;
-  /** "Saving". */
-  busyLabel: string;
-  /** "Saved". */
-  doneLabel: string;
-  /** The request is running. */
-  pending: boolean;
-  /** Increases by one each time a save succeeds; the check shows on every change. */
-  savedCount: number;
-  onClick: () => void;
-  disabled?: boolean;
-  type?: 'button' | 'submit';
-  className?: string;
-  'data-testid'?: string;
+export type SaveButtonState = 'idle' | 'saving' | 'saved';
+
+export interface SaveButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> {
+  state: SaveButtonState;
+  labels: { idle: string; saving: string; saved: string };
 }
 
 const SAVED_MS = 1800;
 
-export function SaveButton({
-  label,
-  busyLabel,
-  doneLabel,
-  pending,
-  savedCount,
-  onClick,
-  disabled = false,
-  type = 'button',
-  className,
-  'data-testid': testId,
-}: SaveButtonProps): ReactElement {
+/**
+ * The button state of a request: `saving` while it runs, `saved` for a moment
+ * each time `savedCount` goes up, `idle` otherwise.
+ */
+export function useSaveButtonState(pending: boolean, savedCount: number): SaveButtonState {
   const [saved, setSaved] = useState(false);
   const seen = useRef(savedCount);
 
@@ -58,29 +41,50 @@ export function SaveButton({
     };
   }, [savedCount]);
 
-  const state = pending ? 'is-saving' : saved ? 'is-saved' : '';
+  return pending ? 'saving' : saved ? 'saved' : 'idle';
+}
+
+export function SaveButton({
+  state,
+  labels,
+  className,
+  disabled,
+  type = 'button',
+  ...props
+}: SaveButtonProps): ReactElement {
+  const classes = [
+    'button',
+    'button--primary',
+    'button--sm',
+    'pm-save',
+    state === 'saving' ? 'is-saving' : '',
+    state === 'saved' ? 'is-saved' : '',
+    className,
+  ]
+    .filter(Boolean)
+    .join(' ');
   return (
     <button
       type={type}
-      className={['button', 'button--sm', 'pm-save', state, className].filter(Boolean).join(' ')}
-      aria-label={label}
-      disabled={disabled || pending}
-      data-testid={testId}
-      onClick={onClick}
+      className={classes}
+      aria-label={labels.idle}
+      disabled={disabled || state === 'saving'}
+      aria-busy={state === 'saving' || undefined}
+      {...props}
     >
-      <span className="pm-save__a">{label}</span>
+      <span className="pm-save__a">{labels.idle}</span>
       <span className="pm-save__b" aria-hidden="true">
         <i className="pm-save__spin" />
-        {busyLabel}
+        {labels.saving}
       </span>
       <span className="pm-save__c" aria-hidden="true">
         <svg viewBox="0 0 16 16">
           <path d="M3 8.5l3.2 3.2L13 4.8" />
         </svg>
-        {doneLabel}
+        {labels.saved}
       </span>
       <span className="sr-only" role="status">
-        {pending ? busyLabel : saved ? doneLabel : ''}
+        {state === 'saving' ? labels.saving : state === 'saved' ? labels.saved : ''}
       </span>
     </button>
   );

@@ -206,6 +206,15 @@
   "formErrorSummary": {
     "title": "Popraw zaznaczone pola."
   },
+  "guideDrawer": {
+    "close": "Zamknij",
+    "closeLabel": "Zamknij przewodnik",
+    "escKey": "Esc",
+    "eyebrow": "Przewodnik",
+    "footClose": "zamyka.",
+    "footOpen": "na tej stronie, aby otworzyć przewodnik,",
+    "footPress": "Naciśnij"
+  },
   "inlineDisclosure": {
     "change": "Zmień"
   },

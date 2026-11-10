@@ -13,6 +13,7 @@ import {
 import { INVENTORY_QUERY_SERVICE_TOKEN, type IInventoryQueryService } from '@openlinker/core/inventory';
 import {
   GIFT_REPORT_SERVICE_TOKEN,
+  bucketGiftCosts,
   summarizeGiftReport,
   type GiftReportEntry,
   type GiftReportFilters,
@@ -57,8 +58,10 @@ export class GiftReportApiService implements IGiftReportApiService {
         paidGross: group.paidGross,
         costNet: group.costNet,
         unknownCostUnits: group.unknownCostUnits,
+        sourceConnectionIds: group.sourceConnectionIds,
       })),
       totals: summary.totals,
+      series: bucketGiftCosts(entries, filters.from, filters.to),
     };
   }
 

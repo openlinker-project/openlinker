@@ -52,6 +52,7 @@ export {
   expandBundleLines,
   readLineExpansion,
   BundleGiftDocumentFormValues,
+  BundleGiftSlotFormValues,
   isBundleGiftDocumentForm,
 } from './domain/types/bundle.types';
 export type { BundleDefinitionRepositoryPort } from './domain/ports/bundle-definition-repository.port';

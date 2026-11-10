@@ -1,6 +1,7 @@
 {
   "cards": {
     "changeDefault": "Change the default",
+    "customPriceInvalid": "Enter a price above 0 with at most two decimals.",
     "customPriceLabel": "Gift price on the document",
     "forms": {
       "custom-price": {
@@ -45,6 +46,38 @@
     "title": "Gifts on documents",
     "zeroNoProvider": "Not offered: no document provider of this channel is known to accept a 0.00 line.",
     "zeroNotOffered": "Not offered: {provider} does not accept a 0.00 line."
+  },
+  "connectionTab": {
+    "accepts": "Accepts 0.00",
+    "asideAboveNone": "No promotion sets its own form for this channel.",
+    "asideAboveRule": "{promotion} has its own form: {form}.",
+    "asideAboveText": "A promotion or a place in a bundle can set its own form, and then it wins over this channel. Here you see when that happens.",
+    "asideAboveTitle": "What is above it",
+    "asideForGiftTitle": "For a gift from this channel",
+    "asideForm": "Form:",
+    "asideSourceDefault": "OpenLinker default",
+    "asideSourceOwn": "The channel's own form",
+    "barMessage": "You have unsaved changes in this channel",
+    "fieldHelp": "Gifts from this channel use this form unless the gift itself says otherwise. Example: an order for 203.98 PLN with a mug as the gift.",
+    "fieldLabel": "Gift form",
+    "helpForm": "About: gift form",
+    "invoices": "Invoices",
+    "noProviders": "No document provider is connected yet.",
+    "providerAccepts": "Accepts a 0.00 line and shows it as it received it.",
+    "providerRefuses": "Does not accept a 0.00 line, so \"Shown at 0.00\" is unavailable here.",
+    "providerUnknown": "Does not declare whether it accepts a 0.00 line.",
+    "providersFooter": "Change providers in {link}.",
+    "providersFooterLink": "Sales documents",
+    "receipts": "Fiscal receipts",
+    "refuses": "Does not accept 0.00",
+    "savedLive": "Channel setting saved.",
+    "sectionOneTitle": "Gift on the document in this channel",
+    "sectionTwoTitle": "Who issues this channel's documents",
+    "tagInherit": "as in settings",
+    "tagOwn": "channel's own form",
+    "tagReadOnly": "view only",
+    "taxNote": "The form of a gift is a tax decision. Talk to your accountant. A change applies to documents issued from now on.",
+    "unknown": "No declaration"
   },
   "default": {
     "bundleInfo": "Bundles on documents: one line when all items share a VAT rate, otherwise each item at its own rate.",
@@ -117,6 +150,100 @@
     "receiptTitle": "On a receipt",
     "title": "Document preview",
     "total": "Total"
+  },
+  "settings": {
+    "acceptingMany": "{providers} show a 0.00 line as they received it.",
+    "acceptingOne": "{provider} shows a 0.00 line as it received it.",
+    "barAria": "Unsaved changes to the settings",
+    "barMessage": "You have unsaved changes",
+    "bundleText": "A bundle goes on the document as one line when all its components have the same VAT rate. Otherwise each component is in its own rate. A gift in a bundle takes its form from this setting, unless its place in the bundle says otherwise.",
+    "bundleTitle": "Bundles on documents",
+    "documentsInvoices": "invoices",
+    "documentsMixed": "documents",
+    "documentsReceipts": "receipts",
+    "fieldHelp": "How a gift looks on an invoice or receipt. Example: an order for 203.98 PLN with a mug as the gift.",
+    "fieldLabel": "Gift on the document",
+    "guide": {
+      "bundles": {
+        "item": "A bundle on the document",
+        "number": "04",
+        "summary": "one line or each component",
+        "text": "One line when all components share a VAT rate. When the rates differ, each component is in its own rate.",
+        "title": "Bundles"
+      },
+      "forms": {
+        "formText": "Priced in proportionally: part of the payment goes to the gift. 0.01 from the most expensive line: the sum does not change. Shown at 0.00: only when the provider accepts a zero line. Left off: the gift is not on the document, ask your accountant. Own price: the gift at your price, taken from the most expensive line.",
+        "itemForm": "Form of the gift",
+        "itemSum": "Sum unchanged",
+        "number": "01",
+        "sumText": "With every form the document total equals what the customer paid. Only the split between lines changes.",
+        "summary": "you pick one",
+        "title": "Five forms"
+      },
+      "precedence": {
+        "item": "Promotion, then connection, then default",
+        "number": "02",
+        "summary": "most specific first",
+        "text": "The first setting OpenLinker finds wins: the form on the gift itself, then the channel's form, then this setting. For each gift you see where its form came from.",
+        "title": "Order of settings"
+      },
+      "providers": {
+        "item": "The 0.00 line",
+        "number": "03",
+        "summary": "what they accept",
+        "text": "Not every provider accepts a zero line. When the chosen provider does not, \"Shown at 0.00\" is unavailable for it and you see why.",
+        "title": "Document providers"
+      },
+      "since": {
+        "item": "A change is not retroactive",
+        "number": "05",
+        "summary": "not retroactive",
+        "text": "The new form applies to documents issued after you save. OpenLinker never changes an issued document.",
+        "title": "Since when"
+      }
+    },
+    "guideButton": "How a gift gets on the document",
+    "guideLede": "A gift always reaches the order at 0.00. How it shows on the invoice or receipt is what you choose here.",
+    "guideTitle": "How a gift gets on the document",
+    "helpForm": "About: gift on the document",
+    "helpPrecedence": "About: order of settings",
+    "nodeChannel": {
+      "key": "2 · Channel",
+      "text": "The form set on the connection's \"Gifts on documents\" tab.",
+      "title": "Connection"
+    },
+    "nodeDefault": {
+      "key": "3 · All of OpenLinker",
+      "text": "The setting you edit here.",
+      "title": "Default"
+    },
+    "nodeRule": {
+      "key": "1 · The gift itself",
+      "text": "The form set in the promotion, in the gift slot of a bundle, or when added by hand.",
+      "title": "Promotion"
+    },
+    "precedenceAria": "Order of settings",
+    "precedenceHelp": "The most specific setting wins. This default applies only when nothing above it set a form.",
+    "precedenceTitle": "Where a gift gets its form",
+    "providerNoteLead": "Not every provider accepts every form.",
+    "refusingMany": "{providers} do not accept it, so \"Shown at 0.00\" is unavailable in channels that issue {documents} through them.",
+    "refusingOne": "{provider} does not accept it, so \"Shown at 0.00\" is unavailable in channels that issue {documents} through it.",
+    "save": "Save settings",
+    "saved": "Saved",
+    "savedLive": "Settings saved.",
+    "saving": "Saving",
+    "saysChannel": "The channel setting wins. The promotion sets no form, so the gift takes it from the connection's tab.",
+    "saysDefault": "The default wins. Neither the gift nor the channel sets anything, so the form is the one you chose above.",
+    "saysRule": "The promotion wins. A gift from a promotion that has its own form ignores the channel setting and this default.",
+    "scenarioAria": "Example gift",
+    "scenarioChannel": "Only the channel setting",
+    "scenarioDefault": "Nothing set",
+    "scenarioLabel": "Try",
+    "scenarioRule": "A promotion sets the form",
+    "sectionLead": "The default form for all of OpenLinker.",
+    "sectionTitle": "Gifts on documents",
+    "taxNote": "The form of a gift is a tax decision. Talk to your accountant or tax adviser. A change applies to documents issued from now on.",
+    "undo": "Undo"
   },
   "source": {
     "channel": "from {name} settings",

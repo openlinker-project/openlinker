@@ -2,8 +2,8 @@
  * GuideDrawer tests (#3935)
  */
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
-import { GuideProvider, type GuideContent } from './guide-drawer';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { GuideButton, GuideProvider, type GuideContent } from './guide-drawer';
 import { HelpHint } from './help-hint';
 
 const content: GuideContent = {
@@ -22,6 +22,7 @@ function mount(): void {
   render(
     <div id="root">
       <GuideProvider content={content}>
+        <GuideButton label="Open guide" />
         <HelpHint guide="g-b" label="About B" />
         <input aria-label="field" />
       </GuideProvider>
@@ -75,7 +76,31 @@ describe('GuideDrawer', () => {
   });
 });
 
+describe('GuideButton', () => {
+  it('should open the guide from the page header', () => {
+    mount();
+
+    fireEvent.click(screen.getByRole('button', { name: /Open guide/ }));
+
+    expect(drawer()).toHaveAttribute('data-open', 'true');
+  });
+
+  it('should render nothing outside a guide provider', () => {
+    render(<GuideButton label="Open guide" />);
+    expect(screen.queryByRole('button', { name: /Open guide/ })).not.toBeInTheDocument();
+  });
+});
+
 describe('HelpHint', () => {
+  it('should call its own handler when given one, with or without a provider', () => {
+    const onClick = vi.fn();
+    render(<HelpHint label="About: B" onClick={onClick} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'About: B' }));
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
   it('should render nothing outside a guide provider', () => {
     render(<HelpHint guide="g-a" label="About A" />);
     expect(screen.queryByLabelText('About A')).not.toBeInTheDocument();

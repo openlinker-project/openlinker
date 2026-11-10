@@ -30,6 +30,21 @@ describe('RadioCardGroup', () => {
     expect(screen.getByText('beta-panel').closest('.pm-doccard__amt')).toHaveClass('is-open');
   });
 
+  it('should disable every card when the group is read-only', () => {
+    render(<RadioCardGroup name="g" aria-label="Choice" value="a" onChange={vi.fn()} options={options} disabled />);
+
+    expect(screen.getByRole('radio', { name: /Alpha/ })).toBeDisabled();
+  });
+
+  it('should not report a disabled card as chosen', () => {
+    const onChange = vi.fn();
+    render(<RadioCardGroup name="g" aria-label="Choice" value="a" onChange={onChange} options={options} />);
+
+    fireEvent.click(screen.getByText('Gamma'));
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('should say why a card is disabled instead of hiding it', () => {
     render(<RadioCardGroup name="g" aria-label="Choice" value="a" onChange={vi.fn()} options={options} />);
 

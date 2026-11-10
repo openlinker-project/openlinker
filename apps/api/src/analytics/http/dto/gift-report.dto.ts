@@ -60,20 +60,56 @@ export class GiftReportGroupDto {
   costNet!: number;
   @ApiProperty({ description: 'Units with no cost on file; they are NOT in costNet.' })
   unknownCostUnits!: number;
+  @ApiProperty({
+    type: [String],
+    description: 'The channels (source connection ids) that sent the orders carrying this gift.',
+  })
+  sourceConnectionIds!: string[];
 }
 
 export class GiftReportTotalsDto {
   @ApiProperty({ nullable: true }) currency!: string | null;
+  @ApiProperty({ description: 'Distinct orders carrying at least one gift.' }) orders!: number;
   @ApiProperty() units!: number;
   @ApiProperty() paidGross!: number;
   @ApiProperty() costNet!: number;
   @ApiProperty() unknownCostUnits!: number;
 }
 
+export class GiftCostPointDto {
+  @ApiProperty({ description: 'Start of the bucket, ISO 8601.' }) start!: string;
+  @ApiProperty({ description: 'Net purchase cost of the units whose cost is known.' }) costNet!: number;
+  @ApiProperty() units!: number;
+  @ApiProperty() unknownCostUnits!: number;
+  @ApiProperty({ description: 'The bucket runs past the end of the range.' }) partial!: boolean;
+}
+
+export class GiftCostSeriesDto {
+  @ApiProperty({ nullable: true }) currency!: string | null;
+  @ApiProperty({ enum: ['day', 'week'] }) granularity!: string;
+  @ApiProperty({ type: [GiftCostPointDto] }) points!: GiftCostPointDto[];
+}
+
 export class GiftReportResponseDto {
   @ApiProperty({ type: [GiftReportGroupDto] }) groups!: GiftReportGroupDto[];
   @ApiProperty({ type: [GiftReportTotalsDto], description: 'One per currency; never added across currencies.' })
   totals!: GiftReportTotalsDto[];
+  @ApiProperty({
+    type: [GiftCostSeriesDto],
+    description: 'Cost over time, one series per currency; weekly for ranges over eight days.',
+  })
+  series!: GiftCostSeriesDto[];
+}
+
+export class BundleReportComponentDto {
+  @ApiProperty() variantId!: string;
+  @ApiProperty() productId!: string;
+  @ApiProperty({ nullable: true }) sku!: string | null;
+  @ApiProperty({ nullable: true }) name!: string | null;
+  @ApiProperty() units!: number;
+  @ApiProperty({ nullable: true }) unitCostNet!: number | null;
+  @ApiProperty({ nullable: true }) costNet!: number | null;
+  @ApiProperty() giftSlot!: boolean;
 }
 
 export class BundleReportRowDto {
@@ -87,6 +123,9 @@ export class BundleReportRowDto {
   @ApiProperty() componentCostMissing!: boolean;
   @ApiProperty() hasGiftSlot!: boolean;
   @ApiProperty({ nullable: true }) marginNet!: number | null;
+  @ApiProperty({ description: 'Purchase cost of the components given free; known costs only.' })
+  giftCostNet!: number;
+  @ApiProperty({ type: [BundleReportComponentDto] }) components!: BundleReportComponentDto[];
 }
 
 export class BundleDemandRowDto {

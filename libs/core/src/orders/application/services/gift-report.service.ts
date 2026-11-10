@@ -29,6 +29,7 @@ import {
   matchesGiftSourceFilter,
   type BundleComponentDemandRow,
   type BundleReport,
+  type BundleReportComponent,
   type BundleReportRow,
   type GiftCostBasis,
   type GiftReportEntry,
@@ -88,7 +89,10 @@ export class GiftReportService implements IGiftReportService {
   }
 
   async getBundleReport(filters: Omit<GiftReportFilters, 'giftSource'>): Promise<BundleReport> {
-    const rows = new Map<string, BundleReportRow & { revenueKnown: boolean }>();
+    const rows = new Map<
+      string,
+      BundleReportRow & { revenueKnown: boolean; componentRows: Map<string, BundleReportComponent> }
+    >();
     const inBundles = new Map<string, number>();
     for await (const page of this.pages({ ...filters, scope: 'bundles' })) {
       const facts = await this.loadVariantFacts(page);
@@ -110,7 +114,10 @@ export class GiftReportService implements IGiftReportService {
               componentCostMissing: false,
               hasGiftSlot: false,
               marginNet: null,
+              giftCostNet: 0,
+              components: [],
               revenueKnown: true,
+              componentRows: new Map(),
             };
             rows.set(key, row);
           }
@@ -130,17 +137,37 @@ export class GiftReportService implements IGiftReportService {
               row.componentCostMissing = true;
             } else {
               row.costNet = (row.costNet ?? 0) + unit * component.quantity;
+              if (component.giftSlot === true) row.giftCostNet += unit * component.quantity;
             }
+            const componentKey = component.variantId;
+            const shown = row.componentRows.get(componentKey) ?? {
+              variantId: component.variantId,
+              productId: component.productId,
+              sku: fact?.sku ?? null,
+              name: fact?.name ?? null,
+              units: 0,
+              unitCostNet: unit,
+              costNet: unit === null ? null : 0,
+              giftSlot: component.giftSlot === true,
+            };
+            shown.units += component.quantity;
+            if (unit !== null) shown.costNet = (shown.costNet ?? 0) + unit * component.quantity;
+            row.componentRows.set(componentKey, shown);
           }
         }
       }
     }
 
-    const bundles: BundleReportRow[] = [...rows.values()].map(({ revenueKnown, ...row }) => {
+    const bundles: BundleReportRow[] = [...rows.values()].map(({ revenueKnown, componentRows, ...row }) => {
       const revenueNet = revenueKnown ? round2(row.revenueNet ?? 0) : null;
       const costNet = row.componentCostMissing ? null : round2(row.costNet ?? 0);
       return {
         ...row,
+        giftCostNet: round2(row.giftCostNet),
+        components: [...componentRows.values()].map((component) => ({
+          ...component,
+          costNet: component.costNet === null ? null : round2(component.costNet),
+        })),
         revenueNet,
         costNet,
         marginNet: revenueNet !== null && costNet !== null ? round2(revenueNet - costNet) : null,

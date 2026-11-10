@@ -13,7 +13,7 @@ import type { ReactElement } from 'react';
 import { formatAmount } from '../../shared/format/format-amount';
 import { useMessages } from '../../shared/i18n';
 import {
-  isGiftUnitPriceAmount,
+  parseGiftUnitPrice,
   presentGiftLines,
   type GiftDocumentFormChoice,
   type GiftPresentationLine,
@@ -30,7 +30,7 @@ interface SampleLine extends GiftPresentationLine {
 
 export interface GiftDocumentPreviewProps {
   form: GiftDocumentFormChoice;
-  /** Gross unit price for `custom-price`; ignored for the other forms. */
+  /** Gross unit price for `custom-price`, as typed ("2.50" or "2,50"); ignored for the other forms. */
   customPrice?: string;
   /** Whether the document provider accepts a 0.00 line; `show-zero` falls back to 0.01 without it. */
   acceptsZeroValueLine?: boolean;
@@ -55,8 +55,8 @@ export function previewLines(
       taxRate: '23',
       isGift: true,
       referenceUnitPriceGross: GIFT_REFERENCE,
-      ...(form === 'custom-price' && isGiftUnitPriceAmount(customPrice)
-        ? { giftUnitPriceGross: Number(customPrice) }
+      ...(form === 'custom-price' && customPrice !== undefined && parseGiftUnitPrice(customPrice) !== null
+        ? { giftUnitPriceGross: parseGiftUnitPrice(customPrice) as number }
         : {}),
     },
   ];
@@ -79,6 +79,9 @@ export function GiftDocumentPreview({
   const copy = useMessages('gift-documents').miniDoc;
   const lines = previewLines(form, customPrice, acceptsZeroValueLine, currency);
   const total = lines.reduce((sum, line) => sum + line.price, 0);
+  // Said only when it is true: a form can move the sum (a custom price, a cent
+  // where zero is refused), and claiming otherwise would misstate the document.
+  const unchanged = Math.round(total * 100) === Math.round((COFFEE + TEA) * 100);
   return (
     <>
       <span className={['pm-doc', className].filter(Boolean).join(' ')} role="img" aria-label={copy.ariaLabel}>
@@ -98,12 +101,14 @@ export function GiftDocumentPreview({
           <b className="mono tabular">{formatAmount(total, currency)}</b>
         </span>
       </span>
-      <span className="pm-doc__ok">
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M3 8.5l3.2 3.2L13 4.8" />
-        </svg>
-        {copy.unchanged}
-      </span>
+      {unchanged ? (
+        <span className="pm-doc__ok">
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M3 8.5l3.2 3.2L13 4.8" />
+          </svg>
+          {copy.unchanged}
+        </span>
+      ) : null}
     </>
   );
 }

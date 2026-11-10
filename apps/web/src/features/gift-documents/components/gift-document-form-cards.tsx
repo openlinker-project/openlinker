@@ -40,6 +40,8 @@ export interface GiftDocumentFormCardsProps {
   onCustomPriceChange: (value: string) => void;
   /** Offers the "As in settings" card, naming the form it resolves to. */
   inheritedForm?: GiftDocumentFormChoice | null;
+  /** The `custom-price` amount the "As in settings" card resolves to, when it does. */
+  inheritedCustomPrice?: string | null;
   withInherit?: boolean;
   /** Where "Change the default" goes; omit to hide the link. */
   settingsHref?: string;
@@ -56,6 +58,7 @@ export function GiftDocumentFormCards({
   customPrice,
   onCustomPriceChange,
   inheritedForm = null,
+  inheritedCustomPrice = null,
   withInherit = false,
   settingsHref,
   currency = 'PLN',
@@ -74,16 +77,25 @@ export function GiftDocumentFormCards({
 
   const options: RadioCardOption<GiftDocumentCardValue>[] = [];
   if (withInherit) {
-    const resolved = inheritedForm ?? 'technical-cent';
     options.push({
       value: 'inherit',
       wide: true,
       title:
         inheritedForm === null
           ? cards.inheritTitleUnknown
-          : interpolate(cards.inheritTitle, { form: labels.short(resolved) }),
+          : interpolate(cards.inheritTitle, { form: labels.short(inheritedForm) }),
       description: cards.inheritDescription,
-      preview: <GiftDocumentPreview form={resolved} acceptsZeroValueLine={zero.available} currency={currency} />,
+      // Until the setting has been read the card names no form, and previews none:
+      // claiming the built-in default would state a setting nobody read.
+      preview:
+        inheritedForm === null ? undefined : (
+          <GiftDocumentPreview
+            form={inheritedForm}
+            customPrice={inheritedCustomPrice ?? undefined}
+            acceptsZeroValueLine={zero.available}
+            currency={currency}
+          />
+        ),
       footer:
         settingsHref !== undefined ? (
           <Link
@@ -140,6 +152,11 @@ export function GiftDocumentFormCards({
               />
               <span>{currency === 'PLN' ? 'zł' : currency}</span>
             </span>
+            {invalidPrice ? (
+              <span className="pm-err pm-err--on" role="alert" data-testid="promotion-doc-price-error">
+                {cards.customPriceInvalid}
+              </span>
+            ) : null}
           </>
         ) : undefined,
       'data-testid': `promotion-doc-${form}`,

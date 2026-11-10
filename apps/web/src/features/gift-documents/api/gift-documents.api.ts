@@ -17,17 +17,25 @@ type ApiRequest = <T>(path: string, init?: RequestInit) => Promise<T>;
 
 export interface GiftDocumentsApi {
   getSettings: () => Promise<GiftDocumentSettingsResponse>;
-  saveSettings: (form: GiftDocumentFormChoice) => Promise<GiftDocumentSettingsResponse>;
+  saveSettings: (
+    form: GiftDocumentFormChoice,
+    unitPrice?: string,
+  ) => Promise<GiftDocumentSettingsResponse>;
   getProviders: () => Promise<DocumentProvidersResponse>;
 }
 
 export function createGiftDocumentsApi(request: ApiRequest): GiftDocumentsApi {
   return {
     getSettings: () => request<GiftDocumentSettingsResponse>('/sales-documents/settings'),
-    saveSettings: (form) =>
+    saveSettings: (form, unitPrice) =>
       request<GiftDocumentSettingsResponse>('/sales-documents/settings', {
         method: 'PUT',
-        body: JSON.stringify({ giftDocumentForm: form }),
+        body: JSON.stringify({
+          giftDocumentForm: form,
+          ...(form === 'custom-price' && unitPrice !== undefined
+            ? { giftDocumentUnitPrice: unitPrice }
+            : {}),
+        }),
       }),
     getProviders: () =>
       request<DocumentProvidersResponse>('/sales-documents/settings/document-providers'),

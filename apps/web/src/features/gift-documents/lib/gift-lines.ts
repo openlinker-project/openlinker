@@ -26,9 +26,10 @@ export const GiftDocumentFormChoiceValues = [
 export type GiftDocumentFormChoice = (typeof GiftDocumentFormChoiceValues)[number];
 
 /**
- * The forms the pickers offer. `custom-price` needs an amount input the pickers
- * do not have yet, so it is set through the API only; the labels still name it
- * so a saved value reads correctly. Not part of the mirrored core vocabulary.
+ * The forms the one-line pickers offer (per gift, per bundle slot). `custom-price`
+ * needs an amount input, which only the settings cards have, so it is not here;
+ * the labels still name it so a saved value reads correctly. Not part of the
+ * mirrored core vocabulary.
  */
 export const GiftFormPickerValues: readonly GiftDocumentFormChoice[] =
   GiftDocumentFormChoiceValues.filter((form) => form !== 'custom-price');
@@ -54,6 +55,12 @@ export type GiftFormSource = (typeof GiftFormSourceValues)[number];
  */
 export function isGiftUnitPriceAmount(value: unknown): value is string {
   return typeof value === 'string' && /^\d+(\.\d{1,2})?$/.test(value) && Number(value) > 0;
+}
+
+/** Parses an operator-typed amount ("2,50" or "2.50"); `null` when it is not a usable one. */
+export function parseGiftUnitPrice(text: string): number | null {
+  const normalised = text.trim().replace(',', '.');
+  return isGiftUnitPriceAmount(normalised) ? Number(normalised) : null;
 }
 
 export interface ResolvedGiftForm {

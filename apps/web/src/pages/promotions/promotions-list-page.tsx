@@ -20,7 +20,7 @@ import { ErrorState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { StatusTabs, type StatusTab } from '../../shared/ui/status-tabs';
-import { useGuide } from '../../shared/ui/guide-drawer';
+import { GuideButton } from '../../shared/ui/guide-drawer';
 import { useToast } from '../../shared/ui/toast-provider';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useConnectionsQuery } from '../../features/connections';
@@ -54,29 +54,6 @@ import type { Promotion } from '../../features/promotions/api/promotions.types';
 
 function readEnum<T extends string>(values: readonly T[], raw: string | null): T | null {
   return raw !== null && (values as readonly string[]).includes(raw) ? (raw as T) : null;
-}
-
-function GuideButton(): ReactElement {
-  const copy = useMessages('promotions').page;
-  const openGuide = useGuide();
-  return (
-    <button
-      type="button"
-      className="button button--secondary button--sm pm-helpbtn"
-      onClick={() => {
-        openGuide?.(null);
-      }}
-      data-testid="promotions-guide-button"
-    >
-      <span className="pm-qmark" aria-hidden="true">
-        ?
-      </span>
-      {copy.guideButton}
-      <span className="button__shortcut" aria-hidden="true">
-        ?
-      </span>
-    </button>
-  );
 }
 
 export function PromotionsListPage(): ReactElement {
@@ -226,7 +203,7 @@ function PromotionsListContent(): ReactElement {
       description={copy.page.description}
       actions={
         <span className="pm-actions">
-          <GuideButton />
+          <GuideButton label={copy.page.guideButton} data-testid="promotions-guide-button" />
           {write.visible ? create : null}
         </span>
       }

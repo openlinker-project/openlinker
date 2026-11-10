@@ -25,9 +25,9 @@ import {
 } from '../../../shared/ui/dropdown-menu';
 import { PageLayout } from '../../../shared/ui/page-layout';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
-import { SaveButton } from '../../../shared/ui/save-button';
+import { SaveButton, useSaveButtonState } from '../../../shared/ui/save-button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import { useGuide } from '../../../shared/ui/guide-drawer';
+import { GuideButton } from '../../../shared/ui/guide-drawer';
 import { useConnectionsQuery } from '../../connections';
 import type { Promotion } from '../api/promotions.types';
 import { formToWriteInput, type PromotionFormValues } from '../lib/promotion-form';
@@ -80,7 +80,7 @@ export function PromotionComposer({
   saveError,
 }: PromotionComposerProps): ReactElement {
   const copy = useMessages('promotions');
-  const openGuide = useGuide();
+  const saveState = useSaveButtonState(saving, savedCount);
   const connections = useConnectionsQuery();
   const state = usePromotionFormState({
     initial,
@@ -143,21 +143,7 @@ export function PromotionComposer({
   const actions = (
     <ReadOnlyLock active={!canWrite} message={copy.detail.readOnly}>
       <span className="pm-actions">
-        <button
-          type="button"
-          className="button button--secondary button--sm pm-helpbtn"
-          onClick={() => {
-            openGuide?.(null);
-          }}
-        >
-          <span className="pm-qmark" aria-hidden="true">
-            ?
-          </span>
-          {copy.page.guideButton}
-          <span className="button__shortcut" aria-hidden="true">
-            ?
-          </span>
-        </button>
+        <GuideButton label={copy.page.guideButton} />
         {isDraft ? (
           <Button
             tone="secondary"
@@ -184,11 +170,12 @@ export function PromotionComposer({
           </Button>
         ) : null}
         <SaveButton
-          label={isDraft ? copy.detail.turnOn : copy.detail.save}
-          busyLabel={isDraft ? copy.detail.turningOn : copy.detail.saving}
-          doneLabel={isDraft ? copy.detail.turnedOn : copy.detail.saved}
-          pending={saving}
-          savedCount={savedCount}
+          state={saveState}
+          labels={{
+            idle: isDraft ? copy.detail.turnOn : copy.detail.save,
+            saving: isDraft ? copy.detail.turningOn : copy.detail.saving,
+            saved: isDraft ? copy.detail.turnedOn : copy.detail.saved,
+          }}
           disabled={!canWrite || ended}
           onClick={() => {
             submit(true);

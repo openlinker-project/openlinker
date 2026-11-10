@@ -17,9 +17,9 @@ import { useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { PageLayout } from '../../../shared/ui/page-layout';
-import { SaveButton } from '../../../shared/ui/save-button';
+import { SaveButton, useSaveButtonState } from '../../../shared/ui/save-button';
 import { StickyActionBar } from '../../../shared/ui/sticky-action-bar';
-import { useGuide } from '../../../shared/ui/guide-drawer';
+import { GuideButton } from '../../../shared/ui/guide-drawer';
 import type { Promotion } from '../api/promotions.types';
 import {
   emptyPromotionForm,
@@ -85,11 +85,11 @@ export function PromotionNew({
   onSave,
 }: PromotionNewProps): ReactElement {
   const copy = useMessages('promotions');
-  const openGuide = useGuide();
   const [template, setTemplate] = useState<PromotionTemplate | null>(initial !== undefined ? 'empty' : null);
   const root = useRef<HTMLDivElement>(null);
   const [shaking, setShaking] = useState(false);
   const [intent, setIntent] = useState<'draft' | 'on'>('on');
+  const saveState = useSaveButtonState(saving && intent === 'on', savedCount);
 
   const state = usePromotionFormState({
     initial: initial ?? emptyPromotionForm('basket'),
@@ -138,21 +138,7 @@ export function PromotionNew({
     title: <span data-testid="promotion-new-title">{copy.new.title}</span>,
     description: copy.new.description,
     actions: (
-      <button
-        type="button"
-        className="button button--secondary button--sm pm-helpbtn"
-        onClick={() => {
-          openGuide?.(null);
-        }}
-      >
-        <span className="pm-qmark" aria-hidden="true">
-          ?
-        </span>
-        {copy.page.guideButton}
-        <span className="button__shortcut" aria-hidden="true">
-          ?
-        </span>
-      </button>
+      <GuideButton label={copy.page.guideButton} />
     ),
   };
 
@@ -233,11 +219,8 @@ export function PromotionNew({
             {copy.detail.saveDraft}
           </Button>
           <SaveButton
-            label={copy.detail.turnOn}
-            busyLabel={copy.detail.turningOn}
-            doneLabel={copy.detail.turnedOn}
-            pending={saving && intent === 'on'}
-            savedCount={savedCount}
+            state={saveState}
+            labels={{ idle: copy.detail.turnOn, saving: copy.detail.turningOn, saved: copy.detail.turnedOn }}
             disabled={!canWrite || (saving && intent === 'draft')}
             onClick={() => {
               submit(true);

@@ -89,10 +89,14 @@ export interface GiftReportGroup {
   costNet: number;
   /** Units with no cost on file; NOT in `costNet`. */
   unknownCostUnits: number;
+  /** The channels (source connections) that sent the orders carrying this gift. */
+  sourceConnectionIds: string[];
 }
 
 export interface GiftReportTotals {
   currency: string | null;
+  /** Distinct orders carrying at least one gift; NOT the sum of the groups' `orders`. */
+  orders: number;
   units: number;
   paidGross: number;
   costNet: number;
@@ -123,7 +127,11 @@ const round2 = (value: number): number => Math.round(value * 100) / 100;
  * them per currency. Pure; the caller has already applied its filters.
  */
 export function summarizeGiftReport(entries: readonly GiftReportEntry[]): GiftReportSummary {
-  const groups = new Map<string, GiftReportGroup & { orderIds: Set<string> }>();
+  const groups = new Map<
+    string,
+    GiftReportGroup & { orderIds: Set<string>; channelIds: Set<string> }
+  >();
+  const ordersByCurrency = new Map<string, Set<string>>();
   for (const entry of entries) {
     const key = groupKeyOf(entry);
     let group = groups.get(key);
@@ -142,12 +150,18 @@ export function summarizeGiftReport(entries: readonly GiftReportEntry[]): GiftRe
         paidGross: 0,
         costNet: 0,
         unknownCostUnits: 0,
+        sourceConnectionIds: [],
         orderIds: new Set<string>(),
+        channelIds: new Set<string>(),
       };
       groups.set(key, group);
     }
     group.units += entry.quantity;
     group.orderIds.add(entry.internalOrderId);
+    group.channelIds.add(entry.sourceConnectionId);
+    const currencyOrders = ordersByCurrency.get(entry.currency ?? '') ?? new Set<string>();
+    currencyOrders.add(entry.internalOrderId);
+    ordersByCurrency.set(entry.currency ?? '', currencyOrders);
     group.paidGross += entry.paidGross ?? 0;
     if (entry.totalCostNet === null) {
       group.unknownCostUnits += entry.quantity;
@@ -158,9 +172,10 @@ export function summarizeGiftReport(entries: readonly GiftReportEntry[]): GiftRe
 
   const totals = new Map<string, GiftReportTotals>();
   const finished: GiftReportGroup[] = [];
-  for (const { orderIds, ...group } of groups.values()) {
+  for (const { orderIds, channelIds, ...group } of groups.values()) {
     const row: GiftReportGroup = {
       ...group,
+      sourceConnectionIds: [...channelIds].sort(),
       orders: orderIds.size,
       paidGross: round2(group.paidGross),
       costNet: round2(group.costNet),
@@ -169,6 +184,7 @@ export function summarizeGiftReport(entries: readonly GiftReportEntry[]): GiftRe
     const currencyKey = row.currency ?? '';
     const total = totals.get(currencyKey) ?? {
       currency: row.currency,
+      orders: ordersByCurrency.get(currencyKey)?.size ?? 0,
       units: 0,
       paidGross: 0,
       costNet: 0,
@@ -192,6 +208,78 @@ export function summarizeGiftReport(entries: readonly GiftReportEntry[]): GiftRe
   };
 }
 
+// ── Cost over time ───────────────────────────────────────────────────────────
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export type GiftCostGranularity = 'day' | 'week';
+
+export interface GiftCostPoint {
+  /** Start of the bucket, ISO 8601. */
+  start: string;
+  /** Net purchase cost of the units whose cost is known. */
+  costNet: number;
+  units: number;
+  unknownCostUnits: number;
+  /** The bucket runs past the end of the range, so it holds less than a full day or week. */
+  partial: boolean;
+}
+
+export interface GiftCostSeries {
+  currency: string | null;
+  granularity: GiftCostGranularity;
+  points: GiftCostPoint[];
+}
+
+/**
+ * Buckets the gifts of a range by placed date, per currency. A range of eight
+ * days or fewer is shown day by day, a longer one week by week, counted from
+ * `from` so the first bar is always a whole bucket. Every currency gets the same
+ * empty buckets, so a quiet week reads as zero rather than as a missing bar.
+ * Entries without a placed date cannot be dated and are left out.
+ */
+export function bucketGiftCosts(
+  entries: readonly GiftReportEntry[],
+  from: Date,
+  to: Date
+): GiftCostSeries[] {
+  const span = to.getTime() - from.getTime();
+  if (!(span > 0)) return [];
+  const granularity: GiftCostGranularity = span <= 8 * DAY_MS ? 'day' : 'week';
+  const size = granularity === 'day' ? DAY_MS : 7 * DAY_MS;
+  const count = Math.ceil(span / size);
+  const byCurrency = new Map<string, GiftCostPoint[]>();
+  const pointsFor = (currency: string | null): GiftCostPoint[] => {
+    const key = currency ?? '';
+    let points = byCurrency.get(key);
+    if (points === undefined) {
+      points = Array.from({ length: count }, (_, index) => ({
+        start: new Date(from.getTime() + index * size).toISOString(),
+        costNet: 0,
+        units: 0,
+        unknownCostUnits: 0,
+        partial: from.getTime() + (index + 1) * size > to.getTime(),
+      }));
+      byCurrency.set(key, points);
+    }
+    return points;
+  };
+  for (const entry of entries) {
+    if (entry.placedAt === null) continue;
+    const offset = entry.placedAt.getTime() - from.getTime();
+    if (offset < 0 || offset >= span) continue;
+    const point = pointsFor(entry.currency)[Math.floor(offset / size)];
+    point.units += entry.quantity;
+    if (entry.totalCostNet === null) point.unknownCostUnits += entry.quantity;
+    else point.costNet = round2(point.costNet + entry.totalCostNet);
+  }
+  return [...byCurrency.entries()].map(([key, points]) => ({
+    currency: key === '' ? null : key,
+    granularity,
+    points,
+  }));
+}
+
 // ── Bundle view ──────────────────────────────────────────────────────────────
 
 export interface BundleReportRow {
@@ -208,6 +296,24 @@ export interface BundleReportRow {
   componentCostMissing: boolean;
   hasGiftSlot: boolean;
   marginNet: number | null;
+  /** Purchase cost of the components marked as given free; known costs only. */
+  giftCostNet: number;
+  /** What each component of the sold bundles drew, so a row can be opened. */
+  components: BundleReportComponent[];
+}
+
+export interface BundleReportComponent {
+  variantId: string;
+  productId: string;
+  sku: string | null;
+  name: string | null;
+  /** Units drawn across all the bundles sold in the range. */
+  units: number;
+  /** Per unit, in the order's currency; `null` when no cost is on file. */
+  unitCostNet: number | null;
+  /** `null` when the unit cost is unknown. */
+  costNet: number | null;
+  giftSlot: boolean;
 }
 
 export interface BundleComponentDemandRow {
