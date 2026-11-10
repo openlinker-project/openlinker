@@ -240,24 +240,6 @@
   "inventoryMovementsPage": {
     "allConnections": "Wszystkie połączenia",
     "allTypes": "Wszystkie typy",
-    "attention": {
-      "body": "{parts}. Sumy mogą jeszcze nie uwzględniać tych zmian.",
-      "inDoubt": "Niepotwierdzone: {n}",
-      "onThisPage": "{parts} na tej stronie. Sumy mogą jeszcze nie uwzględniać tych zmian.",
-      "refused": "Odrzucone przez system główny: {n}",
-      "title": {
-        "few": "{n} ruchy wymagają sprawdzenia",
-        "many": "{n} ruchów wymaga sprawdzenia",
-        "one": "{n} ruch wymaga sprawdzenia",
-        "other": "{n} ruchu wymaga sprawdzenia"
-      }
-    },
-    "caption": "Ruchy magazynowe",
-    "chips": {
-      "all": "Wszystko",
-      "attention": "Wymaga uwagi",
-      "promised": "Tylko rezerwacje"
-    },
     "count": {
       "few": "{n} wyniki",
       "many": "{n} wyników",
@@ -271,7 +253,7 @@
       "message": "Ruchy magazynowe widzą administratorzy, operatorzy i przeglądający. Jeśli są potrzebne, poproś administratora.",
       "title": "Historia stanów nie jest dostępna dla Twojej roli"
     },
-    "description": "Każda zastosowana, odrzucona lub niepotwierdzona zmiana stanu wariantu - oraz rezerwacje, które odkładają towar dla zamówień.",
+    "description": "Co zmieniło stan magazynu i dlaczego. Otwórz zmianę, aby zobaczyć szczegóły.",
     "empty": {
       "body": "Ruchy pojawią się tutaj, gdy stan zmieni się w połączeniu głównym albo zostanie skorygowany przez OpenLinker.",
       "clearFilters": "Wyczyść filtry",
@@ -287,7 +269,6 @@
     "filterMaster": "Filtruj według połączenia głównego",
     "filterType": "Filtruj według typu",
     "from": "Od",
-    "master": "Połączenie główne",
     "retry": "Ponów",
     "scopeProduct": "Widoczny tylko jeden produkt.",
     "scopeVariant": "Widoczny tylko jeden wariant.",
@@ -295,8 +276,7 @@
     "showAllProducts": "Pokaż wszystkie produkty",
     "showAllVariants": "Pokaż wszystkie warianty",
     "title": "Historia ruchów magazynowych",
-    "to": "Do",
-    "type": "Typ"
+    "to": "Do"
   },
   "locationDeleteDialog": {
     "delete": "Usuń",
@@ -572,6 +552,287 @@
     "transition": "{from} → {to} · {reason}",
     "variant": "Wariant",
     "writesTo": "Zapisuje do"
+  },
+  "stockHistory": {
+    "amount": {
+      "each": "każdy",
+      "expired": "wygasła",
+      "held": "zarezerwowane",
+      "notApplied": "nie zastosowano",
+      "notConfirmed": "niepotwierdzone",
+      "now": "teraz {n}",
+      "range": "od {min} do {max}",
+      "released": "zwolnione",
+      "shipped": "wysłane",
+      "startingCount": "stan początkowy",
+      "startingCounts": "stany początkowe",
+      "waiting": "czeka"
+    },
+    "badges": {
+      "inDoubt": "Niepotwierdzone",
+      "pending": "Czeka",
+      "refused": "Odrzucone"
+    },
+    "day": {
+      "today": "Dziś, {date}",
+      "yesterday": "Wczoraj, {date}"
+    },
+    "detail": {
+      "allForSku": "Wszystkie zmiany tego SKU",
+      "description": "Szczegóły jednej zmiany stanu.",
+      "facts": {
+        "by": "Kto",
+        "note": "Notatka",
+        "recorded": "Zapisano",
+        "shop": "Stan prowadzi",
+        "title": "Skąd się wzięła"
+      },
+      "footnotes": {
+        "confirmedBy": "Potwierdzone przez {master} o {time}.",
+        "readFrom": "Odczytane z {master} o {time}.",
+        "recordedHold": "Zapisane, gdy przyszło zamówienie ({time}), nie przy wysyłce.",
+        "refusedBy": "Odrzucone przez {master} o {time}.",
+        "sentAt": "Wysłane o {time}."
+      },
+      "howNumbersAddUp": "Jak to się sumuje",
+      "kickerHold": "Rezerwacja dla zamówienia",
+      "kickerMovement": "Zmiana stanu",
+      "ledger": {
+        "after": "Na stanie teraz",
+        "applied": "Zastosowano",
+        "before": "Na stanie przed",
+        "change": "Zmiana",
+        "confirmed": "Potwierdzono",
+        "noAnswer": "brak odpowiedzi",
+        "notTracked": "nie śledzono",
+        "onHand": "Na stanie",
+        "requested": "Zlecono",
+        "reserved": "Zarezerwowane",
+        "unchanged": "bez zmian"
+      },
+      "openProduct": "Otwórz produkt",
+      "tech": {
+        "id": "ID wpisu",
+        "reason": "Powód",
+        "ref": "Odniesienie źródła",
+        "status": "Status",
+        "title": "Szczegóły techniczne",
+        "variant": "ID wariantu"
+      },
+      "whatDoesThisMean": "Co to znaczy?"
+    },
+    "explain": {
+      "bodies": {
+        "cancellationRestore": "OpenLinker oddał sztuki do {master}, żeby znów mogły się sprzedać.",
+        "firstCount": "Pierwszy raz, gdy OpenLinker zobaczył ten produkt w {master}. Nie ma wcześniejszej liczby do porównania, więc historia zaczyna się tutaj.",
+        "held": "Stan na magazynie się nie zmienił. OpenLinker nie oferuje tych sztuk w innych kanałach, dopóki zamówienie nie zostanie wysłane albo anulowane.",
+        "inDoubt": "Zmiana dotarła do {master}, ale nie wróciła odpowiedź. OpenLinker nie ponowi jej sam, więc sprawdź stan w sklepie, zanim spróbujesz ponownie.",
+        "manualCorrection": "Zapisane w {master} i potwierdzone.",
+        "pending": "Zmiana jest w drodze. Stan zaktualizuje się tutaj, gdy sklep odpowie.",
+        "refusedFallback": "{master} odrzucił tę zmianę. Nic się nie zmieniło.",
+        "releasedHold": "Stan na magazynie się nie zmienił. Sztuki znów są oferowane w innych kanałach albo pojechały z paczką, jeśli zamówienie wysłano.",
+        "returnRestock": "Zwrócone sztuki sprawdzono i odłożono z powrotem w {master}.",
+        "sale": "OpenLinker zapisał sprzedaż w {master}, a sklep potwierdził nowy stan.",
+        "shopChange": "{master} podał {after} na stanie, a OpenLinker miał {before}. To nie OpenLinker: produkt sprzedał się w sklepie albo ktoś go tam edytował."
+      },
+      "titles": {
+        "cancellationRestore": "Zamówienie {ref} anulowano, {units} wraca",
+        "firstCount": "Stan początkowy: {after}",
+        "held": "{units} odłożone dla zamówienia {ref}",
+        "inDoubt": "Nie wiemy, czy to zastosowano",
+        "manualAdded": "{who} dodał(a) {units}",
+        "manualRemoved": "{who} zdjął(ęła) {units}",
+        "pending": "Czekamy na {master}",
+        "refused": "Nie zastosowano, stan się nie zmienił",
+        "releasedHold": "Zamówienie {ref} już nie rezerwuje {units}",
+        "returnRestock": "Zwrot {ref} odłożył {units}",
+        "sale": "Zamówienie {ref} zabrało {units}",
+        "shopChange": "Stan zmienił się z {before} na {after}"
+      },
+      "units": {
+        "few": "{n} sztuki",
+        "many": "{n} sztuk",
+        "one": "{n} sztuka",
+        "other": "{n} sztuki"
+      }
+    },
+    "filters": {
+      "button": "Filtry",
+      "buttonCount": "Filtry ({n})",
+      "clear": "Wyczyść",
+      "dates": "Daty",
+      "description": "Zawęź listę według typu, sklepu albo daty.",
+      "done": "Pokaż wyniki",
+      "shop": "Sklep",
+      "title": "Filtry",
+      "type": "Typ"
+    },
+    "groups": {
+      "firstCount": {
+        "few": "Stan początkowy {n} produktów z {master}",
+        "many": "Stan początkowy {n} produktów z {master}",
+        "one": "Stan początkowy {n} produktu z {master}",
+        "other": "Stan początkowy {n} produktu z {master}"
+      },
+      "hide": "Ukryj produkty",
+      "holds": {
+        "few": "Zamówienie {ref} rezerwuje {n} produkty",
+        "many": "Zamówienie {ref} rezerwuje {n} produktów",
+        "one": "Zamówienie {ref} rezerwuje {n} produkt",
+        "other": "Zamówienie {ref} rezerwuje {n} produktu"
+      },
+      "released": {
+        "few": "Zamówienie {ref} zwolniło {n} produkty",
+        "many": "Zamówienie {ref} zwolniło {n} produktów",
+        "one": "Zamówienie {ref} zwolniło {n} produkt",
+        "other": "Zamówienie {ref} zwolniło {n} produktu"
+      },
+      "sale": {
+        "few": "Zamówienie {ref} sprzedało {n} produkty",
+        "many": "Zamówienie {ref} sprzedało {n} produktów",
+        "one": "Zamówienie {ref} sprzedało {n} produkt",
+        "other": "Zamówienie {ref} sprzedało {n} produktu"
+      },
+      "show": "Pokaż produkty",
+      "sync": {
+        "few": "{master} zmienił {n} produkty",
+        "many": "{master} zmienił {n} produktów",
+        "one": "{master} zmienił {n} produkt",
+        "other": "{master} zmienił {n} produktu"
+      }
+    },
+    "guide": {
+      "description": "Co znaczą liczby, stany i rodzaje zmian.",
+      "empty": "Nic w przewodniku nie pasuje do „{query}”.",
+      "found": "Znaleziono: {n}",
+      "intro": "Każda linia to jedna zmiana stanu produktu albo jedna rezerwacja dla zamówienia. Otwórz linię, aby zobaczyć, jak sumują się liczby.",
+      "kicker": "Pomoc",
+      "search": "Szukaj w przewodniku",
+      "searchPlaceholder": "Szukaj: odrzucone, rezerwacja, sprzedaż",
+      "sections": {
+        "kinds": {
+          "items": {
+            "cancellation": {
+              "body": "Zamówienie anulowano, a jego sztuki wróciły na stan.",
+              "title": "Anulowane zamówienie"
+            },
+            "correction": {
+              "body": "Ktoś z zespołu zmienił stan ręcznie. Powód i notatka zostają przy zmianie.",
+              "title": "Korekta"
+            },
+            "hold": {
+              "body": "Zamówienie odłożyło sztuki. Stan na magazynie się nie zmienił, tylko to, co OpenLinker oferuje w innych kanałach.",
+              "title": "Rezerwacja"
+            },
+            "return": {
+              "body": "Zwrócone sztuki sprawdzono i odłożono na półkę.",
+              "title": "Zwrot"
+            },
+            "sale": {
+              "body": "Zamówienie zabrało sztuki, a OpenLinker zapisał sprzedaż w sklepie.",
+              "title": "Sprzedaż"
+            },
+            "shopChange": {
+              "body": "Stan zmienił się w samym sklepie: produkt tam się sprzedał albo ktoś go edytował. To nie OpenLinker.",
+              "title": "Zmiana w sklepie"
+            }
+          },
+          "summary": "Sprzedaż, zwroty, korekty, rezerwacje",
+          "title": "Rodzaje zmian"
+        },
+        "numbers": {
+          "items": {
+            "amount": {
+              "body": "Duża liczba to zmiana. Mała linia pod nią to stan po zmianie albo powód, dla którego go nie ma.",
+              "title": "Liczba"
+            },
+            "available": {
+              "body": "Na stanie minus zarezerwowane. Tę liczbę OpenLinker wysyła do kanałów.",
+              "title": "Dostępne"
+            },
+            "onHand": {
+              "body": "Ile sztuk ma sklep, który prowadzi Twój stan.",
+              "title": "Na stanie"
+            },
+            "reserved": {
+              "body": "Sztuki odłożone dla zamówień, których jeszcze nie wysłano. Nadal leżą na półce, więc stan się nie zmienia. Po prostu nie są oferowane nigdzie indziej.",
+              "title": "Zarezerwowane"
+            },
+            "startingCount": {
+              "body": "Pierwszy raz, gdy OpenLinker zobaczył produkt. Nie ma nic wcześniej do porównania, więc historia zaczyna się tutaj.",
+              "title": "Stan początkowy"
+            }
+          },
+          "summary": "Zmiana, na stanie, zarezerwowane, dostępne",
+          "title": "Jak czytać liczby"
+        },
+        "states": {
+          "items": {
+            "inDoubt": {
+              "body": "Zmianę wysłano, ale nie wróciła odpowiedź, więc OpenLinker nie wie, czy ją zastosowano.",
+              "title": "Niepotwierdzone",
+              "todo": "Sprawdź stan w sklepie, zanim spróbujesz ponownie, żeby zmiana nie poszła dwa razy."
+            },
+            "pending": {
+              "body": "Wysłane i czeka na odpowiedź sklepu. Zaktualizuje się samo.",
+              "title": "Czeka"
+            },
+            "refused": {
+              "body": "Sklep odmówił i stan się nie zmienił.",
+              "title": "Odrzucone",
+              "todo": "Otwórz zmianę, zobacz powód, napraw przyczynę w sklepie i spróbuj ponownie."
+            }
+          },
+          "summary": "Odrzucone, niepotwierdzone, czeka",
+          "title": "Stany"
+        }
+      },
+      "title": "Jak czytać historię stanów",
+      "todo": "Co zrobić:"
+    },
+    "help": "Jak to czytać",
+    "openDetails": "{product}. {sentence}. {change}, {result}. Pokaż szczegóły",
+    "problems": {
+      "review": "Sprawdź",
+      "title": {
+        "few": "{n} zmiany wymagają sprawdzenia",
+        "many": "{n} zmian wymaga sprawdzenia",
+        "one": "{n} zmiana wymaga sprawdzenia",
+        "other": "{n} zmiany wymaga sprawdzenia"
+      }
+    },
+    "sentences": {
+      "cancellationRestore": "Wróciło po anulowaniu zamówienia {ref}",
+      "consumed": "Zamówienie {ref} wysłane, rezerwacja zamknięta",
+      "correctedBy": "Korekta: {who}",
+      "correctedByWhy": "Korekta: {who}, {why}",
+      "expired": "Rezerwacja zamówienia {ref} wygasła",
+      "firstCount": "Stan początkowy z {master}",
+      "held": "Zarezerwowane dla zamówienia {ref}",
+      "released": "Rezerwacja zwolniona, zamówienie {ref}",
+      "returnRestock": "Wróciło ze zwrotu {ref}",
+      "sale": "Sprzedane w zamówieniu {ref}",
+      "shopChange": "Zmienione w {master}",
+      "someone": "Ktoś z zespołu",
+      "unknownRef": "(bez numeru)"
+    },
+    "summary": {
+      "available": "Dostępne",
+      "channels": "Co pokazuje każdy kanał",
+      "noChannels": "Żaden kanał jeszcze nie sprzedaje tego produktu.",
+      "onHand": "Na stanie",
+      "reserved": "Zarezerwowane",
+      "shows": "Pokazuje {n}",
+      "showsUnknown": "Jeszcze nie widziano",
+      "title": "Stan teraz"
+    },
+    "views": {
+      "all": "Wszystko",
+      "attention": "Do sprawdzenia",
+      "holds": "Rezerwacje",
+      "label": "Pokaż",
+      "stock": "Stan"
+    }
   },
   "stockHistorySection": {
     "availableNow": "Dostępne teraz",
