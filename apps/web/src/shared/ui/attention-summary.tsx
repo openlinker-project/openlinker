@@ -43,6 +43,8 @@ export interface AttentionGroup {
   items?: readonly AttentionItem[];
   /** Free-form popover content instead of items. Receives a close callback. */
   body?: (close: () => void) => ReactNode;
+  /** Extra content under the items, e.g. related groups. Receives a close callback. */
+  after?: (close: () => void) => ReactNode;
   footer?: ReactNode;
 }
 
@@ -134,6 +136,11 @@ function AttentionGroupLink({ group }: { group: AttentionGroup }): ReactElement 
             </button>
           );
         })}
+        {group.after
+          ? group.after(() => {
+              setOpen(false);
+            })
+          : null}
         {group.footer ? <div className="attention-pop__foot">{group.footer}</div> : null}
       </PopoverContent>
     </Popover>

@@ -383,6 +383,10 @@ export const ApiErrorCodeValues = [
   'MAPPING_SOURCE_PAIRING_AMBIGUOUS',
   /** The connection lacks the capability one side of the mappings page needs. params: `connectionId`, `connectionName`, `capability`. */
   'MAPPING_SIDE_CAPABILITY_UNSUPPORTED',
+  /** Category mappings cannot be moved from a connection onto itself. No params. */
+  'CATEGORY_MAPPING_REASSIGN_SAME_CONNECTION',
+  /** The target connection is not a marketplace with its own category tree, so mappings moved onto it would never be used. params: `connectionId`, `connectionName`. */
+  'CATEGORY_MAPPING_TARGET_NOT_MARKETPLACE',
 
   // ── Products (#3865) ──
   /** No product variant has this id. params: `variantId`. */
@@ -411,6 +415,10 @@ export const ApiErrorCodeValues = [
   'CATALOG_PRODUCT_NOT_FOUND',
   /** The marketplace connection names no master catalogue to read product data from. params: `connectionId`. */
   'MASTER_CATALOG_CONNECTION_NOT_CONFIGURED',
+  /** No active master catalogue connection claims this product, so its content cannot be read or published. params: `productId`, `fieldKey`. */
+  'CONTENT_PRODUCT_MASTER_NOT_CONFIGURED',
+  /** More than one master catalogue connection claims this product, so the content operation refuses to pick one. params: `productId`, `connectionIds` (comma-separated). */
+  'CONTENT_PRODUCT_MASTER_AMBIGUOUS',
   /** A bulk submission resolved to no products or variants. No params. */
   'BULK_SUBMISSION_EMPTY',
   /** No bulk offer creation batch has this id. params: `batchId`. */

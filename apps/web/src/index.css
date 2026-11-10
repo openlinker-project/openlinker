@@ -14463,6 +14463,23 @@ a.kpi-card:focus-visible {
   max-width: 22rem;
 }
 .attention-note p { margin: 0; font-size: 0.8125rem; color: var(--text-secondary); white-space: normal; }
+/* Related groups under a filter item (#4044, shipments "to fix"). */
+.attention-pop__sub {
+  margin-top: 4px;
+  padding: 8px 10px 2px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+.attention-cause {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 6px 10px;
+}
+.attention-cause__text { display: flex; flex-direction: column; min-width: 0; font-size: 0.8125rem; }
+.attention-cause__text .mono-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem; color: var(--text-muted); }
 .attention-pop__foot {
   display: flex;
   justify-content: space-between;
@@ -14565,6 +14582,9 @@ a.kpi-card:focus-visible {
 .choice-pop__dot--info { background: var(--status-info); }
 .choice-pop__dot--success { background: var(--status-success); }
 .choice-pop__meta { margin-left: auto; font-size: 0.6875rem; color: var(--text-muted); }
+.choice-pop__note { margin: 0; padding: 6px var(--space-2); max-width: 240px; font-size: 0.75rem; color: var(--text-muted); }
+.choice-pop__opt:disabled { cursor: not-allowed; color: var(--text-muted); }
+.choice-pop__opt:disabled:hover { background: none; }
 
 .filter-sections { display: flex; flex-direction: column; }
 .filter-sections .filter-section__body { display: flex; flex-direction: column; gap: var(--space-3); }
@@ -15772,6 +15792,18 @@ a.kpi-card:focus-visible {
 .shipments-processor-cell > * {
   max-width: 100%;
 }
+
+/* Method and Paczkomat folded under the Processor badge (#4044). */
+.shipments-processor-cell__method { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shipments-processor-stack { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+/* A plain label stacked over a sort button in one header (#4044, Processor over Method). */
+.sortstack__label { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.6875rem; letter-spacing: 0.04em; text-transform: uppercase; }
+.list-table--fixed .shipment-status-cell__error { max-width: 100%; min-width: 0; }
+.shipments-created { font-size: 0.75rem; white-space: nowrap; }
+.shipments-peek-status { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.shipment-peek__facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin: 0; }
+.shipment-peek__facts dd { margin: 4px 0 0; }
+.peek-panel__body .shipment-row-detail { padding: 0; }
 
 /* Invoices' Document type cell becomes the tallest thing on the row at tablet
  * width — Regulatory, Clearance ref. AND Connection are all `hideBelow: 1024`,

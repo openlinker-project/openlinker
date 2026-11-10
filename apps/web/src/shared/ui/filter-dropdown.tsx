@@ -28,6 +28,12 @@ export interface FilterDropdownProps<V extends string> {
   value: V | null;
   options: readonly FilterOption<V>[];
   onChange: (next: V | null) => void;
+  /**
+   * Why the options cannot be picked right now. The dropdown stays visible and
+   * opens, shows this sentence and keeps only the "any" choice active, so a
+   * locked filter explains itself instead of disappearing.
+   */
+  disabledNote?: string;
 }
 
 export function FilterDropdown<V extends string>({
@@ -36,6 +42,7 @@ export function FilterDropdown<V extends string>({
   value,
   options,
   onChange,
+  disabledNote,
 }: FilterDropdownProps<V>): ReactElement {
   const [open, setOpen] = useState(false);
   const current = options.find((o) => o.value === value);
@@ -64,11 +71,13 @@ export function FilterDropdown<V extends string>({
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="choice-pop" aria-label={label}>
+        {disabledNote ? <p className="choice-pop__note">{disabledNote}</p> : null}
         {choices.map((o) => (
           <button
             key={o.value ?? '__any__'}
             type="button"
             className="choice-pop__opt"
+            disabled={disabledNote !== undefined && o.value !== null}
             aria-pressed={value === o.value}
             onClick={() => {
               onChange(o.value);

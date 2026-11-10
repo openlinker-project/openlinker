@@ -22,6 +22,7 @@
 import { useId, type ReactElement } from 'react';
 
 import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
@@ -99,7 +100,7 @@ export function OrderSourceChangeCard({
           });
         },
         onError: (error) => {
-          showToast({ tone: 'error', description: error.message || copy.outcome.failed });
+          showToast({ tone: 'error', description: describeApiError(error, 'orders') || copy.outcome.failed });
         },
       },
     );
