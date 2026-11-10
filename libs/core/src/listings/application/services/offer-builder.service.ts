@@ -393,6 +393,12 @@ export class OfferBuilderService implements IOfferBuilderService {
     internalVariantId: string;
     categoryId?: string;
   }): Promise<OfferProductSetComponent[] | undefined> {
+    // Cheap exit first: most variants are not bundles, and the rest of this
+    // needs the connection and two adapters.
+    const definition = await this.bundleDefinitions.get(input.internalVariantId);
+    if (!definition || definition.components.length === 0) {
+      return undefined;
+    }
     const connection = await this.connectionPort.get(input.connectionId);
     const masterConnectionId = readMasterCatalogConnectionId(connection.config);
     if (!masterConnectionId) {

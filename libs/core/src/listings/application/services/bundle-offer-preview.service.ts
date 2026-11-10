@@ -80,10 +80,19 @@ export class BundleOfferPreviewService implements IBundleOfferPreviewService {
       if (!isProductSetPlanner(destination)) {
         return { ...base, status: 'failed', reason: 'planning-unsupported' };
       }
-      const plans = await destination.previewProductSet({
+      let plans = await destination.previewProductSet({
         ...(item.categoryId ? { categoryId: item.categoryId } : {}),
         components,
       });
+      // With no category chosen, the destination can still tell which category
+      // the first component's card sits in; the offer will be created there, so
+      // the other components are planned under it (a barcode lookup is per
+      // category and would otherwise read every one of them as "not found").
+      const suggested = plans.find((plan) => plan.variantId === components[0]?.variantId)
+        ?.cardCategoryId;
+      if (!item.categoryId && suggested) {
+        plans = await destination.previewProductSet({ categoryId: suggested, components });
+      }
       const planByVariant = new Map(plans.map((plan) => [plan.variantId, plan]));
       const variants = await this.productsService.getVariantsByIds(
         components.map((component) => component.variantId)
