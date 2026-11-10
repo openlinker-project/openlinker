@@ -36,7 +36,9 @@ export function BundleHistory({ entries, isLoading, isError }: BundleHistoryProp
   if (isError || entries === undefined) return <p role="alert">{copy.form.loadFailed}</p>;
   if (entries.length === 0) return <p className="pm-help">{copy.form.historyEmpty}</p>;
 
-  const openOlder = entries.filter((entry) => !entry.current).reduce((sum, entry) => sum + entry.openOrders, 0);
+  const openOlder = entries
+    .filter((entry) => !entry.current)
+    .reduce((sum, entry) => sum + entry.openOrders, 0);
 
   return (
     <>
@@ -45,13 +47,22 @@ export function BundleHistory({ entries, isLoading, isError }: BundleHistoryProp
           const isFirst = index === entries.length - 1;
           const date = format.date(entry.createdAt);
           return (
-            <li key={entry.version} data-testid={`bundle-form-history-entry-${String(entry.version)}`}>
+            <li
+              key={entry.version}
+              data-testid={`bundle-form-history-entry-${String(entry.version)}`}
+            >
               <span>
-                <b>{interpolate(isFirst ? copy.form.historyCreated : copy.form.historyEntryChanged, { date })}</b>
+                <b>
+                  {interpolate(isFirst ? copy.form.historyCreated : copy.form.historyEntryChanged, {
+                    date,
+                  })}
+                </b>
                 <span className="text-muted">{describeComponents(entry)}</span>
               </span>
               {entry.openOrders > 0 ? (
-                <span className="cx-tag cx-tag--quiet">{formatPlural(entry.openOrders, copy.form.historyOpenOrders, locale)}</span>
+                <span className="cx-tag cx-tag--quiet">
+                  {formatPlural(entry.openOrders, copy.form.historyOpenOrders, locale)}
+                </span>
               ) : null}
             </li>
           );

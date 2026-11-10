@@ -45,13 +45,17 @@ export function BundleComposition({
       name: row.summary.name ?? row.summary.sku ?? row.variantId,
       quantity: row.quantity,
       availableToPromise: row.availableToPromise,
-    })),
+    }))
   );
   const tone =
     availability.kind === 'known' ? (availability.bundles === 0 ? 'is-zero' : 'is-warn') : 'is-unk';
 
   return (
-    <section aria-label={copy.list.compositionHeading} data-testid={testId} className="peek-section">
+    <section
+      aria-label={copy.list.compositionHeading}
+      data-testid={testId}
+      className="peek-section"
+    >
       <div className={`cx-avail ${tone}`} style={{ alignItems: 'flex-end' }}>
         {availability.kind === 'known' ? (
           <>
@@ -61,7 +65,10 @@ export function BundleComposition({
             <span style={{ paddingBottom: 2 }}>
               {availability.limitedBy === null
                 ? interpolate(copy.view.canAssembleOk, { n: availability.bundles })
-                : interpolate(copy.view.canAssemble, { n: availability.bundles, name: availability.limitedBy })}
+                : interpolate(copy.view.canAssemble, {
+                    n: availability.bundles,
+                    name: availability.limitedBy,
+                  })}
             </span>
           </>
         ) : (
@@ -81,7 +88,9 @@ export function BundleComposition({
             <circle cx="12" cy="12" r="9" />
             <path d="M12 8v5M12 16v.5" />
           </svg>
-          <p>{formatPlural(bundle.openOrdersOnOlderComposition, copy.form.openOrdersNote, locale)}</p>
+          <p>
+            {formatPlural(bundle.openOrdersOnOlderComposition, copy.form.openOrdersNote, locale)}
+          </p>
         </div>
       ) : null}
     </section>

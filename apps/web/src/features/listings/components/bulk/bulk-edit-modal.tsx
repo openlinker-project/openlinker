@@ -1537,7 +1537,9 @@ function BulkEditModalForm({
             ? scope === 'base'
               ? copy.footer.editingBase
               : copy.footer.editingVariant
-            : copy.footer.editingSimple}
+            : bundle
+              ? bundleCopy.editingFooter
+              : copy.footer.editingSimple}
         </span>
         <Button tone="ghost" type="button" onClick={onRequestClose}>
           {copy.footer.cancel}

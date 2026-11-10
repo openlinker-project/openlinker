@@ -15,11 +15,12 @@
  * @module apps/web/src/features/listings/components/bulk
  */
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { StickyActionBar } from '../../../../shared/ui/sticky-action-bar';
 import { Link } from 'react-router-dom';
 import { interpolate, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
 import { Alert, Button, CheckboxCell, Input, ProductThumbnail } from '../../../../shared/ui';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
-import type { StatusBadgeTone } from '../../../../shared/ui';
+import { StatusBadge, type StatusBadgeTone } from '../../../../shared/ui';
 import type { OfferBatchIssue, OfferBlockerDescriptor } from '../../../../shared/plugins';
 import type { Connection } from '../../../connections';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
@@ -487,53 +488,29 @@ export function BulkReviewStep({
             className="bulk-review__filter"
             aria-label={copy.filter.ariaLabel}
           />
-          <Button
-            tone="primary"
-            className="bulk-review__cta bulk-review__cta--top"
-            disabled={!canApprove}
-            onClick={onApproveAll}
-          >
-            {interpolate(copy.createOffers, { count: format.number(counts.includedReady) })}
-          </Button>
         </div>
       </header>
 
-      <div className="bulk-review__summary" role="status">
-        <div className="ready">
-          <span className="n">{counts.includedReady}</span> <span className="lbl">{copy.summary.ready}</span>
-        </div>
-        <div className="attn">
-          <span className="n">{counts.includedNeedsAttention}</span>{' '}
-          <span className="lbl">{copy.summary.needAttention}</span>
-        </div>
-        <div className="off">
-          <span className="n">{counts.excluded}</span> <span className="lbl">{copy.summary.excluded}</span>
-        </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 'var(--space-2)' }}>
-          <label
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: 12,
-              color: 'var(--text-secondary)',
+      <div className="bulk-review__summary bulk-review__summary--chips" role="status">
+        <StatusBadge tone="success" withDot data-testid="bulk-summary-ready">
+          {copy.summary.ready}: <span className="n">{counts.includedReady}</span>
+        </StatusBadge>
+        <StatusBadge tone="warning" withDot data-testid="bulk-summary-attn">
+          {copy.summary.needAttention}: <span className="n">{counts.includedNeedsAttention}</span>
+        </StatusBadge>
+        <StatusBadge tone="neutral" withDot data-testid="bulk-summary-excluded">
+          {copy.summary.excluded}: <span className="n">{counts.excluded}</span>
+        </StatusBadge>
+        <label className="ol-toggle" style={{ marginLeft: 'auto' }}>
+          <input
+            type="checkbox"
+            checked={onlyFlagged}
+            onChange={(e) => {
+              setOnlyFlagged(e.target.checked);
             }}
-          >
-            <input
-              type="checkbox"
-              checked={onlyFlagged}
-              onChange={(e) => {
-                setOnlyFlagged(e.target.checked);
-              }}
-            />
-            {copy.onlyFlagged}
-          </label>
-          {counts.includedNeedsAttention > 0 ? (
-            <Button tone="ghost" className="button--xs" onClick={jumpToNextFlagged}>
-              {copy.jumpToNextFlagged}
-            </Button>
-          ) : null}
-        </div>
+          />
+          <span>{copy.onlyFlagged}</span>
+        </label>
       </div>
 
       {/* Batch-level platform preconditions (#2240). One banner for the whole
@@ -616,6 +593,9 @@ export function BulkReviewStep({
           <>
             <b>{plural(counts.includedNeedsAttention, copy.banner.needsAttention.title)}</b>{' '}
             {copy.banner.needsAttention.detail}
+            <Button tone="secondary" className="button--sm" style={{ marginLeft: 'auto' }} onClick={jumpToNextFlagged}>
+              {copy.jumpToNextFlagged}
+            </Button>
           </>
         )}
       </div>
@@ -701,20 +681,27 @@ export function BulkReviewStep({
         </div>
       ) : null}
 
-      <Button
-        tone="primary"
-        className="bulk-review__cta bulk-review__cta--mobile"
-        disabled={!canApprove}
-        onClick={onApproveAll}
+      <StickyActionBar
+        missingLabel={copy.sticky.missingLabel}
+        missing={
+          counts.includedNeedsAttention > 0
+            ? plural(counts.includedNeedsAttention, copy.sticky.needAttention, { count: format.number(counts.includedNeedsAttention) })
+            : ''
+        }
+        readyText={interpolate(copy.sticky.ready, { count: format.number(counts.includedReady) })}
       >
-        {interpolate(copy.createOffers, { count: format.number(counts.includedReady) })}
-      </Button>
-
-      <footer className="bulk-wizard__footer bulk-wizard__footer--start">
-        <Button tone="ghost" className="bulk-review__back" onClick={onBack}>
+        <Button tone="secondary" className="button--sm bulk-review__back" onClick={onBack}>
           {copy.backToConfig}
         </Button>
-      </footer>
+        <Button
+          tone="primary"
+          className="button--sm bulk-review__cta"
+          disabled={!canApprove}
+          onClick={onApproveAll}
+        >
+          {interpolate(copy.createOffers, { count: format.number(counts.includedReady) })}
+        </Button>
+      </StickyActionBar>
 
       {editingRow && connection ? (
         <BulkEditModal

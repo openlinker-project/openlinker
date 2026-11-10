@@ -30,7 +30,10 @@ export function ProductUsedInBundles({
   const list = (
     <ul className="cx-comp cx-comp--compact" data-testid="bundle-list-used-in">
       {entries.map((entry) => (
-        <li key={`${entry.bundleVariantId}:${entry.componentVariantId ?? ''}`} data-testid={`bundle-list-used-in-${entry.bundle.sku ?? entry.bundleVariantId}`}>
+        <li
+          key={`${entry.bundleVariantId}:${entry.componentVariantId ?? ''}`}
+          data-testid={`bundle-list-used-in-${entry.bundle.sku ?? entry.bundleVariantId}`}
+        >
           <span className="cx-mosaic" aria-hidden="true">
             <i className="t-a" />
             <i className="t-d" />
@@ -43,12 +46,16 @@ export function ProductUsedInBundles({
             </Link>
             <span className="cx-sub">
               <span className="mono">{entry.bundle.sku ?? ''}</span>
-              {entry.bundle.price !== null ? ` · ${format.money(entry.bundle.price, entry.bundle.currency ?? undefined)}` : ''}
+              {entry.bundle.price !== null
+                ? ` · ${format.money(entry.bundle.price, entry.bundle.currency ?? undefined)}`
+                : ''}
             </span>
           </span>
           <span className="cx-comp__q">
             <span className="mono tabular">×{entry.quantity}</span>
-            {entry.giftSlot === true ? <span className="cx-tag cx-tag--gift">{copy.view.gift}</span> : null}
+            {entry.giftSlot === true ? (
+              <span className="cx-tag cx-tag--gift">{copy.view.gift}</span>
+            ) : null}
           </span>
         </li>
       ))}

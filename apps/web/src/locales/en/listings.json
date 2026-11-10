@@ -997,6 +997,14 @@
       },
       "zoomImage": "Zoom image of {name}"
     },
+    "sticky": {
+      "missingLabel": "To fix",
+      "needAttention": {
+        "one": "{count} variant needs attention",
+        "other": "{count} variants need attention"
+      },
+      "ready": "Ready: {count} to create"
+    },
     "summary": {
       "excluded": "excluded",
       "needAttention": "need attention",
@@ -1197,6 +1205,7 @@
     "collapse": "Hide set contents of {name}",
     "compositionHeading": "Set contents on {destination}",
     "eanNotNeeded": "A set does not need its own barcode. Its products carry theirs.",
+    "editingFooter": "Editing a bundle offer. Changes apply to this batch only.",
     "expand": "Show set contents of {name}",
     "gift": "gift",
     "insertComponentList": "Insert component list",

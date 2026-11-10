@@ -9,7 +9,9 @@ import type { BundleDetail, BundleHistoryEntry, BundleUsedIn } from '../api/bund
 import { useApiClient } from '../../../app/api/api-client-provider';
 import type { ApiError } from '../../../shared/api/api-error';
 
-export function useBundleQuery(variantId: string | undefined): UseQueryResult<BundleDetail, ApiError> {
+export function useBundleQuery(
+  variantId: string | undefined
+): UseQueryResult<BundleDetail, ApiError> {
   const apiClient = useApiClient();
   return useQuery<BundleDetail, ApiError>({
     queryKey: bundlesQueryKeys.detail(variantId ?? ''),
@@ -21,7 +23,7 @@ export function useBundleQuery(variantId: string | undefined): UseQueryResult<Bu
 
 export function useBundleHistoryQuery(
   variantId: string | undefined,
-  enabled: boolean,
+  enabled: boolean
 ): UseQueryResult<BundleHistoryEntry[], ApiError> {
   const apiClient = useApiClient();
   return useQuery<BundleHistoryEntry[], ApiError>({
@@ -33,7 +35,7 @@ export function useBundleHistoryQuery(
 }
 
 export function useBundleUsedInQuery(
-  variantId: string | undefined,
+  variantId: string | undefined
 ): UseQueryResult<BundleUsedIn[], ApiError> {
   const apiClient = useApiClient();
   return useQuery<BundleUsedIn[], ApiError>({
@@ -47,7 +49,7 @@ export function useBundleUsedInQuery(
 
 /** The bundles any of these variants is a component of; one request, cached by the variant list. */
 export function useBundleUsedInManyQuery(
-  variantIds: readonly string[],
+  variantIds: readonly string[]
 ): UseQueryResult<BundleUsedIn[], ApiError> {
   const apiClient = useApiClient();
   return useQuery<BundleUsedIn[], ApiError>({

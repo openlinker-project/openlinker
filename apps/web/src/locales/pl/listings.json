@@ -1083,6 +1083,16 @@
       },
       "zoomImage": "Powiększ zdjęcie {name}"
     },
+    "sticky": {
+      "missingLabel": "Do poprawy",
+      "needAttention": {
+        "few": "{count} warianty wymagają uwagi",
+        "many": "{count} wariantów wymaga uwagi",
+        "one": "{count} wariant wymaga uwagi",
+        "other": "{count} wariantu wymaga uwagi"
+      },
+      "ready": "Gotowe: {count} do utworzenia"
+    },
     "summary": {
       "excluded": "wykluczone",
       "needAttention": "wymaga uwagi",
@@ -1319,6 +1329,7 @@
     "collapse": "Ukryj skład zestawu {name}",
     "compositionHeading": "Skład na {destination}",
     "eanNotNeeded": "Zestaw nie potrzebuje własnego EAN. Kody mają jego produkty.",
+    "editingFooter": "Edycja oferty zestawu. Zmiany dotyczą tylko tej partii.",
     "expand": "Pokaż skład zestawu {name}",
     "gift": "gratis",
     "insertComponentList": "Wstaw listę składników",

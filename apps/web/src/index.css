@@ -38502,4 +38502,11 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .pm-actionbar { transition: transform 0.28s var(--ease-out), opacity 0.2s var(--ease-out); }
 .pm-actionbar[data-clean='true'] { transform: translateY(140%); opacity: 0; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .pm-actionbar { transition: none !important; } }
-||||||| 988395695
+/* ===== offer wizard review in the bundle mockup's shape (#3520) ===== */
+.bulk-review__summary--chips{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);padding:0;border:0;background:none}
+.bulk-review__summary--chips .n{font-family:var(--font-mono)}
+.bulk-review__banner{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
+.bundle-stock b{font-family:var(--font-mono);font-size:.875rem}
+.bundle-stock small{color:var(--status-warning-fg);font-weight:600}
+.bulk-review__c-cat{min-width:0;overflow:hidden}
+.bundle-stock small{max-width:none;white-space:normal;text-align:right}
