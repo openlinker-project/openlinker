@@ -14,7 +14,7 @@ import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { ComposerSection } from '../../../shared/ui/composer-section';
 import { useConnectionsQuery } from '../../connections';
-import { channelMarker, coversNativeChannel, orderSourceChannels } from '../../gifts/lib/gift-channels';
+import { channelMarker, coversNativeChannel, orderSourceChannels } from '../../gifts';
 import { PromotionChannelChip } from './promotion-channel-chip';
 import type { PromotionSectionProps } from './promotion-section.types';
 

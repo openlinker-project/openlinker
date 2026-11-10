@@ -13,6 +13,7 @@ export { OrderGiftAttention } from './components/order-gift-attention';
 export { useGiftAttentionQuery, useSkipGiftAttentionMutation } from './hooks/use-gifts';
 export { useVariantNames } from './hooks/use-variant-names';
 export { useVariantSummaries } from './hooks/use-variant-summaries';
+export { channelMarker, coversNativeChannel, orderSourceChannels } from './lib/gift-channels';
 export { giftCostText, readGiftCost } from './lib/gift-cost';
 export { giftsQueryKeys } from './api/gifts.query-keys';
 export { isGiftSource, isAddedByOpenLinker, type GiftSource, type LineGift } from './lib/gift-line';

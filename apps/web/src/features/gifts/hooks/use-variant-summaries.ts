@@ -2,10 +2,11 @@
  * Name, SKU and picture for the variants a promotion names (#3935)
  *
  * A promotion stores internal ids. The list and the detail page show the gift
- * as a product, so this resolves one variant read per id (in parallel, one query
- * each) and one product read per DISTINCT product, cached, and never blocks the
- * rows that do not need them. The products API has no batched variant read, so
- * the variant reads stay one per id.
+ * as a product, so this resolves one variant read per id (in parallel across ids)
+ * and one product read per DISTINCT product, cached, and never blocks the rows
+ * that do not need them. The two reads of one variant are sequential because the
+ * variant is what carries the product id, and the products API has no batched
+ * variant read, so a picked-gift list costs N variant reads plus one per product.
  *
  * @module apps/web/src/features/gifts/hooks
  */
@@ -43,7 +44,8 @@ export function useVariantSummaries(variantIds: readonly string[]): ReadonlyMap<
   });
   // Keyed on CONTENT: `useQueries` hands back a new array every render, so
   // depending on `results` would rebuild the Map (and every consumer's memo)
-  // each time. The serialized string only changes when a summary does.
+  // each time. The serialized string only changes when a summary does, which is
+  // why `unique` and `results` are deliberately absent from the deps below.
   const content = unique
     .map((id, index) => {
       const data = results[index]?.data;
