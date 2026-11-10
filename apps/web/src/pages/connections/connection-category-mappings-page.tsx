@@ -379,14 +379,14 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
 
       {reassignMutation.isError ? (
         <Alert tone="error" density="compact" className="category-map-notice" title={copy.legacyFailedTitle}>
-          {reassignMutation.error.message}
+          {describeApiError(reassignMutation.error, 'connections')}
         </Alert>
       ) : null}
 
       {!marketplace ? (
         <EmptyState title={copy.selectMarketplaceTitle} message={copy.selectMarketplaceMessage} />
       ) : mappingsQuery.error ? (
-        <ErrorState title={copy.errorTitle} message={mappingsQuery.error.message} />
+        <ErrorState title={copy.errorTitle} message={describeApiError(mappingsQuery.error, 'connections')} />
       ) : (
         <>
           <div className="category-map-toolbar">

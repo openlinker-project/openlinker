@@ -236,11 +236,21 @@ export class ContentController {
       }
       // #4068: no master, or two masters, claiming the product is a connection
       // configuration the operator can fix - never a 500.
-      if (
-        error instanceof NoProductMasterAdapterException ||
-        error instanceof AmbiguousProductMasterException
-      ) {
-        throw new UnprocessableEntityException(error.message);
+      if (error instanceof NoProductMasterAdapterException) {
+        throw codedHttpError(
+          HttpStatus.UNPROCESSABLE_ENTITY,
+          'CONTENT_PRODUCT_MASTER_NOT_CONFIGURED',
+          error.message,
+          { productId: error.productId, fieldKey: error.fieldKey }
+        );
+      }
+      if (error instanceof AmbiguousProductMasterException) {
+        throw codedHttpError(
+          HttpStatus.UNPROCESSABLE_ENTITY,
+          'CONTENT_PRODUCT_MASTER_AMBIGUOUS',
+          error.message,
+          { productId: error.productId, connectionIds: error.connectionIds.join(',') }
+        );
       }
       if (error instanceof PromptTemplateNotFoundException) {
         throw promptTemplateNotFound(error);

@@ -26,10 +26,10 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  BadRequestException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import {
   CategoryMappingReassignSameConnectionException,
   IMappingConfigService,
@@ -249,7 +249,11 @@ export class MappingsController {
       return CategoryMappingReassignResponseDto.fromDomain(result);
     } catch (error) {
       if (error instanceof CategoryMappingReassignSameConnectionException) {
-        throw new BadRequestException(error.message);
+        throw codedHttpError(
+          HttpStatus.BAD_REQUEST,
+          'CATEGORY_MAPPING_REASSIGN_SAME_CONNECTION',
+          error.message
+        );
       }
       throw error;
     }
@@ -266,8 +270,11 @@ export class MappingsController {
     const listsOffers = connection.enabledCapabilities.includes('OfferManager');
     const hasCategoryTree = metadata.supportedCapabilities.includes('CategoryBrowser');
     if (!listsOffers || !hasCategoryTree) {
-      throw new BadRequestException(
-        `Connection '${connection.name}' is not a marketplace with its own category tree, so category mappings moved onto it would never be used. Choose a marketplace connection such as Allegro.`
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'CATEGORY_MAPPING_TARGET_NOT_MARKETPLACE',
+        `Connection '${connection.name}' is not a marketplace with its own category tree, so category mappings moved onto it would never be used. Choose a marketplace connection such as Allegro.`,
+        { connectionId: connection.id, connectionName: connection.name }
       );
     }
   }
