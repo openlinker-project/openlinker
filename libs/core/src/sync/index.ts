@@ -35,6 +35,7 @@ export { SyncJob as SyncJobEntity } from './domain/entities/sync-job.entity';
 export type {
   ConnectionCursor,
   ConnectionCursorFilters,
+  ConnectionCursorPrefixSummary,
   ConnectionCursorPagination,
   PaginatedConnectionCursors,
 } from './domain/types/connection-cursor.types';
@@ -198,7 +199,37 @@ export {
   masterSweepCursorKey,
   masterSweepCompletedAtCursorKey,
   masterSweepRemainingCountCursorKey,
+  masterSweepLockKey,
 } from './domain/types/master-sweep-cursor.types';
+
+// Cursor overview + guarded rewind (#4023)
+export type {
+  CursorFamily,
+  CursorRewindTarget,
+  CursorCatalogueEntry,
+} from './domain/types/cursor-key-catalogue.types';
+export {
+  CursorFamilyValues,
+  CursorRewindTargetValues,
+  OFFER_QUANTITY_WRITE_MARK_PREFIX,
+  resolveCursorCatalogueEntry,
+  catalogueWriterJobTypes,
+} from './domain/types/cursor-key-catalogue.types';
+export type {
+  CursorLastRun,
+  CursorOverview,
+  CursorOverviewConnection,
+  CursorOverviewItem,
+  CursorWriteMarksSummary,
+  CursorRewindInput,
+  CursorRewindResult,
+} from './domain/types/cursor-overview.types';
+export type { CursorRewindRefusal } from './domain/exceptions/cursor-rewind-refused.error';
+export {
+  CursorRewindRefusedError,
+  CursorRewindRefusalValues,
+} from './domain/exceptions/cursor-rewind-refused.error';
+export type { ICursorOverviewService } from './application/services/cursor-overview.service.interface';
 
 // Application Services (interfaces)
 export type { ISyncJobRetryService } from './application/services/sync-job-retry.service.interface';
