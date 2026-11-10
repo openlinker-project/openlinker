@@ -69,6 +69,10 @@ export interface ProductCreate {
   price: number;
   currency?: string;
   weight?: number;
+  /** Barcode, when the caller has one. */
+  ean?: string;
+  /** The rate the gross `price` includes, as a percent code (ADR-063): `'23'`, `'0'`, `'zw'`. */
+  taxRate?: string;
   [key: string]: unknown;
 }
 

@@ -55,6 +55,7 @@ import type {
   BundleReader,
   ExternalBundleComposition,
   ProductTaxRateReader,
+  ProductCreator,
   ReadProductTaxRateInput,
   TaxRateResolution,
 } from '@openlinker/core/products';
@@ -85,7 +86,7 @@ const GROSS_PRICE_TOLERANCE = 0.01;
  * would read as gross.
  */
 export class PrestashopProductMasterAdapter
-  implements ProductMasterPort, ProductTaxRateReader, BulkProductReader, BundleReader
+  implements ProductMasterPort, ProductTaxRateReader, BulkProductReader, BundleReader, ProductCreator
 {
   private readonly logger = new Logger(PrestashopProductMasterAdapter.name);
 
@@ -1150,15 +1151,118 @@ export class PrestashopProductMasterAdapter
     return Number.isFinite(n) ? n : undefined;
   }
 
-  // Write operations - not supported in MVP
-  createProduct(_product: ProductCreate): Promise<Product> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
-    const error = new PrestashopNotSupportedException(
-      'Product creation is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
-      'createProduct',
-      'PrestaShop admin interface'
+  // Write operations - only product creation is supported (#3935); the rest
+  // stay on the PrestaShop admin interface.
+
+  /**
+   * Create a simple product in the shop (#3935): a bundle product made in
+   * OpenLinker. `price` is GROSS (ADR-077); PrestaShop stores net, so the shop's
+   * own tax-rule group for the product's rate is written beside it. Idempotent
+   * on `reference` (= SKU): a retry adopts the product a first attempt created.
+   * Stock stays 0 here on purpose; OpenLinker computes a bundle's availability
+   * from its components.
+   */
+  async createProduct(product: ProductCreate): Promise<Product> {
+    const languageId = String(
+      (this.connection.config as Record<string, unknown> | null | undefined)?.['langId'] ?? 1
     );
-    return Promise.reject(error);
+    const lang = (value: string): Record<string, unknown> => ({
+      language: [{ '@_id': languageId, '#text': value }],
+    });
+
+    const existing = await this.httpClient.listResources<{ id: string | number; reference?: string }>(
+      'products',
+      { custom: { reference: product.sku } }
+    );
+    const adopted = existing.find((row) => String(row.reference ?? '') === product.sku);
+    let externalId: string;
+    if (adopted !== undefined) {
+      externalId = String(adopted.id);
+    } else {
+      const pricing = await this.resolveCreationPricing(product);
+      const rootCategory =
+        (this.connection.config as Record<string, unknown> | null | undefined)?.[
+          'rootCategoryId'
+        ] ?? 2;
+      const ean = typeof product['ean'] === 'string' ? normalizeToEan13(product['ean']) : null;
+      const slug =
+        product.name
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '') || 'product';
+      const body: Record<string, unknown> = {
+        name: lang(product.name),
+        link_rewrite: lang(slug),
+        reference: product.sku,
+        price: pricing.netPrice,
+        id_tax_rules_group: pricing.taxRulesGroupId,
+        active: '1',
+        state: '1',
+        id_category_default: String(rootCategory),
+        associations: { categories: { category: [{ id: String(rootCategory) }] } },
+        ...(ean !== null ? { ean13: ean } : {}),
+        ...(product.description !== undefined ? { description: lang(product.description) } : {}),
+        ...(product.weight !== undefined ? { weight: String(product.weight) } : {}),
+      };
+      const created = await this.httpClient.createResource<{ id: string | number }>(
+        'products',
+        body
+      );
+      externalId = String(created.id);
+    }
+    const internalId = await this.identifierMapping.getOrCreateInternalId(
+      CORE_ENTITY_TYPE.Product,
+      externalId,
+      this.connection.id
+    );
+    return this.getProduct(internalId);
+  }
+
+  readonly productCreationMode = 'simple-product' as const;
+
+  /** Net price and tax group for a new product, from its gross price and rate code. */
+  private async resolveCreationPricing(
+    product: ProductCreate
+  ): Promise<{ netPrice: string; taxRulesGroupId: string }> {
+    const refuse = (message: string): PrestashopApiException =>
+      new PrestashopApiException(message, 0);
+    const country = await this.resolveSalesCountry();
+    if (country === null || !this.taxRateResolver) {
+      throw refuse(
+        'This PrestaShop connection has no sales country, so the price cannot be split into the tax-excluded price PrestaShop stores. Set "salesCountryIso2" on the connection (for example PL).'
+      );
+    }
+    if (!country.taxesEnabled) {
+      return { netPrice: product.price.toFixed(6), taxRulesGroupId: '0' };
+    }
+    const code = typeof product['taxRate'] === 'string' ? product['taxRate'].trim().toLowerCase() : '';
+    const percent =
+      code === 'zw' || code === 'np' || code === 'oo'
+        ? 0
+        : Number.parseFloat(code);
+    if (!Number.isFinite(percent) || percent < 0) {
+      throw refuse(
+        'No tax rate is known for the components, so the price cannot be turned into the tax-excluded price PrestaShop stores. Sync the tax rate of a component first.'
+      );
+    }
+    if (percent === 0) return { netPrice: product.price.toFixed(6), taxRulesGroupId: '0' };
+    const group = await this.taxRateResolver.findTaxRulesGroupForRate(
+      percent,
+      country.countryId,
+      this.connection.id,
+      this.httpClient
+    );
+    if (group === null || typeof group === 'object') {
+      throw refuse(
+        `No active tax-rule group in this shop charges ${String(percent)}% in ${country.iso2}. Create one in PrestaShop first.`
+      );
+    }
+    return {
+      netPrice: (product.price / (1 + percent / 100)).toFixed(6),
+      taxRulesGroupId: String(group),
+    };
   }
 
   updateProduct(_productId: string, _product: ProductUpdate): Promise<Product> {
