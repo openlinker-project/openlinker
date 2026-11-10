@@ -10,7 +10,7 @@
  * @module features/listings/components/erli
  */
 import { getMessages } from '../../../../shared/i18n';
-import type { OfferValidationContribution } from '../../../../shared/plugins';
+import type { OfferBlockerCopy, OfferValidationContribution } from '../../../../shared/plugins';
 
 export const ERLI_MISSING_IMAGE_BLOCKER = 'erli:missing-image';
 
@@ -22,6 +22,11 @@ export const erliOfferValidation: OfferValidationContribution = {
       // A getter, so the label is read in the language active when the chip renders.
       get label(): string {
         return getMessages('listings').erliOfferValidation.blockers.noImage;
+      },
+      field: 'images',
+      describe: (): OfferBlockerCopy => {
+        const copy = getMessages('listings').bulkBlockers.erli.missingImage;
+        return { title: copy.title, detail: copy.detail };
       },
     },
   ],
