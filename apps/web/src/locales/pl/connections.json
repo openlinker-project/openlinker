@@ -214,51 +214,6 @@
     "title": "Włączone role",
     "updatedTitle": "Zaktualizowano możliwości"
   },
-  "connectionCategoryMappingsPage": {
-    "desktopOnly": {
-      "body": "Edytor mapowania kategorii zestawia obok siebie drzewo kategorii i wyszukiwarkę marketplace, więc potrzebuje szerszego ekranu. Otwórz tę stronę na komputerze lub tablecie w poziomie, aby przypisywać kategorie.",
-      "title": "Otwórz na komputerze, aby edytować kategorie"
-    },
-    "error": {
-      "title": "Nie udało się wczytać"
-    },
-    "eyebrow": "Połączenie",
-    "loading": {
-      "message": "Pobieranie kategorii i mapowań...",
-      "title": "Wczytywanie"
-    },
-    "mappedSummary": {
-      "few": "Zmapowano {mapped} z {n} kategorii",
-      "many": "Zmapowano {mapped} z {n} kategorii",
-      "one": "Zmapowano {mapped} z {n} kategorii",
-      "other": "Zmapowano {mapped} z {n} kategorii"
-    },
-    "marketplaceHeading": "Kategoria marketplace",
-    "marketplaceSelect": {
-      "label": "Połączenie z marketplace",
-      "option": "{name} ({platform})",
-      "placeholder": "Wybierz połączenie z marketplace…"
-    },
-    "noCategories": {
-      "message": "Nie znaleziono kategorii dla tego połączenia. Upewnij się, że sklep ma skonfigurowane kategorie.",
-      "title": "Brak kategorii sklepu"
-    },
-    "noMarketplace": {
-      "addConnection": "Dodaj połączenie",
-      "message": "Przed mapowaniem kategorii dodaj połączenie z marketplace.",
-      "title": "Brak skonfigurowanego połączenia z marketplace"
-    },
-    "pickCategory": {
-      "message": "Kliknij kategorię sklepu po lewej, aby przypisać kategorię marketplace.",
-      "title": "Wybierz kategorię"
-    },
-    "pickMarketplace": {
-      "message": "Wybierz powyżej połączenie z marketplace, aby przeglądać jego drzewo kategorii.",
-      "title": "Wybierz połączenie z marketplace"
-    },
-    "sourceHeading": "Kategorie sklepu",
-    "title": "Mapowania kategorii"
-  },
   "connectionCell": {
     "copiedId": "Skopiowano ID połączenia",
     "copiedNamedId": "Skopiowano ID połączenia {name}",

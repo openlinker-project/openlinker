@@ -23,10 +23,8 @@ import {
   type AiCompletionPort,
   type IPromptTemplateService,
 } from '@openlinker/core/ai';
-import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import { IIntegrationsService } from '@openlinker/core/integrations';
-import type { ProductMasterPort } from '@openlinker/core/products';
-import { NoProductMasterAdapterException } from '../../domain/exceptions/no-product-master-adapter.exception';
+import { PRODUCT_MASTER_RESOLVER_SERVICE_TOKEN } from '../../content.tokens';
+import { IProductMasterResolverService } from './product-master-resolver.service.interface';
 import type {
   SuggestDescriptionCommand,
   SuggestionResult,
@@ -41,8 +39,8 @@ export class ContentSuggestionService implements IContentSuggestionService {
   private readonly logger = new Logger(ContentSuggestionService.name);
 
   constructor(
-    @Inject(INTEGRATIONS_SERVICE_TOKEN)
-    private readonly integrationsService: IIntegrationsService,
+    @Inject(PRODUCT_MASTER_RESOLVER_SERVICE_TOKEN)
+    private readonly masterResolver: IProductMasterResolverService,
     @Inject(PROMPT_TEMPLATE_SERVICE_TOKEN)
     private readonly promptTemplates: IPromptTemplateService,
     @Inject(AI_COMPLETION_PORT_TOKEN)
@@ -52,16 +50,8 @@ export class ContentSuggestionService implements IContentSuggestionService {
   async suggestDescription(cmd: SuggestDescriptionCommand): Promise<SuggestionResult> {
     const requestId = cmd.requestId ?? randomUUID();
 
-    const masters = await this.integrationsService.listCapabilityAdapters<ProductMasterPort>({
-      capability: 'ProductMaster',
-    });
-    if (masters.length === 0) {
-      throw new NoProductMasterAdapterException(cmd.productId, 'description');
-    }
-    // Same single-master simplification as `IntegrationsContentPublisher`. Refine
-    // when multi-master wiring materialises; today there is at most one ProductMaster
-    // per tenant in practice.
-    const { adapter: productMaster } = masters[0];
+    // The product's OWN master (#4068), never simply the first connected one.
+    const productMaster = await this.masterResolver.resolve(cmd.productId, 'description');
     const product = await productMaster.getProduct(cmd.productId);
     const variants = await productMaster.getProductVariants(cmd.productId);
     const representativeVariant = variants[0] ?? null;

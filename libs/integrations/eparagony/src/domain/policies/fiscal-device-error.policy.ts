@@ -37,7 +37,7 @@ const TERMINAL_ERROR_REASONS: Readonly<Record<number, string>> = {
 
 /** The sentence for a terminal `ERROR` whose code has no documented meaning. */
 export const GENERIC_TERMINAL_ERROR_REASON =
-  'The fiscal device reported an error and did not register the sale. Check the device, then register again under a new key.';
+  'The fiscal device reported an error and did not register the sale. Check the device, then register again.';
 
 /**
  * Documented printer answers, folded (see {@link foldDescription}), mapped to
