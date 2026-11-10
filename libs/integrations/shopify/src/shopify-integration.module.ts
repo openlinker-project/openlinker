@@ -8,7 +8,9 @@
  *     refresh, so the plugin's runtime gets a credentials writer (over
  *     `ICredentialsService`) and the host `SyncLockPort`;
  *   - the archive hook, registered on `ConnectionArchiveHookRegistryService`,
- *     which drops the minted token when a connection is archived (K05).
+ *     which drops the minted token when a connection is archived (K05);
+ *   - the webhook provisioner (#3981), which needs `ConnectionPort` and
+ *     `IWebhookSecretService` and shares the plugin's client runtime.
  *
  * Wired into `apps/api/src/plugins.ts` and `apps/worker/src/plugins.ts`.
  *
@@ -20,7 +22,9 @@ import {
   IdentifierMappingModule,
   IDENTIFIER_MAPPING_PORT_TOKEN,
   IdentifierMappingPort,
+  CONNECTION_PORT_TOKEN,
   type Connection,
+  type ConnectionPort,
 } from '@openlinker/core/identifier-mapping';
 import type { AdapterFactoryPort } from '@openlinker/core/integrations';
 import {
@@ -53,6 +57,8 @@ import {
   CredentialsResolverPort,
   CREDENTIALS_SERVICE_TOKEN,
   ICredentialsService,
+  WEBHOOK_SECRET_SERVICE_TOKEN,
+  type IWebhookSecretService,
 } from '@openlinker/core/integrations';
 import {
   SyncModule,
@@ -78,6 +84,7 @@ import { HttpTransportFactoryPort } from '@openlinker/shared/http';
 
 import { ShopifyConnectionArchiveHookAdapter } from './infrastructure/adapters/shopify-connection-archive-hook.adapter';
 import { ShopifyCredentialsWriterAdapter } from './infrastructure/adapters/shopify-credentials-writer.adapter';
+import { ShopifyWebhookProvisioningAdapter } from './infrastructure/adapters/webhooks/shopify-webhook-provisioning.adapter';
 import { createShopifyClientRuntime } from './infrastructure/http/shopify-client.builder';
 import { createShopifyPlugin } from './shopify-plugin';
 
@@ -130,6 +137,10 @@ export class ShopifyIntegrationModule implements OnModuleInit {
     private readonly http: HttpTransportFactoryPort,
     @Inject(MAPPING_CONFIG_SERVICE_TOKEN)
     private readonly mappingConfigService: IMappingConfigService,
+    @Inject(CONNECTION_PORT_TOKEN)
+    private readonly connectionPort: ConnectionPort,
+    @Inject(WEBHOOK_SECRET_SERVICE_TOKEN)
+    private readonly webhookSecretService: IWebhookSecretService,
     @Inject(CACHE_PORT_TOKEN)
     private readonly cache?: CachePort,
   ) {}
@@ -185,6 +196,19 @@ export class ShopifyIntegrationModule implements OnModuleInit {
     this.connectionArchiveHookRegistry.register(
       plugin.manifest.adapterKey,
       new ShopifyConnectionArchiveHookAdapter(this.cache, runtime.tokenMemo),
+    );
+
+    this.webhookProvisioningRegistry.register(
+      plugin.manifest.adapterKey,
+      new ShopifyWebhookProvisioningAdapter(
+        this.connectionPort,
+        this.webhookSecretService,
+        this.credentialsResolver,
+        this.http,
+        runtime,
+        this.cache,
+        plugin.manifest.defaultRateLimit,
+      ),
     );
 
     this.logger.log('Shopify plugin registered successfully');

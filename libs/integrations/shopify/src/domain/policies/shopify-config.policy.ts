@@ -129,6 +129,10 @@ export function parseShopifyConfig(
     }
   }
 
+  if (present(config.openlinkerCallbackBaseUrl)) {
+    issues.push(...validateCallbackBaseUrl(config.openlinkerCallbackBaseUrl));
+  }
+
   return issues.length > 0
     ? { ok: false, issues }
     : {
@@ -142,6 +146,21 @@ export function parseShopifyConfig(
           refundsThroughShopify,
         },
       };
+}
+
+/** Shopify delivers webhooks to https only, so an http base is refused when saved, not at install. */
+function validateCallbackBaseUrl(value: unknown): ShopifyConfigIssue[] {
+  const path = 'openlinkerCallbackBaseUrl';
+  if (typeof value !== 'string') {
+    return [{ path, message: 'must be a string' }];
+  }
+  try {
+    return new URL(value.trim()).protocol === 'https:'
+      ? []
+      : [{ path, message: 'must be a public https:// URL (Shopify delivers webhooks to https only)' }];
+  } catch {
+    return [{ path, message: 'must be a valid URL' }];
+  }
 }
 
 /** The store's handle (`my-shop` of `my-shop.myshopify.com`), as the admin URLs name it. */

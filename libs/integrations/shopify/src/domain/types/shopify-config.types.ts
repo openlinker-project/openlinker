@@ -37,6 +37,12 @@ export interface ShopifyConnectionConfig {
    * or false: a confirmed refund is only recorded, as made outside OpenLinker.
    */
   readonly refundsThroughShopify?: boolean;
+  /**
+   * Public https base URL of OpenLinker (#3981). The webhook install subscribes
+   * the shop to `${openlinkerCallbackBaseUrl}/webhooks/shopify/{connectionId}`.
+   * Absent: webhooks cannot be configured; the orders poll still runs.
+   */
+  readonly openlinkerCallbackBaseUrl?: string;
 }
 
 /** `ShopifyConnectionConfig` after validation and normalisation. */
