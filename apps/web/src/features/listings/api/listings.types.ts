@@ -1010,6 +1010,59 @@ export interface AttributeProjectionPreviewItem {
   ean?: string;
 }
 
+export interface BundleOfferPreviewItem {
+  variantId: string;
+  categoryId?: string;
+}
+
+export interface BundleOfferPreviewRequest {
+  items: BundleOfferPreviewItem[];
+}
+
+/** How a bundle component enters the product-set offer (#3520). */
+export const BundleComponentModeValues = [
+  'own-offer',
+  'catalog-card',
+  'new-product',
+  'missing',
+] as const;
+export type BundleComponentMode = (typeof BundleComponentModeValues)[number];
+
+export interface BundleComponentProblem {
+  code: string;
+  message: string;
+}
+
+export interface BundleOfferPreviewComponent {
+  variantId: string;
+  productId: string;
+  name: string;
+  sku: string | null;
+  quantity: number;
+  giftSlot: boolean;
+  imageUrl: string | null;
+  mode: BundleComponentMode;
+  externalOfferId?: string;
+  cardCategoryId?: string;
+  problems: BundleComponentProblem[];
+}
+
+export type BundleOfferPreviewEntry =
+  | {
+      variantId: string;
+      status: 'ok';
+      components: BundleOfferPreviewComponent[];
+      suggestedCategoryId: string | null;
+      availableSets: number | null;
+      limitingComponentVariantId: string | null;
+    }
+  | { variantId: string; status: 'not-a-bundle' }
+  | { variantId: string; status: 'failed'; reason: 'planning-unsupported' | 'preview-failed' };
+
+export interface BundleOfferPreviewResponse {
+  entries: BundleOfferPreviewEntry[];
+}
+
 export interface AttributeProjectionPreviewRequest {
   items: AttributeProjectionPreviewItem[];
 }

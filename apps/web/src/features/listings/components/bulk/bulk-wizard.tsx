@@ -33,7 +33,13 @@ import { useBulkSubmitMutation } from '../../hooks/use-bulk-submit-mutation';
 import { useBulkShopPublishMutation } from '../../hooks/use-bulk-shop-publish-mutation';
 import { useBulkRequiredProductParams } from '../../hooks/use-bulk-required-product-params';
 import { useAttributeProjectionPreview } from '../../hooks/use-attribute-projection-preview';
-import type { AttributeProjectionPreviewItem, OfferParameter } from '../../api/listings.types';
+import type { BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview';
+import { useBundleOfferPreview } from '../../hooks/use-bundle-offer-preview';
+import type {
+  AttributeProjectionPreviewItem,
+  BundleOfferPreviewItem,
+  OfferParameter,
+} from '../../api/listings.types';
 import { usePublishedVariantsQuery } from '../../hooks/use-published-variants-query';
 import { publishDestinationKind } from '../../lib/publish-destinations';
 import { DuplicateGuardModal } from '../duplicate-guard-modal';
@@ -68,6 +74,8 @@ import {
   effectiveVariantEan,
   productCategoryIdOf,
   submitCategoryIdOf,
+  nonDerivedCategoryIdOf,
+  bundleStock,
   recomputeVariantBlockers,
   type PreflightContext,
 } from './bulk-policy';
@@ -121,6 +129,7 @@ const SHOP_WIZARD_STEPS: { id: BulkWizardStep }[] = [{ id: 'config' }, { id: 're
 /** Stable empty list so a param-schema opt-out platform keeps a constant deps identity. */
 const EMPTY_CATEGORY_IDS: readonly string[] = [];
 const EMPTY_PROJECTION_ITEMS: AttributeProjectionPreviewItem[] = [];
+const EMPTY_BUNDLE_ITEMS: BundleOfferPreviewItem[] = [];
 
 /** Stable empty set so a render without published-variant data keeps a constant ref. */
 const EMPTY_ALREADY_LISTED: ReadonlySet<string> = new Set<string>();
@@ -304,6 +313,25 @@ export function BulkWizard({
     return map;
   }, [projectionPreview.byVariant]);
 
+  // Which included variants are bundles, and how each would publish as a
+  // product-set offer (#3520). Asked on Review for every included variant of a
+  // marketplace batch: the answer says which ones ARE bundles. The category is
+  // sent only when the operator chose one - a category the wizard derived from
+  // the preview itself must not feed back into the question it answers.
+  const bundleItems = useMemo<BundleOfferPreviewItem[]>(() => {
+    if (step !== 'review' || isShop) return EMPTY_BUNDLE_ITEMS;
+    const items: BundleOfferPreviewItem[] = [];
+    for (const row of rows) {
+      for (const variant of row.variants) {
+        if (!variant.included) continue;
+        const operatorCategory = nonDerivedCategoryIdOf(row, variant);
+        items.push({ variantId: variant.variantId, ...(operatorCategory ? { categoryId: operatorCategory } : {}) });
+      }
+    }
+    return items;
+  }, [rows, step, isShop]);
+  const bundlePreview = useBundleOfferPreview(config?.connectionId, bundleItems);
+
   const platformValidate = useMemo<
     ((input: OfferRowValidationInput) => string[]) | undefined
   >(() => batchPlatform?.offerValidation?.validateRow, [batchPlatform]);
@@ -375,9 +403,37 @@ export function BulkWizard({
       failedCategoryIds,
       catalogueConsulted: catalogueLookupPerformed === true,
       projectedByVariant,
+      bundleByVariant: bundlePreview.bundles,
     }),
-    [schemaByCategory, failedCategoryIds, catalogueLookupPerformed, projectedByVariant],
+    [
+      schemaByCategory,
+      failedCategoryIds,
+      catalogueLookupPerformed,
+      projectedByVariant,
+      bundlePreview.bundles,
+    ],
   );
+
+  // A bundle lists at the whole sets it can make and, with no category chosen,
+  // under the first component's card category - the one Allegro requires the
+  // offer to match. Both are written into the rows so every consumer (the grid,
+  // the editor, the submit) reads one value instead of re-deriving it.
+  useEffect(() => {
+    if (!config || step !== 'review' || isShop || bundlePreview.bundles.size === 0) return;
+    setRows((prev) =>
+      reblockRows(
+        prev,
+        config,
+        requiredByCategory,
+        platformValidate,
+        destinationResolvesCategoryAtSubmit,
+        preflightContext,
+        (row) => applyBundlePreview(row, bundlePreview.bundles),
+      ),
+    );
+    // Only a new preview should re-run this: re-running on every blocker input
+    // would loop with the recompute effect above.
+  }, [bundlePreview.bundles, step, isShop]);
 
   // Reconcile per-variant `needs-product-parameters` (and any policy-derived)
   // blockers whenever a category's schema resolves. Gated to Review so only
@@ -565,6 +621,41 @@ export function BulkWizard({
       }));
     },
     [config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit],
+  );
+
+  // One-click fix for a bundle under a different category than its first
+  // component's card: Allegro requires the two to match (#3520).
+  const handleUseBundleCategory = useCallback(
+    (productId: string, categoryId: string) => {
+      if (!config) return;
+      setHasEdits(true);
+      setRows((prev) =>
+        reblockRows(
+          prev,
+          config,
+          requiredByCategory,
+          platformValidate,
+          destinationResolvesCategoryAtSubmit,
+          preflightContext,
+          (row) => {
+            if (row.productId !== productId) return row;
+            const overrides = { ...(row.override.overrides ?? {}), categoryId };
+            return {
+              ...row,
+              override: { ...row.override, overrides },
+              variants: row.variants.map((v) => ({
+                ...v,
+                override: {
+                  ...v.override,
+                  overrides: { ...(v.override.overrides ?? {}), categoryId },
+                },
+              })),
+            };
+          },
+        ),
+      );
+    },
+    [config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, preflightContext],
   );
 
   const handleSubmit = useCallback(
@@ -986,6 +1077,8 @@ export function BulkWizard({
                 onSetProductIncluded={setProductIncluded}
                 onSaveEditor={handleSaveEditor}
                 onUseCardCategory={handleUseCardCategory}
+                bundles={bundlePreview}
+                onUseBundleCategory={handleUseBundleCategory}
                 destinationResolvesCategoryAtSubmit={destinationResolvesCategoryAtSubmit}
                 onApproveAll={handleApproveAll}
                 onBack={() => { setStep('config'); }}
@@ -1072,6 +1165,45 @@ function dedupById(products: Product[]): Product[] {
  * Apply a row transform then recompute every touched product's per-variant
  * blockers so inclusion/override edits keep the readiness gate honest.
  */
+/**
+ * Fold a bundle preview into a row (#3520): stock becomes the sets sellable now,
+ * and a missing category is filled with the first component's card category.
+ * Returns the same row when nothing changes, so reblocking skips it.
+ */
+function applyBundlePreview(
+  row: BulkWizardRow,
+  bundles: ReadonlyMap<string, BundleOfferPreviewOk>,
+): BulkWizardRow {
+  let changed = false;
+  let next: BulkWizardRow = row;
+  const variants = row.variants.map((variant) => {
+    const preview = bundles.get(variant.variantId);
+    if (!preview) return variant;
+    let updated = variant;
+    const stock = bundleStock(preview, variant);
+    if (stock !== variant.masterStock) updated = { ...updated, masterStock: stock };
+    if (
+      preview.suggestedCategoryId !== null &&
+      submitCategoryIdOf(next, variant) === null
+    ) {
+      next = {
+        ...next,
+        resolvedCategoryId: preview.suggestedCategoryId,
+        resolutionMethod: 'first_component',
+      };
+      updated = {
+        ...updated,
+        resolvedCategoryId: preview.suggestedCategoryId,
+        resolutionMethod: 'first_component',
+      };
+    }
+    if (updated !== variant) changed = true;
+    return updated;
+  });
+  if (!changed) return row;
+  return { ...next, variants, masterStock: variants[0]?.masterStock ?? next.masterStock };
+}
+
 function reblockRows(
   rows: BulkWizardRow[],
   config: BulkWizardConfig,

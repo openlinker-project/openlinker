@@ -46,6 +46,8 @@ import type {
   PublishedVariantsRequest,
   PublishedVariantsResponse,
   AttributeProjectionPreviewRequest,
+  BundleOfferPreviewRequest,
+  BundleOfferPreviewResponse,
   AttributeProjectionPreviewResponse,
   UpdateOfferFieldsPayload,
   UpdateOfferFieldsResult,
@@ -238,6 +240,15 @@ export interface ListingsApi {
     connectionId: string,
     body: AttributeProjectionPreviewRequest,
   ) => Promise<AttributeProjectionPreviewResponse>;
+  /**
+   * How each bundle variant would publish as a product-set offer (#3520):
+   * components, their modes and problems, the required category and the whole
+   * sets sellable. Read-only.
+   */
+  previewBundleOffers: (
+    connectionId: string,
+    body: BundleOfferPreviewRequest,
+  ) => Promise<BundleOfferPreviewResponse>;
   /**
    * Streaming sibling of {@link ListingsApi.resolveCategoriesBatch} (#2211).
    * Same request body and same resolution, delivered one variant at a time so
@@ -672,6 +683,16 @@ export function createListingsApi(
     resolveCategory(connectionId, body): Promise<ResolveCategoryResponse> {
       return request<ResolveCategoryResponse>(
         `/listings/connections/${connectionId}/categories/resolve`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+      );
+    },
+    previewBundleOffers(connectionId, body): Promise<BundleOfferPreviewResponse> {
+      return request<BundleOfferPreviewResponse>(
+        `/listings/connections/${connectionId}/bundle-offer-preview`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

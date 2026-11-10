@@ -10,6 +10,7 @@ import {
   clampMarkupPercent,
   computeBlockers,
   computeResolvedPrice,
+  bundleStock,
   computeResolvedStock,
   productCategoryIdOf,
   roundHalfUp,
@@ -1081,5 +1082,68 @@ describe('catalogue card vs category mapping (#3994)', () => {
         { ...variant, override: { overrides: { categoryId: 'cat-variant' } } },
       ),
     ).toBe('cat-variant');
+  });
+});
+
+describe('computeBlockers for a bundle (#3520)', () => {
+  const bundle = (suggested: string | null, chosen: string | null, codes: string[] = []) => ({
+    components: [
+      {
+        variantId: 'c1',
+        productId: 'p1',
+        name: 'Kubek',
+        problems: codes.map((code) => ({ code, message: code })),
+      },
+    ],
+    suggestedCategoryId: suggested,
+    chosenCategoryId: chosen,
+  });
+  const input = (over: Partial<ComputeBlockersInput> = {}): ComputeBlockersInput => ({
+    hasVariant: true,
+    categoryResult: { kind: 'no-ean' },
+    pricingPolicy: { mode: 'use-master' },
+    stockPolicy: { mode: 'use-master' },
+    masterPrice: 12,
+    masterStock: 3,
+    masterCurrency: 'PLN',
+    batchCurrency: 'PLN',
+    override: {},
+    platformValidate: allegroValidate,
+    imageCount: 1,
+    effectiveTitle: 'Zestaw poranny kawa i kubek',
+    barcode: '5901234123457',
+    catalogueConsulted: true,
+    ...over,
+  });
+
+  it('should drop the own-barcode category and catalogue chips when a category is suggested', () => {
+    const blockers = computeBlockers(input({ bundle: bundle('74035', '74035') }));
+    expect(blockers).toEqual([]);
+  });
+
+  it('should still ask for a category when nothing is suggested or chosen', () => {
+    expect(computeBlockers(input({ bundle: bundle(null, null) }))).toEqual(['no-match']);
+  });
+
+  it('should name a category that differs from the first component card', () => {
+    expect(computeBlockers(input({ bundle: bundle('74035', '110886'), productCategoryId: '110886' }))).toEqual([
+      'allegro:bundle-category-mismatch',
+    ]);
+  });
+
+  it('should carry the component problems through as blockers', () => {
+    expect(
+      computeBlockers(
+        input({ bundle: bundle('74035', '74035', ['PRODUCT_SET_COMPONENT_UNPUBLISHABLE']) }),
+      ),
+    ).toEqual(['allegro:bundle-component-missing']);
+  });
+
+  it('should list at the sets sellable and fall back to the row stock when unknown', () => {
+    const variant = { masterStock: 50 } as unknown as Parameters<typeof bundleStock>[1];
+    const preview = (availableSets: number | null) =>
+      ({ availableSets }) as unknown as Parameters<typeof bundleStock>[0];
+    expect(bundleStock(preview(3), variant)).toBe(3);
+    expect(bundleStock(preview(null), variant)).toBe(50);
   });
 });

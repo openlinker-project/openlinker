@@ -15,12 +15,14 @@
  */
 import type {
   CategoryParameterLike,
+  OfferRowBundleInput,
   OfferRowValidationInput,
   SuppliedParameterLike,
 } from '../../../../shared/plugins';
 import { getMessages, interpolate } from '../../../../shared/i18n';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
 import type { EanMatchResult, OfferParameter } from '../../api/listings.types';
+import type { BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview';
 import { collapseToInvalidBarcode } from './bulk-blockers';
 import type {
   BulkRowBlocker,
@@ -280,6 +282,12 @@ export interface ComputeBlockersInput {
    * this a failed fetch silently cleared the required-parameter blocker.
    */
   categorySchemaUnavailable?: boolean;
+  /**
+   * Set when the row is a bundle published as a product-set offer (#3520). The
+   * single-product category and barcode checks then do not apply: the category
+   * comes from the first component's card and the barcode is not required.
+   */
+  bundle?: OfferRowBundleInput;
 }
 
 /**
@@ -315,7 +323,11 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
   );
   if (!hasCategoryOverride && !input.destinationResolvesCategoryAtSubmit) {
     const cat = input.categoryResult;
-    if (!cat || cat.kind === 'no-match') {
+    if (input.bundle) {
+      // A set needs a category, not a catalogue match for its own barcode: the
+      // chip that says "no catalogue match" would be false for it (#3520).
+      if (!input.bundle.suggestedCategoryId) blockers.push('no-match');
+    } else if (!cat || cat.kind === 'no-match') {
       blockers.push('no-match');
     } else if (cat.kind === 'no-ean') {
       blockers.push('no-ean');
@@ -350,7 +362,10 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
     blockers.push(
       ...input.platformValidate({
         imageCount: input.imageCount ?? 0,
-        needsProductParameters: computeNeedsProductParameters(input),
+        // A set's products carry their own parameters (#3520); the offer-level
+        // product-section requirement describes a single product and would
+        // demand values nobody can enter for a bundle.
+        needsProductParameters: input.bundle ? false : computeNeedsProductParameters(input),
         willLinkProductCard: input.willLinkProductCard ?? false,
         title: input.effectiveTitle ?? '',
         categoryParameters: input.categoryParameters,
@@ -363,6 +378,7 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
         barcodeMatchedCatalogue: input.barcodeMatchedCatalogue,
         siblingsWithoutCatalogueCard: input.siblingsWithoutCatalogueCard,
         includedSiblingCount: input.includedSiblingCount,
+        ...(input.bundle ? { bundle: input.bundle } : {}),
       }),
     );
   }
@@ -536,6 +552,12 @@ export interface PreflightContext {
    * with values computed for the old one.
    */
   projectedByVariant?: ReadonlyMap<string, { categoryId: string; parameters: readonly OfferParameter[] }>;
+  /**
+   * Variants that publish as ONE offer made of several products (#3520), from
+   * the bundle preview. A bundle row's own barcode and catalogue card say
+   * nothing about the offer, so its blockers are computed from the components.
+   */
+  bundleByVariant?: ReadonlyMap<string, BundleOfferPreviewOk>;
 }
 
 /**
@@ -741,6 +763,21 @@ export function submitCategoryIdOf(row: BulkWizardRow, variant: BulkVariantRow):
 }
 
 /**
+ * The category to ask the bundle preview about (#3520): everything
+ * `submitCategoryIdOf` would return EXCEPT a category the wizard itself filled in
+ * from that preview, which must not feed back into the question it answers.
+ */
+export function nonDerivedCategoryIdOf(row: BulkWizardRow, variant: BulkVariantRow): string | null {
+  return (
+    variant.override.overrides?.categoryId ??
+    row.override.overrides?.categoryId ??
+    (row.resolutionMethod === 'first_component' ? null : row.resolvedCategoryId) ??
+    (variant.resolutionMethod === 'first_component' ? null : variant.resolvedCategoryId) ??
+    null
+  );
+}
+
+/**
  * Whether the operator picked this variant's category in the wizard (#3994) -
  * on the variant itself or at the product tier. Deliberately NOT
  * `productCategoryIdOf`, which also returns the RESOLVED category: a resolved
@@ -764,6 +801,15 @@ export function projectedFor(
   const entry = context.projectedByVariant?.get(variantId);
   if (!entry || submitCategoryId === null || entry.categoryId !== submitCategoryId) return undefined;
   return entry.parameters;
+}
+
+/**
+ * The stock a bundle row lists at: the whole sets sellable now (#3520), not the
+ * bundle variant's own position. Falls back to the row's stock when the preview
+ * could not tell, so an unknown never becomes 0.
+ */
+export function bundleStock(preview: BundleOfferPreviewOk, variant: BulkVariantRow): number | null {
+  return preview.availableSets ?? variant.masterStock;
 }
 
 /**
@@ -792,7 +838,22 @@ export function recomputeVariantBlockers(
   const productCategoryId = productCategoryIdOf(row);
   const submitCategoryId = submitCategoryIdOf(row, variant);
   const coverage = siblingCardCoverage(row);
+  const bundlePreview = context.bundleByVariant?.get(variant.variantId);
+  const bundle: OfferRowBundleInput | undefined = bundlePreview
+    ? {
+        components: bundlePreview.components.map((component) => ({
+          variantId: component.variantId,
+          productId: component.productId,
+          name: component.name,
+          problems: component.problems,
+          ...(component.cardCategoryId ? { cardCategoryId: component.cardCategoryId } : {}),
+        })),
+        suggestedCategoryId: bundlePreview.suggestedCategoryId,
+        chosenCategoryId: submitCategoryId,
+      }
+    : undefined;
   const blockers = computeBlockers({
+    ...(bundle ? { bundle } : {}),
     hasVariant: true,
     categoryResult: variantCategoryResult(variant, submitCategoryId),
     cardInOtherCategory: variant.overriddenCard !== null && !operatorPickedCategory(row, variant),
@@ -801,7 +862,7 @@ export function recomputeVariantBlockers(
     pricingPolicy: effectivePricingPolicy(row.override, config.pricingPolicy),
     stockPolicy: effectiveStockPolicy(row.override, config.stockPolicy),
     masterPrice: variant.masterPrice,
-    masterStock: variant.masterStock,
+    masterStock: bundlePreview ? bundleStock(bundlePreview, variant) : variant.masterStock,
     masterCurrency: variant.masterCurrency,
     batchCurrency: config.currency,
     override: variant.override,
@@ -839,6 +900,7 @@ export function recomputeVariantBlockers(
   // where the category is resolved server-side.
   const ean = effectiveVariantEan(variant);
   if (
+    !bundle &&
     ean !== null &&
     !isValidGtin(ean) &&
     !filtered.includes('invalid-barcode') &&

@@ -55,6 +55,8 @@ import {
   type RejectedRuleValue,
 } from './attribute-rules-panel';
 import type { AttributeProjectionPreview } from '../../hooks/use-attribute-projection-preview';
+import type { BundleOfferPreview, BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview';
+import { BundleComposition } from './bundle-composition';
 import {
   listParameterNames,
   summarizeProjection,
@@ -107,6 +109,14 @@ interface BulkReviewStepProps {
   onUseCardCategory?: (productId: string) => void;
   /** The destination resolves the category itself at submit (borrowed taxonomy). */
   destinationResolvesCategoryAtSubmit?: boolean;
+  /**
+   * Which variants publish as one product-set offer, and how (#3520). A bundle
+   * row shows its composition instead of a variant count and lists at the sets
+   * it can make.
+   */
+  bundles?: BundleOfferPreview;
+  /** Sets a bundle's category to the one of its first component's card. */
+  onUseBundleCategory?: (productId: string, categoryId: string) => void;
 }
 
 /** What every row needs to render its Category cell and open the card dialog (#3994). */
@@ -183,8 +193,21 @@ function blockerCopyContext(
   variant: BulkVariantRow,
   destinationName: string,
   config: BulkWizardConfig,
+  bundle?: BundleOfferPreviewOk,
 ): BlockerCopyContext {
   return {
+    ...(bundle
+      ? {
+          bundle: {
+            componentsWithProblem: bundle.components
+              .filter((component) => component.problems.length > 0)
+              .map((component) => ({
+                name: component.name,
+                codes: component.problems.map((problem) => problem.code),
+              })),
+          },
+        }
+      : {}),
     ean: variant.ean,
     destinationName,
     variantCount: row.variants.length,
@@ -212,6 +235,8 @@ export function BulkReviewStep({
   projection,
   onUseCardCategory,
   destinationResolvesCategoryAtSubmit = false,
+  bundles,
+  onUseBundleCategory,
 }: BulkReviewStepProps): ReactElement {
   const copy = useMessages('listings').bulkReviewStep;
   const plural = usePlural();
@@ -630,6 +655,8 @@ export function BulkReviewStep({
               setZoom({ src, name });
             }}
             category={categoryColumn}
+            bundle={bundles?.bundles.get(row.variants[0]?.variantId ?? '')}
+            onUseBundleCategory={onUseBundleCategory}
           />
         ))}
       </div>
@@ -708,6 +735,7 @@ export function BulkReviewStep({
           demoReadOnly={demoReadOnly}
           onSave={onSaveEditor}
           projectionSummaries={projectionSummaries}
+          bundles={bundles?.bundles}
         />
       ) : null}
 
@@ -768,6 +796,9 @@ interface ProductRowProps {
   onEdit: (focusVariantId?: string, focusField?: OfferBlockerField) => void;
   onZoom: (src: string, name: string) => void;
   category: CategoryColumn;
+  /** Set when this (single-variant) row publishes as a product-set offer (#3520). */
+  bundle?: BundleOfferPreviewOk;
+  onUseBundleCategory?: (productId: string, categoryId: string) => void;
 }
 
 function ProductRow({
@@ -784,8 +815,11 @@ function ProductRow({
   onEdit,
   onZoom,
   category,
+  bundle,
+  onUseBundleCategory,
 }: ProductRowProps): ReactElement {
   const copy = useMessages('listings').bulkReviewStep;
+  const bundleCopy = useMessages('listings').bundleOffer;
   const plural = usePlural();
   const format = useFormat();
   const productName = row.product?.name ?? copy.row.productFallback;
@@ -844,14 +878,18 @@ function ProductRow({
               }}
             />
           )}
-          {isMulti ? (
+          {isMulti || bundle ? (
             <button
               type="button"
               className="bulk-review__toggle"
               aria-expanded={open}
-              aria-label={interpolate(open ? copy.row.collapseVariants : copy.row.expandVariants, {
-                name: productName,
-              })}
+              aria-label={
+                bundle
+                  ? interpolate(open ? bundleCopy.collapse : bundleCopy.expand, { name: productName })
+                  : interpolate(open ? copy.row.collapseVariants : copy.row.expandVariants, {
+                      name: productName,
+                    })
+              }
               onClick={onToggleExpand}
             >
               <span className="bulk-review__caret" aria-hidden="true">&#9656;</span>
@@ -887,7 +925,11 @@ function ProductRow({
             <small>
               {row.primaryVariant?.sku ?? ''}
               {row.primaryVariant?.sku ? ' · ' : ''}
-              {noVariants ? copy.row.noVariants : plural(row.variants.length, copy.row.variantCount)}
+              {noVariants
+                ? copy.row.noVariants
+                : bundle
+                  ? plural(bundle.components.length, bundleCopy.marker)
+                  : plural(row.variants.length, copy.row.variantCount)}
             </small>
           </div>
         </div>
@@ -902,7 +944,7 @@ function ProductRow({
               alreadyListed={alreadyListedVariantIds.has(row.variants[0].variantId)}
               destinationName={destinationName}
               projection={projectionSummaries.get(row.variants[0].variantId) ?? null}
-              copyContext={blockerCopyContext(row, row.variants[0], destinationName, config)}
+              copyContext={blockerCopyContext(row, row.variants[0], destinationName, config, bundle)}
               onFix={(focusField) => {
                 onEdit(row.variants[0].variantId, focusField);
               }}
@@ -942,7 +984,15 @@ function ProductRow({
             .filter(Boolean)
             .join(' ')}
         >
-          {isSimple ? row.variants[0].masterStock ?? '-' : isMulti ? copy.row.perVariant : '-'}
+          {bundle ? (
+            <BundleStock preview={bundle} />
+          ) : isSimple ? (
+            row.variants[0].masterStock ?? '-'
+          ) : isMulti ? (
+            copy.row.perVariant
+          ) : (
+            '-'
+          )}
         </div>
         <div className="bulk-review__c-price tabular">
           {productPrice !== null ? format.money(productPrice, config.currency) : '-'}
@@ -964,6 +1014,23 @@ function ProductRow({
           )}
         </div>
       </div>
+
+      {bundle && open ? (
+        <div className="bundle-comp-panel" data-testid="bundle-panel">
+          <BundleComposition
+            preview={bundle}
+            connectionId={config.connectionId}
+            chosenCategoryId={submitCategoryIdOf(row, row.variants[0])}
+            onUseSuggestedCategory={
+              bundle.suggestedCategoryId && onUseBundleCategory
+                ? () => {
+                    onUseBundleCategory(row.productId, bundle.suggestedCategoryId ?? '');
+                  }
+                : undefined
+            }
+          />
+        </div>
+      ) : null}
 
       {isMulti && open ? (
         <div className="bulk-review__vrows">
@@ -988,6 +1055,20 @@ function ProductRow({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** What a bundle lists at: the whole sets it can make, and what limits that (#3520). */
+function BundleStock({ preview }: { preview: BundleOfferPreviewOk }): ReactElement {
+  const copy = useMessages('listings').bundleOffer;
+  const limiting = preview.components.find(
+    (component) => component.variantId === preview.limitingComponentVariantId,
+  );
+  return (
+    <span className="bundle-stock">
+      <span>{preview.availableSets ?? '-'}</span>
+      {limiting ? <small title={limiting.name}>{interpolate(copy.limitedBy, { name: limiting.name })}</small> : null}
+    </span>
   );
 }
 

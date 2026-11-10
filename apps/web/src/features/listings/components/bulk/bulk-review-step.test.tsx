@@ -338,3 +338,77 @@ describe('BulkReviewStep', () => {
     });
   });
 });
+
+describe('BulkReviewStep for a bundle (#3520)', () => {
+  const preview = {
+    variantId: 'v1',
+    status: 'ok' as const,
+    suggestedCategoryId: 'cat-1',
+    availableSets: 3,
+    limitingComponentVariantId: 'c2',
+    components: [
+      {
+        variantId: 'c1',
+        productId: 'p-c1',
+        name: 'Kawa 250 g',
+        sku: 'KAW-250',
+        quantity: 1,
+        giftSlot: false,
+        imageUrl: null,
+        mode: 'own-offer' as const,
+        externalOfferId: '778',
+        problems: [],
+      },
+      {
+        variantId: 'c2',
+        productId: 'p-c2',
+        name: 'Kubek 350 ml',
+        sku: 'KUB-350',
+        quantity: 1,
+        giftSlot: false,
+        imageUrl: null,
+        mode: 'catalog-card' as const,
+        problems: [],
+      },
+    ],
+  };
+  const bundles = {
+    bundles: new Map([['v1', preview]]),
+    failedVariantIds: new Set<string>(),
+    isLoading: false,
+    retry: vi.fn(),
+  };
+
+  it('should mark the row as a set instead of counting variants', () => {
+    renderWithProviders(
+      <BulkReviewStep {...baseProps()} rows={[makeRow('prod_1', [variantRow('v1')])]} bundles={bundles} />,
+    );
+    expect(screen.getByText(/Set · 2 products/)).toBeInTheDocument();
+    expect(screen.queryByText(/1 variant/)).not.toBeInTheDocument();
+  });
+
+  it('should list at the sets it can make and name the limiting component', () => {
+    renderWithProviders(
+      <BulkReviewStep {...baseProps()} rows={[makeRow('prod_1', [variantRow('v1')])]} bundles={bundles} />,
+    );
+    expect(screen.getByText('limited by Kubek 350 ml')).toBeInTheDocument();
+  });
+
+  it('should expand to the composition', () => {
+    renderWithProviders(
+      <BulkReviewStep {...baseProps()} rows={[makeRow('prod_1', [variantRow('v1')])]} bundles={bundles} />,
+    );
+    expect(screen.queryByTestId('bundle-composition')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Show set contents of/ }));
+    expect(screen.getByTestId('bundle-composition')).toBeInTheDocument();
+    expect(screen.getByText('own offer 778')).toBeInTheDocument();
+    expect(screen.getByText('catalogue card')).toBeInTheDocument();
+  });
+
+  it('should not show the set marker for an ordinary product', () => {
+    renderWithProviders(
+      <BulkReviewStep {...baseProps()} rows={[makeRow('prod_1', [variantRow('v9')])]} bundles={bundles} />,
+    );
+    expect(screen.queryByText(/Set · /)).not.toBeInTheDocument();
+  });
+});
