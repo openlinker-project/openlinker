@@ -953,7 +953,6 @@
       "other": "Gotowe: {done} z {n} produktu"
     },
     "pullingTitle": "Pobieranie głównej ceny i stanu",
-    "resolutionFailed": "Ustalanie nie powiodło się.",
     "resolvedSoFar": {
       "few": "Ustalono już {resolved} z {n} wariantów. Ponowienie obsłuży pozostałe zamiast zaczynać od nowa.",
       "many": "Ustalono już {resolved} z {n} wariantów. Ponowienie obsłuży pozostałe zamiast zaczynać od nowa.",
@@ -1368,10 +1367,6 @@
     "selectPlaceholder": "Wybierz…",
     "showOptional": "Pokaż pola opcjonalne ({count})"
   },
-  "common": {
-    "serverSaid": "Serwer odpowiedział: {message}",
-    "unknownError": "Coś poszło nie tak. Spróbuj ponownie."
-  },
   "duplicateGuardModal": {
     "cancel": "Wróć",
     "confirmMarketplace": "Opublikuj pozostałe warianty",
@@ -1447,8 +1442,7 @@
     "loading": "Wczytywanie cenników dostaw…",
     "placeholder": "Wybierz cennik dostaw…",
     "refresh": "Odśwież",
-    "retry": "Ponów",
-    "tryAgain": "Spróbuj ponownie."
+    "retry": "Ponów"
   },
   "erliDeliveryPriceListOverrideField": {
     "batchDefault": "Ustawienie partii",
@@ -1465,8 +1459,7 @@
     "placeholder": "Wybierz cennik dostaw…",
     "refresh": "Odśwież",
     "resetToBatchDefault": "Przywróć ustawienie partii",
-    "retry": "Ponów",
-    "tryAgain": "Spróbuj ponownie."
+    "retry": "Ponów"
   },
   "erliDispatchTimeField": {
     "fromDefault": "domyślne ustawienie połączenia",
@@ -1526,8 +1519,7 @@
     "label": "Producent",
     "loadErrorTitle": "Nie udało się wczytać producentów",
     "loading": "Wczytywanie producentów…",
-    "placeholder": "Wybierz producenta…",
-    "tryAgain": "Spróbuj ponownie."
+    "placeholder": "Wybierz producenta…"
   },
   "listingDetailPage": {
     "contextTitle": "Kontekst",
@@ -1781,7 +1773,7 @@
       "withId": "Oferta jest aktywna · ID zewnętrzne <id>{externalId}</id>.",
       "withoutId": "Oferta jest aktywna."
     },
-    "loadFailed": "Nie udało się wczytać statusu: {message}",
+    "loadFailed": "Nie udało się wczytać statusu.",
     "loading": "Wczytywanie statusu…",
     "processing": "Wciąż w trakcie - status zaktualizuje się automatycznie.",
     "reused": {
@@ -2123,7 +2115,7 @@
         "one": "błędy: {n}",
         "other": "błędy: {n}"
       },
-      "loadError": "Nie udało się wczytać partii: {message}",
+      "loadError": "Nie udało się wczytać partii.",
       "loading": "Wczytywanie partii…",
       "none": "Brak dostępnej partii.",
       "progress": "{done} / {total}",
@@ -2144,7 +2136,7 @@
     "single": {
       "failedBody": "Publikacja nie powiodła się. W sklepie nie utworzono produktu.",
       "failedTitle": "Publikacja nie powiodła się",
-      "loadError": "Nie udało się wczytać statusu: {message}",
+      "loadError": "Nie udało się wczytać statusu.",
       "loading": "Wczytywanie statusu…",
       "none": "Brak dostępnego statusu.",
       "product": "Produkt",

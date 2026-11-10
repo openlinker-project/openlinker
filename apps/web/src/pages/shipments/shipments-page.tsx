@@ -56,6 +56,7 @@ import {
   parseProcessorFilter,
   toShipmentProcessorFilters,
 } from '../../features/shipments/lib/processor';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const PAGE_SIZE = SHIPMENTS_PAGE_SIZE;
 
@@ -584,8 +585,16 @@ export function ShipmentsPage(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.error.title}
-          message={query.error.message}
-          action={<Button onClick={() => { void query.refetch(); }}>{retryLabel}</Button>}
+          message={describeApiError(query.error, 'shipments')}
+          action={
+            <Button
+              onClick={() => {
+                void query.refetch();
+              }}
+            >
+              {retryLabel}
+            </Button>
+          }
         />
       ) : (query.data?.items.length ?? 0) === 0 ? (
         <EmptyState

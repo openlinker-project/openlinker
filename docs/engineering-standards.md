@@ -1299,7 +1299,7 @@ Every word an operator reads in `apps/web` comes from a translation file, in Eng
 - **Plurals**: `{ one, other }` in English, `{ one, few, many, other }` in Polish, rendered with `usePlural`; the count is `{n}`. An object with exactly the keys `one` and `other` is a plural, so never name a section that way.
 - **Numbers, money, dates**: `useFormat`. Never `toLocaleString()` without the active locale, `toFixed()` for display, or a hard-coded `'en-US'`.
 - **Style**: sentence case, plain hyphen (no em dash), British English, operator vocabulary, Polish terms from [i18n-glossary.md](./i18n-glossary.md).
-- **Server text**: the error `code` envelope is planned (#3860 to #3867). Until then, map the machine values an endpoint already sends (`error`, `reason`) to copy, and show any other server `message` behind a translated prefix.
+- **Server text**: never render an API error's `message`. Show `describeApiError(error, '<namespace>')`, which picks the copy by the error's `code` (`locales/<lang>/errors.json`, or the feature's `apiErrors.<CODE>`); branch on `error.code`, never on the message text (#3867).
 
 ✅ **Good**:
 ```tsx

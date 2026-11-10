@@ -33,6 +33,7 @@ import {
   useWarningAcknowledgement,
 } from '../../../features/invoicing';
 import { useSubiektGtMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface LineRow {
   originalLineNumber: string;
@@ -149,7 +150,7 @@ export function SubiektInvoiceCorrectionFlow({
             showToast({
               tone: 'error',
               title: copy.failed,
-              description: error.message,
+              description: describeApiError(error, 'subiekt-gt'),
             });
           },
         },

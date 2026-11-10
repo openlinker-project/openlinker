@@ -21,6 +21,7 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { usePrestashopMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export function PrestashopCredentialsPanel({
   connection,
@@ -69,7 +70,7 @@ export function PrestashopCredentialsPanel({
     >
       {showRotate ? (
         <div className="form-grid">
-          {rotate.error ? <Alert tone="error">{rotate.error.message}</Alert> : null}
+          {rotate.error ? <Alert tone="error">{describeApiError(rotate.error, 'prestashop')}</Alert> : null}
           <Input
             type="password"
             autoComplete="off"

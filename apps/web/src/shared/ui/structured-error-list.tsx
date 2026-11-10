@@ -73,6 +73,7 @@ interface StructuredErrorRowProps {
 function StructuredErrorRow({ error, translate }: StructuredErrorRowProps): ReactElement {
   const copy = useMessages('ui').structuredErrors;
   const translation = translate?.(error) ?? null;
+  // eslint-disable-next-line no-restricted-syntax -- a marketplace's own validation words when no translator recognises the code
   const primaryMessage = translation?.message ?? error.message;
 
   return (
@@ -84,6 +85,7 @@ function StructuredErrorRow({ error, translate }: StructuredErrorRowProps): Reac
         {translation ? (
           <details className="structured-error-list__raw">
             <summary>{copy.original}</summary>
+            {/* eslint-disable-next-line no-restricted-syntax -- the marketplace's original words, under the translated 'original' label */}
             <span className="structured-error-list__raw-body">{error.message}</span>
           </details>
         ) : null}

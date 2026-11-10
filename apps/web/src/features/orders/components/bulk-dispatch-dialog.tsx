@@ -53,6 +53,7 @@ import {
 } from '../lib/dispatch-input';
 import { mergeParcelWithRoutedPrefill, parcelPrefillForMethod } from '../lib/routed-parcel-profile';
 import { createParcelSchema, type ParcelSubmission } from './bulk-dispatch-dialog.schema';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 type BulkDispatchCopy = ResolvedCopy<Messages['orders']>['bulkDispatchDialog'];
 
@@ -234,7 +235,7 @@ export function BulkDispatchDialog({
       if (outcome.status === 'fulfilled') {
         merged.push(...outcome.value.results);
       } else {
-        const error = outcome.reason instanceof Error ? outcome.reason.message : copy.dispatchFailed;
+        const error = describeApiError(outcome.reason, 'orders');
         for (const g of groupItems) {
           merged.push({ kind: 'failed', orderId: g.item.orderId, error });
         }

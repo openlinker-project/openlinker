@@ -5,6 +5,7 @@ import { ApiError } from '../../shared/api/api-error';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { useMessages } from '../../shared/i18n';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 function isOAuthStateInvalidError(error: unknown): boolean {
   if (!(error instanceof ApiError)) return false;
@@ -73,12 +74,10 @@ export function AllegroConnectCallbackPage(): ReactElement {
           />
         );
       }
-      const message =
-        callbackState.error instanceof Error ? callbackState.error.message : copy.failed.unknown;
       return (
         <ErrorState
           title={copy.failed.title}
-          message={message}
+          message={describeApiError(callbackState.error, 'allegro-core')}
           action={
             <Link className="button" to="/connections/new/allegro">
               {copy.failed.tryAgain}

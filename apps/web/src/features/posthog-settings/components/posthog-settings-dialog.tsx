@@ -20,6 +20,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useMessages, usePlural } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -177,7 +178,7 @@ export function PosthogSettingsDialog({
       showToast({
         tone: 'error',
         title: copy.resetErrorTitle,
-        description: error instanceof Error ? error.message : copy.unknownError,
+        description: describeApiError(error, 'posthog-settings'),
       });
     }
   };
@@ -240,7 +241,7 @@ export function PosthogSettingsDialog({
 
         {mutationError ? (
           <Alert tone="error" title={copy.saveErrorTitle}>
-            {mutationError.message}
+            {describeApiError(mutationError, 'posthog-settings')}
           </Alert>
         ) : null}
 

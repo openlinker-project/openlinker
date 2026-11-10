@@ -76,8 +76,7 @@
     "description": "How hard OpenLinker works your shop, and how long a full pass takes. Changing these trades shop load against how quickly OpenLinker notices a change.",
     "error": {
       "retry": "Retry",
-      "title": "Unable to load sync pacing",
-      "unknown": "Unknown error"
+      "title": "Unable to load sync pacing"
     },
     "eyebrow": "Settings",
     "footer": {

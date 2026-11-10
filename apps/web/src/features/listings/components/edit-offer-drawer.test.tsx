@@ -12,6 +12,8 @@ import {
   renderWithProviders,
 } from '../../../test/test-utils';
 import { EditOfferDrawer } from './edit-offer-drawer';
+import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import type { OfferMapping } from '../api/listings.types';
 
 const mockMapping: OfferMapping = {
@@ -133,7 +135,9 @@ describe('EditOfferDrawer', () => {
 
   it('should show inline error and not close drawer on API failure', async () => {
     const onClose = vi.fn();
-    const updateOfferFields = vi.fn().mockRejectedValue(new Error('Allegro API error'));
+    const updateOfferFields = vi.fn().mockRejectedValue(
+      new ApiError('Allegro API error', 404, { code: 'MARKETPLACE_OFFER_NOT_FOUND' }),
+    );
     const mockApi = createMockApiClient({ listings: { updateOfferFields } });
     renderWithProviders(
       <EditOfferDrawer isOpen={true} onClose={onClose} mapping={mockMapping} />,
@@ -145,7 +149,7 @@ describe('EditOfferDrawer', () => {
     fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
 
     expect(await screen.findByText(/update failed/i)).toBeInTheDocument();
-    expect(screen.getByText('The server said: Allegro API error')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').codes.MARKETPLACE_OFFER_NOT_FOUND)).toBeInTheDocument();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });

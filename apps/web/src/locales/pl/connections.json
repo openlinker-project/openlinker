@@ -21,8 +21,7 @@
         "bytes": "{n} B",
         "kilobytes": "{n} KB",
         "megabytes": "{n} MB"
-      },
-      "uploadFailed": "Przesyłanie nie powiodło się"
+      }
     },
     "description": "Allegro wymaga w każdej ofercie miejsca wysyłki i danych GPSR UE (rozporządzenie 2023/988, obowiązkowe od 13 grudnia 2024). Te ustawienia domyślne są wysyłane przy tworzeniu produktu w ofercie i używane awaryjnie, gdy nie uda się powiązać z istniejącą kartą produktu.",
     "eyebrow": "Domyślne ustawienia sprzedawcy Allegro",
@@ -848,7 +847,6 @@
     "save": "Zapisz zmiany",
     "saving": "Zapisywanie...",
     "someNeedAttention": "Niektóre pola wymagają uwagi. Zobacz listę na górze formularza.",
-    "unexpectedError": "Wystąpił nieoczekiwany błąd.",
     "updatedDescription": "Ustawienia połączenia zostały zapisane.",
     "updatedTitle": "Połączenie zaktualizowane",
     "warningsTitle": "Zapisano, ale coś wymaga sprawdzenia"
@@ -1291,7 +1289,6 @@
       }
     },
     "save": "Zapisz zmiany",
-    "saveFailed": "Nie udało się zapisać ustawień cen i synchronizacji.",
     "savedDescription": "Zaktualizowano ustawienia cen i synchronizacji.",
     "savedTitle": "Zapisano",
     "saving": "Zapisywanie…",
@@ -1344,8 +1341,7 @@
     "restore": "Przywróć",
     "restoring": "Przywracanie...",
     "successDescription": "„{name}” wróciło jako wyłączone połączenie. Przed włączeniem podaj ponownie dane uwierzytelniające.",
-    "successTitle": "Połączenie przywrócone",
-    "tryAgain": "Spróbuj ponownie."
+    "successTitle": "Połączenie przywrócone"
   },
   "routerReadinessPanel": {
     "activeLocations": "Aktywne lokalizacje magazynowe",

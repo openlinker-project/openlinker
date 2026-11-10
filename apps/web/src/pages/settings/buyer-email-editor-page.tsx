@@ -23,6 +23,7 @@ import { useId, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
@@ -150,6 +151,7 @@ function EditorForm({
             form.resetField('fromAddress', { defaultValue: values.fromAddress });
             form.resetField('replyTo', { defaultValue: values.replyTo });
           }
+          // eslint-disable-next-line no-restricted-syntax -- BuyerEmailSaveError, whose message the save hook built from translated copy
           showToast({ description: error.message, tone: 'error' });
         },
       },
@@ -173,7 +175,7 @@ function EditorForm({
         onSuccess: () => setSentTo(address),
         onError: (error) =>
           showToast({
-            description: isBuyerEmailTestRateLimitedError(error) ? COPY.testRateLimited : error.message,
+            description: isBuyerEmailTestRateLimitedError(error) ? COPY.testRateLimited : describeApiError(error, 'buyer-emails'),
             tone: 'error',
           }),
       },

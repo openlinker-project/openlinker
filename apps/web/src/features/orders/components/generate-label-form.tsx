@@ -80,7 +80,8 @@ import {
   missingFieldMessage,
   resolveShippingMethod,
 } from '../lib/dispatch-input';
-import { serverErrorText } from '../lib/server-error-text';
+import { ApiError } from '../../../shared/api/api-error';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 type GenerateLabelCopy = ResolvedCopy<Messages['orders']>['generateLabelForm'];
 
@@ -139,7 +140,7 @@ export function GenerateLabelForm({
   onCancel,
 }: GenerateLabelFormProps): ReactElement {
   const ordersCopy = useMessages('orders');
-  const serverSaid = ordersCopy.common.serverSaid;
+  const technicalDetails = useMessages('ui').apiError.technicalDetailsWith;
   const copy = ordersCopy.generateLabelForm;
   const schema = useMemo(() => createGenerateLabelSchema(copy.validation), [copy]);
   const snapshot = parseOrderSnapshot(order.orderSnapshot);
@@ -501,6 +502,7 @@ export function GenerateLabelForm({
     shippingMethod === 'paczkomat' && hasPickupPoint;
 
   const submitDisabled = mutation.isPending || missingFields.length > 0;
+  const carrierDetail = carrierRejectionDetail(mutation.error);
 
   return (
     <form
@@ -568,7 +570,12 @@ export function GenerateLabelForm({
           can quote it to carrier support without a log dive. */}
       {mutation.error ? (
         <Alert tone="error" className="generate-label-form__error">
-          <p className="generate-label-form__error-message">{serverErrorText(serverSaid, mutation.error.message, '')}</p>
+          <p className="generate-label-form__error-message">
+            {describeApiError(mutation.error, 'orders')}
+          </p>
+          {carrierDetail ? (
+            <p className="generate-label-form__error-detail">{interpolate(technicalDetails, { details: carrierDetail })}</p>
+          ) : null}
           <StructuredErrorList errors={extractShippingFieldErrors(mutation.error)} />
           <ShippingTraceReference traceId={extractShippingTraceId(mutation.error)} />
         </Alert>
@@ -841,6 +848,21 @@ export function GenerateLabelForm({
       </div>
     </form>
   );
+}
+
+/**
+ * The carrier's own words for a refused label (`SHIPPING_PROVIDER_*`). The
+ * coded sentence only names the carrier; what it objected to (e.g. DPD's
+ * `NOT_PROCESSED` text) travels in `message` alone and is what the operator
+ * quotes to carrier support, so it stays visible, labelled as untranslated.
+ */
+function carrierRejectionDetail(error: unknown): string | undefined {
+  if (!(error instanceof ApiError)) return undefined;
+  if (error.code !== 'SHIPPING_PROVIDER_REJECTED' && error.code !== 'SHIPPING_PROVIDER_AUTH_FAILED') {
+    return undefined;
+  }
+  // eslint-disable-next-line no-restricted-syntax -- the carrier's own words, shown beside describeApiError under the untranslated technical-details label
+  return error.message.length > 0 ? error.message : undefined;
 }
 
 function buildRecipientPreview(

@@ -216,7 +216,6 @@
       },
       "partialTitle": "{name}: some orders failed",
       "removeBack": "Back to adding tags",
-      "removeErrorFallback": "OpenLinker could not remove the tag. Try again.",
       "removeErrorTitle": "Tag not removed",
       "removeHeading": {
         "one": "Remove tag from {n} order",
@@ -251,7 +250,6 @@
   "bulkDispatchDialog": {
     "cancel": "Cancel",
     "description": "Generate labels for the selected orders - dispatched in per-source batches.",
-    "dispatchFailed": "Dispatch failed",
     "dispatching": "Dispatching…",
     "invalidParcel": "Invalid parcel",
     "needAttention": {
@@ -371,7 +369,6 @@
     "channelFallback": "the sales channel",
     "confirm": {
       "description": "OpenLinker asks {channel} to cancel it. Once {channel} confirms, the rest happens on its own, except the refund, which you make yourself.",
-      "errorFallback": "Could not cancel this order.",
       "errorTitle": "Could not cancel this order",
       "title": "Cancel order {order}?"
     },
@@ -396,7 +393,6 @@
     },
     "keepOrder": "Keep order",
     "label": {
-      "fallback": "A shipping label exists for this order, so OpenLinker will not cancel it yet.",
       "goToShipment": "Go to shipment",
       "note": "If the parcel is already with the courier, the label cannot be voided. See the parcel instead of cancelling.",
       "stepCancelAgain": "Cancel the order again.",
@@ -427,7 +423,6 @@
     "shipped": {
       "alertTitle": "The parcel is on its way",
       "close": "Close",
-      "fallback": "This order has already shipped.",
       "insteadTitle": "What you can do instead",
       "stepInvoice": "The invoice stays as issued. The return proposes the correction invoice.",
       "stepRefund": "Once the goods are back, refund the buyer and confirm the refund here.",
@@ -448,9 +443,7 @@
     "ownOnly": "Discount: {amount} in OpenLinker",
     "ownPart": "{amount} in OpenLinker"
   },
-  "common": {
-    "serverSaid": "The server said: {message}"
-  },
+  "common": {},
   "confirmOrderRefund": {
     "action": "Confirm refund",
     "ceiling": {
@@ -460,7 +453,6 @@
       "title": "This is more than the order total"
     },
     "description": "Record the refund you made to the buyer. OpenLinker does not move money.",
-    "failed": "Could not record the refund.",
     "recorded": "Refund recorded.",
     "title": "Confirm a refund"
   },
@@ -1420,7 +1412,6 @@
     "confirmed": "Correction confirmed.",
     "confirming": "Confirming…",
     "discountReason": "The order was discounted, so the invoice is corrected to the discounted prices.",
-    "errorBody": "Could not confirm the correction.",
     "errorTitle": "Could not confirm the correction",
     "irreversible": "Confirming issues the correcting invoice, and an issued correction can not be withdrawn.",
     "title": "Correction invoice",
@@ -1556,7 +1547,6 @@
     "confirm": "Confirm refund",
     "confirming": "Confirming…",
     "discountLowered": "The discount lowered what the buyer owes.",
-    "errorBody": "Could not confirm the refund.",
     "errorTitle": "Could not confirm the refund",
     "recorded": "Refund recorded.",
     "refundFirst": "OpenLinker doesn’t move money: refund the difference on {channel} first, then confirm it here so the documents and what the buyer paid agree.",
@@ -1778,7 +1768,6 @@
       "modePercent": "Percent of the goods"
     },
     "failure": {
-      "fallback": "Could not save this edit.",
       "title": "Could not save this edit"
     },
     "lines": {
@@ -1889,7 +1878,6 @@
     "refundIntentFailed": "The discount was saved, but OpenLinker could not open the refund for it. Send the same discount again to open it, then refund the difference on {channel}.",
     "refundPending": "Refund {amount} on {channel}, then confirm the refund here.",
     "resend": "Send the discount again",
-    "resendFailed": "Could not send the discount again.",
     "resending": "Sending…",
     "reviewCorrection": "Review correction",
     "stillShows": "{channel} still shows the order as the buyer placed it.",
@@ -2020,7 +2008,6 @@
     "separator": "Separator",
     "separatorHint": "UTF-8, opens directly in Excel.",
     "separatorValue": "Semicolon (;), Excel in Polish",
-    "startFailed": "Could not start the export. Try again.",
     "submitBackground": "Start background export",
     "submitCount": {
       "one": "Export {n} order",
@@ -2138,12 +2125,10 @@
       "counter": "{length} / {max}",
       "label": "New note",
       "packerWarning": "Packers see this text on the pack bench. Leave out phone numbers, emails and addresses.",
-      "pinErrorFallback": "OpenLinker could not pin the note. Pin it from the list.",
       "pinErrorTitle": "Note added, not pinned",
       "pinToTop": "Pin to the top",
       "placeholder": "Add a note for your team",
       "retry": "Try again",
-      "saveErrorFallback": "OpenLinker could not reach the server.",
       "saveErrorTail": "Your text is still in the box above.",
       "saveErrorTitle": "Note not saved",
       "showToPacker": "Show to packer on the pack bench",
@@ -2153,7 +2138,6 @@
       "confirm": "Delete note",
       "descriptionRemoved": "The text is removed for everyone, including the pack bench.",
       "descriptionTimeline": "The activity timeline keeps a line saying a note by <strong>{author}</strong> was deleted, without its text.",
-      "errorFallback": "OpenLinker could not delete the note. Try again.",
       "errorTitle": "Note not deleted",
       "keep": "Keep note",
       "title": "Delete this note?"
@@ -2177,12 +2161,10 @@
     "readOnly": "You can read notes. Adding or changing them needs the operator or admin role.",
     "retry": "Try again",
     "row": {
-      "actionErrorFallback": "OpenLinker could not change the note. Try again.",
       "actionErrorTitle": "Note not changed",
       "cancel": "Cancel",
       "delete": "Delete",
       "edit": "Edit",
-      "editErrorFallback": "OpenLinker could not save the edit. Try again.",
       "editErrorTitle": "Edit not saved",
       "editHint": "Everyone sees that it was edited.",
       "editLabel": "Edit note",
@@ -2322,7 +2304,6 @@
     "bulk": {
       "allHaveIt": "All have it",
       "emptyVocabulary": "No tags yet.",
-      "errorFallback": "OpenLinker could not add the tag. Try again.",
       "errorTitle": "Tag not added",
       "hasIt": {
         "one": "{n} of {total} has it",
@@ -2405,7 +2386,6 @@
     },
     "noTags": "No tags",
     "picker": {
-      "createErrorFallback": "OpenLinker could not create the tag. Try again.",
       "createErrorTitle": "Tag not created",
       "createRow": "+ Create “{name}”",
       "createdToastDescription": "{name} is on this order now.",
@@ -2420,7 +2400,6 @@
         "one": "order",
         "other": "orders"
       },
-      "saveErrorFallback": "OpenLinker could not save the change. Try again.",
       "saveErrorTitle": "Tag not saved",
       "savedHint": "Saved as you tick",
       "searchPlaceholder": "Find or create a tag"
@@ -2452,7 +2431,6 @@
     "title": "Packing",
     "toasts": {
       "cleared": "Packed mark cleared.",
-      "failed": "Could not update the packed mark.",
       "marked": "Order marked packed."
     },
     "undo": "Undo"
@@ -2827,7 +2805,6 @@
     }
   },
   "sendDocumentEmail": {
-    "failed": "Could not email the document to the buyer.",
     "language": "Email language",
     "lastSentVia": "{when} · {via}",
     "noBuyerEmail": "This order has no buyer email.",

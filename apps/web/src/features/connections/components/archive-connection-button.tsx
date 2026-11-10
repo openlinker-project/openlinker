@@ -38,6 +38,7 @@ import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface ArchiveConnectionButtonProps {
   connection: Connection;
@@ -132,7 +133,7 @@ export function ArchiveConnectionButton({
               </Alert>
             ) : archiveConnection.error ? (
               <Alert tone="error" title={copy.errorTitle}>
-                {archiveConnection.error.message}
+                {describeApiError(archiveConnection.error, 'connections')}
               </Alert>
             ) : null}
           </div>

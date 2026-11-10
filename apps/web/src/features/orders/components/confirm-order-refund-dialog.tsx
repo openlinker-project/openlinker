@@ -26,8 +26,12 @@ import {
 } from '../../../shared/ui/dialog';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useRecordOrderRefundMutation } from '../hooks/use-record-order-refund-mutation';
-import { readRefundCeilingFigures, readServerReason } from '../lib/order-cancel';
-import { RefundConfirmationForm, type RefundConfirmationSubmission } from './refund-confirmation-form';
+import { readRefundCeilingFigures } from '../lib/order-cancel';
+import {
+  RefundConfirmationForm,
+  type RefundConfirmationSubmission,
+} from './refund-confirmation-form';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface ConfirmOrderRefundDialogProps {
   open: boolean;
@@ -126,9 +130,7 @@ export function ConfirmOrderRefundDialog({
           orderTotal={orderTotal}
           pending={mutation.isPending}
           error={
-            mutation.isError && ceiling === null
-              ? readServerReason(mutation.error, copy.failed)
-              : null
+            mutation.isError && ceiling === null ? describeApiError(mutation.error, 'orders') : null
           }
           onSubmit={submit}
           onCancel={() => {

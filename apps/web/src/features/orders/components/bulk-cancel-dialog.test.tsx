@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { BulkCancelDialog } from './bulk-cancel-dialog';
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import type { BulkCancelOrdersResult } from '../api/order-bulk-actions.types';
 
@@ -115,7 +116,9 @@ describe('BulkCancelDialog (#3619)', () => {
 
     await user.click(screen.getByTestId('orders-bulk-cancel-submit'));
 
-    expect(await screen.findByTestId('orders-bulk-cancel-error')).toHaveTextContent('Forbidden');
+    expect(await screen.findByTestId('orders-bulk-cancel-error')).toHaveTextContent(
+      getMessages('errors').status['403'],
+    );
     expect(screen.queryByTestId('orders-bulk-cancel-results')).toBeNull();
   });
 

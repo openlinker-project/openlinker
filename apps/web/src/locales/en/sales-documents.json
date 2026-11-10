@@ -214,8 +214,7 @@
       "invoice": "An order in <b>{country}</b> matching none of the rules above gets an <b>{kind}</b> through <b>{connection}</b>.",
       "receipt": "An order in <b>{country}</b> matching none of the rules above gets a <b>{kind}</b> through <b>{connection}</b>."
     },
-    "restOfWorld": "★ Rest of world",
-    "unknownError": "Unknown error"
+    "restOfWorld": "★ Rest of world"
   },
   "salesDocumentCountryRoutingDialog": {
     "acknowledged": {
@@ -237,7 +236,6 @@
       "title": "Reset {country}?",
       "warning": "Resetting deletes every rule and default configured for {country} here in OpenLinker. It does not touch anything at the provider - no invoice or receipt already issued is affected."
     },
-    "resetFailed": "Failed to reset country",
     "restOfWorld": "★ Rest of world",
     "saveNote": "Every control here saves as you change it - there is nothing to submit.",
     "tiers": {
@@ -446,8 +444,7 @@
       "label": "tax-ID-aware sources only",
       "title": "Matches only when the order's source recorded a buyer tax ID - conditionally for every source"
     },
-    "taxIdWarning": "A buyer-tax-ID condition matches only an order whose source actually recorded that fact. A shop reports it only when the buyer filled in a VAT number on the address; a marketplace reports it only when the buyer requested a VAT invoice; some shops report it only if they run a supported VAT-number plugin. An order whose source didn't assert a tax ID never matches this rule.",
-    "unknownError": "Unknown error"
+    "taxIdWarning": "A buyer-tax-ID condition matches only an order whose source actually recorded that fact. A shop reports it only when the buyer filled in a VAT number on the address; a marketplace reports it only when the buyer requested a VAT invoice; some shops report it only if they run a supported VAT-number plugin. An order whose source didn't assert a tax ID never matches this rule."
   },
   "salesDocumentTemplateScreen": {
     "adopt": "Review & adopt",

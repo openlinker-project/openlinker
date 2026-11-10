@@ -1,4 +1,7 @@
 {
+  "apiErrors": {
+    "PROMPT_TEMPLATE_NOT_FOUND": "No published prompt template is set up for this channel yet."
+  },
   "contentEditor": {
     "channel": {
       "connectionStatus": {
@@ -47,8 +50,7 @@
       "draftDiscarded": "Draft discarded",
       "draftSaved": "Draft saved",
       "published": "Published"
-    },
-    "unknownError": "Unknown error"
+    }
   },
   "contentPanel": {
     "actions": {

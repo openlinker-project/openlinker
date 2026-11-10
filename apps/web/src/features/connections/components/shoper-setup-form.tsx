@@ -51,6 +51,8 @@ import { Input } from '../../../shared/ui/input';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
+import { describeApiError } from '../../../shared/api/describe-api-error';
+
 
 
 const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<ShoperSetupFormValues>>> = [
@@ -74,6 +76,7 @@ function maskToken(token: string): string {
 export function ShoperSetupForm(): ReactElement {
   const copy = useMessages('connections').shoperSetupForm;
   const setupCopy = useMessages('connections').setup;
+  const uiCopy = useMessages('ui');
   const format = useFormat();
   const STEP_LABELS = [
     copy.steps.shop,
@@ -119,8 +122,8 @@ export function ShoperSetupForm(): ReactElement {
     (CORE_CAPABILITY_VALUES as readonly string[]).includes(capability),
   );
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : [],
+  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
+    fieldError?.message ? [String(fieldError.message)] : [],
   );
 
   async function goNext(): Promise<void> {
@@ -222,7 +225,7 @@ export function ShoperSetupForm(): ReactElement {
               tone={testResult.success ? 'success' : 'error'}
               title={testResult.success ? copy.testPassed : copy.testFailed}
             >
-              {testResult.message}
+              {testResult.success ? null : interpolate(uiCopy.apiError.technicalDetailsWith, { details: testResult.message })}
               {typeof testResult.latencyMs === 'number'
                 ? ` ${interpolate(copy.latency, { ms: format.number(testResult.latencyMs) })}`
                 : null}
@@ -230,7 +233,7 @@ export function ShoperSetupForm(): ReactElement {
           ) : null}
           {testConnection.error ? (
             <Alert tone="error" title={copy.testError}>
-              {testConnection.error.message}
+              {describeApiError(testConnection.error, 'connections')}
             </Alert>
           ) : null}
           <div className="form-actions">
@@ -260,7 +263,7 @@ export function ShoperSetupForm(): ReactElement {
         ) : null}
         {createConnection.error ? (
           <Alert tone="error" title={copy.createError}>
-            {createConnection.error.message}
+            {describeApiError(createConnection.error, 'connections')}
           </Alert>
         ) : null}
 

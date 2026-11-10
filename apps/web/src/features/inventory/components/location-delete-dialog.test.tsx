@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import { LocationDeleteDialog } from './location-delete-dialog';
 import type { InventoryLocation } from '../api/inventory-locations.types';
 
@@ -99,7 +100,7 @@ describe('LocationDeleteDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
 
     expect(await screen.findByText('Could not save the location')).toBeInTheDocument();
-    expect(screen.getByText('Internal server error')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status['5xx'])).toBeInTheDocument();
     // A 5xx is not a mapped conflict, so the dialog must not silently switch
     // to the retire flow — that would hide the real failure behind an
     // unrelated affordance.
@@ -123,7 +124,7 @@ describe('LocationDeleteDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: /retire instead/i }));
 
     expect(await screen.findByText('Could not save the location')).toBeInTheDocument();
-    expect(screen.getByText('Internal server error')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status['5xx'])).toBeInTheDocument();
     // The dialog stays open in the in-use phase so the operator can retry —
     // a failed retire must not silently close the dialog or drop them back
     // to the "Delete?" confirm they already got past.

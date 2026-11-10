@@ -36,8 +36,7 @@
     "noProviderBody": "Sugestie AI nie będą działać, dopóki nie zapiszesz klucza i nie aktywujesz dostawcy. Dopóki nie wybierzesz tu dostawcy, OpenLinker używa dostawcy ustawionego w konfiguracji serwera.",
     "noProviderTitle": "Nie skonfigurowano dostawcy AI",
     "retry": "Ponów",
-    "title": "Ustawienia dostawców",
-    "unknownError": "Nieznany błąd"
+    "title": "Ustawienia dostawców"
   },
   "aiProviderTable": {
     "activeBadge": "Aktywny",
@@ -93,7 +92,6 @@
     "switchErrorTitle": "Nie udało się przełączyć dostawcy",
     "switchedToastDescription": "Kolejne żądania AI trafiają do {provider}.",
     "switchedToastTitle": "Aktywny dostawca przełączony",
-    "unknownError": "Nieznany błąd",
     "updatedBy": "przez {user}",
     "yes": "Tak"
   }

@@ -18,14 +18,15 @@
  * with, which is why `missingRuleIds` / `unknownRuleIds` are `null` (absent)
  * rather than `[]` (present and empty) for a non-reorder conflict.
  *
- * ## The server's own message is used verbatim
+ * ## The sentence comes from the error's code
  *
- * Both messages name the specific problem, and a generic replacement would be
- * strictly worse than an answer the server already gave.
+ * Both refusals carry a code whose copy names the specific problem, so the
+ * operator reads it in their language rather than the server's English (#3867).
  *
  * @module apps/web/src/features/oms/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { getMessages } from '../../../shared/i18n';
 
 export interface SourcingRuleConflict {
@@ -65,7 +66,7 @@ export function readSourcingRuleConflict(error: unknown): SourcingRuleConflict |
 
   const details = readRecord(error.details);
   return {
-    message: error.message,
+    message: describeApiError(error, 'oms-core'),
     missingRuleIds: readStringArray(details?.['missingRuleIds']),
     unknownRuleIds: readStringArray(details?.['unknownRuleIds']),
   };
@@ -74,18 +75,18 @@ export function readSourcingRuleConflict(error: unknown): SourcingRuleConflict |
 /**
  * Operator sentence for a failed sourcing-rule write.
  *
- * A 400 gets the server's message verbatim: this endpoint's 400s name the
+ * A 400 reads its code's copy (#3867): this endpoint's 400s name the
  * problem precisely — not an OMS connection, a kind/name pair the router cannot
  * evaluate, `priorityLocationIds` on a non-priority rule, an unknown location
  * id, a window that closes before it opens, or an attempt to edit a rule stored
  * as `recognised: false`. Every one of those is something an operator can act
- * on, and a generic sentence would throw it away.
+ * on, and each code has its own sentence.
  */
 export function describeSourcingRuleError(error: unknown, fallback: string): string {
   const conflict = readSourcingRuleConflict(error);
   if (conflict) return conflict.message;
-  if (error instanceof ApiError && error.status === 400 && error.message.length > 0) {
-    return error.message;
+  if (error instanceof ApiError && error.status === 400) {
+    return describeApiError(error, 'oms-core');
   }
   if (error instanceof ApiError && error.isForbidden()) {
     return getMessages('oms-core').sourcingRuleConflict.forbidden;

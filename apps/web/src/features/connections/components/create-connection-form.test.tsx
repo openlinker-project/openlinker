@@ -10,6 +10,7 @@ import {
   findToastTitle,
   renderWithProviders,
 } from '../../../test/test-utils';
+import { getMessages } from '../../../shared/i18n';
 
 const captureDemoEvent = vi.fn();
 vi.mock('../../demo', () => ({
@@ -129,7 +130,7 @@ describe('CreateConnectionForm', () => {
     fireEvent.click(within(view.container).getAllByRole('button', { name: 'Create connection' })[0]);
 
     expect(await screen.findByText('Unable to create connection')).toBeInTheDocument();
-    expect(screen.getByText('API create failed')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
   });
 
   describe('demo read-only viewer (#1667)', () => {

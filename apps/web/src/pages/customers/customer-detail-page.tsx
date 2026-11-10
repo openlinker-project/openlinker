@@ -18,6 +18,7 @@ import type {
 } from '../../features/orders/api/orders.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import { interpolate, labelFor, useFormat, useMessages } from '../../shared/i18n';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 type CustomerDetailCopy = ReturnType<typeof useMessages<'customers'>>['customerDetailPage'];
 
@@ -182,7 +183,7 @@ export function CustomerDetailPage(): ReactElement {
       <PageLayout eyebrow={copy.eyebrow} title={copy.fallbackTitle}>
         <ErrorState
           title={copy.error.title}
-          message={query.error?.message ?? copy.error.notFound}
+          message={query.error ? describeApiError(query.error, 'customers') : copy.error.notFound}
           action={<Button onClick={() => { void query.refetch(); }}>{copy.retry}</Button>}
         />
       </PageLayout>
@@ -219,7 +220,7 @@ export function CustomerDetailPage(): ReactElement {
         ) : ordersQuery.error ? (
           <ErrorState
             title={copy.orders.error.title}
-            message={ordersQuery.error.message}
+            message={describeApiError(ordersQuery.error, 'customers')}
             action={<Button onClick={() => { void ordersQuery.refetch(); }}>{copy.retry}</Button>}
           />
         ) : (ordersQuery.data?.items.length ?? 0) === 0 ? (

@@ -21,8 +21,7 @@
         "bytes": "{n} B",
         "kilobytes": "{n} KB",
         "megabytes": "{n} MB"
-      },
-      "uploadFailed": "Upload failed"
+      }
     },
     "description": "Allegro requires a ship-from location and EU GPSR data (Reg. 2023/988, mandatory since 13 Dec 2024) on every offer. These defaults are sent on the inline-product path and used as a fallback when smart-linking to an existing product card misses.",
     "eyebrow": "Allegro seller defaults",
@@ -822,7 +821,6 @@
     "save": "Save changes",
     "saving": "Saving...",
     "someNeedAttention": "Some fields need attention. See the list at the top of the form.",
-    "unexpectedError": "An unexpected error occurred.",
     "updatedDescription": "Connection settings have been saved.",
     "updatedTitle": "Connection updated",
     "warningsTitle": "Saved, with something to check"
@@ -1261,7 +1259,6 @@
       }
     },
     "save": "Save changes",
-    "saveFailed": "Failed to save pricing & sync settings.",
     "savedDescription": "Pricing & sync settings updated.",
     "savedTitle": "Saved",
     "saving": "Saving…",
@@ -1314,8 +1311,7 @@
     "restore": "Restore",
     "restoring": "Restoring...",
     "successDescription": "\"{name}\" is back as a disabled connection. Enter its credentials again before enabling it.",
-    "successTitle": "Connection restored",
-    "tryAgain": "Please try again."
+    "successTitle": "Connection restored"
   },
   "routerReadinessPanel": {
     "activeLocations": "Active inventory locations",

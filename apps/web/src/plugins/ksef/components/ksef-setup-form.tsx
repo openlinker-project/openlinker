@@ -40,6 +40,7 @@ import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { interpolate } from '../../../shared/i18n';
 import { useKsefMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export function KsefSetupForm(): ReactElement {
   const messages = useKsefMessages();
@@ -71,8 +72,8 @@ export function KsefSetupForm(): ReactElement {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [form.formState.isDirty]);
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : [],
+  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
+    fieldError?.message ? [String(fieldError.message)] : [],
   );
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -103,7 +104,7 @@ export function KsefSetupForm(): ReactElement {
       ) : null}
       {createConnection.error ? (
         <Alert tone="error" title={copy.createError}>
-          {createConnection.error.message}
+          {describeApiError(createConnection.error, 'ksef')}
         </Alert>
       ) : null}
       {createdWithWarnings ? (

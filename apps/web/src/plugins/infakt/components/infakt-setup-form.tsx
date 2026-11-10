@@ -53,8 +53,9 @@ import {
   DialogTitle,
 } from '../../../shared/ui/dialog';
 import { InfaktWebhookConfigDialog } from './infakt-webhook-config';
-import { interpolate, renderRich } from '../../../shared/i18n';
+import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
 import { useInfaktMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 const INFAKT_SANDBOX_URL = 'https://api.sandbox-infakt.pl';
 const INFAKT_PRODUCTION_URL = 'https://api.infakt.pl';
@@ -63,6 +64,7 @@ const strong = { strong: (text: string): ReactElement => <strong>{text}</strong>
 export function InfaktSetupForm(): ReactElement {
   const messages = useInfaktMessages();
   const copy = messages.infaktSetupForm;
+  const uiCopy = useMessages('ui');
   const schemaCopy = messages.infaktSetupSchema;
   const setupSchema = useMemo(() => createInfaktSetupSchema(schemaCopy), [schemaCopy]);
   const createConnection = useCreateConnectionMutation();
@@ -119,8 +121,8 @@ export function InfaktSetupForm(): ReactElement {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [form.formState.isDirty, createdConnectionId]);
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : [],
+  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
+    fieldError?.message ? [String(fieldError.message)] : [],
   );
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -185,7 +187,7 @@ export function InfaktSetupForm(): ReactElement {
               tone: 'error',
               title: copy.forcedCashFailed.title,
               description: interpolate(copy.forcedCashFailed.description, {
-                error: error.message,
+                error: describeApiError(error, 'infakt'),
               }),
             });
           },
@@ -233,7 +235,7 @@ export function InfaktSetupForm(): ReactElement {
       ) : null}
       {createConnection.error ? (
         <Alert tone="error" title={copy.createError}>
-          {createConnection.error.message}
+          {describeApiError(createConnection.error, 'infakt')}
         </Alert>
       ) : null}
 
@@ -352,17 +354,15 @@ export function InfaktSetupForm(): ReactElement {
               tone={testResult.success ? 'success' : 'error'}
               title={testResult.success ? copy.test.passed : copy.test.failed}
             >
+              {testResult.success ? null : interpolate(uiCopy.apiError.technicalDetailsWith, { details: testResult.message })}
               {typeof testResult.latencyMs === 'number'
-                ? interpolate(copy.test.latency, {
-                    message: testResult.message,
-                    ms: testResult.latencyMs,
-                  })
-                : testResult.message}
+                ? ` ${interpolate(copy.test.latency, { ms: testResult.latencyMs })}`
+                : null}
             </Alert>
           ) : null}
           {testConnection.error ? (
             <Alert tone="error" title={copy.test.unable}>
-              {testConnection.error.message}
+              {describeApiError(testConnection.error, 'infakt')}
             </Alert>
           ) : null}
 

@@ -38,6 +38,7 @@ import {
   useSetAutomationActiveMutation,
   type AutomationRule,
 } from '../../features/automation';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 export function AutomationTriggerPage(): ReactElement {
   const messages = useMessages('automation');
@@ -131,7 +132,7 @@ export function AutomationTriggerPage(): ReactElement {
       ) : rulesQuery.error ? (
         <ErrorState
           title={errorCopy.rulesTitle}
-          message={rulesQuery.error.message}
+          message={describeApiError(rulesQuery.error, 'automation')}
         />
       ) : (
         <>
@@ -155,7 +156,7 @@ export function AutomationTriggerPage(): ReactElement {
             readOnlyMessage={navDemoRestrictedMessage()}
             onSetActive={handleSetActive}
             pendingRuleId={setActive.isPending ? (setActive.variables?.rule.id ?? null) : null}
-            writeError={setActive.error?.message ?? null}
+            writeError={setActive.error ? describeApiError(setActive.error, 'automation') : null}
           />
         </>
       )}

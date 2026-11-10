@@ -35,6 +35,7 @@ import type {
   PromptTemplateListFilters,
   PromptTemplateSummary,
 } from '../../features/prompt-templates/api/prompt-templates.types';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const STATUS_FILTER_VALUES = ['active', 'archived', 'all'] as const;
 type StatusFilterValue = (typeof STATUS_FILTER_VALUES)[number];
@@ -337,7 +338,7 @@ export function PromptTemplatesListPage(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.errorTitle}
-          message={query.error instanceof Error ? query.error.message : messages.common.unknownError}
+          message={describeApiError(query.error, 'prompt-templates')}
           action={
             <button className="button button--secondary" onClick={() => void query.refetch()}>
               {messages.common.retry}

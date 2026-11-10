@@ -70,6 +70,7 @@ import {
 } from '../../features/invoicing';
 import { ConnectionCell, ConnectionFold, useConnectionsQuery } from '../../features/connections';
 import { OrderBuyerTaxIdValue, OrderIdentityCell, formatOrderRef } from '../../features/orders';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const PAGE_SIZE = 20;
 
@@ -549,7 +550,9 @@ export function InvoicesListPage(): ReactElement {
     >
       {retryMutation.error ? (
         <Alert tone="error" className="invoice-list__retry-error">
-          {interpolate(copy.bulk.retryError, { message: retryMutation.error.message })}
+          {interpolate(copy.bulk.retryError, {
+            message: describeApiError(retryMutation.error, 'invoicing'),
+          })}
           <Button
             tone="secondary"
             className="button--sm"
@@ -563,7 +566,9 @@ export function InvoicesListPage(): ReactElement {
 
       {bulkIssueMutation.error ? (
         <Alert tone="error" className="invoice-list__issue-error">
-          {interpolate(copy.bulk.issueError, { message: bulkIssueMutation.error.message })}
+          {interpolate(copy.bulk.issueError, {
+            message: describeApiError(bulkIssueMutation.error, 'invoicing'),
+          })}
           <Button
             tone="secondary"
             className="button--sm"
@@ -737,12 +742,8 @@ export function InvoicesListPage(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.list.error}
-          message={query.error.message}
-          action={
-            <Button onClick={() => void query.refetch()}>
-              {copy.list.retry}
-            </Button>
-          }
+          message={describeApiError(query.error, 'invoicing')}
+          action={<Button onClick={() => void query.refetch()}>{copy.list.retry}</Button>}
         />
       ) : (query.data?.items.length ?? 0) === 0 ? (
         <EmptyState
