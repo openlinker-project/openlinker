@@ -238,8 +238,11 @@ const harness = createIntegrationTestHarness({
     // wrong behaviour between test cases.
     'automation_runs',
     'automation_trigger_firings',
-    'automation_gift_rule_state',
-    'automation_gift_grants',
+    // promotions (#3935): the gift ledger and application log (no FKs, so explicit).
+    'promotions',
+    'promotion_state',
+    'promotion_grants',
+    'promotion_applications',
     'return_gift_decisions',
     'automation_rules',
     // destination_categories (#1979) — the taxonomy projection. Marketplace

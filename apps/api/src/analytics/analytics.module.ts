@@ -63,7 +63,7 @@
  *    names by `MarginAnalyticsApiService`.
  *
  * 11. **`/analytics/gifts*`** (`GiftReportController`, #3943) - the gift cost report,
- *    the bundle view and the per-customer CSV; composes `orders`, `automation`
+ *    the bundle view and the per-customer CSV; composes `orders`, `promotions`
  *    (promotion names), `inventory` and `customers` in `GiftReportApiService`.
  *
  * The concerns share nothing except the URL prefix. If a future
@@ -80,7 +80,7 @@
  */
 import { Module } from '@nestjs/common';
 import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analytics';
-import { AutomationModule } from '@openlinker/core/automation';
+import { PromotionsModule } from '@openlinker/core/promotions';
 import { CurrencyModule } from '@openlinker/core/currency';
 import { CustomersModule } from '@openlinker/core/customers';
 import { InventoryModule } from '@openlinker/core/inventory';
@@ -116,7 +116,7 @@ import { GIFT_REPORT_API_SERVICE_TOKEN } from './application/services/gift-repor
 @Module({
   imports: [
     CoreAnalyticsModule,
-    AutomationModule,
+    PromotionsModule,
     CurrencyModule,
     CustomersModule,
     InventoryModule,

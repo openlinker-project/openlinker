@@ -5,7 +5,7 @@
  * @implements {IGiftReportApiService}
  */
 import { Inject, Injectable } from '@nestjs/common';
-import { GIFT_RULE_SERVICE_TOKEN, type IGiftRuleService } from '@openlinker/core/automation';
+import { PROMOTION_SERVICE_TOKEN, type IPromotionService } from '@openlinker/core/promotions';
 import {
   CUSTOMER_PROJECTION_SERVICE_TOKEN,
   type ICustomerProjectionService,
@@ -31,7 +31,7 @@ import type {
 export class GiftReportApiService implements IGiftReportApiService {
   constructor(
     @Inject(GIFT_REPORT_SERVICE_TOKEN) private readonly report: IGiftReportService,
-    @Inject(GIFT_RULE_SERVICE_TOKEN) private readonly rules: IGiftRuleService,
+    @Inject(PROMOTION_SERVICE_TOKEN) private readonly rules: IPromotionService,
     @Inject(INVENTORY_QUERY_SERVICE_TOKEN) private readonly inventory: IInventoryQueryService,
     @Inject(CUSTOMER_PROJECTION_SERVICE_TOKEN)
     private readonly customers: ICustomerProjectionService
@@ -101,8 +101,8 @@ export class GiftReportApiService implements IGiftReportApiService {
   }
 
   private async ruleNames(): Promise<Map<string, string>> {
-    const views = await this.rules.listGiftRules();
-    return new Map(views.map((view) => [view.rule.id, view.rule.name]));
+    const views = await this.rules.list();
+    return new Map(views.map((view) => [view.promotion.id, view.promotion.name]));
   }
 }
 

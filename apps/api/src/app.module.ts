@@ -58,6 +58,7 @@ import { FulfillmentAuthorityApiModule } from './fulfillment-authority/fulfillme
 import { ReturnActionsApiModule } from './returns/return-actions.module';
 import { ReturnsReadApiModule } from './returns/returns-read.module';
 import { AutomationApiModule } from './automation/automation-api.module';
+import { PromotionsApiModule } from './promotions/promotions-api.module';
 import { CurrencyApiModule } from './currency/currency.module';
 import { OperationalSettingsApiModule } from './operational-settings/operational-settings.module';
 import { LoginPageSettingsApiModule } from './login-page-settings/login-page-settings.module';
@@ -139,6 +140,7 @@ import { RequestPriorityModule } from './http/request-priority.module';
     // per-rule fired log (#2363). Imports OrdersModule as well as AutomationModule:
     // the dry run composes both, and only an app-level module may.
     AutomationApiModule,
+    PromotionsApiModule,
     ContentApiModule, // REST surface for product content editor + AI suggest (#339 + #342)
     ShippingApiModule, // Shipment read + command HTTP API (#846); imports core ShippingModule (#763/#835)
     UsersApiModule, // User management: list, approve/reject pending, role + status ops (#1125)

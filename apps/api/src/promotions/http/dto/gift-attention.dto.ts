@@ -2,11 +2,11 @@
  * Gift attention DTOs (#3935)
  *
  * What an order page needs to say why a gift that should be there is not: one
- * entry per add-gift firing that did not give its gift. Deliberately narrow, no
+ * entry per promotion application that did not give its gift. Deliberately narrow, no
  * step detail, no report text, no cost or buyer data: the reason travels as a
  * code and the page owns the sentence.
  *
- * @module apps/api/src/automation/http/dto
+ * @module apps/api/src/promotions/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
 

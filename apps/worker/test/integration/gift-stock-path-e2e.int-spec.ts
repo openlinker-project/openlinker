@@ -1,7 +1,7 @@
 /**
  * Gift stock path, ingestion to decrement to cancellation give-back (#3939)
  *
- * The OMS-on half of the gift stock path against real Postgres: a gift rule adds
+ * The OMS-on half of the gift stock path against real Postgres: a promotion adds
  * a line at ingestion (#3938), the line is reserved like any other, the REAL
  * `InventorySaleDecrementHandler` lowers it in the owning master, and the stock
  * movement ledger records that decrement as `gift` (the paid line stays `sale`).
@@ -13,10 +13,6 @@
  */
 import type { DataSource } from 'typeorm';
 
-import {
-  AUTOMATION_RULES_SERVICE_TOKEN,
-  type IAutomationRulesService,
-} from '@openlinker/core/automation';
 import type { IFulfillmentWorkQueryService } from '@openlinker/core/fulfillment';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import {
@@ -42,6 +38,7 @@ import {
   type Order,
 } from '@openlinker/core/orders';
 import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
+import { PROMOTION_SERVICE_TOKEN, type IPromotionService } from '@openlinker/core/promotions';
 import {
   SYNC_JOB_QUEUE_TOKEN,
   SYNC_LOCK_TOKEN,
@@ -117,32 +114,24 @@ describe('Gift stock path, OMS on (#3939)', () => {
     await seedVariant(ds, 'v_book', 10);
     await seedVariant(ds, 'v_mug', 5);
 
-    const rules = harness.get<IAutomationRulesService>(AUTOMATION_RULES_SERVICE_TOKEN);
-    await rules.createRule({
+    await harness.get<IPromotionService>(PROMOTION_SERVICE_TOKEN).create({
       name: 'Free mug with a book',
-      trigger: 'order.ingested',
-      triggerConfig: {},
       conditions: [{ field: 'containsProduct', op: 'eq', value: 'v_book' }],
-      actions: [
-        {
-          action: 'add-gift',
-          productId: 'p_v_mug',
-          variantId: 'v_mug',
-          quantity: 1,
-          perUnit: null,
-          unitCap: null,
-          skipIfPresent: true,
-          doNotCombine: false,
-          customerLimit: null,
-          documentForm: 'technical-cent',
-        },
-      ],
+      benefit: {
+        kind: 'free-gift',
+        productId: 'p_v_mug',
+        variantId: 'v_mug',
+        quantity: 1,
+        perUnit: null,
+        skipIfPresent: true,
+        documentForm: 'technical-cent',
+      },
       isActive: true,
       effectiveFrom: new Date(Date.now() - 24 * 3600 * 1000),
       effectiveTo: null,
     });
 
-    // Ingestion: persist the channel order, then let the gift rule add its line.
+    // Ingestion: persist the channel order, then let the promotion add its line.
     const placed = new Date(Date.now() + 60_000);
     const channel = {
       id: ORDER_ID,

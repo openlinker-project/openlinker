@@ -1,8 +1,8 @@
 /**
- * Gift rules at ingestion (integration, #3938)
+ * Promotions at ingestion (integration, #3938, moved to promotions in #3935)
  *
  * Against a real database, because the guarantees that matter are database facts:
- * the grant ledger's unique `(rule, order)` pair is what stops a re-ingestion
+ * the grant ledger's unique `(promotion, order)` pair is what stops a re-ingestion
  * giving twice, the overlay's insert-if-absent merge is what keeps an existing
  * gift line untouched, and the unit cap is summed over the ledger. Stock is the
  * real availability seam over seeded inventory; nothing is faked.
@@ -11,13 +11,6 @@
  */
 import type { DataSource } from 'typeorm';
 
-import {
-  AUTOMATION_RULES_SERVICE_TOKEN,
-  GIFT_RULE_SERVICE_TOKEN,
-  type AutomationGiftAction,
-  type IAutomationRulesService,
-  type IGiftRuleService,
-} from '@openlinker/core/automation';
 import { InventoryItemOrmEntity } from '@openlinker/core/inventory/orm-entities';
 import {
   ORDER_GIFT_SERVICE_TOKEN,
@@ -30,6 +23,13 @@ import {
 } from '@openlinker/core/orders';
 import { BUNDLE_DEFINITION_SERVICE_TOKEN, type IBundleDefinitionService } from '@openlinker/core/products';
 import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
+import {
+  PROMOTION_SERVICE_TOKEN,
+  PromotionConflictError,
+  PromotionReorderMismatchError,
+  type FreeGiftBenefit,
+  type IPromotionService,
+} from '@openlinker/core/promotions';
 
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import type { IntegrationTestHarness } from './setup';
@@ -65,10 +65,9 @@ async function seedVariant(dataSource: DataSource, id: string, available: number
   );
 }
 
-describe('Gift rules at ingestion (integration, #3938)', () => {
+describe('Promotions at ingestion (integration, #3935)', () => {
   let harness: IntegrationTestHarness;
-  let rules: IAutomationRulesService;
-  let gifts: IGiftRuleService;
+  let promotions: IPromotionService;
   let orderGifts: IOrderGiftService;
   let orders: OrdersRepository;
 
@@ -83,8 +82,7 @@ describe('Gift rules at ingestion (integration, #3938)', () => {
   beforeEach(async () => {
     await resetTestHarness();
     const app = harness.getApp();
-    rules = app.get<IAutomationRulesService>(AUTOMATION_RULES_SERVICE_TOKEN);
-    gifts = app.get<IGiftRuleService>(GIFT_RULE_SERVICE_TOKEN);
+    promotions = app.get<IPromotionService>(PROMOTION_SERVICE_TOKEN);
     orderGifts = app.get<IOrderGiftService>(ORDER_GIFT_SERVICE_TOKEN);
     orders = app.get<OrdersRepository>(ORDER_RECORD_REPOSITORY_TOKEN);
     const ds = harness.getDataSource();
@@ -92,32 +90,37 @@ describe('Gift rules at ingestion (integration, #3938)', () => {
     await seedVariant(ds, 'v_mug', 2);
   });
 
-  const giftAction = (overrides: Partial<AutomationGiftAction> = {}): AutomationGiftAction => ({
-    action: 'add-gift',
-    productId: 'p_v_mug',
-    variantId: 'v_mug',
-    quantity: 1,
-    perUnit: null,
-    unitCap: null,
-    skipIfPresent: true,
-    doNotCombine: false,
-    customerLimit: null,
-    documentForm: 'technical-cent',
-    ...overrides,
+  interface PromotionOverrides extends Partial<Omit<FreeGiftBenefit, 'kind'>> {
+    unitCap?: number | null;
+    doNotCombine?: boolean;
+    customerLimit?: number | null;
+  }
+
+  const benefitOf = (overrides: PromotionOverrides = {}): FreeGiftBenefit => ({
+    kind: 'free-gift',
+    productId: overrides.productId ?? 'p_v_mug',
+    variantId: overrides.variantId ?? 'v_mug',
+    quantity: overrides.quantity ?? 1,
+    perUnit: overrides.perUnit ?? null,
+    skipIfPresent: overrides.skipIfPresent ?? true,
+    documentForm: overrides.documentForm ?? 'technical-cent',
   });
 
-  async function createRule(overrides: Partial<AutomationGiftAction> = {}): Promise<string> {
-    const rule = await rules.createRule({
-      name: 'Free mug with a book',
-      trigger: 'order.ingested',
-      triggerConfig: {},
+  async function createPromotion(
+    overrides: PromotionOverrides = {},
+    name = 'Free mug with a book'
+  ): Promise<string> {
+    const view = await promotions.create({
+      name,
       conditions: [{ field: 'containsProduct', op: 'eq', value: 'v_book' }],
-      actions: [giftAction(overrides)],
+      benefit: benefitOf(overrides),
+      combinable: !(overrides.doNotCombine ?? false),
+      limits: { unitCap: overrides.unitCap ?? null, customerLimit: overrides.customerLimit ?? null },
       isActive: true,
       effectiveFrom: new Date(Date.now() - 24 * 3600 * 1000),
       effectiveTo: null,
     });
-    return rule.id;
+    return view.promotion.id;
   }
 
   const channelOrder = (placedAt: Date): Order =>
@@ -163,20 +166,20 @@ describe('Gift rules at ingestion (integration, #3938)', () => {
     });
   }
 
-  it('should add the gift line to a matching order, stamped as an OpenLinker rule gift with its form', async () => {
-    const ruleId = await createRule();
+  it('should add the gift line to a matching order, stamped as an OpenLinker promotion gift with its form', async () => {
+    const promotionId = await createPromotion();
     const placed = new Date(Date.now() + 60_000);
 
     const result = await ingest(channelOrder(placed), placed);
 
     expect(result.order.items).toHaveLength(2);
     expect(result.order.items[1]).toMatchObject({
-      id: olGiftLineKey(ruleId, '1'),
+      id: olGiftLineKey(promotionId, '1'),
       productId: 'p_v_mug',
       variantId: 'v_mug',
       quantity: 1,
       price: 0,
-      gift: { source: 'ol-rule', ruleRef: ruleId, documentForm: 'technical-cent' },
+      gift: { source: 'ol-rule', ruleRef: promotionId, documentForm: 'technical-cent' },
     });
 
     // Persisted in the overlay: a fresh read sees the gift in the effective snapshot
@@ -188,7 +191,7 @@ describe('Gift rules at ingestion (integration, #3938)', () => {
   });
 
   it('should give no second gift to a buyer of a set that already contains it (#3945)', async () => {
-    await createRule();
+    await createPromotion();
     await seedVariant(harness.getDataSource(), 'v_set', 0);
     await harness
       .getApp()
@@ -211,7 +214,7 @@ describe('Gift rules at ingestion (integration, #3938)', () => {
   });
 
   it('should add nothing twice on re-ingestion, and keep counting the gift once', async () => {
-    const ruleId = await createRule();
+    const promotionId = await createPromotion();
     const placed = new Date(Date.now() + 60_000);
 
     await ingest(channelOrder(placed), placed);
@@ -221,13 +224,13 @@ describe('Gift rules at ingestion (integration, #3938)', () => {
     expect(second.order.items).toHaveLength(2);
     expect(third.order.items).toHaveLength(2);
     expect(second.outcomes[0]).toMatchObject({ applied: true, alreadyApplied: true });
-    const [view] = await gifts.listGiftRules();
+    const [view] = await promotions.list();
     expect(view.unitsGiven).toBe(1);
-    expect(view.rule.id).toBe(ruleId);
+    expect(view.promotion.id).toBe(promotionId);
   });
 
-  it('should give an order placed before the rule was saved nothing', async () => {
-    await createRule();
+  it('should give an order placed before the promotion was saved nothing', async () => {
+    await createPromotion();
     const placedBefore = new Date(Date.now() - 48 * 3600 * 1000);
 
     const result = await ingest(channelOrder(placedBefore), placedBefore);
@@ -240,12 +243,12 @@ describe('Gift rules at ingestion (integration, #3938)', () => {
     });
   });
 
-  it('should pause the rule at its unit cap and resume only on an explicit resume', async () => {
-    const ruleId = await createRule({ unitCap: 1 });
+  it('should pause the promotion at its unit cap and resume only on an explicit resume', async () => {
+    const promotionId = await createPromotion({ unitCap: 1 });
     const placed = new Date(Date.now() + 60_000);
 
     await ingest(channelOrder(placed), placed);
-    const [paused] = await gifts.listGiftRules();
+    const [paused] = await promotions.list();
     expect(paused.state?.pausedReason).toBe('unit-cap');
     expect(paused.effectiveCap).toBe(1);
 
@@ -254,7 +257,7 @@ describe('Gift rules at ingestion (integration, #3938)', () => {
     expect(refused.order.items).toHaveLength(1);
     expect(refused.outcomes[0].reason).toBe('paused-unit-cap');
 
-    const resumed = await gifts.resumeAfterCap(ruleId, 2);
+    const resumed = await promotions.resumeAfterCap(promotionId, 2);
     expect(resumed.state?.pausedReason).toBeNull();
     expect(resumed.effectiveCap).toBe(3);
     const thirdOrder = { ...channelOrder(placed), id: 'ol_order_gift_3' } as Order;
@@ -262,13 +265,13 @@ describe('Gift rules at ingestion (integration, #3938)', () => {
   });
 
   it('should pause for stock and resume by itself when stock returns', async () => {
-    const ruleId = await createRule({ quantity: 3 });
+    const promotionId = await createPromotion({ quantity: 3 });
     const placed = new Date(Date.now() + 60_000);
 
     const out = await ingest(channelOrder(placed), placed);
     expect(out.order.items).toHaveLength(1);
     expect(out.outcomes[0].reason).toBe('gift-out-of-stock');
-    expect((await gifts.listGiftRules())[0].state?.pausedReason).toBe('gift-out-of-stock');
+    expect((await promotions.list())[0].state?.pausedReason).toBe('gift-out-of-stock');
 
     await harness
       .getDataSource()
@@ -277,32 +280,21 @@ describe('Gift rules at ingestion (integration, #3938)', () => {
     const orderTwo = { ...channelOrder(placed), id: 'ol_order_gift_2' } as Order;
     const back = await ingest(orderTwo, placed);
     expect(back.order.items).toHaveLength(2);
-    expect((await gifts.listGiftRules())[0].state?.pausedReason).toBeNull();
-    expect(ruleId).toBeDefined();
+    expect((await promotions.list())[0].state?.pausedReason).toBeNull();
+    expect(promotionId).toBeDefined();
   });
 
-  it('should apply only the first non-combinable rule in list order', async () => {
-    const first = await createRule({ doNotCombine: true });
+  it('should apply only the first non-combinable promotion in list order', async () => {
+    const first = await createPromotion({ doNotCombine: true });
     await seedVariant(harness.getDataSource(), 'v_pen', 5);
-    const second = (
-      await rules.createRule({
-        name: 'Free pen',
-        trigger: 'order.ingested',
-        triggerConfig: {},
-        conditions: [{ field: 'containsProduct', op: 'eq', value: 'v_book' }],
-        actions: [giftAction({ productId: 'p_v_pen', variantId: 'v_pen' })],
-        isActive: true,
-        effectiveFrom: new Date(Date.now() - 24 * 3600 * 1000),
-        effectiveTo: null,
-      })
-    ).id;
-    await rules.reorderRules('order.ingested', [first, second]);
+    const second = await createPromotion({ productId: 'p_v_pen', variantId: 'v_pen' }, 'Free pen');
+    await promotions.reorder([first, second]);
     const placed = new Date(Date.now() + 60_000);
 
     const result = await ingest(channelOrder(placed), placed);
 
     expect(result.order.items).toHaveLength(2);
-    expect(result.outcomes.map((o) => [o.ruleId, o.applied])).toEqual([
+    expect(result.outcomes.map((o) => [o.promotionId, o.applied])).toEqual([
       [first, true],
       [second, false],
     ]);
@@ -310,7 +302,7 @@ describe('Gift rules at ingestion (integration, #3938)', () => {
   });
 
   it('should not overshoot the unit cap when two orders are ingested at the same instant', async () => {
-    await createRule({ unitCap: 1 });
+    await createPromotion({ unitCap: 1 });
     const placed = new Date(Date.now() + 60_000);
     const orderA = { ...channelOrder(placed), id: 'ol_order_race_a' } as Order;
     const orderB = { ...channelOrder(placed), id: 'ol_order_race_b' } as Order;
@@ -318,13 +310,13 @@ describe('Gift rules at ingestion (integration, #3938)', () => {
     const [a, b] = await Promise.all([ingest(orderA, placed), ingest(orderB, placed)]);
 
     expect([a.order.items.length, b.order.items.length].sort()).toEqual([1, 2]);
-    expect((await gifts.listGiftRules())[0].unitsGiven).toBe(1);
+    expect((await promotions.list())[0].unitsGiven).toBe(1);
   });
 
   it('should not give the last units twice when two orders are ingested before either has reserved', async () => {
     // v_mug has 2 units: the first order is granted both, the second must see
     // them as spoken for even though no reservation exists yet.
-    await createRule({ quantity: 2 });
+    await createPromotion({ quantity: 2 });
     const placed = new Date(Date.now() + 60_000);
     const orderA = { ...channelOrder(placed), id: 'ol_order_stock_a' } as Order;
     const orderB = { ...channelOrder(placed), id: 'ol_order_stock_b' } as Order;
@@ -332,22 +324,22 @@ describe('Gift rules at ingestion (integration, #3938)', () => {
     const [a, b] = await Promise.all([ingest(orderA, placed), ingest(orderB, placed)]);
 
     expect([a.order.items.length, b.order.items.length].sort()).toEqual([1, 2]);
-    expect((await gifts.listGiftRules())[0].unitsGiven).toBe(2);
+    expect((await promotions.list())[0].unitsGiven).toBe(2);
   });
 
-  it('should return the units to the rule when the order is cancelled', async () => {
-    await createRule({ unitCap: 1 });
+  it('should return the units to the promotion when the order is cancelled', async () => {
+    await createPromotion({ unitCap: 1 });
     const placed = new Date(Date.now() + 60_000);
     await ingest(channelOrder(placed), placed);
-    expect((await gifts.listGiftRules())[0].unitsGiven).toBe(1);
+    expect((await promotions.list())[0].unitsGiven).toBe(1);
 
     await orderGifts.releaseGrantsForCancelledOrder(ORDER_ID);
 
-    expect((await gifts.listGiftRules())[0].unitsGiven).toBe(0);
+    expect((await promotions.list())[0].unitsGiven).toBe(0);
   });
 
-  it('should add nothing to an order that is past routing, even though the rule could apply now', async () => {
-    await createRule();
+  it('should add nothing to an order that is past routing, even though the promotion could apply now', async () => {
+    await createPromotion();
     const placed = new Date(Date.now() + 60_000);
     const order = channelOrder(placed);
     const persisted = await persist(order);
@@ -364,6 +356,36 @@ describe('Gift rules at ingestion (integration, #3938)', () => {
     });
 
     expect(result.order.items).toHaveLength(1);
-    expect((await gifts.listGiftRules())[0].unitsGiven).toBe(0);
+    expect((await promotions.list())[0].unitsGiven).toBe(0);
+  });
+
+  it('should refuse an identical definition on an overlapping window', async () => {
+    const first = await createPromotion();
+    expect(first).toBeDefined();
+
+    await expect(createPromotion()).rejects.toBeInstanceOf(PromotionConflictError);
+  });
+
+  it('should refuse a partial reorder naming what is missing, and write nothing', async () => {
+    const first = await createPromotion();
+    await seedVariant(harness.getDataSource(), 'v_pen', 5);
+    const second = await createPromotion({ productId: 'p_v_pen', variantId: 'v_pen' }, 'Free pen');
+
+    await expect(promotions.reorder([second])).rejects.toBeInstanceOf(PromotionReorderMismatchError);
+
+    expect((await promotions.list()).map((v) => v.promotion.id)).toEqual([first, second]);
+  });
+
+  it('should reorder exhaustively and keep every position dense', async () => {
+    const first = await createPromotion();
+    await seedVariant(harness.getDataSource(), 'v_pen', 5);
+    const second = await createPromotion({ productId: 'p_v_pen', variantId: 'v_pen' }, 'Free pen');
+
+    const reordered = await promotions.reorder([second, first]);
+
+    expect(reordered.map((v) => [v.promotion.id, v.promotion.position])).toEqual([
+      [second, 1],
+      [first, 2],
+    ]);
   });
 });

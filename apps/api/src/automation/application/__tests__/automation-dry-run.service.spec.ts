@@ -236,9 +236,6 @@ describe('AutomationDryRunService', () => {
     expect(Object.keys(result.facts).sort()).toEqual([
       'country',
       'currency',
-      // Internal product and variant ids of the purchase lines (#3938); not buyer data.
-      'lineProductIds',
-      'lineVariantIds',
       'occurredAt',
       'sourceConnectionId',
       'subjectId',
