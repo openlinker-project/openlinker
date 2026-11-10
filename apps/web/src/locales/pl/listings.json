@@ -129,6 +129,45 @@
       "overProductCap": "Popraw i wyślij ponownie obsługuje do {max} produktów naraz. Ponowienie działa bez zmian."
     }
   },
+  "bulkBatch": {
+    "accountRefused": {
+      "providerSaid": "Odpowiedź {name}:",
+      "rowPointer": "Konto nie może sprzedawać - zobacz wyżej"
+    },
+    "allegro": {
+      "accountRefused": {
+        "action": "Otwórz Sales Center Allegro",
+        "detail": {
+          "few": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów partię bez zmian.",
+          "many": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów partię bez zmian.",
+          "one": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów partię bez zmian.",
+          "other": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów partię bez zmian."
+        },
+        "title": "Allegro odrzuciło te oferty, bo konto sprzedawcy nie może sprzedawać."
+      }
+    },
+    "recovery": {
+      "accountOnly": "Ponów partię dokładnie tak, jak został zapisany, gdy konto znów będzie mogło sprzedawać."
+    },
+    "triage": {
+      "failedSoFar": {
+        "few": "Do tej pory nie przeszły {n} warianty.",
+        "many": "Do tej pory nie przeszło {n} wariantów.",
+        "one": "Do tej pory nie przeszedł {n} wariant.",
+        "other": "Do tej pory nie przeszło {n} wariantu."
+      },
+      "offerCause": {
+        "few": "{n} warianty odrzucono z powodu danych oferty",
+        "many": "{n} wariantów odrzucono z powodu danych oferty",
+        "one": "{n} wariant odrzucono z powodu danych oferty",
+        "other": "{n} wariantu odrzucono z powodu danych oferty"
+      },
+      "offerDetail": "Otwórz je w kreatorze z zaznaczonymi wariantami, popraw dane i wyślij ponownie.",
+      "opensInNewTab": "(otwiera się w nowej karcie)",
+      "retryCause": "Ponów bez zmian",
+      "retryDetail": "Uruchamia ponownie każdy nieudany wariant dokładnie tak, jak go zapisano. Dla błędów, które mogą przejść za drugim razem."
+    }
+  },
   "bulkBatchProgressPage": {
     "demoLock": "Demo tylko do odczytu - działania naprawcze są wyłączone.",
     "errorTitle": "Nie udało się wczytać partii",

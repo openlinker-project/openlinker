@@ -45,6 +45,15 @@ interface BulkBatchProgressTableProps {
    * cannot write.
    */
   buildFixUrl?: (record: BulkBatchRecordSummary) => string | null;
+  /**
+   * Failed records the marketplace refused because of the seller account
+   * (#4004). Their cell points at the batch notice instead of repeating the
+   * same refusal on every row, and they get no "Fix this one": nothing in the
+   * offer can change the answer. The full error stays in Details.
+   */
+  accountLevelRecordIds?: ReadonlySet<string>;
+  /** Short pointer shown in place of the error on such a row. */
+  accountLevelRowLabel?: string;
 }
 
 /** Statuses that count as a live offer for the per-product rollup (#1741). */
@@ -62,6 +71,8 @@ export function BulkBatchProgressTable({
   records,
   buildExternalOfferUrl,
   buildFixUrl,
+  accountLevelRecordIds,
+  accountLevelRowLabel,
 }: BulkBatchProgressTableProps): ReactElement {
   const copy = useMessages('listings').bulkBatchProgressTable;
   const [detailRecord, setDetailRecord] = useState<BulkBatchRecordSummary | null>(null);
@@ -114,11 +125,16 @@ export function BulkBatchProgressTable({
           }
           if (record.status === 'failed') {
             const firstMessage = record.errors?.[0]?.message;
-            const fixUrl = buildFixUrl?.(record);
+            const accountLevel = accountLevelRecordIds?.has(record.id) === true;
+            const fixUrl = accountLevel ? null : buildFixUrl?.(record);
+            const shown = accountLevel && accountLevelRowLabel ? accountLevelRowLabel : (firstMessage ?? copy.failed);
             return (
               <span className="bulk-batch__err-cell">
-                <span className="bulk-batch__err" title={firstMessage ?? copy.failed}>
-                  {firstMessage ?? copy.failed}
+                <span
+                  className={`bulk-batch__err${accountLevel ? ' bulk-batch__err--account' : ''}`}
+                  title={firstMessage ?? copy.failed}
+                >
+                  {shown}
                 </span>
                 <Button
                   tone="ghost"
@@ -170,7 +186,7 @@ export function BulkBatchProgressTable({
         hideBelow: 768,
       },
     ],
-    [buildExternalOfferUrl, buildFixUrl, copy],
+    [buildExternalOfferUrl, buildFixUrl, copy, accountLevelRecordIds, accountLevelRowLabel],
   );
 
   return (

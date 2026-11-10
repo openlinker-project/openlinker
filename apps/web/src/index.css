@@ -16675,6 +16675,79 @@ input.bulk-dispatch__num--wide {
   white-space: nowrap;
 }
 
+/* A failed row the batch notice already explains (#4004): plain secondary
+   ink, not the red mono of an offer error - the cause is stated once above. */
+.bulk-batch__err--account {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+/* What went wrong in a batch, by cause (#4004). A neutral panel with one row
+   per cause; tone is a 2 px rule and a dot, so a batch with two causes does
+   not stack two tinted alerts. Each row ends in the one action that fits it. */
+.batch-triage {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+.batch-triage__title {
+  margin: 0;
+  padding: var(--space-3) var(--space-5);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.batch-triage__list { list-style: none; margin: 0; padding: 0; }
+.batch-triage__row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  column-gap: var(--space-4);
+  align-items: start;
+  padding: var(--space-4) var(--space-5);
+}
+.batch-triage__row + .batch-triage__row { border-top: 1px solid var(--border-subtle); }
+.batch-triage__row::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: transparent;
+}
+.batch-triage__mark { width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; }
+.batch-triage__row--error::before,
+.batch-triage__row--error .batch-triage__mark { background: var(--status-error); }
+.batch-triage__row--warning::before,
+.batch-triage__row--warning .batch-triage__mark { background: var(--status-warning); }
+.batch-triage__row--neutral .batch-triage__mark {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--border-strong);
+}
+.batch-triage__body { min-width: 0; display: grid; gap: 4px; }
+.batch-triage__cause { margin: 0; font-size: 13.5px; font-weight: 600; line-height: 20px; color: var(--text-primary); }
+.batch-triage__detail { margin: 0; font-size: 13px; line-height: 19px; color: var(--text-secondary); max-width: 72ch; }
+.batch-triage__quote {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--border-strong);
+  background: var(--bg-surface-muted);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  max-width: 72ch;
+}
+.batch-triage__quote blockquote { margin: 0; font-size: 13px; line-height: 19px; color: var(--text-primary); }
+.batch-triage__quote figcaption { margin-top: 4px; font-size: 12px; color: var(--text-muted); }
+.batch-triage__quote code { font-family: var(--font-mono); font-size: 11.5px; }
+.batch-triage__action { display: flex; gap: var(--space-2); }
+@media (max-width: 640px) {
+  .batch-triage__row { grid-template-columns: 8px minmax(0, 1fr); row-gap: var(--space-3); padding: var(--space-4); }
+  .batch-triage__action { grid-column: 2; }
+  .batch-triage__title { padding: var(--space-3) var(--space-4); }
+}
+
 .bulk-batch__ext-link {
   font-family: var(--font-mono);
   font-size: 12px;

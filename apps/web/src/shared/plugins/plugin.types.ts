@@ -603,6 +603,39 @@ export interface OfferValidationContribution {
    * flag rather than on a `platformType` string. Absent ⇒ treated as `false`.
    */
   needsCategoryParameterSchema?: boolean;
+  /**
+   * Error codes with which this marketplace refuses an offer because of the
+   * SELLER ACCOUNT rather than the offer (#4004), plus the sentence the batch
+   * page shows once for them. Nothing in the offer can fix such a refusal, so
+   * the host states it once per batch and stops offering a per-row fix.
+   * Absent ⇒ every failure is treated as offer-level, as before.
+   */
+  accountLevelRefusal?: OfferAccountRefusalContribution;
+}
+
+/** See `OfferValidationContribution.accountLevelRefusal` (#4004). */
+export interface OfferAccountRefusalContribution {
+  /** The marketplace's own error codes, matched verbatim on `errors[].code`. */
+  errorCodes: readonly string[];
+  describe: (context: OfferAccountRefusalContext) => OfferAccountRefusalCopy;
+}
+
+/** What the host knows when it asks for the account-refusal notice (#4004). */
+export interface OfferAccountRefusalContext {
+  /** Failed records refused for an account-level reason. */
+  affected: number;
+  /** Variants in the batch. */
+  total: number;
+  /** The batch connection's config, e.g. to pick a sandbox or production link. */
+  connectionConfig: Record<string, unknown>;
+}
+
+/** The account-refusal notice (#4004): what happened, and where to fix it. */
+export interface OfferAccountRefusalCopy {
+  title: string;
+  detail: string;
+  /** A link to the marketplace's own seller surface, where the account is fixed. */
+  action?: { label: string; href: string };
 }
 
 /**

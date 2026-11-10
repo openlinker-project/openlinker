@@ -43,6 +43,8 @@ import {
 import { useBulkBatchQuery } from '../../features/listings/hooks/use-bulk-batch-query';
 import { useBulkRetryFailedMutation } from '../../features/listings/hooks/use-bulk-retry-failed-mutation';
 import { useConnectionsQuery } from '../../features/connections';
+import { splitAccountLevelFailures } from '../../features/listings/lib/account-level-failures';
+import { usePlatform } from '../../shared/plugins';
 import {
   TERMINAL_BULK_BATCH_STATUSES,
   type BulkBatchRecordSummary,
@@ -71,7 +73,22 @@ export function BulkBatchProgressPage(): ReactElement {
     () => selectFailedRecords(query.data?.records ?? []),
     [query.data],
   );
-  const fixTarget = useMemo(() => resolveBatchFixTarget(failedRecords), [failedRecords]);
+  const batchCopy = useMessages('listings').bulkBatch;
+  const batchConnection = connectionsQuery.data?.find((c) => c.id === query.data?.connectionId);
+  const accountRefusal = usePlatform(batchConnection?.platformType)?.offerValidation
+    ?.accountLevelRefusal;
+  // Account-level refusals (#4004) are reported once, above the table; only the
+  // offer-level failures are something the wizard can fix.
+  const split = useMemo(
+    () => splitAccountLevelFailures(failedRecords, accountRefusal?.errorCodes ?? []),
+    [failedRecords, accountRefusal],
+  );
+  const accountLevelRecordIds = useMemo(
+    () => new Set(split.account.map((r) => r.id)),
+    [split],
+  );
+  const fixTarget = useMemo(() => resolveBatchFixTarget(split.offer), [split]);
+  const offerFailedCount = split.offer.length;
 
   const batchId_ = query.data?.id;
   const batchConnectionId = query.data?.connectionId;
@@ -169,6 +186,16 @@ export function BulkBatchProgressPage(): ReactElement {
   const percentOptions = { maximumFractionDigits: 0 };
 
   const elapsed = format.duration(elapsedMs(batch.createdAt, batch.updatedAt)) ?? '—';
+  const accountNotice =
+    accountRefusal && split.account.length > 0
+      ? accountRefusal.describe({
+          affected: split.account.length,
+          total: batch.totalCount,
+          connectionConfig: batchConnection?.config ?? {},
+        })
+      : null;
+  const showAccountRow = accountNotice !== null;
+  const showRecovery = isTerminal && batch.failedCount > 0 && write.visible;
 
   return (
     <PageLayout
@@ -249,74 +276,127 @@ export function BulkBatchProgressPage(): ReactElement {
           equivalent: a payload the platform rejected cannot be healed by
           re-sending it, so the data fix leads and retry stays one click away
           for the transient case. */}
-      {isTerminal && batch.failedCount > 0 && write.visible ? (
-        <Alert tone="warning">
-          <div className="bulk-batch__recovery">
-            <div className="bulk-batch__recovery-copy">
-              <strong>
-                {batch.succeededCount === 0
-                  ? plural(batch.failedCount, copy.recovery.allFailed)
-                  : `${plural(batch.totalCount, copy.recovery.someFailed, {
-                      failed: format.number(batch.failedCount),
-                    })} ${plural(batch.succeededCount, copy.recovery.someLive)}`}
-              </strong>{' '}
-              {copy.recovery.explanation}
-              {fixTarget.blocker !== null ? (
-                <div className="bulk-batch__recovery-reason">
-                  {describeBatchFixBlocker(fixTarget.blocker)}
+      {/* What went wrong, by cause (#2234, #4004). One panel instead of stacked
+          tinted alerts: each row is one cause with its own count and its own
+          action, so an account-level refusal (nothing in the offers can fix
+          it) never sits behind the same "Fix and resubmit" as an offer-data
+          one. Colour marks only each row's tone. */}
+      {showAccountRow || showRecovery ? (
+        <section className="batch-triage" aria-labelledby="batch-triage-title">
+          <h2 className="batch-triage__title" id="batch-triage-title">
+            {!isTerminal
+              ? plural(batch.failedCount, batchCopy.triage.failedSoFar)
+              : batch.succeededCount === 0
+                ? plural(batch.failedCount, copy.recovery.allFailed)
+                : `${plural(batch.totalCount, copy.recovery.someFailed, {
+                    failed: format.number(batch.failedCount),
+                  })} ${plural(batch.succeededCount, copy.recovery.someLive)}`}
+          </h2>
+          <ul className="batch-triage__list">
+            {showAccountRow && accountNotice ? (
+              <li className="batch-triage__row batch-triage__row--error" data-testid="bulk-batch-account-refusal">
+                <span className="batch-triage__mark" aria-hidden="true" />
+                <div className="batch-triage__body">
+                  <p className="batch-triage__cause">{accountNotice.title}</p>
+                  <p className="batch-triage__detail">{accountNotice.detail}</p>
+                  {split.firstAccountError ? (
+                    <figure className="batch-triage__quote">
+                      <blockquote>{split.firstAccountError.message}</blockquote>
+                      <figcaption>
+                        {interpolate(batchCopy.accountRefused.providerSaid, { name: connectionName })}{' '}
+                        <code>{split.firstAccountError.code}</code>
+                      </figcaption>
+                    </figure>
+                  ) : null}
                 </div>
-              ) : null}
-            </div>
-            <div className="bulk-batch__recovery-actions">
-              <ReadOnlyLock active={write.demoReadOnly} message={copy.demoLock}>
-                <Button
-                  tone="secondary"
-                  onClick={() => { void handleRetryAll(); }}
-                  disabled={!write.canWrite || retryMutation.isPending}
-                >
-                  {retryMutation.isPending
-                    ? copy.recovery.retrying
-                    : interpolate(copy.recovery.retryUnchanged, {
-                        count: format.number(batch.failedCount),
+                {accountNotice.action ? (
+                  <div className="batch-triage__action">
+                    <a
+                      className="button button--secondary button--sm"
+                      href={accountNotice.action.href}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {accountNotice.action.label}
+                      <span aria-hidden="true"> ↗</span>
+                      <span className="sr-only"> {batchCopy.triage.opensInNewTab}</span>
+                    </a>
+                  </div>
+                ) : null}
+              </li>
+            ) : null}
+            {showRecovery && offerFailedCount > 0 ? (
+              <li className="batch-triage__row batch-triage__row--warning">
+                <span className="batch-triage__mark" aria-hidden="true" />
+                <div className="batch-triage__body">
+                  <p className="batch-triage__cause">
+                    {plural(offerFailedCount, batchCopy.triage.offerCause)}
+                  </p>
+                  <p className="batch-triage__detail">
+                    {fixTarget.blocker !== null
+                      ? describeBatchFixBlocker(fixTarget.blocker)
+                      : batchCopy.triage.offerDetail}
+                  </p>
+                </div>
+                <div className="batch-triage__action">
+                  {fixTarget.blocker === null && write.canWrite ? (
+                    <Link
+                      className="button button--primary button--sm"
+                      to={buildBatchFixUrl({
+                        productIds: fixTarget.productIds,
+                        variantIds: fixTarget.variantIds,
+                        connectionId: batch.connectionId,
+                        batchId: batch.id,
                       })}
-                </Button>
-              </ReadOnlyLock>
-              {fixTarget.blocker === null && write.canWrite ? (
-                <Link
-                  className="button button--primary"
-                  to={buildBatchFixUrl({
-                    productIds: fixTarget.productIds,
-                    variantIds: fixTarget.variantIds,
-                    connectionId: batch.connectionId,
-                    batchId: batch.id,
-                  })}
-                >
-                  {interpolate(copy.recovery.fixAndResubmit, {
-                    count: format.number(failedRecords.length),
-                  })}{' '}
-                  <span aria-hidden="true">→</span>
-                </Link>
-              ) : (
-                <ReadOnlyLock
-                  active={write.demoReadOnly}
-                  message={copy.demoLock}
-                >
-                  <Button tone="primary" disabled>
-                    {interpolate(copy.recovery.fixAndResubmit, {
-                      count: format.number(failedRecords.length),
-                    })}{' '}
-                    <span aria-hidden="true">→</span>
-                  </Button>
-                </ReadOnlyLock>
-              )}
-            </div>
-          </div>
-        </Alert>
+                    >
+                      {interpolate(copy.recovery.fixAndResubmit, { count: format.number(offerFailedCount) })}
+                    </Link>
+                  ) : (
+                    <ReadOnlyLock active={write.demoReadOnly} message={copy.demoLock}>
+                      <Button tone="primary" className="button--sm" disabled>
+                        {interpolate(copy.recovery.fixAndResubmit, { count: format.number(offerFailedCount) })}
+                      </Button>
+                    </ReadOnlyLock>
+                  )}
+                </div>
+              </li>
+            ) : null}
+            {showRecovery ? (
+              <li className="batch-triage__row batch-triage__row--neutral">
+                <span className="batch-triage__mark" aria-hidden="true" />
+                <div className="batch-triage__body">
+                  <p className="batch-triage__cause">{batchCopy.triage.retryCause}</p>
+                  <p className="batch-triage__detail">
+                    {offerFailedCount === 0 ? batchCopy.recovery.accountOnly : batchCopy.triage.retryDetail}
+                  </p>
+                </div>
+                <div className="batch-triage__action">
+                  <ReadOnlyLock active={write.demoReadOnly} message={copy.demoLock}>
+                    <Button
+                      tone="secondary"
+                      className="button--sm"
+                      onClick={() => { void handleRetryAll(); }}
+                      disabled={!write.canWrite || retryMutation.isPending}
+                    >
+                      {retryMutation.isPending
+                        ? copy.recovery.retrying
+                        : interpolate(copy.recovery.retryUnchanged, {
+                            count: format.number(batch.failedCount),
+                          })}
+                    </Button>
+                  </ReadOnlyLock>
+                </div>
+              </li>
+            ) : null}
+          </ul>
+        </section>
       ) : null}
 
       <BulkBatchProgressTable
         records={batch.records}
         buildFixUrl={write.canWrite ? buildRowFixUrl : undefined}
+        accountLevelRecordIds={accountLevelRecordIds}
+        accountLevelRowLabel={batchCopy.accountRefused.rowPointer}
       />
 
       {isTerminal ? (

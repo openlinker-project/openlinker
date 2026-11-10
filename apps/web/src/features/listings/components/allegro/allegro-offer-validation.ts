@@ -69,6 +69,24 @@ export const ALLEGRO_IN_STORE_BARCODE_BLOCKER = 'allegro:in-store-barcode';
 export const ALLEGRO_MISSING_SELLER_DEFAULTS_ISSUE = 'allegro:missing-seller-details';
 
 /**
+ * Codes with which Allegro refuses an offer because of the SELLER ACCOUNT, not
+ * the offer (#4004) - seen in the #3928 spike on a sandbox account under a sales
+ * blockade. No edit to an offer changes the answer, so the batch page reports
+ * them once instead of offering a per-row fix.
+ */
+export const ALLEGRO_ACCOUNT_LEVEL_ERROR_CODES = [
+  'OfferAccessDeniedException',
+  'SellerAccountWithSellBlockadeException',
+] as const;
+
+/** Allegro's Sales Center, where a seller sees and resolves an account block. */
+function allegroSalesCenterUrl(connectionConfig: Record<string, unknown>): string {
+  return connectionConfig['environment'] === 'production'
+    ? 'https://salescenter.allegro.com'
+    : 'https://salescenter.allegro.com.allegrosandbox.pl';
+}
+
+/**
  * Every `sellerDefaults` path Allegro's own create-time gate can report as
  * missing - a declared mirror of `collectMissingSellerDefaultsFields` in
  * `libs/integrations/allegro/src/infrastructure/adapters/allegro-offer-manager.adapter.ts`,
@@ -287,6 +305,19 @@ export const allegroOfferValidation: OfferValidationContribution = {
       advisory: true,
     },
   ],
+  accountLevelRefusal: {
+    errorCodes: ALLEGRO_ACCOUNT_LEVEL_ERROR_CODES,
+    describe: ({ affected, total, connectionConfig }) => {
+      const copy = getMessages('listings').bulkBatch.allegro.accountRefused;
+      return {
+        title: copy.title,
+        detail: interpolate(formatPlural(affected, copy.detail, getLocale()), {
+          total: total.toLocaleString(getBcp47Locale(getLocale())),
+        }),
+        action: { label: copy.action, href: allegroSalesCenterUrl(connectionConfig) },
+      };
+    },
+  },
   validateRow: (input) => {
     const blockers: string[] = [];
     if (input.needsProductParameters && !input.willLinkProductCard) {

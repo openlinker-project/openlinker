@@ -536,3 +536,25 @@ describe('describeNeedsProductParameters (#4003)', () => {
     }
   });
 });
+
+describe('allegroOfferValidation.accountLevelRefusal (#4004)', () => {
+  const refusal = allegroOfferValidation.accountLevelRefusal;
+
+  it('should declare the account-level codes Allegro sends for a sales blockade', () => {
+    expect(refusal?.errorCodes).toEqual([
+      'OfferAccessDeniedException',
+      'SellerAccountWithSellBlockadeException',
+    ]);
+  });
+
+  it('should link the sandbox Sales Center when the connection is not production', () => {
+    const copy = refusal?.describe({ affected: 1, total: 3, connectionConfig: { environment: 'sandbox' } });
+    expect(copy?.detail).toMatch(/^1 of 3 variants failed/);
+    expect(copy?.action?.href).toBe('https://salescenter.allegro.com.allegrosandbox.pl');
+  });
+
+  it('should link the production Sales Center when the connection is production', () => {
+    const copy = refusal?.describe({ affected: 2, total: 2, connectionConfig: { environment: 'production' } });
+    expect(copy?.action?.href).toBe('https://salescenter.allegro.com');
+  });
+});

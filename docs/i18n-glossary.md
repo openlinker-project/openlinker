@@ -23,6 +23,7 @@ Add a row when a new domain term reaches the UI. Change a row only together with
 | Listing / offer | Oferta | marketplace listing |
 | Product | Produkt | |
 | Variant | Wariant | |
+| Batch | Partia | a bulk offer-creation run; "ponów partię", never "batch" in Polish copy |
 | Customer | Klient | |
 | Buyer | Kupujący | the person who placed the order |
 | Seller | Sprzedawca | |

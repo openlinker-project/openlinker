@@ -115,6 +115,39 @@
       "overProductCap": "Fix and resubmit handles up to {max} products at a time. Retry is unaffected."
     }
   },
+  "bulkBatch": {
+    "accountRefused": {
+      "providerSaid": "{name} said:",
+      "rowPointer": "Account cannot sell - see above"
+    },
+    "allegro": {
+      "accountRefused": {
+        "action": "Open Allegro Sales Center",
+        "detail": {
+          "one": "{n} of {total} variants failed for this reason. Nothing in the offers can fix it. Unblock the account in Allegro, then retry the batch unchanged.",
+          "other": "{n} of {total} variants failed for this reason. Nothing in the offers can fix it. Unblock the account in Allegro, then retry the batch unchanged."
+        },
+        "title": "Allegro refused these offers because the seller account cannot sell."
+      }
+    },
+    "recovery": {
+      "accountOnly": "Re-run the batch exactly as saved once the account can sell again."
+    },
+    "triage": {
+      "failedSoFar": {
+        "one": "{n} variant has failed so far.",
+        "other": "{n} variants have failed so far."
+      },
+      "offerCause": {
+        "one": "{n} variant was refused for its offer data",
+        "other": "{n} variants were refused for their offer data"
+      },
+      "offerDetail": "Open them in the wizard with those variants selected, fix the data and submit again.",
+      "opensInNewTab": "(opens in a new tab)",
+      "retryCause": "Retry without changes",
+      "retryDetail": "Re-runs every failed variant exactly as saved. Use it for errors that may pass on a second try."
+    }
+  },
   "bulkBatchProgressPage": {
     "demoLock": "Read-only demo - recovery actions are disabled.",
     "errorTitle": "Could not load batch",

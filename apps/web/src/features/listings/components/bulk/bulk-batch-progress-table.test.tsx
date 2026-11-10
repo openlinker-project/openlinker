@@ -191,6 +191,23 @@ describe('BulkBatchProgressTable', () => {
     );
   });
 
+  it('should point an account-level row at the batch notice and drop its fix link (#4004)', () => {
+    renderWithProviders(
+      <BulkBatchProgressTable
+        records={[
+          rec({ productId: 'ol_product_1', errors: [{ code: 'Blocked', message: 'Account blocked' }] }),
+        ]}
+        buildFixUrl={(record) => `/listings/bulk-create/wizard?variantIds=${record.internalVariantId}`}
+        accountLevelRecordIds={new Set(['r-1'])}
+        accountLevelRowLabel="Account cannot sell - see above"
+      />,
+    );
+
+    expect(screen.getByText('Account cannot sell - see above')).toBeInTheDocument();
+    expect(screen.queryByText('Fix this one')).not.toBeInTheDocument();
+    expect(screen.getByText('Details')).toBeInTheDocument();
+  });
+
   it('omits the per-row fix action when the record resolves to no fix URL (#2234)', () => {
     renderWithProviders(
       <BulkBatchProgressTable records={[rec()]} buildFixUrl={() => null} />,
