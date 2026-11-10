@@ -106,3 +106,25 @@ export class BundleMasterSyncRefusedError extends Error {
     Error.captureStackTrace(this, this.constructor);
   }
 }
+
+export const BundleProductCreationRefusalValues = [
+  'master-cannot-create-products',
+  'master-unavailable',
+  'master-refused',
+  'not-synced',
+] as const;
+export type BundleProductCreationRefusal = (typeof BundleProductCreationRefusalValues)[number];
+
+/** A new bundle product could not be made at the chosen master. */
+export class BundleProductCreationRefusedError extends Error {
+  readonly code = 'BUNDLE_PRODUCT_CREATION_REFUSED';
+
+  constructor(
+    readonly reason: BundleProductCreationRefusal,
+    message: string
+  ) {
+    super(message);
+    this.name = 'BundleProductCreationRefusedError';
+    Error.captureStackTrace(this, this.constructor);
+  }
+}

@@ -18,7 +18,7 @@ export function BundleGuide({
   defaultOpen = 'what',
 }: {
   children: ReactNode;
-  /** Section open first: `what`, `avail`, `gift`, `ver` or `offer`. */
+  /** Section open first: `what`, `avail`, `gift`, `ver`, `new` or `offer`. */
   defaultOpen?: string;
 }): ReactElement {
   const g = useMessages('bundles').guide;
@@ -87,8 +87,15 @@ export function BundleGuide({
           items: [item('g-ver', g.ver.i1n, g.ver.i1t)],
         },
         {
-          id: 'offer',
+          id: 'new',
           number: '05',
+          title: g.new.title,
+          summary: g.new.summary,
+          items: [item('g-new', g.new.i1n, g.new.i1t), item('g-steps', g.new.i2n, g.new.i2t)],
+        },
+        {
+          id: 'offer',
+          number: '06',
           title: g.offer.title,
           summary: g.offer.summary,
           items: [item('g-offer', g.offer.i1n, g.offer.i1t)],

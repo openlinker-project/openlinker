@@ -46,6 +46,7 @@ import type {
   ModifiedProductLister,
   ListExternalIdsModifiedSinceInput,
   ProductTaxRateReader,
+  ProductCreator,
   ReadProductTaxRateInput,
   TaxRateResolution,
 } from '@openlinker/core/products';
@@ -106,7 +107,7 @@ import {
 const WC_MAX_PER_PAGE = 100;
 
 export class WooCommerceProductMasterAdapter
-  implements ProductMasterPort, ModifiedProductLister, ProductTaxRateReader
+  implements ProductMasterPort, ModifiedProductLister, ProductTaxRateReader, ProductCreator
 {
   private readonly logger = new Logger(WooCommerceProductMasterAdapter.name);
 
@@ -484,6 +485,9 @@ export class WooCommerceProductMasterAdapter
   }
 
   // ─── Write methods ─────────────────────────────────────────────────────────
+
+  /** WooCommerce core has no fixed bundle type: a new product is a simple product (#3935). */
+  readonly productCreationMode = 'simple-product' as const;
 
   async createProduct(product: ProductCreate): Promise<Product> {
     this.logger.debug(`Creating product: ${product.sku} (connection: ${this.connection.id})`);

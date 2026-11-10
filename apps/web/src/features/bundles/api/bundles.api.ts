@@ -6,6 +6,9 @@
 import type {
   BundleComponentInput,
   BundleCreated,
+  BundleCreationTarget,
+  CreateBundleProductInput,
+  CreatedBundleProduct,
   BundleDefinition,
   BundleDetail,
   BundleHistoryEntry,
@@ -27,6 +30,10 @@ export interface BundlesApi {
   update: (variantId: string, components: BundleComponentInput[]) => Promise<BundleDefinition>;
   /** Writes the master's composition as the next version (#3932). Only on the operator's click. */
   syncFromMaster: (variantId: string) => Promise<BundleDefinition>;
+  /** Product masters, and whether each can create a product from OpenLinker (#3935). */
+  creationTargets: () => Promise<BundleCreationTarget[]>;
+  /** Creates the product a new bundle is sold as, at a product master (#3935). */
+  createProduct: (input: CreateBundleProductInput) => Promise<CreatedBundleProduct>;
   /** "This offer sells N x product": lets every held multipack order continue. */
   confirmMultipack: (variantId: string, packQuantity: number) => Promise<MultipackConfirmed>;
 }
@@ -55,6 +62,12 @@ export function createBundlesApi(request: ApiRequest): BundlesApi {
     syncFromMaster: (variantId) =>
       request<BundleDefinition>(`/bundle-definitions/${encodeURIComponent(variantId)}/sync-from-master`, {
         method: 'POST',
+      }),
+    creationTargets: () => request<BundleCreationTarget[]>('/bundle-product-creation/targets'),
+    createProduct: (input) =>
+      request<CreatedBundleProduct>('/bundle-product-creation/products', {
+        method: 'POST',
+        body: JSON.stringify(input),
       }),
     confirmMultipack: (variantId, packQuantity) =>
       request<MultipackConfirmed>('/bundle-definitions/multipack-confirmations', {

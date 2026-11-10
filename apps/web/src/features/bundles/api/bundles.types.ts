@@ -100,3 +100,33 @@ export type BundleNestingReason = (typeof BundleNestingReasonValues)[number];
 export function isBundleNestingReason(value: unknown): value is BundleNestingReason {
   return BundleNestingReasonValues.some((reason) => reason === value);
 }
+
+/** A product master and whether OpenLinker can create a product in it (#3935). */
+export interface BundleCreationTarget {
+  connectionId: string;
+  connectionName: string;
+  platformType: string;
+  /** `null`: this master cannot create products from OpenLinker. */
+  creationMode: 'simple-product' | null;
+}
+
+export interface CreateBundleProductInput {
+  connectionId: string;
+  name: string;
+  sku: string;
+  /** Gross price of the whole set. */
+  price: number;
+  currency?: string;
+  ean?: string;
+  description?: string;
+  /** A component variant whose tax rate the price includes. */
+  rateSourceVariantId?: string;
+}
+
+export interface CreatedBundleProduct {
+  productId: string;
+  variantId: string;
+  name: string;
+  sku: string;
+  adopted: boolean;
+}

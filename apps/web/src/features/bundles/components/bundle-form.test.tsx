@@ -81,7 +81,11 @@ function api(over: { bundles?: Record<string, unknown>; products?: Record<string
       getVariant: vi.fn(),
       ...over.products,
     },
+    inventory: {
+      availability: vi.fn().mockResolvedValue({ items: [] }),
+    },
     bundles: {
+      creationTargets: vi.fn().mockResolvedValue([]),
       create: vi
         .fn()
         .mockResolvedValue({ variantId: 'set', version: 1, components: [], releasedOrders: 0 }),
@@ -117,11 +121,31 @@ async function pick(
   text: string,
   sku: string
 ): Promise<void> {
-  if (testId === 'bundle-form-product-search') {
-    await user.click(await screen.findByRole('button', { name: 'Choose a product' }));
-  }
   await user.type(screen.getByTestId(testId), text);
   await user.click(await screen.findByTestId(`${testId}-result-${sku}`));
+}
+
+/** Leaves the components step and opens the product step. */
+async function toProductStep(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByTestId('bundle-form-next'));
+  await screen.findByTestId('bundle-form-step-product');
+}
+
+/** From the product step to the last one, where Save lives. */
+async function toReview(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByTestId('bundle-form-next'));
+  await screen.findByTestId('bundle-form-step-gifts');
+  await user.click(screen.getByTestId('bundle-form-next'));
+  await screen.findByTestId('bundle-form-step-review');
+}
+
+async function pickProduct(
+  user: ReturnType<typeof userEvent.setup>,
+  text: string,
+  sku: string
+): Promise<void> {
+  await user.type(screen.getByTestId('bundle-form-product-search'), text);
+  await user.click(await screen.findByTestId(`bundle-form-product-search-result-${sku}`));
 }
 
 describe('BundleForm (#3624)', () => {
@@ -134,14 +158,15 @@ describe('BundleForm (#3624)', () => {
     });
     await ready();
 
-    await pick(user, 'bundle-form-product-search', 'Zestaw poranny', 'ZES-PORANNY');
-    expect(screen.getByTestId('bundle-form-sku')).toHaveTextContent('ZES-PORANNY');
-
     await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
     await pick(user, 'bundle-form-component-search', 'Lyz', 'LYZ-KAW');
     await user.click(await screen.findByTestId('bundle-form-component-toggle-gift-LYZ-KAW'));
     expect(screen.getByTestId('bundle-form-component-gift-LYZ-KAW')).toBeInTheDocument();
 
+    await toProductStep(user);
+    await pickProduct(user, 'Zestaw poranny', 'ZES-PORANNY');
+    expect(screen.getByTestId('bundle-form-sku')).toHaveTextContent('ZES-PORANNY');
+    await toReview(user);
     await user.click(screen.getByTestId('bundle-form-save'));
 
     await waitFor(() => {
@@ -167,7 +192,7 @@ describe('BundleForm (#3624)', () => {
     await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
     await pick(user, 'bundle-form-component-search', 'Lyz', 'LYZ-KAW');
     expect(screen.getByTestId('bundle-form-availability')).toHaveTextContent(
-      'Available: 1 pcs, limited by Lyzeczka'
+      'Lyzeczka runs out first'
     );
   });
 
@@ -216,8 +241,10 @@ describe('BundleForm (#3624)', () => {
       { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() }
     );
     await ready();
-    await pick(user, 'bundle-form-product-search', 'Zestaw poranny', 'ZES-PORANNY');
     await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
+    await toProductStep(user);
+    await pickProduct(user, 'Zestaw poranny', 'ZES-PORANNY');
+    await toReview(user);
     await user.click(screen.getByTestId('bundle-form-save'));
     await waitFor(() => {
       expect(screen.getByTestId('location-probe')).toHaveTextContent('/products/bundles/set');
@@ -242,8 +269,10 @@ describe('BundleForm (#3624)', () => {
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
     await ready();
-    await pick(user, 'bundle-form-product-search', 'Zestaw poranny', 'ZES-PORANNY');
     await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
+    await toProductStep(user);
+    await pickProduct(user, 'Zestaw poranny', 'ZES-PORANNY');
+    await toReview(user);
     await user.click(screen.getByTestId('bundle-form-save'));
     expect(await screen.findByTestId('bundle-form-save-error')).toHaveTextContent(text);
   });
@@ -296,8 +325,10 @@ describe('BundleForm (#3624)', () => {
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
     await ready();
-    await pick(user, 'bundle-form-product-search', 'Zestaw poranny', 'ZES-PORANNY');
     await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
+    await toProductStep(user);
+    await pickProduct(user, 'Zestaw poranny', 'ZES-PORANNY');
+    await toReview(user);
     await user.click(screen.getByTestId('bundle-form-save'));
     expect(await screen.findByTestId('bundle-form-nested-error')).toHaveTextContent(
       'already a component'
@@ -331,8 +362,10 @@ describe('BundleForm (#3624)', () => {
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
     await ready();
-    await pick(user, 'bundle-form-product-search', 'Zestaw poranny', 'ZES-PORANNY');
     await pick(user, 'bundle-form-component-search', 'Kawa', 'KAW-250-ETI');
+    await toProductStep(user);
+    await pickProduct(user, 'Zestaw poranny', 'ZES-PORANNY');
+    await toReview(user);
     expect(screen.queryByTestId('bundle-form-price-split')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /Show price split/ }));
@@ -341,7 +374,13 @@ describe('BundleForm (#3624)', () => {
       '65'
     );
 
+    // Back to the components step to add the one with no price.
+    await user.click(screen.getByTestId('bundle-form-stepper-button-1'));
+    await screen.findByTestId('bundle-form-step-components');
     await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
+    await toProductStep(user);
+    await toReview(user);
+    await user.click(screen.getByRole('button', { name: /Show price split|Hide price split/ }));
     expect(await screen.findByTestId('bundle-form-price-share-alert')).toHaveTextContent(
       'has no price'
     );
@@ -530,5 +569,90 @@ describe('BundleForm (#3624)', () => {
     expect(screen.getByTestId('bundle-form-save')).toBeDisabled();
     expect(screen.getByTestId('bundle-form-save')).toHaveAttribute('title', expect.stringContaining('admin or operator'));
     expect(screen.getByTestId('bundle-form-component-search')).toBeDisabled();
+  });
+
+  it('should not leave the components step until there is a component with a valid quantity', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BundleForm />, {
+      apiClient: api(),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+    await ready();
+    await user.click(screen.getByTestId('bundle-form-next'));
+    expect(screen.getByTestId('bundle-form-step-components')).toBeInTheDocument();
+    expect(screen.queryByTestId('bundle-form-step-product')).not.toBeInTheDocument();
+  });
+
+  it('should create the product at the master first, then write the composition on it', async () => {
+    const createProduct = vi.fn().mockResolvedValue({
+      productId: 'p-new',
+      variantId: 'new-variant',
+      name: 'Zestaw nowy',
+      sku: 'KUB-350-BI-SET',
+      adopted: false,
+    });
+    const apiClient = api({
+      bundles: {
+        creationTargets: vi.fn().mockResolvedValue([
+          {
+            connectionId: 'master-1',
+            connectionName: 'PrestaShop',
+            platformType: 'prestashop',
+            creationMode: 'simple-product',
+          },
+        ]),
+        createProduct,
+      },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<BundleForm />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+    await ready();
+    await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
+    await toProductStep(user);
+    await user.click(await screen.findByTestId('bundle-form-mode-create'));
+    await user.type(await screen.findByTestId('bundle-form-new-name'), 'Zestaw nowy');
+    // The price starts as the sum of the paid components and says what the customer saves.
+    expect(screen.getByTestId('bundle-form-new-price')).toHaveValue('40.00');
+    await toReview(user);
+    await user.click(screen.getByTestId('bundle-form-save'));
+
+    await waitFor(() => {
+      expect(createProduct).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionId: 'master-1',
+          name: 'Zestaw nowy',
+          sku: 'KUB-350-BI-SET',
+          price: 40,
+          rateSourceVariantId: 'mug',
+        })
+      );
+    });
+    await waitFor(() => {
+      expect(apiClient.bundles.create).toHaveBeenCalledWith('new-variant', [
+        { variantId: 'mug', quantity: 1 },
+      ]);
+    });
+  });
+
+  it('should say before the form is filled in that no shop can create the product', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BundleForm />, {
+      apiClient: api({
+        bundles: {
+          creationTargets: vi.fn().mockResolvedValue([
+            { connectionId: 'm', connectionName: 'Shoper', platformType: 'shoper', creationMode: null },
+          ]),
+        },
+      }),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+    await ready();
+    await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
+    await toProductStep(user);
+    expect(await screen.findByTestId('bundle-form-no-creators')).toBeInTheDocument();
+    expect(screen.getByTestId('bundle-form-mode-create')).toBeDisabled();
   });
 });

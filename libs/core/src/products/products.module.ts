@@ -35,7 +35,9 @@ import {
   BUNDLE_DEFINITION_REPOSITORY_TOKEN,
   BUNDLE_DEFINITION_SERVICE_TOKEN,
   BUNDLE_MASTER_SYNC_SERVICE_TOKEN,
+  BUNDLE_PRODUCT_CREATION_SERVICE_TOKEN,
 } from './products.tokens';
+import { BundleProductCreationService } from './application/services/bundle-product-creation.service';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { EventsModule } from '@openlinker/core/events';
@@ -67,6 +69,7 @@ export {
     BundleDefinitionRepository,
     BundleDefinitionService,
     BundleMasterSyncService,
+    BundleProductCreationService,
     // Then provide token bindings using useExisting
     {
       provide: PRODUCT_REPOSITORY_TOKEN,
@@ -108,6 +111,10 @@ export {
       provide: BUNDLE_MASTER_SYNC_SERVICE_TOKEN,
       useExisting: BundleMasterSyncService,
     },
+    {
+      provide: BUNDLE_PRODUCT_CREATION_SERVICE_TOKEN,
+      useExisting: BundleProductCreationService,
+    },
   ],
   exports: [
     PRODUCT_REPOSITORY_TOKEN,
@@ -120,6 +127,7 @@ export {
     BUNDLE_DEFINITION_SERVICE_TOKEN,
     BUNDLE_DEFINITION_REPOSITORY_TOKEN,
     BUNDLE_MASTER_SYNC_SERVICE_TOKEN,
+    BUNDLE_PRODUCT_CREATION_SERVICE_TOKEN,
   ],
 })
 export class ProductsModule {}
