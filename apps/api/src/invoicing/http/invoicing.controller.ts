@@ -109,6 +109,7 @@ import {
   classifyInvoiceFailureMode,
   readAcknowledgementWarningCode,
   buildOriginalDocumentFromIssuedRecord,
+  invoiceIdempotencyKey,
 } from '@openlinker/core/invoicing';
 import type {
   InvoiceRecord,
@@ -561,9 +562,21 @@ export class InvoicingController {
     }
     command = this.withOperatorClassification(command, dto);
 
+    // #3960: re-issuing over a REFUSED invoice starts the next attempt under
+    // its own key (and takes over its number). Re-sending under the refused key
+    // reaches a provider that answers it with the document it already refused.
+    // A caller-supplied key keeps its exact-row semantics.
+    const retryOf =
+      dto.idempotencyKey === undefined && existing?.isReattemptableFailure === true
+        ? existing.id
+        : undefined;
+
     let issued: InvoiceRecord;
     try {
-      issued = await this.invoiceService.issueInvoice(command);
+      issued =
+        retryOf !== undefined
+          ? await this.invoiceService.issueInvoice(command, { retryOf })
+          : await this.invoiceService.issueInvoice(command);
     } catch (error) {
       throw this.toHttpException(error);
     }
@@ -707,9 +720,12 @@ export class InvoicingController {
         // #2245 review: same pre-rollout exemption as the single-issue path.
         taxRateEra: orderRecord.taxRateEra,
       });
-      await this.invoiceService.issueInvoice(command);
+      // #3960: the retry is the NEXT attempt of this refused record, under its
+      // own key; the service resumes an existing successor instead of starting
+      // a third attempt.
+      const attempt = await this.invoiceService.issueInvoice(command, { retryOf: record.id });
       await this.clearSalesDocumentBlock(record.orderId);
-      return { id: invoiceId, outcome: 'retried' };
+      return { id: invoiceId, outcome: 'retried', recordId: attempt.id };
     } catch (error) {
       // A re-rejection / rehydration failure for ONE id must not abort the batch.
       // Log the bounded internal diagnostic with a correlation id; surface only a
@@ -848,7 +864,7 @@ export class InvoicingController {
       // trigger uses. Threading it into the service's exactly-once dedup gate is
       // what makes a re-submitted batch idempotent (an already-issued row is
       // returned verbatim; an in-flight one is not double-attempted).
-      const idempotencyKey = `invoice:${connectionId}:${orderId}`;
+      const idempotencyKey = invoiceIdempotencyKey(connectionId, orderId);
       const command = toIssueInvoiceCommand({
         order,
         connectionId,
@@ -867,7 +883,12 @@ export class InvoicingController {
         // #2245 review: same pre-rollout exemption as the single-issue path.
         taxRateEra: record.taxRateEra,
       });
-      const issued = await this.invoiceService.issueInvoice(command);
+      // #3960: a refused invoice is retried as its next attempt, not re-sent
+      // under the refused key.
+      const issued =
+        existing?.isReattemptableFailure === true
+          ? await this.invoiceService.issueInvoice(command, { retryOf: existing.id })
+          : await this.invoiceService.issueInvoice(command);
       await this.clearSalesDocumentBlock(orderId);
       return { orderId, outcome: 'issued', invoiceId: issued.id };
     } catch (error) {

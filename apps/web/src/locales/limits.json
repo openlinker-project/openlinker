@@ -526,6 +526,7 @@
   "fiscalization:fiscalReceipt.status.registered": 16,
   "fiscalization:fiscalReceipt.status.registering": 18,
   "fiscalization:fiscalReceipt.status.rejected": 14,
+  "fiscalization:rejected.registerAgain": 24,
   "fulfillment:action.close.label": 8,
   "fulfillment:action.expedite.label": 28,
   "fulfillment:action.force_cancel.label": 20,
