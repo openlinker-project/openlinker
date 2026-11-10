@@ -69,7 +69,7 @@ describe('OrderGiftService', () => {
   let promotions: Record<string, jest.Mock>;
   let availability: { getPromisableQuantities: jest.Mock };
   let orderRecords: { applyOrderEdit: jest.Mock };
-  let products: { getEffectiveTaxRate: jest.Mock; getVariantsByIds: jest.Mock };
+  let products: { getEffectiveTaxRate: jest.Mock; getVariantsByIds: jest.Mock; getProduct: jest.Mock };
   let bundles: { findCurrentByVariantIds: jest.Mock; findConfirmedMultipacks: jest.Mock };
   let service: OrderGiftService;
 
@@ -115,11 +115,13 @@ describe('OrderGiftService', () => {
       getVariantsByIds: jest.fn().mockResolvedValue([
         {
           id: 'v-gift',
+          sku: 'MUG-01',
           netUnitCost: '3.5000',
           costCurrency: 'PLN',
           costUpdatedAt: new Date('2025-12-01T00:00:00Z'),
         },
       ]),
+      getProduct: jest.fn().mockResolvedValue({ id: 'p-gift', name: 'Kubek do kawy' }),
       getEffectiveTaxRate: jest
         .fn()
         .mockResolvedValue({ code: '23', countryIso2: 'PL', readAt: new Date('2026-01-01T00:00:00Z') }),
@@ -163,7 +165,8 @@ describe('OrderGiftService', () => {
     expect(call.addedLines?.[olGiftLineKey('promo-1', '1')]).toMatchObject({
       productId: 'p-gift',
       quantity: 1,
-      name: 'Free mug',
+      name: 'Kubek do kawy',
+      sku: 'MUG-01',
       gift: { source: 'ol-rule', ruleRef: 'promo-1', documentForm: 'technical-cent' },
     });
     expect(result.order.items).toHaveLength(2);
@@ -264,6 +267,18 @@ describe('OrderGiftService', () => {
       unitCostNet: '3.5000',
       unitCostCurrency: 'PLN',
     });
+  });
+
+  it('should fall back to the promotion name and no sku when the catalogue answers nothing', async () => {
+    products.getVariantsByIds.mockResolvedValue([]);
+    products.getProduct.mockResolvedValue(null);
+
+    await apply(makeOrder());
+
+    const call = (orderRecords.applyOrderEdit.mock.calls as [ApplyOrderEditInput][])[0][0];
+    const line = call.addedLines?.[olGiftLineKey('promo-1', '1')];
+    expect(line).toMatchObject({ name: 'Free mug' });
+    expect(line).not.toHaveProperty('sku');
   });
 
   it('should freeze no cost when it was entered after the order was placed, and never 0', async () => {

@@ -337,11 +337,36 @@ export class OrderGiftService implements IOrderGiftService {
       productId: action.productId,
       variantId: action.variantId,
       quantity: grant.quantity,
-      name: grant.promotion.name,
+      ...(await this.catalogueIdentity(action, grant.promotion.name)),
       gift,
       ...(await this.catalogueTaxRate(action)),
       ...(await freezeGiftUnitCost(this.products, action.variantId, placedAt, this.logger)),
     };
+  }
+
+  /**
+   * What the line is CALLED and its SKU: the gift product's own, from the
+   * catalogue at grant time. The promotion's name is the fallback for the name
+   * only when the catalogue answers nothing (it stays recoverable through
+   * `gift.ruleRef`); an internal id is never written as a SKU.
+   */
+  private async catalogueIdentity(
+    action: GiftLineSource,
+    promotionName: string
+  ): Promise<Pick<OrderAddedLineEdit, 'name' | 'sku'>> {
+    let name: string | undefined;
+    let sku: string | undefined;
+    try {
+      const [variant] = await this.products.getVariantsByIds([action.variantId]);
+      if (variant?.sku) sku = variant.sku;
+      const product = await this.products.getProduct(action.productId);
+      if (product?.name) name = product.name;
+    } catch (error) {
+      this.logger.warn(
+        `Identity for gift product ${action.productId} could not be read: ${(error as Error).message}`
+      );
+    }
+    return { name: name ?? promotionName, ...(sku !== undefined && { sku }) };
   }
 
   /**
