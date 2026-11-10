@@ -39,6 +39,7 @@ import {
   type FreeGiftBenefit,
   type PreviewCustomerLimit,
   type PromotionCombination,
+  type PromotionApplicationRecord,
   type PromotionBenefit,
   type PromotionEvaluation,
   type PromotionGiftDocumentForm,
@@ -440,6 +441,41 @@ export class PromotionDryRunResponseDto {
       verdict.conditionTraces = evaluation?.conditionTraces ?? [];
       verdict.retroactivityFloorWaived = evaluation?.retroactivityFloorWaived ?? false;
       return verdict;
+    });
+    return dto;
+  }
+}
+
+export class PromotionHistoryItemDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() internalOrderId!: string;
+  @ApiProperty({ nullable: true, type: String, description: 'The order number the channel shows; null when unknown.' })
+  orderNumber!: string | null;
+  @ApiProperty({ enum: ['applied', 'skipped', 'failed'] }) outcome!: string;
+  @ApiProperty({ nullable: true, type: String, description: 'Why it did not apply, as a code; null for applied.' })
+  reasonCode!: string | null;
+  @ApiProperty() quantity!: number;
+  @ApiProperty() createdAt!: string;
+}
+
+export class PromotionHistoryResponseDto {
+  @ApiProperty({ type: [PromotionHistoryItemDto] }) items!: PromotionHistoryItemDto[];
+
+  static from(
+    records: readonly PromotionApplicationRecord[],
+    orderNumbers: readonly (string | null)[]
+  ): PromotionHistoryResponseDto {
+    const dto = new PromotionHistoryResponseDto();
+    dto.items = records.map((record, index) => {
+      const item = new PromotionHistoryItemDto();
+      item.id = record.id;
+      item.internalOrderId = record.internalOrderId;
+      item.orderNumber = orderNumbers[index] ?? null;
+      item.outcome = record.outcome;
+      item.reasonCode = record.outcome === 'failed' ? null : record.reason;
+      item.quantity = record.quantity;
+      item.createdAt = record.createdAt.toISOString();
+      return item;
     });
     return dto;
   }

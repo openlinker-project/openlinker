@@ -31,6 +31,8 @@ import {
   type IOrderRecordService,
 } from '@openlinker/core/orders';
 import {
+  PROMOTION_APPLICATION_LOG_TOKEN,
+  type PromotionApplicationLogPort,
   PROMOTION_SERVICE_TOKEN,
   type IPromotionService,
   type Promotion,
@@ -44,11 +46,14 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import {
   EvaluatePromotionsDto,
   PromotionDryRunResponseDto,
+  PromotionHistoryResponseDto,
   PromotionResponseDto,
   ReorderPromotionsDto,
   ResumePromotionDto,
   WritePromotionDto,
 } from './dto/promotion.dto';
+
+const HISTORY_LIMIT = 20;
 
 @ApiBearerAuth()
 @ApiTags('promotions')
@@ -62,7 +67,9 @@ export class PromotionsController {
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orders: IOrderRecordService,
     @Inject(CUSTOMER_PROJECTION_SERVICE_TOKEN)
-    private readonly customers: ICustomerProjectionService
+    private readonly customers: ICustomerProjectionService,
+    @Inject(PROMOTION_APPLICATION_LOG_TOKEN)
+    private readonly applications: PromotionApplicationLogPort
   ) {}
 
   @Get()
@@ -144,6 +151,30 @@ export class PromotionsController {
   @ApiResponse({ status: 404, description: 'Promotion not found' })
   async get(@Param('id', new ParseUUIDPipe()) id: string): Promise<PromotionResponseDto> {
     return PromotionResponseDto.fromView(await this.promotions.get(id));
+  }
+
+  @Get(':id/history')
+  @Roles('admin', 'operator', 'viewer')
+  @ApiOperation({
+    summary: 'What happened when this promotion met an order',
+    description:
+      'The newest applications first (applied, skipped, failed), with the order number and a reason code. ' +
+      'Reason codes only: no message text, cost or buyer data.',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiResponse({ status: 200, type: PromotionHistoryResponseDto })
+  @ApiResponse({ status: 404, description: 'Promotion not found' })
+  async history(@Param('id', new ParseUUIDPipe()) id: string): Promise<PromotionHistoryResponseDto> {
+    await this.promotions.get(id);
+    const records = await this.applications.findByPromotion(id, HISTORY_LIMIT);
+    const newestFirst = [...records].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    const numbers = await Promise.all(
+      newestFirst.map(async (record) => {
+        const order = await this.orders.getOrderRecord(record.internalOrderId);
+        return order?.orderNumber ?? null;
+      })
+    );
+    return PromotionHistoryResponseDto.from(newestFirst, numbers);
   }
 
   @Post()

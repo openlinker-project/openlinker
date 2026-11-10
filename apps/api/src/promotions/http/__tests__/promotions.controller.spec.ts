@@ -57,6 +57,7 @@ describe('PromotionsController', () => {
   let orderGifts: { previewForOrder: jest.Mock };
   let orders: { getOrderRecord: jest.Mock };
   let customers: { getProjection: jest.Mock };
+  let applications: { findByPromotion: jest.Mock };
   let controller: PromotionsController;
 
   beforeEach(() => {
@@ -74,13 +75,31 @@ describe('PromotionsController', () => {
       previewForOrder: jest.fn().mockResolvedValue({ evaluatedAt: NOW, evaluations: [], outcomes: [] }),
     };
     orders = { getOrderRecord: jest.fn().mockResolvedValue({ internalOrderId: 'o1' }) };
+    applications = {
+      findByPromotion: jest.fn().mockResolvedValue([
+        { id: 'a1', promotionId: 'p1', internalOrderId: 'o1', outcome: 'skipped', reason: 'customer-unknown', quantity: 0, createdAt: new Date('2026-01-02T00:00:00Z') },
+        { id: 'a2', promotionId: 'p1', internalOrderId: 'o1', outcome: 'applied', reason: null, quantity: 1, createdAt: new Date('2026-01-03T00:00:00Z') },
+      ]),
+    };
     customers = { getProjection: jest.fn().mockResolvedValue({ internalCustomerId: 'ol_customer_1' }) };
     controller = new PromotionsController(
       promotions as never,
       orderGifts as never,
       orders as never,
-      customers as never
+      customers as never,
+      applications as never
     );
+  });
+
+  it('should return the newest applications first with the order number', async () => {
+    orders.getOrderRecord.mockResolvedValue({ internalOrderId: 'o1', orderNumber: 'AL-1' });
+
+    const result = await controller.history('p1');
+
+    expect(result.items.map((i) => [i.id, i.orderNumber, i.reasonCode])).toEqual([
+      ['a2', 'AL-1', null],
+      ['a1', 'AL-1', 'customer-unknown'],
+    ]);
   });
 
   it('should list promotions with their ledger view and a derived status', async () => {
