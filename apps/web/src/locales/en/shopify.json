@@ -1,4 +1,20 @@
 {
+  "actions": {
+    "configure": "Configure webhooks",
+    "configuring": "Configuring...",
+    "currentlyConfigured": "Currently configured.",
+    "description": "Subscribes the store to order and product events, so changes reach OpenLinker right away instead of on the next poll.",
+    "needsCallbackUrl": "Save an OpenLinker callback URL first.",
+    "needsCapability": "Enable Order source or Product master first.",
+    "reconfigure": "Configure again",
+    "title": "Configure webhooks",
+    "toast": {
+      "configured": "Shopify will now notify OpenLinker when an order or product changes.",
+      "configuredTitle": "Webhooks configured",
+      "failedTitle": "Webhooks could not be configured",
+      "notAccepted": "Shopify did not accept the subscriptions."
+    }
+  },
   "callback": {
     "alreadyUsed": "This authorization link was already used. Your Shopify connection should be active.",
     "alreadyUsedTitle": "Authorization already completed",
@@ -16,6 +32,44 @@
     "title": "Shopify authorization",
     "unverified": "The redirect could not be confirmed as coming from Shopify for this store. No connection was created.",
     "viewAll": "View all connections"
+  },
+  "connectionConfig": {
+    "locationIdInvalid": "Enter a Shopify location ID, e.g. 12345678.",
+    "salesCountryInvalid": "Enter a 2-letter country code, e.g. PL.",
+    "unmanagedStockInvalid": "Enter a whole number, 0 or more."
+  },
+  "edit": {
+    "callbackUrl": {
+      "description": "The public https address of OpenLinker. Shopify sends webhooks to it.",
+      "label": "OpenLinker callback URL"
+    },
+    "location": {
+      "description": "The one location OpenLinker reads and writes stock at. Stock at other locations is not counted.",
+      "label": "Stock location",
+      "loadFailed": "The store's locations could not be read. Enter the location ID instead.",
+      "loading": "Loading locations...",
+      "primaryOption": "Primary location ({name})",
+      "primaryUnnamed": "Primary location",
+      "unknownOption": "Location {id} (not found in the store)",
+      "unknownWarning": "The saved location is not an active location of this store. Stock cannot be read or written until you pick another one."
+    },
+    "noWebhookCapability": {
+      "body": "Webhooks carry order and product events. Enable Order source or Product master to use them.",
+      "title": "Webhooks are not available"
+    },
+    "refunds": {
+      "description": "When you confirm a refund in OpenLinker, Shopify returns the money to the buyer. When off, a confirmed refund is only recorded.",
+      "label": "Send refunds to Shopify",
+      "warning": "Confirming a refund will move real money on Shopify Payments. Check every amount before you confirm it."
+    },
+    "salesCountry": {
+      "description": "The country whose VAT rate is read for products. Leave empty to use the store's billing country.",
+      "label": "Sales country"
+    },
+    "unmanagedStock": {
+      "description": "The quantity reported for a variant whose stock Shopify does not track. Leave empty for 1000.",
+      "label": "Quantity for untracked stock"
+    }
   },
   "plugin": {
     "callbackCrumb": "Shopify callback",

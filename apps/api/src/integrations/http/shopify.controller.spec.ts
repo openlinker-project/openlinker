@@ -4,9 +4,10 @@
  * (hmac + shop) is exercised for real.
  */
 import { createHmac } from 'node:crypto';
-import { BadRequestException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import { SHOPIFY_LOCATION_READER_TOKEN } from '@openlinker/integrations-shopify';
 
 import {
   OAUTH_CONNECTION_SERVICE_TOKEN,
@@ -42,6 +43,7 @@ const STATE_DATA: OAuthStateData = {
 describe('ShopifyController', () => {
   let controller: ShopifyController;
   let oauth: jest.Mocked<IOAuthConnectionService>;
+  let locationReader: { listLocations: jest.Mock };
 
   beforeEach(async () => {
     oauth = {
@@ -53,10 +55,14 @@ describe('ShopifyController', () => {
       markStateCompleted: jest.fn().mockResolvedValue(undefined),
       checkCompletedState: jest.fn().mockResolvedValue(null),
     } as unknown as jest.Mocked<IOAuthConnectionService>;
+    locationReader = { listLocations: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ShopifyController],
-      providers: [{ provide: OAUTH_CONNECTION_SERVICE_TOKEN, useValue: oauth }],
+      providers: [
+        { provide: OAUTH_CONNECTION_SERVICE_TOKEN, useValue: oauth },
+        { provide: SHOPIFY_LOCATION_READER_TOKEN, useValue: locationReader },
+      ],
     }).compile();
     controller = module.get(ShopifyController);
   });
@@ -165,6 +171,27 @@ describe('ShopifyController', () => {
       await expect(controller.callback({ rawQuery: query })).resolves.toMatchObject({
         connectionId: 'conn-1',
       });
+    });
+  });
+
+  describe('listLocations', () => {
+    it('should return the locations the reader lists', async () => {
+      const locations = [{ id: '1', name: 'Main', isActive: true, isPrimary: true }];
+      locationReader.listLocations.mockResolvedValueOnce(locations);
+
+      await expect(controller.listLocations('conn-1')).resolves.toEqual({ locations });
+    });
+
+    it('should answer 502 when the store cannot be read', async () => {
+      locationReader.listLocations.mockRejectedValueOnce(new Error('ECONNRESET'));
+
+      await expect(controller.listLocations('conn-1')).rejects.toBeInstanceOf(BadGatewayException);
+    });
+
+    it('should pass a refusal through unchanged', async () => {
+      locationReader.listLocations.mockRejectedValueOnce(new BadRequestException('not shopify'));
+
+      await expect(controller.listLocations('conn-1')).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 });
