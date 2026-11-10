@@ -462,6 +462,7 @@ const NON_RUNGS = new Set([
   'bulk-product-reader.capability.ts',
   // Reads a bundle's composition; says nothing about master freshness (#3932).
   'bundle-reader.capability.ts',
+  'product-creator.capability.ts',
 ]);
 
 /** ADR-048: "a third rung appearing is the signal to revisit the ladder." */

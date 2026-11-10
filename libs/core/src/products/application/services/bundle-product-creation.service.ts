@@ -28,8 +28,8 @@ import {
   MASTER_PRODUCT_SYNC_SERVICE_TOKEN,
   PRODUCTS_SERVICE_TOKEN,
 } from '../../products.tokens';
-import type { IMasterProductSyncService } from './master-product-sync.service.interface';
-import type { IProductsService } from './products.service.interface';
+import { IMasterProductSyncService } from './master-product-sync.service.interface';
+import { IProductsService } from './products.service.interface';
 import type {
   BundleCreationTarget,
   CreatedBundleProduct,
