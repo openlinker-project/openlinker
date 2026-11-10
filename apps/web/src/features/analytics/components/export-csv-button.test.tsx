@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import type { AnalyticsCsvExportRequest } from '../api/analytics-export.types';
 import { ExportCsvButton } from './export-csv-button';
@@ -59,7 +60,7 @@ describe('ExportCsvButton (#3590)', () => {
     await waitFor(() => expect(screen.getByTestId('export-csv-margin-channel')).toBeEnabled());
   });
 
-  it('should show the server reason and offer Change range and Try again when refused', async () => {
+  it('should show the refusal and offer Change range and Try again when refused', async () => {
     const message = 'One CSV covers at most 366 days. Narrow the range.';
     const exportCsv = vi
       .fn()
@@ -74,7 +75,7 @@ describe('ExportCsvButton (#3590)', () => {
     await userEvent.click(screen.getByTestId('export-csv-margin-channel'));
 
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent(message);
+    expect(alert).toHaveTextContent(getMessages('errors').codes.EXPORT_RANGE_TOO_WIDE);
     expect(screen.getByTestId('export-change-range')).toBeInTheDocument();
 
     await userEvent.click(screen.getByTestId('export-retry'));

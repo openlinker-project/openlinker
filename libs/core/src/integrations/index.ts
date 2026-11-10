@@ -63,7 +63,11 @@ export {
   resolveArchivable,
   readRateLimitBucketKey,
 } from './domain/types/adapter.types';
-export { ConnectionTestResult } from './domain/types/connection-test.types';
+export type { ConnectionTestOutcome, ConnectionTestResult } from './domain/types/connection-test.types';
+export {
+  ConnectionTestOutcomeValues,
+  resolveConnectionTestOutcome,
+} from './domain/types/connection-test.types';
 export { EntityClaimQuery } from './application/types/entity-claim.types';
 export { WebhookProvisioningResult } from './domain/types/webhook-provisioning.types';
 export {

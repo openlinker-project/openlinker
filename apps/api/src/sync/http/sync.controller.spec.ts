@@ -245,6 +245,19 @@ describe('SyncController', () => {
 
       await expect(controller.getJob('missing-id')).rejects.toThrow(NotFoundException);
     });
+
+    it('should name the missing job by code and id (#3865)', async () => {
+      syncJobRepository.findById.mockResolvedValue(null);
+
+      const error = await controller.getJob('missing-id').catch((caught: unknown) => caught);
+
+      expect((error as NotFoundException).getResponse()).toEqual({
+        statusCode: 404,
+        code: 'SYNC_JOB_NOT_FOUND',
+        message: 'Sync job not found: missing-id',
+        params: { jobId: 'missing-id' },
+      });
+    });
   });
 
   describe('lookupJobForWebhookEvent', () => {

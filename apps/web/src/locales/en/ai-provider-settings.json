@@ -36,8 +36,7 @@
     "noProviderBody": "AI suggestions will fail until a key is saved and a provider is activated. Until a provider is chosen here, OpenLinker uses the provider set in the server configuration.",
     "noProviderTitle": "No AI provider configured",
     "retry": "Retry",
-    "title": "Provider settings",
-    "unknownError": "Unknown error"
+    "title": "Provider settings"
   },
   "aiProviderTable": {
     "activeBadge": "Active",
@@ -93,7 +92,6 @@
     "switchErrorTitle": "Could not switch provider",
     "switchedToastDescription": "Subsequent AI requests route to {provider}.",
     "switchedToastTitle": "Active provider switched",
-    "unknownError": "Unknown error",
     "updatedBy": "by {user}",
     "yes": "Yes"
   }

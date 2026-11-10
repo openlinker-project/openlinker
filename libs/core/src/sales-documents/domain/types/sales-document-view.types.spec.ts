@@ -143,6 +143,7 @@ describe('SalesDocumentView', () => {
         blockReason: 'unresolved-routing',
         unresolvedReason: 'no-configuration-for-country',
         blockDetail: null,
+        blockParams: null,
         otherRecords: [],
         matchedRule: null,
         afterIssueAttention: null,
@@ -161,6 +162,7 @@ describe('SalesDocumentView', () => {
         blockReason: 'trigger-model-manual',
         unresolvedReason: null,
         blockDetail: null,
+        blockParams: null,
         otherRecords: [],
         matchedRule: null,
         afterIssueAttention: null,
@@ -189,6 +191,7 @@ describe('SalesDocumentView', () => {
         blockReason: null,
         unresolvedReason: null,
         blockDetail: null,
+        blockParams: null,
         otherRecords: [
           {
             recordId: 'inv-2',

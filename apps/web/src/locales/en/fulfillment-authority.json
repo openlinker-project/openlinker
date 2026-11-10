@@ -55,6 +55,12 @@
         "title": "Choosing where to pack order {ref} got stuck",
         "titleFallback": "Choosing where to pack this order got stuck"
       },
+      "source-change-unapplied": {
+        "action": "Open the order and choose what to do with the box.",
+        "body": "The shop changed the quantity of an item, so OpenLinker put the box on hold instead of changing it on its own.",
+        "title": "Order {ref} changed in {channel} after packing started",
+        "titleFallback": "This order changed in the shop after packing started"
+      },
       "sourcing-ambiguous": {
         "action": "Open the connections named below and leave one of them deciding.",
         "body": "Two systems are set up to decide, so OpenLinker is doing neither. Orders are going out the way they did before.",

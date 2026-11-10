@@ -216,7 +216,6 @@
       },
       "partialTitle": "{name}: some orders failed",
       "removeBack": "Back to adding tags",
-      "removeErrorFallback": "OpenLinker could not remove the tag. Try again.",
       "removeErrorTitle": "Tag not removed",
       "removeHeading": {
         "one": "Remove tag from {n} order",
@@ -251,7 +250,6 @@
   "bulkDispatchDialog": {
     "cancel": "Cancel",
     "description": "Generate labels for the selected orders - dispatched in per-source batches.",
-    "dispatchFailed": "Dispatch failed",
     "dispatching": "Dispatching…",
     "invalidParcel": "Invalid parcel",
     "needAttention": {
@@ -371,7 +369,6 @@
     "channelFallback": "the sales channel",
     "confirm": {
       "description": "OpenLinker asks {channel} to cancel it. Once {channel} confirms, the rest happens on its own, except the refund, which you make yourself.",
-      "errorFallback": "Could not cancel this order.",
       "errorTitle": "Could not cancel this order",
       "title": "Cancel order {order}?"
     },
@@ -396,9 +393,8 @@
     },
     "keepOrder": "Keep order",
     "label": {
-      "fallback": "A shipping label exists for this order, so OpenLinker will not cancel it yet.",
       "goToShipment": "Go to shipment",
-      "note": "If the parcel is already with the courier, the label cannot be voided. See the parcel instead of cancelling.",
+      "note": "If the carrier will not cancel the shipment (the parcel is already confirmed or with the courier), cancel the parcel in the carrier's panel or through the carrier's customer service.",
       "stepCancelAgain": "Cancel the order again.",
       "stepCancelShipment": "Cancel the shipment. This voids its label with the carrier.",
       "title": "Cancel the shipment first",
@@ -427,7 +423,6 @@
     "shipped": {
       "alertTitle": "The parcel is on its way",
       "close": "Close",
-      "fallback": "This order has already shipped.",
       "insteadTitle": "What you can do instead",
       "stepInvoice": "The invoice stays as issued. The return proposes the correction invoice.",
       "stepRefund": "Once the goods are back, refund the buyer and confirm the refund here.",
@@ -448,9 +443,7 @@
     "ownOnly": "Discount: {amount} in OpenLinker",
     "ownPart": "{amount} in OpenLinker"
   },
-  "common": {
-    "serverSaid": "The server said: {message}"
-  },
+  "common": {},
   "confirmOrderRefund": {
     "action": "Confirm refund",
     "ceiling": {
@@ -460,7 +453,6 @@
       "title": "This is more than the order total"
     },
     "description": "Record the refund you made to the buyer. OpenLinker does not move money.",
-    "failed": "Could not record the refund.",
     "recorded": "Refund recorded.",
     "title": "Confirm a refund"
   },
@@ -807,10 +799,6 @@
     "total": "Total"
   },
   "holds": {
-    "errors": {
-      "alreadyOnHold": "This order is already on hold. The open hold is being loaded now.",
-      "alreadyReleased": "This hold was already released. The order is being reloaded now."
-    },
     "onHold": "On hold - {reason}",
     "panel": {
       "activeSince": "since <time></time>",
@@ -829,7 +817,6 @@
     "placeDialog": {
       "cancel": "Cancel",
       "description": "OpenLinker stops sending this order to its destination and stops dispatching it until the hold is released.",
-      "errorFallback": "Could not put this order on hold.",
       "noteDescription": "Anything the next person needs to know. Never buyer details.",
       "noteLabel": "Note (optional)",
       "placedToast": "Order put on hold.",
@@ -877,7 +864,6 @@
     "releaseDialog": {
       "cancel": "Cancel",
       "description": "OpenLinker starts sending this order to its destination again.",
-      "errorFallback": "Could not release this hold.",
       "noteDescriptionOptional": "Anything the next person needs to know. Never buyer details.",
       "noteDescriptionPlacerUnknown": "It is not recorded who put this order on hold, so say why it is safe to release.",
       "noteDescriptionRequired": "OpenLinker put this order on hold by itself, so say why it is safe to release.",
@@ -953,15 +939,82 @@
     "status": "Status"
   },
   "listFilters": {
+    "allFiltersTitle": "All filters",
     "allSources": "All sources",
     "anyFulfilment": "Any fulfilment",
     "anyHold": "Any hold reason",
     "anyPacking": "Any packing",
     "anyPhase": "Any stage",
     "anySla": "Any",
+    "anyStatus": "All orders",
     "atRisk": {
       "one": "{n} at risk",
       "other": "{n} at risk"
+    },
+    "attention": {
+      "activeCount": {
+        "one": "{n} filter on",
+        "other": "{n} filters on"
+      },
+      "items": {
+        "atRisk": {
+          "desc": "The ship-by date is close.",
+          "label": "At risk"
+        },
+        "breaching": {
+          "desc": "Not shipped yet and due within a day, or already late.",
+          "label": "Ships within 24 h"
+        },
+        "buyerNote": {
+          "desc": "Read it before you pack.",
+          "label": "Buyer left a note"
+        },
+        "omsStopped": {
+          "desc": "OpenLinker could not decide something and needs you.",
+          "label": "OpenLinker stopped"
+        },
+        "openReturn": {
+          "desc": "The buyer started a return.",
+          "label": "Open return"
+        },
+        "overdue": {
+          "desc": "The ship-by date has passed.",
+          "label": "Overdue"
+        },
+        "packBench": {
+          "desc": "Waiting to be packed, or being packed.",
+          "label": "On pack bench"
+        },
+        "rateConflict": {
+          "desc": "The shop and the channel report different VAT rates.",
+          "label": "Tax rate conflict"
+        },
+        "routing": {
+          "desc": "No destination could be chosen for this order.",
+          "label": "Routing blocked"
+        },
+        "salesDocs": {
+          "desc": "No invoice or receipt could be issued.",
+          "label": "Sales document blocked"
+        },
+        "waiting": {
+          "desc": "Held in OpenLinker before it goes on to the shop.",
+          "label": "Waiting in OpenLinker"
+        }
+      },
+      "late": {
+        "label": "Late to ship",
+        "short": "late to ship"
+      },
+      "riskHint": "ranked by deadline",
+      "stuck": {
+        "label": "Stuck",
+        "short": "stuck"
+      },
+      "toHandle": {
+        "label": "To handle",
+        "short": "to handle"
+      }
     },
     "checks": {
       "buyerNote": "With buyer note",
@@ -971,6 +1024,7 @@
       "rateConflict": "Rate conflict",
       "routingBlocked": "Routing blocked",
       "salesDocsBlocked": "Sales documents blocked",
+      "shopChanged": "Changed by the shop",
       "waiting": "Waiting in OpenLinker"
     },
     "chips": {
@@ -999,6 +1053,8 @@
       "search": "Search",
       "searchValue": "“{query}”",
       "shipBy": "Ship-by",
+      "shopChanged": "Shop",
+      "shopChangedValue": "Changed",
       "source": "Source",
       "stopped": "Stopped",
       "tag": "Tag",
@@ -1009,6 +1065,7 @@
       "waitingValue": "Waiting"
     },
     "clearAll": "Clear all",
+    "closeFilters": "Close filters",
     "dispatchRiskOverview": "Dispatch risk",
     "fields": {
       "created": "Created",
@@ -1022,6 +1079,7 @@
       "shipBy": "Ship-by",
       "source": "Source"
     },
+    "filterGroupAria": "Filters",
     "fulfilmentOptions": {
       "delivered": "Delivered",
       "dispatched": "Dispatched",
@@ -1042,7 +1100,8 @@
       "source_deleted": "Source deleted",
       "synced": "Synced"
     },
-    "hideFilters": "Hide filters",
+    "moreFilters": "Filters",
+    "moreFiltersTitle": "All filters (F)",
     "noFilterResults": {
       "clearFilters": "Clear filters",
       "message": "No orders match {summary}. Clear the filters to see everything.",
@@ -1078,6 +1137,7 @@
         "one": "{n} more is issued on request - waiting for you by configuration, not blocked.",
         "other": "{n} more are issued on request - waiting for you by configuration, not blocked."
       },
+      "shopChanged": "Changed by the shop",
       "waiting": "Waiting in OpenLinker"
     },
     "results": {
@@ -1097,7 +1157,6 @@
     },
     "sectionAny": "Any",
     "sectionNone": "None",
-    "sheetTitle": "Filters",
     "showOrders": {
       "one": "Show {n} order",
       "other": "Show {n} orders"
@@ -1112,17 +1171,27 @@
       "on_track": "On track",
       "overdue": "Overdue"
     },
+    "sortMenuAria": "Sort orders",
+    "sortOptions": {
+      "createdAt": "Recently synced",
+      "customer": "Customer, A to Z",
+      "dispatchBy": "Ship-by, soonest",
+      "fulfillment": "Shipment state",
+      "payment": "Payment state",
+      "placedAt": "Newest first",
+      "status": "Status",
+      "total": "Highest total"
+    },
+    "statusTabsAria": "Orders by sync health",
     "tags": {
       "any": "Any tag",
       "find": "Find a tag",
       "groupAria": "Tag",
       "none": "No tags",
       "noneYet": "No tags yet."
-    },
-    "toggleTitle": "Show or hide filters (F)"
+    }
   },
   "listPage": {
-    "allOrders": "All orders",
     "bulk": {
       "clear": "Clear",
       "dispatch": "Dispatch {count}",
@@ -1155,6 +1224,7 @@
       "customer": "Customer",
       "order": "Order",
       "payment": "Payment",
+      "placed": "Placed",
       "shipBy": "Ship-by",
       "shipment": "Shipment",
       "status": "Status",
@@ -1218,8 +1288,6 @@
       "retrying": "Retrying…"
     },
     "row": {
-      "collapseDetails": "Collapse details for order {id}",
-      "expandDetails": "Expand details for order {id}",
       "select": "Select {id}",
       "selectAll": "Select all visible orders",
       "unselect": "Unselect {id}",
@@ -1422,7 +1490,6 @@
     "confirmed": "Correction confirmed.",
     "confirming": "Confirming…",
     "discountReason": "The order was discounted, so the invoice is corrected to the discounted prices.",
-    "errorBody": "Could not confirm the correction.",
     "errorTitle": "Could not confirm the correction",
     "irreversible": "Confirming issues the correcting invoice, and an issued correction can not be withdrawn.",
     "title": "Correction invoice",
@@ -1558,7 +1625,6 @@
     "confirm": "Confirm refund",
     "confirming": "Confirming…",
     "discountLowered": "The discount lowered what the buyer owes.",
-    "errorBody": "Could not confirm the refund.",
     "errorTitle": "Could not confirm the refund",
     "recorded": "Refund recorded.",
     "refundFirst": "OpenLinker doesn’t move money: refund the difference on {channel} first, then confirm it here so the documents and what the buyer paid agree.",
@@ -1622,7 +1688,8 @@
         "fallbackReason": "The label carries the current address and method.",
         "steps": {
           "1": "Cancel the shipment. This voids its label with the carrier.",
-          "2": "Edit the order."
+          "2": "Edit the order.",
+          "3": "If the carrier will not cancel it (the parcel is already confirmed), cancel the parcel in the carrier's panel or through the carrier's customer service."
         },
         "title": "A shipping label is already bought"
       },
@@ -1780,7 +1847,6 @@
       "modePercent": "Percent of the goods"
     },
     "failure": {
-      "fallback": "Could not save this edit.",
       "title": "Could not save this edit"
     },
     "lines": {
@@ -1891,7 +1957,6 @@
     "refundIntentFailed": "The discount was saved, but OpenLinker could not open the refund for it. Send the same discount again to open it, then refund the difference on {channel}.",
     "refundPending": "Refund {amount} on {channel}, then confirm the refund here.",
     "resend": "Send the discount again",
-    "resendFailed": "Could not send the discount again.",
     "resending": "Sending…",
     "reviewCorrection": "Review correction",
     "stillShows": "{channel} still shows the order as the buyer placed it.",
@@ -2022,7 +2087,6 @@
     "separator": "Separator",
     "separatorHint": "UTF-8, opens directly in Excel.",
     "separatorValue": "Semicolon (;), Excel in Polish",
-    "startFailed": "Could not start the export. Try again.",
     "submitBackground": "Start background export",
     "submitCount": {
       "one": "Export {n} order",
@@ -2140,12 +2204,10 @@
       "counter": "{length} / {max}",
       "label": "New note",
       "packerWarning": "Packers see this text on the pack bench. Leave out phone numbers, emails and addresses.",
-      "pinErrorFallback": "OpenLinker could not pin the note. Pin it from the list.",
       "pinErrorTitle": "Note added, not pinned",
       "pinToTop": "Pin to the top",
       "placeholder": "Add a note for your team",
       "retry": "Try again",
-      "saveErrorFallback": "OpenLinker could not reach the server.",
       "saveErrorTail": "Your text is still in the box above.",
       "saveErrorTitle": "Note not saved",
       "showToPacker": "Show to packer on the pack bench",
@@ -2155,7 +2217,6 @@
       "confirm": "Delete note",
       "descriptionRemoved": "The text is removed for everyone, including the pack bench.",
       "descriptionTimeline": "The activity timeline keeps a line saying a note by <strong>{author}</strong> was deleted, without its text.",
-      "errorFallback": "OpenLinker could not delete the note. Try again.",
       "errorTitle": "Note not deleted",
       "keep": "Keep note",
       "title": "Delete this note?"
@@ -2179,12 +2240,10 @@
     "readOnly": "You can read notes. Adding or changing them needs the operator or admin role.",
     "retry": "Try again",
     "row": {
-      "actionErrorFallback": "OpenLinker could not change the note. Try again.",
       "actionErrorTitle": "Note not changed",
       "cancel": "Cancel",
       "delete": "Delete",
       "edit": "Edit",
-      "editErrorFallback": "OpenLinker could not save the edit. Try again.",
       "editErrorTitle": "Edit not saved",
       "editHint": "Everyone sees that it was edited.",
       "editLabel": "Edit note",
@@ -2324,7 +2383,6 @@
     "bulk": {
       "allHaveIt": "All have it",
       "emptyVocabulary": "No tags yet.",
-      "errorFallback": "OpenLinker could not add the tag. Try again.",
       "errorTitle": "Tag not added",
       "hasIt": {
         "one": "{n} of {total} has it",
@@ -2407,7 +2465,6 @@
     },
     "noTags": "No tags",
     "picker": {
-      "createErrorFallback": "OpenLinker could not create the tag. Try again.",
       "createErrorTitle": "Tag not created",
       "createRow": "+ Create “{name}”",
       "createdToastDescription": "{name} is on this order now.",
@@ -2422,7 +2479,6 @@
         "one": "order",
         "other": "orders"
       },
-      "saveErrorFallback": "OpenLinker could not save the change. Try again.",
       "saveErrorTitle": "Tag not saved",
       "savedHint": "Saved as you tick",
       "searchPlaceholder": "Find or create a tag"
@@ -2454,7 +2510,6 @@
     "title": "Packing",
     "toasts": {
       "cleared": "Packed mark cleared.",
-      "failed": "Could not update the packed mark.",
       "marked": "Order marked packed."
     },
     "undo": "Undo"
@@ -2467,6 +2522,99 @@
     "bankTransfer": "Bank transfer",
     "cashOnDelivery": "Cash on delivery",
     "online": "Online payment"
+  },
+  "paymentWriteback": {
+    "bulkRegionLabel": "Payment not sent to shop",
+    "bulkSummary": {
+      "one": "{n} order. Its shop still shows it as unpaid.",
+      "other": "{n} orders. Their shops still show them as unpaid."
+    },
+    "cancelledBody": "The order stays cancelled and the shops were not changed. Check the refund in the marketplace.",
+    "cancelledTitle": "The buyer paid a cancelled order",
+    "cashOnDelivery": "Cash on delivery",
+    "chipLabel": "Payment",
+    "chipValue": "Not sent to shop",
+    "filterCheck": "Payment not sent to shop",
+    "filterQuick": "Payment not sent to shop",
+    "handledDone": {
+      "one": "Marked {n} order as handled",
+      "other": "Marked {n} orders as handled"
+    },
+    "handledDoneDetail": "These orders no longer show under \"Payment not sent to shop\".",
+    "listMarker": "Payment not in <shop></shop>",
+    "listMarkerGeneric": "Payment not sent to shop",
+    "markHandled": "Mark as handled",
+    "markHandledFailed": "Could not mark as handled",
+    "notPaidYet": "Not paid yet",
+    "notTracked": {
+      "one": "<shops></shops> doesn't track payment.",
+      "other": "<shops></shops> don't track payment."
+    },
+    "paidAfterCancellation": "Paid after cancellation",
+    "paidOn": "Paid on {source}",
+    "paidOnUnknown": "Paid",
+    "panelTitle": "Payment",
+    "problemBody": "Retry, or mark the order paid in the shop yourself.",
+    "problemTitleMany": {
+      "one": "{n} shop still shows this order as unpaid",
+      "other": "{n} shops still show this order as unpaid"
+    },
+    "problemTitleOne": "<shop></shop> still shows this order as unpaid",
+    "progress": "{done} of {total} shops updated",
+    "retryDone": {
+      "one": "Queued {n} shop update",
+      "other": "Queued {n} shop updates"
+    },
+    "retryDoneDetail": "OpenLinker will mark the order paid in the shop in a moment.",
+    "retryFailed": "Retry failed",
+    "retryNow": "Retry now",
+    "retrying": "Retrying…",
+    "row": {
+      "awaiting": "Waiting for payment",
+      "cod": "Cash on delivery",
+      "codHelper": "Not marked paid",
+      "createdPaid": "Paid at creation",
+      "handled": "Handled",
+      "handledHelper": "Marked as handled",
+      "notSent": "Not sent",
+      "notSentCancelled": "Order cancelled",
+      "notSentNoTotal": "Order total unknown",
+      "notSentRefunded": "Order refunded",
+      "notSentRejected": "The shop refused it",
+      "notSentStopped": "Retries stopped",
+      "notTracked": "Not tracked here",
+      "paidInShop": "Paid in shop",
+      "retrying": "Retrying",
+      "retryingHelper": "The shop did not answer",
+      "sending": "Updating",
+      "skippedBySetting": "Left to you",
+      "skippedBySettingHelper": "Set to leave payment as it is",
+      "unknown": "Unknown state"
+    },
+    "shopsLabel": "Payment in each shop"
+  },
+  "peek": {
+    "billing": "Billing",
+    "copyReference": "Copy order number",
+    "customer": "Customer",
+    "description": "Order summary. Use the arrow keys or J and K to move between orders.",
+    "details": "Details",
+    "detailsAria": "Open details for order {ref}",
+    "generateLabel": "Generate label",
+    "invoice": "Invoice",
+    "itemPrice": "{quantity} × {price}",
+    "items": "Items",
+    "kicker": "Order",
+    "money": "Money",
+    "openOrder": "Open order",
+    "openProduct": "Open product {name}",
+    "reference": "Order reference",
+    "shipBy": "Ship-by",
+    "shipment": "Shipment",
+    "stateAria": "Order state",
+    "status": "Status",
+    "synced": "Synced to OpenLinker",
+    "viewOn": "View on {channel}"
   },
   "refundConfirmation": {
     "amountHint": "What you actually sent back. OpenLinker does not calculate this for you.",
@@ -2490,6 +2638,34 @@
     "other": "Something else",
     "withdrawal": "Buyer changed their mind",
     "wrongItem": "Wrong item was sent"
+  },
+  "salesDocumentBlockDetail": {
+    "candidates": "Connections that could issue it: {n}.",
+    "capabilities": {
+      "Fiscalization": "receipts",
+      "Invoicing": "invoices",
+      "or": "{a} or {b}"
+    },
+    "connectionState": {
+      "archived": "It is archived.",
+      "changed": "It changed while this order was being checked.",
+      "disabled": "It is disabled.",
+      "error": "It is in an error state.",
+      "missing-capability": "It is not set up to issue {documents}.",
+      "needs-reauth": "It needs to be signed in again.",
+      "not-found": "It no longer exists.",
+      "unreadable": "It could not be read."
+    },
+    "firstLine": "First product: {ref}.",
+    "invoiceUnsupported": "Connection {connectionId} cannot issue invoices.",
+    "kindUnsupported": "Connection {connectionId} is set to a document kind OpenLinker cannot issue ({documentKind}).",
+    "linesWithoutRate": "Lines without a tax rate: {lineCount} of {totalLines}.",
+    "noKindDeclared": "Connections that can issue documents: {n}. None says which kind it issues.",
+    "nonePrimary": "Connections that could issue it: {n}. None is marked primary.",
+    "routed": "Routing sends this order to connection {connectionId}.",
+    "routedByRule": "Rule {ruleId} sends this order to connection {connectionId}.",
+    "severalPrimary": "Connections that could issue it: {n}. More than one is marked primary.",
+    "shippingWithoutRate": "The shipping charge cannot be given a tax rate."
   },
   "salesDocumentCell": {
     "action": {
@@ -2753,17 +2929,17 @@
     "panel": {
       "fixRouting": "Fix routing settings",
       "manualOverride": "Issue or register manually instead",
+      "technicalDetails": "Technical details ({count})",
       "title": "Sales document",
       "whyThisKind": "Why this kind?"
     }
   },
   "sendDocumentEmail": {
-    "failed": "Could not email the document to the buyer.",
     "language": "Email language",
     "lastSentVia": "{when} · {via}",
+    "noBuyerEmail": "This order has no buyer email.",
+    "otherAddressHint": "A different address is sent by OpenLinker rather than the invoicing provider.",
     "recipient": "Recipient",
-    "recipientHint": "Leave empty to use the buyer's address on the order. A different address is sent by OpenLinker rather than the invoicing provider.",
-    "recipientPlaceholder": "Buyer's address on the order",
     "send": "Send email",
     "sendAgain": "Send again",
     "sending": "Sending…",
@@ -2775,6 +2951,8 @@
     "statusNone": "Not sent yet",
     "statusSent": "Sent",
     "title": "Email to buyer",
+    "useBuyerAddress": "Send to the buyer's address on the order ({email})",
+    "useBuyerAddressNone": "Send to the buyer's address on the order",
     "viaOpenLinker": "via OpenLinker",
     "viaProvider": "via the invoicing provider"
   },
@@ -2824,6 +3002,55 @@
   "shipmentTrackingLink": {
     "track": "Track shipment (opens in new tab)",
     "trackOn": "Track shipment on {carrier} (opens in new tab)"
+  },
+  "sourceChange": {
+    "action": {
+      "handled": "Mark as handled",
+      "keep": "Keep the box as it is",
+      "recheck": "Check again",
+      "retry": "Try again"
+    },
+    "effect": {
+      "alreadyPacked": "More units were already reported packed",
+      "boxClosedBefore": "The box was closed before the change",
+      "boxHoldsMore": "The box already holds more",
+      "couldNotUpdate": "Packing or stock could not be updated",
+      "noAutoAdd": "OpenLinker does not add items to a box on its own",
+      "noLongerMatches": "The box no longer matches the order",
+      "packedElsewhere": "This order is packed outside OpenLinker",
+      "packerTold": "The packer is told what to take out",
+      "packingAsksNew": "Packing asks for the new quantity",
+      "packingOnHold": "Packing is on hold",
+      "parcelLeftOld": "The parcel left with the old quantity",
+      "settleWithBuyer": "Settle the difference with the buyer in the shop",
+      "stockChangesWhenMatches": "Stock changes once the box matches",
+      "stockFollows": "Stock and reservation follow it",
+      "stockUnchanged": "Stock is unchanged",
+      "tellWarehouse": "Tell the warehouse, then decide here",
+      "triesAgain": "OpenLinker tries again with the next update"
+    },
+    "line": {
+      "added": "new",
+      "quantityChange": "{from} to {to}",
+      "removed": "removed",
+      "sku": "SKU {sku}"
+    },
+    "outcome": {
+      "accepted": "Kept as it is, and the box is released.",
+      "applied": "Packing, stock and reservation now match the order.",
+      "contended": "Someone else is changing this order right now, so try again in a moment.",
+      "failed": "This did not finish, so try again.",
+      "held": "The box still does not match, so it stays on hold.",
+      "nothingToDo": "The order and its packing already match.",
+      "shipped": "The parcel already left, so nothing was changed."
+    },
+    "status": {
+      "applied": "Applied",
+      "decision": "Needs a decision",
+      "failed": "Not finished",
+      "shipped": "Already shipped"
+    },
+    "title": "Changed by the shop"
   },
   "stockAtRisk": {
     "badgeTitle": "{title}. {body}",

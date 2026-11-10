@@ -8,8 +8,10 @@ import { ListingsListPage } from './listings-list-page';
 import type {
   OfferLifecycleCounts,
   OfferMapping,
+  OfferMappingCount,
   PaginatedOfferMappings,
 } from '../../features/listings/api/listings.types';
+import { getMessages } from '../../shared/i18n';
 
 const ZERO_LIFECYCLE_COUNTS: OfferLifecycleCounts = {
   Active: 0,
@@ -155,6 +157,18 @@ function createListingsMockApiClient(
   });
 }
 
+/** Opens the Channel dropdown (#4046) and returns its option labels, the "any" choice first. */
+async function openChannelOptions(user: ReturnType<typeof userEvent.setup>): Promise<string[]> {
+  const group = screen.getByRole('group', { name: 'Filters' });
+  await user.click(within(group).getByRole('button', { name: /^Channel/ }));
+  await waitFor(() => {
+    expect(document.querySelector('.choice-pop__opt')).not.toBeNull();
+  });
+  return [...document.querySelectorAll('.choice-pop__opt')].map(
+    (button) => button.textContent?.replace(/\d+$/, '') ?? '',
+  );
+}
+
 function oneRow(overrides: Partial<OfferMapping>): PaginatedOfferMappings {
   return {
     ...sampleMappings,
@@ -218,20 +232,58 @@ describe('ListingsListPage', () => {
         },
       });
 
-    it('should carry a shop-level problem once, above the table, naming the connection', async () => {
+    // What the count endpoint reports (#4045): the shop-level block counted
+    // across every page, per connection, with the platform code.
+    const SHOP_BLOCKED_ATTENTION = {
+      sellingDeletedProduct: 0,
+      shopBlocked: 1,
+      shopBlockedByConnection: [
+        {
+          connectionId: 'conn_allegro_1',
+          count: 1,
+          problems: [
+            {
+              code: 'shopKyc',
+              message: 'Finish verification in the Erli seller panel; the next status read clears it.',
+            },
+          ],
+        },
+      ],
+    };
+
+    it('should carry a shop-level problem in "blocked by shop", naming the connection (#4046)', async () => {
+      const user = userEvent.setup();
+      const list = vi.fn().mockResolvedValue({ ...shopBlockedPage(), attentionCounts: SHOP_BLOCKED_ATTENTION });
       const mockApi = createListingsMockApiClient({
-        listings: { list: vi.fn().mockResolvedValue(shopBlockedPage()) },
+        listings: { list },
         connections: { list: vi.fn().mockResolvedValue([MISMATCHED_PLATFORM_CONNECTION]) },
       });
 
       renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
-      expect(
-        await screen.findByText('Erli Demo reports a shop-level block'),
-      ).toBeInTheDocument();
-      expect(screen.getByText('1 of the listings shown here is affected.')).toBeInTheDocument();
+      const summary = await screen.findByRole('group', { name: 'Needs a look' });
+      await waitFor(() => {
+        expect(summary).toHaveTextContent('1blocked by shop');
+      });
+      // Nothing above the table any more: the notice moved into the summary.
+      expect(screen.queryByText('Erli Demo reports a shop-level block.')).not.toBeInTheDocument();
+
+      await user.click(within(summary).getByText('blocked by shop'));
+      const pop = await screen.findByRole('dialog', { name: 'Shop-level block' });
+      expect(within(pop).getByText('Erli Demo reports a shop-level block.')).toBeInTheDocument();
+      expect(within(pop).getByText('1 listing is affected.')).toBeInTheDocument();
       // The raw channel code stays reachable for a support ticket.
-      expect(screen.getByText('shopKyc')).toBeInTheDocument();
+      expect(within(pop).getByText('shopKyc')).toBeInTheDocument();
+      expect(within(pop).getByRole('link', { name: 'Open connection' })).toHaveAttribute(
+        'href',
+        '/connections/conn_allegro_1',
+      );
+
+      await user.click(within(pop).getByRole('button', { name: 'Show these listings' }));
+      await vi.waitFor(() => {
+        const [filters] = list.mock.calls.filter((call) => call[1] !== undefined).at(-1) ?? [];
+        expect(filters).toMatchObject({ shopBlocked: true });
+      });
     });
 
     it('should keep the row on its own problem rather than repeating the shop one', async () => {
@@ -242,7 +294,7 @@ describe('ListingsListPage', () => {
 
       const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
-      await screen.findByText('Erli Demo reports a shop-level block');
+      await screen.findByText('No VAT rate set on Erli');
       const reason = container.querySelector('.listing-cell__reason');
       expect(reason?.textContent).toBe('No VAT rate set on Erli');
       expect(reason?.className).not.toContain('listing-cell__reason--muted');
@@ -275,7 +327,7 @@ describe('ListingsListPage', () => {
 
       const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
-      await screen.findByText('Erli Demo reports a shop-level block');
+      await screen.findByText('Blocked by a problem with the shop, not this listing');
       const reason = container.querySelector('.listing-cell__reason');
       expect(reason?.textContent).toBe('Blocked by a problem with the shop, not this listing');
       expect(reason?.className).toContain('listing-cell__reason--muted');
@@ -309,7 +361,7 @@ describe('ListingsListPage', () => {
       renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
       expect(await screen.findByText('No VAT rate set on Erli')).toBeInTheDocument();
-      expect(screen.queryByText('Erli Demo reports a shop-level block')).not.toBeInTheDocument();
+      expect(screen.queryByText('Erli Demo reports a shop-level block.')).not.toBeInTheDocument();
     });
   });
 
@@ -367,6 +419,8 @@ describe('ListingsListPage', () => {
       // Not "when this listing changed" - when OL last read the channel. The
       // mobile card calls the identical value "Status read".
       'Updatedstatus read',
+      // #4046 - the arrow column that opens the peek; its header is sr-only.
+      'Details',
     ]);
   });
 
@@ -590,7 +644,7 @@ describe('ListingsListPage', () => {
     renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('Unable to load listings')).toBeInTheDocument();
-    expect(screen.getByText('The server said: Network error')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
   });
 
   it("should show the Active tab's own empty state when a connection exists but nothing is synced", async () => {
@@ -952,7 +1006,9 @@ describe('ListingsListPage', () => {
 
       expect(await screen.findByText('No draft listings')).toBeInTheDocument();
       await vi.waitFor(() => {
-        const [filters, pagination] = list.mock.calls.at(-1) ?? [];
+        // The last ROWS call: the Channel dropdown's count probes (#4046) also
+        // reach this spy, without pagination.
+        const [filters, pagination] = list.mock.calls.filter((call) => call[1] !== undefined).at(-1) ?? [];
         expect((filters as { lifecycle?: string } | undefined)?.lifecycle).toBe('Draft');
         expect((pagination as { offset?: number } | undefined)?.offset).toBe(0);
       });
@@ -979,7 +1035,7 @@ describe('ListingsListPage', () => {
       expect(screen.getByRole('tab', { name: /^Unsynced/ })).toHaveTextContent('0');
     });
 
-    it('renders tab counts as skeleton placeholders while loading, never as a placeholder zero', () => {
+    it('renders tab counts as unknown while loading, never as a placeholder zero', () => {
       const mockApi = createListingsMockApiClient({
         listings: {
           listRows: vi.fn().mockReturnValue(new Promise(() => {})),
@@ -992,9 +1048,12 @@ describe('ListingsListPage', () => {
       // Scoped to the lifecycle tablist (#3164 review) — the page also
       // renders a second, top-level "All listings"/"Price changes" `Tabs`
       // (#3147), so an unscoped query now finds 7, not 5.
+      // One tab row since #4046 (the view switch moved to the page head). An
+      // unknown count reads as a dash on the shared tabs - never as 0.
       const lifecycleTablist = screen.getByRole('tablist', { name: 'Listing lifecycle' });
       expect(within(lifecycleTablist).getAllByRole('tab')).toHaveLength(5);
-      expect(lifecycleTablist.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
+      expect(within(lifecycleTablist).getAllByText('-')).toHaveLength(5);
+      expect(within(lifecycleTablist).queryByText('0')).toBeNull();
     });
 
     it("keeps every tab's already-known count visible - no skeleton reappears - while a switched-to tab is still loading its own rows", async () => {
@@ -1021,9 +1080,13 @@ describe('ListingsListPage', () => {
       // is a cache hit and issues no second request at all - which is what now
       // keeps the four unchanged badges on screen, structurally, where a
       // hand-rolled ref and fingerprint used to.
-      expect(count).toHaveBeenCalledTimes(1);
+      // The BUCKET request (the one carrying `includeLifecycleCounts`); the
+      // Channel dropdown's per-connection probes (#4046) do follow the tab.
+      expect(
+        count.mock.calls.filter(([filters]) => (filters as { includeLifecycleCounts?: boolean }).includeLifecycleCounts),
+      ).toHaveLength(1);
       const lifecycleTablist = screen.getByRole('tablist', { name: 'Listing lifecycle' });
-      expect(lifecycleTablist.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
+      expect(within(lifecycleTablist).queryAllByText('-')).toHaveLength(0);
       expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Invalid 3' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Draft 2' })).toBeInTheDocument();
@@ -1031,19 +1094,22 @@ describe('ListingsListPage', () => {
       expect(screen.getByRole('tab', { name: 'Unsynced 0' })).toBeInTheDocument();
     });
 
-    it("falls back to skeletons - not the pre-search counts - once the search term changes and the new query has not resolved (#2029 round 2 review)", async () => {
+    it("falls back to unknown counts - not the pre-search counts - once the search term changes and the new query has not resolved (#2029 round 2 review)", async () => {
       const listRows = vi
         .fn()
         .mockResolvedValueOnce(rowsOf(sampleMappings))
         .mockReturnValueOnce(new Promise(() => {}));
-      const count = vi
-        .fn()
-        .mockResolvedValueOnce({ total: 13, lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 } })
-        // The new search term's count key has never been fetched before - it
-        // hangs, which is the window during which the now-wrong "Active 7"
-        // must not survive. Unlike a tab switch, a search change IS part of
-        // the count key, so it genuinely refetches.
-        .mockReturnValueOnce(new Promise(() => {}));
+      // The new search term's count key has never been fetched before - it
+      // hangs, which is the window during which the now-wrong "Active 7" must
+      // not survive. Unlike a tab switch, a search change IS part of the count
+      // key, so it genuinely refetches. Keyed on the filters, not on call order:
+      // the Channel dropdown's probes (#4046) share this spy.
+      const count = vi.fn(
+        (filters?: { search?: string }): Promise<OfferMappingCount> =>
+          filters?.search === 'brand new search term'
+            ? new Promise<OfferMappingCount>(() => {})
+            : Promise.resolve({ total: 13, lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 } }),
+      );
       const mockApi = createListingsMockApiClient({ listings: { listRows, count } });
 
       renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
@@ -1058,7 +1124,7 @@ describe('ListingsListPage', () => {
 
       // Wait past the debounce window for the new (still-pending) requests.
       await vi.waitFor(() => {
-        expect(count).toHaveBeenCalledTimes(2);
+        expect(count.mock.calls.some(([filters]) => filters?.search === 'brand new search term')).toBe(true);
       });
 
       // The stale count must not survive the filter change - it falls
@@ -1066,7 +1132,7 @@ describe('ListingsListPage', () => {
       // the new search term is unknown.
       expect(screen.queryByRole('tab', { name: 'Active 7' })).not.toBeInTheDocument();
       const lifecycleTablist = screen.getByRole('tablist', { name: 'Listing lifecycle' });
-      expect(lifecycleTablist.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
+      expect(within(lifecycleTablist).getAllByText('-')).toHaveLength(5);
     });
 
     it("separates a tab's label from its count badge in the accessible name", async () => {
@@ -1156,7 +1222,8 @@ describe('ListingsListPage', () => {
     };
     const TWO_CONNECTIONS = [SECOND_CONNECTION, MISMATCHED_PLATFORM_CONNECTION];
 
-    it('renders the channel select with connection names for OfferManager-capable connections only, from one shared connections read', async () => {
+    it('renders the channel dropdown with connection names for OfferManager-capable connections only, from one shared connections read', async () => {
+      const user = userEvent.setup();
       const connectionsList = vi.fn().mockResolvedValue(TWO_CONNECTIONS);
       const mockApi = createListingsMockApiClient({
         listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
@@ -1166,8 +1233,7 @@ describe('ListingsListPage', () => {
       renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
       await screen.findByText('Doniczka ceramiczna Terra');
-      const select = screen.getByRole('combobox', { name: 'Filter by channel' });
-      const optionLabels = [...select.querySelectorAll('option')].map((o) => o.textContent);
+      const optionLabels = await openChannelOptions(user);
       // SECOND_CONNECTION only has ProductMaster - /listings is backed
       // exclusively by offer mappings, so a ProductMaster-only connection can
       // never produce a row here and must not be offered as a filter option
@@ -1180,7 +1246,6 @@ describe('ListingsListPage', () => {
       // legitimately shows its own id in the Connection column's `EntityLabel`
       // (that display is correct there, just not inside this select).
       expect(optionLabels).toEqual(['All channels', 'Erli Demo']);
-      expect(screen.queryByText('Main PrestaShop Store')).not.toBeInTheDocument();
       // The Connection column already reads `useConnectionsQuery()` once for the
       // whole page (#1996) - the toolbar select must reuse that same result
       // rather than firing a second connections request.
@@ -1188,6 +1253,7 @@ describe('ListingsListPage', () => {
     });
 
     it('excludes a connection that lacks OfferManager even when it is otherwise active and named', async () => {
+      const user = userEvent.setup();
       const mockApi = createListingsMockApiClient({
         listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
         connections: { list: vi.fn().mockResolvedValue([SECOND_CONNECTION]) },
@@ -1196,9 +1262,7 @@ describe('ListingsListPage', () => {
       renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
       await screen.findByText('Doniczka ceramiczna Terra');
-      const select = screen.getByRole('combobox', { name: 'Filter by channel' });
-      const optionLabels = [...select.querySelectorAll('option')].map((o) => o.textContent);
-      expect(optionLabels).toEqual(['All channels']);
+      expect(await openChannelOptions(user)).toEqual(['All channels']);
     });
 
     it('filters the request by the selected channel connection id', async () => {
@@ -1212,16 +1276,17 @@ describe('ListingsListPage', () => {
       renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
       await screen.findByText('Doniczka ceramiczna Terra');
-      const select = screen.getByRole('combobox', { name: 'Filter by channel' });
-      await user.selectOptions(select, 'conn_allegro_1');
+      await openChannelOptions(user);
+      await user.click(screen.getByRole('button', { name: /^Erli Demo/ }));
 
       await vi.waitFor(() => {
-        const [filters] = list.mock.calls.at(-1) ?? [];
+        const [filters] = list.mock.calls.filter((call) => call[1] !== undefined).at(-1) ?? [];
         expect((filters as { connectionId?: string } | undefined)?.connectionId).toBe(
           'conn_allegro_1',
         );
       });
-      expect(select).toHaveValue('conn_allegro_1');
+      // The applied choice reads back on the button and as a pill.
+      expect(within(screen.getByRole('group', { name: 'Filters' })).getByRole('button', { name: /Channel.*Erli Demo/ })).toBeInTheDocument();
     });
 
     it('no longer renders the pre-#2030 raw connection-id text input', async () => {
@@ -1236,7 +1301,7 @@ describe('ListingsListPage', () => {
       expect(screen.queryByPlaceholderText('Connection ID…')).not.toBeInTheDocument();
     });
 
-    it('resets search, the channel filter and the lifecycle tab together when Clear is clicked, without a full reload', async () => {
+    it('clears search and the channel from the pills but keeps the lifecycle tab (#4046)', async () => {
       const user = userEvent.setup();
       const mockApi = createListingsMockApiClient({
         listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
@@ -1252,25 +1317,20 @@ describe('ListingsListPage', () => {
       expect(
         screen.getByLabelText('Search listings by product name, SKU, EAN or external ID'),
       ).toHaveValue('terra');
-      expect(screen.getByRole('combobox', { name: 'Filter by channel' })).toHaveValue(
-        'conn_allegro_1',
-      );
+      expect(document.querySelectorAll('.filter-chip')).toHaveLength(2);
       expect(screen.getByRole('tab', { name: /^Draft/ })).toHaveAttribute('aria-selected', 'true');
 
       // A plain URL-state reset (react-router `setSearchParams`), never a full
-      // page reload - the table re-renders in place from the cleared params.
-      await user.click(screen.getByRole('button', { name: 'Clear' }));
+      // page reload. The tab is not a pill, so Clear all leaves it selected.
+      await user.click(screen.getByRole('button', { name: 'Clear all' }));
 
       await vi.waitFor(() => {
-        expect(screen.getByRole('tab', { name: /^Active/ })).toHaveAttribute(
-          'aria-selected',
-          'true',
-        );
+        expect(
+          screen.getByLabelText('Search listings by product name, SKU, EAN or external ID'),
+        ).toHaveValue('');
       });
-      expect(
-        screen.getByLabelText('Search listings by product name, SKU, EAN or external ID'),
-      ).toHaveValue('');
-      expect(screen.getByRole('combobox', { name: 'Filter by channel' })).toHaveValue('');
+      expect(document.querySelectorAll('.filter-chip')).toHaveLength(0);
+      expect(screen.getByRole('tab', { name: /^Draft/ })).toHaveAttribute('aria-selected', 'true');
     });
   });
 
@@ -1302,9 +1362,9 @@ describe('ListingsListPage', () => {
 
       expect(await screen.findByText('Doniczka ceramiczna Terra')).toBeInTheDocument();
       expect(screen.getByText('1+')).toBeInTheDocument();
-      // The tab bar is unknown, not empty: five skeletons, never five zeroes.
+      // The tab bar is unknown, not empty: five dashes, never five zeroes.
       const lifecycleTablist = screen.getByRole('tablist', { name: 'Listing lifecycle' });
-      expect(lifecycleTablist.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
+      expect(within(lifecycleTablist).getAllByText('-')).toHaveLength(5);
     });
 
     it('renders neither placeholder as 0 when the count FAILS on a FULL page', async () => {
@@ -1438,4 +1498,157 @@ describe('ListingsListPage', () => {
     });
   });
 
+});
+
+describe('ListingsListPage one filter system (#4046)', () => {
+  afterEach(cleanup);
+
+  const ATTENTION = { sellingDeletedProduct: 2, shopBlocked: 0, shopBlockedByConnection: [] };
+
+  it('switches between All listings and Price changes from the page head, with one tab row', async () => {
+    const user = userEvent.setup();
+    const mockApi = createListingsMockApiClient({
+      listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+    });
+
+    renderWithProviders(<ListingsListPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await screen.findByText('Doniczka ceramiczna Terra');
+    expect(screen.getAllByRole('tablist')).toHaveLength(1);
+    const views = screen.getByRole('radiogroup', { name: 'Listings views' });
+    expect(within(views).getByRole('radio', { name: /All listings/ })).toHaveAttribute('aria-checked', 'true');
+
+    await user.click(within(views).getByRole('radio', { name: /Price changes/ }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('tablist', { name: 'Listing lifecycle' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('counts live offers selling a deleted product and filters on them', async () => {
+    const user = userEvent.setup();
+    const list = vi.fn().mockResolvedValue({ ...sampleMappings, attentionCounts: ATTENTION });
+    const mockApi = createListingsMockApiClient({ listings: { list } });
+
+    renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+    const summary = await screen.findByRole('group', { name: 'Needs a look' });
+    await waitFor(() => {
+      expect(summary).toHaveTextContent('2selling deleted');
+    });
+
+    await user.click(within(summary).getByText('selling deleted'));
+    await user.click(await screen.findByRole('button', { name: /Live offers selling a deleted product/ }));
+
+    await vi.waitFor(() => {
+      const [filters] = list.mock.calls.filter((call) => call[1] !== undefined).at(-1) ?? [];
+      expect(filters).toMatchObject({ staleSignal: 'selling' });
+    });
+    expect(document.querySelector('.filter-chip__value')?.textContent).toBe('Selling deleted');
+  });
+
+  it('never renders 0 for a needs-a-look number it does not know', async () => {
+    const mockApi = createListingsMockApiClient({
+      listings: {
+        listRows: vi.fn().mockResolvedValue(rowsOf(sampleMappings)),
+        count: vi.fn().mockReturnValue(new Promise(() => {})),
+      },
+    });
+
+    renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+    const summary = await screen.findByRole('group', { name: 'Needs a look' });
+    expect(summary).toHaveTextContent('-blocked by shop');
+    expect(summary).toHaveTextContent('-selling deleted');
+  });
+
+  it('opens the price-change queue from "price changes"', async () => {
+    const user = userEvent.setup();
+    const mockApi = createListingsMockApiClient({
+      listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+    });
+
+    renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+    const summary = await screen.findByRole('group', { name: 'Needs a look' });
+    await user.click(within(summary).getByText('price changes'));
+    await user.click(await screen.findByRole('button', { name: 'Review price changes' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('tablist', { name: 'Listing lifecycle' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('opens a peek on a row click instead of leaving the page, and walks rows with j and k', async () => {
+    const user = userEvent.setup();
+    const mockApi = createListingsMockApiClient({
+      listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+    });
+
+    renderWithProviders(<ListingsListPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await screen.findByText('Doniczka ceramiczna Terra');
+    await user.click(screen.getAllByRole('row')[1]);
+
+    const peek = await screen.findByRole('dialog');
+    expect(navigateMock).not.toHaveBeenCalled();
+    expect(within(peek).getByText('1 of 2')).toBeInTheDocument();
+    expect(within(peek).getByRole('link', { name: 'Open listing' })).toHaveAttribute('href', '/listings/uuid-mapping-1');
+    expect(within(peek).getByRole('link', { name: 'Open product' })).toHaveAttribute('href', '/products/ol_product_1');
+    expect(within(peek).getByRole('button', { name: 'Edit offer' })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'j' });
+    await waitFor(() => {
+      expect(within(screen.getByRole('dialog')).getByText('2 of 2')).toBeInTheDocument();
+    });
+  });
+
+  it('re-reads the channel status from the peek', async () => {
+    const user = userEvent.setup();
+    const refresh = vi.fn().mockResolvedValue({ outcome: 'refreshed' });
+    const mockApi = createListingsMockApiClient({
+      listings: { list: vi.fn().mockResolvedValue(sampleMappings), refreshOfferPublicationStatus: refresh },
+    });
+
+    renderWithProviders(<ListingsListPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await screen.findByText('Doniczka ceramiczna Terra');
+    await user.click(screen.getAllByRole('button', { name: /Open details for/ })[0]);
+    await user.click(await screen.findByRole('button', { name: 'Check status' }));
+
+    await waitFor(() => {
+      expect(refresh).toHaveBeenCalledWith('conn_allegro_1', 'allegro-offer-999', 'ol_variant_abc123');
+    });
+  });
+
+  it('shows per-channel counts in the Channel dropdown', async () => {
+    const user = userEvent.setup();
+    const count = vi.fn((filters?: { connectionId?: string; includeLifecycleCounts?: boolean }) =>
+      Promise.resolve(
+        filters?.includeLifecycleCounts
+          ? { total: 2, lifecycleCounts: { ...ZERO_LIFECYCLE_COUNTS, Active: 2 } }
+          : { total: filters?.connectionId === 'conn_allegro_1' ? 17 : 0 },
+      ),
+    );
+    const mockApi = createListingsMockApiClient({
+      listings: { listRows: vi.fn().mockResolvedValue(rowsOf(sampleMappings)), count },
+    });
+
+    renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Doniczka ceramiczna Terra');
+    await user.click(within(screen.getByRole('group', { name: 'Filters' })).getByRole('button', { name: /^Channel/ }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^Allegro/ })).toHaveTextContent('17');
+    });
+  });
 });

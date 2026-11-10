@@ -12,6 +12,8 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { createMockApiClient, findToastTitle, renderWithProviders } from '../../../test/test-utils';
 import { ArchivePromptTemplateDialog } from './archive-prompt-template-dialog';
 import type { PromptTemplateSummary } from '../api/prompt-templates.types';
+import { getMessages } from '../../../shared/i18n';
+import { ApiError } from '../../../shared/api/api-error';
 
 function makeRow(overrides: Partial<PromptTemplateSummary> = {}): PromptTemplateSummary {
   return {
@@ -100,7 +102,11 @@ describe('ArchivePromptTemplateDialog', () => {
   it('shows an inline error and stays open when the API rejects with 409', async () => {
     const archive = vi
       .fn()
-      .mockRejectedValue(new Error('Cannot archive published template — pass force.'));
+      .mockRejectedValue(
+        new ApiError('Cannot archive published template', 409, {
+          code: 'PROMPT_TEMPLATE_PUBLISHED_NOT_ARCHIVABLE',
+        }),
+      );
     const onOpenChange = vi.fn();
     const client = createMockApiClient({ promptTemplates: { archive } });
     renderWithProviders(
@@ -111,7 +117,9 @@ describe('ArchivePromptTemplateDialog', () => {
       { apiClient: client },
     );
     fireEvent.click(screen.getByRole('button', { name: /^archive(\s+published)?\s+v\d+(\s+\(force\))?$/i }));
-    expect(await screen.findByText(/cannot archive published template/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(getMessages('errors').codes.PROMPT_TEMPLATE_PUBLISHED_NOT_ARCHIVABLE),
+    ).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalled();
   });
 

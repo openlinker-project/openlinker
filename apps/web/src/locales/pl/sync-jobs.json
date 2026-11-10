@@ -161,12 +161,9 @@
         "stream": "Strumień"
       },
       "description": "Zdarzenia w tle, które wielokrotnie się nie powiodły i zostały zapisane tutaj, zamiast być ponawiane bez końca. Nie można ich jeszcze odtworzyć - przeanalizuj surowe pola poniżej.",
-      "empty": {
-        "message": "Nic nie trafiło do kolejki błędów.",
-        "title": "Brak uszkodzonych wpisów"
-      },
       "errorTitle": "Nie udało się wczytać uszkodzonych wpisów strumienia",
       "loading": "Wczytywanie uszkodzonych wpisów strumienia…",
+      "none": "Brak wpisów",
       "pagination": {
         "next": "Dalej",
         "previous": "Wstecz",
@@ -175,7 +172,7 @@
       "retry": "Ponów",
       "title": "Uszkodzone wpisy strumienia"
     },
-    "description": "Podgląd przetwarzania w tle - filtruj według statusu, typu zadania w tle lub połączenia.",
+    "description": "Zadania w tle, które OpenLinker wykonuje dla połączeń. Użyj filtrów, aby znaleźć to, co się zatrzymało.",
     "empty": {
       "clearFilters": "Wyczyść filtry",
       "filtered": "Żadne zadanie w tle nie pasuje do bieżących filtrów.",
@@ -183,16 +180,21 @@
       "title": "Nie znaleziono zadań w tle"
     },
     "errorTitle": "Nie udało się wczytać zadań synchronizacji",
+    "errorToggle": {
+      "showFull": "Pokaż cały błąd",
+      "showLess": "Pokaż mniej"
+    },
     "eyebrow": "Diagnostyka",
     "filters": {
       "allConnections": "Wszystkie połączenia",
       "allJobTypes": "Wszystkie typy zadań w tle",
       "allOutcomes": "Wszystkie wyniki",
       "allStatuses": "Wszystkie statusy",
-      "connection": "Filtruj według połączenia",
-      "jobType": "Filtruj według typu zadania w tle",
-      "outcome": "Filtruj według wyniku",
-      "status": "Filtruj według statusu"
+      "connection": "Połączenie",
+      "group": "Filtruj zadania w tle",
+      "jobType": "Typ zadania",
+      "outcome": "Wynik",
+      "status": "Status"
     },
     "loading": "Wczytywanie zadań synchronizacji…",
     "outcomes": {

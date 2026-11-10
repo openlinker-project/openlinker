@@ -149,6 +149,7 @@ export { InventorySaleDecrementService } from './application/services/inventory-
 export {
   IInventorySaleReversalService,
   ReverseLineQuantityInput,
+  ReverseLineToTargetInput,
   ReverseLineQuantityResult,
   ReverseSaleForOrderResult,
   SaleReversalLineOutcome,

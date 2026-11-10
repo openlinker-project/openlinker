@@ -269,6 +269,19 @@ describe('AuthorityStatusService', () => {
       expect(connectionService.list).not.toHaveBeenCalled();
     });
 
+    it('should send the unavailable preset as a coded refusal (#3865)', async () => {
+      await expect(service.applyPreset('keep-other-system')).rejects.toMatchObject({
+        response: {
+          code: 'AUTHORITY_PRESET_UNAVAILABLE',
+          params: {
+            presetId: 'keep-other-system',
+            unavailableReason: 'needs-a-system-that-can-take-over',
+          },
+          unavailableReason: 'needs-a-system-that-can-take-over',
+        },
+      });
+    });
+
     it('should report which connections it wrote', async () => {
       connectionService.list.mockResolvedValue([
         connection({ id: 'conn-claim', config: { sourcingAuthority: true } as never }),

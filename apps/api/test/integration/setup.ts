@@ -19,6 +19,7 @@ import { VersioningType } from '@nestjs/common';
 import { createIntegrationTestHarness } from '@openlinker/test-kit';
 import { AppModule } from '../../src/app.module';
 import { buildGlobalExceptionFilters } from '../../src/common/filters/global-filters';
+import { createValidationPipe } from '../../src/common/validation/coded-validation.pipe';
 import { API_VERSION } from '../../src/app-info/app-info.types';
 
 const harness = createIntegrationTestHarness({
@@ -28,7 +29,11 @@ const harness = createIntegrationTestHarness({
   // 400/404/409/422/503 rather than a default 500). The list is the FULL set
   // main.ts registers — a partial mirror makes an int-spec assert a 500 the
   // running app never returns, which is a passing test about the wrong app.
+  // The harness's own pipe is off: the pipe main.ts registers is installed in
+  // `configureApp` below, so requests are validated the way the app does it.
+  validationPipe: false,
   configureApp: (app) => {
+    app.useGlobalPipes(createValidationPipe());
     // The SAME roster main.ts registers, from the one producer — a second copy
     // here is a copy that silently stops matching, and this copy is what decides
     // what every status-code assertion in the suite is really testing.

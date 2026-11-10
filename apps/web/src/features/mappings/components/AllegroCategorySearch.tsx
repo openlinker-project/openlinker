@@ -19,6 +19,8 @@ import { useAllegroCategoriesQuery } from '../hooks/use-allegro-categories';
 import { useCategorySearchQuery, isSearchableCategoryQuery } from '../hooks/use-category-search';
 import { toCategorySearchResultHits, isTaxonomyUnsynced } from '../lib/category-search-hits';
 import { Button, Input } from '../../../shared/ui';
+import { useMessages } from '../../../shared/i18n';
+import { CategoryPathText } from './category-path-text';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import {
   buildCategoryPath,
@@ -31,8 +33,6 @@ import {
   type CategorySearchResultHit,
 } from '../../../shared/ui/category-search-results';
 import type { AllegroCategory, CategoryMapping } from '../api/mappings.types';
-
-import { useMessages } from '../../../shared/i18n';
 
 interface AllegroCategorySearchProps {
   marketplaceConnectionId: string;
@@ -57,7 +57,7 @@ export function AllegroCategorySearch({
   const [parentId, setParentId] = useState<string | undefined>(undefined);
   const [staged, setStaged] = useState<StagedPick | null>(null);
   const [search, setSearch] = useState('');
-  const copy = useMessages('mappings').allegroCategorySearch;
+  const copy = useMessages('mappings').categoryMappings;
 
   const categoriesQuery = useAllegroCategoriesQuery(marketplaceConnectionId, parentId);
 
@@ -118,32 +118,38 @@ export function AllegroCategorySearch({
 
   return (
     <div className="allegro-category-search">
-      {/* Current saved mapping */}
+      {/* Current saved mapping. A row with no source is the shared fallback for
+          every catalogue: it is not this catalogue's to clear, so it says so
+          and offers an override instead of a Clear that would remove it for
+          the others too (#3993). */}
       {currentMapping && !staged && (
-        <div className="allegro-category-search__current">
-          <span className="mono-text">{currentMapping.allegroCategoryName}</span>
-          {currentMapping.allegroCategoryPath && (
-            <span className="allegro-category-search__path">
-              {currentMapping.allegroCategoryPath}
-            </span>
+        <div className="allegro-category-search__current" data-testid="category-mapping-current">
+          <span className="allegro-category-search__label">
+            {currentMapping.sourceConnectionId === null ? copy.sharedMapping : copy.goesTo}
+          </span>
+          <CategoryPathText path={currentMapping.allegroCategoryPath ?? currentMapping.allegroCategoryName} />
+          {currentMapping.sourceConnectionId === null ? (
+            <span className="allegro-category-search__note">{copy.sharedMappingHint}</span>
+          ) : (
+            <Button tone="ghost" className="button--sm allegro-category-search__clear" onClick={onClear} disabled={isSaving}>
+              {copy.clearMapping}
+            </Button>
           )}
-          <Button className="button--ghost button--sm" onClick={onClear} disabled={isSaving}>
-            {copy.clear}
-          </Button>
         </div>
       )}
 
       {/* Staged (unsaved) pick */}
       {staged && (
-        <div className="allegro-category-search__staged">
-          <span className="allegro-category-search__staged-label">{copy.selected}</span>
-          <span className="mono-text">{staged.category.name}</span>
-          {staged.path && <span className="allegro-category-search__path">{staged.path}</span>}
+        <div className="allegro-category-search__staged" data-testid="category-mapping-staged">
+          <span className="allegro-category-search__label">
+            {currentMapping ? copy.changeTo : copy.mapTo}
+          </span>
+          <CategoryPathText path={staged.path || staged.category.name} />
           <span className="allegro-category-search__staged-actions">
-            <Button className="button--primary button--sm" onClick={handleSave} disabled={isSaving}>
-              {isSaving ? copy.saving : copy.save}
+            <Button tone="primary" className="button--sm" onClick={handleSave} disabled={isSaving}>
+              {isSaving ? copy.saving : copy.saveMapping}
             </Button>
-            <Button className="button--ghost button--sm" onClick={handleCancel} disabled={isSaving}>
+            <Button tone="ghost" className="button--sm" onClick={handleCancel} disabled={isSaving}>
               {copy.cancel}
             </Button>
           </span>
@@ -155,7 +161,7 @@ export function AllegroCategorySearch({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={copy.searchPlaceholder}
-          aria-label={copy.searchLabel}
+          aria-label={copy.searchPlaceholder}
           aria-controls="mapping-catpick-search-results"
           disabled={isSaving}
         />

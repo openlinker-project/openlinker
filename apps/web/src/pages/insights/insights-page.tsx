@@ -9,6 +9,7 @@
  */
 import { useCallback, useMemo, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import { useDevStackHealthQuery } from '../../features/health/hooks/use-dev-stack-health-query';
 import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-query';
@@ -20,7 +21,6 @@ import { useTrackMargin } from '../../features/analytics';
 import {
   getMessages,
   interpolate,
-  renderRich,
   useFormat,
   useMessages,
   usePlural,
@@ -28,7 +28,6 @@ import {
 import { resolvePlatformLabel } from '../../features/mappings';
 import type {
   DevStackHealth,
-  ServiceHealth,
   ServiceStatus,
   OverallStatus,
 } from '../../features/health/api/health.types';
@@ -42,6 +41,8 @@ import type {
   SyncJobGroup,
 } from '../../features/sync-jobs/api/sync-jobs.types';
 import { INSIGHTS_HEALTH_INTERVAL_MS, INSIGHTS_JOBS_INTERVAL_MS } from './intervals';
+import { ConnectionHealthList } from './connection-health-list';
+import { SystemHealthList } from './system-health-list';
 import { Button } from '../../shared/ui/button';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
@@ -130,18 +131,6 @@ function renderHealthValue(
   return toHealthLabel(status);
 }
 
-function ServiceHealthRow({ name, health }: { name: string; health: ServiceHealth }): ReactElement {
-  return (
-    <li>
-      <strong>{name}</strong>
-      <StatusBadge tone={mapHealthTone(health.status, false)}>
-        {statusLabel(health.status)}
-      </StatusBadge>
-      {health.message ? <span className="muted-text">{health.message}</span> : null}
-    </li>
-  );
-}
-
 /**
  * Builds the ordered list of infrastructure node labels backing both the
  * Infrastructure panel and the KPI-strip summary (#1619). Core services are
@@ -223,40 +212,6 @@ function rollUpConnectionHealth(
   });
 }
 
-function ConnectionHealthList({ rows }: { rows: RolledUpConnection[] }): ReactElement {
-  const copy = useMessages('analytics').insightsPage;
-  const plural = usePlural();
-  if (rows.length === 0) {
-    return (
-      <p className="muted-text">
-        {renderRich(copy.noConnections, {
-          link: (text: string) => <Link to="/connections/new">{text}</Link>,
-        })}
-      </p>
-    );
-  }
-  return (
-    <ul className="check-list">
-      {rows.map(({ connection, deadJobCount, rollupTone }) => (
-        <li key={connection.id}>
-          <strong>{connection.name}</strong>
-          <StatusBadge tone={rollupTone} withDot>
-            {statusLabel(connection.status)}
-          </StatusBadge>
-          {deadJobCount > 0 ? (
-            <Link
-              className="muted-text"
-              to={`/jobs-logs?status=dead&connectionId=${encodeURIComponent(connection.id)}`}
-            >
-              {plural(deadJobCount, copy.failingJobs)}
-            </Link>
-          ) : null}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 export function InsightsPage(): ReactElement {
   const copy = useMessages('analytics').insightsPage;
   const format = useFormat();
@@ -286,7 +241,11 @@ export function InsightsPage(): ReactElement {
   // the whole table freezing on a shared mutation flag.
   const [pendingGroupKey, setPendingGroupKey] = useState<string | null>(null);
 
-  const connections = connectionsQuery.data ?? [];
+  const connections = useMemo(() => connectionsQuery.data ?? [], [connectionsQuery.data]);
+  const connectionById = useMemo(
+    () => new Map(connections.map((c) => [c.id, c] as const)),
+    [connections]
+  );
   const failedGroups = useMemo<SyncJobGroup[]>(
     () => deadGroupsQuery.data?.groups ?? [],
     [deadGroupsQuery.data]
@@ -298,7 +257,6 @@ export function InsightsPage(): ReactElement {
   );
 
   const platforms = usePlatforms();
-  const infraConnections = healthQuery.data?.connections ?? [];
   const infraNodeLabels = useMemo(
     () => buildInfraNodeLabels(healthQuery.data, platforms),
     [healthQuery.data, platforms]
@@ -387,7 +345,7 @@ export function InsightsPage(): ReactElement {
         showToast({
           tone: 'error',
           title: copy.toast.retryFailed,
-          description: error instanceof Error ? error.message : copy.toast.unknownError,
+          description: describeApiError(error, 'analytics'),
         });
       } finally {
         setPendingGroupKey((current) => (current === key ? null : current));
@@ -667,7 +625,7 @@ export function InsightsPage(): ReactElement {
         ) : deadGroupsQuery.error ? (
           <ErrorState
             title={copy.incidents.errorTitle}
-            message={deadGroupsQuery.error.message}
+            message={describeApiError(deadGroupsQuery.error, 'analytics')}
             action={<Button onClick={() => void deadGroupsQuery.refetch()}>{copy.retry}</Button>}
           />
         ) : (
@@ -723,7 +681,7 @@ export function InsightsPage(): ReactElement {
           {connectionsQuery.error && (
             <ErrorState
               title={copy.connections.errorTitle}
-              message={connectionsQuery.error.message}
+              message={describeApiError(connectionsQuery.error, 'analytics')}
               action={<Button onClick={() => void connectionsQuery.refetch()}>{copy.retry}</Button>}
             />
           )}
@@ -739,9 +697,15 @@ export function InsightsPage(): ReactElement {
               <h3 className="section-title">{copy.infrastructure.title}</h3>
             </div>
             {healthQuery.data && (
-              <StatusBadge tone={mapHealthTone(healthQuery.data.status, false)}>
-                {statusLabel(healthQuery.data.status)}
-              </StatusBadge>
+              <span className="sys-health__head">
+                <StatusBadge tone={mapHealthTone(healthQuery.data.status, false)} withDot>
+                  {toHealthLabel(healthQuery.data.status)}
+                </StatusBadge>
+                <span className="sys-health__checked">
+                  {copy.infrastructure.checked}{' '}
+                  <TimeDisplay iso={healthQuery.data.timestamp} format="relative" />
+                </span>
+              </span>
             )}
           </div>
 
@@ -755,33 +719,12 @@ export function InsightsPage(): ReactElement {
           {healthQuery.error && (
             <ErrorState
               title={copy.infrastructure.errorTitle}
-              message={healthQuery.error.message}
+              message={describeApiError(healthQuery.error, 'analytics')}
               action={<Button onClick={() => void healthQuery.refetch()}>{copy.retry}</Button>}
             />
           )}
           {healthQuery.data && (
-            <ul className="check-list">
-              <ServiceHealthRow name="PostgreSQL" health={healthQuery.data.services.postgres} />
-              <ServiceHealthRow name="Redis" health={healthQuery.data.services.redis} />
-              <ServiceHealthRow name="PrestaShop" health={healthQuery.data.services.prestashop} />
-              {healthQuery.data.services.worker && (
-                <ServiceHealthRow name="Worker" health={healthQuery.data.services.worker} />
-              )}
-              {infraConnections.map((connection) => (
-                <ServiceHealthRow
-                  key={connection.connectionId}
-                  name={
-                    connection.name
-                      ? interpolate(copy.serviceWithName, {
-                          platform: resolvePlatformLabel(platforms, connection.platformType),
-                          name: connection.name,
-                        })
-                      : resolvePlatformLabel(platforms, connection.platformType)
-                  }
-                  health={{ status: connection.status, message: connection.message }}
-                />
-              ))}
-            </ul>
+            <SystemHealthList data={healthQuery.data} connectionById={connectionById} />
           )}
         </article>
       </div>
@@ -812,7 +755,7 @@ export function InsightsPage(): ReactElement {
         {recentJobsQuery.error && (
           <ErrorState
             title={copy.activity.errorTitle}
-            message={recentJobsQuery.error.message}
+            message={describeApiError(recentJobsQuery.error, 'analytics')}
             action={<Button onClick={() => void recentJobsQuery.refetch()}>{copy.retry}</Button>}
           />
         )}

@@ -11,7 +11,8 @@
  *
  * @module apps/api/src/sales-documents/http/dto
  */
-import { BadRequestException } from '@nestjs/common';
+import { HttpStatus, type HttpException } from '@nestjs/common';
+import { codedHttpError } from '../../../common/errors/coded-http.exception';
 import { IsBoolean, IsIn, IsOptional, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import {
@@ -67,8 +68,10 @@ export class SalesDocumentConditionDto {
   static toDomain(dto: SalesDocumentConditionDto): SalesDocumentCondition {
     if (dto.field === 'buyerHasTaxId') {
       if (typeof dto.boolValue !== 'boolean') {
-        throw new BadRequestException(
+        throw conditionInvalid(
           `Condition field "buyerHasTaxId" requires a boolean "boolValue"`,
+          'buyerHasTaxId',
+          'boolValue',
         );
       }
       return { field: 'buyerHasTaxId', op: 'eq', value: dto.boolValue };
@@ -84,15 +87,19 @@ export class SalesDocumentConditionDto {
       // durable guard; this one is the boundary's own, so the caller gets a
       // named 400 instead of a generic invalid-condition index.
       if (typeof dto.stringValue !== 'string' || dto.stringValue.trim().length === 0) {
-        throw new BadRequestException(
+        throw conditionInvalid(
           `Condition field "orderCountry" requires a non-blank "stringValue"`,
+          'orderCountry',
+          'stringValue',
         );
       }
       return { field: 'orderCountry', op: 'eq', value: dto.stringValue };
     }
     if (dto.op !== 'gte' && dto.op !== 'lt') {
-      throw new BadRequestException(
+      throw conditionInvalid(
         `Condition field "orderTotalGross" requires "op" to be "gte" or "lt", got "${dto.op}"`,
+        'orderTotalGross',
+        'op',
       );
     }
     // Narrowed through the CORE guards rather than re-stated here, so
@@ -101,13 +108,17 @@ export class SalesDocumentConditionDto {
     // persist a rule that reads as "never matches" with nothing said to the
     // operator.
     if (!isDecimalAmountString(dto.amount)) {
-      throw new BadRequestException(
+      throw conditionInvalid(
         `Condition field "orderTotalGross" requires "amount" as a decimal string, e.g. "450.00"`,
+        'orderTotalGross',
+        'amount',
       );
     }
     if (!isCurrencyCode(dto.currency)) {
-      throw new BadRequestException(
+      throw conditionInvalid(
         `Condition field "orderTotalGross" requires "currency" as a 3-letter ISO 4217 code, e.g. "PLN"`,
+        'orderTotalGross',
+        'currency',
       );
     }
     return { field: 'orderTotalGross', op: dto.op, amount: dto.amount, currency: dto.currency };
@@ -127,4 +138,12 @@ export class SalesDocumentConditionDto {
     }
     return dto;
   }
+}
+
+/** A condition the rule engine could not evaluate. `property` names the missing or bad value. */
+function conditionInvalid(message: string, field: string, property: string): HttpException {
+  return codedHttpError(HttpStatus.BAD_REQUEST, 'SALES_DOCUMENT_CONDITION_INVALID', message, {
+    field,
+    property,
+  });
 }

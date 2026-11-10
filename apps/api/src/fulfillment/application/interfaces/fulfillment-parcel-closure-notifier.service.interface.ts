@@ -51,4 +51,19 @@ export interface IFulfillmentParcelClosureNotifier {
    * reconcile sweep is the retry path, not a synchronous re-throw.
    */
   notifyParcelClosed(input: NotifyFulfillmentParcelClosedInput): Promise<void>;
+
+  /**
+   * Relay a close whose `shipped` progress fact core ALREADY recorded (#3961).
+   *
+   * A lowered quantity can leave a box exactly full; `lowerLineQuantity` then
+   * closes it and records the fact itself, because the worker path has no host
+   * holding this notifier and the #2728 relay sweep needs that record to find
+   * the parcel. Calling `notifyParcelClosed` for such a close would find its
+   * key already claimed and stop at `duplicate` - correctly - so this method
+   * skips the record and only routes. The route is idempotent
+   * (`claimDispatchRelay`), so a later sweep pass is a no-op.
+   *
+   * BEST-EFFORT and NEVER THROWS, for the same reason as above.
+   */
+  relayRecordedClose(workId: string): Promise<void>;
 }

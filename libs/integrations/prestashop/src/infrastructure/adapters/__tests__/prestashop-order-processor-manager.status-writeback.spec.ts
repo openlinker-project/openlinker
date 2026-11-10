@@ -12,6 +12,7 @@ import {
   type OrderProcessorHarness,
 } from '../../../__tests__/mocks/prestashop-order-processor-manager.factory';
 import type { OrderLifecycleEvent } from '@openlinker/core/orders';
+import { PrestashopApiException } from '../../../domain/exceptions/prestashop-api.exception';
 
 const STATE_ID: Record<string, number> = { shipped: 4, delivered: 5, cancelled: 6 };
 
@@ -198,6 +199,105 @@ describe('PrestashopOrderProcessorManagerAdapter — OrderStatusWriteback.write'
       expect(result.detail).toContain('amended');
       expect(mockHttpClient.getResource).not.toHaveBeenCalled();
       expect(mockHttpClient.createResource).not.toHaveBeenCalled();
+    });
+  });
+
+  // #3963 - a payment that arrived after the shop got the order unpaid.
+  describe('paid (#3963)', () => {
+    const paid = (): OrderLifecycleEvent => ({
+      type: 'paid',
+      externalOrderId: PS_ORDER_ID,
+      amount: 389,
+      currency: 'PLN',
+      paidOn: 'Allegro',
+    });
+
+    it('moves an unpaid order to the shop\'s first processing-and-paid state', async () => {
+      serveStates(mockHttpClient, UNAMBIGUOUS_STATES);
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockResolvedValue({ id: PS_ORDER_ID, current_state: '30', id_carrier: 7 });
+
+      const result = await adapter.write(paid());
+
+      expect(result).toEqual({ outcome: 'applied' });
+      expect(mockHttpClient.createResource).toHaveBeenCalledWith(
+        'order_histories',
+        { id_order: PS_ORDER_ID, id_order_state: 31 },
+        { sendEmail: true }
+      );
+    });
+
+    it('uses the paid state chosen on the connection', async () => {
+      const harness = createOrderProcessorManagerHarness();
+      (harness.connection as { config: Record<string, unknown> }).config = {
+        ...(harness.connection.config ?? {}),
+        paymentWriteback: { mode: 'mark-paid', paidStateId: '33' },
+      };
+      serveStates(harness.mockHttpClient, UNAMBIGUOUS_STATES);
+      harness.mockHttpClient.getResource = jest
+        .fn()
+        .mockResolvedValue({ id: PS_ORDER_ID, current_state: '30', id_carrier: 7 });
+
+      // 33 is "Delivered": paid, but a state the operator would not pick. The
+      // adapter honours the choice as long as the state is marked paid.
+      const result = await harness.adapter.write(paid());
+
+      expect(result).toEqual({ outcome: 'applied' });
+      expect(harness.mockHttpClient.createResource).toHaveBeenCalledWith(
+        'order_histories',
+        { id_order: PS_ORDER_ID, id_order_state: 33 },
+        { sendEmail: true }
+      );
+    });
+
+    it('reports applied without writing when the order is already paid', async () => {
+      serveStates(mockHttpClient, UNAMBIGUOUS_STATES);
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockResolvedValue({ id: PS_ORDER_ID, current_state: '31', id_carrier: 7 });
+
+      const result = await adapter.write(paid());
+
+      expect(result).toEqual({ outcome: 'applied', detail: 'already paid in the shop' });
+      expect(mockHttpClient.createResource).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['shipped', '32'],
+      ['cancelled', '34'],
+    ])('refuses to move an order that is already %s', async (_label, stateId) => {
+      serveStates(mockHttpClient, UNAMBIGUOUS_STATES);
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockResolvedValue({ id: PS_ORDER_ID, current_state: stateId, id_carrier: 7 });
+
+      const result = await adapter.write(paid());
+
+      expect(result.outcome).toBe('rejected');
+      expect(result.transient).toBeUndefined();
+      expect(mockHttpClient.createResource).not.toHaveBeenCalled();
+    });
+
+    it('reports a 5xx from the shop as transient so the job retries it', async () => {
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockRejectedValue(new PrestashopApiException('Service Unavailable', 503));
+
+      const result = await adapter.write(paid());
+
+      expect(result).toEqual(expect.objectContaining({ outcome: 'rejected', transient: true }));
+    });
+
+    it('reports a 4xx from the shop as a real refusal, not transient', async () => {
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockRejectedValue(new PrestashopApiException('Unauthorized', 401));
+
+      const result = await adapter.write(paid());
+
+      expect(result.outcome).toBe('rejected');
+      expect(result.transient).toBeUndefined();
     });
   });
 });

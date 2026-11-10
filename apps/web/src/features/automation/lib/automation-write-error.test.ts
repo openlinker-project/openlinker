@@ -1,8 +1,8 @@
 /**
  * Write-refusal reader tests (#2365)
  *
- * The property under test is that refusals are read from FIELDS, never parsed
- * out of the message — including the `index`, which is what lets the composer
+ * The property under test is that refusals are read from the CODE and PARAMS,
+ * never parsed out of the message — including the `index`, which is what lets the composer
  * mark the offending row.
  */
 import { describe, expect, it } from 'vitest';
@@ -16,7 +16,7 @@ describe('describeAutomationWriteError', () => {
   it('should render an actionable message for a duplicate rule', () => {
     const refusal = describeAutomationWriteError(
       new ApiError('An identical definition already covers an overlapping window.', 409, {
-        error: 'AutomationRuleConflictError',
+        code: 'AUTOMATION_RULE_CONFLICT',
       }),
     );
 
@@ -29,11 +29,12 @@ describe('describeAutomationWriteError', () => {
   it('should point an invalid-action refusal at the action row it names', () => {
     const refusal = describeAutomationWriteError(
       new ApiError('Step 2 is malformed.', 400, {
-        error: 'AutomationInvalidActionError',
-        index: 1,
+        code: 'AUTOMATION_ACTION_INVALID',
+        params: { index: 1 },
       }),
     );
 
+    expect(refusal.message).toBe(getMessages('errors').codes.AUTOMATION_ACTION_INVALID);
     expect(refusal.target).toBe('actions');
     expect(refusal.index).toBe(1);
   });
@@ -41,8 +42,8 @@ describe('describeAutomationWriteError', () => {
   it('should point an invalid-condition refusal at the condition row it names', () => {
     const refusal = describeAutomationWriteError(
       new ApiError('Condition 1 is malformed.', 400, {
-        error: 'AutomationInvalidConditionError',
-        index: 0,
+        code: 'AUTOMATION_CONDITION_INVALID',
+        params: { index: 0 },
       }),
     );
 
@@ -53,10 +54,8 @@ describe('describeAutomationWriteError', () => {
   it('should name the illegal action from the body, not the message text', () => {
     const refusal = describeAutomationWriteError(
       new ApiError('some wording that may change', 400, {
-        error: 'AutomationIllegalPairError',
-        trigger: 'return.received',
-        action: 'dispatch-shipment',
-        index: 0,
+        code: 'AUTOMATION_TRIGGER_ACTION_ILLEGAL',
+        params: { trigger: 'return.received', action: 'dispatch-shipment', index: 0 },
       }),
     );
 
@@ -68,10 +67,8 @@ describe('describeAutomationWriteError', () => {
     // It is about how many steps there are, so no single row caused it.
     const refusal = describeAutomationWriteError(
       new ApiError('Between 1 and 3 steps.', 400, {
-        error: 'AutomationStepCountError',
-        count: 4,
-        min: 1,
-        max: 3,
+        code: 'AUTOMATION_STEP_COUNT_INVALID',
+        params: { count: 4, min: 1, max: 3 },
       }),
     );
 
@@ -82,27 +79,27 @@ describe('describeAutomationWriteError', () => {
   it('should ignore an index that is not a usable row reference', () => {
     // `setError` on `actions.-1.carrierId` would silently do nothing.
     const refusal = describeAutomationWriteError(
-      new ApiError('bad', 400, { error: 'AutomationInvalidActionError', index: -1 }),
+      new ApiError('bad', 400, { code: 'AUTOMATION_ACTION_INVALID', params: { index: -1 } }),
     );
 
     expect(refusal.index).toBeNull();
   });
 
-  it('should pass through the message of a refusal this build does not recognise', () => {
-    // A ninth refusal added backend-side must still reach the operator.
+  it('should describe a refusal this build does not recognise through the shared copy', () => {
+    // A refusal added backend-side must still reach the operator.
     const refusal = describeAutomationWriteError(
       new ApiError('Something new and specific went wrong.', 400, {
-        error: 'AutomationSomethingNewError',
+        code: 'AUTOMATION_RULE_NOT_FOUND',
       }),
     );
 
-    expect(refusal.message).toBe('Something new and specific went wrong.');
+    expect(refusal.message).toBe(getMessages('errors').codes.AUTOMATION_RULE_NOT_FOUND);
     expect(refusal.target).toBeNull();
   });
 
   it('should degrade to a generic sentence for a non-API failure', () => {
     expect(describeAutomationWriteError(new Error('')).message).toBe(
-      AUTOMATION_COMPOSER_COPY.saveFailedGeneric,
+      getMessages('errors').status.other,
     );
   });
 });

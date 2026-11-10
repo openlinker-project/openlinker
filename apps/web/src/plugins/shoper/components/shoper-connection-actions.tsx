@@ -18,6 +18,7 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { useShoperMessages } from '../messages';
 import { useConfigureWebhooksMutation } from '../../../features/connections';
 import type { Connection } from '../../../features/connections';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface ShoperConnectionActionsProps {
   connection: Connection;
@@ -62,7 +63,7 @@ export function ShoperConnectionActions({
       showToast({
         tone: 'error',
         title: copy.toast.failed.title,
-        description: (error as Error).message,
+        description: describeApiError(error, 'shoper'),
       });
     }
   }

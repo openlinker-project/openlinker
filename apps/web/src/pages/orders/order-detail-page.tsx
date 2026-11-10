@@ -43,6 +43,7 @@ import { useSubjectAutomationRunsQuery } from '../../features/automation';
 import { OrderPackedControl } from '../../features/orders/components/order-packed-control';
 import { useFulfilmentOwnedConnectionIds } from '../../features/orders/hooks/use-fulfilment-owned-connection-ids';
 import { isFulfilmentOwnedByDestination } from '../../features/orders/lib/fulfilment-ownership';
+import { describeSalesDocumentBlockDetail } from '../../features/orders/lib/sales-document-block-detail';
 import { OrderHoldPanel } from '../../features/orders/components/order-hold-panel';
 import {
   OrderNotesPanel,
@@ -73,6 +74,7 @@ import { OrderDetailHeader, isChannelStatusStale } from '../../features/orders/c
 import { DestinationRoutingCallout } from '../../features/orders/components/destination-routing-callout';
 import { OrderHealthSummary } from '../../features/orders/components/order-health-summary';
 import { OrderPricingPanel } from '../../features/orders/components/order-pricing-panel';
+import { OrderPaymentPanel } from '../../features/orders/components/order-payment-panel';
 import { OrderDeliveryPanel } from '../../features/orders/components/order-delivery-panel';
 import { deriveFulfillment } from '../../features/orders/lib/order-health';
 import { deriveDeliveryOutcome } from '../../features/orders/lib/delivery-outcome';
@@ -102,6 +104,7 @@ import { buildOrderCancelTimelineEvents } from '../../features/orders/components
 import type { CancelOrderResult } from '../../features/orders/api/order-cancel.types';
 import { OrderEditAction } from '../../features/orders/components/order-edit-action';
 import { OrderEditedNotice } from '../../features/orders/components/order-edited-notice';
+import { OrderSourceChangeCard } from '../../features/orders/components/order-source-change-card';
 import { buildOrderEditTimelineEvents } from '../../features/orders/components/order-edit-timeline-events';
 import type { OrderDiscountResult, OrderEditLineStock } from '../../features/orders/api/order-edit.types';
 import type { EditOrderOutput } from '../../features/orders/hooks/use-edit-order-mutation';
@@ -109,7 +112,7 @@ import type { OrderEditRemedyTarget } from '../../features/orders/lib/order-edit
 import { hasAcceptedFulfilmentWork, isOrderCancelTerminal } from '../../features/orders/lib/order-cancel';
 import { useOmsRoutingState } from '../../features/fulfillment-authority';
 import { useSession } from '../../shared/auth/use-session';
-import { serverErrorText } from '../../features/orders/lib/server-error-text';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const RAW_SNAPSHOT_ANCHOR_ID = 'order-raw-snapshot';
 const SHIPPING_CAPABILITY = 'ShippingProviderManager';
@@ -133,7 +136,6 @@ const SHIP_BY_TONE: Record<ShipByLevel, StatusBadgeTone> = {
 export function OrderDetailPage(): ReactElement {
   const { internalOrderId = '' } = useParams<{ internalOrderId: string }>();
   const ordersCopy = useMessages('orders');
-  const serverSaid = ordersCopy.common.serverSaid;
   const copy = ordersCopy.orderDetailPage;
   const format = useFormat();
   const plural = usePlural();
@@ -262,12 +264,16 @@ export function OrderDetailPage(): ReactElement {
             });
           },
           onError: (error) => {
-            showToast({ tone: 'error', title: copy.retryFailedTitle, description: serverErrorText(serverSaid, error.message, '') });
+            showToast({
+              tone: 'error',
+              title: copy.retryFailedTitle,
+              description: describeApiError(error, 'orders'),
+            });
           },
         },
       );
     },
-    [retry, internalOrderId, showToast, copy, serverSaid],
+    [retry, internalOrderId, showToast, copy]
   );
 
   if (query.isLoading) {
@@ -283,7 +289,7 @@ export function OrderDetailPage(): ReactElement {
       <PageLayout eyebrow={copy.eyebrow} title={copy.title}>
         <ErrorState
           title={copy.loadErrorTitle}
-          message={serverErrorText(serverSaid, query.error?.message, copy.notFound)}
+          message={query.error ? describeApiError(query.error, 'orders') : copy.notFound}
           action={
             <Button
               onClick={() => {
@@ -659,6 +665,20 @@ export function OrderDetailPage(): ReactElement {
         }}
       />
 
+      {/* #3961 - a line the shop changed after packing started: what changed,
+          what OpenLinker already did, and what is left to decide. */}
+      <OrderSourceChangeCard
+        key={`source-change:${order.internalOrderId}`}
+        internalOrderId={order.internalOrderId}
+        lastAmendmentChanges={order.lastAmendmentChanges}
+        lastAmendedAt={order.lastAmendedAt}
+        omsAttention={order.omsAttention}
+        itemNames={Object.fromEntries(snapshot.items.map((item) => [item.id, item.name ?? item.sku ?? item.id]))}
+        hasPackingWork={(fulfilmentTasksQuery.data?.total ?? 0) > 0}
+        sourceName={cancelSourceName}
+        sourcePlatform={sourcePlatformType}
+      />
+
       {failedDestinations.length > 0 ? (
         <Alert
           tone="error"
@@ -789,6 +809,14 @@ export function OrderDetailPage(): ReactElement {
             key={order.internalOrderId}
             internalOrderId={internalOrderId}
             channelNames={orderChannelNames}
+          />
+
+          {/* #3963 - did a payment that arrived after the shops got the order reach them? */}
+          <OrderPaymentPanel
+            internalOrderId={order.internalOrderId}
+            entries={order.paymentWriteback ?? []}
+            sourceName={cancelSourceName}
+            amountLabel={cancelTotalLabel}
           />
 
           <section className="detail-section">
@@ -931,7 +959,12 @@ export function OrderDetailPage(): ReactElement {
           mappingFailureReason={order.mappingFailureReason}
           salesDocumentBlockReason={order.salesDocumentBlockReason}
           salesDocumentUnresolvedReason={order.salesDocumentUnresolvedReason}
-          salesDocumentBlockDetail={order.salesDocumentBlockDetail}
+          salesDocumentBlockDetail={describeSalesDocumentBlockDetail({
+            reason: order.salesDocumentBlockReason,
+            unresolvedReason: order.salesDocumentUnresolvedReason,
+            detail: order.salesDocumentBlockDetail,
+            params: order.salesDocumentBlockParams,
+          })}
           invoice={snapshot.invoice}
           lastAmendedAt={order.lastAmendedAt}
           lastAmendmentChanges={order.lastAmendmentChanges}

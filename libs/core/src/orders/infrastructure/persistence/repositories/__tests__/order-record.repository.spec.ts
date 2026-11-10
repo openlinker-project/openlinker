@@ -215,7 +215,10 @@ describe('OrderRecordRepository', () => {
         select: jest.fn().mockReturnThis(),
         addSelect,
         andWhere: jest.fn().mockReturnThis(),
+        setParameters: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
         getRawOne: jest.fn().mockResolvedValue(raw),
+        getRawMany: jest.fn().mockResolvedValue([]),
       });
 
       await repository.countByHealth({});
@@ -265,6 +268,9 @@ describe('OrderRecordRepository', () => {
         select: jest.fn().mockReturnThis(),
         addSelect,
         andWhere: jest.fn().mockReturnThis(),
+        setParameters: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
         getRawOne: jest.fn().mockResolvedValue({
           total: '7',
           sales_document_blocked: '2',

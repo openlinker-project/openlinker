@@ -23,6 +23,7 @@ export type {
   FiscalArtefactDisposition,
   FiscalRegistrationFailureMode,
   FiscalRegistrationRecord,
+  FiscalRegistrationRequestOutcome,
   FiscalRegistrationStatus,
   FiscalReconcileOutcome,
   ReconcileFiscalRegistrationResult,
@@ -33,6 +34,8 @@ export type {
 export { FiscalReceiptStatusBadge } from './components/fiscal-receipt-status-badge';
 export type { FiscalReceiptDisplayStatus } from './components/fiscal-receipt-status-badge';
 export { FiscalArtefactList } from './components/fiscal-artefact-list';
+// #3960 - refused attempts kept on record beside the current one.
+export { FiscalEarlierAttempts } from './components/fiscal-earlier-attempts';
 export { useOrderFiscalRegistrationsQuery } from './hooks/use-order-fiscal-registrations-query';
 // #3307 — one record by id, backing the merged /sales-documents detail route.
 export { useFiscalRegistrationQuery } from './hooks/use-fiscal-registration-query';

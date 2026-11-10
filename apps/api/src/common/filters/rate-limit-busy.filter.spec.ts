@@ -41,6 +41,8 @@ describe('RateLimitBusyFilter', () => {
     expect(status).toHaveBeenCalledWith(HttpStatus.SERVICE_UNAVAILABLE);
     expect(json).toHaveBeenCalledWith({
       statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+      code: 'PLATFORM_CONNECTION_BUSY',
+      params: { retryAfterSeconds: 5 },
       error: name,
       message: expect.stringContaining('was not sent'),
     });

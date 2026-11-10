@@ -14,7 +14,8 @@ import {
 } from '../api/inventory-movements.types';
 import { isMovementTypeFilterValue, type MovementTypeFilterValue } from './stock-movement-presentation';
 
-export type MovementChip = 'all' | 'attention' | 'promised';
+/** `promised` is the Holds view; the value stays for links already shared. */
+export type MovementChip = 'all' | 'attention' | 'stock' | 'promised';
 
 export interface MovementUrlState {
   search: string;
@@ -43,7 +44,7 @@ export function readMovementUrlState(params: URLSearchParams): MovementUrlState 
     master: params.get('master') ?? '',
     from: DATE_PATTERN.test(from) ? from : '',
     to: DATE_PATTERN.test(to) ? to : '',
-    chip: chip === 'attention' || chip === 'promised' ? chip : 'all',
+    chip: chip === 'attention' || chip === 'stock' || chip === 'promised' ? chip : 'all',
     productVariantId: params.get('productVariantId') ?? '',
     productId: params.get('productId') ?? '',
     offset: Number.isInteger(offset) && offset > 0 ? offset : 0,
@@ -102,7 +103,7 @@ export function toMovementFilters(state: MovementUrlState): InventoryMovementFil
     from: state.from ? localDayStartIso(state.from) : undefined,
     to: state.to ? localDayEndIso(state.to) : undefined,
     needsAttention: state.chip === 'attention' ? true : undefined,
-    kind: promisedOnly ? 'promised' : reason ? 'movements' : 'all',
+    kind: promisedOnly ? 'promised' : reason || state.chip === 'stock' ? 'movements' : 'all',
     search: state.search || undefined,
   };
 }

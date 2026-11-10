@@ -35,6 +35,8 @@ function fiscalRecord(overrides: Partial<FiscalRegistrationRecord> = {}): Fiscal
     orderId: 'ord_1',
     providerType: 'eparagony',
     idempotencyKey: 'key',
+    attempt: 0,
+    previousAttemptId: null,
     status: 'registered',
     providerReference: null,
     documentReference: 'RC/1',

@@ -672,6 +672,60 @@
       "status": "Status",
       "updated": "Updated"
     },
+    "connectionHealth": {
+      "caption": "Connection health",
+      "columns": {
+        "connection": "Connection",
+        "failedJobs": "Failed jobs",
+        "platform": "Platform",
+        "status": "Status"
+      },
+      "failedJobs": {
+        "one": "{n} failed job",
+        "other": "{n} failed jobs"
+      },
+      "failedJobsOn": {
+        "one": "{n} failed job on {name}",
+        "other": "{n} failed jobs on {name}"
+      },
+      "legend": {
+        "attention": {
+          "one": "{n} needs attention",
+          "other": "{n} need attention"
+        },
+        "disabled": {
+          "one": "{n} disabled",
+          "other": "{n} disabled"
+        },
+        "healthy": {
+          "one": "{n} healthy",
+          "other": "{n} healthy"
+        }
+      },
+      "none": "None",
+      "status": {
+        "active": "Active",
+        "archived": "Archived",
+        "disabled": "Disabled",
+        "error": "Error",
+        "needsReauth": "Needs re-auth"
+      },
+      "summary": {
+        "cannotReach": {
+          "one": "No failed jobs, but {attention} of {n} connection cannot reach its platform.",
+          "other": "No failed jobs, but {attention} of {n} connections cannot reach their platform."
+        },
+        "noFailedJobs": {
+          "one": "No failed jobs on your {n} connection.",
+          "other": "No failed jobs on any of your {n} connections."
+        },
+        "onlyConnectionFailed": "Your only connection has jobs that stopped retrying.",
+        "withFailedJobs": {
+          "one": "{n} of {total} connections has jobs that stopped retrying.",
+          "other": "{n} of {total} connections have jobs that stopped retrying."
+        }
+      }
+    },
     "connections": {
       "configured": "{n} configured",
       "errorTitle": "Unable to load connections",
@@ -690,10 +744,6 @@
     },
     "description": "Monitor integration health, dependency status, and connection activity from one command surface.",
     "eyebrow": "Overview",
-    "failingJobs": {
-      "one": "{n} failing job",
-      "other": "{n} failing jobs"
-    },
     "health": {
       "degraded": "Degraded",
       "error": "Error",
@@ -724,6 +774,7 @@
     },
     "infraNodeWithName": "{platform} ({name})",
     "infrastructure": {
+      "checked": "Checked",
       "errorTitle": "Health check failed",
       "eyebrow": "Infrastructure",
       "loadingMessage": "Pinging dependencies…",
@@ -754,7 +805,6 @@
     "retry": "Retry",
     "retryAria": "Retry - {signature}",
     "retrying": "Retrying…",
-    "serviceWithName": "{platform} - {name}",
     "setup": {
       "addCostPrices": "Add cost prices",
       "eyebrow": "Setup",
@@ -783,6 +833,47 @@
       "succeeded": "succeeded",
       "warning": "warning"
     },
+    "systemHealth": {
+      "connectedSystems": "Connected systems",
+      "coreServices": "Core services",
+      "legend": {
+        "failing": {
+          "one": "{n} failing",
+          "other": "{n} failing"
+        },
+        "ok": {
+          "one": "{n} OK",
+          "other": "{n} OK"
+        },
+        "warning": {
+          "one": "{n} warning",
+          "other": "{n} warnings"
+        }
+      },
+      "status": {
+        "error": "Error",
+        "ok": "OK",
+        "warning": "Warning"
+      },
+      "summary": {
+        "allPassing": {
+          "one": "{n} check passing.",
+          "other": "All {n} checks passing."
+        },
+        "failing": {
+          "one": "{failing} of {n} check failing.",
+          "other": "{failing} of {n} checks failing."
+        },
+        "failingWithWarnings": {
+          "one": "{failing} of {n} check failing, {warning} with a warning.",
+          "other": "{failing} of {n} checks failing, {warning} with a warning."
+        },
+        "warnings": {
+          "one": "{warning} of {n} check with a warning.",
+          "other": "{warning} of {n} checks with a warning."
+        }
+      }
+    },
     "title": "Operations overview",
     "toast": {
       "noDeadJobs": "{jobType} - no dead jobs remain ({skipped} already running).",
@@ -793,7 +884,6 @@
       },
       "requeuedSkipped": "{jobType} - re-queued {count}, skipped {skipped} already running.",
       "retryFailed": "Retry failed",
-      "unknownError": "Unknown error",
       "willRerun": "{jobType} will re-run."
     },
     "truncated": "{text}…",

@@ -39,6 +39,7 @@ import { ChannelPublishAction } from './channel-publish-action';
 import { variantChannelCellFor } from '../lib/top-products-view-model';
 import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import type { TopProductVariantRow } from '../api/top-products.types';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface VariantChannelMatrixProps {
   productId: string;
@@ -159,7 +160,7 @@ export function VariantChannelMatrix({
     return (
       <ErrorState
         title={copy.error.title}
-        message={query.error?.message ?? copy.error.message}
+        message={query.error ? describeApiError(query.error, 'analytics') : copy.error.message}
       />
     );
   }

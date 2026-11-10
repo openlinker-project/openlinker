@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { OrderCancelResultNotice } from './order-cancel-result-notice';
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
@@ -241,8 +242,10 @@ describe('OrderCancelResultNotice (#3541)', () => {
     await user.click(await screen.findByTestId('order-correction-confirm'));
 
     const error = await screen.findByTestId('order-correction-error');
-    expect(error).toHaveTextContent(message);
+    expect(error).toHaveTextContent(getMessages('errors').codes.CORRECTION_FAILED);
     expect(error).toHaveTextContent('The invoicing provider rejected the correction');
+    // The provider's own reason stays readable, as untranslated detail.
+    expect(screen.getByTestId('order-correction-error-detail')).toHaveTextContent(message);
     expect(screen.getByTestId('order-correction-confirm')).toBeEnabled();
   });
 
@@ -259,7 +262,10 @@ describe('OrderCancelResultNotice (#3541)', () => {
     await user.click(screen.getByTestId('order-cancel-review-correction'));
     await user.click(await screen.findByTestId('order-correction-confirm'));
 
-    expect(await screen.findByTestId('order-correction-error')).toHaveTextContent(message);
+    expect(await screen.findByTestId('order-correction-error')).toHaveTextContent(
+      getMessages('errors').codes.CHANGE_EXPIRED,
+    );
+    expect(screen.queryByTestId('order-correction-error-detail')).not.toBeInTheDocument();
     expect(screen.queryByTestId('order-correction-confirm')).not.toBeInTheDocument();
   });
 
@@ -276,7 +282,11 @@ describe('OrderCancelResultNotice (#3541)', () => {
     await user.click(screen.getByTestId('order-cancel-review-correction'));
     await user.click(await screen.findByTestId('order-correction-confirm'));
 
-    expect(await screen.findByTestId('order-correction-error')).toHaveTextContent(message);
+    expect(await screen.findByTestId('order-correction-error')).toHaveTextContent(
+      getMessages('errors').codes.CORRECTION_SUPERSEDED,
+    );
+    // The superseding document's number lives only in the server's sentence.
+    expect(screen.getByTestId('order-correction-error-detail')).toHaveTextContent(message);
     expect(screen.queryByTestId('order-correction-confirm')).not.toBeInTheDocument();
   });
 

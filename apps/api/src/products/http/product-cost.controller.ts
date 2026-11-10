@@ -11,14 +11,12 @@
  * @module apps/api/src/products/http
  */
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   Patch,
   Query,
@@ -34,6 +32,8 @@ import {
 } from '@openlinker/core/products';
 import type { ProductVariant } from '@openlinker/core/products';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
+import { productNotFound, productVariantNotFound } from './products-errors';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 // Value import: the @CurrentUser() param type feeds decorator metadata.
 import { AuthenticatedUser } from '../../auth/auth.types';
@@ -189,7 +189,7 @@ export class ProductCostController {
     }
     const variant = await this.productsService.getVariant(variantId);
     if (!variant) {
-      throw new NotFoundException(`Product variant not found: ${variantId}`);
+      throw productVariantNotFound(variantId, `Product variant not found: ${variantId}`);
     }
     return this.toCostResponse(variant);
   }
@@ -204,7 +204,7 @@ export class ProductCostController {
   ): Promise<ProductVariantCostResponseDto[]> {
     const product = await this.productsService.getProduct(productId);
     if (!product) {
-      throw new NotFoundException(`Product not found: ${productId}`);
+      throw productNotFound(productId);
     }
     const variants = await this.productsService.getVariantsByProductId(productId);
     return variants.map((v) => ({ ...this.toCostResponse(v), sku: v.sku }));
@@ -212,10 +212,10 @@ export class ProductCostController {
 
   private mapDomainError(error: unknown): Error {
     if (error instanceof ProductVariantNotFoundError) {
-      return new NotFoundException(error.message);
+      return productVariantNotFound(error.variantId, error.message);
     }
     if (error instanceof InvalidVariantCostError) {
-      return new BadRequestException(error.message);
+      return codedHttpError(HttpStatus.BAD_REQUEST, 'PRODUCT_VARIANT_COST_INVALID', error.message);
     }
     return error instanceof Error ? error : new Error(String(error));
   }

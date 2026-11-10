@@ -377,6 +377,7 @@ function RecordFailureDetail({
                     {err.field ? (
                       <span className="bulk-batch__err-field mono-text">{err.field}</span>
                     ) : null}
+                    {/* eslint-disable-next-line no-restricted-syntax -- a stored per-record failure message shown beside its code; the backend stores no code-only form yet (#3866) */}
                     <span className="bulk-batch__err-msg">{err.message}</span>
                   </li>
                 ))}
